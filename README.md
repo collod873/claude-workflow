@@ -16,9 +16,15 @@ research corpus, and the 11 open questions on `agent-skills`.
 the companion read. The index says *where everything is*; this says *why each system ended and
 what survived the switch*. Source in `artifacts/`.
 
+**[`CONTEXT.md`](CONTEXT.md)** — the glossary. What each term means here and which near-synonyms
+to avoid, so an argument is about the substance rather than about the word.
+
+**[`docs/adr/`](docs/adr/README.md)** — the decision records. Why things are the way they are.
+
 ## Status
 
-Early setup — the charter, the index and the eras artifact are the first real content.
+Early setup — the charter, the index and the eras artifact are the first real content. Decision
+records start now.
 
 ## Layout
 
@@ -26,7 +32,10 @@ Early setup — the charter, the index and the eras artifact are the first real 
 .
 ├── CLAUDE.md     # project instructions for Claude Code
 ├── GOAL.md       # the charter — what we're building toward and what constrains it
+├── CONTEXT.md    # the glossary — what the words mean here
 ├── INDEX.md      # the workflow/planning systems index
+├── bin/new-adr   # creates the next decision record from a title
+├── docs/adr/     # decision records
 ├── artifacts/    # source HTML for artifacts published to claude.ai
 └── README.md
 ```
