@@ -317,7 +317,7 @@ decided."*
 | [#127](https://github.com/collod873/agent-skills/issues/127) | Which Correction Ledger findings become enforcement vs stay observations? | Is #124's evidence-class row 9, executed |
 | [#123](https://github.com/collod873/agent-skills/issues/123) | Which of the six ranked Lumaria-vs-Pocock gaps are real enough to act on? | Gaps 3/4/6 recommended for split-out |
 | [#129](https://github.com/collod873/agent-skills/issues/129) | Sandcastle vs how we ship now — two candidates: gate the batch in `/drain`, and give `/drain` a per-ticket clock | Overlaps #123 gap 4 |
-| [#131](https://github.com/collod873/agent-skills/issues/131) | Write the Sandcastle postmortem | Blocked — the reason work stopped may not be recoverable |
+| [#131](https://github.com/collod873/agent-skills/issues/131) | Write the Sandcastle postmortem | **Unblocked 08-21** — reason reconstructed, scope named in the owner comment. Still labelled `fuzzy`; ready to `ticketify` |
 | [#134](https://github.com/collod873/agent-skills/issues/134) | Where does a drain file defects it finds in the drain machinery itself? | ADR-0029's don't-sweep-your-own-landing principle |
 
 **⚠️ Read #123/#124/#125/#127 as three grades of evidence, not as a consensus.** #128 documents
@@ -342,16 +342,16 @@ in any project:
 
 ## 7. Known gaps in the record
 
-1. **No Sandcastle postmortem.** The only era with neither a passive record nor a self-authored
-   exit note. Two months of memory decay. → #131
-   **⚠️ Contested.** [Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)
-   §00 refutes two of #131's three blocking premises: `General-Repo` reads fine (the 404 was a
-   stale credential, not an access boundary), and a retirement commit does exist — Lumaria
-   `3efd8fc`, 07-02, which documents the *cleanup* thoroughly and the *reason* not at all. The
-   third premise is worse than stated: capture died 05-21 **and** local transcripts only begin
-   07-22, so nothing from eras 1–5 survives in conversation form at all. Its position: #131 should
-   absorb the 08-21 measurement docs rather than restart, leaving only the decision narrative
-   genuinely missing — which is what the artifact itself reconstructs.
+1. **~~No Sandcastle postmortem.~~ Unblocked 2026-08-21.** Was the only era with neither a passive
+   record nor a self-authored exit note. [#131's owner comment](https://github.com/collod873/agent-skills/issues/131#issuecomment-5375688997)
+   retired two of its three stated blockers — `General-Repo` reads fine (the 404 was a stale
+   credential, not an access boundary), and a retirement commit does exist: Lumaria `3efd8fc`,
+   07-02, which documents the *cleanup* fully and the *reason* not at all. The third is worse than
+   stated: capture died 05-21 **and** local transcripts only begin 07-22, so nothing conversational
+   survives from eras 1–5 — git, the tracker and the in-repo ADRs are the only witnesses, and they
+   were enough. **The reason on record:** distributed orchestration bought for a workload that was
+   never distributed — one operator, one machine, one repo. The remaining work is writing the doc,
+   absorbing the 08-21 measurements rather than restarting.
 2. **Session capture is dead.** Stopped 2026-05-21; `~/.claude/settings.json` has `SessionEnd: []`.
    Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4 and nothing after,
    while reading as if it were current.
