@@ -85,7 +85,10 @@ each with a `why` naming where the command came from.
 
 ## 2. The seven eras
 
-Full narrative in [`ai-workflow-systems-inventory.md`](https://github.com/collod873/General-Repo/blob/main/ai-workflow-systems-inventory.md).
+Full narrative in [`ai-workflow-systems-inventory.md`](https://github.com/collod873/General-Repo/blob/main/ai-workflow-systems-inventory.md);
+the *decision* narrative — why each era ended, and what carried across the boundary — is
+[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)
+(source: [`artifacts/seven-workflow-eras.html`](artifacts/seven-workflow-eras.html)).
 This is the location map.
 
 | # | Era | Active | Where it lives now | Doc quality |
@@ -214,6 +217,7 @@ review p50 7.6 min, p50 8 agent runs per PR).
 
 | Artifact | Subject |
 |---|---|
+| **[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)** | **The decision narrative §2 only maps.** Per-era what-worked/what-didn't/how-it-ended, a 12-mechanism survival matrix across all seven eras, the seven recurring failures and six durable wins. Source in-repo: [`artifacts/seven-workflow-eras.html`](artifacts/seven-workflow-eras.html) |
 | [Sandcastle Autopsy](https://claude.ai/code/artifact/214fe363-b468-4e8c-9dfd-27fcc4b441f7) | Origin → churn → why shelved → every recorded measurement |
 | [Lumaria Against the Pocock Pipeline](https://claude.ai/code/artifact/c8e8eb3c-4d9f-4476-a49f-f4c38d896272) | The six ranked gaps (issue #123) |
 | [The Correction Ledger](https://claude.ai/code/artifact/a69d43d0-24f3-4376-a722-ef0bf8a9a89f) | 2,617 human prompts, 510 sessions, 22 Jul – 21 Aug (issue #127) |
@@ -340,6 +344,14 @@ in any project:
 
 1. **No Sandcastle postmortem.** The only era with neither a passive record nor a self-authored
    exit note. Two months of memory decay. → #131
+   **⚠️ Contested.** [Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)
+   §00 refutes two of #131's three blocking premises: `General-Repo` reads fine (the 404 was a
+   stale credential, not an access boundary), and a retirement commit does exist — Lumaria
+   `3efd8fc`, 07-02, which documents the *cleanup* thoroughly and the *reason* not at all. The
+   third premise is worse than stated: capture died 05-21 **and** local transcripts only begin
+   07-22, so nothing from eras 1–5 survives in conversation form at all. Its position: #131 should
+   absorb the 08-21 measurement docs rather than restart, leaving only the decision narrative
+   genuinely missing — which is what the artifact itself reconstructs.
 2. **Session capture is dead.** Stopped 2026-05-21; `~/.claude/settings.json` has `SessionEnd: []`.
    Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4 and nothing after,
    while reading as if it were current.

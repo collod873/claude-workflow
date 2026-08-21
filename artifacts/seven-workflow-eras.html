@@ -1,0 +1,668 @@
+<title>Seven Workflow Eras</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zilla+Slab:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F1F3F1;
+  --surface:#FBFCFB;
+  --surface-2:#E8ECEA;
+  --ink:#141C1A;
+  --ink-soft:#525F5C;
+  --ink-faint:#7C8785;
+  --rule:#D5DBD8;
+  --rule-strong:#B6C0BC;
+  --accent:#0E6353;
+  --accent-ink:#0A4A3E;
+  --accent-wash:#DDEBE6;
+  --warn:#9C4A18;
+  --warn-wash:#F3E4D9;
+  --dead:#8A918F;
+  --shadow:0 1px 2px rgba(20,28,26,.06),0 8px 24px -18px rgba(20,28,26,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1312;
+    --surface:#151C1A;
+    --surface-2:#1D2624;
+    --ink:#E3EAE7;
+    --ink-soft:#A0ADAA;
+    --ink-faint:#798683;
+    --rule:#28322F;
+    --rule-strong:#3A4643;
+    --accent:#54C4AA;
+    --accent-ink:#7FD8C2;
+    --accent-wash:#152C27;
+    --warn:#DE9058;
+    --warn-wash:#2C1F16;
+    --dead:#6B7472;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1312;
+  --surface:#151C1A;
+  --surface-2:#1D2624;
+  --ink:#E3EAE7;
+  --ink-soft:#A0ADAA;
+  --ink-faint:#798683;
+  --rule:#28322F;
+  --rule-strong:#3A4643;
+  --accent:#54C4AA;
+  --accent-ink:#7FD8C2;
+  --accent-wash:#152C27;
+  --warn:#DE9058;
+  --warn-wash:#2C1F16;
+  --dead:#6B7472;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -18px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1140px;margin:0 auto;padding:0 28px 96px}
+.measure{max-width:70ch}
+
+h1,h2,h3,h4{font-family:"Zilla Slab",Georgia,serif;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.4rem,5.4vw,3.7rem);line-height:1.04;font-weight:700;letter-spacing:-.015em}
+h2{font-size:clamp(1.5rem,2.7vw,2rem);font-weight:600;line-height:1.15;letter-spacing:-.008em}
+h3{font-size:1.18rem;font-weight:600;line-height:1.25}
+h4{font-size:.95rem;font-weight:600}
+p{margin:0 0 1.05em}
+a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+strong{font-weight:600;color:var(--ink)}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:.86em}
+code{background:var(--surface-2);padding:.08em .34em;border-radius:3px;color:var(--ink)}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+}
+
+/* ---------- masthead ---------- */
+header.mast{padding:80px 0 0}
+.mast .eyebrow{display:block;margin-bottom:22px}
+.standfirst{
+  font-size:1.22rem;line-height:1.5;color:var(--ink-soft);
+  max-width:62ch;margin:26px 0 0;font-weight:300;
+}
+.standfirst em{font-style:normal;color:var(--ink);font-weight:400}
+.sourcebar{
+  margin-top:38px;padding-top:18px;border-top:1px solid var(--rule);
+  display:flex;flex-wrap:wrap;gap:8px 30px;
+  font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-faint);
+}
+.sourcebar span{white-space:nowrap}
+
+/* ---------- generic section ---------- */
+section{margin-top:76px}
+.sechead{display:flex;align-items:baseline;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+.sechead .num{
+  font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-weight:600;
+  color:var(--accent);letter-spacing:.06em;
+}
+.lede{color:var(--ink-soft);max-width:68ch;margin-top:14px}
+
+/* ---------- callout ---------- */
+.callout{
+  background:var(--surface);border:1px solid var(--rule);
+  border-left:3px solid var(--warn);
+  border-radius:4px;padding:22px 26px;margin:26px 0;box-shadow:var(--shadow);
+}
+.callout.ok{border-left-color:var(--accent)}
+.callout h4{margin-bottom:6px;font-family:"Source Sans 3",sans-serif;font-size:1rem}
+.callout p:last-child{margin-bottom:0}
+.callout p{font-size:.96rem;color:var(--ink-soft)}
+
+.corr{display:grid;gap:2px;margin:28px 0 0;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--rule)}
+.corr > div{background:var(--surface);padding:20px 24px}
+.corr .claim{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--warn);text-transform:uppercase;letter-spacing:.09em;margin-bottom:7px}
+.corr .fact{font-size:.97rem;color:var(--ink-soft);margin:0}
+.corr .fact strong{color:var(--ink)}
+
+/* ---------- timeline ---------- */
+.timeline{margin-top:34px;display:grid;gap:3px}
+.tl-row{
+  display:grid;grid-template-columns:26px 200px 1fr;gap:16px;align-items:center;
+  padding:11px 14px;background:var(--surface);border:1px solid var(--rule);border-radius:3px;
+}
+.tl-row .n{font-family:"IBM Plex Mono",monospace;font-size:.8rem;color:var(--accent);font-weight:600}
+.tl-row .nm{font-weight:600;font-size:.97rem}
+.tl-row .nm small{display:block;font-weight:400;color:var(--ink-faint);font-size:.76rem;font-family:"IBM Plex Mono",monospace;letter-spacing:.02em}
+.bar-track{position:relative;height:22px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.bar{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85;border-radius:2px;
+  display:flex;align-items:center;padding-left:8px}
+.bar span{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--surface);font-weight:600;white-space:nowrap}
+.bar.eval{background:var(--dead)}
+.bar.side{background:var(--rule-strong)}
+.bar.live{background:var(--accent-ink)}
+.tl-scale{display:grid;grid-template-columns:26px 200px 1fr;gap:16px;padding:0 14px;margin-bottom:6px}
+.tl-scale .months{display:grid;grid-template-columns:repeat(6,1fr);font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-faint);letter-spacing:.06em}
+
+/* ---------- era cards ---------- */
+.era{
+  background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  padding:28px 30px;margin-top:20px;box-shadow:var(--shadow);
+}
+.era-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+.era-head .n{font-family:"IBM Plex Mono",monospace;font-size:.8rem;font-weight:600;color:var(--accent)}
+.era-head .dates{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-faint);margin-left:auto}
+.era-sub{color:var(--ink-soft);font-size:.95rem;margin:10px 0 20px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+@media(max-width:720px){.cols{grid-template-columns:1fr;gap:20px}}
+.col h4{
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.13em;
+  text-transform:uppercase;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid var(--rule);
+}
+.col.good h4{color:var(--accent)}
+.col.bad h4{color:var(--warn)}
+.col ul{margin:0;padding-left:17px}
+.col li{font-size:.93rem;margin-bottom:9px;color:var(--ink-soft);line-height:1.5}
+.col li strong{color:var(--ink)}
+.ending{
+  margin-top:22px;padding-top:16px;border-top:1px dashed var(--rule-strong);
+  font-size:.93rem;color:var(--ink-soft);
+}
+.ending b{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:5px}
+
+/* ---------- matrix ---------- */
+.scroller{overflow-x:auto;margin-top:28px;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.9rem}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--rule)}
+thead th{
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:500;background:var(--surface-2);position:sticky;top:0;
+}
+tbody tr:last-child td{border-bottom:none}
+td.mk{text-align:center;font-size:1rem;font-family:"IBM Plex Mono",monospace}
+td.rowname{font-weight:600;font-size:.9rem;white-space:nowrap}
+.kept{color:var(--accent)}
+.partial{color:var(--ink-soft)}
+.dropped{color:var(--warn)}
+.none{color:var(--rule-strong)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:12px;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-faint)}
+.legend b{font-weight:400}
+
+/* ---------- pattern list ---------- */
+.pat{border-top:1px solid var(--rule);padding:26px 0 4px;display:grid;grid-template-columns:56px 1fr;gap:22px}
+@media(max-width:640px){.pat{grid-template-columns:1fr;gap:8px}}
+.pat .idx{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--accent);font-weight:600;padding-top:5px}
+.pat h3{margin-bottom:8px}
+.pat p{font-size:.97rem;color:var(--ink-soft);max-width:66ch}
+.evid{
+  margin-top:12px;display:grid;gap:7px;padding-left:0;list-style:none;
+  border-left:2px solid var(--accent-wash);padding-left:16px;
+}
+.evid li{font-size:.87rem;color:var(--ink-soft);line-height:1.48}
+.evid .tag{
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--accent);
+  letter-spacing:.06em;text-transform:uppercase;margin-right:8px;font-weight:600;
+}
+.pat.win .idx{color:var(--accent-ink)}
+.pat.win .evid{border-left-color:var(--accent)}
+
+/* ---------- stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:2px;margin-top:28px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.stat{background:var(--surface);padding:20px 22px}
+.stat .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:9px}
+.stat .v{font-family:"Zilla Slab",serif;font-size:1.75rem;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.stat .v.up{color:var(--accent)}
+.stat .v.down{color:var(--warn)}
+.stat .d{font-size:.83rem;color:var(--ink-soft);margin-top:8px;line-height:1.42}
+
+/* ---------- verdict ---------- */
+.verdict{
+  margin-top:34px;background:var(--accent-wash);border:1px solid var(--accent);
+  border-radius:4px;padding:30px 32px;
+}
+.verdict h3{font-size:1.32rem;margin-bottom:12px;color:var(--accent-ink)}
+.verdict p{color:var(--ink);font-size:1rem}
+.verdict p:last-child{margin-bottom:0}
+.verdict ol{margin:14px 0 0;padding-left:20px}
+.verdict li{margin-bottom:10px;font-size:.97rem}
+
+footer{margin-top:80px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-faint);line-height:1.7}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <span class="eyebrow">Workflow archaeology · March – August 2026</span>
+  <h1>Seven Workflow Eras</h1>
+  <p class="standfirst">Six months, seven systems, one operator. What each one was actually good at, what killed it, and the seven failures that showed up again every single time — <em>including in the one running right now.</em></p>
+  <div class="sourcebar">
+    <span>gh · 105 sandcastle issues</span>
+    <span>135 agent-skills issues</span>
+    <span>4 repos of git history</span>
+    <span>57 ADRs</span>
+    <span>4 postmortems</span>
+    <span>1,791 session transcripts</span>
+  </div>
+</header>
+
+<section>
+  <div class="sechead"><span class="num">00</span><h2>Three corrections to the ticket</h2></div>
+  <p class="lede">Issue #131 says the Sandcastle postmortem is unresolvable. Two of its three blocking premises are wrong, and the third is worse than it thinks.</p>
+
+  <div class="corr">
+    <div>
+      <div class="claim">Ticket says — tracker can't read General-Repo (404)</div>
+      <p class="fact"><strong>It reads fine.</strong> <code>gh api repos/collod873/General-Repo</code> returns 200 with admin permissions, and the inventory is also sitting locally at <code>~/Claude Projects/General-Repo/ai-workflow-systems-inventory.md</code>. The 404 was a stale credential state, not an access boundary.</p>
+    </div>
+    <div>
+      <div class="claim">Ticket says — no retirement commit anywhere</div>
+      <p class="fact"><strong>There is one.</strong> Lumaria <code>3efd8fc</code>, 2026-07-02 18:59: <em>"chore: retire the sandcastle AFK-agent pipeline."</em> It says the pipeline "is being shelved" and that keeping it "would rot into misleading guidance for agents and humans alike." It documents the <em>cleanup</em> thoroughly and the <em>reason</em> not at all — which is a different gap than "nothing exists."</p>
+    </div>
+    <div>
+      <div class="claim">Ticket says — capture died 2026-05-21, so no passive record</div>
+      <p class="fact"><strong>Two losses, not one.</strong> The KB capture hooks did stop on 05-21 (<code>SessionEnd: []</code> confirms it was deliberately emptied). But separately, the raw transcripts on this machine <strong>only begin 2026-07-22</strong> — the WSL migration cut. Nothing from eras 1–5 or the first three weeks of era 6 survives locally in any form. The postmortem can't be reconstructed from conversation at all; only from git, the tracker, and the docs.</p>
+    </div>
+  </div>
+
+  <div class="callout ok">
+    <h4>And the postmortem largely already exists</h4>
+    <p>On 2026-08-21 — hours before #131 was triaged — a measured Sandcastle autopsy was produced and committed: <code>lumaria-shipping-model-vs-sandcastle-2026-08-21.md</code>, <code>lumaria-ci-performance-2026-08-21.md</code>, and agent-skills <strong>#129</strong>. #131 should absorb those rather than restart. What's still genuinely missing is the <em>decision</em> narrative, which is what the rest of this page reconstructs.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">01</span><h2>The run of play</h2></div>
+  <p class="lede">Every era was the primary driver, alone. No two overlapped — each replacement was a switch, not an addition.</p>
+
+  <div class="tl-scale">
+    <div></div><div></div>
+    <div class="months"><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span><span>AUG</span></div>
+  </div>
+  <div class="timeline">
+    <div class="tl-row"><span class="n">1</span><span class="nm">Plain plan mode<small>no write-up, ever</small></span>
+      <div class="bar-track"><div class="bar" style="left:0%;width:100%"><span>Mar 2026 → (never formally ended)</span></div></div></div>
+    <div class="tl-row"><span class="n">2</span><span class="nm">Checkbox hooks<small>homegrown enforcement</small></span>
+      <div class="bar-track"><div class="bar" style="left:6%;width:26%"><span>Mar – Apr</span></div></div></div>
+    <div class="tl-row"><span class="n">3</span><span class="nm">obra/superpowers<small>evaluated only, 2 days</small></span>
+      <div class="bar-track"><div class="bar eval" style="left:24%;width:3%"><span></span></div></div></div>
+    <div class="tl-row"><span class="n">4</span><span class="nm">Planning-System spine<small>131 commits · 128 in April</small></span>
+      <div class="bar-track"><div class="bar" style="left:25%;width:21%"><span>Apr 14 – May 20</span></div></div></div>
+    <div class="tl-row"><span class="n">5</span><span class="nm">Sandcastle<small>127 commits · 105 issues</small></span>
+      <div class="bar-track"><div class="bar" style="left:51%;width:14%"><span>Jun 8 – Jul 2</span></div></div></div>
+    <div class="tl-row"><span class="n">6</span><span class="nm">agent-skills<small>221 commits · 135 issues</small></span>
+      <div class="bar-track"><div class="bar live" style="left:64%;width:36%"><span>Jul 6 → current</span></div></div></div>
+    <div class="tl-row"><span class="n">7</span><span class="nm">Side branches<small>Agent Teams · Crewops-local</small></span>
+      <div class="bar-track"><div class="bar side" style="left:22%;width:34%"><span>Apr – Jun, alongside</span></div></div></div>
+  </div>
+
+  <div class="callout">
+    <h4>The gap nobody planned</h4>
+    <p>Era 4 stopped producing commits on <strong>2026-04-28</strong> but wasn't archived until <strong>05-20</strong>. Three weeks where the official system was simply not being used and nothing said so. Era 5 started ten days after that. The pattern repeats at the era 5 → 6 boundary: retired 07-02, replacement first commit 07-06.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">02</span><h2>Era by era</h2></div>
+  <p class="lede">What each system was genuinely good at, what it cost, and the specific thing that ended it — cited to the artifact that says so, not reconstructed.</p>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 1</span><h3>Plain plan mode → implement</h3><span class="dates">Mar 2026 →</span></div>
+    <p class="era-sub">Enter plan mode, agree a plan, exit, implement step by step. No enforcement, no artifact beyond the plan file.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>Zero setup cost.</strong> 86 crewops commits in March alone, tagged <code>plan(phase-1): step N</code> — it shipped a multi-tenant CRM from an empty repo.</li>
+        <li><strong>The plan file as the unit of work</strong> survived every later era. Step-numbered commits are still legible five months on.</li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>Nothing enforced anything.</strong> The lesson recorded in era 2's wiki is entirely about this: docs require a reader.</li>
+        <li><strong>Plan-mode auto-names leaked the friction.</strong> Cockpit's <code>.claude/plans/</code> holds 44 files including <code>dont-use-spec-first-sequential-galaxy.md</code> and <code>i-dont-think-contradictions-cozy-moth.md</code> — the objections are literally in the filenames.</li>
+        <li><strong>Never retrospected.</strong> The only record is git log.</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended</b>It didn't. It's still the default for anything below ticket size — which is the honest reason era 4 and era 5 both lost ground.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 2</span><h3>Homegrown enforcement — checkbox hooks</h3><span class="dates">Mar – Apr 2026</span></div>
+    <p class="era-sub">Plans had to carry <code>- [ ]</code> acceptance items; hooks enforced that they were authored correctly and ticked off. <code>validate-plan.py</code>, <code>checklist-reminder.py</code>, <code>post-edit-validate.py</code>, five always-on rules.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>The single most durable idea in the whole record.</strong> <em>"Enforcement at execution time is the only mechanism that survives brain off + memory wiped."</em></li>
+        <li><strong>It is still running.</strong> <code>checklist-reminder.py</code> and <code>post-edit-validate.py</code> are live in <code>settings.json</code> today — five months and four systems later.</li>
+        <li><strong>Fail-closed beat documentation</strong> every time it was tested.</li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>A known architectural hole, parked and never fixed.</strong> <code>validate-plan.py</code> fired only on <code>ExitPlanMode</code>, so <code>/slice</code>-authored files bypassed the gate entirely. The <code>PostToolUse</code> fix was specified and never shipped.</li>
+        <li><strong>The wiki compile pipeline duplicated itself.</strong> <code>verify-ship-workflow-discipline.md</code> restates the same five facts roughly six times each — 98 lines that carry about 16 lines of content.</li>
+        <li><strong>Documentation scattered</strong> across two wiki topics and a skills tree.</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended</b>Absorbed, not killed. Skills archived into era 4's <code>build/skills/</code>; hooks consolidated into <code>~/.agents/skills/hooks/</code>. <code>validate-plan.py</code> itself was finally deleted in August 2026 — era 6 has tickets, not plan files, so its gate had nothing left to guard.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 3</span><h3>obra/superpowers — evaluated, not adopted</h3><span class="dates">Apr 13 – 14 2026</span></div>
+    <p class="era-sub">A 15-agent research sweep feeding a three-way audit: Superpowers × Matt Pocock × Collin's own stack. 77-row file-by-file matrix with a citation and a verdict per row.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>The best evaluation on record, by a distance.</strong> <code>matrix.md</code> cites file and line range for every row, and every NEW verdict is preceded by an explicit grep null-result.</li>
+        <li><strong>It correctly refused to pick a winner.</strong> Superpowers had the prompt artifacts, Pocock the planning primitives, Collin the only enforcement layer. The output was a merge plan, not an adoption.</li>
+        <li><strong>Cheap.</strong> Two days, and it set the agenda for the next five weeks.</li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>It bought 19 skills at once.</strong> Era 4's autopsy later blamed exactly this: 19 skills, an estimated 19–57 latent self-contradictions, no audit loop.</li>
+        <li><strong>The reference clones were gitignored.</strong> Every parity claim in the matrix depends on <code>external/</code>, an uncommitted directory. OPEN-PROBLEMS #5.</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended</b>By design — it was never a running system. It became input #1 to era 4.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 4</span><h3>Planning-System — the spine</h3><span class="dates">Apr 14 – May 20 2026</span></div>
+    <p class="era-sub"><code>/spec-first → /plan → /slice → /build → /verify → /ship</code>. Domain adapters, a complexity score that forces slicing, a declarative Definition-of-Done gate, a two-stage verifier, a bounded self-heal loop. 19 skills, 5 reviewer agents.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>The DoD gate genuinely worked.</strong> G7 drove all four criteria to pass on real artifacts, then broke each one in turn: 4/4 refused correctly, no false negatives, no criterion firing for the wrong reason.</li>
+        <li><strong>Verifier ≠ implementer.</strong> Deliberately separated to dodge confirmation bias. Ported forward into every era since.</li>
+        <li><strong><code>Files:</code> + <code>Scope:</code> lines on every step.</strong> The postmortem is explicit: knowing exactly which three files were in bounds "led to a smaller, more cohesive diff than a free-form implementation would have."</li>
+        <li><strong>The most honest failure autopsy in the estate.</strong> Six numbered open problems and the line <em>"Shipped, not settled."</em></li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>Ceremony exceeded the work.</strong> OPEN-PROBLEMS #4: seven plan steps for ~3 edits in one file. A ~7:3 ceremony-to-substance ratio, with no documented under-threshold bypass.</li>
+        <li><strong>It was flagged a month before it died.</strong> Cockpit's 04-19 interview lists friction #4 as <em>"spine ceremony vs plan-mode ambiguity — overkill for small tasks and unclear for medium ones."</em></li>
+        <li><strong>Deferred decisions left live.</strong> Five demoted rules with no disposition; three stub adapters that <em>look</em> implemented.</li>
+        <li><strong>The system had no maintenance mode.</strong> "Auditing costs as much as fixing. Every audit reveals more unconcluded experiments, not just bugs."</li>
+        <li><strong>Two audiences, two doc shapes</strong> — Collin needs pending/risky; a fresh session needs live/don't-touch.</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended</b>It stopped being used. 128 of its 131 commits are April; after 04-28 it went quiet, and on 05-20 <code>dfce23d</code> archived the four homegrown standalones "alongside the retired spine." No dramatic failure — the gate worked and the ceremony around it didn't.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 5</span><h3>Sandcastle — the AFK pipeline</h3><span class="dates">Jun 8 – Jul 2 2026</span></div>
+    <p class="era-sub">Grill → PRD → issues → label <code>agent:implement</code> → walk away. A 13-label state machine across 9 GitHub Actions workflows and 27 TypeScript ops, running on a 10-runner self-hosted pool. The most ambitious era by a wide margin.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>It ran.</strong> Three repos on it; all 58 template PRs merged; CI green at the end. It did not fall over — it was switched off.</li>
+        <li><strong>Best-instrumented era ever.</strong> Every op was a timed workflow run. Implement p50 13.6 min, review p50 7.6, PR open→merge p50 8.2 min — all still recoverable from the API two months later.</li>
+        <li><strong>A real pre-merge gate.</strong> CI ran on the PR and blocked the merge (ADR-0006/0011).</li>
+        <li><strong>Legible from GitHub alone.</strong> The issue list <em>was</em> the state.</li>
+        <li><strong>The strongest decision discipline anywhere</strong> — 27 ADRs, each naming the incident and issue number that forced it.</li>
+        <li><strong>Two ideas that outlived it:</strong> authoring-time physical disjointness (ADR-0017), and holding auto-merge on the human-owned doc surface (ADR-0026) — code lands itself, vocabulary and standards stay Collin's.</li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>Two thirds of the machine did nothing.</strong> 2,120 orchestration runs, <strong>1,365 skipped</strong>. <code>To-issues</code> fired 299 times and skipped 299 times. Every label event woke every workflow.</li>
+        <li><strong>Race whack-a-mole.</strong> Six ADRs to make one lockless surface safe. ADR-0014 quotes the complaint verbatim: the churn <em>"reads like patching a model that keeps producing fresh holes"</em> — then keeps the model.</li>
+        <li><strong>Fixes relocated the problem.</strong> ADR-0017 killed the registry rebase storm; ADR-0020 opens with "the storm didn't die; it moved to the next shared registry of a different shape."</li>
+        <li><strong>It could never see its own cost.</strong> Issue #39's verification gate failed — <code>@ai-hero/sandcastle</code> parses Claude Code's result line and discards <code>total_cost_usd</code>, <code>duration_ms</code> and <code>num_turns</code>. It ran to retirement blind to its spend.</li>
+        <li><strong>Ceremony per unit of work.</strong> ADR-0023 measured one 8-slice PRD at <strong>2h28m wall, ~650 compute-minutes, 79 workflow runs</strong>, waves of 2 on a 10-runner pool. p50 8 agent runs per PR; p90 16; max 32.</li>
+        <li><strong>Security debt arrived in one batch.</strong> 26 issues on 06-22 including a CRITICAL <code>pull_request_target</code> running untrusted PR code with secrets on the runner, plus #111: <em>"the 478-test suite doesn't cover the cross-workflow races that actually break."</em></li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended — the reason nothing wrote down</b>The last day's work is the tell. On 07-02 the entire PRD (#146) was titled <strong>"Orchestration efficiency overhaul"</strong> — fat slices, review self-fix, doc budgets, auto-kick. The system's final act was undoing its own ceremony. It landed, and 2h17m later Lumaria deleted the pipeline. Only 2 issues were left open, so this was not collapse under a backlog: it was a judgement that the coordination cost was structural, not fixable. Upstream agrees — <code>mattpocock/sandcastle</code> itself has been dormant since 2026-06-29, three days earlier.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 6</span><h3>agent-skills — current</h3><span class="dates">Jul 6 2026 → now</span></div>
+    <p class="era-sub"><code>/grilling → /to-spec → /to-tickets → /drain → /implement</code>, closed by a checker. Vendored <code>mattpocock/skills</code> with local deltas on top. 30 ADRs, a sync contract with executable markers, hooks symlinked from one home.</p>
+    <div class="cols">
+      <div class="col good"><h4>What works</h4><ul>
+        <li><strong>21× less machine time.</strong> 0.44 CI-hours/day vs Sandcastle's 9.5. 4.2 min per issue closed vs 34.</li>
+        <li><strong>Cost is knowable for the first time.</strong> ~$1,661 API-equivalent over 28 days, itemised per model, session and day.</li>
+        <li><strong>No coordination failure surface</strong> — because there's no coordination layer. Six race ADRs made moot.</li>
+        <li><strong><code>UPSTREAM.md</code> is the endpoint of the whole documentation trend</strong> — ~60 rows, each with a grep-able marker a test suite fails on. Deletions carry a "compensating addition," because a positive marker can't prove a clause stayed deleted.</li>
+        <li><strong>Work the old model had no shape for.</strong> <code>wayfinder</code> alone is 3,709 attributed turns — open-ended exploration with the human present.</li>
+        <li><strong>It learns from the record.</strong> ADR-0029 cites its own measured machinery ratio to shut off a chain it had just built.</li>
+      </ul></div>
+      <div class="col bad"><h4>What doesn't</h4><ul>
+        <li><strong>The pre-merge gate is gone.</strong> All 12 CI failures since 08-16 are genuine <code>unit</code>+<code>build</code> breakage with zero flake — <strong>twelve broken commits reached <code>main</code> in five days.</strong> This is the one clean regression from era 5.</li>
+        <li><strong>No per-ticket clock.</strong> Sandcastle got one free from workflow records; there is nothing comparable now.</li>
+        <li><strong>The machinery is eating the capability.</strong> ADR-0029's own table: pipeline machinery was 63% of file touches in July and <strong>82% in August</strong>. On 08-20, 20 of 92 commits were ratification verdicts against the hook harness that exists to enforce the standards.</li>
+        <li><strong>Five of eleven open issues are <code>/drain</code> defects</strong> — worktrees exhausting tmpfs inodes, the checker moving HEAD in the foreman's shared checkout, checker evidence drifting from its own parser. Including #134: <em>"a drain has nowhere to file defects it finds in the drain machinery itself."</em></li>
+        <li><strong>Prompt overhead is real.</strong> A foreman hit 123k tokens having read zero implementation files — ~16k of it re-pasting the same two dispatch templates.</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>Status</b>Live, and by the numbers the best system yet on every axis except the merge gate. Note the shape it landed on is the same one Matt Pocock uses for <em>his</em> tooling repo: local Claude sessions, zero agent workflows.</div>
+  </article>
+
+  <article class="era">
+    <div class="era-head"><span class="n">ERA 7</span><h3>Side branches</h3><span class="dates">Apr – Jun 2026</span></div>
+    <p class="era-sub">Two experiments that ran alongside the primary system rather than replacing it.</p>
+    <div class="cols">
+      <div class="col good"><h4>What worked</h4><ul>
+        <li><strong>Agent Teams shipped real work</strong> — 15 PRs landed overnight on Cockpit before it was abandoned.</li>
+        <li><strong>The abandonment was empirical, not vibes.</strong> A uniq-marker probe proved Task-subagents <em>do</em> route through the parent's <code>PermissionRequest</code> hook and teammates don't. That one test picked the pattern every later era uses.</li>
+        <li><strong>Crewops' <code>/build-component</code></strong> proved project-scoped workflows can coexist with a global one.</li>
+      </ul></div>
+      <div class="col bad"><h4>What didn't</h4><ul>
+        <li><strong>Agent Teams was structurally disqualified.</strong> Teammate permission requests bypass the hook layer entirely (anthropics/claude-code#23983), so <code>auto-approve-permissions.py</code> never fires — the exact opposite of era 2's durable lesson.</li>
+        <li><strong>Mid-run correction doesn't stick.</strong> Hard-rule corrections sent to active builders "empirically do not stick — they forget by the next Bash call."</li>
+      </ul></div>
+    </div>
+    <div class="ending"><b>How it ended</b><code>/agent-team</code> deleted 2026-04-14 (Planning-System D9), replaced by Task subagents. Still the right call: era 6's <code>/drain</code> workers are that same pattern.</div>
+  </article>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">03</span><h2>What survived the switches</h2></div>
+  <p class="lede">Mechanisms tracked across all seven eras. The rows that are green all the way across are the real findings — those ideas were re-derived or ported by every successor, usually without being told to.</p>
+
+  <div class="scroller">
+  <table>
+    <thead><tr>
+      <th>Mechanism</th><th style="text-align:center">1 Plan</th><th style="text-align:center">2 Hooks</th><th style="text-align:center">3 SP</th><th style="text-align:center">4 Spine</th><th style="text-align:center">5 Sandcastle</th><th style="text-align:center">6 agent-skills</th><th style="text-align:center">7 Side</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="rowname">Execution-time gate (hook)</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk partial">◐</td><td class="mk kept">●</td><td class="mk dropped">○</td></tr>
+      <tr><td class="rowname">Verifier ≠ implementer</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td></tr>
+      <tr><td class="rowname">Written spec before code</td><td class="mk dropped">○</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Slice decomposition</td><td class="mk partial">◐</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk partial">◐</td></tr>
+      <tr><td class="rowname">Explicit done-gate</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Parallel fan-out</td><td class="mk none">·</td><td class="mk dropped">○</td><td class="mk kept">●</td><td class="mk dropped">○</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk dropped">○</td></tr>
+      <tr><td class="rowname">Authoring-time disjointness</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Decisions recorded in-repo</td><td class="mk none">·</td><td class="mk partial">◐</td><td class="mk partial">◐</td><td class="mk partial">◐</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk partial">◐</td></tr>
+      <tr><td class="rowname">Human owns the doc surface</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Pre-merge gate on the diff</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk partial">◐</td><td class="mk kept">●</td><td class="mk dropped">○</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Cost / duration instrumentation</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk none">·</td><td class="mk partial">◐</td><td class="mk partial">◐</td><td class="mk none">·</td></tr>
+      <tr><td class="rowname">Passive session capture</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk kept">●</td><td class="mk dropped">○</td><td class="mk dropped">○</td><td class="mk kept">●</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="legend">
+    <b><span class="kept">●</span> present and carried forward</b>
+    <b><span class="partial">◐</span> partial or informal</b>
+    <b><span class="dropped">○</span> present, then dropped</b>
+    <b><span class="none">·</span> absent</b>
+  </div>
+
+  <div class="callout">
+    <h4>Read the bottom two rows together</h4>
+    <p>The only mechanism that <em>lost</em> ground across the whole timeline is the pre-merge gate, and the only one that was silently switched off is passive capture. Both are the same class of thing: cheap infrastructure whose value only shows up later, so nothing screams when it goes. Every era's <em>expensive</em> machinery got argued about; the two things that quietly disappeared never got a decision at all.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">04</span><h2>The seven recurring failures</h2></div>
+  <p class="lede">Each of these shows up in three or more eras, independently, with different technology each time. That's what makes them properties of the operator and the work, not of any one system.</p>
+
+  <div class="pat"><div class="idx">F1</div><div>
+    <h3>Ceremony outgrows the work it wraps</h3>
+    <p>The single most reliable failure. Every system that was replaced was replaced because its per-unit overhead stopped being worth it — never because it produced bad output.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 4</span>Seven plan steps for ~3 edits in one file. ~7:3 ceremony-to-substance, no under-threshold bypass documented.</li>
+      <li><span class="tag">Era 1/4</span>Cockpit's 04-19 interview names it a month before the spine dies: "overkill for small tasks and unclear for medium ones."</li>
+      <li><span class="tag">Era 5</span>p50 8 workflow runs per PR, max 32. The final PRD is literally titled "Orchestration efficiency overhaul."</li>
+      <li><span class="tag">Era 6</span>ADR-0029 deletes <code>/drain</code>'s standards sweep because every landing paid for three fresh-context subagents even when there was nothing to say.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F2</div><div>
+    <h3>The system becomes its own biggest customer</h3>
+    <p>Past a certain size, the pipeline generates enough maintenance to consume the capacity it was built to create. This is measured, not felt.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 4</span>"Auditing costs as much as fixing. Every audit reveals more unconcluded experiments, not just bugs." An estimated 19–57 latent contradictions with no detection mechanism.</li>
+      <li><span class="tag">Era 5</span>1,365 of 2,120 orchestration runs were no-ops. 26 issues filed in a single day auditing the pipeline against itself.</li>
+      <li><span class="tag">Era 6</span>Machinery share of file touches: 63% in July, <strong>82% in August</strong>. Five of eleven open issues are defects in <code>/drain</code> itself — and #134 exists because a drain has nowhere to file defects it finds in the drain.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F3</div><div>
+    <h3>Fixes relocate the problem instead of removing it</h3>
+    <p>The distinctive era-5 pathology, but not unique to it. A fix lands, the failure reappears one layer over, and the next ADR opens by conceding it.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 5</span>ADR-0017 kills the aggregate-registry rebase storm. ADR-0020: "the storm didn't die; it moved to the next shared registry of a different shape" — the Drizzle migration chain.</li>
+      <li><span class="tag">Era 5</span>ADR-0014 acknowledges the churn "reads like patching a model that keeps producing fresh holes," then deliberately keeps the model and documents its cost instead. That was the right call and it still didn't stop the churn.</li>
+      <li><span class="tag">Era 2</span>The <code>ExitPlanMode</code>-only gate: the hole was known, the <code>PostToolUse</code> fix was specified, and it was never shipped in the era's lifetime.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F4</div><div>
+    <h3>Deferred decisions are left live and look implemented</h3>
+    <p>A parked call doesn't sit inert — it sits in the tree looking finished, and something downstream trusts it.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 4</span>OPEN-PROBLEMS #1: five demoted rules with no disposition after seven days, three stub adapters that "look implemented but are placeholder folders."</li>
+      <li><span class="tag">Era 5</span>#132 — the dispatcher committed runner slots with zero human in the loop, so every "decide during slicing" got silently improvised and surfaced only at review. Fixed by ADR-0019's closed-spec gate.</li>
+      <li><span class="tag">Era 6</span>ADR-0027 generalises the answer: sensitive verdicts are <em>flagged, not deferred</em>. The call gets made and marked, never parked.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F5</div><div>
+    <h3>Two sources of truth, and they drift</h3>
+    <p>Every era grew a second description of one process, and every time the drift was discovered by someone following the wrong one.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 5</span>ADR-0015: the README runbook and the <code>/graft</code> skill described one procedure and diverged. "Following the README literally on a real target does the exact damage the skill exists to prevent."</li>
+      <li><span class="tag">Era 2</span>The wiki compile pipeline re-promoted the same facts 4–6× each, so the canonical topic reads as its own echo.</li>
+      <li><span class="tag">Era 6</span>The direct answer: <code>UPSTREAM.md</code> markers asserted by <code>test_upstream_markers.py</code>, and ADR-0018's rule that seeded repo docs are the home and <code>CLAUDE.md</code> carries only a pointer. Documentation a test suite can fail on.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F6</div><div>
+    <h3>Instrumentation is an afterthought, then it's gone</h3>
+    <p>No era started with measurement. Two eras ended without ever being able to answer what they cost.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 5</span>Issue #39's verification gate failed and the pipeline ran to retirement blind to its own spend — the SDK parses <code>total_cost_usd</code> and throws it away.</li>
+      <li><span class="tag">Era 6</span>Has token cost but no per-ticket clock. Sandcastle got that free from workflow records; it was lost with the pipeline and nobody noticed for seven weeks.</li>
+      <li><span class="tag">All</span>Session capture stopped 2026-05-21 (<code>SessionEnd: []</code> — deliberately emptied), and transcripts on this machine begin 2026-07-22. The record of five eras exists only because git and GitHub happened to keep it.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat"><div class="idx">F7</div><div>
+    <h3>Asking the human to size the work doesn't work</h3>
+    <p>Four months to prove it, twice, in both directions.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 1/4</span>Cockpit 04-19 designs a three-question pre-flight sizing helper precisely because "he can't pre-tell task size, he's not a coder."</li>
+      <li><span class="tag">Era 6</span><code>68b071f</code> deletes it: the sizing questions "were senior-dev calls a human maintainer can't actually answer better than the breakdown's own author, and a headless run had to fake an answer to unblock itself anyway." Replaced by an audit agent.</li>
+      <li><span class="tag">Era 5</span>Same shape from the other side — ADR-0019 exists because the pipeline let the <em>agent</em> improvise calls the operator owned. The fix in both cases is a machine judgement with a human-reviewable checkpoint, not a human quiz.</li>
+    </ul>
+  </div></div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">05</span><h2>The six things that always worked</h2></div>
+  <p class="lede">Ideas that were kept, ported, or independently re-derived across era boundaries. These are the assets — anything built next should start from them rather than rediscovering them.</p>
+
+  <div class="pat win"><div class="idx">W1</div><div>
+    <h3>A gate that errors at the moment of the action</h3>
+    <p>Stated in era 2 and never contradicted since: <em>docs require a reader; a gate requires nothing but a trigger.</em> It's the only claim in six months that every subsequent era validated rather than revised.</p>
+    <ul class="evid">
+      <li><span class="tag">Proof</span><code>checklist-reminder.py</code> and <code>post-edit-validate.py</code>, written March–April, are live in <code>settings.json</code> today — outlasting four systems that were supposed to supersede them.</li>
+      <li><span class="tag">Lineage</span><code>close-gate.py</code> is era 2's insight applied to tickets: refuse to close without a posted Closing record with every acceptance criterion marked MET.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat win"><div class="idx">W2</div><div>
+    <h3>The thing that checks is never the thing that built</h3>
+    <p>Introduced in era 3, adopted in era 4 explicitly to avoid confirmation bias, and re-derived in every era since without anyone arguing for it.</p>
+    <ul class="evid">
+      <li><span class="tag">Chain</span>spec-reviewer → quality-reviewer (era 4) · review op + acceptance audit, ADR-0025 (era 5) · checker dispatched by stub, ADR-0011/0026 (era 6).</li>
+      <li><span class="tag">Note</span>Era 5's ADR-0024 refined it further: trivial findings self-fix, behavioural findings keep the loop. Worth porting into era 6's checker.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat win"><div class="idx">W3</div><div>
+    <h3>Prevent conflicts at authoring time, not at merge time</h3>
+    <p>The most valuable single invention of era 5, and it crossed the era boundary intact.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 5</span>ADR-0017/0018: redraw slice boundaries so each owns its files; generate shared registries from per-slice declarations so no PR ever touches them.</li>
+      <li><span class="tag">Era 6</span><code>/to-tickets</code> runs a seam sweep first — one subagent per slice hunting an existing seam before proposing one — and enforces physical disjointness between parallel slices.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat win"><div class="idx">W4</div><div>
+    <h3>Decisions live next to the code they govern</h3>
+    <p>The clearest directional trend in the whole record: loose plan files → a separately-compiled wiki → in-repo ADRs → documentation a test suite fails on.</p>
+    <ul class="evid">
+      <li><span class="tag">Counts</span>27 ADRs (era 5), 30 ADRs (era 6) — each era's single best artifact, and each written incident-first with the issue number that forced it.</li>
+      <li><span class="tag">Endpoint</span><code>UPSTREAM.md</code>: every divergence from upstream carries a grep-able marker, and deletions carry a compensating sentence that is itself the marker.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat win"><div class="idx">W5</div><div>
+    <h3>Agents own code; the human owns vocabulary</h3>
+    <p>Discovered in era 5 and kept, because it's the split that makes autonomy survivable.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 5</span>ADR-0026: auto-merge holds any diff touching <code>CONTEXT.md</code>, <code>CODING_STANDARDS</code>, <code>.claude/skills/</code> or <code>CLAUDE.md</code>. README and ADRs are agent-editable and don't trip the hold.</li>
+      <li><span class="tag">Era 6</span><code>seeded-doc-router.py</code> plus the <code>CONTEXT.md</code> glossary with <code>_Avoid_</code> lists per term. Same boundary, no pipeline needed to hold it.</li>
+    </ul>
+  </div></div>
+
+  <div class="pat win"><div class="idx">W6</div><div>
+    <h3>Write the autopsy while it still stings</h3>
+    <p>This analysis is only possible because two eras did this properly. It is also the habit that broke down exactly once — at era 5 — which is why #131 exists.</p>
+    <ul class="evid">
+      <li><span class="tag">Era 4</span><code>OPEN-PROBLEMS.md</code>, four numbered friction postmortems (F/E/G/H series), and the line "Shipped, not settled."</li>
+      <li><span class="tag">Era 5</span>ADRs that name their own churn in the opening paragraph — the reason its exit is reconstructable at all despite no postmortem.</li>
+    </ul>
+  </div></div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">06</span><h2>Sandcastle vs now, measured</h2></div>
+  <p class="lede">Lumaria is the only repo where both models ran against the same codebase. Era boundaries are its own commits: <code>8aee47d</code> graft, <code>3efd8fc</code> retire. Volume is confounded — Sandcastle ran during greenfield CRM work. Compute, reliability and cost are clean.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="k">CI + orchestration compute</div><div class="v up">21× less</div><div class="d">9.5 machine-hours/day → 0.44. Per issue closed: 34 min → 4.2 min.</div></div>
+    <div class="stat"><div class="k">Orchestration no-ops</div><div class="v up">1,365 → 0</div><div class="d">64% of Sandcastle's 2,120 agent runs decided they had nothing to do.</div></div>
+    <div class="stat"><div class="k">Known token cost</div><div class="v up">$1,661</div><div class="d">28 days, itemised. Sandcastle's equivalent was structurally unobtainable.</div></div>
+    <div class="stat"><div class="k">Commits per active day</div><div class="v down">26.1 → 19.4</div><div class="d">Sandcastle wins raw volume — but on greenfield feature work, running nine days straight.</div></div>
+    <div class="stat"><div class="k">Broken commits on main</div><div class="v down">12 in 5 days</div><div class="d">Zero infra flake — all genuine <code>unit</code>+<code>build</code> breakage. The pre-merge gate is gone.</div></div>
+    <div class="stat"><div class="k">AFK commits (outside 07:00–22:00)</div><div class="v">16.9% → 12.3%</div><div class="d">The unattended-overnight property turned out to belong to background agents, not GitHub Actions.</div></div>
+  </div>
+
+  <div class="callout">
+    <h4>The AFK premise was the part that didn't survive contact</h4>
+    <p>Sandcastle existed to let Collin label something and walk away. Both eras land ~85% of commits inside waking hours, and the current model still commits at 02:37 via background drain workers. What actually changed is where the human sits: outside the loop applying labels, versus inside the session at 6.4 prompts per session. That's a preference, not a measurement — but it means the pipeline's founding justification was never really tested by the pipeline.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sechead"><span class="num">07</span><h2>What the postmortem should say</h2></div>
+
+  <div class="verdict">
+    <h3>Sandcastle didn't fail. It was correctly priced and declined.</h3>
+    <p>It ran three repos, merged every PR, ended green, and had 2 issues open. What ended it was a judgement that the coordination cost was structural rather than fixable — and the evidence for that judgement is spread across ADR-0014 (the model produces fresh holes and we're keeping it anyway), ADR-0020 (the fix moved the problem), ADR-0023 (650 compute-minutes for 8 slices), and issue #39 (we cannot see what this costs). The final PRD being an efficiency overhaul is the system's own admission.</p>
+    <p><strong>The one-line version:</strong> distributed orchestration was bought for a workload that was never distributed — one operator, one machine, one repo — and the replacement gets comparable throughput from local sessions in worktrees, where the coordination problem doesn't exist.</p>
+    <ol>
+      <li><strong>Close #131 against the work already done.</strong> The autopsy, the A/B, and the CI performance doc were all written on 08-21 and are already committed. #131 should point at them and add the decision narrative above, not restart the investigation.</li>
+      <li><strong>Restore the pre-merge gate.</strong> Run <code>pnpm check</code> as a hard foreman step before a drain batch lands, rather than trusting each worker session to have run it. Twelve red commits in five days is the only unambiguous regression in the whole record, and this fixes it without re-introducing a pipeline.</li>
+      <li><strong>Add a per-ticket clock to <code>/drain</code>.</strong> Two timestamps — first agent action, merged into batch. It's a few lines and it restores the one genuinely useful thing Sandcastle gave for free.</li>
+      <li><strong>Decide on capture, formally.</strong> Right now the wiki is a detailed archive that silently stops in May and reads as current. Either re-wire <code>SessionEnd</code> on WSL or retire the wiki explicitly and commit to in-repo ADRs. The in-between state is what made this ticket hard.</li>
+      <li><strong>Watch F2 in the current system.</strong> 82% machinery share in August is the same curve era 4 and era 5 died on. ADR-0029 was the right instinct; it should not be the last cut.</li>
+      <li><strong>Archive the Sandcastle template or deprecate its README.</strong> It still reads as live — green CI, aspirational north star, no deprecation note, ten offline macOS runners still registered, and a README pointing at <code>/Users/collinlodato/</code>. The retirement commit's own logic applies to the template as much as it did to Lumaria's copy.</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+Compiled 2026-08-21 · Sources: <span class="mono">collod873/{sandcastle, agent-skills, Lumaria, Planning-System, crewops, Claude-Cockpit, Knowledge-Base, General-Repo}</span> · 105 + 135 tracker issues · 57 ADRs · Planning-System OPEN-PROBLEMS.md and four phase postmortems · Knowledge-Base wiki topics for eras 2, 3 and 7 · Cockpit <span class="mono">workflow-discovery-2026-04-19.md</span> · 1,791 local session transcripts (2026-07-22 onward only).<br>
+Volume comparisons between eras 5 and 6 are directional, not controlled — the two eras did different kinds of work. Compute, cost and reliability figures are measured.
+</footer>
+
+</div>
