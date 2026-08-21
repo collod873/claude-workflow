@@ -5,7 +5,8 @@ question relating to how Claude Code work gets specified, sliced, built, verifie
 across Collin's projects, March 2026 → today.
 
 This is a **pointer document**. It does not restate the contents of what it links to. Its job is
-that nobody — human or agent — has to rediscover which repo holds the answer.
+that nobody — human or agent — has to rediscover which repo holds the answer. For what all of it is
+*for* — the end state, the constraints, and what blocks it — read [`GOAL.md`](GOAL.md).
 
 Two prior docs already do part of this job and are the deepest reads here:
 
