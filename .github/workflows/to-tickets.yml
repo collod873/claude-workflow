@@ -1,0 +1,123 @@
+name: To-Tickets
+
+# The venue for PRD #13: a spec published to this repository slices itself. `/to-spec` applies
+# the `prd` label exactly as it does today, and that label is the whole trigger — no new trigger
+# machinery, per ADR-0002 (GitHub-hosted runner, from the checkout alone) and PRD #13's
+# "Venue and trigger" section. Re-running a slicing is removing and re-adding `prd`; there is no
+# `workflow_dispatch` path in v1.
+#
+# Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any
+# stage: a PRD that already has sub-issues, and a PRD that is itself a sub-issue. Both fail
+# closed, remove nothing, comment their reason on the PRD, and apply `slice-failed` — created
+# idempotently below, since the label does not exist in this repo yet and a bare
+# `gh issue edit --add-label` would fail on its first run. The escape hatch for a genuine
+# re-slice is closing or detaching the existing children first, a deliberate act.
+#
+# Sandcastle's third gate — refusing a PRD with no `## Acceptance` section — is deliberately not
+# adopted: `/to-spec`'s template has no such section.
+#
+# "Report failure" is the shared failure surface: it reads the dying stage's reason from the
+# fixed handoff path (a file at `${{ runner.temp }}/failure_reason.txt`, the convention the
+# seam-sweep ticket's stage runner writes into), falls back to "unknown stage" when that file is
+# absent, and comments a link to the run. Each refusal above comments for itself and marks its
+# own step output `refused=true`, which this step is guarded on — one refusal is one comment,
+# never two.
+#
+# Until the three stages (seam sweep / slice / audit-and-publish) are wired, an eligible PRD
+# reaches a placeholder step that writes "no stages wired" to the handoff path and fails on
+# purpose, so "Report failure" is exercised end to end from the day this workflow lands instead
+# of the eligible path going green having done nothing. The seam-sweep ticket (#20) deletes the
+# placeholder when it wires the first real stage.
+#
+# On success, no step writes to the tracker at all — the sub-issues a real run creates are the
+# only output, once the stages exist.
+
+"on":
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  to-tickets:
+    if: github.event.label.name == 'prd'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PRD_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      FAILURE_REASON_PATH: ${{ runner.temp }}/failure_reason.txt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Idempotent so a repeated run (or a fresh repo, like this one today) never fails the step
+      # that is supposed to fail closed — `--force` updates rather than errors when the label
+      # already exists.
+      - name: Ensure slice-failed label exists
+        run: |
+          gh label create slice-failed \
+            --color b60205 \
+            --description "A to-tickets run refused or failed" \
+            --force
+
+      - name: Refuse — PRD already has sub-issues
+        id: refuse-sub-issues
+        run: |
+          set -euo pipefail
+          sub_count=$(gh api "repos/${GH_REPO}/issues/${PRD_NUMBER}/sub_issues" --jq 'length')
+          if [ "$sub_count" != "0" ]; then
+            gh issue comment "$PRD_NUMBER" --body "Refused to run: this PRD already has ${sub_count} sub-issue(s). A slicing only runs against a PRD with no sub-issues. Close or detach the existing sub-issues, then remove and re-add \`prd\` to retry."
+            gh issue edit "$PRD_NUMBER" --add-label slice-failed
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "refused=false" >> "$GITHUB_OUTPUT"
+
+      # Runs only when the step above passed (Actions' default `if: success()`) — sequential
+      # refusals, no explicit condition needed to keep them ordered before any stage.
+      - name: Refuse — PRD is itself a sub-issue
+        id: refuse-nested-prd
+        run: |
+          set -euo pipefail
+          owner="${GH_REPO%%/*}"
+          repo="${GH_REPO##*/}"
+          parent_number=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $num: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $num) { parent { number } }
+              }
+            }' -f owner="$owner" -f repo="$repo" -F num="$PRD_NUMBER" \
+            --jq '.data.repository.issue.parent.number // empty')
+          if [ -n "$parent_number" ]; then
+            gh issue comment "$PRD_NUMBER" --body "Refused to run: this issue is itself a sub-issue of #${parent_number}. A nested PRD cannot be sliced. Detach it from its parent, then remove and re-add \`prd\` to retry."
+            gh issue edit "$PRD_NUMBER" --add-label slice-failed
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "refused=false" >> "$GITHUB_OUTPUT"
+
+      # Stand-in for the three stages (seam sweep / slice / audit-and-publish). Deleted by the
+      # seam-sweep ticket (#20) the day the first real stage is wired in its place.
+      - name: Placeholder — no stages wired yet
+        run: |
+          echo "no stages wired" > "$FAILURE_REASON_PATH"
+          exit 1
+
+      # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
+      # gets exactly one comment rather than the refusal's plus this one.
+      - name: Report failure
+        if: failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'
+        run: |
+          reason="unknown stage"
+          if [ -f "$FAILURE_REASON_PATH" ]; then
+            reason=$(cat "$FAILURE_REASON_PATH")
+          fi
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n' "$reason" "$run_url")
+          gh issue comment "$PRD_NUMBER" --body "$body"
+          gh issue edit "$PRD_NUMBER" --add-label slice-failed
