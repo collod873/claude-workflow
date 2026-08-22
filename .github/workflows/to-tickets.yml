@@ -17,20 +17,24 @@ name: To-Tickets
 # adopted: `/to-spec`'s template has no such section.
 #
 # "Report failure" is the shared failure surface: it reads the dying stage's reason from the
-# fixed handoff path (a file at `${{ runner.temp }}/failure_reason.txt`, the convention the
-# seam-sweep ticket's stage runner writes into), falls back to "unknown stage" when that file is
-# absent, and comments a link to the run. Each refusal above comments for itself and marks its
-# own step output `refused=true`, which this step is guarded on — one refusal is one comment,
-# never two.
+# fixed handoff path (a file at `${{ runner.temp }}/failure_reason.txt`, the path
+# `to-tickets.ts`'s `handoffPath()` writes to whenever `FAILURE_REASON_PATH` is set — see
+# `.Workflow/agent-workflows/to-tickets/to-tickets.ts`), falls back to "unknown stage" when that
+# file is absent, and comments a link to the run. Each refusal above comments for itself and marks
+# its own step output `refused=true`, which this step is guarded on — one refusal is one comment,
+# never two. The `CLAUDE_CODE_OAUTH_TOKEN` preflight below writes its reason the same way, so a
+# missing secret is reported by name through this same surface rather than a bespoke comment.
 #
-# Until the three stages (seam sweep / slice / audit-and-publish) are wired, an eligible PRD
-# reaches a placeholder step that writes "no stages wired" to the handoff path and fails on
-# purpose, so "Report failure" is exercised end to end from the day this workflow lands instead
-# of the eligible path going green having done nothing. The seam-sweep ticket (#20) deletes the
-# placeholder when it wires the first real stage.
+# Node arrives on the runner immediately before the first TypeScript step needs it — pinned to
+# Node 24, with `npm ci` installing exactly what's in `package-lock.json`, never a fresh resolve.
+#
+# Seam sweep is the first of three stages (seam sweep / slice / audit-and-publish); the other two
+# land as their own tickets and append their own steps here in the same shape. Only seam sweep
+# runs today, so a slicing this workflow drives currently stops after it — the sub-issues a real
+# run creates come from the slice and audit-and-publish stages, not yet wired.
 #
 # On success, no step writes to the tracker at all — the sub-issues a real run creates are the
-# only output, once the stages exist.
+# only output, once every stage exists.
 
 "on":
   issues:
@@ -101,12 +105,33 @@ jobs:
           fi
           echo "refused=false" >> "$GITHUB_OUTPUT"
 
-      # Stand-in for the three stages (seam sweep / slice / audit-and-publish). Deleted by the
-      # seam-sweep ticket (#20) the day the first real stage is wired in its place.
-      - name: Placeholder — no stages wired yet
+      # A third refusal, but reported through the shared failure surface below rather than
+      # commenting for itself: an empty secret is an operational fact about this repo, not a
+      # judgement about the PRD, so there's nothing PRD-specific to say beyond what "Report
+      # failure" already prints. Runs after both PRD refusals and before Node is even set up, so
+      # a missing secret costs nothing beyond the checkout.
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
-          echo "no stages wired" > "$FAILURE_REASON_PATH"
-          exit 1
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." > "$FAILURE_REASON_PATH"
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The first of three stages; slice and audit-and-publish land as their own steps here,
+      # each following runStage's shape (see .Workflow/agent-workflows/shared/stage.ts). Spawns
+      # one headless `claude` process against seam-sweep/prompt.md and writes its validated
+      # <output> — the seam manifest — to the handoff path, or a failure reason if it dies.
+      - name: Seam sweep
+        run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
 
       # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
       # gets exactly one comment rather than the refusal's plus this one.
