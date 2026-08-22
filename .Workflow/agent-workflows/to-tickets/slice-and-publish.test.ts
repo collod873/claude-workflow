@@ -44,6 +44,86 @@ describe("sliceAndPublish", () => {
     expect(attached).toEqual(published.map((p) => p.id));
   });
 
+  it("wires a native blocked-by edge for every dependsOn entry in the plan", () => {
+    const plan = [
+      slice({ title: "Root" }),
+      slice({ title: "Depends on root", dependsOn: [1] }),
+      slice({ title: "Depends on both", dependsOn: [1, 2] }),
+    ];
+    const fake = createFakeGh();
+
+    const published = sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    const [root, dependsOnRoot, dependsOnBoth] = published;
+
+    const wireCalls = fake.calls.filter(
+      (args) =>
+        args[0] === "api" &&
+        typeof args[1] === "string" &&
+        args[1].endsWith("/dependencies/blocked_by") &&
+        args.includes("-f"),
+    );
+    expect(wireCalls).toHaveLength(3);
+
+    expect(wireCalls).toContainEqual([
+      "api",
+      `repos/{owner}/{repo}/issues/${dependsOnRoot.number}/dependencies/blocked_by`,
+      "-f",
+      `issue_id=${root.id}`,
+    ]);
+    expect(wireCalls).toContainEqual([
+      "api",
+      `repos/{owner}/{repo}/issues/${dependsOnBoth.number}/dependencies/blocked_by`,
+      "-f",
+      `issue_id=${root.id}`,
+    ]);
+    expect(wireCalls).toContainEqual([
+      "api",
+      `repos/{owner}/{repo}/issues/${dependsOnBoth.number}/dependencies/blocked_by`,
+      "-f",
+      `issue_id=${dependsOnRoot.id}`,
+    ]);
+  });
+
+  it("wires no blocked-by edge for a slice with no dependsOn", () => {
+    const plan = [slice({ title: "Root" })];
+    const fake = createFakeGh();
+
+    sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+
+    const wireCalls = fake.calls.filter(
+      (args) =>
+        args[0] === "api" && typeof args[1] === "string" && args[1].endsWith("/dependencies/blocked_by"),
+    );
+    expect(wireCalls).toHaveLength(0);
+  });
+
+  it("passes read-back verification and returns normally when the published graph matches", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
+    const fake = createFakeGh();
+
+    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).not.toThrow();
+  });
+
+  it("fails read-back verification, naming the exact missing edge, when a wired edge never lands", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
+    // firstIssueNumber defaults to 100, so Root -> #100 and Depends on root -> #101 deterministically.
+    const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
+
+    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(
+      /slice 2 \("Depends on root"\).*blocked by slice 1 \("Root"\)/,
+    );
+
+    // The write was still attempted and recorded — only the read-back is missing the edge.
+    const wireCalls = fake.calls.filter(
+      (args) =>
+        args[0] === "api" &&
+        typeof args[1] === "string" &&
+        args[1].endsWith("/dependencies/blocked_by") &&
+        args.includes("-f"),
+    );
+    expect(wireCalls).toHaveLength(1);
+  });
+
   it("refuses a missing <output> block with zero argv recorded", () => {
     const fake = createFakeGh();
 

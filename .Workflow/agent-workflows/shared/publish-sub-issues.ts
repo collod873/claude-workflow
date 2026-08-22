@@ -61,3 +61,66 @@ function attachUnderPrd(gh: GhExec, prdNumber: number, childId: number): void {
     `sub_issue_id=${childId}`,
   ]);
 }
+
+/**
+ * Wires one native GitHub blocked-by edge for every `dependsOn` entry in the
+ * plan: the issue published for each position becomes blocked by the
+ * issue(s) published for the position(s) it depends on. `plan` and
+ * `published` must be the same length, in the same order — exactly what
+ * `publishSubIssues` returns for the plan it was given.
+ */
+export function wireBlockedByEdges(plan: Plan, published: PublishedIssue[], gh: GhExec): void {
+  plan.forEach((slice, index) => {
+    const blocked = published[index];
+    for (const dep of slice.dependsOn) {
+      const blocker = published[dep - 1];
+      gh([
+        "api",
+        `repos/{owner}/{repo}/issues/${blocked.number}/dependencies/blocked_by`,
+        "-f",
+        `issue_id=${blocker.id}`,
+      ]);
+    }
+  });
+}
+
+/**
+ * Fetches the blocked-by graph GitHub actually recorded, for every slice
+ * that declared a `dependsOn`, and compares it against the graph the plan
+ * intended. Throws naming the exact missing edge — which slice should be
+ * blocked by which — the moment one is found, so a partial or dropped write
+ * fails loudly instead of leaving a batch that looks fully wired.
+ */
+export function verifyBlockedByGraph(plan: Plan, published: PublishedIssue[], gh: GhExec): void {
+  plan.forEach((slice, index) => {
+    if (slice.dependsOn.length === 0) {
+      return;
+    }
+    const blocked = published[index];
+    const actualBlockerIds = fetchBlockedByIds(gh, blocked.number);
+    for (const dep of slice.dependsOn) {
+      const blocker = published[dep - 1];
+      if (!actualBlockerIds.includes(blocker.id)) {
+        throw new Error(
+          `published graph is missing a blocked-by edge: slice ${blocked.position} ("${blocked.title}") ` +
+            `should be blocked by slice ${blocker.position} ("${blocker.title}"), but the read-back for ` +
+            `issue #${blocked.number} does not include it`,
+        );
+      }
+    }
+  });
+}
+
+function fetchBlockedByIds(gh: GhExec, number: number): number[] {
+  const raw = gh([
+    "api",
+    `repos/{owner}/{repo}/issues/${number}/dependencies/blocked_by`,
+    "--jq",
+    "[.[].id]",
+  ]);
+  const parsed: unknown = JSON.parse(raw.trim());
+  if (!Array.isArray(parsed) || !parsed.every((value) => Number.isInteger(value))) {
+    throw new Error(`could not parse blocked-by ids for issue #${number} from: ${JSON.stringify(raw)}`);
+  }
+  return parsed as number[];
+}
