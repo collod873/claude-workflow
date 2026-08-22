@@ -2,10 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ZodType, ZodTypeDef } from "zod";
+import { execGh, type GhExec } from "../shared/gh";
 import { extractOutput } from "../shared/output-block";
 import { Plan } from "../shared/plan-schema";
+import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { validatePlan } from "../shared/validate-graph";
+import { sliceAndPublish } from "./slice-and-publish";
 import { SeamManifest } from "./seam-sweep/schema";
 
 /**
@@ -71,8 +74,8 @@ export function validatePlanFile(filePath: string): Plan {
  * schema its `<output>` block must satisfy, how to build the `{{VAR}}`
  * substitution map for its prompt from the CLI's `--issue` value, and any
  * validation beyond the schema (e.g. graph shape) that must also pass before
- * the stage's output is handed off. Kept as one shape so a later stage (the
- * auditor, ticket #14) mirrors it directly rather than growing a second one.
+ * the stage's output is handed off. Kept as one shape so the auditor (the
+ * third stage) uses it directly rather than growing a second one.
  */
 interface StageDef<T> {
   promptPath: string;
@@ -110,9 +113,9 @@ const SLICE_STAGE: StageDef<Plan> = {
 
 /**
  * Reads whatever the previous stage left at the shared handoff path, for a
- * stage (like slice) whose prompt needs that as an input. Wraps the read
- * error with which stage needed it and where it looked, since "ENOENT" alone
- * doesn't say a prior stage never ran.
+ * stage (like slice, or audit) whose prompt needs that as an input. Wraps
+ * the read error with which stage needed it and where it looked, since
+ * "ENOENT" alone doesn't say a prior stage never ran.
  */
 function readPriorHandoff(stageName: string): string {
   try {
@@ -125,7 +128,29 @@ function readPriorHandoff(stageName: string): string {
   }
 }
 
-const STAGE_NAMES = ["seam-sweep", "slice"] as const;
+/**
+ * The third and last stage: grades the slice stage's plan against the same
+ * reference leaves it was drafted against — granularity, edge correctness,
+ * merge/split candidates, balance — and returns a plan in the same `Slice`
+ * shape, merged, split, re-edged, or unchanged. Schema-checked like every
+ * other stage; graph shape is deliberately *not* re-checked here (no
+ * `validate`) because `sliceAndPublish`, which this stage's raw response is
+ * handed to next, already owns that check before its first `gh` write — see
+ * `runAuditAndPublish` below.
+ */
+const AUDIT_STAGE: StageDef<Plan> = {
+  promptPath: ".Workflow/agent-workflows/to-tickets/audit/prompt.md",
+  schema: Plan,
+  buildVars: (issueNumber) => ({
+    ISSUE_NUMBER: issueNumber,
+    PLAN: readPriorHandoff("audit"),
+  }),
+};
+
+const TYPED_STAGE_NAMES = ["seam-sweep", "slice"] as const;
+type TypedStageName = (typeof TYPED_STAGE_NAMES)[number];
+
+const STAGE_NAMES = [...TYPED_STAGE_NAMES, "audit-and-publish"] as const;
 type StageName = (typeof STAGE_NAMES)[number];
 
 function isStageName(value: string | undefined): value is StageName {
@@ -141,7 +166,7 @@ function isStageName(value: string | undefined): value is StageName {
  * a schema mismatch, or a failed validation all throw — there is no repair
  * path here; the caller reports and exits.
  */
-export function runNamedStage(stageName: StageName, issueNumber: string, exec: StageExec): unknown {
+export function runNamedStage(stageName: TypedStageName, issueNumber: string, exec: StageExec): unknown {
   switch (stageName) {
     case "seam-sweep":
       return runTypedStage(SEAM_SWEEP_STAGE, issueNumber, exec);
@@ -151,11 +176,61 @@ export function runNamedStage(stageName: StageName, issueNumber: string, exec: S
 }
 
 function runTypedStage<T>(stage: StageDef<T>, issueNumber: string, exec: StageExec): T {
+  return runTypedStageWithRaw(stage, issueNumber, exec).output;
+}
+
+/**
+ * Same work as `runTypedStage`, but also returns the model's raw response —
+ * needed only by the audit stage: its prose ahead of the `<output>` block
+ * (grading notes and any unapplied flags) is printed rather than discarded,
+ * and its raw response is what `sliceAndPublish` re-parses. See
+ * `runAuditAndPublish` below.
+ */
+function runTypedStageWithRaw<T>(
+  stage: StageDef<T>,
+  issueNumber: string,
+  exec: StageExec,
+): { raw: string; output: T } {
   const raw = runStage(stage.promptPath, stage.buildVars(issueNumber), exec);
   const output = extractOutput(raw, stage.schema);
   stage.validate?.(output);
   writeHandoff(JSON.stringify(output));
-  return output;
+  return { raw, output };
+}
+
+/**
+ * The audit-and-publish stage: runs the auditor against the plan slice just
+ * wrote, prints its grading notes and any unapplied flags to stdout — the
+ * Actions run log, never a comment on the issue — then hands its raw
+ * response straight to `sliceAndPublish`, the deterministic publisher's own
+ * extract → parse → validate → render → create → attach → wire → verify
+ * pipeline. `sliceAndPublish`'s own `validatePlan` call is what makes an
+ * audited plan that fails graph validation exit nonzero with zero `gh`
+ * calls made — nothing here re-checks graph shape separately.
+ */
+export function runAuditAndPublish(
+  issueNumber: string,
+  exec: StageExec,
+  gh: GhExec,
+): PublishedIssue[] {
+  const { raw } = runTypedStageWithRaw(AUDIT_STAGE, issueNumber, exec);
+  const notes = auditorNotes(raw);
+  if (notes) {
+    console.log(notes);
+  }
+  return sliceAndPublish(raw, Number(issueNumber), gh);
+}
+
+/**
+ * Everything the auditor wrote before its `<output>` block — its grading
+ * notes and any unapplied flags — or the whole trimmed response when there
+ * is no block to split on (a malformed response `extractOutput` will have
+ * already rejected by the time this is called in practice, but this stays
+ * defined for any response shape).
+ */
+function auditorNotes(raw: string): string {
+  const openIndex = raw.indexOf("<output>");
+  return (openIndex === -1 ? raw : raw.slice(0, openIndex)).trim();
 }
 
 function usage(): never {
@@ -176,6 +251,21 @@ async function main(): Promise<void> {
 
     if (!isStageName(stageName) || !issueNumber) {
       usage();
+    }
+
+    if (stageName === "audit-and-publish") {
+      try {
+        const published = runAuditAndPublish(issueNumber, execClaude, execGh);
+        console.log(
+          `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,
+        );
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.error(`audit-and-publish failed: ${reason}`);
+        writeFailure("audit-and-publish", reason);
+        process.exitCode = 1;
+      }
+      return;
     }
 
     try {
