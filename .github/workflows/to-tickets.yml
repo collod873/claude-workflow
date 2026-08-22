@@ -28,16 +28,17 @@ name: To-Tickets
 # Node arrives on the runner immediately before the first TypeScript step needs it — pinned to
 # Node 24, with `npm ci` installing exactly what's in `package-lock.json`, never a fresh resolve.
 #
-# Seam sweep and slice are the first two of three stages (seam sweep / slice / audit-and-publish);
-# audit-and-publish lands as its own ticket and appends its own step here in the same shape. Slice
-# reads the seam manifest seam sweep just wrote by reading the same handoff path seam sweep wrote
-# to — `handoffPath()` in to-tickets.ts, fixed by `FAILURE_REASON_PATH` above, needs no separate
-# argument to carry the manifest across steps. Only seam sweep and slice run today, so a slicing
-# this workflow drives currently stops after slice — the sub-issues a real run creates come from
-# the audit-and-publish stage, not yet wired.
+# Three stages run in sequence: seam sweep / slice / audit-and-publish. Slice reads the seam
+# manifest seam sweep just wrote by reading the same handoff path seam sweep wrote to —
+# `handoffPath()` in to-tickets.ts, fixed by `FAILURE_REASON_PATH` above, needs no separate
+# argument to carry the manifest across steps. Audit-and-publish reads the plan slice wrote the
+# same way, grades it (merging, splitting, re-edging, or re-wording as it sees fit — never asking a
+# question back), then hands its own plan straight to the deterministic publisher inside that same
+# step. There is no separate "publish" step.
 #
 # On success, no step writes to the tracker at all — the sub-issues a real run creates are the
-# only output, once every stage exists.
+# only output. Anything the auditor flagged but chose not to act on prints to this step's own log,
+# never to the PRD.
 
 "on":
   issues:
@@ -129,10 +130,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The first of three stages; slice and audit-and-publish land as their own steps here,
-      # each following runStage's shape (see .Workflow/agent-workflows/shared/stage.ts). Spawns
-      # one headless `claude` process against seam-sweep/prompt.md and writes its validated
-      # <output> — the seam manifest — to the handoff path, or a failure reason if it dies.
+      # The first of three stages, each following runStage's shape (see
+      # .Workflow/agent-workflows/shared/stage.ts). Spawns one headless `claude` process against
+      # seam-sweep/prompt.md and writes its validated <output> — the seam manifest — to the handoff
+      # path, or a failure reason if it dies.
       - name: Seam sweep
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
 
@@ -143,6 +144,17 @@ jobs:
       # env already fixes.
       - name: Slice
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage slice --issue "$PRD_NUMBER"
+
+      # The third and last stage. Reads the plan slice just wrote at $FAILURE_REASON_PATH the same
+      # way slice read seam sweep's manifest, spawns the auditor against it, and prints its grading
+      # notes and any unapplied flags to this step's own log (never a PRD comment — see the header
+      # above). It then hands its own (possibly rewritten) plan straight to the deterministic
+      # publisher in this same process: one sub-issue per slice, attached under the PRD, with every
+      # `dependsOn` wired as a native blocked-by edge and read back to verify it landed. A plan that
+      # fails graph validation here is rejected before any of that — zero `gh` writes, nonzero exit,
+      # same failure surface as every other stage.
+      - name: Audit and publish
+        run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
 
       # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
       # gets exactly one comment rather than the refusal's plus this one.

@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createFakeGh } from "../shared/gh.fake";
 import { createFakeStage } from "../shared/stage.fake";
-import { handoffPath, runNamedStage, writeFailure } from "./to-tickets";
+import { handoffPath, runAuditAndPublish, runNamedStage, writeFailure } from "./to-tickets";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
@@ -100,6 +101,112 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const fake = createFakeStage(`<output>${JSON.stringify(badPlan)}</output>`);
 
     expect(() => runNamedStage("slice", "13", fake.exec)).toThrow(/depends on itself/);
+  });
+});
+
+describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
+  const originalEnv = process.env.FAILURE_REASON_PATH;
+  let dir: string | undefined;
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.FAILURE_REASON_PATH;
+    } else {
+      process.env.FAILURE_REASON_PATH = originalEnv;
+    }
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+    vi.restoreAllMocks();
+  });
+
+  function seedHandoffWithSlicedPlan(): { target: string; plan: unknown[] } {
+    dir = mkdtempSync(join(tmpdir(), "audit-and-publish-"));
+    const target = join(dir, "handoff.txt");
+    process.env.FAILURE_REASON_PATH = target;
+    const plan = [
+      {
+        title: "Root",
+        whatToBuild: "Build the thing.",
+        acceptanceCriteria: ["`npm test` exits 0"],
+        filesClaimed: ["a/file.ts"],
+        seamsConsumed: [],
+        whyNotMerged: "It stands alone.",
+        dependsOn: [],
+      },
+    ];
+    writeFileSync(target, JSON.stringify(plan), "utf8");
+    return { target, plan };
+  }
+
+  it("reads the sliced plan as PLAN, publishes the audited plan, and writes it to the handoff path", () => {
+    const { target, plan: slicedPlan } = seedHandoffWithSlicedPlan();
+    const auditedPlan = [{ ...slicedPlan[0] as Record<string, unknown>, title: "Root, re-worded by audit" }];
+    const fakeStage = createFakeStage(
+      `Granularity: fine as-is.\n\n<output>${JSON.stringify(auditedPlan)}</output>`,
+    );
+    const fakeGh = createFakeGh();
+
+    const published = runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+
+    expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
+    expect(fakeStage.calls).toHaveLength(1);
+    expect(fakeStage.calls[0][1]).toContain(JSON.stringify(slicedPlan));
+    expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(auditedPlan);
+
+    const createCalls = fakeGh.calls.filter((args) => args[0] === "issue" && args[1] === "create");
+    expect(createCalls).toHaveLength(1);
+  });
+
+  it("prints the auditor's grading notes and unapplied flags — the prose ahead of its <output> block — to stdout", () => {
+    const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
+    const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";
+    const fakeStage = createFakeStage(`${notes}\n\n<output>${JSON.stringify(slicedPlan)}</output>`);
+    const fakeGh = createFakeGh();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+
+    expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
+  });
+
+  it("prints nothing when the auditor's response opens straight into its <output> block", () => {
+    const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
+    const fakeStage = createFakeStage(`<output>${JSON.stringify(slicedPlan)}</output>`);
+    const fakeGh = createFakeGh();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+
+    expect(logSpy).not.toHaveBeenCalled();
+  });
+
+  it("exits nonzero without publishing when the audited plan fails validate-graph.ts", () => {
+    seedHandoffWithSlicedPlan();
+    const selfReferencingPlan = [
+      {
+        title: "Self-referencing slice",
+        whatToBuild: "Build the thing.",
+        acceptanceCriteria: ["`npm test` exits 0"],
+        filesClaimed: [],
+        seamsConsumed: [],
+        whyNotMerged: "It stands alone.",
+        dependsOn: [1],
+      },
+    ];
+    const fakeStage = createFakeStage(`<output>${JSON.stringify(selfReferencingPlan)}</output>`);
+    const fakeGh = createFakeGh();
+
+    expect(() => runAuditAndPublish("13", fakeStage.exec, fakeGh.gh)).toThrow(/depends on itself/);
+    expect(fakeGh.calls).toHaveLength(0);
+  });
+
+  it("exits nonzero without publishing when the auditor's response fails schema validation", () => {
+    seedHandoffWithSlicedPlan();
+    const fakeStage = createFakeStage(`<output>[{"title":"Missing everything else"}]</output>`);
+    const fakeGh = createFakeGh();
+
+    expect(() => runAuditAndPublish("13", fakeStage.exec, fakeGh.gh)).toThrow(/failed schema validation/);
+    expect(fakeGh.calls).toHaveLength(0);
   });
 });
 
