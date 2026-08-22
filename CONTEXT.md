@@ -61,3 +61,36 @@ _Avoid_: soft fail, non-blocking, best-effort
 Whatever fires the next edge of the pipeline without a human keystroke. Named separately from the
 work it starts, because the work already exists and the connector is what is missing.
 _Avoid_: trigger, automation, orchestrator, glue
+
+**Refusal**:
+A gate that fires before a run spends model time. The distinction from Gate is cost: a refusal is
+free when it fires, so it can be cheap and unapologetic where a late gate cannot.
+_Avoid_: precondition, guard, validation, check
+
+### The pipeline
+
+**Spec**:
+The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue — a spec
+that lives in a file or a conversation has not been published yet.
+_Avoid_: PRD document, requirements doc, brief
+
+**Slice**:
+One tracer-bullet vertical cut through every layer, demoable on its own and sized to a single agent
+session. Vertical is the whole point: a horizontal cut through one layer is not a slice.
+_Avoid_: task, chunk, story, unit
+
+**Ticket**:
+A published slice — a child issue carrying acceptance criteria, file claims and native blocked-by
+edges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.
+_Avoid_: issue, sub-issue, card, item
+
+**Seam manifest**:
+The list of shared shapes a batch needs, one line each, naming what it is, where it lives or should
+live, and what consumes it. The one-line bound is load-bearing: every line is injected into every
+consuming ticket's body, and therefore into every worker's context.
+_Avoid_: shared components, abstractions, helpers, utilities
+
+**Stage**:
+One agent process in a pipeline run, with no memory of the ones before it. Named separately from
+Actions' own words because a stage is a context boundary, and a job or a step is not.
+_Avoid_: phase, pass, step, job
