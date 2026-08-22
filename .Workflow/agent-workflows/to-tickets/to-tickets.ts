@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { ZodType, ZodTypeDef } from "zod";
 import { extractOutput } from "../shared/output-block";
 import { Plan } from "../shared/plan-schema";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
@@ -66,36 +67,93 @@ export function validatePlanFile(filePath: string): Plan {
 }
 
 /**
- * The stages this entrypoint can run headlessly, keyed by the `--stage`
- * flag's value. Each stage is one committed prompt paired with the zod
- * schema its `<output>` block must satisfy. Only seam-sweep is wired so
- * far; slice and audit-and-publish add their own entries here without
- * changing this shape.
+ * One stage this entrypoint can run headlessly: a committed prompt, the zod
+ * schema its `<output>` block must satisfy, how to build the `{{VAR}}`
+ * substitution map for its prompt from the CLI's `--issue` value, and any
+ * validation beyond the schema (e.g. graph shape) that must also pass before
+ * the stage's output is handed off. Kept as one shape so a later stage (the
+ * auditor, ticket #14) mirrors it directly rather than growing a second one.
  */
-const STAGES = {
-  "seam-sweep": {
-    promptPath: ".Workflow/agent-workflows/to-tickets/seam-sweep/prompt.md",
-    schema: SeamManifest,
-  },
-} as const;
+interface StageDef<T> {
+  promptPath: string;
+  schema: ZodType<T, ZodTypeDef, unknown>;
+  buildVars: (issueNumber: string) => Record<string, string>;
+  /** Throws to fail the stage; there is no repair path. */
+  validate?: (output: T) => void;
+}
 
-type StageName = keyof typeof STAGES;
+const SEAM_SWEEP_STAGE: StageDef<SeamManifest> = {
+  promptPath: ".Workflow/agent-workflows/to-tickets/seam-sweep/prompt.md",
+  schema: SeamManifest,
+  buildVars: (issueNumber) => ({ ISSUE_NUMBER: issueNumber }),
+};
+
+/**
+ * The slice stage consumes the seam manifest the seam-sweep stage just wrote
+ * to the shared handoff path — read live here, at call time, so this stage
+ * always sees whatever currently sits there rather than a value captured at
+ * import time. Its own output (a `Plan`) then overwrites that same file,
+ * which is how the pipeline hands work from one stage to the next (see
+ * `handoffPath()` above). Beyond schema validation, a plan must also pass
+ * `validatePlan` (graph shape: no self-reference, no cycle, no out-of-range
+ * edge, at least one unblocked root) before it's handed off.
+ */
+const SLICE_STAGE: StageDef<Plan> = {
+  promptPath: ".Workflow/agent-workflows/to-tickets/slice/prompt.md",
+  schema: Plan,
+  buildVars: (issueNumber) => ({
+    ISSUE_NUMBER: issueNumber,
+    SEAM_MANIFEST: readPriorHandoff("slice"),
+  }),
+  validate: validatePlan,
+};
+
+/**
+ * Reads whatever the previous stage left at the shared handoff path, for a
+ * stage (like slice) whose prompt needs that as an input. Wraps the read
+ * error with which stage needed it and where it looked, since "ENOENT" alone
+ * doesn't say a prior stage never ran.
+ */
+function readPriorHandoff(stageName: string): string {
+  try {
+    return readFileSync(handoffPath(), "utf8");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `${stageName} needs the prior stage's handoff at ${handoffPath()}, but it could not be read: ${reason}`,
+    );
+  }
+}
+
+const STAGE_NAMES = ["seam-sweep", "slice"] as const;
+type StageName = (typeof STAGE_NAMES)[number];
 
 function isStageName(value: string | undefined): value is StageName {
-  return value !== undefined && value in STAGES;
+  return value !== undefined && (STAGE_NAMES as readonly string[]).includes(value);
 }
 
 /**
- * Runs one stage end to end: substitutes the PRD's issue number into its
- * prompt, spawns it through the injected `exec`, extracts and
- * schema-validates its `<output>` block, and writes the typed result to the
- * handoff path. A bad spawn, a missing block, or a schema mismatch all
- * throw — there is no repair path here; the caller reports and exits.
+ * Runs one stage end to end: substitutes the PRD's issue number (and, for a
+ * stage that declares one, the prior stage's handoff) into its prompt,
+ * spawns it through the injected `exec`, extracts and schema-validates its
+ * `<output>` block, runs any additional validation the stage declares, and
+ * writes the typed result to the handoff path. A bad spawn, a missing block,
+ * a schema mismatch, or a failed validation all throw — there is no repair
+ * path here; the caller reports and exits.
  */
 export function runNamedStage(stageName: StageName, issueNumber: string, exec: StageExec): unknown {
-  const stage = STAGES[stageName];
-  const raw = runStage(stage.promptPath, { ISSUE_NUMBER: issueNumber }, exec);
+  switch (stageName) {
+    case "seam-sweep":
+      return runTypedStage(SEAM_SWEEP_STAGE, issueNumber, exec);
+    case "slice":
+      return runTypedStage(SLICE_STAGE, issueNumber, exec);
+  }
+}
+
+function runTypedStage<T>(stage: StageDef<T>, issueNumber: string, exec: StageExec): T {
+  const raw = runStage(stage.promptPath, stage.buildVars(issueNumber), exec);
   const output = extractOutput(raw, stage.schema);
+  stage.validate?.(output);
   writeHandoff(JSON.stringify(output));
   return output;
 }
