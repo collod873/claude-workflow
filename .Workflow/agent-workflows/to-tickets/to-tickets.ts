@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { extractOutput } from "../shared/output-block";
 import { Plan } from "../shared/plan-schema";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
@@ -144,7 +145,12 @@ async function main(): Promise<void> {
 
 // Only run when invoked directly (`npx tsx to-tickets.ts ...`), not when
 // to-tickets.ts is imported for its exports (tests, future --stage modes).
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Built through pathToFileURL rather than a raw `file://${...}` template:
+// import.meta.url is percent-encoded (spaces, etc.), and a repo checkout
+// path is not guaranteed to be free of characters that encoding affects —
+// this repo's own path has a space in it — so a naive string comparison
+// silently never matches and main() never runs.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch((err: unknown) => {
     // A fallback for anything main() throws before its own mode-specific
