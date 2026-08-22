@@ -1,0 +1,171 @@
+name: To-Tickets
+
+# The venue for PRD #13: a spec published to this repository slices itself. `/to-spec` applies
+# the `prd` label exactly as it does today, and that label is the whole trigger — no new trigger
+# machinery, per ADR-0002 (GitHub-hosted runner, from the checkout alone) and PRD #13's
+# "Venue and trigger" section. Re-running a slicing is removing and re-adding `prd`; there is no
+# `workflow_dispatch` path in v1.
+#
+# Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any
+# stage: a PRD that already has sub-issues, and a PRD that is itself a sub-issue. Both fail
+# closed, remove nothing, comment their reason on the PRD, and apply `slice-failed` — created
+# idempotently below, since the label does not exist in this repo yet and a bare
+# `gh issue edit --add-label` would fail on its first run. The escape hatch for a genuine
+# re-slice is closing or detaching the existing children first, a deliberate act.
+#
+# Sandcastle's third gate — refusing a PRD with no `## Acceptance` section — is deliberately not
+# adopted: `/to-spec`'s template has no such section.
+#
+# "Report failure" is the shared failure surface: it reads the dying stage's reason from the
+# fixed handoff path (a file at `${{ runner.temp }}/failure_reason.txt`, the path
+# `to-tickets.ts`'s `handoffPath()` writes to whenever `FAILURE_REASON_PATH` is set — see
+# `.Workflow/agent-workflows/to-tickets/to-tickets.ts`), falls back to "unknown stage" when that
+# file is absent, and comments a link to the run. Each refusal above comments for itself and marks
+# its own step output `refused=true`, which this step is guarded on — one refusal is one comment,
+# never two. The `CLAUDE_CODE_OAUTH_TOKEN` preflight below writes its reason the same way, so a
+# missing secret is reported by name through this same surface rather than a bespoke comment.
+#
+# Node arrives on the runner immediately before the first TypeScript step needs it — pinned to
+# Node 24, with `npm ci` installing exactly what's in `package-lock.json`, never a fresh resolve.
+#
+# Three stages run in sequence: seam sweep / slice / audit-and-publish. Slice reads the seam
+# manifest seam sweep just wrote by reading the same handoff path seam sweep wrote to —
+# `handoffPath()` in to-tickets.ts, fixed by `FAILURE_REASON_PATH` above, needs no separate
+# argument to carry the manifest across steps. Audit-and-publish reads the plan slice wrote the
+# same way, grades it (merging, splitting, re-edging, or re-wording as it sees fit — never asking a
+# question back), then hands its own plan straight to the deterministic publisher inside that same
+# step. There is no separate "publish" step.
+#
+# On success, no step writes to the tracker at all — the sub-issues a real run creates are the
+# only output. Anything the auditor flagged but chose not to act on prints to this step's own log,
+# never to the PRD.
+
+"on":
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  to-tickets:
+    if: github.event.label.name == 'prd'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PRD_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      FAILURE_REASON_PATH: ${{ runner.temp }}/failure_reason.txt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Idempotent so a repeated run (or a fresh repo, like this one today) never fails the step
+      # that is supposed to fail closed — `--force` updates rather than errors when the label
+      # already exists.
+      - name: Ensure slice-failed label exists
+        run: |
+          gh label create slice-failed \
+            --color b60205 \
+            --description "A to-tickets run refused or failed" \
+            --force
+
+      - name: Refuse — PRD already has sub-issues
+        id: refuse-sub-issues
+        run: |
+          set -euo pipefail
+          sub_count=$(gh api "repos/${GH_REPO}/issues/${PRD_NUMBER}/sub_issues" --jq 'length')
+          if [ "$sub_count" != "0" ]; then
+            gh issue comment "$PRD_NUMBER" --body "Refused to run: this PRD already has ${sub_count} sub-issue(s). A slicing only runs against a PRD with no sub-issues. Close or detach the existing sub-issues, then remove and re-add \`prd\` to retry."
+            gh issue edit "$PRD_NUMBER" --add-label slice-failed
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "refused=false" >> "$GITHUB_OUTPUT"
+
+      # Runs only when the step above passed (Actions' default `if: success()`) — sequential
+      # refusals, no explicit condition needed to keep them ordered before any stage.
+      - name: Refuse — PRD is itself a sub-issue
+        id: refuse-nested-prd
+        run: |
+          set -euo pipefail
+          owner="${GH_REPO%%/*}"
+          repo="${GH_REPO##*/}"
+          parent_number=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $num: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $num) { parent { number } }
+              }
+            }' -f owner="$owner" -f repo="$repo" -F num="$PRD_NUMBER" \
+            --jq '.data.repository.issue.parent.number // empty')
+          if [ -n "$parent_number" ]; then
+            gh issue comment "$PRD_NUMBER" --body "Refused to run: this issue is itself a sub-issue of #${parent_number}. A nested PRD cannot be sliced. Detach it from its parent, then remove and re-add \`prd\` to retry."
+            gh issue edit "$PRD_NUMBER" --add-label slice-failed
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "refused=false" >> "$GITHUB_OUTPUT"
+
+      # A third refusal, but reported through the shared failure surface below rather than
+      # commenting for itself: an empty secret is an operational fact about this repo, not a
+      # judgement about the PRD, so there's nothing PRD-specific to say beyond what "Report
+      # failure" already prints. Runs after both PRD refusals and before Node is even set up, so
+      # a missing secret costs nothing beyond the checkout.
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." > "$FAILURE_REASON_PATH"
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The first of three stages, each following runStage's shape (see
+      # .Workflow/agent-workflows/shared/stage.ts). Spawns one headless `claude` process against
+      # seam-sweep/prompt.md and writes its validated <output> — the seam manifest — to the handoff
+      # path, or a failure reason if it dies.
+      - name: Seam sweep
+        run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
+
+      # The second stage. Reads the seam manifest seam sweep just wrote at $FAILURE_REASON_PATH
+      # (to-tickets.ts's shared handoff path — see the comment above) as its SEAM_MANIFEST input,
+      # then overwrites that same path with its own output, the ticket graph. No extra argument
+      # carries the manifest between these two steps; both read and write the one path the job's
+      # env already fixes.
+      - name: Slice
+        run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage slice --issue "$PRD_NUMBER"
+
+      # The third and last stage. Reads the plan slice just wrote at $FAILURE_REASON_PATH the same
+      # way slice read seam sweep's manifest, spawns the auditor against it, and prints its grading
+      # notes and any unapplied flags to this step's own log (never a PRD comment — see the header
+      # above). It then hands its own (possibly rewritten) plan straight to the deterministic
+      # publisher in this same process: one sub-issue per slice, attached under the PRD, with every
+      # `dependsOn` wired as a native blocked-by edge and read back to verify it landed. A plan that
+      # fails graph validation here is rejected before any of that — zero `gh` writes, nonzero exit,
+      # same failure surface as every other stage.
+      - name: Audit and publish
+        run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
+
+      # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
+      # gets exactly one comment rather than the refusal's plus this one.
+      - name: Report failure
+        if: failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'
+        run: |
+          reason="unknown stage"
+          if [ -f "$FAILURE_REASON_PATH" ]; then
+            reason=$(cat "$FAILURE_REASON_PATH")
+          fi
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n' "$reason" "$run_url")
+          gh issue comment "$PRD_NUMBER" --body "$body"
+          gh issue edit "$PRD_NUMBER" --add-label slice-failed
