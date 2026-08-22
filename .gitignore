@@ -27,6 +27,9 @@ node_modules/
 dist/
 build/
 
+# Pipeline runtime handoff (regenerated per run, never source)
+.Workflow/agent-workflows/handoff.txt
+
 # Python
 __pycache__/
 *.py[cod]
