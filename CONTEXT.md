@@ -79,6 +79,13 @@ A gate that fires before a run spends model time. The distinction from Gate is c
 free when it fires, so it can be cheap and unapologetic where a late gate cannot.
 _Avoid_: precondition, guard, validation, check
 
+**Venue**:
+A place a gate can fire, defined by its latency budget and by what it can see from there — inside an
+agent's turn, at turn end, on push, in Actions, overnight. Named separately from Gate because the
+same logic is a different mechanism in a different venue: what a venue costs is not the check but
+the repair it makes possible, and the earliest venue is always the cheapest repair.
+_Avoid_: layer, stage, tier, level, hook point
+
 ### The pipeline
 
 **Lane**:

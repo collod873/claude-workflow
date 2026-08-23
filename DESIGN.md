@@ -1,6 +1,6 @@
 # The design
 
-**Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its eight open
+**Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its nine open
 cells are [§12](#12--the-scorecard) · **Status:** the target. What the machine is, drawn from
 [`GOAL.md`](GOAL.md) rather than from the skills that exist today.
 
@@ -329,6 +329,11 @@ unverifiable, which makes it worthless, which puts the owner back in the loop re
 | Implementer | Sonnet | 3–6 concurrent, isolated checkout | Brief is the ticket, the seam manifest, the module's `CONTEXT.md`, and the failing tests — **not** the repo. An implementer that reads broadly couples broadly. Needing to read another module means the interface is wrong, which is a `seam/question` issue, not its call to fix |
 | Fixer | Sonnet | 1 per red PR, **max 3 attempts** | Attempts to green a failing build, then labels `blocked`, writes what it tried, and stops. Uncapped fixers are how you find out on Sunday that something ground against a wall for eleven hours |
 
+**The fixer is what unlocks the last move.** It is the only thing in the design that clears a red
+without the owner, so nothing may be promoted to refusing before it exists —
+[ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md), and the reason branch
+protection sits at move 10 rather than move 1.
+
 Concurrency sized to one operator's review rate, not to available compute — see §8.
 
 **Every run ends with one question:** *what did you learn that, had you known it at the start, would
@@ -343,30 +348,60 @@ class-4 evidence out of a transcript nobody would otherwise read.
 live and does it today; that is what makes 3–6 concurrent implementers safe to run at all. Lane 08
 is the merge-time complement for the conflict disjointness cannot prevent, not a replacement for it.
 
-### 06 · Verify — *partial* (`verify.yml` exists but refuses nothing)
+### 06 · Verify — *partial* (every venue exists; the checks are in the wrong ones)
 
-> **Fires on:** every push and PR. **Refuses:** the merge.
+> **Fires on:** every edit, every turn end, every push, every PR — one venue each. **Refuses:** the
+> edit, the turn, the push, the merge, respectively.
 >
-> **Cost:** no model — Actions minutes. The cheapest lane on the page and the one that retires a
-> measured regression. · **Sees:** class 1 (the tree at HEAD) and class 5 (the runtime)
+> **Cost:** no model at the first three venues, Actions minutes at the fourth. The cheapest lane on
+> the page and the one that retires a measured regression. · **Sees:** class 1 (the tree at HEAD)
+> and class 5 (the runtime)
 
 **Retires blocker 5** — the only unambiguous regression in the six-month record: 12 broken commits
-reached `main` in five days, all genuine breakage, zero infra flake.
+reached `main` in five days, all genuine breakage.
 
-The gauntlet, in Actions, where the agents it judges cannot reach it:
+**The lane is not missing mechanisms. Its checks are in the wrong venues.** Lumaria carries seven
+things that fire at the moment of an action and can genuinely refuse — `post-edit-validate.py`,
+`stop-gate.sh`, husky `pre-commit`, `pre-push`, `close-gate.py` — and every one was told not to run
+the checks that matter, `stop-gate.sh` in as many words: *"Types + tests intentionally NOT run here
+— CI owns them."* `ci.yml` runs everything and sits where it can refuse nothing.
+[`verification-boundaries-2026-08.md`](docs/research/verification-boundaries-2026-08.md) states the
+result: **every mechanism that runs tests is advisory or after the fact, and every mechanical
+mechanism runs no tests.** [ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)
+inverts that assignment, and the inversion costs no money.
 
-| Gate | Status |
-|---|---|
-| Typecheck, lint, test | **live** — but advisory. `verify.yml` runs after the push has landed |
-| Branch protection + required checks | **absent.** This is the whole fix, and it is an afternoon |
-| Acceptance tests, immutable by the implementation | absent — lane 04 |
-| Contract tests against the seam manifest's shapes | absent |
-| Visual regression, design-system lint, seeded database | absent, and dormant until a repo has a UI |
+The gauntlet, by venue. A check sits at the earliest one whose budget it fits:
 
-**Every defect that escapes to the owner adds a gate.** The gauntlet grows for the life of the
-project or it decays relative to the codebase. That growth is *not* grooming under C4 — a gate is
-added at the moment a defect proves it missing, by the event that proved it, never on a review
-cycle.
+| Venue | Budget | Carries | Status |
+|---|---|---|---|
+| **In the turn** — `PostToolUse` on Edit/Write | <1s | typecheck and lint the touched file, fed back as tool output | hooks exist in both repos; run no types, no tests |
+| **Turn end** — `Stop` | <10s | whole-project typecheck (`tsgo`), lint on session-edited files | `stop-gate.sh` live in Lumaria, eslint + biome only |
+| **On push** — husky, self-installing via `"prepare"` | <60s | unit suite, boundary rules | installed, effectively inert — commitlint only for a normal commit |
+| **In Actions** — on the PR | <10min | integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` live but advisory; branch protection absent and paid |
+| **Overnight** | unbounded | broad sweeps, visual regression, flake quarantine re-runs | absent, and dormant until a repo has a UI |
+
+The self-installing trick is worth stealing verbatim from `course-video-manager`: `"prepare":
+"husky"` in `package.json` plus a frozen-lockfile install in every workflow means the hook installs
+itself on the runner, so an agent's commits pass the same gate the owner's do. Fail-closed
+enforcement with no Actions job behind it.
+
+**Why earliest wins is the cost of the repair, not the cost of the check.** A type error caught
+in-turn is fixed by the implementer that caused it, same turn, context still hot — free. The same
+error caught in Actions costs a cold fixer run reconstructing what the implementer already knew. By
+a reviewer: a review, a fixer and a re-review. By the owner: the premise. Each venue is a filter, so
+the expensive venues stop seeing failures, which is where the throughput comes from.
+
+**Every defect that escapes to the owner adds a gate — at the lowest venue that could have caught
+it.** The gauntlet grows for the life of the project or it decays relative to the codebase. That
+growth is *not* grooming under C4 — a gate is added at the moment a defect proves it missing, by the
+event that proved it, never on a review cycle. Adding every escape to Actions by default is how the
+gauntlet becomes the bottleneck it exists to prevent.
+
+**The flake precondition.** ~14 of Lumaria's 26 CI failures over 30 days are one file,
+`.claude/hooks/stop-gate.test.mjs`, always the same two cases, failing on whether `jq` is on the
+runner's PATH. Half the red is environment flake in the meta-layer. No venue is promoted to refusing
+until that is quarantined — crewops ADR-0003: *a flaky gate trains `--no-verify` and is worse than a
+slow one.*
 
 ### 07 · Review — *absent*
 
@@ -622,11 +657,18 @@ the map was drawn before the inventory was read.
 
 ## 10 · Build order
 
-Ordered by `GOAL.md` §4, because nothing further down is optional for anything above it.
+Ordered by what unblocks what. That is **not** `GOAL.md` §4's order, and an earlier draft claimed it
+was: blocker 5 sat at move 1 while blocker 1 waited. Blocker 5 is now retired in two halves at
+opposite ends of the list — the free venues first, the refusal at trunk last — for the reason in
+[ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md): **feedback, then
+repair, then refusal.** A gate with nothing behind it parks work rather than stopping it, and parked
+work drains onto the owner.
 
 | # | Move | Retires | Cost |
 |---|---|---|---|
-| 1 | **Branch protection + required checks** on this repo and Lumaria | Blocker 5 | An afternoon |
+| 0 | **Quarantine the flake** — `stop-gate.test.mjs`, ~14 of 26 CI failures, `jq` on the runner's PATH | The precondition for every gate below | An hour. Nothing may be promoted to refusing above a gate the estate has learned to ignore |
+| 1a | **The free venues** (lane 06) — types and lint in the turn, whole-project typecheck at turn end, unit suite on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | An afternoon per repo, no model spend, no plan change. The hooks already exist; they get given the checks CI was hoarding |
+| 1b | **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | An hour |
 | 2 | **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Days. The logic exists; the venue changes |
 | 3 | **Session capture**, at session time, stored durably | Blocker 4 | Days — and every day it waits destroys a day of corpus permanently |
 | 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
@@ -637,6 +679,13 @@ Ordered by `GOAL.md` §4, because nothing further down is optional for anything 
 | 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waits on move 3 |
 | 8b | **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | Ongoing, event-attached |
 | 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
+| 10 | **Branch protection + required checks** on Lumaria, then this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
+
+**Move 10 has two dependencies the earlier draft did not name.** It costs money — every repo in the
+estate is private on a Free account, so this is a purchase, not a setting. And neither repo has ever
+opened a pull request: both land work by local merge and a direct push to `main`, which protection
+forbids. Whatever drives lane 05 by then has to open a PR and let it auto-merge on green. That is
+lane 05's shape anyway, which is why the move waits for it rather than forcing an interim.
 
 **The bootstrap has an expiry.** Until move 7 lands, work on this repo is driven by era-6 `/drain`
 from the workstation, which ADR-0002 forbids. That is a scaffold, and it expires the moment lane 05
@@ -645,9 +694,11 @@ runs on a runner. Until then: **this repo does not grow files to serve era-6 ski
 `.claude/contract.json` and `docs/agents/issue-tracker.md` here so `/drain` can read them — is
 declined on that basis.
 
-**Honest accounting.** Moves 1–4 are weeks where the owner is *more* in the loop, not less, and it
-will not feel like leverage. The out-of-the-loop dividend comes entirely from the boring eighty
-percent; the parts he cares most about stay his forever. And the ceiling: this system is bounded by
+**Honest accounting.** Moves 2–4 are weeks where the owner is *more* in the loop, not less, and it
+will not feel like leverage. Moves 0–1 are the exception and the reason they go first: they cost an
+afternoon, spend nothing, and every hour after them is an hour of agent work that corrects itself
+instead of arriving on his desk. The out-of-the-loop dividend beyond that comes entirely from the
+boring eighty percent; the parts he cares most about stay his forever. And the ceiling: this system is bounded by
 spec quality, not by agent capability — true today, still true when the models are twice as good,
 which is the best argument for spending the hour at the top of the pipeline rather than the bottom.
 
@@ -718,7 +769,7 @@ the thing it replaced.
 | **03** Slice | ✓ | — | ✓ | — | — | — | — |
 | **04** Acceptance | ✓ | — | ✓ | ✓ | ✓ | — | — |
 | **05** Build | ✓ | — | ✓ | — | ⚠ | — | ✓ |
-| **06** Verify | ✓ | — | ✓ | ✓ | ✓ | — | — |
+| **06** Verify | ✓ | — | ✓ | ✓ | ⚠ | — | — |
 | **07** Review | ⚠ | — | ✓ | — | ✓ | — | ✓ |
 | **08** Integrate | ✓ | — | ✓ | — | ✓ | — | — |
 | **09** Close | ✓ | — | ✓ | ✓ | ✓ | — | — |
@@ -743,7 +794,7 @@ which is exactly why routing had to become a machine call
 ([ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md)) rather
 than a policy that sends every feature long.
 
-### The eight ⚠ cells
+### The nine ⚠ cells
 
 Named so that "scored against C1–C7" has a residue rather than a verdict:
 
@@ -767,7 +818,12 @@ Named so that "scored against C1–C7" has a residue rather than a verdict:
    **never been measured against this owner's actual answer rate**, which is the only number that
    makes either of them right.
 8. **§11 Q2 / C7** — the spend ceiling is unruled, and the governor cannot be built without it.
+9. **06 / C5** — every venue below Actions is bypassable. `--no-verify` skips the push and commit
+   hooks; a `PostToolUse` hook is fed back as tool output, and an agent may read it and proceed
+   anyway. Until move 10 there is **no venue an agent cannot route around**, and nothing counts how
+   often one does. ADR-0011 names this as the cost of putting refusal last; §6 has no counter for it
+   yet, and one belongs there.
 
-Six of the eight are the same shape: **a number nobody has measured yet.** That is the honest state
+Six of the nine are the same shape: **a number nobody has measured yet.** That is the honest state
 of a design drawn before the machine exists, and it is what §6's backwards question is for — every
 one of them is a question asked at an event, not on a review cycle.
