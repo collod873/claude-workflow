@@ -1,4 +1,5 @@
 import type { GhExec } from "./gh";
+import { blockedByPathMatcher, issuePathMatcher, subIssuesPathMatcher } from "./gh-paths";
 
 /**
  * An in-memory model of the `gh` calls this pipeline makes, standing in for
@@ -66,7 +67,7 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
     if (args[0] === "api") {
       const path = args[1] ?? "";
 
-      const subIssuesMatch = path.match(/^repos\/\{owner\}\/\{repo\}\/issues\/(\d+)\/sub_issues$/);
+      const subIssuesMatch = path.match(subIssuesPathMatcher);
       if (subIssuesMatch) {
         const parent = Number(subIssuesMatch[1]);
         const fieldFlag = args.indexOf("-f");
@@ -82,9 +83,7 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
         return "";
       }
 
-      const blockedByMatch = path.match(
-        /^repos\/\{owner\}\/\{repo\}\/issues\/(\d+)\/dependencies\/blocked_by$/,
-      );
+      const blockedByMatch = path.match(blockedByPathMatcher);
       if (blockedByMatch) {
         const blockedNumber = Number(blockedByMatch[1]);
         const fieldFlag = args.indexOf("-f");
@@ -114,7 +113,7 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
         return `${JSON.stringify(ids)}\n`;
       }
 
-      const issueMatch = path.match(/^repos\/\{owner\}\/\{repo\}\/issues\/(\d+)$/);
+      const issueMatch = path.match(issuePathMatcher);
       const jqFlag = args.indexOf("--jq");
       if (issueMatch && jqFlag !== -1 && args[jqFlag + 1] === ".id") {
         const number = Number(issueMatch[1]);

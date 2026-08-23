@@ -1,4 +1,5 @@
 import type { GhExec } from "./gh";
+import { blockedByPath, issuePath, subIssuesPath } from "./gh-paths";
 import type { Plan } from "./plan-schema";
 import { renderBody } from "./render-body";
 
@@ -45,7 +46,7 @@ function parseIssueNumber(createOutput: string, title: string): number {
 }
 
 function fetchIssueId(gh: GhExec, number: number): number {
-  const raw = gh(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"]);
+  const raw = gh(["api", issuePath(number), "--jq", ".id"]);
   const id = Number(raw.trim());
   if (!Number.isInteger(id)) {
     throw new Error(`could not parse a numeric id for issue #${number} from: ${JSON.stringify(raw)}`);
@@ -56,7 +57,7 @@ function fetchIssueId(gh: GhExec, number: number): number {
 function attachUnderPrd(gh: GhExec, prdNumber: number, childId: number): void {
   gh([
     "api",
-    `repos/{owner}/{repo}/issues/${prdNumber}/sub_issues`,
+    subIssuesPath(prdNumber),
     "-f",
     `sub_issue_id=${childId}`,
   ]);
@@ -76,7 +77,7 @@ export function wireBlockedByEdges(plan: Plan, published: PublishedIssue[], gh: 
       const blocker = published[dep - 1];
       gh([
         "api",
-        `repos/{owner}/{repo}/issues/${blocked.number}/dependencies/blocked_by`,
+        blockedByPath(blocked.number),
         "-f",
         `issue_id=${blocker.id}`,
       ]);
@@ -114,7 +115,7 @@ export function verifyBlockedByGraph(plan: Plan, published: PublishedIssue[], gh
 function fetchBlockedByIds(gh: GhExec, number: number): number[] {
   const raw = gh([
     "api",
-    `repos/{owner}/{repo}/issues/${number}/dependencies/blocked_by`,
+    blockedByPath(number),
     "--jq",
     "[.[].id]",
   ]);
