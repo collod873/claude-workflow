@@ -129,13 +129,24 @@ never have to check its homework."**
 Ordered. Nothing further up the list is optional for anything below it.
 
 1. **Two fail-open holes.** Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.
-   ~7 log lines are rails crashing (`SELECT_ITEMS is not defined`), failing open and unseen. A
-   fail-open gate in an unattended system is not a gate — this is the precondition for stepping back
-   at all.
+   **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
+   `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')` — all
+   from the one shared `mirror.mjs`), failing open and unseen. A fail-open gate in an unattended
+   system is not a gate — this is the precondition for stepping back at all. *(Re-measured
+   2026-08-23; the figure here was ~7 until then.)*
 2. **Nothing in the system can start work.** All ten pipeline verbs are
    `disable-model-invocation: true`; ~34 dispatches a day, almost none of it judgement a human
-   holds. This — not model capability, not verification quality (which measured fine at ~8% UNMET
-   closes) — is the ceiling. *(Issue [#128](https://github.com/collod873/agent-skills/issues/128).)*
+   holds. This — not model capability, and not verification volume — is the ceiling.
+   *(Issue [#128](https://github.com/collod873/agent-skills/issues/128).)*
+
+   **What the close gate actually measures, corrected 2026-08-23.** This line used to read
+   "verification quality measured fine at ~8% UNMET closes." That number does not reproduce.
+   `close-gate.log` is 558 rows: **125 refusals, 22.4%** — triple the figure once on record, which
+   [#128](https://github.com/collod873/agent-skills/issues/128) had graded *Counted, trust this*.
+   But the composition is the finding: `no-closing-record` 78, `bad-evidence-shape` 15,
+   `no-range-or-no-diff` 9, `missing-acceptance-criteria` 8, `criteria-count-mismatch` 3 — and
+   **`unmet-criterion` exactly once in 558.** The gate is an active *compliance* mechanism and is
+   not theatre. It is not a *correctness* one, and nothing should be built on a claim that it is.
 3. **No mechanism points backwards.** 30 ADRs in a month, 9 amending an earlier one; 36 lint rules
    from 5 standards passes, and **not one has been asked whether it caught anything.**
    `CODING_STANDARDS.md` has exactly one exit — *mechanised* — which requires building another rule

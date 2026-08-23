@@ -170,8 +170,9 @@ Workflow-relevant topics:
 Raw research captures for era 3 sit in `raw/manual/2026-04-1[34]-*.md` — the four full audits
 (`superpowers`, `mattpocock`, `collin-stack`, `three-way`).
 
-**⚠️ The wiki stops on 2026-05-21.** Session-capture hooks were deliberately emptied
-(`SessionEnd: []`) and never re-wired after the iMac → WSL migration. There is no `sandcastle.md`,
+**⚠️ The wiki stops on 2026-05-21.** Session-capture hooks were deliberately deregistered
+(`SessionEnd: []`) after an audit found the wiki's heaviest readers were the wiki maintaining itself
+— commit `6c86bb8`, and §7.2. Not a casualty of the iMac → WSL migration. There is no `sandcastle.md`,
 no `agent-skills.md`, no `drain.md` topic. Eras 5 and 6 are documented inside their own repos
 instead. See §7.
 
@@ -314,7 +315,7 @@ decided."*
 |---|---|---|
 | [#128](https://github.com/collod873/agent-skills/issues/128) | **Which edges get a CI connector, what filter makes that safe, and what gets deleted rather than automated?** The synthesis issue — argues the blocker is the connector, not the skill layer | Reopening #28; ADR-0029's exhaust filter |
 | [#125](https://github.com/collod873/agent-skills/issues/125) | Is "fleet architecture" a question type this repo needs a verb for? | Collides with #124 in three places |
-| [#124](https://github.com/collod873/agent-skills/issues/124) | Which uncovered evidence classes are worth a lens — and is the verification layer doing anything? | Answered Q1: **~22 of 278 closes UNMET ≈ 8%**, substantive. Not theatre |
+| [#124](https://github.com/collod873/agent-skills/issues/124) | Which uncovered evidence classes are worth a lens — and is the verification layer doing anything? | Q1 re-measured 2026-08-23: **125 of 558 closes refused, 22.4%** — but `unmet-criterion` fires **once in 558**. A compliance gate, not a correctness one. The "~8% UNMET" once recorded here does not reproduce |
 | [#127](https://github.com/collod873/agent-skills/issues/127) | Which Correction Ledger findings become enforcement vs stay observations? | Is #124's evidence-class row 9, executed |
 | [#123](https://github.com/collod873/agent-skills/issues/123) | Which of the six ranked Lumaria-vs-Pocock gaps are real enough to act on? | Gaps 3/4/6 recommended for split-out |
 | [#129](https://github.com/collod873/agent-skills/issues/129) | Sandcastle vs how we ship now — two candidates: gate the batch in `/drain`, and give `/drain` a per-ticket clock | Overlaps #123 gap 4 |
@@ -353,9 +354,17 @@ in any project:
    were enough. **The reason on record:** distributed orchestration bought for a workload that was
    never distributed — one operator, one machine, one repo. The remaining work is writing the doc,
    absorbing the 08-21 measurements rather than restarting.
-2. **Session capture is dead.** Stopped 2026-05-21; `~/.claude/settings.json` has `SessionEnd: []`.
-   Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4 and nothing after,
-   while reading as if it were current.
+2. **Session capture was killed, not lost.** Stopped 2026-05-21; `~/.claude/settings.json` has
+   `SessionEnd: []`. Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4
+   and nothing after, while reading as if it were current. **Corrected 2026-08-23:** this entry
+   used to attribute the stop to the iMac → WSL migration. Knowledge-Base commit `6c86bb8`
+   (2026-05-21 21:07) says otherwise — *"System became more burden than help (per audit: top wiki
+   reads were meta — KB reading itself to maintain itself). Global hooks moved to
+   `_disabled-global-hooks/` so the project stays revivable."* An audit was run, the wiki's biggest
+   customer was found to be the wiki, and the hooks were deliberately deregistered. That is F2, and
+   it is the same disease ADR-0029 diagnosed in the standards chain three months later — so any
+   replacement owes an answer to *what stops this becoming its own biggest customer*. The corpus
+   survives: `Knowledge-Base/raw/sessions/`, 841 captures, 2026-04-13 → 2026-05-21, git-tracked.
 3. **The 30-day prune makes any pass-time transcript audit silently vacuous.** `cleanupPeriodDays:
    30` — a scan run six weeks after the last one loses the first two weeks and reports a clean
    sweep. #124's ruling: capture must happen at **session time**, stored durably. The conversation
@@ -364,14 +373,25 @@ in any project:
    reads as a break but was a venue change.
 5. **Era 1 is undocumented** and probably should stay that way — its lesson (no enforcement, no
    adherence) was already recorded in era 2.
-6. **The Correction Ledger extractor is still under `/tmp`** and will not survive:
-   `/tmp/claude-1000/-home-collin-Claude-Projects-General-Repo/dcf2e2df-.../scratchpad/`
-   (`extract.py`, `prompts.jsonl`, `behavioral.txt`, `correction-ledger.html`).
+6. **~~The Correction Ledger extractor is still under `/tmp`.~~ Salvaged 2026-08-23** to
+   `General-Repo/salvage/correction-ledger-2026-08-21/` — `extract.py`, `prompts.jsonl` (2,617
+   prompts), `behavioral.txt`, `correction-ledger.html`. The script is a *human-prompt filter*, not
+   a correction classifier: the "is this a correction" judgement was always a downstream model pass.
 7. **Two fail-open holes.** Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.
-   ~7 log lines are rails crashing (`SELECT_ITEMS is not defined`), fail-open and unseen. A
-   fail-open gate in an unattended system is not a gate.
+   **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
+   `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`), all
+   from the one shared `mirror.mjs`, fail-open and unseen. A fail-open gate in an unattended system
+   is not a gate. *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
 8. **No mechanism points backwards.** 30 ADRs in a month, 9 amending an earlier one; 36 lint rules
    from 5 standards passes; **not one of the 36 has been asked whether it caught anything.**
+9. **The Stop-time gates have never fired, and a third of the hooks cannot be asked.** Measured
+   2026-08-23: machine-global `stop-gate.py` — **0 blocks in 258 rows**; Lumaria's
+   `design-override-flag` — 0 in a month; Lumaria's `stop-gate` — exactly **1** real block ever,
+   every apparent earlier one carrying a fixture session id (`nosession`, `probe-i`). And ~11
+   registered hooks write no run row at all, so they cannot be audited even in principle:
+   `checklist-reminder`, `validate-bash`, `credential-scan`, `post-edit-validate`,
+   `circuit-breaker`, `auto-approve-permissions`, `ui-token-validator`, `seeded-doc-router`,
+   `vendored-router`, `session_start_repo_state`, and Lumaria's `eslint-mirrors`.
 
 ---
 
