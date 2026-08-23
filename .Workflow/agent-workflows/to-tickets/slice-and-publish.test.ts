@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
@@ -53,21 +54,28 @@ describe("sliceAndPublish", () => {
     );
     expect(wireCalls).toHaveLength(3);
 
+    // Path built through gh-paths.ts on both sides (production and this
+    // assertion) would make a path comparison tautological — see the
+    // gh-paths.ts header. So this one assertion pins the `-f issue_id=<n>`
+    // value as a hardcoded literal instead of interpolating `root.id`: with
+    // the default firstIssueNumber (100), Root is #100 with REST id 100007,
+    // and that literal is the actual wire string GitHub's blocked_by write
+    // accepts, independent of whatever gh-paths.ts's template says.
     expect(wireCalls).toContainEqual([
       "api",
-      `repos/{owner}/{repo}/issues/${dependsOnRoot.number}/dependencies/blocked_by`,
+      blockedByPath(dependsOnRoot.number),
+      "-f",
+      "issue_id=100007",
+    ]);
+    expect(wireCalls).toContainEqual([
+      "api",
+      blockedByPath(dependsOnBoth.number),
       "-f",
       `issue_id=${root.id}`,
     ]);
     expect(wireCalls).toContainEqual([
       "api",
-      `repos/{owner}/{repo}/issues/${dependsOnBoth.number}/dependencies/blocked_by`,
-      "-f",
-      `issue_id=${root.id}`,
-    ]);
-    expect(wireCalls).toContainEqual([
-      "api",
-      `repos/{owner}/{repo}/issues/${dependsOnBoth.number}/dependencies/blocked_by`,
+      blockedByPath(dependsOnBoth.number),
       "-f",
       `issue_id=${dependsOnRoot.id}`,
     ]);
