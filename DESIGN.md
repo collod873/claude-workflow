@@ -1,6 +1,7 @@
 # The design
 
-**Drafted:** 2026-08-23 · **Status:** the target. What the machine is, drawn from
+**Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its eight open
+cells are [§12](#12--the-scorecard) · **Status:** the target. What the machine is, drawn from
 [`GOAL.md`](GOAL.md) rather than from the skills that exist today.
 
 `GOAL.md` says what the system is *for*. `INDEX.md` says what has been *built*. This says what the
@@ -28,14 +29,28 @@ Everything below is the Foundry re-derived against C1–C7, with three sets of c
 
 ## 0 · How to read this
 
-Each lane names the **event** that fires it, the **refusal** it makes before spending model time,
-and its **cost**. A lane with no event is not a lane. A row marked **⬤ owner** is a point where
-Collin is required — there are five, and reducing that number is the whole project.
+Each lane names four things. A lane missing any of them is not a lane:
+
+- **Fires on** — the event. There is no other way in.
+- **Refuses** — what it turns away before spending model time.
+- **Cost** — model stages per unit of work, and owner minutes. This is the only form in which C1's
+  test (*what does this add to the smallest unit of real work?*) can be answered, so it is stated
+  per lane rather than summarised anywhere.
+- **Sees** — which evidence classes the lane can observe, numbered against the ten-class taxonomy in
+  [`finding-what-goes-wrong.md`](https://github.com/collod873/agent-skills/blob/main/docs/research/finding-what-goes-wrong.md)
+  §4. C5 is a coverage constraint, and coverage that is not enumerated is coverage that is assumed.
+  A lane that produces work rather than findings says **—**, which is a real answer.
 
 Status marks: **live** (built, running), **partial**, **absent**.
 
+A row marked **⬤ owner** is a point where Collin is required. There are five, and reducing that
+number is the whole project. Two are in the lanes (01, 02); three are outside them — the two taste
+calls in §7 and the brief in §8 — and all five are marked where they occur.
+
 The scoring rule: a proposed lane is held against C1–C7 in `GOAL.md` §2. A lane that fails a
-constraint is not a smaller lane; it is a different goal, and it does not get built.
+constraint is not a smaller lane; it is a different goal, and it does not get built. **This document
+is a proposal and does not exempt itself** — §12 runs every lane against all seven and shows its
+work.
 
 ---
 
@@ -103,12 +118,16 @@ Reasoning effort moves on the same axis: mechanical stages low, refuters and the
 
 ## 4 · The lanes
 
-Nine lanes. A work item passes through them in order. **⬤ owner** marks the five points where
-Collin is required.
+Nine lanes. A work item passes through them in order. **⬤ owner** marks a point where Collin is
+required — **two of the five are here**, in lanes 01 and 02. The other three are the two taste calls
+in §7 and the brief in §8, marked there.
 
 ### 00 · Intake — *absent*
 
 > **Fires on:** the owner filing an issue. Nothing else in the system is human-initiated.
+>
+> **Cost:** no model, no owner minutes — a form submit at a red light. · **Sees:** — (it records;
+> finding is not its job)
 
 **There is no capture agent.** The ingress is a GitHub issue form — `.github/ISSUE_TEMPLATE/` —
 opened from the mobile app. One required field, *"What's the idea?"*, and the form applies the
@@ -145,6 +164,10 @@ estate.
 
 > **Fires on:** the `idea` label. **Refuses:** at stage 1, an idea that already exists or that an
 > ADR has already ruled on — the chain stops there and never spends the shaper.
+>
+> **Cost:** 3 model stages (Haiku, Opus, Sonnet), under a dollar per idea; **2 owner minutes**,
+> batched. · **Sees:** prior art, which is not an evidence class — its input is an opinion, not an
+> artifact. This is why §01 cannot get surprised, and why the transcript lens exists
 
 Three stages, serial, one agent each. Each consumes the last, so there is no parallelism to buy.
 
@@ -171,6 +194,11 @@ under a dollar per idea. So the sheet is capped at a phone screen: restatement �
 [ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md). Lane 02 then
 cites those rulings rather than restating them, which is what keeps a follow-up ticket from
 re-deciding something already settled.
+
+That accept is **W5 — agents draft, the owner signs** — as a mechanism rather than a maxim: the
+signature is a label, and it is the same click that starts the work. It is also the first half of
+**W4**, because the ruling lands in `docs/adr/` next to the code it will govern at the moment it is
+made, not whenever somebody remembers to write it down.
 
 **The shaper may refuse to shape.** More than ~3 load-bearing marks means it does not understand
 the idea well enough, and the honest output is *"needs a live session"* — the same instinct as
@@ -201,12 +229,25 @@ checkpoint, never a human quiz. Commit `68b071f` deleted a sizing quiz for askin
 senior-dev questions; making him the sizer here would rebuild it.
 
 **The short path may skip spec, slice and acceptance-authoring. It may never skip the gauntlet or
-review** (lanes 06–07). It is available to defects only — a *feature* that looks small still takes
-the long path, because that is exactly where the ceremony was earning its keep.
+review** (lanes 06–07), and more than ~3 load-bearing assumption marks sends it long regardless — a
+shaper that does not understand an idea well enough to shape it cannot route it either.
+
+**It is available to features as well as defects** —
+[ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md). An earlier
+draft reserved it for defects, reasoning that a small-looking feature is exactly where the ceremony
+earns its keep. Nothing in the record supports that, and C1 says the opposite: no era was ever
+replaced for producing bad output, and era 4 died spending ~7 plan steps on ~3 edits in 1 file.
+The two errors are not symmetric, which is the whole argument. A wrong **short** route sends a
+feature to the gauntlet without a spec — visible, because lanes 06–07 still run, and recoverable by
+re-shaping. A wrong **long** route buys era 4's overhead and leaves no trace anywhere, because
+nothing records the ceremony an item did not need.
 
 ### 02 · Spec — *absent on a runner* (`/to-spec` exists, local)
 
 > **Fires on:** `approved`. **Refuses:** an idea whose adversary comments have not been answered.
+>
+> **Cost:** 2 Opus stages; **5–15 owner minutes**, batched — the most expensive owner touch in the
+> system, and the one that pays for itself. · **Sees:** —
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -222,6 +263,8 @@ and never asks a sizing or architecture question, which he cannot.
 
 > **Fires on:** the `prd` label. **Refuses:** a PRD that already has sub-issues; a PRD that is
 > itself a sub-issue; a missing `CLAUDE_CODE_OAUTH_TOKEN`.
+>
+> **Cost:** 3 Opus stages per spec, no owner minutes. · **Sees:** —
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -237,16 +280,28 @@ constraint; the built one keeps its place until something argues otherwise. See 
 
 ### 04 · Acceptance — *absent*
 
-> **Fires on:** a slice published. **Refuses:** a criterion the spec does not determine — that is a
-> spec defect, and the correct output is a `spec/gap` issue, not an invented test.
+> **Fires on:** a slice published, **or a merged edit to a spec that already has acceptance tests.**
+> **Refuses:** a criterion the spec does not determine — that is a spec defect, and the correct
+> output is a `spec/gap` issue, not an invented test.
+>
+> **Cost:** 1 Opus per slice. · **Sees:** class 5 (the runtime) and class 6 (promised vs delivered),
+> both moved earlier — the tests exist before the code does
 
 | Role | Model | Count | Does |
 |---|---|---|---|
-| Acceptance author | Opus | 1 per slice, isolated | Writes tests **from the spec only**, with no access to an implementation — because none exists yet. Each test names the criterion it proves, verbatim. Merged to trunk **before** any implementer is dispatched |
+| Acceptance author | Opus | 1 per slice, isolated | Writes tests **from the spec only**, with no access to an implementation — because none exists yet. Each test names the criterion it proves, verbatim — which is **W4's endpoint**, documentation a test suite can fail on. Merged to trunk **before** any implementer is dispatched |
 
 **Then the load-bearing part:** CI refuses any implementation PR that modifies a file under
 `tests/acceptance/`. An implementer that cannot pass a test cannot quietly rewrite it — it can only
 fail, escalate, and land in the queue as blocked.
+
+**Immutable is not frozen, and the difference is where the grooming would have hidden.** A spec that
+legitimately changes would otherwise strand its tests with nobody permitted to touch them, and
+"someone updates the acceptance tests" is exactly the maintenance obligation C4 refuses to build. So
+`tests/acceptance/` has **one author — this lane — and one way to re-enter it:** a merged edit to
+the spec re-fires the acceptance author for the affected slices only, on a PR of its own, before any
+implementer resumes. The thing that checks is still never the thing that built, no matter how many
+times the spec moves.
 
 This is the single highest-value item on this page. It is **W2 made structural** — the thing that
 checks is never the thing that built — where era 6's `close-gate.py` is the weak form of the same
@@ -258,6 +313,9 @@ unverifiable, which makes it worthless, which puts the owner back in the loop re
 
 > **Fires on:** `ready` **and** a free slot under the governor's cap. **Refuses:** dispatch when the
 > owner's decision queue is full (§8).
+>
+> **Cost:** 1 Sonnet per slice, plus up to 3 fix attempts on red. · **Sees:** — while it runs;
+> class 4 at the end of it, via write-on-surprise below
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -266,9 +324,24 @@ unverifiable, which makes it worthless, which puts the owner back in the loop re
 
 Concurrency sized to one operator's review rate, not to available compute — see §8.
 
+**Every run ends with one question:** *what did you learn that, had you known it at the start, would
+have changed what you did?* A real answer is appended to the module's `CONTEXT.md` — the file the
+next implementer's brief already loads, so it is read by construction rather than by hope. Nothing
+means nothing gets written; the bar is surprise, not diligence.
+[ADR-0008](docs/adr/0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md). This is
+W6 — *write the autopsy while it still stings* — and it is the only thing that carries a run's own
+class-4 evidence out of a transcript nobody would otherwise read.
+
+**W3 is already carried, upstream.** Physical disjointness is the slicer's job in lane 03, which is
+live and does it today; that is what makes 3–6 concurrent implementers safe to run at all. Lane 08
+is the merge-time complement for the conflict disjointness cannot prevent, not a replacement for it.
+
 ### 06 · Verify — *partial* (`verify.yml` exists but refuses nothing)
 
 > **Fires on:** every push and PR. **Refuses:** the merge.
+>
+> **Cost:** no model — Actions minutes. The cheapest lane on the page and the one that retires a
+> measured regression. · **Sees:** class 1 (the tree at HEAD) and class 5 (the runtime)
 
 **Retires blocker 5** — the only unambiguous regression in the six-month record: 12 broken commits
 reached `main` in five days, all genuine breakage, zero infra flake.
@@ -291,6 +364,10 @@ cycle.
 ### 07 · Review — *absent*
 
 > **Fires on:** CI green. **Refuses:** nothing — this lane produces findings, not verdicts.
+>
+> **Cost:** 2 Opus per PR, plus 3 Sonnet per finding. The most expensive lane per unit of work, and
+> the refuters are the reason its output does not cost more downstream than it does here. ·
+> **Sees:** class 2 (a single diff) and class 6 (spec conformance)
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -311,6 +388,9 @@ engineer for a half day, twice a year. A line item, not a gap to engineer around
 
 > **Fires on:** PR approved. **Refuses:** a merge whose gauntlet has not been re-run against current
 > trunk.
+>
+> **Cost:** 1 Sonnet per merge, serialised. · **Sees:** class 2, but across a *pair* of diffs — the
+> semantic conflict that neither diff shows alone and no single-diff reviewer can
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -327,12 +407,20 @@ textual conflict; nothing in either era prevents semantic conflict.
 ### 09 · Close — *absent on a runner* (`close-gate.py` exists, local PreToolUse)
 
 > **Fires on:** `issues.closed`. **Refuses:** the close — reopens the issue and comments why.
+>
+> **Cost:** no model where the closing record parses; 1 Haiku where it does not. · **Sees:** class 6
+> (the tracker — promised vs delivered)
 
 **Retires blocker 1, structurally.** Era 6's gate is a PreToolUse hook, so a commit-keyword close
 (`Closes #704`) never reaches it and a crashing rail fails open unseen. Moving the gate to the
 tracker closes that by construction: `issues.closed` fires no matter *how* the issue was closed, and
 an Action that errors is a red run, not a silent pass. A gate that cannot be routed around is the
 precondition for stepping back at all.
+
+This is **W1** — *a gate that errors at the moment of the action* — moved to the one venue the
+agents it judges cannot reach. Era 2's `checklist-reminder.py` is the same idea and is still running
+five systems later; what changes here is only the venue, which is the entire difference between a
+gate and a suggestion.
 
 ---
 
@@ -348,7 +436,8 @@ Nothing runs on a clock. Every row is an event. *(C3, and
 | Owner comments a change request on a sheet | Shaper re-runs, at most twice |
 | Label `approved` | The sheet's ADRs and terms are filed; then spec author, critic |
 | Spec PR merged | The `prd` label goes on → **lane 03, live today** |
-| Sub-issues published | Acceptance author, one per slice |
+| Sub-issues published | Acceptance author, one per slice — and the parity counter, beside the siblings |
+| A merged edit to a spec that already has acceptance tests | Acceptance author re-fires, affected slices only |
 | Acceptance tests merged | Slice gets `ready`; waits for a free slot |
 | A slot opens (a ticket closed, or the queue drained) | Implementer dispatched into an isolated checkout |
 | CI red | Fixer, 3 attempts, then `blocked` and silence |
@@ -357,7 +446,9 @@ Nothing runs on a clock. Every row is an event. *(C3, and
 | Merged to trunk | Drift lens on the touched modules; coupling counter incremented |
 | Issue closed | The close gate runs — and cannot be bypassed |
 | An ADR or decision comment is recorded | Consistency lens reads it against the whole log |
-| A session ends | Transcript captured, then read (blocker 4) |
+| A session ends | Transcript captured, then read (blocker 4); corrections counted |
+| A commit is reverted, or added and deleted the same day | Correction counter — a failure already labelled by whoever reverted it |
+| A finding is recorded, in any repo | Cross-repo slug match |
 | Nth landing in a module since its last read | Coupling lens |
 | Owner comments on a queued decision | The lane waiting on that answer resumes, within the minute |
 | **The brief window opens, and the queue is non-empty** | The brief publishes and pushes once. Empty queue → silence |
@@ -365,32 +456,79 @@ Nothing runs on a clock. Every row is an event. *(C3, and
 That last row is the only time-shaped thing in the system, and it originates nothing — see §8 and
 ADR-0004.
 
-## 6 · The standing lenses
+## 6 · The standing lenses and counters
 
-Five things get read while nobody is watching, and **only one of them is code.** Each is attached to
-the event that makes it non-vacuous, which is what distinguishes a lens from the cadence ADR-0029
-rejected.
+Eight things get read while nobody is watching, and **only one of them is code.** Five spend a
+model; three only count. Each is attached to the event that makes it non-vacuous, which is what
+distinguishes a lens from the cadence ADR-0029 rejected.
 
-| Lens | Model | Fires on | Reads for |
+**Sees** numbers the evidence class each one can observe, against
+[`finding-what-goes-wrong.md`](https://github.com/collod873/agent-skills/blob/main/docs/research/finding-what-goes-wrong.md)
+§4. C5 is a coverage constraint; the ledger below is how it gets scored rather than asserted.
+
+| Lens | Model | Fires on | Reads for | Sees |
+|---|---|---|---|---|
+| **Diff** | Opus | CI green | Defects and spec conformance — lane 07. Catches almost nothing else | 2 |
+| **Transcript** | Opus | Session end, batched | The moment an agent **guessed at intent and moved on** — hedge language before a consequential choice, a requirement restated in weaker terms, an assumption stated once and never revisited. Correct-looking code with a wrong premise leaves fingerprints in the transcript that are invisible in the diff | 4 |
+| **Decision log** | Opus | An ADR or ruling recorded | Contradiction: *"you ruled in March that X, this week you ruled Y — one of these is stale."* It never pre-answers on the owner's behalf | 8 |
+| **Spec** | Haiku | A merge touching a module | Drift. A lying spec is worse than no spec, because every agent downstream believes it forever | 8 |
+| **Coupling** | Opus, high effort | N landings in a module since its last read | Duplicated concepts, three implementations of one idea, a module that has quietly grown a second responsibility. Output is a small number of ranked refactor issues | 3 |
+
+### The coverage ledger
+
+| # | Evidence lives in | What looks at it here |
+|---|---|---|
+| 1 | The tree at HEAD | Lane 06 — typecheck, lint, test |
+| 2 | A single diff | Lane 07, and the diff lens |
+| 3 | Recurrence across diffs | The coupling lens |
+| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05) |
+| 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
+| 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
+| 7 | **Absence** — what should exist and doesn't | **The parity counter**, below |
+| 8 | **Drift** — this was true and stopped being | The spec lens, the decision-log lens, and the backwards question |
+| 9 | **The owner's behaviour** — corrected, reverted, asked twice | **The correction counter**, below |
+| 10 | **Across repos** — not a repo rule, a rule | **The cross-repo counter**, below |
+
+Drawing this ledger is what produced the counters. Rows 1–6 were already watched two and three times
+over, by four Opus lenses and two whole review lanes; rows 7, 9 and 10 had nothing at all — and
+every one of them is **countable**, which is to say free. That is the taxonomy's own finding pointed
+at this design: *the current system spends models on everything it already covers and counts nothing
+in the places it doesn't. The dreamboat is not more model passes.*
+
+### The three free counters
+
+| Counter | Fires on | Counts | Sees |
 |---|---|---|---|
-| **Diff** | Opus | CI green | Defects and spec conformance — lane 07. Catches almost nothing else |
-| **Transcript** | Opus | Session end, batched | The moment an agent **guessed at intent and moved on** — hedge language before a consequential choice, a requirement restated in weaker terms, an assumption stated once and never revisited. Correct-looking code with a wrong premise leaves fingerprints in the transcript that are invisible in the diff |
-| **Decision log** | Opus | An ADR or ruling recorded | Contradiction: *"you ruled in March that X, this week you ruled Y — one of these is stale."* It never pre-answers on the owner's behalf |
-| **Spec** | Haiku | A merge touching a module | Drift. A lying spec is worse than no spec, because every agent downstream believes it forever |
-| **Coupling** | Opus, high effort | N landings in a module since its last read | Duplicated concepts, three implementations of one idea, a module that has quietly grown a second responsibility. Output is a small number of ranked refactor issues |
+| **Parity** | A slice published, beside its siblings | A structural shape its sibling units have and it does not. Absence is only ever visible by comparison | 7 |
+| **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
+| **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
+
+None of the three spends a model, and all three can run on every push without ADR-0029's problem:
+counting produces no commits, so it cannot feed on its own output. A count is also recomputed rather
+than stored, so nothing a counter says can go stale — which is the defect that made 43% of Lumaria's
+four weeks of inbox findings dead on arrival.
+
+**The cross-repo counter is the mechanism C5's originating question asked for** — *"this repo owns
+the skills so when it makes changes like that which should effect our other repos how do we catch
+that without fail?"* It is also the only thing on this page whose value grows with the **estate**
+rather than with the pipeline, which is what turns §11's scope question from a blocker into a
+sequencing question: it is worth building at two repos and worth more at twenty.
 
 The transcript lens is probably the highest-yield item on this page and it is **blocked on blocker
 4**: capture died 2026-05-21, and `cleanupPeriodDays: 30` means every day without a recorder
 permanently destroys a day of corpus. It matters *more* under autonomy — when nobody is watching,
 the transcript is the only record of what went wrong.
 
-**Every lens produces issues, never notifications.** The brief is the only thing that reaches the
-owner.
+**Every lens and counter produces issues, never notifications.** The brief is the only thing that
+reaches the owner.
 
-**Every lens is asked whether it ever fired**, at the event that would add another lens of its
-kind — the generalisation of [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md).
-**Retires blocker 3:** 36 lint rules and 30 ADRs exist and not one has been asked whether it caught
-anything, because nothing in the estate points backwards.
+**Everything that claims to catch something is asked whether it ever did**, at the event that would
+add another of its kind — the generalisation of
+[ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md). That is
+the lenses and counters here, and it is also **the lint rules and the ADRs**, which is where blocker
+3's evidence actually lives: 36 rules from 5 standards passes and 30 ADRs in a month, not one of
+them ever asked. A lens audit that covers only lenses retires the blocker for the newest thing in
+the estate and leaves the oldest untouched. **Retires blocker 3** on that condition, and only on it.
 
 **Cut:** the Foundry's cold-user walkthrough and persona panel. Both need a deployed product with
 users; nothing in the estate has one today. They come back the day a repo does — as a lens on
@@ -403,11 +541,11 @@ screen is slow; reacting to something concrete is instant. Every mechanism here 
 into the second. This is where `GOAL.md`'s "visual and spatial verdicts" boundary lives — #127's
 cleanest finding was that the best-performing month was the one where the human held the eval loop.
 
-1. **Freeze the system, allow only composition.** Direction picked once, on a canvas, then frozen
+1. ⬤ **owner · Freeze the system, allow only composition.** Direction picked once, on a canvas, then frozen
    into tokens and a component library. After that, agents compose only from what exists — a new
    colour, spacing value or font size is a `design/request` issue, and the design-system lint in the
    gauntlet is what makes the freeze real rather than aspirational.
-2. **Variants for anything novel.** Three real versions, all deployed, owner points. The highest-
+2. ⬤ **owner · Variants for anything novel.** Three real versions, all deployed, owner points. The highest-
    bandwidth taste input that exists, because recognising is the thing prose is worst at capturing.
 
 **Deliberate omission:** no agent pre-answers taste questions in the owner's voice from a corpus of
@@ -435,7 +573,7 @@ converts money directly into rot.
 withdrawn rather than repeated if the world moved past it. Coming back from two weeks away means a
 short current queue, not forty stale questions about a version that no longer exists.
 
-**The brief** is the only thing permitted to reach the owner. It reads everything that happened,
+⬤ **owner · the brief** is the only thing permitted to reach the owner. It reads everything that happened,
 writes sixty seconds of English, and batches decisions **by topic** so five related questions get
 answered at once instead of five context switches. It publishes as a page and pushes one
 notification.
@@ -482,7 +620,8 @@ Ordered by `GOAL.md` §4, because nothing further down is optional for anything 
 | 5 | **Acceptance lane** (04) + the immutability rule in CI | The premise itself | Weeks. The unglamorous one, and skipping it is the reliable way to fail |
 | 6 | **Spec on a runner** (lane 02) | Blocker 2 | Weeks |
 | 7 | **Build + integrate** (lanes 05, 08) — implementer, fixer, warden | Blocker 2 | Weeks |
-| 8 | **Lenses + the backwards question** (§6) | Blocker 3 | Ongoing, event-attached |
+| 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waits on move 3 |
+| 8b | **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | Ongoing, event-attached |
 | 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
 
 **The bootstrap has an expiry.** Until move 7 lands, work on this repo is driven by era-6 `/drain`
@@ -500,34 +639,123 @@ which is the best argument for spending the hour at the top of the pipeline rath
 
 ## 11 · Open questions
 
-Each needs a decision before the lane it blocks can be built. None is a question the owner cannot
-answer.
+Each needs a decision before the lane it blocks can be built. They are **not all the same kind**,
+and C2 says the difference is the whole point. An ⬤ **owner** question is about destination, scope
+or spend — his to answer, and nobody else's. A **measured** question has a right answer that no one
+currently holds the number for, and handing it to him as a choice is the sizing quiz commit
+`68b071f` deleted, rebuilt in a document that claims to forbid it.
 
 1. **Where does the seam picker live** — lane 02, so the interface contract exists before slicing
-   (the Foundry), or lane 03 where it is built today? No constraint decides it; a measurement might.
-2. **What is the daily spend ceiling** (§8)? A plan-tier question before it is an engineering one,
-   and the governor cannot be built without a real number. ~$1,661 API-equivalent over 28 days is
-   the only figure on record.
-3. **Which repos are in scope?** The lanes assume Lumaria + this repo, but the estate is **20+
-   repos**, not four — PWPP-Projects and 3D-Printing are not the only others. Intake is scoped to
-   this repo alone until there is evidence about where ideas actually arrive. Do the rest get the
-   full pipeline, only the gauntlet, or nothing?
-4. **Does the acceptance lane apply to non-code work?** Lumaria is code. A 3D-printing or electrical
-   ticket has no `tests/acceptance/` to make immutable, and lane 04 is the load-bearing gate.
+   (the Foundry), or lane 03 where it is built today? *Measured, not owner.* No constraint decides
+   it and it is not a destination call. The built placement keeps its place until a slice fails in a
+   way that names the answer.
+2. ⬤ **What is the daily spend ceiling** (§8)? *Owner.* A plan-tier question before it is an
+   engineering one, and the governor cannot be built without a real number. ~$1,661 API-equivalent
+   over 28 days is the only figure on record.
+3. ⬤ **How far does the pipeline spread, and in what order?** *Owner — partly answered.* The
+   sequence is ruled: **this repo first, as the dogfood**, then **Lumaria**, which is the only repo
+   where both eras ran on one codebase and therefore the only place an honest before/after exists.
+   What the rest of the estate gets — 20+ repos, not four — is still open. The recommendation on
+   this page is **the gauntlet and the cross-repo counter only**: both are free or nearly so, both
+   are the parts C5's originating question actually asked for, and neither needs a spec lane to
+   exist. Full pipeline stays opt-in per repo, on evidence that ideas arrive there.
+4. **Does the acceptance lane apply to non-code work?** *Measured, then owner.* Lumaria is code. A
+   3D-printing or electrical ticket has no `tests/acceptance/` to make immutable, and lane 04 is the
+   load-bearing gate — so those repos get a different gate or they do not get the pipeline. Question
+   3 probably settles this one on its way past.
 5. **Is there a tenth lane for the machinery's own defects?** agent-skills
    [#134](https://github.com/collod873/agent-skills/issues/134) asks the same thing and is still
    open: where does a run file a defect it finds in the run itself, without sweeping its own landing?
    The candidate rule, unruled: **the machine may file defects against itself but never features** —
    a defect has a failure that already happened, a feature is an opinion about what would be better,
    and opinions are where August's 82% machinery share came from.
-6. **Do agent-authored observations get a document type of their own?** [ADR-0005](docs/adr/0005-accepting-a-shaped-idea-is-what-files-its-adrs.md)
-   covers rulings made at shaping time. It does not cover what an implementer *learns* mid-run. The
-   proposed bar is **write-on-surprise** — at the end of every run, one question: *what did you learn
-   that, had you known it at the start, would have changed what you did?* Nothing means nothing gets
-   written. Where that lands (`docs/findings/`, the module's `CONTEXT.md`, an ADR) is unruled.
-7. **Does an unread document get deleted automatically?** The generalisation of
+6. **Does an unread document get deleted automatically?** *Measured.* The generalisation of
    [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) to
    prose: ask a finding whether it was ever loaded into a context where it changed an outcome, at
    the event that would add another of its kind, and delete it if never. This is the only version of
-   pruning that survives C4, and it is only safe if it can never touch something the owner wrote —
-   which depends on question 6.
+   pruning that survives C4. It used to hang on an unruled question about where agent-authored
+   observations live; it no longer does. The safety condition — that pruning can never reach
+   something the owner wrote — is ADR-0006's signing line.
+
+**Ruled while this page was being scored.** Two things that sat here as open questions are now
+records, and the lanes above reflect them rather than proposing them:
+
+- [ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md) — the
+  shaper routes every item, so the short path is not defects-only. §01a.
+- [ADR-0008](docs/adr/0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md) — a run
+  ends by writing what surprised it into the module's `CONTEXT.md`, or writing nothing. §05, and it
+  is what gives W6 a home in the machine instead of a line in this list.
+
+---
+
+## 12 · The scorecard
+
+`GOAL.md` §2 says each constraint is testable — *a design either satisfies it or it doesn't* — and
+§0 says a proposed lane gets held against all seven. This document is a proposal. Asserting
+compliance in prose while never running the grid is how the map ends up with the same blind spot as
+the thing it replaced.
+
+**✓** satisfies · **⚠** open, named below · **—** the constraint does not bear on this lane
+
+| | C1 speed | C2 answerable | C3 event | C4 grooming | C5 coverage | C6 sessions | C7 batched |
+|---|---|---|---|---|---|---|---|
+| **00** Intake | ✓ | ✓ | ✓ | ⚠ | — | — | ✓ |
+| **01** Shape | ⚠ | ✓ | ✓ | — | — | — | ✓ |
+| **01a** Route | ✓ | ✓ | ✓ | — | — | — | ✓ |
+| **02** Spec | ⚠ | ✓ | ✓ | — | — | — | ✓ |
+| **03** Slice | ✓ | — | ✓ | — | — | — | — |
+| **04** Acceptance | ✓ | — | ✓ | ✓ | ✓ | — | — |
+| **05** Build | ✓ | — | ✓ | — | ⚠ | — | ✓ |
+| **06** Verify | ✓ | — | ✓ | ✓ | ✓ | — | — |
+| **07** Review | ⚠ | — | ✓ | — | ✓ | — | ✓ |
+| **08** Integrate | ✓ | — | ✓ | — | ✓ | — | — |
+| **09** Close | ✓ | — | ✓ | ✓ | ✓ | — | — |
+| **§6** Lenses + counters | ✓ | — | ✓ | ✓ | ⚠ | — | ✓ |
+| **§7** Taste | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| **§8** Governor + brief | ✓ | ✓ | ✓ | ✓ | — | — | ⚠ |
+| **§1–2** Substrate | ✓ | — | ✓ | ✓ | — | ✓ | ✓ |
+
+### C1's arithmetic
+
+The per-lane costs exist so this can be computed rather than argued. For **one line of change**:
+
+| Path | Model stages | Owner touches |
+|---|---|---|
+| **Short** (00 → 01 → 05 → 06 → 07 → 08 → 09) | 7, plus 3 per review finding | **1** — two minutes |
+| **Long** (adds 02, 03, 04) | 13+ | **2** — plus 5–15 minutes |
+
+Era 4 died at ~7 plan steps for ~3 edits in 1 file. The short path lands on the same number — and
+the distinction that matters is that **era 4's seven steps were his.** Seven machine stages costing
+one two-minute click is not the same object as seven plan steps costing an afternoon of attention,
+which is exactly why routing had to become a machine call
+([ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md)) rather
+than a policy that sends every feature long.
+
+### The eight ⚠ cells
+
+Named so that "scored against C1–C7" has a residue rather than a verdict:
+
+1. **00 / C4** — intake templates are per-repo copies, and GitHub cannot centralise defaults for a
+   private estate. At two repos that is a file; at twenty it is `/sync-skills`, which §9 deletes for
+   exactly this. Bounded by question 3 and by nothing else.
+2. **01 / C1** — three model stages spend before a line exists, on an idea that may be killed. The
+   stage-1 refusal bounds it and the whole chain is under a dollar, but **the sweep's kill rate has
+   never been measured**, and that number is what says whether the shaper is earning its stage.
+3. **02 / C1** — 5–15 owner minutes is the largest single owner cost in the system. It is on the
+   long path only, which is now the whole load-bearing job of ADR-0007's routing.
+4. **05 / C5** — write-on-surprise is real class-4 coverage but is **uncalibrated**. A bar set at
+   "surprise" with no measured rate either floods `CONTEXT.md` or never fires, and only §6's
+   backwards question will say which.
+5. **07 / C1** — the most expensive lane per unit, and **three refuters is a guess.** There is no
+   measured false-alarm rate to size it against; C7 is the argument for having refuters at all, not
+   for having three.
+6. **§6 / C5** — classes 7, 9 and 10 now have mechanisms **on paper**. Nothing is built, nothing is
+   measured, and class 8 is covered by two halves that arrive in different moves.
+7. **§8 / C7** — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have
+   **never been measured against this owner's actual answer rate**, which is the only number that
+   makes either of them right.
+8. **§11 Q2 / C7** — the spend ceiling is unruled, and the governor cannot be built without it.
+
+Six of the eight are the same shape: **a number nobody has measured yet.** That is the honest state
+of a design drawn before the machine exists, and it is what §6's backwards question is for — every
+one of them is a question asked at an event, not on a review cycle.
