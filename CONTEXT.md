@@ -57,10 +57,22 @@ The property of a gate that lets the action through when the gate itself errors.
 system this is not a degraded gate; it is not a gate.
 _Avoid_: soft fail, non-blocking, best-effort
 
+**Edge**:
+One transition between two states of a work item, named by the event that fires it. The unit the
+design is drawn in: an edge with no event is not an edge, and a verb that lands on no edge does not
+survive the map.
+_Avoid_: transition, hop, link, arrow
+
 **Connector**:
 Whatever fires the next edge of the pipeline without a human keystroke. Named separately from the
 work it starts, because the work already exists and the connector is what is missing.
 _Avoid_: trigger, automation, orchestrator, glue
+
+**Lens**:
+A standing reader that files issues about a class of evidence nobody asked it to look at. Distinct
+from a gate because it refuses nothing, and from a cadence because it fires on the event that makes
+its read non-vacuous — never on a clock.
+_Avoid_: audit, scan, monitor, watcher
 
 **Refusal**:
 A gate that fires before a run spends model time. The distinction from Gate is cost: a refusal is
@@ -68,6 +80,11 @@ free when it fires, so it can be cheap and unapologetic where a late gate cannot
 _Avoid_: precondition, guard, validation, check
 
 ### The pipeline
+
+**Lane**:
+A named group of edges a work item passes through in order, holding one kind of judgement — shaping,
+specifying, slicing, building. Numbered because the order is real: a work item cannot skip one.
+_Avoid_: stage, phase, step, pipeline segment
 
 **Spec**:
 The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue — a spec

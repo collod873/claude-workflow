@@ -3,9 +3,10 @@
 **Compiled:** 2026-08-21 · **Status:** the charter. Everything else in this repo is evidence for it
 or work toward it.
 
-`INDEX.md` says where everything is. This says what it is all *for*. When a proposal arrives —
-a skill, a hook, a connector, an eighth era — it gets scored against §2. A proposal that fails a
-constraint is not a smaller version of the goal; it is a different goal.
+`INDEX.md` says where everything is. `DESIGN.md` says what the machine *is* — every edge, its
+event, its refusal. This says what it is all *for*. When a proposal arrives — a skill, a hook, a
+connector, an eighth era — it gets scored against §2. A proposal that fails a constraint is not a
+smaller version of the goal; it is a different goal.
 
 ---
 
