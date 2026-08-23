@@ -89,6 +89,13 @@ run_check typecheck "$bin_dir/tsc" --noEmit &
 pids+=($!)
 
 if [ "$venue" = "turn" ] && [ -n "$target" ]; then
+  # A target that is not there is a usage problem, not a finding. eslint's answer to a missing
+  # path is a hard error, and reporting that as a lint failure would tell Claude its code is
+  # broken because a file moved.
+  if [ ! -f "$target" ]; then
+    echo "gauntlet: $target does not exist — checks not run" >&2
+    exit 2
+  fi
   run_check lint "$bin_dir/eslint" "$target" &
 else
   run_check lint "$bin_dir/eslint" "$repo_root" &

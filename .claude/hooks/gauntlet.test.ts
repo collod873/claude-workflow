@@ -14,6 +14,17 @@ import { afterEach, describe, expect, it } from "vitest";
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const HOOK = join(REPO_ROOT, ".claude/hooks/gauntlet.sh");
 
+/** bin/gauntlet's "the checks never ran" exit code, which must never surface as a finding. */
+const COULD_NOT_RUN = 2;
+
+/**
+ * The few cases below that drive the real tsc and eslint rather than a stub. A cold GitHub runner
+ * takes several seconds where this workstation takes under one, and vitest's 5s default turns that
+ * difference into a red build — an environment flake in the meta-layer, which is the one thing the
+ * gauntlet may not become.
+ */
+const REAL_TOOLCHAIN = 120_000;
+
 type HookResult = { status: number | null; stdout: string; stderr: string };
 
 function runHook(venue: string, payload: string, env: Record<string, string> = {}): HookResult {
@@ -51,12 +62,16 @@ const editOf = (filePath: string) =>
   JSON.stringify({ hook_event_name: "PostToolUse", tool_input: { file_path: filePath } });
 
 describe("the in-turn venue", () => {
-  it("says nothing about a file that already passes", () => {
-    const result = runHook("turn", editOf(".Workflow/agent-workflows/shared/reason.ts"));
+  it(
+    "says nothing about a file that already passes",
+    () => {
+      const result = runHook("turn", editOf(".Workflow/agent-workflows/shared/reason.ts"));
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
-  });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("");
+    },
+    REAL_TOOLCHAIN,
+  );
 
   it("hands a failure back to Claude rather than refusing the edit", () => {
     const gauntlet = stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n");
@@ -129,7 +144,7 @@ describe("failing open", () => {
   it("stays quiet when the gauntlet could not run its checks", () => {
     // Exit 2 is not a finding. Reporting it as one would tell Claude its code is broken because
     // node_modules is missing.
-    const gauntlet = stubGauntlet(2, "", "gauntlet: no node on PATH — checks not run\n");
+    const gauntlet = stubGauntlet(COULD_NOT_RUN, "", "gauntlet: no node on PATH — checks not run\n");
 
     const result = runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: gauntlet });
 
@@ -146,14 +161,19 @@ describe("failing open", () => {
     expect(result.stdout).toBe("");
   });
 
-  it("stays quiet when node cannot be found at all", () => {
-    // The shim's own degraded case, and the one that actually bites: hooks run in a shell that
-    // does not inherit a login PATH, and on this machine node is not on a bare one.
+  it("survives a shell with no usable PATH and no HOME", () => {
+    // The shim's own degraded case. Whether node turns up in a standard directory is a fact about
+    // the machine — it does on a GitHub runner and does not on this workstation — so the assertion
+    // is the contract that holds either way: exit 0, and nothing that isn't valid hook output.
+    // An earlier version of this test asserted the not-found branch specifically and went red on
+    // the runner only, which is the exact flake shape DESIGN.md §06 makes a precondition.
+    const gauntlet = stubGauntlet(COULD_NOT_RUN);
+
     const result = spawnSync(HOOK, ["turn"], {
       input: editOf("a.ts"),
       encoding: "utf8",
       cwd: REPO_ROOT,
-      env: { PATH: "/nonexistent", HOME: "/nonexistent" },
+      env: { PATH: "/nonexistent", HOME: "/nonexistent", GAUNTLET_BIN: gauntlet },
     });
 
     expect(result.status).toBe(0);
@@ -176,17 +196,31 @@ describe("failing open", () => {
 });
 
 describe("the check runner", () => {
-  it("runs its checks with nothing but node on a scrubbed PATH", () => {
-    // The venue that actually happens: a hook shell with no login PATH. This drives the real tsc
-    // and eslint, so it also proves the tool shims resolve.
-    const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), ["turn", "bin/node-on-path.sh"], {
+  it(
+    "runs its checks with nothing but node on a scrubbed PATH",
+    () => {
+      // The venue that actually happens: a hook shell with no login PATH. This drives the real tsc
+      // and eslint, so it also proves the tool shims resolve.
+      const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), ["turn", "bin/node-on-path.sh"], {
+        encoding: "utf8",
+        cwd: REPO_ROOT,
+        env: { PATH: "/nonexistent", HOME: process.env.HOME ?? "" },
+      });
+
+      expect(run.stdout).toBe("");
+      expect(run.status).toBe(0);
+    },
+    REAL_TOOLCHAIN,
+  );
+
+  it("will not report a missing file as a lint failure", () => {
+    const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), ["turn", "no-such-file.ts"], {
       encoding: "utf8",
       cwd: REPO_ROOT,
-      env: { PATH: "/nonexistent", HOME: process.env.HOME ?? "" },
     });
 
+    expect(run.status).toBe(COULD_NOT_RUN);
     expect(run.stdout).toBe("");
-    expect(run.status).toBe(0);
   });
 
   it("refuses an unknown venue rather than silently checking nothing", () => {
