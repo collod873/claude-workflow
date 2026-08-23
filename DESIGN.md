@@ -155,6 +155,13 @@ deliberately written down nowhere, so no agent is primed to volunteer ideas of i
 system becoming its own biggest customer, and an invitation in `CLAUDE.md` is read at the start of
 every session.
 
+**The one exception is a defect in the machinery itself**, which any run may file unasked —
+[ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md). Defects
+only, never features, and **always into this repo whichever repo the run was working in**: a lane
+that misfires in Lumaria is not a Lumaria bug, and filing it beside Lumaria's product bugs buries it
+where nobody who can fix it is looking. That is why the lane-00 scope note below is about *ideas*
+and not about defects.
+
 **Scope: this repo only**, until there is evidence about which repos ideas actually arrive for.
 Adding another is a copied file. Note that defaults cannot be centralised — GitHub requires a
 public `.github` repository for default community health files, which does not cover a private
@@ -449,6 +456,7 @@ Nothing runs on a clock. Every row is an event. *(C3, and
 | A session ends | Transcript captured, then read (blocker 4); corrections counted |
 | A commit is reverted, or added and deleted the same day | Correction counter — a failure already labelled by whoever reverted it |
 | A finding is recorded, in any repo | Cross-repo slug match |
+| A run hits a defect in the machinery | Filed as a `bug` in **this** repo, whichever repo the run was in (ADR-0009) |
 | Nth landing in a module since its last read | Coupling lens |
 | Owner comments on a queued decision | The lane waiting on that answer resumes, within the minute |
 | **The brief window opens, and the queue is non-empty** | The brief publishes and pushes once. Empty queue → silence |
@@ -513,6 +521,12 @@ the skills so when it makes changes like that which should effect our other repo
 that without fail?"* It is also the only thing on this page whose value grows with the **estate**
 rather than with the pipeline, which is what turns §11's scope question from a blocker into a
 sequencing question: it is worth building at two repos and worth more at twenty.
+
+It is also the carrier for a machinery defect found outside this repo. ADR-0009 rules that such a
+defect is filed here, and a run dispatched into Lumaria has no write path back — so until one
+exists, the run records the defect in its own output and the counter walks it home. That makes the
+counter load-bearing rather than merely cheap, and it is the reason move 8a's cross-repo half should
+not wait on the rest of that row.
 
 The transcript lens is probably the highest-yield item on this page and it is **blocked on blocker
 4**: capture died 2026-05-21, and `cleanupPeriodDays: 30` means every day without a recorder
@@ -663,13 +677,7 @@ currently holds the number for, and handing it to him as a choice is the sizing 
    3D-printing or electrical ticket has no `tests/acceptance/` to make immutable, and lane 04 is the
    load-bearing gate — so those repos get a different gate or they do not get the pipeline. Question
    3 probably settles this one on its way past.
-5. **Is there a tenth lane for the machinery's own defects?** agent-skills
-   [#134](https://github.com/collod873/agent-skills/issues/134) asks the same thing and is still
-   open: where does a run file a defect it finds in the run itself, without sweeping its own landing?
-   The candidate rule, unruled: **the machine may file defects against itself but never features** —
-   a defect has a failure that already happened, a feature is an opinion about what would be better,
-   and opinions are where August's 82% machinery share came from.
-6. **Does an unread document get deleted automatically?** *Measured.* The generalisation of
+5. **Does an unread document get deleted automatically?** *Measured.* The generalisation of
    [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) to
    prose: ask a finding whether it was ever loaded into a context where it changed an outcome, at
    the event that would add another of its kind, and delete it if never. This is the only version of
@@ -677,7 +685,7 @@ currently holds the number for, and handing it to him as a choice is the sizing 
    observations live; it no longer does. The safety condition — that pruning can never reach
    something the owner wrote — is ADR-0006's signing line.
 
-**Ruled while this page was being scored.** Two things that sat here as open questions are now
+**Ruled while this page was being scored.** Three things that sat here as open questions are now
 records, and the lanes above reflect them rather than proposing them:
 
 - [ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md) — the
@@ -685,6 +693,10 @@ records, and the lanes above reflect them rather than proposing them:
 - [ADR-0008](docs/adr/0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md) — a run
   ends by writing what surprised it into the module's `CONTEXT.md`, or writing nothing. §05, and it
   is what gives W6 a home in the machine instead of a line in this list.
+- [ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md) — the
+  machine may file defects against itself but never features, and a machinery defect is filed **in
+  this repo whichever repo the run was working in**. There is no tenth lane; agent-skills
+  [#134](https://github.com/collod873/agent-skills/issues/134) is answered. §00 and §6.
 
 ---
 
