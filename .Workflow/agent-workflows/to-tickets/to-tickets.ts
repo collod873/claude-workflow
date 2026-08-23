@@ -150,7 +150,7 @@ const AUDIT_STAGE: StageDef<Plan> = {
 const TYPED_STAGE_NAMES = ["seam-sweep", "slice"] as const;
 type TypedStageName = (typeof TYPED_STAGE_NAMES)[number];
 
-const STAGE_NAMES = [...TYPED_STAGE_NAMES, "audit-and-publish"] as const;
+export const STAGE_NAMES = [...TYPED_STAGE_NAMES, "audit-and-publish"] as const;
 type StageName = (typeof STAGE_NAMES)[number];
 
 function isStageName(value: string | undefined): value is StageName {
