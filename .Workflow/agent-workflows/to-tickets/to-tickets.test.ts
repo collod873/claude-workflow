@@ -2,16 +2,25 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
+import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { createFakeStage } from "../shared/stage.fake";
-import { handoffPath, runAuditAndPublish, runNamedStage, writeFailure } from "./to-tickets";
+import { handoffPath, runNamedStage, writeFailure } from "./to-tickets";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
+
+/** A `GhExec` for a stage that must never touch GitHub — seam-sweep and
+ * slice take one only because `runNamedStage`'s dispatch is uniform across
+ * every stage; asserting neither calls it is worth more than a silent fake. */
+const unreachableGh: GhExec = (args) => {
+  throw new Error(`gh should not have been called: ${JSON.stringify(args)}`);
+};
 
 describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
   it("writes a schema-valid manifest to the handoff path, with a fake StageExec returning a canned response", () => {
@@ -20,7 +29,7 @@ describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
     process.env.FAILURE_REASON_PATH = target;
     const fake = createFakeStage('<output>["a seam"]</output>');
 
-    const output = runNamedStage("seam-sweep", "13", fake.exec);
+    const output = runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
     expect(output).toEqual(["a seam"]);
     expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(["a seam"]);
@@ -41,7 +50,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const plan = validSlicePlan();
     const fake = createFakeStage(`<output>${JSON.stringify(plan)}</output>`);
 
-    const output = runNamedStage("slice", "13", fake.exec);
+    const output = runNamedStage("slice", "13", fake.exec, unreachableGh);
 
     expect(output).toEqual(plan);
     expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(plan);
@@ -57,11 +66,11 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const badPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
     const fake = createFakeStage(`<output>${JSON.stringify(badPlan)}</output>`);
 
-    expect(() => runNamedStage("slice", "13", fake.exec)).toThrow(/depends on itself/);
+    expect(() => runNamedStage("slice", "13", fake.exec, unreachableGh)).toThrow(/depends on itself/);
   });
 });
 
-describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
+describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhExec)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -83,7 +92,7 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
     );
     const fakeGh = createFakeGh();
 
-    const published = runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+    const published = runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh) as PublishedIssue[];
 
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
     expect(fakeStage.calls).toHaveLength(1);
@@ -101,20 +110,22 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+    runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
 
     expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
   });
 
-  it("prints nothing when the auditor's response opens straight into its <output> block", () => {
+  it("logs only the success line — no notes — when the auditor's response opens straight into its <output> block", () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const fakeStage = createFakeStage(`<output>${JSON.stringify(slicedPlan)}</output>`);
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    runAuditAndPublish("13", fakeStage.exec, fakeGh.gh);
+    runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(logSpy.mock.calls.map((call) => call[0])).toEqual([
+      "audit-and-publish: published 1 sub-issue under #13",
+    ]);
   });
 
   it("exits nonzero without publishing when the audited plan fails validate-graph.ts", () => {
@@ -123,7 +134,9 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
     const fakeStage = createFakeStage(`<output>${JSON.stringify(selfReferencingPlan)}</output>`);
     const fakeGh = createFakeGh();
 
-    expect(() => runAuditAndPublish("13", fakeStage.exec, fakeGh.gh)).toThrow(/depends on itself/);
+    expect(() => runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).toThrow(
+      /depends on itself/,
+    );
     expect(fakeGh.calls).toHaveLength(0);
   });
 
@@ -132,7 +145,9 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
     const fakeStage = createFakeStage(`<output>[{"title":"Missing everything else"}]</output>`);
     const fakeGh = createFakeGh();
 
-    expect(() => runAuditAndPublish("13", fakeStage.exec, fakeGh.gh)).toThrow(/failed schema validation/);
+    expect(() => runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).toThrow(
+      /failed schema validation/,
+    );
     expect(fakeGh.calls).toHaveLength(0);
   });
 });
