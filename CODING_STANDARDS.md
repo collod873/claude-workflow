@@ -18,3 +18,15 @@ the test is actually about.
 `shared/`.
 *Why:* a field added to `Slice` then breaks one place instead of eight, and a test that names seven
 fields to exercise one hides which field it is about.
+
+---
+
+**A stage is declared in one place, and the workflow is checked against it.** One `StageDef` in one
+exported record keyed by stage name; the name tuple, the dispatch and the CLI branch derive from
+that record's keys, not maintained alongside it. A test asserts the record's keys and
+`to-tickets.yml`'s `--stage` steps are the same set — no compiler sees across that language
+boundary, so a test does.
+*Red flag:* adding a stage edits anything beyond (a) that record and (b) one step in
+`.github/workflows/to-tickets.yml` — or edits (a) without (b).
+*Why:* seam-sweep, slice and audit each cost four to five coordinated edits, and the one edit
+nothing watched — the absent workflow step — makes a stage silently never run.
