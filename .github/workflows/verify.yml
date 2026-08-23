@@ -1,0 +1,40 @@
+name: Verify
+
+# This is not a gate in CONTEXT.md's sense — it refuses nothing. It runs after the push has
+# already landed on the ref, so the worst it can do is report a red run on a commit that is
+# already there. This repo is private, has never had a pull request, and has no branch
+# protection, so nothing here can stop a break from reaching `main` before it lands. It is
+# telemetry: chain of custody that typecheck and test actually ran, made observable by a
+# non-agent, on a commit anyone can point at — not a refusal.
+#
+# Node arrives pinned to 24, with `npm ci` installing exactly what's in `package-lock.json`,
+# matching the block already in `.github/workflows/to-tickets.yml`.
+
+"on":
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
