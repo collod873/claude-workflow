@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeGh } from "../shared/gh.fake";
+import { withHandoffDir } from "../shared/handoff-dir.fixture";
+import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
 import { createFakeStage } from "../shared/stage.fake";
@@ -13,21 +14,8 @@ const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
 
 describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
-  const originalEnv = process.env.FAILURE_REASON_PATH;
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env.FAILURE_REASON_PATH;
-    } else {
-      process.env.FAILURE_REASON_PATH = originalEnv;
-    }
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
   it("writes a schema-valid manifest to the handoff path, with a fake StageExec returning a canned response", () => {
-    dir = mkdtempSync(join(tmpdir(), "run-named-stage-"));
+    const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     const fake = createFakeStage('<output>["a seam"]</output>');
@@ -41,25 +29,12 @@ describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
 });
 
 describe("runNamedStage (slice, against the fake StageExec)", () => {
-  const originalEnv = process.env.FAILURE_REASON_PATH;
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env.FAILURE_REASON_PATH;
-    } else {
-      process.env.FAILURE_REASON_PATH = originalEnv;
-    }
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
   function validSlicePlan() {
     return [slice({ title: "One slice" })];
   }
 
   it("reads the seam-sweep handoff as SEAM_MANIFEST and writes a schema- and graph-valid plan to the handoff path", () => {
-    dir = mkdtempSync(join(tmpdir(), "run-named-stage-slice-"));
+    const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
@@ -75,7 +50,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
   });
 
   it("throws naming the offending slice when the plan passes schema but the graph is malformed", () => {
-    dir = mkdtempSync(join(tmpdir(), "run-named-stage-slice-bad-graph-"));
+    const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
@@ -87,22 +62,12 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
 });
 
 describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
-  const originalEnv = process.env.FAILURE_REASON_PATH;
-  let dir: string | undefined;
-
   afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env.FAILURE_REASON_PATH;
-    } else {
-      process.env.FAILURE_REASON_PATH = originalEnv;
-    }
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
     vi.restoreAllMocks();
   });
 
   function seedHandoffWithSlicedPlan(): { target: string; plan: Slice[] } {
-    dir = mkdtempSync(join(tmpdir(), "audit-and-publish-"));
+    const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     const plan = [slice({ title: "Root" })];
@@ -173,21 +138,8 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
 });
 
 describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () => {
-  const originalEnv = process.env.FAILURE_REASON_PATH;
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env.FAILURE_REASON_PATH;
-    } else {
-      process.env.FAILURE_REASON_PATH = originalEnv;
-    }
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
   it("writes to FAILURE_REASON_PATH when the environment sets it (the runner's shape)", () => {
-    dir = mkdtempSync(join(tmpdir(), "handoff-env-set-"));
+    const dir = withHandoffDir();
     const target = join(dir, "failure_reason.txt");
     process.env.FAILURE_REASON_PATH = target;
 
@@ -199,6 +151,7 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
   });
 
   it("falls back to the repo-relative handoff path when FAILURE_REASON_PATH is unset (a local run)", () => {
+    withHandoffDir();
     delete process.env.FAILURE_REASON_PATH;
 
     expect(handoffPath()).toBe(DEFAULT_HANDOFF_PATH);
@@ -216,36 +169,9 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
  * without launching one.
  */
 describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
-  let workDir: string | undefined;
-
-  afterEach(() => {
-    if (workDir) rmSync(workDir, { recursive: true, force: true });
-    workDir = undefined;
-  });
-
-  function stubClaudeCli(stdout: string): { env: NodeJS.ProcessEnv; handoffFile: string } {
-    workDir = mkdtempSync(join(tmpdir(), "seam-sweep-cli-"));
-
-    const outputFile = join(workDir, "stub-output.txt");
-    writeFileSync(outputFile, stdout, "utf8");
-
-    const stubDir = join(workDir, "bin");
-    mkdirSync(stubDir);
-    const stubPath = join(stubDir, "claude");
-    writeFileSync(stubPath, `#!/usr/bin/env bash\ncat "${outputFile}"\n`, "utf8");
-    chmodSync(stubPath, 0o755);
-
-    const handoffFile = join(workDir, "handoff.txt");
-    const env = {
-      ...process.env,
-      PATH: `${stubDir}:${process.env.PATH ?? ""}`,
-      FAILURE_REASON_PATH: handoffFile,
-    };
-    return { env, handoffFile };
-  }
-
   it("writes a schema-valid manifest to the handoff path and exits 0", () => {
-    const { env, handoffFile } = stubClaudeCli('<output>["a seam"]</output>');
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(dir, '<output>["a seam"]</output>');
 
     execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
       env,
@@ -256,7 +182,8 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the <output> block is missing", () => {
-    const { env, handoffFile } = stubClaudeCli("no output block here, just prose");
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(dir, "no output block here, just prose");
 
     expect(() =>
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
@@ -269,7 +196,8 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", () => {
-    const { env, handoffFile } = stubClaudeCli("<output>[\"one line\\ntwo lines\"]</output>");
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(dir, "<output>[\"one line\\ntwo lines\"]</output>");
 
     expect(() =>
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
@@ -289,43 +217,12 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
  * slice reads that as its SEAM_MANIFEST input before it runs.
  */
 describe("to-tickets.ts --stage slice (CLI)", () => {
-  let workDir: string | undefined;
-
-  afterEach(() => {
-    if (workDir) rmSync(workDir, { recursive: true, force: true });
-    workDir = undefined;
-  });
-
-  function stubClaudeCliForSlice(
-    stdout: string,
-    priorManifest: string,
-  ): { env: NodeJS.ProcessEnv; handoffFile: string } {
-    workDir = mkdtempSync(join(tmpdir(), "slice-cli-"));
-
-    const outputFile = join(workDir, "stub-output.txt");
-    writeFileSync(outputFile, stdout, "utf8");
-
-    const stubDir = join(workDir, "bin");
-    mkdirSync(stubDir);
-    const stubPath = join(stubDir, "claude");
-    writeFileSync(stubPath, `#!/usr/bin/env bash\ncat "${outputFile}"\n`, "utf8");
-    chmodSync(stubPath, 0o755);
-
-    const handoffFile = join(workDir, "handoff.txt");
-    writeFileSync(handoffFile, priorManifest, "utf8");
-
-    const env = {
-      ...process.env,
-      PATH: `${stubDir}:${process.env.PATH ?? ""}`,
-      FAILURE_REASON_PATH: handoffFile,
-    };
-    return { env, handoffFile };
-  }
-
   const validPlan = [slice({ title: "One slice" })];
 
   it("writes a schema- and graph-valid plan to the handoff path and exits 0", () => {
-    const { env, handoffFile } = stubClaudeCliForSlice(
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(
+      dir,
       `<output>${JSON.stringify(validPlan)}</output>`,
       JSON.stringify(["a seam"]),
     );
@@ -340,7 +237,9 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
 
   it("writes a failure reason naming the stage and exits nonzero when the plan fails schema validation", () => {
     const badPlan = [slice({ title: "Untestable", acceptanceCriteria: [] })];
-    const { env, handoffFile } = stubClaudeCliForSlice(
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(
+      dir,
       `<output>${JSON.stringify(badPlan)}</output>`,
       JSON.stringify(["a seam"]),
     );
@@ -357,7 +256,9 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
 
   it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", () => {
     const cyclicPlan = [slice({ title: "A", dependsOn: [1] })];
-    const { env, handoffFile } = stubClaudeCliForSlice(
+    const dir = withHandoffDir();
+    const { env, handoffFile } = stubClaudeCli(
+      dir,
       `<output>${JSON.stringify(cyclicPlan)}</output>`,
       JSON.stringify(["a seam"]),
     );
