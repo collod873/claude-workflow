@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 // Capping the pool keeps one `vitest run` from claiming every core.
 export default defineConfig({
   test: {
-    include: [".Workflow/**/*.test.ts"],
+    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
     maxWorkers: 4,
   },
 });

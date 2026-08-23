@@ -1,0 +1,119 @@
+#!/bin/bash
+# The gauntlet. One check runner, called by every venue that can afford it.
+#
+# Absolute interpreter, not `/usr/bin/env bash`: git hooks and Claude Code hooks both run this in a
+# shell nobody logged into, and `env` resolves `bash` through the PATH those shells may not have.
+#
+#   bin/gauntlet turn <file>   PostToolUse   budget <1s    typecheck + lint that file
+#   bin/gauntlet stop          Stop          budget <10s   typecheck + lint + unit suite
+#   bin/gauntlet push          pre-push      budget <60s   typecheck + lint + unit suite
+#
+# A check sits at the earliest venue whose budget it fits (DESIGN.md §06, ADR-0010), because what
+# earliest buys is the cost of the *repair*, not the cost of the check: a type error caught in the
+# turn that caused it is fixed with the context still hot, and the same error caught in Actions
+# costs a cold run reconstructing what the author already knew.
+#
+# Today every check fits every venue here — the suite is ~1.7s and typecheck ~0.7s — so `stop` and
+# `push` run the same set. They stay separate names because the venues are different: `push` is the
+# one an agent has to route around deliberately, and it is the one that fails closed.
+#
+# Exit codes are three, not two, and the third is the point:
+#   0  clean
+#   1  a check failed        — a real finding
+#   2  the checks could not run — a broken gauntlet, never reported as a finding
+
+set -uo pipefail
+
+# Builtins only — `dirname` is a PATH lookup, and PATH is the thing we do not have yet.
+here="${BASH_SOURCE[0]%/*}"
+[ "$here" = "${BASH_SOURCE[0]}" ] && here="."
+repo_root="$(cd "$here/.." && pwd)"
+# shellcheck source=bin/node-on-path.sh
+. "$repo_root/bin/node-on-path.sh"
+
+venue="${1:-}"
+target="${2:-}"
+
+case "$venue" in
+  turn | stop | push) ;;
+  *)
+    echo "usage: bin/gauntlet <turn|stop|push> [file]" >&2
+    exit 2
+    ;;
+esac
+
+# The budgets DESIGN.md §06 assigns each venue, in milliseconds. Nothing enforces them — an
+# over-budget venue reports itself and keeps running, because a gauntlet that refuses to run when
+# it gets slow is a gauntlet that stops catching things exactly when the codebase got big enough
+# to need it. The report is the signal to move a check down a venue.
+case "$venue" in
+  turn) budget_ms=1000 ;;
+  stop) budget_ms=10000 ;;
+  push) budget_ms=60000 ;;
+esac
+
+if ! node_on_path; then
+  echo "gauntlet: no node on PATH — checks not run" >&2
+  exit 2
+fi
+
+bin_dir="$repo_root/node_modules/.bin"
+for tool in tsc eslint vitest; do
+  if [ ! -x "$bin_dir/$tool" ]; then
+    echo "gauntlet: $bin_dir/$tool missing — run npm ci" >&2
+    exit 2
+  fi
+done
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
+# them. That is what keeps the whole set inside the in-turn budget.
+run_check() {
+  local name="$1"
+  shift
+  if "$@" >"$tmp/$name.out" 2>&1; then
+    : >"$tmp/$name.pass"
+  fi
+}
+
+started_ms=$(($(date +%s%N) / 1000000))
+pids=()
+
+# Whole-project, at every venue including `turn`. `tsc` has no cheap single-file mode under a
+# project config — pointing it at one file drops tsconfig.json and changes what it means — and the
+# whole project costs ~0.7s, which fits. If that stops being true the check moves down a venue; it
+# does not become a worse check.
+run_check typecheck "$bin_dir/tsc" --noEmit &
+pids+=($!)
+
+if [ "$venue" = "turn" ] && [ -n "$target" ]; then
+  run_check lint "$bin_dir/eslint" "$target" &
+else
+  run_check lint "$bin_dir/eslint" "$repo_root" &
+fi
+pids+=($!)
+
+if [ "$venue" != "turn" ]; then
+  run_check test "$bin_dir/vitest" run &
+  pids+=($!)
+fi
+
+for pid in "${pids[@]}"; do wait "$pid"; done
+elapsed_ms=$((($(date +%s%N) / 1000000) - started_ms))
+
+failed=0
+for name in typecheck lint test; do
+  [ -f "$tmp/$name.out" ] || continue
+  [ -f "$tmp/$name.pass" ] && continue
+  failed=1
+  echo "--- $name ---"
+  cat "$tmp/$name.out"
+done
+
+if [ "$elapsed_ms" -gt "$budget_ms" ]; then
+  echo "gauntlet: $venue took ${elapsed_ms}ms against a ${budget_ms}ms budget" >&2
+fi
+
+exit "$failed"

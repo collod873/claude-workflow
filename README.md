@@ -28,20 +28,39 @@ to avoid, so an argument is about the substance rather than about the word.
 
 ## Status
 
-Early setup — the charter, the index and the eras artifact are the first real content. Decision
-records start now.
+Three of `DESIGN.md`'s nine lanes exist. Lane 03 (slice) runs on a runner; lane 06 (verify) runs at
+every venue below Actions; everything else is on the build order in §10.
+
+**Scope is this repo and nothing else** until the machine runs here. Other repos in the estate show
+up in these documents as evidence — a measured number, a mechanism worth stealing — never as work.
+
+## The gauntlet
+
+`bin/gauntlet <turn|stop|push>` runs typecheck, lint and the unit suite, and every venue calls it:
+a Claude Code `PostToolUse` hook, a `Stop` hook, `.husky/pre-push`, and `verify.yml`. A check sits
+at the earliest venue whose budget it fits ([ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)),
+because what earliest buys is a cheap *repair*, not a cheap check.
+
+It installs itself: `npm ci` runs `prepare`, which installs the git hooks. Nothing to remember.
+
+The two in-session venues fail open and refuse nothing — they hand the failure back while the
+context that caused it is still loaded. `pre-push` fails closed. `--no-verify` still gets past it;
+that closes with branch protection at move 10, not before.
 
 ## Layout
 
 ```
 .
-├── CLAUDE.md     # project instructions for Claude Code
-├── GOAL.md       # the charter — what we're building toward and what constrains it
-├── DESIGN.md     # the target — the machine as a state machine, lane by lane
-├── CONTEXT.md    # the glossary — what the words mean here
-├── INDEX.md      # the workflow/planning systems index
-├── bin/new-adr   # creates the next decision record from a title
-├── docs/adr/     # decision records
-├── artifacts/    # source HTML for artifacts published to claude.ai
+├── CLAUDE.md         # project instructions for Claude Code
+├── GOAL.md           # the charter — what we're building toward and what constrains it
+├── DESIGN.md         # the target — the machine as a state machine, lane by lane
+├── CONTEXT.md        # the glossary — what the words mean here
+├── INDEX.md          # the workflow/planning systems index
+├── bin/gauntlet      # the checks, one runner, called by every venue
+├── bin/new-adr       # creates the next decision record from a title
+├── .claude/hooks/    # the in-turn and turn-end venues
+├── .Workflow/        # the agent workflows themselves (lane 03 today)
+├── docs/adr/         # decision records
+├── artifacts/        # source HTML for artifacts published to claude.ai
 └── README.md
 ```

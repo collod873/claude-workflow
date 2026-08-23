@@ -1,8 +1,10 @@
 # The design
 
 **Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its nine open
-cells are [§12](#12--the-scorecard) · **Status:** the target. What the machine is, drawn from
-[`GOAL.md`](GOAL.md) rather than from the skills that exist today.
+cells are [§12](#12--the-scorecard) · **Last landed:** 2026-08-23, moves 0–1b (lane 06's free
+venues) · **Scope:** this repo only, ruled 2026-08-23 — see [§11 Q3](#11--open-questions) ·
+**Status:** the target. What the machine is, drawn from [`GOAL.md`](GOAL.md) rather than from the
+skills that exist today.
 
 `GOAL.md` says what the system is *for*. `INDEX.md` says what has been *built*. This says what the
 machine *is* — every edge from an idea to a closed ticket, what event fires it, what it refuses, and
@@ -21,8 +23,10 @@ Everything below is the Foundry re-derived against C1–C7, with three sets of c
 - **Every clock is gone.** See [ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).
   The Foundry runs six cadences; C3 and ADR-0029 forbid them. Each is re-attached to the event that
   makes it non-vacuous, which turns out to be a better trigger in every case.
-- **Sized to one operator and four live repos**, not to a SaaS product with users. Anything with no
-  repo to attach to is cut and named as cut.
+- **Sized to one operator and one repo — this one**, not to a SaaS product with users. Anything with
+  no repo to attach to is cut and named as cut. Other repos in the estate appear here only as
+  *evidence*: a measured number, a mechanism worth stealing, a failure worth not repeating. None of
+  them is a target of work on this page until this repo runs, and §11 Q3 is where that gets revisited.
 - **Every lane carries the constraint it answers to**, and the blocker it retires.
 
 ---
@@ -158,9 +162,9 @@ every session.
 **The one exception is a defect in the machinery itself**, which any run may file unasked —
 [ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md). Defects
 only, never features, and **always into this repo whichever repo the run was working in**: a lane
-that misfires in Lumaria is not a Lumaria bug, and filing it beside Lumaria's product bugs buries it
-where nobody who can fix it is looking. That is why the lane-00 scope note below is about *ideas*
-and not about defects.
+that misfires while working on a product is not that product's bug, and filing it beside that
+product's bugs buries it where nobody who can fix it is looking. That is why the lane-00 scope note
+below is about *ideas* and not about defects.
 
 **Scope: this repo only**, until there is evidence about which repos ideas actually arrive for.
 Adding another is a copied file. Note that defaults cannot be centralised — GitHub requires a
@@ -348,7 +352,7 @@ class-4 evidence out of a transcript nobody would otherwise read.
 live and does it today; that is what makes 3–6 concurrent implementers safe to run at all. Lane 08
 is the merge-time complement for the conflict disjointness cannot prevent, not a replacement for it.
 
-### 06 · Verify — *partial* (every venue exists; the checks are in the wrong ones)
+### 06 · Verify — **live below Actions**, refusing only at push
 
 > **Fires on:** every edit, every turn end, every push, every PR — one venue each. **Refuses:** the
 > edit, the turn, the push, the merge, respectively.
@@ -360,30 +364,45 @@ is the merge-time complement for the conflict disjointness cannot prevent, not a
 **Retires blocker 5** — the only unambiguous regression in the six-month record: 12 broken commits
 reached `main` in five days, all genuine breakage.
 
-**The lane is not missing mechanisms. Its checks are in the wrong venues.** Lumaria carries seven
-things that fire at the moment of an action and can genuinely refuse — `post-edit-validate.py`,
-`stop-gate.sh`, husky `pre-commit`, `pre-push`, `close-gate.py` — and every one was told not to run
-the checks that matter, `stop-gate.sh` in as many words: *"Types + tests intentionally NOT run here
-— CI owns them."* `ci.yml` runs everything and sits where it can refuse nothing.
-[`verification-boundaries-2026-08.md`](docs/research/verification-boundaries-2026-08.md) states the
-result: **every mechanism that runs tests is advisory or after the fact, and every mechanical
-mechanism runs no tests.** [ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)
-inverts that assignment, and the inversion costs no money.
+**The failure this lane was drawn against is an assignment, not an absence.** The estate's habit was
+to put every mechanism that can refuse where it runs no checks, and every check where it can refuse
+nothing — [`verification-boundaries-2026-08.md`](docs/research/verification-boundaries-2026-08.md)
+measured it: **every mechanism that runs tests is advisory or after the fact, and every mechanical
+mechanism runs no tests.** This repo started there too, with a `verify.yml` that ran everything
+after the push had already landed on `main` and no hooks at all.
+[ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md) inverts that
+assignment, and the inversion costs no money.
 
 The gauntlet, by venue. A check sits at the earliest one whose budget it fits:
 
 | Venue | Budget | Carries | Status |
 |---|---|---|---|
-| **In the turn** — `PostToolUse` on Edit/Write | <1s | typecheck and lint the touched file, fed back as tool output | hooks exist in both repos; run no types, no tests |
-| **Turn end** — `Stop` | <10s | whole-project typecheck (`tsgo`), lint on session-edited files | `stop-gate.sh` live in Lumaria, eslint + biome only |
-| **On push** — husky, self-installing via `"prepare"` | <60s | unit suite, boundary rules | installed, effectively inert — commitlint only for a normal commit |
+| **In the turn** — `PostToolUse` on Edit/Write | <1s | typecheck, and lint the touched file, fed back as tool output | **live**, ~0.7s |
+| **Turn end** — `Stop` | <10s | typecheck, lint, unit suite | **live**, ~2.0s |
+| **On push** — husky, self-installing via `"prepare"` | <60s | typecheck, lint, unit suite, boundary rules | **live**, ~2.1s, the first venue that refuses |
 | **In Actions** — on the PR | <10min | integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` live but advisory; branch protection absent and paid |
 | **Overnight** | unbounded | broad sweeps, visual regression, flake quarantine re-runs | absent, and dormant until a repo has a UI |
 
-The self-installing trick is worth stealing verbatim from `course-video-manager`: `"prepare":
-"husky"` in `package.json` plus a frozen-lockfile install in every workflow means the hook installs
-itself on the runner, so an agent's commits pass the same gate the owner's do. Fail-closed
+All four live venues call one runner, `bin/gauntlet`, which takes the venue as its argument. A check
+defined twice drifts; the venue chooses only the scope and the failure mode.
+
+**Every check fits every venue here, and that is a fact about this repo's size rather than a
+principle.** The suite is ~1.7s and typecheck ~0.7s, so the earliest-venue rule puts all three at
+`PostToolUse` — except the suite, which is held at turn end because the in-turn venue fires on every
+edit rather than every turn. When a check stops fitting a budget it moves down a venue and the venue
+reports why: `bin/gauntlet` times itself against the budgets in this table and says so when it is
+over, which is the only thing that will ever tell us to split them.
+
+The self-installing trick is stolen verbatim from `course-video-manager`: `"prepare": "husky"` in
+`package.json` plus a frozen-lockfile install in every workflow means the hook installs itself on the
+runner and in any fresh clone, so an agent's commits pass the same gate the owner's do. Fail-closed
 enforcement with no Actions job behind it.
+
+**The three below Actions fail open; the push venue fails closed.** A hook that cannot run its
+checks — no node on PATH, no `node_modules` — stays silent and lets the turn through, because a
+convenience venue that wedges every turn in the repo is worse than the defect it was hunting. The
+push venue refuses instead, because there is a human standing there who can fix it and the next
+thing downstream is `main`.
 
 **Why earliest wins is the cost of the repair, not the cost of the check.** A type error caught
 in-turn is fixed by the implementer that caused it, same turn, context still hot — free. The same
@@ -397,11 +416,16 @@ growth is *not* grooming under C4 — a gate is added at the moment a defect pro
 event that proved it, never on a review cycle. Adding every escape to Actions by default is how the
 gauntlet becomes the bottleneck it exists to prevent.
 
-**The flake precondition.** ~14 of Lumaria's 26 CI failures over 30 days are one file,
-`.claude/hooks/stop-gate.test.mjs`, always the same two cases, failing on whether `jq` is on the
-runner's PATH. Half the red is environment flake in the meta-layer. No venue is promoted to refusing
-until that is quarantined — crewops ADR-0003: *a flaky gate trains `--no-verify` and is worse than a
-slow one.*
+**The flake precondition. No venue is promoted to refusing above a flaky check** — crewops ADR-0003:
+*a flaky gate trains `--no-verify` and is worse than a slow one.* This repo's suite was green and
+~1.7s when the venues landed, so the precondition was satisfied rather than worked for.
+
+The reference case for what it is guarding against, and the shape to watch for here: elsewhere in
+the estate, ~14 of 26 CI failures over 30 days were one file, always the same two cases, failing on
+whether `jq` was on the runner's PATH. Half the red was environment flake in the meta-layer. That is
+why `bin/node-on-path.sh` exists and why the gauntlet's "could not run" is a third exit code rather
+than a failure: an environment problem reported as a finding is the whole mechanism by which a repo
+learns to ignore its gates.
 
 ### 07 · Review — *absent*
 
@@ -558,10 +582,11 @@ rather than with the pipeline, which is what turns §11's scope question from a 
 sequencing question: it is worth building at two repos and worth more at twenty.
 
 It is also the carrier for a machinery defect found outside this repo. ADR-0009 rules that such a
-defect is filed here, and a run dispatched into Lumaria has no write path back — so until one
+defect is filed here, and a run dispatched into another repo has no write path back — so until one
 exists, the run records the defect in its own output and the counter walks it home. That makes the
 counter load-bearing rather than merely cheap, and it is the reason move 8a's cross-repo half should
-not wait on the rest of that row.
+not wait on the rest of that row. It has nothing to count until a second repo is in scope, which is
+question 3, so it is built and left idle rather than built late.
 
 The transcript lens is probably the highest-yield item on this page and it is **blocked on blocker
 4**: capture died 2026-05-21, and `cleanupPeriodDays: 30` means every day without a recorder
@@ -666,9 +691,9 @@ work drains onto the owner.
 
 | # | Move | Retires | Cost |
 |---|---|---|---|
-| 0 | **Quarantine the flake** — `stop-gate.test.mjs`, ~14 of 26 CI failures, `jq` on the runner's PATH | The precondition for every gate below | An hour. Nothing may be promoted to refusing above a gate the estate has learned to ignore |
-| 1a | **The free venues** (lane 06) — types and lint in the turn, whole-project typecheck at turn end, unit suite on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | An afternoon per repo, no model spend, no plan change. The hooks already exist; they get given the checks CI was hoarding |
-| 1b | **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | An hour |
+| 0 | ✅ **Quarantine the flake** — the precondition for every gate below | — | **Nothing to do.** The suite here is green and ~1.7s; the precondition was met, not worked for. It becomes a real move the first time a check goes red for an environment reason |
+| 1a | ✅ **The free venues** (lane 06) — typecheck and lint in the turn, the whole gauntlet at turn end, the same on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | Landed. `bin/gauntlet` plus two hooks and a `pre-push`. No model spend, no plan change |
+| 1b | ✅ **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | Landed. `push` on `main` only, `paths-ignore` for Markdown, and it calls `bin/gauntlet push` so a check cannot drift between venues |
 | 2 | **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Days. The logic exists; the venue changes |
 | 3 | **Session capture**, at session time, stored durably | Blocker 4 | Days — and every day it waits destroys a day of corpus permanently |
 | 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
@@ -679,13 +704,13 @@ work drains onto the owner.
 | 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waits on move 3 |
 | 8b | **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | Ongoing, event-attached |
 | 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
-| 10 | **Branch protection + required checks** on Lumaria, then this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
+| 10 | **Branch protection + required checks** on this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
 
-**Move 10 has two dependencies the earlier draft did not name.** It costs money — every repo in the
-estate is private on a Free account, so this is a purchase, not a setting. And neither repo has ever
-opened a pull request: both land work by local merge and a direct push to `main`, which protection
-forbids. Whatever drives lane 05 by then has to open a PR and let it auto-merge on green. That is
-lane 05's shape anyway, which is why the move waits for it rather than forcing an interim.
+**Move 10 has two dependencies the earlier draft did not name.** It costs money — this repo is
+private on a Free account, so it is a purchase, not a setting. And it has never opened a pull
+request: work lands by local merge and a direct push to `main`, which protection forbids. Whatever
+drives lane 05 by then has to open a PR and let it auto-merge on green. That is lane 05's shape
+anyway, which is why the move waits for it rather than forcing an interim.
 
 **The bootstrap has an expiry.** Until move 7 lands, work on this repo is driven by era-6 `/drain`
 from the workstation, which ADR-0002 forbids. That is a scaffold, and it expires the moment lane 05
@@ -695,8 +720,8 @@ runs on a runner. Until then: **this repo does not grow files to serve era-6 ski
 declined on that basis.
 
 **Honest accounting.** Moves 2–4 are weeks where the owner is *more* in the loop, not less, and it
-will not feel like leverage. Moves 0–1 are the exception and the reason they go first: they cost an
-afternoon, spend nothing, and every hour after them is an hour of agent work that corrects itself
+will not feel like leverage. Moves 0–1 were the exception and the reason they went first: they cost
+an afternoon, spend nothing, and every hour after them is an hour of agent work that corrects itself
 instead of arriving on his desk. The out-of-the-loop dividend beyond that comes entirely from the
 boring eighty percent; the parts he cares most about stay his forever. And the ceiling: this system is bounded by
 spec quality, not by agent capability — true today, still true when the models are twice as good,
@@ -717,17 +742,22 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 2. ⬤ **What is the daily spend ceiling** (§8)? *Owner.* A plan-tier question before it is an
    engineering one, and the governor cannot be built without a real number. ~$1,661 API-equivalent
    over 28 days is the only figure on record.
-3. ⬤ **How far does the pipeline spread, and in what order?** *Owner — partly answered.* The
-   sequence is ruled: **this repo first, as the dogfood**, then **Lumaria**, which is the only repo
-   where both eras ran on one codebase and therefore the only place an honest before/after exists.
-   What the rest of the estate gets — 20+ repos, not four — is still open. The recommendation on
-   this page is **the gauntlet and the cross-repo counter only**: both are free or nearly so, both
-   are the parts C5's originating question actually asked for, and neither needs a spec lane to
-   exist. Full pipeline stays opt-in per repo, on evidence that ideas arrive there.
-4. **Does the acceptance lane apply to non-code work?** *Measured, then owner.* Lumaria is code. A
-   3D-printing or electrical ticket has no `tests/acceptance/` to make immutable, and lane 04 is the
-   load-bearing gate — so those repos get a different gate or they do not get the pipeline. Question
-   3 probably settles this one on its way past.
+3. ⬤ **How far does the pipeline spread, and in what order?** *Owner — deferred, not open.* Ruled
+   2026-08-23: **this repo and nothing else** until the machine runs here. A second repo is not a
+   scope decision waiting on an argument, it is a distraction from a pipeline that has three of nine
+   lanes built, and every hour spent porting a venue to another codebase is an hour the lanes above
+   do not get. So this page tracks one repo, and other repos appear on it only as evidence.
+   The question re-opens on its own terms once lane 05 runs on a runner — that is the first moment
+   there is anything worth spreading. The standing recommendation for that day is unchanged and
+   cheap: **the gauntlet and the cross-repo counter only**, both free or nearly so, both the parts
+   C5's originating question actually asked for, and neither needing a spec lane to exist. Full
+   pipeline stays opt-in per repo, on evidence that ideas arrive there.
+4. **Does the acceptance lane apply to non-code work?** *Measured, then owner — and not yet live.*
+   This repo is code, so lane 04 has a `tests/acceptance/` to make immutable and the question does
+   not bite. It bites the moment a repo without one is in scope: a 3D-printing or electrical ticket
+   has nothing to freeze, and lane 04 is the load-bearing gate — so such a repo gets a different
+   gate or it does not get the pipeline. Question 3 settles this on its way past, and question 3 is
+   now deferred, so this one is too.
 5. **Does an unread document get deleted automatically?** *Measured.* The generalisation of
    [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) to
    prose: ask a finding whether it was ever loaded into a context where it changed an outcome, at

@@ -1,18 +1,39 @@
 name: Verify
 
-# This is not a gate in CONTEXT.md's sense — it refuses nothing. It runs after the push has
-# already landed on the ref, so the worst it can do is report a red run on a commit that is
-# already there. This repo is private, has never had a pull request, and has no branch
-# protection, so nothing here can stop a break from reaching `main` before it lands. It is
-# telemetry: chain of custody that typecheck and test actually ran, made observable by a
-# non-agent, on a commit anyone can point at — not a refusal.
+# The Actions venue of the gauntlet (DESIGN.md §06). It still refuses nothing — it runs after the
+# push has landed on the ref, and this repo has no branch protection — so it remains telemetry:
+# chain of custody that typecheck, lint and test actually ran, made observable by a non-agent on a
+# commit anyone can point at. It becomes a real refusal at move 10, not here.
+#
+# What it covers changed when the free venues landed. In-turn, turn-end and pre-push now run the
+# same three checks before a commit exists, so this venue's job narrowed to the one thing they
+# cannot see: a push that skipped them — `--no-verify`, a clone where `npm ci` never ran, or a
+# commit made outside a Claude Code session. Its triggers are narrowed to match.
+#
+# `paths-ignore` is the other half. The four commits before this one were pure Markdown and each
+# spent ~23s of a 2,000-minute monthly cap that the estate is already over. Nothing in a `.md` file
+# can fail typecheck, lint or the suite, so nothing in one is worth a runner.
+#
+# `push` is `main` only. Once lane 05 opens pull requests, a branch push would otherwise fire this
+# twice — once as `push`, once as `pull_request` — for one commit.
 #
 # Node arrives pinned to 24, with `npm ci` installing exactly what's in `package-lock.json`,
-# matching the block already in `.github/workflows/to-tickets.yml`.
+# matching the block already in `.github/workflows/to-tickets.yml`. `npm ci` also runs `prepare`,
+# which installs the husky hooks on the runner, so an agent committing here meets the same pre-push
+# gate the owner does.
 
 "on":
   push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
 
 permissions:
   contents: read
@@ -33,11 +54,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: npm test
+      # The same three checks the free venues run, through the same entry point, so a check cannot
+      # drift between venues by being spelled differently in two files.
+      - name: Gauntlet
+        run: bin/gauntlet push
