@@ -86,6 +86,32 @@ A named group of edges a work item passes through in order, holding one kind of 
 specifying, slicing, building. Numbered because the order is real: a work item cannot skip one.
 _Avoid_: stage, phase, step, pipeline segment
 
+**Idea**:
+The owner's own words about work that might be worth doing, filed as an issue and never edited
+afterward. It is the only thing in the system a human originates, and it is recorded rather than
+improved — the raw wording is what every later interpretation is checked against.
+_Avoid_: request, feature, suggestion, ask
+
+**Defect**:
+A failure that already happened. The distinction from an Idea is not size but tense: an idea is an
+opinion about what would be better, a defect is a report of something that broke. Only a defect may
+take the short path around specifying and slicing.
+_Avoid_: bug, issue, problem, regression
+
+**Decision sheet**:
+What shaping hands the owner: the idea restated as work, the prior art found, and each decision the
+work needs with a recommended answer and the alternatives rejected. Its purpose is to be reacted to
+rather than read — approving a bare idea asks the owner to originate an opinion, and the sheet is
+what converts that into overriding two lines. Accepting it is what files the rulings on it.
+_Avoid_: proposal, analysis, brief, summary, report
+
+**Assumption mark**:
+A flag on a decision whose answer changes *other* decisions on the same sheet. Only load-bearing
+guesses are marked — a recommendation that can be overridden in place without disturbing anything
+else is not one. The mark is also the first test of whether a decision deserves an ADR, because
+*changes other decisions* and *hard to reverse* are the same property.
+_Avoid_: caveat, note, uncertainty, open question
+
 **Spec**:
 The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue — a spec
 that lives in a file or a conversation has not been published yet.

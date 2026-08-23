@@ -97,10 +97,16 @@ Named as a boundary, not a gap. Automating these makes the result measurably wor
 - **Visual and spatial verdicts.** #127's cleanest finding — Video-Generation was the best-performing
   month *because* the human held the eval loop; pc-build was the worst because the agent both
   produced and judged.
-- **Destination and scope**, including the wayfinder ticket budget.
-- **Vocabulary.** Era 5's ADR-0026 and era 6's `seeded-doc-router.py` are the same ruling from two
-  systems: agents own code, the human owns `CONTEXT.md` / `CODING_STANDARDS` / skills / `CLAUDE.md`.
-  This is the split that makes autonomy survivable, not a concession against it.
+- **Destination and scope**, including the wayfinder ticket budget. The record backs this one hard:
+  ADR-0002 is a destination call where Collin overrode the recommendation outright — *"I DONT WANT
+  IT ON MY COMPUTER"* — and that override became the ruling.
+
+**Struck: vocabulary.** Era 5's ADR-0026 and era 6's `seeded-doc-router.py` were read as *agents own
+code, the human owns `CONTEXT.md` / `CODING_STANDARDS` / skills / `CLAUDE.md`*. The record does not
+support it. Across 34 ADRs and two glossaries in the surviving transcript window, Collin originated
+3; there is **no instance of a proposed ADR or glossary term being rejected or rewritten**, and two
+agent-flagged invitations to reverse went unanswered and still stand as written. W5 is restated
+below. See [ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md).
 
 ---
 
@@ -157,7 +163,7 @@ next starts from these rather than rediscovering them. Full treatment in
 | **W2** | The thing that checks is never the thing that built |
 | **W3** | Prevent conflicts at authoring time, not at merge time (physical disjointness) |
 | **W4** | Decisions live next to the code they govern — endpoint: documentation a test suite can fail on |
-| **W5** | Agents own code; the human owns vocabulary |
+| **W5** | Agents draft, the owner signs — restated 2026-08-23 from *agents own code, the human owns vocabulary*, which 34 ADRs of record never once exercised. [ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md) |
 | **W6** | Write the autopsy while it still stings |
 
 ---

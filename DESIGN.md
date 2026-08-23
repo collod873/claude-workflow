@@ -108,32 +108,101 @@ Collin is required.
 
 ### 00 · Intake — *absent*
 
-> **Fires on:** a message from the owner. Nothing else in the system is human-initiated.
+> **Fires on:** the owner filing an issue. Nothing else in the system is human-initiated.
+
+**There is no capture agent.** The ingress is a GitHub issue form — `.github/ISSUE_TEMPLATE/` —
+opened from the mobile app. One required field, *"What's the idea?"*, and the form applies the
+`idea` label so the label is never something to remember. Two templates: **Idea**, and **Defect**
+for the problem noticed while out and about, which files with `bug` and skips lane 01.
+
+The design pressure here is friction at a red light, not model quality. Every additional field is a
+question asked at the worst possible moment, and the fields worth having — urgency, scope, what it
+touches — are exactly what lane 01 exists to work out.
+
+**Lane 00 records; lane 01 interprets.** The owner's words are stored verbatim and never edited,
+which is what makes it safe for the next lane to restate them: the original is always there to
+check the interpretation against.
+
+**Refusal:** none. Capture must never refuse, or ideas get lost, which is the one thing it exists
+to prevent. It also never *dispatches* — a filed idea is a captured observation, not approved work.
+
+**On blockers:** this does not retire blocker 2. Blocker 2 is that nothing in the system can start
+work, and that is retired by the connectors in moves 5–7. Lane 00 moves the entry keystroke from a
+desk to a phone, which is worth an afternoon and is not the same claim.
+
+**Ingress is a GitHub object from the first moment**, which is why the substrate rule in §1 costs
+nothing here. A session may also file an idea when the owner explicitly says so; that capability is
+deliberately written down nowhere, so no agent is primed to volunteer ideas of its own — F2 is the
+system becoming its own biggest customer, and an invitation in `CLAUDE.md` is read at the start of
+every session.
+
+**Scope: this repo only**, until there is evidence about which repos ideas actually arrive for.
+Adding another is a copied file. Note that defaults cannot be centralised — GitHub requires a
+public `.github` repository for default community health files, which does not cover a private
+estate.
+
+### 01 · Shape — *absent*
+
+> **Fires on:** the `idea` label. **Refuses:** at stage 1, an idea that already exists or that an
+> ADR has already ruled on — the chain stops there and never spends the shaper.
+
+Three stages, serial, one agent each. Each consumes the last, so there is no parallelism to buy.
 
 | Role | Model | Count | Does |
 |---|---|---|---|
-| Capture | Haiku | 1, Action | Transcribes text or voice into an issue labelled `idea`. It does not evaluate, improve or organise — any thinking here pollutes the record of what was actually said |
+| Sweep | Haiku | 1 stage | Prior art: issues open and closed, `docs/adr/`, `CONTEXT.md`, docs — repo-deep, plus a title sweep across the owner's other repos. Its second job is **building stage 2's reading list** |
+| Shaper | Opus | 1 stage | Restates the idea as work, then walks the decision tree — proposing N decisions each with a recommended answer and the alternatives it rejected. Reads the idea, the sweep's results, `CONTEXT.md`, `CODING_STANDARDS.md` and the ADRs and issues the sweep surfaced. **Never free-roams the codebase** |
+| Refuter | Sonnet | 1 stage | Attacks the **recommendations**, not the idea. Reports only what survives; silent when it agrees |
+| ⬤ **owner** | — | 2 min, batched | `approved`, `parked`, `killed`, or a comment requesting a change |
 
-**Retires blocker 2** at its cheapest point. Today an idea can only enter through a local session,
-which means every unit of work waits on a keystroke at a desk.
+**The output is a decision sheet, not a critique.** This is what makes the accept a real click:
+approving a bare one-liner asks the owner to originate an opinion, and §7 is the whole argument for
+converting that into reacting to something concrete. The sheet carries the restatement, the prior
+art, the decisions with recommendations, and a **mark on each load-bearing assumption** — the ones
+where a different answer would change other decisions on the page. That mark does double duty: it
+is also the first of the three ADR tests, *hard to reverse*.
 
-**Refusal:** none — capture must never refuse, or ideas get lost, which is the one thing it exists
-to prevent.
+**The scarce resource is the length of what the owner reads**, not the money — the whole chain is
+under a dollar per idea. So the sheet is capped at a phone screen: restatement ≤ 1 paragraph,
+≤ 5 decisions, ≤ 2 lines each, plus surviving refutations.
 
-### 01 · Shape — *partial* (`/grilling` exists, local and human-fired)
+**Accepting the sheet is what files the ADRs** and any term the shaper had to coin —
+[ADR-0005](docs/adr/0005-accepting-a-shaped-idea-is-what-files-its-adrs.md),
+[ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md). Lane 02 then
+cites those rulings rather than restating them, which is what keeps a follow-up ticket from
+re-deciding something already settled.
 
-> **Fires on:** the `idea` label. **Refuses:** anything already carrying acceptance criteria — that
-> is a ticket, not an idea, and grilling it is ceremony against a known shape.
+**The shaper may refuse to shape.** More than ~3 load-bearing marks means it does not understand
+the idea well enough, and the honest output is *"needs a live session"* — the same instinct as
+§02's *a spec with zero open questions is suspect*, pointed the other way.
 
-| Role | Model | Count | Does |
-|---|---|---|---|
-| Adversary ×2 | Opus | 2 parallel, cloud | Attack the idea before a line of spec exists — one on product fit and prior art, one on technical cost and blast radius. Neither decides |
-| ⬤ **owner** | — | 2 min, batched | `approved`, `parked`, or `killed`. An override states its reason in one line — that line is what the consistency lens holds you to in four months |
+**A change request re-runs the shaper, capped at 2 rounds**, then it posts as-is and the owner rules
+or kills. Uncapped is the fixer mistake in a new place.
+
+**The refuter is on probation.** It is held to §6's backwards question at the event that would add
+another agent to this lane: if it has never surfaced a survivor, it dies. A third agent asked
+*"do these look good?"* answers yes almost always — that is the pc-build failure, an agent judging
+its own kind. Asked to **kill** them, silence is the good outcome.
 
 **C1 forces the sizing.** The Foundry runs three adversaries plus a synthesiser on every idea; four
-Opus sessions against a one-line fix is exactly the era-4 death (~7 plan steps for ~3 edits). Two
-lenses, no synthesiser, and only on things labelled `idea` — a defect report is filed as a ticket
-and skips this lane entirely.
+Opus sessions against a one-line fix is exactly the era-4 death (~7 plan steps for ~3 edits).
+
+**What this lane cannot do is get surprised.** It only ever surprises itself, so its failure mode is
+a confident, coherent sheet resting on a wrong premise — which is precisely what the transcript lens
+in §6 exists to catch. The assumption marks are the reviewable form of that, and they are the
+lane's only defence.
+
+### 01a · The short path
+
+A defect carries a failure that already happened; a feature carries an opinion about what would be
+better. The sheet ends with a **route recommendation**, and the owner's accept takes it or a
+one-word override sends it long. That is C2's shape — machine judgement with a reviewable
+checkpoint, never a human quiz. Commit `68b071f` deleted a sizing quiz for asking the owner
+senior-dev questions; making him the sizer here would rebuild it.
+
+**The short path may skip spec, slice and acceptance-authoring. It may never skip the gauntlet or
+review** (lanes 06–07). It is available to defects only — a *feature* that looks small still takes
+the long path, because that is exactly where the ceremony was earning its keep.
 
 ### 02 · Spec — *absent on a runner* (`/to-spec` exists, local)
 
@@ -274,8 +343,10 @@ Nothing runs on a clock. Every row is an event. *(C3, and
 
 | Event | Fires |
 |---|---|
-| Owner sends a message | Capture files an issue; adversaries fire within the minute |
-| Label `approved` | Spec author, critic |
+| Owner files an issue from the template | The `idea` label goes on → the sweep fires within the minute |
+| Sweep finds no prior art | Shaper, then refuter. A duplicate or an existing ruling stops the chain instead |
+| Owner comments a change request on a sheet | Shaper re-runs, at most twice |
+| Label `approved` | The sheet's ADRs and terms are filed; then spec author, critic |
 | Spec PR merged | The `prd` label goes on → **lane 03, live today** |
 | Sub-issues published | Acceptance author, one per slice |
 | Acceptance tests merged | Slice gets `ready`; waits for a free slot |
@@ -384,7 +455,7 @@ The point of drawing the map first. Every era-6 verb, held against the lanes abo
 | `/to-tickets` | Lane 03 | **Ported.** Live, on a runner |
 | `/to-spec` | Lane 02 | **Port.** Currently local-only, which makes it a keystroke gate on every unit of work |
 | `/implement` | Lane 05 | **Port**, narrowed. Its brief becomes ticket + seam manifest + failing tests, not the repo |
-| `/grilling` | Lane 01 | **Port**, size-gated. Two adversaries, only on `idea` |
+| `/grilling` | Local session, §2 | **Keep, unported.** Grilling needs the owner's answers by construction — an unattended grilling agent grills itself. Lane 01 replicates the part that *is* automatable (walk the tree, recommend on each) and escalates here when it can't |
 | `/triage` | Lane 00/01 boundary | **Absorbed.** Capture files, adversaries shape. A separate triage verb is a third name for the same edge |
 | `/drain` | — | **Delete.** A batch worker with worktrees, a foreman and a merge loop *on the workstation* is ADR-0002's exact prohibition. Lanes 05 and 08 are what it was for: the governor dispatches, the warden serialises. Its three open defects ([#33](https://github.com/collod873/claude-workflow/issues/33)–[#35](https://github.com/collod873/claude-workflow/issues/35)) are defects in a thing that does not survive the map |
 | `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed.** ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is one lens |
@@ -406,7 +477,8 @@ Ordered by `GOAL.md` §4, because nothing further down is optional for anything 
 | 1 | **Branch protection + required checks** on this repo and Lumaria | Blocker 5 | An afternoon |
 | 2 | **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Days. The logic exists; the venue changes |
 | 3 | **Session capture**, at session time, stored durably | Blocker 4 | Days — and every day it waits destroys a day of corpus permanently |
-| 4 | **Capture + intake** (lane 00) — the first edge nothing human fires | Blocker 2 | Days |
+| 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
+| 4b | **Shape** (lane 01) — sweep, shaper, refuter, and the sheet | The blank-screen approve | Days |
 | 5 | **Acceptance lane** (04) + the immutability rule in CI | The premise itself | Weeks. The unglamorous one, and skipping it is the reliable way to fail |
 | 6 | **Spec on a runner** (lane 02) | Blocker 2 | Weeks |
 | 7 | **Build + integrate** (lanes 05, 08) — implementer, fixer, warden | Blocker 2 | Weeks |
@@ -436,10 +508,26 @@ answer.
 2. **What is the daily spend ceiling** (§8)? A plan-tier question before it is an engineering one,
    and the governor cannot be built without a real number. ~$1,661 API-equivalent over 28 days is
    the only figure on record.
-3. **Which repos are in scope?** The lanes assume Lumaria + this repo. PWPP-Projects and 3D-Printing
-   carry a contract but no ADRs — do they get the full pipeline or only the gauntlet?
+3. **Which repos are in scope?** The lanes assume Lumaria + this repo, but the estate is **20+
+   repos**, not four — PWPP-Projects and 3D-Printing are not the only others. Intake is scoped to
+   this repo alone until there is evidence about where ideas actually arrive. Do the rest get the
+   full pipeline, only the gauntlet, or nothing?
 4. **Does the acceptance lane apply to non-code work?** Lumaria is code. A 3D-printing or electrical
    ticket has no `tests/acceptance/` to make immutable, and lane 04 is the load-bearing gate.
 5. **Is there a tenth lane for the machinery's own defects?** agent-skills
    [#134](https://github.com/collod873/agent-skills/issues/134) asks the same thing and is still
    open: where does a run file a defect it finds in the run itself, without sweeping its own landing?
+   The candidate rule, unruled: **the machine may file defects against itself but never features** —
+   a defect has a failure that already happened, a feature is an opinion about what would be better,
+   and opinions are where August's 82% machinery share came from.
+6. **Do agent-authored observations get a document type of their own?** [ADR-0005](docs/adr/0005-accepting-a-shaped-idea-is-what-files-its-adrs.md)
+   covers rulings made at shaping time. It does not cover what an implementer *learns* mid-run. The
+   proposed bar is **write-on-surprise** — at the end of every run, one question: *what did you learn
+   that, had you known it at the start, would have changed what you did?* Nothing means nothing gets
+   written. Where that lands (`docs/findings/`, the module's `CONTEXT.md`, an ADR) is unruled.
+7. **Does an unread document get deleted automatically?** The generalisation of
+   [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) to
+   prose: ask a finding whether it was ever loaded into a context where it changed an outcome, at
+   the event that would add another of its kind, and delete it if never. This is the only version of
+   pruning that survives C4, and it is only safe if it can never touch something the owner wrote —
+   which depends on question 6.
