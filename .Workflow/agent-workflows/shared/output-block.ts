@@ -1,4 +1,5 @@
 import type { ZodTypeDef, ZodType } from "zod";
+import { reason } from "./reason";
 
 const OPEN_TAG = "<output>";
 const CLOSE_TAG = "</output>";
@@ -48,8 +49,8 @@ export function extractOutput<T>(raw: string, schema: ZodType<T, ZodTypeDef, unk
   try {
     parsed = JSON.parse(jsonText);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`<output> block is not valid JSON: ${reason}`);
+    const detail = reason(err);
+    throw new Error(`<output> block is not valid JSON: ${detail}`);
   }
 
   const result = schema.safeParse(parsed);
