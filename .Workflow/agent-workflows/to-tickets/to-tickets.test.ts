@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeGh } from "../shared/gh.fake";
+import { slice } from "../shared/plan.fixture";
+import type { Slice } from "../shared/plan-schema";
 import { createFakeStage } from "../shared/stage.fake";
 import { handoffPath, runAuditAndPublish, runNamedStage, writeFailure } from "./to-tickets";
 
@@ -53,17 +55,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
   });
 
   function validSlicePlan() {
-    return [
-      {
-        title: "One slice",
-        whatToBuild: "Build the thing.",
-        acceptanceCriteria: ["`npm test` exits 0"],
-        filesClaimed: ["a/file.ts"],
-        seamsConsumed: [],
-        whyNotMerged: "It stands alone.",
-        dependsOn: [],
-      },
-    ];
+    return [slice({ title: "One slice" })];
   }
 
   it("reads the seam-sweep handoff as SEAM_MANIFEST and writes a schema- and graph-valid plan to the handoff path", () => {
@@ -87,17 +79,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
-    const badPlan = [
-      {
-        title: "Self-referencing slice",
-        whatToBuild: "Build the thing.",
-        acceptanceCriteria: ["`npm test` exits 0"],
-        filesClaimed: [],
-        seamsConsumed: [],
-        whyNotMerged: "It stands alone.",
-        dependsOn: [1],
-      },
-    ];
+    const badPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
     const fake = createFakeStage(`<output>${JSON.stringify(badPlan)}</output>`);
 
     expect(() => runNamedStage("slice", "13", fake.exec)).toThrow(/depends on itself/);
@@ -119,28 +101,18 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
     vi.restoreAllMocks();
   });
 
-  function seedHandoffWithSlicedPlan(): { target: string; plan: unknown[] } {
+  function seedHandoffWithSlicedPlan(): { target: string; plan: Slice[] } {
     dir = mkdtempSync(join(tmpdir(), "audit-and-publish-"));
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
-    const plan = [
-      {
-        title: "Root",
-        whatToBuild: "Build the thing.",
-        acceptanceCriteria: ["`npm test` exits 0"],
-        filesClaimed: ["a/file.ts"],
-        seamsConsumed: [],
-        whyNotMerged: "It stands alone.",
-        dependsOn: [],
-      },
-    ];
+    const plan = [slice({ title: "Root" })];
     writeFileSync(target, JSON.stringify(plan), "utf8");
     return { target, plan };
   }
 
   it("reads the sliced plan as PLAN, publishes the audited plan, and writes it to the handoff path", () => {
     const { target, plan: slicedPlan } = seedHandoffWithSlicedPlan();
-    const auditedPlan = [{ ...slicedPlan[0] as Record<string, unknown>, title: "Root, re-worded by audit" }];
+    const auditedPlan = [{ ...slicedPlan[0], title: "Root, re-worded by audit" }];
     const fakeStage = createFakeStage(
       `Granularity: fine as-is.\n\n<output>${JSON.stringify(auditedPlan)}</output>`,
     );
@@ -182,17 +154,7 @@ describe("runAuditAndPublish (against fake StageExec and fake GhExec)", () => {
 
   it("exits nonzero without publishing when the audited plan fails validate-graph.ts", () => {
     seedHandoffWithSlicedPlan();
-    const selfReferencingPlan = [
-      {
-        title: "Self-referencing slice",
-        whatToBuild: "Build the thing.",
-        acceptanceCriteria: ["`npm test` exits 0"],
-        filesClaimed: [],
-        seamsConsumed: [],
-        whyNotMerged: "It stands alone.",
-        dependsOn: [1],
-      },
-    ];
+    const selfReferencingPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
     const fakeStage = createFakeStage(`<output>${JSON.stringify(selfReferencingPlan)}</output>`);
     const fakeGh = createFakeGh();
 
@@ -360,17 +322,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     return { env, handoffFile };
   }
 
-  const validPlan = [
-    {
-      title: "One slice",
-      whatToBuild: "Build the thing.",
-      acceptanceCriteria: ["`npm test` exits 0"],
-      filesClaimed: [],
-      seamsConsumed: [],
-      whyNotMerged: "It stands alone.",
-      dependsOn: [],
-    },
-  ];
+  const validPlan = [slice({ title: "One slice" })];
 
   it("writes a schema- and graph-valid plan to the handoff path and exits 0", () => {
     const { env, handoffFile } = stubClaudeCliForSlice(
@@ -387,17 +339,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the plan fails schema validation", () => {
-    const badPlan = [
-      {
-        title: "Untestable",
-        whatToBuild: "x",
-        acceptanceCriteria: [],
-        filesClaimed: [],
-        seamsConsumed: [],
-        whyNotMerged: "x",
-        dependsOn: [],
-      },
-    ];
+    const badPlan = [slice({ title: "Untestable", acceptanceCriteria: [] })];
     const { env, handoffFile } = stubClaudeCliForSlice(
       `<output>${JSON.stringify(badPlan)}</output>`,
       JSON.stringify(["a seam"]),
@@ -414,17 +356,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", () => {
-    const cyclicPlan = [
-      {
-        title: "A",
-        whatToBuild: "x",
-        acceptanceCriteria: ["y"],
-        filesClaimed: [],
-        seamsConsumed: [],
-        whyNotMerged: "x",
-        dependsOn: [1],
-      },
-    ];
+    const cyclicPlan = [slice({ title: "A", dependsOn: [1] })];
     const { env, handoffFile } = stubClaudeCliForSlice(
       `<output>${JSON.stringify(cyclicPlan)}</output>`,
       JSON.stringify(["a seam"]),

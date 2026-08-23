@@ -1,19 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createFakeGh } from "../shared/gh.fake";
+import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
 import { sliceAndPublish } from "./slice-and-publish";
-
-function slice(overrides: Partial<Slice> & { title: string }): Slice {
-  return {
-    whatToBuild: `Build ${overrides.title}.`,
-    acceptanceCriteria: [`${overrides.title} works.`],
-    filesClaimed: [],
-    seamsConsumed: [],
-    whyNotMerged: `${overrides.title} is its own vertical slice.`,
-    dependsOn: [],
-    ...overrides,
-  };
-}
 
 function rawOutput(plan: Slice[]): string {
   return `Some reasoning prose the model wrote.\n\n<output>${JSON.stringify(plan)}</output>`;
