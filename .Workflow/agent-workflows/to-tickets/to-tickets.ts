@@ -6,6 +6,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { extractOutput } from "../shared/output-block";
 import { Plan } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
+import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { validatePlan } from "../shared/validate-graph";
 import { sliceAndPublish } from "./slice-and-publish";
@@ -121,9 +122,9 @@ function readPriorHandoff(stageName: string): string {
   try {
     return readFileSync(handoffPath(), "utf8");
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+    const detail = reason(err);
     throw new Error(
-      `${stageName} needs the prior stage's handoff at ${handoffPath()}, but it could not be read: ${reason}`,
+      `${stageName} needs the prior stage's handoff at ${handoffPath()}, but it could not be read: ${detail}`,
     );
   }
 }
@@ -260,9 +261,9 @@ async function main(): Promise<void> {
           `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,
         );
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        console.error(`audit-and-publish failed: ${reason}`);
-        writeFailure("audit-and-publish", reason);
+        const detail = reason(err);
+        console.error(`audit-and-publish failed: ${detail}`);
+        writeFailure("audit-and-publish", detail);
         process.exitCode = 1;
       }
       return;
@@ -273,9 +274,9 @@ async function main(): Promise<void> {
       console.log(`${stageName}: wrote a schema-valid output to ${handoffPath()}`);
       console.log(JSON.stringify(output, null, 2));
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      console.error(`${stageName} failed: ${reason}`);
-      writeFailure(stageName, reason);
+      const detail = reason(err);
+      console.error(`${stageName} failed: ${detail}`);
+      writeFailure(stageName, detail);
       process.exitCode = 1;
     }
     return;
@@ -304,9 +305,9 @@ if (isMain) {
     // A fallback for anything main() throws before its own mode-specific
     // handling runs — in practice, today, only a --validate-plan failure
     // reaches here, since the --stage branch catches and reports itself.
-    const reason = err instanceof Error ? err.message : String(err);
-    console.error(`validate-plan failed: ${reason}`);
-    writeFailure("validate-plan", reason);
+    const detail = reason(err);
+    console.error(`validate-plan failed: ${detail}`);
+    writeFailure("validate-plan", detail);
     process.exitCode = 1;
   });
 }
