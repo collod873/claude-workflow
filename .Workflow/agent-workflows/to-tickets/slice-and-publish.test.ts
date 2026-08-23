@@ -54,16 +54,18 @@ describe("sliceAndPublish", () => {
     );
     expect(wireCalls).toHaveLength(3);
 
-    // Path built through gh-paths.ts on both sides (production and this
-    // assertion) would make a path comparison tautological — see the
-    // gh-paths.ts header. So this one assertion pins the `-f issue_id=<n>`
-    // value as a hardcoded literal instead of interpolating `root.id`: with
-    // the default firstIssueNumber (100), Root is #100 with REST id 100007,
-    // and that literal is the actual wire string GitHub's blocked_by write
-    // accepts, independent of whatever gh-paths.ts's template says.
+    // Building the path through gh-paths.ts on both sides (production and
+    // this assertion) would make a path comparison tautological — see the
+    // gh-paths.ts header. So this one assertion pins both the endpoint path
+    // and the `-f issue_id=<n>` value as hardcoded literals instead of
+    // interpolating `blockedByPath(...)` / `root.id`: with the default
+    // firstIssueNumber (100), Root is #100 with REST id 100007 and "Depends
+    // on root" is #101, and those literals are the actual wire strings
+    // GitHub's blocked_by write accepts, independent of whatever
+    // gh-paths.ts's template says.
     expect(wireCalls).toContainEqual([
       "api",
-      blockedByPath(dependsOnRoot.number),
+      "repos/{owner}/{repo}/issues/101/dependencies/blocked_by",
       "-f",
       "issue_id=100007",
     ]);
