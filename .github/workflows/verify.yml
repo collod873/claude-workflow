@@ -46,6 +46,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The one check that does not go through `bin/gauntlet`, deliberately: it needs a binary the
+      # free venues would have to download on every clone, and C4 says a mechanism that needs a
+      # ritual dies by month three. It earns the exception because it is the only venue that can
+      # catch a workflow file GitHub itself will refuse to parse — the failure in #40, where
+      # `runner.temp` in a job `env` block made `to-tickets.yml` unreadable, its `on:` trigger
+      # unarmed, and thirteen pushes fail with zero jobs and no reader. Runs before Node so an
+      # unparseable workflow costs nothing else.
+      - name: Lint workflow files
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
