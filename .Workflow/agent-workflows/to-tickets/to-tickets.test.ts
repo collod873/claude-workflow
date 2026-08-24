@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
@@ -222,6 +222,39 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
     ).toThrow();
 
     expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*failed schema validation/);
+  });
+
+  // #42's other half. Run 32677530530 spent two minutes of real model time
+  // and left one line about why it died; the response itself was never
+  // written anywhere, so the first acceptance criterion — look at the
+  // actual response — could not be met from the run that raised it.
+  it("saves the rejected raw response beside the handoff and names that path in the reason", () => {
+    const dir = withHandoffDir();
+    const rejected = "prose the model wrote\n<output>[\"one line\\ntwo lines\"]</output>";
+    const { env, handoffFile } = stubClaudeCli(dir, rejected);
+
+    expect(() =>
+      execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
+        env,
+        encoding: "utf8",
+      }),
+    ).toThrow();
+
+    const rawPath = join(dir, "seam-sweep-raw-response.txt");
+    expect(readFileSync(rawPath, "utf8")).toBe(rejected);
+    expect(readFileSync(handoffFile, "utf8")).toContain(rawPath);
+  });
+
+  it("saves no raw response when the stage succeeds", () => {
+    const dir = withHandoffDir();
+    const { env } = stubClaudeCli(dir, '<output>["a seam"]</output>');
+
+    execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
+      env,
+      encoding: "utf8",
+    });
+
+    expect(existsSync(join(dir, "seam-sweep-raw-response.txt"))).toBe(false);
   });
 });
 

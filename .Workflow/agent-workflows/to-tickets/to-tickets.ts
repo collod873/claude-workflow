@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ZodType, ZodTypeDef } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
@@ -48,6 +48,17 @@ export function handoffPath(): string {
  */
 export function writeFailure(stage: string, reason: string): void {
   writeHandoff(`${stage}: ${reason}\n`);
+}
+
+/**
+ * Where a stage's rejected raw response is kept: beside the handoff file,
+ * named for the stage. A sibling rather than the handoff path itself
+ * because that one file is the failure *reason*, which the workflow's
+ * `if: failure()` reporter reads and comments — a raw model response
+ * written there would be the comment.
+ */
+export function rawResponsePath(stage: string): string {
+  return join(dirname(handoffPath()), `${stage}-raw-response.txt`);
 }
 
 function writeHandoff(contents: string): void {
@@ -149,15 +160,48 @@ interface TypedStageConfig<T> {
  * throw — there is no repair path here; the caller reports and exits.
  */
 function runTypedStageWithRaw<T>(
+  stage: string,
   config: TypedStageConfig<T>,
   issueNumber: string,
   exec: StageExec,
 ): { raw: string; output: T } {
   const raw = runStage(config.promptPath, config.buildVars(issueNumber), exec);
-  const output = extractOutput(raw, config.schema);
-  config.validate?.(output);
+  const output = preservingRaw(stage, raw, () => {
+    const extracted = extractOutput(raw, config.schema);
+    config.validate?.(extracted);
+    return extracted;
+  });
   writeHandoff(JSON.stringify(output));
   return { raw, output };
+}
+
+/**
+ * Runs the part of a stage that can reject the model's response, and — if
+ * it does — writes that response to `rawResponsePath(stage)` before
+ * rethrowing with the path named.
+ *
+ * This exists because #42 could not be diagnosed from the run that raised
+ * it. Run 32677530530 spent two minutes of real model time and left exactly
+ * one line, `response has 2 <output> blocks`; the response those blocks were
+ * counted in died with the stack, so the only way to see what the model
+ * actually sent was to spend the two minutes again locally and hope the
+ * failure recurred. A stage that refuses a response and discards it is the
+ * shape #41 names — a mechanism that fails without telling anyone — and the
+ * cost lands on whoever has to reproduce it rather than on the run that
+ * already had the evidence in hand.
+ *
+ * Only the rejection paths write: a stage that succeeds leaves no file, so
+ * the presence of one is itself the signal.
+ */
+function preservingRaw<R>(stage: string, raw: string, work: () => R): R {
+  try {
+    return work();
+  } catch (err) {
+    const path = rawResponsePath(stage);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, raw, "utf8");
+    throw new Error(`${reason(err)} — the model's raw response is saved at ${path}`);
+  }
 }
 
 /**
@@ -169,7 +213,7 @@ function runTypedStageWithRaw<T>(
 function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   return {
     run: (issueNumber, exec) => {
-      const { output } = runTypedStageWithRaw(config, issueNumber, exec);
+      const { output } = runTypedStageWithRaw(name, config, issueNumber, exec);
       console.log(`${name}: wrote a schema-valid output to ${handoffPath()}`);
       console.log(JSON.stringify(output, null, 2));
       return output;
@@ -265,12 +309,17 @@ function auditorNotes(raw: string): string {
  * graph shape separately.
  */
 const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = (issueNumber, exec, gh) => {
-  const { raw } = runTypedStageWithRaw(AUDIT_CONFIG, issueNumber, exec);
+  const { raw } = runTypedStageWithRaw("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
   const notes = auditorNotes(raw);
   if (notes) {
     console.log(notes);
   }
-  const published = sliceAndPublish(raw, Number(issueNumber), gh);
+  // Wrapped for the same reason the extract above is: the publisher
+  // re-parses this same response, and a graph rejection here is another way
+  // to lose it.
+  const published = preservingRaw("audit-and-publish", raw, () =>
+    sliceAndPublish(raw, Number(issueNumber), gh),
+  );
   console.log(
     `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,
   );
