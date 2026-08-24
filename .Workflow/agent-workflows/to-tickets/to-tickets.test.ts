@@ -224,35 +224,52 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
     expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*failed schema validation/);
   });
 
-  // #42's other half. Run 32677530530 spent two minutes of real model time
-  // and left one line about why it died; the response itself was never
-  // written anywhere, so the first acceptance criterion — look at the
-  // actual response — could not be met from the run that raised it.
-  it("saves the rejected raw response beside the handoff and names that path in the reason", () => {
+});
+
+/**
+ * #42's other half, exercised through `runNamedStage` rather than the CLI:
+ * the behaviour under test is what a stage does with a response it refuses,
+ * which needs no subprocess. The CLI tests above already own the
+ * reason-reaches-the-handoff half, and every extra `npx tsx` spawn in this
+ * file is ~5s of runner budget the 5000ms default timeout does not have.
+ *
+ * Run 32677530530 spent two minutes of real model time and left one line
+ * about why it died; the response itself was never written anywhere, so the
+ * first thing #42 asks for — look at the actual response — could not be
+ * done from the run that raised it.
+ */
+describe("a refused response is kept where the next reader can find it", () => {
+  const rejected = 'prose the model wrote\n<output>["one line\\ntwo lines"]</output>';
+
+  it("writes the raw response beside the handoff and names that path in the failure", () => {
     const dir = withHandoffDir();
-    const rejected = "prose the model wrote\n<output>[\"one line\\ntwo lines\"]</output>";
-    const { env, handoffFile } = stubClaudeCli(dir, rejected);
-
-    expect(() =>
-      execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
-        env,
-        encoding: "utf8",
-      }),
-    ).toThrow();
-
+    process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
     const rawPath = join(dir, "seam-sweep-raw-response.txt");
+    const fake = createFakeStage(rejected);
+
+    expect(() => runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).toThrow(rawPath);
+
     expect(readFileSync(rawPath, "utf8")).toBe(rejected);
-    expect(readFileSync(handoffFile, "utf8")).toContain(rawPath);
   });
 
-  it("saves no raw response when the stage succeeds", () => {
+  it("keeps the whole response, not just the block that failed", () => {
     const dir = withHandoffDir();
-    const { env } = stubClaudeCli(dir, '<output>["a seam"]</output>');
+    process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
+    const fake = createFakeStage(rejected);
 
-    execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
-      env,
-      encoding: "utf8",
-    });
+    expect(() => runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).toThrow();
+
+    expect(readFileSync(join(dir, "seam-sweep-raw-response.txt"), "utf8")).toContain(
+      "prose the model wrote",
+    );
+  });
+
+  it("writes nothing when the stage succeeds, so the file's presence is the signal", () => {
+    const dir = withHandoffDir();
+    process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
+    const fake = createFakeStage('<output>["a seam"]</output>');
+
+    runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
     expect(existsSync(join(dir, "seam-sweep-raw-response.txt"))).toBe(false);
   });
