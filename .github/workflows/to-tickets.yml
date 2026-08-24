@@ -58,8 +58,15 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      FAILURE_REASON_PATH: ${{ runner.temp }}/failure_reason.txt
     steps:
+      # The handoff path is exported here rather than declared in the job `env` above, because the
+      # `runner` context does not exist when job-level `env` is evaluated. Naming it there made the
+      # file unparseable, which cost this lane every run it should have had between 2026-08-22 and
+      # 2026-08-24 (#40). `RUNNER_TEMP` is the same value, read at step runtime where it exists,
+      # and `GITHUB_ENV` carries it to every step below exactly as the job `env` block would have.
+      - name: Export the handoff path
+        run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
 
