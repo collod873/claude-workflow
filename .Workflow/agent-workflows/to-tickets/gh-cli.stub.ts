@@ -58,7 +58,7 @@ if [ "$1" = "api" ]; then
       ;;
     *dependencies/blocked_by)
       for arg in "$@"; do
-        if [ "$arg" = "-f" ]; then
+        if [ "$arg" = "-F" ]; then
           exit 0
         fi
       done

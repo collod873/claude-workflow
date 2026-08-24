@@ -2,6 +2,22 @@ import type { GhExec } from "./gh";
 import { blockedByPathMatcher, issuePathMatcher, subIssuesPathMatcher } from "./gh-paths";
 
 /**
+ * The extra sentence a field-shape rejection carries when the call used
+ * `gh api -f`. Both id-taking endpoints this fake models want a JSON
+ * integer, and `-f` is `gh`'s *always-a-string* flag — the typed one is
+ * `-F`. This fake accepted `-f` until to-tickets run 32679981039 sent it to
+ * the real API and got `Invalid property /sub_issue_id: "5230263052" is not
+ * of type integer (HTTP 422)`, which is a distinction only the wire could
+ * make and this stand-in was erasing.
+ */
+function untypedFieldHint(args: string[]): string {
+  if (!args.includes("-f")) {
+    return "";
+  }
+  return " — this call used -f, which sends a string; these endpoints take a JSON integer, so it must be -F";
+}
+
+/**
  * An in-memory model of the `gh` calls this pipeline makes, standing in for
  * `GhExec` in every test so no test reaches GitHub. Every call is recorded
  * verbatim in `calls`, in order — that recording is what lets a test assert
@@ -70,11 +86,13 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
       const subIssuesMatch = path.match(subIssuesPathMatcher);
       if (subIssuesMatch) {
         const parent = Number(subIssuesMatch[1]);
-        const fieldFlag = args.indexOf("-f");
+        const fieldFlag = args.indexOf("-F");
         const field = fieldFlag === -1 ? undefined : args[fieldFlag + 1];
         const idMatch = field?.match(/^sub_issue_id=(\d+)$/);
         if (!idMatch) {
-          throw new Error(`fake gh: sub_issues call missing a well-formed -f sub_issue_id=<n>: ${JSON.stringify(args)}`);
+          throw new Error(
+            `fake gh: sub_issues call missing a well-formed -F sub_issue_id=<n>: ${JSON.stringify(args)}${untypedFieldHint(args)}`,
+          );
         }
         const childId = Number(idMatch[1]);
         const list = subIssuesByParent.get(parent) ?? [];
@@ -86,14 +104,16 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
       const blockedByMatch = path.match(blockedByPathMatcher);
       if (blockedByMatch) {
         const blockedNumber = Number(blockedByMatch[1]);
-        const fieldFlag = args.indexOf("-f");
+        const fieldFlag = args.indexOf("-F");
 
-        if (fieldFlag !== -1) {
+        if (fieldFlag !== -1 || args.includes("-f")) {
           // Write: wiring one blocked-by edge.
           const field = args[fieldFlag + 1];
           const idMatch = field?.match(/^issue_id=(\d+)$/);
           if (!idMatch) {
-            throw new Error(`fake gh: blocked_by wiring call missing a well-formed -f issue_id=<n>: ${JSON.stringify(args)}`);
+            throw new Error(
+              `fake gh: blocked_by wiring call missing a well-formed -F issue_id=<n>: ${JSON.stringify(args)}${untypedFieldHint(args)}`,
+            );
           }
           const blockerId = Number(idMatch[1]);
           const blockerNumber = numberById.get(blockerId);

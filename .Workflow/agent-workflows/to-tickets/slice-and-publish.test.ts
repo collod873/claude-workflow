@@ -50,35 +50,40 @@ describe("sliceAndPublish", () => {
         args[0] === "api" &&
         typeof args[1] === "string" &&
         args[1].endsWith("/dependencies/blocked_by") &&
-        args.includes("-f"),
+        args.includes("-F"),
     );
     expect(wireCalls).toHaveLength(3);
 
     // Building the path through gh-paths.ts on both sides (production and
     // this assertion) would make a path comparison tautological — see the
     // gh-paths.ts header. So this one assertion pins both the endpoint path
-    // and the `-f issue_id=<n>` value as hardcoded literals instead of
+    // and the `-F issue_id=<n>` value as hardcoded literals instead of
     // interpolating `blockedByPath(...)` / `root.id`: with the default
     // firstIssueNumber (100), Root is #100 with REST id 100007 and "Depends
-    // on root" is #101, and those literals are the actual wire strings
-    // GitHub's blocked_by write accepts, independent of whatever
-    // gh-paths.ts's template says.
+    // on root" is #101.
+    //
+    // The flag is `-F` and that is the whole point of pinning it. This
+    // assertion said `-f` and called it "the actual wire string GitHub's
+    // blocked_by write accepts" — it was not. `-f` sends a string, both
+    // endpoints take a JSON integer, and to-tickets run 32679981039 is
+    // where the real API said so (HTTP 422) after the fake had accepted it
+    // for every run before that.
     expect(wireCalls).toContainEqual([
       "api",
       "repos/{owner}/{repo}/issues/101/dependencies/blocked_by",
-      "-f",
+      "-F",
       "issue_id=100007",
     ]);
     expect(wireCalls).toContainEqual([
       "api",
       blockedByPath(dependsOnBoth.number),
-      "-f",
+      "-F",
       `issue_id=${root.id}`,
     ]);
     expect(wireCalls).toContainEqual([
       "api",
       blockedByPath(dependsOnBoth.number),
-      "-f",
+      "-F",
       `issue_id=${dependsOnRoot.id}`,
     ]);
   });
@@ -118,7 +123,7 @@ describe("sliceAndPublish", () => {
         args[0] === "api" &&
         typeof args[1] === "string" &&
         args[1].endsWith("/dependencies/blocked_by") &&
-        args.includes("-f"),
+        args.includes("-F"),
     );
     expect(wireCalls).toHaveLength(1);
   });

@@ -19,8 +19,10 @@
  * wrong on both sides at once, and TypeScript will not flag it. That is not
  * a type error on drift, only single-sourcing. The one thing that still
  * pins the literal wire format GitHub's API accepts is the hardcoded
- * `-f issue_id=<n>` value kept in `slice-and-publish.test.ts` for the
- * `blocked_by` write.
+ * `-F issue_id=<n>` value kept in `slice-and-publish.test.ts` for the
+ * `blocked_by` write — and that pin was itself wrong until run 32679981039,
+ * where the real API refused the string `-f` sends. A literal in a test is
+ * only as good as the wire that last checked it.
  */
 
 function pathTemplate(

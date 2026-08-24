@@ -54,11 +54,20 @@ function fetchIssueId(gh: GhExec, number: number): number {
   return id;
 }
 
+/**
+ * `-F`, not `-f`: both id-taking endpoints here want a JSON integer, and
+ * `-f` is `gh`'s always-a-string flag. Sending `-f sub_issue_id=<n>` gets
+ * `Invalid property /sub_issue_id: "<n>" is not of type integer` (HTTP 422)
+ * — which is what killed to-tickets run 32679981039 after it had already
+ * created the first issue.
+ */
+const ID_FIELD_FLAG = "-F";
+
 function attachUnderPrd(gh: GhExec, prdNumber: number, childId: number): void {
   gh([
     "api",
     subIssuesPath(prdNumber),
-    "-f",
+    ID_FIELD_FLAG,
     `sub_issue_id=${childId}`,
   ]);
 }
@@ -78,7 +87,7 @@ export function wireBlockedByEdges(plan: Plan, published: PublishedIssue[], gh: 
       gh([
         "api",
         blockedByPath(blocked.number),
-        "-f",
+        ID_FIELD_FLAG,
         `issue_id=${blocker.id}`,
       ]);
     }
