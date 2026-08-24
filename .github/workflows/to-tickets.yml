@@ -101,6 +101,9 @@ jobs:
           set -euo pipefail
           owner="${GH_REPO%%/*}"
           repo="${GH_REPO##*/}"
+          # The single quotes are the point: $owner, $repo and $num are GraphQL variables bound by
+          # the -f/-F flags below, and a shell that expanded them would send an empty query.
+          # shellcheck disable=SC2016
           parent_number=$(gh api graphql -f query='
             query($owner: String!, $repo: String!, $num: Int!) {
               repository(owner: $owner, name: $repo) {
