@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,6 +32,33 @@ function writeTranscript(lines: unknown[]): string {
   return path;
 }
 
+/** Resolve a tool against this process's own PATH, without shelling out. */
+function onPath(tool: string): string {
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    const candidate = join(dir, tool);
+    if (dir && existsSync(candidate)) return candidate;
+  }
+  throw new Error(`cannot build a minimal bin dir: ${tool} is not on this machine's PATH`);
+}
+
+/**
+ * A directory holding exactly the externals the hook needs before it can do anything —
+ * `cat` to read the payload, `mkdir`/`dirname`/`date` to write a log line — plus node, or not.
+ *
+ * Setting `PATH` to a bogus value is not enough on its own to prove node is absent: `node_on_path`
+ * adds `/usr/local/bin:/usr/bin:/bin` back unconditionally, so on a box where node lives in one of
+ * those the no-node branch is never reached. That is geography, not a test.
+ * `NODE_ON_PATH_SEARCH_DIRS` replaces the whole search with this directory, so both branches are
+ * reachable on every machine.
+ */
+function minimalBinDir(withNode: boolean): string {
+  const dir = tmpDir("session-capture-min-bin-");
+  const tools = ["cat", "date", "mkdir", "dirname"];
+  for (const tool of withNode ? [...tools, "node"] : tools) symlinkSync(onPath(tool), join(dir, tool));
+  if (!withNode && existsSync(join(dir, "node"))) throw new Error("the nodeless bin dir has a node in it");
+  return dir;
+}
+
 type RunResult = { status: number | null; stdout: string; stderr: string; outputDir: string; logPath: string };
 
 function runHook(payload: unknown, env: Record<string, string> = {}): RunResult {
@@ -58,8 +85,13 @@ function readLog(logPath: string): string {
   return existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
 }
 
+// Sized under vitest's 30s testTimeout so these trip first and say what was being waited on —
+// and well above the runner's spawn latency, which is ~12× the workstation's. See
+// docs/adr/0015-a-test-s-timeout-is-sized-for-the-slowest-venue-it-runs-in-n.md.
+const POLL_TIMEOUT_MS = 15_000;
+
 /** Busy-polls for one capture file to land in `dir` — the write happens in a detached child. */
-function waitForCaptureFile(dir: string, timeoutMs = 4000): { path: string; content: string } {
+function waitForCaptureFile(dir: string, timeoutMs = POLL_TIMEOUT_MS): { path: string; content: string } {
   const start = Date.now();
   for (;;) {
     if (existsSync(dir)) {
@@ -75,7 +107,7 @@ function waitForCaptureFile(dir: string, timeoutMs = 4000): { path: string; cont
 }
 
 /** Busy-polls for the log file to contain at least one line. */
-function waitForLogLine(logPath: string, timeoutMs = 4000): string {
+function waitForLogLine(logPath: string, timeoutMs = POLL_TIMEOUT_MS): string {
   const start = Date.now();
   for (;;) {
     const content = readLog(logPath);
@@ -158,7 +190,7 @@ describe("session-capture.sh — failing open", () => {
 
     const result = runHook(
       { session_id: "x", transcript_path: transcript, cwd: "y", hook_event_name: "SessionEnd", reason: "clear" },
-      { PATH: "/nonexistent", HOME: "/nonexistent" },
+      { PATH: "/nonexistent", HOME: "/nonexistent", NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(false) },
     );
 
     expect(result.status).toBe(0);
@@ -168,6 +200,27 @@ describe("session-capture.sh — failing open", () => {
     expect(log.trim().split("\n")).toHaveLength(1);
     expect(log).toContain("skipped no-node");
     expect(existsSync(result.outputDir) && readdirSync(result.outputDir).length > 0).toBe(false);
+  });
+
+  // The PATH-less shell is the case this hook is built for, not an exotic one — and reading the
+  // payload before PATH was repaired used to lose it. `cat` isn't a builtin, so it came back
+  // command-not-found, `INPUT` was empty, and the hook logged "skipped no-transcript-path" for a
+  // payload that had one: the session gone, and the log line wrong about why.
+  it("still captures when PATH is scrubbed but node is findable — the payload survives the repair", () => {
+    const transcript = writeTranscript([
+      { type: "user", uuid: "u1", origin: { kind: "human" }, promptSource: "typed", message: { content: "hi" } },
+    ]);
+
+    const result = runHook(
+      { session_id: "x", transcript_path: transcript, cwd: "y", hook_event_name: "SessionEnd", reason: "clear" },
+      { PATH: "/nonexistent", HOME: "/nonexistent", NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(true) },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+
+    waitForCaptureFile(result.outputDir);
+    expect(readLog(result.logPath)).not.toContain("skipped");
   });
 
   it("exits 0, writes no capture file, and logs skipped transcript-missing when the transcript file doesn't exist", () => {

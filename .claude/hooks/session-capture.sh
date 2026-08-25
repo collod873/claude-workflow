@@ -13,7 +13,7 @@
 # §Solution for why it isn't re-derived here. This script does not itself re-check `reason` —
 # the matcher is what keeps `prompt_input_exit` from ever reaching it in production.
 #
-# Mechanics: read stdin SYNCHRONOUSLY (this hook must not block SessionEnd), then hand the
+# Mechanics: repair PATH, read stdin SYNCHRONOUSLY (this hook must not block SessionEnd), then hand the
 # transcript path plus session/project/source off to session-capture-hook.mjs in a FULLY
 # DETACHED background subshell (stdio redirected off this script's fds, disowned) so this script
 # returns instantly. Two failure modes are cheap enough to check synchronously, and are checked
@@ -46,11 +46,18 @@ log_outcome() {
   } 2>/dev/null || true
 }
 
+# PATH is repaired BEFORE the payload is read, not after. `cat` is not a builtin, so on the
+# PATH-less shell this helper exists for it is command-not-found, `INPUT` comes back empty, and
+# the parse below reports "skipped no-transcript-path" for a payload that had one — the session
+# silently lost, and the log line a lie about why. node_on_path fixes PATH for cat/date/mkdir/
+# dirname unconditionally, even on the branch where it can't find node — see its own header — so
+# both the read and log_outcome work either way. The verdict is held until after the read so the
+# no-node exit still drains stdin rather than leaving the caller writing into a closed pipe.
+node_on_path && have_node=1 || have_node=0
+
 INPUT="$(cat 2>/dev/null || true)"
 
-# node_on_path fixes PATH for date/mkdir/dirname unconditionally, even on the branch where it
-# can't find node — see its own header — so log_outcome above already works either way.
-if ! node_on_path; then
+if [ "$have_node" -eq 0 ]; then
   log_outcome "skipped no-node"
   exit 0
 fi
