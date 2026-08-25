@@ -128,15 +128,23 @@ in §7 and the brief in §8, marked there.
 
 ### 00 · Intake — *absent*
 
-> **Fires on:** the owner filing an issue. Nothing else in the system is human-initiated.
+> **Fires on:** the owner creating a work item through any of the three doors below. Nothing else
+> in the system is human-initiated.
 >
 > **Cost:** no model, no owner minutes — a form submit at a red light. · **Sees:** — (it records;
 > finding is not its job)
 
-**There is no capture agent.** The ingress is a GitHub issue form — `.github/ISSUE_TEMPLATE/` —
-opened from the mobile app. One required field, *"What's the idea?"*, and the form applies the
-`idea` label so the label is never something to remember. Two templates: **Idea**, and **Defect**
-for the problem noticed while out and about, which files with `bug` and skips lane 01.
+**There is no capture agent.** Ingress takes three forms, distinguished by how much context the
+owner has already built:
+
+| Door | When | What enters the system | Next lane |
+|---|---|---|---|
+| **Micro** — GitHub issue form | At a red light, out and about, phone | A 1-liner. `.github/ISSUE_TEMPLATE/` applies `idea` or `bug` automatically. One required field, *"What's the idea?"* | 01 (Shape) |
+| **Tactical** — local `/grill-with-docs` session | At the desk, single-session alignment | The session ends aligned and publishes a GitHub issue with the grilled decisions. The owner invokes `/to-spec` directly while context is hot — **no handoff to a runner**, because the session already holds the nuance and serialising it to an issue loses signal | 02 (Spec, in-session) |
+| **Macro** — `/wayfinder` map | Multi-session domain exploration | A closed Wayfinder Map issue (e.g. [Lumaria #751](https://github.com/collod873/Lumaria/issues/751)) carrying ADR rulings, filed sub-issues, and scoped boundaries. Closing the map or applying a `to-spec` label triggers the cloud spec author | 02 (Spec, headless) |
+
+**All three doors produce the same downstream object**: a GitHub issue carrying enough decided
+context for lane 02 to synthesise a spec without interviewing the owner.
 
 The design pressure here is friction at a red light, not model quality. Every additional field is a
 question asked at the worst possible moment, and the fields worth having — urgency, scope, what it
@@ -233,6 +241,15 @@ lane's only defence.
 
 ### 01a · The short path
 
+**Below the short path is a direct path.** A small defect or UI tweak that the owner can hold in
+one session — 1–3 files, no concurrency, no multi-module coordination — skips lanes 01 through 04
+entirely. The owner edits, the gauntlet and review (lanes 06–07) still run on the PR, and that is
+the whole ceremony. The direct path exists because the alternative is era 4: seven plan steps for
+three edits. It is safe because it is **never unguarded** — every PR still passes through the
+gauntlet and review, which are the lanes that catch regressions, not the lanes that prevent scope
+creep. The risk it accepts is building a small wrong thing; the risk it avoids is not building
+anything because the overhead exceeded the work.
+
 A defect carries a failure that already happened; a feature carries an opinion about what would be
 better. The sheet ends with a **route recommendation**, and the owner's accept takes it or a
 one-word override sends it long. That is C2's shape — machine judgement with a reviewable
@@ -255,7 +272,8 @@ nothing records the ceremony an item did not need.
 
 ### 02 · Spec — *absent on a runner* (`/to-spec` exists, local)
 
-> **Fires on:** `approved`. **Refuses:** an idea whose adversary comments have not been answered.
+> **Fires on:** any of the three triggers below. **Refuses:** an idea whose adversary comments have
+> not been answered; a Wayfinder Map with unresolved stubs.
 >
 > **Cost:** 2 Opus stages; **5–15 owner minutes**, batched — the most expensive owner touch in the
 > system, and the one that pays for itself. · **Sees:** —
@@ -265,6 +283,20 @@ nothing records the ceremony an item did not need.
 | Spec author | Opus | 1, cloud | Opens a PR adding a spec. Two non-negotiables: acceptance criteria **quote the owner's words**, and every place it had to invent intent becomes a numbered open question rather than a silent assumption |
 | Spec critic | Opus | 1, on PR open | Hunts only for underspecification — sentences admitting two implementations, criteria that cannot be observed. It does **not** propose fixes; proposing lets it paper over the ambiguity it exists to surface |
 | ⬤ **owner** | — | 5–15 min, batched | Answer the open questions. This is the one place where going slower makes you faster |
+
+**Three triggers, one output.** Each produces the same PRD issue; they differ only in where the
+decided context lives:
+
+| Trigger | Source of context | Surface | Session state |
+|---|---|---|---|
+| `approved` label on a Decision Sheet | Lane 01's shaped decisions + ADRs | Cloud (Actions) | Cold — no conversation to inherit |
+| Owner invokes `/to-spec` after `/grill-with-docs` | Live conversation context | Local session | Hot — full nuance in the context window |
+| `to-spec` label on a closed Wayfinder Map | The map issue body: ADR rulings, filed sub-issues, scoped boundaries | Cloud (Actions) | Cold — but the map is self-contained by design |
+
+**Why the tactical door stays local.** Serialising a live grill to an issue so a runner can read
+it back is lossy compression that pays double tokens for less signal. The owner is already sitting
+there; one more prompt costs seconds. The cloud path exists for the cases where the owner is
+*not* sitting there — a Wayfinder Map closed yesterday, or a shaped idea approved from the phone.
 
 **A spec that ships with zero open questions is treated as suspect** — it guessed silently. This is
 C2 done correctly: the machine asks about *intent*, which the owner is the only one who can answer,
