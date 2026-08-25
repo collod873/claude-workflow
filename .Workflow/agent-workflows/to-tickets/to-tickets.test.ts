@@ -230,8 +230,11 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
  * #42's other half, exercised through `runNamedStage` rather than the CLI:
  * the behaviour under test is what a stage does with a response it refuses,
  * which needs no subprocess. The CLI tests above already own the
- * reason-reaches-the-handoff half, and every extra `npx tsx` spawn in this
- * file is ~5s of runner budget the 5000ms default timeout does not have.
+ * reason-reaches-the-handoff half, and an in-process test of an in-process
+ * behaviour is the cheaper and more direct one either way. (This used to be
+ * argued from the 5000ms default timeout, which every extra `npx tsx` spawn
+ * ate ~5s of. That budget is gone — see ADR-0015 — but the choice stands on
+ * its own.)
  *
  * Run 32677530530 spent two minutes of real model time and left one line
  * about why it died; the response itself was never written anywhere, so the
