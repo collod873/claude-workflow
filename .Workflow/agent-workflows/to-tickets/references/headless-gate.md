@@ -1,8 +1,5 @@
 # The headless-checkability gate
 
-Every acceptance criterion must be provable by exit code, `--json` output, a filesystem assertion,
-or a real run — never by eyeballing.
+Every acceptance criterion must be verifiable by automated means: an exit code, `--json` payload assertion, filesystem check, or executable test run.
 
-A vague criterion is **rewritten**, never deferred. The stage that drafts it is headless: nothing
-downstream can ask a clarifying question, so a criterion a machine cannot tick is a criterion that
-was never really stated.
+Rewrite vague criteria immediately during drafting. Downstream stages run headlessly and cannot resolve ambiguities.
