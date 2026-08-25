@@ -1,0 +1,164 @@
+/**
+ * Everything the PROPOSED lens's prompt is built from. Like VIOLATION
+ * (./violation.ts), the spawned call it feeds runs sandboxed with
+ * `--tools ""` (auditor.ts) — no tool access — so every input has to
+ * already be text here.
+ */
+export interface ProposedLensInput {
+  /** The session's own scoped diff (`observations/diff.ts`'s `sessionRangeDiff`). */
+  diff: string;
+  /** The session's captured conversation spine (capture's own format, spec #36 slice 1) — context for what the diff was trying to do. */
+  spine: string;
+}
+
+/**
+ * Builds the PROPOSED lens's prompt: the second lens the auditor runs (spec
+ * #36 slice 4; VIOLATION is the first, `./violation.ts`). Where VIOLATION
+ * checks a diff against standards already ratified, PROPOSED looks for a
+ * recurring judgement call worth a *new* entry — it never checks against
+ * `CODING_STANDARDS.md` at all, so unlike VIOLATION it takes no `standards`
+ * input.
+ *
+ * It never drafts the ruling's wording. The pre-fix corpus's
+ * `Suggested CODING_STANDARDS.md line:` field manufactured 30 of 42
+ * findings by generalising a single implementation choice into a universal
+ * rule (spec #36 §Evidence) — dropped here for that reason, and the ban is
+ * stated in the prompt as defense in depth. The structural guarantee is
+ * `parseProposedFindings` below: its output shape has no field that text
+ * could occupy, however the model responds.
+ */
+export function proposedPrompt(input: ProposedLensInput): string {
+  const { diff, spine } = input;
+  return `You are the PROPOSED lens, one pass over one session's own commits.
+
+## Session spine
+
+The session's own words — what it was trying to do. Context for the diff, not something to grade on
+its own.
+
+${spine}
+
+## Diff
+
+The session's own commit range, restricted to the paths its transcript names. This is the only code
+you look at.
+
+${diff}
+
+## What to do
+
+Look for a judgement call in the diff that a linter cannot express, made in a way that reads as a
+rule rather than a one-off choice — the same bar \`/standards-pass\` uses. You are not checking the
+diff against \`CODING_STANDARDS.md\`; that is a different lens's job, and repeating an entry a
+linter already enforces is not yours to do either.
+
+## Output
+
+One block per candidate pattern, in exactly this form, repeated for each:
+
+Finding: <a one-line description of the pattern, stable across sites — this is its identity, so
+phrase it the same way you would on a second sighting of it>
+Site: <file:line where this run observed it>
+
+Output only these two labels, once per candidate pattern, and nothing else — no drafted rule text,
+no rationale, no other labeled field. Writing the entry's wording is not this lens's call to make;
+only \`Finding:\` and \`Site:\` are read from what you write. If the diff shows no pattern worth
+proposing, say so plainly and stop — an empty pass is a valid pass.
+`;
+}
+
+/**
+ * One site of one candidate pattern, as `parseProposedFindings` reads it out
+ * of the sandboxed call's raw text. Deliberately two fields only: `finding`
+ * is the pattern's stable identity (what `applyTwoSiteGate` groups on) and
+ * `site` is where this run saw it. There is no field a
+ * `Suggested CODING_STANDARDS.md line:` — or anything else the prompt
+ * didn't ask for — could land in.
+ */
+export interface ProposedFinding {
+  finding: string;
+  site: string;
+}
+
+const FINDING_LINE = /^Finding:\s*(.+)$/;
+const SITE_LINE = /^Site:\s*(.+)$/;
+
+/**
+ * Reads `Finding:` / `Site:` pairs out of the PROPOSED lens's raw text,
+ * per `proposedPrompt`'s Output section. A `Site:` line only counts while a
+ * `Finding:` line is pending above it, and each pending finding is consumed
+ * by the next site — anything else in the raw text (prose, an empty-pass
+ * notice, a field the model wasn't asked for) is not one of these two
+ * labels and is silently not a finding.
+ */
+export function parseProposedFindings(raw: string): ProposedFinding[] {
+  const findings: ProposedFinding[] = [];
+  let pendingFinding: string | undefined;
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+
+    const findingMatch = FINDING_LINE.exec(trimmed);
+    if (findingMatch) {
+      pendingFinding = findingMatch[1].trim();
+      continue;
+    }
+
+    const siteMatch = SITE_LINE.exec(trimmed);
+    if (siteMatch && pendingFinding !== undefined) {
+      findings.push({ finding: pendingFinding, site: siteMatch[1].trim() });
+      pendingFinding = undefined;
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * One candidate pattern as the two-site gate tracks it across runs: every
+ * distinct site it has been named at, and whether it has cleared the gate.
+ */
+export interface GatedProposedFinding {
+  finding: string;
+  sites: string[];
+  /** `false` until a second, distinct site names this finding — "a smell seen once is not one." */
+  released: boolean;
+}
+
+/**
+ * The two-site gate (spec #36 §Solution: "PROPOSED is gated by the two-site
+ * rule ... a smell seen once is not one," `/standards-pass`'s existing bar
+ * applied to findings). Merges one run's `findings` into what prior runs
+ * already recorded, keyed on `finding`'s text as its identity. A finding
+ * stays unreleased on a single site, including a site named more than once
+ * — only a second *distinct* site flips `released`.
+ *
+ * Persisting the returned state across runs (git notes, spec #36 slice 4)
+ * is a later ticket's job; this function only merges what it's handed and
+ * hands back the result — the same "state passed in, not read from disk"
+ * shape `runAuditor` already uses for `spine` and `standards`.
+ */
+export function applyTwoSiteGate(
+  previous: GatedProposedFinding[],
+  findings: ProposedFinding[],
+): GatedProposedFinding[] {
+  const byFinding = new Map<string, GatedProposedFinding>();
+  for (const entry of previous) {
+    byFinding.set(entry.finding, { finding: entry.finding, sites: [...entry.sites], released: entry.released });
+  }
+
+  for (const { finding, site } of findings) {
+    const existing = byFinding.get(finding);
+    if (existing) {
+      if (!existing.sites.includes(site)) existing.sites.push(site);
+    } else {
+      byFinding.set(finding, { finding, sites: [site], released: false });
+    }
+  }
+
+  for (const entry of byFinding.values()) {
+    entry.released = entry.sites.length >= 2;
+  }
+
+  return [...byFinding.values()];
+}
