@@ -23,6 +23,18 @@ export const execClaude: StageExec = (argv) =>
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 
+/** Per-stage overrides of how the model is invoked. */
+export interface StageOptions {
+  /**
+   * The model id this stage runs on, when it is not the session default —
+   * `DESIGN.md` §3 assigns a tier per lane, and a stage whose tier is
+   * cheaper than the default has to say so or it silently costs more than
+   * the design budgeted for it. Omitted means "whatever the CLI defaults
+   * to", which is what every to-tickets stage wants.
+   */
+  model?: string;
+}
+
 /**
  * Runs one stage: reads `promptPath`, substitutes every `{{VAR}}`
  * placeholder in it with `vars[VAR]`, builds the `claude` argv for a single
@@ -33,10 +45,16 @@ const PLACEHOLDER = /\{\{(\w+)\}\}/g;
  * `{{VAR}}` is a wiring bug to catch here, not a partially-substituted
  * prompt to hand to a model.
  */
-export function runStage(promptPath: string, vars: Record<string, string>, exec: StageExec): string {
+export function runStage(
+  promptPath: string,
+  vars: Record<string, string>,
+  exec: StageExec,
+  options: StageOptions = {},
+): string {
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
-  return exec(["-p", prompt, "--dangerously-skip-permissions"]);
+  const model = options.model ? ["--model", options.model] : [];
+  return exec(["-p", prompt, "--dangerously-skip-permissions", ...model]);
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

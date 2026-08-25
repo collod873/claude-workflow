@@ -502,7 +502,7 @@ This is the merge-time complement to W3, which era 5 (ADR-0017, registry codegen
 (ADR-0007, file claims) both implement at authoring time. Authoring-time disjointness prevents
 textual conflict; nothing in either era prevents semantic conflict.
 
-### 09 · Close — *absent on a runner* (`close-gate.py` exists, local PreToolUse)
+### 09 · Close — **live** (`.github/workflows/close-gate.yml`)
 
 > **Fires on:** `issues.closed`. **Refuses:** the close — reopens the issue and comments why.
 >
@@ -519,6 +519,29 @@ This is **W1** — *a gate that errors at the moment of the action* — moved to
 agents it judges cannot reach. Era 2's `checklist-reminder.py` is the same idea and is still running
 five systems later; what changes here is only the venue, which is the entire difference between a
 gate and a suggestion.
+
+**Two rulings the move forced, and neither was in the drafted lane.** The venue sees closes the
+hook never could, and both of them are about closes no agent authored.
+
+[ADR-0013](docs/adr/0013-the-close-gate-judges-only-a-close-marked-completed.md) — **only a close
+marked `completed` is judged.** *Not planned* and *duplicate* assert that nothing was delivered, so
+there is no claim to verify. Without this the gate reopens every idea the owner drops from his
+phone, which is a queue draining onto him. With it, nothing else has to be softened: an issue closed
+as completed with no acceptance criteria and no record is still refused. The hole it leaves — an
+agent mislabelling a delivered ticket as *not planned* — is narrower than the one it closes and
+wants a lens, not a gate. Nothing watches it yet, and that belongs in §6.
+
+[ADR-0014](docs/adr/0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md) — **the
+Haiku translates, it never renders the verdict.** Where no record exists — the normal shape of a
+merge-keyword or web-UI close, and 78 of era 6's 125 refusals — one Haiku reads the issue and the
+pull request that closed it and writes the record the closer didn't. That output goes through the
+identical evaluator a hand-written record goes through, so a salvage claiming `MET` with nothing
+shaped like evidence is refused exactly as a person's would be. The salvaged record is posted to
+the issue, so the reasoning is durable and a re-close costs no model at all.
+
+**What is not retired.** The declared ceiling is unchanged: a well-shaped lie passes. `unmet-criterion`
+fired **once in 558** era-6 rows, so this is an active *compliance* mechanism and it is not a
+*correctness* one — the lane that makes it one is 04, and 04 is still absent.
 
 ---
 
@@ -601,6 +624,15 @@ in the places it doesn't. The dreamboat is not more model passes.*
 | **Parity** | A slice published, beside its siblings | A structural shape its sibling units have and it does not. Absence is only ever visible by comparison | 7 |
 | **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
 | **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
+
+**A fourth candidate arrived with lane 09, and is flagged rather than built.**
+[ADR-0013](docs/adr/0013-the-close-gate-judges-only-a-close-marked-completed.md) scopes the close
+gate to a close marked `completed`, which leaves one way past it: closing a delivered ticket as
+*not planned*. That is a deliberate mislabel rather than a forgotten comment, so it is narrower than
+the hole it replaces — but nothing watches it, it is class 6, and it is **countable**, which by this
+section's own argument makes it free. The count is `not_planned` closes on issues that carry
+`## Acceptance criteria`. It waits behind the three below because they have volume and it should
+have none; the first time it has any is the finding.
 
 None of the three spends a model, and all three can run on every push without ADR-0029's problem:
 counting produces no commits, so it cannot feed on its own output. A count is also recomputed rather
@@ -726,7 +758,7 @@ work drains onto the owner.
 | 0 | ✅ **Quarantine the flake** — the precondition for every gate below | — | **Nothing to do.** The suite here is green and ~1.7s; the precondition was met, not worked for. It becomes a real move the first time a check goes red for an environment reason |
 | 1a | ✅ **The free venues** (lane 06) — typecheck and lint in the turn, the whole gauntlet at turn end, the same on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | Landed. `bin/gauntlet` plus two hooks and a `pre-push`. No model spend, no plan change |
 | 1b | ✅ **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | Landed. `push` on `main` only, `paths-ignore` for Markdown, and it calls `bin/gauntlet push` so a check cannot drift between venues |
-| 2 | **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Days. The logic exists; the venue changes |
+| 2 | ✅ **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Landed. `.github/workflows/close-gate.yml` plus `close-gate/`. The grammar ported unchanged; two thirds of era 6's hook — every line that parsed a *shell command* to work out whether it was a close — deleted outright, which is the venue doing the work. Two rulings it forced: ADR-0013 and ADR-0014 |
 | 3 | **Session capture**, at session time, stored durably | Blocker 4 | Days — and every day it waits destroys a day of corpus permanently |
 | 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
 | 4b | **Shape** (lane 01) — sweep, shaper, refuter, and the sheet | The blank-screen approve | Days |

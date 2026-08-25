@@ -1,0 +1,95 @@
+name: Close gate
+
+# Lane 09 (DESIGN.md §09), and GOAL.md's blocker 1 retired structurally rather than patched.
+#
+# Era 6 ran this gate as a PreToolUse hook on the workstation. Two holes came with that venue: a
+# commit-keyword close (`Closes #704`) never reached it, and a crashing rail failed open unseen —
+# 83 rows of exactly that in each of two logs. `issues.closed` fires no matter *how* an issue was
+# closed, and an Action that errors is a red run rather than a silent pass. The judgement is
+# unchanged; only the venue is, and the venue is the entire difference between a gate and a
+# suggestion.
+#
+# The job-level `if` is the scope rule: only a close marked `completed` claims a delivery, so only
+# one gets a runner. A close marked `not planned` or `duplicate` is a decision not to do the work
+# and there is nothing for a record to be about. It is spelled here as well as in `close-gate.ts`
+# on purpose — the estate is over its 2,000-minute cap, so a job that would decide "nothing to do"
+# should never start — and `close-gate.test.ts` asserts the two still agree, since no compiler
+# sees across this language boundary.
+#
+# The gate reopens the issue itself, through `gh`, rather than leaving a red run for someone to
+# read. A refusal is therefore not a failure: the step exits 0 and the run stays green. Only a
+# *degraded* outcome — the tracker unreadable, the salvage stage dead — exits nonzero, because
+# that is the gate breaking rather than the gate working, and a gate that fails open is not a
+# gate (CONTEXT.md).
+#
+# What clears a refusal, per ADR-0011: post a `## Closing record` comment that clears the grammar
+# and close the issue again. Most-recent-wins, so a corrected record does not require deleting the
+# one that was refused. That repair exists today and costs nothing, which is what makes this
+# refusal shippable where branch protection (move 10) still is not.
+
+"on":
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-gate:
+    if: github.event.issue.state_reason == 'completed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      STATE_REASON: ${{ github.event.issue.state_reason }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Idempotent, so the first refusal on a fresh repo cannot fail at the one step whose whole
+      # job is to fail closed — `--force` updates rather than errors when the label already
+      # exists. Same shape as `to-tickets.yml`'s `slice-failed`.
+      - name: Ensure close-refused label exists
+        run: |
+          gh label create close-refused \
+            --color b60205 \
+            --description "A close this gate reopened" \
+            --force
+
+      # The salvage stage is conditional — most closes carry a record and spend nothing — so this
+      # cannot be a hard preflight the way `to-tickets.yml`'s is. A missing secret surfaces as a
+      # dead stage, which `close-gate.ts` reports as `degraded`: the close is still reversed and
+      # the run still goes red. Warned about here so the run log names the real cause rather than
+      # leaving someone to infer it from a CLI error.
+      - name: Warn when CLAUDE_CODE_OAUTH_TOKEN is unset
+        run: |
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::warning::CLAUDE_CODE_OAUTH_TOKEN is empty — a close with no closing record cannot be salvaged and will be refused as degraded."
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `stage.ts` resolves the CLI from PATH and a GitHub-hosted runner has none; `npm ci` cannot
+      # supply it, since Claude Code is not a dependency of this project and `node_modules/.bin`
+      # is not on a `run:` step's PATH. Pinned for the reason ADR-0002 gives — a run comes from the
+      # checkout alone, and a floating install would let a release published next month change what
+      # a rerun of this commit does. Same pin as `to-tickets.yml`.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # The gate does its own writes — reopen, comment, label — through the `gh` seam in
+      # `shared/gh.ts`, so there is no separate reporting step here and no way for a refusal to
+      # half-land. Exits 0 on a pass or a refusal; nonzero only when it could not verify.
+      - name: Judge the close
+        run: npx tsx .Workflow/agent-workflows/close-gate/close-gate.ts
