@@ -13,6 +13,13 @@
 # §Solution for why it isn't re-derived here. This script does not itself re-check `reason` —
 # the matcher is what keeps `prompt_input_exit` from ever reaching it in production.
 #
+# What that costs, measured 2026-08-26 over the recorder's first six days (#103 §3,
+# docs/research/session-capture-coverage-2026-08.md): one session in 635. It was seven lines long,
+# was the stub `/clear` opens behind the session it closes, and contained no human turn at all.
+# The other 589 uncaptured sessions predate the recorder and are the backfill's business, not this
+# matcher's. One session is not a rate — if a later count finds abandoned prompts carrying real
+# conversation, this line and that note are what get amended.
+#
 # Mechanics: repair PATH, read stdin SYNCHRONOUSLY (this hook must not block SessionEnd), then hand the
 # transcript path plus session/project/source off to session-capture-hook.mjs in a FULLY
 # DETACHED background subshell (stdio redirected off this script's fds, disowned) so this script
