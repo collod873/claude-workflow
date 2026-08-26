@@ -1,0 +1,77 @@
+name: Ratify release
+
+# Spec #63 §Solution move 5, the ratification connector: the moment the owner's review of a release
+# PR (`run-release.ts`'s `composeRelease`) lands, this workflow turns their checkbox decisions back
+# into `RatificationRecord`s (`run-ratification.ts`), so the next release's `filterByRatificationMemory`
+# knows what was already declined and what site growth earns a re-proposal.
+#
+# The job-level `if` is the scope rule, same shape as `close-gate.yml`/`release-on-prd-close.yml`:
+# `pull_request: closed` fires for every PR this repo merges, not only release PRs, and the estate
+# is over its 2,000-minute monthly cap — a runner that would decide "not a release PR" should never
+# start. The release PR title is the only thing distinguishing one from an ordinary feature PR, so
+# it is spelled here as well as in `release.ts`'s own `RELEASE_PR_TITLE`; no compiler sees across
+# that language boundary, so `run-ratification.test.ts`'s "agrees with" test does. A closed-without-
+# merging release PR still gets a runner (there is no `merged`-only job condition — GitHub Actions'
+# `if` cannot see `pull_request.merged` any more reliably than the script can), but costs almost
+# nothing: `run-ratification.ts` reads `merged` itself and returns before any git write.
+#
+# `merge_commit_sha` — not `GITHUB_SHA` — is what these decisions key to: for a `pull_request` event
+# `GITHUB_SHA` is the PR branch's own last commit, never the commit that actually landed on the base
+# branch. `actions/checkout`'s `ref:` below checks that commit out explicitly so `git notes add` has
+# an object to attach to; unset (a PR closed without merging) checks out the default ref instead,
+# which the script never reads a note onto.
+#
+# Unlike `release-on-prd-close.yml`'s `refs/release/last`, there is no separate "Publish" step here:
+# `run-ratification.ts` writes `refs/notes/ratifications` through `notes-sync.ts`'s `syncNotesRef`,
+# which fetches, applies and pushes itself (retrying once on a race) — the module's own write, not a
+# bare local `update-ref` a workflow step would otherwise have to push on its behalf.
+
+"on":
+  pull_request:
+    types: [closed]
+
+permissions:
+  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to origin.
+  contents: write
+
+jobs:
+  ratify-release:
+    if: "github.event.pull_request.title == 'Release: observations from this batch'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_MERGED: ${{ github.event.pull_request.merged }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The merge commit itself when there is one, so it exists locally for `git notes add` to
+          # attach to; the default ref otherwise, which a closed-without-merging run never writes to.
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+      # `checkout`'s default refspec (`refs/heads/*`) never carries a notes ref — `syncNotesRef`
+      # itself re-fetches `refs/notes/ratifications` before it writes (`shared/notes-sync.ts`'s own
+      # `fetchNotesRef`), but only once it has a local ref to compare against; a completely fresh
+      # checkout has none. Let to fail: a repo before its first ratification has no such ref yet,
+      # the same absence `syncNotesRef`'s own `ls-remote` check already tolerates.
+      - name: Fetch the ratifications ref
+        run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The connector's own write — at most one `git notes add` plus the push `syncNotesRef` makes
+      # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
+      # reporting step here.
+      - name: Ratify the release PR's checklist
+        run: npx tsx .Workflow/agent-workflows/observations/run-ratification.ts
