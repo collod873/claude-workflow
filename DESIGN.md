@@ -47,8 +47,11 @@ A row marked **⬤ owner** is a point where Collin is required. There are five, 
 number is the whole project. Two are in the lanes (01, 02); three are outside them — the two taste
 calls in §7 and the brief in §8 — and all five are marked where they occur.
 
-The scoring rule: a proposed lane is held against C1–C7 in `GOAL.md` §2. A lane that fails a
-constraint is not a smaller lane; it is a different goal, and it does not get built. **This document
+The scoring rule is `GOAL.md` §2's, and a lane is what it scores here: a lane that fails a constraint
+is not a smaller lane, it is a different goal, and it does not get built. Scoring is also an ⬤ owner
+point — whether a mechanism exists at all is the owner's call
+([ADR-0047](docs/adr/0047-the-shape-of-the-machine-is-an-owner-point-agents-do-not-jud.md)) — but it
+is not one of the five below, which count where the owner is required per work item. **This document
 is a proposal and does not exempt itself** — what survived that scoring unresolved is §11.
 
 ### What one line of change costs

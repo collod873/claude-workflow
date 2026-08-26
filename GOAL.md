@@ -14,7 +14,8 @@ different goal.
 
 > **Describe work once and have it ship — correctly, without starting it, watching it, or being
 > asked questions the owner can't answer — and the machine that does it costs almost nothing to
-> keep alive.**
+> keep alive.** Not *work happens while I sleep*, which §3 retires: **nothing waits on the owner to
+> fire it, and he never has to check its homework.**
 
 Sourced from what Collin has said repeatedly, not from what a system was designed to do:
 
@@ -41,18 +42,21 @@ Each one recurs across multiple eras with different technology each time, which 
 properties of the operator and the work rather than of any one system. Each is testable: a design
 either satisfies it or it doesn't.
 
+**A proposal answers all seven tests in writing. An unanswered test is a failed one.**
+
 **C1 · Ship speed beats correctness ceremony.**
 No era was ever replaced for producing bad output. Every one was replaced when per-unit overhead
 stopped being worth it — era 4 spent ~7 plan steps on ~3 edits in 1 file. *(Eras artifact, F1.)*
-**Test:** what does this add to the smallest unit of real work?
+**Test:** model stages and owner minutes added to the smallest unit of real work, stated as numbers.
 
-**C2 · Never ask a question the owner can't answer.**
+**C2 · Machine judgement with a reviewable checkpoint, never a human quiz.**
 *"/to-tickets stops and asks me questions at the end and I dont even really know the answers anyway
 I cant determine what looks right im not a senior dev."* Cockpit designed a sizing quiz in April
 for this exact reason; commit `68b071f` deleted it in August because the questions "were senior-dev
 calls a human maintainer can't actually answer better than the breakdown's own author." Replaced by
 an audit agent. *(F7.)*
-**Test:** machine judgement with a reviewable checkpoint — never a human quiz.
+**Test:** which questions does this put to the owner, and could he answer each better than the thing
+that asked?
 
 **C3 · Event-driven, never a clock.**
 *"i dont want a time based cadence, that doesnt make sense because i might ship a lot of work at
@@ -90,13 +94,12 @@ fleet: one push, decisions grouped by topic, a hard cap around 7 in the queue, a
 queue is full. *(Issue [#125](https://github.com/collod873/agent-skills/issues/125).)*
 **Test:** how many times a day does this interrupt?
 
-> **The constraint stands; the Foundry's mechanism for it does not.** The queue cap, the five-day
-> expiry and the governor were struck on measurement —
-> [ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md). The
-> brief alone answers the test above, being the only thing permitted to reach the owner. C7 is
-> unchanged.
+> **The constraint stands; the Foundry's mechanism for it does not** — the queue cap, the five-day
+> expiry and the governor were struck on measurement
+> ([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)). The
+> brief is the only thing permitted to reach the owner.
 
-### Where the human deliberately stays
+### The owner points
 
 Named as a boundary, not a gap. Automating these makes the result measurably worse:
 
@@ -106,13 +109,17 @@ Named as a boundary, not a gap. Automating these makes the result measurably wor
 - **Destination and scope**, including the wayfinder ticket budget. The record backs this one hard:
   ADR-0002 is a destination call where Collin overrode the recommendation outright — *"I DONT WANT
   IT ON MY COMPUTER"* — and that override became the ruling.
+- **The shape of the machine** — which mechanisms exist, where agents sit, where a check goes. The
+  measured asymmetry: agents kept the governor alive for five days and it died to one owner
+  question; across the same window twenty owner touches were rubber-stamps and five were
+  engagements, and **all five killed a mechanism.** Agents are reliable at building the thing and
+  unreliable at asking whether it should exist, because the thing under review is their own work —
+  which is W2 pointed at the design rather than at the code.
+  [ADR-0047](docs/adr/0047-the-shape-of-the-machine-is-an-owner-point-agents-do-not-jud.md).
 
-**Struck: vocabulary.** Era 5's ADR-0026 and era 6's `seeded-doc-router.py` were read as *agents own
-code, the human owns `CONTEXT.md` / `CODING_STANDARDS` / skills / `CLAUDE.md`*. The record does not
-support it. Across 34 ADRs and two glossaries in the surviving transcript window, Collin originated
-3; there is **no instance of a proposed ADR or glossary term being rejected or rewritten**, and two
-agent-flagged invitations to reverse went unanswered and still stand as written. W5 is restated
-below. See [ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md).
+**Struck: vocabulary.** Never a boundary — the record never once exercised it. W5 states what
+replaced it, [ADR-0006](docs/adr/0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md)
+rules it.
 
 ---
 
@@ -123,10 +130,8 @@ something and walk away. Measured across the era boundary in Lumaria — the one
 models ran on the same codebase — **both eras land ~85% of commits inside waking hours**, and the
 current model still commits at 02:37 via background drain workers. What actually changed was *where
 the human sits*: outside the loop applying labels, versus inside the session at 6.4 prompts per
-session. The pipeline's founding justification was never really tested by the pipeline.
-
-So the goal is not *"work happens while I sleep."* It is **"nothing waits on me to fire it, and I
-never have to check its homework."**
+session. The pipeline's founding justification was never really tested by the pipeline — which is
+why §1's end state is worded around who fires the work rather than around what hour it runs.
 
 ---
 
@@ -142,25 +147,21 @@ Ordered. Nothing further up the list is optional for anything below it.
    - **Open.** **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
      `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`),
      all from the one shared `mirror.mjs`, failing open and unseen. That file lives in Lumaria and
-     is untouched. *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
+     is untouched. *(Measured 2026-08-23.)*
 2. **Nothing in the system can start work.** All ten pipeline verbs are
    `disable-model-invocation: true`; ~34 dispatches a day, almost none of it judgement a human
    holds. This — not model capability, and not verification volume — is the ceiling.
    *(Issue [#128](https://github.com/collod873/agent-skills/issues/128).)*
 
-   **What the close gate actually measures, corrected 2026-08-23.** This line used to read
-   "verification quality measured fine at ~8% UNMET closes." That number does not reproduce.
-   `close-gate.log` is 558 rows: **125 refusals, 22.4%** — triple the figure once on record, which
-   [#128](https://github.com/collod873/agent-skills/issues/128) had graded *Counted, trust this*.
-   But the composition is the finding: `no-closing-record` 78, `bad-evidence-shape` 15,
-   `no-range-or-no-diff` 9, `missing-acceptance-criteria` 8, `criteria-count-mismatch` 3 — and
+   **What the close gate actually measures.** `close-gate.log` is 558 rows: **125 refusals, 22.4%**.
+   The composition is the finding — `no-closing-record` 78, `bad-evidence-shape` 15,
+   `no-range-or-no-diff` 9, `missing-acceptance-criteria` 8, `criteria-count-mismatch` 3, and
    **`unmet-criterion` exactly once in 558.** The gate is an active *compliance* mechanism and is
    not theatre. It is not a *correctness* one, and nothing should be built on a claim that it is.
-3. **No mechanism points backwards.** 44 ADRs, 9 amending an earlier one; 14 lint rules and 2
-   `CODING_STANDARDS.md` entries, and **not one has been asked whether it caught anything.** That
-   file has exactly one exit — *mechanised* — which requires building another rule first, so it can
-   only grow. *(Counts corrected 2026-08-26; this line read "30 ADRs" and "36 lint rules", both from
-   an era-6 estate figure that was never this repo's.)*
+   *(Measured 2026-08-23.)*
+3. **No mechanism points backwards.** Every ADR, every lint rule, every `CODING_STANDARDS.md` entry
+   — and **not one has been asked whether it caught anything.** That file has exactly one exit —
+   *mechanised* — which requires building another rule first, so it can only grow.
 
    *Half of this is retired.* Specs [#36](https://github.com/collod873/claude-workflow/issues/36)
    and [#63](https://github.com/collod873/claude-workflow/issues/63) built and wired the VIOLATION
@@ -168,25 +169,24 @@ Ordered. Nothing further up the list is optional for anything below it.
 
    **The open half, now decided but unbuilt.** The question is ruled — ADR-0044 through ADR-0046 —
    and a ruling retires nothing, so this blocker closes on **two builds**, not on the decision:
-   - **The back-stamp**, which points the question at the ADRs. There is nothing to delete: all 44
-     ADRs are cited, and the only signal that discriminates finds the *superseded* ones, which must
+   - **The back-stamp**, which points the question at the ADRs. There is nothing to delete: every
+     ADR is cited, and the only signal that discriminates finds the *superseded* ones, which must
      survive because the amendment chain is the record. So the act is a pointer onto the stale
      record, not a deletion.
      [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
    - **ADR-0003's lint audit**, which points it at the rules and is **ruled but unbuilt** —
      `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
      stands" is a static tree scan rather than a question about history.
-4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. A `SessionEnd` hook
-   is registered globally, so every session on this machine is recorded; the `cleanupPeriodDays: 30`
-   clock that was destroying a day of corpus per day has stopped. ADR-0018, ADR-0020.
-5. **The pre-merge gate — mostly retired, and the rest is bought.** The only unambiguous regression
-   in the whole six-month record: 12 broken commits reached `main` in five days, all genuine
-   `unit`/`build` breakage, zero infra flake.
+4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. ADR-0018, ADR-0020.
+5. **The pre-merge gate — mostly retired, and the rest is bought.** Retired by the gauntlet and its
+   four venues; `DESIGN.md` §06 carries the contract, and
+   [`docs/research/actions-billing-2026-08.md`](docs/research/actions-billing-2026-08.md) carries the
+   regression that justified it.
 
    *The open half:* the free venues below Actions refuse only at push, and `--no-verify` still gets
    past that. Closing it needs branch protection, which is a $4/month purchase on a private Free
    account and waits on the fixer — nothing else in the design clears a red without the owner
-   (ADR-0011). `DESIGN.md` §06 carries the venue contract.
+   (ADR-0011).
 
 ---
 
@@ -195,6 +195,9 @@ Ordered. Nothing further up the list is optional for anything below it.
 Six mechanisms were kept, ported, or independently re-derived across era boundaries. Anything built
 next starts from these rather than rediscovering them. Full treatment in
 [Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0) §05.
+
+**Test:** which of W1–W6 does this re-derive, and why is the new version better than the one on
+record?
 
 | | |
 |---|---|
