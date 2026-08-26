@@ -62,6 +62,18 @@ jobs:
       - name: Fetch the ratifications ref
         run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
 
+      # A runner has no git identity, and `git notes add` writes an object with a committer on it.
+      # `audit.yml` learned this the expensive way (#107): its first non-skipped run died on
+      # `empty ident name` after spending both lens passes. This lane reaches the same write through
+      # `run-ratification.ts`'s `writeRatificationNote`, and has never run — so the same defect sat
+      # here unfixed, because the first fix travelled no further than the file it was made in (#109).
+      # `runner-committer.test.ts` is what now makes it travel. The bot is the honest author: this
+      # note records what the run read off the PR, not a person's own commit.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
