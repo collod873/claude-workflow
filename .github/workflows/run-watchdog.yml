@@ -31,6 +31,11 @@ name: Run watchdog
   repository_dispatch:
 
 permissions:
+  # read: the checkout. Declaring a `permissions:` block sets every scope not listed in it to none,
+  # so omitting this is not "the default" — it is a token that cannot clone a private repo, and the
+  # first run of this lane died on `fatal: repository ... not found` before reaching any of its own
+  # logic. `workflow-permissions.test.ts` is the guard.
+  contents: read
   # read: `actions/runs`, and `actions/runs/<id>/jobs` for the one number the runs list omits. The
   # close gate's reconciler spent every dispatch it received exiting on a 403 for want of exactly
   # this (#107), which is why it is spelled out rather than assumed.
