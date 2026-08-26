@@ -248,7 +248,10 @@ context for the lane above it to work from without interviewing the owner.
 > ([ADR-0052](docs/adr/0052-a-comment-clears-a-stage-1-refusal-because-the-change-reques.md)), from
 > the same budget as a change request. That is the clearing path
 > [ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md) requires before
-> anything is promoted to refusing.
+> anything is promoted to refusing. **The share of refusals cleared this way is what says whether the
+> sweep is refusing correctly** — a bare kill rate cannot, since it reads the same on a sweep that
+> refuses everything. It is a sizing measurement living in ADR-0052, not a counter and not a §11 entry
+> ([ADR-0066](docs/adr/0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md)).
 > — **Only a broken run is red.** A refusal, a refuse-to-shape and a spent change-request budget all
 > comment on the issue and exit 0. Kills are this lane's expected traffic, and a red run for the
 > expected case is how red stops meaning anything.
@@ -803,7 +806,7 @@ silent pass. A gate that cannot be routed around is the precondition for steppin
 
 ## 6 · The standing lenses and counters
 
-Eleven things get read while nobody is watching. Seven spend a model; four only count. Each is
+Twelve things get read while nobody is watching. Seven spend a model; five only count. Each is
 attached to the event that makes it non-vacuous, which is what distinguishes a lens from a cadence.
 Nothing in this system runs on a clock —
 [ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).
@@ -877,7 +880,7 @@ recorder, which is the honest price of the three months without one.
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
 | 7 | **Absence** — what should exist and doesn't | **The bypass counter** and **the lost-dispatch counter**, below |
-| 8 | **Drift** — this was true and stopped being | The spec lens, the decision-log lens, and the backwards question |
+| 8 | **Drift** — this was true and stopped being | The spec lens, the decision-log lens, the backwards question, and **the missing-trailer counter** — the only one of the four that both exists and files (ADR-0067) |
 | 9 | **The owner's behaviour** — corrected, reverted, asked twice | **The `not_planned` counter**, below |
 | 10 | **Across repos** — not a repo rule, a rule | **The cross-repo counter**, below |
 
@@ -904,7 +907,10 @@ see **Sizing measurements** below.
 
 This section read "the three free counters" and the table grew to ten in four days on the retired
 argument. Applying the bar cut two and moved four out
-([ADR-0065](docs/adr/0065-parity-and-correction-do-not-survive-their-own-history-so-se.md)). Four
+([ADR-0065](docs/adr/0065-parity-and-correction-do-not-survive-their-own-history-so-se.md)). A fifth
+was admitted the same day — the missing-trailer check, which had left §6 attached to a mechanism that
+files nothing
+([ADR-0067](docs/adr/0067-the-missing-trailer-check-is-a-counter-because-it-files-wher.md)). Five
 remain, and each row states its own contract:
 
 | Counter | Fires on | At | Files, proposing | Sees |
@@ -913,6 +919,7 @@ remain, and each row states its own contract:
 | **`not_planned` closes** | A lane 07 finding issue closing | 3 grow · 20 delete | Add a refuter, or delete the fleet — the tracker (class 6) crossed with the owner's behaviour (class 9) | 6 × 9 |
 | **Cross-repo** | A finding recorded, in any repo | 2 — the second site | File here a machinery defect found elsewhere. C3's candidate trigger, applied across the estate | 10 |
 | **Lost dispatch** | A spec published carrying `sliceable` | 1 | Name a PRD that carries the label with no sub-issues and no completed slicing run — a `repository_dispatch` that never arrived | 7 |
+| **Missing trailer** | An ADR or research note committed to `main` | 1 | Write the trailer, or state it is not a supersession. An ADR carrying a supersession verb and a link to a lower-numbered ADR but no `Amends:` trailer; a `docs/research/` note with no `Resolves:` field | 8 |
 
 **Cut: parity and correction**, on their own history rather than on argument (ADR-0065). Correction
 reads reverts and same-day add-and-delete; across **175 commits** this repo has **zero** of each — an
@@ -1053,6 +1060,18 @@ blocked by nothing, and ADR-0064's admission bar does not reach it — a bar who
 does it file* has nothing to ask a mechanism that files none. What that ruling took from it instead
 is the operational shape of the backwards question, now pointed at the counters themselves.
 
+**Move 8c carries two mechanisms and only one of them is that.** The back-stamp writes a
+`Status:` line from a trailer that exists; the **missing-trailer check** finds a supersession whose
+trailer does not, and it cannot write anything, because the fact it needs is the fact that is absent.
+So it files, and it is the fifth counter above
+([ADR-0067](docs/adr/0067-the-missing-trailer-check-is-a-counter-because-it-files-wher.md)). The two
+travelled out of this section together because they read the same trailer graph. Measured on
+2026-08-26: **2 of 66** ADRs carry an `Amends:` trailer, **27** carry a supersession verb and a link
+to a lower-numbered ADR without one, and `docs/research/` went from two-of-seven to **three-of-nine**
+documents with no issue pointer — a backlog that grew while the field stayed unbuilt. `bin/new-adr`
+still has no `--amends` flag; ADR-0045 mandated one, and it ships with move 8c as the counter's
+repair path.
+
 **Cut:** the Foundry's cold-user walkthrough and persona panel. Both need a deployed product with
 users; nothing in the estate has one today. They come back the day a repo does — as a lens on
 preview deploy, not as a nightly cron.
@@ -1174,10 +1193,18 @@ or spend — his to answer, and nobody else's. A **measured** question has a rig
 currently holds the number for, and handing it to him as a choice is the sizing quiz commit
 `68b071f` deleted, rebuilt in a document that claims to forbid it.
 
+**No number lives here** —
+[ADR-0066](docs/adr/0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md), amending
+ADR-0026, which moved the build order and the filed questions out and left the unmeasured numbers
+behind. A number belongs to a decision or to a mechanism: to a decision, and it is a **sizing
+measurement** living in that decision's ADR; to a mechanism, and it is a **counter** with all four
+fields in §6. There is no third home, so there is nowhere here for one to be parked. That is what
+struck questions 3 and 6 below.
+
 **Filed.** These live as issues; this list carries the pointer and nothing else (ADR-0026). None
 open.
 
-**Not yet filed.**
+**Not yet filed.** Two, and they are one deferred owner decision wearing two hats.
 
 1. ⬤ **How far does the pipeline spread, and in what order?** *Owner — deferred, not open.* Ruled
    2026-08-23: **this repo and nothing else** until the machine runs here. A second repo is not a
@@ -1195,10 +1222,13 @@ open.
    has nothing to freeze, and lane 04 is the load-bearing gate — so such a repo gets a different
    gate or it does not get the pipeline. Question 1 settles this on its way past, and question 1 is
    deferred, so this one is too.
-3. **The sweep's kill rate has never been measured** (lane 01). *Measured.* Three model stages spend
-   before a line exists, on an idea that may be killed. The stage-1 refusal bounds it and the whole
-   chain is under a dollar — but the kill rate is the number that says whether the shaper is earning
-   its stage.
+3. ~~**The sweep's kill rate has never been measured** (lane 01).~~ **Struck** — it was the wrong
+   number. The cost half dissolves on ADR-0024, and a bare kill rate cannot tell a correct kill from
+   an over-refusal. What discriminates is **the share of stage-1 refusals cleared by a comment**,
+   which lives in
+   [ADR-0052](docs/adr/0052-a-comment-clears-a-stage-1-refusal-because-the-change-reques.md), the
+   ruling it would falsify
+   ([ADR-0066](docs/adr/0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md)).
 4. ~~**Write-on-surprise is uncalibrated** (lane 05).~~ **Retired** — the mechanism is struck
    before it was built, so there is nothing left to calibrate
    ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)).
@@ -1206,9 +1236,11 @@ open.
    counted from `verify.yml`'s failed step names, filing at three and retired by move 10
    ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)). It
    was never unmeasured: four of 34 runs had already recorded it.
-6. **Intake templates are per-repo copies** (lane 00). *Measured.* GitHub cannot centralise defaults
-   for a private estate. At two repos that is a file; at twenty it is `/sync-skills`, which ADR-0027
-   deletes for exactly this reason. Bounded by question 1 and by nothing else.
+6. ~~**Intake templates are per-repo copies** (lane 00).~~ **Dissolved** —
+   [ADR-0057](docs/adr/0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) put
+   `.github/ISSUE_TEMPLATE/` on the installer's **Wires** list, derived and overwritten on re-run.
+   It does not degrade with repo count, so twenty repos never need `/sync-skills`
+   ([ADR-0066](docs/adr/0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md)).
 7. ~~**Lane 08's merge warden is unspecified.**~~ **Retired** — there is no such finding and no
    such warden. The lane spends no model and the semantic-conflict class goes to the proposed lens
    ([ADR-0040](docs/adr/0040-lane-08-merges-without-a-model-and-the-semantic-conflict-cla.md)).
@@ -1227,4 +1259,6 @@ reaches a second repo — a lane is called, never copied** (ADR-0055), **what ma
 survivable — it is generated and the gauntlet runs it** (ADR-0056), and what an installer covers
 (ADR-0057); **what lane 02's spec author reads, what it may reach, and what dispatches the slicer**
 (ADR-0058 through ADR-0062, and §02 above); **what a gate bypass is, and what counts it** (ADR-0063,
-and §6 and §06 above).
+and §6 and §06 above); **what admits a counter, and what a number that names no action is instead**
+(ADR-0064 and ADR-0065); **where a number lives — an ADR or a counter row, never this list** (ADR-0066,
+amending ADR-0026), and **that the missing-trailer check is a counter** (ADR-0067).
