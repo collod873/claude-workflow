@@ -45,6 +45,7 @@ import { execGit } from "../../.Workflow/agent-workflows/shared/git.ts";
 import { execGh } from "../../.Workflow/agent-workflows/shared/gh.ts";
 import { deriveRange } from "../../.Workflow/agent-workflows/capture/range.ts";
 import { ownerAndRepoFromOrigin, sessionIsInThisRepo } from "../../.Workflow/agent-workflows/capture/repo-scope.ts";
+import { toRepoRelative, worktreeRoot } from "../../.Workflow/agent-workflows/capture/touched-paths.ts";
 import { writeSessionRecord } from "../../.Workflow/agent-workflows/observations/session-notes.ts";
 import { syncNotesRef } from "../../.Workflow/agent-workflows/shared/notes-sync.ts";
 
@@ -202,7 +203,14 @@ function publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed }
     return;
   }
 
-  const touchedPaths = [...parsed.filesEdited, ...parsed.filesWritten];
+  // The transcript reports absolute workstation paths, and freely includes files outside the repo
+  // (`~/.claude/settings.json`, a scratchpad under `/tmp`). This record is read on a runner whose
+  // checkout is somewhere else entirely, where such a path is not just wrong but fatal to the
+  // `git diff` it becomes — see `touched-paths.ts`. Relativised against the session's own worktree,
+  // which is not necessarily `REPO_DIR`; when git can't name that root, the paths are dropped
+  // rather than published unusable, and the lenses read the unrestricted range diff.
+  const root = worktreeRoot(execGit, sessionCwd);
+  const touchedPaths = root ? toRepoRelative([...parsed.filesEdited, ...parsed.filesWritten], root) : [];
   const record = { sessionId, base: range.base, head: range.head, touchedPaths, spine: markdown };
 
   try {

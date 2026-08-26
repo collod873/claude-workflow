@@ -245,7 +245,13 @@ process.exit(result.status === null ? 1 : result.status);
 }
 
 /** One fixture transcript's worth of entries for the publish tests: a human prompt plus an Edit, timestamped to bracket a commit made at `iso`. */
-function publishTranscript(iso: string): unknown[] {
+/**
+ * `sessionRepo` is the worktree the session ran in, and every `file_path` below is absolute
+ * beneath it — which is the only shape a real transcript ever has. It used to say `a.ts`, and that
+ * relative spelling is why the note's `touchedPaths` looked right in this test for as long as it
+ * was fatal on a runner (#107): the fixture was the one place the paths were already relative.
+ */
+function publishTranscript(iso: string, sessionRepo: string): unknown[] {
   const before = new Date(new Date(iso).getTime() - 60 * 60 * 1000).toISOString();
   const after = new Date(new Date(iso).getTime() + 60 * 60 * 1000).toISOString();
   return [
@@ -263,7 +269,10 @@ function publishTranscript(iso: string): unknown[] {
       message: {
         content: [
           { type: "text", text: "Done." },
-          { type: "tool_use", name: "Edit", input: { file_path: "a.ts" } },
+          { type: "tool_use", name: "Edit", input: { file_path: join(sessionRepo, "a.ts") } },
+          // A real session edits outside the repo too — this is `~/.claude/settings.json`'s stand-in.
+          // The repo's history contains it at no path, so the record must not name it at all.
+          { type: "tool_use", name: "Write", input: { file_path: join(tmpdir(), "outside-the-repo.json") } },
         ],
       },
       timestamp: after,
@@ -432,7 +441,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
     const ghBinDir = fakeGhBinDir(ghLogPath);
 
-    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
 
     const result = runHook(
       { session_id: "session-in-scope", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
@@ -455,6 +464,8 @@ describe("session-capture.sh — publishing the session record and dispatching t
     };
     expect(note.sessionId).toBe("session-in-scope");
     expect(note.head).toBe(head);
+    // Relative to the session's own worktree, and the out-of-repo edit is gone: this is the whole
+    // pathspec a runner's `git diff` will be handed, in a checkout at a different absolute path.
     expect(note.touchedPaths).toEqual(["a.ts"]);
     expect(note.spine).toContain("ship the range derivation");
 
@@ -475,7 +486,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
     const ghBinDir = fakeGhBinDir(ghLogPath);
 
-    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", otherRepo));
 
     const result = runHook(
       { session_id: "session-out-of-scope", transcript_path: transcript, cwd: otherRepo, hook_event_name: "SessionEnd", reason: "clear" },
@@ -504,7 +515,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
     const ghBinDir = fakeGhBinDir(ghLogPath);
 
-    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
 
     const result = runHook(
       { session_id: "session-race", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
@@ -538,7 +549,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
     const ghBinDir = fakeGhBinDir(ghLogPath);
 
-    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
 
     const result = runHook(
       { session_id: "session-dead-remote", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
@@ -563,7 +574,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
     const ghBinDir = fakeGhBinDir(ghLogPath, { fail: true });
 
-    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
 
     const result = runHook(
       { session_id: "session-dispatch-fails", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
