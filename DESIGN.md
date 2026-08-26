@@ -297,42 +297,103 @@ context for the lane above it to work from without interviewing the owner.
 
 ### 02 · Spec
 
-> **Fires on:** any of the three triggers below. **Refuses:** an idea whose adversary comments have
-> not been answered; a Wayfinder Map with unresolved stubs.
+> **Fires on:** any of the three triggers below, plus `spec/gap` from lanes 04 and 07
+> ([ADR-0034](docs/adr/0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md)) and a
+> non-bot comment on a spec still carrying open questions.
+>
+> **Refuses:** an idea whose surviving refutations have not been answered; a map that is not
+> `wayfinder:dest-spec`, or that still has open child tickets or a non-empty **Not yet specified**.
 >
 > **Cost:** 2 Opus stages; **5–15 owner minutes**, batched — the most expensive owner touch in the
-> system, and the one that pays for itself. · **Sees:** —
+> system, and the one that pays for itself, but **conditional**: it fires only where the count below
+> is non-zero. · **Sees:** —
 
 `/to-spec` exists but is local-only, which makes it a keystroke gate on every unit of work. Move 6
 puts it on a runner.
 
 | Role | Model | Count | Does |
 |---|---|---|---|
-| Spec author | Opus | 1, cloud | Opens a PR adding a spec. Two non-negotiables: acceptance criteria **quote the owner's words**, and every place it had to invent intent becomes a numbered open question rather than a silent assumption |
-| Spec critic | Opus | 1, on PR open | Hunts only for underspecification — sentences admitting two implementations, criteria that cannot be observed. It does **not** propose fixes; proposing lets it paper over the ambiguity it exists to surface |
-| ⬤ **owner** | — | 5–15 min, batched | Answer the open questions. This is the one place where going slower makes you faster |
+| Spec author | Opus | 1, cloud | Publishes the spec as a `PRD:` issue. Two non-negotiables: acceptance criteria **quote the owner's words**, and every place it had to invent intent becomes a numbered open question rather than a silent assumption. It does **not** sketch seams — lane 03 owns those |
+| Spec critic | Opus | 1, **in the same chain**, before publication | Hunts only for underspecification — sentences admitting two implementations, criteria that cannot be observed. It does **not** propose fixes; proposing lets it paper over the ambiguity it exists to surface. What it finds becomes more open questions |
+| ⬤ **owner** | — | 5–15 min, batched, **only when the count is non-zero** | Answer the open questions. This is the one place where going slower makes you faster |
 
-**Three triggers, one output.** Each produces the same PRD issue; they differ only in where the
-decided context lives:
+**Three triggers, one prompt, a collector each.** They differ only in where the decided context
+already lives, so the difference is in the collector and never in a second prompt — a check defined
+twice drifts (§06). Each collector assembles the same **Decided context**: the owner's words
+verbatim, the decisions and their reasons, the rulings already filed, the boundaries, and the guesses
+still open. [ADR-0058](docs/adr/0058-lane-02-is-one-prompt-with-a-collector-per-trigger-and-a-pay.md).
 
-| Trigger | Source of context | Surface | Session state |
+| Trigger | Event | The collector reads | Surface |
 |---|---|---|---|
-| `approved` label on a Decision Sheet | Lane 01's shaped decisions + ADRs | Cloud (Actions) | Cold — no conversation to inherit |
-| Owner invokes `/to-spec` after `/grill-with-docs` | Live conversation context | Local session | Hot — full nuance in the context window |
-| `to-spec` label on a closed Wayfinder Map | The map issue body: ADR rulings, filed sub-issues, scoped boundaries | Cloud (Actions) | Cold — but the map is self-contained by design |
+| An accepted sheet | `approved` on an issue carrying `idea` | The idea body verbatim, the latest `decision-sheet:v1` marker, and the accept's marker | Cloud (Actions) |
+| A closed map | `to-spec` on a `wayfinder:dest-spec` map | The map body, then one level down its Decisions-so-far links — preferring the durable record a gist names over its resolution comment | Cloud (Actions) |
+| The owner, in session | `/to-spec` in a live grill | Nothing. The conversation **is** the decided context | Local session |
+
+**The accept's marker carries what it filed.** §01 requires this lane to cite rulings rather than
+restate them, and the ADR numbers are assigned at accept time and appear nowhere on the sheet. So
+`ACCEPTED_MARKER` carries the paths it filed, the terms it coined and the route it recorded —
+otherwise the collector parses rendered markdown, which is the failure `marker.ts` exists to prevent.
+
+**Closing a map does not fire this lane.** Roughly half of all maps carry `wayfinder:dest-decision`
+and end on the decision alone, and a map stopped at its ticket budget also closes — handing that on
+would present a truncated map as a finished one. The label is the decision; the close is not.
+[ADR-0059](docs/adr/0059-a-closed-map-reaches-lane-02-by-its-to-spec-label-never-by-b.md).
 
 **Why the tactical door stays local.** Serialising a live grill to an issue so a runner can read
 it back is lossy compression that pays double tokens for less signal. The owner is already sitting
 there; one more prompt costs seconds. The cloud path exists for the cases where the owner is
 *not* sitting there — a Wayfinder Map closed yesterday, or a shaped idea approved from the phone.
+**One prompt file, two callers**: the local one passes the live conversation where the cloud one
+passes the collected payload.
+
+**The author reads the repo through an allow list.** `Read`, `Grep`, `Glob` and nothing else — no
+`Bash`, no web, no issue search, no subagent. It may read the codebase without limit, including
+`docs/adr/`, because a spec written against code it cannot see is unbuildable; it may not reach a
+**second source of intent**, because inventing intent is this lane's named failure and intent is not
+in the codebase. An allow list rather than lane 01's deny list, because a deny list fails open on
+whatever tool the CLI gains next.
+[ADR-0060](docs/adr/0060-the-spec-author-reads-the-repo-through-an-allow-list-and-can.md). The
+in-session author is bound by the owner's presence instead, which is only sound while that door stays
+local.
+
+**Everything it cannot settle becomes a numbered open question** —
+[ADR-0061](docs/adr/0061-everything-lane-02-cannot-settle-becomes-a-numbered-open-que.md). Three
+feeders, one form, no new labels:
+
+| What the author hit | Becomes |
+|---|---|
+| It had to invent intent | A numbered open question |
+| A ruling it was handed is wrong, or two conflict | A question **naming the ADRs**. Answering it is what files the amendment — the same act as an accept, one lane later, and three lanes before ADR-0005's work-merge path |
+| The sheet marked a decision and the accept filed no ADR for it | A question carrying the mark's target **verbatim** |
 
 **A spec that ships with zero open questions is treated as suspect** — it guessed silently. This is
 C2 done correctly: the machine asks about *intent*, which the owner is the only one who can answer,
-and never asks a sizing or architecture question, which he cannot.
+and never asks a sizing or architecture question, which he cannot. For the sheet trigger the
+suspicion is now **arithmetic**: the sheet's decisions carrying a mark and no `adrTitle`, minus the
+open questions naming a mark, is zero. The map and in-session triggers carry no marks, so there it
+stays the critic's judgement.
+
+**The gate is a count, and the label is not the trigger.**
+[ADR-0062](docs/adr/0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md). `prd`
+means *this is a spec* and no longer means *slice it*. At zero unanswered open questions the job
+applies `sliceable` and sends a `repository_dispatch`; lane 03 fires on the dispatch, because a label
+applied by the built-in `GITHUB_TOKEN` starts no workflow run (ADR-0054). The label is written first
+and is the durable trace that a dispatch was owed — a spec carrying `sliceable` with no sub-issues and
+no completed run is a lost dispatch, and countable. A model writes the questions; a deterministic rule
+counts them, which is ADR-0014's seam and what makes an automatic dispatch safe.
+
+**Answering is the go signal, and the rounds are uncapped.** A non-zero count is the only thing that
+reaches the owner; his comment re-runs the chain, which folds the answers in and recomputes. §01 caps
+change requests at 2 because the owner is asking the shaper to try again — here the machine asked, and
+a cap would park a spec he is actively working on.
 
 ### 03 · Slice
 
-> **Fires on:** the `prd` label.
+> **Fires on:** a `repository_dispatch` from lane 02, sent when a spec's open-question count reaches
+> zero ([ADR-0062](docs/adr/0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md)).
+> Until move 6 lands it fires on the `prd` label, which is what the shipped workflow still carries —
+> and which is why a published spec currently slices itself before the critic or the owner has read
+> it.
 >
 > **Refuses:** a PRD that already has sub-issues; a PRD that is itself a sub-issue; a missing
 > `CLAUDE_CODE_OAUTH_TOKEN`.
@@ -1056,4 +1117,5 @@ fixer's exit (ADR-0041); what a seam question does (ADR-0042); **write-on-surpri
 accept's rulings land (ADR-0051), and what clears a stage-1 refusal (ADR-0052); **how the machine
 reaches a second repo — a lane is called, never copied** (ADR-0055), **what makes the check contract
 survivable — it is generated and the gauntlet runs it** (ADR-0056), and what an installer covers
-(ADR-0057).
+(ADR-0057); **what lane 02's spec author reads, what it may reach, and what dispatches the slicer**
+(ADR-0058 through ADR-0062, and §02 above).

@@ -175,10 +175,27 @@ test of whether a decision deserves an ADR, which is why it may point off the sh
 moves nothing else on the page can still be expensive to unwind.
 _Avoid_: caveat, note, uncertainty, open question
 
+**Decided context**:
+The normalised object every door into specifying produces: the owner's words verbatim, the decisions
+with their reasons, the rulings already filed, the boundaries, and the guesses still open. It is what
+makes three different doors one lane — they differ in where that context already lives, never in what
+the spec author needs, so the difference is a collector rather than a second prompt.
+_Avoid_: payload, handoff, input, brief
+
 **Spec**:
 The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue — a spec
 that lives in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
+
+**Open question**:
+A numbered question in a spec, naming something specifying could not settle — intent it would
+otherwise have invented, a ruling it was handed that is wrong or conflicts with another, or a guess
+the sheet marked and no ruling ever recorded. It is the only form those three take, and the count of
+unanswered ones is what holds work back: at zero the spec dispatches, and a non-zero count is the one
+thing that reaches the owner. Distinct from an **Assumption mark**, which lives on a sheet and is the
+shaper's own flag on its own recommendation; a mark *becomes* one of these only when it crosses into a
+spec with no ruling behind it.
+_Avoid_: assumption mark, TODO, caveat, clarification
 
 **Slice**:
 One tracer-bullet vertical cut through every layer, demoable on its own and sized to a single agent
