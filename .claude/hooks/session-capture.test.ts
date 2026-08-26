@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -117,6 +117,160 @@ function waitForLogLine(logPath: string, timeoutMs = POLL_TIMEOUT_MS): string {
   }
 }
 
+/**
+ * Busy-polls until the log file contains `substring` — what every publish-step assertion below
+ * waits on, since the publish half runs (synchronously, within the same detached child) *after*
+ * the "captured" line is already written, so `waitForLogLine`'s "any content" is not enough to
+ * know the publish half has finished one way or the other.
+ */
+function waitForLogToContain(logPath: string, substring: string, timeoutMs = POLL_TIMEOUT_MS): string {
+  const start = Date.now();
+  for (;;) {
+    const content = readLog(logPath);
+    if (content.includes(substring)) return content;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`timed out waiting for "${substring}" at ${logPath}; saw:\n${content}`);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+}
+
+// --- Fixtures for the publish half: a bare "origin" plus clones, the shape every publish test
+// needs (mirrors notes-sync.test.ts's own makeRemoteAndClones/cloneFrom, extended with a commit
+// helper since these tests need real, dated commits for `deriveRange` to find).
+
+/** A bare git repo standing in for "origin" — no working tree, just refs. */
+function makeBareRemote(): string {
+  const dir = tmpDir("session-capture-bare-");
+  execFileSync("git", ["init", "-q", "--bare", dir]);
+  return dir;
+}
+
+/** Clones `bareDir`, with a committer identity configured so the clone can make its own commits. */
+function cloneRepo(bareDir: string): string {
+  const dir = tmpDir("session-capture-clone-");
+  execFileSync("git", ["clone", "-q", bareDir, "."], { cwd: dir });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+  return dir;
+}
+
+/** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */
+function commitAndPush(dir: string, path: string, contents: string, message: string, iso: string): string {
+  writeFileSync(join(dir, path), contents, "utf8");
+  execFileSync("git", ["add", "."], { cwd: dir });
+  execFileSync("git", ["commit", "-q", "-m", message], {
+    cwd: dir,
+    env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
+  });
+  const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+  execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: dir });
+  return sha;
+}
+
+/**
+ * Reads back the `SessionRecord` a fresh clone of `bareDir` sees on `refs/notes/sessions` for
+ * `sha` — `notes-store.ts`'s `writeNoteArray` wire format is a one-element JSON array (the same
+ * shape `readSessionRecord` itself unwraps), so this unwraps it too rather than handing back the
+ * array.
+ */
+function readSessionNote(bareDir: string, sha: string): unknown {
+  const dir = tmpDir("session-capture-verify-");
+  execFileSync("git", ["clone", "-q", bareDir, "."], { cwd: dir });
+  execFileSync("git", ["-C", dir, "fetch", "-q", "origin", "+refs/notes/sessions:refs/notes/sessions"]);
+  const raw = execFileSync("git", ["-C", dir, "notes", "--ref=sessions", "show", sha], { encoding: "utf8" }).trim();
+  const records = JSON.parse(raw);
+  return Array.isArray(records) ? records[0] : records;
+}
+
+/**
+ * A stand-in `gh` on PATH: every invocation is recorded (one JSON-encoded argv array per line) to
+ * `logPath`, and it exits nonzero when `fail` is set — the one lever the "a failed dispatch still
+ * leaves the capture file written" test needs, without ever reaching the real `gh` or a network.
+ */
+function fakeGhBinDir(logPath: string, opts: { fail?: boolean } = {}): string {
+  const dir = tmpDir("session-capture-fake-gh-");
+  const script = [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    `fs.appendFileSync(${JSON.stringify(logPath)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+    opts.fail ? "process.exit(1);" : "process.exit(0);",
+  ].join("\n");
+  writeFileSync(join(dir, "gh"), script, { mode: 0o755 });
+  return dir;
+}
+
+/**
+ * A transparent `git` wrapper on PATH that proxies every call straight through to the real `git`
+ * (found once, in the *test's* own unmodified PATH, so the wrapper never has to re-resolve itself
+ * off of whatever PATH the hook under test is given) — except the very first push of
+ * `refs/notes/sessions`, ahead of which it makes `racerRepo` push its own conflicting note for
+ * `racerSha` first. That is the one deterministic way to force the exact race
+ * `syncNotesRef`/notes-sync.test.ts is built to survive without relying on real concurrency: the
+ * hook runs as one detached child process this test cannot step into, so the interleaving has to
+ * be pinned from outside it, at the one call whose argv is unambiguous. `stateFile` makes the race
+ * fire once, on the first attempt only — a second, identical push (the retry) must go through
+ * untouched, or the test would be asserting "rejected forever," not "rejected once."
+ */
+function fakeGitRaceBinDir(realGit: string, opts: { racerRepo: string; racerSha: string; stateFile: string }): string {
+  const dir = tmpDir("session-capture-fake-git-");
+  const script = `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const realGit = ${JSON.stringify(realGit)};
+const racerRepo = ${JSON.stringify(opts.racerRepo)};
+const racerSha = ${JSON.stringify(opts.racerSha)};
+const stateFile = ${JSON.stringify(opts.stateFile)};
+
+function isTargetPush(a) {
+  return a.includes("push") && a.includes("refs/notes/sessions:refs/notes/sessions");
+}
+
+if (isTargetPush(args)) {
+  let raced = false;
+  try { raced = fs.readFileSync(stateFile, "utf8").trim() === "1"; } catch {}
+  if (!raced) {
+    fs.writeFileSync(stateFile, "1");
+    spawnSync(realGit, ["-C", racerRepo, "notes", "--ref=sessions", "add", "-f", "-m", "racer", racerSha], { stdio: "ignore" });
+    spawnSync(realGit, ["-C", racerRepo, "push", "-q", "origin", "refs/notes/sessions:refs/notes/sessions"], { stdio: "ignore" });
+  }
+}
+
+const result = spawnSync(realGit, args, { stdio: "inherit" });
+process.exit(result.status === null ? 1 : result.status);
+`;
+  writeFileSync(join(dir, "git"), script, { mode: 0o755 });
+  return dir;
+}
+
+/** One fixture transcript's worth of entries for the publish tests: a human prompt plus an Edit, timestamped to bracket a commit made at `iso`. */
+function publishTranscript(iso: string): unknown[] {
+  const before = new Date(new Date(iso).getTime() - 60 * 60 * 1000).toISOString();
+  const after = new Date(new Date(iso).getTime() + 60 * 60 * 1000).toISOString();
+  return [
+    {
+      type: "user",
+      uuid: "u1",
+      origin: { kind: "human" },
+      promptSource: "typed",
+      message: { content: "ship the range derivation" },
+      timestamp: before,
+    },
+    {
+      type: "assistant",
+      uuid: "a1",
+      message: {
+        content: [
+          { type: "text", text: "Done." },
+          { type: "tool_use", name: "Edit", input: { file_path: "a.ts" } },
+        ],
+      },
+      timestamp: after,
+    },
+  ];
+}
+
 describe("session-capture.sh — the fixture transcript", () => {
   it.each(["clear", "logout", "other"])("captures exactly one file for matcher reason %s", (reason) => {
     const transcript = writeTranscript([
@@ -220,7 +374,12 @@ describe("session-capture.sh — failing open", () => {
     expect(result.stdout).toBe("");
 
     waitForCaptureFile(result.outputDir);
-    expect(readLog(result.logPath)).not.toContain("skipped");
+    // The capture half succeeds outright — no capture-side skip. The minimal bin dir this test
+    // builds carries no `git`, so the publish half's own scope check fails closed and logs its
+    // own, entirely expected `skipped publish-*` line; that is a different half with a different
+    // failure posture (module header), not evidence the repair above it regressed.
+    const log = waitForLogToContain(result.logPath, "captured x");
+    expect(log).not.toMatch(/skipped (?!publish-)/);
   });
 
   it("exits 0, writes no capture file, and logs skipped transcript-missing when the transcript file doesn't exist", () => {
@@ -257,5 +416,166 @@ describe("session-capture.sh — failing open", () => {
 
     const log = waitForLogLine(logPath);
     expect(log).toContain("skipped no-transcript-path");
+  });
+});
+
+describe("session-capture.sh — publishing the session record and dispatching the audit", () => {
+  it("publishes a session record and dispatches the audit when the session ran in this repo", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+
+    const result = runHook(
+      { session_id: "session-in-scope", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain(`published session-in-scope ${head}`);
+
+    const note = readSessionNote(bareDir, head) as {
+      sessionId: string;
+      base: string;
+      head: string;
+      touchedPaths: string[];
+      spine: string;
+    };
+    expect(note.sessionId).toBe("session-in-scope");
+    expect(note.head).toBe(head);
+    expect(note.touchedPaths).toEqual(["a.ts"]);
+    expect(note.spine).toContain("ship the range derivation");
+
+    const ghLog = existsSync(ghLogPath) ? readFileSync(ghLogPath, "utf8") : "";
+    expect(ghLog).toContain("dispatches");
+    expect(ghLog).toContain("event_type=session-captured");
+    expect(ghLog).toContain(`client_payload[head]=${head}`);
+  });
+
+  it("captures but does not publish or dispatch when the session ran in a different repo", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+
+    const otherBareDir = makeBareRemote();
+    const otherRepo = cloneRepo(otherBareDir);
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+
+    const result = runHook(
+      { session_id: "session-out-of-scope", transcript_path: transcript, cwd: otherRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "skipped publish-out-of-scope");
+    expect(log).not.toContain("published");
+
+    expect(existsSync(ghLogPath)).toBe(false);
+  });
+
+  it("retries a push rejected non-fast-forward once against a local bare remote, and succeeds", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+    const racerRepo = cloneRepo(bareDir);
+
+    const stateFile = join(tmpDir("session-capture-race-state-"), "raced");
+    const gitBinDir = fakeGitRaceBinDir(onPath("git"), { racerRepo, racerSha: head, stateFile });
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+
+    const result = runHook(
+      { session_id: "session-race", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${gitBinDir}:${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain(`published session-race ${head}`);
+    expect(log).not.toContain("publish-push-failed");
+
+    // Our write won the retry — not the racer's, and not silently merged with it.
+    const note = readSessionNote(bareDir, head) as { sessionId: string };
+    expect(note.sessionId).toBe("session-race");
+  });
+
+  it("still writes the capture file and exits 0 when the push fails outright (not a race, an unreachable remote)", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    // Breaks connectivity without touching either clone's own git config — `origin` still reads
+    // back the same (now-dead) path on both sides, so the scope check still passes and the
+    // failure is exactly the push, not a scope mismatch this test would otherwise be proving.
+    rmSync(bareDir, { recursive: true, force: true });
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+
+    const result = runHook(
+      { session_id: "session-dead-remote", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "skipped publish-push-failed");
+    expect(log).not.toContain("published");
+    expect(existsSync(ghLogPath)).toBe(false);
+  });
+
+  it("still writes the capture file and exits 0 when the dispatch fails after a successful push", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath, { fail: true });
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z"));
+
+    const result = runHook(
+      { session_id: "session-dispatch-fails", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "skipped publish-dispatch-failed");
+    expect(log).not.toContain("published");
+
+    // The push itself went through before the dispatch failed — the note is really there.
+    const note = readSessionNote(bareDir, head) as { sessionId: string };
+    expect(note.sessionId).toBe("session-dispatch-fails");
   });
 });
