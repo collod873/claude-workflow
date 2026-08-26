@@ -611,8 +611,9 @@ directly, and the signal to revisit is implementers rediscovering the same thing
 > ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)).
 > — **`verify.yml` distinguishes a finding from a broken runner in its step names**, not in its logs:
 > `Gauntlet` for exit 1, `Gauntlet could not run` for exit 2. The third exit code is excluded from the
-> bypass count by construction rather than by a reader inferring it — and run metadata outlives log
-> retention, which a counter reading two-day-old logs does not (ADR-0063).
+> bypass count by construction rather than by a reader inferring it from a string the gauntlet happens
+> to print — which would be this section's own *defined once* rule broken by its own counter
+> (ADR-0063).
 > — **No venue is promoted to refusing above a flaky check.** A flaky gate trains `--no-verify` and
 > is worse than a slow one. A "could not run" is a third exit code rather than a failure, because an
 > environment problem reported as a finding is how a repo learns to ignore its gates.
@@ -936,8 +937,9 @@ because it is that lane's only evidence that its filter is sized right.
 None of them spends a model, and each can run on every push: counting produces no commits, so it
 cannot feed on its own output. A count is also recomputed rather than stored, so nothing a counter
 says can go stale — which is the defect that made 43% of Lumaria's four weeks of inbox findings dead
-on arrival. The bypass counter is the sharpest case of that rule: run *metadata* is recomputed state
-and survives, where the logs carrying the same fact expire inside two days (ADR-0063).
+on arrival. The bypass counter reads run *metadata* for the same reason: a step name is recomputed
+state, where the log line separating exit 1 from exit 2 is a string `bin/gauntlet` happens to print
+and nothing guards — a second copy of a fact the runner already holds (ADR-0063).
 
 **The cross-repo counter is the mechanism C5's originating question asked for** — *"this repo owns
 the skills so when it makes changes like that which should effect our other repos how do we catch

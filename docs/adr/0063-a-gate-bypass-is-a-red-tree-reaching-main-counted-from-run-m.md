@@ -50,9 +50,9 @@ a venue. That is a lane 06 deletion question, and it is not open.
 
 `verify.yml` has run **34 times on `main`**. Six failed: two at `actionlint` — not a bypass, that is
 the Actions venue catching the one thing the free venues cannot see — and **four at the Gauntlet
-step**, three of them confirmed exit 1 by `--- test ---` in their logs. Roughly one push in nine
-reaching trunk with a tree the free venues would have refused, produced continuously since 2026-08-23,
-read by nobody.
+step**, all four confirmed exit 1 by `--- test ---` in their logs. Roughly one push in nine reaching
+trunk with a tree the free venues would have refused, produced continuously since 2026-08-23, read by
+nobody.
 
 So the mechanism is a reader, not a recorder. Nothing new is captured, stored or spent.
 
@@ -68,9 +68,15 @@ exit 1, `Gauntlet could not run` for exit 2. The counter reads the failed step's
 metadata and never sees exit 2 at all. It excludes the actionlint failures by the same mechanism, for
 free.
 
-**Rejected: parsing the logs for the exit code.** Run `32679709936`'s logs had already expired when
-this ticket was worked, two days after the run — its step name came back, its log did not. A counter
-whose evidence ages out at the retention window cannot answer the question it exists to answer.
+**Rejected: parsing the logs for the exit code.** The only thing in a log that separates exit 1 from
+exit 2 is a string `bin/gauntlet` happens to print — `--- test ---`, `gauntlet: … checks not run`.
+Nothing guards that format, so the counter would hold a second, unwatched copy of a fact the runner
+already has, which is the same defect
+[ADR-0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) rules out when it
+says a contract's `why` names a declaration site and never a measurement. §06 says it more directly:
+*a check is defined once; a check defined twice drifts.* Logs are also the expensive read — a zip
+download per run against one metadata call for the whole history — and GitHub expires them at 90 days
+while the run's step names remain.
 
 **Rejected: writing a marker the counter reads back.** §6's counters are recomputed rather than
 stored, *"so nothing a counter says can go stale"* — the defect that made 43% of Lumaria's inbox
