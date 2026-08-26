@@ -11,6 +11,8 @@ export interface FakeStage {
   exec: StageExec;
   /** Every argv this fake was called with, in call order. */
   calls: string[][];
+  /** What was handed to stdin on each of those calls — `undefined` for an argv-borne prompt. */
+  stdins: Array<string | undefined>;
 }
 
 /**
@@ -21,9 +23,11 @@ export interface FakeStage {
  */
 export function createFakeStage(response: string): FakeStage {
   const calls: string[][] = [];
-  const exec: StageExec = async (argv) => {
+  const stdins: Array<string | undefined> = [];
+  const exec: StageExec = async (argv, stdin) => {
     calls.push(argv);
+    stdins.push(stdin);
     return response;
   };
-  return { exec, calls };
+  return { exec, calls, stdins };
 }

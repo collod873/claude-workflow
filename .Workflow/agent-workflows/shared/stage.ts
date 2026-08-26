@@ -16,7 +16,20 @@ import { createStreamJsonParser } from "./stream-json";
  * here is load-bearing on that one implementation; every fake in the tests
  * is still a one-liner that resolves a canned response.
  */
-export type StageExec = (argv: string[]) => Promise<string>;
+export type StageExec = (argv: string[], stdin?: string) => Promise<string>;
+
+/**
+ * Linux caps a **single** argv element at `MAX_ARG_STRLEN` — 32 pages, 128 KiB
+ * — independently of the much larger total-argv limit. A prompt handed to
+ * `claude` as `-p <prompt>` is one element, so a stage whose prompt inlines
+ * files hits this and dies on `spawn claude E2BIG`, an error naming neither
+ * the prompt nor the size.
+ *
+ * Stages that inline files pass their prompt on stdin instead
+ * (`promptViaStdin`). Every other stage is checked against this before the
+ * spawn, so the failure is a named one rather than an errno.
+ */
+const MAX_ARG_STRLEN = 32 * 4096;
 
 /**
  * The wire format this executor imposes, replacing whatever the caller
@@ -51,12 +64,22 @@ const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
  * crash that discarded the response along with it: only the final text is
  * held, not the transcript.
  */
-export const execClaude: StageExec = (argv) =>
+export const execClaude: StageExec = (argv, stdin) =>
   new Promise((resolve, reject) => {
     const parser = createStreamJsonParser((line) => process.stderr.write(`${line}\n`));
     const child = spawn("claude", [...withoutOutputFormat(argv), ...STREAM_FLAGS], {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
+
+    // `claude -p` with no positional prompt reads one from stdin, which is the
+    // only way past MAX_ARG_STRLEN for a stage that inlines files.
+    //
+    // Closed either way, and immediately: the CLI waits for EOF before it
+    // starts, so a pipe left open is a hang rather than a slow start. A stage
+    // that passes its prompt on argv gets an empty stdin rather than a closed
+    // fd, which the CLI treats identically — checked against the real binary
+    // before this was written, in both directions.
+    child.stdin.end(stdin ?? "", "utf8");
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => parser.push(chunk));
@@ -131,6 +154,35 @@ export interface StageOptions {
    * to", which is what every to-tickets stage wants.
    */
   model?: string;
+  /**
+   * Tools this stage may not use, passed to the CLI's `--disallowedTools`.
+   *
+   * Exists for
+   * [ADR-0030](../../../docs/adr/0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md),
+   * which takes lane 01's shaper off search entirely: *with no search tools,
+   * "never free-roams" is a fact about what the stage can do rather than a
+   * line it was asked to honour.* A prohibition written in a prompt is
+   * something a model can talk itself past; a deny list is not.
+   *
+   * **Its ceiling, stated rather than assumed.** This names tools, so a tool
+   * the CLI gains after this list was written is reachable by a stage that
+   * denies everything on it. The list is therefore checked by a test against
+   * the stage that depends on it, and the honest claim is "denies the tools
+   * that exist", not "denies all tools".
+   */
+  disallowedTools?: string[];
+  /**
+   * Hand the prompt to the CLI on stdin rather than as `-p <prompt>`.
+   *
+   * Required for any stage whose prompt inlines file contents: a single argv
+   * element is capped at `MAX_ARG_STRLEN` (128 KiB), and lane 01's shaper
+   * injects `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading list —
+   * `DESIGN.md` and `CONTEXT.md` alone are 78 KiB of it. Without this the
+   * stage dies on `spawn claude E2BIG`, which names neither the prompt nor the
+   * size, and it does so only for the ideas whose reading lists happened to be
+   * long.
+   */
+  promptViaStdin?: boolean;
 }
 
 /**
@@ -152,7 +204,26 @@ export async function runStage(
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
   const model = options.model ? ["--model", options.model] : [];
-  return exec(["-p", prompt, "--dangerously-skip-permissions", ...model]);
+  const denied = options.disallowedTools?.length
+    ? ["--disallowedTools", options.disallowedTools.join(",")]
+    : [];
+  const flags = ["--dangerously-skip-permissions", ...model, ...denied];
+
+  if (options.promptViaStdin) {
+    return exec(["-p", ...flags], prompt);
+  }
+
+  // Named rather than left to errno. A stage that outgrows the argv limit
+  // should be told to set `promptViaStdin`, not handed an ENOENT-shaped
+  // failure from `spawn` that mentions nothing about its prompt.
+  if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
+    throw new Error(
+      `${promptPath} renders to ${Buffer.byteLength(prompt, "utf8")} bytes, over the ${MAX_ARG_STRLEN}-byte ` +
+        "limit on a single argv element — this stage needs `promptViaStdin`",
+    );
+  }
+
+  return exec(["-p", prompt, ...flags]);
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

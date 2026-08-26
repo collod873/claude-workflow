@@ -1,0 +1,147 @@
+name: Shape
+
+# Lane 01 (`DESIGN.md` §01). The `idea` label is the whole trigger — §00's issue form applies it at
+# creation, and nothing else in the system is human-initiated.
+#
+# The second trigger is §01's fourth owner verb. A comment on an idea that already carries a sheet
+# is a change request, and it re-runs the chain; `rounds.ts` caps that at 2 rounds off the issue's
+# own comment list, then the sheet stands as posted. Bot comments are excluded, which is what stops
+# the sheet this job posts from triggering the job that posted it.
+#
+# **Only a broken run is red here.** The chain has three ordinary outcomes that are not failures —
+# a stage-1 refusal (§01: an idea that already exists or that an ADR has ruled on), a refuse-to-shape
+# (ADR-0029: the tree did not close under five decisions), and a spent change-request budget. Each
+# comments on the issue and exits 0. §11's unfiled question 3 makes the sweep's kill rate a number
+# worth measuring, which is to say kills are the expected traffic; a red run for the expected case
+# is how red stops meaning anything.
+#
+# Three model stages run inside one `npx tsx` call rather than one step apiece, unlike
+# `to-tickets.yml`. The chain loops — the shaper may spend one re-sweep (ADR-0030), which re-runs
+# stage 1 and then stage 2 — and a cap of one is a local variable in one call stack and a tracker
+# query across two steps. Each `claude` spawn is still its own process with no memory of the last.
+
+"on":
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+# One shaping per idea at a time, newest wins. Both triggers can fire within
+# seconds of each other — filing an idea and then immediately adding a
+# clarifying comment is an ordinary thing to do — and two concurrent chains
+# would each read a round count that did not include the other and post two
+# sheets. Cancelling the older one is right rather than merely cheap: the newer
+# run is the one holding the comment.
+concurrency:
+  group: shape-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  shape:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'idea') ||
+      (github.event_name == 'issue_comment' &&
+       !github.event.issue.pull_request &&
+       contains(github.event.issue.labels.*.name, 'idea') &&
+       github.event.comment.user.type != 'Bot')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IDEA_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # Read by `shape.ts` through the environment, never interpolated into a `run:` script — a
+      # comment body is attacker-controlled text in the general case and owner-typed prose in this
+      # one, and the safe handling is the same either way.
+      CHANGE_REQUEST: ${{ github.event.comment.body }}
+    steps:
+      # Exported here rather than in the job `env` above because the `runner` context does not exist
+      # when job-level `env` is evaluated — naming it there is what cost `to-tickets.yml` every run
+      # it should have had between 2026-08-22 and 2026-08-24 (#40).
+      - name: Export the handoff path
+        run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Every label this lane needs, including the four the owner answers with. They are created
+      # here rather than by the accept workflow because a sheet posts before any verb is applied,
+      # and a verb the owner cannot find on his phone is a verb that does not exist. `--force`
+      # updates rather than erroring, so a rerun and a fresh clone both work.
+      - name: Ensure the lane's labels exist
+        run: |
+          set -euo pipefail
+          gh label create shape-refused --color b60205 \
+            --description "Refused at lane 01 stage 1 — the idea already exists, or an ADR ruled it" --force
+          gh label create needs-human --color d93f0b \
+            --description "Ticket stalled; a human decision or action is required" --force
+          gh label create approved --color 0e8a16 \
+            --description "The owner accepted a decision sheet — files its ADRs and dispatches" --force
+          gh label create parked --color fbca04 \
+            --description "Shaped and set down. No dispatch, and nothing ever re-raises it" --force
+          gh label create killed --color 6a737d \
+            --description "Shaped and rejected. Becomes prior art the sweep refuses against" --force
+          gh label create go-long --color 1d76db \
+            --description "ADR-0007's route override, applied alongside approved" --force
+          gh label create go-short --color 1d76db \
+            --description "ADR-0007's route override, applied alongside approved" --force
+
+      # Before Node, so a missing secret costs nothing beyond the checkout. Reported through the
+      # shared failure surface below rather than commenting for itself: an empty secret is an
+      # operational fact about this repo, not a judgement about the idea.
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." > "$FAILURE_REASON_PATH"
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `stage.ts` resolves the CLI from PATH and a hosted runner has none. Pinned, because ADR-0002
+      # says a run comes from the checkout alone and a floating install would let a release published
+      # next month change what a rerun of this commit does.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      - name: Shape
+        run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
+
+      - name: Upload the refused raw response
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refused-raw-response
+          path: ${{ runner.temp }}/*-raw-response.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Report failure
+        if: failure()
+        run: |
+          reason="unknown stage"
+          if [ -f "$FAILURE_REASON_PATH" ]; then
+            reason=$(cat "$FAILURE_REASON_PATH")
+          fi
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          evidence=""
+          if ls "$RUNNER_TEMP"/*-raw-response.txt >/dev/null 2>&1; then
+            # Backticks here are markdown for the issue comment, not command substitution, which is
+            # what SC2016 cannot tell. `%b` below is what turns the \n escapes into newlines.
+            # shellcheck disable=SC2016
+            evidence='\n**Refused response:** the `refused-raw-response` artifact on that run.\n'
+          fi
+          body=$(printf 'Shape run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
+          gh issue comment "$IDEA_NUMBER" --body "$body"

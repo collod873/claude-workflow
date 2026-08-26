@@ -57,4 +57,47 @@ describe("runStage", () => {
     await expect(runStage(promptPath, {}, fake.exec)).rejects.toThrow(/MISSING/);
     expect(fake.calls).toHaveLength(0);
   });
+
+  /**
+   * Linux caps a single argv element at 128 KiB, independently of the much
+   * larger total-argv limit, and a prompt passed as `-p <prompt>` is one
+   * element. Lane 01's shaper inlines `CONTEXT.md`, `CODING_STANDARDS.md` and
+   * an uncapped reading list — `DESIGN.md` and `CONTEXT.md` alone are 78 KiB —
+   * so this is a limit the estate now actually reaches, and reaches only for
+   * the ideas whose reading lists happened to be long.
+   */
+  describe("a prompt too large for an argv element", () => {
+    const huge = "x".repeat(32 * 4096 + 1);
+
+    it("goes on stdin when the stage asks for it, leaving argv small", async () => {
+      const promptPath = writePrompt(huge);
+      const fake = createFakeStage("<output>[]</output>");
+
+      await runStage(promptPath, {}, fake.exec, { promptViaStdin: true });
+
+      expect(fake.stdins[0]).toBe(huge);
+      expect(fake.calls[0]).toEqual(["-p", "--dangerously-skip-permissions"]);
+    });
+
+    it("is refused by name when the stage did not, rather than dying on an errno", async () => {
+      // `spawn claude E2BIG` names neither the prompt nor the size, and it
+      // arrives from inside `child_process` rather than from the stage that
+      // outgrew the limit.
+      const promptPath = writePrompt(huge);
+      const fake = createFakeStage("<output>[]</output>");
+
+      await expect(runStage(promptPath, {}, fake.exec)).rejects.toThrow(/promptViaStdin/);
+      expect(fake.calls).toHaveLength(0);
+    });
+
+    it("leaves an ordinary prompt on argv, where every other stage still reads it", async () => {
+      const promptPath = writePrompt("Plain prompt.");
+      const fake = createFakeStage("<output>[]</output>");
+
+      await runStage(promptPath, {}, fake.exec);
+
+      expect(fake.stdins[0]).toBeUndefined();
+      expect(fake.calls[0]).toContain("Plain prompt.");
+    });
+  });
 });

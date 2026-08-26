@@ -1,0 +1,82 @@
+name: Shape — accept
+
+# The other half of lane 01 (`DESIGN.md` §01): the owner's verbs, each of which is a label because a
+# label is something a gate can fire on.
+#
+# `approved` is [ADR-0005] as a mechanism — accepting a shaped idea is what files its ADRs — and
+# [ADR-0006]'s W5 as something that happens: agents draft, the owner signs, and the signature is this
+# click. It spends no model at all; everything it writes was drafted onto the sheet by the shaper and
+# is read back out of the sheet's own machine-readable trailer.
+#
+# **It pushes straight to `main`.** Ruled with the move. This repo has no branch protection (§10 — on
+# a private Free account that is a purchase, not a setting) and lands work by direct push today; a
+# pull request here would add a second owner touch to a lane §01 budgets at two owner minutes, which
+# is the cost the accept exists to hold down. Move 10 flips this along with everything else that
+# writes.
+#
+# A `GITHUB_TOKEN` push does not trigger further workflows, so nothing here can start a loop.
+
+"on":
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+# Queued rather than cancelled, unlike the chain. Two accepts on one idea are
+# not two attempts at the same answer — `parked` then `approved` is a change of
+# mind, and both have work to do. They must not interleave, because each reads
+# the issue's comments to decide whether an accept already ran; cancelling the
+# first would leave that reading true of a run that was killed mid-push.
+concurrency:
+  group: shape-accept-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    if: >-
+      github.event.label.name == 'approved' ||
+      github.event.label.name == 'parked' ||
+      github.event.label.name == 'killed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      IDEA_NUMBER: ${{ github.event.issue.number }}
+      VERB: ${{ github.event.label.name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A commit is an object and an object carries a committer; a hosted runner has no git identity,
+      # so a push reached without this dies on `fatal: empty ident name` having already spent the
+      # checkout. That is #109's shape, and the fix travels by being written wherever a workflow can
+      # reach a write rather than wherever one already has.
+      - name: Configure a committer
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Accept
+        run: npx tsx .Workflow/agent-workflows/shape/run-accept.ts --issue "$IDEA_NUMBER" --verb "$VERB"
+
+      # An accept that dies half-done has written an ADR nobody knows about, or dropped `idea`
+      # without recording a route. Both are recoverable and neither is visible from the tracker, so
+      # the failure says so on the issue the owner is already looking at.
+      - name: Report failure
+        if: failure()
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          body=$(printf 'The `%s` accept failed.\n\nNothing here is automatic to recover: check whether `docs/adr/` and `CONTEXT.md` took the writes before re-applying the label.\n\n**Workflow run:** %s\n' "$VERB" "$run_url")
+          gh issue comment "$IDEA_NUMBER" --body "$body"
