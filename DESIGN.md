@@ -391,7 +391,9 @@ and never asks a sizing or architecture question, which he cannot.
 
 ### 04 · Acceptance
 
-> **Fires on:** a slice published, **or a merged edit to a spec that already has acceptance tests.**
+> **Fires on:** a slice published, **or a merged edit to a spec that already has acceptance tests** —
+> re-firing for the slices whose tests name a criterion the spec no longer carries verbatim
+> ([ADR-0033](docs/adr/0033-a-spec-edit-re-fires-acceptance-for-every-slice-whose-test-n.md)).
 > **Refuses:** a criterion the spec does not determine — that is a spec defect, and the correct
 > output is a `spec/gap` issue, not an invented test.
 >
@@ -402,17 +404,49 @@ and never asks a sizing or architecture question, which he cannot.
 |---|---|---|---|
 | Acceptance author | Opus | 1 per slice, isolated | Writes tests **from the spec only**, with no access to an implementation — because none exists yet. Each test names the criterion it proves, verbatim — which is **W4's endpoint**, documentation a test suite can fail on. Merged to trunk **before** any implementer is dispatched |
 
-**Then the load-bearing part:** CI refuses any implementation PR that modifies a file under
-`tests/acceptance/`. An implementer that cannot pass a test cannot quietly rewrite it — it can only
-fail, escalate, and land in the queue as blocked.
+**Then the load-bearing part, and it is not the diff check.** The acceptance job checks
+`tests/acceptance/` out of `main`'s **tip** before it runs, so whatever an implementation PR did to
+those files never reaches the verdict. It *also* refuses a PR with a non-empty diff under the
+immutable set — but that refusal is the **alarm**, not the guarantee: it tells us an implementer
+reached for its own report card. [ADR-0032](docs/adr/0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md).
+
+**The immutable set is closed, not approximate.** `tests/acceptance/**` is no boundary on its own —
+`vitest.config.ts` carries an explicit `include` allowlist, so an implementer can leave every test
+byte-identical and delete one line to stop them running, and an imported helper or fixture is the
+same hole one level down. So the set is **the directory plus the runner's config**, and an
+acceptance test **may not import anything outside its own directory**. The cost is duplication in
+that tree; the gain is that the path filter is complete and the restore above restores everything
+the tests depend on.
+
+**The exemption rides on identity, because the exemption is the attack surface.** The re-entry PR
+must modify `tests/acceptance/`, and a label or a branch prefix is a convention any agent with
+`issues:write` satisfies by typing. The check reads the PR's **author identity**, which means this
+lane needs **its own credential**, distinct from whatever dispatches implementers. That is the price
+of the check meaning anything.
 
 **Immutable is not frozen, and the difference is where the grooming would have hidden.** A spec that
 legitimately changes would otherwise strand its tests with nobody permitted to touch them, and
 "someone updates the acceptance tests" is exactly the maintenance obligation C4 refuses to build. So
 `tests/acceptance/` has **one author — this lane — and one way to re-enter it:** a merged edit to
 the spec re-fires the acceptance author for the affected slices only, on a PR of its own, before any
-implementer resumes. The thing that checks is still never the thing that built, no matter how many
-times the spec moves.
+implementer resumes. **"Affected" is a grep, not a judgement:** every test names its criterion
+verbatim, so a slice is affected when a test it owns names a criterion string the spec no longer
+carries. A criterion *added* with no test naming it is a re-slice, and routes to lane 03 (ADR-0033).
+The thing that checks is still never the thing that built, no matter how many times the spec moves.
+
+**An in-flight implementer needs no special handling.** The regenerated tests merge to trunk, its
+open PR goes red against them — which is what restoring from tip rather than the merge base buys —
+and the fixer takes it as an ordinary red.
+
+**`spec/gap` has a reader: lane 02's spec author.** Where the spec and a test disagree and neither is
+obviously wrong, the **spec wins by construction** — the test was authored from it and nothing else,
+so the disagreement is a defect in the test or an ambiguity in the spec, and neither is the
+implementer's to settle. It files `spec/gap`, a blocked-by edge lands on its slice, the spec author
+amends, and the merged amendment fires the re-entry above. The owner sees it only when the spec
+author refuses, through the governor's queue. **An implementer that cannot pass a test is not a
+separate escalation** — it is a red PR, which is the fixer's trigger, and the fixer's three attempts
+then `blocked` is the whole path.
+[ADR-0034](docs/adr/0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md).
 
 This is the single highest-value item on this page. It is **W2 made structural** — the thing that
 checks is never the thing that built — where era 6's `close-gate.py` is the weak form of the same
@@ -421,6 +455,16 @@ mechanism that makes the whole out-of-the-loop premise safe: without it, the fle
 unverifiable, which makes it worthless, which puts the owner back in the loop reading diffs.
 
 **It runs at the Actions venue** — lane 06 binds that, along with the 10-minute budget it has to fit.
+The immutability check is its own job in `verify.yml`, fired on `pull_request`, running **before**
+the gauntlet: it is a diff test costing a second, and it invalidates the run beneath it.
+
+**It refuses from the day it ships, and ADR-0011 does not hold it back** — the ADR is amended to say
+so. The only thing that can violate this check is a dispatched implementer, so it has no traffic
+until lane 05 exists and ships alongside its own violator; and ADR-0011's failure mode is a refusal
+that *parks* work because clearing it needs reasoning nobody automated, where the repair here is
+`git checkout main -- tests/acceptance/`. Enforcement is not branch protection, which is move 10 and
+costs money — lane 05 auto-merges on green and lane 08's warden merges, so the **merge actor** reads
+the check and a red refuses without it.
 
 ### 05 · Build
 
@@ -823,7 +867,6 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 | [How many refuters lane 07 ships with](https://github.com/collod873/claude-workflow/issues/83) — three is a guess, and there is no measured false-alarm rate to size it against | measured |
 | [How the governor sizes concurrency, and what the fixer's cap buys](https://github.com/collod873/claude-workflow/issues/84) — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have never been measured against this owner's actual answer rate | measured |
 | [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
-| [What makes an acceptance test immutable, and how a spec change re-enters them](https://github.com/collod873/claude-workflow/issues/78) | measured |
 
 **Not yet filed.**
 
