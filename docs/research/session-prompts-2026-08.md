@@ -1,35 +1,39 @@
 # Every prompt typed in this repo, recovered before the transcripts expired
 
-**Read:** 2026-08-26 · **Status:** **measured** — every line below is extracted verbatim from the local session transcripts, not reconstructed. Nothing here is a model's summary of what was said. The one derived field is the *context* block, which is a mechanical tail-clip of Claude's preceding message; see [Method](#method).
+**Read:** 2026-08-26, refreshed 12:10 EDT · **Status:** **measured** — every line below is extracted verbatim from the local session transcripts, not reconstructed. Nothing here is a model's summary of what was said. The one derived field is the *context* block, which is a mechanical tail-clip of Claude's preceding message; see [Method](#method).
 
-**Interactive version:** the same corpus with full (unclipped) context, live search and filters — [Workflow Prompt Ledger](https://claude.ai/code/artifact/e7e07d2b-78e2-49be-8e4c-6aed64b78457) (private artifact).
+**Interactive version:** the same corpus with full (unclipped) context, live search and filters — [Workflow Prompt Ledger](https://claude.ai/code/artifact/e7e07d2b-78e2-49be-8e4c-6aed64b78457) (private artifact). **The artifact holds the 11:02 snapshot** — 206 prompts, before this refresh.
+
+**This refresh added 38 entries.** Nineteen were typed after 11:02 on 08-26, when the first pass ran. The other nineteen are backfill: the Method has always said slash commands carrying arguments are kept, and the first pass dropped them — so `/drain GH 36`, `/to-tickets 25`, `/grill-with-docs …` and sixteen others were missing from days that otherwise read as complete.
 
 ---
 
 ## The headline
 
-**206 prompts, 19 answered question sets and 18 Esc interrupts, across 55 sessions and 5 days (Fri Aug 21 – Wed Aug 26 2026).**
+**244 prompts, 19 answered question sets and 19 Esc interrupts, across 62 sessions and 5 days (Fri Aug 21 – Wed Aug 26 2026).** Aug 26 is still running; its row is a partial day.
 
-The reason to write it down now rather than later: `cleanupPeriodDays: 30` in `~/.claude/settings.json` deletes transcripts on a rolling clock, and the `SessionEnd` recorder that [ADR-0018](../adr/0018-capture-runs-globally-the-auditor-and-the-release-run-in-thi.md) put in place did not start writing until **2026-08-25**. The first four days of this repo — 118 of the 206 prompts — were never captured by it and had no other copy. This file is the retroactive backfill for that gap.
+The reason to write it down now rather than later: `cleanupPeriodDays: 30` in `~/.claude/settings.json` deletes transcripts on a rolling clock, and the `SessionEnd` recorder that [ADR-0018](../adr/0018-capture-runs-globally-the-auditor-and-the-release-run-in-thi.md) put in place did not start writing until **2026-08-25**. The first four days of this repo — 132 of the 244 prompts — were never captured by it and had no other copy. This file is the retroactive backfill for that gap.
 
-The second finding is about the corpus itself: **21 of 206 prompts are bare assent** — `Ok`, `Yes`, `Confirmed`, `Good` — and 56 are under forty characters. A prompt log without the message it answers is not a record of anything. Every one of those 21 has its context attached below; that is what makes them readable.
+The second finding is about the corpus itself: **23 of 244 prompts are bare assent** — `Ok`, `Yes`, `Confirmed`, `Good` — and 80 are under forty characters. A prompt log without the message it answers is not a record of anything. Every one of those 23 has its context attached below; that is what makes them readable.
 
 ## What was said, by day
 
 | Day | Prompts | Answered questions | Esc interrupts | Sessions |
 |---|--:|--:|--:|--:|
-| Fri Aug 21 | 46 | 2 | 4 | 11 |
-| Sat Aug 22 | 20 | 1 | 3 | 5 |
-| Sun Aug 23 | 52 | 11 | 3 | 17 |
-| Tue Aug 25 | 52 | 4 | 6 | 15 |
-| Wed Aug 26 | 36 | 1 | 2 | 9 |
-| **Total** | **206** | **19** | **18** | **55** |
+| Fri Aug 21 | 50 | 2 | 4 | 11 |
+| Sat Aug 22 | 25 | 1 | 3 | 7 |
+| Sun Aug 23 | 57 | 11 | 3 | 18 |
+| Tue Aug 25 | 57 | 4 | 6 | 17 |
+| Wed Aug 26 *(to 12:03)* | 55 | 1 | 3 | 11 |
+| **Total** | **244** | **19** | **19** | **62** |
 
-Monday **Aug 24 has no row: no session touched this repo that day.** Fourteen prompts carry an Aug 24 *UTC* timestamp, but the clock here is EDT and every one of them is Aug 23 evening — the 20:01–21:21 run at the tail of that day's ledger.
+The session column doesn't add up because a session that runs past midnight is counted on both its days and once in the total.
+
+Monday **Aug 24 has no row: no session touched this repo that day.** Sixteen prompts carry an Aug 24 *UTC* timestamp, but the clock here is EDT and every one of them is Aug 23 evening — the 20:01–21:21 run at the tail of that day's ledger.
 
 ## The interrupts are the signal
 
-An Esc keypress is the owner overriding a run in progress — the one place in the corpus where intent is unambiguous, because agreeing costs nothing and interrupting costs something. Claude Code records each as its own transcript entry, so all 18 are recoverable along with what was on screen when the key was hit.
+An Esc keypress is the owner overriding a run in progress — the one place in the corpus where intent is unambiguous, because agreeing costs nothing and interrupting costs something. Claude Code records each as its own transcript entry, so all 19 are recoverable along with what was on screen when the key was hit.
 
 | When | Stopped | What was cut off | What the owner said instead |
 |---|---|---|---|
@@ -51,8 +55,9 @@ An Esc keypress is the owner overriding a run in progress — the one place in t
 | 08-25 23:42 | cut a reply off mid-sentence | …My `GIT_DIR=` diagnostic made the observations tests write to the **real** repo instead of a temp one. That's the bug biting me. Assessing the damage. | **Other session is fully done now and it helped store and fix some of these issues.** |
 | 08-26 00:12 | cut a reply off mid-sentence | Underst | **More like if I end this session do we lose any important info from the handoff or where do we go with that all** |
 | 08-26 08:58 | cut a reply off mid-sentence | *(nothing on screen)* | **Looks good** |
+| 08-26 11:10 | cut a reply off mid-sentence | Let me check rather than guess — three things I flagged but didn't verify. | **Hurry up faster** |
 
-The recurring complaint is scope and duration, not correctness: *going way overboard*, *running for over 25 minutes*, *digging into lumaria stuff*, *reading wy too many things*, *going deeper than I wanted*. Five of the eighteen say some version of **stop, you have exceeded the question I asked**.
+The recurring complaint is scope and duration, not correctness: *going way overboard*, *running for over 25 minutes*, *digging into lumaria stuff*, *reading wy too many things*, *going deeper than I wanted*, *hurry up faster*. Six of the nineteen say some version of **stop, you have exceeded the question I asked**.
 
 ## The questions that were answered
 
@@ -91,20 +96,20 @@ The recurring complaint is scope and duration, not correctness: *going way overb
 
 ## Method
 
-Extracted from `~/.claude/projects/-home-collin-Claude-Projects-Workflow/**/*.jsonl` — 213 transcript files, 91 MB — on 2026-08-26.
+Extracted from `~/.claude/projects/-home-collin-Claude-Projects-Workflow/**/*.jsonl` — 216 transcript files, 94 MB — on 2026-08-26, re-run at 12:10.
 
-**Kept:** `type: user` entries whose content is a typed string or a `text` block, plus slash commands that carried arguments, plus every `AskUserQuestion` tool result that was answered.
+**Kept:** `type: user` entries whose content is a typed string or a `text` block, plus slash commands that carried arguments (rendered as `/verb args`), plus every `AskUserQuestion` tool result that was answered.
 
-**Dropped:** sub-agent side-chains (`isSidechain: true`), so this is the owner's voice and never an agent talking to an agent; tool results; hook and command stdout; background-task notifications; and session-control commands (`/clear`, `/compact`, `/resume`, `/model`, `/config`, `/cost`, `/status`, `/exit`). Entries are de-duplicated on `(timestamp, text)` because a resumed session replays its history into a new file.
+**Dropped:** sub-agent side-chains (`isSidechain: true`), so this is the owner's voice and never an agent talking to an agent; harness injections (`isMeta: true`) — expanded skill bodies arrive as user text and would otherwise read as things you typed; tool results; hook and command stdout; background-task notifications; session-control commands (`/clear`, `/compact`, `/resume`, `/model`, `/config`, `/cost`, `/status`, `/exit`); and any slash command typed with no arguments — `/wayfinder`, `/handoff`, `/ratify` on their own carry no words of yours. Entries are de-duplicated on `(timestamp, text)` because a resumed session replays its history into a new file.
 
-**Context** is the tail of the last assistant `text` block before each prompt, clipped to ~460 characters at a paragraph or sentence boundary. 159 of 206 prompts have one; the other 47 opened a fresh session. The clip is the only lossy step in this file — the artifact linked above holds the unclipped messages.
+**Context** is the tail of the last assistant `text` block before each prompt, clipped to ~460 characters at a paragraph or sentence boundary. 189 of 244 prompts have one; the other 55 opened a fresh session. The clip is the only lossy step in this file — the artifact linked above holds the unclipped messages, as of the 11:02 snapshot.
 
-**Interrupts** come from Claude Code's own `[Request interrupted by user]` / `[Request interrupted by user for tool use]` entries, attached to the next prompt typed in that session. Twenty were recorded; 18 have a following prompt to attach to, and two ended the session.
+**Interrupts** come from Claude Code's own `[Request interrupted by user]` / `[Request interrupted by user for tool use]` entries, attached to the next prompt typed in that session. Twenty were recorded; 19 have a following prompt to attach to, and one ended the session.
 
 ### What this is not
 
 - **Not complete for the estate.** Local disk only. Anything run from the phone or claude.ai/code that never synced down is absent.
-- **Not a substitute for the recorder.** It is a one-off backfill of a known gap, not a second capture path. [ADR-0020](../adr/0020-the-session-corpus-is-stored-in-knowledge-base-raw-sessions.md) keeps the corpus in `Knowledge-Base/raw/sessions/`; this file is research about that gap and lives here. 35 of the 55 sessions below have no capture file in the corpus.
+- **Not a substitute for the recorder.** It is a one-off backfill of a known gap, not a second capture path. [ADR-0020](../adr/0020-the-session-corpus-is-stored-in-knowledge-base-raw-sessions.md) keeps the corpus in `Knowledge-Base/raw/sessions/`; this file is research about that gap and lives here. **The gap this file was written to cover has since closed:** at 11:02 on 08-26, 35 of 55 sessions had no capture file; the estate-wide backfill run later that morning brought the corpus to 1,478 files, and **61 of the 62 sessions below now have one.** The exception is the still-open session that produced this refresh, which captures when it ends.
 - **Not analysed.** Below is the record. No model read it and decided what mattered.
 
 ---
@@ -247,6 +252,20 @@ Chronological, local time. `>` blocks are what Claude had just said; **You:** is
 
 **You:** On my iPhone I can also just open a Claude code session as long as it’s connected to a repo I think. The only issue would be if it’s missing my computers global Claude skills and hooks right…? Unless I leave that on and usually remoted in ?
 
+#### 18:24
+
+> **Claude, just before:** …
+>
+> They also compose — `--teleport` pulls a cloud session down to your terminal, and the docs note you can then start `/remote-control` in it to keep steering from your phone.
+> 
+> One fact worth having: **cloud sessions have no separate compute charge for the VM.** They draw on your existing rate limits, same as any other usage. So the offload itself is free; what you'd be spending is setup effort.
+
+**You:** /handoff give me what we’ve talked about so far in a handoff so I can start a fresh session to talk about this with where I’ll properly grill on it
+
+#### 18:28
+
+**You:** /domain-modeling let’s get this repo setup for ADRs and stuff so I can grill with docs and start writing ADRs
+
 #### 18:31
 
 **Asked:** What does an ADR in *this* repo govern, given agent-skills already holds 30?
@@ -257,6 +276,12 @@ Chronological, local time. `>` blocks are what Claude had just said; **You:** is
 
 **Answered:** Minimal (skill default)
 
+
+#### 18:35
+
+**You:** /wayfinder read /tmp/handoff-fleet-architecture-grill-2026-08-21.md I just want to explore what we have tried and land an ADR on our tech stack for this. Research things too. Based on my needs… do we want to set the precedent to track specs and tickets on GitHub or elsewhere? Do we want to use cloud runners? And from what company? 
+
+Let’s just decide these few things.
 
 #### 18:39
 
@@ -590,6 +615,10 @@ The HOME match proves less than it looks like. The script wrote to all four cand
 
 One procedural note: step 1's literal command was denied by the auto-mode permission classifier, not by the probe hook, because it echoed a token value. I recorded that as the result, re-ran the identity portion separately, and probed the token's presence without printing it. The hook log shows the probe hook fired on that call as well — two independent gates on the same command.
 
+#### 22:09
+
+**You:** /wayfinder gh 9 issue
+
 #### 22:32
 
 > **Claude, just before:** …
@@ -625,6 +654,15 @@ Everything will be built new. Stop focusing on what we currently have. This is j
 > **Verdict:** not clear yet — one open ticket. After it, the map is done and closes on the decision (`dest-decision`, no `/to-spec` handoff).
 
 **You:** Should we just answer the last one ticket 10 now too since you have the context?
+
+#### 11:30
+
+**You:** /grill-with-docs can we discern why Matt pocock does not regularly run CI but we do on every push? 
+Is it useless overhead? We already run full tests constantly. We could just run it once in a while? How many tests how long are they what types and how often are we running them? And compare that to pocock. We might have this recorded already or might need to have an explore agent or two  look into GH. 
+
+We need to lock in a precedent for types of tests and how often to run them - I want to ship a lot of work very quickly. Wall clock time optimizing and not wasting GH action minutes. Lumaria is one of our bigger repos that can be compared. 
+
+I don’t want to make any changes to Lumaria right now I just want information and to help make future decisions.
 
 #### 11:33
 
@@ -701,6 +739,10 @@ What and when in each of these points are tests or commits or pushes running
 #### 14:36
 
 **You:** What should our next step be in this repo? Should we just start building the workflow 1 step at a time? Like start now building an implement workflow agent for github?
+
+#### 14:43
+
+**You:** /grill-with-docs I just want to build the first piece of a workflow that takes a Spec and breaks it into tickets. So for example we run this grill session which should be very simple and concise. We do /to-spec . That creates a spec in github. And then the idea is an agent takes that and does what /to-tickets would do. So one workflow examines the seams. Another workflow breaks it into tickets based on those seams. a 3rd agent audits it then publishes it.
 
 #### 14:49
 
@@ -857,6 +899,16 @@ Do NOT include a Closes directive anywhere in the body — the script omits one 
 
 4: It can live here. '/home/collin/Claude Projects/Workflow/.Workflow/agent-workflows/to-tickets'
 
+#### 15:16
+
+> **Claude, just before:** …
+>
+> The real exposure is that nothing downstream consumes these tickets yet, so the first honest test of whether the slices are any good doesn't arrive until implement does. And you're building on your own fork's ideas, not Matt's: the dependency graph, the seam pass and the auditor are all yours, and none of them has run in production.
+> 
+> Confirm and I'll build it.
+
+**You:** /to-spec this. Looks good. Confirmed
+
 #### 15:22
 
 > **Claude, just before:** …
@@ -868,7 +920,23 @@ Do NOT include a Closes directive anywhere in the body — the script omits one 
 
 **You:** ok whatever you rec should make it in
 
+#### 15:26
+
+**You:** /to-tickets GH 13
+
+#### 15:41
+
+**You:** /drain GH 13.
+
 ### Sun Aug 23
+
+#### 08:34
+
+**You:** /to-tickets 25
+
+#### 09:03
+
+**You:** /drain PRD 25
 
 #### 10:33
 
@@ -936,6 +1004,10 @@ criterion 5: unchanged — the one literal survives.
 > Want me to commit it, or read it first?
 
 **You:** Commit and push
+
+#### 11:44
+
+**You:** /grill-with-docs Design.md point 4.00 intake - absent. What are the ideas and how is this possible? Claude sessoins? Gh Issues? GH comments? What happens? Is this even a model requireement? Or is this just me writing something down part of it?
 
 #### 11:52
 
@@ -1362,6 +1434,10 @@ Otherwise we are still just sitting with a broken PR but nothing fixing it ?
 
 **You:** File it. Don’t parse
 
+#### 20:21
+
+**You:** /diagnosing-bugs gh 40
+
 #### 20:32
 
 **Asked:** actionlint catches this exact bug class locally in milliseconds ("context runner is not allowed here"). Want me to wire it in as the regression gate?
@@ -1453,6 +1529,10 @@ At line:2 char:1
 > One loose end for #42: your token is in this transcript, and `~/.claude/.credentials.json` still holds the short-lived one. The repo secret is set and good for a year.
 
 **You:** Why not put the year one wherever it needs then ?
+
+#### 21:05
+
+**You:** /implement gh 42 what’s the right decision why do we need a compromise let’s just fix it properly
 
 #### 21:07
 
@@ -1719,6 +1799,10 @@ Example, for a spec whose tickets will all need the same GitHub command executor
 
 **You:** Lets add some instructions to design md
 
+#### 18:07
+
+**You:** /drain GH 36
+
 #### 19:00
 
 **You:** Whats suggested next to do? We just finished the hooks for the session review agents
@@ -1818,6 +1902,10 @@ I'd fix those two next, before anything else on the build order. Want me to?
 #### 20:01
 
 **You:** Update design.md and file gh issue for any gaps you just noticed
+
+#### 20:07
+
+**You:** /implement GH 57
 
 #### 20:14
 
@@ -2063,6 +2151,10 @@ Run npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage slice --i
 
 **You:** Read package.json and reply with exactly: <output>["ok"]</output>
 
+#### 22:15
+
+**You:** /drain GH PRD 63.
+
 #### 22:18
 
 **You:** I think this repo is a little too polluted with cross references. Look at the work weve been shipping and look at the size of design.md. 
@@ -2108,6 +2200,32 @@ To be honest with you design.md still isnt fully grilled out but every time I ha
 **You:** Im like imagining we are gonna need to do it multiple times. Like once for each repo. And I will want this system in a bunch of my repos. Thats my thought process. So do we need something that somehow will track all the things that need to get copied over? 
 
 I just need a direction to go from here that is going to somehow keep me on track for the rest of the work and grilling and things that need to get done so that we can finish deciding the whole system, building the whole system, and then knowing how to use it in other repos.
+
+#### 22:28
+
+> **Claude, just before:** …
+>
+> nter promoted ahead of repo #2 — it's the thing that catches drift across repos *without* a sync contract, which is what makes N repos not a grooming problem.
+> 5. Grill 4a/4b. Build. Repeat down the graph.
+> 
+> §11 Q3 still rules other repos deferred until lane 05 runs on a runner, and I'd keep that — but 3 and 4 are what make the rollout an afternoon instead of a project.
+> 
+> Want me to file step 3 now? It's mechanical and it doesn't touch anything 63 is holding.
+
+**You:** /wayfinder this is exactly what a wayfinder map is for. Just setup a basic map for this then.
+
+#### 22:28
+
+> **Claude, just before:** …
+>
+> nter promoted ahead of repo #2 — it's the thing that catches drift across repos *without* a sync contract, which is what makes N repos not a grooming problem.
+> 5. Grill 4a/4b. Build. Repeat down the graph.
+> 
+> §11 Q3 still rules other repos deferred until lane 05 runs on a runner, and I'd keep that — but 3 and 4 are what make the rollout an afternoon instead of a project.
+> 
+> Want me to file step 3 now? It's mechanical and it doesn't touch anything 63 is holding.
+
+**You:** /wayfinder this is exactly what a wayfinder map is for. Just setup a basic map for this then.
 
 #### 22:31
 
@@ -2598,3 +2716,178 @@ q3 ok
 > The natural test is "did the issue this doc answers close citing it," but the pointer is hand-written and 2 of 7 docs don't have one, so it'd fire false on those two immediately. I'd ship the act as *file an issue* and make the trigger the same trailer discipline as Q5: `bin/new-adr`'s sibling for research notes writes a real `Resolves:` field, and the counter's first finding is the two docs missing one.
 
 **You:** Good
+#### 11:06
+
+> **Claude, just before:** …
+>
+> ➡️ **(b).** Per the map's own Notes, vocabulary lives in `CONTEXT.md` and a wrong term gets changed there rather than worked around. "Unread document" is a wrong term — it names a signal we measured and rejected. I'd want your call on the word itself though: *supersession index* is descriptive but flat, and this glossary's terms tend to be doing sharper work than that.
+
+**You:** Agreed
+
+#### 11:07
+
+> **Claude, just before:** …
+>
+> The mitigation is that the counter catches its own absence — an ADR with a supersession verb and no trailer is the finding — but that's a heuristic backstop, not a guarantee. The other risk is scope: I cut counters and lenses out of this ticket and handed them to #102, so if #102 rules differently the backwards question ends up defined in two places.
+> 
+> Confirm and I'll file the ADR, land the changes, and run the checker.
+
+**You:** Confirmed
+
+#### 11:08
+
+> **Claude, just before:** …
+>
+> Counts moved from 203 → 206 prompts between runs because the transcript is live — this conversation is in its own corpus.
+> 
+> Not committed. Want me to, and should the interrupts get their own pass? Five of the eighteen are the same complaint — *stop, you've exceeded the question I asked* — which reads like an ADR waiting to be written.
+
+**You:** Commit and push
+
+#### 11:09
+
+> **Claude, just before:** …
+>
+> Pushed — `a2200ab..8a97b4b` on `main`. Three commits went up: the ledger plus your two that were already sitting unpushed (`3efc4bb`, `dedae33`).
+> 
+> Still untracked, deliberately left alone — ADRs **0044**, **0045**, **0046** on the backwards question and supersession trailers. Those look like they're from the session that ended at 14:44 today, not mine to sweep into this commit. Say the word if you want them in.
+
+**You:** So what gaps u noticed r left right now?
+
+#### 11:10
+
+> **Claude, just before:** …
+>
+> Let me check rather than guess — three things I flagged but didn't verify.
+
+**⎋ Esc — cut a reply off mid-sentence.**
+
+**You:** Hurry up faster
+
+#### 11:11
+
+> **Claude, just before:** …
+>
+> **3. 35 of 55 sessions have no capture file.** Most is the pre-Aug-25 gap. But the matcher is `clear|logout|other` — deliberately not `prompt_input_exit` — so a session you abandon never captures. Unverified how much of the 35 that is.
+> 
+> Want me to file #1 as a defect and run the same extraction across the other repos? #2 is the one with a deadline.
+
+**You:** File all of that as one GH issue.
+
+#### 11:14
+
+> **Claude, just before:** …
+>
+> `ticket_shape.py:239` resolves claims against a module-level `REPO_ROOT` that points at the agent-skills repo, not the repo you're filing from. So **every ticket filed from any other repo gets spurious "not found" warnings on every claim**. Harmless today because it's warn-only and the blockedBy wiring compares the raw strings — but it trains you to ignore the one warning that would catch a real typo'd claim. Want that filed too?
+
+**You:** Yes
+
+#### 11:16
+
+**You:** Is gh 103 covered anywhere else ?
+
+#### 11:20
+
+> **Claude, just before:** …
+>
+> There are 73 dirs holding 725 transcripts, and only 41 have a capture file. The real ones: PWPP-Projects 167 (zero captured), Lumaria 158 (17), agent-skills 85 (zero), Travel 48, General-Repo 45, 3D-Printing 25. Given ADR-0018's argument that the corrections worth reading happen mostly *not* in this repo, that's the whole point of the deadline — and it's the one part of the ticket you can close today.
+
+**You:** So what order should we work on it in?
+
+#### 11:21
+
+> **Claude, just before:** …
+>
+>  It's a measurement that may end in "no change", and it reads cleaner after §2: once the pre-recorder gap is filled, whatever's still uncaptured *is* the matcher's doing. Running it first means hand-separating two causes that §2 separates for you.
+> 
+> Sequencing note: **#93 waits on all of this.** The transcript lens is the corpus's only consumer, and pointing an Opus pass at `- Ok` × 21 is how you conclude the lens doesn't work when the input is what didn't.
+
+**You:** do 0 now
+
+#### 11:22
+
+> **Claude, just before:** …
+>
+> What's on disk now (725 transcripts, 1.2 GB) will stay there.
+> 
+> The 30-day deadline in #103 §2 is no longer real. Want me to note that on the ticket, along with the 725/41 numbers and the fact that #45's backfill script already covers all of `~/.claude/projects`? That'd stop the next reader from doing §2 in a hurry and in the wrong format.
+
+**You:** number 1 whats your rec now?
+
+#### 11:24
+
+> **Claude, just before:** …
+>
+> One bug not in the ticket: pasted prompt text carries its own `## ` headings straight into the capture — that `0c0cf08a` file has `## Drill A`, `## Acceptance criteria`, and `## Files claimed` sitting at the same level as `## User Prompts`. Anything parsing the corpus by heading is already reading garbage. Worth fixing in the same pass.
+> 
+> Want me to rewrite #103's §1 to this, or just start on it?
+
+**You:** Just fix it to your rec
+
+#### 11:27
+
+> **Claude, just before:** …
+>
+> Added an **Order of work** section and a bullet under "not in doubt" that #93 waits on all three.
+> 
+> Two things I verified while writing rather than repeating from the ticket: the interrupts are dropped by the `origin.kind === "human"` filter specifically (they carry no `origin` field at all), and there are 33 of them in this repo's surviving transcripts, not the 18 the old text cited over a six-day window.
+
+**You:** What can we do as of the current project state and get done?
+
+#### 11:31
+
+> **Claude, just before:** …
+>
+> The repo is private, so this isn't a disclosure problem, just a scope one you should say yes to deliberately rather than discover in a diff.
+> 
+> Two smaller calls I'd make myself unless you object: exclude the `/tmp` ablation and judge directories by a rule in the script rather than by hand, and commit the backfill as one commit separate from the format change so it's revertable on its own.
+> 
+> Say go and I'll start on §1.
+
+**You:** Go lets get it all done.
+
+#### 11:48
+
+> **Claude, just before:** …
+>
+> One honest caveat, which I also put in the closing record rather than bury: the "both shapes still parse" criterion is verified at the writer, not at a reader, because no consumer of the corpus exists yet. The reader that actually has to accept both is #93's transcript lens — which now has a corpus worth pointing it at.
+> 
+> A background job is watching the tracker-side close gate; I'll tell you if it refuses.
+
+**You:** Ok if you need to update the other gh issue or issues then do that
+
+#### 11:53
+
+> **Claude, just before:** …
+>
+> One thing I did **not** touch, since you scoped this to issues: `DESIGN.md` §6 still says "Backfill salvaged 11 sessions against 841", `GOAL.md` blocker 4 and `INDEX.md` §7 carry the same era's numbers, and `INDEX.md` still says the corpus can't see Sandcastle or cloud work. Those are now the stalest prose in the repo — exactly what the back-stamp exists to catch. Say the word and I'll bring them current.
+
+**You:** I think it closed already
+
+#### 11:58
+
+> **Claude, just before:** …
+>
+> ose gate has a blind spot with the same shape.** It fires on `issues.closed` and there is no reconciliation for a close whose event was dropped. An issue closed during any Actions outage is permanently unjudged, and nothing anywhere records that it wasn't. That's #41's category — a gate failing in a way nobody is told about — but it's a different mechanism, so it's probably its own ticket rather than a comment.
+> 
+> Want me to file that one and comment on #41?
+
+**You:** Ok thats good and this might be the one case that it makes more sense to have like a daily cron runner for instead of specifically action based. Just loosely throwing that idea out there. Something that finds failures from like outtages or similar right? SO what do you suggest to do right now to get this session closed out. Concise answer
+
+#### 11:59
+
+> **Claude, just before:** …
+>
+> **Comment on #41** — its fix is a workflow watching for workflow failures; that needs saying before someone builds it.
+> 3. **Leave a background watcher** that re-closes #103 once Actions recovers, so the verdict lands without you thinking about it.
+> 
+> Then the only thing left open is `DESIGN.md`/`GOAL.md`/`INDEX.md` carrying pre-backfill numbers — a separate sitting.
+> 
+> Say go and I'll do all three.
+
+**You:** do 1-3
+
+#### 12:03
+
+**You:** '/home/collin/Claude Projects/Workflow/docs/research/session-prompts-2026-08.md' theres been a few more session sisnce this can we get it updated to be more current?
+
