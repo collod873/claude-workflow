@@ -617,12 +617,13 @@ declined finding re-proposes only when its recurrence *grew*, and release batche
 request** on a PRD close or at N=20 unreleased findings — never on a clock, and never N issues.
 COMPOSITION and SEAM were dropped on 27 verified findings. `.Workflow/agent-workflows/observations/`.
 
-**All of it is library code and nothing fires it.** The connector is specced as
-[#63](https://github.com/collod873/claude-workflow/issues/63) and not yet built: no workflow, no
-hook, no CLI. This is `CONTEXT.md`'s *connector* missing on the newest lane instead of the oldest,
-which is blocker 2's own shape. Capture is the half that runs. Until the connector lands, the
-backwards question below cannot be asked of these two, because a lens that has never fired cannot
-answer it.
+**Both fire automatically now.** Spec [#63](https://github.com/collod873/claude-workflow/issues/63)
+built the connector: a session ending in this repo derives its own SHA range, writes a session
+record as a git note, and dispatches `.github/workflows/audit.yml`, which runs both lenses and
+pushes the merged findings to `refs/notes/observations`. Release evaluates the same scope at the
+end of every audit and again when a PRD closes (`.github/workflows/release-on-prd-close.yml`),
+opening one PR; `.github/workflows/ratify-release.yml` writes that PR's merged checklist back as
+ratification memory. The backwards question below can now be asked of these two.
 
 Shaping #63 found the hole wider than "nothing fires it," and two of the three additions are what
 make the venue question answerable at all: the corpus is written but never pushed, so a runner
@@ -773,7 +774,7 @@ The point of drawing the map first. Every era-6 verb, held against the lanes abo
 | `/grilling` | Local session, §2 | **Keep, unported.** Grilling needs the owner's answers by construction — an unattended grilling agent grills itself. Lane 01 replicates the part that *is* automatable (walk the tree, recommend on each) and escalates here when it can't |
 | `/triage` | Lane 00/01 boundary | **Absorbed.** Capture files, adversaries shape. A separate triage verb is a third name for the same edge |
 | `/drain` | — | **Delete.** A batch worker with worktrees, a foreman and a merge loop *on the workstation* is ADR-0002's exact prohibition. Lanes 05 and 08 are what it was for: the governor dispatches, the warden serialises. Its three open defects ([#33](https://github.com/collod873/claude-workflow/issues/33)–[#35](https://github.com/collod873/claude-workflow/issues/35)) are defects in a thing that does not survive the map |
-| `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed**, and half-built. ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is two lenses — violation and proposed, shipped by spec #36 and not yet fired ([#63](https://github.com/collod873/claude-workflow/issues/63) specs the connector) |
+| `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed**, and half-built. ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is two lenses — violation and proposed, shipped by spec #36 and fired automatically since spec [#63](https://github.com/collod873/claude-workflow/issues/63) |
 | `/converge` | — | **Delete.** Bringing a machine back to the GitHub backups is only necessary because state lives on a machine. §1 forbids that |
 | `/sync-skills` | — | **Delete.** Vendoring an upstream skill tree and re-applying deltas is a grooming obligation with ~60 rows of divergence to maintain. C4 |
 | `/wayfinder` | Local session, §2 | **Keep, unported.** Destination and scope are named in `GOAL.md` as where the human deliberately stays. It should stay a local, human-fired verb — it is not an edge |
@@ -805,7 +806,7 @@ work drains onto the owner.
 | 6 | **Spec on a runner** (lane 02) | Blocker 2 | Weeks |
 | 7 | **Build + integrate** (lanes 05, 08) — implementer, fixer, warden | Blocker 2 | Weeks |
 | 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waited on move 3, **which landed 2026-08-25**, so all three are now unblocked and it is the cheapest row left on this table |
-| 8b | ◐ **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | **Partial.** Spec #36 slices 3–5 built the violation and proposed lenses, git-notes storage, ratification memory and the release PR composer — and **wired none of it.** The connector is specced as [#63](https://github.com/collod873/claude-workflow/issues/63) and is the move that retires this row. Blocker 3 is not retired by code that never runs. The other five lenses and the backwards question are untouched: ongoing, event-attached |
+| 8b | ◐ **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | **Partial.** Spec [#63](https://github.com/collod873/claude-workflow/issues/63) landed the connector spec #36 left unbuilt — the violation and proposed lenses, git-notes storage, ratification memory and the release PR composer are wired and fire automatically. Blocker 3 stays partial regardless: retiring it needs the backwards question asked of the lint rules and ADRs too, and that half is still untouched. The other five lenses are also untouched: ongoing, event-attached |
 | 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
 | 10 | **Branch protection + required checks** on this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
 

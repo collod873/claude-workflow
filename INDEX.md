@@ -411,6 +411,15 @@ in any project:
    *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
 8. **No mechanism points backwards.** 30 ADRs in a month, 9 amending an earlier one; 36 lint rules
    from 5 standards passes; **not one of the 36 has been asked whether it caught anything.**
+   *(Same entry as `GOAL.md` §4 blocker 3.)* **The connector half landed 2026-08-25** — spec
+   [#63](https://github.com/collod873/claude-workflow/issues/63) wired the auditor and release spec
+   #36 had left as library code with no caller. A session ending in this repo now dispatches
+   `.github/workflows/audit.yml`, which runs both lenses and pushes their findings; release fires
+   at the same event and again on a PRD close (`.github/workflows/release-on-prd-close.yml`), with
+   a merged release PR's checklist written back as ratification memory
+   (`.github/workflows/ratify-release.yml`). **Still open:** this only reaches the two model
+   lenses. The backwards question has still never been asked of the 36 lint rules or the 30 ADRs
+   above.
 9. **The Stop-time gates have never fired, and a third of the hooks cannot be asked.** Measured
    2026-08-23: machine-global `stop-gate.py` — **0 blocks in 258 rows**; Lumaria's
    `design-override-flag` — 0 in a month; Lumaria's `stop-gate` — exactly **1** real block ever,
