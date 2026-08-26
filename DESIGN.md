@@ -139,56 +139,53 @@ in §7 and the brief in §8, marked there.
 
 ### 00 · Intake
 
-> **Fires on:** the owner creating a work item through any of the three doors below. Nothing else
-> in the system is human-initiated.
+> **Fires on:** an issue filed through `.github/ISSUE_TEMPLATE/`, which applies `idea` or `bug` at
+> creation. Nothing else in the system is human-initiated.
 >
-> **Cost:** no model, no owner minutes — a form submit at a red light. · **Sees:** — (it records;
-> finding is not its job)
+> **Refuses:** nothing, ever. A capture that refuses loses ideas, which is the one thing this lane
+> exists to prevent, and the blank issue stays enabled for the same reason. It also never
+> *dispatches* — a filed idea is a captured observation, not approved work.
+>
+> **Cost:** no model, no owner minutes — one field at a red light.
+>
+> **Sees:** — (it records; finding is not its job)
+>
+> **Binds:**
+> — **The owner's words are stored verbatim and nothing edits them.** That is what makes it safe for
+> lane 01 to restate them: the original is always there to check the interpretation against. Held by
+> a test that fails on any issue-body writer entering the repo, in whichever language it arrives.
+> — **One required field, and lane 01 inherits everything this door does not ask.** Urgency, scope
+> and what it touches arrive undecided by construction. A field added here is a question asked at
+> the worst possible moment, and a door the owner routes around captures nothing.
+> — **Ingress is a GitHub object from the first moment**, so §1's substrate rule costs this lane
+> nothing.
+> — **A session may file an idea only when the owner explicitly says so, and that capability is
+> written down nowhere else.** No agent may be primed to volunteer ideas of its own — F2 is the
+> system becoming its own biggest customer, and an invitation in `CLAUDE.md` is read at the start of
+> every session.
+> — **A defect in the machinery is the one exception**, filable by any run unasked and **always into
+> this repo whichever repo the run was working in**
+> ([ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md)).
+> Defects only, never features: a lane that misfires while working on a product is not that
+> product's bug, and filing it beside that product's bugs buries it where nobody who can fix it is
+> looking.
+> — **The templates are per-repo copies and cannot be centralised.** GitHub serves default community
+> health files only from a *public* `.github` repository, which a private estate does not have. At
+> two repos that is a copied file; where it stops being one is §11's question 6.
+>
+> **Lives in:** `.github/ISSUE_TEMPLATE/`, the `idea` and `bug` labels, and
+> `.Workflow/agent-workflows/intake/intake.test.ts`. ADR-0009.
 
-**There is no capture agent.** Ingress takes three forms, distinguished by how much context the
-owner has already built:
+**Two doors are not built.** The form above is the micro door. The other two enter at lane 02 and
+wait on it — they are distinguished by how much context the owner has already built:
 
 | Door | When | What enters the system | Next lane |
 |---|---|---|---|
-| **Micro** — GitHub issue form | At a red light, out and about, phone | A 1-liner. `.github/ISSUE_TEMPLATE/` applies `idea` or `bug` automatically. One required field, *"What's the idea?"* | 01 (Shape) |
 | **Tactical** — local `/grill-with-docs` session | At the desk, single-session alignment | The session ends aligned and publishes a GitHub issue with the grilled decisions. The owner invokes `/to-spec` directly while context is hot — **no handoff to a runner**, because the session already holds the nuance and serialising it to an issue loses signal | 02 (Spec, in-session) |
 | **Macro** — `/wayfinder` map | Multi-session domain exploration | A closed Wayfinder Map issue (e.g. [Lumaria #751](https://github.com/collod873/Lumaria/issues/751)) carrying ADR rulings, filed sub-issues, and scoped boundaries. Closing the map or applying a `to-spec` label triggers the cloud spec author | 02 (Spec, headless) |
 
 **All three doors produce the same downstream object**: a GitHub issue carrying enough decided
-context for lane 02 to synthesise a spec without interviewing the owner.
-
-The design pressure here is friction at a red light, not model quality. Every additional field is a
-question asked at the worst possible moment, and the fields worth having — urgency, scope, what it
-touches — are exactly what lane 01 exists to work out.
-
-**Lane 00 records; lane 01 interprets.** The owner's words are stored verbatim and never edited,
-which is what makes it safe for the next lane to restate them: the original is always there to
-check the interpretation against.
-
-**Refusal:** none. Capture must never refuse, or ideas get lost, which is the one thing it exists
-to prevent. It also never *dispatches* — a filed idea is a captured observation, not approved work.
-
-**On blockers:** this does not retire blocker 2. Blocker 2 is that nothing in the system can start
-work, and that is retired by the connectors in moves 5–7. Lane 00 moves the entry keystroke from a
-desk to a phone, which is worth an afternoon and is not the same claim.
-
-**Ingress is a GitHub object from the first moment**, which is why the substrate rule in §1 costs
-nothing here. A session may also file an idea when the owner explicitly says so; that capability is
-deliberately written down nowhere, so no agent is primed to volunteer ideas of its own — F2 is the
-system becoming its own biggest customer, and an invitation in `CLAUDE.md` is read at the start of
-every session.
-
-**The one exception is a defect in the machinery itself**, which any run may file unasked —
-[ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md). Defects
-only, never features, and **always into this repo whichever repo the run was working in**: a lane
-that misfires while working on a product is not that product's bug, and filing it beside that
-product's bugs buries it where nobody who can fix it is looking. That is why the lane-00 scope note
-below is about *ideas* and not about defects.
-
-**Scope: this repo only**, until there is evidence about which repos ideas actually arrive for.
-Adding another is a copied file. Note that defaults cannot be centralised — GitHub requires a
-public `.github` repository for default community health files, which does not cover a private
-estate.
+context for the lane above it to work from without interviewing the owner.
 
 ### 01 · Shape
 

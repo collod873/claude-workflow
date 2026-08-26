@@ -1,0 +1,4 @@
+# Capture must never refuse (DESIGN.md §00): the blank issue stays, so an item that fits neither
+# form still gets in. A door that only opens for well-formed items is how ideas get lost, which is
+# the one thing this lane exists to prevent.
+blank_issues_enabled: true

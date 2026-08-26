@@ -51,18 +51,21 @@ in `docs/agents/triage-labels.md`. They assert only where work sits, never a rea
 their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
 means not yet judged.
 
-This repo's own pipeline writes four more, which are state rather than position and which no triage
+This repo's own pipeline writes five more, which are state rather than position and which no triage
 step reads:
 
 | Label            | Written by                          | Means                                                              |
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited (DESIGN.md §00) |
 | `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
 | `close-refused`  | `.github/workflows/close-gate.yml`  | An open refusal — the gate reopened a close and has not since accepted one (ADR-0023: state, not history) |
 | `build-order`    | filed by hand                       | A move on `DESIGN.md`'s build order (ADR-0026)                      |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
 
 GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not triage
-output — see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary.
+output — see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary. Lane 00's
+second form applies stock `bug` at creation, which is intake and not triage either: it records that
+the owner called it a break, and no step reads it as a verdict.
 
 ## Pull requests as a triage surface
 

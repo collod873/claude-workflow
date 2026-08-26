@@ -1,0 +1,12 @@
+name: Bug
+description: Something that broke. One line is enough.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: bug
+    attributes:
+      label: What broke?
+      description: Your words, stored as written. Lane 01 restates them; nothing edits them.
+    validations:
+      required: true

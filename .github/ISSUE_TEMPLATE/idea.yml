@@ -1,0 +1,12 @@
+name: Idea
+description: Something that might be worth doing. One line is enough.
+title: "Idea: "
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What's the idea?
+      description: Your words, stored as written. Lane 01 restates them; nothing edits them.
+    validations:
+      required: true
