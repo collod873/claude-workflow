@@ -87,7 +87,8 @@ edit boundary is eslint (`.lintstagedrc.json` and `.claude/hooks/stop-gate.sh` b
 
 ## 3. Repos with nothing, or nearly nothing, to check
 
-Three repos are the honest answer to `DESIGN.md` §11 Q4.
+Three repos are the honest answer to `DESIGN.md` §11's question about whether the acceptance lane
+applies to non-code work.
 
 **General-Repo has nothing.** No test files anywhere. `package.json` is two lines of content:
 

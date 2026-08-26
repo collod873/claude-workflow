@@ -26,13 +26,16 @@ to avoid, so an argument is about the substance rather than about the word.
 
 **[`docs/adr/`](docs/adr/README.md)** — the decision records. Why things are the way they are.
 
-## Status
+## Scope
 
-Three of `DESIGN.md`'s nine lanes exist. Lane 03 (slice) runs on a runner; lane 06 (verify) runs at
-every venue below Actions; everything else is on the build order in §10.
+**This repo and nothing else** until the machine runs here. Other repos in the estate show up in
+these documents as evidence — a measured number, a mechanism worth stealing — never as work.
 
-**Scope is this repo and nothing else** until the machine runs here. Other repos in the estate show
-up in these documents as evidence — a measured number, a mechanism worth stealing — never as work.
+There is no status section, here or in `DESIGN.md`. A lane's status is the shape of its own section
+there: a six-field contract is shipped, design prose is unbuilt
+([ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md)). The
+roadmap is [the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order)
+([ADR-0026](docs/adr/0026-the-build-order-and-the-filed-open-questions-live-as-issues.md)).
 
 ## The gauntlet
 

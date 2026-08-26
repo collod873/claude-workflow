@@ -1,42 +1,17 @@
 # The design
 
-**Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its nine open
-cells are [§12](#12--the-scorecard) · **Last landed:** 2026-08-25, moves 2–3 — the close gate moved
-to the tracker, and session capture; the observations pipeline it was built to feed (spec
-[#36](https://github.com/collod873/claude-workflow/issues/36)) shipped without the event that runs
-it, so 8b is ◐ rather than ✅ ·
-**Scope:** this repo only, ruled 2026-08-23 — see [§11 Q3](#11--open-questions) ·
-**Status:** the target. What the machine is, drawn from [`GOAL.md`](GOAL.md) rather than from the
-skills that exist today.
+**The target.** What the machine *is* — every edge from an idea to a closed ticket, what event fires
+it, what it refuses, and where the owner is required. [`GOAL.md`](GOAL.md) says what the system is
+*for*; [`INDEX.md`](INDEX.md) says where everything in the estate lives.
 
-`GOAL.md` says what the system is *for*. `INDEX.md` says what has been *built*. This says what the
-machine *is* — every edge from an idea to a closed ticket, what event fires it, what it refuses, and
-where the owner is required. It is the map a proposal gets held against, and the reason
-"we already have a skill for that" stops being an argument: the map was drawn before the skills were
-consulted.
-
-Based on the structure of [The Owner's Foundry](https://claude.ai/code/artifact/c6ca3d6b-49f0-48cc-bf83-5d026e323c6d)
-(agent-skills [#125](https://github.com/collod873/agent-skills/issues/125)), which is the only
-document in the estate that draws the whole pipeline as a state machine. The Foundry is a draft that
-has never been scored against anything — it is one of the four issues
-[#128](https://github.com/collod873/agent-skills/issues/128) flags as cross-referenced inside a
-70-second window by one session, two of which were substantially wrong once a number got attached.
-Everything below is the Foundry re-derived against C1–C7, with three sets of changes:
-
-- **Every clock is gone.** See [ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).
-  The Foundry runs six cadences; C3 and ADR-0029 forbid them. Each is re-attached to the event that
-  makes it non-vacuous, which turns out to be a better trigger in every case.
-- **Sized to one operator and one repo — this one**, not to a SaaS product with users. Anything with
-  no repo to attach to is cut and named as cut. Other repos in the estate appear here only as
-  *evidence*: a measured number, a mechanism worth stealing, a failure worth not repeating. None of
-  them is a target of work on this page until this repo runs, and §11 Q3 is where that gets revisited.
-- **Every lane carries the constraint it answers to**, and the blocker it retires.
+It is the map a proposal gets held against, and the reason "we already have a skill for that" stops
+being an argument: the map was drawn before the skills were consulted.
 
 ---
 
 ## 0 · How to read this
 
-Each lane names four things. A lane missing any of them is not a lane:
+Each lane names four things while it is being designed. A lane missing any of them is not a lane:
 
 - **Fires on** — the event. There is no other way in.
 - **Refuses** — what it turns away before spending model time.
@@ -48,9 +23,25 @@ Each lane names four things. A lane missing any of them is not a lane:
   §4. C5 is a coverage constraint, and coverage that is not enumerated is coverage that is assumed.
   A lane that produces work rather than findings says **—**, which is a real answer.
 
-Status marks: **live** (built, running), **partial**, **absent**. §10's build order uses **✅** for a
-move that landed and **◐** for one whose code landed without the event that runs it — which is not
-the same thing and must never be marked as though it were.
+### A shipped lane collapses to its contract
+
+[ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md). When a
+lane ships, its section is rewritten down to **six** fields, and every sentence arguing why it was
+built that way is deleted. The four above, plus:
+
+- **Binds** — what the lane forces on the design of *another* lane: a venue's budget, a
+  bypassability, a cap. It exists because a fact can be load-bearing on a lane that does not exist
+  yet without being that lane's trigger, refusal, cost or coverage.
+- **Lives in** — the code path, and the ADRs that rule it.
+
+**A lane's status is the shape of its own section.** A contract is shipped. Design prose is unbuilt.
+A partly-shipped lane is both at once and the seam is visible, which is more than a status mark ever
+said. There are no marks anywhere in this document and nothing here is updated when a lane ships —
+**the collapse is the edit that ships it.**
+
+**The one obligation the collapse leaves:** if a fact turns out to live only inside the argument
+being cut, it moves into **Binds** or becomes an ADR *before* the argument goes. Never kept in case;
+a paragraph kept in case is the manifest this rule exists to refuse.
 
 A row marked **⬤ owner** is a point where Collin is required. There are five, and reducing that
 number is the whole project. Two are in the lanes (01, 02); three are outside them — the two taste
@@ -58,8 +49,23 @@ calls in §7 and the brief in §8 — and all five are marked where they occur.
 
 The scoring rule: a proposed lane is held against C1–C7 in `GOAL.md` §2. A lane that fails a
 constraint is not a smaller lane; it is a different goal, and it does not get built. **This document
-is a proposal and does not exempt itself** — §12 runs every lane against all seven and shows its
-work.
+is a proposal and does not exempt itself** — what survived that scoring unresolved is §11.
+
+### What one line of change costs
+
+The per-lane costs exist so C1 can be computed rather than argued:
+
+| Path | Model stages | Owner touches |
+|---|---|---|
+| **Short** (00 → 01 → 05 → 06 → 07 → 08 → 09) | 7, plus 3 per review finding | **1** — two minutes |
+| **Long** (adds 02, 03, 04) | 13+ | **2** — plus 5–15 minutes |
+
+Era 4 died at ~7 plan steps for ~3 edits in 1 file. The short path lands on the same number — and
+the distinction that matters is that **era 4's seven steps were his.** Seven machine stages costing
+one two-minute click is not the same object as seven plan steps costing an afternoon of attention,
+which is exactly why routing had to become a machine call
+([ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md)) rather
+than a policy that sends every feature long.
 
 ---
 
@@ -104,11 +110,8 @@ three surfaces, and confusing them is how these systems get expensive.
 | **Local session — judgment** | Grilling a shape, driving a design canvas, prototyping, asking "what's stuck" | Short, disposable, output written to a file or an issue before it closes. *(C6)* |
 
 **The failure mode to name:** running implementation locally because it is faster to watch. It is
-not faster, and watching is what consumes the decision budget — the actual scarce resource. It is
-also the thing happening today: issues [#33](https://github.com/collod873/claude-workflow/issues/33)
-and [#34](https://github.com/collod873/claude-workflow/issues/34) are era-6 `/drain` running on the
-workstation against this repo, in direct violation of ADR-0002. That is a bootstrap, and §10 gives
-it an expiry.
+not faster, and watching is what consumes the decision budget — the actual scarce resource. The
+bootstrap that does exactly this today, and its expiry, are in §10.
 
 ## 3 · Model assignment
 
@@ -131,7 +134,7 @@ Nine lanes. A work item passes through them in order. **⬤ owner** marks a poin
 required — **two of the five are here**, in lanes 01 and 02. The other three are the two taste calls
 in §7 and the brief in §8, marked there.
 
-### 00 · Intake — *absent*
+### 00 · Intake
 
 > **Fires on:** the owner creating a work item through any of the three doors below. Nothing else
 > in the system is human-initiated.
@@ -184,7 +187,7 @@ Adding another is a copied file. Note that defaults cannot be centralised — Gi
 public `.github` repository for default community health files, which does not cover a private
 estate.
 
-### 01 · Shape — *absent*
+### 01 · Shape
 
 > **Fires on:** the `idea` label. **Refuses:** at stage 1, an idea that already exists or that an
 > ADR has already ruled on — the chain stops there and never spends the shaper.
@@ -275,13 +278,16 @@ feature to the gauntlet without a spec — visible, because lanes 06–07 still 
 re-shaping. A wrong **long** route buys era 4's overhead and leaves no trace anywhere, because
 nothing records the ceremony an item did not need.
 
-### 02 · Spec — *absent on a runner* (`/to-spec` exists, local)
+### 02 · Spec
 
 > **Fires on:** any of the three triggers below. **Refuses:** an idea whose adversary comments have
 > not been answered; a Wayfinder Map with unresolved stubs.
 >
 > **Cost:** 2 Opus stages; **5–15 owner minutes**, batched — the most expensive owner touch in the
 > system, and the one that pays for itself. · **Sees:** —
+
+`/to-spec` exists but is local-only, which makes it a keystroke gate on every unit of work. Move 6
+puts it on a runner.
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -307,26 +313,34 @@ there; one more prompt costs seconds. The cloud path exists for the cases where 
 C2 done correctly: the machine asks about *intent*, which the owner is the only one who can answer,
 and never asks a sizing or architecture question, which he cannot.
 
-### 03 · Slice — **live**
+### 03 · Slice
 
-> **Fires on:** the `prd` label. **Refuses:** a PRD that already has sub-issues; a PRD that is
-> itself a sub-issue; a missing `CLAUDE_CODE_OAUTH_TOKEN`.
+> **Fires on:** the `prd` label.
 >
-> **Cost:** 3 Opus stages per spec, no owner minutes. · **Sees:** —
+> **Refuses:** a PRD that already has sub-issues; a PRD that is itself a sub-issue; a missing
+> `CLAUDE_CODE_OAUTH_TOKEN`.
+>
+> **Cost:** 3 Opus stages per spec — seam sweep, slicer, auditor-and-publisher. No owner minutes.
+>
+> **Sees:** —
+>
+> **Binds:**
+> — It emits the **seam manifest**, one line per shared shape. Lane 05's brief carries it, and the
+> one-line bound is load-bearing: every line is injected into every consuming ticket's body and
+> therefore into every worker's context.
+> — **The seam picker runs at slice time, not at spec time**, so lane 02 does not owe an interface
+> contract before slicing. Neither placement follows from a constraint; the built one holds until a
+> slice fails in a way that names the answer.
+> — Physical disjointness is drawn here, which is what makes lane 05's 3–6 concurrent implementers
+> safe to run at all. That is **W3**, and lane 08 is its merge-time complement rather than a
+> replacement.
+> — Every `dependsOn` is published as a native blocked-by edge and read back to verify, so the
+> dependency graph is a GitHub object rather than a field in a file.
+>
+> **Lives in:** `.Workflow/agent-workflows/to-tickets/`, fired by
+> `.github/workflows/to-tickets.yml`. [ADR-0012](docs/adr/0012-a-stage-s-output-block-is-the-outermost-span-and-the-payload.md).
 
-| Role | Model | Count | Does |
-|---|---|---|---|
-| Seam sweep | Opus | 1 stage | Emits the seam manifest — the shared shapes the batch needs, one line each |
-| Slicer | Opus | 1 stage | Draws the ticket graph against rules it can be graded on |
-| Auditor + publisher | Opus + code | 1 stage | Grades a graph it did not author, then hands its own plan to the deterministic publisher — one sub-issue per slice, every `dependsOn` a native blocked-by edge, read back to verify |
-
-The only lane fully built. `.Workflow/agent-workflows/to-tickets/`, fired by `.github/workflows/to-tickets.yml`.
-
-**Open question:** the Foundry places the seam picker in lane 02, at spec time, so the interface
-contract exists before slicing. Here it runs at slice time. Neither placement follows from a
-constraint; the built one keeps its place until something argues otherwise. See §11.
-
-### 04 · Acceptance — *absent*
+### 04 · Acceptance
 
 > **Fires on:** a slice published, **or a merged edit to a spec that already has acceptance tests.**
 > **Refuses:** a criterion the spec does not determine — that is a spec defect, and the correct
@@ -357,13 +371,18 @@ idea, because the closing record it reads is authored by the agent being judged.
 mechanism that makes the whole out-of-the-loop premise safe: without it, the fleet's output is
 unverifiable, which makes it worthless, which puts the owner back in the loop reading diffs.
 
-### 05 · Build — *absent on a runner* (`/implement`, `/drain` exist, local — see §2)
+**It runs at the Actions venue** — lane 06 binds that, along with the 10-minute budget it has to fit.
+
+### 05 · Build
 
 > **Fires on:** `ready` **and** a free slot under the governor's cap. **Refuses:** dispatch when the
 > owner's decision queue is full (§8).
 >
 > **Cost:** 1 Sonnet per slice, plus up to 3 fix attempts on red. · **Sees:** — while it runs;
 > class 4 at the end of it, via write-on-surprise below
+
+`/implement` and `/drain` exist locally. `/implement` is ported and narrowed by this lane; `/drain`
+does not survive the map — [ADR-0027](docs/adr/0027-six-of-era-6-s-eleven-verbs-do-not-survive-the-map-and-two-s.md).
 
 | Role | Model | Count | Does |
 |---|---|---|---|
@@ -385,86 +404,64 @@ means nothing gets written; the bar is surprise, not diligence.
 W6 — *write the autopsy while it still stings* — and it is the only thing that carries a run's own
 class-4 evidence out of a transcript nobody would otherwise read.
 
-**W3 is already carried, upstream.** Physical disjointness is the slicer's job in lane 03, which is
-live and does it today; that is what makes 3–6 concurrent implementers safe to run at all. Lane 08
-is the merge-time complement for the conflict disjointness cannot prevent, not a replacement for it.
+### 06 · Verify
 
-### 06 · Verify — **live below Actions**, refusing only at push
-
-> **Fires on:** every edit, every turn end, every push, every PR — one venue each. **Refuses:** the
-> edit, the turn, the push, the merge, respectively.
+> **Fires on:** every edit, every turn end, every push, every PR — one venue each.
 >
-> **Cost:** no model at the first three venues, Actions minutes at the fourth. The cheapest lane on
-> the page and the one that retires a measured regression. · **Sees:** class 1 (the tree at HEAD)
-> and class 5 (the runtime)
+> **Refuses:** the edit, the turn, the push, the merge, respectively. The three venues below Actions
+> **fail open**; the push venue **fails closed**. A hook that cannot run its checks — no node on
+> PATH, no `node_modules` — stays silent and lets the turn through, because a convenience venue that
+> wedges every turn in the repo is worse than the defect it was hunting. The push venue refuses
+> instead, because a human is standing there and the next thing downstream is `main`.
+>
+> **Cost:** no model at the first three venues, Actions minutes at the fourth.
+>
+> **Sees:** class 1 (the tree at HEAD) and class 5 (the runtime).
+>
+> **Binds:**
+> — **A check sits at the earliest venue whose budget it fits**
+> ([ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)). The
+> budgets: **<1s** in the turn, **<10s** at turn end, **<60s** on push, **<10min** in Actions,
+> unbounded overnight. What earliest buys is a cheap *repair*, not a cheap check — a type error
+> caught in-turn is fixed by the implementer that caused it with context still hot; the same error
+> in Actions costs a cold fixer run reconstructing what the implementer already knew.
+> — **Anything needing a runner runs at Actions, under the 10-minute budget** — integration, a
+> seeded database, lane 04's acceptance tests, contract tests against lane 03's seam manifest.
+> Nothing below Actions can carry them.
+> — **Every venue below Actions is bypassable.** `--no-verify` skips the push and commit hooks; a
+> `PostToolUse` hook is fed back as tool output and an agent may read it and proceed anyway. Until
+> move 10 there is **no venue an agent cannot route around**, and nothing counts how often one does.
+> — **No venue is promoted to refusing above a flaky check.** A flaky gate trains `--no-verify` and
+> is worse than a slow one. A "could not run" is a third exit code rather than a failure, because an
+> environment problem reported as a finding is how a repo learns to ignore its gates.
+> — **A test's timeout is sized for the slowest venue it runs in**
+> ([ADR-0015](docs/adr/0015-a-test-s-timeout-is-sized-for-the-slowest-venue-it-runs-in-n.md)).
+> — **Every defect that escapes to the owner adds a gate**, at the lowest venue that could have
+> caught it, at the moment the defect proves it missing. That growth is not grooming under C4
+> because no review cycle triggers it. Adding every escape to Actions by default is how the gauntlet
+> becomes the bottleneck it exists to prevent.
+> — A check is defined **once**; the venue chooses only the scope and the failure mode. A check
+> defined twice drifts.
+>
+> **Lives in:** `bin/gauntlet <turn|stop|push>`, called by `.claude/hooks/` (`PostToolUse`, `Stop`),
+> `.husky/pre-push` and `.github/workflows/verify.yml`. Self-installing via `"prepare": "husky"`, so
+> the hook installs itself on a runner and in any fresh clone. ADR-0010, ADR-0015.
 
 **Retires blocker 5** — the only unambiguous regression in the six-month record: 12 broken commits
 reached `main` in five days, all genuine breakage.
 
-**The failure this lane was drawn against is an assignment, not an absence.** The estate's habit was
-to put every mechanism that can refuse where it runs no checks, and every check where it can refuse
-nothing — [`verification-boundaries-2026-08.md`](docs/research/verification-boundaries-2026-08.md)
-measured it: **every mechanism that runs tests is advisory or after the fact, and every mechanical
-mechanism runs no tests.** This repo started there too, with a `verify.yml` that ran everything
-after the push had already landed on `main` and no hooks at all.
-[ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md) inverts that
-assignment, and the inversion costs no money.
+**Two venues are still unbuilt**, and they are the design content left in this lane:
 
-The gauntlet, by venue. A check sits at the earliest one whose budget it fits:
-
-| Venue | Budget | Carries | Status |
+| Venue | Budget | Carries | State |
 |---|---|---|---|
-| **In the turn** — `PostToolUse` on Edit/Write | <1s | typecheck, and lint the touched file, fed back as tool output | **live**, ~0.7s |
-| **Turn end** — `Stop` | <10s | typecheck, lint, unit suite | **live**, ~2.0s |
-| **On push** — husky, self-installing via `"prepare"` | <60s | typecheck, lint, unit suite, boundary rules | **live**, ~2.1s, the first venue that refuses |
-| **In Actions** — on the PR | <10min | integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` live but advisory; branch protection absent and paid |
-| **Overnight** | unbounded | broad sweeps, visual regression, flake quarantine re-runs | absent, and dormant until a repo has a UI |
-
-All four live venues call one runner, `bin/gauntlet`, which takes the venue as its argument. A check
-defined twice drifts; the venue chooses only the scope and the failure mode.
+| **In Actions** — on the PR | <10min | Integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` runs but **refuses nothing**. Branch protection is move 10 — it costs $4/month, because protected branches do not exist on a private repo under the Free plan |
+| **Overnight** | unbounded | Broad sweeps, visual regression, flake quarantine re-runs | Absent, and dormant until a repo has a UI |
 
 **Every check fits every venue here, and that is a fact about this repo's size rather than a
-principle.** The suite is ~1.7s and typecheck ~0.7s, so the earliest-venue rule puts all three at
-`PostToolUse` — except the suite, which is held at turn end because the in-turn venue fires on every
-edit rather than every turn. When a check stops fitting a budget it moves down a venue and the venue
-reports why: `bin/gauntlet` times itself against the budgets in this table and says so when it is
-over, which is the only thing that will ever tell us to split them.
+principle.** `bin/gauntlet` times itself against the budgets above and says so when it is over, which
+is the only thing that will ever tell us to split them.
 
-The self-installing trick is stolen verbatim from `course-video-manager`: `"prepare": "husky"` in
-`package.json` plus a frozen-lockfile install in every workflow means the hook installs itself on the
-runner and in any fresh clone, so an agent's commits pass the same gate the owner's do. Fail-closed
-enforcement with no Actions job behind it.
-
-**The three below Actions fail open; the push venue fails closed.** A hook that cannot run its
-checks — no node on PATH, no `node_modules` — stays silent and lets the turn through, because a
-convenience venue that wedges every turn in the repo is worse than the defect it was hunting. The
-push venue refuses instead, because there is a human standing there who can fix it and the next
-thing downstream is `main`.
-
-**Why earliest wins is the cost of the repair, not the cost of the check.** A type error caught
-in-turn is fixed by the implementer that caused it, same turn, context still hot — free. The same
-error caught in Actions costs a cold fixer run reconstructing what the implementer already knew. By
-a reviewer: a review, a fixer and a re-review. By the owner: the premise. Each venue is a filter, so
-the expensive venues stop seeing failures, which is where the throughput comes from.
-
-**Every defect that escapes to the owner adds a gate — at the lowest venue that could have caught
-it.** The gauntlet grows for the life of the project or it decays relative to the codebase. That
-growth is *not* grooming under C4 — a gate is added at the moment a defect proves it missing, by the
-event that proved it, never on a review cycle. Adding every escape to Actions by default is how the
-gauntlet becomes the bottleneck it exists to prevent.
-
-**The flake precondition. No venue is promoted to refusing above a flaky check** — crewops ADR-0003:
-*a flaky gate trains `--no-verify` and is worse than a slow one.* This repo's suite was green and
-~1.7s when the venues landed, so the precondition was satisfied rather than worked for.
-
-The reference case for what it is guarding against, and the shape to watch for here: elsewhere in
-the estate, ~14 of 26 CI failures over 30 days were one file, always the same two cases, failing on
-whether `jq` was on the runner's PATH. Half the red was environment flake in the meta-layer. That is
-why `bin/node-on-path.sh` exists and why the gauntlet's "could not run" is a third exit code rather
-than a failure: an environment problem reported as a finding is the whole mechanism by which a repo
-learns to ignore its gates.
-
-### 07 · Review — *absent*
+### 07 · Review
 
 > **Fires on:** CI green. **Refuses:** nothing — this lane produces findings, not verdicts.
 >
@@ -481,13 +478,13 @@ learns to ignore its gates.
 The refuters are not a quality mechanism — they are the **queue-length mechanism**. C7 caps the
 owner's queue at ~7; a review layer with no filter fills that cap with noise in a day, and the next
 round of alarms gets trusted less. A false alarm that reaches the owner costs more than a caught bug
-missed here.
+missed here. **How many refuters it actually ships with is open** — see §11.
 
 **Not an agent's job.** Scale, cost-to-run and architectural fragility fail silently and late, and
 neither the owner nor an agent can verify an agent's judgement on them. That is a contract
 engineer for a half day, twice a year. A line item, not a gap to engineer around.
 
-### 08 · Integrate — *absent*
+### 08 · Integrate
 
 > **Fires on:** PR approved. **Refuses:** a merge whose gauntlet has not been re-run against current
 > trunk.
@@ -503,135 +500,104 @@ Its real value is the **semantic** conflict that git merges cleanly: two PRs tha
 pass, and together mean the product now has two ways to do one thing. It files a coherence issue
 instead of merging.
 
-This is the merge-time complement to W3, which era 5 (ADR-0017, registry codegen) and era 6
-(ADR-0007, file claims) both implement at authoring time. Authoring-time disjointness prevents
-textual conflict; nothing in either era prevents semantic conflict.
+This is the merge-time complement to W3, which lane 03 implements at authoring time. Authoring-time
+disjointness prevents textual conflict; nothing prevents semantic conflict. **What a semantic-conflict
+finding looks like, and what the warden does instead of merging, is not yet specified.**
 
-### 09 · Close — **live** (`.github/workflows/close-gate.yml`)
+### 09 · Close
 
-> **Fires on:** `issues.closed`. **Refuses:** the close — reopens the issue and comments why.
+> **Fires on:** `issues.closed`.
 >
-> **Cost:** no model where the closing record parses; 1 Haiku where it does not. · **Sees:** class 6
-> (the tracker — promised vs delivered)
+> **Refuses:** the close — reopens the issue and comments why. Only a close marked `completed` is
+> judged; *not planned* and *duplicate* assert that nothing was delivered, so there is no claim to
+> verify ([ADR-0013](docs/adr/0013-the-close-gate-judges-only-a-close-marked-completed.md)).
+>
+> **Cost:** no model where the closing record parses; 1 Haiku where it does not.
+>
+> **Sees:** class 6 (the tracker — promised vs delivered).
+>
+> **Binds:**
+> — **It is a compliance mechanism and is not a correctness one.** A well-shaped lie passes;
+> `unmet-criterion` fired exactly **once in 558** era-6 rows. The lane that makes this a correctness
+> gate is **04**, and nothing may be built on a claim that this gate checks whether the work was
+> actually done.
+> — **A model may translate evidence into the gate's grammar, but never render the verdict**
+> ([ADR-0014](docs/adr/0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md)). A
+> salvaged record goes through the identical evaluator a hand-written one does.
+> — **`No diff.` excuses the range and nothing else**
+> ([ADR-0022](docs/adr/0022-no-diff-excuses-the-range-and-nothing-else.md)).
+> — **`close-refused` is state, not history** — a passing re-close lifts it
+> ([ADR-0023](docs/adr/0023-the-close-refused-label-is-state-not-history-a-passing-re-cl.md)).
+> — **One gate per rule.** The workstation close hook is stood down for this repo
+> ([ADR-0021](docs/adr/0021-one-gate-per-rule-the-workstation-close-hook-stands-down-whe.md)); the
+> era-6 estate still runs it and still has the hole.
+> — **The one way past it** is closing a delivered ticket as *not planned*. Narrower than the hole it
+> replaced, deliberate rather than forgotten, and **countable** — §6 flags the counter.
+>
+> **Lives in:** `.github/workflows/close-gate.yml`, `.Workflow/agent-workflows/close-gate/`.
+> ADR-0013, ADR-0014, ADR-0021, ADR-0022, ADR-0023.
 
-**Retires blocker 1, structurally.** Era 6's gate is a PreToolUse hook, so a commit-keyword close
-(`Closes #704`) never reaches it and a crashing rail fails open unseen. Moving the gate to the
-tracker closes that by construction: `issues.closed` fires no matter *how* the issue was closed, and
-an Action that errors is a red run, not a silent pass. A gate that cannot be routed around is the
-precondition for stepping back at all.
-
-This is **W1** — *a gate that errors at the moment of the action* — moved to the one venue the
-agents it judges cannot reach. Era 2's `checklist-reminder.py` is the same idea and is still running
-five systems later; what changes here is only the venue, which is the entire difference between a
-gate and a suggestion.
-
-**Two rulings the move forced, and neither was in the drafted lane.** The venue sees closes the
-hook never could, and both of them are about closes no agent authored.
-
-[ADR-0013](docs/adr/0013-the-close-gate-judges-only-a-close-marked-completed.md) — **only a close
-marked `completed` is judged.** *Not planned* and *duplicate* assert that nothing was delivered, so
-there is no claim to verify. Without this the gate reopens every idea the owner drops from his
-phone, which is a queue draining onto him. With it, nothing else has to be softened: an issue closed
-as completed with no acceptance criteria and no record is still refused. The hole it leaves — an
-agent mislabelling a delivered ticket as *not planned* — is narrower than the one it closes and
-wants a lens, not a gate. Nothing watches it yet, and that belongs in §6.
-
-[ADR-0014](docs/adr/0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md) — **the
-Haiku translates, it never renders the verdict.** Where no record exists — the normal shape of a
-merge-keyword or web-UI close, and 78 of era 6's 125 refusals — one Haiku reads the issue and the
-pull request that closed it and writes the record the closer didn't. That output goes through the
-identical evaluator a hand-written record goes through, so a salvage claiming `MET` with nothing
-shaped like evidence is refused exactly as a person's would be. The salvaged record is posted to
-the issue, so the reasoning is durable and a re-close costs no model at all.
-
-**What is not retired.** The declared ceiling is unchanged: a well-shaped lie passes. `unmet-criterion`
-fired **once in 558** era-6 rows, so this is an active *compliance* mechanism and it is not a
-*correctness* one — the lane that makes it one is 04, and 04 is still absent.
-
-**It has judged nothing yet.** The gate landed on 2026-08-25 at 23:35; spec #36's nine tickets had
-all closed by 22:57, so the first close it ever sees is still ahead of it. This page argues in three
-separate places that a gate nobody has watched fire is indistinguishable from one that does not
-work, and that argument does not exempt the newest gate on the page —
-[#55](https://github.com/collod873/claude-workflow/issues/55).
+**Retires blocker 1, structurally.** The venue is what does it: `issues.closed` fires no matter *how*
+an issue was closed — keyword, phone, web UI — and an Action that errors is a red run rather than a
+silent pass. A gate that cannot be routed around is the precondition for stepping back at all.
 
 ---
-
-## 5 · The trigger map
-
-Nothing runs on a clock. Every row is an event. *(C3, and
-[ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).)*
-
-| Event | Fires |
-|---|---|
-| Owner files an issue from the template | The `idea` label goes on → the sweep fires within the minute |
-| Sweep finds no prior art | Shaper, then refuter. A duplicate or an existing ruling stops the chain instead |
-| Owner comments a change request on a sheet | Shaper re-runs, at most twice |
-| Label `approved` | The sheet's ADRs and terms are filed; then spec author, critic |
-| Spec PR merged | The `prd` label goes on → **lane 03, live today** |
-| Sub-issues published | Acceptance author, one per slice — and the parity counter, beside the siblings |
-| A merged edit to a spec that already has acceptance tests | Acceptance author re-fires, affected slices only |
-| Acceptance tests merged | Slice gets `ready`; waits for a free slot |
-| A slot opens (a ticket closed, or the queue drained) | Implementer dispatched into an isolated checkout |
-| CI red | Fixer, 3 attempts, then `blocked` and silence |
-| CI green | Review fleet fans out; every finding gets 3 refuters |
-| PR approved | Enters the single merge queue |
-| Merged to trunk | Drift lens on the touched modules; coupling counter incremented |
-| Issue closed | The close gate runs — and cannot be bypassed |
-| An ADR or decision comment is recorded | Consistency lens reads it against the whole log |
-| A session ends | Transcript captured, then read (blocker 4); corrections counted |
-| A commit is reverted, or added and deleted the same day | Correction counter — a failure already labelled by whoever reverted it |
-| A finding is recorded, in any repo | Cross-repo slug match |
-| A run hits a defect in the machinery | Filed as a `bug` in **this** repo, whichever repo the run was in (ADR-0009) |
-| Nth landing in a module since its last read | Coupling lens |
-| Owner comments on a queued decision | The lane waiting on that answer resumes, within the minute |
-| **The brief window opens, and the queue is non-empty** | The brief publishes and pushes once. Empty queue → silence |
-
-That last row is the only time-shaped thing in the system, and it originates nothing — see §8 and
-ADR-0004.
 
 ## 6 · The standing lenses and counters
 
 Ten things get read while nobody is watching. Seven spend a model; three only count. Each is
-attached to the event that makes it non-vacuous, which is what distinguishes a lens from the cadence
-ADR-0029 rejected.
+attached to the event that makes it non-vacuous, which is what distinguishes a lens from a cadence.
+Nothing in this system runs on a clock —
+[ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).
 
 **Sees** numbers the evidence class each one can observe, against
 [`finding-what-goes-wrong.md`](https://github.com/collod873/agent-skills/blob/main/docs/research/finding-what-goes-wrong.md)
 §4. C5 is a coverage constraint; the ledger below is how it gets scored rather than asserted.
 
-| Lens | Model | Fires on | Reads for | Sees |
-|---|---|---|---|---|
-| **Diff** | Opus | CI green | Defects and spec conformance — lane 07. Catches almost nothing else | 2 |
-| **Transcript** | Opus | Session end, batched | The moment an agent **guessed at intent and moved on** — hedge language before a consequential choice, a requirement restated in weaker terms, an assumption stated once and never revisited. Correct-looking code with a wrong premise leaves fingerprints in the transcript that are invisible in the diff | 4 |
-| **Decision log** | Opus | An ADR or ruling recorded | Contradiction: *"you ruled in March that X, this week you ruled Y — one of these is stale."* It never pre-answers on the owner's behalf | 8 |
-| **Spec** | Haiku | A merge touching a module | Drift. A lying spec is worse than no spec, because every agent downstream believes it forever | 8 |
-| **Coupling** | Opus, high effort | N landings in a module since its last read | Duplicated concepts, three implementations of one idea, a module that has quietly grown a second responsibility. Output is a small number of ranked refactor issues | 3 |
-| **Violation** | Sonnet | Session end | A landed diff breaking a **ratified** `CODING_STANDARDS.md` rule that no linter enforces. The half of §9's absorbed standards chain that checks rather than authors | 2 |
-| **Proposed** | Sonnet | Session end | A smell worth a new standard — **held until a second site appears.** The two-site gate is C3's second-site trigger pointed at findings, and it is what turns the old chain's 45%-worthless output into signal | 3 |
+| Lens | Model | Fires on | Reads for | Sees | State |
+|---|---|---|---|---|---|
+| **Diff** | Opus | CI green | Defects and spec conformance — lane 07. Catches almost nothing else | 2 | lane 07 |
+| **Transcript** | Opus | Session end, batched | The moment an agent **guessed at intent and moved on** — hedge language before a consequential choice, a requirement restated in weaker terms, an assumption stated once and never revisited. Correct-looking code with a wrong premise leaves fingerprints in the transcript that are invisible in the diff | 4 | unbuilt |
+| **Decision log** | Opus | An ADR or ruling recorded | Contradiction: *"you ruled in March that X, this week you ruled Y — one of these is stale."* It never pre-answers on the owner's behalf | 8 | unbuilt |
+| **Spec** | Haiku | A merge touching a module | Drift. A lying spec is worse than no spec, because every agent downstream believes it forever | 8 | unbuilt |
+| **Coupling** | Opus, high effort | N landings in a module since its last read | Duplicated concepts, three implementations of one idea, a module that has quietly grown a second responsibility. Output is a small number of ranked refactor issues | 3 | unbuilt |
+| **Violation** | Sonnet | Session end | A landed diff breaking a **ratified** `CODING_STANDARDS.md` rule that no linter enforces | 2 | built |
+| **Proposed** | Sonnet | Session end | A smell worth a new standard — **held until a second site appears.** The two-site gate is C3's second-site trigger pointed at findings | 3 | built |
 
-**Violation and Proposed are the standards chain, absorbed.** §9 rules `/standards-pass` → `/ratify`
-→ `/standards` into this section, and spec [#36](https://github.com/collod873/claude-workflow/issues/36)
-built them: two lenses over the session's spine and its own SHA range, findings stored as git notes
-on `refs/notes/observations` keyed to the commit they describe, ratification carried as memory so a
-declined finding re-proposes only when its recurrence *grew*, and release batched as **one pull
-request** on a PRD close or at N=20 unreleased findings — never on a clock, and never N issues.
-COMPOSITION and SEAM were dropped on 27 verified findings. `.Workflow/agent-workflows/observations/`.
+**The standards chain, absorbed and built.** `/standards-pass` → `/ratify` → `/standards` is these
+two lenses (ADR-0027). Their contract:
 
-**Both fire automatically now.** Spec [#63](https://github.com/collod873/claude-workflow/issues/63)
-built the connector: a session ending in this repo derives its own SHA range, writes a session
-record as a git note, and dispatches `.github/workflows/audit.yml`, which runs both lenses and
-pushes the merged findings to `refs/notes/observations`. Release evaluates the same scope at the
-end of every audit and again when a PRD closes (`.github/workflows/release-on-prd-close.yml`),
-opening one PR; `.github/workflows/ratify-release.yml` writes that PR's merged checklist back as
-ratification memory. The backwards question below can now be asked of these two.
+> **Fires on:** a session ending in this repo, which derives its own SHA range, publishes it as a git
+> note and dispatches the audit.
+>
+> **Refuses:** a PROPOSED finding with only one site — the two-site gate
+> ([ADR-0019](docs/adr/0019-violation-and-proposed-survive-proposed-is-gated-by-the-two.md)). A
+> declined finding re-proposes only when its recurrence *grew*.
+>
+> **Cost:** 2 Sonnet passes per session over its own SHA range. · **Sees:** classes 2 and 3.
+>
+> **Binds:**
+> — Observations live as **git notes on their own ref**, keyed to the commit they describe
+> ([ADR-0016](docs/adr/0016-observations-live-in-git-notes-on-their-own-ref-keyed-to-the.md)) —
+> `refs/notes/observations`, and the session corpus at `Knowledge-Base/raw/sessions/`
+> ([ADR-0020](docs/adr/0020-the-session-corpus-is-stored-in-knowledge-base-raw-sessions.md)).
+> — Release fires **on a PRD close or at N=20 unreleased findings** — never on a clock, never N
+> issues ([ADR-0017](docs/adr/0017-release-fires-on-a-prd-close-or-on-n-unreleased-observations.md)),
+> and lands as **one** pull request.
+> — **Capture runs globally; the auditor and the release run in this repo only**
+> ([ADR-0018](docs/adr/0018-capture-runs-globally-the-auditor-and-the-release-run-in-thi.md)) —
+> recording is not executing work, so ADR-0002 does not reach it.
+> — COMPOSITION and SEAM were dropped on 27 verified findings and do not come back without new
+> evidence.
+>
+> **Lives in:** `.Workflow/agent-workflows/observations/`, `.claude/hooks/session-capture.sh`,
+> `.github/workflows/audit.yml`, `release-on-prd-close.yml`, `ratify-release.yml`. ADR-0016 through
+> ADR-0020.
 
-Shaping #63 found the hole wider than "nothing fires it," and two of the three additions are what
-make the venue question answerable at all: the corpus is written but never pushed, so a runner
-cannot see its input and the auditor is **ineligible** for the only venue ADR-0002 allows rather
-than merely un-triggered; `runObservations` runs the PROPOSED pass only, leaving the lens ADR-0019
-measured at 93% valuable unreachable while the 45%-worthless one is the wired half; and nothing
-produces a `ReleaseBatch`, records where a prior release stopped, or writes the ratification records
-`filterByRatificationMemory` reads back.
+The transcript lens is probably the highest-yield item on this page, and it now has a corpus to be
+written against — capture landed, and the `cleanupPeriodDays: 30` clock that was destroying a day of
+corpus per day has stopped. Backfill salvaged 11 sessions against 841 from the era that ran a
+recorder, which is the honest price of the three months without one.
 
 ### The coverage ledger
 
@@ -640,7 +606,7 @@ produces a `ReleaseBatch`, records where a prior release stopped, or writes the 
 | 1 | The tree at HEAD | Lane 06 — typecheck, lint, test |
 | 2 | A single diff | Lane 07, the diff lens, and the violation lens |
 | 3 | Recurrence across diffs | The coupling lens, and the proposed lens's two-site gate |
-| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05). **Capture landed 2026-08-25** — the corpus this row depends on is being written again |
+| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05) |
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
 | 7 | **Absence** — what should exist and doesn't | **The parity counter**, below |
@@ -662,19 +628,16 @@ in the places it doesn't. The dreamboat is not more model passes.*
 | **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
 | **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
 
-**A fourth candidate arrived with lane 09, and is flagged rather than built.**
-[ADR-0013](docs/adr/0013-the-close-gate-judges-only-a-close-marked-completed.md) scopes the close
-gate to a close marked `completed`, which leaves one way past it: closing a delivered ticket as
-*not planned*. That is a deliberate mislabel rather than a forgotten comment, so it is narrower than
-the hole it replaces — but nothing watches it, it is class 6, and it is **countable**, which by this
-section's own argument makes it free. The count is `not_planned` closes on issues that carry
-`## Acceptance criteria`. It waits behind the three below because they have volume and it should
-have none; the first time it has any is the finding.
+**A fourth candidate is flagged rather than built.** ADR-0013 scopes the close gate to a close marked
+`completed`, which leaves one way past it: closing a delivered ticket as *not planned*. It is class 6
+and **countable**, which by this section's own argument makes it free. The count is `not_planned`
+closes on issues that carry `## Acceptance criteria`. It waits behind the three above because they
+have volume and it should have none; the first time it has any is the finding.
 
-None of the three spends a model, and all three can run on every push without ADR-0029's problem:
-counting produces no commits, so it cannot feed on its own output. A count is also recomputed rather
-than stored, so nothing a counter says can go stale — which is the defect that made 43% of Lumaria's
-four weeks of inbox findings dead on arrival.
+None of the three spends a model, and all three can run on every push: counting produces no commits,
+so it cannot feed on its own output. A count is also recomputed rather than stored, so nothing a
+counter says can go stale — which is the defect that made 43% of Lumaria's four weeks of inbox
+findings dead on arrival.
 
 **The cross-repo counter is the mechanism C5's originating question asked for** — *"this repo owns
 the skills so when it makes changes like that which should effect our other repos how do we catch
@@ -686,16 +649,8 @@ It is also the carrier for a machinery defect found outside this repo. ADR-0009 
 defect is filed here, and a run dispatched into another repo has no write path back — so until one
 exists, the run records the defect in its own output and the counter walks it home. That makes the
 counter load-bearing rather than merely cheap, and it is the reason move 8a's cross-repo half should
-not wait on the rest of that row. It has nothing to count until a second repo is in scope, which is
-question 3, so it is built and left idle rather than built late.
-
-The transcript lens is probably the highest-yield item on this page, and **blocker 4 no longer
-blocks it.** Capture landed 2026-08-25 (move 3): a global `SessionEnd` hook writes each session's
-spine to `Knowledge-Base/raw/sessions/`, fail-open and detached, and the `cleanupPeriodDays: 30`
-clock that was destroying a day of corpus per day has stopped. Backfill salvaged what that clock had
-left — 11 sessions, against 841 from the era that ran a recorder, which is the honest price of the
-three months without one. The lens itself is still unwritten; what changed is that it now has a
-corpus to be written against, which was the whole argument for shipping capture separately from it.
+not wait on the rest of that row. It has nothing to count until a second repo is in scope, so it is
+built and left idle rather than built late.
 
 **Every lens and counter produces issues, never notifications.** The brief is the only thing that
 reaches the owner.
@@ -735,13 +690,18 @@ contradictions, never to answer.
 
 **The owner is the constraint. Feeding a constraint faster does not help.** *(C7.)*
 
-Three hard limits, all enforced at dispatch, all deterministic code rather than an agent:
+Two hard limits, both enforced at dispatch, both deterministic code rather than an agent:
 
 | Limit | Rule |
 |---|---|
 | **Queue depth** | More than ~7 decisions waiting → dispatch stops entirely |
 | **WIP** | Hard slot count per lane, enforced at dispatch, not guidance |
-| **Spend** | Checked *at dispatch* against the day's budget. Over budget pauses the commodity lane first, then everything but the lenses |
+
+**There is no third limit.** A daily spend ceiling was struck —
+[ADR-0024](docs/adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md): the
+pipeline runs on the Claude subscription rather than metered API billing, so there is no unit to
+budget in. The real ceiling, if one ever binds, is the subscription's own rate limits, and those
+announce themselves at the point of use.
 
 Work started but not reviewed does not sit still: trunk moves underneath it, it rebases badly, its
 assumptions expire, and re-doing it eventually costs more than building it did. Excess parallelism
@@ -756,80 +716,47 @@ writes sixty seconds of English, and batches decisions **by topic** so five rela
 answered at once instead of five context switches. It publishes as a page and pushes one
 notification.
 
-Its window is time-shaped and its contents are not: **the brief is a release valve on a queue that
-events filled, and an empty queue produces nothing and pushes nothing.** That is the whole content
-of ADR-0004, and it is what keeps the ship-a-lot-then-vanish-for-a-week case free.
+**Its window is the only time-shaped thing in the system, and it originates nothing.** The brief is a
+release valve on a queue that events filled: an empty queue produces nothing and pushes nothing.
+That is the whole content of ADR-0004, and it is what keeps the ship-a-lot-then-vanish-for-a-week
+case free.
 
 ---
 
-## 9 · What this cuts
-
-The point of drawing the map first. Every era-6 verb, held against the lanes above:
-
-| Verb | Lands on | Verdict |
-|---|---|---|
-| `/to-tickets` | Lane 03 | **Ported.** Live, on a runner |
-| `/to-spec` | Lane 02 | **Port.** Currently local-only, which makes it a keystroke gate on every unit of work |
-| `/implement` | Lane 05 | **Port**, narrowed. Its brief becomes ticket + seam manifest + failing tests, not the repo |
-| `/grilling` | Local session, §2 | **Keep, unported.** Grilling needs the owner's answers by construction — an unattended grilling agent grills itself. Lane 01 replicates the part that *is* automatable (walk the tree, recommend on each) and escalates here when it can't |
-| `/triage` | Lane 00/01 boundary | **Absorbed.** Capture files, adversaries shape. A separate triage verb is a third name for the same edge |
-| `/drain` | — | **Delete.** A batch worker with worktrees, a foreman and a merge loop *on the workstation* is ADR-0002's exact prohibition. Lanes 05 and 08 are what it was for: the governor dispatches, the warden serialises. Its three open defects ([#33](https://github.com/collod873/claude-workflow/issues/33)–[#35](https://github.com/collod873/claude-workflow/issues/35)) are defects in a thing that does not survive the map |
-| `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed**, and half-built. ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is two lenses — violation and proposed, shipped by spec #36 and fired automatically since spec [#63](https://github.com/collod873/claude-workflow/issues/63) |
-| `/converge` | — | **Delete.** Bringing a machine back to the GitHub backups is only necessary because state lives on a machine. §1 forbids that |
-| `/sync-skills` | — | **Delete.** Vendoring an upstream skill tree and re-applying deltas is a grooming obligation with ~60 rows of divergence to maintain. C4 |
-| `/wayfinder` | Local session, §2 | **Keep, unported.** Destination and scope are named in `GOAL.md` as where the human deliberately stays. It should stay a local, human-fired verb — it is not an edge |
-| `/ask-matt` | — | **Delete.** An entry point that recommends which flow fits exists because there are eleven flows. There are nine lanes and the label picks |
-
-**Five of eleven verbs do not survive.** Not one of them is bad; each answers a question this map
-answers differently or does not have. That is the test working — and it is only available because
-the map was drawn before the inventory was read.
-
 ## 10 · Build order
 
-Ordered by what unblocks what. That is **not** `GOAL.md` §4's order, and an earlier draft claimed it
-was: blocker 5 sat at move 1 while blocker 1 waited. Blocker 5 is now retired in two halves at
-opposite ends of the list — the free venues first, the refusal at trunk last — for the reason in
-[ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md): **feedback, then
-repair, then refusal.** A gate with nothing behind it parks work rather than stopping it, and parked
-work drains onto the owner.
+**The moves live as issues**, each blocked-by the ones it waits on —
+[ADR-0026](docs/adr/0026-the-build-order-and-the-filed-open-questions-live-as-issues.md). The
+current state of the roadmap is
+[the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order),
+which updates itself when work closes. What stays here is why the order is the order.
 
-| # | Move | Retires | Cost |
-|---|---|---|---|
-| 0 | ✅ **Quarantine the flake** — the precondition for every gate below | — | **Nothing to do.** The suite here is green and ~1.7s; the precondition was met, not worked for. It becomes a real move the first time a check goes red for an environment reason |
-| 1a | ✅ **The free venues** (lane 06) — typecheck and lint in the turn, the whole gauntlet at turn end, the same on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | Landed. `bin/gauntlet` plus two hooks and a `pre-push`. No model spend, no plan change |
-| 1b | ✅ **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | Landed. `push` on `main` only, `paths-ignore` for Markdown, and it calls `bin/gauntlet push` so a check cannot drift between venues |
-| 2 | ✅ **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Landed. `.github/workflows/close-gate.yml` plus `close-gate/`. The grammar ported unchanged; two thirds of era 6's hook — every line that parsed a *shell command* to work out whether it was a close — deleted outright, which is the venue doing the work. Two rulings it forced: ADR-0013 and ADR-0014 |
-| 3 | ✅ **Session capture**, at session time, stored durably | Blocker 4 | Landed as spec [#36](https://github.com/collod873/claude-workflow/issues/36) slices 1–2. `.claude/hooks/session-capture.sh` plus its detached node half, registered **globally** — recording is not executing work, so ADR-0002 and §11 Q3 do not reach it. Storage only; the wiki stays retired. Backfill recovered 11 sessions, which is all the 30-day prune had left |
-| 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
-| 4b | **Shape** (lane 01) — sweep, shaper, refuter, and the sheet | The blank-screen approve | Days |
-| 5 | **Acceptance lane** (04) + the immutability rule in CI | The premise itself | Weeks. The unglamorous one, and skipping it is the reliable way to fail |
-| 6 | **Spec on a runner** (lane 02) | Blocker 2 | Weeks |
-| 7 | **Build + integrate** (lanes 05, 08) — implementer, fixer, warden | Blocker 2 | Weeks |
-| 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waited on move 3, **which landed 2026-08-25**, so all three are now unblocked and it is the cheapest row left on this table |
-| 8b | ◐ **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | **Partial.** Spec [#63](https://github.com/collod873/claude-workflow/issues/63) landed the connector spec #36 left unbuilt — the violation and proposed lenses, git-notes storage, ratification memory and the release PR composer are wired and fire automatically. Blocker 3 stays partial regardless: retiring it needs the backwards question asked of the lint rules and ADRs too, and that half is still untouched. The other five lenses are also untouched: ongoing, event-attached |
-| 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
-| 10 | **Branch protection + required checks** on this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
+**Feedback, then repair, then refusal** —
+[ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md). This is *not*
+`GOAL.md` §4's order, and an earlier draft claimed it was: blocker 5 sat at move 1 while blocker 1
+waited. Blocker 5 is retired in two halves at opposite ends of the list — the free venues first, the
+refusal at trunk last — because a gate with nothing behind it parks work rather than stopping it,
+and parked work drains onto the owner. The fixer is the only thing in the design that clears a red
+without the owner, which is why branch protection waits on the lane that builds it.
 
-**Move 10 has two dependencies the earlier draft did not name.** It costs money — this repo is
-private on a Free account, so it is a purchase, not a setting. And it has never opened a pull
-request: work lands by local merge and a direct push to `main`, which protection forbids. Whatever
-drives lane 05 by then has to open a PR and let it auto-merge on green. That is lane 05's shape
-anyway, which is why the move waits for it rather than forcing an interim.
+**Branch protection costs money and needs a pull request.** This repo is private on a Free account,
+so protection is a purchase (~$4/month), not a setting — the API answers `403 Upgrade to GitHub
+Pro`. And it has never opened a pull request: work lands by local merge and a direct push to `main`,
+which protection forbids. Whatever drives lane 05 by then has to open a PR and let it auto-merge on
+green, which is lane 05's shape anyway.
 
-**The bootstrap has an expiry.** Until move 7 lands, work on this repo is driven by era-6 `/drain`
-from the workstation, which ADR-0002 forbids. That is a scaffold, and it expires the moment lane 05
-runs on a runner. Until then: **this repo does not grow files to serve era-6 skills.**
-[#34](https://github.com/collod873/claude-workflow/issues/34)'s second fix — adding
-`.claude/contract.json` and `docs/agents/issue-tracker.md` here so `/drain` can read them — is
-declined on that basis.
+**The bootstrap has an expiry.** Until lane 05 runs on a runner, work on this repo is driven from the
+workstation, which ADR-0002 forbids. That is a scaffold, and it expires the moment lane 05 lands.
+Until then: **this repo does not grow files to serve era-6 skills.**
 
-**Honest accounting.** Moves 2–4 are weeks where the owner is *more* in the loop, not less, and it
-will not feel like leverage. Moves 0–1 were the exception and the reason they went first: they cost
-an afternoon, spend nothing, and every hour after them is an hour of agent work that corrects itself
-instead of arriving on his desk. The out-of-the-loop dividend beyond that comes entirely from the
-boring eighty percent; the parts he cares most about stay his forever. And the ceiling: this system is bounded by
-spec quality, not by agent capability — true today, still true when the models are twice as good,
-which is the best argument for spending the hour at the top of the pipeline rather than the bottom.
+**Honest accounting.** The middle of this list is weeks where the owner is *more* in the loop, not
+less, and it will not feel like leverage. The free venues were the exception and the reason they went
+first: they cost an afternoon, spend nothing, and every hour after them is an hour of agent work that
+corrects itself instead of arriving on his desk. The out-of-the-loop dividend beyond that comes
+entirely from the boring eighty percent; the parts he cares most about stay his forever. And the
+ceiling: this system is bounded by spec quality, not by agent capability — true today, still true
+when the models are twice as good, which is the best argument for spending the hour at the top of the
+pipeline rather than the bottom.
 
 ## 11 · Open questions
 
@@ -839,14 +766,20 @@ or spend — his to answer, and nobody else's. A **measured** question has a rig
 currently holds the number for, and handing it to him as a choice is the sizing quiz commit
 `68b071f` deleted, rebuilt in a document that claims to forbid it.
 
-1. **Where does the seam picker live** — lane 02, so the interface contract exists before slicing
-   (the Foundry), or lane 03 where it is built today? *Measured, not owner.* No constraint decides
-   it and it is not a destination call. The built placement keeps its place until a slice fails in a
-   way that names the answer.
-2. ⬤ **What is the daily spend ceiling** (§8)? *Owner.* A plan-tier question before it is an
-   engineering one, and the governor cannot be built without a real number. ~$1,661 API-equivalent
-   over 28 days is the only figure on record.
-3. ⬤ **How far does the pipeline spread, and in what order?** *Owner — deferred, not open.* Ruled
+**Filed.** These live as issues; this list carries the pointer and nothing else (ADR-0026).
+
+| Question | Kind |
+|---|---|
+| [Whether `contract.json` returns, and what an installer covers](https://github.com/collod873/claude-workflow/issues/82) | measured |
+| [How many refuters lane 07 ships with](https://github.com/collod873/claude-workflow/issues/83) — three is a guess, and there is no measured false-alarm rate to size it against | measured |
+| [How the governor sizes concurrency, and what the fixer's cap buys](https://github.com/collod873/claude-workflow/issues/84) — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have never been measured against this owner's actual answer rate | measured |
+| [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
+| [What a decision sheet contains, and when the shaper refuses](https://github.com/collod873/claude-workflow/issues/77) | measured |
+| [What makes an acceptance test immutable, and how a spec change re-enters them](https://github.com/collod873/claude-workflow/issues/78) | measured |
+
+**Not yet filed.**
+
+1. ⬤ **How far does the pipeline spread, and in what order?** *Owner — deferred, not open.* Ruled
    2026-08-23: **this repo and nothing else** until the machine runs here. A second repo is not a
    scope decision waiting on an argument, it is a distraction from a pipeline that has three of nine
    lanes built, and every hour spent porting a venue to another codebase is an hour the lanes above
@@ -856,108 +789,28 @@ currently holds the number for, and handing it to him as a choice is the sizing 
    cheap: **the gauntlet and the cross-repo counter only**, both free or nearly so, both the parts
    C5's originating question actually asked for, and neither needing a spec lane to exist. Full
    pipeline stays opt-in per repo, on evidence that ideas arrive there.
-4. **Does the acceptance lane apply to non-code work?** *Measured, then owner — and not yet live.*
+2. **Does the acceptance lane apply to non-code work?** *Measured, then owner — and not yet live.*
    This repo is code, so lane 04 has a `tests/acceptance/` to make immutable and the question does
    not bite. It bites the moment a repo without one is in scope: a 3D-printing or electrical ticket
    has nothing to freeze, and lane 04 is the load-bearing gate — so such a repo gets a different
-   gate or it does not get the pipeline. Question 3 settles this on its way past, and question 3 is
-   now deferred, so this one is too.
-5. **Does an unread document get deleted automatically?** *Measured.* The generalisation of
-   [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) to
-   prose: ask a finding whether it was ever loaded into a context where it changed an outcome, at
-   the event that would add another of its kind, and delete it if never. This is the only version of
-   pruning that survives C4. It used to hang on an unruled question about where agent-authored
-   observations live; it no longer does. The safety condition — that pruning can never reach
-   something the owner wrote — is ADR-0006's signing line.
+   gate or it does not get the pipeline. Question 1 settles this on its way past, and question 1 is
+   deferred, so this one is too.
+3. **The sweep's kill rate has never been measured** (lane 01). *Measured.* Three model stages spend
+   before a line exists, on an idea that may be killed. The stage-1 refusal bounds it and the whole
+   chain is under a dollar — but the kill rate is the number that says whether the shaper is earning
+   its stage.
+4. **Write-on-surprise is uncalibrated** (lane 05). *Measured.* A bar set at "surprise" with no
+   measured rate either floods `CONTEXT.md` or never fires, and only §6's backwards question will
+   say which.
+5. **Nothing counts gate bypass** (lane 06). *Measured.* Every venue below Actions is bypassable and
+   nothing counts how often an agent routes around one. It is countable, therefore free, and the
+   counter belongs in §6.
+6. **Intake templates are per-repo copies** (lane 00). *Measured.* GitHub cannot centralise defaults
+   for a private estate. At two repos that is a file; at twenty it is `/sync-skills`, which ADR-0027
+   deletes for exactly this reason. Bounded by question 1 and by nothing else.
+7. **Lane 08's merge warden is unspecified.** *Measured.* What a semantic-conflict finding looks
+   like, and what the warden does *instead* of merging.
 
-**Ruled while this page was being scored.** Three things that sat here as open questions are now
-records, and the lanes above reflect them rather than proposing them:
-
-- [ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md) — the
-  shaper routes every item, so the short path is not defects-only. §01a.
-- [ADR-0008](docs/adr/0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md) — a run
-  ends by writing what surprised it into the module's `CONTEXT.md`, or writing nothing. §05, and it
-  is what gives W6 a home in the machine instead of a line in this list.
-- [ADR-0009](docs/adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md) — the
-  machine may file defects against itself but never features, and a machinery defect is filed **in
-  this repo whichever repo the run was working in**. There is no tenth lane; agent-skills
-  [#134](https://github.com/collod873/agent-skills/issues/134) is answered. §00 and §6.
-
----
-
-## 12 · The scorecard
-
-`GOAL.md` §2 says each constraint is testable — *a design either satisfies it or it doesn't* — and
-§0 says a proposed lane gets held against all seven. This document is a proposal. Asserting
-compliance in prose while never running the grid is how the map ends up with the same blind spot as
-the thing it replaced.
-
-**✓** satisfies · **⚠** open, named below · **—** the constraint does not bear on this lane
-
-| | C1 speed | C2 answerable | C3 event | C4 grooming | C5 coverage | C6 sessions | C7 batched |
-|---|---|---|---|---|---|---|---|
-| **00** Intake | ✓ | ✓ | ✓ | ⚠ | — | — | ✓ |
-| **01** Shape | ⚠ | ✓ | ✓ | — | — | — | ✓ |
-| **01a** Route | ✓ | ✓ | ✓ | — | — | — | ✓ |
-| **02** Spec | ⚠ | ✓ | ✓ | — | — | — | ✓ |
-| **03** Slice | ✓ | — | ✓ | — | — | — | — |
-| **04** Acceptance | ✓ | — | ✓ | ✓ | ✓ | — | — |
-| **05** Build | ✓ | — | ✓ | — | ⚠ | — | ✓ |
-| **06** Verify | ✓ | — | ✓ | ✓ | ⚠ | — | — |
-| **07** Review | ⚠ | — | ✓ | — | ✓ | — | ✓ |
-| **08** Integrate | ✓ | — | ✓ | — | ✓ | — | — |
-| **09** Close | ✓ | — | ✓ | ✓ | ✓ | — | — |
-| **§6** Lenses + counters | ✓ | — | ✓ | ✓ | ⚠ | — | ✓ |
-| **§7** Taste | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| **§8** Governor + brief | ✓ | ✓ | ✓ | ✓ | — | — | ⚠ |
-| **§1–2** Substrate | ✓ | — | ✓ | ✓ | — | ✓ | ✓ |
-
-### C1's arithmetic
-
-The per-lane costs exist so this can be computed rather than argued. For **one line of change**:
-
-| Path | Model stages | Owner touches |
-|---|---|---|
-| **Short** (00 → 01 → 05 → 06 → 07 → 08 → 09) | 7, plus 3 per review finding | **1** — two minutes |
-| **Long** (adds 02, 03, 04) | 13+ | **2** — plus 5–15 minutes |
-
-Era 4 died at ~7 plan steps for ~3 edits in 1 file. The short path lands on the same number — and
-the distinction that matters is that **era 4's seven steps were his.** Seven machine stages costing
-one two-minute click is not the same object as seven plan steps costing an afternoon of attention,
-which is exactly why routing had to become a machine call
-([ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md)) rather
-than a policy that sends every feature long.
-
-### The nine ⚠ cells
-
-Named so that "scored against C1–C7" has a residue rather than a verdict:
-
-1. **00 / C4** — intake templates are per-repo copies, and GitHub cannot centralise defaults for a
-   private estate. At two repos that is a file; at twenty it is `/sync-skills`, which §9 deletes for
-   exactly this. Bounded by question 3 and by nothing else.
-2. **01 / C1** — three model stages spend before a line exists, on an idea that may be killed. The
-   stage-1 refusal bounds it and the whole chain is under a dollar, but **the sweep's kill rate has
-   never been measured**, and that number is what says whether the shaper is earning its stage.
-3. **02 / C1** — 5–15 owner minutes is the largest single owner cost in the system. It is on the
-   long path only, which is now the whole load-bearing job of ADR-0007's routing.
-4. **05 / C5** — write-on-surprise is real class-4 coverage but is **uncalibrated**. A bar set at
-   "surprise" with no measured rate either floods `CONTEXT.md` or never fires, and only §6's
-   backwards question will say which.
-5. **07 / C1** — the most expensive lane per unit, and **three refuters is a guess.** There is no
-   measured false-alarm rate to size it against; C7 is the argument for having refuters at all, not
-   for having three.
-6. **§6 / C5** — classes 7, 9 and 10 now have mechanisms **on paper**. Nothing is built, nothing is
-   measured, and class 8 is covered by two halves that arrive in different moves.
-7. **§8 / C7** — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have
-   **never been measured against this owner's actual answer rate**, which is the only number that
-   makes either of them right.
-8. **§11 Q2 / C7** — the spend ceiling is unruled, and the governor cannot be built without it.
-9. **06 / C5** — every venue below Actions is bypassable. `--no-verify` skips the push and commit
-   hooks; a `PostToolUse` hook is fed back as tool output, and an agent may read it and proceed
-   anyway. Until move 10 there is **no venue an agent cannot route around**, and nothing counts how
-   often one does. ADR-0011 names this as the cost of putting refusal last; §6 has no counter for it
-   yet, and one belongs there.
-
-Six of the nine are the same shape: **a number nobody has measured yet.** That is the honest state
-of a design drawn before the machine exists, and it is what §6's backwards question is for — every
-one of them is a question asked at an event, not on a review cycle.
+**Ruled, and no longer open.** The seam picker's placement (lane 03's Binds); the daily spend ceiling
+(ADR-0024); the short path's availability to features (ADR-0007); write-on-surprise's home
+(ADR-0008); where a machinery defect is filed (ADR-0009).

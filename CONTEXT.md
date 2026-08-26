@@ -86,6 +86,14 @@ same logic is a different mechanism in a different venue: what a venue costs is 
 the repair it makes possible, and the earliest venue is always the cheapest repair.
 _Avoid_: layer, stage, tier, level, hook point
 
+**Binds**:
+What one lane forces on the design of another — a venue's budget, a bypassability, a cap. The
+sixth field of a shipped lane's contract, and the only one that is not about the lane's own
+behaviour. It exists because a fact can be load-bearing on a lane that does not exist yet without
+being that lane's trigger, refusal, cost or coverage, and a collapse that kept only those four
+would delete it. See [ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md).
+_Avoid_: constraint (reserved for C1–C7), requirement, dependency, contract
+
 ### The pipeline
 
 **Lane**:

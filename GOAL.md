@@ -128,16 +128,11 @@ never have to check its homework."**
 
 Ordered. Nothing further up the list is optional for anything below it.
 
-1. **Two fail-open holes — one retired, one open.** *(Split 2026-08-25; it read as wholly open
-   until then.)* A fail-open gate in an unattended system is not a gate, which is why this is the
-   precondition for stepping back at all.
-   - ~~**Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.**~~ **Retired
-     structurally, not patched, by `b5fd535`.** The close gate is now an Action on
-     `issues.closed` (`.github/workflows/close-gate.yml`), and that event fires no matter *how* an
-     issue was closed — keyword, phone, web UI. An Action that errors is a red run rather than a
-     silent pass, so the crash half cannot recur at this venue either. ADR-0013, ADR-0014;
-     ADR-0021 stands the workstation hook down for this repo. **This repo only** — the era-6
-     estate still runs the PreToolUse hook and still has the hole.
+1. **Two fail-open holes — one retired, one open.** A fail-open gate in an unattended system is not
+   a gate, which is why this is the precondition for stepping back at all.
+   - ~~**Commit-keyword closes never reach the PreToolUse gate.**~~ Retired by `b5fd535`, which
+     moved the gate to an Action on `issues.closed`. ADR-0013, ADR-0014, ADR-0021. **This repo
+     only** — the era-6 estate still runs the hook and still has the hole.
    - **Open.** **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
      `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`),
      all from the one shared `mirror.mjs`, failing open and unseen. That file lives in Lumaria and
@@ -160,36 +155,22 @@ Ordered. Nothing further up the list is optional for anything below it.
    `CODING_STANDARDS.md` has exactly one exit — *mechanised* — which requires building another rule
    first, so the doc can only grow.
 
-   **The connector landed, corrected 2026-08-25.** Spec #36 slices 3–4 built the VIOLATION and
-   PROPOSED lenses, the auditor entrypoint, the SHA-range diff helper, the release-scope helper and
-   the PR composer; spec [#63](https://github.com/collod873/claude-workflow/issues/63) built what
-   was missing — a session ending in this repo now derives its own SHA range, publishes it as a git
-   note and dispatches `.github/workflows/audit.yml`, which runs both lenses and pushes the merged
-   findings. Release fires the same way, at the end of every audit and again when a PRD closes
-   (`.github/workflows/release-on-prd-close.yml`), and a merged release PR's checklist is written
-   back as ratification memory (`.github/workflows/ratify-release.yml`). Nothing under
-   `.Workflow/agent-workflows/observations/` lacks a caller.
+   *Half of this is retired.* Specs [#36](https://github.com/collod873/claude-workflow/issues/36)
+   and [#63](https://github.com/collod873/claude-workflow/issues/63) built and wired the VIOLATION
+   and PROPOSED lenses — `DESIGN.md` §6 carries their contract. **The open half:** the same
+   backwards question — was this rule ever asked whether it caught anything — has still not reached
+   the 36 lint rules and 30 ADRs, and blocker 3 closes only when it does.
+4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. A `SessionEnd` hook
+   is registered globally, so every session on this machine is recorded; the `cleanupPeriodDays: 30`
+   clock that was destroying a day of corpus per day has stopped. ADR-0018, ADR-0020.
+5. **The pre-merge gate — mostly retired, and the rest is bought.** The only unambiguous regression
+   in the whole six-month record: 12 broken commits reached `main` in five days, all genuine
+   `unit`/`build` breakage, zero infra flake.
 
-   *Blocker 3 is not retired by this alone.* It closes only when the same backwards question — was
-   this rule ever asked whether it caught anything — reaches the 36 lint rules and 30 ADRs the
-   auditor and release do not touch. That half is still open.
-4. ~~**No session-time capture.**~~ **Retired 2026-08-25.** A `SessionEnd` hook is registered
-   **globally** in `~/.claude/settings.json` — by absolute path, at this repo's
-   `.claude/hooks/session-capture.sh` — so every session on this machine is recorded, not only
-   sessions in this repo. Recording is not executing work, so ADR-0002 does not reach it. Landed
-   as spec [#36](https://github.com/collod873/claude-workflow/issues/36) slices 1–2;
-   `~/.claude/session-capture.log` recorded ten captures on the day it landed and
-   `Knowledge-Base/raw/sessions/` has grown past its frozen 841. The `cleanupPeriodDays: 30` clock
-   this blocker was about has stopped running.
-
-   *Why it was a blocker:* the conversation spine is ~1.3% of a transcript (~18KB, flat) —
-   ~500KB/day. Every day without a recorder permanently destroyed a day of corpus, and any
-   pass-time audit run six weeks later reported a clean sweep on evidence that no longer existed.
-   It matters *more* under autonomy: when nobody is watching, the transcript is the only record of
-   what went wrong. Backfill recovered **11 sessions** — all the prune had left of the gap.
-5. **The pre-merge gate is gone.** The only unambiguous regression in the whole six-month record —
-   12 broken commits reached `main` in five days, all genuine `unit`/`build` breakage, zero infra
-   flake.
+   *The open half:* the free venues below Actions refuse only at push, and `--no-verify` still gets
+   past that. Closing it needs branch protection, which is a $4/month purchase on a private Free
+   account and waits on the fixer — nothing else in the design clears a red without the owner
+   (ADR-0011). `DESIGN.md` §06 carries the venue contract.
 
 ---
 
