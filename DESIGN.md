@@ -604,7 +604,15 @@ directly, and the signal to revisit is implementers rediscovering the same thing
 > Nothing below Actions can carry them.
 > — **Every venue below Actions is bypassable.** `--no-verify` skips the push and commit hooks; a
 > `PostToolUse` hook is fed back as tool output and an agent may read it and proceed anyway. Until
-> move 10 there is **no venue an agent cannot route around**, and nothing counts how often one does.
+> move 10 there is **no venue an agent cannot route around**. What counts how often one does is the
+> **bypass counter** (§6), and it counts one event only — a commit reaching `main` with a tree
+> `bin/gauntlet push` refuses. A red tree mid-session is not a bypass; it is a legitimate state, and
+> the harm exists only where the red survives to trunk
+> ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)).
+> — **`verify.yml` distinguishes a finding from a broken runner in its step names**, not in its logs:
+> `Gauntlet` for exit 1, `Gauntlet could not run` for exit 2. The third exit code is excluded from the
+> bypass count by construction rather than by a reader inferring it — and run metadata outlives log
+> retention, which a counter reading two-day-old logs does not (ADR-0063).
 > — **No venue is promoted to refusing above a flaky check.** A flaky gate trains `--no-verify` and
 > is worse than a slow one. A "could not run" is a third exit code rather than a failure, because an
 > environment problem reported as a finding is how a repo learns to ignore its gates.
@@ -867,7 +875,7 @@ recorder, which is the honest price of the three months without one.
 | 4 | The transcript | The transcript lens — the only class-4 mechanism, since write-on-surprise is struck ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)) |
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
-| 7 | **Absence** — what should exist and doesn't | **The parity counter**, below |
+| 7 | **Absence** — what should exist and doesn't | **The parity counter** and **the bypass counter**, below |
 | 8 | **Drift** — this was true and stopped being | The spec lens, the decision-log lens, and the backwards question |
 | 9 | **The owner's behaviour** — corrected, reverted, asked twice | **The correction counter**, below |
 | 10 | **Across repos** — not a repo rule, a rule | **The cross-repo counter**, below |
@@ -878,13 +886,40 @@ every one of them is **countable**, which is to say free. That is the taxonomy's
 at this design: *the current system spends models on everything it already covers and counts nothing
 in the places it doesn't. The dreamboat is not more model passes.*
 
-### The three free counters
+### The free counters
+
+*This section was headed "the three free counters" and the table below is no longer three. The set's
+shape — what admits a counter, and whether a sizing measurement is one — is
+[#102](https://github.com/collod873/claude-workflow/issues/102)'s, not settled here; what is settled
+is that the bypass counter sits on **row 7** rather than row 1, because it counts the gate's absence
+and not the code (ADR-0063).*
 
 | Counter | Fires on | Counts | Sees |
 |---|---|---|---|
 | **Parity** | A slice published, beside its siblings | A structural shape its sibling units have and it does not. Absence is only ever visible by comparison | 7 |
 | **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
 | **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
+| **Bypass** | `verify.yml` completing on a push to `main` | Runs whose failed step is `Gauntlet` — a commit that reached trunk with a tree the free venues would have refused. Not the code: **the gate not having run** | 7 |
+
+**The bypass counter reads what is already being produced.**
+[ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md). Measured
+2026-08-26: of 34 `verify.yml` runs on `main`, **four failed at the Gauntlet step** — roughly one push
+in nine arriving red, produced continuously since 2026-08-23 and read by nobody. It files an issue at
+**three**, proposing that **move 10 be brought forward**, which is the only repair §06 names for this
+class; a declined proposal re-proposes only when the count has grown. It fires the day it ships, and
+that is the finding rather than a mis-set threshold.
+
+It is **one-sided and needs no delete trigger**, which no other counter here can say: move 10 makes
+its class structurally impossible, so its probation is discharged by a build landing rather than by a
+zero count (ADR-0031's shape, satisfied without a second number). Its success condition is its own
+deletion.
+
+Two things it deliberately does not see. **The session corpus cannot carry the in-turn bypass** —
+`spine.ts` drops tool traffic and harness-injected entries by design, so the gauntlet's block message
+appears in 22 raw transcripts and **0 of 1,522 captures** — and the raw transcripts that do hold it are
+machine-local, which ADR-0002 rules out on both clauses. And a red tree that never reaches `main` is
+not counted at all: a red suite mid-task is a legitimate state, so there is one counter here and not
+two.
 
 **A fourth counter is no longer a candidate — lane 07 gave it a job.** ADR-0013 scopes the close gate
 to a close marked `completed`, which leaves one way past it: closing a delivered ticket as *not
@@ -898,10 +933,11 @@ better grounded now than when it was inherited: the longest this repo has ever t
 issue is 47.1 h, so untouched-at-five-days is ~2.5× the worst observed and genuinely anomalous. It ships with lane 07 rather than waiting behind the three above,
 because it is that lane's only evidence that its filter is sized right.
 
-None of the three spends a model, and all three can run on every push: counting produces no commits,
-so it cannot feed on its own output. A count is also recomputed rather than stored, so nothing a
-counter says can go stale — which is the defect that made 43% of Lumaria's four weeks of inbox
-findings dead on arrival.
+None of them spends a model, and each can run on every push: counting produces no commits, so it
+cannot feed on its own output. A count is also recomputed rather than stored, so nothing a counter
+says can go stale — which is the defect that made 43% of Lumaria's four weeks of inbox findings dead
+on arrival. The bypass counter is the sharpest case of that rule: run *metadata* is recomputed state
+and survives, where the logs carrying the same fact expire inside two days (ADR-0063).
 
 **The cross-repo counter is the mechanism C5's originating question asked for** — *"this repo owns
 the skills so when it makes changes like that which should effect our other repos how do we catch
@@ -1095,9 +1131,10 @@ open.
 4. ~~**Write-on-surprise is uncalibrated** (lane 05).~~ **Retired** — the mechanism is struck
    before it was built, so there is nothing left to calibrate
    ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)).
-5. **Nothing counts gate bypass** (lane 06). *Measured.* Every venue below Actions is bypassable and
-   nothing counts how often an agent routes around one. It is countable, therefore free, and the
-   counter belongs in §6.
+5. ~~**Nothing counts gate bypass** (lane 06).~~ **Ruled** — a bypass is a red tree reaching `main`,
+   counted from `verify.yml`'s failed step names, filing at three and retired by move 10
+   ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)). It
+   was never unmeasured: four of 34 runs had already recorded it.
 6. **Intake templates are per-repo copies** (lane 00). *Measured.* GitHub cannot centralise defaults
    for a private estate. At two repos that is a file; at twenty it is `/sync-skills`, which ADR-0027
    deletes for exactly this reason. Bounded by question 1 and by nothing else.
@@ -1118,4 +1155,5 @@ accept's rulings land (ADR-0051), and what clears a stage-1 refusal (ADR-0052); 
 reaches a second repo — a lane is called, never copied** (ADR-0055), **what makes the check contract
 survivable — it is generated and the gauntlet runs it** (ADR-0056), and what an installer covers
 (ADR-0057); **what lane 02's spec author reads, what it may reach, and what dispatches the slicer**
-(ADR-0058 through ADR-0062, and §02 above).
+(ADR-0058 through ADR-0062, and §02 above); **what a gate bypass is, and what counts it** (ADR-0063,
+and §6 and §06 above).

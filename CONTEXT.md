@@ -102,6 +102,15 @@ being that lane's trigger, refusal, cost or coverage, and a collapse that kept o
 would delete it. See [ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md).
 _Avoid_: constraint (reserved for C1–C7), requirement, dependency, contract
 
+**Gate bypass**:
+A commit that reached `main` carrying a tree the gauntlet refuses. Defined by where the red *landed*,
+not by how it got past — `--no-verify`, a clone that never ran `npm ci`, and a commit made outside a
+session are one event, because they are indistinguishable from trunk's side and identical in
+consequence. A red tree inside a session is **not** one: mid-task red is a legitimate state, and only
+survival to trunk is harm. See
+[ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md).
+_Avoid_: skipped gate, `--no-verify`, gate evasion, routing around
+
 **Back-stamp**:
 The pointer written onto a superseded record by the record that supersedes it, at the moment the
 successor lands. A third kind of mechanism beside Gate and Lens, distinguished by its output: a gate
