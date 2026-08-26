@@ -21,7 +21,7 @@ export interface FakeStage {
  */
 export function createFakeStage(response: string): FakeStage {
   const calls: string[][] = [];
-  const exec: StageExec = (argv) => {
+  const exec: StageExec = async (argv) => {
     calls.push(argv);
     return response;
   };

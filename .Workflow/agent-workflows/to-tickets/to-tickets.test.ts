@@ -23,13 +23,13 @@ const unreachableGh: GhExec = (args) => {
 };
 
 describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
-  it("writes a schema-valid manifest to the handoff path, with a fake StageExec returning a canned response", () => {
+  it("writes a schema-valid manifest to the handoff path, with a fake StageExec returning a canned response", async () => {
     const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
     const fake = createFakeStage('<output>["a seam"]</output>');
 
-    const output = runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
+    const output = await runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
     expect(output).toEqual(["a seam"]);
     expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(["a seam"]);
@@ -42,7 +42,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     return [slice({ title: "One slice" })];
   }
 
-  it("reads the seam-sweep handoff as SEAM_MANIFEST and writes a schema- and graph-valid plan to the handoff path", () => {
+  it("reads the seam-sweep handoff as SEAM_MANIFEST and writes a schema- and graph-valid plan to the handoff path", async () => {
     const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
@@ -50,7 +50,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const plan = validSlicePlan();
     const fake = createFakeStage(`<output>${JSON.stringify(plan)}</output>`);
 
-    const output = runNamedStage("slice", "13", fake.exec, unreachableGh);
+    const output = await runNamedStage("slice", "13", fake.exec, unreachableGh);
 
     expect(output).toEqual(plan);
     expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(plan);
@@ -58,7 +58,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     expect(fake.calls[0][1]).toContain('["a seam"]');
   });
 
-  it("throws naming the offending slice when the plan passes schema but the graph is malformed", () => {
+  it("throws naming the offending slice when the plan passes schema but the graph is malformed", async () => {
     const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
@@ -66,7 +66,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     const badPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
     const fake = createFakeStage(`<output>${JSON.stringify(badPlan)}</output>`);
 
-    expect(() => runNamedStage("slice", "13", fake.exec, unreachableGh)).toThrow(/depends on itself/);
+    await expect(runNamedStage("slice", "13", fake.exec, unreachableGh)).rejects.toThrow(/depends on itself/);
   });
 });
 
@@ -84,7 +84,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     return { target, plan };
   }
 
-  it("reads the sliced plan as PLAN, publishes the audited plan, and writes it to the handoff path", () => {
+  it("reads the sliced plan as PLAN, publishes the audited plan, and writes it to the handoff path", async () => {
     const { target, plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const auditedPlan = [{ ...slicedPlan[0], title: "Root, re-worded by audit" }];
     const fakeStage = createFakeStage(
@@ -92,7 +92,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     );
     const fakeGh = createFakeGh();
 
-    const published = runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh) as PublishedIssue[];
+    const published = await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh) as PublishedIssue[];
 
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
     expect(fakeStage.calls).toHaveLength(1);
@@ -103,49 +103,49 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(createCalls).toHaveLength(1);
   });
 
-  it("prints the auditor's grading notes and unapplied flags — the prose ahead of its <output> block — to stdout", () => {
+  it("prints the auditor's grading notes and unapplied flags — the prose ahead of its <output> block — to stdout", async () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";
     const fakeStage = createFakeStage(`${notes}\n\n<output>${JSON.stringify(slicedPlan)}</output>`);
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
+    await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
 
     expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
   });
 
-  it("logs only the success line — no notes — when the auditor's response opens straight into its <output> block", () => {
+  it("logs only the success line — no notes — when the auditor's response opens straight into its <output> block", async () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const fakeStage = createFakeStage(`<output>${JSON.stringify(slicedPlan)}</output>`);
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
+    await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
 
     expect(logSpy.mock.calls.map((call) => call[0])).toEqual([
       "audit-and-publish: published 1 sub-issue under #13",
     ]);
   });
 
-  it("exits nonzero without publishing when the audited plan fails validate-graph.ts", () => {
+  it("exits nonzero without publishing when the audited plan fails validate-graph.ts", async () => {
     seedHandoffWithSlicedPlan();
     const selfReferencingPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
     const fakeStage = createFakeStage(`<output>${JSON.stringify(selfReferencingPlan)}</output>`);
     const fakeGh = createFakeGh();
 
-    expect(() => runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).toThrow(
+    await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
       /depends on itself/,
     );
     expect(fakeGh.calls).toHaveLength(0);
   });
 
-  it("exits nonzero without publishing when the auditor's response fails schema validation", () => {
+  it("exits nonzero without publishing when the auditor's response fails schema validation", async () => {
     seedHandoffWithSlicedPlan();
     const fakeStage = createFakeStage(`<output>[{"title":"Missing everything else"}]</output>`);
     const fakeGh = createFakeGh();
 
-    expect(() => runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).toThrow(
+    await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
       /failed schema validation/,
     );
     expect(fakeGh.calls).toHaveLength(0);
@@ -153,7 +153,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
 });
 
 describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () => {
-  it("writes to FAILURE_REASON_PATH when the environment sets it (the runner's shape)", () => {
+  it("writes to FAILURE_REASON_PATH when the environment sets it (the runner's shape)", async () => {
     const dir = withHandoffDir();
     const target = join(dir, "failure_reason.txt");
     process.env.FAILURE_REASON_PATH = target;
@@ -165,7 +165,7 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
     expect(readFileSync(target, "utf8")).toBe("seam-sweep: boom\n");
   });
 
-  it("falls back to the repo-relative handoff path when FAILURE_REASON_PATH is unset (a local run)", () => {
+  it("falls back to the repo-relative handoff path when FAILURE_REASON_PATH is unset (a local run)", async () => {
     withHandoffDir();
     delete process.env.FAILURE_REASON_PATH;
 
@@ -184,7 +184,7 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
  * without launching one.
  */
 describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
-  it("writes a schema-valid manifest to the handoff path and exits 0", () => {
+  it("writes a schema-valid manifest to the handoff path and exits 0", async () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(dir, '<output>["a seam"]</output>');
 
@@ -196,7 +196,7 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
     expect(JSON.parse(readFileSync(handoffFile, "utf8"))).toEqual(["a seam"]);
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the <output> block is missing", () => {
+  it("writes a failure reason naming the stage and exits nonzero when the <output> block is missing", async () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(dir, "no output block here, just prose");
 
@@ -210,7 +210,7 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
     expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*no <output> block/);
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", () => {
+  it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", async () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(dir, "<output>[\"one line\\ntwo lines\"]</output>");
 
@@ -244,35 +244,35 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
 describe("a refused response is kept where the next reader can find it", () => {
   const rejected = 'prose the model wrote\n<output>["one line\\ntwo lines"]</output>';
 
-  it("writes the raw response beside the handoff and names that path in the failure", () => {
+  it("writes the raw response beside the handoff and names that path in the failure", async () => {
     const dir = withHandoffDir();
     process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
     const rawPath = join(dir, "seam-sweep-raw-response.txt");
     const fake = createFakeStage(rejected);
 
-    expect(() => runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).toThrow(rawPath);
+    await expect(runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).rejects.toThrow(rawPath);
 
     expect(readFileSync(rawPath, "utf8")).toBe(rejected);
   });
 
-  it("keeps the whole response, not just the block that failed", () => {
+  it("keeps the whole response, not just the block that failed", async () => {
     const dir = withHandoffDir();
     process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
     const fake = createFakeStage(rejected);
 
-    expect(() => runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).toThrow();
+    await expect(runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).rejects.toThrow();
 
     expect(readFileSync(join(dir, "seam-sweep-raw-response.txt"), "utf8")).toContain(
       "prose the model wrote",
     );
   });
 
-  it("writes nothing when the stage succeeds, so the file's presence is the signal", () => {
+  it("writes nothing when the stage succeeds, so the file's presence is the signal", async () => {
     const dir = withHandoffDir();
     process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
     const fake = createFakeStage('<output>["a seam"]</output>');
 
-    runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
+    await runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
     expect(existsSync(join(dir, "seam-sweep-raw-response.txt"))).toBe(false);
   });
@@ -287,7 +287,7 @@ describe("a refused response is kept where the next reader can find it", () => {
 describe("to-tickets.ts --stage slice (CLI)", () => {
   const validPlan = [slice({ title: "One slice" })];
 
-  it("writes a schema- and graph-valid plan to the handoff path and exits 0", () => {
+  it("writes a schema- and graph-valid plan to the handoff path and exits 0", async () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
@@ -303,7 +303,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     expect(JSON.parse(readFileSync(handoffFile, "utf8"))).toEqual(validPlan);
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the plan fails schema validation", () => {
+  it("writes a failure reason naming the stage and exits nonzero when the plan fails schema validation", async () => {
     const badPlan = [slice({ title: "Untestable", acceptanceCriteria: [] })];
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
@@ -322,7 +322,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     expect(readFileSync(handoffFile, "utf8")).toMatch(/^slice: .*failed schema validation/);
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", () => {
+  it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", async () => {
     const cyclicPlan = [slice({ title: "A", dependsOn: [1] })];
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(

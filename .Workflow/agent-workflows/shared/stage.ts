@@ -3,12 +3,19 @@ import { readFileSync } from "node:fs";
 
 /**
  * One `claude` invocation, as its argv (not including the `claude` binary
- * itself), returning stdout as a string. The only seam through which a
+ * itself), resolving to stdout as a string. The only seam through which a
  * stage spawns a model — every stage and the local-debug entrypoint go
  * through this, so injecting a fake here is what lets a test assert on
  * prompt substitution and argv shape without launching one.
+ *
+ * **Why this is a promise.** It was `(argv: string[]) => string` until a
+ * streaming `execClaude` needed it not to be: a call that reports progress
+ * while the model is still thinking has to read the child's stdout as it
+ * arrives, and nothing that blocks until exit can do that. The `async`
+ * here is load-bearing on that one implementation; every fake in the tests
+ * is still a one-liner that resolves a canned response.
  */
-export type StageExec = (argv: string[]) => string;
+export type StageExec = (argv: string[]) => Promise<string>;
 
 /**
  * The real StageExec: shells out to the `claude` CLI headlessly, in
@@ -18,7 +25,7 @@ export type StageExec = (argv: string[]) => string;
  * for refusing before this runs when it's empty (the workflow's preflight
  * step in `.github/workflows/to-tickets.yml`).
  */
-export const execClaude: StageExec = (argv) =>
+export const execClaude: StageExec = async (argv) =>
   execFileSync("claude", argv, { encoding: "utf8", maxBuffer: 1024 * 1024 * 64 });
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
@@ -45,12 +52,12 @@ export interface StageOptions {
  * `{{VAR}}` is a wiring bug to catch here, not a partially-substituted
  * prompt to hand to a model.
  */
-export function runStage(
+export async function runStage(
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
   options: StageOptions = {},
-): string {
+): Promise<string> {
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
   const model = options.model ? ["--model", options.model] : [];

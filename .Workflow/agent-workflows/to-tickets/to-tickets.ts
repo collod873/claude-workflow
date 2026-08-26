@@ -119,13 +119,20 @@ export function validatePlanFile(filePath: string): Plan {
  */
 interface StageDef {
   /**
-   * Runs the stage end to end and returns its result, erased to `unknown` —
-   * a typed stage's parsed output, or (for `audit-and-publish`) the
-   * published sub-issues. `gh` is threaded through every entry uniformly,
-   * for one dispatch that doesn't need to know which stages use it; a
-   * typed stage's closure simply never calls it.
+   * Runs the stage end to end and resolves to its result, erased to
+   * `unknown` — a typed stage's parsed output, or (for
+   * `audit-and-publish`) the published sub-issues. `gh` is threaded through
+   * every entry uniformly, for one dispatch that doesn't need to know which
+   * stages use it; a typed stage's closure simply never calls it.
+   *
+   * The promise is `StageExec`'s (see `../shared/stage`), carried up: a
+   * streaming model call cannot be awaited synchronously, and every frame
+   * between it and `main()` is this one. `unknown` inside it is still
+   * non-generic, so the erasure argument above is untouched — a
+   * `Promise<SeamManifest>` and a `Promise<Plan>` unify under
+   * `Promise<unknown>` exactly as their unwrapped forms did.
    */
-  run: (issueNumber: string, exec: StageExec, gh: GhExec) => unknown;
+  run: (issueNumber: string, exec: StageExec, gh: GhExec) => Promise<unknown>;
 }
 
 /**
@@ -159,13 +166,13 @@ interface TypedStageConfig<T> {
  * spawn, a missing block, a schema mismatch, or a failed validation all
  * throw — there is no repair path here; the caller reports and exits.
  */
-function runTypedStageWithRaw<T>(
+async function runTypedStageWithRaw<T>(
   stage: string,
   config: TypedStageConfig<T>,
   issueNumber: string,
   exec: StageExec,
-): { raw: string; output: T } {
-  const raw = runStage(config.promptPath, config.buildVars(issueNumber), exec);
+): Promise<{ raw: string; output: T }> {
+  const raw = await runStage(config.promptPath, config.buildVars(issueNumber), exec);
   const output = preservingRaw(stage, raw, () => {
     const extracted = extractOutput(raw, config.schema);
     config.validate?.(extracted);
@@ -212,8 +219,8 @@ function preservingRaw<R>(stage: string, raw: string, work: () => R): R {
  */
 function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   return {
-    run: (issueNumber, exec) => {
-      const { output } = runTypedStageWithRaw(name, config, issueNumber, exec);
+    run: async (issueNumber, exec) => {
+      const { output } = await runTypedStageWithRaw(name, config, issueNumber, exec);
       console.log(`${name}: wrote a schema-valid output to ${handoffPath()}`);
       console.log(JSON.stringify(output, null, 2));
       return output;
@@ -308,8 +315,8 @@ function auditorNotes(raw: string): string {
  * validation exit nonzero with zero `gh` calls made — nothing here re-checks
  * graph shape separately.
  */
-const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = (issueNumber, exec, gh) => {
-  const { raw } = runTypedStageWithRaw("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
+const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => {
+  const { raw } = await runTypedStageWithRaw("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
   const notes = auditorNotes(raw);
   if (notes) {
     console.log(notes);
@@ -354,7 +361,12 @@ function isStageName(value: string | undefined): value is StageName {
  * branch) already knows what it asked for and only needs the exit-code and
  * logging behaviour, not the type back.
  */
-export function runNamedStage(stageName: StageName, issueNumber: string, exec: StageExec, gh: GhExec): unknown {
+export function runNamedStage(
+  stageName: StageName,
+  issueNumber: string,
+  exec: StageExec,
+  gh: GhExec,
+): Promise<unknown> {
   return STAGES[stageName].run(issueNumber, exec, gh);
 }
 
@@ -382,8 +394,14 @@ async function main(): Promise<void> {
     // stage's success looks like (its own log line, and — for
     // audit-and-publish alone — the post-stage handoff to sliceAndPublish),
     // so nothing here branches on which stage this run.
+    // The `await` is inside the `try` deliberately: a stage now returns a
+    // promise, and a rejected promise that is merely returned rather than
+    // awaited here would escape this catch entirely — the process would die
+    // on an unhandled rejection having written no failure reason, and
+    // `to-tickets.yml`'s reporter would comment "unknown stage" on every
+    // real failure.
     try {
-      runNamedStage(stageName, issueNumber, execClaude, execGh);
+      await runNamedStage(stageName, issueNumber, execClaude, execGh);
     } catch (err) {
       const detail = reason(err);
       console.error(`${stageName} failed: ${detail}`);

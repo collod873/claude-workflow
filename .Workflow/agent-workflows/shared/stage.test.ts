@@ -20,41 +20,41 @@ describe("runStage", () => {
     return path;
   }
 
-  it("substitutes every {{VAR}} placeholder before spawning the stage", () => {
+  it("substitutes every {{VAR}} placeholder before spawning the stage", async () => {
     const promptPath = writePrompt("Sweep issue #{{ISSUE_NUMBER}} for seams in {{REPO}}.");
     const fake = createFakeStage("<output>[]</output>");
 
-    runStage(promptPath, { ISSUE_NUMBER: "13", REPO: "claude-workflow" }, fake.exec);
+    await runStage(promptPath, { ISSUE_NUMBER: "13", REPO: "claude-workflow" }, fake.exec);
 
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0].join(" ")).toContain("Sweep issue #13 for seams in claude-workflow.");
   });
 
-  it("builds argv for a single headless print-mode claude call", () => {
+  it("builds argv for a single headless print-mode claude call", async () => {
     const promptPath = writePrompt("Plain prompt, no vars.");
     const fake = createFakeStage("<output>[]</output>");
 
-    runStage(promptPath, {}, fake.exec);
+    await runStage(promptPath, {}, fake.exec);
 
     const [argv] = fake.calls;
     expect(argv[0]).toBe("-p");
     expect(argv).toContain("Plain prompt, no vars.");
   });
 
-  it("returns raw stdout from the injected exec", () => {
+  it("returns raw stdout from the injected exec", async () => {
     const promptPath = writePrompt("Prompt.");
     const fake = createFakeStage('<output>["a seam"]</output>');
 
-    const raw = runStage(promptPath, {}, fake.exec);
+    const raw = await runStage(promptPath, {}, fake.exec);
 
     expect(raw).toBe('<output>["a seam"]</output>');
   });
 
-  it("throws naming the unresolved placeholder, without calling exec, when vars doesn't cover the template", () => {
+  it("throws naming the unresolved placeholder, without calling exec, when vars doesn't cover the template", async () => {
     const promptPath = writePrompt("Needs {{MISSING}}.");
     const fake = createFakeStage("<output>[]</output>");
 
-    expect(() => runStage(promptPath, {}, fake.exec)).toThrow(/MISSING/);
+    await expect(runStage(promptPath, {}, fake.exec)).rejects.toThrow(/MISSING/);
     expect(fake.calls).toHaveLength(0);
   });
 });

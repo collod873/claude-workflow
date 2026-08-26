@@ -33,11 +33,11 @@ export interface RunObservationsOptions {
  * rather than reimplementing any part of it — this module owns only the
  * git-notes read/write around it.
  */
-export function runObservations(options: RunObservationsOptions): Observation[] {
+export async function runObservations(options: RunObservationsOptions): Promise<Observation[]> {
   const { git, exec, repoDir, base, head, touchedPaths, spine } = options;
 
   const priorFindings = loadPriorFindings({ git, repoDir, base });
-  const gated = runProposedAuditor({ git, exec, repoDir, base, head, touchedPaths, spine, priorFindings });
+  const gated = await runProposedAuditor({ git, exec, repoDir, base, head, touchedPaths, spine, priorFindings });
   const observations: Observation[] = gated.map((finding) => ({ ...finding, lens: PROPOSED_LENS }));
 
   writeObservationNote({ git, repoDir, commit: head, observations });

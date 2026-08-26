@@ -33,7 +33,7 @@ describe("runObservations", () => {
     dir = undefined;
   });
 
-  it("runs the PROPOSED auditor and writes its findings as a note on head, tagged with the PROPOSED lens", () => {
+  it("runs the PROPOSED auditor and writes its findings as a note on head, tagged with the PROPOSED lens", async () => {
     const repo = makeRepo();
     dir = repo.dir;
 
@@ -41,7 +41,7 @@ describe("runObservations", () => {
     const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
     const fakeStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:1\n");
 
-    const result = runObservations({
+    const result = await runObservations({
       git: execGit,
       exec: fakeStage.exec,
       repoDir: dir,
@@ -59,14 +59,14 @@ describe("runObservations", () => {
     expect(stored).toEqual([{ commit: head, observations: result }]);
   });
 
-  it("folds the prior note's findings in, releasing a finding once a second run names a second site", () => {
+  it("folds the prior note's findings in, releasing a finding once a second run names a second site", async () => {
     const repo = makeRepo();
     dir = repo.dir;
 
     const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
     const firstHead = repo.commit("a.ts", "export const a = 2;\n", "first session");
     const firstStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:1\n");
-    const firstRun = runObservations({
+    const firstRun = await runObservations({
       git: execGit,
       exec: firstStage.exec,
       repoDir: dir,
@@ -82,7 +82,7 @@ describe("runObservations", () => {
     const secondHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
     const secondStage = createFakeStage("Finding: duplicated validation logic\nSite: b.ts:1\n");
 
-    const secondRun = runObservations({
+    const secondRun = await runObservations({
       git: execGit,
       exec: secondStage.exec,
       repoDir: dir,

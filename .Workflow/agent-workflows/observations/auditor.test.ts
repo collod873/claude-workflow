@@ -25,11 +25,11 @@ function baseOptions(overrides: Partial<AuditorOptions> = {}): AuditorOptions {
 }
 
 describe("runAuditor", () => {
-  it("spawns the sandboxed claude call with the flags the sandbox requires", () => {
+  it("spawns the sandboxed claude call with the flags the sandbox requires", async () => {
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({ exec: fakeStage.exec });
 
-    runAuditor(options);
+    await runAuditor(options);
 
     expect(fakeStage.calls).toHaveLength(1);
     const [argv] = fakeStage.calls;
@@ -43,11 +43,11 @@ describe("runAuditor", () => {
     expect(argv.filter((arg) => arg === "")).toHaveLength(2);
   });
 
-  it("places every sandbox flag immediately after -p <prompt>, in the order the sandbox spec names", () => {
+  it("places every sandbox flag immediately after -p <prompt>, in the order the sandbox spec names", async () => {
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({ exec: fakeStage.exec });
 
-    runAuditor(options);
+    await runAuditor(options);
 
     const [argv] = fakeStage.calls;
     expect(argv[0]).toBe("-p");
@@ -66,7 +66,7 @@ describe("runAuditor", () => {
     ]);
   });
 
-  it("embeds the scoped diff, the spine, and the standards in the prompt argument", () => {
+  it("embeds the scoped diff, the spine, and the standards in the prompt argument", async () => {
     const fakeGit = createFakeGit(() => "+ export const mine = 1;");
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({
@@ -76,7 +76,7 @@ describe("runAuditor", () => {
       standards: "entry: never do Y",
     });
 
-    runAuditor(options);
+    await runAuditor(options);
 
     const [argv] = fakeStage.calls;
     const prompt = argv[1];
@@ -85,7 +85,7 @@ describe("runAuditor", () => {
     expect(prompt).toContain("entry: never do Y");
   });
 
-  it("threads repoDir, base, head, and touchedPaths to the git executor via sessionRangeDiff", () => {
+  it("threads repoDir, base, head, and touchedPaths to the git executor via sessionRangeDiff", async () => {
     const fakeGit = createFakeGit(() => "");
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({
@@ -97,18 +97,18 @@ describe("runAuditor", () => {
       touchedPaths: ["x.ts"],
     });
 
-    runAuditor(options);
+    await runAuditor(options);
 
     expect(fakeGit.calls).toHaveLength(1);
     expect(fakeGit.calls[0]).toEqual(["-C", "/some/repo", "diff", "--no-color", "abc", "def", "--", "x.ts"]);
   });
 
-  it("returns the sandboxed call's raw stdout unparsed", () => {
+  it("returns the sandboxed call's raw stdout unparsed", async () => {
     const fakeGit = createFakeGit(() => "");
     const fakeStage = createFakeStage('<output>["a violation"]</output>');
     const options = baseOptions({ git: fakeGit.git, exec: fakeStage.exec });
 
-    const result = runAuditor(options);
+    const result = await runAuditor(options);
 
     expect(result).toBe('<output>["a violation"]</output>');
   });

@@ -14,10 +14,10 @@ import { createFakeTracker, type FakeTrackerOptions } from "./tracker.fake";
 const silent = () => {};
 
 /** Runs the gate against a completed close, with no salvage stage expected. */
-function gate(options: FakeTrackerOptions & { stateReason?: string | null; response?: string }) {
+async function gate(options: FakeTrackerOptions & { stateReason?: string | null; response?: string }) {
   const tracker = createFakeTracker(options);
   const stage = createFakeStage(options.response ?? "");
-  const outcome = runCloseGate({
+  const outcome = await runCloseGate({
     issueNumber: 42,
     stateReason: options.stateReason === undefined ? DELIVERY_CLOSE_REASON : options.stateReason,
     runUrl: "https://github.com/o/r/actions/runs/1",
@@ -29,28 +29,28 @@ function gate(options: FakeTrackerOptions & { stateReason?: string | null; respo
 }
 
 describe("scope — which closes are judged at all", () => {
-  it("ignores a close marked not planned, without reading the issue", () => {
-    const { outcome, tracker } = gate({ stateReason: "not_planned" });
+  it("ignores a close marked not planned, without reading the issue", async () => {
+    const { outcome, tracker } = await gate({ stateReason: "not_planned" });
     expect(outcome).toMatchObject({ action: "pass", code: "not-a-delivery-claim" });
     expect(tracker.calls).toEqual([]);
   });
 
-  it("ignores a close marked duplicate", () => {
-    expect(gate({ stateReason: "duplicate" }).outcome.action).toBe("pass");
+  it("ignores a close marked duplicate", async () => {
+    expect((await gate({ stateReason: "duplicate" })).outcome.action).toBe("pass");
   });
 
-  it("ignores a close whose reason the payload did not carry", () => {
-    expect(gate({ stateReason: null }).outcome.action).toBe("pass");
+  it("ignores a close whose reason the payload did not carry", async () => {
+    expect((await gate({ stateReason: null })).outcome.action).toBe("pass");
   });
 
-  it("spends no model on a close it does not judge", () => {
-    expect(gate({ stateReason: "not_planned" }).stage.calls).toEqual([]);
+  it("spends no model on a close it does not judge", async () => {
+    expect((await gate({ stateReason: "not_planned" })).stage.calls).toEqual([]);
   });
 });
 
 describe("a record that exists is judged as written", () => {
-  it("passes a well-shaped record without touching the issue or a model", () => {
-    const { outcome, tracker, stage } = gate({
+  it("passes a well-shaped record without touching the issue or a model", async () => {
+    const { outcome, tracker, stage } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
     });
@@ -60,8 +60,8 @@ describe("a record that exists is judged as written", () => {
     expect(stage.calls).toEqual([]);
   });
 
-  it("reopens, comments and labels when the record fails", () => {
-    const { outcome, tracker } = gate({
+  it("reopens, comments and labels when the record fails", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — UNMET: not built"] })],
     });
@@ -71,16 +71,16 @@ describe("a record that exists is judged as written", () => {
     expect(tracker.labelsAdded).toEqual([REFUSED_LABEL]);
   });
 
-  it("never spends a model rewriting a record somebody actually posted", () => {
-    const { stage } = gate({
+  it("never spends a model rewriting a record somebody actually posted", async () => {
+    const { stage } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — UNMET: not built"] })],
     });
     expect(stage.calls).toEqual([]);
   });
 
-  it("keeps a refusal green — a refusal is the gate working", () => {
-    const { outcome } = gate({
+  it("keeps a refusal green — a refusal is the gate working", async () => {
+    const { outcome } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — UNMET: not built"] })],
     });
@@ -89,8 +89,8 @@ describe("a record that exists is judged as written", () => {
 });
 
 describe("salvage — the one Haiku, where no record was posted", () => {
-  it("spends exactly one call, on Haiku, when there is no record", () => {
-    const { stage } = gate({
+  it("spends exactly one call, on Haiku, when there is no record", async () => {
+    const { stage } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: salvageResponse(recordComment({ bullets: ["Criterion 1 — MET: `src/a.ts:1`"] })),
@@ -100,8 +100,8 @@ describe("salvage — the one Haiku, where no record was posted", () => {
     expect(stage.calls[0][stage.calls[0].indexOf("--model") + 1]).toBe(SALVAGE_MODEL);
   });
 
-  it("passes the close and posts what it read, so a re-close costs no model", () => {
-    const { outcome, tracker } = gate({
+  it("passes the close and posts what it read, so a re-close costs no model", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: salvageResponse(recordComment({ bullets: ["Criterion 1 — MET: `src/a.ts:1`"] })),
@@ -113,8 +113,8 @@ describe("salvage — the one Haiku, where no record was posted", () => {
     expect(tracker.commentsPosted[0]).toContain("close gate");
   });
 
-  it("refuses when the record it salvaged does not clear the grammar", () => {
-    const { outcome, tracker } = gate({
+  it("refuses when the record it salvaged does not clear the grammar", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: salvageResponse(recordComment({ bullets: ["Criterion 1 — UNMET: no evidence"] })),
@@ -124,11 +124,11 @@ describe("salvage — the one Haiku, where no record was posted", () => {
     expect(tracker.commentsPosted).toEqual([]);
   });
 
-  it("cannot be talked past — the model's own verdict is not consulted", () => {
+  it("cannot be talked past — the model's own verdict is not consulted", async () => {
     // A salvage that says MET but shows nothing shaped like evidence is
     // refused by the same rule that refuses a human's. The model translates;
     // the grammar judges.
-    const { outcome } = gate({
+    const { outcome } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: salvageResponse(
@@ -140,18 +140,18 @@ describe("salvage — the one Haiku, where no record was posted", () => {
 });
 
 describe("degraded — the gate could not do its job", () => {
-  it("fails closed and goes red when the tracker will not answer", () => {
-    const { outcome, tracker } = gate({ viewFails: true });
+  it("fails closed and goes red when the tracker will not answer", async () => {
+    const { outcome, tracker } = await gate({ viewFails: true });
     expect(outcome).toMatchObject({ action: "degraded", code: "tracker-unreadable" });
     expect(tracker.reopenedWith).toContain("could not verify");
   });
 
-  it("fails closed on an answer it cannot parse", () => {
-    expect(gate({ viewReturns: "not json" }).outcome.action).toBe("degraded");
+  it("fails closed on an answer it cannot parse", async () => {
+    expect((await gate({ viewReturns: "not json" })).outcome.action).toBe("degraded");
   });
 
-  it("fails closed when the salvage stage dies", () => {
-    const { outcome, tracker } = gate({
+  it("fails closed when the salvage stage dies", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: "the model said something conversational and no <output> block",
@@ -160,8 +160,8 @@ describe("degraded — the gate could not do its job", () => {
     expect(tracker.reopenedWith).toContain("could not verify");
   });
 
-  it("fails closed when salvage returns text that is not a record", () => {
-    const { outcome } = gate({
+  it("fails closed when salvage returns text that is not a record", async () => {
+    const { outcome } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       response: salvageResponse("I could not find any evidence for this close."),
@@ -175,8 +175,8 @@ describe("degraded — the gate could not do its job", () => {
 // outstanding work forever. History lives in the refusal comment and the run
 // log, neither of which this lifts.
 describe("the label is state — a passing re-close lifts it", () => {
-  it("lifts `close-refused` when the repaired close passes", () => {
-    const { outcome, tracker } = gate({
+  it("lifts `close-refused` when the repaired close passes", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
       labels: [REFUSED_LABEL],
@@ -185,8 +185,8 @@ describe("the label is state — a passing re-close lifts it", () => {
     expect(tracker.labelsRemoved).toEqual([REFUSED_LABEL]);
   });
 
-  it("lifts it on a salvaged pass too — the venue of the repair is not the point", () => {
-    const { outcome, tracker } = gate({
+  it("lifts it on a salvaged pass too — the venue of the repair is not the point", async () => {
+    const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
       labels: [REFUSED_LABEL],
@@ -196,8 +196,8 @@ describe("the label is state — a passing re-close lifts it", () => {
     expect(tracker.labelsRemoved).toEqual([REFUSED_LABEL]);
   });
 
-  it("leaves the label on when the close is refused again", () => {
-    const { tracker } = gate({
+  it("leaves the label on when the close is refused again", async () => {
+    const { tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — UNMET: still not built"] })],
       labels: [REFUSED_LABEL],
@@ -205,8 +205,8 @@ describe("the label is state — a passing re-close lifts it", () => {
     expect(tracker.labelsRemoved).toEqual([]);
   });
 
-  it("spends no tracker write on the ordinary close that was never refused", () => {
-    const { tracker } = gate({
+  it("spends no tracker write on the ordinary close that was never refused", async () => {
+    const { tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
       labels: ["enhancement"],
@@ -214,14 +214,14 @@ describe("the label is state — a passing re-close lifts it", () => {
     expect(tracker.calls.map((call) => call[1])).toEqual(["view"]);
   });
 
-  it("does not reverse a verified pass because the label would not come off", () => {
+  it("does not reverse a verified pass because the label would not come off", async () => {
     const tracker = createFakeTracker({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
       labels: [REFUSED_LABEL],
       labelFails: true,
     });
-    const outcome = runCloseGate({
+    const outcome = await runCloseGate({
       issueNumber: 42,
       stateReason: DELIVERY_CLOSE_REASON,
       gh: tracker.gh,
@@ -234,13 +234,13 @@ describe("the label is state — a passing re-close lifts it", () => {
 });
 
 describe("a missing label never costs the refusal", () => {
-  it("still reopens when the label write fails", () => {
+  it("still reopens when the label write fails", async () => {
     const tracker = createFakeTracker({
       body: bodyWithCriteria(1),
       comments: [recordComment({ bullets: ["Criterion 1 — UNMET: not built"] })],
       labelFails: true,
     });
-    const outcome = runCloseGate({
+    const outcome = await runCloseGate({
       issueNumber: 42,
       stateReason: DELIVERY_CLOSE_REASON,
       gh: tracker.gh,
@@ -263,15 +263,15 @@ describe("close-gate.yml agrees with the scope rule it is a copy of", () => {
     "utf8",
   );
 
-  it("fires on issues.closed and nothing else", () => {
+  it("fires on issues.closed and nothing else", async () => {
     expect(workflow).toMatch(/issues:\s*\n\s*types:\s*\[closed\]/);
   });
 
-  it("gates the job on the same state_reason the gate judges", () => {
+  it("gates the job on the same state_reason the gate judges", async () => {
     expect(workflow).toContain(`state_reason == '${DELIVERY_CLOSE_REASON}'`);
   });
 
-  it("creates the label a refusal applies, so the first refusal cannot fail", () => {
+  it("creates the label a refusal applies, so the first refusal cannot fail", async () => {
     expect(workflow).toContain(`gh label create ${REFUSED_LABEL}`);
   });
 });

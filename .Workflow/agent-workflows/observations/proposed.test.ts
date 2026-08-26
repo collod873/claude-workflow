@@ -27,43 +27,43 @@ function baseOptions(overrides: Partial<ProposedAuditorOptions> = {}): ProposedA
 }
 
 describe("runProposedAuditor / the two-site gate", () => {
-  it("records a single-site finding as not released", () => {
+  it("records a single-site finding as not released", async () => {
     const fakeStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
-    const result = runProposedAuditor(baseOptions({ exec: fakeStage.exec }));
+    const result = await runProposedAuditor(baseOptions({ exec: fakeStage.exec }));
 
     expect(result).toEqual([{ finding: "duplicated validation logic", sites: ["a.ts:10"], released: false }]);
   });
 
-  it("flips a finding to released once a second fixture run names a second site for it", () => {
+  it("flips a finding to released once a second fixture run names a second site for it", async () => {
     const firstStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
-    const firstRun = runProposedAuditor(baseOptions({ exec: firstStage.exec }));
+    const firstRun = await runProposedAuditor(baseOptions({ exec: firstStage.exec }));
 
     expect(firstRun).toEqual([{ finding: "duplicated validation logic", sites: ["a.ts:10"], released: false }]);
 
     const secondStage = createFakeStage("Finding: duplicated validation logic\nSite: b.ts:22\n");
-    const secondRun = runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
+    const secondRun = await runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
 
     expect(secondRun).toEqual([
       { finding: "duplicated validation logic", sites: ["a.ts:10", "b.ts:22"], released: true },
     ]);
   });
 
-  it("does not double-count the same site named again in a later run", () => {
+  it("does not double-count the same site named again in a later run", async () => {
     const firstStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
-    const firstRun = runProposedAuditor(baseOptions({ exec: firstStage.exec }));
+    const firstRun = await runProposedAuditor(baseOptions({ exec: firstStage.exec }));
 
     const secondStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
-    const secondRun = runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
+    const secondRun = await runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
 
     expect(secondRun).toEqual([{ finding: "duplicated validation logic", sites: ["a.ts:10"], released: false }]);
   });
 
-  it("tracks unrelated findings independently", () => {
+  it("tracks unrelated findings independently", async () => {
     const firstStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
-    const firstRun = runProposedAuditor(baseOptions({ exec: firstStage.exec }));
+    const firstRun = await runProposedAuditor(baseOptions({ exec: firstStage.exec }));
 
     const secondStage = createFakeStage("Finding: a different pattern entirely\nSite: c.ts:1\n");
-    const secondRun = runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
+    const secondRun = await runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
 
     expect(secondRun).toEqual([
       { finding: "duplicated validation logic", sites: ["a.ts:10"], released: false },
@@ -71,7 +71,7 @@ describe("runProposedAuditor / the two-site gate", () => {
     ]);
   });
 
-  it("threads repoDir, base, head, and touchedPaths to the git executor via sessionRangeDiff, and reuses VIOLATION's sandbox flags unchanged", () => {
+  it("threads repoDir, base, head, and touchedPaths to the git executor via sessionRangeDiff, and reuses VIOLATION's sandbox flags unchanged", async () => {
     const fakeGit = createFakeGit(() => "");
     const fakeStage = createFakeStage("no pattern worth proposing");
     const options = baseOptions({
@@ -83,7 +83,7 @@ describe("runProposedAuditor / the two-site gate", () => {
       touchedPaths: ["x.ts"],
     });
 
-    runProposedAuditor(options);
+    await runProposedAuditor(options);
 
     expect(fakeGit.calls).toHaveLength(1);
     expect(fakeGit.calls[0]).toEqual(["-C", "/some/repo", "diff", "--no-color", "abc", "def", "--", "x.ts"]);
@@ -106,9 +106,9 @@ describe("runProposedAuditor / the two-site gate", () => {
     ]);
   });
 
-  it("returns no findings when the raw text carries no Finding/Site pair, an empty pass", () => {
+  it("returns no findings when the raw text carries no Finding/Site pair, an empty pass", async () => {
     const fakeStage = createFakeStage("No pattern worth proposing here. Empty pass.");
-    const result = runProposedAuditor(baseOptions({ exec: fakeStage.exec }));
+    const result = await runProposedAuditor(baseOptions({ exec: fakeStage.exec }));
 
     expect(result).toEqual([]);
   });
@@ -117,7 +117,7 @@ describe("runProposedAuditor / the two-site gate", () => {
 describe('the "Suggested CODING_STANDARDS.md line:" field', () => {
   const forbidden = "Suggested CODING_STANDARDS.md line:";
 
-  it("never appears in the PROPOSED prompt, for every fixture case in this file", () => {
+  it("never appears in the PROPOSED prompt, for every fixture case in this file", async () => {
     const cases = [
       { diff: "+ export const mine = 1;", spine: "session did X" },
       { diff: "", spine: "" },
@@ -129,7 +129,7 @@ describe('the "Suggested CODING_STANDARDS.md line:" field', () => {
     }
   });
 
-  it("never appears in the VIOLATION prompt, for every fixture case in this file", () => {
+  it("never appears in the VIOLATION prompt, for every fixture case in this file", async () => {
     const cases = [
       { standards: "entry: never do Y", diff: "+ export const mine = 1;", spine: "session did X" },
       { standards: "", diff: "", spine: "" },
@@ -140,7 +140,7 @@ describe('the "Suggested CODING_STANDARDS.md line:" field', () => {
     }
   });
 
-  it("never survives into a parsed PROPOSED finding, even when the model's raw output includes the field", () => {
+  it("never survives into a parsed PROPOSED finding, even when the model's raw output includes the field", async () => {
     const raw = [
       "Finding: duplicated validation logic",
       "Site: a.ts:10",
@@ -162,19 +162,19 @@ describe('the "Suggested CODING_STANDARDS.md line:" field', () => {
     }
   });
 
-  it("never survives into a gated PROPOSED finding returned by the auditor, across single- and two-site runs", () => {
+  it("never survives into a gated PROPOSED finding returned by the auditor, across single- and two-site runs", async () => {
     const rawWithField = [
       "Finding: duplicated validation logic",
       "Site: a.ts:10",
       `${forbidden} never repeat a null check`,
     ].join("\n");
     const firstStage = createFakeStage(rawWithField);
-    const firstRun = runProposedAuditor(baseOptions({ exec: firstStage.exec }));
+    const firstRun = await runProposedAuditor(baseOptions({ exec: firstStage.exec }));
 
     const secondStage = createFakeStage(
       ["Finding: duplicated validation logic", "Site: b.ts:22", `${forbidden} still never repeat it`].join("\n"),
     );
-    const secondRun = runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
+    const secondRun = await runProposedAuditor(baseOptions({ exec: secondStage.exec, priorFindings: firstRun }));
 
     for (const run of [firstRun, secondRun]) {
       for (const gated of run) {
@@ -189,13 +189,13 @@ describe('the "Suggested CODING_STANDARDS.md line:" field', () => {
 });
 
 describe("applyTwoSiteGate", () => {
-  it("starts a new finding unreleased on its first site", () => {
+  it("starts a new finding unreleased on its first site", async () => {
     expect(applyTwoSiteGate([], [{ finding: "f", site: "a.ts:1" }])).toEqual([
       { finding: "f", sites: ["a.ts:1"], released: false },
     ]);
   });
 
-  it("releases a finding the moment a second distinct site is folded in", () => {
+  it("releases a finding the moment a second distinct site is folded in", async () => {
     const afterFirst = applyTwoSiteGate([], [{ finding: "f", site: "a.ts:1" }]);
     const afterSecond = applyTwoSiteGate(afterFirst, [{ finding: "f", site: "b.ts:2" }]);
 

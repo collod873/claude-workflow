@@ -160,8 +160,8 @@ function fetchIssue(
  * malformed `<output>` block, a dead CLI — so the caller can report it as
  * degraded rather than mistaking it for a refusal.
  */
-function salvageRecord(exec: StageExec, issueNumber: number): string {
-  const raw = runStage(SALVAGE_PROMPT, { ISSUE_NUMBER: String(issueNumber) }, exec, {
+async function salvageRecord(exec: StageExec, issueNumber: number): Promise<string> {
+  const raw = await runStage(SALVAGE_PROMPT, { ISSUE_NUMBER: String(issueNumber) }, exec, {
     model: SALVAGE_MODEL,
   });
   const salvaged = extractOutput(raw, SalvagedRecord);
@@ -252,7 +252,7 @@ function degradedComment(detail: string, runUrl: string | undefined): string {
  * asserts "reopened exactly once, and nothing else was written" rather than
  * assuming it.
  */
-export function runCloseGate(input: GateInput): Outcome {
+export async function runCloseGate(input: GateInput): Promise<Outcome> {
   const gh = input.gh ?? execGh;
   const exec = input.exec ?? execClaude;
   const log = input.log ?? ((line: string) => console.log(line));
@@ -296,7 +296,7 @@ export function runCloseGate(input: GateInput): Outcome {
   // judges what it wrote.
   let salvagedRecord: string;
   try {
-    salvagedRecord = salvageRecord(exec, issueNumber);
+    salvagedRecord = await salvageRecord(exec, issueNumber);
   } catch (err) {
     const detail = `no \`${RECORD_HEADING}\` was posted, and the salvage stage failed: ${reason(err)}`;
     reverseClose(gh, issueNumber, degradedComment(detail, runUrl), log);
@@ -327,13 +327,13 @@ export function runCloseGate(input: GateInput): Outcome {
   return { action: "pass", code: evaluation.code, note: evaluation.message, salvaged: true };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const issueNumber = Number(process.env.ISSUE_NUMBER);
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
     console.error("ISSUE_NUMBER must be set to a positive integer");
     process.exit(1);
   }
-  const outcome = runCloseGate({
+  const outcome = await runCloseGate({
     issueNumber,
     stateReason: process.env.STATE_REASON || null,
     runUrl: process.env.RUN_URL || undefined,

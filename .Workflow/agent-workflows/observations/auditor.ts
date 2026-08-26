@@ -63,7 +63,7 @@ const SANDBOX_FLAGS = [
  * raw stdout unparsed: extracting findings out of it is the release
  * trigger's job (spec #36 slice 5), not the auditor's.
  */
-export function runAuditor(options: AuditorOptions): string {
+export async function runAuditor(options: AuditorOptions): Promise<string> {
   const { git, exec, repoDir, base, head, touchedPaths, spine, standards } = options;
   const diff = sessionRangeDiff({ git, repoDir, base, head, touchedPaths });
   const prompt = violationPrompt({ standards, diff, spine });
@@ -108,11 +108,13 @@ export interface ProposedAuditorOptions {
  * finding's identity across runs, so PROPOSED can't defer parsing to the
  * release trigger the way VIOLATION does.
  */
-export function runProposedAuditor(options: ProposedAuditorOptions): GatedProposedFinding[] {
+export async function runProposedAuditor(
+  options: ProposedAuditorOptions,
+): Promise<GatedProposedFinding[]> {
   const { git, exec, repoDir, base, head, touchedPaths, spine, priorFindings = [] } = options;
   const diff = sessionRangeDiff({ git, repoDir, base, head, touchedPaths });
   const prompt = proposedPrompt({ diff, spine });
-  const raw = exec(["-p", prompt, ...SANDBOX_FLAGS]);
+  const raw = await exec(["-p", prompt, ...SANDBOX_FLAGS]);
   const findings = parseProposedFindings(raw);
   return applyTwoSiteGate(priorFindings, findings);
 }
