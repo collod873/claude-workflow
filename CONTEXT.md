@@ -121,10 +121,12 @@ what converts that into overriding two lines. Accepting it is what files the rul
 _Avoid_: proposal, analysis, brief, summary, report
 
 **Assumption mark**:
-A flag on a decision whose answer changes *other* decisions on the same sheet. Only load-bearing
-guesses are marked — a recommendation that can be overridden in place without disturbing anything
-else is not one. The mark is also the first test of whether a decision deserves an ADR, because
-*changes other decisions* and *hard to reverse* are the same property.
+A flag on a decision, carrying the name of the thing that moves when the answer flips — another
+decision on the same sheet, or an existing artifact: an ADR, a shipped lane's contract, a file. A
+mark that names nothing is not a mark. Only load-bearing guesses are marked; a recommendation that
+can be overridden in place without disturbing anything else is not one. The mark is also the first
+test of whether a decision deserves an ADR, which is why it may point off the sheet: a decision that
+moves nothing else on the page can still be expensive to unwind.
 _Avoid_: caveat, note, uncertainty, open question
 
 **Spec**:
