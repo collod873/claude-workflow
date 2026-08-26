@@ -1,8 +1,11 @@
 # The design
 
 **Drafted:** 2026-08-23 · **Scored:** 2026-08-23 against `GOAL.md` §2 — the grid and its nine open
-cells are [§12](#12--the-scorecard) · **Last landed:** 2026-08-23, moves 0–1b (lane 06's free
-venues) · **Scope:** this repo only, ruled 2026-08-23 — see [§11 Q3](#11--open-questions) ·
+cells are [§12](#12--the-scorecard) · **Last landed:** 2026-08-25, moves 2–3 — the close gate moved
+to the tracker, and session capture; the observations pipeline it was built to feed (spec
+[#36](https://github.com/collod873/claude-workflow/issues/36)) shipped without the event that runs
+it, so 8b is ◐ rather than ✅ ·
+**Scope:** this repo only, ruled 2026-08-23 — see [§11 Q3](#11--open-questions) ·
 **Status:** the target. What the machine is, drawn from [`GOAL.md`](GOAL.md) rather than from the
 skills that exist today.
 
@@ -45,7 +48,9 @@ Each lane names four things. A lane missing any of them is not a lane:
   §4. C5 is a coverage constraint, and coverage that is not enumerated is coverage that is assumed.
   A lane that produces work rather than findings says **—**, which is a real answer.
 
-Status marks: **live** (built, running), **partial**, **absent**.
+Status marks: **live** (built, running), **partial**, **absent**. §10's build order uses **✅** for a
+move that landed and **◐** for one whose code landed without the event that runs it — which is not
+the same thing and must never be marked as though it were.
 
 A row marked **⬤ owner** is a point where Collin is required. There are five, and reducing that
 number is the whole project. Two are in the lanes (01, 02); three are outside them — the two taste
@@ -543,6 +548,12 @@ the issue, so the reasoning is durable and a re-close costs no model at all.
 fired **once in 558** era-6 rows, so this is an active *compliance* mechanism and it is not a
 *correctness* one — the lane that makes it one is 04, and 04 is still absent.
 
+**It has judged nothing yet.** The gate landed on 2026-08-25 at 23:35; spec #36's nine tickets had
+all closed by 22:57, so the first close it ever sees is still ahead of it. This page argues in three
+separate places that a gate nobody has watched fire is indistinguishable from one that does not
+work, and that argument does not exempt the newest gate on the page —
+[#55](https://github.com/collod873/claude-workflow/issues/55).
+
 ---
 
 ## 5 · The trigger map
@@ -580,9 +591,9 @@ ADR-0004.
 
 ## 6 · The standing lenses and counters
 
-Eight things get read while nobody is watching, and **only one of them is code.** Five spend a
-model; three only count. Each is attached to the event that makes it non-vacuous, which is what
-distinguishes a lens from the cadence ADR-0029 rejected.
+Ten things get read while nobody is watching. Seven spend a model; three only count. Each is
+attached to the event that makes it non-vacuous, which is what distinguishes a lens from the cadence
+ADR-0029 rejected.
 
 **Sees** numbers the evidence class each one can observe, against
 [`finding-what-goes-wrong.md`](https://github.com/collod873/agent-skills/blob/main/docs/research/finding-what-goes-wrong.md)
@@ -595,15 +606,31 @@ distinguishes a lens from the cadence ADR-0029 rejected.
 | **Decision log** | Opus | An ADR or ruling recorded | Contradiction: *"you ruled in March that X, this week you ruled Y — one of these is stale."* It never pre-answers on the owner's behalf | 8 |
 | **Spec** | Haiku | A merge touching a module | Drift. A lying spec is worse than no spec, because every agent downstream believes it forever | 8 |
 | **Coupling** | Opus, high effort | N landings in a module since its last read | Duplicated concepts, three implementations of one idea, a module that has quietly grown a second responsibility. Output is a small number of ranked refactor issues | 3 |
+| **Violation** | Sonnet | Session end | A landed diff breaking a **ratified** `CODING_STANDARDS.md` rule that no linter enforces. The half of §9's absorbed standards chain that checks rather than authors | 2 |
+| **Proposed** | Sonnet | Session end | A smell worth a new standard — **held until a second site appears.** The two-site gate is C3's second-site trigger pointed at findings, and it is what turns the old chain's 45%-worthless output into signal | 3 |
+
+**Violation and Proposed are the standards chain, absorbed.** §9 rules `/standards-pass` → `/ratify`
+→ `/standards` into this section, and spec [#36](https://github.com/collod873/claude-workflow/issues/36)
+built them: two lenses over the session's spine and its own SHA range, findings stored as git notes
+on `refs/notes/observations` keyed to the commit they describe, ratification carried as memory so a
+declined finding re-proposes only when its recurrence *grew*, and release batched as **one pull
+request** on a PRD close or at N=20 unreleased findings — never on a clock, and never N issues.
+COMPOSITION and SEAM were dropped on 27 verified findings. `.Workflow/agent-workflows/observations/`.
+
+**All of it is library code and nothing fires it** —
+[#56](https://github.com/collod873/claude-workflow/issues/56). No workflow, no hook, no CLI: this is
+`CONTEXT.md`'s *connector* missing on the newest lane instead of the oldest, which is blocker 2's own
+shape. Capture is the half that runs. Until the connector lands, the backwards question below cannot
+be asked of these two, because a lens that has never fired cannot answer it.
 
 ### The coverage ledger
 
 | # | Evidence lives in | What looks at it here |
 |---|---|---|
 | 1 | The tree at HEAD | Lane 06 — typecheck, lint, test |
-| 2 | A single diff | Lane 07, and the diff lens |
-| 3 | Recurrence across diffs | The coupling lens |
-| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05) |
+| 2 | A single diff | Lane 07, the diff lens, and the violation lens |
+| 3 | Recurrence across diffs | The coupling lens, and the proposed lens's two-site gate |
+| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05). **Capture landed 2026-08-25** — the corpus this row depends on is being written again |
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
 | 7 | **Absence** — what should exist and doesn't | **The parity counter**, below |
@@ -652,10 +679,13 @@ counter load-bearing rather than merely cheap, and it is the reason move 8a's cr
 not wait on the rest of that row. It has nothing to count until a second repo is in scope, which is
 question 3, so it is built and left idle rather than built late.
 
-The transcript lens is probably the highest-yield item on this page and it is **blocked on blocker
-4**: capture died 2026-05-21, and `cleanupPeriodDays: 30` means every day without a recorder
-permanently destroys a day of corpus. It matters *more* under autonomy — when nobody is watching,
-the transcript is the only record of what went wrong.
+The transcript lens is probably the highest-yield item on this page, and **blocker 4 no longer
+blocks it.** Capture landed 2026-08-25 (move 3): a global `SessionEnd` hook writes each session's
+spine to `Knowledge-Base/raw/sessions/`, fail-open and detached, and the `cleanupPeriodDays: 30`
+clock that was destroying a day of corpus per day has stopped. Backfill salvaged what that clock had
+left — 11 sessions, against 841 from the era that ran a recorder, which is the honest price of the
+three months without one. The lens itself is still unwritten; what changed is that it now has a
+corpus to be written against, which was the whole argument for shipping capture separately from it.
 
 **Every lens and counter produces issues, never notifications.** The brief is the only thing that
 reaches the owner.
@@ -734,7 +764,7 @@ The point of drawing the map first. Every era-6 verb, held against the lanes abo
 | `/grilling` | Local session, §2 | **Keep, unported.** Grilling needs the owner's answers by construction — an unattended grilling agent grills itself. Lane 01 replicates the part that *is* automatable (walk the tree, recommend on each) and escalates here when it can't |
 | `/triage` | Lane 00/01 boundary | **Absorbed.** Capture files, adversaries shape. A separate triage verb is a third name for the same edge |
 | `/drain` | — | **Delete.** A batch worker with worktrees, a foreman and a merge loop *on the workstation* is ADR-0002's exact prohibition. Lanes 05 and 08 are what it was for: the governor dispatches, the warden serialises. Its three open defects ([#33](https://github.com/collod873/claude-workflow/issues/33)–[#35](https://github.com/collod873/claude-workflow/issues/35)) are defects in a thing that does not survive the map |
-| `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed.** ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is one lens |
+| `/standards-pass` → `/ratify` → `/standards` | §6, the lens audit | **Absorbed**, and half-built. ADR-0003 already ruled that a rule is audited at the event that adds another rule. Generalise it and the three-verb chain is two lenses — violation and proposed, shipped by spec #36 and not yet fired ([#56](https://github.com/collod873/claude-workflow/issues/56)) |
 | `/converge` | — | **Delete.** Bringing a machine back to the GitHub backups is only necessary because state lives on a machine. §1 forbids that |
 | `/sync-skills` | — | **Delete.** Vendoring an upstream skill tree and re-applying deltas is a grooming obligation with ~60 rows of divergence to maintain. C4 |
 | `/wayfinder` | Local session, §2 | **Keep, unported.** Destination and scope are named in `GOAL.md` as where the human deliberately stays. It should stay a local, human-fired verb — it is not an edge |
@@ -759,14 +789,14 @@ work drains onto the owner.
 | 1a | ✅ **The free venues** (lane 06) — typecheck and lint in the turn, the whole gauntlet at turn end, the same on push, self-installing via `"prepare": "husky"` | Most of blocker 5, and it is where the throughput is | Landed. `bin/gauntlet` plus two hooks and a `pre-push`. No model spend, no plan change |
 | 1b | ✅ **Narrow `verify.yml`'s triggers** to what the free venues no longer cover | Actions minutes — the estate is at 2,022/month against a 2,000 cap | Landed. `push` on `main` only, `paths-ignore` for Markdown, and it calls `bin/gauntlet push` so a check cannot drift between venues |
 | 2 | ✅ **Close gate as an Action** on `issues.closed` (lane 09) | Blocker 1 | Landed. `.github/workflows/close-gate.yml` plus `close-gate/`. The grammar ported unchanged; two thirds of era 6's hook — every line that parsed a *shell command* to work out whether it was a close — deleted outright, which is the venue doing the work. Two rulings it forced: ADR-0013 and ADR-0014 |
-| 3 | **Session capture**, at session time, stored durably | Blocker 4 | Days — and every day it waits destroys a day of corpus permanently |
+| 3 | ✅ **Session capture**, at session time, stored durably | Blocker 4 | Landed as spec [#36](https://github.com/collod873/claude-workflow/issues/36) slices 1–2. `.claude/hooks/session-capture.sh` plus its detached node half, registered **globally** — recording is not executing work, so ADR-0002 and §11 Q3 do not reach it. Storage only; the wiki stays retired. Backfill recovered 11 sessions, which is all the 30-day prune had left |
 | 4a | **Intake** (lane 00) — two issue forms and the `idea` label | The desk keystroke | An afternoon |
 | 4b | **Shape** (lane 01) — sweep, shaper, refuter, and the sheet | The blank-screen approve | Days |
 | 5 | **Acceptance lane** (04) + the immutability rule in CI | The premise itself | Weeks. The unglamorous one, and skipping it is the reliable way to fail |
 | 6 | **Spec on a runner** (lane 02) | Blocker 2 | Weeks |
 | 7 | **Build + integrate** (lanes 05, 08) — implementer, fixer, warden | Blocker 2 | Weeks |
-| 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waits on move 3 |
-| 8b | **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | Ongoing, event-attached |
+| 8a | **The three free counters** (§6) — parity, correction, cross-repo | C5's rows 7, 9, 10 — the classes nothing was watching | Days each, no model spend. Parity and cross-repo can land beside anything above them; the correction counter waited on move 3, **which landed 2026-08-25**, so all three are now unblocked and it is the cheapest row left on this table |
+| 8b | ◐ **Model lenses + the backwards question** (§6), asked of the lint rules and ADRs too | Blocker 3 | **Partial.** Spec #36 slices 3–5 built the violation and proposed lenses, git-notes storage, ratification memory and the release PR composer — and **wired none of it** ([#56](https://github.com/collod873/claude-workflow/issues/56)). Blocker 3 is not retired by code that never runs. The other five lenses and the backwards question are untouched: ongoing, event-attached |
 | 9 | **Governor + brief** (§8) | C7 | Last. It has nothing to govern until 5–7 land |
 | 10 | **Branch protection + required checks** on this repo | The rest of blocker 5 — the agent that routes around the free venues | An afternoon of configuration and **$4/month.** Protected branches do not exist on a private repo under the Free plan; the API answers `403 Upgrade to GitHub Pro`. Waits on move 7's fixer, which is the thing that clears a red without the owner |
 
