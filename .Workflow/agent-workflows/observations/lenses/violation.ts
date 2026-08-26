@@ -64,7 +64,8 @@ speaks about code it wasn't shown is worse than a lens that finds nothing.
 One block per violation, in exactly this form, repeated for each:
 
 Finding: <the ratified entry it violates, quoted, and why the red flag fires here>
-Site: <file:line where this run saw it>
+Site: <file:line where this run saw it — a path and a line number, nothing else. No function name,
+no parenthetical, no "~line". A reader resolves this as a path, so anything past it is lost.>
 
 Output only these two labels, once per violation, and nothing else — no other labeled field. If the
 diff violates no ratified entry, say so plainly and stop — an empty pass is a valid pass.
