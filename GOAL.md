@@ -90,6 +90,12 @@ fleet: one push, decisions grouped by topic, a hard cap around 7 in the queue, a
 queue is full. *(Issue [#125](https://github.com/collod873/agent-skills/issues/125).)*
 **Test:** how many times a day does this interrupt?
 
+> **The constraint stands; the Foundry's mechanism for it does not.** The queue cap, the five-day
+> expiry and the governor were struck on measurement —
+> [ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md). The
+> brief alone answers the test above, being the only thing permitted to reach the owner. C7 is
+> unchanged.
+
 ### Where the human deliberately stays
 
 Named as a boundary, not a gap. Automating these makes the result measurably worse:

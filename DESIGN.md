@@ -121,7 +121,7 @@ that becomes load-bearing across six modules is the worst trade available.
 | Model | Runs | Why |
 |---|---|---|
 | **Haiku 4.5** | Capture, labelling, drift detection, brief formatting, cost accounting | High volume, zero discretion, trivially reversible |
-| **Sonnet 5** | Implementation of specified work, refutation, merge warden, fixers | Bounded by a spec and a test suite — the ceiling is the spec, not the model |
+| **Sonnet 5** | Implementation of specified work, refutation, fixers | Bounded by a spec and a test suite — the ceiling is the spec, not the model |
 | **Opus 5** | Spec authoring, seam selection, slicing, audit, adversarial review, the standing lenses | Being subtly wrong is expensive and invisible. Low volume, high consequence |
 
 Reasoning effort moves on the same axis: mechanical stages low, refuters and the coupling lens high.
@@ -443,9 +443,9 @@ obviously wrong, the **spec wins by construction** — the test was authored fro
 so the disagreement is a defect in the test or an ambiguity in the spec, and neither is the
 implementer's to settle. It files `spec/gap`, a blocked-by edge lands on its slice, the spec author
 amends, and the merged amendment fires the re-entry above. The owner sees it only when the spec
-author refuses, through the governor's queue. **An implementer that cannot pass a test is not a
-separate escalation** — it is a red PR, which is the fixer's trigger, and the fixer's three attempts
-then `blocked` is the whole path.
+author refuses, and then through the brief (§8) like anything else. **An implementer that cannot pass
+a test is not a separate escalation** — it is a red PR, which is the fixer's trigger, and the fixer's
+no-progress exit then `blocked` is the whole path.
 [ADR-0034](docs/adr/0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md).
 
 This is the single highest-value item on this page. It is **W2 made structural** — the thing that
@@ -468,34 +468,44 @@ the check and a red refuses without it.
 
 ### 05 · Build
 
-> **Fires on:** `ready` **and** a free slot under the governor's cap. **Refuses:** dispatch when the
-> owner's decision queue is full (§8).
+> **Fires on:** `ready`. **Refuses:** nothing — there is no dispatch gate
+> ([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)).
 >
-> **Cost:** 1 Sonnet per slice, plus up to 3 fix attempts on red. · **Sees:** — while it runs;
-> class 4 at the end of it, via write-on-surprise below
+> **Cost:** 1 Sonnet per slice, plus up to 3 fix attempts on red. · **Sees:** — while it runs
 
 `/implement` and `/drain` exist locally. `/implement` is ported and narrowed by this lane; `/drain`
 does not survive the map — [ADR-0027](docs/adr/0027-six-of-era-6-s-eleven-verbs-do-not-survive-the-map-and-two-s.md).
 
 | Role | Model | Count | Does |
 |---|---|---|---|
-| Implementer | Sonnet | 3–6 concurrent, isolated checkout | Brief is the ticket, the seam manifest, the module's `CONTEXT.md`, and the failing tests — **not** the repo. An implementer that reads broadly couples broadly. Needing to read another module means the interface is wrong, which is a `seam/question` issue, not its call to fix |
-| Fixer | Sonnet | 1 per red PR, **max 3 attempts** | Attempts to green a failing build, then labels `blocked`, writes what it tried, and stops. Uncapped fixers are how you find out on Sunday that something ground against a wall for eleven hours |
+| Implementer | Sonnet | one per ready slice, isolated checkout | Brief is the ticket, the seam manifest, the module's `CONTEXT.md`, and the failing tests — **not** the repo. An implementer that reads broadly couples broadly. Needing to read outside that brief is an interface defect, but it **reads on and records what it read** rather than blocking ([ADR-0042](docs/adr/0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md)) |
+| Fixer | Sonnet | 1 per red PR | Attempts to green a failing build. **Stops when it stops making progress** — same failing test, same error, twice — and in any case at **3 attempts**; then labels `blocked`, writes what it tried, and stops ([ADR-0041](docs/adr/0041-the-fixer-stops-when-it-stops-making-progress-with-three-att.md)). Uncapped fixers are how you find out on Sunday that something ground against a wall for eleven hours |
 
 **The fixer is what unlocks the last move.** It is the only thing in the design that clears a red
 without the owner, so nothing may be promoted to refusing before it exists —
 [ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md), and the reason branch
-protection sits at move 10 rather than move 1.
+protection sits at move 10 rather than move 1. Move 10's timing rides on the fixer **existing**, not
+on what its cap is, so ADR-0041 does not move it.
 
-Concurrency sized to one operator's review rate, not to available compute — see §8.
+**There is no concurrency dial.** Implementer count is however many ready disjoint slices lane 03
+cut, absorbed by lane 08's single serialised merge. A WIP number would duplicate both
+([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)).
 
-**Every run ends with one question:** *what did you learn that, had you known it at the start, would
-have changed what you did?* A real answer is appended to the module's `CONTEXT.md` — the file the
-next implementer's brief already loads, so it is read by construction rather than by hope. Nothing
-means nothing gets written; the bar is surprise, not diligence.
-[ADR-0008](docs/adr/0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md). This is
-W6 — *write the autopsy while it still stings* — and it is the only thing that carries a run's own
-class-4 evidence out of a transcript nobody would otherwise read.
+**A seam question does not block.** The implementer reads what it needs, carries on, and records that
+it went outside its brief and which module it read. **The count is the finding, and it is about lane
+03, not lane 05** — a rising count says the seam manifest is systematically wrong, which no
+per-implementer refusal would ever have surfaced. Nothing downstream watches coupling: the seam lens
+was dropped (ADR-0019, one finding in 28 sessions, stale), and `CODING_STANDARDS.md` carries no rule
+for the violation lens to fire on. That same evidence is why blocking does not earn its cost.
+
+**A run does not write what surprised it.** Write-on-surprise is struck before it is built —
+[ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md), replacing
+ADR-0008's ruling. There are no module `CONTEXT.md` files to write to, the bar is uncalibrated, and
+its failure mode compounds: `CONTEXT.md` is loaded into every future brief by construction, so a
+wrong bar degrades every subsequent run permanently. W6 is carried by the transcript auditor, which
+runs at session end over a corpus already captured and is measured at 70% valuable. **What is lost is
+the fast loop** — a run's learning now reaches the owner at release rather than the next implementer
+directly, and the signal to revisit is implementers rediscovering the same thing about one module.
 
 ### 06 · Verify
 
@@ -607,20 +617,34 @@ engineer for a half day, twice a year. A line item, not a gap to engineer around
 > **Fires on:** PR approved. **Refuses:** a merge whose gauntlet has not been re-run against current
 > trunk.
 >
-> **Cost:** 1 Sonnet per merge, serialised. · **Sees:** class 2, but across a *pair* of diffs — the
-> semantic conflict that neither diff shows alone and no single-diff reviewer can
+> **Cost:** no model — deterministic, serialised. · **Sees:** nothing. It is a merge queue, not a lens
+> ([ADR-0040](docs/adr/0040-lane-08-merges-without-a-model-and-the-semantic-conflict-cla.md))
 
 | Role | Model | Count | Does |
 |---|---|---|---|
-| Merge warden | Sonnet | **exactly 1, serialised** | Rebase, re-run the full gauntlet against current trunk, merge, deploy preview. Builds fan out; merges do not |
+| Merge warden | none | **exactly 1, serialised** | Rebase, re-run the full gauntlet against current trunk, merge, deploy preview. Builds fan out; merges do not |
 
-Its real value is the **semantic** conflict that git merges cleanly: two PRs that both compile, both
-pass, and together mean the product now has two ways to do one thing. It files a coherence issue
-instead of merging.
+**It spends no model and holds nothing.** The class it was built for is the **semantic** conflict git
+merges cleanly: two PRs that both compile, both pass, and together mean the product has two ways to
+do one thing — `formatDate()` in one, `dateToString()` in the other. Neither reviewer catches it,
+because each saw one diff.
 
-This is the merge-time complement to W3, which lane 03 implements at authoring time. Authoring-time
-disjointness prevents textual conflict; nothing prevents semantic conflict. **What a semantic-conflict
-finding looks like, and what the warden does instead of merging, is not yet specified.**
+**That class goes to the proposed lens instead.** Its two-site gate (ADR-0019) already fires on *the
+same thing at two places*, is measured at 55% valuable across 27 graded findings, costs nothing
+beyond the transcript audit already running, and ships in move 8b. The warden's only unique
+contribution was **timing** — the lens deliberately waits for the second site, so it always fires
+once the duplicate is in trunk. That left two coherent designs and no middle: *hold and file*, which
+is genuinely earlier but parks work that only the owner can clear (ADR-0011, the same ground that
+deleted the governor); or *merge and file*, which fires at the identical moment the lens does and
+adds a model call for nothing. Ruled: **neither — no warden model.**
+
+**The bet is that the lens catches it one release later.** If duplicated work starts landing in trunk
+and the lens is not surfacing it, this is the decision to revisit; the evidence is in the release
+batches, which are already stored.
+
+This is still the merge-time complement to W3, which lane 03 implements at authoring time.
+Authoring-time disjointness prevents textual conflict; the serialised merge prevents the rebase race.
+Semantic conflict is watched after the fact rather than at the gate.
 
 ### 09 · Close
 
@@ -724,7 +748,7 @@ recorder, which is the honest price of the three months without one.
 | 1 | The tree at HEAD | Lane 06 — typecheck, lint, test |
 | 2 | A single diff | Lane 07, the diff lens, and the violation lens |
 | 3 | Recurrence across diffs | The coupling lens, and the proposed lens's two-site gate |
-| 4 | The transcript | The transcript lens; write-on-surprise at the end of every run (lane 05) |
+| 4 | The transcript | The transcript lens — the only class-4 mechanism, since write-on-surprise is struck ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)) |
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
 | 7 | **Absence** — what should exist and doesn't | **The parity counter**, below |
@@ -808,30 +832,48 @@ his past decisions. It encodes preferences he has outgrown, he rubber-stamps its
 compounds invisibly under his name. Same data, opposite direction: use the log to flag
 contradictions, never to answer.
 
-## 8 · The governor and the brief
+## 8 · The brief
 
 **The owner is the constraint. Feeding a constraint faster does not help.** *(C7.)*
 
-Two hard limits, both enforced at dispatch, both deterministic code rather than an agent:
+**There is no governor.** It had three limits and none survive —
+[ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md). A daily
+spend ceiling went first (ADR-0024): the pipeline runs on the Claude subscription rather than metered
+API billing, so there is no unit to budget in. The queue-depth stop and the WIP cap went with it, on
+this repo's own first 100 issues:
 
-| Limit | Rule |
+| | |
 |---|---|
-| **Queue depth** | More than ~7 decisions waiting → dispatch stops entirely |
-| **WIP** | Hard slot count per lane, enforced at dispatch, not guidance |
+| Median time to close, 72 closed | **1.5 h** |
+| p90 | 44.3 h |
+| Maximum | **47.1 h** |
+| Ever reached the 5-day expiry | **none** |
+| Peak simultaneous open | **23** — 3× the ~7 cap, no observable stall |
 
-**There is no third limit.** A daily spend ceiling was struck —
-[ADR-0024](docs/adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md): the
-pipeline runs on the Claude subscription rather than metered API billing, so there is no unit to
-budget in. The real ceiling, if one ever binds, is the subscription's own rate limits, and those
-announce themselves at the point of use.
+The owner clears roughly thirty items a day and has never been the bottleneck; a cap sized to his
+review rate is sized against a constraint that has never bound. **Decisions no longer expire**
+either — a five-day re-read guards an event 100 issues say does not happen, which is what
+[ADR-0031](docs/adr/0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) rules
+against. If his answer latency changes, the same query says so, for free, with nothing built.
 
-Work started but not reviewed does not sit still: trunk moves underneath it, it rebases badly, its
-assumptions expire, and re-doing it eventually costs more than building it did. Excess parallelism
-converts money directly into rot.
+**Concurrency was never a dial.** Two things already bound implementer count: the number of ready
+disjoint slices lane 03 cut, and lane 08's single serialised merge that absorbs them. **The
+serialised merge is the real throughput ceiling and is now load-bearing** — it stays serialised
+because parallel wardens cannot see each other's merges, and if it binds, that shows up as PR wait
+time, which is countable.
 
-**Decisions expire.** Anything queued more than five days is re-read before it is shown again, and
-withdrawn rather than repeated if the world moved past it. Coming back from two weeks away means a
-short current queue, not forty stale questions about a version that no longer exists.
+Work started but not reviewed still rots: trunk moves underneath it, it rebases badly, its
+assumptions expire. That cost is caused by the serialised merge, so it belongs at the merge —
+capping dispatch to avoid it was treating the symptom at the wrong end.
+
+**Runner minutes are not an input.** Ruled by the owner 2026-08-26: the rolling-30-day Actions figure
+in `docs/research/actions-billing-2026-08.md` could not be reproduced against a source, and if the
+allowance is ever actually hit, that is the moment to rethink and not before. Nothing here is sized
+against Actions minutes.
+
+**C7 is unchanged.** What did not survive is the Foundry's *mechanism* for it. C7's test is *how many
+times a day does this interrupt?*, and the brief answers that alone, being the only thing permitted
+to reach the owner.
 
 ⬤ **owner · the brief** is the only thing permitted to reach the owner. It reads everything that happened,
 writes sixty seconds of English, and batches decisions **by topic** so five related questions get
@@ -893,7 +935,6 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 | Question | Kind |
 |---|---|
 | [Whether `contract.json` returns, and what an installer covers](https://github.com/collod873/claude-workflow/issues/82) | measured |
-| [How the governor sizes concurrency, and what the fixer's cap buys](https://github.com/collod873/claude-workflow/issues/84) — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have never been measured against this owner's actual answer rate | measured |
 | [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
 
 **Not yet filed.**
@@ -918,19 +959,24 @@ currently holds the number for, and handing it to him as a choice is the sizing 
    before a line exists, on an idea that may be killed. The stage-1 refusal bounds it and the whole
    chain is under a dollar — but the kill rate is the number that says whether the shaper is earning
    its stage.
-4. **Write-on-surprise is uncalibrated** (lane 05). *Measured.* A bar set at "surprise" with no
-   measured rate either floods `CONTEXT.md` or never fires, and only §6's backwards question will
-   say which.
+4. ~~**Write-on-surprise is uncalibrated** (lane 05).~~ **Retired** — the mechanism is struck
+   before it was built, so there is nothing left to calibrate
+   ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)).
 5. **Nothing counts gate bypass** (lane 06). *Measured.* Every venue below Actions is bypassable and
    nothing counts how often an agent routes around one. It is countable, therefore free, and the
    counter belongs in §6.
 6. **Intake templates are per-repo copies** (lane 00). *Measured.* GitHub cannot centralise defaults
    for a private estate. At two repos that is a file; at twenty it is `/sync-skills`, which ADR-0027
    deletes for exactly this reason. Bounded by question 1 and by nothing else.
-7. **Lane 08's merge warden is unspecified.** *Measured.* What a semantic-conflict finding looks
-   like, and what the warden does *instead* of merging.
+7. ~~**Lane 08's merge warden is unspecified.**~~ **Retired** — there is no such finding and no
+   such warden. The lane spends no model and the semantic-conflict class goes to the proposed lens
+   ([ADR-0040](docs/adr/0040-lane-08-merges-without-a-model-and-the-semantic-conflict-cla.md)).
 
 **Ruled, and no longer open.** The seam picker's placement (lane 03's Binds); the daily spend ceiling
 (ADR-0024); the short path's availability to features (ADR-0007); write-on-surprise's home
 (ADR-0008); where a machinery defect is filed (ADR-0009); what a decision sheet contains and when the
-shaper refuses (ADR-0028 through ADR-0031, and §01 above).
+shaper refuses (ADR-0028 through ADR-0031, and §01 above); how many refuters lane 07 ships with
+(ADR-0035 through ADR-0038); **the governor, which does not ship at all** (ADR-0039), and with it
+the ~7 queue cap, the WIP cap and the five-day decision expiry; **lane 08's model** (ADR-0040); the
+fixer's exit (ADR-0041); what a seam question does (ADR-0042); **write-on-surprise, struck**
+(ADR-0043).
