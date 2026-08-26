@@ -128,12 +128,20 @@ never have to check its homework."**
 
 Ordered. Nothing further up the list is optional for anything below it.
 
-1. **Two fail-open holes.** Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.
-   **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
-   `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')` — all
-   from the one shared `mirror.mjs`), failing open and unseen. A fail-open gate in an unattended
-   system is not a gate — this is the precondition for stepping back at all. *(Re-measured
-   2026-08-23; the figure here was ~7 until then.)*
+1. **Two fail-open holes — one retired, one open.** *(Split 2026-08-25; it read as wholly open
+   until then.)* A fail-open gate in an unattended system is not a gate, which is why this is the
+   precondition for stepping back at all.
+   - ~~**Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.**~~ **Retired
+     structurally, not patched, by `b5fd535`.** The close gate is now an Action on
+     `issues.closed` (`.github/workflows/close-gate.yml`), and that event fires no matter *how* an
+     issue was closed — keyword, phone, web UI. An Action that errors is a red run rather than a
+     silent pass, so the crash half cannot recur at this venue either. ADR-0013, ADR-0014;
+     ADR-0021 stands the workstation hook down for this repo. **This repo only** — the era-6
+     estate still runs the PreToolUse hook and still has the hole.
+   - **Open.** **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
+     `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`),
+     all from the one shared `mirror.mjs`, failing open and unseen. That file lives in Lumaria and
+     is untouched. *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
 2. **Nothing in the system can start work.** All ten pipeline verbs are
    `disable-model-invocation: true`; ~34 dispatches a day, almost none of it judgement a human
    holds. This — not model capability, and not verification volume — is the ceiling.
@@ -151,11 +159,28 @@ Ordered. Nothing further up the list is optional for anything below it.
    from 5 standards passes, and **not one has been asked whether it caught anything.**
    `CODING_STANDARDS.md` has exactly one exit — *mechanised* — which requires building another rule
    first, so the doc can only grow.
-4. **No session-time capture.** The conversation spine is ~1.3% of a transcript (~18KB, flat) —
-   ~500KB/day. `cleanupPeriodDays: 30` means every day without a recorder permanently destroys a day
-   of corpus, and any pass-time audit run six weeks later reports a clean sweep on evidence that no
-   longer exists. It matters *more* under autonomy: when nobody is watching, the transcript is the
-   only record of what went wrong.
+
+   **What is actually missing, corrected 2026-08-25.** Not the mechanism. Spec #36 slices 3–4
+   landed the VIOLATION and PROPOSED lenses, the auditor entrypoint, the SHA-range diff helper,
+   the release-scope helper and the PR composer — all of it in `.Workflow/agent-workflows/`, all
+   of it tested. What is missing is the **connector**: nothing fires the auditor, so it is library
+   code with no caller. That is open issue
+   [#56](https://github.com/collod873/claude-workflow/issues/56). A reader acting on the old
+   wording would build the thing that is already built.
+4. ~~**No session-time capture.**~~ **Retired 2026-08-25.** A `SessionEnd` hook is registered
+   **globally** in `~/.claude/settings.json` — by absolute path, at this repo's
+   `.claude/hooks/session-capture.sh` — so every session on this machine is recorded, not only
+   sessions in this repo. Recording is not executing work, so ADR-0002 does not reach it. Landed
+   as spec [#36](https://github.com/collod873/claude-workflow/issues/36) slices 1–2;
+   `~/.claude/session-capture.log` recorded ten captures on the day it landed and
+   `Knowledge-Base/raw/sessions/` has grown past its frozen 841. The `cleanupPeriodDays: 30` clock
+   this blocker was about has stopped running.
+
+   *Why it was a blocker:* the conversation spine is ~1.3% of a transcript (~18KB, flat) —
+   ~500KB/day. Every day without a recorder permanently destroyed a day of corpus, and any
+   pass-time audit run six weeks later reported a clean sweep on evidence that no longer existed.
+   It matters *more* under autonomy: when nobody is watching, the transcript is the only record of
+   what went wrong. Backfill recovered **11 sessions** — all the prune had left of the gap.
 5. **The pre-merge gate is gone.** The only unambiguous regression in the whole six-month record —
    12 broken commits reached `main` in five days, all genuine `unit`/`build` breakage, zero infra
    flake.

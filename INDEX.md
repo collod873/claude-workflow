@@ -25,6 +25,13 @@ Two prior docs already do part of this job and are the deepest reads here:
 baseline `0ab1b63` synced 2026-08-20. `~/.claude/skills/*` and `~/.claude/hooks/*` are nothing
 but symlinks into this tree.
 
+> **This section describes the era-6 estate, not this repo.** `claude-workflow` runs its own
+> arrangement and does not inherit era 6's. Most importantly, **the close gate here is not a
+> PreToolUse hook** — it is a GitHub Action on `issues.closed`
+> (`.github/workflows/close-gate.yml`, ADR-0013/0014), and ADR-0021 stands the workstation hook
+> down for this repo so one rule has one enforcer. Read the era-6 rows below as *what the other
+> estate does*.
+
 ### Pipeline verbs
 
 | Verb | Job | Skill |
@@ -48,7 +55,7 @@ human keystroke. That fact is the subject of open issue [#128](https://github.co
 
 | Hook | Event | What it does |
 |---|---|---|
-| `close-gate.py` | PreToolUse | Refuses a ticket close without a `## Closing record` with every criterion MET |
+| `close-gate.py` | PreToolUse | Refuses a ticket close without a `## Closing record` with every criterion MET. **Era-6 estate only** — stood down for `claude-workflow` by ADR-0021 |
 | `stop-gate.py` | Stop | Turn-end check, 240s deadline, contract-driven |
 | `CHECKER-PROMPT.md` | — | The checker's instructions; lives beside `close-gate.py` because they're the only two machine readers of the closing record |
 | `seeded-doc-router.py` | PreToolUse | Asks whether a seeded-doc edit must propagate |
@@ -170,11 +177,13 @@ Workflow-relevant topics:
 Raw research captures for era 3 sit in `raw/manual/2026-04-1[34]-*.md` — the four full audits
 (`superpowers`, `mattpocock`, `collin-stack`, `three-way`).
 
-**⚠️ The wiki stops on 2026-05-21.** Session-capture hooks were deliberately deregistered
-(`SessionEnd: []`) after an audit found the wiki's heaviest readers were the wiki maintaining itself
-— commit `6c86bb8`, and §7.2. Not a casualty of the iMac → WSL migration. There is no `sandcastle.md`,
-no `agent-skills.md`, no `drain.md` topic. Eras 5 and 6 are documented inside their own repos
-instead. See §7.
+**⚠️ The wiki stops on 2026-05-21, and stays stopped.** Session-capture hooks were deliberately
+deregistered that day, leaving an empty `SessionEnd` array, after an audit found the wiki's
+heaviest readers were the wiki maintaining itself — commit `6c86bb8`, and §7.2. Not a casualty of
+the iMac → WSL migration. There is no `sandcastle.md`, no `agent-skills.md`, no `drain.md` topic.
+Eras 5 and 6 are documented inside their own repos instead. **Capture resumed 2026-08-25** (§7.2)
+but the wiki did not: the replacement stores the spine and nothing reads it back to maintain
+itself. See §7.
 
 ---
 
@@ -279,7 +288,7 @@ classified by relevance) · **`cvm-sandcastle-extensions.md`** (the 15 custom wo
 | ADR | Ruling |
 |---|---|
 | 0001 | Pipeline is states, not activities |
-| 0002 / 0005 | The close gate is a verification record, enforced as a PreToolUse command hook |
+| 0002 / 0005 | The close gate is a verification record, enforced as a PreToolUse command hook. **The venue no longer holds here** — this repo's own ADR-0010/0013/0014 move it to an Action on `issues.closed`, and ADR-0021 stands the hook down so the rule keeps exactly one enforcer. The *record* half of the ruling is unchanged |
 | 0007 | Execution order is a file claim (disjointness) |
 | 0008 | Drain takes a batch, not a spec |
 | 0010 | Vendored / forked / local-only — the sync taxonomy |
@@ -354,8 +363,17 @@ in any project:
    were enough. **The reason on record:** distributed orchestration bought for a workload that was
    never distributed — one operator, one machine, one repo. The remaining work is writing the doc,
    absorbing the 08-21 measurements rather than restarting.
-2. **Session capture was killed, not lost.** Stopped 2026-05-21; `~/.claude/settings.json` has
-   `SessionEnd: []`. Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4
+2. **~~Session capture was killed, not lost.~~ Replaced 2026-08-25.** A `SessionEnd` hook is
+   registered globally in `~/.claude/settings.json`, by absolute path, at this repo's
+   `.claude/hooks/session-capture.sh` (spec #36 slices 1–2). It stores the spine only — **the wiki
+   stays retired**, which is #36's answer to *what stops this becoming its own biggest customer*:
+   the release trigger fires on a PRD close or N=20 unreleased observations rather than on a
+   clock, and the exhaust filter keeps the machinery's own commits out of its input (ADR-0017).
+   Backfill recovered **11 sessions** — all the 30-day prune had left, and the honest measure of
+   what the three-month delay cost.
+
+   *The history below stands.* Stopped 2026-05-21, when `~/.claude/settings.json` was left with an
+   empty `SessionEnd` array. Apr 2026: 540 session captures. Jun 2026: **0**. The wiki documents eras 1–4
    and nothing after, while reading as if it were current. **Corrected 2026-08-23:** this entry
    used to attribute the stop to the iMac → WSL migration. Knowledge-Base commit `6c86bb8`
    (2026-05-21 21:07) says otherwise — *"System became more burden than help (per audit: top wiki
@@ -365,10 +383,15 @@ in any project:
    it is the same disease ADR-0029 diagnosed in the standards chain three months later — so any
    replacement owes an answer to *what stops this becoming its own biggest customer*. The corpus
    survives: `Knowledge-Base/raw/sessions/`, 841 captures, 2026-04-13 → 2026-05-21, git-tracked.
-3. **The 30-day prune makes any pass-time transcript audit silently vacuous.** `cleanupPeriodDays:
-   30` — a scan run six weeks after the last one loses the first two weeks and reports a clean
-   sweep. #124's ruling: capture must happen at **session time**, stored durably. The conversation
-   spine is ~1.3% of a transcript (~18KB, flat) — ~500KB/day.
+3. **~~The 30-day prune makes any pass-time transcript audit silently vacuous.~~ Resolved
+   2026-08-25** by the same hook as §7.2 — #124's ruling was that capture must happen at **session
+   time**, stored durably, and that is now what happens. `cleanupPeriodDays: 30` still prunes, but
+   it no longer destroys anything that was not already written out. The conversation spine is
+   ~1.3% of a transcript (~18KB, flat) — ~500KB/day.
+
+   **The residue worth keeping:** backfill could salvage only **11 sessions** from the gap between
+   2026-05-21 and 2026-08-25. Everything else in those three months is gone, and no later audit
+   can reach it. That number, not the recovery, is what the delay cost.
 4. **The corpus can't see Sandcastle, cloud, or GH-runner work.** Zero typed prompts 4–19 Aug
    reads as a break but was a venue change.
 5. **Era 1 is undocumented** and probably should stay that way — its lesson (no enforcement, no
@@ -377,11 +400,15 @@ in any project:
    `General-Repo/salvage/correction-ledger-2026-08-21/` — `extract.py`, `prompts.jsonl` (2,617
    prompts), `behavioral.txt`, `correction-ledger.html`. The script is a *human-prompt filter*, not
    a correction classifier: the "is this a correction" judgement was always a downstream model pass.
-7. **Two fail-open holes.** Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.
-   **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
-   `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`), all
-   from the one shared `mirror.mjs`, fail-open and unseen. A fail-open gate in an unattended system
-   is not a gate. *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
+7. **Two fail-open holes — one retired, one open.** *(Split 2026-08-25; `GOAL.md` §4 blocker 1 is
+   the same entry.)* ~~Commit-keyword closes (`Closes #704`) never reach the PreToolUse gate.~~
+   **Retired for `claude-workflow` by `b5fd535`** — the gate is an Action on `issues.closed`,
+   which fires however an issue was closed, and an Action that errors is a red run rather than a
+   silent pass. The era-6 estate still has the hole. **Still open:** **83 rows in each of two
+   logs** are rails crashing (`SELECT_ITEMS is not defined`, `HEX_COLOR_WHOLE is not defined`,
+   `Cannot read properties of undefined (reading 'rules')`), all from the one shared `mirror.mjs`
+   in Lumaria, fail-open and unseen. A fail-open gate in an unattended system is not a gate.
+   *(Re-measured 2026-08-23; the figure here was ~7 until then.)*
 8. **No mechanism points backwards.** 30 ADRs in a month, 9 amending an earlier one; 36 lint rules
    from 5 standards passes; **not one of the 36 has been asked whether it caught anything.**
 9. **The Stop-time gates have never fired, and a third of the hooks cannot be asked.** Measured
