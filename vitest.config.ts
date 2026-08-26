@@ -11,9 +11,14 @@ import { defineConfig } from "vitest/config";
 // made that difference the test's verdict. A timeout sized for the fastest venue is a gate that
 // goes red for environment reasons, which is how a repo learns to ignore its gates —
 // see docs/adr/0015-a-test-s-timeout-is-sized-for-the-slowest-venue-it-runs-in-n.md.
+// `setupFiles` runs inside each worker, which is the only place the scrub can go: a fixture that
+// spawns `git` with the default inherited environment reads the *worker's* `process.env`, not
+// this config's. It is listed here rather than imported per test file because the tests that need
+// it are the ones nobody has written yet — see the file's own comment and #86.
 export default defineConfig({
   test: {
     include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
+    setupFiles: [".Workflow/agent-workflows/shared/scrub-git-env.setup.ts"],
     maxWorkers: 4,
     testTimeout: 30_000,
   },

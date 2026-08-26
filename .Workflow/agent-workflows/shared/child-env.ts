@@ -7,7 +7,7 @@
  * spawns — including `pre-push` — so a seam that shells out to `git` from
  * inside a hook inherits a location override its caller never asked for.
  */
-const GIT_LOCATION_VARS = [
+export const GIT_LOCATION_VARS = [
   "GIT_DIR",
   "GIT_WORK_TREE",
   "GIT_INDEX_FILE",
@@ -28,7 +28,18 @@ const GIT_LOCATION_VARS = [
  * process happened to inherit.
  */
 export function childEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  return scrubGitLocationVars({ ...process.env });
+}
+
+/**
+ * Deletes the git location variables from `env` in place and returns it. The
+ * seam calls this on a *copy* of `process.env`; the test suite calls it on
+ * `process.env` itself (see `./scrub-git-env.setup.ts`), because a fixture
+ * that shells out to `git` with the default inherited environment has no seam
+ * to scrub — the only place left to remove the variable is the process the
+ * fixture is running in.
+ */
+export function scrubGitLocationVars(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   for (const key of GIT_LOCATION_VARS) delete env[key];
   return env;
 }

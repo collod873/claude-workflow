@@ -103,7 +103,32 @@ fi
 pids+=($!)
 
 if [ "$venue" != "turn" ]; then
-  run_check test "$bin_dir/vitest" run &
+  # The suite runs against a decoy repository, named by the same three variables that let #86
+  # happen: `GIT_DIR` beats a `cwd` and an argv `-C`, so a fixture that shells out to `git` writes
+  # wherever they point. Twice in one hour they pointed here, and 74 fixture commits walked `main`
+  # onto a chain of `seed` / `the release commit`; the second time it reached `origin`.
+  #
+  # `vitest.config.ts` scrubs them from every worker, and `git-env-sandbox.test.ts` asserts the
+  # scrub is wired. Neither can speak for a test nobody has written yet, which is the half that
+  # actually failed last time — the seam was already fixed, and the fixtures still wrote. So the
+  # gate stops trusting the assertion and reads the decoy afterwards: an empty repository is the
+  # whole suite demonstrating, at every venue that runs it, that it wrote to no repository but its
+  # own fixtures. A future test author does not have to know this exists for it to hold.
+  sandbox="$tmp/git-sandbox"
+  if ! (
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
+    git -c init.defaultBranch=main init -q "$sandbox"
+  ) 2>"$tmp/sandbox-init.out"; then
+    echo "gauntlet: could not create the git sandbox — checks not run" >&2
+    cat "$tmp/sandbox-init.out" >&2
+    exit 2
+  fi
+
+  run_check test env \
+    GIT_DIR="$sandbox/.git" \
+    GIT_WORK_TREE="$sandbox" \
+    GIT_INDEX_FILE="$sandbox/.git/index" \
+    "$bin_dir/vitest" run &
   pids+=($!)
 fi
 
@@ -111,6 +136,28 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 elapsed_ms=$((($(date +%s%N) / 1000000) - started_ms))
 
 failed=0
+
+# Read the decoy. This is a finding about the suite, not about the code under test, so it is
+# reported separately from `test` — a green suite that wrote into the sandbox is a worse result
+# than a red one, and naming it `test` would bury that.
+if [ "$venue" != "turn" ]; then
+  sandbox_refs="$(
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
+    git --git-dir="$sandbox/.git" for-each-ref
+  )"
+  sandbox_objects="$(
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
+    git --git-dir="$sandbox/.git" count-objects | cut -d' ' -f1
+  )"
+  if [ -n "$sandbox_refs" ] || [ "$sandbox_objects" != "0" ]; then
+    failed=1
+    echo "--- git-sandbox ---"
+    echo "A test wrote into the repository named by GIT_DIR — with that variable set in a real"
+    echo "session, this is a write to your checkout (#86). $sandbox_objects loose object(s):"
+    echo "$sandbox_refs"
+  fi
+fi
+
 for name in typecheck lint test; do
   [ -f "$tmp/$name.out" ] || continue
   [ -f "$tmp/$name.pass" ] && continue
