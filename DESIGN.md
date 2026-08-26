@@ -257,7 +257,7 @@ made, not whenever somebody remembers to write it down.
 |---|---|
 | `approved` | Files the ADRs from marked decisions passing the three-part bar, coins any new `CONTEXT.md` terms, dispatches on the route. The same click starts the work |
 | `go-long` / `go-short` | Optional, alongside `approved` — the one-word route override ADR-0007 asks for |
-| `parked` | No dispatch. Drops the `idea` label so this lane cannot re-fire. The sheet stays as the record and **nothing ever re-raises it** — §8's five-day expiry does not reach it, because parking removes it from the queue. Anything that resurfaces parked work is a nag, and C4 says a nag dies by month three |
+| `parked` | No dispatch. Drops the `idea` label so this lane cannot re-fire. The sheet stays as the record and **nothing ever re-raises it**, because parking removes it from the queue. Anything that resurfaces parked work is a nag, and C4 says a nag dies by month three |
 | `killed` | Closes the issue, and becomes **prior art with teeth**: stage 1's refusal reads closed ideas, so re-filing the same idea is refused with a link to the kill and never reaches the shaper |
 | a comment | A change request — re-runs the shaper, capped at 2 rounds, then it posts as-is and only `approved` / `parked` / `killed` remain. Uncapped is the fixer mistake in a new place |
 
@@ -380,8 +380,9 @@ and never asks a sizing or architecture question, which he cannot.
 > — **The seam picker runs at slice time, not at spec time**, so lane 02 does not owe an interface
 > contract before slicing. Neither placement follows from a constraint; the built one holds until a
 > slice fails in a way that names the answer.
-> — Physical disjointness is drawn here, which is what makes lane 05's 3–6 concurrent implementers
-> safe to run at all. That is **W3**, and lane 08 is its merge-time complement rather than a
+> — Physical disjointness is drawn here, which is what makes concurrent implementers safe to run at
+> all — and since ADR-0039 leaves no concurrency dial, the slices this lane cuts *are* lane 05's
+> concurrency. That is **W3**, and lane 08 is its merge-time complement rather than a
 > replacement.
 > — Every `dependsOn` is published as a native blocked-by edge and read back to verify, so the
 > dependency graph is a GitHub object rather than a field in a file.
@@ -594,7 +595,7 @@ refusal above is that second lesson; the single refuter is what is left once ari
 work it can do.
 
 **The direction of change is grow, and the counter is two-sided.** A second refuter is proposed at
-**3** surviving findings the owner closed `not planned` or left past §8's five-day expiry; the fleet's
+**3** surviving findings the owner closed `not planned` or left untouched for five days; the fleet's
 deletion is proposed at **20** findings with zero ever refuted
 ([ADR-0037](docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)). Both
 file an issue and never act. The asymmetry is deliberate: adding a refuter is a prompt edit, and
@@ -776,8 +777,10 @@ planned*. It is class 6 and **countable**, which by this section's own argument 
 count is `not_planned` closes on issues that carry `## Acceptance criteria` — and crossed with class
 9, the owner's own behaviour, that same count is what sizes lane 07's refuter fleet
 ([ADR-0037](docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)): a
-surviving review finding closed `not planned`, or left untouched past §8's five-day expiry, is a
-false alarm that reached him. It ships with lane 07 rather than waiting behind the three above,
+surviving review finding closed `not planned`, or **left untouched for five days**, is a false alarm
+that reached him. Five days is a plain duration, not a reference to §8's deleted expiry — and it is
+better grounded now than when it was inherited: the longest this repo has ever taken to close an
+issue is 47.1 h, so untouched-at-five-days is ~2.5× the worst observed and genuinely anomalous. It ships with lane 07 rather than waiting behind the three above,
 because it is that lane's only evidence that its filter is sized right.
 
 None of the three spends a model, and all three can run on every push: counting produces no commits,

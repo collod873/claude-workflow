@@ -69,6 +69,19 @@ was treating the symptom at the wrong end.
 
 **Move 9 shrinks to the brief.** "The governor and the brief" is now just the brief.
 
+**[ADR-0037](0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)'s growth counter
+keeps its five days.** It sizes lane 07's refuter fleet on findings the owner closed `not planned`
+*or left untouched past §8's five-day expiry* — and deleting the expiry left half that trigger
+undefined. The duration survives the mechanism: **five days is now a plain measurement of neglect**,
+with no re-read and no withdrawal attached. It is better grounded as a measurement than it was as a
+mechanism — the longest this repo has ever taken to close an issue is 47.1 h, so untouched-at-five-
+days is roughly 2.5× the worst case ever observed, which is what makes it a signal. ADR-0037 is
+otherwise unchanged.
+
+**Two other passages referred to deleted machinery** and are corrected in the same range: lane 01's
+`parked` verb no longer explains itself by an expiry that does not reach it, and lane 03's W3 note no
+longer cites "3–6 concurrent implementers" — the slices it cuts *are* lane 05's concurrency.
+
 **`DESIGN.md` §11's filed question for [#84](https://github.com/collod873/claude-workflow/issues/84)
 is answered**, and the ~7 queue cap and five-day expiry stop being unmeasured numbers by ceasing to
 exist.
