@@ -35,6 +35,10 @@ name: Close gate reconcile
 permissions:
   contents: read
   issues: write
+  # The sweep's whole question is "did `close-gate.yml` run on this close?", which it answers by
+  # listing that workflow's runs. Without this the `gh run list` returns 403 and the entrypoint
+  # exits `degraded` — which is what it did on every dispatch it received until #107.
+  actions: read
 
 # Serialised rather than cancelled: two sessions ending together would otherwise both read the
 # same unjudged close and both comment on it, and a run cancelled mid-sweep would leave half the

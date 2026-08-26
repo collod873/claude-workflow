@@ -15,6 +15,13 @@ name: Audit
 # two still agree, mirroring `close-gate.yml`'s `state_reason` scope rule and `close-gate.ts`'s
 # `DELIVERY_CLOSE_REASON`.
 #
+# That scope is spelled `session-captured` — the capture hook's own dispatch, shared with
+# `close-gate-reconcile.yml` rather than given a second one (#107). This file and `run-audit.ts`
+# once agreed on `audit`, a name nothing ever sent; both sides were pinned by a test and both
+# tests passed, because each looked only at its own side of the boundary. `dispatch-action.test.ts`
+# reads `session-capture-hook.mjs` and every consumer of it, which is the only place the
+# disagreement was ever visible.
+#
 # `concurrency` serialises runs rather than cancelling one mid-flight: an audit that raced its own
 # push would either lose findings or spend a retry it didn't need to, and a release that opened a
 # PR is not work a later run should ever discard by being cancelled out from under it.
@@ -32,7 +39,7 @@ concurrency:
 
 jobs:
   audit:
-    if: github.event.action == 'audit'
+    if: github.event.action == 'session-captured'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

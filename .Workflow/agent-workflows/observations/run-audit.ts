@@ -27,8 +27,16 @@ import { readSessionRecord } from "./session-notes";
  * across that language boundary, so `run-audit.test.ts` asserts the two
  * still agree, and this constant is the second reader for a local run and for
  * the case where the workflow's own `if` is ever edited wrong.
+ *
+ * The name is the emitter's, not this lane's (#107). This constant and
+ * `audit.yml` both used to read `audit`, agreeing with each other and with
+ * nothing on the wire: the hook has always dispatched `session-captured`, so
+ * 14 of 14 `Audit` runs skipped while both sides stayed green. A consumer is
+ * free to be renamed, an emitter with two live consumers is not, so the
+ * consumers moved. `dispatch-action.test.ts` is the guard that now reads the
+ * hook itself and refuses any consumer that drifts off it again.
  */
-export const AUDIT_DISPATCH_ACTION = "audit";
+export const AUDIT_DISPATCH_ACTION = "session-captured";
 
 export interface RunAuditOptions {
   git: GitExec;
