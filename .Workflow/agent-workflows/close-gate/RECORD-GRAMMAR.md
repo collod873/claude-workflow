@@ -11,6 +11,10 @@ The gate fires on `issues.closed` and judges only a close marked **completed**. 
 A comment whose **first line** is `## Closing record`. Most recent wins — post a corrected one
 after a refusal rather than editing or deleting the record that was refused.
 
+A refused close is reopened and labelled `close-refused`. That label means **still refused**: the
+passing re-close lifts it (ADR-0023), so an issue wearing it is outstanding work rather than a
+scar. Refusals are counted from the refusal comments, which stay, and from the Actions log.
+
 ```md
 ## Closing record
 

@@ -170,6 +170,69 @@ describe("degraded — the gate could not do its job", () => {
   });
 });
 
+// ADR-0023. The label is what a triage query sees, so it has to mean "still
+// refused" and not "was refused once" — otherwise a repaired close counts as
+// outstanding work forever. History lives in the refusal comment and the run
+// log, neither of which this lifts.
+describe("the label is state — a passing re-close lifts it", () => {
+  it("lifts `close-refused` when the repaired close passes", () => {
+    const { outcome, tracker } = gate({
+      body: bodyWithCriteria(1),
+      comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
+      labels: [REFUSED_LABEL],
+    });
+    expect(outcome.action).toBe("pass");
+    expect(tracker.labelsRemoved).toEqual([REFUSED_LABEL]);
+  });
+
+  it("lifts it on a salvaged pass too — the venue of the repair is not the point", () => {
+    const { outcome, tracker } = gate({
+      body: bodyWithCriteria(1),
+      comments: ["Merged in #7."],
+      labels: [REFUSED_LABEL],
+      response: salvageResponse(recordComment({ bullets: ["Criterion 1 — MET: `src/a.ts:1`"] })),
+    });
+    expect(outcome).toMatchObject({ action: "pass", salvaged: true });
+    expect(tracker.labelsRemoved).toEqual([REFUSED_LABEL]);
+  });
+
+  it("leaves the label on when the close is refused again", () => {
+    const { tracker } = gate({
+      body: bodyWithCriteria(1),
+      comments: [recordComment({ bullets: ["Criterion 1 — UNMET: still not built"] })],
+      labels: [REFUSED_LABEL],
+    });
+    expect(tracker.labelsRemoved).toEqual([]);
+  });
+
+  it("spends no tracker write on the ordinary close that was never refused", () => {
+    const { tracker } = gate({
+      body: bodyWithCriteria(1),
+      comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
+      labels: ["enhancement"],
+    });
+    expect(tracker.calls.map((call) => call[1])).toEqual(["view"]);
+  });
+
+  it("does not reverse a verified pass because the label would not come off", () => {
+    const tracker = createFakeTracker({
+      body: bodyWithCriteria(1),
+      comments: [recordComment({ bullets: ["Criterion 1 — MET: `src/thing.ts:12`"] })],
+      labels: [REFUSED_LABEL],
+      labelFails: true,
+    });
+    const outcome = runCloseGate({
+      issueNumber: 42,
+      stateReason: DELIVERY_CLOSE_REASON,
+      gh: tracker.gh,
+      exec: createFakeStage("").exec,
+      log: silent,
+    });
+    expect(outcome.action).toBe("pass");
+    expect(tracker.reopenedWith).toBeNull();
+  });
+});
+
 describe("a missing label never costs the refusal", () => {
   it("still reopens when the label write fails", () => {
     const tracker = createFakeTracker({

@@ -30,7 +30,8 @@ import {
  * Three outcomes, and the difference between the last two matters:
  *
  * - **pass** — the close stands. Nothing is written to the issue unless a
- *   record was salvaged, in which case the record is posted.
+ *   record was salvaged (the record is posted) or a previous refusal is
+ *   still labelled (the label is lifted).
  * - **refuse** — the close is reversed: the issue is reopened, the reason
  *   commented, `close-refused` applied. The run stays green, because a
  *   refusal is this gate working, not this gate breaking.
@@ -56,7 +57,15 @@ import {
  */
 export const DELIVERY_CLOSE_REASON = "completed";
 
-/** The label a refused close leaves behind, so refusals are countable. */
+/**
+ * The label an open refusal wears. **State, not history** (ADR-0023): a
+ * refusal applies it and a passing re-close lifts it, so anything that
+ * filters open work by it — a triage query, a wayfinder sweep — sees the
+ * refusals that are still outstanding rather than every refusal there has
+ * ever been. What happened is durable elsewhere and cannot be lifted: the
+ * refusal comment stays on the issue, and the run stays in the log. Count
+ * refusals from those; never from this.
+ */
 export const REFUSED_LABEL = "close-refused";
 
 /**
@@ -78,11 +87,15 @@ const SalvagedRecord = z.object({
   record: z.string().min(1),
 });
 
-/** The tracker's answer to `gh issue view --json body,comments`. */
+/** The tracker's answer to `gh issue view --json body,comments,labels`. */
 const IssueView = z.object({
   body: z.string().nullable().optional(),
   comments: z
     .array(z.object({ body: z.string().nullable().optional() }))
+    .nullable()
+    .optional(),
+  labels: z
+    .array(z.object({ name: z.string().nullable().optional() }))
     .nullable()
     .optional(),
 });
@@ -118,10 +131,10 @@ export interface GateInput {
 function fetchIssue(
   gh: GhExec,
   issueNumber: number,
-): { body: string; comments: IssueComment[] } | null {
+): { body: string; comments: IssueComment[]; labels: string[] } | null {
   let parsed: ReturnType<typeof IssueView.safeParse>;
   try {
-    const raw = gh(["issue", "view", String(issueNumber), "--json", "body,comments"]);
+    const raw = gh(["issue", "view", String(issueNumber), "--json", "body,comments,labels"]);
     // `JSON.parse` is inside the guard, not beside it: a `gh` that answers
     // with something unparseable is the same degraded outcome as a `gh` that
     // does not answer at all, and letting the parse throw past here would
@@ -136,6 +149,7 @@ function fetchIssue(
   return {
     body: parsed.data.body ?? "",
     comments: (parsed.data.comments ?? []).map((comment) => ({ body: comment.body ?? "" })),
+    labels: (parsed.data.labels ?? []).map((label) => label.name ?? ""),
   };
 }
 
@@ -177,6 +191,33 @@ function reverseClose(gh: GhExec, issueNumber: number, comment: string, log: (li
     gh(["issue", "edit", String(issueNumber), "--add-label", REFUSED_LABEL]);
   } catch (err) {
     log(`could not apply \`${REFUSED_LABEL}\`: ${reason(err)}`);
+  }
+}
+
+/**
+ * Lifts `close-refused` from an issue whose close has just been accepted.
+ * The mirror of `reverseClose`'s label write, and forgiving in the same way
+ * and for the same reason: the pass is the verdict, and a label that will
+ * not come off is worth a line in the log rather than a reversal of a close
+ * the gate just verified.
+ *
+ * Conditional on the label actually being there, so the ordinary close —
+ * which never had a refusal — spends no tracker write at all. That is what
+ * keeps the pass path's "wrote nothing to the issue" assertion meaningful.
+ */
+function clearRefusal(
+  gh: GhExec,
+  issueNumber: number,
+  labels: string[],
+  log: (line: string) => void,
+): void {
+  if (!labels.includes(REFUSED_LABEL)) {
+    return;
+  }
+  try {
+    gh(["issue", "edit", String(issueNumber), "--remove-label", REFUSED_LABEL]);
+  } catch (err) {
+    log(`could not lift \`${REFUSED_LABEL}\`: ${reason(err)}`);
   }
 }
 
@@ -242,6 +283,7 @@ export function runCloseGate(input: GateInput): Outcome {
   if (existing !== null) {
     const evaluation = evaluateRecord(existing, criteriaCount);
     if (evaluation.verdict === "allow") {
+      clearRefusal(gh, issueNumber, issue.labels, log);
       return { action: "pass", code: evaluation.code, note: evaluation.message, salvaged: false };
     }
     reverseClose(gh, issueNumber, refusalComment(evaluation, runUrl, false), log);
@@ -281,6 +323,7 @@ export function runCloseGate(input: GateInput): Outcome {
     // receipt is worth a line in the log, not a reopen.
     log(`could not post the salvaged record: ${reason(err)}`);
   }
+  clearRefusal(gh, issueNumber, issue.labels, log);
   return { action: "pass", code: evaluation.code, note: evaluation.message, salvaged: true };
 }
 

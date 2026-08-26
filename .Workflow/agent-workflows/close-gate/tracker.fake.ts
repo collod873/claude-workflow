@@ -24,6 +24,8 @@ export interface FakeTracker {
   reopenedWith: string | null;
   /** Labels added via `issue edit --add-label`, in order. */
   labelsAdded: string[];
+  /** Labels removed via `issue edit --remove-label`, in order. */
+  labelsRemoved: string[];
   /** Bodies posted via `issue comment`, in order. */
   commentsPosted: string[];
 }
@@ -33,6 +35,8 @@ export interface FakeTrackerOptions {
   body?: string;
   /** The issue's comments, oldest-first, as the tracker returns them. */
   comments?: string[];
+  /** The labels the issue carries when the gate reads it. */
+  labels?: string[];
   /** Make `issue view` fail, modelling a tracker that will not answer. */
   viewFails?: boolean;
   /** Make `issue view` return something that is not a well-formed answer. */
@@ -44,12 +48,14 @@ export interface FakeTrackerOptions {
 export function createFakeTracker(options: FakeTrackerOptions = {}): FakeTracker {
   const calls: string[][] = [];
   const labelsAdded: string[] = [];
+  const labelsRemoved: string[] = [];
   const commentsPosted: string[] = [];
   const tracker: FakeTracker = {
     gh: () => "",
     calls,
     reopenedWith: null,
     labelsAdded,
+    labelsRemoved,
     commentsPosted,
   };
 
@@ -66,6 +72,7 @@ export function createFakeTracker(options: FakeTrackerOptions = {}): FakeTracker
       return JSON.stringify({
         body: options.body ?? "",
         comments: (options.comments ?? []).map((body) => ({ body })),
+        labels: (options.labels ?? []).map((name) => ({ name })),
       });
     }
 
@@ -79,9 +86,13 @@ export function createFakeTracker(options: FakeTrackerOptions = {}): FakeTracker
       if (options.labelFails) {
         throw new Error("fake tracker: no such label");
       }
-      const labelFlag = args.indexOf("--add-label");
-      if (labelFlag !== -1) {
-        labelsAdded.push(args[labelFlag + 1]);
+      const addFlag = args.indexOf("--add-label");
+      if (addFlag !== -1) {
+        labelsAdded.push(args[addFlag + 1]);
+      }
+      const removeFlag = args.indexOf("--remove-label");
+      if (removeFlag !== -1) {
+        labelsRemoved.push(args[removeFlag + 1]);
       }
       return "";
     }

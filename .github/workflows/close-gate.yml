@@ -25,7 +25,9 @@ name: Close gate
 # What clears a refusal, per ADR-0011: post a `## Closing record` comment that clears the grammar
 # and close the issue again. Most-recent-wins, so a corrected record does not require deleting the
 # one that was refused. That repair exists today and costs nothing, which is what makes this
-# refusal shippable where branch protection (move 10) still is not.
+# refusal shippable where branch protection (move 10) still is not. The passing re-close also
+# lifts `close-refused` (ADR-0023) — the label means "still refused", so a repair has to be able
+# to end it, and refusals are counted from the refusal comments and this log instead.
 
 "on":
   issues:
@@ -58,7 +60,7 @@ jobs:
         run: |
           gh label create close-refused \
             --color b60205 \
-            --description "A close this gate reopened" \
+            --description "An open refusal — this gate reopened the close and has not since accepted one" \
             --force
 
       # The salvage stage is conditional — most closes carry a record and spend nothing — so this
