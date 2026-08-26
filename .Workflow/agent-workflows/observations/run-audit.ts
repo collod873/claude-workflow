@@ -6,6 +6,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { syncNotesRef } from "../shared/notes-sync";
 import { execClaude, type StageExec } from "../shared/stage";
+import { repoScoped } from "../capture/touched-paths";
 import { writeObservationNote } from "./notes";
 import { runObservations } from "./run-observations";
 import { runRelease } from "./run-release";
@@ -120,13 +121,25 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
     return { action: "skipped", code: "empty-range", releasedCount: 0 };
   }
 
+  // Records written before `touched-paths.ts` existed carry absolute workstation paths, and a
+  // note on `refs/notes/sessions` is never rewritten — so this run would inherit a pathspec that
+  // makes `git diff` exit `fatal: Invalid path` on a runner (#107). What can't be repaired here is
+  // dropped, and the lens reads the unrestricted range diff instead: wider than intended, which is
+  // the version of wrong that still produces a finding. Said out loud so a wide read is never
+  // mistaken for a narrow one.
+  const touchedPaths = repoScoped(record.touchedPaths);
+  if (touchedPaths.length !== record.touchedPaths.length) {
+    const dropped = record.touchedPaths.length - touchedPaths.length;
+    log(`note: dropped ${dropped} unusable path(s) from session ${record.sessionId}'s record`);
+  }
+
   const observations = await runObservations({
     git,
     exec,
     repoDir,
     base: record.base,
     head: record.head,
-    touchedPaths: record.touchedPaths,
+    touchedPaths,
     spine: record.spine,
     standards,
   });
