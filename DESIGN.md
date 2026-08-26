@@ -556,22 +556,47 @@ is the only thing that will ever tell us to split them.
 
 ### 07 · Review
 
-> **Fires on:** CI green. **Refuses:** nothing — this lane produces findings, not verdicts.
+> **Fires on:** CI green. **Refuses:** a finding that names no `path:line` in the diff, or that
+> restates a rule a green gate already enforces — before any model reads it
+> ([ADR-0036](docs/adr/0036-a-finding-a-green-gate-already-covers-is-refused-before-any.md)). The
+> lane produces findings rather than verdicts, so it refuses nothing about the PR itself.
 >
-> **Cost:** 2 Opus per PR, plus 3 Sonnet per finding. The most expensive lane per unit of work, and
-> the refuters are the reason its output does not cost more downstream than it does here. ·
-> **Sees:** class 2 (a single diff) and class 6 (spec conformance)
+> **Cost:** 2 Opus per PR, plus **at most 1 Sonnet per surviving finding**. · **Sees:** class 2 (a
+> single diff) and class 6 (spec conformance)
 
 | Role | Model | Count | Does |
 |---|---|---|---|
 | Correctness reviewer | Opus | 1 per PR | Hunts defects, not style. Style is the linter's job and arguing about it in review is pure noise |
-| Conformance reviewer | Opus | 1 per PR | Reads the **spec first, then the diff**, and answers one question: does this do what the spec said, or what the code says it does? An agent that reads the implementation first will rationalise it |
-| Refuter ×3 | Sonnet | 3 per finding, parallel | Every finding gets three independent agents trying to **kill** it. Default to refuted when uncertain. Majority-refuted findings are dropped without ever being seen |
+| Conformance reviewer | Opus | 1 per PR | Reads the **spec first, then the diff** — an agent that reads the implementation first will rationalise it. Scoped to **the part of the spec no acceptance test encodes**, because lane 04 already answered the rest in the CI run this lane fires on. Code diverging from a clear spec is a review finding; a spec that is silent or wrong is **`spec/gap`**, fired at lane 02 ([ADR-0038](docs/adr/0038-lane-07-s-conformance-reviewer-files-spec-gap-where-the-spec.md)) |
+| Refuter ×1 | Sonnet | **1 per surviving finding** | Tries to **kill** the finding. At N=1 there is no majority, so it is a veto — which is why a refusal must **name its reason**, and one that names nothing is stripped mechanically and the finding survives ([ADR-0035](docs/adr/0035-lane-07-ships-with-one-refuter-and-a-refusal-that-names-no-r.md)) |
 
-The refuters are not a quality mechanism — they are the **queue-length mechanism**. C7 caps the
-owner's queue at ~7; a review layer with no filter fills that cap with noise in a day, and the next
-round of alarms gets trusted less. A false alarm that reaches the owner costs more than a caught bug
-missed here. **How many refuters it actually ships with is open** — see §11.
+The refuter is not a quality mechanism — it is the **queue-length mechanism**. C7 caps the owner's
+queue at ~7; a review layer with no filter fills that cap with noise in a day, and the next round of
+alarms gets trusted less. A false alarm that reaches the owner costs more than a caught bug missed
+here.
+
+**Three refuters was a guess, and the number that retired it already existed.** ADR-0019's graded
+corpus — 27 findings judged by the owner — puts this estate's agent-finding noise rate at **22%
+worthless**, which at this repo's PR volume is roughly one noise finding every second PR against a
+queue cap of ~7. The two things that actually moved that corpus from 26% valuable to 70% were
+neither of them a model: fixing the lens's **input**, and adding a free **deterministic** gate. The
+refusal above is that second lesson; the single refuter is what is left once arithmetic has done the
+work it can do.
+
+**The direction of change is grow, and the counter is two-sided.** A second refuter is proposed at
+**3** surviving findings the owner closed `not planned` or left past §8's five-day expiry; the fleet's
+deletion is proposed at **20** findings with zero ever refuted
+([ADR-0037](docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)). Both
+file an issue and never act. The asymmetry is deliberate: adding a refuter is a prompt edit, and
+ADR-0019 dropped two whole lenses on a one-finding sample for exactly that reason, while deleting a
+filter is the direction where being wrong is expensive and silent.
+
+**This is §01's probation, inverted.** Lane 01's refuter fires by *adding* a surviving refutation to
+the sheet; lane 07's fires by *removing* a finding from the queue. Silence is the good outcome per
+item in both, and the bad outcome in aggregate in both — which is why ADR-0031 gave lane 01 a count
+silence could not satisfy forever, and why lane 07 inherits it. The one difference is the second
+threshold: lane 01's refuter can only fail by being silent, lane 07's can also fail by killing
+everything.
 
 **Not an agent's job.** Scale, cost-to-run and architectural fragility fail silently and late, and
 neither the owner nor an agent can verify an agent's judgement on them. That is a contract
@@ -721,11 +746,15 @@ in the places it doesn't. The dreamboat is not more model passes.*
 | **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
 | **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
 
-**A fourth candidate is flagged rather than built.** ADR-0013 scopes the close gate to a close marked
-`completed`, which leaves one way past it: closing a delivered ticket as *not planned*. It is class 6
-and **countable**, which by this section's own argument makes it free. The count is `not_planned`
-closes on issues that carry `## Acceptance criteria`. It waits behind the three above because they
-have volume and it should have none; the first time it has any is the finding.
+**A fourth counter is no longer a candidate — lane 07 gave it a job.** ADR-0013 scopes the close gate
+to a close marked `completed`, which leaves one way past it: closing a delivered ticket as *not
+planned*. It is class 6 and **countable**, which by this section's own argument makes it free. The
+count is `not_planned` closes on issues that carry `## Acceptance criteria` — and crossed with class
+9, the owner's own behaviour, that same count is what sizes lane 07's refuter fleet
+([ADR-0037](docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)): a
+surviving review finding closed `not planned`, or left untouched past §8's five-day expiry, is a
+false alarm that reached him. It ships with lane 07 rather than waiting behind the three above,
+because it is that lane's only evidence that its filter is sized right.
 
 None of the three spends a model, and all three can run on every push: counting produces no commits,
 so it cannot feed on its own output. A count is also recomputed rather than stored, so nothing a
@@ -864,7 +893,6 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 | Question | Kind |
 |---|---|
 | [Whether `contract.json` returns, and what an installer covers](https://github.com/collod873/claude-workflow/issues/82) | measured |
-| [How many refuters lane 07 ships with](https://github.com/collod873/claude-workflow/issues/83) — three is a guess, and there is no measured false-alarm rate to size it against | measured |
 | [How the governor sizes concurrency, and what the fixer's cap buys](https://github.com/collod873/claude-workflow/issues/84) — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have never been measured against this owner's actual answer rate | measured |
 | [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
 
