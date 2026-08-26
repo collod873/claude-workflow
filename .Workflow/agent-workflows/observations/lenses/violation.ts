@@ -1,3 +1,5 @@
+import { parseGrammarFindings } from "./grammar";
+
 /**
  * Everything the VIOLATION lens's prompt is built from. The spawned call it
  * feeds runs sandboxed with `--tools ""` (auditor.ts) — no tool access — so
@@ -59,8 +61,32 @@ speaks about code it wasn't shown is worse than a lens that finds nothing.
 
 ## Output
 
-One finding per violated entry: the file and line, the entry it violates (quoted), and why the red
-flag fires there. If the diff violates no ratified entry, say so plainly and stop — an empty pass is
-a valid pass.
+One block per violation, in exactly this form, repeated for each:
+
+Finding: <the ratified entry it violates, quoted, and why the red flag fires here>
+Site: <file:line where this run saw it>
+
+Output only these two labels, once per violation, and nothing else — no other labeled field. If the
+diff violates no ratified entry, say so plainly and stop — an empty pass is a valid pass.
 `;
+}
+
+/**
+ * One violation of one ratified entry, as `parseViolationFindings` reads it
+ * out of the sandboxed call's raw text. `finding` holds the violated entry
+ * (quoted) and why its red flag fires, per `violationPrompt`'s Output
+ * section; `site` is where this run saw it.
+ */
+export interface ViolationFinding {
+  finding: string;
+  site: string;
+}
+
+/**
+ * Reads `Finding:` / `Site:` pairs out of the VIOLATION lens's raw text,
+ * per `violationPrompt`'s Output section, against the same shared grammar
+ * (`./grammar.ts`) PROPOSED parses against.
+ */
+export function parseViolationFindings(raw: string): ViolationFinding[] {
+  return parseGrammarFindings(raw);
 }
