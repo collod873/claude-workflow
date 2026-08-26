@@ -75,8 +75,8 @@ already has, which is the same defect
 [ADR-0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) rules out when it
 says a contract's `why` names a declaration site and never a measurement. §06 says it more directly:
 *a check is defined once; a check defined twice drifts.* Logs are also the expensive read — a zip
-download per run against one metadata call for the whole history — and GitHub expires them at 90 days
-while the run's step names remain.
+download per run against one metadata call for the whole history — but fragility is the argument, not
+cost, and a step name cannot be printed wrong by the program it describes.
 
 **Rejected: writing a marker the counter reads back.** §6's counters are recomputed rather than
 stored, *"so nothing a counter says can go stale"* — the defect that made 43% of Lumaria's inbox
