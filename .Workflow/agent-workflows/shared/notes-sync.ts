@@ -1,5 +1,5 @@
-import type { GitExec } from "./git";
-import { reason } from "./reason";
+import type { GitExec } from "./git.ts";
+import { reason } from "./reason.ts";
 
 export interface SyncNotesRefOptions {
   git: GitExec;

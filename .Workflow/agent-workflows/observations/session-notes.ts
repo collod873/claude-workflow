@@ -1,6 +1,6 @@
-import type { GitExec } from "../shared/git";
-import { readNoteArray, writeNoteArray } from "../shared/notes-store";
-import { SessionRecord } from "./session-record-schema";
+import type { GitExec } from "../shared/git.ts";
+import { readNoteArray, writeNoteArray } from "../shared/notes-store.ts";
+import { SessionRecord } from "./session-record-schema.ts";
 
 /**
  * The notes ref this module's read/write pair uses, unqualified so git

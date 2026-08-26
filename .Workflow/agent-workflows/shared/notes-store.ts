@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { GitExec } from "./git";
+import type { GitExec } from "./git.ts";
 
 /**
  * The generic shape duplicated between `writeObservationNote`/`readObservations`
