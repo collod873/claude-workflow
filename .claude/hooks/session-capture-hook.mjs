@@ -55,8 +55,12 @@ const LOG_PATH = process.env.SESSION_CAPTURE_LOG_PATH || join(homedir(), ".claud
 // session-capture.sh's own `repo_root` makes; overridable so a test can point the publish step at
 // a throwaway fixture repo instead of ever touching this real checkout's own `origin`.
 const REPO_DIR = process.env.SESSION_CAPTURE_REPO_DIR || join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-// The `repository_dispatch` event type this fires — read by the audit workflow's `on.
-// repository_dispatch.types` (a later ticket wires that side).
+// The `repository_dispatch` event type this fires. This is the name on the wire, and it is the
+// one every consumer scopes on: `audit.yml`/`run-audit.ts` and `close-gate-reconcile.yml`/
+// `reconcile.ts` each carry their own copy of the string, because no compiler sees from here into
+// a workflow's `if`. `dispatch-action.test.ts` reads this line and asserts all four agree with it
+// — the guard #107 was missing, when the audit side spent 14 runs waiting on a name nothing sent.
+// Consumers move to this spelling; this one does not move to theirs.
 const DISPATCH_EVENT_TYPE = "session-captured";
 
 // A lock older than this is presumed abandoned (its holder crashed) rather than held — the same
