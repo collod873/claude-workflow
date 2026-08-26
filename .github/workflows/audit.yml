@@ -54,6 +54,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A runner has no git identity, and `git notes add` writes an object with a committer on it —
+      # so the first run that ever got as far as recording a finding died on `empty ident name`
+      # *after* spending both lens passes (#107). The workstation supplies its own identity, which
+      # is why nothing local ever needed this. The bot is the honest author: this note is the run's,
+      # not a person's.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
