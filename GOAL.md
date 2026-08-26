@@ -164,9 +164,15 @@ Ordered. Nothing further up the list is optional for anything below it.
    landed the VIOLATION and PROPOSED lenses, the auditor entrypoint, the SHA-range diff helper,
    the release-scope helper and the PR composer — all of it in `.Workflow/agent-workflows/`, all
    of it tested. What is missing is the **connector**: nothing fires the auditor, so it is library
-   code with no caller. That is open issue
-   [#56](https://github.com/collod873/claude-workflow/issues/56). A reader acting on the old
-   wording would build the thing that is already built.
+   code with no caller. That is specced as
+   [#63](https://github.com/collod873/claude-workflow/issues/63), and unbuilt. A reader acting on
+   the old wording would build the thing that is already built.
+
+   *The connector is also wider than "nothing fires it," and #63 carries the reason:* the corpus is
+   written but never pushed, so a runner cannot see its input and the auditor is **ineligible** for
+   the only venue ADR-0002 allows — not merely un-triggered. Capture records no SHA range, only the
+   PROPOSED lens is wired (ADR-0019 measured the unreachable one at 93% valuable), and nothing
+   produces a release batch or writes the ratification records the memory reads back.
 4. ~~**No session-time capture.**~~ **Retired 2026-08-25.** A `SessionEnd` hook is registered
    **globally** in `~/.claude/settings.json` — by absolute path, at this repo's
    `.claude/hooks/session-capture.sh` — so every session on this machine is recorded, not only
