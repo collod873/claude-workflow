@@ -156,16 +156,26 @@ Ordered. Nothing further up the list is optional for anything below it.
    `no-range-or-no-diff` 9, `missing-acceptance-criteria` 8, `criteria-count-mismatch` 3 — and
    **`unmet-criterion` exactly once in 558.** The gate is an active *compliance* mechanism and is
    not theatre. It is not a *correctness* one, and nothing should be built on a claim that it is.
-3. **No mechanism points backwards.** 30 ADRs in a month, 9 amending an earlier one; 36 lint rules
-   from 5 standards passes, and **not one has been asked whether it caught anything.**
-   `CODING_STANDARDS.md` has exactly one exit — *mechanised* — which requires building another rule
-   first, so the doc can only grow.
+3. **No mechanism points backwards.** 44 ADRs, 9 amending an earlier one; 14 lint rules and 2
+   `CODING_STANDARDS.md` entries, and **not one has been asked whether it caught anything.** That
+   file has exactly one exit — *mechanised* — which requires building another rule first, so it can
+   only grow. *(Counts corrected 2026-08-26; this line read "30 ADRs" and "36 lint rules", both from
+   an era-6 estate figure that was never this repo's.)*
 
    *Half of this is retired.* Specs [#36](https://github.com/collod873/claude-workflow/issues/36)
    and [#63](https://github.com/collod873/claude-workflow/issues/63) built and wired the VIOLATION
-   and PROPOSED lenses — `DESIGN.md` §6 carries their contract. **The open half:** the same
-   backwards question — was this rule ever asked whether it caught anything — has still not reached
-   the 36 lint rules and 30 ADRs, and blocker 3 closes only when it does.
+   and PROPOSED lenses — `DESIGN.md` §6 carries their contract.
+
+   **The open half, now decided but unbuilt.** The question is ruled — ADR-0044 through ADR-0046 —
+   and a ruling retires nothing, so this blocker closes on **two builds**, not on the decision:
+   - **The back-stamp**, which points the question at the ADRs. There is nothing to delete: all 44
+     ADRs are cited, and the only signal that discriminates finds the *superseded* ones, which must
+     survive because the amendment chain is the record. So the act is a pointer onto the stale
+     record, not a deletion.
+     [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
+   - **ADR-0003's lint audit**, which points it at the rules and is **ruled but unbuilt** —
+     `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
+     stands" is a static tree scan rather than a question about history.
 4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. A `SessionEnd` hook
    is registered globally, so every session on this machine is recorded; the `cleanupPeriodDays: 30`
    clock that was destroying a day of corpus per day has stopped. ADR-0018, ADR-0020.

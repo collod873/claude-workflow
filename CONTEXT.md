@@ -94,6 +94,14 @@ being that lane's trigger, refusal, cost or coverage, and a collapse that kept o
 would delete it. See [ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md).
 _Avoid_: constraint (reserved for C1–C7), requirement, dependency, contract
 
+**Back-stamp**:
+The pointer written onto a superseded record by the record that supersedes it, at the moment the
+successor lands. A third kind of mechanism beside Gate and Lens, distinguished by its output: a gate
+refuses, a lens files an issue, a back-stamp commits the repair. It needs no reader, because the
+repaired record *is* the output. See
+[ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
+_Avoid_: backlink, cross-reference, index, tombstone
+
 ### The pipeline
 
 **Lane**:

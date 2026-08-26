@@ -42,8 +42,15 @@ Only when they earn their place. Most ADRs won't need any of them.
 ### Amending
 
 Don't edit an old ADR to reflect a new decision. Write a new one and have it say what it amends:
-*"Amends [ADR-0004](0004-slug.md)."* Add a `superseded by ADR-NNNN` status line to the old one.
-The point of the record is that you can see the mind change.
+*"Amends [ADR-0004](0004-slug.md)."* The point of the record is that you can see the mind change.
+
+The back-pointer on the *old* one is a **back-stamp**, and it is not written by hand. This section
+used to say "add a `superseded by ADR-NNNN` status line to the old one" and **zero of 43 ADRs ever
+carried one** — `GOAL.md` C4's adoption law demonstrated in this repo's own record. So supersession
+is declared in a machine-readable `Amends:` trailer that `bin/new-adr --amends NNNN` writes, and the
+stamp is derived from it. See
+[ADR-0045](0045-a-superseded-adr-is-named-by-a-trailer-its-successor-writes.md); the trailer and the
+derivation are unbuilt until their move lands.
 
 ## When something deserves an ADR
 
