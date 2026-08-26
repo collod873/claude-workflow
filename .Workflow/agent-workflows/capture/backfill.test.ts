@@ -152,6 +152,46 @@ describe("runBackfill — per-transcript failure handling", () => {
   });
 });
 
+describe("runBackfill — scratch projects (#103 §2)", () => {
+  it("declines a /tmp project directory and says so in the log, rather than dropping it silently", () => {
+    const sourceDir = tmpDir("backfill-src-");
+    const outputDir = tmpDir("backfill-out-");
+    const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
+    writeTranscript(sourceDir, "-tmp-judge-obbwi8jl", "22222222-aaaa-bbbb-cccc-222222222222", FIXTURE_LINES);
+
+    const outcomes = runBackfill({ sourceDir, outputDir, logPath });
+
+    expect(outcomes[0].outcome).toBe("skipped scratch-project: -tmp-judge-obbwi8jl");
+    expect(readFileSync(logPath, "utf8")).toContain("skipped scratch-project");
+    expect(mdFiles(outputDir)).toEqual([]);
+  });
+
+  it("keeps a real repo whose name merely contains tmp", () => {
+    const sourceDir = tmpDir("backfill-src-");
+    const outputDir = tmpDir("backfill-out-");
+    const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
+    writeTranscript(sourceDir, "-home-collin-tmpfile-tools", "33333333-aaaa-bbbb-cccc-333333333333", FIXTURE_LINES);
+
+    const outcomes = runBackfill({ sourceDir, outputDir, logPath });
+
+    expect(outcomes[0].outcome).toBe("captured 33333333-aaaa-bbbb-cccc-333333333333");
+    expect(mdFiles(outputDir)).toHaveLength(1);
+  });
+
+  it("counts the scratch skips separately in the CLI's summary line", () => {
+    const sourceDir = tmpDir("backfill-src-");
+    const outputDir = tmpDir("backfill-out-");
+    const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
+    writeTranscript(sourceDir, "-tmp-scratch-one", "44444444-aaaa-bbbb-cccc-444444444444", FIXTURE_LINES);
+    writeTranscript(sourceDir, "project-a", "55555555-aaaa-bbbb-cccc-555555555555", FIXTURE_LINES);
+
+    const stdout = runBackfillCli(sourceDir, outputDir, logPath);
+
+    expect(stdout).toContain("1 captured");
+    expect(stdout).toContain("1 scratch projects");
+  });
+});
+
 describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook output", () => {
   it("produces a capture file structurally identical to the hook's own output for the same fixture transcript", () => {
     const sourceDir = tmpDir("backfill-src-");
