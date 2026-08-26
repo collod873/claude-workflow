@@ -45,6 +45,14 @@ Ongoing effort a mechanism needs to keep being true after it is built. The thing
 requiring an active ritual dies by roughly month three regardless of quality.
 _Avoid_: upkeep, maintenance, hygiene
 
+**Owner point**:
+A place the design requires the owner because the record shows automating it makes the result
+measurably worse. The bar is evidence, not discomfort: a judgement agents have actually been
+measured getting wrong, not one that merely feels like a human's. Named as a boundary rather than a
+gap — it is not work waiting for a mechanism. `GOAL.md` §2 holds the surviving list, `DESIGN.md`
+marks each one ⬤ **owner** where it occurs, and reducing their number is the whole project.
+_Avoid_: human-in-the-loop, manual step, gap, checkpoint, where the human stays
+
 ### Mechanisms
 
 **Gate**:

@@ -5,7 +5,7 @@ A workflow system connecting Claude Code and GitHub.
 ## Start here
 
 **[`GOAL.md`](GOAL.md)** — the charter. What the system is for, the seven constraints any design has
-to satisfy, where the human deliberately stays, and what blocks it today. Proposals get scored
+to satisfy, the owner points that survive automation, and what blocks it today. Proposals get scored
 against this.
 
 **[`DESIGN.md`](DESIGN.md)** — the target. Every edge from an idea to a closed ticket, what event
