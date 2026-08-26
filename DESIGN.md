@@ -1006,11 +1006,8 @@ or spend — his to answer, and nobody else's. A **measured** question has a rig
 currently holds the number for, and handing it to him as a choice is the sizing quiz commit
 `68b071f` deleted, rebuilt in a document that claims to forbid it.
 
-**Filed.** These live as issues; this list carries the pointer and nothing else (ADR-0026).
-
-| Question | Kind |
-|---|---|
-| [Whether `contract.json` returns, and what an installer covers](https://github.com/collod873/claude-workflow/issues/82) | measured |
+**Filed.** These live as issues; this list carries the pointer and nothing else (ADR-0026). None
+open.
 
 **Not yet filed.**
 
@@ -1056,4 +1053,7 @@ the ~7 queue cap, the WIP cap and the five-day decision expiry; **lane 08's mode
 fixer's exit (ADR-0041); what a seam question does (ADR-0042); **write-on-surprise, struck**
 (ADR-0043); **whether an unread document gets deleted — it does not, and the act is a back-stamp**
 (ADR-0044 through ADR-0046, and §6 above); **how far lane 01's sweep reads** (ADR-0050), where an
-accept's rulings land (ADR-0051), and what clears a stage-1 refusal (ADR-0052).
+accept's rulings land (ADR-0051), and what clears a stage-1 refusal (ADR-0052); **how the machine
+reaches a second repo — a lane is called, never copied** (ADR-0055), **what makes the check contract
+survivable — it is generated and the gauntlet runs it** (ADR-0056), and what an installer covers
+(ADR-0057).
