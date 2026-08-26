@@ -8,7 +8,10 @@
  * evidence — an empty output).
  *
  * Argv: `<transcriptPath> <sessionId> <project> <source>` — session-capture.sh has already
- * confirmed `transcriptPath` is non-empty and exists before spawning this.
+ * confirmed `transcriptPath` is non-empty and exists before spawning this. `project` is
+ * session-capture.sh's own name for the hook payload's `cwd` field (see that script's own
+ * `PARSED` line) — it is reused below, unrenamed, as the session's own working directory for the
+ * publish step's scope check.
  *
  * Storage: `${SESSION_CAPTURE_OUTPUT_DIR}/<YYYY-MM-DD>-<sessionId[:8]>.md`, atomically written —
  * a lockfile (exclusive create, the same primitive Lumaria's decision-capture-core.mjs uses),
@@ -22,16 +25,39 @@
  * transcript, a broken extraction, or an unwritable output directory all degrade to "log a
  * `skipped <reason>` line and do nothing" — never a thrown error, since nothing is listening for
  * one (this process's stdio is /dev/null and nobody awaits it).
+ *
+ * A second half (spec #63 §Solution 1–2) runs after the corpus write, unconditionally attempted
+ * but never a condition of it: derive the session's own commit range, write a `SessionRecord` git
+ * note on `refs/notes/sessions`, push it, then fire the `repository_dispatch` that starts the
+ * audit. It runs only when the session's own `cwd` resolves to this repo's own `origin` remote
+ * (`repo-scope.ts`'s `sessionIsInThisRepo` — ADR-0018's split enforced in code) and is exactly as
+ * fail-open as the corpus write above it: every one of its steps degrades to its own
+ * `skipped publish-*` log line rather than a thrown error. See `repo-scope.ts` and `range.ts` for
+ * why "no derivable range" means "publish nothing" here rather than a fallback.
  */
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractSpine } from "../../.Workflow/agent-workflows/shared/spine.ts";
+import { buildCaptureMarkdown, parseTranscript } from "../../.Workflow/agent-workflows/shared/spine.ts";
 import { reason } from "../../.Workflow/agent-workflows/shared/reason.ts";
+import { execGit } from "../../.Workflow/agent-workflows/shared/git.ts";
+import { execGh } from "../../.Workflow/agent-workflows/shared/gh.ts";
+import { deriveRange } from "../../.Workflow/agent-workflows/capture/range.ts";
+import { ownerAndRepoFromOrigin, sessionIsInThisRepo } from "../../.Workflow/agent-workflows/capture/repo-scope.ts";
+import { writeSessionRecord } from "../../.Workflow/agent-workflows/observations/session-notes.ts";
+import { syncNotesRef } from "../../.Workflow/agent-workflows/shared/notes-sync.ts";
 
 const OUTPUT_DIR = process.env.SESSION_CAPTURE_OUTPUT_DIR || join(homedir(), "Claude Projects", "Knowledge-Base", "raw", "sessions");
 const LOG_PATH = process.env.SESSION_CAPTURE_LOG_PATH || join(homedir(), ".claude", "session-capture.log");
+// This pipeline's own checkout — what the publish step reads and writes. Defaults to the repo
+// this module itself lives in (three levels up from `.claude/hooks/`), the same computation
+// session-capture.sh's own `repo_root` makes; overridable so a test can point the publish step at
+// a throwaway fixture repo instead of ever touching this real checkout's own `origin`.
+const REPO_DIR = process.env.SESSION_CAPTURE_REPO_DIR || join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+// The `repository_dispatch` event type this fires — read by the audit workflow's `on.
+// repository_dispatch.types` (a later ticket wires that side).
+const DISPATCH_EVENT_TYPE = "session-captured";
 
 // A lock older than this is presumed abandoned (its holder crashed) rather than held — the same
 // threshold and reasoning as Lumaria's decision-capture-core.mjs `withLock`.
@@ -95,9 +121,112 @@ function atomicWrite(targetPath, content) {
   });
 }
 
+/**
+ * The transcript's own `[since, until]` window `deriveRange` wants: the first and last valid
+ * `timestamp` field found across the transcript's lines, in transcript order — the same field
+ * `backfill.ts`'s `lastTimestamp` reads, kept here rather than imported since that helper only
+ * ever needed the last one. A line that fails to parse, or carries no usable timestamp, is
+ * skipped rather than treated as a defect, matching `parseTranscript`'s own tolerance.
+ */
+function transcriptWindow(jsonl) {
+  let since;
+  let until;
+  for (const line of jsonl.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const ts = entry?.timestamp;
+    if (typeof ts !== "string" || Number.isNaN(Date.parse(ts))) continue;
+    if (since === undefined) since = ts;
+    until = ts;
+  }
+  return { since, until };
+}
+
+/**
+ * Fires the `repository_dispatch` that starts the audit — the connector (spec #63 §Solution 2).
+ * Carries no payload beyond `head`; everything else the audit needs is already in the note this
+ * is called after pushing. Resolves `repos/{owner}/{repo}` itself from `repoDir`'s own `origin`
+ * rather than leaning on `gh`'s cwd-resolved `{owner}/{repo}` placeholder (`GhExec`'s own note):
+ * this process's actual OS cwd is whatever launched session-capture.sh, not reliably `repoDir`.
+ */
+function dispatchAudit(repoDir, head) {
+  const origin = execGit(["-C", repoDir, "remote", "get-url", "origin"]).trim();
+  const ownerRepo = ownerAndRepoFromOrigin(origin);
+  if (!ownerRepo) throw new Error(`cannot parse owner/repo from origin: ${origin}`);
+  execGh([
+    "api",
+    `repos/${ownerRepo.owner}/${ownerRepo.repo}/dispatches`,
+    "-f",
+    `event_type=${DISPATCH_EVENT_TYPE}`,
+    "-f",
+    `client_payload[head]=${head}`,
+  ]);
+}
+
+/**
+ * The hook's second half (module header, spec #63 §Solution 1–2): derive the session's own range,
+ * publish its `SessionRecord`, dispatch the audit. Every step is its own `skipped publish-*` log
+ * line on failure — see the module header for why this is a *different* failure posture from the
+ * corpus write above it, never a thrown error either way.
+ */
+function publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed }) {
+  if (!sessionIsInThisRepo({ git: execGit, sessionCwd, repoDir: REPO_DIR })) {
+    log("skipped publish-out-of-scope");
+    return;
+  }
+
+  const { since, until } = transcriptWindow(jsonl);
+  if (!since || !until) {
+    log("skipped publish-no-window");
+    return;
+  }
+
+  let range;
+  try {
+    range = deriveRange({ git: execGit, repoDir: REPO_DIR, since, until });
+  } catch (err) {
+    log(`skipped publish-range-failed: ${reason(err)}`);
+    return;
+  }
+  if (!range) {
+    log("skipped publish-no-range");
+    return;
+  }
+
+  const touchedPaths = [...parsed.filesEdited, ...parsed.filesWritten];
+  const record = { sessionId, base: range.base, head: range.head, touchedPaths, spine: markdown };
+
+  try {
+    syncNotesRef({
+      git: execGit,
+      repoDir: REPO_DIR,
+      ref: "sessions",
+      apply: () => writeSessionRecord({ git: execGit, repoDir: REPO_DIR, record }),
+    });
+  } catch (err) {
+    log(`skipped publish-push-failed: ${reason(err)}`);
+    return;
+  }
+
+  try {
+    dispatchAudit(REPO_DIR, range.head);
+  } catch (err) {
+    log(`skipped publish-dispatch-failed: ${reason(err)}`);
+    return;
+  }
+
+  log(`published ${sessionId} ${range.head}`);
+}
+
 function main() {
   const [, , transcriptPath, sessionIdArg, projectArg, sourceArg] = process.argv;
   const sessionId = sessionIdArg || "unknown";
+  const sessionCwd = projectArg || "unknown";
 
   if (!transcriptPath) {
     log("skipped no-transcript-path");
@@ -112,14 +241,14 @@ function main() {
     return;
   }
 
+  let parsed;
   let markdown;
   try {
-    markdown = extractSpine(jsonl, {
-      sessionId,
-      project: projectArg || "unknown",
-      date: new Date().toISOString(),
-      source: sourceArg || "other",
-    });
+    parsed = parseTranscript(jsonl);
+    markdown = buildCaptureMarkdown(
+      { sessionId, project: sessionCwd, date: new Date().toISOString(), source: sourceArg || "other" },
+      parsed,
+    );
   } catch (err) {
     log(`skipped extraction-failed: ${reason(err)}`);
     return;
@@ -137,6 +266,13 @@ function main() {
   }
 
   log(`captured ${sessionId}`);
+
+  // The corpus write above is never conditional on this succeeding — see the module header.
+  try {
+    publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed });
+  } catch (err) {
+    log(`skipped publish-failed: ${reason(err)}`);
+  }
 }
 
 // Only run as a CLI when invoked directly (`node session-capture-hook.mjs ...`, what

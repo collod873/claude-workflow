@@ -1,3 +1,5 @@
+import { parseGrammarFindings } from "./grammar";
+
 /**
  * Everything the PROPOSED lens's prompt is built from. Like VIOLATION
  * (./violation.ts), the spawned call it feeds runs sandboxed with
@@ -80,38 +82,13 @@ export interface ProposedFinding {
   site: string;
 }
 
-const FINDING_LINE = /^Finding:\s*(.+)$/;
-const SITE_LINE = /^Site:\s*(.+)$/;
-
 /**
  * Reads `Finding:` / `Site:` pairs out of the PROPOSED lens's raw text,
- * per `proposedPrompt`'s Output section. A `Site:` line only counts while a
- * `Finding:` line is pending above it, and each pending finding is consumed
- * by the next site — anything else in the raw text (prose, an empty-pass
- * notice, a field the model wasn't asked for) is not one of these two
- * labels and is silently not a finding.
+ * per `proposedPrompt`'s Output section, against the shared grammar
+ * (`./grammar.ts`) both lenses parse against.
  */
 export function parseProposedFindings(raw: string): ProposedFinding[] {
-  const findings: ProposedFinding[] = [];
-  let pendingFinding: string | undefined;
-
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-
-    const findingMatch = FINDING_LINE.exec(trimmed);
-    if (findingMatch) {
-      pendingFinding = findingMatch[1].trim();
-      continue;
-    }
-
-    const siteMatch = SITE_LINE.exec(trimmed);
-    if (siteMatch && pendingFinding !== undefined) {
-      findings.push({ finding: pendingFinding, site: siteMatch[1].trim() });
-      pendingFinding = undefined;
-    }
-  }
-
-  return findings;
+  return parseGrammarFindings(raw);
 }
 
 /**

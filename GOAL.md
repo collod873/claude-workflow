@@ -160,19 +160,19 @@ Ordered. Nothing further up the list is optional for anything below it.
    `CODING_STANDARDS.md` has exactly one exit — *mechanised* — which requires building another rule
    first, so the doc can only grow.
 
-   **What is actually missing, corrected 2026-08-25.** Not the mechanism. Spec #36 slices 3–4
-   landed the VIOLATION and PROPOSED lenses, the auditor entrypoint, the SHA-range diff helper,
-   the release-scope helper and the PR composer — all of it in `.Workflow/agent-workflows/`, all
-   of it tested. What is missing is the **connector**: nothing fires the auditor, so it is library
-   code with no caller. That is specced as
-   [#63](https://github.com/collod873/claude-workflow/issues/63), and unbuilt. A reader acting on
-   the old wording would build the thing that is already built.
+   **The connector landed, corrected 2026-08-25.** Spec #36 slices 3–4 built the VIOLATION and
+   PROPOSED lenses, the auditor entrypoint, the SHA-range diff helper, the release-scope helper and
+   the PR composer; spec [#63](https://github.com/collod873/claude-workflow/issues/63) built what
+   was missing — a session ending in this repo now derives its own SHA range, publishes it as a git
+   note and dispatches `.github/workflows/audit.yml`, which runs both lenses and pushes the merged
+   findings. Release fires the same way, at the end of every audit and again when a PRD closes
+   (`.github/workflows/release-on-prd-close.yml`), and a merged release PR's checklist is written
+   back as ratification memory (`.github/workflows/ratify-release.yml`). Nothing under
+   `.Workflow/agent-workflows/observations/` lacks a caller.
 
-   *The connector is also wider than "nothing fires it," and #63 carries the reason:* the corpus is
-   written but never pushed, so a runner cannot see its input and the auditor is **ineligible** for
-   the only venue ADR-0002 allows — not merely un-triggered. Capture records no SHA range, only the
-   PROPOSED lens is wired (ADR-0019 measured the unreachable one at 93% valuable), and nothing
-   produces a release batch or writes the ratification records the memory reads back.
+   *Blocker 3 is not retired by this alone.* It closes only when the same backwards question — was
+   this rule ever asked whether it caught anything — reaches the 36 lint rules and 30 ADRs the
+   auditor and release do not touch. That half is still open.
 4. ~~**No session-time capture.**~~ **Retired 2026-08-25.** A `SessionEnd` hook is registered
    **globally** in `~/.claude/settings.json` — by absolute path, at this repo's
    `.claude/hooks/session-capture.sh` — so every session on this machine is recorded, not only

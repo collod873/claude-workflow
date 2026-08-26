@@ -1,11 +1,13 @@
 import type { GitExec } from "../shared/git";
 import type { StageExec } from "../shared/stage";
-import { runProposedAuditor } from "./auditor";
+import { runAuditor, runProposedAuditor } from "./auditor";
+import { parseViolationFindings } from "./lenses/violation";
 import type { GatedProposedFinding } from "./lenses/proposed";
 import type { Observation } from "./observation-schema";
 import { readObservations, writeObservationNote } from "./notes";
 
 const PROPOSED_LENS = "PROPOSED";
+const VIOLATION_LENS = "VIOLATION";
 
 export interface RunObservationsOptions {
   /** The injected git executor, threaded to the auditor and to this module's own notes read/write. */
@@ -22,24 +24,41 @@ export interface RunObservationsOptions {
   touchedPaths?: string[];
   /** The session's captured conversation spine (capture's own format, spec #36 slice 1). */
   spine: string;
+  /** Ratified `CODING_STANDARDS.md` text the VIOLATION lens checks the diff against. */
+  standards: string;
 }
 
 /**
- * The observations pipeline's entrypoint (spec #36 slice 4/5): runs the
- * PROPOSED auditor (`./auditor`'s `runProposedAuditor`, which itself uses
- * `./diff`'s `sessionRangeDiff`) over one session's own commit range,
- * folding in whatever this repo's notes already carry as of `base`, and
- * writes the merged result back as one note on `head`. Imports the auditor
- * rather than reimplementing any part of it — this module owns only the
- * git-notes read/write around it.
+ * The observations pipeline's entrypoint (spec #36 slice 4/5, grown by spec
+ * #63 to run both lenses): runs the PROPOSED auditor (`./auditor`'s
+ * `runProposedAuditor`, which itself uses `./diff`'s `sessionRangeDiff`)
+ * over one session's own commit range, folding in whatever this repo's
+ * notes already carry as of `base`, then runs the VIOLATION pass
+ * (`./auditor`'s `runAuditor`) over the same range and parses its raw text
+ * with `parseViolationFindings` against the shared `Finding:`/`Site:`
+ * grammar (`./lenses/grammar.ts`). VIOLATION carries no two-site gate — a
+ * ratified rule broken once is broken — so every parsed finding is written
+ * `released: true` on its first appearance, unlike PROPOSED's gated
+ * findings. Both lenses' observations are merged into the single note
+ * written on `head`. Imports the auditor rather than reimplementing any
+ * part of it — this module owns only the git-notes read/write around it.
  */
 export async function runObservations(options: RunObservationsOptions): Promise<Observation[]> {
-  const { git, exec, repoDir, base, head, touchedPaths, spine } = options;
+  const { git, exec, repoDir, base, head, touchedPaths, spine, standards } = options;
 
   const priorFindings = loadPriorFindings({ git, repoDir, base });
   const gated = await runProposedAuditor({ git, exec, repoDir, base, head, touchedPaths, spine, priorFindings });
-  const observations: Observation[] = gated.map((finding) => ({ ...finding, lens: PROPOSED_LENS }));
+  const proposed: Observation[] = gated.map((finding) => ({ ...finding, lens: PROPOSED_LENS }));
 
+  const violationRaw = await runAuditor({ git, exec, repoDir, base, head, touchedPaths, spine, standards });
+  const violation: Observation[] = parseViolationFindings(violationRaw).map(({ finding, site }) => ({
+    finding,
+    lens: VIOLATION_LENS,
+    sites: [site],
+    released: true,
+  }));
+
+  const observations: Observation[] = [...proposed, ...violation];
   writeObservationNote({ git, repoDir, commit: head, observations });
   return observations;
 }

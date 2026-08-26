@@ -1,0 +1,67 @@
+name: Audit
+
+# Spec #63's connector (DESIGN.md §6, ADR-0018): the venue ADR-0002 reserves for the observations
+# pipeline. Capture's own SessionEnd hook runs globally, on the workstation, for any project — but
+# the lenses and the release run only here, so this is what actually fires them once a session's
+# range exists to read.
+#
+# `on: repository_dispatch` is left unfiltered by `types:` on purpose. A sibling workflow (spec
+# #63's release-on-PRD-close trigger) is a *separate* file sharing this same trigger surface with
+# a different dispatch action — GitHub Actions' `types:` filter is per-workflow, not per-job, so
+# splitting on it here would mean this file's own `types:` list has to track every action a
+# sibling workflow might ever add. The job-level `if` is what actually scopes a run to an audit
+# dispatch instead, spelled here as well as in `run-audit.ts`'s own `AUDIT_DISPATCH_ACTION` check
+# on purpose — no compiler sees across this language boundary, so `run-audit.test.ts` asserts the
+# two still agree, mirroring `close-gate.yml`'s `state_reason` scope rule and `close-gate.ts`'s
+# `DELIVERY_CLOSE_REASON`.
+#
+# `concurrency` serialises runs rather than cancelling one mid-flight: an audit that raced its own
+# push would either lose findings or spend a retry it didn't need to, and a release that opened a
+# PR is not work a later run should ever discard by being cancelled out from under it.
+
+"on":
+  repository_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.action == 'audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAD_SHA: ${{ github.event.client_payload.head }}
+      EVENT_ACTION: ${{ github.event.action }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same pin as `close-gate.yml`/`to-tickets.yml`, for the same reason (ADR-0002): a run comes
+      # from the checkout alone, and a floating install would let a release published next month
+      # change what a rerun of this commit does.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # Both lenses' notes read/write and the release's own ref live on the injected `git`/`gh`
+      # seams in `shared/git.ts`/`shared/gh.ts`, so there is no separate publish step here.
+      - name: Run the audit
+        run: npx tsx .Workflow/agent-workflows/observations/run-audit.ts
