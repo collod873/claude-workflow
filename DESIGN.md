@@ -808,9 +808,28 @@ reaches the owner.
 add another of its kind — the generalisation of
 [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md). That is
 the lenses and counters here, and it is also **the lint rules and the ADRs**, which is where blocker
-3's evidence actually lives: 36 rules from 5 standards passes and 30 ADRs in a month, not one of
-them ever asked. A lens audit that covers only lenses retires the blocker for the newest thing in
-the estate and leaves the oldest untouched. **Retires blocker 3** on that condition, and only on it.
+3's evidence actually lives: 14 rules, 2 `CODING_STANDARDS.md` entries and 44 ADRs, not one of them
+ever asked. *(Counts corrected 2026-08-26 — this read "36 rules" and "30 ADRs", an era-6 figure that
+was never this repo's.)* A lens audit that covers only lenses retires the blocker for the newest
+thing in the estate and leaves the oldest untouched. **Retires blocker 3** on that condition, and
+only on it.
+
+**What it does when the answer is no is not deletion.** Ruled 2026-08-26,
+[ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) through
+[ADR-0046](docs/adr/0046-the-backwards-question-writes-rather-than-reports-so-it-need.md). "Unread"
+is not observable — the session corpus records `Read:` lines but caught only 3 of this repo's ADRs
+in 876 captures, and misses `cat`, `grep`, always-on context and subagent reads. The signal that
+*does* discriminate is the citation graph, and it finds the **superseded** records, which must
+survive. So for prose the act is a **back-stamp**: a `Status: superseded by ADR-NNNN` line derived
+from an `Amends:` trailer the successor writes. Deletion survives only where an exit already exists
+— the lint rules, and `CODING_STANDARDS.md`'s *mechanised*.
+
+The back-stamp is **not a counter and gets no row above**: §6's counters file issues that reach the
+owner through the brief, and this one commits a repair nobody receives. It ships as its own move,
+blocked by nothing, and it is not subject to the admission bar
+[#102](https://github.com/collod873/claude-workflow/issues/102) is setting. What #102 does get from
+it is the operational shape of the backwards question — the refusal it says already exists and is
+not being applied to counters.
 
 **Cut:** the Foundry's cold-user walkthrough and persona panel. Both need a deployed product with
 users; nothing in the estate has one today. They come back the day a repo does — as a lens on
@@ -938,7 +957,6 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 | Question | Kind |
 |---|---|
 | [Whether `contract.json` returns, and what an installer covers](https://github.com/collod873/claude-workflow/issues/82) | measured |
-| [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
 
 **Not yet filed.**
 
@@ -982,4 +1000,5 @@ shaper refuses (ADR-0028 through ADR-0031, and §01 above); how many refuters la
 (ADR-0035 through ADR-0038); **the governor, which does not ship at all** (ADR-0039), and with it
 the ~7 queue cap, the WIP cap and the five-day decision expiry; **lane 08's model** (ADR-0040); the
 fixer's exit (ADR-0041); what a seam question does (ADR-0042); **write-on-surprise, struck**
-(ADR-0043).
+(ADR-0043); **whether an unread document gets deleted — it does not, and the act is a back-stamp**
+(ADR-0044 through ADR-0046, and §6 above).
