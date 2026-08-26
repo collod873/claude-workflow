@@ -1,0 +1,250 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import type { GhExec } from "../shared/gh";
+import { execGit } from "../shared/git";
+import { createFakeGit } from "../shared/git.fake";
+import { createFakeStage } from "../shared/stage.fake";
+import { stubClaudeCli } from "../shared/claude-cli.stub";
+import { sessionRecord } from "./session-record.fixture";
+import { writeSessionRecord } from "./session-notes";
+import { AUDIT_DISPATCH_ACTION, runAudit } from "./run-audit";
+
+const RUN_AUDIT_PATH = fileURLToPath(new URL("./run-audit.ts", import.meta.url));
+
+/** A throwaway git repo with a bare `origin` — mirrors `run-release.test.ts`'s `makeRepo`, extended with a remote since `runAudit` fetches notes refs from one before it reads anything. */
+function makeRepo(): {
+  dir: string;
+  origin: string;
+  commit: (path: string, contents: string, message: string) => string;
+} {
+  const origin = mkdtempSync(join(tmpdir(), "run-audit-origin-"));
+  execFileSync("git", ["init", "-q", "--bare", origin]);
+
+  const dir = mkdtempSync(join(tmpdir(), "run-audit-"));
+  execFileSync("git", ["init", "-q", dir]);
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+  execFileSync("git", ["remote", "add", "origin", origin], { cwd: dir });
+
+  function commit(path: string, contents: string, message: string): string {
+    writeFileSync(join(dir, path), contents, "utf8");
+    execFileSync("git", ["add", "."], { cwd: dir });
+    execFileSync("git", ["commit", "-q", "-m", message], { cwd: dir });
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+  }
+
+  return { dir, origin, commit };
+}
+
+/** A minimal recording `GhExec` — mirrors `run-release.test.ts`'s `fakeGh`. */
+function fakeGh(): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  const gh: GhExec = (args) => {
+    calls.push(args);
+    return "https://github.com/owner/repo/pull/1\n";
+  };
+  return { gh, calls };
+}
+
+/** Reads back the note a fresh clone of `origin` sees for `sha` on `ref` — mirrors `notes-sync.test.ts`'s `verifyNote`. */
+function verifyNote(origin: string, ref: string, sha: string): string {
+  const verifyDir = mkdtempSync(join(tmpdir(), "run-audit-verify-"));
+  execFileSync("git", ["clone", "-q", origin, "."], { cwd: verifyDir });
+  execFileSync("git", ["-C", verifyDir, "fetch", "-q", "origin", `+refs/notes/${ref}:refs/notes/${ref}`]);
+  dirs.push(verifyDir);
+  return execFileSync("git", ["-C", verifyDir, "notes", `--ref=${ref}`, "show", sha], { encoding: "utf8" }).trim();
+}
+
+let dirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  dirs = [];
+});
+
+describe("runAudit — scope: which dispatches are judged at all", () => {
+  it("makes no git or exec call when the dispatch action isn't an audit", async () => {
+    const git = createFakeGit();
+    const stage = createFakeStage("");
+
+    const outcome = await runAudit({
+      git: git.git,
+      gh: fakeGh().gh,
+      exec: stage.exec,
+      repoDir: "/some/repo",
+      head: "deadbeef",
+      standards: "",
+      eventAction: "prd-closed",
+      log: () => {},
+    });
+
+    expect(outcome).toEqual({ action: "skipped", code: "not-an-audit-dispatch", releasedCount: 0 });
+    expect(git.calls).toEqual([]);
+    expect(stage.calls).toEqual([]);
+  });
+});
+
+describe("runAudit — a session with nothing to read spends no model", () => {
+  it("skips with no exec call when there is no session record at head", async () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const stage = createFakeStage("");
+
+    const outcome = await runAudit({
+      git: execGit,
+      gh: fakeGh().gh,
+      exec: stage.exec,
+      repoDir: repo.dir,
+      head,
+      standards: "",
+      eventAction: AUDIT_DISPATCH_ACTION,
+      log: () => {},
+    });
+
+    expect(outcome).toEqual({ action: "skipped", code: "no-session-record", releasedCount: 0 });
+    expect(stage.calls).toEqual([]);
+  });
+
+  it("skips with no exec call when the session record's own range is empty", async () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    writeSessionRecord({
+      git: execGit,
+      repoDir: repo.dir,
+      record: sessionRecord({ head, base: head }),
+    });
+    const stage = createFakeStage("");
+
+    const outcome = await runAudit({
+      git: execGit,
+      gh: fakeGh().gh,
+      exec: stage.exec,
+      repoDir: repo.dir,
+      head,
+      standards: "",
+      eventAction: AUDIT_DISPATCH_ACTION,
+      log: () => {},
+    });
+
+    expect(outcome).toEqual({ action: "skipped", code: "empty-range", releasedCount: 0 });
+    expect(stage.calls).toEqual([]);
+  });
+});
+
+describe("runAudit — an ordinary session", () => {
+  it("runs both lenses, pushes one merged note, evaluates release with prdClosed false, and reports the released count", async () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    writeSessionRecord({
+      git: execGit,
+      repoDir: repo.dir,
+      record: sessionRecord({ head, base, touchedPaths: ["a.ts"] }),
+    });
+
+    const stage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:1\n");
+    const gh = fakeGh();
+    const logs: string[] = [];
+
+    const outcome = await runAudit({
+      git: execGit,
+      gh: gh.gh,
+      exec: stage.exec,
+      repoDir: repo.dir,
+      head,
+      standards: "entry: never duplicate validation logic",
+      eventAction: AUDIT_DISPATCH_ACTION,
+      log: (line) => logs.push(line),
+    });
+
+    // VIOLATION carries no two-site gate (always released); PROPOSED's first
+    // sighting does not clear it — so exactly one of the two lands released.
+    expect(outcome).toEqual({ action: "ran", code: "audited", releasedCount: 1 });
+    expect(logs.some((line) => line.includes("released 1"))).toBe(true);
+
+    // Below `DEFAULT_RELEASE_THRESHOLD` and `prdClosed: false` — the release
+    // trigger itself never fires, so no `gh` call was made at all.
+    expect(gh.calls).toEqual([]);
+
+    const note = JSON.parse(verifyNote(repo.origin, "observations", head)) as unknown[];
+    expect(note).toEqual([
+      { finding: "duplicated validation logic", lens: "PROPOSED", sites: ["a.ts:1"], released: false },
+      { finding: "duplicated validation logic", lens: "VIOLATION", sites: ["a.ts:1"], released: true },
+    ]);
+  });
+});
+
+describe("audit.yml agrees with the scope rule it is a copy of", () => {
+  const workflow = readFileSync(
+    fileURLToPath(new URL("../../../.github/workflows/audit.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("triggers on repository_dispatch", () => {
+    expect(workflow).toMatch(/repository_dispatch/);
+  });
+
+  it("gates the job on the same dispatch action the entrypoint checks", () => {
+    expect(workflow).toContain(`action == '${AUDIT_DISPATCH_ACTION}'`);
+  });
+});
+
+describe("run-audit.ts (CLI) exit code", () => {
+  it("exits 0 and reports skipped when the head has no session record", () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+    writeFileSync(join(repo.dir, "CODING_STANDARDS.md"), "entry: never duplicate validation logic\n", "utf8");
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+
+    const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
+      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      encoding: "utf8",
+    });
+
+    expect(stdout).toContain("skipped (no-session-record)");
+  });
+
+  it("exits 0 and reports the released count when every step succeeds", () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+    writeFileSync(join(repo.dir, "CODING_STANDARDS.md"), "entry: never duplicate validation logic\n", "utf8");
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    writeSessionRecord({
+      git: execGit,
+      repoDir: repo.dir,
+      record: sessionRecord({ head, base, touchedPaths: ["a.ts"] }),
+    });
+
+    const stubDir = mkdtempSync(join(tmpdir(), "run-audit-stub-"));
+    dirs.push(stubDir);
+    const { env } = stubClaudeCli(stubDir, "Finding: duplicated validation logic\nSite: a.ts:1\n");
+
+    const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
+      env: { ...env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      encoding: "utf8",
+    });
+
+    expect(stdout).toContain("ran (audited): released 1");
+  });
+
+  it("exits nonzero only when a step throws — a missing HEAD_SHA", () => {
+    expect(() =>
+      execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
+        env: { ...process.env, HEAD_SHA: "", EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+        encoding: "utf8",
+      }),
+    ).toThrow();
+  });
+});
