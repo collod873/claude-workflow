@@ -177,7 +177,12 @@ in §7 and the brief in §8, marked there.
 > `.Workflow/agent-workflows/intake/intake.test.ts`. ADR-0009.
 
 **Two doors are not built.** The form above is the micro door. The other two enter at lane 02 and
-wait on it — they are distinguished by how much context the owner has already built:
+wait on it — and they are distinguished by **where the owner is**, not by how much context he has
+already built ([ADR-0070](docs/adr/0070-lane-00-s-door-is-distinguished-by-where-the-owner-is-rather.md)).
+Both of them require a session at a desk. The micro door is the only one that exists when he is not at
+a machine — on the go, from a phone — and against that, depth is not a comparison: the alternative is
+not a shallower capture, it is losing the idea. Context depth follows from the door's context rather
+than the other way round:
 
 | Door | When | What enters the system | Next lane |
 |---|---|---|---|
@@ -1290,4 +1295,5 @@ and §6 and §06 above); **what admits a counter, and what a number that names n
 (ADR-0064 and ADR-0065); **where a number lives — an ADR or a counter row, never this list** (ADR-0066,
 amending ADR-0026), and **that the missing-trailer check is a counter** (ADR-0067); **what widens a run
 — a commit on trunk, never a re-slice and never an implementer's edge** (ADR-0068 and ADR-0069, and §03,
-§05 and §08 above).
+§05 and §08 above); **why lane 01 has no input — the bootstrap, expiring on move 7** (ADR-0070, and §00
+above).
