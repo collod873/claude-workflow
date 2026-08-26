@@ -417,7 +417,15 @@ a cap would park a spec he is actively working on.
 > concurrency. That is **W3**, and lane 08 is its merge-time complement rather than a
 > replacement.
 > — Every `dependsOn` is published as a native blocked-by edge and read back to verify, so the
-> dependency graph is a GitHub object rather than a field in a file.
+> dependency graph is a GitHub object rather than a field in a file. **It is this lane's output and
+> read-only to everything downstream** — an implementer that can edit it destroys the measurement that
+> says it needs editing, since ADR-0042's count is a finding *about this lane*
+> ([ADR-0069](docs/adr/0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md)).
+> — **`## Files claimed` is a disjointness statement, not a write permission.** Graded across this
+> repo's 34 sibling slices: all 14 overlapping claim pairs carry a blocked-by edge, so the plan holds
+> 34 for 34 — but **32% of slices wrote a file they did not claim**, and exactly **one** wrote into a
+> *concurrent* sibling's claim. Counting out-of-claim writes would file eleven issues against one real
+> collision, so nothing does (ADR-0069).
 >
 > **Lives in:** `.Workflow/agent-workflows/to-tickets/`, fired by
 > `.github/workflows/to-tickets.yml`. [ADR-0012](docs/adr/0012-a-stage-s-output-block-is-the-outermost-span-and-the-payload.md).
@@ -571,6 +579,17 @@ it went outside its brief and which module it read. **The count is the finding, 
 per-implementer refusal would ever have surfaced. Nothing downstream watches coupling: the seam lens
 was dropped (ADR-0019, one finding in 28 sessions, stale), and `CODING_STANDARDS.md` carries no rule
 for the violation lens to fire on. That same evidence is why blocking does not earn its cost.
+
+**A discovery widens a run by landing on trunk, and nothing else widens it.** When slice A finds
+something B..N all need, A commits it to `main`; B..N absorb it on rebase or go red against it, and the
+fixer clears the red as an ordinary failure. **Nothing re-slices a run in flight** — that parks work
+only the owner can clear, the ground ADR-0011 covers and the reason the governor died — and **no
+implementer may add a blocked-by edge**
+([ADR-0068](docs/adr/0068-a-discovery-widens-a-run-by-landing-on-trunk-and-the-trigger.md),
+[ADR-0069](docs/adr/0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md)). The
+trigger is not a count and does not need to be: `git rebase` and the test suite decide, so no agent
+judges anything. ADR-0042 ruled that a seam question does not **block**; it never ruled that a
+discovery does not **ship**, and trunk was already the only channel (#98).
 
 **A run does not write what surprised it.** Write-on-surprise is struck before it is built —
 [ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md), replacing
@@ -728,6 +747,14 @@ batches, which are already stored.
 This is still the merge-time complement to W3, which lane 03 implements at authoring time.
 Authoring-time disjointness prevents textual conflict; the serialised merge prevents the rebase race.
 Semantic conflict is watched after the fact rather than at the gate.
+
+**It is also where a claimed-file collision is detected**, and the detection is the git conflict itself
+— free, exact, and already produced, which is the only kind of detection a lane with no model can have
+([ADR-0069](docs/adr/0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md)). Three
+readers, three jobs, not alternatives: the **fixer** repairs it as an ordinary red, **this lane**
+detects it, and **lane 03** is what it diagnoses — the lane that drew the boundary is the lane a
+crossed boundary is evidence about. Measured at **one in 34 slices**, the same order as the
+one-finding-in-28-sessions that retired the seam lens, so it earns a record and not a mechanism.
 
 ### 09 · Close
 
@@ -1261,4 +1288,6 @@ survivable — it is generated and the gauntlet runs it** (ADR-0056), and what a
 (ADR-0058 through ADR-0062, and §02 above); **what a gate bypass is, and what counts it** (ADR-0063,
 and §6 and §06 above); **what admits a counter, and what a number that names no action is instead**
 (ADR-0064 and ADR-0065); **where a number lives — an ADR or a counter row, never this list** (ADR-0066,
-amending ADR-0026), and **that the missing-trailer check is a counter** (ADR-0067).
+amending ADR-0026), and **that the missing-trailer check is a counter** (ADR-0067); **what widens a run
+— a commit on trunk, never a re-slice and never an implementer's edge** (ADR-0068 and ADR-0069, and §03,
+§05 and §08 above).
