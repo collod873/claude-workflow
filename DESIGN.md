@@ -2,7 +2,7 @@
 
 **The target.** What the machine *is* — every edge from an idea to a closed ticket, what event fires
 it, what it refuses, and where the owner is required. [`GOAL.md`](GOAL.md) says what the system is
-*for*; [`INDEX.md`](INDEX.md) says where everything in the estate lives.
+*for*.
 
 It is the map a proposal gets held against, and the reason "we already have a skill for that" stops
 being an argument: the map was drawn before the skills were consulted.

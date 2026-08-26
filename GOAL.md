@@ -3,10 +3,10 @@
 **Compiled:** 2026-08-21 · **Status:** the charter. Everything else in this repo is evidence for it
 or work toward it.
 
-`INDEX.md` says where everything is. `DESIGN.md` says what the machine *is* — every edge, its
-event, its refusal. This says what it is all *for*. When a proposal arrives — a skill, a hook, a
-connector, an eighth era — it gets scored against §2. A proposal that fails a constraint is not a
-smaller version of the goal; it is a different goal.
+`DESIGN.md` says what the machine *is* — every edge, its event, its refusal. This says what it is
+all *for*. When a proposal arrives — a skill, a hook, a connector, an eighth era — it gets scored
+against §2. A proposal that fails a constraint is not a smaller version of the goal; it is a
+different goal.
 
 ---
 
@@ -222,4 +222,3 @@ Everything above is traceable. Deepest reads, in order:
   the five locked decisions
 - `General-Repo/lumaria-shipping-model-vs-sandcastle-2026-08-21.md` — the A/B behind §3
 - Local session transcripts, 2026-07-22 onward — the direct quotes in §1 and §2
-- [`INDEX.md`](INDEX.md) — where all of the above lives
