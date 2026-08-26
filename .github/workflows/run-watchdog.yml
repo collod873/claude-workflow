@@ -1,0 +1,73 @@
+name: Run watchdog
+
+# #41: a workflow run that executes zero jobs must reach a human.
+#
+# GitHub's response to a workflow file it cannot read is to spawn a run against every push and fail
+# it immediately having executed nothing. `to-tickets.yml` did that thirteen consecutive times
+# against `main` over two days. There was no comment, no notification and no red check anyone read —
+# `gh api .../commits/<sha>/check-runs` returned an empty list for every one of them, so the failure
+# was absent from every surface a person looks at, and two PRDs labelled in that window never sliced.
+#
+# The obvious trigger is `workflow_run`, and it cannot work. Its `workflows:` filter matches on a
+# workflow's *name*, and the failure this exists for is GitHub being unable to read a name out of
+# the file — the run is named after its own path instead. A trigger keyed on names is blind to
+# exactly the runs it would be there to catch, and `actionlint` refuses the un-filtered form outright
+# ("no workflow is configured for `workflow_run` event"), so it would not pass this repo's own gate
+# either way. ADR-0049 records that.
+#
+# So this sweeps, on the dispatch the capture hook already sends at session end. ADR-0004 forbids a
+# cadence — a mechanism that can fire when nothing has happened since it last fired — and a session
+# that ended is work that happened, which dead runs only arrive during. Same reasoning and the same
+# dispatch as `close-gate-reconcile.yml` (ADR-0048), reused rather than given one of its own: a
+# second dispatch is a second thing that can silently stop arriving.
+#
+# `on: repository_dispatch` is left unfiltered by `types:` on purpose — that filter is per-workflow,
+# so a list here would have to track every action a sibling workflow ever adds. The job-level `if` is
+# what scopes a run, spelled here as well as in `run-watchdog.ts`'s own `WATCHDOG_DISPATCH_ACTION`;
+# no compiler sees across that boundary, so `run-watchdog.test.ts` asserts the two still agree and
+# `capture/dispatch-action.test.ts` holds both to the name the hook actually sends (#107).
+
+"on":
+  repository_dispatch:
+
+permissions:
+  # read: `actions/runs`, and `actions/runs/<id>/jobs` for the one number the runs list omits. The
+  # close gate's reconciler spent every dispatch it received exiting on a 403 for want of exactly
+  # this (#107), which is why it is spelled out rather than assumed.
+  actions: read
+  # write: the signal itself. An issue is the delivery because it is the one artifact here that
+  # arrives instead of waiting — anything written inside Actions would be as unread as the dead runs.
+  issues: write
+
+concurrency:
+  group: run-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: github.event.action == 'session-captured'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EVENT_ACTION: ${{ github.event.action }}
+      # The signal is assigned so it notifies rather than sits in a list. `github.repository_owner`
+      # rather than a spelled name: this repo has one owner, and that is who a dead lane blocks.
+      SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate
+      # reporting step here.
+      - name: Sweep for lanes that executed nothing
+        run: npx tsx .Workflow/agent-workflows/watchdog/run-watchdog.ts

@@ -696,9 +696,17 @@ normal repair path takes it from there. It applies no label: `close-refused` mea
 (ADR-0023), and a close nobody read is not a refused one.
 
 This is not [#41](https://github.com/collod873/claude-workflow/issues/41)'s watchdog and does not
-retire it. A watchdog fires *during* the failure; this failure is Actions not running workflows, so
-a watchdog would be down with it. A reconciler only has to run *after*, which is what makes being
-asleep through the outage cost it nothing.
+retire it. This failure is Actions not running workflows, so anything firing *during* it would be
+down with it; a reconciler only has to run *after*, which is what makes being asleep through the
+outage cost it nothing.
+
+That "during vs after" is a property of *this* failure, not a requirement on every mechanism —
+[ADR-0049](docs/adr/0049-the-run-watchdog-sweeps-on-session-end-because-workflow-run.md) says why,
+and #41's watchdog rides the same dispatch for it. The distinction that generalises is whether the
+evidence outlives the failure: a missed `issues.closed` is gone, because GitHub never replays one, so
+the close gate has to reconstruct. A run that executed nothing is not — the run object and its job
+count sit in the Actions API for ninety days, and reading them an hour later is no worse than reading
+them as they appeared.
 
 It **spends no model**, recomputes rather than stores — no cursor, no ledger, so nothing it says can
 go stale and a reopened issue simply is not a closed one next time — and it **gets no §6 row**. §6 is

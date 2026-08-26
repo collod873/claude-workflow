@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { RECONCILE_DISPATCH_ACTION } from "../close-gate/reconcile";
 import { AUDIT_DISPATCH_ACTION } from "../observations/run-audit";
+import { WATCHDOG_DISPATCH_ACTION } from "../watchdog/run-watchdog";
 
 /**
  * The guard #107 was missing.
@@ -57,5 +58,13 @@ describe("every consumer of the capture dispatch scopes on the name the hook sen
 
   it("reconcile.ts checks for it", () => {
     expect(RECONCILE_DISPATCH_ACTION).toBe(WIRE_ACTION);
+  });
+
+  it("run-watchdog.yml gates its job on it", () => {
+    expect(repoFile(".github/workflows/run-watchdog.yml")).toContain(`github.event.action == '${WIRE_ACTION}'`);
+  });
+
+  it("run-watchdog.ts checks for it", () => {
+    expect(WATCHDOG_DISPATCH_ACTION).toBe(WIRE_ACTION);
   });
 });

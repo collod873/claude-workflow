@@ -1,0 +1,524 @@
+[
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-22T20:58:11Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32598214687",
+    "id": 32598214687,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T11:37:12Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32637054270",
+    "id": 32637054270,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T14:33:40Z",
+    "head_branch": "livefire/32",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645805385",
+    "id": 32645805385,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T14:33:42Z",
+    "head_branch": "livefire/32",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645807105",
+    "id": 32645807105,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T14:33:49Z",
+    "head_branch": "livefire/32",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645812659",
+    "id": 32645812659,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T14:33:50Z",
+    "head_branch": "livefire/32",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645813085",
+    "id": 32645813085,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T14:33:54Z",
+    "head_branch": "drain/spec-25-stand-up-the-verification-gate",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645816063",
+    "id": 32645816063,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T14:33:55Z",
+    "head_branch": "drain/spec-25-stand-up-the-verification-gate",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32645816491",
+    "id": 32645816491,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T15:13:00Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32647851002",
+    "id": 32647851002,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T15:13:01Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32647851878",
+    "id": 32647851878,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T15:36:17Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32649071151",
+    "id": 32649071151,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T15:36:18Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32649071851",
+    "id": 32649071851,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T17:26:42Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32654849298",
+    "id": 32654849298,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T17:26:43Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32654849750",
+    "id": 32654849750,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T17:52:26Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32656228031",
+    "id": 32656228031,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T17:52:27Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32656228622",
+    "id": 32656228622,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T18:29:11Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32658182677",
+    "id": 32658182677,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T18:29:12Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32658183339",
+    "id": 32658183339,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T18:48:18Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32659200996",
+    "id": 32659200996,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T18:48:19Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32659201695",
+    "id": 32659201695,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T18:50:42Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32659332786",
+    "id": 32659332786,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-23T18:50:43Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32659333499",
+    "id": 32659333499,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-23T23:57:06Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32675123040",
+    "id": 32675123040,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:22:43Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676487984",
+    "id": 32676487984,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:22:44Z",
+    "head_branch": "wf-parse-probe",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676488872",
+    "id": 32676488872,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:22:45Z",
+    "head_branch": "wf-parse-probe",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676489302",
+    "id": 32676489302,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:22:54Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676497304",
+    "id": 32676497304,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:22:55Z",
+    "head_branch": "wf-parse-probe",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676497919",
+    "id": 32676497919,
+    "name": ".github/workflows/to-tickets.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:23:48Z",
+    "head_branch": "wf-parse-probe",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676546436",
+    "id": 32676546436,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:24:23Z",
+    "head_branch": "wf-parse-probe",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676579065",
+    "id": 32676579065,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:25:36Z",
+    "head_branch": "wf-probe-c2",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676646056",
+    "id": 32676646056,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:25:36Z",
+    "head_branch": "wf-probe-c3",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676646288",
+    "id": 32676646288,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:26:23Z",
+    "head_branch": "wf-probe-d1",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676686590",
+    "id": 32676686590,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:26:24Z",
+    "head_branch": "wf-probe-d3",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676686936",
+    "id": 32676686936,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:27:03Z",
+    "head_branch": "wf-probe-m1",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676720547",
+    "id": 32676720547,
+    "name": ".github/workflows/parse-probe.yml",
+    "job_count": 0
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-24T00:29:38Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32676848256",
+    "id": 32676848256,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T00:33:26Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32677044265",
+    "id": 32677044265,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-24T00:34:56Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32677119618",
+    "id": 32677119618,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-24T00:42:53Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32677521369",
+    "id": 32677521369,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-24T01:25:04Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32679709936",
+    "id": 32679709936,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-24T01:29:21Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32679933300",
+    "id": 32679933300,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-24T01:50:24Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32681068060",
+    "id": 32681068060,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-25T22:56:02Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32908470903",
+    "id": 32908470903,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2026-08-25T23:35:54Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32911484994",
+    "id": 32911484994,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-25T23:46:32Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32912257005",
+    "id": 32912257005,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T01:02:26Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32917449533",
+    "id": 32917449533,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T01:22:12Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32918711019",
+    "id": 32918711019,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T02:49:47Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32924169639",
+    "id": 32924169639,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T03:09:31Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32925395344",
+    "id": 32925395344,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T03:36:54Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32927108530",
+    "id": 32927108530,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T11:35:19Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32964070016",
+    "id": 32964070016,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T12:41:06Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32969888342",
+    "id": 32969888342,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T15:59:47Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32986541128",
+    "id": 32986541128,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T17:32:30Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32994754302",
+    "id": 32994754302,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T17:43:41Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32995826957",
+    "id": 32995826957,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T17:48:09Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32996185693",
+    "id": 32996185693,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T17:50:27Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32996373957",
+    "id": 32996373957,
+    "name": "Verify",
+    "job_count": 1
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-08-26T18:10:07Z",
+    "head_branch": "main",
+    "html_url": "https://github.com/collod873/claude-workflow/actions/runs/32998206991",
+    "id": 32998206991,
+    "name": "Verify",
+    "job_count": 1
+  }
+]

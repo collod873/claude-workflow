@@ -64,6 +64,8 @@ const subIssues = pathTemplate`repos/{owner}/{repo}/issues/${0}/sub_issues`;
 const blockedBy = pathTemplate`repos/{owner}/{repo}/issues/${0}/dependencies/blocked_by`;
 const workflow = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}`;
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
+const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
+const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 
 /** The path for one issue: `repos/{owner}/{repo}/issues/<number>`. */
 export function issuePath(number: number): string {
@@ -103,6 +105,32 @@ export function workflowRunsPath(workflowFile: string, perPage: number): string 
   return `${workflowRuns.build(workflowFile)}?per_page=${perPage}`;
 }
 
+/**
+ * The path for one run's jobs. The run watchdog (#41) reads `total_count`
+ * off this and nothing else: the `workflow_run` payload says a run completed
+ * and says it failed, and says nothing about whether anything executed —
+ * which is exactly the distinction the watchdog exists to make.
+ */
+export function runJobsPath(runId: number): string {
+  return runJobs.build(runId);
+}
+
+/**
+ * The path for this repo's runs across every workflow, newest first, with
+ * the page size on it. The run watchdog (#41) sweeps this rather than one
+ * workflow's runs, because the lane it is looking for may be one nobody has
+ * written yet — and, in the case it exists for, one GitHub could not parse
+ * well enough to name.
+ *
+ * The page size is part of the path rather than a caller's concern for the
+ * same reason it is in `workflowRunsPath`: it bounds the window the sweep
+ * can answer for, and a caller that quietly asked for a smaller page would
+ * be narrowing that window without saying so.
+ */
+export function repoRunsPath(perPage: number): string {
+  return repoRuns.build(perPage);
+}
+
 /** Matches an `issuePath`, capturing the issue number. */
 export const issuePathMatcher: RegExp = issue.matcher;
 
@@ -117,3 +145,9 @@ export const workflowPathMatcher: RegExp = workflow.matcher;
 
 /** Matches a `workflowRunsPath` minus its query string, capturing the file. */
 export const workflowRunsPathMatcher: RegExp = workflowRuns.matcher;
+
+/** Matches a `runJobsPath`, capturing the run id. */
+export const runJobsPathMatcher: RegExp = runJobs.matcher;
+
+/** Matches a `repoRunsPath`, capturing the page size. */
+export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
