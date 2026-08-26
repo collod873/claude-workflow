@@ -1,13 +1,19 @@
 # GitHub Actions billing — what the estate actually spends
 
-**Read:** 2026-08-21 · **Resolves:** [claude-workflow#2](https://github.com/collod873/claude-workflow/issues/2)
+**Read:** 2026-08-21 · **Amended:** 2026-08-26 ·
+**Resolves:** [claude-workflow#2](https://github.com/collod873/claude-workflow/issues/2)
 
-**Status:** Minutes, dollars and run counts are **measured** — pulled from GitHub's billing usage
-API and the Actions runs API on 2026-08-21, over a rolling 30-day window (2026-07-23 → 2026-08-21)
-plus per-calendar-month totals. Per-workflow **billable** splits are **derived**, not measured, and
-each derivation is shown; the timing endpoint is unusable on this plan (see [Method](#method)).
-Wall-clock minutes are measured but are not billable minutes. Projections are labelled as such at
-the point of use.
+**Status:** **Per-calendar-month** minutes, charges and run counts are **measured** — pulled from
+GitHub's billing usage API and the Actions runs API on 2026-08-21. Wall-clock minutes are measured
+but are **not** billable minutes; the timing endpoint is unusable on this plan, so no per-workflow
+billable split can be measured at all (see [Method](#method)).
+
+**The rolling-30-day arithmetic was struck on 2026-08-26 and is not in this document.** It was
+labelled measured, could not be reproduced against any API call, and was cited as a design anchor
+before it was struck — see [What was struck, and why](#what-was-struck-and-why) at the foot. Nothing
+below carries a rolling-window figure, a per-repo minute split, or a dollar projection. If you came
+here for a spend or concurrency anchor, there isn't one, and
+[DESIGN.md](../../DESIGN.md) §8 rules that runner minutes are not an input.
 
 ---
 
@@ -59,41 +65,28 @@ An average across the month hides what is actually happening:
 08-09   2     08-18  35
 ```
 
-**Projection (not measured).** If 292 min/day is the new normal, the month lands at roughly
-**9,050 minutes** — 7,050 over the cap, which at $0.006/min is **≈ $42/month**. The cap itself
-would be crossed in about seven more days.
+Whether that is the new run rate or a burst cannot be determined from this data. The 08-19→21
+window is also the analysis push that produced `GOAL.md` and the fleet-architecture handoff, both
+dated 08-21, which is exactly the shape of a burst.
 
-If the last three days are a burst from the 2026-08-19→21 analysis push — the window that produced
-`GOAL.md`, `INDEX.md` and the fleet-architecture handoff, all dated 08-21 — then the estate is at
-July's ~82% and there is no bill at all.
-
-**Which of those two it is cannot be determined from this data.** It needs another week of
-observation, and that is the single most useful thing to know before spending money.
+*A month-end projection and its dollar cost were derived from the 292 min/day figure here. Both
+were struck 2026-08-26 — see [What was struck, and why](#what-was-struck-and-why).*
 
 ---
 
-## Where the minutes go — last 30 days
+## What ran — last 30 days
 
 **Window: 2026-07-23 → 2026-08-21.** Private repos only.
 
-| Repo | Minutes | Share |
-|---|---|---|
-| **Lumaria** | **1,538** | **76.1%** |
-| app-starter | 192 | 9.5% |
-| PWPP-Projects | 163 | 8.1% |
-| agent-skills | 123 | 6.1% |
-| 3D-Printing | 6 | 0.3% |
-| **TOTAL** | **2,022** | — |
+*A per-repo minute split for this window, and the rolling-30-day total it summed to, were struck
+2026-08-26 — see [What was struck, and why](#what-was-struck-and-why). What survives below is run
+counts, which come from a different API and were never in doubt.*
 
-**2,022 minutes against a 2,000-minute allowance.** On a rolling 30-day basis the estate is already
-at the cap. It has not been *charged* because billing is per calendar month and no single month has
-crossed — July closed at 1,647 and August is mid-cycle — but there is no headroom left in the
-current rate of work.
-
-### Per workflow, same 30 days
+### Per workflow
 
 Run counts and conclusions are **measured**. Wall-minutes are measured but are **not** billable
-minutes — see the app-starter caveat below.
+minutes — see the app-starter caveat below. Nothing here apportions billable minutes, because
+nothing can (see [Method](#method)).
 
 | Repo | Workflow | Runs | Failed | Skipped | Wall-min |
 |---|---|---|---|---|---|
@@ -107,28 +100,23 @@ minutes — see the app-starter caveat below.
 | app-starter | License Gate | 6 | 0 | 0 | *see caveat* |
 | app-starter | Sandcastle-era workflows (12) | 48 | 0 | **48** | ~2.4 |
 
-**Derived split for Lumaria's 1,538 minutes** — CI runs six jobs per run, each rounded up to the
-whole minute (83 × 6 = 498 job-runs at minimum); triage runs one job and 37 of its 139 runs were
-skipped, which bill nothing; License Gate runs one job:
+What the run counts alone support, with no minute figures attached: **Lumaria's CI is the heavy
+workload** — it runs six jobs per run against everything else's one, so its 83 runs are ~498
+job-runs where triage's 139 runs are 102 billable job-runs after 37 skips. Job-runs are a proxy for
+cost, not a measure of it.
 
-| | Derived billable | Share of Lumaria |
-|---|---|---|
-| **CI** | **≈ 1,380 min** | **≈ 90%** |
-| Triage | ≈ 105–140 min | ≈ 8% |
-| License Gate | ≈ 16 min | ≈ 1% |
-
-**Estate-wide, the same shape holds.** Summing the Claude-driven `claude-code-action` workload
-across all three repos that run it — Lumaria, PWPP-Projects, agent-skills — gives roughly
-**250–290 billable minutes, about 13% of the estate's 2,022**. The remaining ~87% is plain
-CPU-bound CI.
+*A billable-minute split for Lumaria's workflows, and an estate-wide share for the Claude-driven
+`claude-code-action` workload, were derived from the struck per-repo split and went with it.*
 
 ### Two caveats that matter
 
-**Wall-clock is not billable time.** app-starter's `CI` shows 4,351 wall-minutes across 9 runs and
-`License Gate` 4,323 across 6 — yet the repo billed **192 minutes total** for the whole window.
-Those runs sat queued or waiting, and `updated_at - run_started_at` counts the idling. This is why
-the billing API is treated as the source of truth throughout and wall-clock is only ever used to
-apportion within a repo whose total is already known.
+**Wall-clock is not billable time.** app-starter's `CI` shows 4,351 wall-minutes across 9 runs —
+**483 minutes per run** for an ordinary CI job — and `License Gate` 4,323 across 6, at 720 minutes
+per run. Those runs sat queued or waiting, and `updated_at - run_started_at` counts the idling. The
+repo's actual billed total for the window was smaller by more than an order of magnitude. This is
+the document's most reusable finding: **`updated_at - run_started_at` is not a cost signal**, and
+any future attempt to measure spend from the runs API rather than the billing API will be wrong in
+this direction.
 
 **app-starter is still running era-5 machinery.** Twelve Sandcastle-era workflows —
 `Implement: PR #n`, `Review: PR #n`, `Update branch: PR #n`, `Auto-merge: arm PR #n` — fired 48
@@ -145,9 +133,9 @@ the last three days, 11 failures against 21 successes. Over the full 30-day wind
 lower but still bad: **24 failures in 83 runs, 29%**. August is materially worse than the month
 before it.
 
-Between a third and a half of the dominant cost is being spent on runs that fail. A sampled failing run had four
-of its six jobs red — `build`, `unit`, `lint` and `typecheck` — while `changes` and `integration`
-passed.
+Between a third and a half of the runs on the estate's heaviest workflow are failures, and a failed
+run bills the same as a passing one. A sampled failing run had four of its six jobs red — `build`,
+`unit`, `lint` and `typecheck` — while `changes` and `integration` passed.
 
 Two things follow:
 
@@ -162,22 +150,57 @@ a rate. That distinction belongs to whoever acts on it.
 
 ---
 
-## What the options cost, at the projected rate
+## What the options cost
 
-Priced against the ~9,050 min/month projection, which is the pessimistic case:
+**This document no longer prices the options.** The costing table was derived entirely from the
+struck month-end projection, so it went with it — and the ruling that followed makes the question
+moot rather than merely unanswered.
 
-| Option | Monthly cost | Note |
-|---|---|---|
-| Do nothing, stay on Free | **≈ $42** | 7,050 min over at $0.006/min |
-| GitHub Team | **≈ $40** | $4/user + 6,050 min over |
-| Cut the 29–49% red rate | **≈ $21–30** | Free to attempt; no vendor involved |
-| Third-party fleet | not priced here | See [claude-workflow#5](https://github.com/collod873/claude-workflow/issues/5) |
+Ruled by the owner, 2026-08-26:
 
-At July's rate instead of the projection, every row is **$0**.
+> *"We are actively using GitHub minutes. That over-2000 number was obviously broken and you can't
+> seem to find it so stop trying and stop referencing a number that was sourced incorrectly. I am
+> not worried about the minutes right now — if we ever hit the minutes limit then I will rethink
+> things, not before."*
 
-The absolute numbers deserve stating plainly: the worst realistic case for the whole estate is
-**about forty dollars a month**. That is a real input to the vendor ruling — it bounds how much
-effort any migration can be worth.
+`DESIGN.md` §8 carries this as **runner minutes are not an input**. The trigger for revisiting is a
+GitHub bill, not a projection: **nothing has ever been charged**, and until something is, there is
+no cost question here to answer. A runner-vendor comparison remains filed as
+[claude-workflow#5](https://github.com/collod873/claude-workflow/issues/5) and is not blocked on
+this document.
+
+The one lever that survives is free and unpriced: **cut the 29–49% red rate**. It needs no vendor,
+no plan change and no measurement, and it is the section above.
+
+---
+
+## What was struck, and why
+
+Struck 2026-08-26 under
+[claude-workflow#101](https://github.com/collod873/claude-workflow/issues/101). The figures below
+were labelled **measured** and could not be reproduced against any API call. They were cited in
+[#84](https://github.com/collod873/claude-workflow/issues/84)'s grilling round as the anchor for
+implementer concurrency before the owner struck them.
+
+They are **removed rather than crossed out**, deliberately: a struck number left on the page is
+still a number a session can grep, quote and reason from, which is the failure this edit exists to
+stop. What was removed:
+
+- The **rolling-30-day total** and its "at the cap" reading.
+- The **per-repo minute split** for that window, which summed to it.
+- The **derived per-workflow billable splits** for Lumaria and the estate-wide `claude-code-action`
+  share, which were apportioned within that split.
+- The **month-end projection** extrapolated from the 292 min/day burst, and the **dollar figures**
+  derived from it, including the options costing table.
+
+**Do not re-derive them.** The owner's position above is standing, not provisional. If a future
+session needs a real number, the reproducible path is the per-calendar-month billing API call in
+[Method](#method) — which is what the surviving monthly table came from — and the answer it gives
+today is `$0.00`.
+
+**What survives, and was never in doubt:** nothing has ever been charged; the per-calendar-month
+minute table and the July step change at `80d10ae`; wall-clock is not billable time; and Lumaria
+CI's 49% August red rate.
 
 ---
 
@@ -190,12 +213,11 @@ effort any migration can be worth.
   with `gh auth refresh -h github.com -s user`; `repo` alone is not sufficient for billing.
 - **Run counts and conclusions:** `gh run list` and `GET /repos/{owner}/{repo}/actions/runs`,
   filtered to `created >= 2026-07-23` for the 30-day tables and `created >= 2026-08-19` for the
-  burst-window contrast.
+  burst-window contrast. These are the surviving 30-day figures; they are run counts, not minutes.
 - **The per-run timing endpoint is unusable on this plan.**
   `GET /repos/{owner}/{repo}/actions/runs/{id}/timing` returns `billable.UBUNTU.total_ms: 0` for
-  every run sampled, including runs the billing API bills for. The per-workflow split above is
-  therefore **derived** from job counts × runs × per-job minute rounding, cross-checked against the
-  measured 1,538-minute Lumaria total for the 30-day window. Treat it as an attribution estimate,
-  not a measurement.
+  every run sampled, including runs the billing API bills for. **There is therefore no way to
+  measure a per-workflow billable split on this account**, and this document no longer attempts one
+  — the derived splits it used to carry were struck with the per-repo total they apportioned.
 - **Not captured:** Actions storage (billed in GigabyteHours, also $0.00 net) is excluded
   throughout; it is immaterial at this scale.
