@@ -1,3 +1,5 @@
+import { normalizeSite } from "../site";
+
 /**
  * The `Finding:`/`Site:` grammar both PROPOSED (`./proposed.ts`) and
  * VIOLATION (`./violation.ts`) ask their lens's raw text to follow, and
@@ -8,6 +10,13 @@
  */
 export interface GrammarFinding {
   finding: string;
+  /**
+   * Where this run saw it, in contract form (`../site.ts`) — a path,
+   * optionally `:<line>`, and nothing else. Normalized here rather than
+   * trusted, because a model told to write `file:line` writes
+   * `file:line (theFunction)` and the mechanisms downstream read a site as a
+   * path (#108).
+   */
   site: string;
 }
 
@@ -20,6 +29,11 @@ const SITE_LINE = /^Site:\s*(.+)$/;
  * finding is consumed by the next site — anything else in the raw text
  * (prose, an empty-pass notice, a field the model wasn't asked for) is not
  * one of these two labels and is silently not a finding.
+ *
+ * The site is narrowed to contract form here, at the one seam both lenses
+ * parse through, so that no writer downstream has to hold the rule and no
+ * reader downstream has to guess at it. A `Site:` line whose text carries no
+ * path at all yields nothing to normalize and is not a finding.
  */
 export function parseGrammarFindings(raw: string): GrammarFinding[] {
   const findings: GrammarFinding[] = [];
@@ -36,7 +50,9 @@ export function parseGrammarFindings(raw: string): GrammarFinding[] {
 
     const siteMatch = SITE_LINE.exec(trimmed);
     if (siteMatch && pendingFinding !== undefined) {
-      findings.push({ finding: pendingFinding, site: siteMatch[1].trim() });
+      const site = normalizeSite(siteMatch[1]);
+      if (!site) continue;
+      findings.push({ finding: pendingFinding, site });
       pendingFinding = undefined;
     }
   }

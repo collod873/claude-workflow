@@ -1,4 +1,5 @@
 import { parseGrammarFindings } from "./grammar";
+import { normalizeSite } from "../site";
 
 /**
  * Everything the PROPOSED lens's prompt is built from. Like VIOLATION
@@ -60,7 +61,8 @@ One block per candidate pattern, in exactly this form, repeated for each:
 
 Finding: <a one-line description of the pattern, stable across sites — this is its identity, so
 phrase it the same way you would on a second sighting of it>
-Site: <file:line where this run observed it>
+Site: <file:line where this run observed it — a path and a line number, nothing else. No function
+name, no parenthetical, no "~line". A reader resolves this as a path, so anything past it is lost.>
 
 Output only these two labels, once per candidate pattern, and nothing else — no drafted rule text,
 no rationale, no other labeled field. Writing the entry's wording is not this lens's call to make;
@@ -114,6 +116,13 @@ export interface GatedProposedFinding {
  * is a later ticket's job; this function only merges what it's handed and
  * hands back the result — the same "state passed in, not read from disk"
  * shape `runAuditor` already uses for `spine` and `standards`.
+ *
+ * Both sides are normalized to contract form (`../site.ts`) before they are
+ * compared. `previous` comes off a note that may predate that contract, and
+ * an un-normalized `a.ts:1 (theFunction)` against a fresh `a.ts:1` is the
+ * same sighting written two ways — which would count as two distinct sites
+ * and release a finding seen once (#108). Normalizing on the way through
+ * also means each run rewrites the note a little cleaner than it read it.
  */
 export function applyTwoSiteGate(
   previous: GatedProposedFinding[],
@@ -121,10 +130,13 @@ export function applyTwoSiteGate(
 ): GatedProposedFinding[] {
   const byFinding = new Map<string, GatedProposedFinding>();
   for (const entry of previous) {
-    byFinding.set(entry.finding, { finding: entry.finding, sites: [...entry.sites], released: entry.released });
+    const sites = [...new Set(entry.sites.map(normalizeSite))].filter((site) => site.length > 0);
+    byFinding.set(entry.finding, { finding: entry.finding, sites, released: entry.released });
   }
 
-  for (const { finding, site } of findings) {
+  for (const { finding, site: raw } of findings) {
+    const site = normalizeSite(raw);
+    if (!site) continue;
     const existing = byFinding.get(finding);
     if (existing) {
       if (!existing.sites.includes(site)) existing.sites.push(site);

@@ -201,4 +201,59 @@ describe("applyTwoSiteGate", () => {
 
     expect(afterSecond).toEqual([{ finding: "f", sites: ["a.ts:1", "b.ts:2"], released: true }]);
   });
+
+  it("reads a prior note's prose site and this run's bare one as the same sighting, not two", async () => {
+    // What `refs/notes/observations` actually carries from run 32996383308 (#108) — if these
+    // read as two distinct sites, a pattern seen once clears the gate.
+    const prior = [{ finding: "f", sites: ["a.ts:1 (theFunction)"], released: false }];
+
+    const merged = applyTwoSiteGate(prior, [{ finding: "f", site: "a.ts:1" }]);
+
+    expect(merged).toEqual([{ finding: "f", sites: ["a.ts:1"], released: false }]);
+  });
+
+  it("collapses a prior note's several spellings of one site into the one site they name", async () => {
+    const prior = [{ finding: "f", sites: ["a.ts:1 (theFunction)", "a.ts:1 (still the same line)"], released: true }];
+
+    const merged = applyTwoSiteGate(prior, []);
+
+    expect(merged).toEqual([{ finding: "f", sites: ["a.ts:1"], released: false }]);
+  });
+});
+
+describe("the site contract, against the lens that writes one", () => {
+  it("narrows a PROPOSED site to a path and line, whatever the model hangs off it", async () => {
+    // Verbatim from run 32996383308's own note — the shape the lens emits when told `file:line`.
+    const raw = [
+      "Finding: scratch-project detection duplicated",
+      "Site: .Workflow/agent-workflows/capture/backfill.ts:212 (isScratchProject)",
+      "",
+      "Finding: module header drifts from the code under it",
+      "Site: .Workflow/agent-workflows/shared/spine.ts (quoted/bulleted functions, ~line 233)",
+    ].join("\n");
+
+    expect(parseProposedFindings(raw)).toEqual([
+      {
+        finding: "scratch-project detection duplicated",
+        site: ".Workflow/agent-workflows/capture/backfill.ts:212",
+      },
+      {
+        finding: "module header drifts from the code under it",
+        site: ".Workflow/agent-workflows/shared/spine.ts",
+      },
+    ]);
+  });
+
+  it("tells the model the site carries nothing past the line number, in both lenses' prompts", async () => {
+    const proposed = proposedPrompt({ diff: "+ a line", spine: "the spine" });
+    const violation = violationPrompt({ standards: "entry: never do Y", diff: "+ a line", spine: "the spine" });
+
+    for (const prompt of [proposed, violation]) {
+      expect(prompt).toContain("a path and a line number, nothing else");
+    }
+  });
+
+  it("is not a finding at all when the Site: line carries no site", async () => {
+    expect(parseProposedFindings("Finding: f\nSite:    \n")).toEqual([]);
+  });
 });

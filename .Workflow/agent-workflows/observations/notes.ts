@@ -1,5 +1,6 @@
 import type { GitExec } from "../shared/git";
 import { Observation } from "./observation-schema";
+import { isBareSite, sitePath } from "./site";
 
 /**
  * The notes ref every function in this module reads and writes, unqualified
@@ -46,6 +47,13 @@ export interface ReadObservationsOptions {
    * checks every site's file against.
    */
   head: string;
+  /**
+   * Where the self-drop says what it dropped and why. Defaults to
+   * `console.log`, matching `run-audit.ts`'s own convention: a finding
+   * vanishing silently is the failure #108 was, so the default is the
+   * loud one and a caller has to ask for quiet.
+   */
+  log?: (line: string) => void;
 }
 
 /** One commit's surviving observations, as `readObservations` hands them back. */
@@ -65,9 +73,18 @@ export interface CommitObservations {
  * sites are all gone is dropped: the staleness self-drop. A commit left with
  * no surviving findings after that filter is omitted entirely rather than
  * returned with an empty `observations` array.
+ *
+ * The drop is a deletion of evidence, so it is narrated rather than silent
+ * (#108): every dropped finding is logged with each of its sites, the path
+ * that site resolved to, and which of the two things went wrong — the file
+ * is gone, or the site was never a path in the first place. A site that
+ * isn't a path is logged whether or not its finding survives, because that
+ * is a defect in the lens that wrote it and the surviving case is the one
+ * nothing else would ever report.
  */
 export function readObservations(options: ReadObservationsOptions): CommitObservations[] {
   const { git, repoDir, base, head } = options;
+  const log = options.log ?? ((line: string) => console.log(line));
   const range = base ? `${base}..${head}` : head;
   const format = `%H${FIELD_SEP}%N${RECORD_SEP}`;
   const raw = git(["-C", repoDir, "log", range, `--notes=${NOTES_REF}`, `--format=${format}`]);
@@ -82,27 +99,54 @@ export function readObservations(options: ReadObservationsOptions): CommitObserv
     if (!note) continue;
 
     const observations = Observation.array().parse(JSON.parse(note));
-    const surviving = observations.filter((entry) => hasLiveSite({ git, repoDir, ref: head, entry }));
+    const surviving = observations.filter((entry) => hasLiveSite({ git, repoDir, ref: head, entry, log }));
     if (surviving.length > 0) results.push({ commit, observations: surviving });
   }
   return results;
 }
 
-function hasLiveSite(options: { git: GitExec; repoDir: string; ref: string; entry: Observation }): boolean {
-  const { git, repoDir, ref, entry } = options;
-  return entry.sites.some((site) => fileExistsAtRef({ git, repoDir, ref, path: sitePath(site) }));
+/** One site of one finding, as the self-drop judged it. */
+interface SiteVerdict {
+  /** The site exactly as the note carries it. */
+  site: string;
+  /** The path `site` resolved to (`site.ts`'s `sitePath`). */
+  path: string;
+  /** Whether `site` was already a bare path — false means the lens wrote prose into it. */
+  bare: boolean;
+  /** Whether `path` exists at the ref being read. */
+  exists: boolean;
 }
 
-/**
- * A site is `file:line` (`lenses/proposed.ts`'s `Site:` output). Strips a
- * trailing `:<line>` when present; a path with no line suffix is returned
- * unchanged.
- */
-function sitePath(site: string): string {
-  const lastColon = site.lastIndexOf(":");
-  if (lastColon === -1) return site;
-  const suffix = site.slice(lastColon + 1);
-  return /^\d+$/.test(suffix) ? site.slice(0, lastColon) : site;
+function hasLiveSite(options: {
+  git: GitExec;
+  repoDir: string;
+  ref: string;
+  entry: Observation;
+  log: (line: string) => void;
+}): boolean {
+  const { git, repoDir, ref, entry, log } = options;
+
+  const verdicts: SiteVerdict[] = entry.sites.map((site) => {
+    const path = sitePath(site);
+    return { site, path, bare: isBareSite(site), exists: fileExistsAtRef({ git, repoDir, ref, path }) };
+  });
+
+  for (const verdict of verdicts.filter((each) => !each.bare)) {
+    log(`note: ${entry.lens} finding "${entry.finding}" names a site that is not a path: ${JSON.stringify(verdict.site)} — read as ${verdict.path}`);
+  }
+
+  const live = verdicts.some((verdict) => verdict.exists);
+  if (!live) {
+    log(`dropped ${entry.lens} finding "${entry.finding}" as stale: ${verdicts.map((verdict) => describe(verdict, ref)).join("; ")}`);
+  }
+  return live;
+}
+
+/** Why one site failed to keep its finding alive, in the two ways that differ. */
+function describe(verdict: SiteVerdict, ref: string): string {
+  return verdict.bare
+    ? `${verdict.path} does not exist at ${ref}`
+    : `${JSON.stringify(verdict.site)} is not a path, and ${verdict.path} does not exist at ${ref}`;
 }
 
 function fileExistsAtRef(options: { git: GitExec; repoDir: string; ref: string; path: string }): boolean {

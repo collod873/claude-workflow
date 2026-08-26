@@ -118,6 +118,94 @@ describe("writeObservationNote / readObservations", () => {
     expect(result).toEqual([{ commit: head, observations: [finding] }]);
   });
 
+  it("keeps a finding whose site names a real file behind prose, as the first real audit's four do", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+
+    // Verbatim from run 32996383308 — the shape the PROPOSED lens actually emits (#108).
+    const finding = observation({
+      finding: "scratch-project detection duplicated",
+      sites: ["a.ts:212 (isScratchProject)", "a.ts (main(), summary console.log)"],
+      released: true,
+    });
+    writeObservationNote({ git: execGit, repoDir: dir, commit: head, observations: [finding] });
+
+    const result = readObservations({ git: execGit, repoDir: dir, base, head, log: () => {} });
+
+    expect(result).toEqual([{ commit: head, observations: [finding] }]);
+  });
+
+  it("names the finding and the file when it drops one whose file is gone", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed a");
+    repo.commit("b.ts", "export const b = 1;\n", "seed b");
+    const withFinding = repo.commit("a.ts", "export const a = 2;\n", "touches a again");
+    writeObservationNote({
+      git: execGit,
+      repoDir: dir,
+      commit: withFinding,
+      observations: [observation({ finding: "about to go stale", sites: ["b.ts:1"] })],
+    });
+    const afterDeletion = repo.remove("b.ts", "deletes b.ts");
+
+    const lines: string[] = [];
+    readObservations({ git: execGit, repoDir: dir, base, head: afterDeletion, log: (line) => lines.push(line) });
+
+    const dropped = lines.filter((line) => line.startsWith("dropped "));
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]).toContain("about to go stale");
+    expect(dropped[0]).toContain(`b.ts does not exist at ${afterDeletion}`);
+    expect(dropped[0]).not.toContain("is not a path");
+  });
+
+  it("distinguishes a site that was never a path from one whose file is gone", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    writeObservationNote({
+      git: execGit,
+      repoDir: dir,
+      commit: head,
+      observations: [observation({ finding: "site is prose", sites: ["gone.ts (some function)"] })],
+    });
+
+    const lines: string[] = [];
+    readObservations({ git: execGit, repoDir: dir, base, head, log: (line) => lines.push(line) });
+
+    expect(lines.some((line) => line.startsWith("note:") && line.includes("is not a path"))).toBe(true);
+    const dropped = lines.find((line) => line.startsWith("dropped "));
+    expect(dropped).toContain("is not a path");
+    expect(dropped).toContain("gone.ts does not exist");
+  });
+
+  it("says a surviving finding's site is not a path, since nothing else would ever report it", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    writeObservationNote({
+      git: execGit,
+      repoDir: dir,
+      commit: head,
+      observations: [observation({ finding: "survives anyway", sites: ["a.ts:1 (theFunction)"] })],
+    });
+
+    const lines: string[] = [];
+    const result = readObservations({ git: execGit, repoDir: dir, base, head, log: (line) => lines.push(line) });
+
+    expect(result).toHaveLength(1);
+    expect(lines.some((line) => line.startsWith("note:") && line.includes("survives anyway"))).toBe(true);
+    expect(lines.some((line) => line.startsWith("dropped "))).toBe(false);
+  });
+
   it("excludes commits outside the range, same as sessionRangeDiff's own bound", () => {
     const repo = makeRepo();
     dir = repo.dir;
