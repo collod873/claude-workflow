@@ -738,6 +738,15 @@ Nothing in this system runs on a clock —
 | **Violation** | Sonnet | Session end | A landed diff breaking a **ratified** `CODING_STANDARDS.md` rule that no linter enforces | 2 | built |
 | **Proposed** | Sonnet | Session end | A smell worth a new standard — **held until a second site appears.** The two-site gate is C3's second-site trigger pointed at findings | 3 | built |
 
+**`built` here now means run.** It did not until 2026-08-26. Both lenses were built in #63 and
+wired to a dispatch the hook never sent, so every `Audit` run — fourteen of them — skipped, and a
+skipped run is green ([#107](https://github.com/collod873/claude-workflow/issues/107)). The first
+execution is
+[run 32996383308](https://github.com/collod873/claude-workflow/actions/runs/32996383308): VIOLATION
+read the range against both ratified entries and found nothing, PROPOSED returned four findings,
+all four held single-site by the gate below, and the note landed on `refs/notes/observations`. The
+column above is a claim about execution, and that run is what now supports it.
+
 **The standards chain, absorbed and built.** `/standards-pass` → `/ratify` → `/standards` is these
 two lenses (ADR-0027). Their contract:
 
