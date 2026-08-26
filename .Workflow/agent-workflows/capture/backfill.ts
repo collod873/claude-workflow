@@ -5,6 +5,8 @@
  * function `.claude/hooks/session-capture-hook.mjs` (#44) calls at `SessionEnd` — one extraction,
  * two callers, so a live capture and a backfilled one are shaped identically.
  *
+ * Scratch project directories are declined — see `isScratchProject` for the rule and why (#103 §2).
+ *
  * Source layout: `<sourceDir>/<project>/<sessionId>.jsonl` — the two-level layout
  * `~/.claude/projects/` itself uses (a project's encoded-cwd directory, holding one `.jsonl` per
  * session). `discoverTranscripts` reads exactly that shape; a fixture directory in tests mirrors
@@ -196,6 +198,21 @@ function safeReaddir(dir: string): string[] {
   }
 }
 
+/**
+ * True for a project directory that is a scratch tree rather than a repo — the encoded form of a
+ * cwd under `/tmp`. Claude Code names a project directory after its cwd with `/` replaced by `-`,
+ * so `/tmp/judge-obbwi8jl` arrives as `-tmp-judge-obbwi8jl`.
+ *
+ * Excluded from the backfill because a corpus is read for the owner's corrections and these hold
+ * none: 35 of the 73 directories under `~/.claude/projects/` on 2026-08-26 were ablation harnesses,
+ * judge runs and agent scratchpads, each one or two sessions long, none of them work anyone did.
+ * Stated as a rule here rather than applied by hand at the command line, so the next run over a
+ * machine with different scratch on it makes the same choice (#103 §2). Every exclusion is logged.
+ */
+export function isScratchProject(project: string): boolean {
+  return project.startsWith("-tmp-");
+}
+
 export interface BackfillOptions {
   sourceDir: string;
   outputDir: string;
@@ -224,6 +241,13 @@ export function runBackfill(opts: BackfillOptions): BackfillOutcome[] {
 
   for (const transcript of transcripts) {
     const sid8 = transcript.sessionId.slice(0, 8);
+
+    if (isScratchProject(transcript.project)) {
+      const outcome = `skipped scratch-project: ${transcript.project}`;
+      log(logPath, outcome);
+      results.push({ sessionId: transcript.sessionId, outcome });
+      continue;
+    }
 
     if (captured.has(sid8)) {
       const outcome = `skipped already-captured: ${transcript.sessionId}`;
@@ -293,8 +317,16 @@ function main(): void {
   }
 
   const outcomes = runBackfill({ sourceDir, outputDir: resolveOutputDir(), logPath: resolveLogPath() });
-  const capturedCount = outcomes.filter((o) => o.outcome.startsWith("captured ")).length;
-  console.log(`backfill: ${capturedCount} captured, ${outcomes.length - capturedCount} skipped, ${outcomes.length} total`);
+  const count = (prefix: string): number => outcomes.filter((o) => o.outcome.startsWith(prefix)).length;
+  const capturedCount = count("captured ");
+  const scratchCount = count("skipped scratch-project");
+  // The scratch count is broken out rather than folded into "skipped": a run that quietly declines
+  // half of what it was pointed at reads as full coverage in the log a year later.
+  console.log(
+    `backfill: ${capturedCount} captured, ${outcomes.length - capturedCount} skipped ` +
+      `(${scratchCount} scratch projects, ${count("skipped already-captured")} already captured), ` +
+      `${outcomes.length} total`,
+  );
 }
 
 // Only run as a CLI when invoked directly (`npx tsx backfill.ts ...`), not when this module is
