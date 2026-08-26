@@ -679,9 +679,37 @@ Semantic conflict is watched after the fact rather than at the gate.
 > era-6 estate still runs it and still has the hole.
 > — **The one way past it** is closing a delivered ticket as *not planned*. Narrower than the hole it
 > replaced, deliberate rather than forgotten, and **countable** — §6 flags the counter.
+> — **A close the gate never saw is reconciled afterwards, not watched for live** — the reconciler
+> below ([ADR-0048](docs/adr/0048-the-close-gate-s-reconciler-rides-session-end-because-a-cron.md)).
 >
-> **Lives in:** `.github/workflows/close-gate.yml`, `.Workflow/agent-workflows/close-gate/`.
-> ADR-0013, ADR-0014, ADR-0021, ADR-0022, ADR-0023.
+> **Lives in:** `.github/workflows/close-gate.yml`, `close-gate-reconcile.yml`,
+> `.Workflow/agent-workflows/close-gate/`. ADR-0013, ADR-0014, ADR-0021, ADR-0022, ADR-0023,
+> ADR-0048.
+
+**The venue's own hole, and what closes it.** `issues.closed` fires no matter *how* an issue was
+closed — but only if Actions is up to receive it, and GitHub does not replay an event a workflow
+missed. A close that lands during an outage produces no run, no verdict and no `close-refused`, and
+is indistinguishable from a close that passed. So a **reconciler** asks, after the fact, the one
+question that stays answerable from durable state: *which completed closes have no gate run?* What
+it finds it reopens, with a comment saying no verdict exists — not that the record was bad — and the
+normal repair path takes it from there. It applies no label: `close-refused` means an open refusal
+(ADR-0023), and a close nobody read is not a refused one.
+
+This is not [#41](https://github.com/collod873/claude-workflow/issues/41)'s watchdog and does not
+retire it. A watchdog fires *during* the failure; this failure is Actions not running workflows, so
+a watchdog would be down with it. A reconciler only has to run *after*, which is what makes being
+asleep through the outage cost it nothing.
+
+It **spends no model**, recomputes rather than stores — no cursor, no ledger, so nothing it says can
+go stale and a reopened issue simply is not a closed one next time — and it **gets no §6 row**. §6 is
+lenses and counters: things that read and file. This acts, on the gate's own behalf, and belongs to
+lane 09's contract rather than beside the mechanisms that watch it. Same reasoning that keeps the
+back-stamp off that table.
+
+Its ceiling is declared where it is implemented: the link between a close and the run that judged it
+is a **correlation** (the run's display title and its creation time), not a fact the gate stamped, so
+two same-titled issues closed inside one window can let one run vouch for both. The stamp is the
+upgrade and it is strictly more work; the correlation is what shipped.
 
 **Retires blocker 1, structurally.** The venue is what does it: `issues.closed` fires no matter *how*
 an issue was closed — keyword, phone, web UI — and an Action that errors is a red run rather than a
