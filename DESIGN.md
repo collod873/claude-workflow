@@ -382,23 +382,54 @@ reached for its own report card. [ADR-0032](docs/adr/0032-an-acceptance-test-is-
 **The immutable set is closed, not approximate.** `tests/acceptance/**` is no boundary on its own —
 `vitest.config.ts` carries an explicit `include` allowlist, so an implementer can leave every test
 byte-identical and delete one line to stop them running, and an imported helper or fixture is the
-same hole one level down. So the set is **the directory plus the runner's config**, and an
-acceptance test **may not import anything outside its own directory**. The cost is duplication in
-that tree; the gain is that the path filter is complete and the restore above restores everything
-the tests depend on.
+same hole one level down. The same hole exists one level *up*: on a `pull_request` event GitHub runs
+the workflow file **from the pull request**, so an implementer that touches no test at all can
+delete the acceptance job and the restore never executes. So the set is **the directory, the
+runner's config, and `.github/`**, and an acceptance test **may not import anything outside its own
+directory**. The cost is duplication in that tree; the gain is that the path filter is complete and
+the restore above restores everything the tests depend on.
 
-**The exemption rides on identity, because the exemption is the attack surface.** The re-entry PR
-must modify `tests/acceptance/`, and a label or a branch prefix is a convention any agent with
-`issues:write` satisfies by typing. The check reads the PR's **author identity**, which means this
-lane needs **its own credential**, distinct from whatever dispatches implementers. That is the price
-of the check meaning anything.
+**Restoring from trunk is only a guarantee if the instruction to restore also comes from trunk.** So
+the implementer opens its PR and then sends a `repository_dispatch`, which fires verification from
+**the default branch's** workflow file unconditionally — the judging definition is never a file
+inside the thing being judged.
+[ADR-0054](docs/adr/0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md). The
+forcing fact underneath is that an event caused by the built-in `GITHUB_TOKEN` starts no workflow run
+at all, which kills the whole family of workarounds — opening a PR, labelling it after, opening it
+already labelled — since the rule is about the token and not the event. `repository_dispatch` is one
+of the two documented exceptions, and three workflows here already run on it.
+
+**There is no exemption, and therefore no identity to forge.** The re-entry PR would have had to
+modify `tests/acceptance/`, and a label or a branch prefix is a convention any agent with
+`issues:write` satisfies by typing — so the check would have had to read **author identity**, and
+this lane would have needed its own credential. It doesn't, because **lane 04 opens no pull request**:
+it commits its tests straight to `main` from the job that wrote them, which is
+[ADR-0051](docs/adr/0051-the-accept-commits-its-rulings-straight-to-main-because-a-pu.md)'s ruling
+applied to a second lane. The rule is then absolute — *no pull request may change the immutable set,
+nobody is exempt* — and an absolute rule has no attack surface to defend. One principal,
+`github-actions[bot]`, no App, no machine account, no new secret.
+[ADR-0053](docs/adr/0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md).
+
+**The lane pays for the missing PR by gating its own push.** A pull request would have run CI on the
+tests before they landed; a push means a broken batch reddens every in-flight implementer at once,
+across the whole PRD. The signal is **not** green — these tests are supposed to fail before an
+implementation exists — it is **every test collected, and every failure an assertion rather than an
+import or syntax error**. That separates correct-and-red from broken, mechanically.
+
+**No credential is referenced by a job a pull request can trigger.** The model-spending lanes fire on
+`issues` and `repository_dispatch` and run trunk's workflow file; the immutability job is a diff and
+needs no secret. This is what makes a repository secret safe here, since a private Free repo cannot
+have environment secrets with protection rules — that is the same purchase as branch protection. A
+missing credential **refuses** (§03's precedent), and the immutability job additionally may never be
+*skipped*, whatever is absent: a check that skips is fail-open, which is not a gate.
 
 **Immutable is not frozen, and the difference is where the grooming would have hidden.** A spec that
 legitimately changes would otherwise strand its tests with nobody permitted to touch them, and
 "someone updates the acceptance tests" is exactly the maintenance obligation C4 refuses to build. So
 `tests/acceptance/` has **one author — this lane — and one way to re-enter it:** a merged edit to
-the spec re-fires the acceptance author for the affected slices only, on a PR of its own, before any
-implementer resumes. **"Affected" is a grep, not a judgement:** every test names its criterion
+the spec re-fires the acceptance author for the affected slices only, on a push of its own, before
+any implementer resumes (ADR-0033's "PR of its own" is amended to a push by ADR-0053, for the reason
+that lane opens no PRs at all). **"Affected" is a grep, not a judgement:** every test names its criterion
 verbatim, so a slice is affected when a test it owns names a criterion string the spec no longer
 carries. A criterion *added* with no test naming it is a re-slice, and routes to lane 03 (ADR-0033).
 The thing that checks is still never the thing that built, no matter how many times the spec moves.
@@ -424,8 +455,18 @@ mechanism that makes the whole out-of-the-loop premise safe: without it, the fle
 unverifiable, which makes it worthless, which puts the owner back in the loop reading diffs.
 
 **It runs at the Actions venue** — lane 06 binds that, along with the 10-minute budget it has to fit.
-The immutability check is its own job in `verify.yml`, fired on `pull_request`, running **before**
-the gauntlet: it is a diff test costing a second, and it invalidates the run beneath it.
+The immutability check is its own job in `verify.yml`, fired on the implementer's
+`repository_dispatch`, running **before** the gauntlet: it is a diff test costing a second, and it
+invalidates the run beneath it.
+
+**A run judges one slice, not the PRD.** Every slice's tests land on trunk before any implementer is
+dispatched, so a run that executed all of them would redden every parallel PR until the last slice
+shipped. The job runs **only the tests naming this slice's criteria** — which is the same grep
+ADR-0033 already relies on, since every test names its criterion verbatim.
+
+**A dispatch that never arrives looks like a check that hasn't finished.** That is #41's failure
+class, and it binds lane 08: the merge actor requires a *completed* verification run, which is
+stronger than "no red check."
 
 **It refuses from the day it ships, and ADR-0011 does not hold it back** — the ADR is amended to say
 so. The only thing that can violate this check is a dispatched implementer, so it has no traffic

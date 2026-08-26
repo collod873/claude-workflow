@@ -110,6 +110,14 @@ repaired record *is* the output. See
 [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
 _Avoid_: backlink, cross-reference, index, tombstone
 
+**Immutable set**:
+The files a pull request may never change: `tests/acceptance/`, the test runner's config, and
+`.github/`. Closed rather than approximate — each entry is there because omitting it reopens the same
+hole one level up, where the thing that judges becomes reachable from the thing being judged. It
+carries **no exemption**, which is what leaves nothing for an identity to authenticate. See
+[ADR-0053](docs/adr/0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md).
+_Avoid_: protected paths, frozen files, locked directory, path filter
+
 ### The pipeline
 
 **Lane**:
