@@ -20,13 +20,25 @@ after a refusal rather than editing or deleting the record that was refused.
 - <criterion text> — MET: `<command>` exit 0
 ```
 
-Or, when the issue carries no commit at all:
+Or, when the issue carries no commit at all, `No diff.` stands where the range would:
 
 ```md
 ## Closing record
 
 No diff.
+
+- <criterion text> — MET: `<command>` exit 0
 ```
+
+**`No diff.` excuses the range and nothing else** (ADR-0022). The bullets are still counted
+against the issue's criteria, still have to carry a verdict each, and still have to point at
+evidence. It passes on its own only when the issue body declares no acceptance criteria at all —
+there is then nothing for bullets to correspond to.
+
+It used to be an unconditional allow, read before any bullet, and that is how #55's drill A closed
+an issue that had delivered none of its seven criteria: the salvage stage found no evidence and
+wrote seven honest failures, and this grammar threw them away on the record's first two words. A
+close carrying no commit is a real thing; a close carrying no evidence is not.
 
 ## The rules
 
@@ -51,7 +63,9 @@ by the identical rules above. The model translates; it never renders a verdict, 
 make a record pass that these rules would refuse.
 
 A record it salvages is posted to the issue as a comment, so the reasoning is on the record and a
-later re-close costs no model at all.
+later re-close costs no model at all — and only when it passed. A salvaged record that is refused
+leaves the refusal on the issue instead, so nothing the model wrote about an undelivered close is
+ever filed as though it were a delivery.
 
 ## What this does not check
 

@@ -13,6 +13,13 @@ export interface RecordParts {
   range?: string | null;
   /** One line per bullet, written without the leading `- `. */
   bullets?: string[];
+  /**
+   * Put `No diff.` where the range would go, keeping the bullets. The shape a
+   * close carrying no commit takes — and the one that used to pass on its first
+   * two words alone (#60), so the tests need to build it *with* bullets rather
+   * than only as a whole-body replacement.
+   */
+  noDiff?: boolean;
   /** Replaces the whole body under the heading — for `No diff.` and friends. */
   instead?: string;
 }
@@ -22,7 +29,11 @@ export function recordText(parts: RecordParts = {}): string {
   if (parts.instead !== undefined) {
     return `\n${parts.instead}\n`;
   }
-  const range = parts.range === null ? "" : `\`${parts.range ?? "main..a1b2c3d"}\`\n\n`;
+  const range = parts.noDiff
+    ? "No diff.\n\n"
+    : parts.range === null
+      ? ""
+      : `\`${parts.range ?? "main..a1b2c3d"}\`\n\n`;
   const bullets = (parts.bullets ?? ["A criterion — MET: `src/thing.ts:12`"])
     .map((bullet) => `- ${bullet}`)
     .join("\n");

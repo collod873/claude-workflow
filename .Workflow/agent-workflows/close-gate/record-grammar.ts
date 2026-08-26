@@ -34,6 +34,12 @@ import {
  * either side be any git revspec — a sha, a ref, a tag, a slashed branch
  * name — without stray prose inside a bullet passing for a range.
  *
+ * `No diff.` may stand where the range does, for a close that carries no
+ * commit. It excuses that line and nothing else: the bullets are still
+ * counted against the issue's criteria and still have to carry verdicts and
+ * shaped evidence (ADR-0022). It passes on its own only where the issue body
+ * declares no criteria at all.
+ *
  * **Declared ceiling, inherited intact.** A well-shaped lie passes. This
  * checks the record's structure only. Whether the evidence was truly
  * observed inside the declared range is outside it, and always was:
@@ -162,11 +168,25 @@ export function extractVerdict(bullet: string): "MET" | "UNMET" | "AMBIGUOUS" | 
 export function evaluateRecord(recordText: string, criteriaCount: number | null): Evaluation {
   const record = normalizeNewlines(recordText);
 
-  if (record.trimStart().startsWith("No diff.")) {
-    return { verdict: "allow", code: "no-diff", message: "`No diff.` declared." };
-  }
+  /**
+   * `No diff.` excuses the **range** and nothing else (ADR-0022, #60).
+   *
+   * It used to be the first branch here and returned `allow` outright, before a
+   * bullet, a criterion or a verdict was read. #55's drill A closed an issue with
+   * seven criteria and no delivery on exactly that: the salvage stage did its job,
+   * found no evidence and wrote seven failing bullets, and this function threw them
+   * away on the strength of the record's first two words. `unmet-criterion` was
+   * unreachable whenever `No diff.` was present — which the salvage prompt made the
+   * *likely* shape for an undelivered issue rather than an edge case, since an issue
+   * nobody delivered carries no commit by definition.
+   *
+   * A close carrying no commit is a real thing; a close carrying no evidence is not.
+   * So the declaration now stands in for the range only, and every check below it
+   * applies either way.
+   */
+  const declaresNoDiff = record.trimStart().startsWith("No diff.");
 
-  if (!RANGE_LINE_RE.test(record)) {
+  if (!declaresNoDiff && !RANGE_LINE_RE.test(record)) {
     return {
       verdict: "deny",
       code: "no-range-or-no-diff",
@@ -177,6 +197,15 @@ export function evaluateRecord(recordText: string, criteriaCount: number | null)
   }
 
   if (criteriaCount === null) {
+    // The one place `No diff.` still passes on its own: with no heading there is
+    // nothing for bullets to correspond to, so there is nothing left to check.
+    if (declaresNoDiff) {
+      return {
+        verdict: "allow",
+        code: "no-diff",
+        message: "`No diff.` declared, and the issue body has no criteria to correspond to.",
+      };
+    }
     return {
       verdict: "deny",
       code: "missing-acceptance-criteria",
@@ -193,8 +222,9 @@ export function evaluateRecord(recordText: string, criteriaCount: number | null)
       code: "missing-acceptance-criteria",
       message:
         "the issue body's `## Acceptance criteria` heading has no `- [ ]` items. Plain `- ` " +
-        "bullets don't count — only `- [ ]` checkbox items do. If this issue truly carries no " +
-        "commit, post a `## Closing record` comment declaring `No diff.` and close it again.",
+        "bullets don't count — only `- [ ]` checkbox items do. `No diff.` does not stand in " +
+        "for criteria that were never written: give the issue the criteria this close claims " +
+        "to have met, or drop the heading if it truly has none.",
     };
   }
 

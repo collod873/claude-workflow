@@ -28,7 +28,10 @@ below return. Do not explore the codebase; do not run the tests.
      exit status somebody actually reported. **A criterion you cannot evidence is `UNMET`.**
    - `UNMET` otherwise, naming what is missing.
 5. Use the real base..head range from the pull request or the timeline. If you genuinely cannot
-   find one and the issue carries no commit, write `No diff.` instead of a range.
+   find one and the issue carries no commit, write `No diff.` where the range would go — and
+   still write every bullet. `No diff.` excuses the range line only; it is not a verdict on the
+   criteria and it does not stand in for one. An issue nobody delivered carries no commit *and*
+   no evidence, and the bullets are where that gets said.
 
 ## The one thing that would make this useless
 

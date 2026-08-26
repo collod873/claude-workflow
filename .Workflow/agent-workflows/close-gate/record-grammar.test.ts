@@ -9,6 +9,23 @@ import {
   mostRecentRecord,
 } from "./record-grammar";
 
+/**
+ * What the salvage stage wrote on #55 and this grammar then allowed, verbatim —
+ * heading stripped, as `mostRecentRecord` hands a record over. Seven criteria,
+ * seven honest failures, and a `No diff.` line that used to outrank all of them.
+ */
+const DRILL_A_RECORD = `
+No diff.
+
+- Drill A ran on a runner: a \`completed\` close carrying no closing record reached the salvage stage, and the gate's verdict on what salvage wrote is recorded here. — UNMET: No salvage record was posted as a comment; no run ID visible.
+- A refusal reverses the close end to end — the issue is reopened, the refusal comment names its reason code, and \`close-refused\` is applied. — UNMET: No refusal comment exists; no reopening occurred; no \`close-refused\` label.
+- A refusal run exits green; only a degraded outcome is red. — UNMET: No run output visible; no confirmation of exit status.
+- Drill B ran: a close carrying a malformed hand-written record is refused without spending a model. — UNMET: No malformed record comment posted; no refusal comment.
+- Drill C ran: a close marked \`not planned\` spends no runner — the job-level \`if\` skips it (a run row still appears; its conclusion is \`skipped\`). — UNMET: Issue #59 was closed as \`not_planned\` but no run ID or skip confirmation recorded here.
+- Drill D ran: a corrected record posted above a refused one is the one the gate reads, and the close stands. — UNMET: No corrected record posted as comment; no evidence of reopening followed by re-close.
+- Every run id from the four drills is recorded on this issue. — UNMET: No run IDs visible in comments or issue body.
+`;
+
 describe("findMarkerText", () => {
   it("reads a comment that opens with the heading", () => {
     expect(findMarkerText(recordComment({ instead: "No diff." }))).toContain("No diff.");
@@ -81,10 +98,69 @@ describe("extractVerdict", () => {
 });
 
 describe("evaluateRecord", () => {
-  it("allows `No diff.` without looking at anything else", () => {
+  it("allows `No diff.` alone when the body declares no criteria to correspond to", () => {
     expect(evaluateRecord(recordText({ instead: "No diff." }), null)).toMatchObject({
       verdict: "allow",
       code: "no-diff",
+    });
+  });
+
+  // `No diff.` excuses the range and nothing else (ADR-0022). It was the first
+  // branch of `evaluateRecord` and returned `allow` before a bullet was read, which
+  // is how #55's drill A closed an issue that had delivered none of its seven
+  // criteria — run 32916246191, green, `pass (no-diff)`.
+  describe("`No diff.` excuses the range and nothing else", () => {
+    it("denies a failing criterion declared under `No diff.`", () => {
+      const record = recordText({
+        noDiff: true,
+        bullets: ["First — MET: `src/a.ts:1`", "Second — UNMET: nothing was built"],
+      });
+      expect(evaluateRecord(record, 2)).toMatchObject({
+        verdict: "deny",
+        code: "unmet-criterion",
+      });
+    });
+
+    it("counts bullets against the criteria the same as a ranged record does", () => {
+      const record = recordText({ noDiff: true, bullets: ["Only one — MET: `src/a.ts:1`"] });
+      expect(evaluateRecord(record, 3)).toMatchObject({
+        verdict: "deny",
+        code: "criteria-count-mismatch",
+      });
+    });
+
+    it("still demands shaped evidence on a MET bullet", () => {
+      const record = recordText({ noDiff: true, bullets: ["A criterion — MET: it works now"] });
+      expect(evaluateRecord(record, 1)).toMatchObject({
+        verdict: "deny",
+        code: "bad-evidence-shape",
+      });
+    });
+
+    it("allows a well-shaped record that happens to carry no commit", () => {
+      const record = recordText({
+        noDiff: true,
+        bullets: ["First — MET: `src/a.ts:1`", "Second — MET: `npm test` exit 0"],
+      });
+      expect(evaluateRecord(record, 2)).toMatchObject({ verdict: "allow", code: "met" });
+    });
+
+    it("denies an empty `## Acceptance criteria` heading rather than passing on `No diff.`", () => {
+      expect(evaluateRecord(recordText({ instead: "No diff." }), 0)).toMatchObject({
+        verdict: "deny",
+        code: "missing-acceptance-criteria",
+      });
+    });
+
+    // The record the salvage stage actually wrote on #55, verbatim, with its heading
+    // stripped as `mostRecentRecord` hands it over. The stage was not what failed —
+    // it found no evidence and said so seven times — so this fixture is kept exactly
+    // as it was written rather than reduced to a minimal case.
+    it("denies the record #55's drill A passed", () => {
+      expect(evaluateRecord(DRILL_A_RECORD, 7)).toMatchObject({
+        verdict: "deny",
+        code: "unmet-criterion",
+      });
     });
   });
 
