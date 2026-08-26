@@ -1,0 +1,26 @@
+{
+  "stop": {
+    "cmd": "bin/gauntlet stop",
+    "why": "ADR-0010's `stop` venue — typecheck + lint + unit suite, ~2s against a 10s budget. `.claude/settings.json`'s Stop hook already runs exactly this command, so the slot and the hook cannot disagree"
+  },
+  "test": {
+    "cmd": "npm test",
+    "why": "package.json#scripts.test (vitest run)"
+  },
+  "test_one": {
+    "cmd": "npx vitest run <file>",
+    "why": "vitest's single-file form; there is no package.json script for it"
+  },
+  "typecheck": {
+    "cmd": "npm run typecheck",
+    "why": "package.json#scripts.typecheck (tsc --noEmit)"
+  },
+  "lint": {
+    "cmd": "npm run lint",
+    "why": "package.json#scripts.lint (eslint .)"
+  },
+  "all": {
+    "cmd": "bin/gauntlet push",
+    "why": "The definition of green: typecheck + lint + unit suite, the same entry point `.husky/pre-push` and `verify.yml`'s Gauntlet step invoke (Actions additionally runs actionlint, which needs a binary the free venues cannot afford). Named as the runner rather than expanded so this contract and ADR-0010's four venues cannot drift apart (#34) — a check added to the gauntlet is in the gate here the moment it is in the gauntlet"
+  }
+}
