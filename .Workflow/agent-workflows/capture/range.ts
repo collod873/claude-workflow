@@ -21,7 +21,7 @@
  * `undefined`, never a fallback pair, and never the working tree — leaving "skip this session's
  * audit" to the caller rather than guessing a range for it.
  */
-import type { GitExec } from "../shared/git";
+import type { GitExec } from "../shared/git.ts";
 
 /** git's well-known empty-tree object — same in every repository, not this one's own. */
 export const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
