@@ -282,6 +282,7 @@ describe("session-capture.sh — the fixture transcript", () => {
         message: { content: "Please help me ship this.\n<system-reminder>Do not mention the secret plan.</system-reminder>" },
       },
       { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "Sure, I will get started on shipping this." }] } },
+      { type: "user", uuid: "i1", message: { content: [{ type: "text", text: "[Request interrupted by user for tool use]" }] } },
       { type: "user", uuid: "u2", origin: { kind: "human" }, promptSource: "typed", message: { content: "<bash-input>ls -la</bash-input>" } },
       { type: "user", uuid: "u3", origin: { kind: "agent" }, promptSource: "typed", message: { content: "NONHUMAN CONTENT SHOULD NOT APPEAR" } },
     ]);
@@ -304,12 +305,14 @@ describe("session-capture.sh — the fixture transcript", () => {
     expect(capture.content).toContain("project: test-project");
     expect(capture.content).toMatch(/^date: /m);
     expect(capture.content).toContain(`source: ${reason}`);
+    expect(capture.content).toContain("format: 2");
     expect(capture.content).toContain("## User Prompts");
-    expect(capture.content).toContain("## Key Insights");
+    expect(capture.content).toContain("## Exchange");
 
-    // The human turn and the assistant text survive.
+    // The human turn, the assistant text, and the Esc interrupt survive the live path.
     expect(capture.content).toContain("Please help me ship this.");
     expect(capture.content).toContain("Sure, I will get started on shipping this.");
+    expect(capture.content).toContain("**Interrupted** — during a tool call");
 
     // The system-reminder, the bash-command entry, and the non-human entry are gone.
     expect(capture.content).not.toContain("secret plan");

@@ -20,10 +20,40 @@
  *   - dedupe on `uuid`
  *
  * Assistant `text` blocks are added on top of that (not filtered by any of the above — they
- * carry no `origin`/`promptSource`/`isMeta` at all), landing in `## Key Insights`. Assistant
- * `tool_use` blocks are read only for `## Files Touched` / `## Key Commands`, matching the
- * existing capture file shape `Knowledge-Base/raw/sessions/` already holds 841 examples of — the
- * tool *traffic* (results, diffs, output) stays out; only which file and which command are kept.
+ * carry no `origin`/`promptSource`/`isMeta` at all). Assistant `tool_use` blocks are read only
+ * for `## Files Touched` / `## Key Commands` — the tool *traffic* (results, diffs, output) stays
+ * out; only which file and which command are kept.
+ *
+ * ## Format 2 — one ordered exchange, not two parallel lists (#103 §1)
+ *
+ * Until 2026-08-26 this emitted `## User Prompts` and `## Key Insights` as two flat lists, each in
+ * its own order, with nothing tying one to the other. Both sides of the conversation were present
+ * and neither could be paired with the other: 21 of this repo's 206 prompts are bare assent (`Ok`,
+ * `Yes`) whose meaning lives entirely in the message they answer. The fix is layout, not capture —
+ * `parseTranscript` already walked the transcript in order and threw that order away when it sorted
+ * into buckets. It now returns one ordered `Turn[]`, rendered as `## Exchange` in conversation
+ * order, and `## Key Insights` is gone: it was the same bytes in a worse order, so the file does
+ * not grow. `## User Prompts` stays as a cheap index of the human side.
+ *
+ * **Assistant turns are emitted uncut.** The instinct is to keep only the tail — the part `- Ok`
+ * is agreeing to. Resisted deliberately: any clip is a guess about what the transcript lens (#93)
+ * needs, made before that lens exists, and a transcript that has aged out cannot be re-read to
+ * widen it. Clipping later against the corpus is cheap; un-clipping is impossible.
+ *
+ * **Esc interrupts are turns.** Claude Code writes `[Request interrupted by user]` and
+ * `[Request interrupted by user for tool use]` as their own `type: "user"` entries carrying no
+ * `origin` field at all, so the `origin.kind === "human"` rule above rejected every one — 33 across
+ * this repo's surviving transcripts. They are exempted by exact marker match, before that rule, and
+ * only there: they are the highest-signal entries in the corpus, because agreeing is free and
+ * interrupting is not.
+ *
+ * **Nothing a turn contains can become a heading of the capture file.** A pasted prompt carrying
+ * its own markdown used to emit `## Acceptance criteria` at column 0, as a sibling of the sections
+ * above — see `Knowledge-Base/raw/sessions/2026-08-26-0c0cf08a.md`. Exchange text is quoted and
+ * prompt continuation lines are indented, so `^## ` matches only sections this module wrote.
+ *
+ * The 882 captures written before this carry no `format:` field and keep their old shape; nothing
+ * rewrites them, because the pairing they lack cannot be recovered from them either way.
  *
  * Pure and synchronous throughout — no file I/O, no wall clock. The caller (the hook) reads the
  * transcript and supplies `date`; that is what makes this directly unit-testable against fixture
@@ -54,6 +84,12 @@ const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const VALID_PROMPT_SOURCES = new Set([null, "typed", "paste"]);
 const EDIT_TOOLS = new Set(["Edit", "MultiEdit"]);
 
+/** The two Esc-interrupt markers, mapped to whether the interrupt landed on a tool call. */
+const INTERRUPT_MARKERS = new Map<string, boolean>([
+  ["[Request interrupted by user]", false],
+  ["[Request interrupted by user for tool use]", true],
+]);
+
 /** Joins an entry's `message.content` down to plain text — a string as-is, or a block array's `text` parts. */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
@@ -64,14 +100,24 @@ function textOf(content: unknown): string {
     .join("");
 }
 
+/**
+ * One entry in the conversation, in the order the transcript recorded it. The three kinds are kept
+ * apart rather than flattened to a role string and a body, because `interrupt` carries a fact
+ * neither of the others has — see the module header's Esc-interrupt note.
+ */
+export type Turn =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string }
+  | { role: "interrupt"; text: string; duringToolUse: boolean };
+
 /** Everything `parseTranscript` pulls out of one transcript, before it becomes markdown. */
 export interface ParsedSpine {
-  userPrompts: string[];
+  /** The conversation in order — what `## Exchange` renders. */
+  turns: Turn[];
   filesRead: string[];
   filesEdited: string[];
   filesWritten: string[];
   commands: string[];
-  insights: string[];
 }
 
 /**
@@ -81,13 +127,20 @@ export interface ParsedSpine {
  * exceptional.
  */
 export function parseTranscript(jsonl: string): ParsedSpine {
-  const userPrompts: string[] = [];
+  const turns: Turn[] = [];
   const filesRead = new Set<string>();
   const filesEdited = new Set<string>();
   const filesWritten = new Set<string>();
   const commands: string[] = [];
-  const insights: string[] = [];
   const seenUuids = new Set<string>();
+
+  /** True the first time a uuid is seen; an entry carrying none is never a duplicate. */
+  const isFirstSighting = (uuid: string | undefined): boolean => {
+    if (!uuid) return true;
+    if (seenUuids.has(uuid)) return false;
+    seenUuids.add(uuid);
+    return true;
+  };
 
   for (const line of jsonl.split("\n")) {
     if (!line.trim()) continue;
@@ -102,21 +155,29 @@ export function parseTranscript(jsonl: string): ParsedSpine {
     if (entry.type === "user") {
       if (entry.isMeta) continue;
       if (entry.isSidechain) continue;
-      if (entry.origin?.kind !== "human") continue;
-      if (!VALID_PROMPT_SOURCES.has(entry.promptSource ?? null)) continue;
 
       let text = textOf(entry.message?.content).trim();
+
+      // Before the origin rule, and only here: an Esc interrupt is a user-role entry the harness
+      // writes on the owner's behalf, so it carries no `origin` and would fail that rule. Matched
+      // on the exact marker rather than a prefix — see the module header.
+      const duringToolUse = INTERRUPT_MARKERS.get(text);
+      if (duringToolUse !== undefined) {
+        if (!isFirstSighting(entry.uuid)) continue;
+        turns.push({ role: "interrupt", text, duringToolUse });
+        continue;
+      }
+
+      if (entry.origin?.kind !== "human") continue;
+      if (!VALID_PROMPT_SOURCES.has(entry.promptSource ?? null)) continue;
       if (!text || SKIP_PREFIX_RE.test(text)) continue;
 
       text = text.replace(SYSTEM_REMINDER_RE, "").trim();
       if (!text) continue;
 
-      if (entry.uuid) {
-        if (seenUuids.has(entry.uuid)) continue;
-        seenUuids.add(entry.uuid);
-      }
+      if (!isFirstSighting(entry.uuid)) continue;
 
-      userPrompts.push(text);
+      turns.push({ role: "user", text });
       continue;
     }
 
@@ -131,7 +192,14 @@ export function parseTranscript(jsonl: string): ParsedSpine {
       for (const block of content as ContentBlock[]) {
         if (block.type === "text") {
           const text = (block.text ?? "").trim();
-          if (text) insights.push(text);
+          // One assistant reply arrives as several entries when it is interleaved with tool calls;
+          // merging consecutive assistant text keeps `## Exchange` a list of turns rather than a
+          // list of streaming fragments. Nothing is lost — the tool calls between them are already
+          // recorded in `## Files Touched` and `## Key Commands`.
+          if (!text) continue;
+          const last = turns.at(-1);
+          if (last?.role === "assistant") last.text = `${last.text}\n\n${text}`;
+          else turns.push({ role: "assistant", text });
           continue;
         }
         if (block.type !== "tool_use") continue;
@@ -146,12 +214,11 @@ export function parseTranscript(jsonl: string): ParsedSpine {
   }
 
   return {
-    userPrompts,
+    turns,
     filesRead: [...filesRead].sort(),
     filesEdited: [...filesEdited].sort(),
     filesWritten: [...filesWritten].sort(),
     commands,
-    insights,
   };
 }
 
@@ -163,11 +230,38 @@ export interface SpineMeta {
   source: string;
 }
 
+/** Quotes a turn's text so no line of it can be read as structure of the file that holds it. */
+function quoted(text: string): string[] {
+  return text.split("\n").map((line) => (line ? `> ${line}` : ">"));
+}
+
+/**
+ * A list item whose continuation lines are indented into it — the same protection `quoted` gives a
+ * turn, for the two sections that are lists. A pasted prompt and a heredoc command both routinely
+ * carry their own `## ` lines; at column 0 those become sections of this file.
+ */
+function bulleted(text: string, wrapFirstLine: (line: string) => string = (line) => line): string[] {
+  const [first, ...rest] = text.split("\n");
+  // The wrap is inline code, which cannot span lines — so a multi-line body goes in unwrapped.
+  const head = rest.length === 0 ? wrapFirstLine(first) : first;
+  return [`- ${head}`, ...rest.map((line) => (line ? `  ${line}` : ""))];
+}
+
+/** The label above a turn's body in `## Exchange`. */
+function turnLabel(turn: Turn): string {
+  if (turn.role === "user") return "**User**";
+  if (turn.role === "assistant") return "**Assistant**";
+  return turn.duringToolUse ? "**Interrupted** — during a tool call" : "**Interrupted**";
+}
+
 /**
  * Renders a `ParsedSpine` as the capture markdown format: YAML frontmatter, then whichever of
- * `## User Prompts` / `## Files Touched` / `## Key Commands` / `## Key Insights` have content —
- * a section with nothing to say is omitted rather than emitted empty, matching the existing 841
- * captures under `Knowledge-Base/raw/sessions/`.
+ * `## User Prompts` / `## Exchange` / `## Files Touched` / `## Key Commands` have content — a
+ * section with nothing to say is omitted rather than emitted empty.
+ *
+ * `format: 2` in the frontmatter is what tells a reader which shape it is holding; the 882 captures
+ * written before 2026-08-26 carry no such field and carry `## Key Insights` instead of
+ * `## Exchange`. See the module header for why they are not rewritten.
  */
 export function buildCaptureMarkdown(meta: SpineMeta, parsed: ParsedSpine): string {
   const lines: string[] = [
@@ -176,14 +270,27 @@ export function buildCaptureMarkdown(meta: SpineMeta, parsed: ParsedSpine): stri
     `project: ${meta.project}`,
     `date: ${meta.date}`,
     `source: ${meta.source}`,
+    "format: 2",
     "---",
     "",
   ];
 
-  if (parsed.userPrompts.length > 0) {
+  const prompts = parsed.turns.filter((turn) => turn.role === "user");
+  if (prompts.length > 0) {
     lines.push("## User Prompts");
-    for (const prompt of parsed.userPrompts) lines.push(`- ${prompt}`);
+    for (const prompt of prompts) lines.push(...bulleted(prompt.text));
     lines.push("");
+  }
+
+  if (parsed.turns.length > 0) {
+    lines.push("## Exchange");
+    lines.push("");
+    for (const turn of parsed.turns) {
+      lines.push(turnLabel(turn));
+      // An interrupt's marker text is its label — there is no body to quote under it.
+      if (turn.role !== "interrupt") lines.push(...quoted(turn.text));
+      lines.push("");
+    }
   }
 
   if (parsed.filesRead.length > 0 || parsed.filesEdited.length > 0 || parsed.filesWritten.length > 0) {
@@ -196,16 +303,8 @@ export function buildCaptureMarkdown(meta: SpineMeta, parsed: ParsedSpine): stri
 
   if (parsed.commands.length > 0) {
     lines.push("## Key Commands");
-    for (const command of parsed.commands) lines.push(`- \`${command}\``);
+    for (const command of parsed.commands) lines.push(...bulleted(command, (line) => `\`${line}\``));
     lines.push("");
-  }
-
-  if (parsed.insights.length > 0) {
-    lines.push("## Key Insights");
-    for (const insight of parsed.insights) {
-      for (const insightLine of insight.split("\n")) lines.push(`> ${insightLine}`);
-      lines.push("");
-    }
   }
 
   return `${lines.join("\n").trimEnd()}\n`;
