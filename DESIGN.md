@@ -201,20 +201,44 @@ Three stages, serial, one agent each. Each consumes the last, so there is no par
 | Role | Model | Count | Does |
 |---|---|---|---|
 | Sweep | Haiku | 1 stage | Prior art: issues open and closed, `docs/adr/`, `CONTEXT.md`, docs — repo-deep, plus a title sweep across the owner's other repos. Its second job is **building stage 2's reading list** |
-| Shaper | Opus | 1 stage | Restates the idea as work, then walks the decision tree — proposing N decisions each with a recommended answer and the alternatives it rejected. Reads the idea, the sweep's results, `CONTEXT.md`, `CODING_STANDARDS.md` and the ADRs and issues the sweep surfaced. **Never free-roams the codebase** |
+| Shaper | Opus | 1 stage | Restates the idea as work, then walks the decision tree — proposing N decisions each with a recommended answer and the alternatives it rejected. Gets a **prepared context and no search tools** — the idea verbatim, `CONTEXT.md`, `CODING_STANDARDS.md`, and the sweep's list ([ADR-0030](docs/adr/0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md)) |
 | Refuter | Sonnet | 1 stage | Attacks the **recommendations**, not the idea. Reports only what survives; silent when it agrees |
 | ⬤ **owner** | — | 2 min, batched | `approved`, `parked`, `killed`, or a comment requesting a change |
 
 **The output is a decision sheet, not a critique.** This is what makes the accept a real click:
 approving a bare one-liner asks the owner to originate an opinion, and §7 is the whole argument for
-converting that into reacting to something concrete. The sheet carries the restatement, the prior
-art, the decisions with recommendations, and a **mark on each load-bearing assumption** — the ones
-where a different answer would change other decisions on the page. That mark does double duty: it
-is also the first of the three ADR tests, *hard to reverse*.
+converting that into reacting to something concrete.
 
 **The scarce resource is the length of what the owner reads**, not the money — the whole chain is
-under a dollar per idea. So the sheet is capped at a phone screen: restatement ≤ 1 paragraph,
-≤ 5 decisions, ≤ 2 lines each, plus surviving refutations.
+under a dollar per idea. So the sheet is capped at a phone screen, five sections and no others:
+
+| Section | Cap |
+|---|---|
+| Restatement | ≤ 1 paragraph |
+| Prior art | ≤ 3 lines, each a link plus why it bears on this idea. `none found` is a legal line |
+| Decisions | ≤ 5, ≤ 2 lines each — the recommended answer and the alternative rejected |
+| Surviving refutations | ≤ 3 lines. **Absent** when the refuter is silent, never `none` |
+| Route | 1 line — short or long, with the reason (§01a) |
+
+Anything that does not fit is **cut, never appended.** Prior art earns its funded space because it
+is the only section that can pre-empt the whole sheet: three links saying *you already ruled this*
+is a kill the owner can make in ten seconds.
+
+Each decision may carry a **mark on a load-bearing assumption**, and the mark **names the thing that
+moves** when the answer flips — another decision on the sheet, or an existing artifact: an ADR, a
+shipped lane's contract, a file. A mark that names nothing is malformed and is stripped
+mechanically, so the test needs no judgement at check time
+([ADR-0028](docs/adr/0028-an-assumption-mark-names-what-it-moves-or-it-is-not-a-mark.md)). That mark
+does double duty: it is also the first of the three ADR tests, *hard to reverse* — which is why it
+may point off the sheet at all. A decision that moves nothing else on the page can still be
+expensive to unwind, and under the narrower reading it went unmarked, so no ruling was filed for
+exactly the decisions that most needed one.
+
+**The sheet is a comment on the idea issue, and a re-run posts a new comment** — the latest is live.
+Editing in place reads more tidily and is forbidden: ADR-0006 stakes a prediction on this lane —
+if the override rate on sheets resembles the 73-of-81 rate from mid-work questions, *the sheet is at
+fault* — and that number is only computable if the earlier rounds survive to be compared against
+what the owner actually did.
 
 **Accepting the sheet is what files the ADRs** and any term the shaper had to coin —
 [ADR-0005](docs/adr/0005-accepting-a-shaped-idea-is-what-files-its-adrs.md),
@@ -227,17 +251,36 @@ signature is a label, and it is the same click that starts the work. It is also 
 **W4**, because the ruling lands in `docs/adr/` next to the code it will govern at the moment it is
 made, not whenever somebody remembers to write it down.
 
-**The shaper may refuse to shape.** More than ~3 load-bearing marks means it does not understand
-the idea well enough, and the honest output is *"needs a live session"* — the same instinct as
-§02's *a spec with zero open questions is suspect*, pointed the other way.
+**All four owner verbs are labels**, never comment prose — a label is something a gate can fire on.
 
-**A change request re-runs the shaper, capped at 2 rounds**, then it posts as-is and the owner rules
-or kills. Uncapped is the fixer mistake in a new place.
+| Verb | Triggers |
+|---|---|
+| `approved` | Files the ADRs from marked decisions passing the three-part bar, coins any new `CONTEXT.md` terms, dispatches on the route. The same click starts the work |
+| `go-long` / `go-short` | Optional, alongside `approved` — the one-word route override ADR-0007 asks for |
+| `parked` | No dispatch. Drops the `idea` label so this lane cannot re-fire. The sheet stays as the record and **nothing ever re-raises it** — §8's five-day expiry does not reach it, because parking removes it from the queue. Anything that resurfaces parked work is a nag, and C4 says a nag dies by month three |
+| `killed` | Closes the issue, and becomes **prior art with teeth**: stage 1's refusal reads closed ideas, so re-filing the same idea is refused with a link to the kill and never reaches the shaper |
+| a comment | A change request — re-runs the shaper, capped at 2 rounds, then it posts as-is and only `approved` / `parked` / `killed` remain. Uncapped is the fixer mistake in a new place |
 
-**The refuter is on probation.** It is held to §6's backwards question at the event that would add
-another agent to this lane: if it has never surfaced a survivor, it dies. A third agent asked
+**The shaper may refuse to shape** when the decision tree will not close under five decisions. That
+is the honest *"needs a live session"* — the same instinct as §02's *a spec with zero open questions
+is suspect*, pointed the other way — and it costs no new number, because the sheet's own cap is the
+condition. Marks route; they never refuse
+([ADR-0029](docs/adr/0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md)).
+
+**The shaper cannot discover that its own context is incomplete**, which is the price of taking its
+tools away. So it may emit **one** re-sweep request naming what it needs and why, re-running the
+sweep with that gap as an explicit target. If the second sweep still does not produce it, the shaper
+marks the affected decision — pointing at the gap — and writes the sheet anyway. One cheap Haiku
+stage against this lane's only failure, capped at one round so it cannot loop.
+
+**The refuter is on probation, and the probation is a count.** At the **20th sheet posted with zero
+surviving refutations**, the counter files an issue proposing its deletion —
+[ADR-0031](docs/adr/0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md). It files
+an issue and never deletes the stage itself, per §6's rule that counters produce issues and never
+notifications; a declined proposal re-proposes only when the count has grown. A third agent asked
 *"do these look good?"* answers yes almost always — that is the pc-build failure, an agent judging
-its own kind. Asked to **kill** them, silence is the good outcome.
+its own kind. Asked to **kill** them, silence is the good outcome, which is exactly why the
+probation needed a firing condition that silence alone could not satisfy forever.
 
 **C1 forces the sizing.** The Foundry runs three adversaries plus a synthesiser on every idea; four
 Opus sessions against a one-line fix is exactly the era-4 death (~7 plan steps for ~3 edits).
@@ -265,8 +308,14 @@ checkpoint, never a human quiz. Commit `68b071f` deleted a sizing quiz for askin
 senior-dev questions; making him the sizer here would rebuild it.
 
 **The short path may skip spec, slice and acceptance-authoring. It may never skip the gauntlet or
-review** (lanes 06–07), and more than ~3 load-bearing assumption marks sends it long regardless — a
-shaper that does not understand an idea well enough to shape it cannot route it either.
+review** (lanes 06–07), and **more than half the sheet's decisions carrying a mark** sends it long
+regardless — a shaper guessing at that much of an idea cannot route it either. The threshold is a
+fraction rather than a flat count because a flat 3 waves through a two-decision sheet with both
+marked, which is plainly an idea nobody understands (ADR-0029, amending ADR-0007's original ~3).
+
+That threshold is **the only thing holding the line on the expensive misroute**, and it is a guess
+until sheets exist to count — ADR-0028 widened what a mark may point at, so more items get marked
+and more route long. **The share of items routed long is the number to watch.**
 
 **It is available to features as well as defects** —
 [ADR-0007](docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md). An earlier
@@ -774,7 +823,6 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 | [How many refuters lane 07 ships with](https://github.com/collod873/claude-workflow/issues/83) — three is a guess, and there is no measured false-alarm rate to size it against | measured |
 | [How the governor sizes concurrency, and what the fixer's cap buys](https://github.com/collod873/claude-workflow/issues/84) — the ~7 queue cap and the 5-day expiry are inherited from the Foundry draft and have never been measured against this owner's actual answer rate | measured |
 | [Whether an unread document gets deleted automatically](https://github.com/collod873/claude-workflow/issues/85) | measured |
-| [What a decision sheet contains, and when the shaper refuses](https://github.com/collod873/claude-workflow/issues/77) | measured |
 | [What makes an acceptance test immutable, and how a spec change re-enters them](https://github.com/collod873/claude-workflow/issues/78) | measured |
 
 **Not yet filed.**
@@ -813,4 +861,5 @@ currently holds the number for, and handing it to him as a choice is the sizing 
 
 **Ruled, and no longer open.** The seam picker's placement (lane 03's Binds); the daily spend ceiling
 (ADR-0024); the short path's availability to features (ADR-0007); write-on-surprise's home
-(ADR-0008); where a machinery defect is filed (ADR-0009).
+(ADR-0008); where a machinery defect is filed (ADR-0009); what a decision sheet contains and when the
+shaper refuses (ADR-0028 through ADR-0031, and §01 above).
