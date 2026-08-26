@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createStreamJsonParser } from "./stream-json";
 
 /**
  * One `claude` invocation, as its argv (not including the `claude` binary
@@ -18,15 +19,105 @@ import { readFileSync } from "node:fs";
 export type StageExec = (argv: string[]) => Promise<string>;
 
 /**
+ * The wire format this executor imposes, replacing whatever the caller
+ * asked for. `--verbose` is not optional decoration: `stream-json` in print
+ * mode is rejected without it.
+ *
+ * Imposed rather than merged because `StageExec`'s contract is "the model's
+ * final text", not "the bytes the CLI printed" — how that text crosses the
+ * pipe is this function's business, and every caller already gets the same
+ * string back either way. `observations/auditor.ts`'s `SANDBOX_FLAGS` asks
+ * for `--output-format text`; it is dropped here rather than edited there,
+ * because that list is documented as ported verbatim from Lumaria and not
+ * to be re-derived.
+ */
+const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
+
+/**
  * The real StageExec: shells out to the `claude` CLI headlessly, in
  * print mode, with permission prompts skipped — there is no human on the
  * other end of a runner job to answer one. Requires
  * `CLAUDE_CODE_OAUTH_TOKEN` in the environment; the caller is responsible
  * for refusing before this runs when it's empty (the workflow's preflight
  * step in `.github/workflows/to-tickets.yml`).
+ *
+ * **Why this streams.** It used to be one `execFileSync` call, which meant
+ * the runner log stayed empty for however long the model ran and then
+ * printed everything at once — a stage mid-run and a stage hung looked
+ * identical, and the only evidence a refused run left was the one-line
+ * reason (#42). Now each event is rendered to stderr as it arrives, so the
+ * Actions log shows which tool a stage is on. It also removes the 64MB
+ * `maxBuffer` ceiling that used to turn a long session into an ENOBUFS
+ * crash that discarded the response along with it: only the final text is
+ * held, not the transcript.
  */
-export const execClaude: StageExec = async (argv) =>
-  execFileSync("claude", argv, { encoding: "utf8", maxBuffer: 1024 * 1024 * 64 });
+export const execClaude: StageExec = (argv) =>
+  new Promise((resolve, reject) => {
+    const parser = createStreamJsonParser((line) => process.stderr.write(`${line}\n`));
+    const child = spawn("claude", [...withoutOutputFormat(argv), ...STREAM_FLAGS], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => parser.push(chunk));
+
+    // The child's own stderr is kept rather than inherited so it can be
+    // named in the rejection — `execFileSync` used to fold it into the
+    // thrown error, and a stage that dies with an empty reason is the
+    // failure mode this whole change exists to remove. It is echoed as it
+    // arrives too, so a run that hangs still shows whatever the CLI said.
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+      process.stderr.write(chunk);
+    });
+
+    child.on("error", (err) => reject(new Error(`could not spawn \`claude\`: ${err.message}`)));
+
+    child.on("close", (code) => {
+      const { text, isError, missingResult } = parser.end();
+      if (code !== 0) {
+        reject(new Error(`\`claude\` exited ${code}${tail(stderr)}`));
+        return;
+      }
+      if (isError) {
+        reject(new Error(`\`claude\` reported the run as failed${tail(stderr)}`));
+        return;
+      }
+      if (missingResult) {
+        reject(new Error(`\`claude\` produced no result event${tail(stderr)}`));
+        return;
+      }
+      resolve(text);
+    });
+  });
+
+/**
+ * Drops a caller-supplied `--output-format <value>` pair, so `STREAM_FLAGS`
+ * is the only one on the argv. A CLI handed the flag twice is free to
+ * honour either, and a stage whose response arrived in a format its parser
+ * didn't expect would fail somewhere far from the cause.
+ */
+function withoutOutputFormat(argv: string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--output-format") {
+      i += 1; // also skip its value
+      continue;
+    }
+    kept.push(argv[i]);
+  }
+  return kept;
+}
+
+/** The last of the child's stderr, for a rejection that would otherwise name only an exit code. */
+function tail(stderr: string, limit = 2000): string {
+  const trimmed = stderr.trim();
+  if (trimmed === "") return "";
+  const kept = trimmed.length <= limit ? trimmed : `…${trimmed.slice(-limit)}`;
+  return `: ${kept}`;
+}
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 

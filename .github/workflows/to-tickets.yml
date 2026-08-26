@@ -140,7 +140,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # `stage.ts` resolves the CLI from PATH (`execFileSync("claude", ...)`) and a GitHub-hosted
+      # `stage.ts` resolves the CLI from PATH (`spawn("claude", ...)`) and a GitHub-hosted
       # runner has none. `npm ci` cannot supply it either: Claude Code is not a dependency of this
       # project, and adding it as one would put the binary in `node_modules/.bin`, which a `run:`
       # step does not have on PATH. So it is installed globally here, and pinned — ADR-0002 says a
