@@ -214,6 +214,25 @@ describe("run-audit.ts (CLI) exit code", () => {
     expect(stdout).toContain("skipped (no-session-record)");
   });
 
+  it("exits 0 and reports skipped when the session record's own range is empty", () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+    writeFileSync(join(repo.dir, "CODING_STANDARDS.md"), "entry: never duplicate validation logic\n", "utf8");
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    writeSessionRecord({
+      git: execGit,
+      repoDir: repo.dir,
+      record: sessionRecord({ head, base: head }),
+    });
+
+    const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
+      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      encoding: "utf8",
+    });
+
+    expect(stdout).toContain("skipped (empty-range)");
+  });
+
   it("exits 0 and reports the released count when every step succeeds", () => {
     const repo = makeRepo();
     dirs.push(repo.dir, repo.origin);
