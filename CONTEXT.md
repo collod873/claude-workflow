@@ -119,6 +119,23 @@ repaired record *is* the output. See
 [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
 _Avoid_: backlink, cross-reference, index, tombstone
 
+**Counter**:
+A lens that spends no model. It names an event that happens on its own, a count at which it acts, the
+issue it files at that count, and the action that issue proposes — four fields, and a thing missing
+any of them is not one. Distinguished from Lens only by cost, and from a Sizing measurement by having
+an action at all. See
+[ADR-0064](docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md).
+_Avoid_: metric, signal, tracker, telemetry
+
+**Sizing measurement**:
+The query that would say a decision was wrong. It produces nothing and reaches nobody, so it is not a
+mechanism: it lives as a line in the ADR that made the decision it sizes, and never as a row in
+`DESIGN.md` §6, where a row is read as coverage of an evidence class. Named apart from Counter
+because four of these were admitted as counters on the strength of being countable, and a table of
+numbers nobody will query is C5 asserted rather than scored. See
+[ADR-0064](docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md).
+_Avoid_: number to watch, metric, KPI, health check
+
 **Immutable set**:
 The files a pull request may never change: `tests/acceptance/`, the test runner's config, and
 `.github/`. Closed rather than approximate — each entry is there because omitting it reopens the same

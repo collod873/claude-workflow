@@ -803,7 +803,7 @@ silent pass. A gate that cannot be routed around is the precondition for steppin
 
 ## 6 · The standing lenses and counters
 
-Ten things get read while nobody is watching. Seven spend a model; three only count. Each is
+Eleven things get read while nobody is watching. Seven spend a model; four only count. Each is
 attached to the event that makes it non-vacuous, which is what distinguishes a lens from a cadence.
 Nothing in this system runs on a clock —
 [ADR-0004](docs/adr/0004-a-clock-may-release-a-batch-but-may-never-originate-work.md).
@@ -876,9 +876,9 @@ recorder, which is the honest price of the three months without one.
 | 4 | The transcript | The transcript lens — the only class-4 mechanism, since write-on-surprise is struck ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)) |
 | 5 | The runtime | Lane 06; lane 04's acceptance tests, moved ahead of the code |
 | 6 | The tracker | Lane 09's close gate; lane 07's conformance reviewer |
-| 7 | **Absence** — what should exist and doesn't | **The parity counter** and **the bypass counter**, below |
+| 7 | **Absence** — what should exist and doesn't | **The bypass counter** and **the lost-dispatch counter**, below |
 | 8 | **Drift** — this was true and stopped being | The spec lens, the decision-log lens, and the backwards question |
-| 9 | **The owner's behaviour** — corrected, reverted, asked twice | **The correction counter**, below |
+| 9 | **The owner's behaviour** — corrected, reverted, asked twice | **The `not_planned` counter**, below |
 | 10 | **Across repos** — not a repo rule, a rule | **The cross-repo counter**, below |
 
 Drawing this ledger is what produced the counters. Rows 1–6 were already watched two and three times
@@ -887,20 +887,66 @@ every one of them is **countable**, which is to say free. That is the taxonomy's
 at this design: *the current system spends models on everything it already covers and counts nothing
 in the places it doesn't. The dreamboat is not more model passes.*
 
+**That finding is why the counters exist; it is no longer what admits one.** The same sentence became
+the section's admission bar and, having no stopping condition, took it from three counters to ten in
+four days — so the bar below replaced it (ADR-0064), and answering rows 7, 9 and 10 turned out to
+take four counters of which only one is one of the original three (ADR-0065).
+
 ### The free counters
 
-*This section was headed "the three free counters" and the table below is no longer three. The set's
-shape — what admits a counter, and whether a sizing measurement is one — is
-[#102](https://github.com/collod873/claude-workflow/issues/102)'s, not settled here; what is settled
-is that the bypass counter sits on **row 7** rather than row 1, because it counts the gate's absence
-and not the code (ADR-0063).*
+**What admits one.** A counter names an **event** that happens on its own, a **count** at which it
+acts, the **issue** it files, and the **action** that issue proposes — and before it is built it is
+measured against the history it would have read
+([ADR-0064](docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md)). *Countable,
+therefore free* is retired: it was an argument about compute, and compute was never the constraint —
+counting is free, the issue it files is not. A number that names no action is not a counter at all;
+see **Sizing measurements** below.
 
-| Counter | Fires on | Counts | Sees |
-|---|---|---|---|
-| **Parity** | A slice published, beside its siblings | A structural shape its sibling units have and it does not. Absence is only ever visible by comparison | 7 |
-| **Correction** | A session ends; a commit reverted, or added and deleted the same day | Collin's corrections, and same-day reversals — a labelled failure sitting in `git log`, judged already by a human, free to read | 9 |
-| **Cross-repo** | A finding recorded, in any repo | The same slug arriving at a second site in a second repo. C3's candidate trigger, applied across the estate | 10 |
-| **Bypass** | `verify.yml` completing on a push to `main` | Runs whose failed step is `Gauntlet` — a commit that reached trunk with a tree the free venues would have refused. Not the code: **the gate not having run** | 7 |
+This section read "the three free counters" and the table grew to ten in four days on the retired
+argument. Applying the bar cut two and moved four out
+([ADR-0065](docs/adr/0065-parity-and-correction-do-not-survive-their-own-history-so-se.md)). Four
+remain, and each row states its own contract:
+
+| Counter | Fires on | At | Files, proposing | Sees |
+|---|---|---|---|---|
+| **Bypass** | `verify.yml` completing on a push to `main` | 3 | Bring move 10 forward. Counts runs whose failed step is `Gauntlet` — a tree that reached trunk that the free venues would have refused. Not the code: **the gate not having run** | 7 |
+| **`not_planned` closes** | A lane 07 finding issue closing | 3 grow · 20 delete | Add a refuter, or delete the fleet — the tracker (class 6) crossed with the owner's behaviour (class 9) | 6 × 9 |
+| **Cross-repo** | A finding recorded, in any repo | 2 — the second site | File here a machinery defect found elsewhere. C3's candidate trigger, applied across the estate | 10 |
+| **Lost dispatch** | A spec published carrying `sliceable` | 1 | Name a PRD that carries the label with no sub-issues and no completed slicing run — a `repository_dispatch` that never arrived | 7 |
+
+**Cut: parity and correction**, on their own history rather than on argument (ADR-0065). Correction
+reads reverts and same-day add-and-delete; across **175 commits** this repo has **zero** of each — an
+empty set over both halves of its trigger. Parity compares a slice's shape to its siblings' at the
+moment the slicer publishes them, and across the **34 sibling slices** in this repo's four sliced PRDs
+that shape is uniform because `file-issue ticket` **refuses** a body without it — which
+[ADR-0036](docs/adr/0036-a-finding-a-green-gate-already-covers-is-refused-before-any.md) already
+refuses as a finding a green gate covers. Read instead at the pull-request level it has no corpus at
+all: this repo has opened zero PRs, ever. Neither row goes dark — the bypass counter holds row 7 and
+`not_planned` holds row 9, and both are specified where these two never were.
+
+**The cross-repo counter's remit shrank when
+[ADR-0055](docs/adr/0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md) landed.**
+Lanes are called rather than copied, so machine drift across repos cannot happen in the half this
+section was written about, and `regenerate && diff` covers what copying survives (ADR-0057). The
+defect-carrier half is now the whole job, and it is the only mechanism on row 10.
+
+**Sizing measurements are not counters and get no row here.** Four numbers this design named produce
+nothing and reach nobody: the share of red PRs reaching `blocked`
+([ADR-0041](docs/adr/0041-the-fixer-stops-when-it-stops-making-progress-with-three-att.md)),
+out-of-brief reads by module
+([ADR-0042](docs/adr/0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md)), PR wait
+time at the merge
+([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)), and the
+share of specs dispatching at a zero open-question count
+([ADR-0062](docs/adr/0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md)). Each is
+the query that would say its own decision was wrong, so it lives in the ADR that made that decision
+and nowhere else. A row here is read as coverage, and four rows nobody will ever query is C5 asserted
+rather than scored.
+
+**The brief does not exist yet, and that blocks nothing.** Every counter's reader is the owner via
+the brief (move 9, unbuilt) — but the tracker is already a reader: 72 issues closed at a median 1.5 h,
+roughly thirty items cleared a day. The brief **batches by topic**; it does not originate, and an
+unbatched counter is not an unread one. Nothing below waits on move 9.
 
 **The bypass counter reads what is already being produced.**
 [ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md). Measured
@@ -922,17 +968,26 @@ machine-local, which ADR-0002 rules out on both clauses. And a red tree that nev
 not counted at all: a red suite mid-task is a legitimate state, so there is one counter here and not
 two.
 
-**A fourth counter is no longer a candidate — lane 07 gave it a job.** ADR-0013 scopes the close gate
-to a close marked `completed`, which leaves one way past it: closing a delivered ticket as *not
-planned*. It is class 6 and **countable**, which by this section's own argument makes it free. The
-count is `not_planned` closes on issues that carry `## Acceptance criteria` — and crossed with class
+**The `not_planned` counter is row 9's mechanism — lane 07 gave it a job.** ADR-0013 scopes the close
+gate to a close marked `completed`, which leaves one way past it: closing a delivered ticket as *not
+planned*. The count is `not_planned` closes on issues that carry `## Acceptance criteria` — and crossed with class
 9, the owner's own behaviour, that same count is what sizes lane 07's refuter fleet
 ([ADR-0037](docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)): a
 surviving review finding closed `not planned`, or **left untouched for five days**, is a false alarm
 that reached him. Five days is a plain duration, not a reference to §8's deleted expiry — and it is
 better grounded now than when it was inherited: the longest this repo has ever taken to close an
-issue is 47.1 h, so untouched-at-five-days is ~2.5× the worst observed and genuinely anomalous. It ships with lane 07 rather than waiting behind the three above,
-because it is that lane's only evidence that its filter is sized right.
+issue is 47.1 h, so untouched-at-five-days is ~2.5× the worst observed and genuinely anomalous. It
+ships with [move 7a](https://github.com/collod873/claude-workflow/issues/99) rather than with the
+counters above, because it is that lane's only evidence that its filter is sized right.
+
+**The lost-dispatch counter is the absence one level further out than the run watchdog can see.**
+[#41](https://github.com/collod873/claude-workflow/issues/41)'s watchdog keys on a run that executed
+**zero jobs** — it reads runs. A `repository_dispatch` that never arrived produces no run at all, so
+a run-reading sweep has nothing to find, and the only surviving trace is a spec carrying `sliceable`
+with no sub-issues and no completed slicing run. It fires at **1**, because a single lost dispatch is
+a defect rather than a trend. Its reader is the owner, like every other counter here: ADR-0062 ruled
+`sliceable` a **durable trace rather than a trigger**, so no mechanism consumes it and none can be its
+reader. It rides move 8d, the other row-7 counter and the other reader of run metadata.
 
 None of them spends a model, and each can run on every push: counting produces no commits, so it
 cannot feed on its own output. A count is also recomputed rather than stored, so nothing a counter
@@ -949,10 +1004,13 @@ sequencing question: it is worth building at two repos and worth more at twenty.
 
 It is also the carrier for a machinery defect found outside this repo. ADR-0009 rules that such a
 defect is filed here, and a run dispatched into another repo has no write path back — so until one
-exists, the run records the defect in its own output and the counter walks it home. That makes the
-counter load-bearing rather than merely cheap, and it is the reason move 8a's cross-repo half should
-not wait on the rest of that row. It has nothing to count until a second repo is in scope, so it is
-built and left idle rather than built late.
+exists, the run records the defect in its own output and the counter walks it home. **That is now the
+whole job** (ADR-0065): after ADR-0055 there is no sync contract to drift, because lanes are called
+rather than copied, and `regenerate && diff` covers the copied half. Being the carrier is what makes
+it load-bearing rather than merely cheap, and it is the reason it survived a bar that cut the two
+counters it was originally listed beside. It has nothing to count until a second repo is in scope, so
+it ships with [move 12](https://github.com/collod873/claude-workflow/issues/114) — the move that
+supplies its precondition — rather than early and idle or late.
 
 **Every lens and counter produces issues, never notifications.** The brief is the only thing that
 reaches the owner.
@@ -961,11 +1019,23 @@ reaches the owner.
 add another of its kind — the generalisation of
 [ADR-0003](docs/adr/0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md). That is
 the lenses and counters here, and it is also **the lint rules and the ADRs**, which is where blocker
-3's evidence actually lives: 14 rules, 2 `CODING_STANDARDS.md` entries and 44 ADRs, not one of them
-ever asked. *(Counts corrected 2026-08-26 — this read "36 rules" and "30 ADRs", an era-6 figure that
-was never this repo's.)* A lens audit that covers only lenses retires the blocker for the newest
-thing in the estate and leaves the oldest untouched. **Retires blocker 3** on that condition, and
-only on it.
+3's evidence actually lives: not one of them has ever been asked. *(Count them rather than reading a
+number here — the `rules` blocks in `eslint.config.js`, and `ls docs/adr/0*.md | wc -l`. This paragraph carried
+"36 rules and 30 ADRs", an era-6 figure that was never this repo's; #85 corrected it to 44 ADRs on
+2026-08-26 and it was 63 by the end of the same day. A hand-stamped count is the grooming obligation
+C4 bans, in the paragraph that complains about unpaid audits.)* A lens audit that covers only lenses
+retires the blocker for the newest thing in the estate and leaves the oldest untouched. **Retires
+blocker 3** on that condition, and only on it.
+
+**For a counter, that event is the admission of the next counter** — ADR-0064. Admitting one asks
+every counter already here whether it has filed an issue since it shipped, and a zero-count counter is
+deleted in the same commit with the finding as the reason. ADR-0003's own shape: a rule's audit rides
+`/standards-pass`, the event that adds a rule. Nothing is scheduled, nothing is groomed, and the
+admission bar and the backwards question are one event rather than two — which is what
+[ADR-0031](docs/adr/0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) requires of
+anything on probation. An unbuilt counter is asked the same question **backwards**, against the
+history it would have read; that is what cut parity and correction, and what admitted the bypass
+counter with a backlog of four.
 
 **What it does when the answer is no is not deletion.** Ruled 2026-08-26,
 [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) through
@@ -979,10 +1049,9 @@ from an `Amends:` trailer the successor writes. Deletion survives only where an 
 
 The back-stamp is **not a counter and gets no row above**: §6's counters file issues that reach the
 owner through the brief, and this one commits a repair nobody receives. It ships as its own move,
-blocked by nothing, and it is not subject to the admission bar
-[#102](https://github.com/collod873/claude-workflow/issues/102) is setting. What #102 does get from
-it is the operational shape of the backwards question — the refusal it says already exists and is
-not being applied to counters.
+blocked by nothing, and ADR-0064's admission bar does not reach it — a bar whose test is *what issue
+does it file* has nothing to ask a mechanism that files none. What that ruling took from it instead
+is the operational shape of the backwards question, now pointed at the counters themselves.
 
 **Cut:** the Foundry's cold-user walkthrough and persona panel. Both need a deployed product with
 users; nothing in the estate has one today. They come back the day a repo does — as a lens on
