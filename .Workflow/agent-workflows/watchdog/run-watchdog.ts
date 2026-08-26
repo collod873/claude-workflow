@@ -108,7 +108,12 @@ export interface WatchdogOutcome {
 }
 
 function readRuns(gh: GhExec): RunSummary[] {
-  const raw = gh(["api", repoRunsPath(RUN_PAGE_SIZE), "--jq", ".workflow_runs"]);
+  // Projected in the `--jq`, not after parsing. A run object carries a full commit, actor, repo and
+  // head-repo, so a hundred of them is several megabytes of which this reads eight fields — and the
+  // seam that would have to buffer it reports the overflow as `ENOBUFS`, naming neither the call
+  // nor the size.
+  const projection = "[.workflow_runs[] | {id, name, path, status, conclusion, html_url, head_branch, created_at}]";
+  const raw = gh(["api", repoRunsPath(RUN_PAGE_SIZE), "--jq", projection]);
   return ApiRun.array()
     .parse(JSON.parse(raw))
     .map((run) => ({

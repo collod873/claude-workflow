@@ -18,5 +18,14 @@ export type GhExec = (args: string[]) => string;
  * (see `./child-env`) is dangerous here too: `gh` shells out to `git`
  * internally to do that resolution, and `GIT_DIR` would silently redirect
  * it at a different repository than the one in this process's cwd.
+ *
+ * `maxBuffer` matches `./git.ts`'s, and for the same reason: Node's default
+ * is 1 MB and a child that exceeds it dies on `spawnSync <cmd> ENOBUFS` —
+ * an error naming neither the command nor the size, thrown at whatever
+ * caller happened to ask for one page too many. `git.ts` was given this and
+ * `gh.ts` was not, so the run watchdog's first working run died reading a
+ * hundred run objects (#41). One page of `gh api` output is routinely over
+ * a megabyte; a listing is not an unusual thing to ask this for.
  */
-export const execGh: GhExec = (args) => execFileSync("gh", args, { encoding: "utf8", env: childEnv() });
+export const execGh: GhExec = (args) =>
+  execFileSync("gh", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
