@@ -30,6 +30,10 @@ build/
 # Pipeline runtime handoff (regenerated per run, never source)
 .Workflow/agent-workflows/handoff.txt
 
+# A local debug run's refused response, written beside the handoff by
+# preservingRaw. Evidence for whoever is reading it now, not a repo file.
+.Workflow/agent-workflows/*-raw-response.txt
+
 # Python
 __pycache__/
 *.py[cod]

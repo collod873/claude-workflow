@@ -14,8 +14,14 @@ First of three stages turning a spec into tickets. Scope: this prompt, `CONTEXT.
 
 ## Output
 
-Emit only a raw `<output>` block containing a JSON array of string entries:
+Return your answer by calling the `StructuredOutput` tool. Its `entries` field is the seam
+manifest: a JSON array of single-line string entries, empty when nothing warrants sharing.
+
+Write whatever reasoning you need first — only the tool call is read as your answer, so nothing
+you say before it can corrupt it.
 
 Example:
 
-<output>["`GhExec` — an injected `(args: string[]) => string` executor around `gh` — shared/gh.ts — consumed by the publisher and test harness."]</output>
+```structured-output
+{"entries":["`GhExec` — an injected `(args: string[]) => string` executor around `gh` — shared/gh.ts — consumed by the publisher and test harness."]}
+```

@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { z } from "zod";
+import { runStage, type StageExec } from "./stage";
 import { createStreamJsonParser, progressLine } from "./stream-json";
+import { structuredOutput } from "./structured-output";
 
 /**
  * Feeds `chunks` to a parser and returns both halves of what it produces —
@@ -21,29 +27,60 @@ function resultEvent(result: string, extra: Record<string, unknown> = {}) {
 
 describe("the final response text", () => {
   it("comes from the result event", () => {
-    const { text, isError, missingResult } = parse([`${resultEvent("<output>[]</output>")}\n`]);
+    const { text, isError, missingResult } = parse([`${resultEvent("the answer")}\n`]);
 
-    expect(text).toBe("<output>[]</output>");
+    expect(text).toBe("the answer");
     expect(isError).toBe(false);
     expect(missingResult).toBe(false);
   });
 
   /**
    * The reason the result event is the source rather than the assistant
-   * turns: ADR-0012 makes the outermost `<output>` span the payload, so a
-   * stage's earlier thinking is not a harmless prefix — this response would
-   * parse as a block running from the model's musing to the real closing
-   * tag, and `JSON.parse` would see the whole thing.
+   * turns: a stage's answer is one value, and prose concatenated onto the
+   * front of it is not a harmless prefix — it is a different string, which
+   * no schema accepts.
    */
-  it("excludes the model's earlier turns, even when those mention the output tag", () => {
+  it("excludes the model's earlier turns, however much they said", () => {
     const thinking = JSON.stringify({
       type: "assistant",
-      message: { content: [{ type: "text", text: "I will end with an <output> block." }] },
+      message: { content: [{ type: "text", text: "Here is my reasoning, at length." }] },
     });
 
-    const { text } = parse([`${thinking}\n${resultEvent('<output>["a seam"]</output>')}\n`]);
+    const { text } = parse([`${thinking}\n${resultEvent("the answer")}\n`]);
 
-    expect(text).toBe('<output>["a seam"]</output>');
+    expect(text).toBe("the answer");
+  });
+
+  /**
+   * A run given a `--json-schema` reports the same value twice — as an object
+   * on `structured_output`, and as JSON on `result`. This one is taken,
+   * because only it distinguishes "the API validated a tool call" from "the
+   * model talked and the CLI printed what it said": a run whose model never
+   * reached the tool has a `result` too, and it is prose.
+   */
+  it("prefers the result event's structured output over its result text", () => {
+    const { text } = parse([
+      `${resultEvent("ignored prose", { structured_output: { entries: ["a seam"] } })}\n`,
+    ]);
+
+    expect(JSON.parse(text)).toEqual({ entries: ["a seam"] });
+  });
+
+  it("falls back to the result text when the run carried no structured output", () => {
+    const { text } = parse([`${resultEvent("the model just talked")}\n`]);
+
+    expect(text).toBe("the model just talked");
+  });
+
+  /**
+   * `JSON.stringify(null)` is the string `"null"`, which parses, satisfies no
+   * stage schema, and would report a missing answer as a schema failure
+   * rather than as an absent one.
+   */
+  it("treats a null structured output as absent rather than as the value null", () => {
+    const { text } = parse([`${resultEvent("the prose", { structured_output: null })}\n`]);
+
+    expect(text).toBe("the prose");
   });
 
   it("reports a stream that carried no result event, rather than returning empty text as success", () => {
@@ -74,12 +111,12 @@ describe("chunk boundaries", () => {
    * happened to straddle one.
    */
   it("reassembles an event split across two chunks", () => {
-    const event = resultEvent("<output>[]</output>");
+    const event = resultEvent('{"entries":[]}');
     const split = Math.floor(event.length / 2);
 
     const { text } = parse([event.slice(0, split), `${event.slice(split)}\n`]);
 
-    expect(text).toBe("<output>[]</output>");
+    expect(text).toBe('{"entries":[]}');
   });
 
   it("reassembles an event split one byte at a time", () => {
@@ -206,5 +243,56 @@ describe("progress lines", () => {
     expect(progressLine({ type: "stream_event" })).toBeNull();
     expect(progressLine("not an object")).toBeNull();
     expect(progressLine(null)).toBeNull();
+  });
+});
+
+/**
+ * The whole path a stage's answer travels, in one test: the CLI's bytes into
+ * `createStreamJsonParser`, the parser's text into the stage, the stage's
+ * schema over that — and a typed value out the other end. The pieces are
+ * covered separately above and in `structured-output.test.ts`; what this
+ * pins is that they are actually joined, with nothing in the stream a stage
+ * has to dig through.
+ */
+describe("a stage's answer, from the CLI's bytes to a typed value", () => {
+  const OUTPUT = structuredOutput(z.object({ entries: z.array(z.string()) }));
+
+  /** A `StageExec` that runs the given stdout through the real parser, as `execClaude` does. */
+  function execOverStream(chunks: string[]): StageExec {
+    return async () => {
+      const parser = createStreamJsonParser(() => undefined);
+      for (const chunk of chunks) parser.push(chunk);
+      return parser.end().text;
+    };
+  }
+
+  it("returns the parsed value from a result event carrying structured output", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "stream-json-stage-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const promptPath = join(dir, "prompt.md");
+    writeFileSync(promptPath, "Sweep for seams.", "utf8");
+
+    const stream = [
+      JSON.stringify({ type: "system", subtype: "init", model: "stub" }),
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Two seams worth sharing." }] },
+      }),
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: '{"entries":["a seam","another seam"]}',
+        structured_output: { entries: ["a seam", "another seam"] },
+        num_turns: 3,
+      }),
+    ].join("\n") + "\n";
+
+    // The tag this replaced appears nowhere in the stream, because there is
+    // nothing left to mark: the answer is a field, not a span of prose.
+    expect(stream).not.toContain("<output>");
+
+    await expect(runStage(promptPath, {}, execOverStream([stream]), OUTPUT)).resolves.toEqual({
+      entries: ["a seam", "another seam"],
+    });
   });
 });

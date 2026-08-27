@@ -155,7 +155,7 @@ describe("degraded — the gate could not do its job", () => {
     const { outcome, tracker } = await gate({
       body: bodyWithCriteria(1),
       comments: ["Merged in #7."],
-      response: "the model said something conversational and no <output> block",
+      response: "the model said something conversational and never called the tool",
     });
     expect(outcome).toMatchObject({ action: "degraded", code: "salvage-failed" });
     expect(tracker.reopenedWith).toContain("could not verify");

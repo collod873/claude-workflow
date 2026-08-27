@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { structuredOutput } from "../shared/structured-output";
 import { PriorArt } from "./sweep-schema";
 
 /**
@@ -117,6 +118,15 @@ export const ShaperOutput = z.discriminatedUnion("kind", [ShaperSheet, ReSweep])
 export type ShaperOutput = z.infer<typeof ShaperOutput>;
 
 /**
+ * The shaper stage's structured-output contract. Wrapped under `answer` for
+ * the same reason a bare array is: a union derives to a root `anyOf` with no
+ * `type` of its own, and the API takes only an object at the root. The two
+ * branches stay exactly as they are inside the wrapper, discriminated on
+ * `kind` — a sheet or a re-sweep request, never both.
+ */
+export const SHAPER_OUTPUT = structuredOutput(ShaperOutput, "answer");
+
+/**
  * The refuter's output. It attacks the **recommendations**, not the idea, and
  * reports only what survives — §01: *silent when it agrees*. An empty array
  * is the good outcome and renders as an **absent** section, never as `none`.
@@ -126,6 +136,9 @@ export const Refutations = z.object({
 });
 
 export type Refutations = z.infer<typeof Refutations>;
+
+/** The refuter stage's structured-output contract; object-rooted already, so unwrapped. */
+export const REFUTER_OUTPUT = structuredOutput(Refutations);
 
 /**
  * The sheet as it is posted: the shaper's output after the caps, the mark

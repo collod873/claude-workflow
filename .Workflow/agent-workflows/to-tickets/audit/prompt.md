@@ -30,16 +30,18 @@ Read before grading:
 
 ## Output
 
-First, write grading notes covering what each of the four calls found, the changes made, and the rationale for any unapplied flags.
+Return your answer by calling the `StructuredOutput` tool. It takes both halves of your answer:
 
-Then emit only a raw `<output>` block containing a JSON array of `Slice` objects — the audited plan:
+- `notes` — your grading notes, covering what each of the four calls found, the changes made, and
+  the rationale for any unapplied flags. These are read by a human in the run log, so write them
+  as prose, with newlines where you want them.
+- `slices` — the audited plan: a JSON array of `Slice` objects.
+
+The notes go in the tool call, not before it. Only the tool call is read as your answer, so
+anything written outside it is lost.
 
 Example:
 
-Granularity: both slices fit one session individually, and the merged slice below still does.
-Edge correctness: the sole edge in the input plan disappears along with the merge that caused it.
-Merge/split candidates: slice 1's whyNotMerged argued a reader benefit that doesn't survive contact with the actual diff size — merged into slice 2.
-Balance: the merged slice is not more than roughly twice the size of anything else in this batch.
-Unapplied flag: slice 2's title undersells that it now also ships the seam: left as-is rather than renamed, since the body's What to build section already says so and a title rewrite here would cost more diff-review attention than it buys.
-
-<output>[{"title":"Ship the injected GhExec seam, wired into its first real consumer","whatToBuild":"Add `GhExec` as an injected `(args: string[]) => string` executor around `gh`, wired into the publisher's first real write.","acceptanceCriteria":["`npm test` exits 0 with a test that injects a fake `GhExec` and asserts no test calls the real `gh` binary"],"filesClaimed":["shared/gh.ts","shared/publish-sub-issues.ts"],"seamsConsumed":[],"whyNotMerged":"It is the only slice left in this batch; there is nothing left to merge it into.","dependsOn":[]}]</output>
+```structured-output
+{"notes":"Granularity: both slices fit one session individually, and the merged slice below still does.\nEdge correctness: the sole edge in the input plan disappears along with the merge that caused it.\nMerge/split candidates: slice 1's whyNotMerged argued a reader benefit that doesn't survive contact with the actual diff size — merged into slice 2.\nBalance: the merged slice is not more than roughly twice the size of anything else in this batch.\nUnapplied flag: slice 2's title undersells that it now also ships the seam: left as-is rather than renamed, since the body's What to build section already says so and a title rewrite here would cost more diff-review attention than it buys.","slices":[{"title":"Ship the injected GhExec seam, wired into its first real consumer","whatToBuild":"Add `GhExec` as an injected `(args: string[]) => string` executor around `gh`, wired into the publisher's first real write.","acceptanceCriteria":["`npm test` exits 0 with a test that injects a fake `GhExec` and asserts no test calls the real `gh` binary"],"filesClaimed":["shared/gh.ts","shared/publish-sub-issues.ts"],"seamsConsumed":[],"whyNotMerged":"It is the only slice left in this batch; there is nothing left to merge it into.","dependsOn":[]}]}
+```

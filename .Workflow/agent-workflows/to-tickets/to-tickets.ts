@@ -1,16 +1,15 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ZodType, ZodTypeDef } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { extractOutput } from "../shared/output-block";
-import { Plan } from "../shared/plan-schema";
+import { AUDIT_OUTPUT, Plan, SLICE_OUTPUT, type AuditOutput } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { rejectedResponse, type StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
 import { sliceAndPublish } from "./slice-and-publish";
-import { SeamManifest } from "./seam-sweep/schema";
+import { SEAM_SWEEP_OUTPUT, type SeamManifest } from "./seam-sweep/schema";
 
 /**
  * The repo-relative fallback for `handoffPath()` — used for a local run,
@@ -68,15 +67,19 @@ function writeHandoff(contents: string): void {
 }
 
 /**
- * Local-debug entrypoint for the plan half of the pipeline: extracts and
- * validates a raw agent response's `<output>` block as a `Plan`, then runs
- * graph validation against it. Exits 0 on a well-formed plan; exits
- * nonzero, printing the offending slice and writing the failure surface,
- * otherwise. There is no repair path — a rejected response is a failed run.
+ * Local-debug entrypoint for the plan half of the pipeline: reads a plan as
+ * JSON, checks it against the `Plan` schema, then runs graph validation
+ * against it. Exits 0 on a well-formed plan; exits nonzero, printing the
+ * offending slice and writing the failure surface, otherwise. There is no
+ * repair path — a rejected plan is a failed run.
+ *
+ * **It takes a plan, not a transcript.** It used to be handed a stage's whole
+ * raw response and dig the `<output>` block out of it. There is no such block
+ * now, and nothing to dig: a stage's answer arrives already extracted, so
+ * what this reads is the JSON array a stage wrote to the handoff path.
  */
 export function validatePlanFile(filePath: string): Plan {
-  const raw = readFileSync(filePath, "utf8");
-  const plan = extractOutput(raw, Plan);
+  const plan = Plan.parse(JSON.parse(readFileSync(filePath, "utf8")));
   validatePlan(plan);
   return plan;
 }
@@ -137,7 +140,7 @@ interface StageDef {
 
 /**
  * What a schema-checked, prompt-driven stage needs to run: a committed
- * prompt, the zod schema its `<output>` block must satisfy, how to build
+ * prompt, the structured-output contract its answer must satisfy, how to build
  * the `{{VAR}}` substitution map for its prompt from the CLI's `--issue`
  * value, and any validation beyond the schema (e.g. graph shape) that must
  * also pass before the stage's output is handed off. `T`-generic by design
@@ -148,7 +151,7 @@ interface StageDef {
  */
 interface TypedStageConfig<T> {
   promptPath: string;
-  schema: ZodType<T, ZodTypeDef, unknown>;
+  output: StructuredOutput<T>;
   buildVars: (issueNumber: string) => Record<string, string>;
   /** Throws to fail the stage; there is no repair path. */
   validate?: (output: T) => void;
@@ -156,36 +159,38 @@ interface TypedStageConfig<T> {
 
 /**
  * Shared plumbing every stage's `run` closure is built from: substitutes
- * `config`'s vars into its prompt, spawns it through the injected `exec`,
- * extracts and schema-validates its `<output>` block, runs any additional
- * validation `config` declares, and writes the typed result to the handoff
- * path. Returns both the typed output and the model's raw response — a
- * plain typed stage only needs the former; `audit-and-publish` needs the
- * latter too (its prose ahead of the `<output>` block, and the raw text
- * `sliceAndPublish` re-parses — see `AUDIT_AND_PUBLISH_RUN` below). A bad
- * spawn, a missing block, a schema mismatch, or a failed validation all
- * throw — there is no repair path here; the caller reports and exits.
+ * `config`'s vars into its prompt, spawns it through the injected `exec` with
+ * its JSON Schema on the argv, runs any additional validation `config`
+ * declares, and writes the typed result to the handoff path. A bad spawn, a
+ * response the schema refuses, or a failed validation all throw — there is
+ * no repair path here; the caller reports and exits.
  */
-async function runTypedStageWithRaw<T>(
+async function runTypedStage<T>(
   stage: string,
   config: TypedStageConfig<T>,
   issueNumber: string,
   exec: StageExec,
-): Promise<{ raw: string; output: T }> {
-  const raw = await runStage(config.promptPath, config.buildVars(issueNumber), exec);
-  const output = preservingRaw(stage, raw, () => {
-    const extracted = extractOutput(raw, config.schema);
-    config.validate?.(extracted);
-    return extracted;
+): Promise<T> {
+  const output = await preservingRaw(stage, async () => {
+    const value = await runStage(
+      config.promptPath,
+      config.buildVars(issueNumber),
+      exec,
+      config.output,
+    );
+    config.validate?.(value);
+    return value;
   });
   writeHandoff(JSON.stringify(output));
-  return { raw, output };
+  return output;
 }
 
 /**
  * Runs the part of a stage that can reject the model's response, and — if
  * it does — writes that response to `rawResponsePath(stage)` before
- * rethrowing with the path named.
+ * rethrowing with the path named. An error that carries no response — a dead
+ * CLI, a bad spawn, a graph validation that ran on an accepted plan — is
+ * rethrown untouched.
  *
  * This exists because #42 could not be diagnosed from the run that raised
  * it. Run 32677530530 spent two minutes of real model time and left exactly
@@ -200,10 +205,12 @@ async function runTypedStageWithRaw<T>(
  * Only the rejection paths write: a stage that succeeds leaves no file, so
  * the presence of one is itself the signal.
  */
-function preservingRaw<R>(stage: string, raw: string, work: () => R): R {
+async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<R> {
   try {
-    return work();
+    return await work();
   } catch (err) {
+    const raw = rejectedResponse(err);
+    if (raw === undefined) throw err;
     const path = rawResponsePath(stage);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, raw, "utf8");
@@ -220,7 +227,7 @@ function preservingRaw<R>(stage: string, raw: string, work: () => R): R {
 function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   return {
     run: async (issueNumber, exec) => {
-      const { output } = await runTypedStageWithRaw(name, config, issueNumber, exec);
+      const output = await runTypedStage(name, config, issueNumber, exec);
       console.log(`${name}: wrote a schema-valid output to ${handoffPath()}`);
       console.log(JSON.stringify(output, null, 2));
       return output;
@@ -230,7 +237,7 @@ function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
 
 const SEAM_SWEEP_CONFIG: TypedStageConfig<SeamManifest> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/seam-sweep/prompt.md",
-  schema: SeamManifest,
+  output: SEAM_SWEEP_OUTPUT,
   buildVars: (issueNumber) => ({ ISSUE_NUMBER: issueNumber }),
 };
 
@@ -246,7 +253,7 @@ const SEAM_SWEEP_CONFIG: TypedStageConfig<SeamManifest> = {
  */
 const SLICE_CONFIG: TypedStageConfig<Plan> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/slice/prompt.md",
-  schema: Plan,
+  output: SLICE_OUTPUT,
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
     SEAM_MANIFEST: readPriorHandoff("slice"),
@@ -276,14 +283,14 @@ function readPriorHandoff(stageName: string): string {
  * plan against the same reference leaves it was drafted against —
  * granularity, edge correctness, merge/split candidates, balance — and
  * returns a plan in the same `Slice` shape, merged, split, re-edged, or
- * unchanged. Graph shape is deliberately *not* re-checked here (no
- * `validate`) because `sliceAndPublish`, which this stage's raw response is
- * handed to next, already owns that check before its first `gh` write — see
- * `AUDIT_AND_PUBLISH_RUN` below.
+ * unchanged, alongside the grading notes that explain what it changed.
+ * Graph shape is deliberately *not* re-checked here (no `validate`) because
+ * `sliceAndPublish`, which this stage's plan is handed to next, already owns
+ * that check before its first `gh` write — see `AUDIT_AND_PUBLISH_RUN` below.
  */
-const AUDIT_CONFIG: TypedStageConfig<Plan> = {
+const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/audit/prompt.md",
-  schema: Plan,
+  output: AUDIT_OUTPUT,
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
     PLAN: readPriorHandoff("audit"),
@@ -291,47 +298,49 @@ const AUDIT_CONFIG: TypedStageConfig<Plan> = {
 };
 
 /**
- * Everything the auditor wrote before its `<output>` block — its grading
- * notes and any unapplied flags — or the whole trimmed response when there
- * is no block to split on (a malformed response `extractOutput` will have
- * already rejected by the time this is called in practice, but this stays
- * defined for any response shape).
- */
-function auditorNotes(raw: string): string {
-  const openIndex = raw.indexOf("<output>");
-  return (openIndex === -1 ? raw : raw.slice(0, openIndex)).trim();
-}
-
-/**
  * The `audit-and-publish` entry's `run`: the one stage that doesn't fit
- * `typedStage` above. It needs the auditor's raw response (not just its
- * parsed output), threads a `GhExec` nothing else in this record takes,
- * hands that raw response to `sliceAndPublish` — the deterministic
- * publisher's own extract → parse → validate → render → create → attach →
- * wire → verify pipeline — prints the auditor's grading notes to stdout
- * (the Actions run log, never a comment on the issue), and logs a distinct
- * success line naming how many sub-issues published. `sliceAndPublish`'s own
- * `validatePlan` call is what makes an audited plan that fails graph
- * validation exit nonzero with zero `gh` calls made — nothing here re-checks
- * graph shape separately.
+ * `typedStage` above. It threads a `GhExec` nothing else in this record
+ * takes, hands the audited plan to `sliceAndPublish` — the deterministic
+ * publisher's own validate → render → create → attach → wire → verify
+ * pipeline — prints the auditor's grading notes to stdout (the Actions run
+ * log, never a comment on the issue), and logs a distinct success line naming
+ * how many sub-issues published. `sliceAndPublish`'s own `validatePlan` call
+ * is what makes an audited plan that fails graph validation exit nonzero with
+ * zero `gh` calls made — nothing here re-checks graph shape separately.
  */
 const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => {
-  const { raw } = await runTypedStageWithRaw("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
-  const notes = auditorNotes(raw);
-  if (notes) {
-    console.log(notes);
+  const audited = await runTypedStage("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
+  if (audited.notes) {
+    console.log(audited.notes);
   }
-  // Wrapped for the same reason the extract above is: the publisher
-  // re-parses this same response, and a graph rejection here is another way
-  // to lose it.
-  const published = preservingRaw("audit-and-publish", raw, () =>
-    sliceAndPublish(raw, Number(issueNumber), gh),
+  // A graph rejection is the one way left to lose an accepted plan: the
+  // failure path overwrites the handoff file with its reason, so the plan
+  // this refuses would otherwise go with it.
+  const published = keepingPlan(audited.slices, () =>
+    sliceAndPublish(audited.slices, Number(issueNumber), gh),
   );
   console.log(
     `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,
   );
   return published;
 };
+
+/**
+ * Runs the publish and, if it refuses the plan, writes that plan beside the
+ * handoff before rethrowing with the path named — the same bargain
+ * `preservingRaw` makes for a refused response, for the one rejection that
+ * happens after a response has already been accepted.
+ */
+function keepingPlan<R>(plan: Plan, work: () => R): R {
+  try {
+    return work();
+  } catch (err) {
+    const path = rawResponsePath("audit-and-publish");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(plan, null, 2), "utf8");
+    throw new Error(`${reason(err)} — the audited plan is saved at ${path}`);
+  }
+}
 
 /**
  * Every stage this entrypoint can run, keyed by the `--stage` name that

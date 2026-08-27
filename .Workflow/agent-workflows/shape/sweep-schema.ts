@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { structuredOutput } from "../shared/structured-output";
 
 /**
  * What the sweep — lane 01's first stage, one Haiku — emits.
@@ -67,3 +68,6 @@ export const Sweep = z.object({
 });
 
 export type Sweep = z.infer<typeof Sweep>;
+
+/** The sweep stage's structured-output contract; object-rooted already, so unwrapped. */
+export const SWEEP_OUTPUT = structuredOutput(Sweep);

@@ -51,7 +51,7 @@ export function bodyWithCriteria(count: number): string {
   return `## What to build\nSomething.\n\n## Acceptance criteria\n${items}\n\n## Files claimed\n- src/thing.ts\n`;
 }
 
-/** The `<output>` block a salvage stage returns, wrapping `comment`. */
+/** The structured output a salvage stage returns, wrapping `comment`. */
 export function salvageResponse(comment: string): string {
-  return `Reading the issue.\n\n<output>${JSON.stringify({ record: comment })}</output>`;
+  return JSON.stringify({ record: comment });
 }

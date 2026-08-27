@@ -28,8 +28,14 @@ Read before drafting:
 
 ## Output
 
-Emit only a raw `<output>` block containing a JSON array of `Slice` objects adhering to `.Workflow/agent-workflows/shared/plan-schema.ts`:
+Return your answer by calling the `StructuredOutput` tool. Its `slices` field is the plan: a JSON
+array of `Slice` objects adhering to `.Workflow/agent-workflows/shared/plan-schema.ts`.
+
+Write whatever reasoning you need first — only the tool call is read as your answer, so nothing
+you say before it can corrupt it.
 
 Example:
 
-<output>[{"title":"Ship the injected GhExec seam, wired into the publisher","whatToBuild":"Add `GhExec` as an injected `(args: string[]) => string` executor around `gh`, and use it from the publisher's first real write.","acceptanceCriteria":["`npm test` exits 0 with a test that injects a fake `GhExec` and asserts no test calls the real `gh` binary"],"filesClaimed":["shared/gh.ts","shared/publish-sub-issues.ts"],"seamsConsumed":[],"whyNotMerged":"It ships the seam together with its first real consumer rather than standing alone as unused abstraction.","dependsOn":[]},{"title":"Wire blocked-by edges through the injected GhExec","whatToBuild":"Use the `GhExec` seam to wire native blocked-by edges after issue creation.","acceptanceCriteria":["`npm test` exits 0 with a test asserting each declared edge is wired through the fake `GhExec`"],"filesClaimed":["shared/publish-sub-issues.ts"],"seamsConsumed":["`GhExec` — an injected `(args: string[]) => string` executor around `gh` — shared/gh.ts — consumed by the publisher and every test that stands in for GitHub."],"whyNotMerged":"It is the edge-wiring behavior built on top of the seam the first slice ships, not the seam itself.","dependsOn":[1]}]</output>
+```structured-output
+{"slices":[{"title":"Ship the injected GhExec seam, wired into the publisher","whatToBuild":"Add `GhExec` as an injected `(args: string[]) => string` executor around `gh`, and use it from the publisher's first real write.","acceptanceCriteria":["`npm test` exits 0 with a test that injects a fake `GhExec` and asserts no test calls the real `gh` binary"],"filesClaimed":["shared/gh.ts","shared/publish-sub-issues.ts"],"seamsConsumed":[],"whyNotMerged":"It ships the seam together with its first real consumer rather than standing alone as unused abstraction.","dependsOn":[]},{"title":"Wire blocked-by edges through the injected GhExec","whatToBuild":"Use the `GhExec` seam to wire native blocked-by edges after issue creation.","acceptanceCriteria":["`npm test` exits 0 with a test asserting each declared edge is wired through the fake `GhExec`"],"filesClaimed":["shared/publish-sub-issues.ts"],"seamsConsumed":["`GhExec` — an injected `(args: string[]) => string` executor around `gh` — shared/gh.ts — consumed by the publisher and every test that stands in for GitHub."],"whyNotMerged":"It is the edge-wiring behavior built on top of the seam the first slice ships, not the seam itself.","dependsOn":[1]}]}
+```

@@ -2,9 +2,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
-import { extractOutput } from "../shared/output-block";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { rejectedResponse } from "../shared/structured-output";
 import { REFUSAL_MARKER } from "./marker";
 import {
   renderChangeRequest,
@@ -17,8 +17,8 @@ import { checkProbation } from "./probation";
 import { refusalComment, refusalFor } from "./refusal";
 import { renderSheet } from "./render-sheet";
 import { applyGrammar, capDecisions, DECISION_CAP } from "./sheet";
-import { Refutations, ShaperOutput, type ShaperSheet } from "./sheet-schema";
-import { Sweep } from "./sweep-schema";
+import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, type ShaperSheet } from "./sheet-schema";
+import { SWEEP_OUTPUT, type Sweep } from "./sweep-schema";
 import { cappedComment, roundFor } from "./rounds";
 
 /**
@@ -52,9 +52,9 @@ const REFUTER_MODEL = "claude-sonnet-5";
  * (ADR-0030). Every way this repo's stages reach the world is on this list:
  * the file readers, the searchers, `Bash` (which is how `gh` would be
  * reached), the web, and the subagent spawner that could hold any of them.
- * The write tools are here too — the shaper produces an `<output>` block and
- * nothing else, so a shaper that edited a file would be doing something no
- * part of this design asked for.
+ * The write tools are here too — the shaper produces one structured-output
+ * tool call and nothing else, so a shaper that edited a file would be doing
+ * something no part of this design asked for.
  *
  * `shape.test.ts` asserts this list reaches the argv, because a deny list
  * that silently stopped being passed would leave a prompt-only prohibition
@@ -126,10 +126,19 @@ function rawResponsePath(stage: string): string {
   return join(dirname(handoffPath()), `${stage}-raw-response.txt`);
 }
 
-function preservingRaw<R>(stage: string, raw: string, work: () => R): R {
+/**
+ * Runs one stage and, if its response is refused, writes that response to
+ * `rawResponsePath(stage)` before rethrowing with the path named. Anything
+ * that is not a refused response — a dead CLI, a bad spawn — is rethrown
+ * untouched: there is nothing to save, and a file named for a stage that
+ * never answered would be a lie.
+ */
+async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<R> {
   try {
-    return work();
+    return await work();
   } catch (err) {
+    const raw = rejectedResponse(err);
+    if (raw === undefined) throw err;
     const path = rawResponsePath(stage);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, raw, "utf8");
@@ -185,13 +194,15 @@ export function fetchRef(gh: GhExec): Fetch {
 }
 
 async function runSweep(deps: ChainDeps, issueNumber: number, focus: string): Promise<Sweep> {
-  const raw = await runStage(
-    PROMPTS.sweep,
-    { ISSUE_NUMBER: String(issueNumber), FOCUS: focus },
-    deps.exec,
-    { model: SWEEP_MODEL },
+  return preservingRaw("sweep", () =>
+    runStage(
+      PROMPTS.sweep,
+      { ISSUE_NUMBER: String(issueNumber), FOCUS: focus },
+      deps.exec,
+      SWEEP_OUTPUT,
+      { model: SWEEP_MODEL },
+    ),
   );
-  return preservingRaw("sweep", raw, () => extractOutput(raw, Sweep));
 }
 
 async function runShaper(
@@ -201,39 +212,43 @@ async function runShaper(
   changeRequest: string,
   reSweep: string,
 ): Promise<ShaperOutput> {
-  const raw = await runStage(
-    PROMPTS.shaper,
-    {
-      IDEA: idea,
-      CHANGE_REQUEST: renderChangeRequest(changeRequest),
-      CONTEXT_MD: deps.fetch("CONTEXT.md") ?? "",
-      CODING_STANDARDS_MD: deps.fetch("CODING_STANDARDS.md") ?? "",
-      READING_LIST: renderReadingList(sweep.readingList, deps.fetch),
-      PRIOR_ART: renderPriorArt(sweep.priorArt),
-      RESWEEP: reSweep,
-    },
-    deps.exec,
-    // On stdin, because this is the one prompt in the estate that inlines
-    // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading list
-    // clear the 128 KiB argv-element limit on any idea whose sweep listed a
-    // long file. ADR-0030 rejected capping that list, so the transport has
-    // to be the thing that gives.
-    { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true },
+  return preservingRaw("shaper", () =>
+    runStage(
+      PROMPTS.shaper,
+      {
+        IDEA: idea,
+        CHANGE_REQUEST: renderChangeRequest(changeRequest),
+        CONTEXT_MD: deps.fetch("CONTEXT.md") ?? "",
+        CODING_STANDARDS_MD: deps.fetch("CODING_STANDARDS.md") ?? "",
+        READING_LIST: renderReadingList(sweep.readingList, deps.fetch),
+        PRIOR_ART: renderPriorArt(sweep.priorArt),
+        RESWEEP: reSweep,
+      },
+      deps.exec,
+      SHAPER_OUTPUT,
+      // On stdin, because this is the one prompt in the estate that inlines
+      // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading
+      // list clear the 128 KiB argv-element limit on any idea whose sweep
+      // listed a long file. ADR-0030 rejected capping that list, so the
+      // transport has to be the thing that gives.
+      { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true },
+    ),
   );
-  return preservingRaw("shaper", raw, () => extractOutput(raw, ShaperOutput));
 }
 
 async function runRefuter(deps: ChainDeps, shaped: ShaperSheet): Promise<Refutations> {
-  const raw = await runStage(
-    PROMPTS.refuter,
-    {
-      DECISIONS: JSON.stringify(shaped.decisions, null, 2),
-      RESTATEMENT: shaped.restatement,
-    },
-    deps.exec,
-    { model: REFUTER_MODEL },
+  return preservingRaw("refuter", () =>
+    runStage(
+      PROMPTS.refuter,
+      {
+        DECISIONS: JSON.stringify(shaped.decisions, null, 2),
+        RESTATEMENT: shaped.restatement,
+      },
+      deps.exec,
+      REFUTER_OUTPUT,
+      { model: REFUTER_MODEL },
+    ),
   );
-  return preservingRaw("refuter", raw, () => extractOutput(raw, Refutations));
 }
 
 /**

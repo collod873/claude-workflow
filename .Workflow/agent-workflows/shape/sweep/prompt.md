@@ -40,6 +40,11 @@ So: anything the shaper needs in order to decide, you fetch. Anything you leave 
 
 ## Output
 
-Emit only a raw `<output>` block containing a JSON object with `priorArt` and `readingList`:
+Return your answer by calling the `StructuredOutput` tool, with `priorArt` and `readingList`.
 
-<output>{"priorArt":[{"ref":"ADR-0007","url":"https://github.com/collod873/claude-workflow/blob/main/docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md","bearing":"Rules that the shaper routes every item, which this idea proposes to hand back to the owner","verdict":"ruled"}],"readingList":[{"ref":".Workflow/agent-workflows/shape/sheet.ts","because":"it enforces the route this idea would change"},{"ref":"#42","because":"the earlier attempt at the same routing rule"}]}</output>
+Write whatever reasoning you need first — only the tool call is read as your answer, so nothing
+you say before it can corrupt it.
+
+```structured-output
+{"priorArt":[{"ref":"ADR-0007","url":"https://github.com/collod873/claude-workflow/blob/main/docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md","bearing":"Rules that the shaper routes every item, which this idea proposes to hand back to the owner","verdict":"ruled"}],"readingList":[{"ref":".Workflow/agent-workflows/shape/sheet.ts","because":"it enforces the route this idea would change"},{"ref":"#42","because":"the earlier attempt at the same routing rule"}]}
+```

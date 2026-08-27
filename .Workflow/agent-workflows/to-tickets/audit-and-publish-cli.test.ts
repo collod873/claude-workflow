@@ -26,7 +26,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     const auditedPlan = [{ ...slicedPlan[0], title: "Root, re-worded by audit" }];
     const { env } = stubClaudeCli(
       dir,
-      `<output>${JSON.stringify(auditedPlan)}</output>`,
+      { structured: { notes: "Granularity: fine as-is.", slices: auditedPlan } },
       JSON.stringify(slicedPlan),
     );
     stubGhCli(dir, { issueNumber: 200 });
@@ -40,11 +40,11 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     expect(stdout).toContain("audit-and-publish: published 1 sub-issue under #13");
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the auditor's response has no <output> block", () => {
+  it("writes a failure reason naming the stage and exits nonzero when the run produced no structured output", () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
-      "no output block here, just prose",
+      "the model just graded out loud, and never called the tool",
       JSON.stringify(slicedPlan),
     );
     stubGhCli(dir, { issueNumber: 200 });
@@ -56,14 +56,14 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
       }),
     ).toThrow();
 
-    expect(readFileSync(handoffFile, "utf8")).toMatch(/^audit-and-publish: .*no <output> block/);
+    expect(readFileSync(handoffFile, "utf8")).toMatch(/^audit-and-publish: .*not valid JSON/);
   });
 
   it("exits nonzero rather than 0 when the audited plan schema-validates but the gh publish itself fails", () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
-      `<output>${JSON.stringify(slicedPlan)}</output>`,
+      { structured: { notes: "", slices: slicedPlan } },
       JSON.stringify(slicedPlan),
     );
     stubGhCli(dir, { fails: "HTTP 422: Validation Failed" });

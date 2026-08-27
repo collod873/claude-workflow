@@ -43,9 +43,14 @@ it costs nothing.
 
 ## Output
 
-Emit only a raw `<output>` block containing a JSON object with one key, `record`, whose value is
-the complete comment text starting at the `## Closing record` heading.
+Return your answer by calling the `StructuredOutput` tool. Its one key, `record`, is the complete
+comment text starting at the `## Closing record` heading.
+
+Write whatever reasoning you need first — only the tool call is read as your answer, so nothing
+you say before it can corrupt it.
 
 Example:
 
-<output>{"record": "## Closing record\n\n`main..a1b2c3d`\n\n- The gate reopens a close it refuses — MET: `.Workflow/agent-workflows/close-gate/close-gate.ts:141`\n- The suite covers the refusal path — MET: `npx vitest run` exit 0"}</output>
+```structured-output
+{"record": "## Closing record\n\n`main..a1b2c3d`\n\n- The gate reopens a close it refuses — MET: `.Workflow/agent-workflows/close-gate/close-gate.ts:141`\n- The suite covers the refusal path — MET: `npx vitest run` exit 0"}
+```

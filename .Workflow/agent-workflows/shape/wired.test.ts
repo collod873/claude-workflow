@@ -130,9 +130,16 @@ describe("the prompts the chain names exist", () => {
     const declared = (path: string): string[] =>
       [...readFileSync(path, "utf8").matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]);
 
-    const supplied = [...readFileSync(".Workflow/agent-workflows/shape/shape.ts", "utf8").matchAll(/^\s{6}(\w+):/gm)].map(
-      (match) => match[1],
-    );
+    // Matched on the SCREAMING_CASE a `{{VAR}}` name always has, at whatever
+    // depth the var map happens to sit — the previous form pinned an exact
+    // six-space indent, so wrapping the `runStage` call in anything (a
+    // `preservingRaw`, a retry) silently emptied the supplied set and turned
+    // this assertion into a failure about the prompt.
+    const supplied = [
+      ...readFileSync(".Workflow/agent-workflows/shape/shape.ts", "utf8").matchAll(
+        /^\s+([A-Z][A-Z0-9_]*):/gm,
+      ),
+    ].map((match) => match[1]);
 
     for (const name of declared(".Workflow/agent-workflows/shape/shaper/prompt.md")) {
       expect(supplied, `the shaper's prompt references {{${name}}}`).toContain(name);

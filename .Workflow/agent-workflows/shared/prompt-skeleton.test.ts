@@ -2,16 +2,18 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { SalvagedRecord } from "../close-gate/close-gate";
-import { Refutations, ShaperOutput } from "../shape/sheet-schema";
-import { Sweep } from "../shape/sweep-schema";
-import { SeamManifest } from "../to-tickets/seam-sweep/schema";
-import { Plan } from "./plan-schema";
+import { SALVAGE_OUTPUT } from "../close-gate/close-gate";
+import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
+import { SWEEP_OUTPUT } from "../shape/sweep-schema";
+import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
+import { AUDIT_OUTPUT, SLICE_OUTPUT } from "./plan-schema";
+import type { StructuredOutput } from "./structured-output";
 
 /**
- * Every stage prompt ends in an `<output>` skeleton — a literal example of the
- * JSON the model is asked for — and every one of those skeletons is checked
- * here against the schema the stage will actually parse the response with.
+ * Every stage prompt ends in a ```structured-output skeleton — a literal
+ * example of the JSON the model is asked for — and every one of those
+ * skeletons is checked here against the schema the stage actually sends to
+ * the CLI.
  *
  * The pair drifts silently otherwise, and a drifted skeleton is not a test
  * failure at commit time but a dead run at the end of a stage that has already
@@ -24,26 +26,32 @@ import { Plan } from "./plan-schema";
  * That is why parsing alone is not the check. `{"newTerms":[]}` parses — the
  * field is `.default([])` — and taught nothing. The second assertion below is
  * the one that would have caught it.
+ *
+ * **The skeleton is checked against the wrapped shape, not the domain
+ * schema.** What the model is handed is the object-rooted schema — `slices`,
+ * `entries`, `answer` and all — so a skeleton showing the unwrapped shape is
+ * an example of something the tool will refuse, however well it matches the
+ * type the stage eventually returns.
  */
 
-/** Which schema each prompt's response is parsed with, at the call sites in `extractOutput`. */
-const PROMPTS: ReadonlyArray<{ path: string; schema: z.ZodTypeAny }> = [
-  { path: "shape/sweep/prompt.md", schema: Sweep },
-  { path: "shape/shaper/prompt.md", schema: ShaperOutput },
-  { path: "shape/refuter/prompt.md", schema: Refutations },
-  { path: "to-tickets/seam-sweep/prompt.md", schema: SeamManifest },
-  { path: "to-tickets/slice/prompt.md", schema: Plan },
-  { path: "to-tickets/audit/prompt.md", schema: Plan },
-  { path: "close-gate/salvage/prompt.md", schema: SalvagedRecord },
+/** Which structured-output contract each prompt's skeleton is checked against. */
+const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }> = [
+  { path: "shape/sweep/prompt.md", output: SWEEP_OUTPUT },
+  { path: "shape/shaper/prompt.md", output: SHAPER_OUTPUT },
+  { path: "shape/refuter/prompt.md", output: REFUTER_OUTPUT },
+  { path: "to-tickets/seam-sweep/prompt.md", output: SEAM_SWEEP_OUTPUT },
+  { path: "to-tickets/slice/prompt.md", output: SLICE_OUTPUT },
+  { path: "to-tickets/audit/prompt.md", output: AUDIT_OUTPUT },
+  { path: "close-gate/salvage/prompt.md", output: SALVAGE_OUTPUT },
 ];
 
-/** The `<output>` blocks in a prompt, in order — a prompt may show more than one legal shape. */
+/** The skeletons in a prompt, in order — a prompt may show more than one legal shape. */
 function skeletons(promptPath: string): unknown[] {
   const source = readFileSync(
     fileURLToPath(new URL(`../${promptPath}`, import.meta.url)),
     "utf8",
   );
-  const found = [...source.matchAll(/^<output>([\s\S]*?)<\/output>$/gm)];
+  const found = [...source.matchAll(/^```structured-output\n([\s\S]*?)\n```$/gm)];
   return found.map((match) => JSON.parse(match[1]) as unknown);
 }
 
@@ -105,18 +113,21 @@ function arraysAt(value: unknown, path: string[]): unknown[][] {
   return next === undefined ? [] : arraysAt(next, path.slice(1));
 }
 
-describe.each(PROMPTS)("$path", ({ path, schema }) => {
+describe.each(PROMPTS)("$path", ({ path, output }) => {
   it("shows only skeletons the stage's own schema accepts", () => {
     const shown = skeletons(path);
     expect(shown.length).toBeGreaterThan(0);
     for (const skeleton of shown) {
-      expect(() => schema.parse(skeleton)).not.toThrow();
+      // Through `parse`, not the bare schema, so the skeleton is checked
+      // against the whole trip a real response makes — serialised, validated,
+      // unwrapped — rather than against one step of it.
+      expect(() => output.parse(JSON.stringify(skeleton))).not.toThrow();
     }
   });
 
   it("populates every array of objects it asks for, so no field's shape is left to prose", () => {
     const shown = skeletons(path);
-    const unpopulated = objectArrayPaths(schema).filter((expected) =>
+    const unpopulated = objectArrayPaths(output.schema).filter((expected) =>
       shown.every((skeleton) =>
         arraysAt(skeleton, expected).every((found) => found.length === 0),
       ),

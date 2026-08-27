@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createStreamJsonParser } from "./stream-json";
+import type { StructuredOutput } from "./structured-output";
 
 /**
  * One `claude` invocation, as its argv (not including the `claude` binary
@@ -54,12 +55,17 @@ const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
  *
  * It exists because the turn-end venue is designed to make Claude keep
  * working — `decision: "block"` hands the failing checks back and asks for
- * another turn — and a stage's contract is that its **last** message is the
- * `<output>` block. The two cannot both hold: `stream-json`'s result event
- * carries the final turn's text alone, so any block, for any reason, spends
- * the stage's answer on a reply to the hook. #134's slicing died exactly
- * there, eight minutes and $1.15 in, on a suite failure the auditor had
- * nothing to do with.
+ * another turn — and a stage is spawned to answer one question and stop.
+ * #134's slicing died exactly there, eight minutes and $1.15 in, on a suite
+ * failure the auditor had nothing to do with: the block spent the auditor's
+ * last turn arguing about a red suite it had not caused, and the stage's
+ * answer went with it.
+ *
+ * Structured output narrows what that costs — the answer now lands as a tool
+ * call rather than as the final turn's text — but it does not make the block
+ * harmless: a stage handed unrelated failing checks still spends model time
+ * and tokens on them, and still has nowhere to put a fix, since the stage
+ * edits nothing.
  *
  * A stage's checks are not skipped by this — they run in `verify.yml`, at the
  * venue that can actually fail a run. What is removed is a venue whose only
@@ -232,31 +238,47 @@ export interface StageOptions {
 }
 
 /**
- * Runs one stage: reads `promptPath`, substitutes every `{{VAR}}`
- * placeholder in it with `vars[VAR]`, builds the `claude` argv for a single
- * headless print-mode call, and returns raw stdout via the injected `exec`.
+ * Runs one stage and returns its typed answer: reads `promptPath`,
+ * substitutes every `{{VAR}}` placeholder in it with `vars[VAR]`, builds the
+ * `claude` argv for a single headless print-mode call — `output`'s JSON
+ * Schema among the flags — and validates what comes back through
+ * `output.parse`.
+ *
+ * **Every stage goes through the structured-output path.** There is no
+ * untyped variant, deliberately: a stage that answered in prose would be a
+ * stage whose answer nothing checks, which is the failure this seam was
+ * rebuilt to remove. `--json-schema` reaching the argv is therefore a
+ * property of `runStage` itself rather than of each call site remembering to
+ * ask, and `stage.test.ts` pins it there.
  *
  * Throws, without calling `exec`, when the template references a
  * placeholder `vars` doesn't cover — a stage prompt with an unresolved
  * `{{VAR}}` is a wiring bug to catch here, not a partially-substituted
  * prompt to hand to a model.
  */
-export async function runStage(
+export async function runStage<T>(
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
+  output: StructuredOutput<T>,
   options: StageOptions = {},
-): Promise<string> {
+): Promise<T> {
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
   const model = options.model ? ["--model", options.model] : [];
   const denied = options.disallowedTools?.length
     ? ["--disallowedTools", options.disallowedTools.join(",")]
     : [];
-  const flags = ["--dangerously-skip-permissions", ...model, ...denied];
+  const flags = [
+    "--dangerously-skip-permissions",
+    "--json-schema",
+    output.jsonSchema,
+    ...model,
+    ...denied,
+  ];
 
   if (options.promptViaStdin) {
-    return exec(["-p", ...flags], prompt);
+    return output.parse(await exec(["-p", ...flags], prompt));
   }
 
   // Named rather than left to errno. A stage that outgrows the argv limit
@@ -269,7 +291,7 @@ export async function runStage(
     );
   }
 
-  return exec(["-p", prompt, ...flags]);
+  return output.parse(await exec(["-p", prompt, ...flags]));
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

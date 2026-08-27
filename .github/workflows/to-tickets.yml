@@ -151,8 +151,8 @@ jobs:
 
       # The first of three stages, each following runStage's shape (see
       # .Workflow/agent-workflows/shared/stage.ts). Spawns one headless `claude` process against
-      # seam-sweep/prompt.md and writes its validated <output> — the seam manifest — to the handoff
-      # path, or a failure reason if it dies.
+      # seam-sweep/prompt.md and writes its validated structured output — the seam manifest — to
+      # the handoff path, or a failure reason if it dies.
       - name: Seam sweep
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
 

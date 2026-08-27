@@ -15,15 +15,28 @@
  * The one event that carries the model's answer. Everything else in the
  * stream is progress — narration this parser renders and then discards.
  *
- * The final text is read from the `result` event's own `result` field
- * rather than accumulated from the `assistant` text blocks along the way,
- * because those blocks are every turn the model took, not its answer: a
- * stage that thinks out loud before its `<output>` block would have that
- * thinking concatenated into what `extractOutput` then parses. ADR-0012
- * makes the outermost `<output>` span the payload, so extra prose from an
- * earlier turn is not a harmless prefix — it can contain a tag.
+ * The answer is read from the `result` event rather than accumulated from
+ * the `assistant` text blocks along the way, because those blocks are every
+ * turn the model took, not its answer: a stage that thinks out loud before
+ * answering would have that thinking concatenated into whatever parses the
+ * response next.
  */
 const RESULT_EVENT = "result";
+
+/**
+ * The result event's already-validated structured output, when the run was
+ * given a `--json-schema`. The CLI reports the same value twice — as an
+ * object here and as a JSON string in `result` — and this is the one taken.
+ *
+ * Preferred rather than treated as equivalent because the two fields answer
+ * different questions. `result` is *whatever the run produced*: for a run
+ * whose model never reached the `StructuredOutput` tool it is the model's
+ * prose, which parses as nothing and would reach the stage as a `SyntaxError`
+ * about position 0. `structured_output` is present only when a validated
+ * value exists, so re-serialising it is how a stage gets the value the API
+ * checked rather than the text the CLI happened to print.
+ */
+const STRUCTURED_FIELD = "structured_output";
 
 /** What `end()` reports back once the stream is closed. */
 export interface StreamResult {
@@ -78,7 +91,7 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
 
     if (isRecord(event) && event.type === RESULT_EVENT) {
       sawResult = true;
-      text = typeof event.result === "string" ? event.result : "";
+      text = finalText(event);
       isError = event.is_error === true || String(event.subtype ?? "").startsWith("error");
     }
 
@@ -104,6 +117,22 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
       return { text, isError, missingResult: !sawResult };
     },
   };
+}
+
+/**
+ * The answer carried by one result event: its structured output re-serialised
+ * when the run had a schema, and its `result` text otherwise.
+ *
+ * `null` is not a structured output — `JSON.stringify(null)` is the string
+ * `"null"`, which parses, satisfies nothing, and would report a stage's
+ * missing answer as a schema failure rather than as an absent one.
+ */
+function finalText(event: Record<string, unknown>): string {
+  const structured = event[STRUCTURED_FIELD];
+  if (structured !== undefined && structured !== null) {
+    return JSON.stringify(structured);
+  }
+  return typeof event.result === "string" ? event.result : "";
 }
 
 /**

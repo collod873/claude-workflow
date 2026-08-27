@@ -5,10 +5,6 @@ import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
 import { sliceAndPublish } from "./slice-and-publish";
 
-function rawOutput(plan: Slice[]): string {
-  return `Some reasoning prose the model wrote.\n\n<output>${JSON.stringify(plan)}</output>`;
-}
-
 const PRD_NUMBER = 42;
 
 describe("sliceAndPublish", () => {
@@ -16,7 +12,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
     const fake = createFakeGh();
 
-    const published = sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     expect(published.map((p) => p.title)).toEqual(["Root", "Depends on root"]);
 
@@ -42,7 +38,7 @@ describe("sliceAndPublish", () => {
     ];
     const fake = createFakeGh();
 
-    const published = sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
     const [root, dependsOnRoot, dependsOnBoth] = published;
 
     const wireCalls = fake.calls.filter(
@@ -92,7 +88,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "Root" })];
     const fake = createFakeGh();
 
-    sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     const wireCalls = fake.calls.filter(
       (args) =>
@@ -105,7 +101,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
     const fake = createFakeGh();
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).not.toThrow();
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).not.toThrow();
   });
 
   it("fails read-back verification, naming the exact missing edge, when a wired edge never lands", () => {
@@ -113,7 +109,7 @@ describe("sliceAndPublish", () => {
     // firstIssueNumber defaults to 100, so Root -> #100 and Depends on root -> #101 deterministically.
     const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
       /slice 2 \("Depends on root"\).*blocked by slice 1 \("Root"\)/,
     );
 
@@ -128,36 +124,18 @@ describe("sliceAndPublish", () => {
     expect(wireCalls).toHaveLength(1);
   });
 
-  it("refuses a missing <output> block with zero argv recorded", () => {
-    const fake = createFakeGh();
-
-    expect(() => sliceAndPublish("just prose, no block", PRD_NUMBER, fake.gh)).toThrow(
-      /no <output> block/,
-    );
-    expect(fake.calls).toHaveLength(0);
-  });
-
-  it("refuses a malformed (non-JSON) <output> block with zero argv recorded", () => {
-    const fake = createFakeGh();
-    const raw = "<output>{not json</output>";
-
-    expect(() => sliceAndPublish(raw, PRD_NUMBER, fake.gh)).toThrow(/not valid JSON/);
-    expect(fake.calls).toHaveLength(0);
-  });
-
-  it("refuses an <output> block that fails schema validation with zero argv recorded", () => {
-    const fake = createFakeGh();
-    const raw = `<output>${JSON.stringify([{ title: "Missing everything else" }])}</output>`;
-
-    expect(() => sliceAndPublish(raw, PRD_NUMBER, fake.gh)).toThrow(/failed schema validation/);
-    expect(fake.calls).toHaveLength(0);
-  });
+  // The three cases that used to sit here — no block, a block that isn't
+  // JSON, a block the schema refuses — were about a response this module no
+  // longer sees. It is handed a `Plan`, which the API's tool-input validation
+  // and zod have both already accepted; the response-shaped refusals live in
+  // `shared/structured-output.test.ts`, at the seam that owns them. What is
+  // left below is this module's own refusal: graph shape.
 
   it("refuses an out-of-range dependsOn, naming the offending slice, with zero argv recorded", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Points past the end", dependsOn: [7] })];
     const fake = createFakeGh();
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
       /slice 2 \("Points past the end"\).*out-of-range/,
     );
     expect(fake.calls).toHaveLength(0);
@@ -167,7 +145,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on itself", dependsOn: [2] })];
     const fake = createFakeGh();
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
       /slice 2 \("Depends on itself"\).*depends on itself/,
     );
     expect(fake.calls).toHaveLength(0);
@@ -181,7 +159,7 @@ describe("sliceAndPublish", () => {
     ];
     const fake = createFakeGh();
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
       /dependency cycle detected/,
     );
     expect(fake.calls).toHaveLength(0);
@@ -191,7 +169,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "First", dependsOn: [2] }), slice({ title: "Second", dependsOn: [1] })];
     const fake = createFakeGh();
 
-    expect(() => sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh)).toThrow(/no unblocked root/);
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(/no unblocked root/);
     expect(fake.calls).toHaveLength(0);
   });
 
@@ -205,7 +183,7 @@ describe("sliceAndPublish", () => {
     ];
     const fake = createFakeGh();
 
-    sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
     const bodyFlagIndex = createCall!.indexOf("--body");
@@ -228,7 +206,7 @@ describe("sliceAndPublish", () => {
     const plan = [slice({ title: "No files touched", filesClaimed: [] })];
     const fake = createFakeGh();
 
-    sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
     const body = createCall![createCall!.indexOf("--body") + 1];
@@ -247,7 +225,7 @@ describe("sliceAndPublish", () => {
     ];
     const fake = createFakeGh();
 
-    sliceAndPublish(rawOutput(plan), PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
     const body = createCall![createCall!.indexOf("--body") + 1];

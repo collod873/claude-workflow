@@ -58,13 +58,29 @@ function createFakeModel(responses: Partial<Record<string, string[]>>): FakeMode
   return fake;
 }
 
+/**
+ * One canned `StageExec` response: exactly what `execClaude` resolves for a
+ * run with `--json-schema` — the validated structured output, serialised, and
+ * nothing else. There is no prose alongside it because there is nowhere for
+ * prose to be: the stage's answer is a tool call, and the model's earlier
+ * turns never reach this seam.
+ */
 function block(payload: unknown): string {
-  return `working…\n<output>${JSON.stringify(payload)}</output>`;
+  return JSON.stringify(payload);
+}
+
+/**
+ * One shaper response. Its two legal shapes are a union, and a tool input
+ * schema has to be object-rooted, so both ride under `answer` — see
+ * `SHAPER_OUTPUT`.
+ */
+function shaperAnswer(answer: unknown): string {
+  return block({ answer });
 }
 
 const EMPTY_SWEEP = block({ priorArt: [], readingList: [] });
 
-const ONE_DECISION_SHEET = block({
+const ONE_DECISION_SHEET = shaperAnswer({
   kind: "sheet",
   restatement: "the idea as work",
   priorArt: [],
@@ -196,7 +212,7 @@ describe("the stage-1 refusal", () => {
 });
 
 describe("the one re-sweep", () => {
-  const reSweep = block({ kind: "re-sweep", needs: "the close gate's refusal list", why: "decision 2" });
+  const reSweep = shaperAnswer({ kind: "re-sweep", needs: "the close gate's refusal list", why: "decision 2" });
 
   it("re-runs the sweep once and then the shaper again", async () => {
     const model = createFakeModel({
@@ -241,7 +257,7 @@ describe("the one re-sweep", () => {
 
 describe("the refusal to shape", () => {
   it("hands back a tree that will not close under five decisions", async () => {
-    const seven = block({
+    const seven = shaperAnswer({
       kind: "sheet",
       restatement: "…",
       priorArt: [],

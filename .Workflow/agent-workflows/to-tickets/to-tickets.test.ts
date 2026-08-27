@@ -27,7 +27,7 @@ describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
     const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
-    const fake = createFakeStage('<output>["a seam"]</output>');
+    const fake = createFakeStage(JSON.stringify({ entries: ["a seam"] }));
 
     const output = await runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
@@ -48,7 +48,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     process.env.FAILURE_REASON_PATH = target;
     writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
     const plan = validSlicePlan();
-    const fake = createFakeStage(`<output>${JSON.stringify(plan)}</output>`);
+    const fake = createFakeStage(JSON.stringify({ slices: plan }));
 
     const output = await runNamedStage("slice", "13", fake.exec, unreachableGh);
 
@@ -64,7 +64,7 @@ describe("runNamedStage (slice, against the fake StageExec)", () => {
     process.env.FAILURE_REASON_PATH = target;
     writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
     const badPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
-    const fake = createFakeStage(`<output>${JSON.stringify(badPlan)}</output>`);
+    const fake = createFakeStage(JSON.stringify({ slices: badPlan }));
 
     await expect(runNamedStage("slice", "13", fake.exec, unreachableGh)).rejects.toThrow(/depends on itself/);
   });
@@ -88,7 +88,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     const { target, plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const auditedPlan = [{ ...slicedPlan[0], title: "Root, re-worded by audit" }];
     const fakeStage = createFakeStage(
-      `Granularity: fine as-is.\n\n<output>${JSON.stringify(auditedPlan)}</output>`,
+      JSON.stringify({ notes: "Granularity: fine as-is.", slices: auditedPlan }),
     );
     const fakeGh = createFakeGh();
 
@@ -97,16 +97,19 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
     expect(fakeStage.calls).toHaveLength(1);
     expect(fakeStage.calls[0][1]).toContain(JSON.stringify(slicedPlan));
-    expect(JSON.parse(readFileSync(target, "utf8"))).toEqual(auditedPlan);
+    expect(JSON.parse(readFileSync(target, "utf8"))).toEqual({
+      notes: "Granularity: fine as-is.",
+      slices: auditedPlan,
+    });
 
     const createCalls = fakeGh.calls.filter((args) => args[0] === "issue" && args[1] === "create");
     expect(createCalls).toHaveLength(1);
   });
 
-  it("prints the auditor's grading notes and unapplied flags — the prose ahead of its <output> block — to stdout", async () => {
+  it("prints the auditor's grading notes and unapplied flags — the `notes` field of its answer — to stdout", async () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";
-    const fakeStage = createFakeStage(`${notes}\n\n<output>${JSON.stringify(slicedPlan)}</output>`);
+    const fakeStage = createFakeStage(JSON.stringify({ notes, slices: slicedPlan }));
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -115,9 +118,9 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
   });
 
-  it("logs only the success line — no notes — when the auditor's response opens straight into its <output> block", async () => {
+  it("logs only the success line — no notes — when the auditor graded silently", async () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
-    const fakeStage = createFakeStage(`<output>${JSON.stringify(slicedPlan)}</output>`);
+    const fakeStage = createFakeStage(JSON.stringify({ notes: "", slices: slicedPlan }));
     const fakeGh = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -131,7 +134,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
   it("exits nonzero without publishing when the audited plan fails validate-graph.ts", async () => {
     seedHandoffWithSlicedPlan();
     const selfReferencingPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
-    const fakeStage = createFakeStage(`<output>${JSON.stringify(selfReferencingPlan)}</output>`);
+    const fakeStage = createFakeStage(JSON.stringify({ slices: selfReferencingPlan }));
     const fakeGh = createFakeGh();
 
     await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
@@ -142,7 +145,9 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
 
   it("exits nonzero without publishing when the auditor's response fails schema validation", async () => {
     seedHandoffWithSlicedPlan();
-    const fakeStage = createFakeStage(`<output>[{"title":"Missing everything else"}]</output>`);
+    const fakeStage = createFakeStage(
+      JSON.stringify({ slices: [{ title: "Missing everything else" }] }),
+    );
     const fakeGh = createFakeGh();
 
     await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
@@ -186,7 +191,7 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
 describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   it("writes a schema-valid manifest to the handoff path and exits 0", async () => {
     const dir = withHandoffDir();
-    const { env, handoffFile } = stubClaudeCli(dir, '<output>["a seam"]</output>');
+    const { env, handoffFile } = stubClaudeCli(dir, { structured: { entries: ["a seam"] } });
 
     execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
       env,
@@ -196,9 +201,13 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
     expect(JSON.parse(readFileSync(handoffFile, "utf8"))).toEqual(["a seam"]);
   });
 
-  it("writes a failure reason naming the stage and exits nonzero when the <output> block is missing", async () => {
+  it("writes a failure reason naming the stage and exits nonzero when the run produced no structured output", async () => {
     const dir = withHandoffDir();
-    const { env, handoffFile } = stubClaudeCli(dir, "no output block here, just prose");
+    // A result event carrying prose and no `structured_output` — what the
+    // CLI reports when the model never reached the tool. There is no such
+    // response in ordinary traffic, and the point is that the stage names it
+    // rather than dying on a `SyntaxError` about position 0.
+    const { env, handoffFile } = stubClaudeCli(dir, "the model just talked, and never called the tool");
 
     expect(() =>
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
@@ -207,12 +216,18 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
       }),
     ).toThrow();
 
-    expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*no <output> block/);
+    expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*not valid JSON/);
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", async () => {
     const dir = withHandoffDir();
-    const { env, handoffFile } = stubClaudeCli(dir, "<output>[\"one line\\ntwo lines\"]</output>");
+    // A manifest entry with a newline in it: the rule `SeamManifestEntry`
+    // carries as a `.refine()`, which has no JSON Schema form — so the API
+    // accepts this and zod is what refuses it. That split is the reason
+    // `parse` runs the schema over structured output at all.
+    const { env, handoffFile } = stubClaudeCli(dir, {
+      structured: { entries: ["one line\ntwo lines"] },
+    });
 
     expect(() =>
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
@@ -242,7 +257,7 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
  * done from the run that raised it.
  */
 describe("a refused response is kept where the next reader can find it", () => {
-  const rejected = 'prose the model wrote\n<output>["one line\\ntwo lines"]</output>';
+  const rejected = JSON.stringify({ entries: ["one line\ntwo lines"] });
 
   it("writes the raw response beside the handoff and names that path in the failure", async () => {
     const dir = withHandoffDir();
@@ -255,7 +270,7 @@ describe("a refused response is kept where the next reader can find it", () => {
     expect(readFileSync(rawPath, "utf8")).toBe(rejected);
   });
 
-  it("keeps the whole response, not just the block that failed", async () => {
+  it("keeps the response verbatim, not the schema's account of what was wrong with it", async () => {
     const dir = withHandoffDir();
     process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
     const fake = createFakeStage(rejected);
@@ -263,14 +278,14 @@ describe("a refused response is kept where the next reader can find it", () => {
     await expect(runNamedStage("seam-sweep", "13", fake.exec, unreachableGh)).rejects.toThrow();
 
     expect(readFileSync(join(dir, "seam-sweep-raw-response.txt"), "utf8")).toContain(
-      "prose the model wrote",
+      "one line\\ntwo lines",
     );
   });
 
   it("writes nothing when the stage succeeds, so the file's presence is the signal", async () => {
     const dir = withHandoffDir();
     process.env.FAILURE_REASON_PATH = join(dir, "handoff.txt");
-    const fake = createFakeStage('<output>["a seam"]</output>');
+    const fake = createFakeStage(JSON.stringify({ entries: ["a seam"] }));
 
     await runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
@@ -291,7 +306,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
-      `<output>${JSON.stringify(validPlan)}</output>`,
+      { structured: { slices: validPlan } },
       JSON.stringify(["a seam"]),
     );
 
@@ -308,7 +323,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
-      `<output>${JSON.stringify(badPlan)}</output>`,
+      { structured: { slices: badPlan } },
       JSON.stringify(["a seam"]),
     );
 
@@ -327,7 +342,7 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
     const dir = withHandoffDir();
     const { env, handoffFile } = stubClaudeCli(
       dir,
-      `<output>${JSON.stringify(cyclicPlan)}</output>`,
+      { structured: { slices: cyclicPlan } },
       JSON.stringify(["a seam"]),
     );
 

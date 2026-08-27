@@ -33,10 +33,14 @@ What does **not** survive: that a decision is hard, that more information would 
 
 ## Output
 
-Emit only a raw `<output>` block:
+Return your answer by calling the `StructuredOutput` tool:
 
-<output>{"survivors":["Decision 2 cites ADR-0010 as placing the check in Actions; ADR-0010 rules the opposite — earliest venue that can run it, which is the pre-push hook here."]}</output>
+```structured-output
+{"survivors":["Decision 2 cites ADR-0010 as placing the check in Actions; ADR-0010 rules the opposite — earliest venue that can run it, which is the pre-push hook here."]}
+```
 
 Or, when you agree:
 
-<output>{"survivors":[]}</output>
+```structured-output
+{"survivors":[]}
+```

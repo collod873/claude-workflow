@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { structuredOutput } from "../../shared/structured-output";
 
 /**
  * One seam manifest line: naming what a shared shape is, where it lives or
@@ -23,3 +24,15 @@ export type SeamManifestEntry = z.infer<typeof SeamManifestEntry>;
 export const SeamManifest = z.array(SeamManifestEntry);
 
 export type SeamManifest = z.infer<typeof SeamManifest>;
+
+/**
+ * The seam-sweep stage's structured-output contract. Wrapped under `entries`
+ * because a tool input schema must be object-rooted and a manifest is a bare
+ * array.
+ *
+ * `SeamManifestEntry`'s no-newline rule survives the trip in zod only:
+ * `.refine()` is a predicate with no JSON Schema keyword behind it, so the
+ * API enforces "array of strings" and the `parse` on the way back enforces
+ * the rest.
+ */
+export const SEAM_SWEEP_OUTPUT = structuredOutput(SeamManifest, "entries");

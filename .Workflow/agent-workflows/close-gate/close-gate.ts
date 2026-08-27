@@ -1,9 +1,9 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { extractOutput } from "../shared/output-block";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { structuredOutput } from "../shared/structured-output";
 import { countCriteria } from "../shared/ticket-shape";
 import {
   GRAMMAR_DOC,
@@ -112,12 +112,15 @@ const SALVAGE_PROMPT = fileURLToPath(new URL("salvage/prompt.md", import.meta.ur
 
 /**
  * What the salvage stage returns: the record it wrote, and nothing else.
- * A single-key object rather than a bare string so the `<output>` contract
- * is the same shape every other stage in this repo uses.
+ * A single-key object rather than a bare string — which is also what a tool
+ * input schema has to be, so this one needs no wrapper.
  */
 export const SalvagedRecord = z.object({
   record: z.string().min(1),
 });
+
+/** The salvage stage's structured-output contract; object-rooted already, so unwrapped. */
+export const SALVAGE_OUTPUT = structuredOutput(SalvagedRecord);
 
 /** The tracker's answer to `gh issue view --json body,comments,labels`. */
 const IssueView = z.object({
@@ -188,15 +191,18 @@ function fetchIssue(
 /**
  * Spends the one Haiku: hands the issue to the salvage stage and returns
  * the record it wrote, already confirmed to *be* a record (it opens with
- * the heading). Throws on anything else — a stage that returned prose, a
- * malformed `<output>` block, a dead CLI — so the caller can report it as
- * degraded rather than mistaking it for a refusal.
+ * the heading). Throws on anything else — a record that doesn't open with
+ * the heading, a response the schema refuses, a dead CLI — so the caller can
+ * report it as degraded rather than mistaking it for a refusal.
  */
 async function salvageRecord(exec: StageExec, issueNumber: number): Promise<string> {
-  const raw = await runStage(SALVAGE_PROMPT, { ISSUE_NUMBER: String(issueNumber) }, exec, {
-    model: SALVAGE_MODEL,
-  });
-  const salvaged = extractOutput(raw, SalvagedRecord);
+  const salvaged = await runStage(
+    SALVAGE_PROMPT,
+    { ISSUE_NUMBER: String(issueNumber) },
+    exec,
+    SALVAGE_OUTPUT,
+    { model: SALVAGE_MODEL },
+  );
   const marker = findMarkerText(salvaged.record);
   if (marker === null) {
     throw new Error(

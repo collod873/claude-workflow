@@ -68,12 +68,22 @@ Do not spend it on nice-to-have. A re-sweep is for a decision you cannot respons
 
 ## Output
 
-Emit only a raw `<output>` block. Either a sheet:
+Return your answer by calling the `StructuredOutput` tool. Its `answer` field carries one of
+two shapes, discriminated on `kind`.
 
-<output>{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence"}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[{"term":"Checkpoint","definition":"A stage's saved output, kept so a later run can skip the stage that produced it.","avoid":["cache","savepoint"],"section":"Mechanisms"}]}</output>
+Write whatever reasoning you need first — only the tool call is read as your answer, so nothing
+you say before it can corrupt it.
+
+Either a sheet:
+
+```structured-output
+{"answer":{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence"}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[{"term":"Checkpoint","definition":"A stage's saved output, kept so a later run can skip the stage that produced it.","avoid":["cache","savepoint"],"section":"Mechanisms"}]}}
+```
 
 Or one re-sweep request:
 
-<output>{"kind":"re-sweep","needs":"the close gate's refusal list","why":"decision 2 recommends a new refusal and I cannot tell whether one already exists"}</output>
+```structured-output
+{"answer":{"kind":"re-sweep","needs":"the close gate's refusal list","why":"decision 2 recommends a new refusal and I cannot tell whether one already exists"}}
+```
 
 `priorArt` carries forward the sweep's entries you judged worth the owner's three funded lines — at most three, ordered by what would most change his mind. `mark` and `adrTitle` are empty strings where they do not apply.
