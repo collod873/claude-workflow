@@ -2,16 +2,6 @@
 # Create the next ADR from a title. Numbering is derived, never typed.
 set -euo pipefail
 
-amends=""
-if [ "${1:-}" = "--amends" ]; then
-  if [ $# -lt 3 ]; then
-    echo "usage: bin/new-adr --amends NNNN \"the ruling as a sentence\"" >&2
-    exit 1
-  fi
-  amends="$2"
-  shift 2
-fi
-
 if [ $# -eq 0 ]; then
   echo "usage: bin/new-adr \"the ruling as a sentence\"" >&2
   echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
@@ -36,24 +26,12 @@ slug=$(printf '%s' "$title" \
 file="$adr_dir/$next-$slug.md"
 [ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
 
-if [ -n "$amends" ]; then
-  amends_num=$(printf '%04d' "$((10#$amends))")
-  cat > "$file" <<EOF
-# $title
-
-Recorded $(date +%Y-%m-%d).
-
-Amends: ADR-$amends_num
-
-EOF
-else
-  cat > "$file" <<EOF
+cat > "$file" <<EOF
 # $title
 
 Recorded $(date +%Y-%m-%d).
 
 EOF
-fi
 
 echo "$file"
 if [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi
