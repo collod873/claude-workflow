@@ -1,13 +1,17 @@
 import { z } from "zod";
+import type { GhExec } from "../shared/gh";
 import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { collectInSessionContext } from "./collectors/in-session";
+import { collectMapContext } from "./collectors/map";
+import { collectSheetContext } from "./collectors/sheet";
 
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
- * context into a `PRD:` issue payload. The collector per trigger (an
- * accepted sheet, a closed map, or the owner in a live session — ADR-0058)
- * and the critic that follows are later slices of the same lane; this file
- * is the author alone.
+ * context into a `PRD:` issue payload. The critic that follows the author is
+ * a later slice of this lane; this file is the author, dispatched by trigger
+ * over its collector per trigger (an accepted sheet, a closed map, or the
+ * owner in a live session — ADR-0058).
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -67,7 +71,41 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
 );
 
 /**
+ * The three triggers `runSpecAuthor` dispatches over — one event per row of
+ * ADR-0058's table, each naming exactly what its collector needs and
+ * nothing more. `kind` is what tells `runSpecAuthor` a `DecidedContext` was
+ * *not* handed to it directly (see `isDecidedContext` below), so it doubles
+ * as the discriminant a `switch` narrows on.
+ */
+export type SpecTrigger =
+  | { kind: "sheet"; gh: GhExec; issueNumber: number }
+  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string }
+  | { kind: "in-session"; conversation: string };
+
+/** A `DecidedContext` carries `ownerWords`; no `SpecTrigger` variant does. */
+function isDecidedContext(input: DecidedContext | SpecTrigger): input is DecidedContext {
+  return "ownerWords" in input;
+}
+
+function collect(trigger: SpecTrigger): DecidedContext {
+  switch (trigger.kind) {
+    case "sheet":
+      return collectSheetContext(trigger.gh, trigger.issueNumber);
+    case "map":
+      return collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot);
+    case "in-session":
+      return collectInSessionContext(trigger.conversation);
+  }
+}
+
+/**
  * Runs the spec author on one Decided context and returns its PRD payload.
+ *
+ * Takes either a `DecidedContext` already assembled, or a `SpecTrigger` to
+ * assemble one from first — the one entrypoint every trigger dispatches
+ * through (ADR-0058: "one prompt, a collector per trigger"), so a caller
+ * that already holds a `DecidedContext` never has to name which trigger
+ * produced it.
  *
  * On stdin rather than argv: the Decided context's fields — decisions,
  * rulings, an accepted sheet's own prose — carry no upper bound by
@@ -76,8 +114,9 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
  */
 export async function runSpecAuthor(
   exec: StageExec,
-  context: DecidedContext,
+  input: DecidedContext | SpecTrigger,
 ): Promise<SpecAuthorOutput> {
+  const context = isDecidedContext(input) ? input : collect(input);
   return runStage(
     PROMPT_PATH,
     {
