@@ -68,5 +68,23 @@ jobs:
 
       # The same three checks the free venues run, through the same entry point, so a check cannot
       # drift between venues by being spelled differently in two files.
+      #
+      # `bin/gauntlet push` exits 1 for a real finding and 2 for a gauntlet that could not run at
+      # all (bin/gauntlet:20-23) — a distinction a single failing step throws away, leaving a reader
+      # to open the log to tell "a check failed" from "the checks are broken". `set +e` keeps this
+      # step itself green so the code reaches $GITHUB_OUTPUT; the two steps below fail the run, each
+      # under the name that matches what happened.
+      - name: Run gauntlet
+        id: run-gauntlet
+        run: |
+          set +e
+          bin/gauntlet push
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
       - name: Gauntlet
-        run: bin/gauntlet push
+        if: steps.run-gauntlet.outputs.exit_code == '1'
+        run: exit 1
+
+      - name: Gauntlet could not run
+        if: steps.run-gauntlet.outputs.exit_code == '2'
+        run: exit 1
