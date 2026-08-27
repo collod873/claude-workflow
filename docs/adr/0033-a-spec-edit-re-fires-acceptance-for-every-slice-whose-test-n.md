@@ -2,7 +2,7 @@
 
 Recorded 2026-08-26.
 
-Status: superseded by ADR-0053
+Status: superseded by ADR-0053, ADR-0079
 
 `DESIGN.md` §04 re-fires the acceptance author "for the affected slices only" and never says what
 affected means. It means this, mechanically: every acceptance test names the criterion it proves
