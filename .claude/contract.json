@@ -1,7 +1,7 @@
 {
   "stop": {
-    "cmd": null,
-    "why": "no turn-end check narrower than the full checks found at .claude/hooks/stop-gate.sh"
+    "cmd": ".claude/hooks/gauntlet.sh stop",
+    "why": ".claude/settings.json#hooks.Stop (\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gauntlet.sh stop)"
   },
   "test": {
     "cmd": "npm test",

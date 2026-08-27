@@ -250,14 +250,104 @@ function probeTest(root: string, pkg: PackageJson): { test: Slot; test_one: Slot
 }
 
 const STOP_GATE_HOOK = ".claude/hooks/stop-gate.sh";
+const SETTINGS_PATH = ".claude/settings.json";
 
+/**
+ * The Stop hook as Claude Code's settings schema declares it: a list of matcher groups, each
+ * holding a list of hooks. Only `command` hooks are a turn-end *check* — the other types run
+ * something that is not a shell command and so cannot be a contract slot's `cmd`.
+ *
+ * Lenient by construction (`.catch`, `.optional()`): a settings file carrying keys this schema has
+ * never heard of is the normal case, not a defect, and a probe that threw on one would report a
+ * repo as having no turn-end check because it had a setting for something else.
+ */
+const StopHookSettings = z.object({
+  hooks: z
+    .object({
+      Stop: z
+        .array(
+          z.object({
+            hooks: z
+              .array(z.object({ type: z.string().optional(), command: z.string().optional() }))
+              .optional(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
+});
+
+/**
+ * A hook command rewritten relative to the repo root. Claude Code interpolates
+ * `$CLAUDE_PROJECT_DIR` to the repo root at hook time, so a declaration written against it names a
+ * repo-relative path already — it just says so in a variable a contract reader has no way to
+ * expand. Every quoting form the settings docs use is stripped here, because a probe that only
+ * understood the unquoted one would publish an absolute-ish path that no other repo could run.
+ */
+function repoRelativeHookCommand(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^(?:"\$CLAUDE_PROJECT_DIR"|'\$CLAUDE_PROJECT_DIR'|\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR)\/?/, "")
+    .replace(/^\.\//, "")
+    .trim();
+}
+
+/**
+ * Every `command` hook declared under `Stop` in `<root>/.claude/settings.json`, in file order —
+ * each as the `cmd` a contract reader can run and the `raw` text the settings file actually
+ * carries, which is what `why` cites.
+ */
+function declaredStopCommands(root: string): Array<{ cmd: string; raw: string }> {
+  const path = join(root, SETTINGS_PATH);
+  if (!existsSync(path)) return [];
+  let parsed: z.infer<typeof StopHookSettings>;
+  try {
+    parsed = StopHookSettings.parse(JSON.parse(readFileSync(path, "utf8")));
+  } catch {
+    // Unreadable or shaped unlike any settings file this understands. Measuring nothing is the
+    // honest outcome; the `stop-gate.sh` fallback below still gets its turn.
+    return [];
+  }
+  return (parsed.hooks?.Stop ?? [])
+    .flatMap((group) => group.hooks ?? [])
+    .filter((hook) => (hook.type ?? "command") === "command")
+    .map((hook) => ({ cmd: repoRelativeHookCommand(hook.command ?? ""), raw: (hook.command ?? "").trim() }))
+    .filter((hook) => hook.cmd.length > 0);
+}
+
+/**
+ * The turn-end check, read from where a repo actually declares one (#130).
+ *
+ * It used to test one hardcoded path, `.claude/hooks/stop-gate.sh`, and this repo's own hook is
+ * `.claude/hooks/gauntlet.sh stop` wired as a Stop hook in `.claude/settings.json` — so the probe
+ * found nothing, published `stop: null`, and `regenerate && diff` certified that as correct because
+ * a fresh probe agreed with the committed file. `null` in a slot is a claim ("this repo has
+ * deliberately no turn-end check"), not an absence, and this repo runs one every turn. Same shape as
+ * the `all: null` defect #121 caught, one notch quieter.
+ *
+ * `settings.json` is asked first because it is the declaration site: the hardcoded path is a
+ * convention, and a convention only describes a repo that happens to follow it. Two or more declared
+ * Stop hooks publish `null` rather than an arbitrary first one — a repo with two turn-end checks has
+ * no single command a contract reader can run, and picking one would be the probe assuming rather
+ * than measuring.
+ */
 function probeStop(root: string): Slot {
+  const declared = declaredStopCommands(root);
+  if (declared.length === 1) {
+    return { cmd: declared[0].cmd, why: `${SETTINGS_PATH}#hooks.Stop (${declared[0].raw})` };
+  }
+  if (declared.length > 1) {
+    return {
+      cmd: null,
+      why: `${SETTINGS_PATH}#hooks.Stop declares ${declared.length} command hooks — no single turn-end check to name`,
+    };
+  }
   if (existsSync(join(root, STOP_GATE_HOOK))) {
     return { cmd: STOP_GATE_HOOK, why: `declared turn-end hook at ${STOP_GATE_HOOK}` };
   }
   return {
     cmd: null,
-    why: `no turn-end check narrower than the full checks found at ${STOP_GATE_HOOK}`,
+    why: `no Stop hook in ${SETTINGS_PATH}, and no turn-end check at ${STOP_GATE_HOOK}`,
   };
 }
 

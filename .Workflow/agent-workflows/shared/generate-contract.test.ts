@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -62,6 +62,30 @@ describe("this repository's committed contract", () => {
 
     expect(scriptName).toBeDefined();
     expect(scripts[scriptName!]).toBe("bin/gauntlet push");
+  });
+
+  /**
+   * #130, and the reason it is checked here rather than left to the byte-identity test above: a
+   * `stop: null` that a fresh probe reproduces exactly is what `regenerate && diff` shipped green
+   * for a day. Byte-identity proves the file was generated; it cannot prove the generator was
+   * looking in the right place. These two ask the repo directly instead — the hook this repo runs
+   * every turn has to be on disk, executable, and the same one `settings.json` wires up.
+   */
+  it("publishes a non-null `stop`, because this repo runs a turn-end check every turn", () => {
+    expect(committed.stop.cmd).not.toBeNull();
+  });
+
+  it("names a `stop` that is this repo's live Stop hook, on disk and executable", () => {
+    const settings = JSON.parse(readFileSync(join(REPO_ROOT, ".claude/settings.json"), "utf8"));
+    const wired: string[] = (settings.hooks?.Stop ?? [])
+      .flatMap((group: { hooks?: Array<{ command?: string }> }) => group.hooks ?? [])
+      .map((hook: { command?: string }) => hook.command ?? "");
+
+    expect(wired.some((command) => command.endsWith(committed.stop.cmd))).toBe(true);
+
+    const script = join(REPO_ROOT, committed.stop.cmd.split(" ")[0]);
+    expect(existsSync(script)).toBe(true);
+    expect(statSync(script).mode & 0o111).not.toBe(0);
   });
 });
 
