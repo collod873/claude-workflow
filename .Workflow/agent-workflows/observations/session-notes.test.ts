@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
@@ -98,6 +98,64 @@ describe("writeSessionRecord / readSessionRecord against a real repo", () => {
     const result = readSessionRecord({ git: execGit, repoDir: dir, head });
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe("readSessionRecord's corpus hydration", () => {
+  let dir: string | undefined;
+  let corpusDir: string | undefined;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (corpusDir) rmSync(corpusDir, { recursive: true, force: true });
+    dir = undefined;
+    corpusDir = undefined;
+  });
+
+  it("hydrates spine from the file corpusPath names, when the corpus directory holds it", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+    corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
+
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const record = sessionRecord({ head, corpusPath: "raw/sessions/2026-08-26-session-abc.md" });
+    writeSessionRecord({ git: execGit, repoDir: dir, record });
+
+    const spineContents = "---\nsession_id: session-abc\n---\n\n## User Prompts\n- do the thing\n";
+    mkdirSync(dirname(join(corpusDir, record.corpusPath)), { recursive: true });
+    writeFileSync(join(corpusDir, record.corpusPath), spineContents, "utf8");
+
+    const result = readSessionRecord({ git: execGit, repoDir: dir, head, corpusDir });
+
+    expect(result).toEqual({ ...record, spine: spineContents });
+  });
+
+  it("returns the record with no spine property when the corpus-directory option is omitted", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const record = sessionRecord({ head });
+    writeSessionRecord({ git: execGit, repoDir: dir, record });
+
+    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
+
+    expect(result).toEqual(record);
+    expect(result).not.toHaveProperty("spine");
+  });
+
+  it("throws when corpusPath names a file absent from the supplied corpus directory", () => {
+    const repo = makeRepo();
+    dir = repo.dir;
+    corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
+    const repoDir = dir;
+    const corpus = corpusDir;
+
+    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const record = sessionRecord({ head, corpusPath: "raw/sessions/does-not-exist.md" });
+    writeSessionRecord({ git: execGit, repoDir, record });
+
+    expect(() => readSessionRecord({ git: execGit, repoDir, head, corpusDir: corpus })).toThrow();
   });
 });
 

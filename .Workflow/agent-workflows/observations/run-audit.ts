@@ -10,7 +10,7 @@ import { repoScoped } from "../capture/touched-paths";
 import { writeObservationNote } from "./notes";
 import { runObservations } from "./run-observations";
 import { runRelease } from "./run-release";
-import { readSessionRecord } from "./session-notes";
+import { readSessionRecord, type HydratedSessionRecord } from "./session-notes";
 
 /**
  * The connector spec #63 names as still missing (`DESIGN.md` §6): the piece
@@ -38,6 +38,18 @@ import { readSessionRecord } from "./session-notes";
  * hook itself and refuses any consumer that drifts off it again.
  */
 export const AUDIT_DISPATCH_ACTION = "session-captured";
+
+/**
+ * The Knowledge-Base checkout's own directory on the runner, relative to
+ * `repoDir` — the second checkout `audit.yml` gains alongside this repo's
+ * own, over a deploy key, so the auditor can hydrate a session's spine from
+ * a private source rather than a public git note (spec #134 §"The runner
+ * reads the corpus over a deploy key"). Named here as well as in
+ * `audit.yml`'s own second `actions/checkout` step, the same duplication
+ * `AUDIT_DISPATCH_ACTION` above already accepts across the language
+ * boundary a compiler cannot see across.
+ */
+export const KNOWLEDGE_BASE_CHECKOUT_DIR = "knowledge-base";
 
 export interface RunAuditOptions {
   git: GitExec;
@@ -111,7 +123,14 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
   fetchNotesRef(git, repoDir, "sessions", remote);
   fetchNotesRef(git, repoDir, "observations", remote);
 
-  const record = readSessionRecord({ git, repoDir, head });
+  const corpusDir = join(repoDir, KNOWLEDGE_BASE_CHECKOUT_DIR);
+  let record: HydratedSessionRecord | undefined;
+  try {
+    record = readSessionRecord({ git, repoDir, head, corpusDir });
+  } catch (err) {
+    log(`skipped: session record at ${head} has no readable corpus: ${reason(err)}`);
+    return { action: "skipped", code: "corpus-missing", releasedCount: 0 };
+  }
   if (!record) {
     log(`skipped: no session record at ${head}`);
     return { action: "skipped", code: "no-session-record", releasedCount: 0 };
