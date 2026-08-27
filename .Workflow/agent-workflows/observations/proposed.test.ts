@@ -91,7 +91,7 @@ describe("runProposedAuditor / the two-site gate", () => {
     expect(fakeStage.calls).toHaveLength(1);
     const [argv] = fakeStage.calls;
     expect(argv[0]).toBe("-p");
-    expect(argv.slice(2)).toEqual([
+    expect(argv.slice(1)).toEqual([
       "--model",
       "sonnet",
       "--output-format",

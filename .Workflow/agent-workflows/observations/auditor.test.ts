@@ -43,7 +43,7 @@ describe("runAuditor", () => {
     expect(argv.filter((arg) => arg === "")).toHaveLength(2);
   });
 
-  it("places every sandbox flag immediately after -p <prompt>, in the order the sandbox spec names", async () => {
+  it("places every sandbox flag immediately after a bare -p, in the order the sandbox spec names", async () => {
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({ exec: fakeStage.exec });
 
@@ -51,7 +51,7 @@ describe("runAuditor", () => {
 
     const [argv] = fakeStage.calls;
     expect(argv[0]).toBe("-p");
-    expect(argv.slice(2)).toEqual([
+    expect(argv.slice(1)).toEqual([
       "--model",
       "sonnet",
       "--output-format",
@@ -66,7 +66,7 @@ describe("runAuditor", () => {
     ]);
   });
 
-  it("embeds the scoped diff, the spine, and the standards in the prompt argument", async () => {
+  it("embeds the scoped diff, the spine, and the standards in the prompt", async () => {
     const fakeGit = createFakeGit(() => "+ export const mine = 1;");
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({
@@ -78,11 +78,28 @@ describe("runAuditor", () => {
 
     await runAuditor(options);
 
-    const [argv] = fakeStage.calls;
-    const prompt = argv[1];
+    const [prompt] = fakeStage.stdins;
     expect(prompt).toContain("+ export const mine = 1;");
     expect(prompt).toContain("session did X");
     expect(prompt).toContain("entry: never do Y");
+  });
+
+  // The regression guard for the E2BIG failures of 2026-08-26/27: a lens
+  // prompt inlines the spine, the diff and the standards, none of them
+  // capped, so on argv it dies past 128 KiB — and only for the sessions that
+  // happened to run long, which is why it passed here for weeks. Asserted as
+  // "no argv element carries the prompt" rather than "stdin is set", so a
+  // future edit that puts it back on argv fails even if it also passes stdin.
+  it("hands the prompt to the CLI on stdin, never as an argv element", async () => {
+    const fakeStage = createFakeStage("no violations found");
+    const options = baseOptions({ exec: fakeStage.exec, spine: "session did X" });
+
+    await runAuditor(options);
+
+    const [argv] = fakeStage.calls;
+    expect(argv).not.toContain(fakeStage.stdins[0]);
+    expect(argv.some((arg) => arg.includes("session did X"))).toBe(false);
+    expect(fakeStage.stdins[0]).toContain("session did X");
   });
 
   it("threads repoDir, base, head, and touchedPaths to the git executor via sessionRangeDiff", async () => {

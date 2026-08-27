@@ -32,7 +32,7 @@ export interface AuditorOptions {
 
 /**
  * Flags for the sandboxed `claude -p` call the VIOLATION lens runs through
- * (spec #36 slice 3, `-p <prompt>` prepended below), ported verbatim from
+ * (spec #36 slice 3, a bare `-p` prepended below), ported verbatim from
  * Lumaria's `decision-capture.mjs` — do not re-derive. `--tools ""` is
  * load-bearing: settings-derived allow rules merge across scopes, so without
  * it a global permissive allowlist would otherwise apply to this call. The
@@ -54,6 +54,27 @@ const SANDBOX_FLAGS = [
 ];
 
 /**
+ * Spawns one lens's sandboxed call, with the prompt on **stdin** rather than
+ * as `-p <prompt>`.
+ *
+ * Linux caps a single argv element at `MAX_ARG_STRLEN` (128 KiB) independently
+ * of the much larger total-argv limit, and a lens prompt is the one place in
+ * this lane that can outgrow it: it inlines the session's whole spine, the
+ * scoped range diff, and — for VIOLATION — the ratified standards, none of
+ * which has a ceiling. On argv that died as `spawn claude E2BIG`, an errno
+ * naming neither the prompt nor the size, and it did so only for the sessions
+ * that happened to run long (#107's audit failures on 2026-08-26/27).
+ * `stage.ts` documents the same trap and `shape.ts` already takes the same way
+ * out; these two lenses bypass `runStage`, so they need it spelled here.
+ *
+ * Both lenses go through this rather than each calling `exec` directly, so
+ * there is one place the rule lives and no second site to forget it at.
+ */
+function runLens(exec: StageExec, prompt: string): Promise<string> {
+  return exec(["-p", ...SANDBOX_FLAGS], prompt);
+}
+
+/**
  * The auditor's VIOLATION pass: scopes one session's diff via
  * `sessionRangeDiff`, builds the VIOLATION lens's prompt from it plus the
  * session's spine and the ratified standards, and spawns the sandboxed
@@ -67,7 +88,7 @@ export async function runAuditor(options: AuditorOptions): Promise<string> {
   const { git, exec, repoDir, base, head, touchedPaths, spine, standards } = options;
   const diff = sessionRangeDiff({ git, repoDir, base, head, touchedPaths });
   const prompt = violationPrompt({ standards, diff, spine });
-  return exec(["-p", prompt, ...SANDBOX_FLAGS]);
+  return runLens(exec, prompt);
 }
 
 /**
@@ -114,7 +135,7 @@ export async function runProposedAuditor(
   const { git, exec, repoDir, base, head, touchedPaths, spine, priorFindings = [] } = options;
   const diff = sessionRangeDiff({ git, repoDir, base, head, touchedPaths });
   const prompt = proposedPrompt({ diff, spine });
-  const raw = await exec(["-p", prompt, ...SANDBOX_FLAGS]);
+  const raw = await runLens(exec, prompt);
   const findings = parseProposedFindings(raw);
   return applyTwoSiteGate(priorFindings, findings);
 }
