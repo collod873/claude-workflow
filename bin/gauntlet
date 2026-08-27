@@ -161,7 +161,11 @@ checks="typecheck lint"
 # A slot resolved to a broader form than what this venue asked for is a real cost — the turn venue
 # now lints the whole repo, not just the file that changed — and it is reported rather than run
 # silently, the same way an over-budget venue reports itself below.
-for name in $checks; do
+#
+# `resolved_checks` is only the slots read above — `contract`, added to `checks` below, has no
+# `_CMD`/`_SUBSTITUTED` shell variable to read, because it never goes through `resolveSlot`.
+resolved_checks="$checks"
+for name in $resolved_checks; do
   var_name="$(echo "$name" | tr '[:lower:]' '[:upper:]')"
   substituted_var="${var_name}_SUBSTITUTED"
   if [ "${!substituted_var}" = "1" ]; then
@@ -176,6 +180,14 @@ for name in $checks; do
     exit 2
   fi
 done
+
+# `regenerate && diff` (ADR-0056) — push only. It is the standing check that replaces `CLAUDE.md`'s
+# retired same-commit rule: a fresh probe of this tree is compared byte-for-byte against
+# `$contract_path`, so a repo that grew a check since its contract was last generated goes red here
+# instead of the contract quietly lying about itself. It reads `$contract_path`, the same file
+# `GAUNTLET_CONTRACT` can redirect above, so a test exercises it without touching this repo's own
+# `.claude/contract.json`.
+[ "$venue" = "push" ] && checks="$checks contract"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -194,6 +206,16 @@ pids+=($!)
 
 run_check lint bash -c "cd \"$repo_root\" && $LINT_CMD" &
 pids+=($!)
+
+if [ "$venue" = "push" ]; then
+  # Argv, not a `bash -c` string: `$repo_root` and `$contract_path` are passed straight through as
+  # separate arguments, never interpolated into a shell command line, so a repo checkout with a
+  # space in its path (this estate has one) cannot break this the way a hand-built string could.
+  run_check contract node \
+    "$repo_root/.Workflow/agent-workflows/shared/generate-contract.ts" \
+    diff "$repo_root" "$contract_path" &
+  pids+=($!)
+fi
 
 if [ "$venue" != "turn" ]; then
   # The suite runs against a decoy repository, named by the same three variables that let #86
