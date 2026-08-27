@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
@@ -11,7 +11,7 @@ import { createFakeStage } from "../shared/stage.fake";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { sessionRecord } from "./session-record.fixture";
 import { writeSessionRecord } from "./session-notes";
-import { AUDIT_DISPATCH_ACTION, runAudit } from "./run-audit";
+import { AUDIT_DISPATCH_ACTION, KNOWLEDGE_BASE_CHECKOUT_DIR, runAudit } from "./run-audit";
 
 const RUN_AUDIT_PATH = fileURLToPath(new URL("./run-audit.ts", import.meta.url));
 
@@ -38,6 +38,19 @@ function makeRepo(): {
   }
 
   return { dir, origin, commit };
+}
+
+/**
+ * Writes `spine` under `<repoDir>/knowledge-base/<corpusPath>` — the corpus
+ * checkout `runAudit` reads via `KNOWLEDGE_BASE_CHECKOUT_DIR`, so a session
+ * record's hydration succeeds. Every test whose record is meant to reach
+ * `runObservations`, or to reach the empty-range check past hydration, needs
+ * this; a test proving `corpus-missing` deliberately skips it instead.
+ */
+function writeCorpusFile(repoDir: string, corpusPath: string, spine: string): void {
+  const path = join(repoDir, KNOWLEDGE_BASE_CHECKOUT_DIR, corpusPath);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, spine, "utf8");
 }
 
 /** A minimal recording `GhExec` — mirrors `run-release.test.ts`'s `fakeGh`. */
@@ -116,11 +129,9 @@ describe("runAudit — a session with nothing to read spends no model", () => {
     dirs.push(repo.dir, repo.origin);
 
     const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    writeSessionRecord({
-      git: execGit,
-      repoDir: repo.dir,
-      record: sessionRecord({ head, base: head }),
-    });
+    const record = sessionRecord({ head, base: head });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
+    writeCorpusFile(repo.dir, record.corpusPath, "---\nsession spine\n");
     const stage = createFakeStage("");
 
     const outcome = await runAudit({
@@ -139,8 +150,8 @@ describe("runAudit — a session with nothing to read spends no model", () => {
   });
 });
 
-describe("runAudit — an ordinary session", () => {
-  it("runs both lenses, pushes one merged note, evaluates release with prdClosed false, and reports the released count", async () => {
+describe("runAudit — a session record whose corpus file is missing", () => {
+  it("skips with corpus-missing and makes no exec call, before any model call", async () => {
     const repo = makeRepo();
     dirs.push(repo.dir, repo.origin);
 
@@ -151,6 +162,36 @@ describe("runAudit — an ordinary session", () => {
       repoDir: repo.dir,
       record: sessionRecord({ head, base, touchedPaths: ["a.ts"] }),
     });
+    // No `writeCorpusFile` call — the corpus checkout is absent entirely, so
+    // hydration must fail on a session record that otherwise looks ordinary.
+    const stage = createFakeStage("");
+
+    const outcome = await runAudit({
+      git: execGit,
+      gh: fakeGh().gh,
+      exec: stage.exec,
+      repoDir: repo.dir,
+      head,
+      standards: "",
+      eventAction: AUDIT_DISPATCH_ACTION,
+      log: () => {},
+    });
+
+    expect(outcome).toEqual({ action: "skipped", code: "corpus-missing", releasedCount: 0 });
+    expect(stage.calls).toEqual([]);
+  });
+});
+
+describe("runAudit — an ordinary session", () => {
+  it("runs both lenses, pushes one merged note, evaluates release with prdClosed false, and reports the released count", async () => {
+    const repo = makeRepo();
+    dirs.push(repo.dir, repo.origin);
+
+    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    const record = sessionRecord({ head, base, touchedPaths: ["a.ts"] });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
+    writeCorpusFile(repo.dir, record.corpusPath, "---\nsession_id: session-123\n---\n\n## User Prompts\n- do the thing\n");
 
     const stage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:1\n");
     const gh = fakeGh();
@@ -219,11 +260,9 @@ describe("run-audit.ts (CLI) exit code", () => {
     dirs.push(repo.dir, repo.origin);
     writeFileSync(join(repo.dir, "CODING_STANDARDS.md"), "entry: never duplicate validation logic\n", "utf8");
     const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    writeSessionRecord({
-      git: execGit,
-      repoDir: repo.dir,
-      record: sessionRecord({ head, base: head }),
-    });
+    const record = sessionRecord({ head, base: head });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
+    writeCorpusFile(repo.dir, record.corpusPath, "---\nsession spine\n");
 
     const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
       env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
@@ -240,11 +279,9 @@ describe("run-audit.ts (CLI) exit code", () => {
 
     const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
     const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
-    writeSessionRecord({
-      git: execGit,
-      repoDir: repo.dir,
-      record: sessionRecord({ head, base, touchedPaths: ["a.ts"] }),
-    });
+    const record = sessionRecord({ head, base, touchedPaths: ["a.ts"] });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
+    writeCorpusFile(repo.dir, record.corpusPath, "---\nsession_id: session-123\n---\n\n## User Prompts\n- do the thing\n");
 
     const stubDir = mkdtempSync(join(tmpdir(), "run-audit-stub-"));
     dirs.push(stubDir);

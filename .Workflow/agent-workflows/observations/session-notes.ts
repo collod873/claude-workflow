@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { GitExec } from "../shared/git.ts";
 import { readNoteArray, writeNoteArray } from "../shared/notes-store.ts";
+import { reason } from "../shared/reason.ts";
 import { SessionRecord } from "./session-record-schema.ts";
 
 /**
@@ -47,18 +50,52 @@ export interface ReadSessionRecordOptions {
   head: string;
 }
 
+/** A `SessionRecord` with its `corpusPath` hydrated into a spine — what a caller gets back when it supplies `corpusDir`. */
+export type HydratedSessionRecord = SessionRecord & { spine: string };
+
 /**
- * Reads the session record written at exactly `head`, or `undefined` when
- * no note sits on that commit. Unlike `readObservations` and
+ * Reads the session record written at exactly `head`, or `undefined` when no
+ * note sits on that commit. Unlike `readObservations` and
  * `readRatificationRecords`, this is never a range read: a session record is
  * one fact about one commit, not evidence that accumulates across a span, so
  * there is nothing to fold across `base..head` here — `readNoteArray` is
  * called with `base` omitted (an unbounded walk from `head`) and the result
  * is filtered down to the one entry keyed to `head` itself, which git log
  * always yields first.
+ *
+ * `corpusPath` never travels further than this function unresolved: passing
+ * `corpusDir` reads `<corpusDir>/<record.corpusPath>` and returns the record
+ * with `spine` hydrated from that file's contents, throwing when the named
+ * file is absent — a broken join should refuse the run, not audit an empty
+ * spine (spec #134 §Implementation Decisions). Omitting `corpusDir` returns
+ * the record as written, with no `spine` — the shape a caller that only
+ * wants the range (e.g. a future backfill) can use without a corpus at all.
+ * The two overloads below are why `runAudit` doesn't typecheck by accident:
+ * passing a `corpusDir` is what makes `record.spine` a `string` rather than
+ * absent, and `runObservations` requires exactly that.
  */
-export function readSessionRecord(options: ReadSessionRecordOptions): SessionRecord | undefined {
-  const { git, repoDir, head } = options;
+export function readSessionRecord(
+  options: ReadSessionRecordOptions & { corpusDir: string },
+): HydratedSessionRecord | undefined;
+export function readSessionRecord(
+  options: ReadSessionRecordOptions & { corpusDir?: undefined },
+): SessionRecord | undefined;
+export function readSessionRecord(
+  options: ReadSessionRecordOptions & { corpusDir?: string },
+): SessionRecord | HydratedSessionRecord | undefined {
+  const { git, repoDir, head, corpusDir } = options;
   const results = readNoteArray({ git, repoDir, ref: NOTES_REF, head, schema: SessionRecord });
-  return results.find((result) => result.commit === head)?.records[0];
+  const record = results.find((result) => result.commit === head)?.records[0];
+  if (!record) return undefined;
+  if (corpusDir === undefined) return record;
+
+  const spinePath = join(corpusDir, record.corpusPath);
+  try {
+    const spine = readFileSync(spinePath, "utf8");
+    return { ...record, spine };
+  } catch (err) {
+    throw new Error(
+      `session ${record.sessionId}'s corpusPath "${record.corpusPath}" not found under corpus directory "${corpusDir}": ${reason(err)}`,
+    );
+  }
 }

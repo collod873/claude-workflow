@@ -12,7 +12,7 @@ export function sessionRecord(overrides: Partial<SessionRecord> & { head: string
     sessionId: "session-123",
     base: "0000000000000000000000000000000000000000",
     touchedPaths: ["a.ts"],
-    spine: "---\nsession_id: session-123\n---\n\n## User Prompts\n- do the thing\n",
+    corpusPath: "raw/sessions/2026-08-26-session-123.md",
     ...overrides,
   };
 }
