@@ -2,16 +2,19 @@ import { z } from "zod";
 import type { GhExec } from "../shared/gh";
 import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { runSpecCritic } from "./critic";
 import { collectInSessionContext } from "./collectors/in-session";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
 
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
- * context into a `PRD:` issue payload. The critic that follows the author is
- * a later slice of this lane; this file is the author, dispatched by trigger
- * over its collector per trigger (an accepted sheet, a closed map, or the
- * owner in a live session — ADR-0058).
+ * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062),
+ * reading the author's own draft in the same chain and folding what it finds
+ * into `openQuestions` — never into `body`, which is the author's alone.
+ * Both are dispatched by trigger over the author's collector per trigger (an
+ * accepted sheet, a closed map, or the owner in a live session — ADR-0058);
+ * the critic reads only the author's output, not the trigger.
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -99,7 +102,9 @@ function collect(trigger: SpecTrigger): DecidedContext {
 }
 
 /**
- * Runs the spec author on one Decided context and returns its PRD payload.
+ * Runs the spec author on one Decided context, then the critic on the
+ * author's own draft (ADR-0062: "the critic runs in the same chain, before
+ * publication"), and returns the PRD payload the two together produce.
  *
  * Takes either a `DecidedContext` already assembled, or a `SpecTrigger` to
  * assemble one from first — the one entrypoint every trigger dispatches
@@ -117,7 +122,7 @@ export async function runSpecAuthor(
   input: DecidedContext | SpecTrigger,
 ): Promise<SpecAuthorOutput> {
   const context = isDecidedContext(input) ? input : collect(input);
-  return runStage(
+  const draft = await runStage(
     PROMPT_PATH,
     {
       OWNER_WORDS: context.ownerWords,
@@ -134,4 +139,15 @@ export async function runSpecAuthor(
       promptViaStdin: true,
     },
   );
+
+  const critique = await runSpecCritic(exec, { title: draft.title, body: draft.body });
+
+  // The critic only ever adds to `openQuestions`; `title` and `body` are the
+  // author's alone, carried through unchanged (ADR-0062: the critic
+  // "proposes no fixes").
+  return {
+    title: draft.title,
+    body: draft.body,
+    openQuestions: [...draft.openQuestions, ...critique.findings],
+  };
 }
