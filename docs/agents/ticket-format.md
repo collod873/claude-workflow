@@ -24,6 +24,17 @@ that exists. A `path:line` needs a `/` or `.` somewhere in the path (`bin/file-i
 `f.py:1`) — a bare word before the colon (`foo:12`) isn't shaped like a repo path and doesn't
 count as evidence, in `bin/ticket_shape.py`'s validator or the close gate.
 
+A ticket whose deliverable is a **migration** — a history rewrite, a schema backfill, a one-off
+scrub — is worded as **the run**, never as the artifact. "Ship a script that scrubs X" is satisfied
+the moment the file exists; "Scrub X" isn't. At least one criterion must assert the **post-state of
+what is being migrated**, checkable against the real target rather than against a fixture the
+ticket's own test builds — `git rev-list --all --objects | grep -c <path>` prints 0, not `npm test
+-- scrub.test.ts` exits 0. A suite passing proves the script works; it never proves the script ran,
+and spec #134 closed COMPLETED over two migrations nobody had run because every criterion beneath
+it was the former. `bin/ticket_shape.py` warns — never refuses — when a migration-shaped body's
+every criterion is satisfied by a test passing or by a path the ticket itself claims. See ADR-0076,
+recorded in `collod873/claude-workflow`.
+
 ```markdown
 ## Acceptance criteria
 

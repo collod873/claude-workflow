@@ -41,7 +41,7 @@ function note(overrides: Partial<ResearchNote> = {}): ResearchNote {
 
 describe("the rule, run over the corpus that motivated it", () => {
   it("has a corpus to run over, so a green suite is not an empty sweep", () => {
-    expect(EVIDENCE.adrs.length).toBe(76);
+    expect(EVIDENCE.adrs.length).toBe(77);
     expect(EVIDENCE.notes.length).toBe(8);
   });
 
