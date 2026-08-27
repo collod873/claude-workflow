@@ -4,6 +4,9 @@ Recorded 2026-08-26.
 
 Status: superseded by ADR-0053, ADR-0054
 
+Amends: [ADR-0011](0011-a-refusal-ships-only-once-something-can-clear-it.md), which does not hold
+this check back — see "This does not wait on lane 05's fixer" below.
+
 The acceptance job checks `tests/acceptance/` out of `main`'s tip before it runs, so whatever an
 implementation PR did to those files never reaches the verdict. The refusal on a non-empty diff
 under the immutable set ships as well, but it is the *alarm*, not the guarantee: it tells us an

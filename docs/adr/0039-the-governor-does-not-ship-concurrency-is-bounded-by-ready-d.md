@@ -2,6 +2,9 @@
 
 Recorded 2026-08-26.
 
+Amends: [ADR-0024](0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md), which left
+the queue-depth and WIP limits standing — see "What this amends" below.
+
 `DESIGN.md` §8's governor does not get built. There is no WIP cap, no queue-depth dispatch stop, and
 no five-day decision expiry. Implementer concurrency is whatever lane 03 cut as ready disjoint
 slices, absorbed by lane 08's single serialised merge. §8 is deleted; the brief survives it and moves

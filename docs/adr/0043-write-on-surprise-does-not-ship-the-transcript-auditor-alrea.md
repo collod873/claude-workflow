@@ -2,6 +2,9 @@
 
 Recorded 2026-08-26.
 
+Amends: [ADR-0008](0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md), whose
+ruling this replaces — see "What this amends" below.
+
 An implementer run does not end by writing what surprised it into a `CONTEXT.md`. The mechanism is
 struck before it is built. W6 — *write the autopsy while it still stings* — is carried by the
 transcript auditor, which already reads every session at session end and is measured.

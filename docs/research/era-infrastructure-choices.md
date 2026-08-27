@@ -1,7 +1,7 @@
 # What each era chose for tracker, CI host, and agent compute
 
-_Compiled 2026-08-21. Resolves [`collod873/claude-workflow#4`](https://github.com/collod873/claude-workflow/issues/4)
-(map [#1](https://github.com/collod873/claude-workflow/issues/1))._
+**Compiled:** 2026-08-21 · **Resolves:** [`collod873/claude-workflow#4`](https://github.com/collod873/claude-workflow/issues/4)
+(map [#1](https://github.com/collod873/claude-workflow/issues/1))
 
 > **Status: retrieval, not discovery — mixed measured and reasoned.**
 >

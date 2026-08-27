@@ -2,13 +2,13 @@
 
 Recorded 2026-08-26.
 
+Amends: [ADR-0007](0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md), which set
+the routing threshold at more than ~3 marks.
+
 More than half a sheet's decisions carrying an assumption mark sends the item long. The shaper
 refuses to shape — *"needs a live session"* — when the decision tree will not close under five
 decisions, which is the sheet's own cap and not a new number. Two signals, two thresholds, each
 falling out of the sheet's shape.
-
-Amends [ADR-0007](0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md), which set
-the routing threshold at more than ~3 marks.
 
 `DESIGN.md` §01 and §01a hung both outcomes on the same number: §01a said more than ~3 marks "sends
 it long regardless," §01 said more than ~3 marks means the shaper "does not understand the idea well
