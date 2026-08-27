@@ -94,6 +94,32 @@ describe("runStage", () => {
     );
   });
 
+  it("builds --allowedTools from an allow list, and passes no --disallowedTools", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+
+    await runStage(promptPath, {}, fake.exec, GREETING, {
+      allowedTools: ["Read", "Grep", "Glob"],
+    });
+
+    const [argv] = fake.calls;
+    expect(argv[argv.indexOf("--allowedTools") + 1]).toBe("Read,Grep,Glob");
+    expect(argv).not.toContain("--disallowedTools");
+  });
+
+  it("refuses a stage that sets both allowedTools and disallowedTools", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+
+    await expect(
+      runStage(promptPath, {}, fake.exec, GREETING, {
+        allowedTools: ["Read"],
+        disallowedTools: ["Bash"],
+      }),
+    ).rejects.toThrow(/allowedTools and disallowedTools/);
+    expect(fake.calls).toHaveLength(0);
+  });
+
   it("throws naming the unresolved placeholder, without calling exec, when vars doesn't cover the template", async () => {
     const promptPath = writePrompt("Needs {{MISSING}}.");
     const fake = createFakeStage(RESPONSE);
