@@ -224,8 +224,7 @@ record?
 Everything above is traceable. Deepest reads, in order:
 
 - [Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0) —
-  the seven recurring failures (F1–F7) and six durable wins (W1–W6). Source:
-  [`artifacts/seven-workflow-eras.html`](artifacts/seven-workflow-eras.html)
+  the seven recurring failures (F1–F7) and six durable wins (W1–W6)
 - `agent-skills` issues [#128](https://github.com/collod873/agent-skills/issues/128) (the connector
   argument) and [#125](https://github.com/collod873/agent-skills/issues/125) (the fleet-architecture
   question, and the Foundry draft)

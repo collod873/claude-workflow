@@ -16,7 +16,7 @@ and a lane that has shipped is described by its own code and the ADRs that rule 
 
 **[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)** —
 the prior art. Why each of the seven systems that came before this one ended, and what survived
-the switch. Source in `artifacts/`.
+the switch.
 
 **[`CONTEXT.md`](CONTEXT.md)** — the glossary. What each term means here and which near-synonyms
 to avoid, so an argument is about the substance rather than about the word.
@@ -57,6 +57,5 @@ that closes with branch protection at move 10, not before.
 ├── .claude/hooks/    # the in-turn and turn-end venues
 ├── .Workflow/        # the agent workflows themselves (lane 03 today)
 ├── docs/adr/         # decision records
-├── artifacts/        # source HTML for artifacts published to claude.ai
 └── README.md
 ```
