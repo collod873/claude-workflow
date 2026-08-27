@@ -199,6 +199,14 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
     const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
     const hookOutputDir = tmpDir("backfill-hook-out-");
     const hookLogPath = join(tmpDir("backfill-hook-log-"), "session-capture.log");
+    // Ticket #138's flush step reads its own checkout/stamp paths from
+    // SESSION_CAPTURE_KB_DIR/SESSION_CAPTURE_KB_STAMP_PATH, defaulting to the real Knowledge-Base
+    // checkout and the real `~/.claude/kb-flush-stamp` when unset. This call's `cwd` is the real
+    // `REPO_ROOT` and its `project` doesn't resolve to a repo, so the flush step falls to its
+    // "elsewhere" branch and would touch either real default the moment the real stamp goes stale
+    // — both are overridden here for the same reason the two lines below them already are.
+    const hookKbDir = tmpDir("backfill-hook-kb-");
+    const hookKbStampPath = join(tmpDir("backfill-hook-kb-stamp-"), "stamp");
 
     const sessionId = "abcdef12-3456-7890-abcd-ef1234567890";
     const project = "test-project";
@@ -216,7 +224,13 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
     execFileSync("node", [HOOK_PATH, transcriptPath, sessionId, project, "backfill"], {
       cwd: REPO_ROOT,
       encoding: "utf8",
-      env: { ...process.env, SESSION_CAPTURE_OUTPUT_DIR: hookOutputDir, SESSION_CAPTURE_LOG_PATH: hookLogPath },
+      env: {
+        ...process.env,
+        SESSION_CAPTURE_OUTPUT_DIR: hookOutputDir,
+        SESSION_CAPTURE_LOG_PATH: hookLogPath,
+        SESSION_CAPTURE_KB_DIR: hookKbDir,
+        SESSION_CAPTURE_KB_STAMP_PATH: hookKbStampPath,
+      },
     });
 
     const hookFile = mdFiles(hookOutputDir)[0];
