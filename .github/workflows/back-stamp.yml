@@ -1,0 +1,64 @@
+name: Back-stamp
+
+# The back-stamp (#125, DESIGN.md §06, ADR-0044 through ADR-0046): a superseded ADR gains a
+# `Status: superseded by ADR-NNNN` line derived from the `Amends:` trailer its successor already
+# carries. `docs/adr/README.md` has said the record should do this all along and zero of 43 ADRs
+# ever carried the line by hand — a convention with no reader does not hold, so this is the reader.
+#
+# **The trigger is the add-event, not every push.** ADR-0046: "a commit landing a new ADR is
+# exactly the moment the answer can have changed, and it is the moment the predecessor needs its
+# stamp. No other push moves the graph, so every other push is silent by construction rather than
+# by a filter." `docs/research/` is in the `paths:` filter for the same reason even though nothing
+# under it can ever be a predecessor here (`back-stamp.ts`'s header says why) — a push that only
+# touches a research note derives nothing to write and commits nothing. The alternative considered
+# and rejected was riding the shared `session-captured` dispatch alongside the watchdog and the
+# close-gate reconciler; ADR-0046 rejects it because it would make the mechanism's silence a
+# property of its output instead of its trigger.
+#
+# **This cannot loop itself.** The commit this workflow makes lands under `docs/adr/` and is pushed
+# with the built-in `GITHUB_TOKEN`, which does not trigger further workflow runs — the same
+# property `shape-accept.yml` relies on to push straight to `main` without re-firing itself.
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "docs/adr/**"
+      - "docs/research/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: back-stamp
+  cancel-in-progress: false
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A commit is an object and an object carries a committer; a hosted runner has no git
+      # identity, so a commit reached without this dies on `fatal: empty ident name` (#109).
+      - name: Configure a committer
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Back-stamp superseded predecessors
+        run: npx tsx .Workflow/agent-workflows/watchdog/back-stamp-walk.ts
