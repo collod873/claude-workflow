@@ -6,6 +6,7 @@
     "prepare": "husky",
     "test": "vitest run",
     "gauntlet": "bin/gauntlet",
+    "check": "bin/gauntlet push",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
