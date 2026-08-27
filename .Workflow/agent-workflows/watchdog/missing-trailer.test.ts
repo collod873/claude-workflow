@@ -41,8 +41,20 @@ function note(overrides: Partial<ResearchNote> = {}): ResearchNote {
 
 describe("the rule, run over the corpus that motivated it", () => {
   it("has a corpus to run over, so a green suite is not an empty sweep", () => {
-    expect(EVIDENCE.adrs.length).toBe(77);
-    expect(EVIDENCE.notes.length).toBe(8);
+    // A floor, not a census. What this test is for is in its own name — the sweeps below must not
+    // be green for having swept nothing — and a floor says that and stops.
+    //
+    // An exact count said it too, right up until the accept lane began filing ADRs on a runner. An
+    // equality is a number somebody has to bump, and the somebody was the owner, by hand, in the
+    // same commit as each ADR; that worked for as long as every ADR had a human in the loop. The
+    // first accept to file two of them turned this red *for having worked*, and did it inside the
+    // `pre-push` gate, so the lane's push was refused by a count of how big the corpus used to be.
+    //
+    // Loosening it gives nothing up. Whether the fixture still *matches* the corpus is not this
+    // test's job — `bin/gauntlet push` regenerates and compares byte-for-byte, and names the
+    // document that moved when it doesn't.
+    expect(EVIDENCE.adrs.length).toBeGreaterThan(50);
+    expect(EVIDENCE.notes.length).toBeGreaterThan(5);
   });
 
   it("flags exactly 9 ADRs as carrying an Amends: trailer", () => {
