@@ -1,7 +1,17 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CONTRACT_RELATIVE_PATH,
@@ -20,15 +30,6 @@ import { checkContractFixture } from "./check-contract";
  */
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
-
-/**
- * A cold `bin/gauntlet push` drives the real `tsc`, `eslint` and `vitest` — there is no other way
- * to exercise `regenerate && diff` against this repo's real contract, since a match is only a match
- * when every field, including `typecheck`/`lint`/`test`'s real commands, is the genuine article.
- * Mirrors `.claude/hooks/gauntlet.test.ts`'s `REAL_TOOLCHAIN`: a cold CI runner is slower than this
- * workstation, and vitest's 5s default would turn that gap into an environment flake.
- */
-const REAL_TOOLCHAIN = 120_000;
 
 describe("generateContract", () => {
   it("matches this repository's own committed .claude/contract.json byte-for-byte", () => {
@@ -132,57 +133,109 @@ describe("diffContract", () => {
   });
 });
 
-// This repo's `test` slot is `npm test` — the whole suite, this file included — so a push spawned
-// for real from inside this file would, on a matching contract, spawn another push from inside
-// itself, unbounded. `NO_RESPAWN` is set on the child's environment and checked here: the nested
-// run still executes the real, whole suite (proving push's real behaviour, not a stub of it), it
-// just does not spawn a *third* push from inside a *second* one. Depth is bounded at one.
-const NO_RESPAWN = "GENERATE_CONTRACT_TEST_NO_RESPAWN";
+/**
+ * The two modules `bin/gauntlet` loads by path off its own repo root, relative to that root.
+ * `check-contract.ts` is imported by the one `node` call that resolves the contract's slots;
+ * `generate-contract.ts` is spawned as `diff` for the push venue's contract check.
+ */
+const GAUNTLET_MODULES = [
+  ".Workflow/agent-workflows/shared/check-contract.ts",
+  ".Workflow/agent-workflows/shared/generate-contract.ts",
+];
 
-describe.skipIf(process.env[NO_RESPAWN] === "1")("bin/gauntlet push's regenerate && diff", () => {
+/** What the fixture root below declares for each slot the push venue runs. Deliberately nothing. */
+const DOES_NOTHING = 'node -e ""';
+
+describe("bin/gauntlet push's regenerate && diff", () => {
   const dirs: string[] = [];
   afterEach(() => {
     while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
   });
 
-  function writeCopy(text: string): string {
-    const dir = mkdtempSync(join(tmpdir(), "gauntlet-push-contract-"));
-    dirs.push(dir);
-    const path = join(dir, "contract.json");
-    writeFileSync(path, text);
-    return path;
+  /**
+   * A throwaway tree the real `bin/gauntlet` is run *as*, rather than *in*.
+   *
+   * #133: this used to spawn a real push against **this** repo, twice. This repo's `test` slot is
+   * `npm test` — the whole suite — so proving `regenerate && diff` cost two entire suites, 149s
+   * each on a GitHub runner against a 120s budget, and the test had never once passed in CI. The
+   * assertion was never the expensive part; the root it pointed at was.
+   *
+   * `bin/gauntlet` takes its repo root from its own location (`$here/..`), so the way to aim a real
+   * push at a cheap tree is to give that tree a `bin/`, not to give the gauntlet a flag. Everything
+   * under test is the genuine article — the same gauntlet, the same probe, the same generator, a
+   * real contract at the real default path, real exit codes. Only the three commands the contract
+   * names are the fixture's own, and they do nothing, because what this test is about is the
+   * contract check and not what `test` happens to run underneath it.
+   *
+   * Built here rather than committed under `check-contract.fixtures/`: it needs links back into
+   * this repo, and a committed tree carrying those would be a second copy of the repo that `tsc`,
+   * `eslint` and `vitest` all walk into.
+   *
+   * `bin` and `node_modules` are symlinked; the two modules are **copied**, because Node resolves a
+   * symlinked entry point to its real path — `generate-contract.ts`'s `import.meta.url === argv[1]`
+   * main-guard would then silently never fire, and the contract check would pass by not running.
+   */
+  function fixtureRoot(): string {
+    const root = mkdtempSync(join(tmpdir(), "gauntlet-push-fixture-"));
+    dirs.push(root);
+
+    symlinkSync(join(REPO_ROOT, "bin"), join(root, "bin"), "dir");
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
+    for (const module of GAUNTLET_MODULES) {
+      mkdirSync(join(root, dirname(module)), { recursive: true });
+      copyFileSync(join(REPO_ROOT, module), join(root, module));
+    }
+
+    writeFileSync(
+      join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "gauntlet-push-fixture",
+          private: true,
+          type: "module",
+          scripts: {
+            test: DOES_NOTHING,
+            typecheck: DOES_NOTHING,
+            lint: DOES_NOTHING,
+            check: "bin/gauntlet push",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
+
+    return root;
   }
 
-  function runPush(contractPath: string): { status: number | null; stdout: string } {
-    const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), ["push"], {
+  function runPush(root: string): { status: number | null; stdout: string } {
+    const run = spawnSync(join(root, "bin/gauntlet"), ["push"], {
       encoding: "utf8",
-      cwd: REPO_ROOT,
-      env: { ...process.env, GAUNTLET_CONTRACT: contractPath, [NO_RESPAWN]: "1" },
+      cwd: root,
+      env: process.env,
     });
     return { status: run.status, stdout: run.stdout };
   }
 
-  it(
-    "exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again",
-    () => {
-      const fresh = generateContract(REPO_ROOT);
-      // Mutate `why` only — `cmd` is untouched, so typecheck/lint/test still run this repo's real,
-      // passing commands underneath, and the only thing this push run can go red on is the new
-      // contract check itself.
-      const mutated = JSON.parse(fresh);
-      mutated.test.why = `${mutated.test.why} (mutated for a test)`;
-      const mutatedPath = writeCopy(`${JSON.stringify(mutated, null, 2)}\n`);
+  it("exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again", () => {
+    const root = fixtureRoot();
+    const contractPath = join(root, CONTRACT_RELATIVE_PATH);
+    const fresh = generateContract(root);
 
-      const mismatched = runPush(mutatedPath);
-      expect(mismatched.status).toBe(1);
-      expect(mismatched.stdout).toContain("--- contract ---");
+    // Mutate `why` only — every `cmd` stays the fixture's real, passing command, so the contract
+    // check is the only thing this push run can go red on.
+    const mutated = JSON.parse(fresh);
+    mutated.test.why = `${mutated.test.why} (mutated for a test)`;
+    writeFileSync(contractPath, `${JSON.stringify(mutated, null, 2)}\n`);
 
-      const matchingPath = writeCopy(fresh);
-      const matching = runPush(matchingPath);
-      expect(matching.status).toBe(0);
-    },
-    REAL_TOOLCHAIN,
-  );
+    const mismatched = runPush(root);
+    expect(mismatched.status).toBe(1);
+    expect(mismatched.stdout).toContain("--- contract ---");
+
+    writeFileSync(contractPath, fresh);
+    expect(runPush(root).status).toBe(0);
+  });
 });
 
 describe("CLAUDE.md", () => {
