@@ -224,6 +224,24 @@ export interface StageOptions {
    */
   disallowedTools?: string[];
   /**
+   * The only tools this stage may use, passed to the CLI's `--allowedTools`.
+   *
+   * Exists for
+   * [ADR-0060](../../../docs/adr/0060-the-spec-author-reads-the-repo-through-an-allow-list-and-can.md),
+   * which binds the spec author to `Read`, `Grep` and `Glob` and nothing
+   * else: it has to keep three tools rather than deny everything, and an
+   * enumeration of everything else would silently regain a fourth reach the
+   * CLI adds later. An allow list fails closed instead — a tool that does not
+   * exist yet is not on it, so the failure mode of being out of date is a
+   * stage that cannot do something, not one that silently can.
+   *
+   * Mutually exclusive with `disallowedTools`: one names *these and no
+   * others*, the other names *everything but these* — a stage means one or
+   * the other, never both, and `runStage` refuses a call that sets both
+   * rather than send the CLI two conflicting claims about the same toolbelt.
+   */
+  allowedTools?: string[];
+  /**
    * Hand the prompt to the CLI on stdin rather than as `-p <prompt>`.
    *
    * Required for any stage whose prompt inlines file contents: a single argv
@@ -263,11 +281,21 @@ export async function runStage<T>(
   output: StructuredOutput<T>,
   options: StageOptions = {},
 ): Promise<T> {
+  if (options.allowedTools?.length && options.disallowedTools?.length) {
+    throw new Error(
+      "StageOptions set both allowedTools and disallowedTools — pick one: allowedTools says " +
+        "'these and no others', disallowedTools says 'everything but these'",
+    );
+  }
+
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
   const model = options.model ? ["--model", options.model] : [];
   const denied = options.disallowedTools?.length
     ? ["--disallowedTools", options.disallowedTools.join(",")]
+    : [];
+  const allowed = options.allowedTools?.length
+    ? ["--allowedTools", options.allowedTools.join(",")]
     : [];
   const flags = [
     "--dangerously-skip-permissions",
@@ -275,6 +303,7 @@ export async function runStage<T>(
     output.jsonSchema,
     ...model,
     ...denied,
+    ...allowed,
   ];
 
   if (options.promptViaStdin) {
