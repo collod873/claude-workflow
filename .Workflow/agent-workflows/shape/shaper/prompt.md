@@ -70,7 +70,7 @@ Do not spend it on nice-to-have. A re-sweep is for a decision you cannot respons
 
 Emit only a raw `<output>` block. Either a sheet:
 
-<output>{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence"}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[]}</output>
+<output>{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence"}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[{"term":"Checkpoint","definition":"A stage's saved output, kept so a later run can skip the stage that produced it.","avoid":["cache","savepoint"],"section":"Mechanisms"}]}</output>
 
 Or one re-sweep request:
 

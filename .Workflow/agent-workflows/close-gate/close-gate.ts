@@ -115,7 +115,7 @@ const SALVAGE_PROMPT = fileURLToPath(new URL("salvage/prompt.md", import.meta.ur
  * A single-key object rather than a bare string so the `<output>` contract
  * is the same shape every other stage in this repo uses.
  */
-const SalvagedRecord = z.object({
+export const SalvagedRecord = z.object({
   record: z.string().min(1),
 });
 
