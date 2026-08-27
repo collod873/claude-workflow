@@ -4,7 +4,7 @@ import type { Decision, Refutations, ShaperSheet } from "./sheet-schema";
 import type { PriorArt } from "./sweep-schema";
 
 /**
- * The three mechanical outcomes `DESIGN.md` §01 and §01a hang off the sheet's
+ * The three mechanical outcomes lane 01 hangs off the sheet's
  * own shape: the mark strip (ADR-0028), the route override (ADR-0029), and
  * the refusal to shape (ADR-0029 again). None of them may consult a model,
  * and this is where that is pinned.

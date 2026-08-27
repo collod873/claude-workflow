@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * What the sweep — lane 01's first stage, one Haiku — emits.
  *
- * The sweep does two jobs (`DESIGN.md` §01): it finds prior art, and it
+ * The sweep does two jobs: it finds prior art, and it
  * builds the shaper's reading list. Both are on this shape, and both are
  * read by something deterministic rather than by another model: `refusal.ts`
  * turns `priorArt` into a verdict, and `shape.ts` turns `readingList` into

@@ -3,8 +3,8 @@ import type { PriorArt, Sweep } from "./sweep-schema";
 /**
  * Lane 01's stage-1 refusal, as a rule rather than a judgement.
  *
- * `DESIGN.md` §01: *at stage 1, an idea that already exists or that an ADR
- * has already ruled on — the chain stops there and never spends the shaper.*
+ * The rule: at stage 1, an idea that already exists or that an ADR has
+ * already ruled on stops the chain there, and never spends the shaper.
  * The evidence for that lives in the tracker and in `docs/adr/`, which means
  * a model has to read it; the *verdict* is
  * [ADR-0014](../../../docs/adr/0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md)'s

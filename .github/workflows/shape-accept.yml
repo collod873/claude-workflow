@@ -1,6 +1,6 @@
 name: Shape — accept
 
-# The other half of lane 01 (`DESIGN.md` §01): the owner's verbs, each of which is a label because a
+# The other half of lane 01: the owner's verbs, each of which is a label because a
 # label is something a gate can fire on.
 #
 # `approved` is [ADR-0005] as a mechanism — accepting a shaped idea is what files its ADRs — and

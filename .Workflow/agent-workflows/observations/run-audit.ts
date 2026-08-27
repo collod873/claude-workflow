@@ -13,7 +13,7 @@ import { runRelease } from "./run-release";
 import { readSessionRecord, type HydratedSessionRecord } from "./session-notes";
 
 /**
- * The connector spec #63 names as still missing (`DESIGN.md` §6): the piece
+ * The connector spec #63 names as still missing: the piece
  * that actually fires `runObservations` and `runRelease` on a real session,
  * at the one venue ADR-0002 allows (`.github/workflows/audit.yml`, this
  * module's own `main`).

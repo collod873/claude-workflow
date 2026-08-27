@@ -215,8 +215,8 @@ async function runShaper(
     deps.exec,
     // On stdin, because this is the one prompt in the estate that inlines
     // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading list
-    // clear the 128 KiB argv-element limit on any idea whose sweep listed
-    // `DESIGN.md`. ADR-0030 rejected capping that list, so the transport has
+    // clear the 128 KiB argv-element limit on any idea whose sweep listed a
+    // long file. ADR-0030 rejected capping that list, so the transport has
     // to be the thing that gives.
     { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true },
   );

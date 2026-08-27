@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 /**
- * Lane 00's micro door (DESIGN.md §00). The door is two YAML files and a label — there is no code
+ * Lane 00's micro door. The door is two YAML files and a label — there is no code
  * to unit-test, which is exactly why this file exists: the whole contract lives on the far side of
  * a language boundary no compiler and no type checker can see across, and GitHub only validates
  * the forms after they are pushed. The failure this guards is not a broken form, it is a *working*
@@ -88,7 +88,7 @@ describe("the micro door", () => {
   });
 
   it("leaves the blank issue enabled", () => {
-    // Capture must never refuse (DESIGN.md §00) — a form that is the only way in is a refusal
+    // Capture must never refuse — a form that is the only way in is a refusal
     // wearing a friendlier shape, and the one thing lane 00 exists to prevent is a lost idea.
     const config = parse(readFileSync(join(TEMPLATE_DIR, "config.yml"), "utf8")) as {
       blank_issues_enabled?: boolean;

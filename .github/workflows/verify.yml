@@ -1,9 +1,9 @@
 name: Verify
 
-# The Actions venue of the gauntlet (DESIGN.md §06). It still refuses nothing — it runs after the
+# The Actions venue of the gauntlet (ADR-0010). It refuses nothing — it runs after the
 # push has landed on the ref, and this repo has no branch protection — so it remains telemetry:
 # chain of custody that typecheck, lint and test actually ran, made observable by a non-agent on a
-# commit anyone can point at. It becomes a real refusal at move 10, not here.
+# commit anyone can point at. It stays that way: branch protection is declined (ADR-0071).
 #
 # What it covers changed when the free venues landed. In-turn, turn-end and pre-push now run the
 # same three checks before a commit exists, so this venue's job narrowed to the one thing they

@@ -1,6 +1,6 @@
 name: Audit
 
-# Spec #63's connector (DESIGN.md §6, ADR-0018): the venue ADR-0002 reserves for the observations
+# Spec #63's connector (ADR-0018): the venue ADR-0002 reserves for the observations
 # pipeline. Capture's own SessionEnd hook runs globally, on the workstation, for any project — but
 # the lenses and the release run only here, so this is what actually fires them once a session's
 # range exists to read.
@@ -28,7 +28,7 @@ name: Audit
 #
 # The `Checkout Knowledge-Base` step below carries a deploy key, stored as a repository secret,
 # that can read a private repository — a credential worth restating the standing property for
-# (DESIGN.md §04: "no credential is referenced by a job a pull request can trigger"). `on:` above
+# — no credential is referenced by a job a pull request can trigger. `on:` above
 # is the whole reason it holds here too: `repository_dispatch` is not an event GitHub will ever
 # fire from a pull request, so a job started by one — this job included — never sees the secret.
 

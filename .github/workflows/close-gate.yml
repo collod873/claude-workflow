@@ -1,6 +1,6 @@
 name: Close gate
 
-# Lane 09 (DESIGN.md §09), and GOAL.md's blocker 1 retired structurally rather than patched.
+# Lane 09, and GOAL.md's blocker 1 retired structurally rather than patched.
 #
 # Era 6 ran this gate as a PreToolUse hook on the workstation. Two holes came with that venue: a
 # commit-keyword close (`Closes #704`) never reached it, and a crashing rail failed open unseen —

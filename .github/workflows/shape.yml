@@ -1,18 +1,18 @@
 name: Shape
 
-# Lane 01 (`DESIGN.md` §01). The `idea` label is the whole trigger — §00's issue form applies it at
+# Lane 01. The `idea` label is the whole trigger — lane 00's issue form applies it at
 # creation, and nothing else in the system is human-initiated.
 #
-# The second trigger is §01's fourth owner verb. A comment on an idea that already carries a sheet
+# The second trigger is the owner's fourth verb. A comment on an idea that already carries a sheet
 # is a change request, and it re-runs the chain; `rounds.ts` caps that at 2 rounds off the issue's
 # own comment list, then the sheet stands as posted. Bot comments are excluded, which is what stops
 # the sheet this job posts from triggering the job that posted it.
 #
 # **Only a broken run is red here.** The chain has three ordinary outcomes that are not failures —
-# a stage-1 refusal (§01: an idea that already exists or that an ADR has ruled on), a refuse-to-shape
+# a stage-1 refusal (an idea that already exists or that an ADR has ruled on), a refuse-to-shape
 # (ADR-0029: the tree did not close under five decisions), and a spent change-request budget. Each
-# comments on the issue and exits 0. §11's unfiled question 3 makes the sweep's kill rate a number
-# worth measuring, which is to say kills are the expected traffic; a red run for the expected case
+# comments on the issue and exits 0. The sweep's kill rate is a number worth measuring, which is to
+# say kills are the expected traffic; a red run for the expected case
 # is how red stops meaning anything.
 #
 # Three model stages run inside one `npx tsx` call rather than one step apiece, unlike

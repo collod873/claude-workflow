@@ -13,7 +13,8 @@ labelled measured, could not be reproduced against any API call, and was cited a
 before it was struck — see [What was struck, and why](#what-was-struck-and-why) at the foot. Nothing
 below carries a rolling-window figure, a per-repo minute split, or a dollar projection. If you came
 here for a spend or concurrency anchor, there isn't one, and
-[DESIGN.md](../../DESIGN.md) §8 rules that runner minutes are not an input.
+[ADR-0024](../adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md) rules that
+runner minutes are not an input.
 
 ---
 
@@ -163,7 +164,8 @@ Ruled by the owner, 2026-08-26:
 > not worried about the minutes right now — if we ever hit the minutes limit then I will rethink
 > things, not before."*
 
-`DESIGN.md` §8 carries this as **runner minutes are not an input**. The trigger for revisiting is a
+[ADR-0024](../adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md) carries this
+as **runner minutes are not an input**. The trigger for revisiting is a
 GitHub bill, not a projection: **nothing has ever been charged**, and until something is, there is
 no cost question here to answer. A runner-vendor comparison remains filed as
 [claude-workflow#5](https://github.com/collod873/claude-workflow/issues/5) and is not blocked on

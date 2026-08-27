@@ -5,7 +5,7 @@ import type { Refutations, Sheet, ShaperSheet } from "./sheet-schema";
  *
  * Everything here runs on the shaper's output *after* it has parsed and
  * before anything is posted, and none of it asks a model anything. That is
- * the point — `DESIGN.md` §01 and §01a hang three mechanical outcomes off the
+ * the point — lane 01 hangs three mechanical outcomes off the
  * sheet's own shape (a strip, a route, a refusal), and a mechanism that reads
  * its own inputs by judgement can be talked past.
  */

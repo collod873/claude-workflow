@@ -1,4 +1,4 @@
-# The push venue of the gauntlet (DESIGN.md §06).
+# The push venue of the gauntlet (ADR-0010).
 #
 # Unlike the two in-session venues this one refuses, and it fails closed: a gauntlet that cannot
 # run its checks refuses the push rather than waving it through, because unlike a hook mid-turn
@@ -8,7 +8,7 @@
 # this hook without anyone remembering to run a setup step — so an agent's pushes meet the same
 # gate the owner's do. That is the whole reason it is worth having a venue here at all.
 #
-# `--no-verify` still skips it. That is open cell 9 in DESIGN.md §12, and it closes at move 10 with
-# branch protection, not here.
+# `--no-verify` still skips it, and that gap is accepted rather than open: branch protection would
+# close it and the purchase is declined (ADR-0071).
 
 bin/gauntlet push

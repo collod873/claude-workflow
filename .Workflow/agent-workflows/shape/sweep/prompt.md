@@ -12,7 +12,7 @@ Then look for anything already on the record that bears on it:
 
 - Issues, **open and closed**: `gh issue list --state all --search '<terms>' --json number,title,state,url`
 - Rulings in `docs/adr/` — read the filenames first; each one is its ruling stated as a sentence
-- `CONTEXT.md`, `DESIGN.md`, `GOAL.md`, `CODING_STANDARDS.md`, and `docs/`
+- `CONTEXT.md`, `GOAL.md`, `CODING_STANDARDS.md`, and `docs/`
 
 Every hit gets a `verdict`, and **two of the three stop the chain here**:
 
@@ -32,7 +32,7 @@ The next stage runs with **no tools at all** — no read, no grep, no glob, no `
 
 So: anything the shaper needs in order to decide, you fetch. Anything you leave off, it cannot go and get.
 
-- A `ref` is a **repo-relative path** (`DESIGN.md`, `docs/adr/0007-....md`) or an **issue** (`#42`).
+- A `ref` is a **repo-relative path** (`CONTEXT.md`, `docs/adr/0007-....md`) or an **issue** (`#42`).
 - Every item carries a `because` naming **which part of the idea it bears on**. An item with no reason is dropped by the grammar before the shaper sees it — so an item you cannot justify is one you should not list.
 - There is no count cap. The bound is relevance, and starving this list causes lane 01's failure rather than preventing it. Err toward including the thing you had to read to understand the idea.
 
@@ -42,4 +42,4 @@ So: anything the shaper needs in order to decide, you fetch. Anything you leave 
 
 Emit only a raw `<output>` block containing a JSON object with `priorArt` and `readingList`:
 
-<output>{"priorArt":[{"ref":"ADR-0007","url":"https://github.com/collod873/claude-workflow/blob/main/docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md","bearing":"Rules that the shaper routes every item, which this idea proposes to hand back to the owner","verdict":"ruled"}],"readingList":[{"ref":"DESIGN.md","because":"§01a is the short path this idea would change"},{"ref":"#42","because":"the earlier attempt at the same routing rule"}]}</output>
+<output>{"priorArt":[{"ref":"ADR-0007","url":"https://github.com/collod873/claude-workflow/blob/main/docs/adr/0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md","bearing":"Rules that the shaper routes every item, which this idea proposes to hand back to the owner","verdict":"ruled"}],"readingList":[{"ref":".Workflow/agent-workflows/shape/sheet.ts","because":"it enforces the route this idea would change"},{"ref":"#42","because":"the earlier attempt at the same routing rule"}]}</output>

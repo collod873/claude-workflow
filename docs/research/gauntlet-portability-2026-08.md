@@ -87,7 +87,7 @@ edit boundary is eslint (`.lintstagedrc.json` and `.claude/hooks/stop-gate.sh` b
 
 ## 3. Repos with nothing, or nearly nothing, to check
 
-Three repos are the honest answer to `DESIGN.md` §11's question about whether the acceptance lane
+Three repos are the honest answer to the open question about whether the acceptance lane
 applies to non-code work.
 
 **General-Repo has nothing.** No test files anywhere. `package.json` is two lines of content:
@@ -178,8 +178,8 @@ and then blocked here:
 scripts/tests/test_fact_level_pipeline_integration.py::test_ny_jail_fragmentation_gate
 ```
 
-Wall-clock is therefore **unmeasurable, not merely unmeasured**. There is no venue in `DESIGN.md`
-§06 for a check with no upper bound. *(Reasoned, not measured: I did not diagnose why that test
+Wall-clock is therefore **unmeasurable, not merely unmeasured**. No venue in the gauntlet has room
+for a check with no upper bound. *(Reasoned, not measured: I did not diagnose why that test
 blocks — a live LLM or embedding call is the obvious suspect given the repo's `llm_call.py` and the
 pinned `sentence-transformers`, but I did not confirm it.)*
 

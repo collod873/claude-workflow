@@ -6,10 +6,10 @@ import { PriorArt } from "./sweep-schema";
  *
  * `CONTEXT.md`: a decision sheet is *the idea restated as work, the prior art
  * found, and each decision the work needs with a recommended answer and the
- * alternatives rejected.* `DESIGN.md` §01 caps it at a phone screen — five
+ * alternatives rejected.* Lane 01 caps it at a phone screen — five
  * sections, no others — and the caps are enforced in `sheet.ts` rather than
  * asked for here, because a cap enforced by a schema is a stage failure and a
- * cap enforced by the renderer is a cut. §01 says **cut, never appended**.
+ * cap enforced by the renderer is a cut. The rule is **cut, never appended**.
  *
  * The one cap that is *not* a cut is the decision count, and that is
  * deliberate: [ADR-0029](../../../docs/adr/0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md)

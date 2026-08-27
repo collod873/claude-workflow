@@ -194,9 +194,9 @@ const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 export interface StageOptions {
   /**
    * The model id this stage runs on, when it is not the session default —
-   * `DESIGN.md` §3 assigns a tier per lane, and a stage whose tier is
-   * cheaper than the default has to say so or it silently costs more than
-   * the design budgeted for it. Omitted means "whatever the CLI defaults
+   * each lane is assigned a tier, and a stage whose tier is cheaper than the
+   * default has to say so or it silently costs more than the lane was
+   * budgeted for. Omitted means "whatever the CLI defaults
    * to", which is what every to-tickets stage wants.
    */
   model?: string;
@@ -222,11 +222,11 @@ export interface StageOptions {
    *
    * Required for any stage whose prompt inlines file contents: a single argv
    * element is capped at `MAX_ARG_STRLEN` (128 KiB), and lane 01's shaper
-   * injects `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading list —
-   * `DESIGN.md` and `CONTEXT.md` alone are 78 KiB of it. Without this the
-   * stage dies on `spawn claude E2BIG`, which names neither the prompt nor the
-   * size, and it does so only for the ideas whose reading lists happened to be
-   * long.
+   * injects `CONTEXT.md`, `CODING_STANDARDS.md` and a reading list ADR-0030
+   * deliberately left uncapped — so the prompt has no upper bound by
+   * construction, not merely no measured one. Without this the stage dies on
+   * `spawn claude E2BIG`, which names neither the prompt nor the size, and it
+   * does so only for the ideas whose reading lists happened to be long.
    */
   promptViaStdin?: boolean;
 }

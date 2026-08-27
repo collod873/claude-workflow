@@ -3,8 +3,8 @@
 **Compiled:** 2026-08-21 · **Status:** the charter. Everything else in this repo is evidence for it
 or work toward it.
 
-`DESIGN.md` says what the machine *is* — every edge, its event, its refusal. This says what it is
-all *for*. When a proposal arrives — a skill, a hook, a connector, an eighth era — it gets scored
+The tracker and the code say what the machine *is* — every edge, its event, its refusal. This says
+what it is all *for*. When a proposal arrives — a skill, a hook, a connector, an eighth era — it gets scored
 against §2. A proposal that fails a constraint is not a smaller version of the goal; it is a
 different goal.
 
@@ -165,7 +165,7 @@ Ordered. Nothing further up the list is optional for anything below it.
 
    *Half of this is retired.* Specs [#36](https://github.com/collod873/claude-workflow/issues/36)
    and [#63](https://github.com/collod873/claude-workflow/issues/63) built and wired the VIOLATION
-   and PROPOSED lenses — `DESIGN.md` §6 carries their contract.
+   and PROPOSED lenses — `.Workflow/agent-workflows/observations/` carries them.
 
    **The open half, now decided and half built.** The question is ruled — ADR-0044 through ADR-0046
    — and a ruling retires nothing, so this blocker closes on **two builds**, not on the decision. One
@@ -178,14 +178,15 @@ Ordered. Nothing further up the list is optional for anything below it.
      to delete — every ADR is cited, and the only signal that discriminates finds the *superseded*
      ones, which must survive because the amendment chain is the record — so the act is a pointer
      onto the stale record, not a deletion. The trailer it reads is itself now watched: a supersession asserted in
-     prose without one is the **missing-trailer counter**'s finding (`DESIGN.md` §6), and
+     prose without one is the **missing-trailer counter**'s finding, and
      `bin/new-adr --amends NNNN` writes it. ADR-0044 through ADR-0046, ADR-0067.
    - **ADR-0003's lint audit**, which points it at the rules and is **ruled but unbuilt** —
      `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
      stands" is a static tree scan rather than a question about history.
 4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. ADR-0018, ADR-0020.
 5. **The pre-merge gate — mostly retired, and the rest is accepted.** Retired by the gauntlet and its
-   four venues; `DESIGN.md` §06 carries the contract, and
+   four venues; `bin/gauntlet` and [ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)
+   carry the contract, and
    [`docs/research/actions-billing-2026-08.md`](docs/research/actions-billing-2026-08.md) carries the
    regression that justified it.
 

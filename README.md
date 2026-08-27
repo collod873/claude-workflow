@@ -8,10 +8,11 @@ A workflow system connecting Claude Code and GitHub.
 to satisfy, the owner points that survive automation, and what blocks it today. Proposals get scored
 against this.
 
-**[`DESIGN.md`](DESIGN.md)** — the target. Every edge from an idea to a closed ticket, what event
-fires it, what it refuses, and the five points where the owner is required. Drawn from the charter
-rather than from the skills that exist, which is why five of the eleven current verbs don't survive
-it.
+**[The tracker](https://github.com/collod873/claude-workflow/issues)** — the target. What the
+machine *is* lives where it is being built: the open design questions are the
+[wayfinder map](https://github.com/collod873/claude-workflow/issues/76), the roadmap is
+[the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order),
+and a lane that has shipped is described by its own code and the ADRs that rule it.
 
 **[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)** —
 the prior art. Why each of the seven systems that came before this one ended, and what survived
@@ -27,10 +28,8 @@ to avoid, so an argument is about the substance rather than about the word.
 **This repo and nothing else** until the machine runs here. Other repos in the estate show up in
 these documents as evidence — a measured number, a mechanism worth stealing — never as work.
 
-There is no status section, here or in `DESIGN.md`. A lane's status is the shape of its own section
-there: a six-field contract is shipped, design prose is unbuilt
-([ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md)). The
-roadmap is [the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order)
+There is no status section. A lane that has shipped is readable as code; a lane that has not is an
+open issue. The roadmap is [the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order)
 ([ADR-0026](docs/adr/0026-the-build-order-and-the-filed-open-questions-live-as-issues.md)).
 
 ## The gauntlet
@@ -52,7 +51,6 @@ that closes with branch protection at move 10, not before.
 .
 ├── CLAUDE.md         # project instructions for Claude Code
 ├── GOAL.md           # the charter — what we're building toward and what constrains it
-├── DESIGN.md         # the target — the machine as a state machine, lane by lane
 ├── CONTEXT.md        # the glossary — what the words mean here
 ├── bin/gauntlet      # the checks, one runner, called by every venue
 ├── bin/new-adr       # creates the next decision record from a title

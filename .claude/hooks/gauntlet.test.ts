@@ -9,7 +9,7 @@ import {
 } from "../../.Workflow/agent-workflows/shared/check-contract.ts";
 
 // The hook is a pure function of stdin to (exit code, stdout), so it gets driven rather than read.
-// Every case below is what the venue *should* do, decided from DESIGN.md §06 rather than from what
+// Every case below is what the venue *should* do, decided from ADR-0010 rather than from what
 // the script currently happens to return.
 //
 // Nothing here spawns the real gauntlet at the `stop` or `push` venue: both run the unit suite, and
@@ -92,7 +92,7 @@ describe("the in-turn venue", () => {
   it("ignores a file it has nothing to say about", () => {
     const gauntlet = stubGauntlet(1, "should never run");
 
-    const result = runHook("turn", editOf("DESIGN.md"), { GAUNTLET_BIN: gauntlet });
+    const result = runHook("turn", editOf("README.md"), { GAUNTLET_BIN: gauntlet });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("");
@@ -212,7 +212,7 @@ describe("failing open", () => {
     // the machine — it does on a GitHub runner and does not on this workstation — so the assertion
     // is the contract that holds either way: exit 0, and nothing that isn't valid hook output.
     // An earlier version of this test asserted the not-found branch specifically and went red on
-    // the runner only, which is the exact flake shape DESIGN.md §06 makes a precondition.
+    // the runner only, which is the exact flake shape ADR-0010 makes a precondition.
     const gauntlet = stubGauntlet(COULD_NOT_RUN);
 
     const result = spawnSync(HOOK, ["turn"], {

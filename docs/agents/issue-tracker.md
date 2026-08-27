@@ -56,10 +56,10 @@ step reads:
 
 | Label            | Written by                          | Means                                                              |
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited (DESIGN.md §00) |
+| `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited |
 | `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
 | `close-refused`  | `.github/workflows/close-gate.yml`  | An open refusal — the gate reopened a close and has not since accepted one (ADR-0023: state, not history) |
-| `build-order`    | filed by hand                       | A move on `DESIGN.md`'s build order (ADR-0026)                      |
+| `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
 
 GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not triage

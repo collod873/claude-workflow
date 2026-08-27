@@ -17,7 +17,7 @@ import {
 
 /**
  * The close gate, at the one venue the agents it judges cannot reach
- * (`DESIGN.md` §09, lane 09).
+ * (lane 09).
  *
  * Era 6 ran this logic as a PreToolUse hook on the workstation, which meant
  * a commit-keyword close (`Closes #704`) never reached it and a crashing
@@ -101,10 +101,10 @@ export function gateJudgesCloseBy(author: { login: string; isBot: boolean }, own
 export const REFUSED_LABEL = "close-refused";
 
 /**
- * Haiku, per `DESIGN.md` §3 and §09's cost line: high volume, zero
- * discretion, trivially reversible. The salvage stage renders no verdict —
- * it translates prose into the grammar and a deterministic checker judges
- * the result — so it is exactly the tier that table assigns.
+ * Haiku, per lane 09's cost line: high volume, zero discretion, trivially
+ * reversible. The salvage stage renders no verdict — it translates prose
+ * into the grammar and a deterministic checker judges the result — so it is
+ * exactly the tier that assignment calls for.
  */
 export const SALVAGE_MODEL = "claude-haiku-4-5-20251001";
 

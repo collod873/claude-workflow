@@ -179,9 +179,10 @@ Lane 01's refuter (Sonnet, stage 3) has now been spent on **${silent} sheets tha
 [ADR-0031](../docs/adr/0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) sets that count as \
 its firing condition: at ${SILENT_SHEET_THRESHOLD}, the counter proposes the stage's deletion.
 
-This proposes it. Nothing is deleted by this issue — §6's rule is that a counter files an issue and never acts.
+This proposes it. Nothing is deleted by this issue — [ADR-0064](../docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) \
+rules that a counter files an issue and never acts.
 
-**What the refuter costs:** one Sonnet stage per sheet, inside a chain \`DESIGN.md\` §01 budgets at under a dollar per idea.
+**What the refuter costs:** one Sonnet stage per sheet, inside a chain budgeted at under a dollar per idea.
 
 **What killing it costs:** the sheet loses its only adversarial pass, and lane 01's named failure — a confident, \
 coherent sheet resting on a wrong premise — is left to the assumption marks alone.
@@ -192,8 +193,8 @@ of ${silent} is evidence; it is not proof.
 
 ## Acceptance criteria
 
-- [ ] The refuter is kept or deleted, and \`DESIGN.md\` §01 says which
-- [ ] If it is deleted, an ADR records what replaces its coverage of lane 01's named failure
+- [ ] The refuter is kept or deleted, and an ADR records which
+- [ ] If it is deleted, that ADR records what replaces its coverage of lane 01's named failure
 - [ ] If it is kept, this issue names what would fire next
 
 ${PROPOSAL_OPEN}${silent}${PROPOSAL_CLOSE}`;

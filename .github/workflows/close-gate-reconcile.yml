@@ -1,6 +1,6 @@
 name: Close gate reconcile
 
-# The close gate's own blind spot, closed after the fact (#106, DESIGN.md §09).
+# The close gate's own blind spot, closed after the fact (#106, lane 09).
 #
 # `close-gate.yml` fires on `issues.closed`, and GitHub does not replay an event a workflow
 # missed. A close that lands while Actions is down produces no run, no verdict and no

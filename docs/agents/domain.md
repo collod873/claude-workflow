@@ -16,7 +16,6 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 ```
 /
 ├── CONTEXT.md
-├── DESIGN.md
 ├── docs/adr/
 │   ├── README.md
 │   ├── 0000-template.md

@@ -1,10 +1,10 @@
 // The two in-session venues of the gauntlet: in-turn (PostToolUse) and turn end (Stop).
 //
 // Neither refuses, and neither can. PostToolUse fires after the edit has already landed, and Stop
-// only asks Claude to keep working. That is the accepted shape, not a shortfall: DESIGN.md §06
-// binds it — every venue below Actions is bypassable, and until branch protection lands at move 10
-// there is no venue an agent cannot route around. That nothing *counts* the routing-around is
-// §11's open question. What these venues buy is the *repair* being cheap, because the context that
+// only asks Claude to keep working. That is the accepted shape, not a shortfall: every venue below
+// Actions is bypassable, and with branch protection declined (ADR-0071) there is no venue an agent
+// cannot route around. ADR-0063 is what counts the routing-around.
+// What these venues buy is the *repair* being cheap, because the context that
 // caused the failure is still loaded.
 //
 // Both fail open. A hook that cannot run its checks stays silent and lets the turn through; the

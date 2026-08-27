@@ -1,6 +1,6 @@
 name: Back-stamp
 
-# The back-stamp (#125, DESIGN.md §06, ADR-0044 through ADR-0046): a superseded ADR gains a
+# The back-stamp (#125, ADR-0044 through ADR-0046): a superseded ADR gains a
 # `Status: superseded by ADR-NNNN` line derived from the `Amends:` trailer its successor already
 # carries. `docs/adr/README.md` has said the record should do this all along and zero of 43 ADRs
 # ever carried the line by hand — a convention with no reader does not hold, so this is the reader.

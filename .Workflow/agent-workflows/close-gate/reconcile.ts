@@ -33,7 +33,7 @@ import { reason } from "../shared/reason";
  * same incident, so a cron would have been late in exactly the window it
  * was supposed to cover. See ADR-0048.
  *
- * **Recomputes, stores nothing** (`DESIGN.md` §6's counter discipline).
+ * **Recomputes, stores nothing** (the counter discipline of ADR-0064).
  * Every run derives its answer from the tracker and the Actions log. There
  * is no cursor, no ledger and no state file, so nothing it says can go
  * stale and it cannot feed on its own output — a reopened issue is no

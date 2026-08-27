@@ -8,7 +8,7 @@
 #   bin/gauntlet stop          Stop          budget <10s   typecheck + lint + unit suite
 #   bin/gauntlet push          pre-push      budget <60s   typecheck + lint + unit suite
 #
-# A check sits at the earliest venue whose budget it fits (DESIGN.md §06, ADR-0010), because what
+# A check sits at the earliest venue whose budget it fits (ADR-0010), because what
 # earliest buys is the cost of the *repair*, not the cost of the check: a type error caught in the
 # turn that caused it is fixed with the context still hot, and the same error caught in Actions
 # costs a cold run reconstructing what the author already knew.
@@ -48,7 +48,7 @@ case "$venue" in
     ;;
 esac
 
-# The budgets DESIGN.md §06 assigns each venue, in milliseconds. Nothing enforces them — an
+# The budget each venue is held to, in milliseconds, per the header above. Nothing enforces them — an
 # over-budget venue reports itself and keeps running, because a gauntlet that refuses to run when
 # it gets slow is a gauntlet that stops catching things exactly when the codebase got big enough
 # to need it. The report is the signal to move a check down a venue.
