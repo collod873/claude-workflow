@@ -20,7 +20,7 @@
     "why": "package.json#scripts.lint (eslint .)"
   },
   "all": {
-    "cmd": null,
-    "why": "no aggregate script found among package.json#scripts.{check,verify,ci}"
+    "cmd": "npm run check",
+    "why": "package.json#scripts.check (bin/gauntlet push)"
   }
 }

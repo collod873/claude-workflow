@@ -38,6 +38,33 @@ describe("generateContract", () => {
   });
 });
 
+/**
+ * The `all` slot is the one a reader outside this repo acts on: `drain`'s step-1 table reads a
+ * present contract with `all: null` as a repo that has *deliberately* declared it has no gate, and
+ * merges every ticket unverified while reporting green (drain defect #142). So a `null` here is not
+ * a quiet gap the way a missing `test_one` would be — it is an instruction to skip the gate. This
+ * repo has a gate, `bin/gauntlet push`, and the contract must be able to say so: the probe reads
+ * `package.json#scripts.{check,verify,ci}`, so the gate has to be reachable by name from there.
+ *
+ * Checked against the committed file rather than a fresh probe, because the committed file is what
+ * a reader loads — the byte-identity test above is what keeps the two the same.
+ */
+describe("this repository's committed contract", () => {
+  const committed = JSON.parse(readFileSync(join(REPO_ROOT, CONTRACT_RELATIVE_PATH), "utf8"));
+
+  it("publishes a non-null `all`, so no reader takes this repo for ungated", () => {
+    expect(committed.all.cmd).not.toBeNull();
+  });
+
+  it("names an `all` that is a real package.json script running the push venue", () => {
+    const scripts = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")).scripts;
+    const scriptName = /^npm run (.+)$/.exec(committed.all.cmd)?.[1];
+
+    expect(scriptName).toBeDefined();
+    expect(scripts[scriptName!]).toBe("bin/gauntlet push");
+  });
+});
+
 describe("serializeContract", () => {
   it("two-space indents and ends with exactly one trailing newline", () => {
     const contract = checkContractFixture({ test: { cmd: "npm test", why: "declared" } });
