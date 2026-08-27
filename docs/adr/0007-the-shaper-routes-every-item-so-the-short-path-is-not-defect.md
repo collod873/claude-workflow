@@ -2,6 +2,8 @@
 
 Recorded 2026-08-23.
 
+Status: superseded by ADR-0029
+
 The shaper ends every sheet with a route recommendation — long or short — for features as well as
 defects, and the owner's one-word override on the accept sends it the other way. The short path may
 still never skip the gauntlet or review.

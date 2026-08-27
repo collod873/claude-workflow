@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0039
+
 **The daily ceiling is none — no dollars, no tokens, no unit at all.** The governor (`DESIGN.md` §8)
 enforces two hard limits at dispatch, not three: queue depth (~7 decisions waiting stops dispatch)
 and WIP (a slot count per lane). The third limit, spend-checked-at-dispatch, is struck. Ruled by the

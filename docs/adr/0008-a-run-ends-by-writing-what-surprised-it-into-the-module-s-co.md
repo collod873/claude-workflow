@@ -2,6 +2,8 @@
 
 Recorded 2026-08-23.
 
+Status: superseded by ADR-0043
+
 Every implementer run ends with one question: *what did you learn that, had you known it at the
 start, would have changed what you did?* A real answer is appended to the module's `CONTEXT.md`.
 Nothing means nothing gets written — the bar is surprise, not diligence.

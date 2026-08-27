@@ -2,6 +2,8 @@
 
 Recorded 2026-08-23.
 
+Status: superseded by ADR-0032
+
 No venue is promoted to refusing until the thing that clears its red already exists. A gate with
 nothing behind it does not stop work; it parks work, and parked work is a queue that drains onto the
 owner — the one outcome the whole design is built to avoid.
