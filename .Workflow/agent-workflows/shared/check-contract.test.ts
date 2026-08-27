@@ -89,3 +89,36 @@ describe("probe", () => {
     }
   });
 });
+
+/**
+ * #130: the probe used to test one hardcoded path for a turn-end check, so a repo whose Stop hook
+ * lives anywhere else — including this one — published `stop: null` and had that certified by
+ * `regenerate && diff`. These read the declaration site instead.
+ */
+describe("probe's stop slot", () => {
+  it("reads the Stop hook out of settings.json and expands $CLAUDE_PROJECT_DIR away", () => {
+    const contract = probe(join(FIXTURES, "stop-hook-in-settings"));
+
+    expect(contract.stop.cmd).toBe(".claude/hooks/gauntlet.sh stop");
+    expect(contract.stop.why).toContain(".claude/settings.json#hooks.Stop");
+  });
+
+  it("publishes null rather than an arbitrary first one when two command hooks are declared", () => {
+    const contract = probe(join(FIXTURES, "two-stop-hooks"));
+
+    expect(contract.stop.cmd).toBeNull();
+    expect(contract.stop.why).toContain("2 command hooks");
+  });
+
+  it("falls back to the conventional stop-gate.sh when settings.json cannot be read", () => {
+    const contract = probe(join(FIXTURES, "stop-gate-hook-only"));
+
+    expect(contract.stop.cmd).toBe(".claude/hooks/stop-gate.sh");
+  });
+
+  it("publishes null when a tree declares no turn-end check either way", () => {
+    const contract = probe(join(FIXTURES, "biome-linter"));
+
+    expect(contract.stop.cmd).toBeNull();
+  });
+});
