@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { gateJudgesCloseBy } from "./close-gate";
 import { execGh, type GhExec } from "../shared/gh";
 import { workflowPath, workflowRunsPath } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
@@ -121,6 +122,14 @@ const ClosedIssue = z.object({
   title: z.string(),
   closedAt: z.string(),
   stateReason: z.string().nullable().optional(),
+  /**
+   * Who filed the issue, which decides whether this gate judges its close at
+   * all (`gateJudgesCloseBy`). Optional so a fixture written before ADR-0073
+   * still parses; an issue with no author reaching `fetchClosedIssues` is
+   * treated as out of scope, which is the direction that fails closed here —
+   * a close this reconciler skips is a close nobody reopens.
+   */
+  author: z.object({ login: z.string(), is_bot: z.boolean().optional() }).nullable().optional(),
 });
 export type ClosedIssue = z.infer<typeof ClosedIssue>;
 
@@ -212,6 +221,13 @@ export interface ReconcileInput {
   dryRun?: boolean;
   gh?: GhExec;
   log?: (line: string) => void;
+  /**
+   * The repository owner, for the authorship scope `gateJudgesCloseBy`
+   * applies. Injected so a test can state it rather than reach for `GH_REPO`;
+   * unset, it comes off that variable the way every other reader in this lane
+   * gets the repository.
+   */
+  owner?: string;
 }
 
 export interface ReconcileOutcome {
@@ -229,7 +245,17 @@ function since(now: Date, lookbackDays: number): Date {
   return new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
 }
 
-function fetchClosedIssues(gh: GhExec, from: Date): ClosedIssue[] | null {
+/**
+ * The repository owner, whose issues (and this repo's automation's) are the
+ * only ones the gate judges — see `gateJudgesCloseBy`. Read off `GH_REPO`,
+ * which every workflow in this lane already sets to `${{ github.repository }}`,
+ * rather than given a variable of its own that could drift from it.
+ */
+function ownerFromEnv(): string {
+  return (process.env.GH_REPO ?? "").split("/")[0] ?? "";
+}
+
+function fetchClosedIssues(gh: GhExec, from: Date, owner: string): ClosedIssue[] | null {
   const day = from.toISOString().slice(0, 10);
   try {
     // Searched rather than listed-and-filtered: `gh issue list` pages by
@@ -246,10 +272,18 @@ function fetchClosedIssues(gh: GhExec, from: Date): ClosedIssue[] | null {
       "--limit",
       "100",
       "--json",
-      "number,title,closedAt,stateReason",
+      "number,title,closedAt,stateReason,author",
     ]);
     const parsed = ClosedIssues.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    if (!parsed.success) return null;
+    // Out-of-scope closes are dropped here rather than in `reconcile()` so the
+    // judgement below stays a pure function of the closes it was handed. A
+    // close the gate declines to judge is not an unjudged close, and the whole
+    // job of this file is to reopen unjudged ones — without this filter every
+    // stranger's self-closed issue reads as a gate that never ran. ADR-0073.
+    return parsed.data.filter((issue) =>
+      gateJudgesCloseBy({ login: issue.author?.login ?? "", isBot: issue.author?.is_bot ?? false }, owner),
+    );
   } catch {
     return null;
   }
@@ -319,7 +353,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const now = input.now ?? new Date();
   const from = since(now, input.lookbackDays ?? LOOKBACK_DAYS);
 
-  const issues = fetchClosedIssues(gh, from);
+  const issues = fetchClosedIssues(gh, from, input.owner ?? ownerFromEnv());
   if (issues === null) {
     return {
       action: "degraded",

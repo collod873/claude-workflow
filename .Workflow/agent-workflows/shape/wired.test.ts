@@ -40,6 +40,29 @@ describe("the chain's trigger", () => {
   it("excludes pull requests, which arrive through the same event", () => {
     expect(shape).toMatch(/!github\.event\.issue\.pull_request/);
   });
+
+  // ADR-0073. §00's form carries `labels: ["idea"]`, so on a public repository
+  // the trigger fires for a stranger's issue exactly as for the owner's — and
+  // this lane spends the owner's personal subscription, uncapped. Both triggers
+  // are gated on who caused them, and the two use different fields because the
+  // events carry different ones.
+  it("fires the label trigger only for the owner, who is the sender of the label", () => {
+    expect(shape).toMatch(/github\.event\.sender\.login == github\.repository_owner/);
+  });
+
+  it("fires the comment trigger only for someone with standing in the repo", () => {
+    expect(shape).toMatch(/github\.event\.comment\.author_association/);
+    for (const standing of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+      expect(shape).toContain(`"${standing}"`);
+    }
+  });
+
+  it("keeps the bot exclusion, which refuses a loop rather than a stranger", () => {
+    // Distinct conditions doing distinct jobs: were the author gate ever read
+    // as subsuming this one, the sheet this job posts would trigger the job
+    // that posted it.
+    expect(shape).toMatch(/github\.event\.comment\.user\.type != 'Bot'/);
+  });
 });
 
 describe("the accept's trigger", () => {

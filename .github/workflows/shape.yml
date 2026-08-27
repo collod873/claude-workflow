@@ -42,12 +42,43 @@ concurrency:
 
 jobs:
   shape:
+    # **Both triggers are gated on who caused them, because both spend model.**
+    # §00's issue form carries `labels: ["idea"]`, so on a public repository the
+    # label lands from a stranger's issue exactly as it lands from the owner's —
+    # the trigger cannot tell them apart, and neither can a label the form
+    # applies on the author's behalf regardless of the author's permissions. The
+    # `idea` lane spends `CLAUDE_CODE_OAUTH_TOKEN`, which is the owner's personal
+    # subscription and has no per-repository cap, so an ungated lane is an open
+    # invitation to drain it. ADR-0073.
+    #
+    # `github.event.sender` is who performed the act, not who owns the thing
+    # acted on, which is the distinction that makes one condition cover both the
+    # form and a later hand-applied label: filing through the form makes the
+    # author the sender (a stranger is refused, the owner is not), and labelling
+    # someone else's issue afterwards makes the labeller the sender (so the
+    # owner can still pull a stranger's idea into the lane deliberately, by
+    # applying `idea` himself — remove-and-re-add, the same re-run gesture
+    # `to-tickets.yml` documents for `prd`).
+    #
+    # A comment is gated on `author_association` instead: that field exists on
+    # `issue_comment` and says the commenter's standing in this repository
+    # directly. `COLLABORATOR`/`MEMBER` ride along with `OWNER` so the gate does
+    # not have to be reopened the day a second person is added.
+    #
+    # Neither condition replaces the bot exclusion below it. A bot comment is
+    # excluded because the sheet this job posts would otherwise trigger the job
+    # that posted it; that is a loop, not a permission question, and the two
+    # conditions are refusing different things.
     if: >-
-      (github.event_name == 'issues' && github.event.label.name == 'idea') ||
+      (github.event_name == 'issues' &&
+       github.event.label.name == 'idea' &&
+       github.event.sender.login == github.repository_owner) ||
       (github.event_name == 'issue_comment' &&
        !github.event.issue.pull_request &&
        contains(github.event.issue.labels.*.name, 'idea') &&
-       github.event.comment.user.type != 'Bot')
+       github.event.comment.user.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+                github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

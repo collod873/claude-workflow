@@ -58,6 +58,38 @@ import {
 export const DELIVERY_CLOSE_REASON = "completed";
 
 /**
+ * Whose closes this gate judges at all.
+ *
+ * The second scope rule, and the one a public repository makes necessary
+ * (ADR-0073). `state_reason` above says *this close claims a delivery*; this
+ * says *this issue is one of ours to have delivered*. On a private repository
+ * the two were the same question, because every issue in the tracker was the
+ * owner's or this repo's own automation's. Public, they come apart: a stranger
+ * files an issue and closes it himself, which GitHub marks `completed` exactly
+ * as it marks the owner's, and the gate would spend Haiku salvaging a closing
+ * record for work this repo never did.
+ *
+ * The rule is authorship rather than who performed the close, because the
+ * delivery units are `to-tickets.yml`'s sub-issues and those are authored by
+ * this repo's own automation, not by a person — so a bot author is *inside*
+ * the scope and a third-party human is outside it. Read on both sides of a
+ * language boundary no compiler sees across: `close-gate.yml`'s job-level `if`
+ * so no runner starts, and `reconcile.ts`'s `fetchClosedIssues` so the
+ * reconciler does not then reopen every close the gate correctly declined to
+ * judge. `close-gate.test.ts` asserts the two still agree.
+ */
+export function gateJudgesCloseBy(author: { login: string; isBot: boolean }, owner: string): boolean {
+  if (author.isBot) return true;
+  // Both emptiness checks are load-bearing, and the reason is that the
+  // interesting failure is silent: an unset `GH_REPO` makes `owner` empty, an
+  // issue whose author the tracker did not report makes `login` empty, and
+  // `"" === ""` would then judge *every* close — the gate failing open at
+  // exactly the moment it has lost track of who anyone is.
+  if (owner === "" || author.login === "") return false;
+  return author.login.toLowerCase() === owner.toLowerCase();
+}
+
+/**
  * The label an open refusal wears. **State, not history** (ADR-0023): a
  * refusal applies it and a passing re-close lifts it, so anything that
  * filters open work by it — a triage query, a wayfinder sweep — sees the

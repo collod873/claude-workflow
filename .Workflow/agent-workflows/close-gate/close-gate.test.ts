@@ -6,6 +6,7 @@ import {
   DELIVERY_CLOSE_REASON,
   REFUSED_LABEL,
   SALVAGE_MODEL,
+  gateJudgesCloseBy,
   runCloseGate,
 } from "./close-gate";
 import { bodyWithCriteria, recordComment, salvageResponse } from "./record.fixture";
@@ -273,5 +274,39 @@ describe("close-gate.yml agrees with the scope rule it is a copy of", () => {
 
   it("creates the label a refusal applies, so the first refusal cannot fail", async () => {
     expect(workflow).toContain(`gh label create ${REFUSED_LABEL}`);
+  });
+
+  // ADR-0073's authorship scope, the second rule spelled on both sides.
+  it("gates the job on authorship too, so a stranger's close starts no runner", async () => {
+    expect(workflow).toContain("github.event.issue.user.type == 'Bot'");
+    expect(workflow).toContain("github.event.issue.user.login == github.repository_owner");
+  });
+});
+
+// The rule the workflow above copies, stated once in TypeScript. `reconcile.ts`
+// is the third reader of it: were it to disagree, every close the gate
+// correctly declined to judge would read to the reconciler as a gate that never
+// ran, and it would reopen them — the failure ADR-0073 records.
+describe("gateJudgesCloseBy scopes the gate to this repo's own work", () => {
+  const OWNER = "collod873";
+
+  it("judges a close of an issue the owner filed", () => {
+    expect(gateJudgesCloseBy({ login: OWNER, isBot: false }, OWNER)).toBe(true);
+  });
+
+  it("judges a close of a sub-issue this repo's automation filed", () => {
+    expect(gateJudgesCloseBy({ login: "github-actions[bot]", isBot: true }, OWNER)).toBe(true);
+  });
+
+  it("declines a close of an issue a third party filed", () => {
+    expect(gateJudgesCloseBy({ login: "a-stranger", isBot: false }, OWNER)).toBe(false);
+  });
+
+  it("declines when authorship is unknown, which is the direction that fails closed", () => {
+    expect(gateJudgesCloseBy({ login: "", isBot: false }, OWNER)).toBe(false);
+  });
+
+  it("compares logins case-insensitively, as GitHub treats them", () => {
+    expect(gateJudgesCloseBy({ login: "CollOD873", isBot: false }, OWNER)).toBe(true);
   });
 });

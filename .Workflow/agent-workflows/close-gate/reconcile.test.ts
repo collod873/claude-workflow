@@ -91,13 +91,17 @@ function createFakeRuns(options: FakeRunsOptions = {}): FakeRuns {
 
 const NOW = new Date("2026-08-26T20:00:00Z");
 
+/** The owner every fixture below is filed by, unless a test says otherwise. */
+const OWNER = "collod873";
+
 function closed(
   number: number,
   closedAt: string,
   title = `issue ${number}`,
   stateReason = "COMPLETED",
+  author: ClosedIssue["author"] = { login: OWNER, is_bot: false },
 ): ClosedIssue {
-  return { number, title, closedAt, stateReason };
+  return { number, title, closedAt, stateReason, author };
 }
 
 function run(
@@ -207,12 +211,50 @@ describe("scope — which closes are reconciled at all", () => {
     const verdicts = reconcile([{ number: 1, title: "t", closedAt: "2026-08-26T12:00:00Z" }], []);
     expect(verdicts).toEqual([]);
   });
+
+  // ADR-0073, and the failure that makes the authorship rule two-sided rather
+  // than one. `close-gate.yml` declines to judge a stranger's close; if this
+  // reconciler did not decline the same ones, it would read every one of them
+  // as a gate that never ran and reopen it — and the stranger can close it
+  // again, which is a loop with a member of the public on the other end.
+  it("does not reopen a close of an issue the gate never judged, by scope", () => {
+    const stranger = closed(1, "2026-08-26T15:46:00Z", "drive-by", "COMPLETED", {
+      login: "a-stranger",
+      is_bot: false,
+    });
+    const fake = createFakeRuns({ issues: [stranger], runs: [] });
+
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
+
+    expect(outcome).toMatchObject({ action: "clear", reopened: [] });
+    expect(fake.reopened).toEqual([]);
+  });
+
+  it("still reopens an unjudged close of a sub-issue the automation filed", () => {
+    const subIssue = closed(2, "2026-08-26T15:46:00Z", "slice 1", "COMPLETED", {
+      login: "github-actions[bot]",
+      is_bot: true,
+    });
+    const fake = createFakeRuns({ issues: [subIssue], runs: [] });
+
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
+
+    expect(outcome).toMatchObject({ action: "reopened", reopened: [2] });
+  });
+
+  it("asks the tracker for the author it now scopes on", () => {
+    const fake = createFakeRuns({ issues: [], runs: [] });
+    runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
+
+    const list = fake.calls.find((args) => args[0] === "issue" && args[1] === "list");
+    expect(list?.join(" ")).toContain("author");
+  });
 });
 
 describe("what it does about what it finds", () => {
   it("reopens an unjudged close with a comment naming why no verdict exists", () => {
     const fake = createFakeRuns({ issues: [closed(7, "2026-08-26T15:46:00Z")], runs: [] });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome).toMatchObject({ action: "reopened", reopened: [7] });
     expect(fake.reopened).toHaveLength(1);
@@ -222,7 +264,7 @@ describe("what it does about what it finds", () => {
 
   it("applies no label — an unjudged close is not a refused one (ADR-0023)", () => {
     const fake = createFakeRuns({ issues: [closed(7, "2026-08-26T15:46:00Z")], runs: [] });
-    runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(fake.calls.filter((args) => args.includes("--add-label"))).toEqual([]);
   });
@@ -232,7 +274,7 @@ describe("what it does about what it finds", () => {
       issues: [closed(1, "2026-08-26T12:00:00Z")],
       runs: [run("2026-08-26T12:00:03Z", "issue 1")],
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome).toMatchObject({ action: "clear", checked: 1, reopened: [] });
     expect(fake.reopened).toEqual([]);
@@ -243,7 +285,7 @@ describe("what it does about what it finds", () => {
       issues: [closed(85, "2026-08-26T15:13:38Z")],
       runs: [run("2026-08-26T15:17:17Z", "issue 85", "queued", null)],
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome).toMatchObject({ action: "clear", pending: [85] });
     expect(fake.reopened).toEqual([]);
@@ -255,7 +297,7 @@ describe("what it does about what it finds", () => {
       runs: [],
       reopenFailsFor: [7],
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome.reopened).toEqual([8]);
   });
@@ -265,7 +307,7 @@ describe("what it does about what it finds", () => {
       issues: [closed(1, "2026-08-01T12:00:00Z")],
       runs: [run("2026-08-19T00:00:00Z", "unrelated")],
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome).toMatchObject({ action: "clear", checked: 0 });
   });
@@ -283,7 +325,7 @@ describe("the window it is honest about", () => {
       runs: [],
       gateStart: "2026-08-25T23:35:52Z",
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: (line) => lines.push(line) });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: (line) => lines.push(line) });
 
     expect(outcome).toMatchObject({ action: "clear", checked: 0 });
     expect(fake.reopened).toEqual([]);
@@ -296,7 +338,7 @@ describe("the window it is honest about", () => {
       runs: [],
       gateStart: "2026-08-25T23:35:52Z",
     });
-    expect(runReconcile({ now: NOW, gh: fake.gh, log: silent }).reopened).toEqual([1]);
+    expect(runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent }).reopened).toEqual([1]);
   });
 
   it("does not clip when the page is short — a short page has seen every run there is", () => {
@@ -306,7 +348,7 @@ describe("the window it is honest about", () => {
       issues: [closed(1, "2026-08-21T12:00:00Z")],
       runs: [run("2026-08-25T00:00:00Z", "something else")],
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome).toMatchObject({ action: "reopened", reopened: [1] });
   });
@@ -322,7 +364,7 @@ describe("the window it is honest about", () => {
         run(new Date(Date.parse("2026-08-25T00:00:00Z") + index * 60_000).toISOString(), "other"),
       ),
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: (line) => lines.push(line) });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: (line) => lines.push(line) });
 
     expect(outcome).toMatchObject({ action: "clear", checked: 0 });
     expect(lines.join("\n")).toContain("window clipped");
@@ -332,7 +374,7 @@ describe("the window it is honest about", () => {
 describe("a reconciler that cannot read its own inputs", () => {
   it("is degraded, and writes nothing, when the tracker will not answer", () => {
     const fake = createFakeRuns({ issueListFails: true });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome.action).toBe("degraded");
     expect(fake.reopened).toEqual([]);
@@ -343,7 +385,7 @@ describe("a reconciler that cannot read its own inputs", () => {
     // "no run judged any of these", and acting on it would reopen every
     // close in the window.
     const fake = createFakeRuns({ issues: [closed(1, "2026-08-26T12:00:00Z")], runsFail: true });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome.action).toBe("degraded");
     expect(fake.reopened).toEqual([]);
@@ -356,7 +398,7 @@ describe("a reconciler that cannot read its own inputs", () => {
       issues: [closed(1, "2026-08-26T12:00:00Z")],
       gateStartFails: true,
     });
-    const outcome = runReconcile({ now: NOW, gh: fake.gh, log: silent });
+    const outcome = runReconcile({ now: NOW, owner: OWNER, gh: fake.gh, log: silent });
 
     expect(outcome.action).toBe("degraded");
     expect(fake.reopened).toEqual([]);

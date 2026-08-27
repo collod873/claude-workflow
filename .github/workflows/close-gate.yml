@@ -39,7 +39,25 @@ permissions:
 
 jobs:
   close-gate:
-    if: github.event.issue.state_reason == 'completed'
+    # Two scope rules, both spelled again in `close-gate.ts` because no compiler
+    # sees across this boundary and `close-gate.test.ts` is what does.
+    #
+    # `state_reason` is the older one: only a close marked `completed` claims a
+    # delivery, so only one gets a runner.
+    #
+    # The author check is what a public repository adds (ADR-0073). Anyone can
+    # file an issue here and anyone can close their own, and GitHub marks that
+    # close `completed` exactly as it marks the owner's — so without this the
+    # gate would spend Haiku salvaging a closing record for work this repo never
+    # did, once per stranger per close, unbounded. Authorship rather than the
+    # closer is the rule because the delivery units are `to-tickets.yml`'s
+    # sub-issues, which this repo's own automation authors: a bot author is
+    # inside the scope, a third-party human is outside it. `gateJudgesCloseBy`
+    # is the same rule in TypeScript.
+    if: >-
+      github.event.issue.state_reason == 'completed' &&
+      (github.event.issue.user.type == 'Bot' ||
+       github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
