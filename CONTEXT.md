@@ -166,6 +166,10 @@ it cannot drift and the reason installing is a call rather than a copy. See
 [ADR-0055](docs/adr/0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md).
 _Avoid_: shim, wrapper, caller, vendored copy
 
+**Checkpoint**:
+A stage's validated output, written under a name of its own and kept after the run, carrying the key that says which run it is still good for. A stage whose checkpoint is present and whose key still matches is skipped rather than re-run.
+_Avoid_: cache, savepoint, handoff, artifact
+
 ### The pipeline
 
 **Lane**:
