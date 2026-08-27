@@ -121,17 +121,25 @@ function preamble(body: string): string {
 
 /**
  * The pointer conventions ADR-0045 found already in use, hand-written and
- * drifting: `Resolves:`, `Researches:`, `Research for`. All three count as
- * "has a pointer" here — the counter's job is to catch a note with **no**
- * pointer at all, not to police which of the drifting spellings it used.
+ * drifting: `Resolves:`, `Researches:`, `Research for` — plus `Unprompted:`,
+ * the fourth spelling ADR-0072 adds for a note written with no issue behind
+ * it at all. All four count as "has a pointer" here, because the counter's
+ * job is to catch a note that says **nothing** about where it came from, and
+ * *no issue preceded this* is an answer rather than a gap. It does not police
+ * which of the drifting spellings a note used, and it does not check that a
+ * cited issue is the right one — nothing ever could.
+ *
+ * `Unprompted:` is a separate field rather than a `Resolves: none`, which the
+ * pointer test would already accept: a declared absence and a real pointer
+ * have to stay separable to anything reading the corpus (ADR-0072).
  */
-const RESEARCH_POINTER_RE = /\b(Resolves|Researches):|Research for\b/;
+const RESEARCH_POINTER_RE = /\b(Resolves|Researches|Unprompted):|Research for\b/;
 
 export function hasResolvesPointer(body: string): boolean {
   return RESEARCH_POINTER_RE.test(preamble(body));
 }
 
-/** A research note with no issue pointer in its preamble — ADR-0045's second finding. */
+/** A research note whose preamble says nothing about where it came from — ADR-0045's second finding. */
 export function isMissingResolvesField(note: ResearchNote): boolean {
   return !hasResolvesPointer(note.body);
 }

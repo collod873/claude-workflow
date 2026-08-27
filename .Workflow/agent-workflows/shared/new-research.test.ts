@@ -50,6 +50,20 @@ describe("bin/new-research", () => {
     expect(readFileSync(file, "utf8")).toContain("Resolves: #128");
   });
 
+  // ADR-0072: a note nobody asked for says so, and the tool writes that field for the same reason
+  // it writes the other one — a state the counter asks about has to be as cheap to declare.
+  it("writes Unprompted: instead, and never a Resolves:, when the invocation names no issue", () => {
+    const dir = makeScratchRepo();
+    scratchDirs.push(dir);
+
+    const result = runNewResearch(dir, ["none", "a title"]);
+
+    expect(result.status).toBe(0);
+    const written = readFileSync(result.stdout.trim(), "utf8");
+    expect(written).toContain("Unprompted: no issue preceded this note");
+    expect(written).not.toContain("Resolves:");
+  });
+
   it("derives the next filename number the same way bin/new-adr does: highest existing plus one, four digits", () => {
     const dir = makeScratchRepo();
     scratchDirs.push(dir);

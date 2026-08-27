@@ -4,11 +4,16 @@
 # Resolves: field ADR-0045 requires: the note is the repair path for the
 # missing-trailer counter, so the field has to be free to write, not a
 # convention someone remembers.
+#
+# `none` in place of the issue number writes `Unprompted:` instead — a note
+# nobody asked for, saying so (ADR-0072). Free for the same reason: a state the
+# counter asks about has to be as cheap to declare as the other one.
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-  echo "usage: bin/new-research <issue-number> \"the title\"" >&2
+  echo "usage: bin/new-research <issue-number|none> \"the title\"" >&2
   echo "  e.g. bin/new-research 128 \"Managed runner fleets, priced against both workloads\"" >&2
+  echo "       bin/new-research none \"Every prompt typed in this repo\"" >&2
   exit 1
 fi
 
@@ -33,12 +38,18 @@ slug=$(printf '%s' "$title" \
 file="$research_dir/$next-$slug.md"
 [ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
 
+if [ "$issue" = "none" ]; then
+  pointer="Unprompted: no issue preceded this note"
+else
+  pointer="Resolves: #$issue"
+fi
+
 cat > "$file" <<EOF
 # $title
 
 Recorded $(date +%Y-%m-%d).
 
-Resolves: #$issue
+$pointer
 EOF
 
 echo "$file"

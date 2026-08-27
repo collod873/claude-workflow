@@ -153,6 +153,14 @@ describe("hasResolvesPointer", () => {
     expect(hasResolvesPointer("Research for [x](https://example/1)\n\n## Section\n")).toBe(true);
   });
 
+  // ADR-0072. The two notes #132 could not clear answer no issue because none was ever filed, and
+  // the counter has to read that as an answer — a line nobody can ever tick is what trains a reader
+  // to skip the list.
+  it("takes the Unprompted: declaration a note with no antecedent issue carries", () => {
+    expect(hasResolvesPointer("**Unprompted:** no issue preceded this note\n\n## Section\n")).toBe(true);
+    expect(hasResolvesPointer("Unprompted: no issue preceded this note\n\n## Section\n")).toBe(true);
+  });
+
   it("leaves a note whose preamble carries no pointer at all", () => {
     expect(hasResolvesPointer("**Status:** measured\n\n## Section\n")).toBe(false);
   });

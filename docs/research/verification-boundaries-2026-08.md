@@ -1,6 +1,6 @@
 # Nothing in the pipeline gates code on tests
 
-**Measured:** 2026-08-22 · **Status:** measured except where marked · **Scope:** Lumaria + `mattpocock/course-video-manager` as the external reference
+**Measured:** 2026-08-22 · **Unprompted:** no issue preceded this note — written from the question below, and the four decisions it sets up were still open (ADR-0072) · **Status:** measured except where marked · **Scope:** Lumaria + `mattpocock/course-video-manager` as the external reference
 
 The question that started this: *why does Matt Pocock not regularly run CI when we run it on every
 push — is ours useless overhead?* The premise turned out to be false in both directions, and the
