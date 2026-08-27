@@ -1,0 +1,60 @@
+name: Lost-dispatch counter
+
+# #127, ADR-0062, ADR-0065: a `repository_dispatch` that never arrived produces no run at all, so
+# #41's run watchdog — which reads runs — has nothing to sweep. The only surviving trace is the
+# label itself: ADR-0062 rules `sliceable` a durable trace rather than a trigger, applied by the
+# same job that sends the dispatch, so a PRD that carries it with no sub-issues and no completed
+# slicing run is exactly the shape of a dispatch that was owed and never showed up.
+#
+# Fires on the label being added, not on a clock (ADR-0004) — the event that makes this counter
+# non-vacuous is a spec being judged ready to slice, and nothing else moves the fact this reads.
+#
+# `.Workflow/agent-workflows/watchdog/lost-dispatch.ts` is the judgement half — a pure function
+# over one PRD's already-fetched state. `lost-dispatch-counter.ts` is the IO half this job runs: it
+# reads this PRD fresh every time it fires, so nothing here is stored and nothing here can go
+# stale. One standing issue collects every PRD this counter finds lost, the shape #124's
+# missing-trailer counter established for a `Count: 1` counter.
+
+"on":
+  issues:
+    types: [labeled]
+
+permissions:
+  # read: the checkout.
+  contents: read
+  # read: the slicing lane's run history (`actions/runs`), which `hasCompletedSlicingRun` reads
+  # alongside `subIssuesPath` before this counter judges a PRD lost.
+  actions: read
+  # write: the signal itself, and the sub-issues/label read this counter judges against.
+  issues: write
+
+concurrency:
+  group: lost-dispatch-counter
+  cancel-in-progress: false
+
+jobs:
+  count:
+    if: github.event.label.name == 'sliceable'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LABEL_NAME: ${{ github.event.label.name }}
+      PRD_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no
+      # separate reporting step here.
+      - name: Count a lost dispatch
+        run: npx tsx .Workflow/agent-workflows/watchdog/lost-dispatch-counter.ts
