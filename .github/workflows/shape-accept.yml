@@ -78,5 +78,6 @@ jobs:
         if: failure()
         run: |
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
           body=$(printf 'The `%s` accept failed.\n\nNothing here is automatic to recover: check whether `docs/adr/` and `CONTEXT.md` took the writes before re-applying the label.\n\n**Workflow run:** %s\n' "$VERB" "$run_url")
           gh issue comment "$IDEA_NUMBER" --body "$body"
