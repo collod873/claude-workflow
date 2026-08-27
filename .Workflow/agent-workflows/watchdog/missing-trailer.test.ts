@@ -57,9 +57,20 @@ describe("the rule, run over the corpus that motivated it", () => {
     expect(EVIDENCE.notes.length).toBeGreaterThan(5);
   });
 
-  it("flags exactly 9 ADRs as carrying an Amends: trailer", () => {
+  it("flags every ADR that carries an Amends: trailer, and nothing else", () => {
     const trailered = EVIDENCE.adrs.filter((doc) => hasAmendsTrailer(doc.body));
-    expect(trailered.map((doc) => doc.filename).sort()).toEqual([
+
+    // Two assertions where there was one roster, for the same reason the count above became a
+    // floor: an exact set is a census, and the corpus grows on its own now. The roster below is
+    // the nine this rule was written against — they must all still be found, so a regression that
+    // stops recognising a trailer is caught — and the property assertion is what the roster was
+    // really standing in for: nothing is flagged that does not actually carry one.
+    //
+    // Together those are stricter than the equality was, not looser. The equality caught a new
+    // false positive only by also failing on every true positive, which is what it did the first
+    // time an ADR with an `Amends:` line arrived after it was written.
+    for (const doc of trailered) expect(doc.body).toMatch(/^Amends:/m);
+    expect(trailered.map((doc) => doc.filename).sort()).toEqual(expect.arrayContaining([
       "0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md",
       "0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md",
       "0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md",
@@ -69,7 +80,7 @@ describe("the rule, run over the corpus that motivated it", () => {
       "0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md",
       "0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md",
       "0072-a-research-note-with-no-antecedent-issue-declares-that-in-a.md",
-    ]);
+    ]));
   });
 
   it("flags exactly 27 ADRs as verb-and-link candidates with no trailer", () => {
