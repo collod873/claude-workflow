@@ -184,15 +184,17 @@ Ordered. Nothing further up the list is optional for anything below it.
      `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
      stands" is a static tree scan rather than a question about history.
 4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. ADR-0018, ADR-0020.
-5. **The pre-merge gate — mostly retired, and the rest is bought.** Retired by the gauntlet and its
+5. **The pre-merge gate — mostly retired, and the rest is accepted.** Retired by the gauntlet and its
    four venues; `DESIGN.md` §06 carries the contract, and
    [`docs/research/actions-billing-2026-08.md`](docs/research/actions-billing-2026-08.md) carries the
    regression that justified it.
 
-   *The open half:* the free venues below Actions refuse only at push, and `--no-verify` still gets
-   past that. Closing it needs branch protection, which is a $4/month purchase on a private Free
-   account and waits on the fixer — nothing else in the design clears a red without the owner
-   (ADR-0011).
+   *The open half, and it stays open:* the free venues below Actions refuse only at push, and
+   `--no-verify` still gets past that. Closing it needed branch protection — a $4/month purchase on
+   a private Free account — and that purchase is declined
+   ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)).
+   So this half is not "bought" but **accepted**: the bypass counter measures how often it costs
+   something (four red trees on `main` to date) and no longer proposes anything about it.
 
 ---
 

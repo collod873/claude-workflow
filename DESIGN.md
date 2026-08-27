@@ -549,8 +549,8 @@ stronger than "no red check."
 so. The only thing that can violate this check is a dispatched implementer, so it has no traffic
 until lane 05 exists and ships alongside its own violator; and ADR-0011's failure mode is a refusal
 that *parks* work because clearing it needs reasoning nobody automated, where the repair here is
-`git checkout main -- tests/acceptance/`. Enforcement is not branch protection, which is move 10 and
-costs money — lane 05 auto-merges on green and lane 08's warden merges, so the **merge actor** reads
+`git checkout main -- tests/acceptance/`. Enforcement is not branch protection, which was move 10 and is
+now declined ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)) — lane 05 auto-merges on green and lane 08's warden merges, so the **merge actor** reads
 the check and a red refuses without it.
 
 ### 05 · Build
@@ -571,8 +571,8 @@ does not survive the map — [ADR-0027](docs/adr/0027-six-of-era-6-s-eleven-verb
 **The fixer is what unlocks the last move.** It is the only thing in the design that clears a red
 without the owner, so nothing may be promoted to refusing before it exists —
 [ADR-0011](docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md), and the reason branch
-protection sits at move 10 rather than move 1. Move 10's timing rides on the fixer **existing**, not
-on what its cap is, so ADR-0041 does not move it.
+protection sat at move 10 rather than move 1. That ordering is now moot: move 10 is declined
+([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)), so the fixer no longer gates anything downstream of itself.
 
 **There is no concurrency dial.** Implementer count is however many ready disjoint slices lane 03
 cut, absorbed by lane 08's single serialised merge. A WIP number would duplicate both
@@ -630,8 +630,9 @@ directly, and the signal to revisit is implementers rediscovering the same thing
 > seeded database, lane 04's acceptance tests, contract tests against lane 03's seam manifest.
 > Nothing below Actions can carry them.
 > — **Every venue below Actions is bypassable.** `--no-verify` skips the push and commit hooks; a
-> `PostToolUse` hook is fed back as tool output and an agent may read it and proceed anyway. Until
-> move 10 there is **no venue an agent cannot route around**. What counts how often one does is the
+> `PostToolUse` hook is fed back as tool output and an agent may read it and proceed anyway. Move 10
+> would have closed this and is declined ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)), so there is
+> **no venue an agent cannot route around**, and there will not be one. What counts how often one does is the
 > **bypass counter** (§6), and it counts one event only — a commit reaching `main` with a tree
 > `bin/gauntlet push` refuses. A red tree mid-session is not a bypass; it is a legitimate state, and
 > the harm exists only where the red survives to trunk
@@ -668,7 +669,7 @@ reached `main` in five days, all genuine breakage.
 
 | Venue | Budget | Carries | State |
 |---|---|---|---|
-| **In Actions** — on the PR | <10min | Integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` runs but **refuses nothing**. Branch protection is move 10 — it costs $4/month, because protected branches do not exist on a private repo under the Free plan |
+| **In Actions** — on the PR | <10min | Integration, seeded database, anything needing a runner; acceptance tests (lane 04); contract tests against the seam manifest | `verify.yml` runs but **refuses nothing**, permanently. Branch protection was move 10 — $4/month, because protected branches do not exist on a private repo under the Free plan — and it is declined outright ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)), so this venue never becomes a gate |
 | **Overnight** | unbounded | Broad sweeps, visual regression, flake quarantine re-runs | Absent, and dormant until a repo has a UI |
 
 **Every check fits every venue here, and that is a fact about this repo's size rather than a
@@ -951,7 +952,7 @@ remain, and each row states its own contract:
 
 | Counter | Fires on — the event | At — the count | Files — the issue | Proposing — the action | Sees |
 |---|---|---|---|---|---|
-| **Bypass** | `verify.yml` completing on a push to `main` — `bypass-counter.yml`, a `workflow_run` trigger scoped to `head_branch == 'main'` | 3 | *"verify.yml has bypassed the free gates — bring move 10 forward"*, listing the offending runs and carrying a `<!-- bypass-counter:N -->` marker, so a declined proposal re-proposes only once the count has grown past the N it recorded | Bring move 10 forward. Counts runs whose failed step is `Gauntlet` — a tree that reached trunk that the free venues would have refused. Not the code: **the gate not having run** | 7 |
+| **Bypass** | `verify.yml` completing on a push to `main` — `bypass-counter.yml`, a `workflow_run` trigger scoped to `head_branch == 'main'` | 3 | *"verify.yml has bypassed the free gates — bring move 10 forward"*, listing the offending runs and carrying a `<!-- bypass-counter:N -->` marker, so a proposal closed **completed** re-proposes only once the count has grown past the N it recorded — and one closed **not planned** never re-proposes at all, which is where this one now stands ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)) | Bring move 10 forward. Declined; the count is still computed, and read from the workflow log rather than filed. Counts runs whose failed step is `Gauntlet` — a tree that reached trunk that the free venues would have refused. Not the code: **the gate not having run** | 7 |
 | **`not_planned` closes** | A lane 07 finding issue closing | 3 grow · 20 delete | An issue against the refuter fleet's size — unbuilt, and ships with [move 7a](https://github.com/collod873/claude-workflow/issues/99) rather than with the counters below it | Add a refuter, or delete the fleet — the tracker (class 6) crossed with the owner's behaviour (class 9) | 6 × 9 |
 | **Cross-repo** | A finding recorded, in any repo | 2 — the second site | An issue here naming the defect and both sites it was seen at — unbuilt, and ships with [move 12](https://github.com/collod873/claude-workflow/issues/114), the move that supplies a second repo | File here a machinery defect found elsewhere. C3's candidate trigger, applied across the estate | 10 |
 | **Lost dispatch** | The `sliceable` label being added to a spec — `lost-dispatch-counter.yml`, an `issues: [labeled]` trigger gated on that label's name | 1 | One standing *"Lost dispatch: a spec carrying `sliceable` never sliced"*, keyed on a `<!-- lost-dispatch -->` marker; a further lost PRD arrives as a comment on it rather than as a second issue | Slice the named PRD by hand, or find out why the `repository_dispatch` never arrived. A PRD carrying the label with no sub-issues and no completed slicing run | 7 |
@@ -996,13 +997,19 @@ unbatched counter is not an unread one. Nothing below waits on move 9.
 2026-08-26: of 34 `verify.yml` runs on `main`, **four failed at the Gauntlet step** — roughly one push
 in nine arriving red, produced continuously since 2026-08-23 and read by nobody. It files an issue at
 **three**, proposing that **move 10 be brought forward**, which is the only repair §06 names for this
-class; a declined proposal re-proposes only when the count has grown. It fires the day it ships, and
-that is the finding rather than a mis-set threshold.
+class. It fired the day it shipped — [#131](https://github.com/collod873/claude-workflow/issues/131),
+at four — and that is the finding rather than a mis-set threshold.
 
-It is **one-sided and needs no delete trigger**, which no other counter here can say: move 10 makes
-its class structurally impossible, so its probation is discharged by a build landing rather than by a
-zero count (ADR-0031's shape, satisfied without a second number). Its success condition is its own
-deletion.
+**The proposal was refused, and the refusal is permanent** ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)).
+Branch protection is not being bought at any count, so #131 is closed *not planned* and the counter
+stops asking: a `completed` close re-proposes once the count grows, a `not planned` close never does.
+It keeps counting, into the workflow's own log, because the measurement is the only thing that could
+reopen the ruling.
+
+It was **one-sided and needed no delete trigger** on the reasoning that move 10 would make its class
+structurally impossible, discharging its probation by a build landing rather than by a zero count
+(ADR-0031's shape, satisfied without a second number). That build is not coming, so the probation is
+discharged by the ruling instead — the same effect, reached by a decision rather than a delivery.
 
 Two things it deliberately does not see. **The session corpus cannot carry the in-turn bypass** —
 `spine.ts` drops tool traffic and harness-injected entries by design, so the gauntlet's block message
@@ -1201,13 +1208,14 @@ which updates itself when work closes. What stays here is why the order is the o
 waited. Blocker 5 is retired in two halves at opposite ends of the list — the free venues first, the
 refusal at trunk last — because a gate with nothing behind it parks work rather than stopping it,
 and parked work drains onto the owner. The fixer is the only thing in the design that clears a red
-without the owner, which is why branch protection waits on the lane that builds it.
+without the owner, which is why branch protection waited on the lane that builds it.
 
-**Branch protection costs money and needs a pull request.** This repo is private on a Free account,
-so protection is a purchase (~$4/month), not a setting — the API answers `403 Upgrade to GitHub
-Pro`. And it has never opened a pull request: work lands by local merge and a direct push to `main`,
-which protection forbids. Whatever drives lane 05 by then has to open a PR and let it auto-merge on
-green, which is lane 05's shape anyway.
+**Branch protection is declined, so the list ends one move shorter** ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)).
+It was a purchase (~$4/month) on a private Free account rather than a setting — the API answers
+`403 Upgrade to GitHub Pro` — and it would additionally have required this repo to start opening
+pull requests, since work lands here by local merge and a direct push to `main`. Neither cost is
+being paid. The refusal at trunk that blocker 5 ends on does not arrive, and the free venues are
+the whole gate.
 
 **The bootstrap has an expiry.** Until lane 05 runs on a runner, work on this repo is driven from the
 workstation, which ADR-0002 forbids. That is a scaffold, and it expires the moment lane 05 lands.
@@ -1270,9 +1278,11 @@ open.
    before it was built, so there is nothing left to calibrate
    ([ADR-0043](docs/adr/0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md)).
 5. ~~**Nothing counts gate bypass** (lane 06).~~ **Ruled** — a bypass is a red tree reaching `main`,
-   counted from `verify.yml`'s failed step names, filing at three and retired by move 10
+   counted from `verify.yml`'s failed step names, filing at three
    ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)). It
-   was never unmeasured: four of 34 runs had already recorded it.
+   was never unmeasured: four of 34 runs had already recorded it. It is no longer *retired by move
+   10* — that move is declined ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)), so the
+   counter keeps counting and stops proposing.
 6. ~~**Intake templates are per-repo copies** (lane 00).~~ **Dissolved** —
    [ADR-0057](docs/adr/0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) put
    `.github/ISSUE_TEMPLATE/` on the installer's **Wires** list, derived and overwritten on re-run.

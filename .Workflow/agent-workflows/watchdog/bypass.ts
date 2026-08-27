@@ -105,7 +105,9 @@ export function issueBody(runs: VerifyRun[]): string {
     "This does not count `Gauntlet could not run` (exit 2, an environment problem) or",
     "`Lint workflow files` (actionlint on the workflow YAML itself) — neither is a bypass.",
     "",
-    "If this is declined, it will not ask again until the count above has grown.",
+    "Close this **completed** and it will not ask again until the count above has grown. Close it",
+    "**not planned** and it will not ask again at all — the count is still computed, and still in",
+    "this workflow's log, for whoever goes looking.",
     "",
     countMarker(count),
   ].join("\n");

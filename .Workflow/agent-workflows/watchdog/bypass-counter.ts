@@ -24,6 +24,13 @@ import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type V
  * once the count has grown past what that issue recorded, so a "no" cannot
  * be nagged past.
  *
+ * **And a "no" can be permanent.** Move 10 is declined outright (ADR-0071),
+ * which leaves this counter's only proposal one the owner has ruled on for
+ * good rather than for now. A carrier closed as *not planned* silences the
+ * proposal at any count. The count itself is still computed and still
+ * logged, because the measurement is the thing that would change the ruling
+ * — but it is read by whoever goes looking, never filed at anyone.
+ *
  * **Rides `workflow_run` on `verify.yml` completing, not a clock.** ADR-0004
  * forbids a cadence; `verify.yml` completing on `main` is the event this
  * counts, so it is also the event that re-evaluates the count. The job-level
@@ -57,6 +64,8 @@ const SignalIssue = z.object({
   number: z.number(),
   body: z.string().nullable(),
   state: z.string(),
+  /** `COMPLETED`, `NOT_PLANNED`, `REOPENED`, or absent — GitHub's own reason for the close. */
+  stateReason: z.string().nullable().optional(),
 });
 
 /** One page of `verify.yml`'s own runs. A hundred reaches back through this repo's entire history to date many times over. */
@@ -103,9 +112,21 @@ function failedStepName(gh: GhExec, runId: number): string | undefined {
 
 /** Every issue carrying this counter's marker, open or closed. */
 function readSignals(gh: GhExec): Array<z.infer<typeof SignalIssue>> {
-  const raw = gh(["issue", "list", "--state", "all", "--limit", "200", "--json", "number,body,state"]);
+  const raw = gh([
+    "issue",
+    "list",
+    "--state",
+    "all",
+    "--limit",
+    "200",
+    "--json",
+    "number,body,state,stateReason",
+  ]);
   return SignalIssue.array().parse(JSON.parse(raw));
 }
+
+/** GitHub's close reason for "this will not be done", as `gh --json stateReason` spells it. */
+const NOT_PLANNED = "NOT_PLANNED";
 
 export interface BypassCounterOptions {
   gh: GhExec;
@@ -116,7 +137,12 @@ export interface BypassCounterOptions {
 
 export interface BypassCounterOutcome {
   /** A stable slug for the log — mirrors `run-watchdog.ts`'s own `Outcome.code`. */
-  code: "below-threshold" | "already-proposed" | "declined-and-not-grown" | "proposed";
+  code:
+    | "below-threshold"
+    | "already-proposed"
+    | "declined-and-not-grown"
+    | "declined-for-good"
+    | "proposed";
   count: number;
   issue?: number;
   wrote?: "opened";
@@ -156,6 +182,21 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
   if (standing) {
     log(`counted: ${count} bypass(es) — proposal #${standing.number} already stands`);
     return { code: "already-proposed", count };
+  }
+
+  // A proposal closed as **not planned** is a ruling on the proposal itself, not on this instance
+  // of it: the owner has declined branch protection outright (ADR-0071), and a growing count is an
+  // argument already heard and ruled on. Growth reopens a `completed` close, never this one. ADR-0037
+  // already reads `not_planned` this way — "a false alarm the owner declined to act on" — so this
+  // is that vocabulary applied to the one place it had not been.
+  //
+  // The counter keeps counting. What it stops doing is asking.
+  const refused = carriers.find(
+    (issue) => issue.state.toUpperCase() === "CLOSED" && issue.stateReason?.toUpperCase() === NOT_PLANNED,
+  );
+  if (refused) {
+    log(`counted: ${count} bypass(es) — #${refused.number} was closed as not planned, so this asks no further`);
+    return { code: "declined-for-good", count };
   }
 
   // A closed carrier is a proposal the owner has already ruled on. Re-filing at the same count would
