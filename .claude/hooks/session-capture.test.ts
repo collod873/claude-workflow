@@ -15,8 +15,62 @@ const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const HOOK = join(REPO_ROOT, ".claude/hooks/session-capture.sh");
 
 const dirs: string[] = [];
+
+/**
+ * Log paths of hook runs this test started, waited on below before anything is deleted (#129).
+ *
+ * The hook hands off to a **detached** child, so the run outlives the `spawnSync` that started it
+ * and keeps writing into the very directories the teardown removes. `waitForCaptureFile` returns
+ * the moment the corpus file lands, and the child's publish half — and its second log line — comes
+ * *after* that: measured at 43 of 60 runs on an idle workstation, more under load. The teardown
+ * then races a live writer, and loses whenever the write falls inside `rmSync`'s own
+ * readdir-then-rmdir window, which is the `ENOTEMPTY` #129 reported.
+ *
+ * `mkdtempSync` was never the problem — it already gives every process its own directory, so two
+ * concurrent suites cannot see each other's trees. Concurrency is not the cause here; it is what
+ * widens the window by descheduling the child mid-handoff.
+ */
+const pendingLogs: string[] = [];
+
+/**
+ * How long to wait for a detached run to finish. Generous because it is only ever *reached* by a
+ * run that has already gone wrong — a healthy one settles in milliseconds — and because giving up
+ * is not a failure: the retrying delete below still cleans up, and a temp directory is not worth
+ * failing a test over.
+ */
+const SETTLE_TIMEOUT_MS = 5_000;
+
+/**
+ * Waits until the detached child behind `logPath` has stopped writing.
+ *
+ * `captured …` is the one log line the hook writes that is not its last — every other outcome ends
+ * the run. So "the last line is not a `captured`" is the whole settled condition, and it does not
+ * have to know the publish half's vocabulary to recognise the end of one.
+ */
+function settle(logPath: string): void {
+  const start = Date.now();
+  for (;;) {
+    const lines = (existsSync(logPath) ? readFileSync(logPath, "utf8") : "").trimEnd().split("\n");
+    const last = lines[lines.length - 1] ?? "";
+    if (last && !/\tcaptured /.test(last)) return;
+    if (Date.now() - start > SETTLE_TIMEOUT_MS) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+}
+
 afterEach(() => {
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+  while (pendingLogs.length) settle(pendingLogs.pop()!);
+  while (dirs.length) {
+    // `maxRetries` for the residue of the race above: a run that never logged a terminal line is
+    // one `settle` gave up on, and it may still be mid-write. A temp directory that survives is
+    // the OS's problem, never a red test — this is cleanup, and cleanup that can fail a test is a
+    // second way to be wrong about the code under it.
+    try {
+      rmSync(dirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    } catch {
+      /* ignore */
+    }
+  }
 });
 
 function tmpDir(prefix: string): string {
@@ -65,6 +119,7 @@ function runHook(payload: unknown, env: Record<string, string> = {}): RunResult 
   const outputDir = tmpDir("session-capture-out-");
   const logDir = tmpDir("session-capture-log-");
   const logPath = join(logDir, "session-capture.log");
+  pendingLogs.push(logPath);
 
   const run = spawnSync(HOOK, [], {
     input: JSON.stringify(payload),
@@ -334,6 +389,40 @@ describe("session-capture.sh — the fixture transcript", () => {
     const log = waitForLogLine(result.logPath);
     expect(log).toContain("captured abcdef1234567890");
   });
+
+  /**
+   * #129. The suite used to delete its scratch directories while the hook's detached child was
+   * still writing into them, and `rmSync` threw `ENOTEMPTY` whenever a write landed inside its
+   * readdir-then-rmdir window — a red gate that reads, at a glance, as the merge that happened to
+   * be in flight.
+   *
+   * This pins the rule the teardown now relies on: `captured` is not the end of a run, and the
+   * line after it is. It goes red if a later log line is ever appended past the publish half,
+   * which would make the teardown start racing again with nothing else to notice.
+   */
+  it("keeps writing after the capture file lands, and stops once settle returns", () => {
+    const result = runHook({
+      session_id: "abcdef1234567890",
+      transcript_path: writeTranscript([
+        { type: "user", uuid: "u1", origin: { kind: "human" }, promptSource: "typed", message: { content: "Ship it." } },
+        { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "On it." }] } },
+      ]),
+      cwd: "test-project",
+      hook_event_name: "SessionEnd",
+      reason: "clear",
+    });
+
+    waitForCaptureFile(result.outputDir);
+    settle(result.logPath);
+
+    const settled = readLog(result.logPath);
+    expect(settled).toContain("captured abcdef1234567890");
+    expect(settled.trimEnd().split("\n").at(-1)).not.toContain("captured ");
+
+    // Nothing more arrives — so a delete issued here cannot race a writer.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    expect(readLog(result.logPath)).toBe(settled);
+  });
 });
 
 describe("session-capture.sh — failing open", () => {
@@ -415,6 +504,7 @@ describe("session-capture.sh — failing open", () => {
     const outputDir = tmpDir("session-capture-out-");
     const logDir = tmpDir("session-capture-log-");
     const logPath = join(logDir, "session-capture.log");
+    pendingLogs.push(logPath);
 
     const run = spawnSync(HOOK, [], {
       input: "not json at all",
