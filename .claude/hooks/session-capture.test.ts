@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 // The hook is a pure function of stdin to (exit code, log file, capture directory), so it's
@@ -43,16 +43,28 @@ const SETTLE_TIMEOUT_MS = 5_000;
 /**
  * Waits until the detached child behind `logPath` has stopped writing.
  *
- * `captured …` is the one log line the hook writes that is not its last — every other outcome ends
- * the run. So "the last line is not a `captured`" is the whole settled condition, and it does not
- * have to know the publish half's vocabulary to recognise the end of one.
+ * `captured …` used to be the one log line the hook writes that is not its last — every other
+ * outcome ended the run, so "the last line is not a `captured`" was the whole settled condition.
+ * The flush step (session-capture-hook.mjs's `flushKnowledgeBase`) now runs between `captured` and
+ * the publish half, logging its own `flushed <n>`/`skipped push-*` line or none at all — a
+ * variable-length middle a position-only check can no longer see past. The publish half's own
+ * outcome line (`published …` or one of its `skipped publish-*` variants) is still always the very
+ * last thing `main()` writes regardless of what the flush step did or didn't log, so its
+ * appearance is "done" for a run that ever reached the corpus write; a run that never did (an
+ * early `skipped no-transcript-path`-style exit, one line and nothing more) still settles on the
+ * old "any line, and it isn't `captured`" reading, since none of those lines are ever `captured`
+ * -prefixed either.
  */
 function settle(logPath: string): void {
   const start = Date.now();
   for (;;) {
     const lines = (existsSync(logPath) ? readFileSync(logPath, "utf8") : "").trimEnd().split("\n");
     const last = lines[lines.length - 1] ?? "";
-    if (last && !/\tcaptured /.test(last)) return;
+    const sawCaptured = lines.some((l) => /\tcaptured /.test(l));
+    const done = sawCaptured
+      ? lines.some((l) => /\t(published |skipped publish-)/.test(l))
+      : last !== "" && !/\tcaptured /.test(last);
+    if (done) return;
     if (Date.now() - start > SETTLE_TIMEOUT_MS) return;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
   }
@@ -116,10 +128,23 @@ function minimalBinDir(withNode: boolean): string {
 type RunResult = { status: number | null; stdout: string; stderr: string; outputDir: string; logPath: string };
 
 function runHook(payload: unknown, env: Record<string, string> = {}): RunResult {
-  const outputDir = tmpDir("session-capture-out-");
+  // A flush test needs the corpus file to land inside its own Knowledge-Base clone (so there is
+  // something for the flush to commit), not the throwaway directory this would otherwise
+  // generate — so an `env.SESSION_CAPTURE_OUTPUT_DIR` the caller already supplied wins, and this
+  // returns exactly that path rather than one nothing was ever written to.
+  const outputDir = env.SESSION_CAPTURE_OUTPUT_DIR ?? tmpDir("session-capture-out-");
   const logDir = tmpDir("session-capture-log-");
   const logPath = join(logDir, "session-capture.log");
   pendingLogs.push(logPath);
+
+  // Defaults for the two new flush-only env vars: a checkout path that is never created (so
+  // `flushKnowledgeBase`'s own `existsSync` check fails fast, without ever spawning `git`) and a
+  // stamp path under a throwaway dir. Every test that isn't itself exercising the flush step gets
+  // a fast, harmless `skipped push-*` line instead of ever reading or writing the real
+  // Knowledge-Base checkout or the real `~/.claude/kb-flush-stamp` — a test that does care about
+  // the flush overrides both via its own `env` argument.
+  const kbDir = join(tmpDir("session-capture-kb-"), "missing");
+  const kbStampPath = join(tmpDir("session-capture-kb-stamp-"), "stamp");
 
   const run = spawnSync(HOOK, [], {
     input: JSON.stringify(payload),
@@ -129,6 +154,8 @@ function runHook(payload: unknown, env: Record<string, string> = {}): RunResult 
       ...process.env,
       SESSION_CAPTURE_OUTPUT_DIR: outputDir,
       SESSION_CAPTURE_LOG_PATH: logPath,
+      SESSION_CAPTURE_KB_DIR: kbDir,
+      SESSION_CAPTURE_KB_STAMP_PATH: kbStampPath,
       ...env,
     },
   });
@@ -290,6 +317,77 @@ if (isTargetPush(args)) {
     spawnSync(realGit, ["-C", racerRepo, "notes", "--ref=sessions", "add", "-f", "-m", "racer", racerSha], { stdio: "ignore" });
     spawnSync(realGit, ["-C", racerRepo, "push", "-q", "origin", "refs/notes/sessions:refs/notes/sessions"], { stdio: "ignore" });
   }
+}
+
+const result = spawnSync(realGit, args, { stdio: "inherit" });
+process.exit(result.status === null ? 1 : result.status);
+`;
+  writeFileSync(join(dir, "git"), script, { mode: 0o755 });
+  return dir;
+}
+
+// --- Fixtures for the flush step: a bare "Knowledge-Base" remote plus one clone that stands in
+// for `SESSION_CAPTURE_KB_DIR`, always started genuinely empty — `flushKnowledgeBase`'s own
+// first-ever-flush path (no `origin/main` to fetch) is exactly the shape these start from, and
+// `makeBareRemote`/`cloneRepo` above already produce it without a seed commit.
+
+/** Reads the commit subject currently at `refs/heads/main` on a fresh clone of `bareDir`, or `undefined` if that branch doesn't exist there yet. */
+function readKbHeadSubject(bareDir: string): string | undefined {
+  const dir = tmpDir("session-capture-kb-verify-");
+  execFileSync("git", ["clone", "-q", bareDir, "."], { cwd: dir });
+  try {
+    return execFileSync("git", ["-C", dir, "log", "-1", "--format=%s", "origin/main"], { encoding: "utf8" }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Busy-polls until `readKbHeadSubject(bareDir)` matches `substring`, or times out. */
+function waitForKbHeadSubjectToContain(bareDir: string, substring: string, timeoutMs = POLL_TIMEOUT_MS): void {
+  const start = Date.now();
+  for (;;) {
+    if ((readKbHeadSubject(bareDir) ?? "").includes(substring)) return;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`timed out waiting for "${substring}" at the head of ${bareDir}'s refs/heads/main`);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+}
+
+/** Writes an ISO-8601 flush stamp at `path`, `hoursAgo` hours in the past — the exact content shape `flushKnowledgeBase`'s own `writeFlushStamp` produces. */
+function writeStamp(path: string, hoursAgo: number): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString());
+}
+
+/**
+ * A `git` wrapper on PATH that proxies every call straight through to the real `git` — except
+ * every single push of `refs/heads/main` to the Knowledge-Base remote, ahead of which it makes
+ * `racerRepo` commit and push something new first. Unlike `fakeGitRaceBinDir` above (which fires
+ * once, so the retry it forces can succeed), this fires on *every* attempt: the one deterministic
+ * way to force `flushKnowledgeBase`'s "rejected twice in a row" path without relying on real
+ * concurrency, since a race that only wins once is a race the retry survives, not the one this
+ * exercises.
+ */
+function fakeGitAlwaysRejectKbPushBinDir(realGit: string, racerRepo: string): string {
+  const dir = tmpDir("session-capture-fake-git-reject-");
+  const script = `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const realGit = ${JSON.stringify(realGit)};
+const racerRepo = ${JSON.stringify(racerRepo)};
+
+function isTargetPush(a) {
+  return a.includes("push") && a.some((v) => v.endsWith(":refs/heads/main")) && a.includes("origin");
+}
+
+if (isTargetPush(args)) {
+  fs.writeFileSync(path.join(racerRepo, "racer.txt"), String(Date.now()) + Math.random());
+  spawnSync(realGit, ["-C", racerRepo, "add", "-A"], { stdio: "ignore" });
+  spawnSync(realGit, ["-C", racerRepo, "commit", "-q", "-m", "racer"], { stdio: "ignore" });
+  spawnSync(realGit, ["-C", racerRepo, "push", "-q", "origin", "HEAD:refs/heads/main"], { stdio: "ignore" });
 }
 
 const result = spawnSync(realGit, args, { stdio: "inherit" });
@@ -476,11 +574,11 @@ describe("session-capture.sh — failing open", () => {
 
     waitForCaptureFile(result.outputDir);
     // The capture half succeeds outright — no capture-side skip. The minimal bin dir this test
-    // builds carries no `git`, so the publish half's own scope check fails closed and logs its
-    // own, entirely expected `skipped publish-*` line; that is a different half with a different
+    // builds carries no `git`, so both the flush step (`skipped push-*`) and the publish half's
+    // own scope check (`skipped publish-*`) fail closed; those are later halves with a different
     // failure posture (module header), not evidence the repair above it regressed.
     const log = waitForLogToContain(result.logPath, "captured x");
-    expect(log).not.toMatch(/skipped (?!publish-)/);
+    expect(log).not.toMatch(/skipped (?!publish-|push-)/);
   });
 
   it("exits 0, writes no capture file, and logs skipped transcript-missing when the transcript file doesn't exist", () => {
@@ -687,5 +785,251 @@ describe("session-capture.sh — publishing the session record and dispatching t
     // The push itself went through before the dispatch failed — the note is really there.
     const note = readSessionNote(bareDir, head) as { sessionId: string };
     expect(note.sessionId).toBe("session-dispatch-fails");
+  });
+});
+
+describe("session-capture.sh — flushing the Knowledge-Base checkout", () => {
+  it("flushes before the dispatch fires, for a session that ran in this repo", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const kbBareDir = makeBareRemote();
+    const kbCloneDir = cloneRepo(kbBareDir);
+    const kbOutputDir = join(kbCloneDir, "raw", "sessions");
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
+
+    const result = runHook(
+      { session_id: "session-flush", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      {
+        SESSION_CAPTURE_REPO_DIR: repoDir,
+        SESSION_CAPTURE_KB_DIR: kbCloneDir,
+        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,
+        PATH: `${ghBinDir}:${process.env.PATH}`,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain(`published session-flush ${head}`);
+    expect(log).toContain("flushed 1");
+    // Order, not just presence: `flushKnowledgeBase` runs and returns before `dispatchAudit` is
+    // ever reached (module header, main()'s own call order) — a log that is append-only and
+    // written by one synchronous process makes that order directly readable.
+    expect(log.indexOf("flushed 1")).toBeLessThan(log.indexOf("published"));
+
+    waitForKbHeadSubjectToContain(kbBareDir, "flush: 1 session capture");
+    // The commit message names the flush and the count, never the session — this is the only
+    // place either could leak into it, and it must not.
+    expect(readKbHeadSubject(kbBareDir)).toBe("flush: 1 session capture");
+  });
+
+  it("makes no Knowledge-Base push when the session ran elsewhere and the flush stamp is fresh", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+
+    const otherBareDir = makeBareRemote();
+    const otherRepo = cloneRepo(otherBareDir);
+
+    const kbBareDir = makeBareRemote();
+    const kbCloneDir = cloneRepo(kbBareDir);
+    const kbOutputDir = join(kbCloneDir, "raw", "sessions");
+    const kbStampPath = join(tmpDir("session-capture-kb-stamp-fresh-"), "stamp");
+    writeStamp(kbStampPath, 1); // one hour ago — well inside the 24-hour throttle window
+    const freshStamp = readFileSync(kbStampPath, "utf8");
+
+    const transcript = writeTranscript([
+      { type: "user", uuid: "u1", origin: { kind: "human" }, promptSource: "typed", message: { content: "hi" } },
+    ]);
+
+    const result = runHook(
+      { session_id: "session-elsewhere-fresh", transcript_path: transcript, cwd: otherRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      {
+        SESSION_CAPTURE_REPO_DIR: repoDir,
+        SESSION_CAPTURE_KB_DIR: kbCloneDir,
+        SESSION_CAPTURE_KB_STAMP_PATH: kbStampPath,
+        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    const log = waitForLogToContain(result.logPath, "skipped publish-out-of-scope");
+    expect(log).not.toContain("flushed");
+    expect(log).not.toContain("skipped push-");
+    // Nothing ever reached `origin` — the bare remote is still exactly what `makeBareRemote` left it.
+    expect(readKbHeadSubject(kbBareDir)).toBeUndefined();
+    expect(readFileSync(kbStampPath, "utf8")).toBe(freshStamp);
+  });
+
+  it("pushes and rewrites the stamp when the session ran elsewhere and the flush stamp is more than 24 hours old", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+
+    const otherBareDir = makeBareRemote();
+    const otherRepo = cloneRepo(otherBareDir);
+
+    const kbBareDir = makeBareRemote();
+    const kbCloneDir = cloneRepo(kbBareDir);
+    const kbOutputDir = join(kbCloneDir, "raw", "sessions");
+    const kbStampPath = join(tmpDir("session-capture-kb-stamp-stale-"), "stamp");
+    writeStamp(kbStampPath, 25); // just past the 24-hour throttle window
+    const staleStamp = readFileSync(kbStampPath, "utf8");
+
+    const transcript = writeTranscript([
+      { type: "user", uuid: "u1", origin: { kind: "human" }, promptSource: "typed", message: { content: "hi" } },
+    ]);
+
+    const result = runHook(
+      { session_id: "session-elsewhere-stale", transcript_path: transcript, cwd: otherRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      {
+        SESSION_CAPTURE_REPO_DIR: repoDir,
+        SESSION_CAPTURE_KB_DIR: kbCloneDir,
+        SESSION_CAPTURE_KB_STAMP_PATH: kbStampPath,
+        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    // Waits for the publish half's own terminal line, not `flushed 1` — the latter is written
+    // first, and reading right after it would race the still-running publish half (#129).
+    const log = waitForLogToContain(result.logPath, "skipped publish-out-of-scope");
+    expect(log).toContain("flushed 1");
+
+    waitForKbHeadSubjectToContain(kbBareDir, "flush: 1 session capture");
+
+    const rewrittenStamp = readFileSync(kbStampPath, "utf8");
+    expect(rewrittenStamp).not.toBe(staleStamp);
+    expect(Date.now() - Date.parse(rewrittenStamp)).toBeLessThan(60_000);
+  });
+
+  it("logs its own skipped push-* line and still writes the capture file when the Knowledge-Base checkout is missing", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const missingKbDir = join(tmpDir("session-capture-kb-missing-"), "does-not-exist");
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
+
+    const result = runHook(
+      { session_id: "session-kb-missing", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      { SESSION_CAPTURE_REPO_DIR: repoDir, SESSION_CAPTURE_KB_DIR: missingKbDir, PATH: `${ghBinDir}:${process.env.PATH}` },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    // Waits for `published`, not merely `skipped push-`: the latter appears well before `main()`
+    // is done, and reading at that point would race the publish half exactly as #129 did.
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain("skipped push-");
+    expect(log).toContain("no Knowledge-Base checkout");
+    // The note push and the dispatch are unconditionally attempted regardless of the flush's own
+    // outcome (module header) — the failure above must not have taken them down with it.
+    expect(log).toContain(`published session-kb-missing ${head}`);
+  });
+
+  it("logs its own skipped push-* line when the push is rejected twice in a row", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const kbBareDir = makeBareRemote();
+    const kbCloneDir = cloneRepo(kbBareDir);
+    const kbOutputDir = join(kbCloneDir, "raw", "sessions");
+    const racerRepo = cloneRepo(kbBareDir);
+
+    const gitBinDir = fakeGitAlwaysRejectKbPushBinDir(onPath("git"), racerRepo);
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
+
+    const result = runHook(
+      { session_id: "session-kb-rejected", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      {
+        SESSION_CAPTURE_REPO_DIR: repoDir,
+        SESSION_CAPTURE_KB_DIR: kbCloneDir,
+        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,
+        PATH: `${gitBinDir}:${ghBinDir}:${process.env.PATH}`,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    // Waits for `published`, not merely `skipped push-` — see the "missing checkout" test above.
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain("skipped push-");
+    expect(log).toContain("rejected twice in a row");
+    expect(log).not.toContain("flushed");
+    // The racer owns `refs/heads/main` on the Knowledge-Base remote, not us.
+    expect(readKbHeadSubject(kbBareDir)).toBe("racer");
+    // A KB push loses its race on every attempt — the notes-ref push (a different remote,
+    // `repoDir`'s own bare) is untouched by it and still succeeds.
+    expect(log).toContain(`published session-kb-rejected ${head}`);
+  });
+
+  it("logs its own skipped push-* line when the Knowledge-Base remote is unreachable", () => {
+    const bareDir = makeBareRemote();
+    const repoDir = cloneRepo(bareDir);
+    const head = commitAndPush(repoDir, "a.ts", "export const a = 1;\n", "work", "2026-08-10T12:00:00Z");
+    const sessionRepo = cloneRepo(bareDir);
+
+    const kbBareDir = makeBareRemote();
+    const kbCloneDir = cloneRepo(kbBareDir);
+    const kbOutputDir = join(kbCloneDir, "raw", "sessions");
+
+    // Breaks connectivity without touching the clone's own git config — `origin` still reads back
+    // the same (now-dead) path, so the failure is exactly the flush's own fetch, not a setup slip.
+    rmSync(kbBareDir, { recursive: true, force: true });
+
+    const ghLogPath = join(tmpDir("session-capture-gh-log-"), "gh.log");
+    const ghBinDir = fakeGhBinDir(ghLogPath);
+
+    const transcript = writeTranscript(publishTranscript("2026-08-10T12:00:00Z", sessionRepo));
+
+    const result = runHook(
+      { session_id: "session-kb-unreachable", transcript_path: transcript, cwd: sessionRepo, hook_event_name: "SessionEnd", reason: "clear" },
+      {
+        SESSION_CAPTURE_REPO_DIR: repoDir,
+        SESSION_CAPTURE_KB_DIR: kbCloneDir,
+        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,
+        PATH: `${ghBinDir}:${process.env.PATH}`,
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    waitForCaptureFile(result.outputDir);
+
+    // Waits for `published`, not merely `skipped push-` — see the "missing checkout" test above.
+    const log = waitForLogToContain(result.logPath, "published");
+    expect(log).toContain("skipped push-");
+    expect(log).not.toContain("flushed");
+    expect(log).toContain(`published session-kb-unreachable ${head}`);
   });
 });
