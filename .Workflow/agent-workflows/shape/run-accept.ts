@@ -24,8 +24,16 @@ function isVerb(value: string | undefined): value is Verb {
 }
 
 /**
- * `bin/new-adr`, shelled out to. It prints the path it created; `EDITOR` is
- * never set on a runner, so it never execs one.
+ * `bin/new-adr`, shelled out to. It prints the path it created, and execs an
+ * editor only when its stdout is a terminal — which this never is, because
+ * `execFileSync` gives it a pipe.
+ *
+ * That condition used to be `EDITOR` merely being set, on the reasoning that a
+ * runner does not set one. A runner does: the hosted image ships `EDITOR=vi`,
+ * so the first accept to reach this line exec'd vi against no terminal and
+ * blocked until the job's 10-minute timeout, having already written the ADR it
+ * would never push. The guard is in the script rather than in this call's
+ * `env`, so a caller cannot forget it.
  */
 function newAdr(title: string): string {
   return execFileSync("bin/new-adr", [title], { encoding: "utf8", env: childEnv() });

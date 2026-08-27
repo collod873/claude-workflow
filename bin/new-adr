@@ -56,4 +56,12 @@ EOF
 fi
 
 echo "$file"
-if [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi
+
+# The editor is for a human at a keyboard, so the condition is whether there is one — not whether
+# `EDITOR` happens to be set. A hosted runner sets `EDITOR=vi` in its default environment, so the
+# older `-n "$EDITOR"` form `exec`ed vi against no terminal and blocked until the job's timeout
+# killed it, which is how the accept lane spent ten minutes filing its first ADR and then died
+# cancelled rather than failed. #122 hit the same line from the test suite and was answered by
+# stripping `EDITOR`/`VISUAL` in that caller; a guard every caller has to remember is the obligation
+# this repo refuses to build, so the check lives here where one condition covers all of them.
+if [ -t 1 ] && [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi

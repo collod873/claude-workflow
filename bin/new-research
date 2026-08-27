@@ -53,4 +53,7 @@ $pointer
 EOF
 
 echo "$file"
-if [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi
+
+# See `bin/new-adr`'s note on this line. The two scripts carry the same final line and the same
+# trap: `EDITOR` being set says nothing about whether anyone can type into it, and a runner sets it.
+if [ -t 1 ] && [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi

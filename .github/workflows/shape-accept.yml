@@ -74,10 +74,18 @@ jobs:
       # An accept that dies half-done has written an ADR nobody knows about, or dropped `idea`
       # without recording a route. Both are recoverable and neither is visible from the tracker, so
       # the failure says so on the issue the owner is already looking at.
+      #
+      # `!success()` rather than `failure()`, because **a timed-out job is cancelled, not failed**,
+      # and `failure()` is silent on a cancel. That is not the rare case it sounds like: this job's
+      # whole budget is seconds against a 10-minute timeout, so anything that blocks — the `vi` that
+      # `bin/new-adr` used to exec against no terminal — reaches the timeout rather than an error,
+      # and the owner watches a spinner with nothing ever posted to the issue. It also covers the
+      # `Cancel workflow` button, which leaves exactly the same half-written state and deserves the
+      # same note.
       - name: Report failure
-        if: failure()
+        if: ${{ !success() }}
         run: |
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
-          body=$(printf 'The `%s` accept failed.\n\nNothing here is automatic to recover: check whether `docs/adr/` and `CONTEXT.md` took the writes before re-applying the label.\n\n**Workflow run:** %s\n' "$VERB" "$run_url")
+          body=$(printf 'The `%s` accept did not finish.\n\nNothing here is automatic to recover: check whether `docs/adr/` and `CONTEXT.md` took the writes before re-applying the label.\n\n**Workflow run:** %s\n' "$VERB" "$run_url")
           gh issue comment "$IDEA_NUMBER" --body "$body"
