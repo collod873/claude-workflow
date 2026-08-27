@@ -37,7 +37,8 @@ export default tseslint.config(
           selector:
             "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error']",
           message:
-            "Use reason(err) from .Workflow/agent-workflows/shared/reason.ts instead of " +
+            "Use reason(err) — or errorMessage(err) when you are matching on the failure rather " +
+            "than reporting it — from .Workflow/agent-workflows/shared/reason.ts instead of " +
             "inline `err instanceof Error ? err.message : String(err)` narrowing.",
         },
         {

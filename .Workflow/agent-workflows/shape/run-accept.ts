@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { childEnv } from "../shared/child-env";
+import { writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGh } from "../shared/gh";
 import { execGit } from "../shared/git";
 import { reason } from "../shared/reason";
@@ -60,6 +61,10 @@ function main(): void {
     gh: execGh,
     git: execGit,
     newAdr,
+    // `process.cwd()` as the repo root, which is the assumption `newAdr` above already makes by
+    // invoking `bin/new-adr` as a relative path: this entrypoint only ever runs from the checkout
+    // root, whether that is a workflow's `run:` step or the owner's own shell.
+    regenerateCorpus: () => writeCorpusFixture(process.cwd()),
     readFile: (path) => readFileSync(path, "utf8"),
     writeFile: (path, content) => writeFileSync(path, content, "utf8"),
   };

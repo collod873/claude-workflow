@@ -1,5 +1,5 @@
 import type { GitExec } from "./git.ts";
-import { reason } from "./reason.ts";
+import { errorMessage } from "./reason.ts";
 
 export interface SyncNotesRefOptions {
   git: GitExec;
@@ -85,7 +85,15 @@ export function syncNotesRef(options: SyncNotesRefOptions): void {
  * what tells this apart from every other way a push can fail (no such
  * remote, no permission, network down), which this surfaces as-is rather
  * than treating as the ordinary race.
+ *
+ * Reads the `Error`'s own message rather than `reason()`'s report of it. Git
+ * writes that line to stderr, which `execFileSync` already folds into the
+ * message, so the message is the whole haystack this needs — while `reason()`
+ * now also carries the child's *stdout* so a failure can say why. Classifying
+ * off a report means anything a `pre-push` hook happens to print could read as
+ * a rejected push, and this function's whole job is telling the retryable race
+ * apart from the failures that must surface.
  */
 function isRejection(error: unknown): boolean {
-  return reason(error).includes("[rejected]");
+  return errorMessage(error).includes("[rejected]");
 }

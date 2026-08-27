@@ -47,7 +47,6 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
   const files = new Map<string, string>([["CONTEXT.md", CONTEXT_FIXTURE]]);
   const git: string[][] = [];
   const adrTitles: string[] = [];
-
   let nextAdr = 50;
   const deps: AcceptDeps = {
     gh: tracker.gh,
@@ -55,6 +54,10 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
       git.push([...args]);
       return "";
     },
+    // Logged into `git` rather than counted separately, because the only thing worth asserting
+    // about it is *when* it runs relative to the `add` that stages what it wrote — and an ordering
+    // reads off one list where it does not read off two.
+    regenerateCorpus: () => void git.push(["regenerate-corpus"]),
     newAdr: (title) => {
       adrTitles.push(title);
       nextAdr += 1;
@@ -186,8 +189,52 @@ describe("approved", () => {
 
     accept(deps, 1, "approved");
 
-    expect(git.map((call) => call[0])).toEqual(["add", "commit", "fetch", "rebase", "push"]);
+    expect(git.map((call) => call[0])).toEqual([
+      "regenerate-corpus",
+      "add",
+      "commit",
+      "fetch",
+      "rebase",
+      "push",
+    ]);
     expect(git.at(-1)).toEqual(["push", "origin", "HEAD:main"]);
+  });
+
+  it("carries the corpus fixture in the same commit as the ADR that staled it", () => {
+    // `adr-corpus.evidence.json` is a snapshot of `docs/adr`, and `bin/gauntlet push` compares a
+    // fresh generation against it byte-for-byte. So an accept that commits an ADR without the
+    // regenerated snapshot is refused by this repo's own `pre-push` hook — which is exactly what
+    // happened to the first accept ever to reach a push. The ordering is the assertion: regenerate
+    // first, or `add` stages a fixture still describing the corpus as it was a moment ago.
+    const { deps, git } = harness({
+      sheet: sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling" })] }),
+    });
+
+    accept(deps, 1, "approved");
+
+    const add = git.find((call) => call[0] === "add")!;
+    expect(add).toContain(".Workflow/agent-workflows/watchdog/adr-corpus.evidence.json");
+    expect(git.indexOf(git.find((call) => call[0] === "regenerate-corpus")!)).toBeLessThan(
+      git.indexOf(add),
+    );
+  });
+
+  it("leaves the corpus fixture alone when the sheet coined a term but filed no ADR", () => {
+    // The fixture reads `docs/adr` and `docs/research`, neither of which a term touches — it goes
+    // into `CONTEXT.md`. Regenerating anyway would put an unchanged file in every vocabulary
+    // commit, which is noise in the one history this estate reads to reconstruct a decision.
+    const term: Term = {
+      term: "Sheet round",
+      section: "The pipeline",
+      definition: "One pass of the chain.",
+      avoid: [],
+    };
+    const { deps, git } = harness({ sheet: sheet({ newTerms: [term] }) });
+
+    accept(deps, 1, "approved");
+
+    expect(git.map((call) => call[0])).not.toContain("regenerate-corpus");
+    expect(git.find((call) => call[0] === "add")).toEqual(["add", "CONTEXT.md"]);
   });
 
   it("writes no commit when the sheet decided nothing worth filing", () => {
