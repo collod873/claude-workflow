@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0071
+
 A **gate bypass** is one event and one event only: a commit reached `main` carrying a tree that
 `bin/gauntlet push` refuses. One counter, not two. It reads the failed **step name** of `verify.yml`'s
 runs on `main` — never a transcript, never a log — files an issue at **three**, and is retired by

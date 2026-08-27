@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0053, ADR-0054
+
 The acceptance job checks `tests/acceptance/` out of `main`'s tip before it runs, so whatever an
 implementation PR did to those files never reaches the verdict. The refusal on a non-empty diff
 under the immutable set ships as well, but it is the *alarm*, not the guarantee: it tells us an

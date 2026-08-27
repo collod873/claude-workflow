@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0053
+
 `DESIGN.md` §04 re-fires the acceptance author "for the affected slices only" and never says what
 affected means. It means this, mechanically: every acceptance test names the criterion it proves
 **verbatim** (§04, W4's endpoint), so a slice is affected when a test it owns names a criterion

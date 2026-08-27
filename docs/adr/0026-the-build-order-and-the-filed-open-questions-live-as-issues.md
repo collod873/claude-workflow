@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0066
+
 **`DESIGN.md` §10's seven unbuilt moves become issues with native blocked-by edges, and an open
 question that has an issue becomes a one-line link.** What stays in the document is the part GitHub
 carries badly: *why* the order is the order, and the framing that tells a session which questions are
