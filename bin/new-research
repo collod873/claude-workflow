@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Create the next research note from an issue number and a title. Numbering
+# is derived, never typed — the same mechanics as bin/new-adr, plus the
+# Resolves: field ADR-0045 requires: the note is the repair path for the
+# missing-trailer counter, so the field has to be free to write, not a
+# convention someone remembers.
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  echo "usage: bin/new-research <issue-number> \"the title\"" >&2
+  echo "  e.g. bin/new-research 128 \"Managed runner fleets, priced against both workloads\"" >&2
+  exit 1
+fi
+
+issue="$1"
+shift
+title="$*"
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+research_dir="$repo_root/docs/research"
+mkdir -p "$research_dir"
+
+# Highest existing number wins, so a gap never causes a collision.
+next=$(find "$research_dir" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null \
+  | cut -c1-4 | sort -n | tail -1)
+next=$(printf '%04d' $((10#${next:-0} + 1)))
+
+slug=$(printf '%s' "$title" \
+  | tr '[:upper:]' '[:lower:]' \
+  | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
+  | cut -c1-60 | sed -E 's/-+$//')
+
+file="$research_dir/$next-$slug.md"
+[ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
+
+cat > "$file" <<EOF
+# $title
+
+Recorded $(date +%Y-%m-%d).
+
+Resolves: #$issue
+EOF
+
+echo "$file"
+if [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi

@@ -11,9 +11,9 @@ A Claude Code + GitHub workflow system.
 - Decisions go in `docs/adr/`, created with `bin/new-adr "<the ruling as a sentence>"`. Format and
   the bar for writing one are in `docs/adr/README.md`. Never edit an old ADR to reflect a new
   decision; write a new one that says what it amends.
-- A change that moves the definition of green moves `.claude/contract.json` in the **same commit**.
-  The contract is what every gate and every drain reads instead of inferring one; a contract that
-  lags the repo it describes is worse than none, because it is believed.
+- `.claude/contract.json` is generated, not hand-maintained — `bin/gauntlet push` runs
+  `regenerate && diff` and fails when the committed file disagrees with a fresh probe
+  ([ADR-0056](docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
 
 ## Agent skills
 

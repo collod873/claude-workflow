@@ -1,8 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  checkContractFixture,
+  type CheckContract,
+} from "../../.Workflow/agent-workflows/shared/check-contract.ts";
 
 // The hook is a pure function of stdin to (exit code, stdout), so it gets driven rather than read.
 // Every case below is what the venue *should* do, decided from DESIGN.md §06 rather than from what
@@ -231,5 +235,95 @@ describe("the check runner", () => {
 
     expect(run.status).toBe(2);
     expect(run.stderr).toContain("usage:");
+  });
+});
+
+// The contract-resolution behaviour #120 rewrote bin/gauntlet to have: it runs whatever
+// `.claude/contract.json` names rather than three hardcoded binaries, resolved through the
+// check-contract module #119 landed. `GAUNTLET_CONTRACT` is the seam that lets these tests point
+// the real gauntlet at a fixture contract instead of this repo's own.
+
+/** Writes a `CheckContract` fixture to a temp file and returns its path. */
+function writeContract(contract: CheckContract): string {
+  const dir = mkdtempSync(join(tmpdir(), "gauntlet-contract-"));
+  stubDirs.push(dir);
+  const path = join(dir, "contract.json");
+  writeFileSync(path, JSON.stringify(contract));
+  return path;
+}
+
+function runGauntlet(
+  args: string[],
+  env: Record<string, string | undefined> = {},
+): { status: number | null; stdout: string; stderr: string } {
+  const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), args, {
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    env: { ...process.env, ...env },
+  });
+  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
+}
+
+describe("resolving the check contract", () => {
+  it("exits 2, not 1, when a slot names a command that cannot run", () => {
+    const contract = checkContractFixture({
+      typecheck: { cmd: "true" },
+      lint: { cmd: "definitely-not-a-real-command-4a1e9c" },
+      test: { cmd: "true" },
+    });
+
+    const run = runGauntlet(["stop"], { GAUNTLET_CONTRACT: writeContract(contract) });
+
+    expect(run.status).toBe(COULD_NOT_RUN);
+    expect(run.stdout).toBe("");
+  });
+
+  it(
+    "runs the broader slot and reports the substitution when turn asks for a form the schema has no narrower slot for",
+    () => {
+      const contract = checkContractFixture({
+        typecheck: { cmd: "true" },
+        lint: { cmd: "true" },
+      });
+
+      const run = runGauntlet(["turn", "bin/node-on-path.sh"], {
+        GAUNTLET_CONTRACT: writeContract(contract),
+      });
+
+      expect(run.status).toBe(0);
+      expect(run.stderr).toContain("lint");
+      expect(run.stderr.toLowerCase()).toContain("broader");
+    },
+    REAL_TOOLCHAIN,
+  );
+
+  it("invokes the check-contract module's resolver exactly once per run, not once per slot", () => {
+    const contract = checkContractFixture({
+      typecheck: { cmd: "true" },
+      lint: { cmd: "true" },
+      test: { cmd: "true" },
+    });
+
+    // A `node` on PATH that logs one line per invocation, then hands off to the real interpreter
+    // running this test — so the checks it stubs still actually run.
+    const stubDir = mkdtempSync(join(tmpdir(), "gauntlet-node-stub-"));
+    stubDirs.push(stubDir);
+    const counterFile = join(stubDir, "invocations");
+    writeFileSync(counterFile, "");
+    const nodeStub = join(stubDir, "node");
+    writeFileSync(
+      nodeStub,
+      `#!/bin/bash\necho 1 >> ${JSON.stringify(counterFile)}\nexec ${JSON.stringify(process.execPath)} "$@"\n`,
+    );
+    chmodSync(nodeStub, 0o755);
+
+    const run = runGauntlet(["stop"], {
+      GAUNTLET_CONTRACT: writeContract(contract),
+      PATH: `${stubDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(run.status).toBe(0);
+    const invocations = readFileSync(counterFile, "utf8").split("\n").filter(Boolean);
+    expect(invocations).toHaveLength(1);
   });
 });

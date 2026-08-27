@@ -1,0 +1,62 @@
+name: Bypass counter
+
+# PRD #117, move 8d: a bypass becomes one countable event.
+#
+# `verify.yml`'s gauntlet step fails through two distinctly named steps — `Gauntlet` on exit 1, a
+# real finding that reached `main` despite the free venues (in-turn, turn-end, pre-push) that should
+# already have refused it, and `Gauntlet could not run` on exit 2, an environment problem that is
+# nobody routing around anything (`verify-workflow.test.ts`). Only the first is a bypass. This rides
+# `verify.yml` completing so the count this recomputes is exactly the event it counts — no cursor, no
+# stored number, nothing here that can go stale.
+#
+# `workflow_run` is safe to key on `verify.yml`'s own declared name here, unlike `run-watchdog.yml`:
+# the failure that trigger is blind to is a workflow GitHub could not parse at all, and `verify.yml`
+# parses fine — it is the run *inside* it that fails.
+
+"on":
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+
+permissions:
+  # read: the checkout.
+  contents: read
+  # read: `actions/workflows/verify.yml/runs`, and `actions/runs/<id>/jobs` for the failed step name
+  # neither the runs list nor the `workflow_run` payload carries.
+  actions: read
+  # write: the signal itself, and the read of standing/declined proposals it checks before writing.
+  issues: write
+
+concurrency:
+  group: bypass-counter
+  cancel-in-progress: false
+
+jobs:
+  count:
+    # `verify.yml` runs on every PR branch as well as `main` (`verify.yml`'s own `on:` block); only a
+    # run on `main` is a tree that reached trunk, which is the event this counts. `bypass.ts`'s own
+    # `isBypass` checks the same fact independently off the fetched run data, so a mis-scope here
+    # cannot make the count wrong — only redundant.
+    if: github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate
+      # reporting step here.
+      - name: Count bypasses of the free gates
+        run: npx tsx .Workflow/agent-workflows/watchdog/bypass-counter.ts
