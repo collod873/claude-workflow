@@ -144,6 +144,48 @@ describe("the turn-end venue", () => {
   });
 });
 
+// A stage is one agent process in a pipeline run, and its contract is that its last message is an
+// `<output>` block. Blocking asks for another turn, and the turn it gets is spent on the hook: #134
+// died that way, with the auditor's plan already written and discarded. Both venues are covered
+// because a stage has no human to read either one — its checks belong to `verify.yml`.
+describe("inside a stage session", () => {
+  const stageSession = { WORKFLOW_STAGE: "1" };
+
+  it("says nothing at the turn-end venue, where a block would spend the stage's answer", () => {
+    const gauntlet = stubGauntlet(1, "--- test ---\n1 failed\n");
+
+    const result = runHook("stop", JSON.stringify({ hook_event_name: "Stop" }), {
+      ...stageSession,
+      GAUNTLET_BIN: gauntlet,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("says nothing at the in-turn venue either", () => {
+    const gauntlet = stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n");
+
+    const result = runHook("turn", editOf("a.ts"), { ...stageSession, GAUNTLET_BIN: gauntlet });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("still reports when the variable is absent, so the gate is the marker and not the venue", () => {
+    const gauntlet = stubGauntlet(1, "--- test ---\n1 failed\n");
+
+    // Set empty rather than left off: this suite is itself something a stage's model can run from
+    // a Bash tool, and an inherited marker would turn this case green without proving anything.
+    const result = runHook("stop", JSON.stringify({ hook_event_name: "Stop" }), {
+      WORKFLOW_STAGE: "",
+      GAUNTLET_BIN: gauntlet,
+    });
+
+    expect(JSON.parse(result.stdout).decision).toBe("block");
+  });
+});
+
 describe("failing open", () => {
   it("stays quiet when the gauntlet could not run its checks", () => {
     // Exit 2 is not a finding. Reporting it as one would tell Claude its code is broken because

@@ -63,6 +63,16 @@ const venue = process.argv[2];
 const payload = readPayload();
 if (!payload || (venue !== "turn" && venue !== "stop")) silent();
 
+// Neither venue exists inside a stage. `WORKFLOW_STAGE` is set by `execClaude`
+// (.Workflow/agent-workflows/shared/stage.ts), the one seam every lane spawns its
+// model through, and what it marks is a session with no human in it and an output
+// contract these venues cannot honour: `decision: "block"` asks Claude for another
+// turn, and a stage's answer is whatever its *last* turn said. #134's slicing spent
+// its `<output>` block replying to this hook about a flaky suite it had not touched.
+// The stage's checks still run — in `verify.yml`, where a red suite fails the run
+// rather than the response.
+if (process.env.WORKFLOW_STAGE === "1") silent();
+
 if (venue === "turn") {
   // Only TypeScript, and only inside this repo. An edit to a Markdown file has nothing here that
   // can judge it, and running the venue anyway is how a cheap hook becomes a tax on every turn.

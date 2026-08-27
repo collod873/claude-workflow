@@ -47,6 +47,32 @@ const MAX_ARG_STRLEN = 32 * 4096;
 const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
 
 /**
+ * The marker that tells this repo's own Claude Code hooks they are inside a
+ * stage rather than a turn somebody is having (CONTEXT.md: *one agent process
+ * in a pipeline run*). `.claude/hooks/gauntlet-hook.mjs` reads it and stays
+ * silent.
+ *
+ * It exists because the turn-end venue is designed to make Claude keep
+ * working — `decision: "block"` hands the failing checks back and asks for
+ * another turn — and a stage's contract is that its **last** message is the
+ * `<output>` block. The two cannot both hold: `stream-json`'s result event
+ * carries the final turn's text alone, so any block, for any reason, spends
+ * the stage's answer on a reply to the hook. #134's slicing died exactly
+ * there, eight minutes and $1.15 in, on a suite failure the auditor had
+ * nothing to do with.
+ *
+ * A stage's checks are not skipped by this — they run in `verify.yml`, at the
+ * venue that can actually fail a run. What is removed is a venue whose only
+ * reader is a model that cannot act on it.
+ */
+const STAGE_SESSION_VAR = "WORKFLOW_STAGE";
+
+/** `process.env` plus the stage marker, for the `claude` a stage spawns. */
+function stageEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, [STAGE_SESSION_VAR]: "1" };
+}
+
+/**
  * The real StageExec: shells out to the `claude` CLI headlessly, in
  * print mode, with permission prompts skipped — there is no human on the
  * other end of a runner job to answer one. Requires
@@ -69,6 +95,22 @@ export const execClaude: StageExec = (argv, stdin) =>
     const parser = createStreamJsonParser((line) => process.stderr.write(`${line}\n`));
     const child = spawn("claude", [...withoutOutputFormat(argv), ...STREAM_FLAGS], {
       stdio: ["pipe", "pipe", "pipe"],
+      env: stageEnv(),
+    });
+
+    // A child that is already gone has no read end on this pipe, and the write
+    // below lands as EPIPE — a `claude` that died on a bad token, or one that
+    // answered and exited while the parent was still writing, which is a race
+    // rather than a rare case: the suite hits it whenever the machine is busy
+    // enough (#134, reproduced on two cores). `stdin` has no default error
+    // handler, so that arrives as an unhandled `'error'` event, and an
+    // unhandled `'error'` event is a *process crash* — the stage dies on a
+    // Node stack trace instead of the named failure every other death here
+    // produces. Kept rather than swallowed: a prompt that never landed is why
+    // the response is missing, and the rejection below says so.
+    let stdinError: Error | undefined;
+    child.stdin.on("error", (err: Error) => {
+      stdinError = err;
     });
 
     // `claude -p` with no positional prompt reads one from stdin, which is the
@@ -100,16 +142,20 @@ export const execClaude: StageExec = (argv, stdin) =>
 
     child.on("close", (code) => {
       const { text, isError, missingResult } = parser.end();
+      // Only on the failing paths. A response that arrived is a response, and
+      // a stub that answers without reading its stdin is the ordinary shape in
+      // the suite, not something to report.
+      const prompt = stdinError === undefined ? "" : ` (the prompt never reached it: ${stdinError.message})`;
       if (code !== 0) {
-        reject(new Error(`\`claude\` exited ${code}${tail(stderr)}`));
+        reject(new Error(`\`claude\` exited ${code}${prompt}${tail(stderr)}`));
         return;
       }
       if (isError) {
-        reject(new Error(`\`claude\` reported the run as failed${tail(stderr)}`));
+        reject(new Error(`\`claude\` reported the run as failed${prompt}${tail(stderr)}`));
         return;
       }
       if (missingResult) {
-        reject(new Error(`\`claude\` produced no result event${tail(stderr)}`));
+        reject(new Error(`\`claude\` produced no result event${prompt}${tail(stderr)}`));
         return;
       }
       resolve(text);
