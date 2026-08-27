@@ -167,13 +167,19 @@ Ordered. Nothing further up the list is optional for anything below it.
    and [#63](https://github.com/collod873/claude-workflow/issues/63) built and wired the VIOLATION
    and PROPOSED lenses — `DESIGN.md` §6 carries their contract.
 
-   **The open half, now decided but unbuilt.** The question is ruled — ADR-0044 through ADR-0046 —
-   and a ruling retires nothing, so this blocker closes on **two builds**, not on the decision:
-   - **The back-stamp**, which points the question at the ADRs. There is nothing to delete: every
-     ADR is cited, and the only signal that discriminates finds the *superseded* ones, which must
-     survive because the amendment chain is the record. So the act is a pointer onto the stale
-     record, not a deletion.
-     [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
+   **The open half, now decided and half built.** The question is ruled — ADR-0044 through ADR-0046
+   — and a ruling retires nothing, so this blocker closes on **two builds**, not on the decision. One
+   has landed:
+   - ~~**The back-stamp**, which points the question at the ADRs.~~ Retired 2026-08-26 by
+     `.Workflow/agent-workflows/watchdog/back-stamp.ts` and `back-stamp-walk.ts`, wired by
+     `.github/workflows/back-stamp.yml`: a push to `main` touching `docs/adr/` recomputes the whole
+     supersession graph from the `Amends:` trailers successors carry and commits
+     a `Status: superseded by ADR-NNNN` line onto every predecessor missing one. There was nothing
+     to delete — every ADR is cited, and the only signal that discriminates finds the *superseded*
+     ones, which must survive because the amendment chain is the record — so the act is a pointer
+     onto the stale record, not a deletion. The trailer it reads is itself now watched: a supersession asserted in
+     prose without one is the **missing-trailer counter**'s finding (`DESIGN.md` §6), and
+     `bin/new-adr --amends NNNN` writes it. ADR-0044 through ADR-0046, ADR-0067.
    - **ADR-0003's lint audit**, which points it at the rules and is **ruled but unbuilt** —
      `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
      stands" is a static tree scan rather than a question about history.

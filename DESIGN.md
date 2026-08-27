@@ -636,11 +636,15 @@ directly, and the signal to revisit is implementers rediscovering the same thing
 > `bin/gauntlet push` refuses. A red tree mid-session is not a bypass; it is a legitimate state, and
 > the harm exists only where the red survives to trunk
 > ([ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md)).
-> — **`verify.yml` distinguishes a finding from a broken runner in its step names**, not in its logs:
-> `Gauntlet` for exit 1, `Gauntlet could not run` for exit 2. The third exit code is excluded from the
-> bypass count by construction rather than by a reader inferring it from a string the gauntlet happens
-> to print — which would be this section's own *defined once* rule broken by its own counter
-> (ADR-0063).
+> — **`verify.yml` distinguishes a finding from a broken runner in its step names**, not in its logs.
+> One `Run gauntlet` step runs `bin/gauntlet push` under `set +e` and publishes the exit code to
+> `$GITHUB_OUTPUT`; two `if:`-gated steps below it fail the run under the name that matches what
+> happened — **`Gauntlet`** on exit 1, **`Gauntlet could not run`** on exit 2. Exit 2 is excluded
+> from the bypass count by construction rather than by a reader inferring it from a string the
+> gauntlet happens to print — which would be this section's own *defined once* rule broken by its own
+> counter (ADR-0063). The workflow's one other named failure, `Lint workflow files` (actionlint on
+> the YAML itself, the one check that deliberately does not go through `bin/gauntlet`), is not the
+> gauntlet's verdict and is excluded the same way.
 > — **No venue is promoted to refusing above a flaky check.** A flaky gate trains `--no-verify` and
 > is worse than a slow one. A "could not run" is a third exit code rather than a failure, because an
 > environment problem reported as a finding is how a repo learns to ignore its gates.
@@ -945,13 +949,13 @@ files nothing
 ([ADR-0067](docs/adr/0067-the-missing-trailer-check-is-a-counter-because-it-files-wher.md)). Five
 remain, and each row states its own contract:
 
-| Counter | Fires on | At | Files, proposing | Sees |
-|---|---|---|---|---|
-| **Bypass** | `verify.yml` completing on a push to `main` | 3 | Bring move 10 forward. Counts runs whose failed step is `Gauntlet` — a tree that reached trunk that the free venues would have refused. Not the code: **the gate not having run** | 7 |
-| **`not_planned` closes** | A lane 07 finding issue closing | 3 grow · 20 delete | Add a refuter, or delete the fleet — the tracker (class 6) crossed with the owner's behaviour (class 9) | 6 × 9 |
-| **Cross-repo** | A finding recorded, in any repo | 2 — the second site | File here a machinery defect found elsewhere. C3's candidate trigger, applied across the estate | 10 |
-| **Lost dispatch** | A spec published carrying `sliceable` | 1 | Name a PRD that carries the label with no sub-issues and no completed slicing run — a `repository_dispatch` that never arrived | 7 |
-| **Missing trailer** | An ADR or research note committed to `main` | 1 | Write the trailer, or state it is not a supersession. An ADR carrying a supersession verb and a link to a lower-numbered ADR but no `Amends:` trailer; a `docs/research/` note with no `Resolves:` field | 8 |
+| Counter | Fires on — the event | At — the count | Files — the issue | Proposing — the action | Sees |
+|---|---|---|---|---|---|
+| **Bypass** | `verify.yml` completing on a push to `main` — `bypass-counter.yml`, a `workflow_run` trigger scoped to `head_branch == 'main'` | 3 | *"verify.yml has bypassed the free gates — bring move 10 forward"*, listing the offending runs and carrying a `<!-- bypass-counter:N -->` marker, so a declined proposal re-proposes only once the count has grown past the N it recorded | Bring move 10 forward. Counts runs whose failed step is `Gauntlet` — a tree that reached trunk that the free venues would have refused. Not the code: **the gate not having run** | 7 |
+| **`not_planned` closes** | A lane 07 finding issue closing | 3 grow · 20 delete | An issue against the refuter fleet's size — unbuilt, and ships with [move 7a](https://github.com/collod873/claude-workflow/issues/99) rather than with the counters below it | Add a refuter, or delete the fleet — the tracker (class 6) crossed with the owner's behaviour (class 9) | 6 × 9 |
+| **Cross-repo** | A finding recorded, in any repo | 2 — the second site | An issue here naming the defect and both sites it was seen at — unbuilt, and ships with [move 12](https://github.com/collod873/claude-workflow/issues/114), the move that supplies a second repo | File here a machinery defect found elsewhere. C3's candidate trigger, applied across the estate | 10 |
+| **Lost dispatch** | The `sliceable` label being added to a spec — `lost-dispatch-counter.yml`, an `issues: [labeled]` trigger gated on that label's name | 1 | One standing *"Lost dispatch: a spec carrying `sliceable` never sliced"*, keyed on a `<!-- lost-dispatch -->` marker; a further lost PRD arrives as a comment on it rather than as a second issue | Slice the named PRD by hand, or find out why the `repository_dispatch` never arrived. A PRD carrying the label with no sub-issues and no completed slicing run | 7 |
+| **Missing trailer** | A push to `main` touching `docs/adr/**` or `docs/research/**` — `missing-trailer-counter.yml`, GitHub's own `paths:` filter | 1 | One standing *"Missing supersession trailer: N ADRs, M research notes"*, keyed on a `<!-- missing-trailer:corpus -->` marker, one checklist line per candidate; a later run comments the current list rather than opening a second issue | Write the trailer, or state it is not a supersession. An ADR carrying a supersession verb and a link to a lower-numbered ADR but no `Amends:` trailer; a `docs/research/` note with no `Resolves:` field | 8 |
 
 **Cut: parity and correction**, on their own history rather than on argument (ADR-0065). Correction
 reads reverts and same-day add-and-delete; across **175 commits** this repo has **zero** of each — an
@@ -1100,9 +1104,10 @@ So it files, and it is the fifth counter above
 travelled out of this section together because they read the same trailer graph. Measured on
 2026-08-26: **2 of 66** ADRs carry an `Amends:` trailer, **27** carry a supersession verb and a link
 to a lower-numbered ADR without one, and `docs/research/` went from two-of-seven to **three-of-nine**
-documents with no issue pointer — a backlog that grew while the field stayed unbuilt. `bin/new-adr`
-still has no `--amends` flag; ADR-0045 mandated one, and it ships with move 8c as the counter's
-repair path.
+documents with no issue pointer — a backlog that grew while the field stayed unbuilt. The repair path
+shipped with the counter: `bin/new-adr --amends NNNN` writes the trailer ADR-0045 mandated, and
+`bin/new-research` writes a note's `Resolves:` field at the moment the note is created, so clearing a
+line is a flag rather than a convention to remember.
 
 **Cut:** the Foundry's cold-user walkthrough and persona panel. Both need a deployed product with
 users; nothing in the estate has one today. They come back the day a repo does — as a lens on
