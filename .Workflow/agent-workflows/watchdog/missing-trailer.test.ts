@@ -41,15 +41,22 @@ function note(overrides: Partial<ResearchNote> = {}): ResearchNote {
 
 describe("the rule, run over the corpus that motivated it", () => {
   it("has a corpus to run over, so a green suite is not an empty sweep", () => {
-    expect(EVIDENCE.adrs.length).toBe(66);
-    expect(EVIDENCE.notes.length).toBe(9);
+    expect(EVIDENCE.adrs.length).toBe(76);
+    expect(EVIDENCE.notes.length).toBe(8);
   });
 
-  it("flags exactly two ADRs as carrying an Amends: trailer", () => {
+  it("flags exactly 9 ADRs as carrying an Amends: trailer", () => {
     const trailered = EVIDENCE.adrs.filter((doc) => hasAmendsTrailer(doc.body));
     expect(trailered.map((doc) => doc.filename).sort()).toEqual([
+      "0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md",
+      "0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md",
+      "0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md",
+      "0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md",
       "0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md",
       "0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md",
+      "0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md",
+      "0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md",
+      "0072-a-research-note-with-no-antecedent-issue-declares-that-in-a.md",
     ]);
   });
 
@@ -58,13 +65,9 @@ describe("the rule, run over the corpus that motivated it", () => {
     expect(candidates.length).toBe(27);
   });
 
-  it("flags exactly 3 research notes carrying no Resolves: field", () => {
+  it("flags no research notes as missing a Resolves: field — every note on disk now carries a pointer", () => {
     const missing = EVIDENCE.notes.filter(isMissingResolvesField);
-    expect(missing.map((n) => n.filename).sort()).toEqual([
-      "era-infrastructure-choices.md",
-      "session-prompts-2026-08.md",
-      "verification-boundaries-2026-08.md",
-    ]);
+    expect(missing.map((n) => n.filename).sort()).toEqual([]);
   });
 
   it("never flags a trailered ADR as also a candidate", () => {
@@ -76,7 +79,7 @@ describe("the rule, run over the corpus that motivated it", () => {
   it("collapses the whole corpus into one issue's worth of findings, not two counters' worth", () => {
     const findings = findMissingTrailers(EVIDENCE.adrs, EVIDENCE.notes);
     expect(findings.filter((f) => f.kind === "adr")).toHaveLength(27);
-    expect(findings.filter((f) => f.kind === "research-note")).toHaveLength(3);
+    expect(findings.filter((f) => f.kind === "research-note")).toHaveLength(0);
   });
 });
 

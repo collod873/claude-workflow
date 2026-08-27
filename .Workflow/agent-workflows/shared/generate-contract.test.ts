@@ -19,6 +19,7 @@ import {
   generateContract,
   serializeContract,
 } from "./generate-contract";
+import { CORPUS_RELATIVE_PATH, generateCorpusFixture } from "./generate-corpus-fixture";
 import { checkContractFixture } from "./check-contract";
 
 /**
@@ -134,13 +135,16 @@ describe("diffContract", () => {
 });
 
 /**
- * The two modules `bin/gauntlet` loads by path off its own repo root, relative to that root.
+ * The three modules `bin/gauntlet` loads by path off its own repo root, relative to that root.
  * `check-contract.ts` is imported by the one `node` call that resolves the contract's slots;
- * `generate-contract.ts` is spawned as `diff` for the push venue's contract check.
+ * `generate-contract.ts` is spawned as `diff` for the push venue's contract check;
+ * `generate-corpus-fixture.ts` (#140) is spawned the same way for the push venue's corpus check —
+ * present here so a push against this fixture root does not fail to find it.
  */
 const GAUNTLET_MODULES = [
   ".Workflow/agent-workflows/shared/check-contract.ts",
   ".Workflow/agent-workflows/shared/generate-contract.ts",
+  ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts",
 ];
 
 /** What the fixture root below declares for each slot the push venue runs. Deliberately nothing. */
@@ -171,9 +175,13 @@ describe("bin/gauntlet push's regenerate && diff", () => {
    * this repo, and a committed tree carrying those would be a second copy of the repo that `tsc`,
    * `eslint` and `vitest` all walk into.
    *
-   * `bin` and `node_modules` are symlinked; the two modules are **copied**, because Node resolves a
+   * `bin` and `node_modules` are symlinked; the modules are **copied**, because Node resolves a
    * symlinked entry point to its real path — `generate-contract.ts`'s `import.meta.url === argv[1]`
    * main-guard would then silently never fire, and the contract check would pass by not running.
+   *
+   * Carries a real, matching corpus fixture (#140's corpus check also runs on `push`) so this
+   * describe block's assertions stay about the contract check alone — the corpus check is a
+   * silent pass here, not a second thing this test has to account for.
    */
   function fixtureRoot(): string {
     const root = mkdtempSync(join(tmpdir(), "gauntlet-push-fixture-"));
@@ -205,6 +213,19 @@ describe("bin/gauntlet push's regenerate && diff", () => {
       )}\n`,
     );
     mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
+
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    mkdirSync(join(root, "docs/research"), { recursive: true });
+    writeFileSync(
+      join(root, "docs/adr/0001-a-decision.md"),
+      "# A decision\n\nRecorded 2026-08-20.\n",
+    );
+    writeFileSync(
+      join(root, "docs/research/topic-2026-08.md"),
+      "**Resolves:** [x](https://example/1)\n\n## Section\n\nBody.\n",
+    );
+    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });
+    writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));
 
     return root;
   }
