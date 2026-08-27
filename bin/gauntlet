@@ -187,7 +187,12 @@ done
 # instead of the contract quietly lying about itself. It reads `$contract_path`, the same file
 # `GAUNTLET_CONTRACT` can redirect above, so a test exercises it without touching this repo's own
 # `.claude/contract.json`.
-[ "$venue" = "push" ] && checks="$checks contract"
+#
+# `corpus` is the same pattern reused for `adr-corpus.evidence.json` (spec #134, ticket #140): a
+# fresh generation from `docs/adr/` and `docs/research/` compared byte-for-byte against the
+# committed fixture, so a corpus that grew or shrank since the fixture was last generated goes red
+# here instead of `missing-trailer.test.ts` quietly running against a stale snapshot.
+[ "$venue" = "push" ] && checks="$checks contract corpus"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -214,6 +219,11 @@ if [ "$venue" = "push" ]; then
   run_check contract node \
     "$repo_root/.Workflow/agent-workflows/shared/generate-contract.ts" \
     diff "$repo_root" "$contract_path" &
+  pids+=($!)
+
+  run_check corpus node \
+    "$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts" \
+    diff "$repo_root" "$repo_root/.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json" &
   pids+=($!)
 fi
 
