@@ -31,6 +31,7 @@ Read before drafting:
 5. When a slice consumes a seam manifest entry, place that line verbatim in `seamsConsumed`. `filesClaimed` contains only file paths modified by the slice.
 6. Give every slice one sentence in `whyNotMerged` justifying why it does not fold into its neighbour.
 7. Follow the output contract for every field (`dependsOn` uses 1-based indexing of earlier positions only). `whatToBuild` and `acceptanceCriteria` define technical scope (issue lifecycle directives like `Closes` are handled externally).
+8. Keep the prose inside its ceilings — the tool refuses a field that runs over, so aim under them rather than at them: `whatToBuild` at most 400 characters, `whyNotMerged` at most 200, and each `acceptanceCriteria` entry at most 200. There is no ceiling on how many files a slice claims or how many criteria it carries; claim every file the slice modifies.
 
 ## Output
 

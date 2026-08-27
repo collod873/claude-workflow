@@ -118,7 +118,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
   });
 
-  it("logs only the success line — no notes — when the auditor graded silently", async () => {
+  it("logs only the measurement and success lines — no notes — when the auditor graded silently", async () => {
     const { plan: slicedPlan } = seedHandoffWithSlicedPlan();
     const fakeStage = createFakeStage(JSON.stringify({ notes: "", slices: slicedPlan }));
     const fakeGh = createFakeGh();
@@ -127,6 +127,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
 
     expect(logSpy.mock.calls.map((call) => call[0])).toEqual([
+      expect.stringMatching(/^audit-and-publish: 1 slice, /),
       "audit-and-publish: published 1 sub-issue under #13",
     ]);
   });
@@ -154,6 +155,65 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
       /failed schema validation/,
     );
     expect(fakeGh.calls).toHaveLength(0);
+  });
+});
+
+/**
+ * #151: every stage that emits a plan prints one line saying how close the
+ * plan came to the `Slice` caps, so the next decision about the audit stage
+ * (#148) is made on measurements across runs rather than on one run. The
+ * shape is pinned exactly here, for a plan built to have a known answer:
+ * the slice count, the widest `filesClaimed`, and each capped field's longest
+ * value over its ceiling.
+ */
+describe("a plan-emitting stage prints one measurement line against the Slice caps", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const knownPlan = [
+    slice({
+      title: "Narrow",
+      whatToBuild: "x".repeat(120),
+      whyNotMerged: "y".repeat(40),
+      acceptanceCriteria: ["z".repeat(30), "z".repeat(75)],
+      filesClaimed: ["a.ts"],
+    }),
+    slice({
+      title: "Wide",
+      whatToBuild: "x".repeat(300),
+      whyNotMerged: "y".repeat(90),
+      acceptanceCriteria: ["z".repeat(55)],
+      filesClaimed: ["a.ts", "b.ts", "c.ts", "d.ts"],
+    }),
+  ];
+  const expectedLine =
+    "2 slices, widest filesClaimed 4, longest whatToBuild 300/400, longest whyNotMerged 90/200, longest acceptanceCriteria 75/200";
+
+  it("slice: prints it under the stage's name", async () => {
+    const dir = withHandoffDir();
+    const target = join(dir, "handoff.txt");
+    process.env.FAILURE_REASON_PATH = target;
+    writeFileSync(target, JSON.stringify(["a seam"]), "utf8");
+    const fake = createFakeStage(JSON.stringify({ slices: knownPlan }));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runNamedStage("slice", "13", fake.exec, unreachableGh);
+
+    expect(logSpy.mock.calls.map((call) => call[0])).toContain(`slice: ${expectedLine}`);
+  });
+
+  it("audit-and-publish: measures the audited plan, not the one it was handed", async () => {
+    const dir = withHandoffDir();
+    const target = join(dir, "handoff.txt");
+    process.env.FAILURE_REASON_PATH = target;
+    writeFileSync(target, JSON.stringify([slice({ title: "Before audit" })]), "utf8");
+    const fakeStage = createFakeStage(JSON.stringify({ notes: "", slices: knownPlan }));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runNamedStage("audit-and-publish", "13", fakeStage.exec, createFakeGh().gh);
+
+    expect(logSpy.mock.calls.map((call) => call[0])).toContain(`audit-and-publish: ${expectedLine}`);
   });
 });
 

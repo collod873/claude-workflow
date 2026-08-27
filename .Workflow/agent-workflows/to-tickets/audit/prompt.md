@@ -33,6 +33,7 @@ Read before grading:
    - **Balance** — is any slice a wall-clock outlier (roughly twice the size of the rest)? Split it if so.
 4. Resolve every concern autonomously on your own recommendation: merge, split, re-edge, or re-word directly. If choosing to leave a concern unacted upon, record the explicit rationale as an unapplied flag in the grading notes.
 5. Format the audited plan to the exact output contract: 1-based `dependsOn` referencing earlier positions only, technical scope only without issue lifecycle directives (`Closes`), and all fields shaped as `Slice` requires.
+6. Keep every slice's prose inside its ceilings, including slices you merge or re-word — the tool refuses a field that runs over: `whatToBuild` at most 400 characters, `whyNotMerged` at most 200, and each `acceptanceCriteria` entry at most 200. A merge that would push `whatToBuild` past its ceiling is evidence the separation was earned. There is no ceiling on how many files a slice claims or how many criteria it carries.
 
 ## Output
 

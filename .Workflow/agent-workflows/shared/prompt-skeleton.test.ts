@@ -6,7 +6,7 @@ import { SALVAGE_OUTPUT } from "../close-gate/close-gate";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
-import { AUDIT_OUTPUT, SLICE_OUTPUT } from "./plan-schema";
+import { AUDIT_OUTPUT, SLICE_CAPS, SLICE_OUTPUT } from "./plan-schema";
 import type { StructuredOutput } from "./structured-output";
 
 /**
@@ -45,12 +45,13 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "close-gate/salvage/prompt.md", output: SALVAGE_OUTPUT },
 ];
 
+function promptSource(promptPath: string): string {
+  return readFileSync(fileURLToPath(new URL(`../${promptPath}`, import.meta.url)), "utf8");
+}
+
 /** The skeletons in a prompt, in order — a prompt may show more than one legal shape. */
 function skeletons(promptPath: string): unknown[] {
-  const source = readFileSync(
-    fileURLToPath(new URL(`../${promptPath}`, import.meta.url)),
-    "utf8",
-  );
+  const source = promptSource(promptPath);
   const found = [...source.matchAll(/^```structured-output\n([\s\S]*?)\n```$/gm)];
   return found.map((match) => JSON.parse(match[1]) as unknown);
 }
@@ -136,5 +137,52 @@ describe.each(PROMPTS)("$path", ({ path, output }) => {
     expect(unpopulated.map((segments) => segments.join(".") || "(the response itself)")).toEqual(
       [],
     );
+  });
+});
+
+/**
+ * The `Slice` caps (#151) have to hold in three places at once: on the wire,
+ * where the API refuses a field that runs over; and in both plan-emitting
+ * prompts, so a model aims under a ceiling it knows about rather than being
+ * refused mid-turn by one it doesn't. The JSON Schema is what the API
+ * enforces, so the caps are asserted on the derived schema — not on the zod
+ * source — and the prompts are pinned to the same constants.
+ */
+describe("the Slice caps, on the wire and in both prompts", () => {
+  /** The `Slice` property map as each plan-emitting stage's derived JSON Schema carries it. */
+  const wireSlices: ReadonlyArray<{ stage: string; properties: Record<string, Record<string, unknown>> }> = [
+    { stage: "slice", properties: sliceProperties(SLICE_OUTPUT) },
+    { stage: "audit", properties: sliceProperties(AUDIT_OUTPUT) },
+  ];
+
+  function sliceProperties(output: StructuredOutput<unknown>) {
+    const schema = JSON.parse(output.jsonSchema) as {
+      properties: { slices: { items: { properties: Record<string, Record<string, unknown>> } } };
+    };
+    return schema.properties.slices.items.properties;
+  }
+
+  const PLAN_PROMPTS = ["to-tickets/slice/prompt.md", "to-tickets/audit/prompt.md"] as const;
+
+  it.each(wireSlices)("$stage: the derived JSON Schema carries maxLength on all three prose fields", ({ properties }) => {
+    expect(properties.whatToBuild.maxLength).toBe(SLICE_CAPS.whatToBuild);
+    expect(properties.whyNotMerged.maxLength).toBe(SLICE_CAPS.whyNotMerged);
+    expect((properties.acceptanceCriteria.items as Record<string, unknown>).maxLength).toBe(
+      SLICE_CAPS.acceptanceCriteria,
+    );
+  });
+
+  it.each(wireSlices)("$stage: neither filesClaimed nor acceptanceCriteria carries an item-count cap", ({ properties }) => {
+    expect(properties.filesClaimed).not.toHaveProperty("maxItems");
+    expect(properties.acceptanceCriteria).not.toHaveProperty("maxItems");
+  });
+
+  it.each(PLAN_PROMPTS)("%s states each cap beside the field it bounds", (promptPath) => {
+    const source = promptSource(promptPath);
+    for (const [field, cap] of Object.entries(SLICE_CAPS)) {
+      // The number on the same line as the field name, not merely somewhere
+      // in the prompt — "200" alone could be the title cap, or a line number.
+      expect(source).toMatch(new RegExp(`\`${field}\`[^\\n]*\\b${cap}\\b`));
+    }
   });
 });

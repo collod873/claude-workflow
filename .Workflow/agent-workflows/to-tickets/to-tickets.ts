@@ -2,7 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
-import { AUDIT_OUTPUT, Plan, SLICE_OUTPUT, type AuditOutput } from "../shared/plan-schema";
+import {
+  AUDIT_OUTPUT,
+  Plan,
+  SLICE_OUTPUT,
+  measurePlan,
+  type AuditOutput,
+} from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
@@ -155,6 +161,13 @@ interface TypedStageConfig<T> {
   buildVars: (issueNumber: string) => Record<string, string>;
   /** Throws to fail the stage; there is no repair path. */
   validate?: (output: T) => void;
+  /**
+   * One line about an accepted output's size, printed to the run log under
+   * the stage's name. A plan-emitting stage measures its plan against the
+   * `Slice` caps here (see `measurePlan`); a stage with nothing to measure
+   * leaves it unset.
+   */
+  measure?: (output: T) => string;
 }
 
 /**
@@ -181,6 +194,9 @@ async function runTypedStage<T>(
     config.validate?.(value);
     return value;
   });
+  if (config.measure) {
+    console.log(`${stage}: ${config.measure(output)}`);
+  }
   writeHandoff(JSON.stringify(output));
   return output;
 }
@@ -317,6 +333,7 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
     SEAM_MANIFEST: readPriorHandoff("slice"),
   }),
   validate: validatePlan,
+  measure: measurePlan,
 };
 
 /**
@@ -354,6 +371,7 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
     VOCABULARY: vocabulary(),
     PLAN: readPriorHandoff("audit"),
   }),
+  measure: (audited) => measurePlan(audited.slices),
 };
 
 /**
