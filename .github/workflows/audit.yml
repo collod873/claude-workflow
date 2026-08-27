@@ -25,6 +25,12 @@ name: Audit
 # `concurrency` serialises runs rather than cancelling one mid-flight: an audit that raced its own
 # push would either lose findings or spend a retry it didn't need to, and a release that opened a
 # PR is not work a later run should ever discard by being cancelled out from under it.
+#
+# The `Checkout Knowledge-Base` step below carries a deploy key, stored as a repository secret,
+# that can read a private repository — a credential worth restating the standing property for
+# (DESIGN.md §04: "no credential is referenced by a job a pull request can trigger"). `on:` above
+# is the whole reason it holds here too: `repository_dispatch` is not an event GitHub will ever
+# fire from a pull request, so a job started by one — this job included — never sees the secret.
 
 "on":
   repository_dispatch:
@@ -48,6 +54,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      KNOWLEDGE_BASE_DEPLOY_KEY: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,6 +70,32 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # Same shape as `to-tickets.yml`'s `CLAUDE_CODE_OAUTH_TOKEN` preflight: fail closed on an
+      # empty secret before spending anything on the run, rather than let `actions/checkout` below
+      # either fail on an obscure SSH error or (worse) silently fall back to the job's default
+      # `GITHUB_TOKEN`, which cannot read a private repository this token was never granted.
+      - name: Preflight — KNOWLEDGE_BASE_DEPLOY_KEY is set
+        run: |
+          set -euo pipefail
+          if [ -z "${KNOWLEDGE_BASE_DEPLOY_KEY:-}" ]; then
+            echo "KNOWLEDGE_BASE_DEPLOY_KEY is empty: set the repository secret before the corpus checkout can run." >&2
+            exit 1
+          fi
+
+      # Spec #134 §"The runner reads the corpus over a deploy key": a second checkout, read-only,
+      # of the private `collod873/Knowledge-Base` alongside this repo's own — the corpus
+      # `readSessionRecord` hydrates a session's spine from (`run-audit.ts`). `path:` here is
+      # `run-audit.ts`'s own `KNOWLEDGE_BASE_CHECKOUT_DIR`, spelled again rather than read across
+      # the language boundary a compiler cannot see across — the same duplication this file already
+      # carries for `AUDIT_DISPATCH_ACTION`, and `run-audit.test.ts` pins the two spellings the same
+      # way.
+      - name: Checkout Knowledge-Base
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/Knowledge-Base
+          ssh-key: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
+          path: knowledge-base
 
       - name: Set up Node
         uses: actions/setup-node@v4

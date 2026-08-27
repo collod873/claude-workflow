@@ -238,6 +238,15 @@ describe("audit.yml agrees with the scope rule it is a copy of", () => {
   it("gates the job on the same dispatch action the entrypoint checks", () => {
     expect(workflow).toContain(`action == '${AUDIT_DISPATCH_ACTION}'`);
   });
+
+  // Spec #134 §"The runner reads the corpus over a deploy key": the checkout that lands
+  // Knowledge-Base on the runner has to name the same repository the corpus lives in and land it
+  // at the same directory `readSessionRecord` reads via `KNOWLEDGE_BASE_CHECKOUT_DIR` — no
+  // compiler sees across the YAML/TypeScript boundary, so this test does.
+  it("checks out Knowledge-Base at the directory the entrypoint reads it from", () => {
+    expect(workflow).toContain("repository: collod873/Knowledge-Base");
+    expect(workflow).toContain(`path: ${KNOWLEDGE_BASE_CHECKOUT_DIR}`);
+  });
 });
 
 describe("run-audit.ts (CLI) exit code", () => {
