@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 // The hook is a pure function of stdin to (exit code, log file, capture directory), so it's
@@ -540,7 +540,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("");
-    waitForCaptureFile(result.outputDir);
+    const capture = waitForCaptureFile(result.outputDir);
 
     const log = waitForLogToContain(result.logPath, "published");
     expect(log).toContain(`published session-in-scope ${head}`);
@@ -550,14 +550,19 @@ describe("session-capture.sh — publishing the session record and dispatching t
       base: string;
       head: string;
       touchedPaths: string[];
-      spine: string;
+      corpusPath: string;
     };
     expect(note.sessionId).toBe("session-in-scope");
     expect(note.head).toBe(head);
     // Relative to the session's own worktree, and the out-of-repo edit is gone: this is the whole
     // pathspec a runner's `git diff` will be handed, in a checkout at a different absolute path.
     expect(note.touchedPaths).toEqual(["a.ts"]);
-    expect(note.spine).toContain("ship the range derivation");
+    // The spine itself never rides the note (spec #134) — `corpusPath` is the pointer a reader
+    // hydrates it back from, joined against its own Knowledge-Base checkout. Here that checkout is
+    // stood in by `result.outputDir/..` (`SESSION_CAPTURE_OUTPUT_DIR` is `<corpusDir>/raw/sessions`),
+    // so this asserts the same "corpus write and note agree" fact the old `note.spine` assertion did.
+    expect(note.corpusPath).toBe(join("raw", "sessions", basename(capture.path)));
+    expect(capture.content).toContain("ship the range derivation");
 
     const ghLog = existsSync(ghLogPath) ? readFileSync(ghLogPath, "utf8") : "";
     expect(ghLog).toContain("dispatches");

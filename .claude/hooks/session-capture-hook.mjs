@@ -50,6 +50,11 @@ import { writeSessionRecord } from "../../.Workflow/agent-workflows/observations
 import { syncNotesRef } from "../../.Workflow/agent-workflows/shared/notes-sync.ts";
 
 const OUTPUT_DIR = process.env.SESSION_CAPTURE_OUTPUT_DIR || join(homedir(), "Claude Projects", "Knowledge-Base", "raw", "sessions");
+// Where the corpus file lands *within the Knowledge-Base checkout*, independent of `OUTPUT_DIR`
+// above (which a test freely repoints at a throwaway directory). `SessionRecord.corpusPath`
+// (session-record-schema.ts) is a reader-relative path — `<corpusDir>/<record.corpusPath>` — so it
+// must always name this fixed convention, never wherever this run's `OUTPUT_DIR` happens to be.
+const CORPUS_SUBDIR = join("raw", "sessions");
 const LOG_PATH = process.env.SESSION_CAPTURE_LOG_PATH || join(homedir(), ".claude", "session-capture.log");
 // This pipeline's own checkout — what the publish step reads and writes. Defaults to the repo
 // this module itself lives in (three levels up from `.claude/hooks/`), the same computation
@@ -179,7 +184,7 @@ function dispatchAudit(repoDir, head) {
  * line on failure — see the module header for why this is a *different* failure posture from the
  * corpus write above it, never a thrown error either way.
  */
-function publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed }) {
+function publishSessionRecord({ sessionId, sessionCwd, jsonl, corpusPath, parsed }) {
   if (!sessionIsInThisRepo({ git: execGit, sessionCwd, repoDir: REPO_DIR })) {
     log("skipped publish-out-of-scope");
     return;
@@ -211,7 +216,9 @@ function publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed }
   // rather than published unusable, and the lenses read the unrestricted range diff.
   const root = worktreeRoot(execGit, sessionCwd);
   const touchedPaths = root ? toRepoRelative([...parsed.filesEdited, ...parsed.filesWritten], root) : [];
-  const record = { sessionId, base: range.base, head: range.head, touchedPaths, spine: markdown };
+  // The spine itself never rides this note (spec #134) — `corpusPath` is the pointer a reader
+  // hydrates it back from, joined against its own Knowledge-Base checkout (session-notes.ts).
+  const record = { sessionId, base: range.base, head: range.head, touchedPaths, corpusPath };
 
   try {
     syncNotesRef({
@@ -267,7 +274,8 @@ function main() {
   }
 
   const datePrefix = new Date().toISOString().slice(0, 10);
-  const outPath = join(OUTPUT_DIR, `${datePrefix}-${sessionId.slice(0, 8)}.md`);
+  const filename = `${datePrefix}-${sessionId.slice(0, 8)}.md`;
+  const outPath = join(OUTPUT_DIR, filename);
 
   try {
     mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -281,7 +289,7 @@ function main() {
 
   // The corpus write above is never conditional on this succeeding — see the module header.
   try {
-    publishSessionRecord({ sessionId, sessionCwd, jsonl, markdown, parsed });
+    publishSessionRecord({ sessionId, sessionCwd, jsonl, corpusPath: join(CORPUS_SUBDIR, filename), parsed });
   } catch (err) {
     log(`skipped publish-failed: ${reason(err)}`);
   }
