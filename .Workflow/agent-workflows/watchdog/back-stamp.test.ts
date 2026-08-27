@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
+import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
 import { createFakeGit } from "../shared/git.fake";
 import {
   adrNumber,
@@ -226,6 +227,10 @@ function fakeDeps(files: Record<string, string>): WalkDeps & { writes: Record<st
     writeFile: (path, content) => {
       writes[path] = content;
     },
+    // Logged into the same `calls` list `git` records into, the way `accept.test.ts` logs its own:
+    // the only thing worth asserting about it is *when* it runs relative to the `add` that stages
+    // what it wrote, and an ordering reads off one list where it does not read off two.
+    regenerateCorpus: () => void calls.push(["regenerate-corpus"]),
     git,
     log: () => {},
     writes,
@@ -245,10 +250,41 @@ describe("backStampWalk", () => {
     );
     expect(deps.writes[PREDECESSOR_32.path]).toContain("Status: superseded by ADR-0053, ADR-0054");
 
-    expect(deps.calls.map((argv) => argv[0])).toEqual(["add", "commit", "fetch", "rebase", "push"]);
+    expect(deps.calls.map((argv) => argv[0])).toEqual([
+      "regenerate-corpus",
+      "add",
+      "commit",
+      "fetch",
+      "rebase",
+      "push",
+    ]);
     const add = deps.calls.find((argv) => argv[0] === "add")!;
-    expect(add.slice(1).sort()).toEqual(outcome.stamped.sort());
+    expect(add.slice(1).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH].sort());
     expect(deps.calls.find((argv) => argv[0] === "push")).toEqual(["push", "origin", "HEAD:main"]);
+  });
+
+  // The regression this file did not have on the day it was needed. `main` went red on
+  // 2026-08-27 because this lane stamped ADR-0033, committed the ADR alone, and had its push
+  // refused by `bin/gauntlet push`'s `regenerate && diff` for a fixture it had just staled — the
+  // same failure `6d72c1b` had already fixed one lane over, in `shape/accept.ts`. What makes it a
+  // regression test rather than a restatement of the ordering above is the *pairing*: the fixture
+  // has to be regenerated before the `add`, and the `add` has to name it. Either half alone still
+  // pushes a tree that describes a corpus it no longer has.
+  it("regenerates the corpus fixture before staging it, because a stamp rewrites the bodies the fixture snapshots", () => {
+    const deps = fakeDeps(CORPUS);
+
+    backStampWalk(deps);
+
+    const order = deps.calls.map((argv) => argv[0]);
+    expect(order.indexOf("regenerate-corpus")).toBeLessThan(order.indexOf("add"));
+    expect(deps.calls.find((argv) => argv[0] === "add")).toContain(CORPUS_RELATIVE_PATH);
+  });
+
+  it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", () => {
+    const deps = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
+
+    expect(backStampWalk(deps).action).toBe("clean");
+    expect(deps.calls).toEqual([]);
   });
 
   it("a second run over the tree it just wrote makes zero further GitExec commit calls", () => {
@@ -280,6 +316,9 @@ describe("backStampWalk", () => {
         throw new Error("should not be called");
       },
       writeFile: () => {
+        throw new Error("should not be called");
+      },
+      regenerateCorpus: () => {
         throw new Error("should not be called");
       },
       git: () => {

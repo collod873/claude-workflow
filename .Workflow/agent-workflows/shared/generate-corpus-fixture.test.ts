@@ -69,6 +69,31 @@ describe("the trim: notes to their preamble, ADRs whole", () => {
     return JSON.parse(generateCorpusFixture(root)) as AdrCorpusFixture;
   }
 
+  /**
+   * ADR-0080's second half, and #146's second and third criteria: a draft is not yet part of the
+   * record, so a working tree holding one generates the same fixture as a tree without it — which
+   * is what lets `bin/gauntlet stop` and `bin/gauntlet push` stay green over an in-progress ADR.
+   * Before this the only way to hold a draft was to keep the gauntlet red.
+   */
+  it("excludes an unlanded draft from both corpora, so an in-progress document does not stale the fixture", () => {
+    const landedOnly = generate(
+      { "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" },
+      { "topic-2026-08.md": "**Resolves:** [x](https://example/1)\n" },
+    );
+    const withDrafts = generate(
+      {
+        "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n",
+        "draft-a-half-written-ruling.md": "# A half-written ruling\n\nRecorded 2026-08-27.\n",
+      },
+      {
+        "topic-2026-08.md": "**Resolves:** [x](https://example/1)\n",
+        "draft-a-half-written-note.md": "# A half-written note\n",
+      },
+    );
+
+    expect(withDrafts).toEqual(landedOnly);
+  });
+
   it("truncates a research note's body at its first ## section", () => {
     const fixture = generate(
       { "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" },

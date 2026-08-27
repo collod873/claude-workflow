@@ -33,13 +33,25 @@ export interface AcceptDeps {
   gh: GhExec;
   git: GitExec;
   /**
-   * Creates the next ADR file from its title and returns the path —
+   * Creates the ADR as an unnumbered draft and returns its path —
    * `bin/new-adr`, shelled out to rather than reimplemented, because the
-   * numbering rule (*highest existing number wins, so a gap never causes a
-   * collision*) is the kind of thing that is wrong in exactly one of two
+   * numbering rule is the kind of thing that is wrong in exactly one of two
    * copies.
    */
   newAdr: (title: string) => string;
+  /**
+   * Claims the draft's number and returns the landed path — `bin/new-adr
+   * --land`, the second half of the same tool.
+   *
+   * It is a second call rather than one because of *when* the number is
+   * claimed (ADR-0080). This lane runs on a runner against a checkout of
+   * `origin/main`, and the owner's tree may hold uncommitted work the runner
+   * cannot see; a number taken at draft time is taken against a corpus the
+   * other author is already past. Landing fetches `origin/main` first, so the
+   * number is claimed as late as this lane can claim it — immediately before
+   * the commit that pushes it.
+   */
+  landAdr: (draftPath: string) => string;
   /**
    * Regenerates `adr-corpus.evidence.json` from `docs/adr` and `docs/research`
    * — `writeCorpusFixture`, held at arm's length the way `newAdr` is so a test
@@ -176,9 +188,13 @@ function fileAdrs(deps: AcceptDeps, sheet: Sheet, issueNumber: number): string[]
   for (const decision of sheet.decisions) {
     if (decision.adrTitle === "" || decision.mark === "") continue;
 
-    const path = deps.newAdr(decision.adrTitle).trim();
-    deps.writeFile(path, `${deps.readFile(path).trimEnd()}\n\n${adrBody(decision, issueNumber)}`);
-    written.push(path);
+    // Draft, fill, then land. The body is appended to the draft rather than to the landed file so
+    // that the number is claimed against the freshest `origin/main` this lane can see — after all
+    // the writing is done, immediately before `commitAndPush` (ADR-0080). Everything downstream
+    // reads the landed path, so the two-step stops here.
+    const draft = deps.newAdr(decision.adrTitle).trim();
+    deps.writeFile(draft, `${deps.readFile(draft).trimEnd()}\n\n${adrBody(decision, issueNumber)}`);
+    written.push(deps.landAdr(draft).trim());
   }
   return written;
 }

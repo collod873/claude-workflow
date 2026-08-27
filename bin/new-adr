@@ -1,11 +1,133 @@
 #!/usr/bin/env bash
-# Create the next ADR from a title. Numbering is derived, never typed.
+# Create an ADR as an unnumbered draft, and claim its number when it lands.
+#
+# Numbering is derived, never typed — and it is derived at the **land**, not at the draft
+# (ADR-0080). Two authors write into `docs/adr/` now, the owner's checkout and a runner, and
+# neither can see the other's uncommitted work. A number claimed when the file is created is a
+# number claimed against a corpus the other author is already past; a number claimed at the land,
+# against a freshly fetched `origin/main`, is claimed against the record both authors share.
+#
+#   bin/new-adr "the ruling as a sentence"        → docs/adr/draft-<slug>.md
+#   bin/new-adr --amends NNNN "the ruling"        → the same, carrying the Amends: trailer
+#   bin/new-adr --land docs/adr/draft-<slug>.md   → docs/adr/NNNN-<slug>.md, number claimed here
+#
+# A draft carries no number, so it is invisible to everything that reads the corpus by filename
+# shape (`missing-trailer-counter.ts`, `generate-corpus-fixture.ts`). That is what lets a
+# half-written ruling sit in a working tree without holding the gauntlet red — which was the
+# other half of #146, and it falls out of this rule rather than needing one of its own.
 set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+adr_dir="$repo_root/docs/adr"
+
+slugify() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
+    | cut -c1-60 | sed -E 's/-+$//'
+}
+
+usage() {
+  echo "usage: bin/new-adr \"the ruling as a sentence\"" >&2
+  echo "       bin/new-adr --amends NNNN \"the ruling as a sentence\"" >&2
+  echo "       bin/new-adr --land docs/adr/draft-<slug>.md" >&2
+  echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
+}
+
+# --- land ---------------------------------------------------------------------------------------
+#
+# The number is the highest already taken on either side of the two-author split, plus one: the
+# local disk, and `origin/main`. Taking the max of both rather than `origin/main` alone is what
+# keeps a second land in the same session from reusing the number the first one just claimed —
+# that one is on disk and not yet pushed.
+#
+# A tree with no `origin` (a scratch repo, a fresh clone of nothing, the test fixtures) falls back
+# to the disk alone rather than failing. The fetch is a sharpening, not a precondition: without it
+# this is exactly the old behaviour, which is the right thing to degrade to.
+
+highest_on_disk() {
+  find "$adr_dir" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null \
+    | cut -c1-4 | sort -n | tail -1
+}
+
+highest_on_origin() {
+  git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  git -C "$repo_root" fetch --quiet origin main 2>/dev/null || true
+  git -C "$repo_root" ls-tree --name-only FETCH_HEAD -- docs/adr/ 2>/dev/null \
+    | sed -E 's#.*/##' | grep -E '^[0-9]{4}-.*\.md$' 2>/dev/null \
+    | cut -c1-4 | sort -n | tail -1
+}
+
+land() {
+  local draft="$1"
+  [ -n "$draft" ] || { usage; exit 1; }
+  [ -e "$draft" ] || { echo "no such draft: $draft" >&2; exit 1; }
+
+  local base
+  base="$(basename "$draft")"
+  case "$base" in
+    draft-*.md) ;;
+    *) echo "not a draft (expected draft-<slug>.md): $draft" >&2; exit 1 ;;
+  esac
+
+  local disk origin next
+  disk="$(highest_on_disk)"
+  origin="$(highest_on_origin)"
+  next=$((10#${disk:-0}))
+  [ $((10#${origin:-0})) -gt "$next" ] && next=$((10#${origin:-0}))
+  next=$(printf '%04d' $((next + 1)))
+
+  local slug landed
+  slug="${base#draft-}"
+  slug="${slug%.md}"
+  landed="$adr_dir/$next-$slug.md"
+  [ -e "$landed" ] && { echo "already exists: $landed" >&2; exit 1; }
+
+  # `git mv` when the draft is already tracked, so the rename lands as a rename rather than as a
+  # delete and an add. An untracked draft — the ordinary case, since a draft is what you hold
+  # before you commit anything — is a plain `mv`.
+  if git -C "$repo_root" ls-files --error-unmatch "$draft" >/dev/null 2>&1; then
+    git -C "$repo_root" mv "$draft" "$landed"
+  else
+    mv "$draft" "$landed"
+  fi
+
+  # The corpus fixture is a snapshot of this directory, and landing is the moment the directory
+  # grew. Regenerating here is what stops the land from being a two-step nobody remembers the
+  # second half of — the same obligation `shape/accept.ts` carries for its own writes, moved to
+  # the one place every author goes through. `bin/gauntlet push` is still the gate; this is what
+  # keeps the gate from being the first time you hear about it.
+  #
+  # Both conditions are skips rather than failures, and the asymmetry with `bin/gauntlet` is
+  # deliberate: the gauntlet fails closed because it is a gate, and this is not one. A land that
+  # refused to rename because it could not also regenerate would leave the draft unlanded over a
+  # thing the push venue is about to catch anyway — and it would make this tool unusable in a
+  # checkout that has no generator at all, which is every scratch tree the suite builds.
+  local generator="$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts"
+  # shellcheck source=bin/node-on-path.sh
+  . "$repo_root/bin/node-on-path.sh"
+  if [ ! -f "$generator" ]; then
+    : # No corpus fixture in this tree to keep true.
+  elif node_on_path; then
+    node "$generator" "$repo_root"
+  else
+    echo "new-adr: no node on PATH — corpus fixture not regenerated, and bin/gauntlet push will refuse this" >&2
+  fi
+
+  echo "$landed"
+}
+
+# --- argv ---------------------------------------------------------------------------------------
+
+if [ "${1:-}" = "--land" ]; then
+  land "${2:-}"
+  exit 0
+fi
 
 amends=""
 if [ "${1:-}" = "--amends" ]; then
   if [ $# -lt 3 ]; then
-    echo "usage: bin/new-adr --amends NNNN \"the ruling as a sentence\"" >&2
+    usage
     exit 1
   fi
   amends="$2"
@@ -13,27 +135,14 @@ if [ "${1:-}" = "--amends" ]; then
 fi
 
 if [ $# -eq 0 ]; then
-  echo "usage: bin/new-adr \"the ruling as a sentence\"" >&2
-  echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
+  usage
   exit 1
 fi
 
 title="$*"
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-adr_dir="$repo_root/docs/adr"
 mkdir -p "$adr_dir"
 
-# Highest existing number wins, so a gap never causes a collision.
-next=$(find "$adr_dir" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null \
-  | cut -c1-4 | sort -n | tail -1)
-next=$(printf '%04d' $((10#${next:-0} + 1)))
-
-slug=$(printf '%s' "$title" \
-  | tr '[:upper:]' '[:lower:]' \
-  | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
-  | cut -c1-60 | sed -E 's/-+$//')
-
-file="$adr_dir/$next-$slug.md"
+file="$adr_dir/draft-$(slugify "$title").md"
 [ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
 
 if [ -n "$amends" ]; then

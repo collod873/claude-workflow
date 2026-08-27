@@ -56,10 +56,16 @@ export function readAdrCorpus(adrDir: string): AdrDoc[] {
     });
 }
 
-/** Every research note under `researchDir` — `assets/` and any other non-Markdown entry excluded by the `.md` filter. */
+/**
+ * Every research note under `researchDir` — `assets/` and any other non-Markdown entry excluded by
+ * the `.md` filter, and `draft-` excluded because a draft is not yet part of the record
+ * (ADR-0080). An ADR gets that exclusion for free above: a draft carries no number, and
+ * `ADR_FILENAME_RE` wants four digits.
+ */
 export function readResearchCorpus(researchDir: string): ResearchNote[] {
   return readdirSync(researchDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .filter((entry) => !entry.name.startsWith("draft-"))
     .map((entry) => {
       const body = readFileSync(join(researchDir, entry.name), "utf8");
       return { filename: entry.name, title: titleOf(body), body };

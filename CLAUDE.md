@@ -8,7 +8,9 @@ A Claude Code + GitHub workflow system.
 - Keep local-only state out of git (see `.gitignore`).
 - Use the vocabulary in `CONTEXT.md`. If a term there is wrong, change it there — don't work
   around it.
-- Decisions go in `docs/adr/`, created with `bin/new-adr "<the ruling as a sentence>"`. Format and
+- Decisions go in `docs/adr/`, drafted with `bin/new-adr "<the ruling as a sentence>"` and landed
+  with `bin/new-adr --land <draft>` — the land is what claims the number
+  ([ADR-0080](docs/adr/0080-an-adr-number-is-claimed-when-the-adr-lands-not-when-it-is-d.md)). Format and
   the bar for writing one are in `docs/adr/README.md`. Never edit an old ADR to reflect a new
   decision; write a new one that says what it amends.
 - `.claude/contract.json` is generated, not hand-maintained — `bin/gauntlet push` runs

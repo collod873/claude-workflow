@@ -40,6 +40,14 @@ function newAdr(title: string): string {
   return execFileSync("bin/new-adr", [title], { encoding: "utf8", env: childEnv() });
 }
 
+/**
+ * `bin/new-adr --land`, the other half of the same tool: it fetches `origin/main`, renames the
+ * draft onto the next free number and prints the landed path (ADR-0080).
+ */
+function landAdr(draftPath: string): string {
+  return execFileSync("bin/new-adr", ["--land", draftPath], { encoding: "utf8", env: childEnv() });
+}
+
 function usage(): never {
   console.error("usage: run-accept.ts --issue <n> --verb <approved|parked|killed>");
   process.exit(1);
@@ -61,6 +69,7 @@ function main(): void {
     gh: execGh,
     git: execGit,
     newAdr,
+    landAdr,
     // `process.cwd()` as the repo root, which is the assumption `newAdr` above already makes by
     // invoking `bin/new-adr` as a relative path: this entrypoint only ever runs from the checkout
     // root, whether that is a workflow's `run:` step or the owner's own shell.

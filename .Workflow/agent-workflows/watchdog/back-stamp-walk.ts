@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stamp";
@@ -34,6 +35,20 @@ export interface WalkDeps {
   readDir: (dir: string) => string[];
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
+  /**
+   * Regenerates `adr-corpus.evidence.json` from `docs/adr` and `docs/research` — the same dep
+   * `shape/accept.ts` holds for the same reason, held at arm's length here so a test can watch
+   * *when* it runs relative to the `add` that stages it.
+   *
+   * A back-stamp edits an ADR body, and the fixture is a captured snapshot of those bodies. A
+   * lane that writes the ADR and not the snapshot leaves the repository describing a corpus it no
+   * longer has — which `bin/gauntlet push` refuses, and the `pre-push` hook installs itself on a
+   * runner as readily as on the owner's machine. That refusal is correct and stays; what was
+   * wrong is that this lane did not know it had grown the corpus. `6d72c1b` taught the accept
+   * exactly this; the back-stamp is the second author that writes into `docs/adr/` and it was
+   * never told.
+   */
+  regenerateCorpus: () => void;
   git: GitExec;
   log?: (line: string) => void;
 }
@@ -71,7 +86,7 @@ export function backStampWalk(deps: WalkDeps): WalkOutcome {
   }
 
   for (const write of writes) deps.writeFile(write.path, write.content);
-  commitAndPush(deps.git, writes);
+  commitAndPush(deps, writes);
 
   const stamped = writes.map((write) => write.path);
   log(`stamped ${stamped.length}: ${stamped.join(", ")}`);
@@ -84,13 +99,20 @@ export function backStampWalk(deps: WalkDeps): WalkOutcome {
  * this runs unattended off a push trigger, so a push that lands between the read and the write here
  * must be retried onto rather than silently overwritten.
  */
-function commitAndPush(git: GitExec, writes: BackStampWrite[]): void {
+function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   const paths = writes.map((write) => write.path);
-  git(["add", ...paths]);
-  git(["commit", "-m", commitMessage(writes)]);
-  git(["fetch", "origin", "main"]);
-  git(["rebase", "origin/main"]);
-  git(["push", "origin", "HEAD:main"]);
+
+  // The fixture moves in the same commit as the stamps, because it is a snapshot of the bodies
+  // those stamps just rewrote — see `regenerateCorpus`'s note on `WalkDeps` for why this lane
+  // owns that and what it cost to learn.
+  deps.regenerateCorpus();
+  paths.push(CORPUS_RELATIVE_PATH);
+
+  deps.git(["add", ...paths]);
+  deps.git(["commit", "-m", commitMessage(writes)]);
+  deps.git(["fetch", "origin", "main"]);
+  deps.git(["rebase", "origin/main"]);
+  deps.git(["push", "origin", "HEAD:main"]);
 }
 
 /** CLAUDE.md: commit messages explain **why**, not what. */
@@ -109,6 +131,7 @@ async function main(): Promise<void> {
       readDir: (dir) => readdirSync(dir),
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => writeFileSync(path, content),
+      regenerateCorpus: () => writeCorpusFixture(process.cwd()),
       git: execGit,
     });
     console.log(`${outcome.action}: ${outcome.stamped.length} stamped`);

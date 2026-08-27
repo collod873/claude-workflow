@@ -76,10 +76,15 @@ function readAdrCorpus(adrDir: string): AdrDoc[] {
 /**
  * Every research note under `researchDir`, sorted by filename — the note counterpart of
  * `readAdrCorpus` above, same reasons (reproduces `readResearchCorpus`, sorted for determinism).
+ *
+ * `draft-` is excluded for the reason ADR-0080 gives: a draft is not yet part of the record. An
+ * ADR gets that for free, because a draft carries no number and `ADR_FILENAME_RE` above wants
+ * four digits. A note's filename has no such shape to fail, so the exclusion is written out.
  */
 function readResearchCorpus(researchDir: string): ResearchNote[] {
   return readdirSync(researchDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .filter((entry) => !entry.name.startsWith("draft-"))
     .map((entry) => {
       const body = readFileSync(join(researchDir, entry.name), "utf8");
       return { filename: entry.name, title: titleOf(body), body };

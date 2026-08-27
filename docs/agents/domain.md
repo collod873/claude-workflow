@@ -6,8 +6,9 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`CONTEXT.md`** at the repo root: the glossary this repo's vocabulary is defined in.
 - **`docs/adr/`**: read ADRs that touch the area you're about to work in. `docs/adr/README.md`
-  carries the format and the bar for writing one; new ones are created with
-  `bin/new-adr "<the ruling as a sentence>"`.
+  carries the format and the bar for writing one; new ones are drafted with
+  `bin/new-adr "<the ruling as a sentence>"` and landed with `bin/new-adr --land <draft>`, which is
+  what claims the number.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 

@@ -58,11 +58,23 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
     // about it is *when* it runs relative to the `add` that stages what it wrote — and an ordering
     // reads off one list where it does not read off two.
     regenerateCorpus: () => void git.push(["regenerate-corpus"]),
+    // Drafts are unnumbered and the number arrives at the land (ADR-0080), so the stub models
+    // both halves: `newAdr` names the file by its slug alone, and `landAdr` is the only thing
+    // here that knows a number. A stub that handed back a numbered path from `newAdr` would let
+    // an accept that never lands its drafts pass.
     newAdr: (title) => {
       adrTitles.push(title);
+      const path = `docs/adr/draft-slug-${adrTitles.length}.md`;
+      files.set(path, `# ${title}\n\nRecorded 2026-08-26.\n`);
+      return `${path}\n`;
+    },
+    landAdr: (draftPath) => {
+      const body = files.get(draftPath);
+      if (body === undefined) throw new Error(`landed a draft that was never created: ${draftPath}`);
       nextAdr += 1;
       const path = `docs/adr/${String(nextAdr).padStart(4, "0")}-slug.md`;
-      files.set(path, `# ${title}\n\nRecorded 2026-08-26.\n`);
+      files.delete(draftPath);
+      files.set(path, body);
       return `${path}\n`;
     },
     readFile: (path) => {

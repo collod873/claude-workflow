@@ -6,11 +6,22 @@ know *why* something is the way it is should find the answer here without asking
 ## Writing one
 
 ```
-bin/new-adr "the ruling as a sentence"
+bin/new-adr "the ruling as a sentence"          # → docs/adr/draft-<slug>.md
+bin/new-adr --land docs/adr/draft-<slug>.md     # → docs/adr/NNNN-<slug>.md
 ```
 
-That picks the next number, slugifies the title, stamps the date and opens the file. Or write it
-by hand — `NNNN-slug.md`, four digits, next in sequence.
+Drafting slugifies the title, stamps the date and opens the file. It claims **no number** — a draft
+is not yet part of the record, so it sits in your working tree without staling the corpus fixture or
+tripping the gauntlet.
+
+Landing is what claims the number, against a freshly fetched `origin/main`, and regenerates the
+corpus fixture in the same breath. Both halves matter: `docs/adr/` has two authors now — you and the
+accept lane on a runner — and neither can see the other's uncommitted work, so a number taken when
+the file is *created* is taken against a corpus the other author may already be past. See
+[ADR-0080](0080-an-adr-number-is-claimed-when-the-adr-lands-not-when-it-is-d.md).
+
+Writing one by hand still works — `NNNN-slug.md`, four digits, next in sequence — but you then owe
+the fixture yourself: `node .Workflow/agent-workflows/shared/generate-corpus-fixture.ts .`
 
 ## Format
 

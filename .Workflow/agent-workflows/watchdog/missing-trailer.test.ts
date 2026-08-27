@@ -83,9 +83,49 @@ describe("the rule, run over the corpus that motivated it", () => {
     ]));
   });
 
-  it("flags exactly 27 ADRs as verb-and-link candidates with no trailer", () => {
+  it("flags every verb-and-link ADR with no trailer, and nothing that fails any of those three", () => {
     const candidates = EVIDENCE.adrs.filter(isMissingAmendsTrailer);
-    expect(candidates.length).toBe(27);
+
+    // The last exact count in this file, and the one #146 named as next to fire. It was correct
+    // only because a human bumped it in the same commit as each ADR, and the corpus has had two
+    // authors since the accept lane started filing on a runner — so `27` was a number that went
+    // red for the corpus having grown, which is the one thing it must not do.
+    //
+    // What replaces it is the three conditions the rule is actually made of, asserted over
+    // whatever the corpus holds. That is stricter than the equality was: the count could be right
+    // with the wrong 27 documents in it, and these cannot.
+    expect(candidates.length).toBeGreaterThan(0); // a floor, so a green sweep is not an empty one
+    for (const doc of candidates) {
+      expect(hasSupersessionVerb(doc.body)).toBe(true);
+      expect(lowerNumberedAdrLinks(doc.body, doc.number).length).toBeGreaterThan(0);
+      expect(hasAmendsTrailer(doc.body)).toBe(false);
+    }
+
+    // And the converse, which is what the count was really standing in for: nothing that meets all
+    // three is left unflagged. Without this the properties above are satisfied by flagging nothing.
+    const shouldFlag = EVIDENCE.adrs.filter(
+      (doc) =>
+        hasSupersessionVerb(doc.body) &&
+        lowerNumberedAdrLinks(doc.body, doc.number).length > 0 &&
+        !hasAmendsTrailer(doc.body),
+    );
+    expect(candidates.map((doc) => doc.filename).sort()).toEqual(
+      shouldFlag.map((doc) => doc.filename).sort(),
+    );
+
+    // The roster the rule was written against, as a subset rather than an equality — these must
+    // still be found, so a regression that stops recognising a verb or a link is caught, while an
+    // ADR filed tomorrow is free to join them.
+    expect(candidates.map((doc) => doc.filename)).toEqual(
+      expect.arrayContaining([
+        "0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md",
+        "0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md",
+        "0021-one-gate-per-rule-the-workstation-close-hook-stands-down-whe.md",
+        "0026-the-build-order-and-the-filed-open-questions-live-as-issues.md",
+        "0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md",
+        "0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md",
+      ]),
+    );
   });
 
   it("flags no research notes as missing a Resolves: field — every note on disk now carries a pointer", () => {
@@ -101,8 +141,16 @@ describe("the rule, run over the corpus that motivated it", () => {
 
   it("collapses the whole corpus into one issue's worth of findings, not two counters' worth", () => {
     const findings = findMissingTrailers(EVIDENCE.adrs, EVIDENCE.notes);
-    expect(findings.filter((f) => f.kind === "adr")).toHaveLength(27);
-    expect(findings.filter((f) => f.kind === "research-note")).toHaveLength(0);
+
+    // Derived from the corpus rather than typed, for the reason the count above became a
+    // property: this test is about the *collapse* — one issue carrying both kinds — and pinning a
+    // literal made it also a census that goes red the day an ADR is filed.
+    expect(findings.filter((f) => f.kind === "adr")).toHaveLength(
+      EVIDENCE.adrs.filter(isMissingAmendsTrailer).length,
+    );
+    expect(findings.filter((f) => f.kind === "research-note")).toHaveLength(
+      EVIDENCE.notes.filter(isMissingResolvesField).length,
+    );
   });
 });
 
