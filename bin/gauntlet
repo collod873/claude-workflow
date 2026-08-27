@@ -17,6 +17,12 @@
 # `push` run the same set. They stay separate names because the venues are different: `push` is the
 # one an agent has to route around deliberately, and it is the one that fails closed.
 #
+# What runs is whatever `.claude/contract.json` names (ADR-0056), not a hardcoded `tsc`/`eslint`/
+# `vitest` — this repo isn't special-cased over any other repo the contract might describe. The
+# contract is read once per run, through one `node` invocation that resolves every slot this venue
+# needs, because a lookup that cost one process per check is the thing #117 asked this rewrite to
+# stop doing.
+#
 # Exit codes are three, not two, and the third is the point:
 #   0  clean
 #   1  a check failed        — a real finding
@@ -57,49 +63,136 @@ if ! node_on_path; then
   exit 2
 fi
 
-bin_dir="$repo_root/node_modules/.bin"
-for tool in tsc eslint vitest; do
-  if [ ! -x "$bin_dir/$tool" ]; then
-    echo "gauntlet: $bin_dir/$tool missing — run npm ci" >&2
-    exit 2
-  fi
-done
+if [ "$venue" = "turn" ] && [ -n "$target" ] && [ ! -f "$target" ]; then
+  # A target that is not there is a usage problem, not a finding. Running the resolved lint
+  # command anyway would report a moved or deleted file as a code defect.
+  echo "gauntlet: $target does not exist — checks not run" >&2
+  exit 2
+fi
+
+# `GAUNTLET_CONTRACT` overrides which contract this run reads — the seam a test uses to exercise a
+# contract shape (a dead command, a slot that forces the broader-slot degradation) without editing
+# this repo's own `.claude/contract.json`. Nothing in production sets it.
+contract_path="${GAUNTLET_CONTRACT:-$repo_root/.claude/contract.json}"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+
+# The one Node invocation this run makes. It imports the check-contract module — the shared reader
+# #119 landed — reads and validates the contract, and resolves every slot this venue needs in a
+# single process, then prints the results as `NAME_FIELD=value` shell assignments for the `eval`
+# below to load. `turn` has no `lint_one` slot to ask for; requesting it is what makes the module
+# degrade to the broader `lint` slot and report the substitution (ADR-0056).
+read_slots() {
+  local venue="$1" contract_path="$2" repo_root="$3"
+  node --input-type=module - "$venue" "$contract_path" "$repo_root" <<'NODE_EOF'
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const [, , venue, contractPath, repoRoot] = process.argv;
+
+const moduleUrl = pathToFileURL(
+  join(repoRoot, ".Workflow/agent-workflows/shared/check-contract.ts"),
+).href;
+const { CheckContract, resolveSlot } = await import(moduleUrl);
+
+let raw;
+try {
+  raw = readFileSync(contractPath, "utf8");
+} catch (err) {
+  console.error(`gauntlet: cannot read ${contractPath}: ${err.message}`);
+  process.exit(1);
+}
+
+let contract;
+try {
+  contract = CheckContract.parse(JSON.parse(raw));
+} catch (err) {
+  console.error(`gauntlet: ${contractPath} is not a valid check contract: ${err.message}`);
+  process.exit(1);
+}
+
+const requests =
+  venue === "turn"
+    ? [
+        ["TYPECHECK", "typecheck"],
+        ["LINT", "lint_one"],
+      ]
+    : [
+        ["TYPECHECK", "typecheck"],
+        ["LINT", "lint"],
+        ["TEST", "test"],
+      ];
+
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+const lines = [];
+for (const [name, requested] of requests) {
+  let resolution;
+  try {
+    resolution = resolveSlot(contract, requested);
+  } catch (err) {
+    console.error(`gauntlet: ${err.message}`);
+    process.exit(1);
+  }
+  lines.push(`${name}_CMD=${resolution.cmd === null ? "''" : shQuote(resolution.cmd)}`);
+  lines.push(`${name}_SLOT=${shQuote(resolution.slot)}`);
+  lines.push(`${name}_SUBSTITUTED=${resolution.substituted ? 1 : 0}`);
+  lines.push(`${name}_REQUESTED=${shQuote(resolution.requested ?? requested)}`);
+}
+
+process.stdout.write(lines.join("\n") + "\n");
+NODE_EOF
+}
+
+if ! resolved="$(read_slots "$venue" "$contract_path" "$repo_root")" 2>"$tmp/resolve.err"; then
+  echo "gauntlet: could not resolve $contract_path — checks not run" >&2
+  cat "$tmp/resolve.err" >&2
+  exit 2
+fi
+eval "$resolved"
+
+checks="typecheck lint"
+[ "$venue" != "turn" ] && checks="typecheck lint test"
+
+# A slot resolved to a broader form than what this venue asked for is a real cost — the turn venue
+# now lints the whole repo, not just the file that changed — and it is reported rather than run
+# silently, the same way an over-budget venue reports itself below.
+for name in $checks; do
+  var_name="$(echo "$name" | tr '[:lower:]' '[:upper:]')"
+  substituted_var="${var_name}_SUBSTITUTED"
+  if [ "${!substituted_var}" = "1" ]; then
+    requested_var="${var_name}_REQUESTED"
+    slot_var="${var_name}_SLOT"
+    echo "gauntlet: no ${!requested_var} slot in $contract_path — running the broader ${!slot_var} slot instead" >&2
+  fi
+  cmd_var="${var_name}_CMD"
+  if [ -z "${!cmd_var}" ]; then
+    slot_var="${var_name}_SLOT"
+    echo "gauntlet: the ${!slot_var} slot in $contract_path names no command — checks not run" >&2
+    exit 2
+  fi
+done
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
 run_check() {
   local name="$1"
   shift
-  if "$@" >"$tmp/$name.out" 2>&1; then
-    : >"$tmp/$name.pass"
-  fi
+  "$@" >"$tmp/$name.out" 2>&1
+  echo "$?" >"$tmp/$name.exit"
 }
 
 started_ms=$(($(date +%s%N) / 1000000))
 pids=()
 
-# Whole-project, at every venue including `turn`. `tsc` has no cheap single-file mode under a
-# project config — pointing it at one file drops tsconfig.json and changes what it means — and the
-# whole project costs ~0.7s, which fits. If that stops being true the check moves down a venue; it
-# does not become a worse check.
-run_check typecheck "$bin_dir/tsc" --noEmit &
+run_check typecheck bash -c "cd \"$repo_root\" && $TYPECHECK_CMD" &
 pids+=($!)
 
-if [ "$venue" = "turn" ] && [ -n "$target" ]; then
-  # A target that is not there is a usage problem, not a finding. eslint's answer to a missing
-  # path is a hard error, and reporting that as a lint failure would tell Claude its code is
-  # broken because a file moved.
-  if [ ! -f "$target" ]; then
-    echo "gauntlet: $target does not exist — checks not run" >&2
-    exit 2
-  fi
-  run_check lint "$bin_dir/eslint" "$target" &
-else
-  run_check lint "$bin_dir/eslint" "$repo_root" &
-fi
+run_check lint bash -c "cd \"$repo_root\" && $LINT_CMD" &
 pids+=($!)
 
 if [ "$venue" != "turn" ]; then
@@ -128,7 +221,7 @@ if [ "$venue" != "turn" ]; then
     GIT_DIR="$sandbox/.git" \
     GIT_WORK_TREE="$sandbox" \
     GIT_INDEX_FILE="$sandbox/.git/index" \
-    "$bin_dir/vitest" run &
+    bash -c "cd \"$repo_root\" && $TEST_CMD" &
   pids+=($!)
 fi
 
@@ -136,6 +229,7 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 elapsed_ms=$((($(date +%s%N) / 1000000) - started_ms))
 
 failed=0
+could_not_run=0
 
 # Read the decoy. This is a finding about the suite, not about the code under test, so it is
 # reported separately from `test` — a green suite that wrote into the sandbox is a worse result
@@ -158,9 +252,19 @@ if [ "$venue" != "turn" ]; then
   fi
 fi
 
-for name in typecheck lint test; do
-  [ -f "$tmp/$name.out" ] || continue
-  [ -f "$tmp/$name.pass" ] && continue
+# A command a slot names that no longer runs — renamed, uninstalled, a typo in the contract — is
+# the shell's own "command not found", exit 127. That is kept distinct from a check that ran and
+# found something: the former is a broken gauntlet (exit 2), the latter is a real finding (exit 1).
+for name in $checks; do
+  [ -f "$tmp/$name.exit" ] || continue
+  code="$(cat "$tmp/$name.exit")"
+  [ "$code" = "0" ] && continue
+  if [ "$code" = "127" ]; then
+    could_not_run=1
+    echo "gauntlet: $name's command could not run" >&2
+    cat "$tmp/$name.out" >&2
+    continue
+  fi
   failed=1
   echo "--- $name ---"
   cat "$tmp/$name.out"
@@ -168,6 +272,10 @@ done
 
 if [ "$elapsed_ms" -gt "$budget_ms" ]; then
   echo "gauntlet: $venue took ${elapsed_ms}ms against a ${budget_ms}ms budget" >&2
+fi
+
+if [ "$could_not_run" = "1" ]; then
+  exit 2
 fi
 
 exit "$failed"
