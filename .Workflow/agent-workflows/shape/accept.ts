@@ -1,7 +1,7 @@
 import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
-import { ACCEPTED_MARKER } from "./marker";
+import { acceptedMarker } from "./marker";
 import type { Decision, Sheet, Term } from "./sheet-schema";
 import { roundFor } from "./rounds";
 
@@ -346,7 +346,7 @@ ${filed}${coined}
 
 **Route:** \`${route}\`${overridden}
 
-${ACCEPTED_MARKER}
+${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), route })}
 
 **Not dispatched.** Lane 02 does not run on a runner yet — that is move 6. This click filed what the sheet decided so the spec cites it rather than re-deciding it; starting the work is still yours until move 6 lands, and it fires on this same label.`;
 }

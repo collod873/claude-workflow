@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { isRefusal, readSheetMarker, REFUSAL_MARKER, sheetMarker } from "./marker";
+import {
+  acceptedMarker,
+  ACCEPTED_MARKER,
+  isAccepted,
+  isRefusal,
+  readAcceptedMarker,
+  readSheetMarker,
+  REFUSAL_MARKER,
+  sheetMarker,
+  type AcceptedPayload,
+} from "./marker";
 import { renderSheet } from "./render-sheet";
 import type { Sheet } from "./sheet-schema";
 
@@ -61,6 +71,42 @@ describe("the sheet's trailer", () => {
     ])("%s", (_name, body) => {
       expect(readSheetMarker(body)).toBeUndefined();
     });
+  });
+});
+
+const acceptedPayload: AcceptedPayload = {
+  adrPaths: ["docs/adr/0051-slug.md"],
+  coinedTerms: ["Gate"],
+  route: "short",
+};
+
+describe("the accept's trailer", () => {
+  it("round-trips a payload the same way sheetMarker does", () => {
+    expect(readAcceptedMarker(acceptedMarker(acceptedPayload))).toEqual(acceptedPayload);
+  });
+
+  it("survives a payload containing a `>` character, the same way sheetMarker does", () => {
+    // Mirrors marker.ts's own escaping assertion for the sheet: every `>` in
+    // the JSON document is escaped as `>`, so an ADR path or term that
+    // happens to contain one cannot terminate the HTML comment early.
+    const hostile: AcceptedPayload = { ...acceptedPayload, coinedTerms: ["the arrow --> and back"] };
+
+    expect(readAcceptedMarker(acceptedMarker(hostile))?.coinedTerms).toEqual([
+      "the arrow --> and back",
+    ]);
+  });
+
+  it("is recognised by isAccepted whether or not it carries a payload", () => {
+    expect(isAccepted(acceptedMarker(acceptedPayload))).toBe(true);
+    expect(isAccepted(`## Accepted\n\n${ACCEPTED_MARKER} -->`)).toBe(true);
+  });
+
+  it("reads as absent — not as an exception — for the old bare marker", () => {
+    // A comment written before this payload existed carries the bare marker
+    // with nothing between the tags. That is unreadable, and reads the same
+    // way as a comment that isn't an accept at all: as nothing to fall back
+    // to prose for.
+    expect(readAcceptedMarker(`${ACCEPTED_MARKER} -->`)).toBeUndefined();
   });
 });
 

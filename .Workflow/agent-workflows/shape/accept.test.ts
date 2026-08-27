@@ -352,6 +352,26 @@ describe("re-applying a verb", () => {
 
     accept(deps, 1, "approved");
 
-    expect(postedComments(tracker)[0]).toContain("<!-- shape-accepted:v1 -->");
+    expect(postedComments(tracker)[0]).toContain("<!-- shape-accepted:v1");
+  });
+
+  it("carries the ADR paths, coined terms and route in the marker's payload", () => {
+    // ADR-0058: lane 02's sheet collector cites these rather than restating
+    // them, and the ADR numbers appear nowhere on the sheet itself — so the
+    // payload is what the collector reads instead of the rendered prose.
+    const term: Term = { term: "X", definition: "d", avoid: [], section: "Mechanisms" };
+    const { deps, tracker } = harness({
+      sheet: sheet({
+        decisions: [decision({ mark: "a mark", adrTitle: "A ruling" })],
+        newTerms: [term],
+      }),
+    });
+
+    accept(deps, 1, "approved");
+
+    const posted = postedComments(tracker)[0] ?? "";
+    expect(posted).toContain('"adrPaths":["docs/adr/0051-slug.md"]');
+    expect(posted).toContain('"coinedTerms":["X"]');
+    expect(posted).toContain('"route":"short"');
   });
 });
