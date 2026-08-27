@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0072
+
 [ADR-0044](0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) makes the act a
 back-stamp. This is how a machine knows which record to stamp.
 
