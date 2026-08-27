@@ -179,7 +179,7 @@ interface FakeRun {
 
 function fakeGh(options: {
   runs?: FakeRun[];
-  issues?: Array<{ number: number; body: string; state: string }>;
+  issues?: Array<{ number: number; body: string; state: string; stateReason?: string }>;
 }): { gh: GhExec; calls: string[][] } {
   const runs = options.runs ?? [];
   const calls: string[][] = [];
@@ -270,7 +270,7 @@ describe("runBypassCounter", () => {
   it("re-proposes a declined proposal once the count has grown past what it recorded", () => {
     const fake = fakeGh({
       runs: gauntletFailures(4),
-      issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED" }],
+      issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED", stateReason: "COMPLETED" }],
     });
 
     const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
@@ -278,6 +278,33 @@ describe("runBypassCounter", () => {
     expect(outcome).toMatchObject({ code: "proposed", count: 4, issue: 42, wrote: "opened" });
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create")!;
     expect(create[create.indexOf("--body") + 1]).toContain(countMarker(4));
+  });
+
+  /**
+   * ADR-0071: branch protection is declined outright, so the proposal this counter exists to make
+   * is settled rather than pending. Growth is an argument already heard and ruled on, and a
+   * counter that re-asks on it is the nagging the marker was there to prevent — one notch further
+   * out than "not at this count".
+   */
+  it("never re-proposes past a proposal closed as not planned, however far the count grows", () => {
+    const fake = fakeGh({
+      runs: gauntletFailures(40),
+      issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
+    });
+
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+
+    expect(outcome).toMatchObject({ code: "declined-for-good", count: 40 });
+    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create")).toBe(false);
+  });
+
+  it("still counts while refused, so the measurement that would change the ruling survives", () => {
+    const fake = fakeGh({
+      runs: [...gauntletFailures(9), { id: 900, conclusion: "failure", failedStep: COULD_NOT_RUN_STEP }],
+      issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
+    });
+
+    expect(runBypassCounter({ gh: fake.gh, assignee: "collod873" }).count).toBe(9);
   });
 
   it("does not count a Gauntlet failure off main", () => {
