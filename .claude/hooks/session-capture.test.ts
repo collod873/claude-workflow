@@ -562,6 +562,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
     // stood in by `result.outputDir/..` (`SESSION_CAPTURE_OUTPUT_DIR` is `<corpusDir>/raw/sessions`),
     // so this asserts the same "corpus write and note agree" fact the old `note.spine` assertion did.
     expect(note.corpusPath).toBe(join("raw", "sessions", basename(capture.path)));
+    expect(note).not.toHaveProperty("spine");
     expect(capture.content).toContain("ship the range derivation");
 
     const ghLog = existsSync(ghLogPath) ? readFileSync(ghLogPath, "utf8") : "";
