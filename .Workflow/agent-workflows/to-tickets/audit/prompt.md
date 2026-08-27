@@ -1,6 +1,13 @@
 # Audit
 
-Third and final stage turning a spec into tickets. Scope: this prompt, `CONTEXT.md`, the codebase checkout, and the references below.
+Third and final stage turning a spec into tickets. Scope: this prompt, the vocabulary below, the codebase checkout, and the references below.
+
+## The vocabulary you work in
+
+Every term this lane uses, inlined here. Use them strictly as defined, and prefer them over the
+near-synonyms each entry rejects. There is no glossary elsewhere to go and read — this is all of it.
+
+{{VOCABULARY}}
 
 ## Rules you grade against
 
@@ -12,21 +19,20 @@ Read before grading:
 
 ## What to do
 
-1. Read `CONTEXT.md` first. Use repository terms strictly as defined.
-2. Read the spec: run `gh issue view {{ISSUE_NUMBER}} --json title,body --jq '.title + "\n\n" + .body'`.
-3. Read the plan drafted by the slice stage:
+1. Read the spec: run `gh issue view {{ISSUE_NUMBER}} --json title,body --jq '.title + "\n\n" + .body'`.
+2. Read the plan drafted by the slice stage:
 
 ```json
 {{PLAN}}
 ```
 
-4. Grade the plan against the four sizing calls:
+3. Grade the plan against the four sizing calls:
    - **Granularity** — is every slice sized to one agent session? The chain-shape ladder ceiling is the test: a slice that grew past session size to dodge an edge fails this call.
    - **Edge correctness** — does every `dependsOn` reflect real overlap worked through the chain-shape ladder (`repartition -> extract -> edge`), matching the exact dependency graph?
    - **Merge/split candidates** — does each slice's `whyNotMerged` hold up? Merge unearned separations; split composite slices into distinct vertical slices.
    - **Balance** — is any slice a wall-clock outlier (roughly twice the size of the rest)? Split it if so.
-5. Resolve every concern autonomously on your own recommendation: merge, split, re-edge, or re-word directly. If choosing to leave a concern unacted upon, record the explicit rationale as an unapplied flag in the grading notes.
-6. Format the audited plan to the exact output contract: 1-based `dependsOn` referencing earlier positions only, technical scope only without issue lifecycle directives (`Closes`), and all fields shaped as `Slice` requires.
+4. Resolve every concern autonomously on your own recommendation: merge, split, re-edge, or re-word directly. If choosing to leave a concern unacted upon, record the explicit rationale as an unapplied flag in the grading notes.
+5. Format the audited plan to the exact output contract: 1-based `dependsOn` referencing earlier positions only, technical scope only without issue lifecycle directives (`Closes`), and all fields shaped as `Slice` requires.
 
 ## Output
 

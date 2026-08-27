@@ -1,6 +1,13 @@
 # Slice
 
-Second of three stages turning a spec into tickets. Scope: this prompt, `CONTEXT.md`, the codebase checkout, and the references below.
+Second of three stages turning a spec into tickets. Scope: this prompt, the vocabulary below, the codebase checkout, and the references below.
+
+## The vocabulary you work in
+
+Every term this lane uses, inlined here. Use them strictly as defined, and prefer them over the
+near-synonyms each entry rejects. There is no glossary elsewhere to go and read — this is all of it.
+
+{{VOCABULARY}}
 
 ## Rules you work to
 
@@ -12,19 +19,18 @@ Read before drafting:
 
 ## What to do
 
-1. Read `CONTEXT.md` first. Use repository terms strictly as defined.
-2. Read the spec: run `gh issue view {{ISSUE_NUMBER}} --json title,body --jq '.title + "\n\n" + .body'`.
-3. Read the seam manifest produced by the seam-sweep stage:
+1. Read the spec: run `gh issue view {{ISSUE_NUMBER}} --json title,body --jq '.title + "\n\n" + .body'`.
+2. Read the seam manifest produced by the seam-sweep stage:
 
 ```json
 {{SEAM_MANIFEST}}
 ```
 
-4. Draw the ticket graph: tracer-bullet vertical slices, each demoable on its own and sized to one agent session. Resolve file overlaps through the chain-shape ladder, and follow the six runner rules in the references.
-5. Validate every acceptance criterion against the headless-checkability gate.
-6. When a slice consumes a seam manifest entry, place that line verbatim in `seamsConsumed`. `filesClaimed` contains only file paths modified by the slice.
-7. Give every slice one sentence in `whyNotMerged` justifying why it does not fold into its neighbour.
-8. Follow the output contract for every field (`dependsOn` uses 1-based indexing of earlier positions only). `whatToBuild` and `acceptanceCriteria` define technical scope (issue lifecycle directives like `Closes` are handled externally).
+3. Draw the ticket graph: tracer-bullet vertical slices, each demoable on its own and sized to one agent session. Resolve file overlaps through the chain-shape ladder, and follow the six runner rules in the references.
+4. Validate every acceptance criterion against the headless-checkability gate.
+5. When a slice consumes a seam manifest entry, place that line verbatim in `seamsConsumed`. `filesClaimed` contains only file paths modified by the slice.
+6. Give every slice one sentence in `whyNotMerged` justifying why it does not fold into its neighbour.
+7. Follow the output contract for every field (`dependsOn` uses 1-based indexing of earlier positions only). `whatToBuild` and `acceptanceCriteria` define technical scope (issue lifecycle directives like `Closes` are handled externally).
 
 ## Output
 

@@ -235,10 +235,67 @@ function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   };
 }
 
+/**
+ * The six `CONTEXT.md` entries this lane works in, injected into all three
+ * stage prompts as `{{VOCABULARY}}`.
+ *
+ * **Injected rather than read, which is the whole point of the file.** Each
+ * prompt used to open with *"Read `CONTEXT.md` first"* — 13 KB of vocabulary
+ * for arguing about the machine's design, fetched cold by three separate
+ * headless sessions to reach the six entries a slicing actually uses (#149).
+ * Worse, it fails open twice over: an instruction to read a file is something
+ * a model can decline, and an unread document cannot be detected
+ * ([ADR-0044](../../../docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md)).
+ * Injection makes the vocabulary a precondition instead — `runStage`'s
+ * substitution throws on a `{{VAR}}` no var covers, so a vocabulary file that
+ * moved or vanished fails the stage before it spends model time rather than
+ * quietly producing a plan written in the wrong words. See
+ * [ADR-0082](../../../docs/adr/0082-a-lane-carries-the-vocabulary-it-works-in-rather-than-readin.md).
+ *
+ * It also has to be lane-owned rather than repo-owned, because this lane is
+ * bound for other repos
+ * ([ADR-0055](../../../docs/adr/0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md)):
+ * a caller's `CONTEXT.md` is that repo's domain, not this pipeline's, and a
+ * stage that read it would take a plumbing company's glossary as authority on
+ * what a slice is.
+ */
+const VOCABULARY_PATH = ".Workflow/agent-workflows/to-tickets/vocabulary.md";
+
+/**
+ * Reads the lane's vocabulary — only the entries below the file's `---` rule.
+ *
+ * **The split is not cosmetic.** Everything above the rule explains the file
+ * to a human reading it, and those sentences necessarily name `CONTEXT.md` —
+ * the one document this whole arrangement exists to keep a stage away from.
+ * Injecting the page whole would hand every stage a pointer to it, in a
+ * paragraph arguing it is authoritative. So the human half stops at the rule.
+ *
+ * Both failures below name the file: "ENOENT" alone does not say which of a
+ * stage's inputs went missing, and a page with no rule in it renders an
+ * `undefined` vocabulary that no schema would catch — the stage would run,
+ * on a prompt whose vocabulary section is empty.
+ */
+export function vocabulary(): string {
+  let page: string;
+  try {
+    page = readFileSync(VOCABULARY_PATH, "utf8");
+  } catch (err) {
+    throw new Error(`the lane's vocabulary at ${VOCABULARY_PATH} could not be read: ${reason(err)}`);
+  }
+
+  const [, entries] = page.split(/^---$/m);
+  if (!entries?.trim()) {
+    throw new Error(
+      `${VOCABULARY_PATH} has no entries below its \`---\` rule — everything above it is prose a stage must not be given`,
+    );
+  }
+  return entries.trim();
+}
+
 const SEAM_SWEEP_CONFIG: TypedStageConfig<SeamManifest> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/seam-sweep/prompt.md",
   output: SEAM_SWEEP_OUTPUT,
-  buildVars: (issueNumber) => ({ ISSUE_NUMBER: issueNumber }),
+  buildVars: (issueNumber) => ({ ISSUE_NUMBER: issueNumber, VOCABULARY: vocabulary() }),
 };
 
 /**
@@ -256,6 +313,7 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
   output: SLICE_OUTPUT,
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
+    VOCABULARY: vocabulary(),
     SEAM_MANIFEST: readPriorHandoff("slice"),
   }),
   validate: validatePlan,
@@ -293,6 +351,7 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
   output: AUDIT_OUTPUT,
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
+    VOCABULARY: vocabulary(),
     PLAN: readPriorHandoff("audit"),
   }),
 };
