@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""close-ticket <issue> <base>..<head> <checkout> [-R owner/repo]
+
+Closes a ticket in seconds and dispatches nothing (spec #160, #165). Fetches `<issue>`'s body,
+runs each `## Acceptance criteria` item's own `check:` marker (`bin/ticket_shape.py`'s
+`criteria_blocks`/`parse_check_marker`, #166) in `<checkout>`, records the exit status it
+observed, renders the `## Closing record`, posts it, and closes the ticket.
+
+A criterion with no marker is prose — today's filing-time behaviour is unchanged — and is
+recorded `UNVERIFIED`, never `MET`: a script has no way to judge prose, so it doesn't try. A
+criterion whose marker command exits non-zero aborts the whole run before anything is posted:
+the failing criterion and the command's combined output go to stderr, nothing is commented,
+the issue stays open, and this exits non-zero. There is no partial close and no `needs-human`
+stamp on this route — re-running the same invocation after the work is fixed is the entire
+recovery path.
+
+A body carrying no `## Acceptance criteria` heading closes on the `No diff.` form, matching a
+map or task ticket's existing exit (`ticket_shape.criteria_blocks` returns `None` for that
+shape).
+
+The record's wire shape is unchanged from the one 445 existing checker-written records already
+use — `hooks/close-gate.py`'s `RECORD_HEADING`, `RANGE_LINE_RE` and `BULLET_RE` parse this
+record the same way they parse a human-written one — with one addition: a summary line beneath
+the range counting criteria verified vs. unverified, so erosion of the guarantee stays visible
+on every ticket rather than inferred.
+
+Checks run with `<checkout>` as their working directory, never this process's own — marker
+commands are author-written, and in `/drain` they fire inside the merge lock. Passing a live
+work tree as `<checkout>` is the caller's choice to make, not this script's.
+
+`--superseded-by <n>` retires the ticket into an already-open successor instead of running any
+checks (#167): emits `Superseded by #<n>` in the slot the range line would occupy, and every
+criterion in the body needs a `--moved <where>` or `--dropped <why>` reason supplied at the
+invocation, one apiece, in the body's own order — the run refuses before posting anything when
+the reasons supplied don't exactly cover the criteria. `<n>`'s state is read with
+`gh issue view <n> --json state` through `run_gh` — the same one resolution path every other
+`gh` call in this script uses, never a second one — and the run refuses to post or close when
+`<n>` doesn't resolve at all (an unresolvable successor) as well as when it resolves but is
+already closed (a closed successor): superseding into a closed ticket retires this ticket's
+debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
+`SUPERSEDED_LINE_RE` and `DISPOSITION_RE`.
+
+`gh` is resolved and invoked entirely through `bin/gh_support.py` (`gh_bin`, `bind_gh`,
+`run_gh`, `GhError`, `AGENT_SKILLS_GH`) — the one resolution path and one failure envelope
+every `gh`-calling tool in this repo shares (#102, #109); there is no second copy here.
+"""
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gh_support  # noqa: E402
+import ticket_shape  # noqa: E402
+
+NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
+
+
+def fetch_body(gh, issue: str) -> str:
+    out = gh_support.run_gh(gh, "issue", "view", issue, "--json", "body")
+    return json.loads(out).get("body") or ""
+
+
+def fetch_state(gh, issue) -> str:
+    """The successor's open/closed state, read the one way this script ever reads a
+    successor's liveness — `gh issue view <n> --json state` through `gh_support.run_gh`
+    (#167's acceptance criteria: no second `gh` resolution path). Raises `GhError` the same
+    way `fetch_body` does when `<n>` doesn't resolve at all — that's what lets `main` tell an
+    unresolvable successor apart from one that resolves but is closed."""
+    out = gh_support.run_gh(gh, "issue", "view", str(issue), "--json", "state")
+    return json.loads(out).get("state") or ""
+
+
+def split_check_marker(criterion: str) -> tuple[str, str | None]:
+    """`(reference, command)` for one folded criterion block. `reference` has the leading
+    `- [ ]`/`- [x]` checkbox (`ticket_shape.CRITERIA_ITEM_RE`) stripped — the posted bullet
+    supplies its own leading `- `, so keeping the checkbox would double it. `command` is
+    `None` when the criterion carries no well-formed `check:` marker — plain prose and a
+    malformed marker read alike here, since `ticket_shape.validate` already warns a filer
+    about a malformed one at filing time (#166); close-ticket doesn't re-litigate that, it
+    only asks whether there is a command to run. When a marker is well-formed, `reference`
+    also has it sliced off, using the same `CHECK_MARKER_RE` `parse_check_marker` matched
+    against — so the two can never disagree about where the marker starts."""
+    criterion = criterion.strip()
+    box = ticket_shape.CRITERIA_ITEM_RE.match(criterion)
+    if box:
+        criterion = criterion[box.end():].strip()
+    command = ticket_shape.parse_check_marker(criterion)
+    if command is None:
+        return criterion, None
+    m = ticket_shape.CHECK_MARKER_RE.search(criterion)
+    return criterion[: m.start()].rstrip(), command
+
+
+def run_check(command: str, checkout: str) -> subprocess.CompletedProcess:
+    """Run one criterion's marker `command` with `checkout` as its cwd — never this
+    process's own tree (module docstring)."""
+    return subprocess.run(command, shell=True, cwd=checkout, capture_output=True, text=True)
+
+
+def render_record(range_spec: str, blocks: list[str] | None,
+                   checkout: str) -> tuple[str | None, bool]:
+    """Returns `(record_text, ok)`. `ok` is False the moment a criterion's check exits
+    non-zero — `record_text` is then `None`, and the failing criterion plus the command's
+    combined output have already gone to stderr. The caller must not post or close in that
+    case (module docstring)."""
+    if blocks is None:
+        return NO_DIFF_RECORD, True
+
+    bullets = []
+    verified = 0
+    for criterion in blocks:
+        reference, command = split_check_marker(criterion)
+        if command is None:
+            bullets.append(f"- {reference} — UNVERIFIED: no check")
+            continue
+        result = run_check(command, checkout)
+        if result.returncode != 0:
+            output = (result.stdout or "") + (result.stderr or "")
+            print(f"error: check failed for criterion: {reference}", file=sys.stderr)
+            print(f"  command: {command}", file=sys.stderr)
+            print(f"  exit status: {result.returncode}", file=sys.stderr)
+            if output.strip():
+                print(output.rstrip("\n"), file=sys.stderr)
+            return None, False
+        bullets.append(f"- {reference} — MET: `{command}` exit 0")
+        verified += 1
+
+    total = len(bullets)
+    unverified = total - verified
+    summary = f"{verified} of {total} criteria verified · {unverified} unverified"
+    body = "\n".join([f"`{range_spec}`", "", summary, "", *bullets])
+    return f"## Closing record\n\n{body}\n", True
+
+
+def render_superseded_record(successor: int, blocks: list[str] | None,
+                              dispositions: list[tuple[str, str]]) -> tuple[str | None, str | None]:
+    """Returns `(record_text, error)`. `error` is `None`, and `record_text` is the rendered
+    `## Closing record`, only when `dispositions` — the `--moved`/`--dropped` reasons supplied
+    at the invocation, in the order they were given — has exactly one entry per criterion in
+    `blocks`. Otherwise `record_text` is `None` and `error` names the mismatch; the caller must
+    not post or close in that case, matching `render_record`'s all-or-nothing contract.
+
+    Each bullet pairs one of `blocks` with one of `dispositions`, in order — the body's own
+    criteria order, since `--moved`/`--dropped` are meant to be typed in that same order — and
+    is rendered `- <reference> — MOVED: <where>` or `- <reference> — DROPPED: <why>`, the exact
+    slot and em dash `hooks/close-gate.py`'s (dead-pending-#168) `DISPOSITION_RE` matches. The
+    line above the bullets is `Superseded by #<successor>`, alone on its own line — the slot the
+    range line occupies elsewhere, and the shape `SUPERSEDED_LINE_RE` matches. `blocks is None`
+    (no `## Acceptance criteria` heading at all) needs zero dispositions and renders no bullets,
+    the same "declares no criteria" shape `close-gate.py`'s `evaluate_record` already excuses."""
+    required = len(blocks) if blocks is not None else 0
+    if len(dispositions) != required:
+        return None, (
+            f"error: {required} acceptance criteria in the body but {len(dispositions)} "
+            "--moved/--dropped reasons supplied — exactly one reason per criterion, in the "
+            "body's own order."
+        )
+    bullets = []
+    for criterion, (kind, reason) in zip(blocks or [], dispositions):
+        reference, _ = split_check_marker(criterion)
+        bullets.append(f"- {reference} — {kind}: {reason}")
+    lines = [f"Superseded by #{successor}"]
+    if bullets:
+        lines += ["", *bullets]
+    return "## Closing record\n\n" + "\n".join(lines) + "\n", None
+
+
+class DispositionAction(argparse.Action):
+    """Appends `(kind, value)` to the shared `dispositions` list, `kind` being `MOVED` or
+    `DROPPED` depending on which of the two flags fired. Both `--moved` and `--dropped` are
+    registered against this one action with the same `dest`, so whichever order they're typed
+    on the command line is the order this list ends up in — argparse invokes an action the
+    moment it consumes that flag's argument, in argv order, regardless of flag identity — which
+    is what lets `render_superseded_record` zip this list against the body's own criteria order
+    without a second, separate ordering scheme."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        kind = "MOVED" if option_string == "--moved" else "DROPPED"
+        getattr(namespace, self.dest).append((kind, values))
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="close-ticket", description=__doc__,
+                                      formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("issue")
+    parser.add_argument("range", metavar="BASE..HEAD")
+    parser.add_argument("checkout")
+    parser.add_argument("-R", "--repo")
+    parser.add_argument(
+        "--superseded-by", type=int, metavar="N", default=None,
+        help="Retire this ticket against already-open issue #N instead of running any checks; "
+             "requires --moved/--dropped for every criterion in the body.",
+    )
+    parser.add_argument(
+        "--moved", action=DispositionAction, dest="dispositions", default=[], metavar="WHERE",
+        help="This criterion's work now lives WHERE (e.g. '#152 criterion 2'). Repeatable, "
+             "one per criterion, in the body's own order; mixes freely with --dropped.",
+    )
+    parser.add_argument(
+        "--dropped", action=DispositionAction, dest="dispositions", metavar="WHY",
+        help="This criterion is not being carried forward, WHY. Repeatable, one per criterion, "
+             "in the body's own order; mixes freely with --moved.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+
+    base, sep, head = args.range.partition("..")
+    if not sep or not base or not head:
+        print(f"error: range must be BASE..HEAD, got {args.range!r}", file=sys.stderr)
+        return 1
+
+    gh_path = gh_support.gh_bin()
+    if not gh_path:
+        print(
+            "error: gh not found (set AGENT_SKILLS_GH to point at a gh binary)",
+            file=sys.stderr,
+        )
+        return 1
+    gh = gh_support.bind_gh(gh_path, args.repo)
+
+    try:
+        body = fetch_body(gh, args.issue)
+    except gh_support.GhError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    blocks = ticket_shape.criteria_blocks(body)
+
+    if args.superseded_by is not None:
+        try:
+            state = fetch_state(gh, args.superseded_by)
+        except gh_support.GhError as e:
+            print(
+                f"error: successor #{args.superseded_by} could not be resolved: {e}",
+                file=sys.stderr,
+            )
+            return 1
+        if state.upper() != "OPEN":
+            print(
+                f"error: successor #{args.superseded_by} is not open "
+                f"(state: {state or 'unknown'}) — superseding into a closed ticket retires "
+                "this ticket's debt instead of moving it; name an open issue",
+                file=sys.stderr,
+            )
+            return 1
+        record_text, error = render_superseded_record(args.superseded_by, blocks,
+                                                        args.dispositions)
+        if error is not None:
+            print(error, file=sys.stderr)
+            return 1
+    else:
+        record_text, ok = render_record(args.range, blocks, args.checkout)
+        if not ok:
+            return 1
+
+    try:
+        gh_support.run_gh(gh, "issue", "comment", args.issue, "--body-file", "-",
+                           input=record_text)
+        gh_support.run_gh(gh, "issue", "close", args.issue)
+    except gh_support.GhError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    sys.stdout.write(record_text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
