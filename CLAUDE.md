@@ -19,5 +19,5 @@ A Claude Code + GitHub workflow system.
 
 ## Agent skills
 
-Issue tracker, ticket format, triage labels, domain layout → `docs/agents/`.
+Issue tracker, ticket format, pipeline labels, domain layout → `docs/agents/`.
 Check commands → `.claude/contract.json`.
