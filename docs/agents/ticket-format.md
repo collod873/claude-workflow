@@ -1,19 +1,20 @@
 # Ticket format
 
-The one shape a ticket body takes in this pipeline, read by every producer (`/triage`,
-`/to-tickets`, `/wayfinder`) and parsed by the close gate (`~/.claude/hooks/close-gate.py`).
+The one shape a ticket body takes in this pipeline, read by every producer (`/to-tickets`,
+`/wayfinder`, `~/bin/file-issue`) and parsed by the close gate (`~/.claude/hooks/close-gate.py`).
 Producers reference this doc rather than restate it — a restated copy is exactly what let
 `/wayfinder`'s template drift out of sync with the parser it feeds (#57).
 
 Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
-(`~/.claude/hooks/CHECKER-PROMPT.md`) — see
+(`~/.claude/hooks/close-gate.py`) — see
 ADR-0017, recorded in `collod873/agent-skills`, for why the two calls differ.
 
 ## The core, gate-parsed
 
 Every ticket body carries two headings. `count_body_criteria`
 (`~/.claude/hooks/close-gate.py`) parses the first mechanically to decide whether a ticket can
-close; `/drain`'s frontier filter and `/triage`'s collision check both read the second.
+close; `/drain`'s frontier filter and `file-issue ticketify`'s collision check both read the
+second.
 
 ### `## Acceptance criteria`
 
@@ -23,6 +24,23 @@ by a fresh context that has not seen the diff: a `path:line`, a command's exit s
 that exists. A `path:line` needs a `/` or `.` somewhere in the path (`bin/file-issue:12`,
 `f.py:1`) — a bare word before the colon (`foo:12`) isn't shaped like a repo path and doesn't
 count as evidence, in `bin/ticket_shape.py`'s validator or the close gate.
+
+A criterion may end with a trailing check marker: an em dash, the label `check:`, and a single
+backtick-quoted command naming the one thing that verifies it — so a mechanical closer can run
+that command itself instead of re-deriving what to check from prose:
+
+```markdown
+- [ ] `bin/lint` reports zero findings on this file — check: `bin/lint path/to/file`
+```
+
+The delimiter is the same alternation (an em dash, an en dash, or a space-delimited single/double
+hyphen) the closing-record grammar (`~/.claude/hooks/close-gate.py`) uses for its own trailing verdict slot
+— `bin/ticket_shape.py`'s `CHECK_MARKER_DELIM` is that shared alternation — so an author never
+learns two different dash rules for two different trailing markers. Writing one is optional: a
+criterion nobody can mechanise is still a legitimate criterion; it simply closes on a human
+reading the diff rather than a command's exit status. A marker that's attempted but doesn't
+parse — a missing command, or prose trailing the closing backtick — is warned about by
+`bin/ticket_shape.py`'s validator rather than silently read as plain prose.
 
 A ticket whose deliverable is a **migration** — a history rewrite, a schema backfill, a one-off
 scrub — is worded as **the run**, never as the artifact. "Ship a script that scrubs X" is satisfied
@@ -55,7 +73,8 @@ or missing section:
 - None — no files.
 ```
 
-A ticket missing this heading entirely means triage never ran on it.
+A ticket missing this heading entirely was never shaped by a producer that computes claims —
+`file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
 ## Variants
 
@@ -83,7 +102,7 @@ The end-to-end behaviour this ticket makes work, from the user's perspective —
 ## Acceptance criteria
 
 - [ ] Criterion 1
-- [ ] Criterion 2
+- [ ] Criterion 2 — check: `<command that verifies this>`
 
 ## Files claimed
 
@@ -119,10 +138,9 @@ directly in prose instead of a native dependency link.
 
 ### Wayfinder decision
 
-No `## Files claimed`. Decisions arrive labelled `wayfinder:*`, so `/triage`'s skip-branch
-(sub-issues of a `prd`-labelled spec) doesn't apply, but nothing else runs `/triage` on them either
-— they arrive with criteria already written by the wayfinder session that created them — so no file
-claim is ever computed or written for one.
+No `## Files claimed`. Decisions arrive labelled `wayfinder:*`, with criteria already written by
+the wayfinder session that created them, and nothing downstream computes a claim for one — so no
+file claim is ever computed or written for a decision.
 
 ```markdown
 ## Question
@@ -137,13 +155,12 @@ claim is ever computed or written for one.
 Those two headings are a minimum, not a maximum — a ticket may also carry the evidence that makes
 its question answerable (a reproduction, a table, links), just never the answer itself.
 
-### Question (file-issue question / triage no-branch)
+### Question (file-issue question)
 
-Filed by `~/bin/file-issue question` (#83) and written by `/triage`'s no-branch — an issue
-undecided enough that no criteria can be written yet. Both land on the same shape, so a
-human-filed question and a triage-stamped one are indistinguishable downstream. Labelled
-`fuzzy`. The trailing line naming `file-issue ticketify` is required, not decorative — it's how
-a reader learns the way out of `fuzzy` from the issue itself, without consulting any skill.
+Filed by `~/bin/file-issue question` (#83) — an issue undecided enough that no criteria can be
+written yet. Labelled `fuzzy`. The trailing line naming `file-issue ticketify` is required, not
+decorative — it's how a reader learns the way out of `fuzzy` from the issue itself, without
+consulting any skill.
 
 ```markdown
 ## Question
@@ -152,19 +169,4 @@ a reader learns the way out of `fuzzy` from the issue itself, without consulting
 
 Run `file-issue ticketify <n>` once this is decided, to write its acceptance criteria and
 rejoin the pipeline.
-```
-
-### Triage's appended headings
-
-`/triage` doesn't author a ticket body from scratch — its yes-branch fetches whatever issue arrived
-and appends these two headings to it, verbatim:
-
-```markdown
-## Acceptance criteria
-
-- [ ] <one checkable claim, verifiable by a fresh context that has not seen the diff>
-
-## Files claimed
-
-- <a repo-relative path or glob, or the sentinel `- None — no files.` if the ticket touches no files>
 ```
