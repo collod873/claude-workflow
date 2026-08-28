@@ -19,6 +19,9 @@ gracefully" is this; "returns 400 on a malformed request" is not.
 
 - A gap the draft already marked as an open question. It has already been surfaced; restating it is
   noise.
+- **Anything the owner's answers below already settle.** A spec can reach you having already been
+  read once, with the owner's replies underneath it. An ambiguity his answer resolves is resolved,
+  whether or not the body was rewritten to say so — flag it again and the count can never fall.
 - A style preference, or a criterion you would have phrased differently but that is checkable as
   written.
 - A missing feature or scope you think the spec should have covered — that is not underspecification
@@ -35,6 +38,10 @@ Write nothing when you find nothing. A tightly specified draft produces an empty
 ## The draft's body
 
 {{BODY}}
+
+## What the owner has already answered
+
+{{ANSWERS}}
 
 ---
 

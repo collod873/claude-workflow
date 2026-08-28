@@ -69,7 +69,7 @@ describe("gateCount — ADR-0062's dispatch gate", () => {
     expect(gateCount([], decisions)).toBe(1);
   });
 
-  it("contributes nothing for a trigger with no decisions (map, in-session)", () => {
+  it("contributes nothing for a door with no decisions — a map, or a session-written spec", () => {
     expect(gateCount(["one open question"], [])).toBe(1);
   });
 });

@@ -18,11 +18,26 @@ export const SPEC_CRITIC_MODEL = "claude-opus-5";
 
 const PROMPT_PATH = ".Workflow/agent-workflows/spec/critic/prompt.md";
 
-/** The drafted PRD the critic reads — the author's title and body, nothing else. */
+/** The drafted PRD the critic reads — a title, a body, and whatever the owner has already answered. */
 export interface SpecCriticInput {
   title: string;
   body: string;
+  /**
+   * The owner's answering comments on an already-published spec, in the order
+   * he wrote them. Absent on the author's own chain, where the draft has
+   * never been seen by anyone and there is nothing to have answered.
+   *
+   * They exist for the critic-only door, which has no author behind it: there
+   * the body is fixed, so re-reading it alone would report the same findings
+   * forever and the gate count could never fall. ADR-0062's *"his answer
+   * re-runs the chain, which recomputes the count"* holds on that door only
+   * because the answer reaches this stage.
+   */
+  answers?: string[];
 }
+
+/** What the prompt reads when no answers ride along — a stated absence, never an empty hole. */
+const NO_ANSWERS = "Nothing has been answered — this is the first read of this spec.";
 
 /**
  * What the critic hands back: the sentences it flagged, each naming what it
@@ -42,9 +57,15 @@ export async function runSpecCritic(
   exec: StageExec,
   input: SpecCriticInput,
 ): Promise<SpecCriticOutput> {
+  const answers = input.answers?.filter((answer) => answer.trim() !== "") ?? [];
+
   return runStage(
     PROMPT_PATH,
-    { TITLE: input.title, BODY: input.body },
+    {
+      TITLE: input.title,
+      BODY: input.body,
+      ANSWERS: answers.length === 0 ? NO_ANSWERS : answers.join("\n\n---\n\n"),
+    },
     exec,
     SPEC_CRITIC_OUTPUT,
     {

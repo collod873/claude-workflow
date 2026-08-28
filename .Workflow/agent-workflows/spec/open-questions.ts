@@ -11,7 +11,8 @@ import type { GhExec } from "../shared/gh";
  * That is `unfiledMarkGap` below — an independent check run beside the plain
  * open-question count, because nothing else verifies the author actually
  * asked about every load-bearing guess it was handed rather than missing it.
- * The map and in-session triggers carry no marks, so this contributes
+ * No other door carries marks — not the map, and not the critic-only entry a
+ * session-written spec arrives through (ADR-0085) — so this contributes
  * nothing for them (`decisions` defaults to `[]`, whose gap is always zero)
  * — "suspicion stays a heuristic there" (ADR-0061).
  *

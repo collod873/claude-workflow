@@ -63,9 +63,9 @@ export function dispatchSpecAuthor(gh: GhExec, issueNumber: number): void {
  * which is precisely what `shape/marker.ts` exists to stop this estate doing.
  *
  * So the same trailer idiom `decision-sheet:v1` and `shape-accepted:v1` already use, for the same
- * reason and with the same escaping. `in-session` is absent by construction: the local caller's
- * decided context is a live conversation (ADR-0058), there is no issue to re-collect it from, and a
- * spec published from one is re-run by the owner in the session that made it.
+ * reason and with the same escaping. Only the two collector-backed doors appear here: a spec
+ * written in a live session has no source issue to re-collect from, and needs none — it *is* its
+ * own source, so it re-enters the lane at the critic and never reads a marker at all (ADR-0085).
  */
 export const SpecSource = z.object({
   kind: z.enum(["sheet", "map"]),
@@ -175,4 +175,25 @@ export function updateSpec(gh: GhExec, issueNumber: number, draft: SpecAuthorOut
 /** The spec issue's current body — what a re-run reads its source trailer back out of. */
 export function readSpecBody(gh: GhExec, issueNumber: number): string {
   return gh(["issue", "view", String(issueNumber), "--json", "body", "--jq", ".body"]);
+}
+
+/** A published spec, read back off the tracker — the two fields the critic reads. */
+export interface PublishedSpec {
+  title: string;
+  body: string;
+}
+
+/**
+ * Reads an already-published spec back off the tracker.
+ *
+ * The critic-only door (ADR-0085) is handed nothing but an issue number: the spec was written in a
+ * live session and filed by `bin/file-issue`, so no collector ever assembled it and no author ever
+ * held it in memory. The issue itself is the draft, and this is how the run gets it.
+ *
+ * `--json title,body` rather than two `--jq` reads: one round trip, and the shapes stay together.
+ */
+export function readPublishedSpec(gh: GhExec, issueNumber: number): PublishedSpec {
+  const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
+  const parsed = JSON.parse(raw) as { title?: string; body?: string };
+  return { title: parsed.title ?? "", body: parsed.body ?? "" };
 }

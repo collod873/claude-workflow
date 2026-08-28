@@ -1,8 +1,16 @@
 name: Spec
 
-# Lane 02 (PRD #145, move 6). Three triggers feed the spec author (ADR-0058) — an accepted decision
-# sheet, a closed Wayfinder Map carrying `to-spec`, or the owner in a live session — but a live
-# session never fires a runner, so this file only ever needs to gate the two that do.
+# Lane 02 (PRD #145, move 6). Two triggers feed the spec **author** (ADR-0058) — an accepted
+# decision sheet, and a closed Wayfinder Map carrying `to-spec`. A third door feeds the **critic**
+# alone: the owner's own hand putting `prd` on a spec he already wrote in a live session
+# (ADR-0085). That door arrives with the spec already drafted, so it runs one Opus stage where the
+# cold doors run two, and it publishes nothing — the issue it fires on *is* the draft.
+#
+# ADR-0058's "a live session never fires a runner" was the reason this file used to gate only two
+# triggers. It was wrong about the mechanism: ADR-0062's "an event caused by the built-in
+# `GITHUB_TOKEN` starts no workflow run" does not bind here, because `bin/file-issue spec` runs
+# under the owner's own credentials. His issue creation is a real event; nothing was listening at
+# it, and a session-written spec sat on the tracker forever (#180, #145).
 #
 # **Both triggers are gated on who caused them, because both spend model (ADR-0073).** The
 # repository is public, so a label or a comment can arrive from anyone, not only the owner — the
@@ -13,7 +21,13 @@ name: Spec
 # `github.event.sender` is who performed the act, not who owns the thing acted on: applying
 # `to-spec` to a closed map is a hand-applied label exactly like `idea` in `shape.yml`, so the
 # sender gate covers it the same way — a stranger's map is refused, the owner's own hand on the
-# label is not.
+# label is not. The `prd` clause carries the identical gate for the identical reason: `prd` can be
+# applied by anyone with write access and `file-issue spec` is not the only way it lands.
+# Remove-and-re-add of the label is the re-run gesture, as it is in lane 01.
+#
+# That clause is narrowed to a spec without `sliceable`. A spec that has already passed the gate
+# has nothing left for the critic to decide, and re-labelling one would spend an Opus stage to
+# re-derive a count that already dispatched.
 #
 # A comment is gated on `author_association` instead, `MEMBER` and `COLLABORATOR` riding along
 # with `OWNER` so the rule need not be reopened the day a second person is added. This is
@@ -40,8 +54,10 @@ name: Spec
 # (`SPEC_AUTHOR_DISPATCH_EVENT_TYPE`, `.Workflow/agent-workflows/spec/publish.ts`).
 #
 # `SPEC_TRIGGER` is decided here and read by `invocationFromEnv` rather than re-derived in
-# TypeScript from the raw event: the `if:` below has already decided which of the three fired, and a
-# second copy of that condition is a second thing that can disagree with it.
+# TypeScript from the raw event: the `if:` below has already decided which of the four fired, and a
+# second copy of that condition is a second thing that can disagree with it. Two of the four are
+# now the same `issues: labeled` event, so the expression tests the *label* rather than the event
+# name — an `event_name == 'issues'` arm would send both doors to whichever one it named.
 
 "on":
   issues:
@@ -69,6 +85,10 @@ jobs:
       (github.event_name == 'issues' &&
        github.event.label.name == 'to-spec' &&
        github.event.sender.login == github.repository_owner) ||
+      (github.event_name == 'issues' &&
+       github.event.label.name == 'prd' &&
+       !contains(github.event.issue.labels.*.name, 'sliceable') &&
+       github.event.sender.login == github.repository_owner) ||
       (github.event_name == 'issue_comment' &&
        !github.event.issue.pull_request &&
        github.event.issue.state == 'open' &&
@@ -85,7 +105,8 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
       SPEC_TRIGGER: >-
         ${{ (github.event_name == 'repository_dispatch' && 'sheet') ||
-            (github.event_name == 'issues' && 'map') ||
+            (github.event.label.name == 'to-spec' && 'map') ||
+            (github.event.label.name == 'prd' && 'critique') ||
             'answer' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -116,8 +137,9 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # The whole lane: collect the decided context this trigger names, run the author and the
-      # critic, publish (or rewrite) the `PRD:` issue, then gate on the open-question count —
-      # `sliceable` plus a dispatch at zero, the numbered questions as a comment otherwise.
+      # The whole lane: on a cold door, collect the decided context this trigger names, run the
+      # author and the critic, publish (or rewrite) the `PRD:` issue; on the critic-only door, read
+      # the spec that is already there. Both then gate on the open-question count — `sliceable`
+      # plus a dispatch at zero, the numbered questions as a comment otherwise.
       - name: Spec author
         run: npx tsx .Workflow/agent-workflows/spec/spec.ts

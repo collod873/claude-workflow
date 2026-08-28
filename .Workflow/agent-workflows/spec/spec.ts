@@ -5,12 +5,18 @@ import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { runSpecCritic } from "./critic";
-import { collectInSessionContext } from "./collectors/in-session";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
 import { applyGate, gateCount, type GateOutcome } from "./open-questions";
-import { publishSpec, readSourceMarker, readSpecBody, updateSpec, type SpecSource } from "./publish";
-import { postOpenQuestions } from "./rounds";
+import {
+  publishSpec,
+  readPublishedSpec,
+  readSourceMarker,
+  readSpecBody,
+  updateSpec,
+  type SpecSource,
+} from "./publish";
+import { answeringComments, postOpenQuestions } from "./rounds";
 
 // Re-exported rather than wired into this file's own chain: ADR-0079's
 // amendment path fires on `spec/gap`, an existing PRD's re-entry, never on
@@ -25,8 +31,17 @@ export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "
  * reading the author's own draft in the same chain and folding what it finds
  * into `openQuestions` — never into `body`, which is the author's alone.
  * Both are dispatched by trigger over the author's collector per trigger (an
- * accepted sheet, a closed map, or the owner in a live session — ADR-0058);
- * the critic reads only the author's output, not the trigger.
+ * accepted sheet, or a closed map — ADR-0058); the critic reads only the
+ * author's output, not the trigger.
+ *
+ * **The lane has a second entrance, and it starts at the critic.** A spec
+ * written by `/to-spec` in a live session is filed by the owner's own hand
+ * and arrives already drafted — so ADR-0085 gives it `runSpecCritique`
+ * below, which reads the published issue and runs the *back half* of this
+ * chain against it. One Opus stage where the cold doors cost two, because
+ * the expensive half already happened in the session with the owner in it.
+ * Both doors reach the same `gateCount` and the same `applyGate`, which is
+ * the only thing lane 03 fires on.
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -86,16 +101,21 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
 );
 
 /**
- * The three triggers `runSpecAuthor` dispatches over — one event per row of
+ * The two triggers `runSpecAuthor` dispatches over — one per surviving row of
  * ADR-0058's table, each naming exactly what its collector needs and
  * nothing more. `kind` is what tells `runSpecAuthor` a `DecidedContext` was
  * *not* handed to it directly (see `isDecidedContext` below), so it doubles
  * as the discriminant a `switch` narrows on.
+ *
+ * ADR-0058's third row lost its collector, not its door (ADR-0085). A
+ * collector exists to hand a package to a model that is not in the room, and
+ * the session door now writes the spec in the room — so there is nothing to
+ * assemble, and the door enters this lane at `runSpecCritique` rather than
+ * here.
  */
 export type SpecTrigger =
   | { kind: "sheet"; gh: GhExec; issueNumber: number }
-  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string }
-  | { kind: "in-session"; conversation: string };
+  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string };
 
 /** A `DecidedContext` carries `ownerWords`; no `SpecTrigger` variant does. */
 function isDecidedContext(input: DecidedContext | SpecTrigger): input is DecidedContext {
@@ -108,8 +128,6 @@ function collect(trigger: SpecTrigger): DecidedContext {
       return collectSheetContext(trigger.gh, trigger.issueNumber);
     case "map":
       return collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot);
-    case "in-session":
-      return collectInSessionContext(trigger.conversation);
   }
 }
 
@@ -209,8 +227,9 @@ export type SpecTarget =
  * re-run.
  *
  * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
- * plus the `gh` every write needs — the trigger's own `gh` is not reused here,
- * because an `in-session` trigger carries none.
+ * plus the `gh` every write needs — kept a separate parameter from the
+ * trigger's own so a caller holding an already-assembled `DecidedContext`,
+ * which carries no `gh` at all, can still be published.
  */
 export async function runSpecPublication(
   exec: StageExec,
@@ -226,49 +245,133 @@ export async function runSpecPublication(
     updateSpec(gh, issueNumber, draft, target.source);
   }
 
-  const count = gateCount(draft.openQuestions);
-  const outcome = applyGate(gh, issueNumber, count);
-
-  if (outcome === "held") {
-    postOpenQuestions(gh, issueNumber, draft.openQuestions);
-  }
+  const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
 
   return { ...draft, issueNumber, published: target.mode === "publish", gateCount: count, outcome };
 }
 
 /**
- * The event `spec.yml` hands this file, reduced to the two facts that pick a collector: which
- * trigger fired, and the issue it names.
+ * The gate itself, and the one place either door reaches it (ADR-0085): count, apply, and comment
+ * the questions when the count held.
+ *
+ * Shared as a function rather than as a rule both doors are trusted to follow, because "the label
+ * is not a second implementation of the gate" is the whole reason firing on `prd` does not undo
+ * ADR-0062. `gateCount` and `applyGate` are called from here, once each, by both.
+ */
+function gateSpec(
+  gh: GhExec,
+  issueNumber: number,
+  openQuestions: string[],
+): { count: number; outcome: GateOutcome } {
+  const count = gateCount(openQuestions);
+  const outcome = applyGate(gh, issueNumber, count);
+
+  if (outcome === "held") {
+    postOpenQuestions(gh, issueNumber, openQuestions);
+  }
+
+  return { count, outcome };
+}
+
+/** What `runSpecCritique` hands back: the spec it read, what the critic found, and what the gate did. */
+export interface SpecCritiqueResult {
+  /** The already-published spec this run critiqued. */
+  issueNumber: number;
+  /** What the critic flagged — the whole of this door's open-question list, since no author ran. */
+  findings: string[];
+  /** `gateCount` over those findings. */
+  gateCount: number;
+  /** `"dispatched"` at zero, `"held"` otherwise. */
+  outcome: GateOutcome;
+}
+
+/**
+ * The critic-only entry into lane 02 (ADR-0085) — the back half of `runSpecPublication`'s chain,
+ * run against a spec that arrived already written.
+ *
+ * `/to-spec` in a live session files a `prd` issue through `bin/file-issue` and stops there: no
+ * critic, no count, no `sliceable`, no dispatch, and nothing anywhere knowing it is stuck, because
+ * no dispatch was ever owed. This is the path that reaches the gate from that door. The issue's own
+ * title and body are the draft — there is no collector and no author, because the expensive half
+ * already happened in the session with the owner in it.
+ *
+ * The owner's answering comments ride along to the critic, and they are what keeps ADR-0062's
+ * re-run loop true here: with no author to redraft the body, a recount against unchanged text would
+ * report the same findings forever, so the answer has to reach the only model on this door.
+ *
+ * Everything downstream is `runSpecPublication`'s own — the same `gateSpec`, so zero labels and
+ * dispatches exactly as the runner path does, and non-zero comments the numbered questions.
+ */
+export async function runSpecCritique(
+  exec: StageExec,
+  gh: GhExec,
+  issueNumber: number,
+): Promise<SpecCritiqueResult> {
+  const spec = readPublishedSpec(gh, issueNumber);
+  const critique = await runSpecCritic(exec, {
+    title: spec.title,
+    body: spec.body,
+    answers: answeringComments(gh, issueNumber),
+  });
+
+  const { count, outcome } = gateSpec(gh, issueNumber, critique.findings);
+
+  return { issueNumber, findings: critique.findings, gateCount: count, outcome };
+}
+
+/**
+ * The event `spec.yml` hands this file, reduced to the two facts that pick a path: which trigger
+ * fired, and the issue it names.
  *
  * `sheet` arrives as ADR-0083's `repository_dispatch` after the accept has written its marker;
  * `map` arrives as the owner's `to-spec` click (ADR-0059); `answer` is a comment on a spec that is
- * already published, which is ADR-0062's re-run and the only one of the three that does not file a
- * new issue.
+ * already published, which is ADR-0062's re-run. `critique` is ADR-0085's second door: the owner's
+ * own hand putting `prd` on a spec he wrote in a session, which arrives already drafted and so
+ * files no issue and runs no author.
  */
 export type SpecInvocation =
   | { trigger: "sheet"; issueNumber: number }
   | { trigger: "map"; issueNumber: number }
-  | { trigger: "answer"; issueNumber: number };
+  | { trigger: "answer"; issueNumber: number }
+  | { trigger: "critique"; issueNumber: number };
 
 /**
- * Turns one invocation into the collector input and the publication target `runSpecPublication`
- * needs — the whole of the runner's decision-making, kept out of `spec.yml` so it is testable
- * without a runner and so the workflow stays a trigger and an `npx tsx` line.
+ * Which of lane 02's two entrances this run takes.
+ *
+ * `author` is the cold path: a collector assembles a Decided context, the author drafts, the critic
+ * reads the draft, and the result is published or rewritten. `critique` is ADR-0085's warm one: the
+ * spec is already on the tracker, so there is nothing to collect and nothing to draft, and the run
+ * starts at the critic.
+ */
+export type SpecPlan =
+  | { path: "author"; input: SpecTrigger; target: SpecTarget }
+  | { path: "critique"; issueNumber: number };
+
+/**
+ * Turns one invocation into the plan `main` carries out — the whole of the runner's
+ * decision-making, kept out of `spec.yml` so it is testable without a runner and so the workflow
+ * stays a trigger and an `npx tsx` line.
  *
  * The re-run reads its source back off the spec's own body (`spec-source:v1`), because a comment
  * event knows only the spec's number and the collectors all read the *source* — the accepted idea
- * or the closed map — never the spec drafted from it. A spec carrying no readable source marker
- * cannot be re-run and says so: that is a spec published before the marker existed, or one written
- * from a live session, and guessing at its provenance would be exactly the re-derivation
- * `shape/marker.ts` exists to prevent.
+ * or the closed map — never the spec drafted from it.
+ *
+ * **A spec carrying no readable source marker routes to the critic instead of throwing**
+ * (ADR-0085). It used to throw, and the message was honest about the cold path's constraint and
+ * wrong about this one: a spec written in a live session *is* its own source. The trailer exists
+ * only because the collectors read the idea or the map rather than the spec drafted from them, and
+ * this door has no such indirection. A spec published before the marker existed lands here too,
+ * which is the right place for it — its body is on the tracker either way.
  */
-export function planSpecRun(
-  gh: GhExec,
-  invocation: SpecInvocation,
-): { input: SpecTrigger; target: SpecTarget } {
+export function planSpecRun(gh: GhExec, invocation: SpecInvocation): SpecPlan {
+  if (invocation.trigger === "critique") {
+    return { path: "critique", issueNumber: invocation.issueNumber };
+  }
+
   if (invocation.trigger !== "answer") {
     const source: SpecSource = { kind: invocation.trigger, issue: invocation.issueNumber };
     return {
+      path: "author",
       input: { kind: invocation.trigger, gh, issueNumber: invocation.issueNumber },
       target: { mode: "publish", source },
     };
@@ -276,13 +379,11 @@ export function planSpecRun(
 
   const source = readSourceMarker(readSpecBody(gh, invocation.issueNumber));
   if (!source) {
-    throw new Error(
-      `spec #${invocation.issueNumber} records no readable spec-source marker, so there is no ` +
-        `decided context to re-run it from — answer it in a live session, or re-run its source directly`,
-    );
+    return { path: "critique", issueNumber: invocation.issueNumber };
   }
 
   return {
+    path: "author",
     input: { kind: source.kind, gh, issueNumber: source.issue },
     target: { mode: "rerun", issueNumber: invocation.issueNumber, source },
   };
@@ -292,15 +393,24 @@ export function planSpecRun(
  * Reads `spec.yml`'s environment into a `SpecInvocation`.
  *
  * `SPEC_TRIGGER` is set by the workflow rather than re-derived here from `GITHUB_EVENT_NAME` and a
- * label: the workflow's `if:` has already decided which of the three fired, and re-deciding it from
- * the raw event would be a second copy of that condition that could disagree with the first.
+ * label: the workflow's `if:` has already decided which of the four fired, and re-deciding it from
+ * the raw event would be a second copy of that condition that could disagree with the first. That
+ * matters more since ADR-0085, because two of the four are now the same `issues: labeled` event
+ * and only the label tells them apart.
  */
 export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
   const trigger = env.SPEC_TRIGGER;
   const issueNumber = Number(env.ISSUE_NUMBER);
 
-  if (trigger !== "sheet" && trigger !== "map" && trigger !== "answer") {
-    throw new Error(`SPEC_TRIGGER must be one of sheet, map, answer — got ${JSON.stringify(trigger)}`);
+  if (
+    trigger !== "sheet" &&
+    trigger !== "map" &&
+    trigger !== "answer" &&
+    trigger !== "critique"
+  ) {
+    throw new Error(
+      `SPEC_TRIGGER must be one of sheet, map, answer, critique — got ${JSON.stringify(trigger)}`,
+    );
   }
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
     throw new Error(`ISSUE_NUMBER must be a positive integer — got ${JSON.stringify(env.ISSUE_NUMBER)}`);
@@ -312,8 +422,17 @@ export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
 async function main(): Promise<void> {
   try {
     const invocation = invocationFromEnv(process.env);
-    const { input, target } = planSpecRun(execGh, invocation);
-    const result = await runSpecPublication(execClaude, execGh, target, input);
+    const plan = planSpecRun(execGh, invocation);
+
+    if (plan.path === "critique") {
+      const result = await runSpecCritique(execClaude, execGh, plan.issueNumber);
+      console.log(
+        `critiqued #${result.issueNumber}: ${result.gateCount} open question(s), ${result.outcome}`,
+      );
+      return;
+    }
+
+    const result = await runSpecPublication(execClaude, execGh, plan.target, plan.input);
 
     console.log(
       `${result.published ? "published" : "re-ran"} #${result.issueNumber}: ` +

@@ -25,6 +25,34 @@ describe("runSpecCritic", () => {
     expect(prompt).toContain(DRAFT.body);
   });
 
+  it("substitutes the owner's answering comments as the prompt's third variable", async () => {
+    // The critic-only door has no author to re-draft the body, so a re-run against unchanged
+    // text would report the same findings forever and the count could never fall. The answers
+    // are what let this stage see a finding as answered.
+    const fake = createFakeStage(RESPONSE);
+
+    await runSpecCritic(fake.exec, {
+      ...DRAFT,
+      answers: ["Done means the gauntlet exits 0.", "Yes — only the owner may fire it."],
+    });
+
+    const prompt = fake.stdins[0] ?? "";
+    expect(prompt).toContain("Done means the gauntlet exits 0.");
+    expect(prompt).toContain("Yes — only the owner may fire it.");
+  });
+
+  it("substitutes a stated absence when no answers were passed, never an empty hole", async () => {
+    // `runStage` throws on an unsubstituted `{{VAR}}`, so the author's own call — which has no
+    // answers to pass — must still resolve the variable to something the critic can read.
+    const fake = createFakeStage(RESPONSE);
+
+    await runSpecCritic(fake.exec, DRAFT);
+
+    const prompt = fake.stdins[0] ?? "";
+    expect(prompt).not.toContain("{{ANSWERS}}");
+    expect(prompt).toMatch(/nothing has been answered/i);
+  });
+
   it("returns the response parsed as a list of findings", async () => {
     const fake = createFakeStage(RESPONSE);
 

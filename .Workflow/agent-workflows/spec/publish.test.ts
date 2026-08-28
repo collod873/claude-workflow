@@ -143,19 +143,25 @@ describe("planSpecRun", () => {
   it("sends a sheet trigger to the sheet collector and publishes a new spec", () => {
     const { gh } = fakeGh();
 
-    const { input, target } = planSpecRun(gh, { trigger: "sheet", issueNumber: 42 });
+    const plan = planSpecRun(gh, { trigger: "sheet", issueNumber: 42 });
 
-    expect(input).toMatchObject({ kind: "sheet", issueNumber: 42 });
-    expect(target).toEqual({ mode: "publish", source: { kind: "sheet", issue: 42 } });
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "sheet", issueNumber: 42 },
+      target: { mode: "publish", source: { kind: "sheet", issue: 42 } },
+    });
   });
 
   it("sends a map trigger to the map collector and publishes a new spec", () => {
     const { gh } = fakeGh();
 
-    const { input, target } = planSpecRun(gh, { trigger: "map", issueNumber: 76 });
+    const plan = planSpecRun(gh, { trigger: "map", issueNumber: 76 });
 
-    expect(input).toMatchObject({ kind: "map", issueNumber: 76 });
-    expect(target).toEqual({ mode: "publish", source: { kind: "map", issue: 76 } });
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "map", issueNumber: 76 },
+      target: { mode: "publish", source: { kind: "map", issue: 76 } },
+    });
   });
 
   it("re-runs an answer against the spec's recorded source, and rewrites the spec in place", () => {
@@ -163,18 +169,35 @@ describe("planSpecRun", () => {
     // the *source* the spec was drafted from.
     const { gh } = fakeGh({ specBody: specBody("the spec", SHEET_SOURCE) });
 
-    const { input, target } = planSpecRun(gh, { trigger: "answer", issueNumber: 901 });
+    const plan = planSpecRun(gh, { trigger: "answer", issueNumber: 901 });
 
-    expect(input).toMatchObject({ kind: "sheet", issueNumber: 42 });
-    expect(target).toEqual({ mode: "rerun", issueNumber: 901, source: SHEET_SOURCE });
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "sheet", issueNumber: 42 },
+      target: { mode: "rerun", issueNumber: 901, source: SHEET_SOURCE },
+    });
   });
 
-  it("refuses an answer on a spec recording no source, rather than guessing at one", () => {
+  it("routes an answer on a spec recording no source to the critic, rather than throwing", () => {
+    // ADR-0085, replacing the throw this used to assert. A spec with no trailer was written in a
+    // live session and *is* its own source — there is no collector to reach, so the run enters the
+    // lane at the critic and the owner's answer still recomputes the count.
     const { gh } = fakeGh({ specBody: "a spec with no trailer" });
 
-    expect(() => planSpecRun(gh, { trigger: "answer", issueNumber: 901 })).toThrow(
-      /records no readable spec-source marker/,
-    );
+    expect(planSpecRun(gh, { trigger: "answer", issueNumber: 901 })).toEqual({
+      path: "critique",
+      issueNumber: 901,
+    });
+  });
+
+  it("sends a critique trigger straight to the critic, reading no source marker at all", () => {
+    const { gh, calls } = fakeGh();
+
+    expect(planSpecRun(gh, { trigger: "critique", issueNumber: 902 })).toEqual({
+      path: "critique",
+      issueNumber: 902,
+    });
+    expect(calls).toHaveLength(0);
   });
 });
 

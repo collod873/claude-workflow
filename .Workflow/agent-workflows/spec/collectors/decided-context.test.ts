@@ -7,12 +7,16 @@ import type { Sheet } from "../../shape/sheet-schema";
 import type { GhExec } from "../../shared/gh";
 import { collectMapContext } from "./map";
 import { collectSheetContext } from "./sheet";
-import { collectInSessionContext } from "./in-session";
 
 /**
- * ADR-0058: one prompt, a collector per trigger, and all three collectors
- * normalize into the *same* Decided-context shape — the difference between
- * triggers belongs in the collector, never downstream of it.
+ * ADR-0058: one prompt, a collector per trigger, and every collector normalizes into the *same*
+ * Decided-context shape — the difference between triggers belongs in the collector, never
+ * downstream of it.
+ *
+ * Two collectors, not three. ADR-0085 removed the in-session one: a collector exists to hand a
+ * package to a model that is not in the room, and the session door now writes the spec in the
+ * room and enters lane 02 at the critic instead. This assertion is what the deleted file's own
+ * parity test was for, kept here because the rule is about the collectors that remain.
  */
 
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
@@ -52,24 +56,7 @@ function fakeMapGh(mapBody: string, ticketComments: Record<number, string[]>): G
   };
 }
 
-describe("collectInSessionContext", () => {
-  it("wraps the live conversation as ownerWords, verbatim", () => {
-    const context = collectInSessionContext("owner: let's do X\nassistant: agreed, because Y");
-
-    expect(context.ownerWords).toBe("owner: let's do X\nassistant: agreed, because Y");
-  });
-
-  it("makes no fetch — it takes the conversation as a plain string, nothing to inject a GhExec into", () => {
-    expect(collectInSessionContext.length).toBe(1);
-  });
-
-  it("throws on an empty conversation rather than fabricating a Decided context from nothing", () => {
-    expect(() => collectInSessionContext("")).toThrow();
-    expect(() => collectInSessionContext("   \n  ")).toThrow();
-  });
-});
-
-describe("all three collectors normalize into the same Decided-context shape", () => {
+describe("both collectors normalize into the same Decided-context shape", () => {
   let repoRoot: string | undefined;
 
   afterEach(() => {
@@ -77,7 +64,7 @@ describe("all three collectors normalize into the same Decided-context shape", (
     repoRoot = undefined;
   });
 
-  it("produces the identical five-field shape from a sheet, a map, and a live session", () => {
+  it("produces the identical five-field shape from a sheet and from a map", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: ["Gate"], route: "short" };
     const sheetGh = fakeSheetGh("the owner's words", [sheetMarker(sheet()), acceptedMarker(payload)]);
     const sheetContext = collectSheetContext(sheetGh, 1);
@@ -104,9 +91,7 @@ describe("all three collectors normalize into the same Decided-context shape", (
     const mapGh = fakeMapGh(mapBody, { 9: ["a resolution comment"] });
     const mapContext = collectMapContext(mapGh, 1, repoRoot);
 
-    const inSessionContext = collectInSessionContext("owner and assistant, deciding things together");
-
-    for (const context of [sheetContext, mapContext, inSessionContext]) {
+    for (const context of [sheetContext, mapContext]) {
       expect(Object.keys(context).sort()).toEqual(DECIDED_CONTEXT_KEYS);
       expect(typeof context.ownerWords).toBe("string");
       expect(typeof context.decisions).toBe("string");

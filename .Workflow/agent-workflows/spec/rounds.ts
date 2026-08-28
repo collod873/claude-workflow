@@ -43,6 +43,22 @@ export function roundFor(gh: GhExec, issueNumber: number): number {
 }
 
 /**
+ * The other side of the same list: every comment on the spec that is *not*
+ * one of lane 02's own posted rounds — the owner's answers, in the order he
+ * wrote them.
+ *
+ * The critic-only door (ADR-0085) reads these alongside the body. It has no
+ * author behind it to redraft the spec, so without them a re-run would
+ * re-report the same findings against unchanged text forever and the gate
+ * count could never fall. Excluding this lane's own rounds is not tidiness:
+ * feeding the critic its own previous findings back is how it would find them
+ * again.
+ */
+export function answeringComments(gh: GhExec, issueNumber: number): string[] {
+  return readComments(gh, issueNumber).filter((body) => !body.includes(OPEN_QUESTIONS_MARKER));
+}
+
+/**
  * The comment lane 02 posts when the gate count is non-zero — ADR-0062:
  * "a non-zero count is the only thing that reaches the owner." Nothing of
  * the draft's `body` rides along; the numbered questions are the whole

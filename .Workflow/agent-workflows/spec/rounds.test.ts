@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { CHANGE_REQUEST_CAP } from "../shape/sheet";
-import { openQuestionsComment, postOpenQuestions, roundFor } from "./rounds";
+import { answeringComments, openQuestionsComment, postOpenQuestions, roundFor } from "./rounds";
 
 /** A fake `GhExec` reading `comments` for issue 1 and recording every call verbatim. */
 function fakeGh(comments: string[] = []): { gh: GhExec; calls: string[][] } {
@@ -60,6 +60,27 @@ describe("the answering loop is uncapped, unlike lane 01's roundFor", () => {
     const posted = calls.find((call) => call[0] === "issue" && call[1] === "comment");
     expect(posted).toBeDefined();
     expect(posted?.[posted.indexOf("--body") + 1]).toContain("one more open question");
+  });
+});
+
+describe("answeringComments — the other side of the same comment list", () => {
+  it("is empty on a spec nothing has spoken on", () => {
+    expect(answeringComments(fakeGh().gh, 1)).toEqual([]);
+  });
+
+  it("returns the owner's own comments, in the order he wrote them", () => {
+    const { gh } = fakeGh(["done means the gauntlet exits 0", "yes, only the owner"]);
+
+    expect(answeringComments(gh, 1)).toEqual([
+      "done means the gauntlet exits 0",
+      "yes, only the owner",
+    ]);
+  });
+
+  it("excludes the rounds this lane posted, so the critic never reads its own findings back", () => {
+    const { gh } = fakeGh([openQuestionsComment(["what does done mean?"]), "it means green"]);
+
+    expect(answeringComments(gh, 1)).toEqual(["it means green"]);
   });
 });
 

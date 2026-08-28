@@ -43,16 +43,47 @@ describe("spec.yml's trigger, the two-sided owner/author_association shape", () 
     // asserts the shape rather than the order, and does not have to be rewritten the next time a
     // trigger is added the way ADR-0083's dispatch was.
     const branches = condition.split(") ||").map((branch) => branch.trim());
-    expect(branches.length).toBeGreaterThanOrEqual(3);
+    expect(branches.length).toBeGreaterThanOrEqual(4);
 
+    // Every branch names an event, and between them they cover all three this workflow listens
+    // for. Deduplicated rather than listed one-per-branch: since ADR-0085 two branches are the
+    // same `issues: labeled` event, told apart by which label arrived.
     const eventNames = branches.map(
       (branch) => branch.match(/github\.event_name == '(\w+)'/)?.[1],
     );
-    expect(eventNames.filter(Boolean).sort()).toEqual([
+    expect(eventNames.filter(Boolean)).toHaveLength(branches.length);
+    expect([...new Set(eventNames.filter(Boolean))].sort()).toEqual([
       "issue_comment",
       "issues",
       "repository_dispatch",
     ]);
+  });
+});
+
+/**
+ * ADR-0085's critic-only door: the owner's own hand putting `prd` on a spec he wrote in a live
+ * session. `bin/file-issue spec` runs under his credentials, so the creation is a real event and
+ * this is the one thing that was missing — four workflows already woke on it and all four skipped.
+ */
+describe("spec.yml's critic-only door fires on the owner's own prd label", () => {
+  const prdBranch = condition
+    .split(") ||")
+    .find((branch) => branch.includes("github.event.label.name == 'prd'"));
+
+  it("has a labeled branch on prd, distinct from the to-spec one", () => {
+    expect(prdBranch).toBeDefined();
+    expect(prdBranch).toContain("github.event_name == 'issues'");
+    expect(prdBranch).not.toContain("to-spec");
+  });
+
+  it("gates it on the sender being the repository owner, because this lane spends model", () => {
+    // The repository is public and `prd` can be applied by anyone with write access (ADR-0073,
+    // ADR-0075), so this carries the same sender gate the `to-spec` clause already does.
+    expect(prdBranch).toContain("github.event.sender.login == github.repository_owner");
+  });
+
+  it("does not fire on a spec that has already passed the gate", () => {
+    expect(prdBranch).toContain("!contains(github.event.issue.labels.*.name, 'sliceable')");
   });
 });
 
@@ -108,6 +139,20 @@ describe("spec.yml runs the lane rather than announcing it", () => {
     const jobEnv = (full.jobs.spec as unknown as { env: Record<string, string> }).env;
     expect(jobEnv.SPEC_TRIGGER).toBeDefined();
     expect(jobEnv.ISSUE_NUMBER).toContain("client_payload.issue");
+  });
+
+  it("tells the two labeled branches apart by label, since they share an event name", () => {
+    // `invocationFromEnv` reads `SPEC_TRIGGER` rather than re-deriving the trigger from the raw
+    // event, so this expression is the *only* thing that knows a `prd` label is the critic-only
+    // door and a `to-spec` label is the map collector. An `event_name` test alone would send both
+    // to whichever arm it named.
+    const jobEnv = (full.jobs.spec as unknown as { env: Record<string, string> }).env;
+    expect(jobEnv.SPEC_TRIGGER).toContain("'sheet'");
+    expect(jobEnv.SPEC_TRIGGER).toContain("'map'");
+    expect(jobEnv.SPEC_TRIGGER).toContain("'critique'");
+    expect(jobEnv.SPEC_TRIGGER).toContain("'answer'");
+    expect(jobEnv.SPEC_TRIGGER).toContain("github.event.label.name == 'to-spec'");
+    expect(jobEnv.SPEC_TRIGGER).toContain("github.event.label.name == 'prd'");
   });
 });
 
