@@ -315,6 +315,20 @@ describe("review.yml's trigger", () => {
   });
 
   it("only reviews a successful conclusion", () => {
-    expect(workflow.jobs.review.if).toBe("github.event.workflow_run.conclusion == 'success'");
+    expect(workflow.jobs.review.if).toContain("github.event.workflow_run.conclusion == 'success'");
+  });
+
+  it("only reviews the Verify run an implementer's dispatch started", () => {
+    // `verify.yml` also fires on `push: main`, where `workflow_run.head_sha` is trunk's own tip and
+    // `origin/main..head_sha` is empty — so without this the lane spent a reviewer fleet reading
+    // nothing on every commit the owner pushed himself.
+    expect(workflow.jobs.review.if).toContain(
+      "github.event.workflow_run.event == 'repository_dispatch'",
+    );
+  });
+
+  it("sets the assignee review.ts refuses to run without", () => {
+    const job = workflow.jobs.review as unknown as { env?: Record<string, string> };
+    expect(job.env?.SIGNAL_ASSIGNEE).toBeDefined();
   });
 });

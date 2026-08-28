@@ -38,12 +38,24 @@ concurrency:
 
 jobs:
   review:
-    if: github.event.workflow_run.conclusion == 'success'
+    # Two conditions, and the second is not cosmetic. `verify.yml` fires on `push: main` as well as
+    # on an implementer's dispatch, and on the push run `workflow_run.head_sha` *is* trunk's tip —
+    # so `origin/main..head_sha` is empty and this lane spent two Opus reviewers and a refuter fleet
+    # reading nothing, on every commit the owner pushed himself, out of his personal subscription.
+    # Lane 07 reviews an implementation pull request's diff; the dispatch is what says there is one.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'repository_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      # `review.ts` refuses to run without it — an unassigned finding notifies nobody — and this
+      # workflow never set it, so every run of this lane died at the first line of the reviewer.
+      # Spelled the same way `run-watchdog.yml`, `bypass-counter.yml` and
+      # `missing-trailer-counter.yml` all spell it.
+      SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
       - name: Checkout
