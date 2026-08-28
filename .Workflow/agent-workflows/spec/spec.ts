@@ -6,6 +6,8 @@ import { runSpecCritic } from "./critic";
 import { collectInSessionContext } from "./collectors/in-session";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
+import { applyGate, gateCount, type GateOutcome } from "./open-questions";
+import { postOpenQuestions } from "./rounds";
 
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
@@ -150,4 +152,44 @@ export async function runSpecAuthor(
     body: draft.body,
     openQuestions: [...draft.openQuestions, ...critique.findings],
   };
+}
+
+/** What `runSpecPublication` hands back: the draft, and what the gate did with it. */
+export interface SpecPublicationResult extends SpecAuthorOutput {
+  /** The count `open-questions.ts`'s `gateCount` computed over the folded `openQuestions`. */
+  gateCount: number;
+  /** `"dispatched"` at zero, `"held"` otherwise — `open-questions.ts`'s `applyGate` outcome. */
+  outcome: GateOutcome;
+}
+
+/**
+ * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft plus
+ * critic, already folded into one `openQuestions` list — then gates on it.
+ *
+ * At a zero gate count: `applyGate` labels the spec `sliceable` and sends
+ * the `repository_dispatch` lane 03 fires on. At any other count:
+ * `postOpenQuestions` comments the numbered questions on the issue —
+ * ADR-0062's "the only thing that reaches the owner" — so his answering
+ * comment is what `rounds.ts`'s `roundFor` counts toward the next, uncapped,
+ * re-run.
+ *
+ * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
+ * plus the `gh` and issue number every write needs — the trigger's own `gh`
+ * is not reused here, because an `in-session` trigger carries none.
+ */
+export async function runSpecPublication(
+  exec: StageExec,
+  gh: GhExec,
+  issueNumber: number,
+  input: DecidedContext | SpecTrigger,
+): Promise<SpecPublicationResult> {
+  const draft = await runSpecAuthor(exec, input);
+  const count = gateCount(draft.openQuestions);
+  const outcome = applyGate(gh, issueNumber, count);
+
+  if (outcome === "held") {
+    postOpenQuestions(gh, issueNumber, draft.openQuestions);
+  }
+
+  return { ...draft, gateCount: count, outcome };
 }
