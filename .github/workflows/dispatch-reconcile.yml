@@ -1,0 +1,87 @@
+name: Dispatch reconcile
+
+# Lane 09: readiness is recomputed, not pushed (#179).
+#
+# `dispatchReadySlices` answered readiness once, at publish, with `dependsOn.length === 0` — a
+# constant folded into a predicate that really asks *every blocker delivered*. Folded, it could only
+# be answered once, so nothing sent the second wave and a 26-slice plan started its roots and
+# stopped. This is the unfolded predicate, run again: it recomputes the ready set across the tracker
+# from durable state alone and dispatches `ticket-ready` for everything in it that has not been
+# started.
+#
+# It fires on two actions and they are not equals. `session-captured` is the **correctness floor**:
+# the dependency graph, every blocker's close state and every slice's branch are durable API
+# objects, so the ready set is a pure function of state that is still there tomorrow — there is
+# nothing to replay and nothing to reconstruct, which is ADR-0049's real criterion met more
+# completely than the close gate's reconciler can meet it. `graph-changed` is a **latency hint**
+# that lane 08 rings after a merge; lose it and this still finds the same ready set at the next
+# session end, so the cost is minutes rather than the wave. That asymmetry is why a second dispatch
+# is permitted here when ADR-0049 refused one — its dispatch would have been load-bearing.
+#
+# Riding session end is ADR-0004 applied rather than excepted: a slice can only become ready if a
+# merge happened, and merges only happen during work, so this cannot fire against nothing. A cron
+# is refused on ADR-0048's evidence unchanged — GitHub throttles scheduled runs under the same load
+# being reconciled against.
+#
+# `repository_dispatch` is left unfiltered by `types:` for the reason `audit.yml` and
+# `close-gate-reconcile.yml` give: the filter is per-workflow, not per-job, so a sibling sharing
+# this trigger surface would force this file's list to track every action any of them ever adds.
+# The job-level `if` is the scope rule, spelled here and in `reconcile.ts`'s
+# `RECONCILE_DISPATCH_ACTIONS`; `reconcile.test.ts` asserts the two still agree.
+#
+# **Lane 08 never reads the graph and this never writes it.** The doorbell says "something changed,
+# go look" and nothing else, and the only reader is this — so ADR-0069 is applied, not amended, and
+# there is no second writer.
+
+"on":
+  repository_dispatch:
+  workflow_dispatch:
+
+permissions:
+  # `contents: write` is for the `repository_dispatch` this sends, not for the tree: creating a
+  # dispatch event needs write access to contents, and this workflow pushes nothing. `read` here
+  # would 403 on the one write that matters and report `clear` on a run that dispatched nothing.
+  contents: write
+  # Filing the unreachable count as one standing issue, and reading the tracker it reconciles.
+  issues: write
+
+# Serialised rather than cancelled: a merge and a session ending together would otherwise both
+# recompute the same ready set, and a run cancelled mid-reconcile would leave half the graph
+# unconsidered while reporting green. Duplicate dispatch is free — the implementer's branch ref is
+# the claim — so this is about the report being whole, not about the sends racing.
+concurrency:
+  group: dispatch-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.action == 'session-captured' ||
+      github.event.action == 'graph-changed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # A manual run is a person asking, which is as much an event as a dispatch is — it carries no
+      # `github.event.action`, so it declares the floor rather than teaching the entrypoint a second
+      # way to be allowed to run.
+      EVENT_ACTION: ${{ github.event_name == 'workflow_dispatch' && 'session-captured' || github.event.action }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # No Claude Code install and no model secret: this spends nothing. It reads the tracker and
+      # the refs API, sends dispatches, and files at most one comment — every write through the `gh`
+      # seam in `shared/gh.ts`. Exits nonzero only when it could not read its own inputs.
+      - name: Recompute the ready set
+        run: npx tsx .Workflow/agent-workflows/dispatch/reconcile.ts

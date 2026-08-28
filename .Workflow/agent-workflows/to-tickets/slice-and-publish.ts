@@ -1,6 +1,6 @@
 import type { GhExec } from "../shared/gh";
-import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import type { Plan } from "../shared/plan-schema";
+import { dispatchTicketReady, readySlices, type SliceState } from "../shared/ready-set";
 import {
   publishSubIssues,
   verifyBlockedByGraph,
@@ -10,17 +10,25 @@ import {
 import { validatePlan } from "../shared/validate-graph";
 
 /**
- * Sends one `ticket-ready` dispatch per slice this publish left with **zero** blocked-by edges —
- * the send `implement.yml` fires on, and #167's own words for when: "for every slice with zero
- * unresolved blocked-by edges".
+ * Sends one `ticket-ready` dispatch per slice this publish leaves ready — the send `implement.yml`
+ * fires on, and #167's own words for when: "for every slice with zero unresolved blocked-by edges".
  *
  * Nothing sent it until #145's seam audit. #167 built and tested the receiving end and recorded in
  * `implement.ts` that wiring the send "belongs to whichever ticket owns
  * `to-tickets/slice-and-publish.ts`" — and no slice in the PRD ever claimed that file, so lane 03
  * published 26 tickets that lane 05 could never be told about.
  *
- * At publish time every edge is unresolved by construction: nothing in a plan has merged yet, so
- * `dependsOn.length === 0` is the whole readiness test and no tracker read is needed to make it.
+ * **This asks `readySlices`; it does not answer readiness itself** (#179). It used to filter on
+ * `dependsOn.length === 0` and explain that at publish time every edge is unresolved by
+ * construction, so no tracker read was needed to make the test. That was true, and it was a
+ * constant folded into a predicate — the real question is *every blocker delivered*, which merely
+ * equals "zero declared edges" at t=0. Folded, it could only be answered once, and nothing sent the
+ * second wave. Unfolded, this is one caller of the predicate rather than a second implementation of
+ * it, and `dispatch/reconcile.ts` is the other.
+ *
+ * The state it hands over is the state a publish is in by construction: every issue open, nothing
+ * merged, nothing started. So the answer here is unchanged — the slices with no declared edges —
+ * and it is now the same answer, from the same function, that the reconciler will give tomorrow.
  *
  * Runs after `verifyBlockedByGraph`, so no implementer is ever dispatched against a graph that
  * failed its read-back. A dispatch that throws stops the rest: a partially dispatched wave is
@@ -28,16 +36,17 @@ import { validatePlan } from "../shared/validate-graph";
  * looking published-and-started when nothing was ever told to build it.
  */
 export function dispatchReadySlices(plan: Plan, published: PublishedIssue[], gh: GhExec): PublishedIssue[] {
-  const ready = published.filter((_, index) => plan[index].dependsOn.length === 0);
+  const states: SliceState[] = published.map((issue, index) => ({
+    number: issue.number,
+    blockedBy: plan[index].dependsOn.map((dep) => published[dep - 1].number),
+    delivery: "open",
+    started: false,
+  }));
+
+  const readyNumbers = new Set(readySlices(states).map((state) => state.number));
+  const ready = published.filter((issue) => readyNumbers.has(issue.number));
   for (const issue of ready) {
-    gh([
-      "api",
-      "repos/{owner}/{repo}/dispatches",
-      "-f",
-      `event_type=${IMPLEMENT_DISPATCH_EVENT_TYPE}`,
-      "-f",
-      `client_payload[issue]=${issue.number}`,
-    ]);
+    dispatchTicketReady(gh, issue.number);
   }
   return ready;
 }

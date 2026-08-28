@@ -4,9 +4,10 @@ import { childEnv } from "../shared/child-env";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
+import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 
-export { VERIFY_DISPATCH_EVENT_TYPE };
+export { VERIFY_DISPATCH_EVENT_TYPE, GRAPH_CHANGED_DISPATCH_ACTION };
 
 /**
  * Lane 08 (PRD #145, move 7): the merge actor. Fires on the same
@@ -80,8 +81,20 @@ function mergePr(gh: GhExec, pr: string): void {
 
 /**
  * The whole flow: read the PR's branch, rebase it onto current trunk,
- * re-run the gauntlet against the rebased tree, and merge only when that
- * run *completed* reporting green.
+ * re-run the gauntlet against the rebased tree, merge only when that
+ * run *completed* reporting green — and then ring the doorbell.
+ *
+ * **The doorbell interprets nothing** (#179). A merge is what makes some other slice's last
+ * blocker deliver, and this is the only thing that knows a merge happened. It says so and stops
+ * there: no dependencies read, no tracker read, no promotion. #178 proposed this lane promote its
+ * successors and accepted a second lane reasoning about the graph as the cost of putting the
+ * sender at the merge; that cost does not have to be paid. `dispatch/reconcile.ts` is the reader,
+ * it writes nothing to the graph, and
+ * [ADR-0069](../../../docs/adr/0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md)
+ * is applied rather than amended.
+ *
+ * Sent after the merge and never before, and its failure is nobody's problem: the reconciler also
+ * rides `session-captured`, so a doorbell that never rings costs latency, not the wave.
  *
  * Deliberately not a `Promise` — every step here is synchronous (`git`,
  * `gh`, and the real `runGauntlet` all shell out and block), so nothing
@@ -95,6 +108,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
 
   if (result.exitCode === 0) {
     mergePr(deps.gh, deps.pr);
+    announceGraphChanged(deps.gh, deps.pr);
     return { merged: true };
   }
   if (result.exitCode === 1) {

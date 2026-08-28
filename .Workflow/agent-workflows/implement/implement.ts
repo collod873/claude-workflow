@@ -3,8 +3,10 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
+import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
+import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
@@ -35,18 +37,18 @@ export const IMPLEMENTER_MODEL = "claude-sonnet-5";
 export const IMPLEMENTER_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/prompt.md";
 
 /**
- * The `repository_dispatch` action `implement.yml`'s job gates on — sent by
- * `to-tickets.yml`'s publish step for every slice with zero unresolved
- * blocked-by edges. Spelled here as the one authority `implement.yml`'s `if:`
- * and `implement-workflow.test.ts` both check against, since no compiler sees
- * across the JS↔YAML boundary (the same pattern `SPEC_DISPATCH_EVENT_TYPE`
- * and `AUDIT_DISPATCH_ACTION` follow). **Not yet sent by anything** — wiring
- * the publish step to send it belongs to whichever ticket owns
- * `to-tickets/slice-and-publish.ts`, not this one's claimed files. This file
- * only has to get the receiving side right and provable, the same way
- * `spec.yml` shipped its trigger ahead of a runnable stage dispatch.
+ * The `repository_dispatch` action `implement.yml`'s job gates on — the one authority
+ * `implement.yml`'s `if:` and `implement-workflow.test.ts` both check against, since no compiler
+ * sees across the JS↔YAML boundary (the same pattern `SPEC_DISPATCH_EVENT_TYPE` and
+ * `AUDIT_DISPATCH_ACTION` follow).
+ *
+ * Re-exported from `shared/ready-set.ts` rather than declared here, for the reason
+ * `VERIFY_DISPATCH_EVENT_TYPE` below is: it has **two senders** now, not one — the publish step
+ * (`to-tickets/slice-and-publish.ts`) and the reconciler (`dispatch/reconcile.ts`) — and `shared/`
+ * is the only place both can reach without a lane importing a lane. Declaring a wire name twice is
+ * what left both of `verify.yml`'s jobs unreachable until #145's seam audit.
  */
-export const IMPLEMENT_DISPATCH_EVENT_TYPE = "ticket-ready";
+export const IMPLEMENT_DISPATCH_EVENT_TYPE = TICKET_READY_DISPATCH_ACTION;
 
 /**
  * The `repository_dispatch` action this lane sends on success, naming the PR
@@ -217,16 +219,51 @@ function fsWriteFile(path: string, content: string): void {
   writeFileSync(path, content, "utf8");
 }
 
-/** The branch a ticket's implementation lands on. */
-export function implementationBranch(issueNumber: number): string {
-  return `implement/issue-${issueNumber}`;
+export { implementationBranch };
+
+/**
+ * Claims this slice, atomically, **before the model runs** (#179).
+ *
+ * Dispatch is at-least-once: the reconciler recomputes the ready set on every `graph-changed` and
+ * every `session-captured` and is deliberately dumb about what it has already sent, because the
+ * claim is what makes a duplicate free. That only holds if the claim happens *first*. It did not:
+ * `commitAndPushBranch` pushes at the end, after the implementer stage has already run, so two
+ * implementers would both do the whole job and only the push would collide — a wasted Sonnet run
+ * and, worse, a second one that might win the race with different files.
+ *
+ * The ref is created rather than pushed because `POST git/refs` **fails when the ref exists**
+ * (HTTP 422) where a push may fast-forward, and a fast-forward is not a claim.
+ *
+ * Any refusal reads as *not claimed by me* and stops this run, not only the 422. That fails to the
+ * safe side twice over: a transient failure leaves no ref, so the next recompute finds the slice
+ * still unstarted and dispatches it again — the reason to have a reconciler at all — while
+ * guessing that a refusal was transient would be guessing the one way that costs a duplicate
+ * implementer.
+ */
+export function claimImplementationBranch(
+  gh: GhExec,
+  git: GitExec,
+  branch: string,
+  log: (line: string) => void = (line) => console.log(line),
+): boolean {
+  const sha = git(["rev-parse", "HEAD"]).trim();
+  try {
+    gh(["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${branch}`, "-f", `sha=${sha}`]);
+    return true;
+  } catch (err) {
+    log(`\`${branch}\` was not claimed here: ${reason(err)}`);
+    return false;
+  }
 }
 
 /**
- * Commits the stage's written files to a fresh branch and pushes it — the
+ * Commits the stage's written files to the branch this run claimed and pushes it — the
  * same add-commit-push shape `push-gate.ts`'s `commitAndPush` uses, minus
  * the rebase-onto-main step: this lands on its own branch for a PR to
  * review, never straight onto `main`.
+ *
+ * The remote ref already exists, at the same commit this checkout is on (`claimImplementationBranch`
+ * created it there), so the push is a fast-forward onto the claim rather than the creation of it.
  */
 function commitAndPushBranch(git: GitExec, branch: string, paths: string[], commitMessage: string): void {
   git(["checkout", "-b", branch]);
@@ -318,15 +355,28 @@ export interface ImplementDeps {
    * itself.
    */
   failingTests: FailingTestFile[];
+  /** Where a refused claim is reported. Injected so a test reads it rather than the run log. */
+  log?: (line: string) => void;
 }
 
 /**
- * The whole implement flow, end to end: read the ticket, assemble its brief
+ * The whole implement flow, end to end: claim the branch, read the ticket, assemble its brief
  * from exactly the four ingredients #167 names, run the implementer stage,
- * write what it returns, commit and push a branch, then open exactly one PR
+ * write what it returns, commit and push the claimed branch, then open exactly one PR
  * and send exactly one verification dispatch naming it.
+ *
+ * Returns the pull request's URL, or `null` when the branch was already claimed — a duplicate
+ * `ticket-ready` for a slice somebody is already building, which is an ordinary and expected event
+ * under at-least-once dispatch (#179) rather than a failure.
  */
-export async function runImplement(deps: ImplementDeps): Promise<string> {
+export async function runImplement(deps: ImplementDeps): Promise<string | null> {
+  // First, before the ticket read and long before the model: the claim is only a claim if nothing
+  // expensive has happened yet.
+  const branch = implementationBranch(deps.issueNumber);
+  if (!claimImplementationBranch(deps.gh, deps.git, branch, deps.log ?? ((line) => console.log(line)))) {
+    return null;
+  }
+
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const seamManifestLines = extractSeamsConsumed(ticket.body);
   const filesClaimed = extractFilesClaimed(ticket.body);
@@ -353,7 +403,6 @@ export async function runImplement(deps: ImplementDeps): Promise<string> {
     deps.writeFile(file.path, file.content);
   }
 
-  const branch = implementationBranch(deps.issueNumber);
   const paths = answer.files.map((file) => file.path);
   commitAndPushBranch(
     deps.git,
@@ -416,6 +465,12 @@ async function main(): Promise<void> {
       issueNumber,
       failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(path, "utf8")),
     });
+    if (prUrl === null) {
+      // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the
+      // branch ref is what makes it free — exiting green here is that guarantee being kept.
+      console.log(`#${issueNumber} is already claimed — nothing to do.`);
+      return;
+    }
     console.log(`opened ${prUrl}`);
   } catch (err) {
     console.error(`implement failed: ${reason(err)}`);

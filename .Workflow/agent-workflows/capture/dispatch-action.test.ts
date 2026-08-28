@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { RECONCILE_DISPATCH_ACTION } from "../close-gate/reconcile";
+import {
+  RECONCILE_DISPATCH_ACTIONS,
+  SESSION_CAPTURED_DISPATCH_ACTION,
+} from "../dispatch/reconcile";
 import { AUDIT_DISPATCH_ACTION } from "../observations/run-audit";
 import { WATCHDOG_DISPATCH_ACTION } from "../watchdog/run-watchdog";
 
@@ -66,5 +70,16 @@ describe("every consumer of the capture dispatch scopes on the name the hook sen
 
   it("run-watchdog.ts checks for it", () => {
     expect(WATCHDOG_DISPATCH_ACTION).toBe(WIRE_ACTION);
+  });
+
+  it("dispatch-reconcile.yml gates its job on it", () => {
+    expect(repoFile(".github/workflows/dispatch-reconcile.yml")).toContain(
+      `github.event.action == '${WIRE_ACTION}'`,
+    );
+  });
+
+  it("dispatch/reconcile.ts checks for it — it is the correctness floor, and the hint rides beside it", () => {
+    expect(SESSION_CAPTURED_DISPATCH_ACTION).toBe(WIRE_ACTION);
+    expect(RECONCILE_DISPATCH_ACTIONS).toContain(WIRE_ACTION);
   });
 });

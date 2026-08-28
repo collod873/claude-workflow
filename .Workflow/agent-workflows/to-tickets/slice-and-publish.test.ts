@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
@@ -5,6 +7,7 @@ import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { readWorkflow } from "../shared/read-workflow";
+import { readySlices, type SliceState } from "../shared/ready-set";
 import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
@@ -305,6 +308,41 @@ describe("sliceAndPublish dispatches lane 05 for every ready slice", () => {
     );
     expect(lastReadBack).toBeGreaterThan(-1);
     expect(firstDispatch).toBeGreaterThan(lastReadBack);
+  });
+
+  /**
+   * #179: the folded constant is unfolded, so publish-time dispatch is one *caller* of the
+   * readiness predicate rather than a second implementation of it. Asserted against the source
+   * because behaviour alone cannot tell the two apart — at publish time they agree by construction,
+   * and that agreement is exactly what let readiness be answered once and never again.
+   */
+  it("asks readySlices rather than testing dependsOn.length itself", () => {
+    const source = readFileSync(fileURLToPath(new URL("./slice-and-publish.ts", import.meta.url)), "utf8");
+    // Comments stripped: the header still names the folded constant, because saying what was
+    // wrong is the point of the header.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    expect(code).toContain("readySlices");
+    expect(code).not.toContain("dependsOn.length");
+  });
+
+  it("gives the same answer the predicate gives for the state a publish is in", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] }), slice({ title: "Also root" })];
+    const fake = createFakeGh();
+
+    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+    // The same graph, stated independently of the publisher, in the state a publish leaves it:
+    // every issue open, nothing merged, nothing claimed.
+    const states: SliceState[] = [
+      { number: published[0].number, blockedBy: [], delivery: "open", started: false },
+      { number: published[1].number, blockedBy: [published[0].number], delivery: "open", started: false },
+      { number: published[2].number, blockedBy: [], delivery: "open", started: false },
+    ];
+
+    expect(fake.dispatches.map((dispatch) => Number(dispatch.payload.issue))).toEqual(
+      readySlices(states).map((state) => state.number),
+    );
   });
 
   it("throws before dispatching anything when the graph fails its read-back", () => {

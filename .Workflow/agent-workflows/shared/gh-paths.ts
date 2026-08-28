@@ -55,6 +55,23 @@ function namedPathTemplate(
   };
 }
 
+/**
+ * The same generator again for a path whose variable segment is a **ref prefix** — `implement/`,
+ * today. Separate from `namedPathTemplate` only in its character class: a ref prefix carries the
+ * `/` that a workflow file name never does, and widening the workflow matcher to accept one would
+ * let it match paths that are not workflow paths at all.
+ */
+function refPrefixPathTemplate(
+  literal: TemplateStringsArray,
+  ..._placeholder: unknown[]
+): { build: (prefix: string) => string; matcher: RegExp } {
+  const [prefix, suffix] = literal.raw;
+  return {
+    build: (value: string) => `${prefix}${value}${suffix}`,
+    matcher: new RegExp(`^${escapeRegExp(prefix)}([\\w./-]+)${escapeRegExp(suffix)}$`),
+  };
+}
+
 function escapeRegExp(segment: string): string {
   return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -66,6 +83,17 @@ const workflow = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}`
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
+const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
+
+/**
+ * Where a ref is **created**, which is how an implementer claims its slice (#179). No variable
+ * segment: the ref name and the commit it points at are fields on the POST, not path segments.
+ *
+ * This endpoint is chosen over a push precisely because it is an atomic create that **fails when
+ * the ref already exists** (HTTP 422). A push might fast-forward, and a second implementer that
+ * fast-forwards has already done the whole job twice.
+ */
+export const GIT_REFS_PATH = "repos/{owner}/{repo}/git/refs";
 
 /** The path for one issue: `repos/{owner}/{repo}/issues/<number>`. */
 export function issuePath(number: number): string {
@@ -131,6 +159,14 @@ export function repoRunsPath(perPage: number): string {
   return repoRuns.build(perPage);
 }
 
+/**
+ * Every ref under one prefix, in one call — `implement/` finds every claim the fleet holds, which
+ * is the `started` term of the ready set (`shared/ready-set.ts`) read without a per-slice lookup.
+ */
+export function matchingRefsPath(prefix: string): string {
+  return matchingRefs.build(prefix);
+}
+
 /** Matches an `issuePath`, capturing the issue number. */
 export const issuePathMatcher: RegExp = issue.matcher;
 
@@ -151,3 +187,6 @@ export const runJobsPathMatcher: RegExp = runJobs.matcher;
 
 /** Matches a `repoRunsPath`, capturing the page size. */
 export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
+
+/** Matches a `matchingRefsPath`, capturing the ref prefix. */
+export const matchingRefsPathMatcher: RegExp = matchingRefs.matcher;

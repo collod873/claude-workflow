@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
+import { GIT_REFS_PATH } from "../shared/gh-paths";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
+import { implementationBranch } from "../shared/ready-set";
 import { createFakeStage } from "../shared/stage.fake";
 import {
   assembleBrief,
@@ -129,11 +131,22 @@ describe("parentPrdNumber", () => {
   });
 });
 
-/** A fake `GhExec` that answers a ticket read, a PR create, and a dispatch send — nothing else. */
-function fakeGh(ticket: { title: string; body: string }): { gh: GhExec; calls: string[][] } {
+/**
+ * A fake `GhExec` that answers a branch claim, a ticket read, a PR create, and a dispatch send —
+ * nothing else. `refCreateFails` models the 422 a second implementer gets when the first one has
+ * already claimed the slice.
+ */
+function fakeGh(
+  ticket: { title: string; body: string },
+  options: { refCreateFails?: boolean } = {},
+): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
   const gh: GhExec = (args) => {
     calls.push([...args]);
+    if (args[0] === "api" && args[1] === GIT_REFS_PATH) {
+      if (options.refCreateFails) throw new Error("HTTP 422: Reference already exists");
+      return "";
+    }
     if (args[0] === "issue" && args[1] === "view") return JSON.stringify(ticket);
     if (args[0] === "pr" && args[1] === "create") return "https://github.com/owner/repo/pull/42\n";
     if (args[0] === "api") return "";
@@ -142,15 +155,21 @@ function fakeGh(ticket: { title: string; body: string }): { gh: GhExec; calls: s
   return { gh, calls };
 }
 
-/** A fake `GitExec` that records every call and answers nothing. */
+/** A fake `GitExec` that records every call and answers a fixed HEAD for `rev-parse`. */
 function fakeGit(): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
   const git: GitExec = (args) => {
     calls.push([...args]);
-    return "";
+    return args[0] === "rev-parse" ? `${HEAD_SHA}\n` : "";
   };
   return { git, calls };
 }
+
+const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
+
+/** Every `repository_dispatch` in a recorded call list — the ref claim is an `api` call too now. */
+const dispatchesIn = (calls: string[][]): string[][] =>
+  calls.filter((call) => call[0] === "api" && call[1] === "repos/{owner}/{repo}/dispatches");
 
 describe("runImplement — on fakes", () => {
   it("opens exactly one PR, then sends exactly one repository_dispatch naming that PR", async () => {
@@ -192,7 +211,7 @@ describe("runImplement — on fakes", () => {
     const prCreateCalls = calls.filter((call) => call[0] === "pr" && call[1] === "create");
     expect(prCreateCalls).toHaveLength(1);
 
-    const dispatchCalls = calls.filter((call) => call[0] === "api");
+    const dispatchCalls = dispatchesIn(calls);
     expect(dispatchCalls).toHaveLength(1);
     expect(dispatchCalls[0]).toContain(`event_type=${VERIFY_DISPATCH_EVENT_TYPE}`);
     expect(dispatchCalls[0]).toContain("client_payload[pr]=https://github.com/owner/repo/pull/42");
@@ -229,6 +248,81 @@ describe("runImplement — on fakes", () => {
     const prompt = stage.stdins[0] ?? "";
     expect(prompt).toContain(ticket.body);
     expect(prompt).toContain("the failing assertion");
+  });
+});
+
+/**
+ * The claim that makes at-least-once dispatch free (#179).
+ *
+ * The reconciler recomputes the ready set on every `graph-changed` and every `session-captured` and
+ * is deliberately dumb about what it has already sent, which is only affordable because a duplicate
+ * costs nothing. It costs nothing only if the ref is created **before** the model runs — the old
+ * order pushed at the end, so two implementers both did the whole job and only the push collided.
+ */
+describe("runImplement claims its branch before it spends anything", () => {
+  const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
+
+  function deps(gh: GhExec, git: GitExec, stage: ReturnType<typeof createFakeStage>, log: string[]) {
+    return {
+      gh,
+      exec: stage.exec,
+      git,
+      readFile: () => "# CONTEXT\n",
+      fileExists: () => false,
+      writeFile: () => {},
+      issueNumber: 167,
+      failingTests: [],
+      log: (line: string) => log.push(line),
+    };
+  }
+
+  it("creates the ref at HEAD before running the model", async () => {
+    const { gh, calls } = fakeGh(ticket);
+    const { git } = fakeGit();
+    const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
+
+    await runImplement(deps(gh, git, stage, []));
+
+    const claim = calls.find((call) => call[0] === "api" && call[1] === GIT_REFS_PATH);
+    expect(claim).toEqual([
+      "api",
+      GIT_REFS_PATH,
+      "-f",
+      `ref=refs/heads/${implementationBranch(167)}`,
+      "-f",
+      `sha=${HEAD_SHA}`,
+    ]);
+
+    // Before the model, not merely both — the whole point of moving it.
+    expect(calls.indexOf(claim!)).toBe(0);
+    expect(stage.stdins).toHaveLength(1);
+  });
+
+  it("exits without running the model or opening a PR when the ref is already there", async () => {
+    const { gh, calls } = fakeGh(ticket, { refCreateFails: true });
+    const { git } = fakeGit();
+    const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
+    const log: string[] = [];
+
+    const prUrl = await runImplement(deps(gh, git, stage, log));
+
+    expect(prUrl, "a duplicate ticket-ready is an ordinary event, not a failure").toBeNull();
+    expect(stage.stdins, "no model ran").toHaveLength(0);
+    expect(calls.some((call) => call[0] === "pr" && call[1] === "create")).toBe(false);
+    expect(dispatchesIn(calls)).toEqual([]);
+    expect(log.join("\n")).toContain(implementationBranch(167));
+  });
+
+  it("reads nothing and writes nothing else once the claim is refused", async () => {
+    const { gh, calls } = fakeGh(ticket, { refCreateFails: true });
+    const { git } = fakeGit();
+    const stage = createFakeStage("{}");
+
+    await runImplement(deps(gh, git, stage, []));
+
+    // One `git rev-parse` for the sha, one refused `gh api`. Not the ticket read, not the context
+    // read, nothing.
+    expect(calls).toHaveLength(1);
   });
 });
 
