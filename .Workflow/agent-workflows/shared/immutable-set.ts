@@ -17,12 +17,27 @@
 export const IMMUTABLE_SET = ["tests/acceptance/", "vitest.config.ts", ".github/"] as const;
 
 /**
- * The `github.event.action` value the Immutability job in `.github/workflows/verify.yml` gates
- * on — spelled here as well as in that job's `if:`, the same split `WATCHDOG_DISPATCH_ACTION` and
- * its siblings hold to, so `immutable-set.test.ts` can assert the two agree rather than trusting
- * that they were typed the same twice.
+ * The `github.event.action` value ADR-0054's dispatch carries — **one wire name, one sender, three
+ * readers**: `implement.ts`'s `openPrAndDispatch` sends it, and the Immutability job, the
+ * Restore-and-run-acceptance job (both `.github/workflows/verify.yml`) and lane 08
+ * (`.github/workflows/integrate.yml`) each gate on it. Spelled here as well as in those three
+ * `if:`s, the same split `WATCHDOG_DISPATCH_ACTION` and its siblings hold to, so the workflow
+ * tests can assert they agree rather than trusting they were typed the same four times.
+ *
+ * It lives in *this* file rather than in the lane that sends it because ADR-0054 makes the
+ * dispatch and the immutable set one mechanism — "the two halves are load-bearing together" —
+ * and because `shared/` may not import a lane. `implement.ts` re-exports it as
+ * `VERIFY_DISPATCH_EVENT_TYPE` for the sending side, and `integrate.ts` re-exports it again from
+ * there.
+ *
+ * It was two strings until #145's seam audit: the receiving side (#161) declared
+ * `implementation-pr-opened` here while the sending side (#167) declared `implementation-opened`
+ * in `implement.ts`, each slice internally tested against its own constant and nothing testing
+ * the pair. Both of `verify.yml`'s jobs were therefore unreachable while `integrate.yml` merged
+ * on the dispatch anyway — the acceptance guarantee unarmed and the merge actor running without
+ * it. One declaration is what stops that recurring.
  */
-export const IMMUTABILITY_DISPATCH_ACTION = "implementation-pr-opened";
+export const IMPLEMENTATION_PR_DISPATCH_ACTION = "implementation-opened";
 
 /**
  * `true` when any of `paths` falls inside the immutable set: an exact match against

@@ -156,7 +156,17 @@ describe("runImplement — on fakes", () => {
   it("opens exactly one PR, then sends exactly one repository_dispatch naming that PR", async () => {
     const ticket = {
       title: "Do the thing",
-      body: ["## Files claimed", "- a/b.ts", "", "## Seams consumed", "", "a seam"].join("\n"),
+      body: [
+        "## Acceptance criteria",
+        "- [ ] The thing is done",
+        "",
+        "## Files claimed",
+        "- a/b.ts",
+        "",
+        "## Seams consumed",
+        "",
+        "a seam",
+      ].join("\n"),
     };
     const { gh, calls } = fakeGh(ticket);
     const { git } = fakeGit();
@@ -186,6 +196,12 @@ describe("runImplement — on fakes", () => {
     expect(dispatchCalls).toHaveLength(1);
     expect(dispatchCalls[0]).toContain(`event_type=${VERIFY_DISPATCH_EVENT_TYPE}`);
     expect(dispatchCalls[0]).toContain("client_payload[pr]=https://github.com/owner/repo/pull/42");
+
+    // The other two fields trunk's `verify.yml` reads. Sending only `pr` is what left the
+    // Immutability job refusing every PR on an empty changed-files input and the acceptance job
+    // finding no test to run, even once the action names were reconciled (#145's seam audit).
+    expect(dispatchCalls[0]).toContain("client_payload[changed_files]=a/b.ts");
+    expect(dispatchCalls[0]).toContain("client_payload[criteria][]=The thing is done");
 
     // The PR opens before the dispatch that names it — not merely "both happened".
     const prIndex = calls.indexOf(prCreateCalls[0]);

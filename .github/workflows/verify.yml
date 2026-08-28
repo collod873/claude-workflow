@@ -14,32 +14,29 @@ name: Verify
 # spent ~23s of a 2,000-minute monthly cap that the estate is already over. Nothing in a `.md` file
 # can fail typecheck, lint or the suite, so nothing in one is worth a runner.
 #
-# `push` is `main` only. Once lane 05 opens pull requests, a branch push would otherwise fire this
-# twice — once as `push`, once as `pull_request` — for one commit.
+# `push` is `main` only, and there is **no `pull_request` trigger at all** — ADR-0054's consequence
+# in its own words: "`verify.yml` keeps its `push: main` trigger and loses `pull_request`." It was
+# still here until #145's seam audit, and it was not cosmetic. On a `pull_request` event GitHub runs
+# the workflow file *from the pull request*, so an implementer that deleted the two dispatch-gated
+# jobs below from its own branch still got a green `verify` job out of its own copy of this file —
+# the exact hole ADR-0054 exists to close, left open by the trigger the ADR told it to drop.
 #
 # Node arrives pinned to 24, with `npm ci` installing exactly what's in `package-lock.json`,
 # matching the block already in `.github/workflows/to-tickets.yml`. `npm ci` also runs `prepare`,
 # which installs the husky hooks on the runner, so an agent committing here meets the same pre-push
 # gate the owner does.
 #
-# `repository_dispatch` is added additively, alongside `push` and `pull_request` rather than in
-# place of either — lane 05's implementer does not exist yet (PRD #145's own out-of-scope list),
-# so nothing sends this dispatch today. What can already be built is the receiving end: the
-# Immutability job below, which ADR-0053 and ADR-0054 both require run from trunk's copy of this
-# file, which only a dispatch-fired run guarantees (a `pull_request` run executes the PR's own
-# copy, and an implementer that deletes this job from its own branch would otherwise go green in
-# silence). Left unfiltered by `types:` for the reason `close-gate-reconcile.yml` gives: the filter
-# is per-workflow, not per-job, so a future sibling job riding this same trigger would force this
-# list to track every action any of them ever adds. The job-level `if:` below is the scope rule.
+# `repository_dispatch` is what an implementation PR is judged on: lane 05's `openPrAndDispatch`
+# sends it, and a dispatch-fired run always executes trunk's copy of this file, which ADR-0053 and
+# ADR-0054 both require. Left unfiltered by `types:` for the reason `close-gate-reconcile.yml`
+# gives: the filter is per-workflow, not per-job, so a future sibling job riding this same trigger
+# would force this list to track every action any of them ever adds. The job-level `if:` below is
+# the scope rule, and it names the one constant the sender reads
+# (`IMPLEMENTATION_PR_DISPATCH_ACTION`, `.Workflow/agent-workflows/shared/immutable-set.ts`).
 
 "on":
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
-  pull_request:
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -63,7 +60,7 @@ jobs:
   # never drift apart.
   immutability:
     name: Immutability
-    if: github.event.action == 'implementation-pr-opened'
+    if: github.event.action == 'implementation-opened'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -106,7 +103,7 @@ jobs:
   restore-and-run-acceptance:
     name: Restore and run acceptance
     needs: [immutability]
-    if: always() && needs.immutability.result != 'failure' && github.event.action == 'implementation-pr-opened'
+    if: always() && needs.immutability.result != 'failure' && github.event.action == 'implementation-opened'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IMMUTABILITY_DISPATCH_ACTION } from "./immutable-set";
+import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { readWorkflow } from "./read-workflow";
 
 /**
@@ -101,7 +101,7 @@ describe("verify.yml's Restore and run acceptance job", () => {
   });
 
   it("gates on the same repository_dispatch action as the Immutability job, never on pull_request", () => {
-    expect(acceptanceJob.if).toContain(`github.event.action == '${IMMUTABILITY_DISPATCH_ACTION}'`);
+    expect(acceptanceJob.if).toContain(`github.event.action == '${IMPLEMENTATION_PR_DISPATCH_ACTION}'`);
     expect(acceptanceJob.if).not.toMatch(/pull_request/);
   });
 
@@ -110,6 +110,6 @@ describe("verify.yml's Restore and run acceptance job", () => {
     // `pull_request` event carries an action equal to this string, so the equality above is the
     // whole gate and no other clause in `if:` widens it.
     const conditionParts = (acceptanceJob.if ?? "").split("&&").map((part) => part.trim());
-    expect(conditionParts).toContain(`github.event.action == '${IMMUTABILITY_DISPATCH_ACTION}'`);
+    expect(conditionParts).toContain(`github.event.action == '${IMPLEMENTATION_PR_DISPATCH_ACTION}'`);
   });
 });

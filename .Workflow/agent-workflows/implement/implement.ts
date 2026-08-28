@@ -4,10 +4,12 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
+import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { normalizeNewlines, sectionText } from "../shared/ticket-shape";
+import { extractCriteria } from "../acceptance/acceptance";
 import { runVitestJson, type TestRunResult } from "../acceptance/push-gate";
 import { recordOutOfBrief } from "./out-of-brief";
 
@@ -48,12 +50,17 @@ export const IMPLEMENT_DISPATCH_EVENT_TYPE = "ticket-ready";
 
 /**
  * The `repository_dispatch` action this lane sends on success, naming the PR
- * it just opened — the implementer's own verification dispatch, for whatever
- * downstream lane checks an implementation PR (ADR-0054: "an implementation
- * PR's checks fire by repository_dispatch"). No receiver exists in this
- * checkout yet; sending it is this ticket's whole scope on that side.
+ * it just opened — the implementer's own verification dispatch (ADR-0054:
+ * "an implementation PR's checks fire by repository_dispatch").
+ *
+ * Re-exported from `shared/immutable-set.ts` rather than declared here,
+ * because the three jobs that receive it — `verify.yml`'s Immutability and
+ * Restore-and-run-acceptance, and `integrate.yml` — must read the same
+ * string this sends, and `shared/` is the only place all four can reach
+ * without a lane importing a lane. Declaring it twice is what left both of
+ * `verify.yml`'s jobs unreachable until #145's seam audit.
  */
-export const VERIFY_DISPATCH_EVENT_TYPE = "implementation-opened";
+export const VERIFY_DISPATCH_EVENT_TYPE = IMPLEMENTATION_PR_DISPATCH_ACTION;
 
 /** One `## Parent PRD\n#<n>` heading, as `shared/render-body.ts` writes it. */
 const PARENT_PRD_RE = /^##[ \t]+Parent PRD[ \t]*\n#(\d+)/m;
@@ -228,15 +235,60 @@ function commitAndPushBranch(git: GitExec, branch: string, paths: string[], comm
   git(["push", "origin", `HEAD:${branch}`]);
 }
 
+/** What `openPrAndDispatch` opens a PR for and then tells the verification lane about. */
+export interface PrDispatch {
+  branch: string;
+  title: string;
+  body: string;
+  /**
+   * Every path this implementer wrote, exactly as `commitAndPushBranch` staged
+   * them. The Immutability job reads this and **refuses an empty one** — an
+   * implementer that sends no file list is a broken guarantee, not "nothing to
+   * check" — so this is never allowed to be omitted or defaulted.
+   */
+  changedFiles: string[];
+  /**
+   * This slice's acceptance criteria, verbatim, as `extractCriteria` lifts
+   * them from the ticket body. The Restore-and-run-acceptance job greps
+   * trunk's `tests/acceptance/` for these (ADR-0033's verbatim match,
+   * `shared/affected-tests.ts`) to scope its run to this slice alone.
+   */
+  criteria: string[];
+}
+
 /**
  * Opens exactly one PR for the branch just pushed, then sends exactly one
  * `VERIFY_DISPATCH_EVENT_TYPE` dispatch naming that PR — in that order, the
  * same order `applyGate` (`spec/open-questions.ts`) keeps for its own
  * label-then-dispatch write, so a dispatch that never sends still leaves the
  * PR as a durable trace rather than a silent stop.
+ *
+ * The payload carries three fields because trunk's `verify.yml` reads three:
+ * `pr` for lane 08 to merge, `changed_files` for the Immutability job, and
+ * `criteria` for the Restore-and-run-acceptance job. It carried only `pr`
+ * until #145's seam audit, which meant that even once the action names were
+ * reconciled, Immutability would have refused every PR on a missing file list
+ * and the acceptance job would have found no test to run. A dispatch that
+ * satisfies its receivers is the whole point of sending one.
+ *
+ * `changed_files` is comma-joined rather than sent as an array because the
+ * Immutability job is deliberately a shell string-compare with no checkout and
+ * no Node (`verify.yml`), and it splits on `,`. `criteria` is sent as a real
+ * array — `gh api`'s `key[]=` repetition — because that job reads it through
+ * `toJson()` and parses it as JSON.
  */
-export function openPrAndDispatch(gh: GhExec, issueNumber: number, branch: string, title: string, body: string): string {
-  const prUrl = gh(["pr", "create", "--title", title, "--body", body, "--head", branch]).trim();
+export function openPrAndDispatch(gh: GhExec, dispatch: PrDispatch): string {
+  const prUrl = gh([
+    "pr",
+    "create",
+    "--title",
+    dispatch.title,
+    "--body",
+    dispatch.body,
+    "--head",
+    dispatch.branch,
+  ]).trim();
+
   gh([
     "api",
     "repos/{owner}/{repo}/dispatches",
@@ -244,6 +296,9 @@ export function openPrAndDispatch(gh: GhExec, issueNumber: number, branch: strin
     `event_type=${VERIFY_DISPATCH_EVENT_TYPE}`,
     "-f",
     `client_payload[pr]=${prUrl}`,
+    "-f",
+    `client_payload[changed_files]=${dispatch.changedFiles.join(",")}`,
+    ...dispatch.criteria.flatMap((criterion) => ["-f", `client_payload[criteria][]=${criterion}`]),
   ]);
   return prUrl;
 }
@@ -307,13 +362,16 @@ export async function runImplement(deps: ImplementDeps): Promise<string> {
     `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
   );
 
-  return openPrAndDispatch(
-    deps.gh,
-    deps.issueNumber,
+  return openPrAndDispatch(deps.gh, {
     branch,
-    ticket.title,
-    `${answer.summary}\n\nCloses #${deps.issueNumber}`,
-  );
+    title: ticket.title,
+    body: `${answer.summary}\n\nCloses #${deps.issueNumber}`,
+    // The same `paths` just staged and pushed — the implementer's own report of what it wrote,
+    // not a `git diff` re-read, so the list the Immutability job judges is the list this lane
+    // committed.
+    changedFiles: paths,
+    criteria: extractCriteria(ticket.body),
+  });
 }
 
 /**
