@@ -9,6 +9,13 @@ import { collectSheetContext } from "./collectors/sheet";
 import { applyGate, gateCount, type GateOutcome } from "./open-questions";
 import { postOpenQuestions } from "./rounds";
 
+// Re-exported rather than wired into this file's own chain: ADR-0079's
+// amendment path fires on `spec/gap`, an existing PRD's re-entry, never on
+// the fresh-draft trigger this file's `SpecTrigger` union enumerates. Kept
+// reachable from here anyway, since this is the module a caller already
+// imports for lane 02.
+export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "./amend";
+
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
  * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062),
