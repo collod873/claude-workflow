@@ -92,7 +92,7 @@ export function gateJudgesCloseBy(author: { login: string; isBot: boolean }, own
 /**
  * The label an open refusal wears. **State, not history** (ADR-0023): a
  * refusal applies it and a passing re-close lifts it, so anything that
- * filters open work by it — a triage query, a wayfinder sweep — sees the
+ * filters open work by it — a backlog query, a wayfinder sweep — sees the
  * refusals that are still outstanding rather than every refusal there has
  * ever been. What happened is durable elsewhere and cannot be lifted: the
  * refusal comment stays on the issue, and the run stays in the log. Count
