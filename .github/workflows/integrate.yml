@@ -1,0 +1,67 @@
+name: Integrate
+
+# Lane 08 (PRD #145, move 7): the merge actor, with no model in it. Fires on the same
+# `repository_dispatch` an implementer's `openPrAndDispatch` sends after opening a pull request
+# (`VERIFY_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/implement/implement.ts`, spelled here
+# and re-exported from `integrate.ts` so `integrate-workflow.test.ts` checks the two against one
+# constant rather than trusting they were typed the same twice — the same split every other lane
+# in this pipeline holds to).
+#
+# `repository_dispatch` is left unfiltered by `types:` for the reason `close-gate-reconcile.yml`
+# and `audit.yml` give: the filter is per-workflow, not per-job, so a sibling sharing this trigger
+# surface would force this file's list to track every action any of them ever adds. The job-level
+# `if:` below is the scope rule.
+#
+# `concurrency` names one fixed group, never interpolated on a PR number or a SHA — DESIGN.md
+# §10's "exactly one merge at a time" is a claim about every pull request this lane could ever
+# touch, not about one at a time *per pull request*, which is what a per-branch group (the shape
+# `review.yml` uses) would actually buy. `cancel-in-progress: false` queues a second dispatch
+# behind the first rather than dropping it — a merge attempt that never runs looks exactly like
+# one that ran and found nothing, and this lane's whole job is never reading those two as the same
+# thing (see `integrate.ts`'s `IntegrateOutcome`).
+
+"on":
+  repository_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: integrate
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    if: github.event.action == 'implementation-opened'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR: ${{ github.event.client_payload.pr }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A runner has no git identity, and the rebase this pushes is committed here — same fix
+      # `implement.yml` and `audit.yml` needed for their own notes.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
+      # against the rebased tree, and merge only on a completed run reporting green.
+      - name: Integrate the pull request
+        run: npx tsx .Workflow/agent-workflows/integrate/integrate.ts "$PR"
