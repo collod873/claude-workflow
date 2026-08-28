@@ -16,6 +16,12 @@ A Claude Code + GitHub workflow system.
 - `.claude/contract.json` is generated, not hand-maintained — `bin/gauntlet push` runs
   `regenerate && diff` and fails when the committed file disagrees with a fresh probe
   ([ADR-0056](docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
+- New code has to be reachable from a lane, a `bin/` script, or a hook. `bin/gauntlet push` fails
+  on anything nothing runs — a test importing it does not count
+  ([ADR-0086](docs/adr/0086-a-test-importing-a-thing-is-not-evidence-anything-runs-it-so.md)). Wire it
+  to a caller or delete it; if it is genuinely unreachable by design, tag the export `@shell` or
+  `@fixture` with a sentence saying why. When you clear standing debt, drop it from the baseline:
+  `node .Workflow/agent-workflows/shared/wiring-baseline.ts update .`
 
 ## Agent skills
 

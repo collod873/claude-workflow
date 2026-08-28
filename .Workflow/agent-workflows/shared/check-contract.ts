@@ -53,6 +53,9 @@ function isSlotName(name: string): name is SlotName {
  * The one exported builder for a `CheckContract` fixture (CODING_STANDARDS.md: "a schema-typed
  * fixture through one exported builder"), every slot defaulting to a null opt-out so a test names
  * only the slot it is actually about.
+ *
+ * @fixture Reached only from the suite, by design — `knip.config.ts` asks whether a *lane* reaches
+ * a thing, and the honest answer for a fixture builder is no.
  */
 export function checkContractFixture(
   overrides: Partial<Record<SlotName, Partial<Slot>>> = {},
@@ -86,6 +89,10 @@ export interface SlotResolution {
  *
  * Throws when `requested` names neither a schema slot nor a `_one` form of one — a caller error
  * (a mistyped venue name), not a degradation case this function is meant to absorb.
+ *
+ * @shell `bin/gauntlet` is the production caller, and it reaches this through a dynamic `import()`
+ * inside a heredoc — an edge no static analysis can see. Deleting this as unused would take the
+ * gauntlet with it.
  */
 export function resolveSlot(contract: CheckContract, requested: string): SlotResolution {
   if (isSlotName(requested)) {

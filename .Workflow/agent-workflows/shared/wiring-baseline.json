@@ -1,0 +1,161 @@
+{
+  "generated": "2026-08-28",
+  "why": "Standing wiring debt at the day this gate landed (#183). The gate fails on anything added to this set, never on the set itself; entries leave as each is wired to a caller or deleted.",
+  "findings": [
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/close-gate/record-grammar.ts",
+      "name": "judge"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/implement/implement.ts",
+      "name": "IMPLEMENT_DISPATCH_EVENT_TYPE"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/implement/implement.ts",
+      "name": "parentPrdNumber"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/implement/out-of-brief.ts",
+      "name": "markedCount"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/integrate/integrate.ts",
+      "name": "GRAPH_CHANGED_DISPATCH_ACTION"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/integrate/integrate.ts",
+      "name": "VERIFY_DISPATCH_EVENT_TYPE"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/review/review.ts",
+      "name": "runConformanceReview"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shape/shape.ts",
+      "name": "LABELS_APPLIED"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "blockedByPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "issuePathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "matchingRefsPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "repoRunsPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "runJobsPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "subIssuesPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "workflowPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
+      "name": "workflowRunsPathMatcher"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/immutable-set.ts",
+      "name": "touchesImmutableSet"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/shared/spine.ts",
+      "name": "extractSpine"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/spec/amend.ts",
+      "name": "runSpecAmendment"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/spec/rounds.ts",
+      "name": "roundFor"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/spec/spec.ts",
+      "name": "runSpecAmendment"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/to-tickets/to-tickets.ts",
+      "name": "STAGE_NAMES"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/watchdog/bypass.ts",
+      "name": "COULD_NOT_RUN_STEP"
+    },
+    {
+      "kind": "exports",
+      "file": ".Workflow/agent-workflows/watchdog/bypass.ts",
+      "name": "LINT_WORKFLOW_STEP"
+    },
+    {
+      "kind": "files",
+      "file": ".Workflow/agent-workflows/capture/backfill.ts",
+      "name": ".Workflow/agent-workflows/capture/backfill.ts"
+    },
+    {
+      "kind": "files",
+      "file": ".Workflow/agent-workflows/fixer/fixer.ts",
+      "name": ".Workflow/agent-workflows/fixer/fixer.ts"
+    },
+    {
+      "kind": "files",
+      "file": ".Workflow/agent-workflows/shared/read-workflow.ts",
+      "name": ".Workflow/agent-workflows/shared/read-workflow.ts"
+    },
+    {
+      "kind": "files",
+      "file": ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.ts",
+      "name": ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.ts"
+    },
+    {
+      "kind": "files",
+      "file": ".Workflow/agent-workflows/shared/scrub-corpus-history.ts",
+      "name": ".Workflow/agent-workflows/shared/scrub-corpus-history.ts"
+    },
+    {
+      "kind": "types",
+      "file": ".Workflow/agent-workflows/spec/spec.ts",
+      "name": "SpecAmendmentResult"
+    },
+    {
+      "kind": "types",
+      "file": ".Workflow/agent-workflows/spec/spec.ts",
+      "name": "SpecGapReport"
+    }
+  ]
+}

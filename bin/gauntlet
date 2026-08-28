@@ -192,7 +192,13 @@ done
 # fresh generation from `docs/adr/` and `docs/research/` compared byte-for-byte against the
 # committed fixture, so a corpus that grew or shrank since the fixture was last generated goes red
 # here instead of `missing-trailer.test.ts` quietly running against a stale snapshot.
-[ "$venue" = "push" ] && checks="$checks contract corpus"
+#
+# `wiring` is the third of the same family, and the one #183 asked for: knip, pointed at the lanes
+# rather than at the test suite, answering whether anything this repo can actually *run* reaches a
+# given file or export. It gates on the delta against a committed baseline, not on the whole
+# answer, because it landed against 31 standing findings that are product decisions rather than
+# lint fixes. New code wired to nothing fails the push that introduced it.
+[ "$venue" = "push" ] && checks="$checks contract corpus wiring"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -224,6 +230,10 @@ if [ "$venue" = "push" ]; then
   run_check corpus node \
     "$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts" \
     diff "$repo_root" "$repo_root/.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json" &
+  pids+=($!)
+
+  run_check wiring node \
+    "$repo_root/.Workflow/agent-workflows/shared/wiring-baseline.ts" check "$repo_root" &
   pids+=($!)
 fi
 
