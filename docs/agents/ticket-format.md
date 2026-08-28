@@ -1,18 +1,19 @@
 # Ticket format
 
 The one shape a ticket body takes in this pipeline, read by every producer (`/to-tickets`,
-`/wayfinder`, `~/bin/file-issue`) and parsed by the close gate (`~/.claude/hooks/close-gate.py`).
+`/wayfinder`, `~/bin/file-issue`) and parsed by the close gate (`close-gate.py` — the machine-global hook, or the repo's own
+`.claude/hooks/` copy where it ships one; the same file either way).
 Producers reference this doc rather than restate it — a restated copy is exactly what let
 `/wayfinder`'s template drift out of sync with the parser it feeds (#57).
 
 Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
-(`~/.claude/hooks/close-gate.py`) — see
+(`close-gate.py`) — see
 ADR-0017, recorded in `collod873/agent-skills`, for why the two calls differ.
 
 ## The core, gate-parsed
 
 Every ticket body carries two headings. `count_body_criteria`
-(`~/.claude/hooks/close-gate.py`) parses the first mechanically to decide whether a ticket can
+(`close-gate.py`) parses the first mechanically to decide whether a ticket can
 close; `/drain`'s frontier filter and `file-issue ticketify`'s collision check both read the
 second.
 
@@ -34,7 +35,7 @@ that command itself instead of re-deriving what to check from prose:
 ```
 
 The delimiter is the same alternation (an em dash, an en dash, or a space-delimited single/double
-hyphen) the closing-record grammar (`~/.claude/hooks/close-gate.py`) uses for its own trailing verdict slot
+hyphen) the closing-record grammar (`close-gate.py`) uses for its own trailing verdict slot
 — `bin/ticket_shape.py`'s `CHECK_MARKER_DELIM` is that shared alternation — so an author never
 learns two different dash rules for two different trailing markers. Writing one is optional: a
 criterion nobody can mechanise is still a legitimate criterion; it simply closes on a human
