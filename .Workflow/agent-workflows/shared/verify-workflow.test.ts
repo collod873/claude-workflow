@@ -1,8 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { readWorkflow } from "./read-workflow";
 
 /**
  * `verify.yml`'s Gauntlet step must fail through two distinctly named steps rather than one,
@@ -13,14 +10,9 @@ import { parse } from "yaml";
  * does not fail it, and a reformatting that loses meaning does.
  */
 
-const VERIFY_YML_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../.github/workflows/verify.yml",
-);
-
-const workflow = parse(readFileSync(VERIFY_YML_PATH, "utf8")) as {
+const { workflow } = readWorkflow<{
   jobs: { verify: { steps: Array<{ name: string; id?: string; if?: string; run?: string; uses?: string; with?: Record<string, unknown> }> } };
-};
+}>("verify.yml");
 
 const steps = workflow.jobs.verify.steps;
 

@@ -1,0 +1,76 @@
+name: Spec
+
+# Lane 02 (PRD #145, move 6). Three triggers feed the spec author (ADR-0058) — an accepted decision
+# sheet, a closed Wayfinder Map carrying `to-spec`, or the owner in a live session — but a live
+# session never fires a runner, so this file only ever needs to gate the two that do.
+#
+# **Both triggers are gated on who caused them, because both spend model (ADR-0073).** The
+# repository is public, so a label or a comment can arrive from anyone, not only the owner — the
+# same fact `shape.yml` was rewritten against, and this is that file's exact two-sided shape,
+# reused rather than re-derived (`shared/read-workflow.ts` is what lets both workflows' tests read
+# their own `if:` back out of the YAML instead of trusting a copy-paste by eye).
+#
+# `github.event.sender` is who performed the act, not who owns the thing acted on: applying
+# `to-spec` to a closed map is a hand-applied label exactly like `idea` in `shape.yml`, so the
+# sender gate covers it the same way — a stranger's map is refused, the owner's own hand on the
+# label is not.
+#
+# A comment is gated on `author_association` instead, `MEMBER` and `COLLABORATOR` riding along
+# with `OWNER` so the rule need not be reopened the day a second person is added. This is
+# `rounds.ts`'s re-run door (ADR-0062): the owner's answer to a posted round of open questions is a
+# comment on the spec issue, and that comment is what re-runs the chain and recounts.
+#
+# The label-triggered stage-dispatch — which `SpecTrigger` a closed map turns into, versus what a
+# re-run comment on an already-published spec turns into — is not wired into a runnable step yet;
+# `spec.ts` carries no CLI entrypoint of its own, and inventing one here would be guessing at a
+# dispatch a later ticket owns. This file exists to get the trigger itself right and provable
+# (`spec-workflow.test.ts` reads it back as YAML, not as a string), the same way `shape.yml` and
+# `to-tickets.yml` each earned their own ticket before their job bodies did.
+
+"on":
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+# One spec run per issue at a time, newest wins — the same reasoning as `shape.yml`'s group: a
+# label and a fast-follow comment can both arrive within seconds, and two concurrent chains would
+# each read a round count that did not include the other.
+concurrency:
+  group: spec-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  spec:
+    if: >-
+      (github.event_name == 'issues' &&
+       github.event.label.name == 'to-spec' &&
+       github.event.sender.login == github.repository_owner) ||
+      (github.event_name == 'issue_comment' &&
+       !github.event.issue.pull_request &&
+       contains(github.event.issue.labels.*.name, 'prd') &&
+       github.event.comment.user.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+                github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No stage runs yet — see the header. This step is the trigger's own proof of life: it costs
+      # no model and touches no issue, so a run that reaches it is evidence the `if:` above
+      # actually gated correctly, without spending anything on a chain a later ticket still needs
+      # to wire.
+      - name: Spec author (stage dispatch not yet wired)
+        run: |
+          echo "spec.yml fired for issue #$ISSUE_NUMBER (event: ${{ github.event_name }}). Stage dispatch lands in a later ticket."
