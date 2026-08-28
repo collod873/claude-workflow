@@ -96,7 +96,7 @@ describe("publishSpec", () => {
   });
 
   it("labels on the create itself, never as a follow-up edit", () => {
-    // A spec that exists for a moment without `prd` is one `/triage` and `release-on-prd-close.yml`
+    // A spec that exists for a moment without `prd` is one `/drain` and `release-on-prd-close.yml`
     // both read as an ordinary issue, and this lane cannot notice it lost that race.
     const { gh, calls } = fakeGh();
 
