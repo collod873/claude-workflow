@@ -116,7 +116,7 @@ export function readSourceMarker(body: string): SpecSource | undefined {
 /**
  * `PRD: ` prefixed exactly once. The author is told to write a `PRD:` title and mostly does, so
  * prefixing unconditionally would produce `PRD: PRD: …` on the runs where it obeyed. The tracker's
- * own convention is the prefix (`release-on-prd-close.yml`, `/triage`), so a run where the model
+ * own convention is the prefix (`release-on-prd-close.yml`, `/drain`), so a run where the model
  * forgot must not publish a spec that reads as an ordinary issue.
  */
 export function specTitle(title: string): string {
@@ -133,7 +133,7 @@ export function specBody(body: string, source: SpecSource | undefined): string {
  * Files the drafted spec as a new `prd`-labelled issue and answers its number.
  *
  * One `gh issue create`, and the label rides on that same call rather than a follow-up `issue edit`
- * — a spec that exists for a moment without `prd` is a spec `/triage` and `release-on-prd-close.yml`
+ * — a spec that exists for a moment without `prd` is a spec `/drain` and `release-on-prd-close.yml`
  * would both read as an ordinary issue, and this lane has no way to notice it lost the race.
  */
 export function publishSpec(gh: GhExec, draft: SpecAuthorOutput, source: SpecSource | undefined): number {
