@@ -1,9 +1,8 @@
 # Pipeline labels
 
-The pipeline's canonical label vocabulary — four entries survived
-ADR-0004 (recorded in `collod873/agent-skills`)'s rewrite, each asserting
-only *where work sits*, never a readiness verdict. This file maps them to the actual label strings
-used in this repo's issue tracker.
+The pipeline's canonical label vocabulary — four entries, each asserting only *where work sits*,
+never a readiness verdict. This file maps them to the actual label strings used in this repo's
+issue tracker.
 
 | Canonical label | Label in our tracker | Meaning                                                                                                |
 | ---------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -15,12 +14,13 @@ used in this repo's issue tracker.
 When a skill mentions one of these roles, use the corresponding label string from this table.
 
 **Absence of any of the above — and no `## Acceptance criteria` in the body — means
-*not yet judged*, never a fifth role. Nothing sweeps that state automatically: ADR-0032 retired the
-unattended on-ramp that used to, so an unjudged issue waits for whichever session picks it up to
-run `~/bin/file-issue ticketify`.
+*not yet judged*, never a fifth role.** Nothing sweeps that state automatically: there is no
+unattended on-ramp, so an unjudged issue waits for whichever session picks it up to run
+`~/bin/file-issue ticketify`.
 
-The six labels ADR-0004 (recorded in `collod873/agent-skills`) deleted — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
-`wontfix`, and `bug`/`enhancement` as triage output — are never seeded here.
+Six older labels — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`,
+and `bug`/`enhancement` as triage output — were retired because each recorded a verdict rather
+than a position. They are never seeded here.
 
 Edit the middle column to match whatever vocabulary you actually use — the label *strings* are yours
 to rename, the *meanings* are fixed by the skills that read and write them.

@@ -531,14 +531,22 @@ def close_ticket_stub(issue_number, cwd: str | None, repo_flag: str | None) -> s
     close named a `-R other/repo`, where the local toplevel is not that repo's tree and
     handing it over would point `close-ticket` at the wrong checkout; saying so beats
     guessing one.
+
+    The tool's own path is resolved the same way, and for the same reason
+    `write_criteria_hint()` resolves `~/bin/file-issue`: a bare `bin/close-ticket` runs
+    only where the checkout vendors one, and `~/.agents/skills/bin/close-ticket` names a
+    directory that does not exist inside a stage on a GitHub-hosted runner (#185). Naming
+    whichever one is actually there is the only form that is a repair at both venues.
     """
     checkout = repo_toplevel(cwd)
     if checkout is not None and not repo_flag:
         checkout_value = str(checkout)
     else:
         checkout_value = "<a checkout of this repo at the range's head>"
+    vendored = checkout is not None and (checkout / "bin" / "close-ticket").is_file()
+    tool = "bin/close-ticket" if vendored else "~/.agents/skills/bin/close-ticket"
     repo_arg = f" --repo {repo_flag}" if repo_flag else ""
-    return f"bin/close-ticket {issue_number} <base>..<head> {checkout_value}{repo_arg}"
+    return f"{tool} {issue_number} <base>..<head> {checkout_value}{repo_arg}"
 
 
 def fetch_issue(gh_path: str, cwd: str | None, issue_number: int,
