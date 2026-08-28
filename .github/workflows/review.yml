@@ -1,0 +1,72 @@
+name: Review
+
+# Lane 07 — the correctness reviewer (PRD #145, move 7a). Fires on a completed "Verify" run
+# (ADR-0036): lint, typecheck, the test suite and lane 04's immutable acceptance tests have
+# already run against this diff, so the reviewer never sees a finding a green gate already
+# covers — `review.ts`'s own `keepSurvivingFindings` drops those before anything downstream
+# reads them.
+#
+# `types: [completed]`, filtered to a successful conclusion at the job level rather than in the
+# trigger: `workflow_run` carries no `conclusion` filter of its own, so the job's `if:` is where
+# a failed or cancelled Verify run is turned away — reviewing a diff CI has not actually passed
+# would be reviewing against a check that never happened.
+#
+# No `pull_request` trigger, and no sender gate — PRD #145's "Cross-cutting: who may fire a lane"
+# section rules an author gate here is a check that can never fire. `verify.yml` carries no
+# `pull_request` trigger after ADR-0054, so a stranger's pull request runs no verification, and
+# with no verification there is no "Verify" run for this workflow's own trigger to ever see. The
+# only runs this can fire on already passed through that door.
+
+"on":
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+
+permissions:
+  # read: the checkout, at the reviewed run's own head SHA.
+  contents: read
+  # read: the `workflow_run` payload's own fields are enough for the trigger; nothing here calls
+  # the Actions API, but the checkout below still needs contents and the job reads no other scope.
+  actions: read
+  # write: a surviving finding is filed as an issue against trunk (PRD #145: "its survivors reach
+  # the owner as issues, never a notification").
+  issues: write
+
+concurrency:
+  group: review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." >&2
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the correctness reviewer
+        run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ github.event.workflow_run.head_sha }}"

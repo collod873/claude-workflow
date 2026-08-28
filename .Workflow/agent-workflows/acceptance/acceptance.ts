@@ -2,7 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { affectedSlices, testsForCriteria, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
 import { execGh, type GhExec } from "../shared/gh";
+import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
@@ -185,6 +187,59 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
   });
 }
 
+/**
+ * Every sub-issue number attached under `prdNumber` — a slice this spec was cut into. Reads the
+ * same `subIssuesPath` `publish-sub-issues.ts` writes and `lost-dispatch-counter.ts` counts, so a
+ * fourth spelling of that path never has to exist.
+ */
+function readSliceNumbers(gh: GhExec, prdNumber: number): number[] {
+  const raw = gh(["api", subIssuesPath(prdNumber)]);
+  const issues = JSON.parse(raw) as Array<{ number: number }>;
+  return issues.map((issue) => issue.number);
+}
+
+export interface RefireDeps {
+  gh: GhExec;
+  /** The spec issue that was just edited — a PRD, carrying `prd`. */
+  prdNumber: number;
+  /** Called once per affected slice, in ascending slice-number order — the re-fire itself. */
+  authorForSlice: (sliceNumber: number) => void | Promise<void>;
+  /** Where existing acceptance tests live. Defaults to `ACCEPTANCE_DIR`. */
+  testsDir?: string;
+}
+
+/**
+ * ADR-0033's re-entry trigger, end to end: read the edited spec and every slice it was cut into,
+ * find which of each slice's own criteria an existing test in `testsDir` already proves
+ * (`testsForCriteria`, one slice's criteria at a time — so a criterion no slice's test has ever
+ * proved contributes nothing to the diff), hand that record to `affectedSlices`, and call
+ * `deps.authorForSlice` once per slice it names.
+ *
+ * Nothing here re-authors a slice whose criteria are all still present, and nothing here reacts
+ * to a criterion newly added to the spec with no existing test — both are exactly what
+ * `affectedSlices` refuses to do, on the record this function builds for it.
+ */
+export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
+  const prd = readTicket(deps.gh, deps.prdNumber);
+  const sliceNumbers = readSliceNumbers(deps.gh, deps.prdNumber);
+
+  const existingTests: ExistingTestCriterion[] = [];
+  for (const sliceNumber of sliceNumbers) {
+    const slice = readTicket(deps.gh, sliceNumber);
+    for (const criterion of extractCriteria(slice.body)) {
+      if (testsForCriteria([criterion], deps.testsDir).length > 0) {
+        existingTests.push({ sliceNumber, criterion });
+      }
+    }
+  }
+
+  const affected = affectedSlices(prd.body, existingTests);
+  for (const { sliceNumber } of affected) {
+    await deps.authorForSlice(sliceNumber);
+  }
+  return affected;
+}
+
 /** CLAUDE.md: why, not what. */
 function authorCommitMessage(issueNumber: number, paths: string[]): string {
   return `Author acceptance tests for #${issueNumber} from the spec alone
@@ -201,7 +256,49 @@ function fsWriteFile(path: string, content: string): void {
   writeFileSync(path, content, "utf8");
 }
 
+/**
+ * `--refire`'s per-slice call: re-runs the same authoring flow `main()`'s single-issue mode does,
+ * against the affected slice, and throws when it refuses — a re-fire that silently drops a
+ * refused slice would look identical to one that succeeded.
+ */
+async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
+  const outcome = await runAcceptanceAuthor({
+    gh: execGh,
+    exec: execClaude,
+    writeFile: fsWriteFile,
+    issueNumber: sliceNumber,
+  });
+  if (outcome.verdict === "refused") {
+    throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.argv[2] === "--refire") {
+    const prdArg = process.argv[3];
+    if (!prdArg) {
+      console.error("usage: acceptance.ts --refire <prd-issue-number>");
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const affected = await refireAcceptance({
+        gh: execGh,
+        prdNumber: Number(prdArg),
+        authorForSlice: authorForSliceInProcess,
+      });
+      console.log(
+        affected.length === 0
+          ? "no slice's test lost its criterion; nothing re-fired"
+          : `re-fired acceptance for ${affected.length} slice(s): ${affected.map((s) => s.sliceNumber).join(", ")}`,
+      );
+    } catch (err) {
+      console.error(`acceptance re-entry failed: ${reason(err)}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const issueArg = process.argv[2];
   if (!issueArg) {
     console.error("usage: acceptance.ts <issue-number>");

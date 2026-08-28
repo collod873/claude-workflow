@@ -1,13 +1,29 @@
 import { z } from "zod";
+import type { GhExec } from "../shared/gh";
 import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { runSpecCritic } from "./critic";
+import { collectInSessionContext } from "./collectors/in-session";
+import { collectMapContext } from "./collectors/map";
+import { collectSheetContext } from "./collectors/sheet";
+import { applyGate, gateCount, type GateOutcome } from "./open-questions";
+import { postOpenQuestions } from "./rounds";
+
+// Re-exported rather than wired into this file's own chain: ADR-0079's
+// amendment path fires on `spec/gap`, an existing PRD's re-entry, never on
+// the fresh-draft trigger this file's `SpecTrigger` union enumerates. Kept
+// reachable from here anyway, since this is the module a caller already
+// imports for lane 02.
+export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "./amend";
 
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
- * context into a `PRD:` issue payload. The collector per trigger (an
- * accepted sheet, a closed map, or the owner in a live session — ADR-0058)
- * and the critic that follows are later slices of the same lane; this file
- * is the author alone.
+ * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062),
+ * reading the author's own draft in the same chain and folding what it finds
+ * into `openQuestions` — never into `body`, which is the author's alone.
+ * Both are dispatched by trigger over the author's collector per trigger (an
+ * accepted sheet, a closed map, or the owner in a live session — ADR-0058);
+ * the critic reads only the author's output, not the trigger.
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -67,7 +83,43 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
 );
 
 /**
- * Runs the spec author on one Decided context and returns its PRD payload.
+ * The three triggers `runSpecAuthor` dispatches over — one event per row of
+ * ADR-0058's table, each naming exactly what its collector needs and
+ * nothing more. `kind` is what tells `runSpecAuthor` a `DecidedContext` was
+ * *not* handed to it directly (see `isDecidedContext` below), so it doubles
+ * as the discriminant a `switch` narrows on.
+ */
+export type SpecTrigger =
+  | { kind: "sheet"; gh: GhExec; issueNumber: number }
+  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string }
+  | { kind: "in-session"; conversation: string };
+
+/** A `DecidedContext` carries `ownerWords`; no `SpecTrigger` variant does. */
+function isDecidedContext(input: DecidedContext | SpecTrigger): input is DecidedContext {
+  return "ownerWords" in input;
+}
+
+function collect(trigger: SpecTrigger): DecidedContext {
+  switch (trigger.kind) {
+    case "sheet":
+      return collectSheetContext(trigger.gh, trigger.issueNumber);
+    case "map":
+      return collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot);
+    case "in-session":
+      return collectInSessionContext(trigger.conversation);
+  }
+}
+
+/**
+ * Runs the spec author on one Decided context, then the critic on the
+ * author's own draft (ADR-0062: "the critic runs in the same chain, before
+ * publication"), and returns the PRD payload the two together produce.
+ *
+ * Takes either a `DecidedContext` already assembled, or a `SpecTrigger` to
+ * assemble one from first — the one entrypoint every trigger dispatches
+ * through (ADR-0058: "one prompt, a collector per trigger"), so a caller
+ * that already holds a `DecidedContext` never has to name which trigger
+ * produced it.
  *
  * On stdin rather than argv: the Decided context's fields — decisions,
  * rulings, an accepted sheet's own prose — carry no upper bound by
@@ -76,9 +128,10 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
  */
 export async function runSpecAuthor(
   exec: StageExec,
-  context: DecidedContext,
+  input: DecidedContext | SpecTrigger,
 ): Promise<SpecAuthorOutput> {
-  return runStage(
+  const context = isDecidedContext(input) ? input : collect(input);
+  const draft = await runStage(
     PROMPT_PATH,
     {
       OWNER_WORDS: context.ownerWords,
@@ -95,4 +148,55 @@ export async function runSpecAuthor(
       promptViaStdin: true,
     },
   );
+
+  const critique = await runSpecCritic(exec, { title: draft.title, body: draft.body });
+
+  // The critic only ever adds to `openQuestions`; `title` and `body` are the
+  // author's alone, carried through unchanged (ADR-0062: the critic
+  // "proposes no fixes").
+  return {
+    title: draft.title,
+    body: draft.body,
+    openQuestions: [...draft.openQuestions, ...critique.findings],
+  };
+}
+
+/** What `runSpecPublication` hands back: the draft, and what the gate did with it. */
+export interface SpecPublicationResult extends SpecAuthorOutput {
+  /** The count `open-questions.ts`'s `gateCount` computed over the folded `openQuestions`. */
+  gateCount: number;
+  /** `"dispatched"` at zero, `"held"` otherwise — `open-questions.ts`'s `applyGate` outcome. */
+  outcome: GateOutcome;
+}
+
+/**
+ * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft plus
+ * critic, already folded into one `openQuestions` list — then gates on it.
+ *
+ * At a zero gate count: `applyGate` labels the spec `sliceable` and sends
+ * the `repository_dispatch` lane 03 fires on. At any other count:
+ * `postOpenQuestions` comments the numbered questions on the issue —
+ * ADR-0062's "the only thing that reaches the owner" — so his answering
+ * comment is what `rounds.ts`'s `roundFor` counts toward the next, uncapped,
+ * re-run.
+ *
+ * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
+ * plus the `gh` and issue number every write needs — the trigger's own `gh`
+ * is not reused here, because an `in-session` trigger carries none.
+ */
+export async function runSpecPublication(
+  exec: StageExec,
+  gh: GhExec,
+  issueNumber: number,
+  input: DecidedContext | SpecTrigger,
+): Promise<SpecPublicationResult> {
+  const draft = await runSpecAuthor(exec, input);
+  const count = gateCount(draft.openQuestions);
+  const outcome = applyGate(gh, issueNumber, count);
+
+  if (outcome === "held") {
+    postOpenQuestions(gh, issueNumber, draft.openQuestions);
+  }
+
+  return { ...draft, gateCount: count, outcome };
 }

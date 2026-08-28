@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { IMMUTABILITY_DISPATCH_ACTION } from "./immutable-set";
+import { readWorkflow } from "./read-workflow";
 
 /**
  * `verify.yml`'s Gauntlet step must fail through two distinctly named steps rather than one,
@@ -13,14 +11,9 @@ import { parse } from "yaml";
  * does not fail it, and a reformatting that loses meaning does.
  */
 
-const VERIFY_YML_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../.github/workflows/verify.yml",
-);
-
-const workflow = parse(readFileSync(VERIFY_YML_PATH, "utf8")) as {
+const { workflow } = readWorkflow<{
   jobs: { verify: { steps: Array<{ name: string; id?: string; if?: string; run?: string; uses?: string; with?: Record<string, unknown> }> } };
-};
+}>("verify.yml");
 
 const steps = workflow.jobs.verify.steps;
 
@@ -67,5 +60,56 @@ describe("verify.yml's Gauntlet step, split by exit code", () => {
     expect(lintStep).toBeDefined();
     expect(lintStep?.uses).toBe("docker://rhysd/actionlint:1.7.7");
     expect(lintStep?.with).toEqual({ args: "-color" });
+  });
+});
+
+/**
+ * The "Restore and run acceptance" job (ADR-0032/ADR-0054): CI's verdict on an implementation pull
+ * request is over trunk's copy of `tests/acceptance/`, never the pull request's own, and that is
+ * only a guarantee if the restore itself runs before whatever reads the restored files back.
+ */
+const { workflow: verifyWorkflow } = readWorkflow<{
+  jobs: {
+    "restore-and-run-acceptance": {
+      if?: string;
+      needs?: string[];
+      steps: Array<{ name: string; run?: string; env?: Record<string, unknown> }>;
+    };
+  };
+}>("verify.yml");
+
+const acceptanceJob = verifyWorkflow.jobs["restore-and-run-acceptance"];
+
+describe("verify.yml's Restore and run acceptance job", () => {
+  it("exists", () => {
+    expect(acceptanceJob, "no job named restore-and-run-acceptance in verify.yml").toBeDefined();
+  });
+
+  it("runs the restore step before the test-run step, in that order", () => {
+    const names = acceptanceJob.steps.map((step) => step.name);
+    const restoreIndex = names.findIndex((name) => name === "Restore tests/acceptance from trunk's tip");
+    const runIndex = names.findIndex((name) => name === "Run this slice's acceptance tests");
+
+    expect(restoreIndex, "no step restoring tests/acceptance").toBeGreaterThanOrEqual(0);
+    expect(runIndex, "no step running this slice's acceptance tests").toBeGreaterThanOrEqual(0);
+    expect(restoreIndex).toBeLessThan(runIndex);
+  });
+
+  it("restores tests/acceptance/ from main's tip, not from the merge base or the PR's own copy", () => {
+    const restoreStep = acceptanceJob.steps.find((step) => step.name === "Restore tests/acceptance from trunk's tip");
+    expect(restoreStep?.run).toContain("git checkout main -- tests/acceptance/");
+  });
+
+  it("gates on the same repository_dispatch action as the Immutability job, never on pull_request", () => {
+    expect(acceptanceJob.if).toContain(`github.event.action == '${IMMUTABILITY_DISPATCH_ACTION}'`);
+    expect(acceptanceJob.if).not.toMatch(/pull_request/);
+  });
+
+  it("does not fire on push or pull_request at all — only the dispatch action equality admits it", () => {
+    // A dispatch's `github.event.action` is the client payload's own field; neither a `push` nor a
+    // `pull_request` event carries an action equal to this string, so the equality above is the
+    // whole gate and no other clause in `if:` widens it.
+    const conditionParts = (acceptanceJob.if ?? "").split("&&").map((part) => part.trim());
+    expect(conditionParts).toContain(`github.event.action == '${IMMUTABILITY_DISPATCH_ACTION}'`);
   });
 });

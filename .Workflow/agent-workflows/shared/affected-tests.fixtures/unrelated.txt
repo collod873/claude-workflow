@@ -1,0 +1,2 @@
+A file that sits in the fixture directory but names no criterion at all — proves that presence
+in the directory is not enough, only a verbatim substring match is.

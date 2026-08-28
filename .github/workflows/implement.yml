@@ -1,0 +1,83 @@
+name: Implement
+
+# PRD #145 move 6 (#167): the connector for one implementer per ready slice. Fires on the
+# `repository_dispatch` `to-tickets.yml`'s publish step sends for every slice with zero unresolved
+# blocked-by edges (`IMPLEMENT_DISPATCH_EVENT_TYPE` in
+# `.Workflow/agent-workflows/implement/implement.ts`) — never on a label, never on who is logged in.
+#
+# `on: repository_dispatch` is left unfiltered by `types:` for the reason `audit.yml` and
+# `run-watchdog.yml` give: that filter is per-workflow, not per-job, so a sibling workflow sharing
+# this trigger surface would force this file's `types:` list to track every action it ever adds.
+# The job-level `if` below is what actually scopes a run, checked against the same constant
+# `implement-workflow.test.ts` imports rather than a copy-pasted string.
+#
+# **This job carries no sender-gate `if:` condition, on purpose** — contrast `spec.yml` and
+# `shape.yml`, both triggered by a human-forgeable event (a label, a comment) and both gated on
+# `github.event.sender.login` / `author_association` because of it. A `repository_dispatch` can
+# only be sent by something already holding a repo-scoped token — this pipeline's own publish step
+# — so the dispatch send is itself the gate; a second one here would be checking an identity that
+# was never in question.
+#
+# **The sender side is not wired yet.** `to-tickets.ts`'s publish step does not send this dispatch
+# in this checkout — that belongs to whichever ticket owns `to-tickets/slice-and-publish.ts`, not
+# this one's claimed files (#167's "Files claimed" names only `.Workflow/agent-workflows/implement/`
+# and this file). This file exists to get the receiving side right and provable, the same way
+# `spec.yml` shipped its owner-gated trigger ahead of a runnable stage dispatch.
+
+"on":
+  repository_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+jobs:
+  implement:
+    if: github.event.action == 'ticket-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same shape as `to-tickets.yml`'s own preflight: fail closed on an empty secret before Node
+      # is even set up, rather than let a stage spawn `claude` with nothing to authenticate it.
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before the implementer can run." >&2
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same pin as `to-tickets.yml`/`audit.yml` (ADR-0002): a run comes from the checkout alone, so
+      # a floating install would let a release published next month change what a rerun does.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # A runner has no git identity, and the branch this pushes is committed here, not by a human
+      # workstation that already has one configured — same fix `audit.yml` needed for its own note.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # The whole flow: read the ticket, assemble its brief from exactly the four ingredients #167
+      # names, run the implementer stage, write what it returns, commit and push a branch, open
+      # exactly one PR, and send exactly one verification dispatch naming it.
+      - name: Implement the ticket
+        run: npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
