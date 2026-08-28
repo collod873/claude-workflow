@@ -21,6 +21,16 @@ name: Verify
 # matching the block already in `.github/workflows/to-tickets.yml`. `npm ci` also runs `prepare`,
 # which installs the husky hooks on the runner, so an agent committing here meets the same pre-push
 # gate the owner does.
+#
+# `repository_dispatch` is added additively, alongside `push` and `pull_request` rather than in
+# place of either — lane 05's implementer does not exist yet (PRD #145's own out-of-scope list),
+# so nothing sends this dispatch today. What can already be built is the receiving end: the
+# Immutability job below, which ADR-0053 and ADR-0054 both require run from trunk's copy of this
+# file, which only a dispatch-fired run guarantees (a `pull_request` run executes the PR's own
+# copy, and an implementer that deletes this job from its own branch would otherwise go green in
+# silence). Left unfiltered by `types:` for the reason `close-gate-reconcile.yml` gives: the filter
+# is per-workflow, not per-job, so a future sibling job riding this same trigger would force this
+# list to track every action any of them ever adds. The job-level `if:` below is the scope rule.
 
 "on":
   push:
@@ -34,12 +44,67 @@ name: Verify
       - "**.md"
       - "docs/**"
       - "LICENSE"
+  repository_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # The alarm half of ADR-0053/ADR-0054's immutable set: `tests/acceptance/`, `vitest.config.ts`
+  # and `.github/` may never change in a pull request, because each is a way to silence a check
+  # without anyone reading a diff that says so. Runs before `verify` (below) via `needs:`, because
+  # a diff that already crosses the immutable set has invalidated whatever the gauntlet would say
+  # about it — no sense spending that run.
+  #
+  # Deliberately no checkout, no Node, no `npm ci`: the whole check is a string comparison against
+  # the changed-files list the dispatch already carries, and a refusal (CONTEXT.md) is supposed to
+  # be cheap. `IMMUTABLE_SET` below is spelled identically to the array of the same name in
+  # `.Workflow/agent-workflows/shared/immutable-set.ts` — `immutable-set.test.ts` asserts the two
+  # never drift apart.
+  immutability:
+    name: Immutability
+    if: github.event.action == 'implementation-pr-opened'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      IMMUTABLE_SET: "tests/acceptance/,vitest.config.ts,.github/"
+      CHANGED_FILES: ${{ github.event.client_payload.changed_files }}
+    steps:
+      # Refuses rather than skips when the changed-files input is missing or empty (never
+      # `continue-on-error`) — an implementer's dispatch that omits it is not "nothing to check",
+      # it is a broken guarantee, and a broken guarantee must read as red, not as green-by-absence.
+      - name: Refuse a change to the immutable set
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CHANGED_FILES:-}" ]; then
+            echo "::error::changed-files input is missing or empty; refusing"
+            exit 1
+          fi
+
+          IFS=',' read -r -a immutable_entries <<< "$IMMUTABLE_SET"
+          IFS=',' read -r -a changed_files <<< "$CHANGED_FILES"
+
+          for file in "${changed_files[@]}"; do
+            for entry in "${immutable_entries[@]}"; do
+              case "$file" in
+                "$entry"*)
+                  echo "::error::$file touches the immutable set ($entry)"
+                  exit 1
+                  ;;
+              esac
+            done
+          done
+
+          echo "no changed file touches the immutable set"
+
   verify:
+    needs: [immutability]
+    # `immutability` only runs on the dispatch it gates on (above); on `push` and `pull_request` it
+    # is skipped, and a skipped dependency is not a success, so this job would otherwise skip with
+    # it. `always()` overrides that; `!= 'failure'` still blocks this job when the immutable set
+    # was actually crossed.
+    if: always() && needs.immutability.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
