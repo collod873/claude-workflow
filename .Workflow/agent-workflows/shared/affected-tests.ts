@@ -63,3 +63,43 @@ export function testsForCriteria(criteria: string[], dir: string = ACCEPTANCE_DI
     return criteria.some((criterion) => source.includes(criterion));
   });
 }
+
+/** One slice this pipeline can re-fire acceptance authoring for. */
+export interface SliceRef {
+  sliceNumber: number;
+}
+
+/**
+ * One criterion an existing acceptance test names verbatim, and the slice (ticket) whose test
+ * names it. This is the record ADR-0033's re-entry trigger diffs a merged spec edit against —
+ * built by a caller that already knows, for each slice, which of its own criteria a test in
+ * `ACCEPTANCE_DIR` currently proves (`testsForCriteria` answers that one slice at a time).
+ */
+export interface ExistingTestCriterion {
+  sliceNumber: number;
+  criterion: string;
+}
+
+/**
+ * Which slices ADR-0033's re-entry trigger must re-fire acceptance authoring for: every slice
+ * that owns an existing test naming a criterion `specBody` — the spec, read *after* the merged
+ * edit — no longer carries verbatim.
+ *
+ * This is a diff over `existingTests` only, never over `specBody` on its own — a criterion added
+ * to the edited spec with no existing test naming it is a re-slice, not a re-entry (ADR-0079),
+ * and this function has no way to even notice it: it only ever asks, of a criterion a test
+ * already proves, whether the edited spec still contains it. The search is the same fixed-string
+ * match `testsForCriteria` uses, for the reason given at the top of this file.
+ *
+ * A slice appears at most once in the result, in ascending slice-number order, however many of
+ * its criteria went missing.
+ */
+export function affectedSlices(specBody: string, existingTests: ExistingTestCriterion[]): SliceRef[] {
+  const affected = new Set<number>();
+  for (const { sliceNumber, criterion } of existingTests) {
+    if (!specBody.includes(criterion)) {
+      affected.add(sliceNumber);
+    }
+  }
+  return [...affected].sort((a, b) => a - b).map((sliceNumber) => ({ sliceNumber }));
+}

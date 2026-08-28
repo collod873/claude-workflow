@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE } from "../shared/ticket-shape";
 import {
@@ -6,6 +9,7 @@ import {
   extractCriteria,
   parentPrdNumber,
   readTicket,
+  refireAcceptance,
   runAcceptanceAuthor,
 } from "./acceptance";
 
@@ -173,5 +177,127 @@ describe("runAcceptanceAuthor", () => {
     expect(ghCallLog.some((call) => call.includes("create") && call.some((a) => a === "pr"))).toBe(false);
     expect(ghCallLog.filter((call) => call[0] === "pr")).toEqual([]);
     expect(gitCalls.filter((call) => call[0] === "push")).toHaveLength(1);
+  });
+});
+
+describe("refireAcceptance", () => {
+  const REFIRE_TESTS_DIR = join(__dirname, "refire-acceptance.tmp-fixtures");
+
+  afterEach(() => {
+    rmSync(REFIRE_TESTS_DIR, { recursive: true, force: true });
+  });
+
+  const KEPT_CRITERION = "npm test exits 0 with a criterion the edit leaves untouched";
+  const DROPPED_CRITERION = "npm test exits 0 with a criterion the edit removes";
+  const OTHER_KEPT_CRITERION = "npm test exits 0 with a second criterion the edit leaves untouched";
+
+  const SLICE_201_BODY = `## Parent PRD
+#301
+
+## Acceptance criteria
+- [ ] ${KEPT_CRITERION}
+- [ ] ${DROPPED_CRITERION}
+
+## Files claimed
+- none
+`;
+
+  const SLICE_202_BODY = `## Parent PRD
+#301
+
+## Acceptance criteria
+- [ ] ${OTHER_KEPT_CRITERION}
+
+## Files claimed
+- none
+`;
+
+  /** The edited spec: still carries both slices' kept criteria, but not #201's dropped one. */
+  const EDITED_PRD_BODY = `## What to build
+${KEPT_CRITERION}
+${OTHER_KEPT_CRITERION}
+`;
+
+  function writeTestFor(sliceNumber: number, fileSlug: string, criterion: string): void {
+    mkdirSync(REFIRE_TESTS_DIR, { recursive: true });
+    writeFileSync(join(REFIRE_TESTS_DIR, `${sliceNumber}-${fileSlug}.test.ts`), `// ${criterion}\n`, "utf8");
+  }
+
+  function fakeGh(): { gh: (args: string[]) => string; calls: string[][] } {
+    const calls: string[][] = [];
+    const gh = (args: string[]): string => {
+      calls.push(args);
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "301") {
+        return JSON.stringify({ title: "PRD", body: EDITED_PRD_BODY });
+      }
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "201") {
+        return JSON.stringify({ title: "Slice 201", body: SLICE_201_BODY });
+      }
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "202") {
+        return JSON.stringify({ title: "Slice 202", body: SLICE_202_BODY });
+      }
+      if (args[0] === "api" && args[1] === subIssuesPath(301)) {
+        return JSON.stringify([{ number: 201 }, { number: 202 }]);
+      }
+      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+    };
+    return { gh, calls };
+  }
+
+  it("calls the acceptance author once for the one slice whose test's criterion the edit dropped", async () => {
+    writeTestFor(201, "kept", KEPT_CRITERION);
+    writeTestFor(201, "dropped", DROPPED_CRITERION);
+    writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
+    const { gh } = fakeGh();
+    const calledFor: number[] = [];
+
+    const affected = await refireAcceptance({
+      gh,
+      prdNumber: 301,
+      authorForSlice: (sliceNumber) => {
+        calledFor.push(sliceNumber);
+      },
+      testsDir: REFIRE_TESTS_DIR,
+    });
+
+    expect(affected).toEqual([{ sliceNumber: 201 }]);
+    expect(calledFor).toEqual([201]);
+  });
+
+  it("calls the acceptance author zero times when nothing changed", async () => {
+    // Both slices' tests still name criteria the (unedited) spec carries.
+    writeTestFor(201, "kept", KEPT_CRITERION);
+    writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
+    const unchangedGh = (args: string[]): string => {
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "301") {
+        return JSON.stringify({
+          title: "PRD",
+          body: `## What to build\n${KEPT_CRITERION}\n${OTHER_KEPT_CRITERION}\n`,
+        });
+      }
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "201") {
+        return JSON.stringify({ title: "Slice 201", body: SLICE_201_BODY.replace(`- [ ] ${DROPPED_CRITERION}\n`, "") });
+      }
+      if (args[0] === "issue" && args[1] === "view" && args[2] === "202") {
+        return JSON.stringify({ title: "Slice 202", body: SLICE_202_BODY });
+      }
+      if (args[0] === "api" && args[1] === subIssuesPath(301)) {
+        return JSON.stringify([{ number: 201 }, { number: 202 }]);
+      }
+      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+    };
+    const calledFor: number[] = [];
+
+    const affected = await refireAcceptance({
+      gh: unchangedGh,
+      prdNumber: 301,
+      authorForSlice: (sliceNumber) => {
+        calledFor.push(sliceNumber);
+      },
+      testsDir: REFIRE_TESTS_DIR,
+    });
+
+    expect(affected).toEqual([]);
+    expect(calledFor).toEqual([]);
   });
 });

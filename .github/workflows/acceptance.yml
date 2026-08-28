@@ -1,0 +1,73 @@
+name: Acceptance
+
+# Lane 04's re-entry trigger (ADR-0033, PRD #145 move 5): a merged edit to a spec issue's body
+# re-fires the acceptance author for exactly the slices whose test no longer names a criterion the
+# spec still carries verbatim. `affectedSlices` in `.Workflow/agent-workflows/shared/affected-tests.ts`
+# is the whole diff — a fixed-string grep, never a judgement call — and `refireAcceptance` in
+# `.Workflow/agent-workflows/acceptance/acceptance.ts` is what this job runs: read the edited PRD
+# and every slice it was cut into, find which of each slice's own criteria an existing test
+# already proves, and re-author exactly the slices that lost one. A criterion *added* to the spec
+# with no existing test naming it is a re-slice, not a re-entry (ADR-0079) — `affectedSlices` never
+# even looks at what's new, so it produces nothing here for that case.
+#
+# Fires on `issues: edited`, the event GitHub sends for a body edit on the issue itself — not
+# `issue_comment`, since #159's spec-amendment mechanism records an amendment as a comment but the
+# criterion this ticket implements is stated in terms of the merged edit reaching the issue body.
+#
+# **Gated the same way as `spec.yml` and `shape.yml` (ADR-0073).** This lane spends
+# `CLAUDE_CODE_OAUTH_TOKEN` — the owner's own subscription, no per-repository cap — and `issues:
+# edited` fires for any editor with write access, not only the owner, so the sender gate below is
+# load-bearing rather than redundant with GitHub's own permission model. Scoped to an issue
+# carrying `prd`: an edit to any other issue is not a spec edit and must re-fire nothing.
+
+"on":
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+
+# One re-fire per PRD at a time, newest wins — the same reasoning as `spec.yml`'s group: two edits
+# within seconds of each other would otherwise both read the same pre-edit test/criterion record
+# and each dispatch a redundant re-author.
+concurrency:
+  group: acceptance-refire-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  refire:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'prd') &&
+      github.event.sender.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PRD_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same pin as `to-tickets.yml`'s "Install Claude Code" step, for the same reason: the
+      # binary comes from PATH, `npm ci` cannot supply it, and floating would let a release
+      # published next month change what a rerun of this commit does.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # The whole re-entry flow: reads the edited PRD, its slices, which of each slice's criteria
+      # an existing test already proves, and re-authors exactly the slices `affectedSlices` names.
+      # Pushes straight to `main` per slice, exactly as a single-issue authoring run does — no pull
+      # request, ADR-0053.
+      - name: Re-fire acceptance for affected slices
+        run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts --refire "$PRD_NUMBER"
