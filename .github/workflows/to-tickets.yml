@@ -1,10 +1,13 @@
 name: To-Tickets
 
-# The venue for PRD #13: a spec published to this repository slices itself. `/to-spec` applies
-# the `prd` label exactly as it does today, and that label is the whole trigger — no new trigger
-# machinery, per ADR-0002 (GitHub-hosted runner, from the checkout alone) and PRD #13's
-# "Venue and trigger" section. Re-running a slicing is removing and re-adding `prd`; there is no
-# `workflow_dispatch` path in v1.
+# The venue for PRD #13, retargeted by PRD #145 move 6 (ADR-0062): lane 02's spec author is what
+# publishes a PRD now, and `prd` stays what marks an issue as one — it stopped being this lane's
+# trigger. This job fires on the `repository_dispatch` lane 02 sends at a zero open-question count
+# (`SPEC_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/spec/open-questions.ts`), never on a
+# label. `on: repository_dispatch` is left unfiltered by `types:` for the reason `run-watchdog.yml`
+# and `audit.yml` give — that filter is per-workflow, not per-job — so the job-level `if` below is
+# what actually scopes a run, checked against the same constant `to-tickets-workflow.test.ts`
+# imports rather than a copy-pasted string.
 #
 # Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any
 # stage: a PRD that already has sub-issues, and a PRD that is itself a sub-issue. Both fail
@@ -41,8 +44,7 @@ name: To-Tickets
 # never to the PRD.
 
 "on":
-  issues:
-    types: [labeled]
+  repository_dispatch:
 
 permissions:
   contents: read
@@ -50,11 +52,11 @@ permissions:
 
 jobs:
   to-tickets:
-    if: github.event.label.name == 'prd'
+    if: github.event.action == 'prd-sliceable'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PRD_NUMBER: ${{ github.event.issue.number }}
+      PRD_NUMBER: ${{ github.event.client_payload.issue }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
