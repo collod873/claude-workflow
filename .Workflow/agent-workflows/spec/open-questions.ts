@@ -1,3 +1,4 @@
+import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
 
 /**
@@ -94,19 +95,24 @@ export type GateOutcome = "dispatched" | "held";
  * job inert on its own — nothing here writes anything about a held spec.
  * Getting the open questions in front of the owner is `rounds.ts`'s job, not
  * this one's.
+ *
+ * The send goes through `shared/dispatch-request.ts`, which on a runner
+ * records it for the `contents: write` job that can actually make the call:
+ * this function runs inside a job that spends a model, and that job holds
+ * `contents: read` on ADR-0053's grounds, so the dispatch it used to make
+ * itself 403'd every time (#181). The *ordering* ADR-0062 rules on is
+ * unaffected — `sliceable` is still written before anything asks for a
+ * dispatch, so a dispatch that never reaches lane 03 still leaves the durable
+ * trace `watchdog/lost-dispatch.ts` counts.
  */
 export function applyGate(gh: GhExec, issueNumber: number, count: number): GateOutcome {
   if (count !== 0) return "held";
 
   gh(["issue", "edit", String(issueNumber), "--add-label", SLICEABLE_LABEL]);
-  gh([
-    "api",
-    "repos/{owner}/{repo}/dispatches",
-    "-f",
-    `event_type=${SPEC_DISPATCH_EVENT_TYPE}`,
-    "-f",
-    `client_payload[issue]=${issueNumber}`,
-  ]);
+  requestDispatch(gh, {
+    event_type: SPEC_DISPATCH_EVENT_TYPE,
+    client_payload: { issue: issueNumber },
+  });
 
   return "dispatched";
 }

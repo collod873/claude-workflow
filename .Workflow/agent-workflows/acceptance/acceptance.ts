@@ -10,7 +10,14 @@ import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { CRITERIA_HEADING_RE, CRITERIA_ITEM_RE, normalizeNewlines, sectionText } from "../shared/ticket-shape";
-import { runPushGate, runVitestJson, type PushGateOutcome, type TestRunResult } from "./push-gate";
+import {
+  landingFromEnv,
+  runPushGate,
+  runVitestJson,
+  type Landing,
+  type PushGateOutcome,
+  type TestRunResult,
+} from "./push-gate";
 
 /**
  * Lane: author acceptance tests from the spec alone.
@@ -158,6 +165,8 @@ export interface RunAcceptanceDeps {
   /** Runs the freshly written suite for `push-gate.ts` to classify. Defaults to a real vitest run over `ACCEPTANCE_TEST_DIR`. */
   runTests?: () => TestRunResult | Promise<TestRunResult>;
   git?: GitExec;
+  /** Passed through to the gate. `"commit"` when a `contents: write` job does the push (ADR-0091). */
+  landing?: Landing;
 }
 
 /**
@@ -184,6 +193,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
     git: deps.git ?? execGit,
     paths,
     commitMessage: authorCommitMessage(deps.issueNumber, paths),
+    landing: deps.landing,
   });
 }
 
@@ -260,6 +270,11 @@ function fsWriteFile(path: string, content: string): void {
  * `--refire`'s per-slice call: re-runs the same authoring flow `main()`'s single-issue mode does,
  * against the affected slice, and throws when it refuses — a re-fire that silently drops a
  * refused slice would look identical to one that succeeded.
+ *
+ * Under `ACCEPTANCE_LANDING=commit` (ADR-0091's split, which is how `acceptance.yml` runs it) the
+ * throw is also what makes a multi-slice re-fire all-or-nothing: the commits sit unpushed in the
+ * model job's working tree, and the job that pushes them never starts. Under the old arrangement
+ * the slices before the refusal had already landed on `main` individually.
  */
 async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
   const outcome = await runAcceptanceAuthor({
@@ -267,6 +282,7 @@ async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
     exec: execClaude,
     writeFile: fsWriteFile,
     issueNumber: sliceNumber,
+    landing: landingFromEnv(),
   });
   if (outcome.verdict === "refused") {
     throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
@@ -306,18 +322,20 @@ async function main(): Promise<void> {
     return;
   }
   try {
+    const landing = landingFromEnv();
     const outcome = await runAcceptanceAuthor({
       gh: execGh,
       exec: execClaude,
       writeFile: fsWriteFile,
       issueNumber: Number(issueArg),
+      landing,
     });
     if (outcome.verdict === "refused") {
       console.error(`refused: ${outcome.reason}`);
       process.exitCode = 1;
       return;
     }
-    console.log("pushed");
+    console.log(landing === "commit" ? "committed" : "pushed");
   } catch (err) {
     console.error(`acceptance authoring failed: ${reason(err)}`);
     process.exitCode = 1;

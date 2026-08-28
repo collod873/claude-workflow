@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
 import type { SpecAuthorOutput } from "./spec";
@@ -43,14 +44,10 @@ export const SPEC_AUTHOR_DISPATCH_EVENT_TYPE = "sheet-accepted";
  * issue-scoped dispatch in this pipeline carries its subject under one key.
  */
 export function dispatchSpecAuthor(gh: GhExec, issueNumber: number): void {
-  gh([
-    "api",
-    "repos/{owner}/{repo}/dispatches",
-    "-f",
-    `event_type=${SPEC_AUTHOR_DISPATCH_EVENT_TYPE}`,
-    "-f",
-    `client_payload[issue]=${issueNumber}`,
-  ]);
+  requestDispatch(gh, {
+    event_type: SPEC_AUTHOR_DISPATCH_EVENT_TYPE,
+    client_payload: { issue: issueNumber },
+  });
 }
 
 /**

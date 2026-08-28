@@ -62,6 +62,30 @@ export interface TestRunResult {
 /** The only non-refusing verdict a failure may carry. */
 const ASSERTION_FAILURE = "AssertionError";
 
+/**
+ * Where a commit this gate clears actually lands.
+ *
+ * ADR-0091: a job that spends a model holds `contents: read`, so it cannot push. Lane 04 spends an
+ * Opus stage and then pushes straight to `main`, which means the push and the model were in one
+ * job and one token — the arrangement ADR-0053 is careful about, and the one #181 found 403ing
+ * everywhere else in this pipeline. Splitting it makes *where the commit goes* a property of the
+ * venue, so this gate keeps deciding what may land and stops deciding who lands it.
+ */
+export type Landing =
+  /** This process pushes to `main` itself — the workstation, and any job already holding a write token. */
+  | "push"
+  /** This process commits and stops. A job holding `contents: write` pushes what it left behind. */
+  | "commit";
+
+/**
+ * `ACCEPTANCE_LANDING=commit` in the environment, or `"push"` — the default, and what every venue
+ * that is not the split model job wants. Read at the CLI boundary rather than inside the gate, so
+ * `runPushGate` stays a function of its arguments.
+ */
+export function landingFromEnv(env: NodeJS.ProcessEnv = process.env): Landing {
+  return env.ACCEPTANCE_LANDING === "commit" ? "commit" : "push";
+}
+
 export interface PushGateDeps {
   /** Runs the newly authored acceptance suite and classifies the result. */
   runTests: () => TestRunResult | Promise<TestRunResult>;
@@ -70,6 +94,8 @@ export interface PushGateDeps {
   paths: string[];
   /** CLAUDE.md: explains why, not what — the caller's to write. */
   commitMessage: string;
+  /** Defaults to `"push"`: the historical behaviour, and the right one anywhere a token exists. */
+  landing?: Landing;
 }
 
 export type PushGateOutcome =
@@ -115,16 +141,22 @@ export async function runPushGate(deps: PushGateDeps): Promise<PushGateOutcome> 
 }
 
 /**
- * Commits `deps.paths` and pushes straight to `main` — the same
- * add-commit-fetch-rebase-push sequence `watchdog/back-stamp-walk.ts` and
- * `shape/accept.ts` use to land their own unattended writes: this runs off
- * an authoring pipeline with nobody watching for a push that landed on
- * `main` between the read and the write here, so it rebases onto the latest
- * rather than overwriting it blind.
+ * Commits `deps.paths` and, unless the landing is delegated, pushes straight
+ * to `main` — the same add-commit-fetch-rebase-push sequence
+ * `watchdog/back-stamp-walk.ts` and `shape/accept.ts` use to land their own
+ * unattended writes: this runs off an authoring pipeline with nobody watching
+ * for a push that landed on `main` between the read and the write here, so it
+ * rebases onto the latest rather than overwriting it blind.
+ *
+ * At `"commit"` it stops after the commit and the rebase-onto-latest happens
+ * in the job that pushes, because that job is the one holding a token that can
+ * fetch and push at all. What it leaves behind is a real commit on a real
+ * branch, which is what `acceptance.yml` turns into a patch for that job.
  */
 function commitAndPush(deps: PushGateDeps): void {
   deps.git(["add", ...deps.paths]);
   deps.git(["commit", "-m", deps.commitMessage]);
+  if ((deps.landing ?? "push") === "commit") return;
   deps.git(["fetch", "origin", "main"]);
   deps.git(["rebase", "origin/main"]);
   deps.git(["push", "origin", "HEAD:main"]);
@@ -232,13 +264,14 @@ async function main(): Promise<void> {
       git: execGit,
       paths,
       commitMessage,
+      landing: landingFromEnv(),
     });
     if (outcome.verdict === "refused") {
       console.error(`refused: ${outcome.reason}`);
       process.exitCode = 1;
       return;
     }
-    console.log("pushed");
+    console.log(landingFromEnv() === "commit" ? "committed" : "pushed");
   } catch (err) {
     console.error(`push-gate failed: ${reason(err)}`);
     process.exitCode = 1;

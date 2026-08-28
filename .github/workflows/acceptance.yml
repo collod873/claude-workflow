@@ -24,6 +24,10 @@ name: Acceptance
   issues:
     types: [edited]
 
+# `contents: read`, and the push is the `land` job's — ADR-0053 rules this lane's unattended write
+# to `main` the thing to be careful about, and it was happening in the same job as the Opus author
+# on the same token. `permissions:` is per-job, so the author commits and the lander pushes
+# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
@@ -42,14 +46,33 @@ jobs:
       github.event.sender.login == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      # `""` when `affectedSlices` named nobody, which is the common case — the `land` job below is
+      # skipped on it rather than started to push nothing.
+      authored: ${{ steps.bundle.outputs.authored }}
     env:
       PRD_NUMBER: ${{ github.event.issue.number }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # The gate still decides what may land; this decides who lands it (ADR-0091). `push-gate.ts`
+      # commits and stops, and `land` below pushes what it left behind.
+      ACCEPTANCE_LANDING: commit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # A runner has no git identity and this job now makes the commits rather than only the push —
+      # same fix `implement.yml`, `integrate.yml` and `audit.yml` each needed for their own writes.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # What the patch range is measured from. Read here rather than assumed to be `github.sha`,
+      # so the range stays right whatever ref the checkout above resolved.
+      - name: Note the commit this run starts from
+        run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -67,7 +90,74 @@ jobs:
 
       # The whole re-entry flow: reads the edited PRD, its slices, which of each slice's criteria
       # an existing test already proves, and re-authors exactly the slices `affectedSlices` names.
-      # Pushes straight to `main` per slice, exactly as a single-issue authoring run does — no pull
-      # request, ADR-0053.
+      # One commit per slice, straight onto `main` when `land` below pushes them — no pull request,
+      # ADR-0053. A slice the gate refuses throws, and because the commits are unpushed at that
+      # point the whole re-fire lands or none of it does; before ADR-0091's split the slices ahead
+      # of the refusal had already gone to `main` one at a time.
       - name: Re-fire acceptance for affected slices
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts --refire "$PRD_NUMBER"
+
+      # Commits do not survive a job. A patch series does, through the artifact store, and `git am`
+      # on the other side replays each commit with its own message intact — which matters, because
+      # the message names the slice each test file was authored for.
+      - name: Bundle the authored commits
+        id: bundle
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/acceptance-patches"
+          git format-patch "$ACCEPTANCE_BASE..HEAD" -o "$RUNNER_TEMP/acceptance-patches"
+          if [ -n "$(ls -A "$RUNNER_TEMP/acceptance-patches")" ]; then
+            echo "authored=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the authored commits
+        if: steps.bundle.outputs.authored == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-commits
+          path: ${{ runner.temp }}/acceptance-patches
+          retention-days: 7
+
+  # ADR-0091's other half: `contents: write`, no model, and nothing to do but replay the commits the
+  # author already made and the gate already cleared. Rebasing onto `origin/main` happens here
+  # rather than in the job above because this is the job holding a token that can fetch and push at
+  # all — the same add-commit-fetch-rebase-push sequence, split across the boundary it needed.
+  land:
+    name: Land on main
+    needs: [refire]
+    if: needs.refire.outputs.authored == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      # Into `runner.temp`, never the checkout: a patch file sitting in the working tree is a file
+      # `git am` would then be replaying on top of.
+      - name: Download the authored commits
+        uses: actions/download-artifact@v4
+        with:
+          name: acceptance-commits
+          path: ${{ runner.temp }}/acceptance-patches
+
+      # `--3way` so a patch that no longer applies cleanly — `main` moved while the author was
+      # running — is resolved from the blobs the patch names rather than refused outright. A
+      # genuine conflict still fails the job, which is the right outcome: nothing lands, and the
+      # edit that triggered this re-fire is still on the tracker to fire again.
+      - name: Replay them onto main
+        run: |
+          set -euo pipefail
+          git am --3way "$RUNNER_TEMP"/acceptance-patches/*.patch
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main

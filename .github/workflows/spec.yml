@@ -68,6 +68,11 @@ name: Spec
   repository_dispatch:
     types: [sheet-accepted]
 
+# `contents: read` is the model job's, and it is deliberate: ADR-0053 is careful about what a job
+# that runs a model may write, and this one runs two Opus stages. `POST /dispatches` needs
+# `contents: write`, so the dispatch this lane owes lane 03 is sent by the second job below —
+# `permissions:` is per-job, which is the whole reason the split works
+# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
@@ -101,6 +106,10 @@ jobs:
                 github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      # What `applyGate` asked to be dispatched, as one JSON body per line. Empty on every run that
+      # held — the `dispatch` job below is skipped on empty rather than sending nothing.
+      dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
       # The dispatch names its subject in `client_payload.issue` (`dispatchSpecAuthor`); the two
       # tracker events carry it as the issue they happened on. One of the two is always empty.
@@ -114,6 +123,13 @@ jobs:
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
+      # Exported here rather than in the job `env` above for the reason `to-tickets.yml` records at
+      # length: the `runner` context does not exist when job-level `env` is evaluated, and naming it
+      # there is what made that file unparseable for two days (#40). `RUNNER_TEMP` is the same value
+      # read where it exists.
+      - name: Export the dispatch handoff path
+        run: echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -145,3 +161,45 @@ jobs:
       # plus a dispatch at zero, the numbered questions as a comment otherwise.
       - name: Spec author
         run: npx tsx .Workflow/agent-workflows/spec/spec.ts
+
+      # Carries what the gate asked for across the job boundary. A file in `runner.temp` dies with
+      # the runner, so the request has to become a job output for a second machine to read it.
+      - name: Collect the dispatches this run asked for
+        id: collect-dispatch
+        run: |
+          set -euo pipefail
+          [ -s "$DISPATCH_REQUESTS_PATH" ] || exit 0
+          {
+            echo "requests<<DISPATCH_REQUESTS_EOF"
+            cat "$DISPATCH_REQUESTS_PATH"
+            echo "DISPATCH_REQUESTS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  # The other half of ADR-0091's split: `contents: write`, no model, no checkout, and nothing to do
+  # but post what the job above decided. It runs only when there is something to send, so a spec
+  # that held its questions produces no job here at all rather than a green one that sent nothing.
+  #
+  # `sliceable` was written by the job above *before* this one runs, which is ADR-0062's ordering
+  # kept: if this job fails, the spec still carries the label with no slicing run behind it, and
+  # `lost-dispatch-counter.yml` finds it. The split moves where the send happens, not what a lost
+  # send leaves behind.
+  dispatch:
+    name: Start lane 03
+    needs: [spec]
+    if: needs.spec.outputs.dispatch-requests != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      DISPATCH_REQUESTS: ${{ needs.spec.outputs.dispatch-requests }}
+    steps:
+      - name: Send the dispatch
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DISPATCH_REQUESTS" | while IFS= read -r request; do
+            [ -n "$request" ] || continue
+            printf '%s' "$request" | gh api --method POST repos/{owner}/{repo}/dispatches --input -
+          done

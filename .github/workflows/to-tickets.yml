@@ -48,6 +48,10 @@ name: To-Tickets
   repository_dispatch:
     types: [prd-sliceable]
 
+# `contents: read` on the model job, and the `ticket-ready` wave sent from the `dispatch` job below
+# instead — `POST /dispatches` needs `contents: write`, so every slice this lane published was
+# dispatched with a token that 403s, and lane 05 was never told about any of them
+# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
@@ -57,6 +61,11 @@ jobs:
     if: github.event.action == 'prd-sliceable'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      # One JSON body per line — one `ticket-ready` per slice this publish left with nothing to
+      # wait for. Empty when the plan's roots were all blocked, which cannot happen for a valid
+      # graph, or when the run refused before publishing.
+      dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
       PRD_NUMBER: ${{ github.event.client_payload.issue }}
       GH_TOKEN: ${{ github.token }}
@@ -69,7 +78,9 @@ jobs:
       # 2026-08-24 (#40). `RUNNER_TEMP` is the same value, read at step runtime where it exists,
       # and `GITHUB_ENV` carries it to every step below exactly as the job `env` block would have.
       - name: Export the handoff path
-        run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
+        run: |
+          echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
+          echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -179,6 +190,19 @@ jobs:
       - name: Audit and publish
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
 
+      # `dispatchReadySlices` asked for one `ticket-ready` per root slice; this carries the whole
+      # wave across the job boundary, since a file in `runner.temp` dies with this runner.
+      - name: Collect the dispatches this run asked for
+        id: collect-dispatch
+        run: |
+          set -euo pipefail
+          [ -s "$DISPATCH_REQUESTS_PATH" ] || exit 0
+          {
+            echo "requests<<DISPATCH_REQUESTS_EOF"
+            cat "$DISPATCH_REQUESTS_PATH"
+            echo "DISPATCH_REQUESTS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       # The response a stage refused, kept where a human can read it. `to-tickets.ts` writes
       # `<stage>-raw-response.txt` next to the handoff file — i.e. into `runner.temp`, which this
       # job's teardown discards — so without this step the evidence exists only for as long as the
@@ -220,3 +244,29 @@ jobs:
           body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$PRD_NUMBER" --body "$body"
           gh issue edit "$PRD_NUMBER" --add-label slice-failed
+
+  # ADR-0091's other half: `contents: write`, no model, no checkout, and nothing to do but post the
+  # wave the job above decided on. Sub-issues already exist and are already edged by the time this
+  # runs, so a failure here loses the *start*, not the plan — `dispatch-reconcile.yml` recomputes
+  # the same ready set at the next session end and sends it again (#179), which is why this being a
+  # second job costs nothing in reliability.
+  dispatch:
+    name: Start lane 05
+    needs: [to-tickets]
+    if: needs.to-tickets.outputs.dispatch-requests != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      DISPATCH_REQUESTS: ${{ needs.to-tickets.outputs.dispatch-requests }}
+    steps:
+      - name: Send one dispatch per ready slice
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DISPATCH_REQUESTS" | while IFS= read -r request; do
+            [ -n "$request" ] || continue
+            printf '%s' "$request" | gh api --method POST repos/{owner}/{repo}/dispatches --input -
+          done

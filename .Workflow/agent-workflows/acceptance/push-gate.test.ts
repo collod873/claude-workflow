@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
-import { runPushGate, type TestRunResult } from "./push-gate";
+import { landingFromEnv, runPushGate, type TestRunResult } from "./push-gate";
 
 function pushGateDeps(result: TestRunResult) {
   const fake = createFakeGit(() => "");
@@ -66,5 +66,60 @@ describe("runPushGate", () => {
 
     const add = fake.calls.find((call) => call[0] === "add");
     expect(add).toEqual(["add", "tests/acceptance/foo.test.ts"]);
+  });
+});
+
+/**
+ * ADR-0091: the job that spends the Opus author holds `contents: read`, so the push cannot happen
+ * there. What the gate decides is unchanged — this is only about who carries the result to `main`.
+ */
+describe("runPushGate with the landing delegated", () => {
+  it("commits and stops, touching neither origin nor main", async () => {
+    const { fake, deps } = pushGateDeps({
+      collected: true,
+      failures: [{ name: "proves criterion one", errorName: "AssertionError" }],
+    });
+
+    const outcome = await runPushGate({ ...deps, landing: "commit" });
+
+    expect(outcome.verdict).toBe("pushed");
+    expect(fake.calls.map((call) => call[0])).toEqual(["add", "commit"]);
+  });
+
+  it("still refuses a broken test file, so delegating the push does not widen what may land", async () => {
+    const { fake, deps } = pushGateDeps({
+      collected: false,
+      collectionError: "tests/acceptance/foo.test.ts: SyntaxError: Unexpected token",
+      failures: [],
+    });
+
+    const outcome = await runPushGate({ ...deps, landing: "commit" });
+
+    expect(outcome.verdict).toBe("refused");
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("leaves a real commit behind, which is what the pushing job turns into a patch", async () => {
+    const { fake, deps } = pushGateDeps({ collected: true, failures: [] });
+
+    await runPushGate({ ...deps, landing: "commit" });
+
+    expect(fake.calls.find((call) => call[0] === "commit")).toEqual([
+      "commit",
+      "-m",
+      "Author an acceptance test for #162's criteria",
+    ]);
+  });
+});
+
+describe("landingFromEnv", () => {
+  it("delegates only on the exact opt-in a workflow sets", () => {
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "commit" })).toBe("commit");
+  });
+
+  it("pushes by default, which is what the workstation and every write-token job want", () => {
+    expect(landingFromEnv({})).toBe("push");
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "" })).toBe("push");
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "push" })).toBe("push");
   });
 });

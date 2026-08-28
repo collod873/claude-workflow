@@ -1080,16 +1080,6 @@
     ]
   },
   {
-    "hash": "eae2f7e0bcdd4d86",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 79,
-    "where": [
-      ".Workflow/agent-workflows/acceptance/acceptance.ts:313",
-      ".Workflow/agent-workflows/acceptance/push-gate.ts:234"
-    ]
-  },
-  {
     "hash": "ecbf7f9705dfb8e8",
     "format": "typescript",
     "lines": 7,

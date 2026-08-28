@@ -1,3 +1,4 @@
+import { requestDispatch } from "./dispatch-request";
 import type { GhExec } from "./gh";
 
 /**
@@ -114,28 +115,28 @@ export const TICKET_READY_DISPATCH_ACTION = "ticket-ready";
  */
 export const GRAPH_CHANGED_DISPATCH_ACTION = "graph-changed";
 
-/** Sends exactly one `ticket-ready` naming `issueNumber` — the send `implement.yml` fires on. */
+/**
+ * Sends exactly one `ticket-ready` naming `issueNumber` — the send `implement.yml` fires on.
+ *
+ * Through `shared/dispatch-request.ts` because this has two callers on opposite sides of #181's
+ * split: `dispatch/reconcile.ts` runs in a job that already holds `contents: write` and sends now,
+ * and `to-tickets/slice-and-publish.ts` runs in one that spends a model and holds `contents: read`,
+ * where the call 403s and the whole published wave is never told to start. Neither caller decides
+ * which happens; the workflow it runs in does.
+ */
 export function dispatchTicketReady(gh: GhExec, issueNumber: number): void {
-  gh([
-    "api",
-    "repos/{owner}/{repo}/dispatches",
-    "-f",
-    `event_type=${TICKET_READY_DISPATCH_ACTION}`,
-    "-f",
-    `client_payload[issue]=${issueNumber}`,
-  ]);
+  requestDispatch(gh, {
+    event_type: TICKET_READY_DISPATCH_ACTION,
+    client_payload: { issue: issueNumber },
+  });
 }
 
 /** Rings the doorbell, naming the pull request that just merged and nothing else. */
 export function announceGraphChanged(gh: GhExec, pr: string): void {
-  gh([
-    "api",
-    "repos/{owner}/{repo}/dispatches",
-    "-f",
-    `event_type=${GRAPH_CHANGED_DISPATCH_ACTION}`,
-    "-f",
-    `client_payload[pr]=${pr}`,
-  ]);
+  requestDispatch(gh, {
+    event_type: GRAPH_CHANGED_DISPATCH_ACTION,
+    client_payload: { pr },
+  });
 }
 
 function index(slices: SliceState[]): Map<number, SliceState> {
