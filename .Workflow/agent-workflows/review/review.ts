@@ -3,10 +3,13 @@ import { z } from "zod";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
-import type { GhExec } from "../shared/gh";
+import { execGh, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
 import { testsForCriteria } from "../shared/affected-tests";
 import { isStructurallyRefused, type Finding, type GreenGateCheck } from "./structural-refusal";
+import { runRefuter } from "./refuter";
+import { publishFindings } from "./publish-findings";
+import { runCounter, type CounterOutcome, type RefuterTally } from "./counter";
 
 export type { Finding, GreenGateCheck } from "./structural-refusal";
 
@@ -200,6 +203,45 @@ export async function runConformanceReview(
   return { findings, gapIssues };
 }
 
+/** What one end-to-end run of lane 07 needs to reach the owner: a diff to review and who to notify. */
+export interface RunReviewInput {
+  diff: string;
+  greenGateChecks: GreenGateCheck[];
+  /** Who a filed finding, and a filed counter proposal, is assigned to. */
+  assignee: string;
+}
+
+export interface RunReviewResult {
+  /** Findings the refuter left standing — the only ones this filed an issue for. */
+  survivors: Finding[];
+  /** Issue numbers `publishFindings` opened, one per survivor, in order. */
+  publishedIssues: number[];
+  /** How many findings reached the refuter, and how many it refused — `counter.ts`'s delete trigger. */
+  tally: RefuterTally;
+  counter: CounterOutcome;
+}
+
+/**
+ * Lane 07's whole chain, end to end (PRD #145, move 7a): the correctness reviewer's raw findings,
+ * filtered by the structural refusal (`runCorrectnessReview`), each surviving one sent through the
+ * refuter (`runRefuter`), and each survivor of *that* filed as its own issue — never a PR comment,
+ * never any other notification (`publishFindings`, carrying `counter.ts`'s `FINDING_LABEL`). The
+ * refuter's own tally — how many findings it read, how many it refused — is counted here, in the
+ * same process the refuter runs in ([`refuter.ts`](./refuter.ts)'s own note on why it has no
+ * entrypoint of its own), and handed to `runCounter` so the delete trigger sees real evidence
+ * rather than a second, undocumented place logging it.
+ */
+export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
+  const candidates = await runCorrectnessReview(exec, { diff: input.diff, greenGateChecks: input.greenGateChecks });
+  const survivors = await runRefuter(exec, candidates, input.diff, input.greenGateChecks);
+  const tally: RefuterTally = { reached: candidates.length, refuted: candidates.length - survivors.length };
+
+  const publishedIssues = publishFindings(gh, survivors, input.assignee);
+  const counter = runCounter({ gh, tally, assignee: input.assignee });
+
+  return { survivors, publishedIssues, tally, counter };
+}
+
 async function main(): Promise<void> {
   const base = process.argv[2];
   const head = process.argv[3] ?? "HEAD";
@@ -211,10 +253,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  const assignee = process.env.SIGNAL_ASSIGNEE;
+  if (!assignee) {
+    console.error("SIGNAL_ASSIGNEE must be set — an unassigned finding notifies nobody");
+    process.exitCode = 1;
+    return;
+  }
+
   try {
     const diff = execGit(["diff", `${base}...${head}`]);
-    const survivors = await runCorrectnessReview(execClaude, { diff, greenGateChecks });
-    console.log(JSON.stringify(survivors));
+    const result = await runReview(execClaude, execGh, { diff, greenGateChecks, assignee });
+    console.log(
+      JSON.stringify({ publishedIssues: result.publishedIssues, tally: result.tally }),
+    );
   } catch (err) {
     console.error(`review failed: ${reason(err)}`);
     process.exitCode = 1;
