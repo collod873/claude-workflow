@@ -10,5 +10,11 @@
 #
 # `--no-verify` still skips it, and that gap is accepted rather than open: branch protection would
 # close it and the purchase is declined (ADR-0071).
+#
+# `npm run check` rather than `bin/gauntlet push` directly, because the push venue is now the
+# gauntlet *plus* the clone gate: the gate is too slow for the turn-end venue and the gauntlet runs
+# the same `test` slot at both, so it is scheduled beside the gauntlet rather than inside it
+# (docs/agents/clone-gate.md rule 6). `check` is the `all` slot of `.claude/contract.json` — one
+# spelling of the full green gate, which is what this venue owes `main`.
 
-bin/gauntlet push
+npm run check

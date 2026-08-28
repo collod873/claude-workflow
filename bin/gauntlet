@@ -259,7 +259,13 @@ if [ "$venue" != "turn" ]; then
     exit 2
   fi
 
+  # `GAUNTLET_VENUE` names the venue to whatever the test slot runs. The one reader today is the
+  # clone gate: the `test` slot runs it (docs/agents/clone-gate.md rule 6 puts it there), and this
+  # venue's `stop` form runs the `test` slot at every turn-end — so without a way to tell the two
+  # apart, wiring the gate in would have put a two-second scan on every turn. The gauntlet does not
+  # schedule the clone gate at any venue; `npm run check` and CI each run it once, deliberately.
   run_check test env \
+    GAUNTLET_VENUE="$venue" \
     GIT_DIR="$sandbox/.git" \
     GIT_WORK_TREE="$sandbox" \
     GIT_INDEX_FILE="$sandbox/.git/index" \

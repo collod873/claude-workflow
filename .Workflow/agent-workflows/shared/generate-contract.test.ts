@@ -63,7 +63,28 @@ describe("this repository's committed contract", () => {
     const scriptName = /^npm run (.+)$/.exec(committed.all.cmd)?.[1];
 
     expect(scriptName).toBeDefined();
-    expect(scripts[scriptName!]).toBe("bin/gauntlet push");
+    // Reaches the push venue, rather than being it. `all` is the full green gate, and the clone
+    // gate is scheduled beside `bin/gauntlet` rather than inside it — the gauntlet runs the same
+    // `test` slot at `stop` and `push`, and rule 6 of docs/agents/clone-gate.md keeps a
+    // two-second token scan out of the turn-end venue.
+    expect(scripts[scriptName!]).toContain("bin/gauntlet push");
+  });
+
+  /**
+   * The clone gate's half of the same slot (docs/agents/clone-gate.md rule 6: "It runs in `test`
+   * and `all`, and in CI. Never in `stop`."). Asserted on the committed contract for the same
+   * reason as the line above: a reader outside this repo acts on the `why`, and a gate that has
+   * quietly fallen out of the aggregate script would still leave a `why` claiming it is there.
+   */
+  it("runs the clone gate from both the `test` and the `all` slot, and from neither `stop`", () => {
+    const scripts = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")).scripts;
+    const reaches = (cmd: string) =>
+      /^npm (?:run )?(.+)$/.exec(cmd)?.[1] !== undefined &&
+      scripts[/^npm (?:run )?(.+)$/.exec(cmd)![1]].includes("clone:check");
+
+    expect(reaches(committed.test.cmd)).toBe(true);
+    expect(reaches(committed.all.cmd)).toBe(true);
+    expect(committed.stop.cmd).not.toContain("clone");
   });
 
   /**

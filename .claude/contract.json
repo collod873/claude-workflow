@@ -5,7 +5,7 @@
   },
   "test": {
     "cmd": "npm test",
-    "why": "package.json#scripts.test (vitest run)"
+    "why": "package.json#scripts.test (vitest run && npm run clone:check)"
   },
   "test_one": {
     "cmd": "npx vitest run <file>",
@@ -21,6 +21,6 @@
   },
   "all": {
     "cmd": "npm run check",
-    "why": "package.json#scripts.check (bin/gauntlet push)"
+    "why": "package.json#scripts.check (bin/gauntlet push && npm run clone:check)"
   }
 }

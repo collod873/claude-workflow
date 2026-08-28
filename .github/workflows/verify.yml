@@ -202,3 +202,13 @@ jobs:
       - name: Gauntlet could not run
         if: steps.run-gauntlet.outputs.exit_code == '2'
         run: exit 1
+
+      # The clone gate (docs/agents/clone-gate.md), beside the gauntlet rather than inside it. Its
+      # two-second token scan does not fit the turn-end venue, and `bin/gauntlet` runs the same
+      # `test` slot at `stop` and `push` — so the gate declines whenever the gauntlet is its caller
+      # and is scheduled here instead, through the same `npm run clone:check` the `all` slot and
+      # `.husky/pre-push` reach it by. `if: always()` so a red gauntlet does not hide a new clone;
+      # a run that is going to fail may as well report everything it found.
+      - name: Clone gate
+        if: always()
+        run: npm run clone:check

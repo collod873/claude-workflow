@@ -22,6 +22,10 @@ tmp/
 scratch/
 *.log
 
+# The clone gate's scan copies (bin/clone-gate). Deleted after every run; ignored so a killed
+# run's leftovers are never committed.
+.clone-gate-scan/
+
 # Node
 node_modules/
 dist/

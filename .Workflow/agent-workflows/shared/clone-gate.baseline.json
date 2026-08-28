@@ -1,0 +1,1192 @@
+[
+  {
+    "hash": "002b772e3a42bfe1",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 89,
+    "where": [
+      ".Workflow/agent-workflows/spec/amend.test.ts:124",
+      ".Workflow/agent-workflows/spec/amend.test.ts:61"
+    ]
+  },
+  {
+    "hash": "004b9b8a76ab9ba5",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 96,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:386",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:405"
+    ]
+  },
+  {
+    "hash": "02cceed5646a58f4",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 107,
+    "where": [
+      ".Workflow/agent-workflows/fixer/fixer.test.ts:14",
+      ".Workflow/agent-workflows/spec/open-questions.test.ts:11"
+    ]
+  },
+  {
+    "hash": "03ccb995a204ac84",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 80,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:157",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "04cd834d4727cb8f",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 87,
+    "where": [
+      ".Workflow/agent-workflows/shape/shape.test.ts:159",
+      ".Workflow/agent-workflows/shape/shape.test.ts:330"
+    ]
+  },
+  {
+    "hash": "0945b5ac284f5c72",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 153,
+    "where": [
+      ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:38",
+      ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:29"
+    ]
+  },
+  {
+    "hash": "0a5d2f733844aaa0",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 81,
+    "where": [
+      ".Workflow/agent-workflows/review/review.test.ts:150",
+      ".Workflow/agent-workflows/review/review.test.ts:172"
+    ]
+  },
+  {
+    "hash": "0b075ed92305ffd8",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 81,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/bypass.test.ts:208",
+      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:59"
+    ]
+  },
+  {
+    "hash": "0ee9d64efbef497e",
+    "format": "markdown",
+    "lines": 20,
+    "tokens": 367,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/vocabulary.md:30",
+      "CONTEXT.md:224"
+    ]
+  },
+  {
+    "hash": "11544d09b9c2771c",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 233,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:22",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "126262dc19d180e6",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 115,
+    "where": [
+      ".Workflow/agent-workflows/spec/rounds.test.ts:7",
+      ".Workflow/agent-workflows/spec/spec.test.ts:136"
+    ]
+  },
+  {
+    "hash": "140b1e7b3bdcece0",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 132,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts:65",
+      ".Workflow/agent-workflows/watchdog/missing-trailer-counter.ts:49"
+    ]
+  },
+  {
+    "hash": "18497e15e63ab6b2",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 72,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/push-gate.test.ts:23",
+      ".Workflow/agent-workflows/acceptance/push-gate.test.ts:53"
+    ]
+  },
+  {
+    "hash": "1bb3191942bb148d",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 100,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:112",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:123"
+    ]
+  },
+  {
+    "hash": "1c0717e6a344799d",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 79,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-release.test.ts:102",
+      ".Workflow/agent-workflows/observations/run-release.test.ts:144"
+    ]
+  },
+  {
+    "hash": "204682fc1137ba5b",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 94,
+    "where": [
+      ".Workflow/agent-workflows/shared/git.test.ts:1",
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
+    ]
+  },
+  {
+    "hash": "21225e28550ccee0",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 114,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:635",
+      ".claude/hooks/session-capture.test.ts:749"
+    ]
+  },
+  {
+    "hash": "22dc7a008887e661",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 82,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/acceptance.test.ts:109",
+      ".Workflow/agent-workflows/acceptance/acceptance.test.ts:94"
+    ]
+  },
+  {
+    "hash": "234207fc3e10f39d",
+    "format": "typescript",
+    "lines": 14,
+    "tokens": 119,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:1016",
+      ".claude/hooks/session-capture.test.ts:808"
+    ]
+  },
+  {
+    "hash": "239a297e6a6a399e",
+    "format": "typescript",
+    "lines": 19,
+    "tokens": 100,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/push-gate.ts:140",
+      ".Workflow/agent-workflows/fixer/fixer.ts:236"
+    ]
+  },
+  {
+    "hash": "274f17c2171b3f38",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 150,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.ts:92",
+      ".Workflow/agent-workflows/shared/notes-store.ts:93"
+    ]
+  },
+  {
+    "hash": "28d6f18cbb391f6f",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:203",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "2ab908a32da91b57",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:287",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "2b10ef0b8a6b64d8",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 134,
+    "where": [
+      ".Workflow/agent-workflows/capture/range.test.ts:21",
+      ".claude/hooks/session-capture.test.ts:241"
+    ]
+  },
+  {
+    "hash": "2ff4427420c55753",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/review/counter.test.ts:207",
+      ".Workflow/agent-workflows/review/counter.test.ts:221"
+    ]
+  },
+  {
+    "hash": "312b9c843c058136",
+    "format": "yaml",
+    "lines": 18,
+    "tokens": 119,
+    "where": [
+      ".github/workflows/missing-trailer-counter.yml:42",
+      ".github/workflows/run-watchdog.yml:60"
+    ]
+  },
+  {
+    "hash": "312cd12ccdc5fb71",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 142,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/missing-trailer.test.ts:311",
+      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:62"
+    ]
+  },
+  {
+    "hash": "33282df5dc36c427",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 73,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:687",
+      ".claude/hooks/session-capture.test.ts:716"
+    ]
+  },
+  {
+    "hash": "338a904fb53b796d",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 89,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:1008",
+      ".claude/hooks/session-capture.test.ts:741"
+    ]
+  },
+  {
+    "hash": "33e4f4192746aa51",
+    "format": "typescript",
+    "lines": 20,
+    "tokens": 106,
+    "where": [
+      ".Workflow/agent-workflows/observations/auditor.test.ts:50",
+      ".Workflow/agent-workflows/observations/proposed.test.ts:91"
+    ]
+  },
+  {
+    "hash": "34b89cb574d8f327",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 82,
+    "where": [
+      ".Workflow/agent-workflows/shared/stage.fake.ts:25",
+      ".Workflow/agent-workflows/spec/spec.test.ts:39"
+    ]
+  },
+  {
+    "hash": "3ac8ba3e73988f3d",
+    "format": "typescript",
+    "lines": 16,
+    "tokens": 248,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-observations.test.ts:13",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "484ac24e9134db6a",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 102,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:623",
+      ".claude/hooks/session-capture.test.ts:762"
+    ]
+  },
+  {
+    "hash": "4d04f866965a3ddb",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 77,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.ts:111",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts:216"
+    ]
+  },
+  {
+    "hash": "4e47cd4d4347d758",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 167,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:31",
+      ".Workflow/agent-workflows/observations/session-notes.test.ts:23"
+    ]
+  },
+  {
+    "hash": "51c998fa962aed59",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 104,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:230",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:244"
+    ]
+  },
+  {
+    "hash": "546d65777d387c01",
+    "format": "typescript",
+    "lines": 24,
+    "tokens": 166,
+    "where": [
+      ".Workflow/agent-workflows/shape/shape.ts:136",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.ts:224"
+    ]
+  },
+  {
+    "hash": "556a67e96eb33c0d",
+    "format": "typescript",
+    "lines": 13,
+    "tokens": 231,
+    "where": [
+      ".Workflow/agent-workflows/observations/release-scope.test.ts:28",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "55e981722b8c1123",
+    "format": "typescript",
+    "lines": 17,
+    "tokens": 175,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:241",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:258"
+    ]
+  },
+  {
+    "hash": "5adfe619a007c02c",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 86,
+    "where": [
+      ".Workflow/agent-workflows/spec/collectors/map.ts:40",
+      ".Workflow/agent-workflows/spec/collectors/sheet.ts:27"
+    ]
+  },
+  {
+    "hash": "5b367a7dd8d3462a",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 77,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:528",
+      ".claude/hooks/session-capture.test.ts:547"
+    ]
+  },
+  {
+    "hash": "5c602db7ed108fdd",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 120,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:188",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:287"
+    ]
+  },
+  {
+    "hash": "5ce829c488b32b6b",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 90,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/push-gate.ts:171",
+      ".Workflow/agent-workflows/fixer/fixer.ts:264"
+    ]
+  },
+  {
+    "hash": "5f76e458f2613bef",
+    "format": "yaml",
+    "lines": 18,
+    "tokens": 121,
+    "where": [
+      ".github/workflows/bypass-counter.yml:44",
+      ".github/workflows/run-watchdog.yml:60"
+    ]
+  },
+  {
+    "hash": "5feb5bd89e6272e0",
+    "format": "markdown",
+    "lines": 10,
+    "tokens": 118,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/audit/prompt.md:3",
+      ".Workflow/agent-workflows/to-tickets/slice/prompt.md:3"
+    ]
+  },
+  {
+    "hash": "5ffefb28b38bfc2e",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 83,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:154",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:186"
+    ]
+  },
+  {
+    "hash": "6079e33ce00332cd",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 100,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:1021",
+      ".claude/hooks/session-capture.test.ts:976"
+    ]
+  },
+  {
+    "hash": "60b74c831763def5",
+    "format": "typescript",
+    "lines": 15,
+    "tokens": 170,
+    "where": [
+      ".Workflow/agent-workflows/observations/release.test.ts:14",
+      ".Workflow/agent-workflows/observations/run-release.test.ts:42"
+    ]
+  },
+  {
+    "hash": "61892db0a345939c",
+    "format": "typescript",
+    "lines": 14,
+    "tokens": 107,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:855",
+      ".claude/hooks/session-capture.test.ts:896"
+    ]
+  },
+  {
+    "hash": "69f0599b2177820d",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 113,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:166",
+      ".Workflow/agent-workflows/observations/notes.test.ts:250"
+    ]
+  },
+  {
+    "hash": "6c46d5e98619f162",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:60",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "6d3dfbfa2452d4a5",
+    "format": "typescript",
+    "lines": 15,
+    "tokens": 157,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:202",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:217"
+    ]
+  },
+  {
+    "hash": "749b9fa33abb7aab",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 92,
+    "where": [
+      ".Workflow/agent-workflows/review/counter.test.ts:207",
+      ".Workflow/agent-workflows/review/counter.test.ts:245"
+    ]
+  },
+  {
+    "hash": "76bb0032b6ed9b77",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:14",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:56"
+    ]
+  },
+  {
+    "hash": "7788b9281bfea8d9",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 120,
+    "where": [
+      ".Workflow/agent-workflows/fixer/fixer.test.ts:148",
+      ".Workflow/agent-workflows/fixer/fixer.test.ts:174"
+    ]
+  },
+  {
+    "hash": "789f1b057b01becc",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 99,
+    "where": [
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:40",
+      ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.test.ts:38"
+    ]
+  },
+  {
+    "hash": "7a00a9a6fce52f5c",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:124",
+      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:134"
+    ]
+  },
+  {
+    "hash": "7a17459c05f40b50",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 79,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:270",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:290"
+    ]
+  },
+  {
+    "hash": "7b32475332746fd3",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 85,
+    "where": [
+      ".Workflow/agent-workflows/dispatch/reconcile.test.ts:235",
+      ".Workflow/agent-workflows/dispatch/reconcile.test.ts:249"
+    ]
+  },
+  {
+    "hash": "8097978635f982d2",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 116,
+    "where": [
+      ".Workflow/agent-workflows/spec/collectors/sheet.ts:32",
+      ".Workflow/agent-workflows/spec/rounds.ts:29"
+    ]
+  },
+  {
+    "hash": "8ae3def78772471d",
+    "format": "typescript",
+    "lines": 33,
+    "tokens": 78,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:168",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "8b1a3520db0cdd03",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 90,
+    "where": [
+      ".Workflow/agent-workflows/review/review.test.ts:172",
+      ".Workflow/agent-workflows/review/review.test.ts:193"
+    ]
+  },
+  {
+    "hash": "8ba7f776ee98aa54",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 99,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:57",
+      ".Workflow/agent-workflows/observations/run-release.test.ts:42"
+    ]
+  },
+  {
+    "hash": "8c36a00f44ac79ec",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 120,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.ts:100",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts:205"
+    ]
+  },
+  {
+    "hash": "8e0ea85e4afaac5b",
+    "format": "yaml",
+    "lines": 16,
+    "tokens": 99,
+    "where": [
+      ".github/workflows/lost-dispatch-counter.yml:42",
+      ".github/workflows/run-watchdog.yml:60"
+    ]
+  },
+  {
+    "hash": "90aa992c9957c2b8",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 102,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:2",
+      ".Workflow/agent-workflows/observations/release-scope.test.ts:2"
+    ]
+  },
+  {
+    "hash": "913c03a36ca58871",
+    "format": "yaml",
+    "lines": 16,
+    "tokens": 99,
+    "where": [
+      ".github/workflows/dispatch-reconcile.yml:68",
+      ".github/workflows/run-watchdog.yml:60"
+    ]
+  },
+  {
+    "hash": "9391b879f283089f",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 82,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:253",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:267"
+    ]
+  },
+  {
+    "hash": "945939c811805e99",
+    "format": "bash",
+    "lines": 10,
+    "tokens": 69,
+    "where": [
+      ".Workflow/agent-workflows/shared/new-adr-pre-amends.fixture.sh:17",
+      "bin/new-research:29"
+    ]
+  },
+  {
+    "hash": "973dce1625cc0a40",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 160,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/acceptance.test.ts:234",
+      ".Workflow/agent-workflows/acceptance/acceptance.test.ts:279"
+    ]
+  },
+  {
+    "hash": "995c89992891d863",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 132,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:300",
+      ".Workflow/agent-workflows/observations/ratification.test.ts:92"
+    ]
+  },
+  {
+    "hash": "9b9d01c7958ba0d7",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 115,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/slice-and-publish.test.ts:186",
+      ".Workflow/agent-workflows/to-tickets/slice-and-publish.test.ts:228"
+    ]
+  },
+  {
+    "hash": "9e6a23dd43add4c3",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 140,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:539",
+      ".claude/hooks/session-capture.test.ts:562"
+    ]
+  },
+  {
+    "hash": "a1ed681a30ef8b2e",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 97,
+    "where": [
+      ".Workflow/agent-workflows/observations/release-scope.test.ts:1",
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
+    ]
+  },
+  {
+    "hash": "a3ea04956bbfe6f8",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 152,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts:84",
+      ".Workflow/agent-workflows/watchdog/missing-trailer-counter.ts:65"
+    ]
+  },
+  {
+    "hash": "a450d3b1368df31e",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 85,
+    "where": [
+      ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.test.ts:49",
+      ".claude/hooks/session-capture.test.ts:247"
+    ]
+  },
+  {
+    "hash": "a53a565bc8aac7ce",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 97,
+    "where": [
+      ".Workflow/agent-workflows/capture/range.test.ts:1",
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
+    ]
+  },
+  {
+    "hash": "a60e93d4ae4e8065",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 72,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:716",
+      ".claude/hooks/session-capture.test.ts:814"
+    ]
+  },
+  {
+    "hash": "aa0e2cc7e6f2c0c1",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 107,
+    "where": [
+      ".Workflow/agent-workflows/capture/range.test.ts:16",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "ac8302f8e4df4c70",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 87,
+    "where": [
+      ".Workflow/agent-workflows/observations/session-notes.test.ts:20",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "aec6f417a42b337c",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 109,
+    "where": [
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:117",
+      ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
+    ]
+  },
+  {
+    "hash": "b0dada6ceb8f572c",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 110,
+    "where": [
+      ".Workflow/agent-workflows/review/publish-findings.test.ts:7",
+      ".Workflow/agent-workflows/review/review.test.ts:92"
+    ]
+  },
+  {
+    "hash": "b7b5ff5923562957",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 74,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:687",
+      ".claude/hooks/session-capture.test.ts:861"
+    ]
+  },
+  {
+    "hash": "b806307aea088d45",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 115,
+    "where": [
+      ".Workflow/agent-workflows/review/counter.test.ts:232",
+      ".Workflow/agent-workflows/review/counter.test.ts:244"
+    ]
+  },
+  {
+    "hash": "b8c56090c1c811f0",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 71,
+    "where": [
+      ".Workflow/agent-workflows/observations/ratification.test.ts:83",
+      ".Workflow/agent-workflows/observations/session-notes.test.ts:171"
+    ]
+  },
+  {
+    "hash": "b91d5f44ea18ca4c",
+    "format": "typescript",
+    "lines": 14,
+    "tokens": 118,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:110",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:167"
+    ]
+  },
+  {
+    "hash": "bb6927efdb3795ed",
+    "format": "typescript",
+    "lines": 20,
+    "tokens": 124,
+    "where": [
+      ".Workflow/agent-workflows/shape/probation.ts:94",
+      ".Workflow/agent-workflows/spec/collectors/sheet.ts:29"
+    ]
+  },
+  {
+    "hash": "bdefcd5371cbad2d",
+    "format": "typescript",
+    "lines": 12,
+    "tokens": 135,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:835",
+      ".claude/hooks/session-capture.test.ts:876"
+    ]
+  },
+  {
+    "hash": "be95eb21397781df",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 79,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:635",
+      ".claude/hooks/session-capture.test.ts:686"
+    ]
+  },
+  {
+    "hash": "c1f0e935ea1f92f4",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 110,
+    "where": [
+      ".Workflow/agent-workflows/observations/diff.test.ts:1",
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
+    ]
+  },
+  {
+    "hash": "c22c0db18b4eb9c4",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 80,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/bypass.test.ts:368",
+      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:226"
+    ]
+  },
+  {
+    "hash": "cb7f9a5041c11b19",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 99,
+    "where": [
+      ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.test.ts:38",
+      ".claude/hooks/session-capture.test.ts:233"
+    ]
+  },
+  {
+    "hash": "cc6f46674f5ec466",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 119,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:792",
+      ".claude/hooks/session-capture.test.ts:996"
+    ]
+  },
+  {
+    "hash": "cccffb6e7770ffc7",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 94,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:848",
+      ".claude/hooks/session-capture.test.ts:889"
+    ]
+  },
+  {
+    "hash": "ce4f8a8083eff39e",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 81,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:257",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:274"
+    ]
+  },
+  {
+    "hash": "cf03bc7e6735b926",
+    "format": "typescript",
+    "lines": 16,
+    "tokens": 246,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-release.test.ts:26",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "d37f6e6d7242b02b",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 93,
+    "where": [
+      ".Workflow/agent-workflows/review/counter.test.ts:161",
+      ".Workflow/agent-workflows/review/counter.test.ts:257"
+    ]
+  },
+  {
+    "hash": "d6693d1414d01fb6",
+    "format": "typescript",
+    "lines": 15,
+    "tokens": 122,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:109",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:134"
+    ]
+  },
+  {
+    "hash": "d84eeb8c81808492",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 80,
+    "where": [
+      ".Workflow/agent-workflows/to-tickets/slice-and-publish.test.ts:122",
+      ".Workflow/agent-workflows/to-tickets/slice-and-publish.test.ts:49"
+    ]
+  },
+  {
+    "hash": "d954dfb5c053f60d",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 120,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:792",
+      ".claude/hooks/session-capture.test.ts:953"
+    ]
+  },
+  {
+    "hash": "db2af158893a4f51",
+    "format": "typescript",
+    "lines": 14,
+    "tokens": 92,
+    "where": [
+      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:43",
+      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:76"
+    ]
+  },
+  {
+    "hash": "deed80fb94256748",
+    "format": "typescript",
+    "lines": 14,
+    "tokens": 87,
+    "where": [
+      ".Workflow/agent-workflows/implement/out-of-brief.test.ts:127",
+      ".Workflow/agent-workflows/implement/out-of-brief.test.ts:149"
+    ]
+  },
+  {
+    "hash": "e06f72af0e355043",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 96,
+    "where": [
+      ".Workflow/agent-workflows/observations/ratification.test.ts:92",
+      ".Workflow/agent-workflows/observations/session-notes.test.ts:180"
+    ]
+  },
+  {
+    "hash": "e2f95838d058d37e",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 66,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:687",
+      ".claude/hooks/session-capture.test.ts:936"
+    ]
+  },
+  {
+    "hash": "e3f7f1c66f400cc6",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 136,
+    "where": [
+      ".Workflow/agent-workflows/shape/rounds.ts:18",
+      ".Workflow/agent-workflows/spec/rounds.ts:25"
+    ]
+  },
+  {
+    "hash": "e79be67923271fcc",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 90,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-observations.test.ts:1",
+      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
+    ]
+  },
+  {
+    "hash": "e86739522a21205a",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 107,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/bypass.test.ts:182",
+      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:33"
+    ]
+  },
+  {
+    "hash": "e8a170d71c5ead19",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 103,
+    "where": [
+      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:106",
+      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:63"
+    ]
+  },
+  {
+    "hash": "eae2f7e0bcdd4d86",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 79,
+    "where": [
+      ".Workflow/agent-workflows/acceptance/acceptance.ts:313",
+      ".Workflow/agent-workflows/acceptance/push-gate.ts:234"
+    ]
+  },
+  {
+    "hash": "ecbf7f9705dfb8e8",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 93,
+    "where": [
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:129",
+      ".Workflow/agent-workflows/observations/run-audit.test.ts:270"
+    ]
+  },
+  {
+    "hash": "ef1c79f29796abe6",
+    "format": "typescript",
+    "lines": 11,
+    "tokens": 112,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:166",
+      ".Workflow/agent-workflows/observations/notes.test.ts:188"
+    ]
+  },
+  {
+    "hash": "ef56299626497b37",
+    "format": "typescript",
+    "lines": 6,
+    "tokens": 99,
+    "where": [
+      ".Workflow/agent-workflows/review/review.test.ts:230",
+      ".Workflow/agent-workflows/review/review.test.ts:261"
+    ]
+  },
+  {
+    "hash": "f222767a9f7c8cff",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 114,
+    "where": [
+      ".claude/hooks/session-capture.test.ts:635",
+      ".claude/hooks/session-capture.test.ts:774"
+    ]
+  },
+  {
+    "hash": "f574945a7f70c7b0",
+    "format": "typescript",
+    "lines": 15,
+    "tokens": 132,
+    "where": [
+      ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:24",
+      ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:14"
+    ]
+  },
+  {
+    "hash": "f5f67dfc0b9badf8",
+    "format": "typescript",
+    "lines": 9,
+    "tokens": 97,
+    "where": [
+      ".Workflow/agent-workflows/review/review.test.ts:229",
+      ".Workflow/agent-workflows/review/review.test.ts:277"
+    ]
+  },
+  {
+    "hash": "f63a1bea7f6d15d5",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 109,
+    "where": [
+      ".Workflow/agent-workflows/observations/notes.test.ts:35",
+      ".Workflow/agent-workflows/observations/session-notes.test.ts:26"
+    ]
+  },
+  {
+    "hash": "f894517e10479f75",
+    "format": "typescript",
+    "lines": 16,
+    "tokens": 248,
+    "where": [
+      ".Workflow/agent-workflows/observations/ratification.test.ts:122",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  },
+  {
+    "hash": "fab2de792e014790",
+    "format": "typescript",
+    "lines": 10,
+    "tokens": 97,
+    "where": [
+      ".Workflow/agent-workflows/spec/publish.test.ts:239",
+      ".Workflow/agent-workflows/spec/publish.test.ts:264"
+    ]
+  },
+  {
+    "hash": "fc80f172b0ddec08",
+    "format": "typescript",
+    "lines": 16,
+    "tokens": 248,
+    "where": [
+      ".Workflow/agent-workflows/observations/diff.test.ts:16",
+      ".Workflow/agent-workflows/shared/git.test.ts:15"
+    ]
+  }
+]

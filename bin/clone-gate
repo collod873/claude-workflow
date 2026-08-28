@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# The clone gate's entry point (docs/agents/clone-gate.md). One spelling, so `npm run clone:check`,
+# `.github/workflows/verify.yml` and a human at a terminal cannot drift into running three
+# different things.
+#
+# It is a `bin/` script rather than a bare `node ...` in package.json because `knip.config.ts`
+# reads this repo's venues — `.github/workflows`, `bin`, `.claude/hooks` — to decide what any lane
+# can reach. A `.ts` file named only by an npm script reads as dead code to the wiring check.
+#
+#   bin/clone-gate                   scan; red on a clone the baseline does not carry
+#   bin/clone-gate --seed-baseline   write the baseline once, at turn-on
+#   bin/clone-gate --prune-baseline  drop entries that no longer reproduce
+#
+# Exit codes are the gauntlet's three: 0 clean, 1 a finding, 2 the gate could not run.
+set -uo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=bin/node-on-path.sh
+. "$repo_root/bin/node-on-path.sh"
+
+if ! node_on_path; then
+  echo "clone-gate: no node on PATH — the gate did not run" >&2
+  exit 2
+fi
+
+exec node "$repo_root/.Workflow/agent-workflows/shared/clone-gate.ts" "$repo_root" "$@"
