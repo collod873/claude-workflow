@@ -15,9 +15,18 @@ import { defineConfig } from "vitest/config";
 // spawns `git` with the default inherited environment reads the *worker's* `process.env`, not
 // this config's. It is listed here rather than imported per test file because the tests that need
 // it are the ones nobody has written yet — see the file's own comment and #86.
+// `tests/acceptance/` is in `include` because nothing else can put it there. A positional argument
+// to `vitest run` is a *filter over* `include`, never an addition to it — so `push-gate.ts`'s
+// `npx vitest run tests/acceptance/` and `verify.yml`'s per-slice `npx vitest run <file...>` both
+// selected from a set that never contained an acceptance test, and each reported "no test files
+// found" as a clean run. Lane 04 could author a test, land it on `main` and have the gate that is
+// supposed to judge it see nothing (#188). An acceptance test is *expected* to be red until the
+// ticket it names is built, which is what makes it an acceptance test rather than a report on
+// working code — so a red `npm test` here is the suite doing its job, and the venue that decides
+// whether one may land is `acceptance/push-gate.ts`, not this list.
 export default defineConfig({
   test: {
-    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
+    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "tests/acceptance/**/*.test.ts"],
     setupFiles: [".Workflow/agent-workflows/shared/scrub-git-env.setup.ts"],
     maxWorkers: 4,
     testTimeout: 30_000,
