@@ -5,11 +5,12 @@ name: Implement
 # blocked-by edges (`IMPLEMENT_DISPATCH_EVENT_TYPE` in
 # `.Workflow/agent-workflows/implement/implement.ts`) — never on a label, never on who is logged in.
 #
-# `on: repository_dispatch` is left unfiltered by `types:` for the reason `audit.yml` and
-# `run-watchdog.yml` give: that filter is per-workflow, not per-job, so a sibling workflow sharing
-# this trigger surface would force this file's `types:` list to track every action it ever adds.
-# The job-level `if` below is what actually scopes a run, checked against the same constant
-# `implement-workflow.test.ts` imports rather than a copy-pasted string.
+# `types:` names this lane's own action, for the reason `audit.yml` gives and ADR-0090 rules. This
+# lane is one of the five an unfiltered trigger woke on every unrelated `session-captured`: four
+# runs, four skips, and a history that read "lane 05 has never succeeded" identically to "lane 05
+# has never been asked to do anything" (#183, #188). The job-level `if` below is still what scopes
+# a run, checked against the same constant `implement.test.ts` imports rather than a copy-pasted
+# string.
 #
 # **This job carries no sender-gate `if:` condition, on purpose** — contrast `spec.yml` and
 # `shape.yml`, both triggered by a human-forgeable event (a label, a comment) and both gated on
@@ -26,6 +27,7 @@ name: Implement
 
 "on":
   repository_dispatch:
+    types: [ticket-ready]
 
 permissions:
   contents: write

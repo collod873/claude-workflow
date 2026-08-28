@@ -4,10 +4,11 @@ name: To-Tickets
 # publishes a PRD now, and `prd` stays what marks an issue as one — it stopped being this lane's
 # trigger. This job fires on the `repository_dispatch` lane 02 sends at a zero open-question count
 # (`SPEC_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/spec/open-questions.ts`), never on a
-# label. `on: repository_dispatch` is left unfiltered by `types:` for the reason `run-watchdog.yml`
-# and `audit.yml` give — that filter is per-workflow, not per-job — so the job-level `if` below is
-# what actually scopes a run, checked against the same constant `to-tickets-workflow.test.ts`
-# imports rather than a copy-pasted string.
+# label. `types:` names that one action, for the reason `audit.yml` gives and ADR-0090 rules: an
+# unfiltered trigger woke this lane on every unrelated dispatch, so its whole run history was
+# skipped runs it had nothing to say about. The job-level `if` below is still what scopes a run,
+# checked against the same constant `to-tickets-workflow.test.ts` imports rather than a
+# copy-pasted string.
 #
 # Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any
 # stage: a PRD that already has sub-issues, and a PRD that is itself a sub-issue. Both fail
@@ -45,6 +46,7 @@ name: To-Tickets
 
 "on":
   repository_dispatch:
+    types: [prd-sliceable]
 
 permissions:
   contents: read

@@ -42,10 +42,20 @@ jobs:
     # on an implementer's dispatch, and on the push run `workflow_run.head_sha` *is* trunk's tip —
     # so `origin/main..head_sha` is empty and this lane spent two Opus reviewers and a refuter fleet
     # reading nothing, on every commit the owner pushed himself, out of his personal subscription.
-    # Lane 07 reviews an implementation pull request's diff; the dispatch is what says there is one.
+    # Lane 07 reviews an implementation pull request's diff, and the push run is the one Verify run
+    # that never has one.
+    #
+    # Stated as "not the push run" rather than by naming the dispatch event, which is the same
+    # condition read off `verify.yml`'s trigger list — `immutable-set.test.ts` holds that list to
+    # exactly two doors, a push to `main` and the implementer's dispatch, and `review.test.ts`
+    # re-asserts it here, so the two spellings are equivalent by a checked premise rather than by a
+    # reader's memory. It is also the
+    # honest side to state it from: this workflow is not itself dispatch-triggered, and naming that
+    # event here made it read as one to the sweep that requires every dispatch-triggered workflow to
+    # filter its own `types:` ([ADR-0090](../../docs/adr/0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md), #188).
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'repository_dispatch'
+      github.event.workflow_run.event != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

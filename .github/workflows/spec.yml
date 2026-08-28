@@ -48,9 +48,10 @@ name: Spec
 # sends the dispatch as its last act instead. It carries no sender gate: `POST /dispatches` needs
 # write access, so the send is itself the gate (ADR-0073).
 #
-# `repository_dispatch` is left unfiltered by `types:` for the reason `dispatch-reconcile.yml`,
-# `audit.yml` and `integrate.yml` all give — the filter is per-workflow rather than per-job. The
-# job-level `if:` is the scope rule, and it names the one constant the sender reads
+# `types:` names that one action, for the reason `audit.yml` gives and ADR-0090 rules: unfiltered,
+# this lane woke on every `session-captured` the capture hook sent and skipped, so its eight runs
+# read as a lane that has never worked rather than a lane that has rarely been asked. The
+# job-level `if:` is still the scope rule, and it names the one constant the sender reads
 # (`SPEC_AUTHOR_DISPATCH_EVENT_TYPE`, `.Workflow/agent-workflows/spec/publish.ts`).
 #
 # `SPEC_TRIGGER` is decided here and read by `invocationFromEnv` rather than re-derived in
@@ -65,6 +66,7 @@ name: Spec
   issue_comment:
     types: [created]
   repository_dispatch:
+    types: [sheet-accepted]
 
 permissions:
   contents: read

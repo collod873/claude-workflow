@@ -5,14 +5,21 @@ name: Audit
 # the lenses and the release run only here, so this is what actually fires them once a session's
 # range exists to read.
 #
-# `on: repository_dispatch` is left unfiltered by `types:` on purpose. A sibling workflow (spec
-# #63's release-on-PRD-close trigger) is a *separate* file sharing this same trigger surface with
-# a different dispatch action — GitHub Actions' `types:` filter is per-workflow, not per-job, so
-# splitting on it here would mean this file's own `types:` list has to track every action a
-# sibling workflow might ever add. The job-level `if` is what actually scopes a run to an audit
-# dispatch instead, spelled here as well as in `run-audit.ts`'s own `AUDIT_DISPATCH_ACTION` check
-# on purpose — no compiler sees across this language boundary, so `run-audit.test.ts` asserts the
-# two still agree, mirroring `release-on-prd-close.yml`'s `state_reason` scope rule and
+# **`types:` names this lane's own action, and every other dispatch-triggered workflow in this repo
+# now does the same.** This file argued the opposite for a long time and the argument was sound as
+# far as it went: the filter is per-workflow rather than per-job, so a sibling sharing this trigger
+# surface forces this list to track whatever action it adds. What that reasoning never priced is
+# what an unfiltered trigger does to the *history*. Without `types:`, every dispatch any lane sends
+# starts a run of every dispatch-triggered workflow, and all but one of them skip: one
+# `session-captured` woke Spec, To-Tickets, Implement, Integrate and Verify, each of which has no
+# opinion about it whatsoever. #183 counted 65 runs across the six acting lanes and zero successes,
+# because the run history could no longer tell a lane that has never fired from a lane that fires
+# and skips — which is the only surface anyone reads to answer that question ([ADR-0090](../../docs/adr/0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md)).
+#
+# The job-level `if` stays, and is still the scope rule: `types:` is a filter GitHub applies before
+# the run exists, and the `if` is what holds this file to `run-audit.ts`'s own
+# `AUDIT_DISPATCH_ACTION`. No compiler sees across that language boundary, so `run-audit.test.ts`
+# asserts the two still agree, mirroring `release-on-prd-close.yml`'s `state_reason` scope rule and
 # `release-on-prd-close.ts`'s `DELIVERY_CLOSE_REASON`.
 #
 # That scope is spelled `session-captured` — the capture hook's own dispatch, shared with
@@ -34,6 +41,7 @@ name: Audit
 
 "on":
   repository_dispatch:
+    types: [session-captured]
 
 permissions:
   contents: write

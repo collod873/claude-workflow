@@ -28,11 +28,12 @@ name: Verify
 #
 # `repository_dispatch` is what an implementation PR is judged on: lane 05's `openPrAndDispatch`
 # sends it, and a dispatch-fired run always executes trunk's copy of this file, which ADR-0053 and
-# ADR-0054 both require. Left unfiltered by `types:` for the reason `dispatch-reconcile.yml`
-# gives: the filter is per-workflow, not per-job, so a future sibling job riding this same trigger
-# would force this list to track every action any of them ever adds. The job-level `if:` below is
-# the scope rule, and it names the one constant the sender reads
-# (`IMPLEMENTATION_PR_DISPATCH_ACTION`, `.Workflow/agent-workflows/shared/immutable-set.ts`).
+# ADR-0054 both require. `types:` names that one action, for the reason `audit.yml` gives and
+# ADR-0090 rules: unfiltered, this lane woke on every `session-captured` a session end sent and ran
+# its `verify` job against trunk's tip for no reason — which is also what handed `review.yml` a
+# stream of Verify runs with an empty range to review. The job-level `if:` below is still the scope
+# rule, and it names the one constant the sender reads (`IMPLEMENTATION_PR_DISPATCH_ACTION`,
+# `.Workflow/agent-workflows/shared/immutable-set.ts`).
 
 "on":
   push:
@@ -42,6 +43,7 @@ name: Verify
       - "docs/**"
       - "LICENSE"
   repository_dispatch:
+    types: [implementation-opened]
 
 permissions:
   contents: read

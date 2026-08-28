@@ -322,9 +322,25 @@ describe("review.yml's trigger", () => {
     // `verify.yml` also fires on `push: main`, where `workflow_run.head_sha` is trunk's own tip and
     // `origin/main..head_sha` is empty — so without this the lane spent a reviewer fleet reading
     // nothing on every commit the owner pushed himself.
-    expect(workflow.jobs.review.if).toContain(
-      "github.event.workflow_run.event == 'repository_dispatch'",
-    );
+    //
+    // Spelled from the other side — "not the push run" — because this workflow is not itself
+    // dispatch-triggered and naming that event made it read as one to ADR-0090's sweep (#188). The
+    // test below is what makes the two spellings the same condition rather than two conditions that
+    // agree today.
+    expect(workflow.jobs.review.if).toContain("github.event.workflow_run.event != 'push'");
+  });
+
+  it("is equivalent to naming the dispatch, because Verify has exactly two doors", () => {
+    // The premise "not push" relies on: `verify.yml` fires on a push to main and on the
+    // implementer's dispatch, and on nothing else. `immutable-set.test.ts` asserts the same list
+    // for its own reasons; it is re-asserted here because *this* file's `if:` is unsound the
+    // moment a third trigger is added there, and the failure would otherwise land on a lane that
+    // never mentions Verify's triggers at all.
+    const verify = parse(
+      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/verify.yml"), "utf8"),
+    ) as { on: Record<string, unknown> };
+
+    expect(Object.keys(verify.on).sort()).toEqual(["push", "repository_dispatch"]);
   });
 
   it("sets the assignee review.ts refuses to run without", () => {

@@ -1,6 +1,6 @@
 name: Lost-dispatch counter
 
-# #127, ADR-0062, ADR-0065: a `repository_dispatch` that never arrived produces no run at all, so
+# #127, ADR-0062, ADR-0065: a dispatch that never arrived produces no run at all, so
 # #41's run watchdog — which reads runs — has nothing to sweep. The only surviving trace is the
 # label itself: ADR-0062 rules `sliceable` a durable trace rather than a trigger, applied by the
 # same job that sends the dispatch, so a PRD that carries it with no sub-issues and no completed

@@ -7,10 +7,10 @@ name: Integrate
 # constant rather than trusting they were typed the same twice — the same split every other lane
 # in this pipeline holds to).
 #
-# `repository_dispatch` is left unfiltered by `types:` for the reason `dispatch-reconcile.yml`
-# and `audit.yml` give: the filter is per-workflow, not per-job, so a sibling sharing this trigger
-# surface would force this file's list to track every action any of them ever adds. The job-level
-# `if:` below is the scope rule.
+# `types:` names this lane's own action, for the reason `audit.yml` gives and ADR-0090 rules — an
+# unfiltered trigger woke this lane on every unrelated dispatch, and its four runs to date are four
+# skips that read exactly like four failures to a person scanning the history. The job-level `if:`
+# below is still the scope rule.
 #
 # `concurrency` names one fixed group, never interpolated on a PR number or a SHA — DESIGN.md
 # §10's "exactly one merge at a time" is a claim about every pull request this lane could ever
@@ -22,6 +22,7 @@ name: Integrate
 
 "on":
   repository_dispatch:
+    types: [implementation-opened]
 
 permissions:
   contents: write

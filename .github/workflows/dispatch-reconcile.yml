@@ -23,11 +23,13 @@ name: Dispatch reconcile
 # is refused on ADR-0048's evidence unchanged — GitHub throttles scheduled runs under the same load
 # being reconciled against.
 #
-# `repository_dispatch` is left unfiltered by `types:` for the reason `audit.yml` and
-# `run-watchdog.yml` give: the filter is per-workflow, not per-job, so a sibling sharing
-# this trigger surface would force this file's list to track every action any of them ever adds.
-# The job-level `if` is the scope rule, spelled here and in `reconcile.ts`'s
-# `RECONCILE_DISPATCH_ACTIONS`; `reconcile.test.ts` asserts the two still agree.
+# `types:` names both of this lane's actions, for the reason `audit.yml` gives and ADR-0090 rules —
+# an unfiltered trigger wakes every dispatch-triggered workflow on every dispatch any lane sends,
+# and the skipped runs that produces are what made the acting lanes unreadable in the run history.
+# This is the one workflow whose list is genuinely two entries long, which is the case the old
+# argument was built around; two entries that `reconcile.test.ts` holds to `RECONCILE_DISPATCH_ACTIONS`
+# is a cheaper thing to keep true than a history nobody can read. The job-level `if` is still the
+# scope rule, spelled here and in `reconcile.ts`'s `RECONCILE_DISPATCH_ACTIONS`.
 #
 # **Lane 08 never reads the graph and this never writes it.** The doorbell says "something changed,
 # go look" and nothing else, and the only reader is this — so ADR-0069 is applied, not amended, and
@@ -35,6 +37,7 @@ name: Dispatch reconcile
 
 "on":
   repository_dispatch:
+    types: [session-captured, graph-changed]
   workflow_dispatch:
 
 permissions:

@@ -21,14 +21,17 @@ name: Run watchdog
 # dispatch as `dispatch-reconcile.yml` and `audit.yml`, reused rather than given one of its own: a
 # second dispatch is a second thing that can silently stop arriving.
 #
-# `on: repository_dispatch` is left unfiltered by `types:` on purpose — that filter is per-workflow,
-# so a list here would have to track every action a sibling workflow ever adds. The job-level `if` is
-# what scopes a run, spelled here as well as in `run-watchdog.ts`'s own `WATCHDOG_DISPATCH_ACTION`;
-# no compiler sees across that boundary, so `run-watchdog.test.ts` asserts the two still agree and
-# `capture/dispatch-action.test.ts` holds both to the name the hook actually sends (#107).
+# `types:` names this lane's own action, for the reason `audit.yml` gives at length and ADR-0090
+# rules: an unfiltered trigger wakes every dispatch-triggered workflow on every dispatch any lane
+# sends, and the skipped runs that produces are what made the six acting lanes unreadable in the run
+# history. The job-level `if` stays the scope rule, spelled here as well as in `run-watchdog.ts`'s
+# own `WATCHDOG_DISPATCH_ACTION`; no compiler sees across that boundary, so `run-watchdog.test.ts`
+# asserts the two still agree and `capture/dispatch-action.test.ts` holds both to the name the hook
+# actually sends (#107).
 
 "on":
   repository_dispatch:
+    types: [session-captured]
 
 permissions:
   # read: the checkout. Declaring a `permissions:` block sets every scope not listed in it to none,
