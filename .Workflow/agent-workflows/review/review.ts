@@ -4,6 +4,7 @@ import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
+import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { testsForCriteria } from "../shared/affected-tests";
 import { isStructurallyRefused, type Finding, type GreenGateCheck } from "./structural-refusal";
@@ -141,8 +142,6 @@ export function untestedCriteria(criteria: string[], dir?: string): string[] {
   return criteria.filter((criterion) => testsForCriteria([criterion], dir).length === 0);
 }
 
-const GH_ISSUE_URL_RE = /\/issues\/(\d+)\s*$/;
-
 /**
  * Files one `spec/gap` issue against `prdIssueNumber` and returns its number. The only place this
  * lane writes an issue for a "the spec is silent" finding rather than filtering one through
@@ -157,11 +156,7 @@ function fileSpecGap(gh: GhExec, prdIssueNumber: number, report: string): number
     report,
   ].join("\n");
   const created = gh(["issue", "create", "--title", title, "--body", body, "--label", SPEC_GAP_LABEL]);
-  const match = created.trim().match(GH_ISSUE_URL_RE);
-  if (!match) {
-    throw new Error(`could not parse an issue number from "gh issue create" output: ${JSON.stringify(created)}`);
-  }
-  return Number(match[1]);
+  return parseIssueNumber(created, title);
 }
 
 /**

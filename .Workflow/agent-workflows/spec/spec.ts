@@ -1,12 +1,15 @@
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import type { GhExec } from "../shared/gh";
-import { runStage, type StageExec } from "../shared/stage";
+import { execGh, type GhExec } from "../shared/gh";
+import { reason } from "../shared/reason";
+import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { runSpecCritic } from "./critic";
 import { collectInSessionContext } from "./collectors/in-session";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
 import { applyGate, gateCount, type GateOutcome } from "./open-questions";
+import { publishSpec, readSourceMarker, readSpecBody, updateSpec, type SpecSource } from "./publish";
 import { postOpenQuestions } from "./rounds";
 
 // Re-exported rather than wired into this file's own chain: ADR-0079's
@@ -161,8 +164,12 @@ export async function runSpecAuthor(
   };
 }
 
-/** What `runSpecPublication` hands back: the draft, and what the gate did with it. */
+/** What `runSpecPublication` hands back: the draft, where it landed, and what the gate did with it. */
 export interface SpecPublicationResult extends SpecAuthorOutput {
+  /** The `PRD:` issue this run published, or re-ran and rewrote. */
+  issueNumber: number;
+  /** `true` when this run filed the issue, `false` when it rewrote one that already existed. */
+  published: boolean;
   /** The count `open-questions.ts`'s `gateCount` computed over the folded `openQuestions`. */
   gateCount: number;
   /** `"dispatched"` at zero, `"held"` otherwise — `open-questions.ts`'s `applyGate` outcome. */
@@ -170,8 +177,29 @@ export interface SpecPublicationResult extends SpecAuthorOutput {
 }
 
 /**
+ * Which issue this run's draft lands on.
+ *
+ * `publish` is a first run: no spec exists, and the source is recorded on the one this files so a
+ * later re-run can find its way back to the collector. `rerun` is ADR-0062's answering round: the
+ * spec exists, carries the owner's answers as comments, and must be rewritten rather than filed
+ * again — its number is what `sliceable`, the dispatch, the round count and every comment already
+ * hang off.
+ */
+export type SpecTarget =
+  | { mode: "publish"; source: SpecSource | undefined }
+  | { mode: "rerun"; issueNumber: number; source: SpecSource | undefined };
+
+/**
  * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft plus
- * critic, already folded into one `openQuestions` list — then gates on it.
+ * critic, already folded into one `openQuestions` list — publishes the result,
+ * then gates on it.
+ *
+ * Publication comes first and is unconditional, which is ADR-0062's step 1 read
+ * literally: the spec carries `prd` whatever its count, and "a spec that never
+ * reaches zero never slices — that is the correct behaviour and it is visible:
+ * the issue sits carrying `prd` without `sliceable`." A gate that decided
+ * whether to publish would make the held case invisible, which is the one
+ * outcome that is supposed to reach the owner.
  *
  * At a zero gate count: `applyGate` labels the spec `sliceable` and sends
  * the `repository_dispatch` lane 03 fires on. At any other count:
@@ -181,16 +209,23 @@ export interface SpecPublicationResult extends SpecAuthorOutput {
  * re-run.
  *
  * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
- * plus the `gh` and issue number every write needs — the trigger's own `gh`
- * is not reused here, because an `in-session` trigger carries none.
+ * plus the `gh` every write needs — the trigger's own `gh` is not reused here,
+ * because an `in-session` trigger carries none.
  */
 export async function runSpecPublication(
   exec: StageExec,
   gh: GhExec,
-  issueNumber: number,
+  target: SpecTarget,
   input: DecidedContext | SpecTrigger,
 ): Promise<SpecPublicationResult> {
   const draft = await runSpecAuthor(exec, input);
+
+  const issueNumber =
+    target.mode === "publish" ? publishSpec(gh, draft, target.source) : target.issueNumber;
+  if (target.mode === "rerun") {
+    updateSpec(gh, issueNumber, draft, target.source);
+  }
+
   const count = gateCount(draft.openQuestions);
   const outcome = applyGate(gh, issueNumber, count);
 
@@ -198,5 +233,98 @@ export async function runSpecPublication(
     postOpenQuestions(gh, issueNumber, draft.openQuestions);
   }
 
-  return { ...draft, gateCount: count, outcome };
+  return { ...draft, issueNumber, published: target.mode === "publish", gateCount: count, outcome };
+}
+
+/**
+ * The event `spec.yml` hands this file, reduced to the two facts that pick a collector: which
+ * trigger fired, and the issue it names.
+ *
+ * `sheet` arrives as ADR-0083's `repository_dispatch` after the accept has written its marker;
+ * `map` arrives as the owner's `to-spec` click (ADR-0059); `answer` is a comment on a spec that is
+ * already published, which is ADR-0062's re-run and the only one of the three that does not file a
+ * new issue.
+ */
+export type SpecInvocation =
+  | { trigger: "sheet"; issueNumber: number }
+  | { trigger: "map"; issueNumber: number }
+  | { trigger: "answer"; issueNumber: number };
+
+/**
+ * Turns one invocation into the collector input and the publication target `runSpecPublication`
+ * needs — the whole of the runner's decision-making, kept out of `spec.yml` so it is testable
+ * without a runner and so the workflow stays a trigger and an `npx tsx` line.
+ *
+ * The re-run reads its source back off the spec's own body (`spec-source:v1`), because a comment
+ * event knows only the spec's number and the collectors all read the *source* — the accepted idea
+ * or the closed map — never the spec drafted from it. A spec carrying no readable source marker
+ * cannot be re-run and says so: that is a spec published before the marker existed, or one written
+ * from a live session, and guessing at its provenance would be exactly the re-derivation
+ * `shape/marker.ts` exists to prevent.
+ */
+export function planSpecRun(
+  gh: GhExec,
+  invocation: SpecInvocation,
+): { input: SpecTrigger; target: SpecTarget } {
+  if (invocation.trigger !== "answer") {
+    const source: SpecSource = { kind: invocation.trigger, issue: invocation.issueNumber };
+    return {
+      input: { kind: invocation.trigger, gh, issueNumber: invocation.issueNumber },
+      target: { mode: "publish", source },
+    };
+  }
+
+  const source = readSourceMarker(readSpecBody(gh, invocation.issueNumber));
+  if (!source) {
+    throw new Error(
+      `spec #${invocation.issueNumber} records no readable spec-source marker, so there is no ` +
+        `decided context to re-run it from — answer it in a live session, or re-run its source directly`,
+    );
+  }
+
+  return {
+    input: { kind: source.kind, gh, issueNumber: source.issue },
+    target: { mode: "rerun", issueNumber: invocation.issueNumber, source },
+  };
+}
+
+/**
+ * Reads `spec.yml`'s environment into a `SpecInvocation`.
+ *
+ * `SPEC_TRIGGER` is set by the workflow rather than re-derived here from `GITHUB_EVENT_NAME` and a
+ * label: the workflow's `if:` has already decided which of the three fired, and re-deciding it from
+ * the raw event would be a second copy of that condition that could disagree with the first.
+ */
+export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
+  const trigger = env.SPEC_TRIGGER;
+  const issueNumber = Number(env.ISSUE_NUMBER);
+
+  if (trigger !== "sheet" && trigger !== "map" && trigger !== "answer") {
+    throw new Error(`SPEC_TRIGGER must be one of sheet, map, answer — got ${JSON.stringify(trigger)}`);
+  }
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error(`ISSUE_NUMBER must be a positive integer — got ${JSON.stringify(env.ISSUE_NUMBER)}`);
+  }
+
+  return { trigger, issueNumber };
+}
+
+async function main(): Promise<void> {
+  try {
+    const invocation = invocationFromEnv(process.env);
+    const { input, target } = planSpecRun(execGh, invocation);
+    const result = await runSpecPublication(execClaude, execGh, target, input);
+
+    console.log(
+      `${result.published ? "published" : "re-ran"} #${result.issueNumber}: ` +
+        `${result.gateCount} open question(s), ${result.outcome}`,
+    );
+  } catch (err) {
+    console.error(`spec failed: ${reason(err)}`);
+    process.exitCode = 1;
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
 }

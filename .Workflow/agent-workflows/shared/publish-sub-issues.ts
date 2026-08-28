@@ -1,5 +1,6 @@
 import type { GhExec } from "./gh";
 import { blockedByPath, issuePath, subIssuesPath } from "./gh-paths";
+import { parseIssueNumber } from "./issue-url";
 import type { Plan } from "./plan-schema";
 import { renderBody } from "./render-body";
 
@@ -16,8 +17,6 @@ export interface PublishedIssue {
   id: number;
 }
 
-const ISSUE_URL_RE = /\/issues\/(\d+)\s*$/;
-
 /**
  * Creates one GitHub issue per slice and attaches each under the PRD as a
  * native sub-issue. Called only once the plan has passed `validatePlan` —
@@ -33,16 +32,6 @@ export function publishSubIssues(plan: Plan, prdNumber: number, gh: GhExec): Pub
     attachUnderPrd(gh, prdNumber, id);
     return { position: index + 1, title: slice.title, number, id };
   });
-}
-
-function parseIssueNumber(createOutput: string, title: string): number {
-  const match = createOutput.trim().match(ISSUE_URL_RE);
-  if (!match) {
-    throw new Error(
-      `could not parse an issue number from "gh issue create" output for "${title}": ${JSON.stringify(createOutput)}`,
-    );
-  }
-  return Number(match[1]);
 }
 
 function fetchIssueId(gh: GhExec, number: number): number {

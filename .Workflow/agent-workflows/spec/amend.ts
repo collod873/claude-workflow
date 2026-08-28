@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { GhExec } from "../shared/gh";
+import { parseIssueNumber } from "../shared/issue-url";
 import type { GitExec } from "../shared/git";
 import { writeNoteArray } from "../shared/notes-store";
 import { syncNotesRef } from "../shared/notes-sync";
@@ -86,8 +87,6 @@ export interface SpecAmendDeps {
   /** The repo the audit-trail note is written into, threaded as `-C <repoDir>` (`notes-store.ts`'s own convention). */
   repoDir: string;
 }
-
-const ISSUE_URL_RE = /\/issues\/(\d+)\s*$/;
 
 /**
  * Runs the amendment stage on one `spec/gap` report and carries out its
@@ -191,16 +190,6 @@ function ideaBody(gap: SpecGapReport, reason: string): string {
     `## Why this is new scope, not a clarification`,
     reason,
   ].join("\n");
-}
-
-function parseIssueNumber(createOutput: string, title: string): number {
-  const match = createOutput.trim().match(ISSUE_URL_RE);
-  if (!match) {
-    throw new Error(
-      `could not parse an issue number from "gh issue create" output for "${title}": ${JSON.stringify(createOutput)}`,
-    );
-  }
-  return Number(match[1]);
 }
 
 /** One amendment's audit-trail record — what changed on the PRD, and why. */

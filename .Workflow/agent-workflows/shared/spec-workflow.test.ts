@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
 import { readWorkflow } from "./read-workflow";
 
 /**
@@ -36,15 +37,76 @@ describe("spec.yml's trigger, the two-sided owner/author_association shape", () 
     expect(condition).toContain("contains(github.event.issue.labels.*.name, 'prd')");
   });
 
-  it("ORs the two sides together, rather than ANDing them into an unfireable condition", () => {
-    // Both branches are parenthesized and joined by `||` at the top level — never `&&`, which
-    // would require both an `issues` and an `issue_comment` event_name on the same event.
-    const orIndex = condition.indexOf(") ||");
-    expect(orIndex).toBeGreaterThan(-1);
+  it("ORs the branches together, rather than ANDing them into an unfireable condition", () => {
+    // Every branch is parenthesized and joined by `||` at the top level — never `&&`, which would
+    // require two different `event_name`s on one event. Split on the top-level `) ||` so the test
+    // asserts the shape rather than the order, and does not have to be rewritten the next time a
+    // trigger is added the way ADR-0083's dispatch was.
+    const branches = condition.split(") ||").map((branch) => branch.trim());
+    expect(branches.length).toBeGreaterThanOrEqual(3);
 
-    const beforeOr = condition.slice(0, orIndex);
-    const afterOr = condition.slice(orIndex);
-    expect(beforeOr).toContain("github.event_name == 'issues'");
-    expect(afterOr).toContain("github.event_name == 'issue_comment'");
+    const eventNames = branches.map(
+      (branch) => branch.match(/github\.event_name == '(\w+)'/)?.[1],
+    );
+    expect(eventNames.filter(Boolean).sort()).toEqual([
+      "issue_comment",
+      "issues",
+      "repository_dispatch",
+    ]);
+  });
+});
+
+/**
+ * ADR-0083: the accepted sheet reaches lane 02 by a `repository_dispatch` the accept sends, never
+ * by the `approved` label the accept itself fires on — the sheet collector reads a marker that
+ * accept writes, and a label-fired job would race it.
+ */
+describe("spec.yml's accepted-sheet trigger is ADR-0083's dispatch", () => {
+  it("gates a repository_dispatch branch on the action the accept sends", () => {
+    expect(condition).toContain(
+      `github.event.action == '${SPEC_AUTHOR_DISPATCH_EVENT_TYPE}'`,
+    );
+  });
+
+  it("never fires on the approved label, which would race the accept's own write", () => {
+    expect(condition).not.toContain("approved");
+  });
+
+  it("carries no sender gate on the dispatch branch — the send needs write access, so it is the gate", () => {
+    const dispatchBranch = condition
+      .split(") ||")
+      .find((branch) => branch.includes("repository_dispatch"));
+    expect(dispatchBranch).toBeDefined();
+    expect(dispatchBranch).not.toContain("sender.login");
+    expect(dispatchBranch).not.toContain("author_association");
+  });
+});
+
+/**
+ * The step that was a `run: echo` until #145's seam audit. Every other part of lane 02 — author,
+ * critic, gate, dispatch, rounds — was built and tested; nothing ran them, so a `PRD:` issue
+ * payload was assembled on a runner and discarded.
+ */
+describe("spec.yml runs the lane rather than announcing it", () => {
+  const { workflow: full } = readWorkflow<{
+    jobs: { spec: { steps: Array<{ name: string; run?: string; env?: Record<string, string> }> } };
+  }>("spec.yml");
+  const steps = full.jobs.spec.steps;
+
+  it("invokes spec.ts", () => {
+    const runs = steps.map((step) => step.run ?? "").join("\n");
+    expect(runs).toContain("spec.ts");
+  });
+
+  it("names no step as unwired", () => {
+    for (const step of steps) {
+      expect(step.name).not.toMatch(/not yet wired|proof of life/i);
+    }
+  });
+
+  it("passes the trigger and the issue number the CLI reads", () => {
+    const jobEnv = (full.jobs.spec as unknown as { env: Record<string, string> }).env;
+    expect(jobEnv.SPEC_TRIGGER).toBeDefined();
+    expect(jobEnv.ISSUE_NUMBER).toContain("client_payload.issue");
   });
 });

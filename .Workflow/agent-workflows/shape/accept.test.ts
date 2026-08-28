@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
 import { accept, insertTerm, type AcceptDeps } from "./accept";
 import { sheetMarker } from "./marker";
 import type { Decision, Sheet, Term } from "./sheet-schema";
@@ -276,15 +277,35 @@ describe("approved", () => {
     expect(accept(deps, 1, "approved")).toMatchObject({ route: "long" });
   });
 
-  it("says on the issue that nothing was dispatched", () => {
-    // Lane 02 on a runner is move 6, and what an accepted sheet hands it is
-    // still open (#96). Saying so is the difference between an unbuilt edge
-    // and a silently dropped one.
+  it("dispatches lane 02, and says so on the issue", () => {
+    // ADR-0083. Lane 02 used to be unbuilt and this comment said so; it now runs on a runner, and
+    // the accept is what starts it.
     const { deps, tracker } = harness({ sheet: sheet() });
 
     accept(deps, 1, "approved");
 
-    expect(postedComments(tracker)[0]).toContain("Not dispatched");
+    expect(postedComments(tracker)[0]).toContain("Dispatched to lane 02");
+    expect(postedComments(tracker)[0]).not.toContain("Not dispatched");
+  });
+
+  it("sends the dispatch after the comment carrying the marker the collector reads", () => {
+    // The whole of ADR-0083: a lane 02 that fired on `approved` would race this lane's own write,
+    // and `collectSheetContext` throws when the accept payload is not there yet. Ordering is the
+    // ruling, so ordering is what this asserts — not merely that both calls happened.
+    const { deps, tracker } = harness({ sheet: sheet() });
+
+    accept(deps, 1, "approved");
+
+    const commentIndex = tracker.calls.findIndex(
+      (args) => args[0] === "issue" && args[1] === "comment",
+    );
+    const dispatchIndex = tracker.calls.findIndex(
+      (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
+    );
+    expect(commentIndex).toBeGreaterThan(-1);
+    expect(dispatchIndex).toBeGreaterThan(commentIndex);
+    expect(tracker.calls[dispatchIndex]).toContain(`event_type=${SPEC_AUTHOR_DISPATCH_EVENT_TYPE}`);
+    expect(tracker.calls[dispatchIndex]).toContain("client_payload[issue]=1");
   });
 
   it("refuses to invent a route when there is no sheet to read", () => {

@@ -20,18 +20,28 @@ name: Spec
 # `rounds.ts`'s re-run door (ADR-0062): the owner's answer to a posted round of open questions is a
 # comment on the spec issue, and that comment is what re-runs the chain and recounts.
 #
-# The label-triggered stage-dispatch — which `SpecTrigger` a closed map turns into, versus what a
-# re-run comment on an already-published spec turns into — is not wired into a runnable step yet;
-# `spec.ts` carries no CLI entrypoint of its own, and inventing one here would be guessing at a
-# dispatch a later ticket owns. This file exists to get the trigger itself right and provable
-# (`spec-workflow.test.ts` reads it back as YAML, not as a string), the same way `shape.yml` and
-# `to-tickets.yml` each earned their own ticket before their job bodies did.
+# The accepted sheet arrives as a `repository_dispatch` and **not** as the `approved` label
+# (ADR-0083). The sheet collector reads the accept's payload marker out of the accept comment and
+# throws without it, so a job firing on the same label would race the write it depends on — and
+# lose, because lane 01 files ADRs, commits and pushes before it ever comments. `shape/accept.ts`
+# sends the dispatch as its last act instead. It carries no sender gate: `POST /dispatches` needs
+# write access, so the send is itself the gate (ADR-0073).
+#
+# `repository_dispatch` is left unfiltered by `types:` for the reason `close-gate-reconcile.yml`,
+# `audit.yml` and `integrate.yml` all give — the filter is per-workflow rather than per-job. The
+# job-level `if:` is the scope rule, and it names the one constant the sender reads
+# (`SPEC_AUTHOR_DISPATCH_EVENT_TYPE`, `.Workflow/agent-workflows/spec/publish.ts`).
+#
+# `SPEC_TRIGGER` is decided here and read by `invocationFromEnv` rather than re-derived in
+# TypeScript from the raw event: the `if:` below has already decided which of the three fired, and a
+# second copy of that condition is a second thing that can disagree with it.
 
 "on":
   issues:
     types: [labeled]
   issue_comment:
     types: [created]
+  repository_dispatch:
 
 permissions:
   contents: read
@@ -41,12 +51,14 @@ permissions:
 # label and a fast-follow comment can both arrive within seconds, and two concurrent chains would
 # each read a round count that did not include the other.
 concurrency:
-  group: spec-${{ github.event.issue.number }}
+  group: spec-${{ github.event.issue.number || github.event.client_payload.issue }}
   cancel-in-progress: true
 
 jobs:
   spec:
     if: >-
+      (github.event_name == 'repository_dispatch' &&
+       github.event.action == 'sheet-accepted') ||
       (github.event_name == 'issues' &&
        github.event.label.name == 'to-spec' &&
        github.event.sender.login == github.repository_owner) ||
@@ -59,7 +71,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      # The dispatch names its subject in `client_payload.issue` (`dispatchSpecAuthor`); the two
+      # tracker events carry it as the issue they happened on. One of the two is always empty.
+      ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
+      SPEC_TRIGGER: >-
+        ${{ (github.event_name == 'repository_dispatch' && 'sheet') ||
+            (github.event_name == 'issues' && 'map') ||
+            'answer' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -67,10 +85,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # No stage runs yet — see the header. This step is the trigger's own proof of life: it costs
-      # no model and touches no issue, so a run that reaches it is evidence the `if:` above
-      # actually gated correctly, without spending anything on a chain a later ticket still needs
-      # to wire.
-      - name: Spec author (stage dispatch not yet wired)
+      # Same shape as every other model-spending lane's preflight: fail closed on an empty secret
+      # before Node is set up, rather than let the stage spawn `claude` with nothing to
+      # authenticate it.
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
-          echo "spec.yml fired for issue #$ISSUE_NUMBER (event: ${{ github.event_name }}). Stage dispatch lands in a later ticket."
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is empty; refusing to start the spec author"
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # The whole lane: collect the decided context this trigger names, run the author and the
+      # critic, publish (or rewrite) the `PRD:` issue, then gate on the open-question count —
+      # `sliceable` plus a dispatch at zero, the numbered questions as a comment otherwise.
+      - name: Spec author
+        run: npx tsx .Workflow/agent-workflows/spec/spec.ts

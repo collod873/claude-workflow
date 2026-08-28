@@ -1,4 +1,5 @@
 import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
+import { dispatchSpecAuthor } from "../spec/publish";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { acceptedMarker } from "./marker";
@@ -139,6 +140,12 @@ function approve(deps: AcceptDeps, issueNumber: number): AcceptOutcome {
     "--body",
     acceptComment(adrs, terms, route, sheet),
   ]);
+
+  // Last, and only after the comment above has landed (ADR-0083). Lane 02's sheet collector reads
+  // the accept payload out of that comment and throws without it, so a lane 02 that fired on the
+  // `approved` label would race the write it depends on — and lose, since this lane files, commits
+  // and pushes ADRs before it ever comments.
+  dispatchSpecAuthor(deps.gh, issueNumber);
 
   return { kind: "approved", adrs, terms: terms.map((term) => term.term), route };
 }
@@ -348,7 +355,7 @@ ${filed}${coined}
 
 ${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), route })}
 
-**Not dispatched.** Lane 02 does not run on a runner yet — that is move 6. This click filed what the sheet decided so the spec cites it rather than re-deciding it; starting the work is still yours until move 6 lands, and it fires on this same label.`;
+**Dispatched to lane 02.** This click filed what the sheet decided, so the spec cites the rulings rather than re-deciding them, and then started the spec author on them. The spec arrives as its own \`PRD:\` issue — carrying numbered open questions if it had to guess at anything, and nothing further from you if it did not.`;
 }
 
 /** Drops `idea`, which is the only thing that stops this lane re-firing. */

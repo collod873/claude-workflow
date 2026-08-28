@@ -1,4 +1,5 @@
 import type { GhExec } from "../shared/gh";
+import { parseIssueNumber } from "../shared/issue-url";
 import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
 
@@ -12,8 +13,6 @@ import type { Finding } from "./structural-refusal";
  */
 
 const TITLE_MAX = 80;
-
-const GH_ISSUE_URL_RE = /\/issues\/(\d+)\s*$/;
 
 /** `finding.message`'s first line, trimmed to `TITLE_MAX` — a title, not the finding's full text. */
 function titleFor(finding: Finding): string {
@@ -39,11 +38,7 @@ export function publishFinding(gh: GhExec, finding: Finding, assignee: string): 
     "--assignee",
     assignee,
   ]);
-  const match = created.trim().match(GH_ISSUE_URL_RE);
-  if (!match) {
-    throw new Error(`could not parse an issue number from "gh issue create" output: ${JSON.stringify(created)}`);
-  }
-  return Number(match[1]);
+  return parseIssueNumber(created, titleFor(finding));
 }
 
 /**
