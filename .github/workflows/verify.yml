@@ -143,7 +143,12 @@ jobs:
             echo "::error::no acceptance test names a criterion this dispatch carries"
             exit 1
           fi
-          npx vitest run $FILES
+          # Split on newlines into an array rather than letting an unquoted `$FILES` word-split:
+          # a path carrying a space or a glob character would otherwise reach vitest as two
+          # arguments or as an expanded pattern. The command substitution above stays, because it
+          # is what lets `set -e` see a failing `tsx` — a `mapfile < <(...)` would swallow it.
+          readarray -t FILE_LIST <<< "$FILES"
+          npx vitest run "${FILE_LIST[@]}"
 
   verify:
     needs: [immutability]
