@@ -110,3 +110,26 @@ describe("spec.yml runs the lane rather than announcing it", () => {
     expect(jobEnv.ISSUE_NUMBER).toContain("client_payload.issue");
   });
 });
+
+/**
+ * The re-run door is ADR-0062's "his answer" to a posted round, so it must not fire on a spec with
+ * no round outstanding. Closing #145 fired two runs of this lane off its own closing record before
+ * this narrowing existed.
+ */
+describe("spec.yml's re-run door only opens on a spec still holding questions", () => {
+  const commentBranch = condition
+    .split(") ||")
+    .find((branch) => branch.includes("issue_comment"));
+
+  it("has a comment branch", () => {
+    expect(commentBranch).toBeDefined();
+  });
+
+  it("does not re-run a spec that has already dispatched", () => {
+    expect(commentBranch).toContain("!contains(github.event.issue.labels.*.name, 'sliceable')");
+  });
+
+  it("does not re-run a closed spec", () => {
+    expect(commentBranch).toContain("github.event.issue.state == 'open'");
+  });
+});

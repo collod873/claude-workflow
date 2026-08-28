@@ -20,6 +20,13 @@ name: Spec
 # `rounds.ts`'s re-run door (ADR-0062): the owner's answer to a posted round of open questions is a
 # comment on the spec issue, and that comment is what re-runs the chain and recounts.
 #
+# That door is narrowed to a spec **still holding questions** — open, and without `sliceable`.
+# ADR-0062 scopes the re-run to "his answer" to a posted round, and a spec that has already
+# dispatched has no round outstanding to answer. Without the narrowing, every comment on any `prd`
+# issue re-ran the whole lane: closing #145 fired two runs off its own closing record. They failed
+# safe on the missing source marker and spent no model, but a spec that *had* one would have paid
+# two Opus stages to redraft a finished spec from a comment that answered nothing.
+#
 # The accepted sheet arrives as a `repository_dispatch` and **not** as the `approved` label
 # (ADR-0083). The sheet collector reads the accept's payload marker out of the accept comment and
 # throws without it, so a job firing on the same label would race the write it depends on — and
@@ -64,7 +71,9 @@ jobs:
        github.event.sender.login == github.repository_owner) ||
       (github.event_name == 'issue_comment' &&
        !github.event.issue.pull_request &&
+       github.event.issue.state == 'open' &&
        contains(github.event.issue.labels.*.name, 'prd') &&
+       !contains(github.event.issue.labels.*.name, 'sliceable') &&
        github.event.comment.user.type != 'Bot' &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
                 github.event.comment.author_association))
