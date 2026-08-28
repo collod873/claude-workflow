@@ -8,6 +8,13 @@
 # It exists only because settings.json cannot resolve an interpreter and a hook shell does not
 # inherit a login PATH. It never decides anything, and it exits 0 on every path it owns — a shim
 # that can fail is a hook that can wedge a session.
+#
+# Which is exactly why this file is not the turn-end check and must never be published as one
+# (#186). The line below is how the contract probe learns what the check actually is: a hook is
+# reached with its payload on stdin, and the same path run as a plain command exits 0 having
+# checked nothing. Keep it pointing at what `gauntlet-hook.mjs` really spawns.
+#
+# check-command: bin/gauntlet stop
 
 set -uo pipefail
 

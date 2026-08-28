@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -94,13 +95,37 @@ describe("probe", () => {
  * #130: the probe used to test one hardcoded path for a turn-end check, so a repo whose Stop hook
  * lives anywhere else — including this one — published `stop: null` and had that certified by
  * `regenerate && diff`. These read the declaration site instead.
+ *
+ * #186: what it then published was the hook entry point, which no reader can run — a hook is
+ * reached with its payload on stdin, and the same path as a plain command exits 0 having checked
+ * nothing. So the hook is asked what check it runs, and a hook that will not say is a `null`.
  */
 describe("probe's stop slot", () => {
-  it("reads the Stop hook out of settings.json and expands $CLAUDE_PROJECT_DIR away", () => {
+  it("publishes the check the wired Stop hook declares, not the hook itself", () => {
     const contract = probe(join(FIXTURES, "stop-hook-in-settings"));
 
-    expect(contract.stop.cmd).toBe(".claude/hooks/gauntlet.sh stop");
+    expect(contract.stop.cmd).toBe("bin/gauntlet stop");
+    expect(contract.stop.why).toContain(".claude/hooks/gauntlet.sh#check-command");
     expect(contract.stop.why).toContain(".claude/settings.json#hooks.Stop");
+  });
+
+  it("finds the hook file through the $CLAUDE_PROJECT_DIR the settings command is written against", () => {
+    const settings = JSON.parse(
+      readFileSync(join(FIXTURES, "stop-hook-in-settings/.claude/settings.json"), "utf8"),
+    );
+
+    // The declaration this probe has to see past to read the hook off disk at all.
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe(
+      '"$CLAUDE_PROJECT_DIR"/.claude/hooks/gauntlet.sh stop',
+    );
+    expect(probe(join(FIXTURES, "stop-hook-in-settings")).stop.cmd).toBe("bin/gauntlet stop");
+  });
+
+  it("publishes null for a wired hook that declares no check-command", () => {
+    const contract = probe(join(FIXTURES, "stop-hook-undeclared"));
+
+    expect(contract.stop.cmd).toBeNull();
+    expect(contract.stop.why).toContain("check-command");
   });
 
   it("publishes null rather than an arbitrary first one when two command hooks are declared", () => {
@@ -110,10 +135,11 @@ describe("probe's stop slot", () => {
     expect(contract.stop.why).toContain("2 command hooks");
   });
 
-  it("falls back to the conventional stop-gate.sh when settings.json cannot be read", () => {
+  it("falls back to the conventional stop-gate.sh's declaration when settings.json cannot be read", () => {
     const contract = probe(join(FIXTURES, "stop-gate-hook-only"));
 
-    expect(contract.stop.cmd).toBe(".claude/hooks/stop-gate.sh");
+    expect(contract.stop.cmd).toBe("bin/checks.sh");
+    expect(contract.stop.why).toContain(".claude/hooks/stop-gate.sh#check-command");
   });
 
   it("publishes null when a tree declares no turn-end check either way", () => {

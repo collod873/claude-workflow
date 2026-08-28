@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 
 /**
@@ -323,39 +323,111 @@ function declaredStopCommands(root: string): Array<{ cmd: string; raw: string }>
 }
 
 /**
- * The turn-end check, read from where a repo actually declares one (#130).
+ * A hook naming the check it runs, as a comment a probe can read: `# check-command: bin/gauntlet
+ * stop`, or `//` for a hook written in a language that comments that way. First match wins.
  *
- * It used to test one hardcoded path, `.claude/hooks/stop-gate.sh`, and this repo's own hook is
- * `.claude/hooks/gauntlet.sh stop` wired as a Stop hook in `.claude/settings.json` — so the probe
- * found nothing, published `stop: null`, and `regenerate && diff` certified that as correct because
- * a fresh probe agreed with the committed file. `null` in a slot is a claim ("this repo has
- * deliberately no turn-end check"), not an absence, and this repo runs one every turn. Same shape as
- * the `all: null` defect #121 caught, one notch quieter.
+ * It exists because #186: a Stop hook is *not* the turn-end check, and publishing one as `stop.cmd`
+ * is what let 255 turn-end runs report `clean` in 0.02s each. Claude Code invokes a hook with its
+ * payload as JSON on stdin; run as a plain command it gets none, prints nothing and exits 0 — every
+ * question a probe can ask about a path on disk (present, executable, the one `settings.json`
+ * wires) is answered yes, and the only question that matters is answered `exit 0` forever.
  *
- * `settings.json` is asked first because it is the declaration site: the hardcoded path is a
- * convention, and a convention only describes a repo that happens to follow it. Two or more declared
- * Stop hooks publish `null` rather than an arbitrary first one — a repo with two turn-end checks has
- * no single command a contract reader can run, and picking one would be the probe assuming rather
- * than measuring.
+ * So the hook is asked what it runs instead of being taken for it. A comment rather than a flag
+ * because reading a file cannot wedge a session, and the alternative — matching `.claude/hooks/X.sh`
+ * to `bin/X` by name — is the kind of convention #130 already caught describing only the repos that
+ * happen to follow it.
+ */
+const CHECK_COMMAND_DECLARATION = /^[ \t]*(?:#|\/\/)[ \t]*check-command:[ \t]*(\S.*?)[ \t]*$/m;
+
+/** A command's argv[0], unquoted. Whitespace-split, which is every hook command shape settings.json carries. */
+function argv0(command: string): string {
+  return (command.trim().split(/\s+/)[0] ?? "").replace(/^["']|["']$/g, "");
+}
+
+/** The `check-command:` a hook declares, or `undefined` when the file is unreadable or declares none. */
+function declaredCheckCommand(root: string, hookCommand: string): string | undefined {
+  const script = argv0(hookCommand);
+  if (!script) return undefined;
+  const path = isAbsolute(script) ? script : join(root, script);
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  return CHECK_COMMAND_DECLARATION.exec(text)?.[1];
+}
+
+/**
+ * Whether a reader who checked this repo out could actually run `cmd`. A command naming a path is
+ * held to that path being an executable file here; a bare name is a PATH lookup this probe cannot
+ * resolve for a reader's machine and does not pretend to.
+ */
+function isRunnableHere(root: string, cmd: string): boolean {
+  const script = argv0(cmd);
+  if (!script.includes("/")) return true;
+  try {
+    return (statSync(join(root, script)).mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The turn-end check, read from the hook a repo declares — not the hook itself (#186, amending
+ * #130).
+ *
+ * #130 fixed the probe looking in the wrong place: it tested one hardcoded path,
+ * `.claude/hooks/stop-gate.sh`, so this repo — whose hook is wired in `.claude/settings.json` —
+ * published `stop: null` while running a turn-end check every turn. What it then published was the
+ * hook entry point, which is the wrong *kind* of thing: a slot's `cmd` is "the input a runner runs"
+ * (CONTEXT.md), and a hook is only runnable by Claude Code, holding a payload this repo's contract
+ * has no way to hand it. Both defects are one shape — a `null`, then a green, that nothing measured.
+ *
+ * `settings.json` is still asked first, because it is the declaration site and the hardcoded path is
+ * a convention. Two or more declared Stop hooks publish `null` rather than an arbitrary first one —
+ * a repo with two turn-end checks has no single command a contract reader can run, and picking one
+ * would be the probe assuming rather than measuring. A hook that declares no `check-command:` is the
+ * same `null` for the same reason: this probe found a turn-end check it cannot name, which is not
+ * the same as naming one it cannot run.
  */
 function probeStop(root: string): Slot {
   const declared = declaredStopCommands(root);
-  if (declared.length === 1) {
-    return { cmd: declared[0].cmd, why: `${SETTINGS_PATH}#hooks.Stop (${declared[0].raw})` };
-  }
   if (declared.length > 1) {
     return {
       cmd: null,
       why: `${SETTINGS_PATH}#hooks.Stop declares ${declared.length} command hooks — no single turn-end check to name`,
     };
   }
-  if (existsSync(join(root, STOP_GATE_HOOK))) {
-    return { cmd: STOP_GATE_HOOK, why: `declared turn-end hook at ${STOP_GATE_HOOK}` };
+
+  const hook =
+    declared.length === 1
+      ? { cmd: declared[0].cmd, site: `wired at ${SETTINGS_PATH}#hooks.Stop` }
+      : existsSync(join(root, STOP_GATE_HOOK))
+        ? { cmd: STOP_GATE_HOOK, site: `at the conventional ${STOP_GATE_HOOK}` }
+        : undefined;
+
+  if (!hook) {
+    return {
+      cmd: null,
+      why: `no Stop hook in ${SETTINGS_PATH}, and no turn-end check at ${STOP_GATE_HOOK}`,
+    };
   }
-  return {
-    cmd: null,
-    why: `no Stop hook in ${SETTINGS_PATH}, and no turn-end check at ${STOP_GATE_HOOK}`,
-  };
+
+  const check = declaredCheckCommand(root, hook.cmd);
+  if (!check) {
+    return {
+      cmd: null,
+      why: `the Stop hook ${hook.cmd} (${hook.site}) declares no \`check-command:\` — a hook entry point is not a command a contract reader can run`,
+    };
+  }
+  if (!isRunnableHere(root, check)) {
+    return {
+      cmd: null,
+      why: `the Stop hook ${hook.cmd} declares \`check-command: ${check}\`, which is not an executable file in this tree`,
+    };
+  }
+  return { cmd: check, why: `${argv0(hook.cmd)}#check-command, ${hook.site}` };
 }
 
 const AGGREGATE_SCRIPT_NAMES = ["check", "verify", "ci"] as const;

@@ -1,7 +1,7 @@
 {
   "stop": {
-    "cmd": ".claude/hooks/gauntlet.sh stop",
-    "why": ".claude/settings.json#hooks.Stop (\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gauntlet.sh stop)"
+    "cmd": "bin/gauntlet stop",
+    "why": ".claude/hooks/gauntlet.sh#check-command, wired at .claude/settings.json#hooks.Stop"
   },
   "test": {
     "cmd": "npm test",

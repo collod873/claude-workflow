@@ -70,24 +70,36 @@ describe("this repository's committed contract", () => {
    * #130, and the reason it is checked here rather than left to the byte-identity test above: a
    * `stop: null` that a fresh probe reproduces exactly is what `regenerate && diff` shipped green
    * for a day. Byte-identity proves the file was generated; it cannot prove the generator was
-   * looking in the right place. These two ask the repo directly instead — the hook this repo runs
-   * every turn has to be on disk, executable, and the same one `settings.json` wires up.
+   * looking in the right place. These ask the repo directly instead.
    */
   it("publishes a non-null `stop`, because this repo runs a turn-end check every turn", () => {
     expect(committed.stop.cmd).not.toBeNull();
   });
 
-  it("names a `stop` that is this repo's live Stop hook, on disk and executable", () => {
-    const settings = JSON.parse(readFileSync(join(REPO_ROOT, ".claude/settings.json"), "utf8"));
-    const wired: string[] = (settings.hooks?.Stop ?? [])
-      .flatMap((group: { hooks?: Array<{ command?: string }> }) => group.hooks ?? [])
-      .map((hook: { command?: string }) => hook.command ?? "");
-
-    expect(wired.some((command) => command.endsWith(committed.stop.cmd))).toBe(true);
-
+  it("names a `stop` that is on disk and executable", () => {
     const script = join(REPO_ROOT, committed.stop.cmd.split(" ")[0]);
+
     expect(existsSync(script)).toBe(true);
     expect(statSync(script).mode & 0o111).not.toBe(0);
+  });
+
+  /**
+   * #186. On disk and executable was the whole bar the test here used to set, and the hook entry
+   * point `.claude/settings.json` wires clears it — while exiting 0 in 0.02s to any reader who runs
+   * it, because Claude Code hands a hook its payload on stdin and a plain command line does not.
+   * 255 turn-end runs reported `clean` that way. A hook is never the slot's answer.
+   */
+  it("names a `stop` that is not one of the hook entry points settings.json wires", () => {
+    const settings = JSON.parse(readFileSync(join(REPO_ROOT, ".claude/settings.json"), "utf8"));
+    const wired: string[] = Object.values(
+      settings.hooks as Record<string, Array<{ hooks?: Array<{ command?: string }> }>>,
+    )
+      .flat()
+      .flatMap((group) => group.hooks ?? [])
+      .map((hook) => hook.command ?? "");
+
+    expect(wired.length).toBeGreaterThan(0);
+    expect(wired.some((command) => command.endsWith(committed.stop.cmd))).toBe(false);
   });
 });
 
@@ -259,6 +271,81 @@ describe("bin/gauntlet push's regenerate && diff", () => {
 
     writeFileSync(contractPath, fresh);
     expect(runPush(root).status).toBe(0);
+  });
+});
+
+/**
+ * #186's acceptance test, and the one the byte-identity and on-disk tests above could never be:
+ * whether the command this repo *publishes* as its turn-end check can go red at all.
+ *
+ * Every question asked of `stop.cmd` before this one was answered `yes` by a hook entry point that
+ * checked nothing — present, executable, wired in `settings.json`, reproduced exactly by a fresh
+ * probe. So this one runs it. A tree whose checks fail, the published command run in it verbatim,
+ * and a non-zero exit demanded; then the same tree with the checks passing, to prove the red came
+ * from the tree rather than from the command being broken.
+ */
+describe("the published stop.cmd", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+  });
+
+  const PUBLISHED_STOP: string = JSON.parse(
+    readFileSync(join(REPO_ROOT, CONTRACT_RELATIVE_PATH), "utf8"),
+  ).stop.cmd;
+
+  const FAILS = 'node -e "process.exit(1)"';
+  const PASSES = 'node -e ""';
+
+  /**
+   * The same trick as the push fixture above — the real `bin/gauntlet` run *as* a cheap tree rather
+   * than *in* this one, by giving that tree a `bin/`. Only `check-contract.ts` is copied because
+   * the `stop` venue loads only that; the generator, corpus and wiring modules are `push`'s.
+   *
+   * The contract is written by hand rather than probed, and its commands are `node -e` one-liners
+   * rather than `npm run`: what is under test is the command this repo published, not what some
+   * fixture's `test` slot happens to run, and three npm spawns per case would be most of this
+   * suite's runtime for no assertion.
+   */
+  function treeWhereChecksExit(code: typeof FAILS | typeof PASSES): string {
+    const root = mkdtempSync(join(tmpdir(), "published-stop-"));
+    dirs.push(root);
+
+    symlinkSync(join(REPO_ROOT, "bin"), join(root, "bin"), "dir");
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
+    const module = ".Workflow/agent-workflows/shared/check-contract.ts";
+    mkdirSync(join(root, dirname(module)), { recursive: true });
+    copyFileSync(join(REPO_ROOT, module), join(root, module));
+
+    mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
+    writeFileSync(
+      join(root, CONTRACT_RELATIVE_PATH),
+      serializeContract(
+        checkContractFixture({
+          typecheck: { cmd: code, why: "the fixture's own" },
+          lint: { cmd: code, why: "the fixture's own" },
+          test: { cmd: code, why: "the fixture's own" },
+        }),
+      ),
+    );
+
+    return root;
+  }
+
+  function runPublishedStop(root: string): number | null {
+    return spawnSync("bash", ["-c", PUBLISHED_STOP], { cwd: root, encoding: "utf8", env: process.env })
+      .status;
+  }
+
+  // 1, not merely non-zero: `bin/gauntlet`'s third code, 2, is "the checks could not run", and a
+  // published command that is simply broken would satisfy a non-zero assertion while checking as
+  // little as the hook did.
+  it("exits 1 — a real finding — against a tree whose checks fail", () => {
+    expect(runPublishedStop(treeWhereChecksExit(FAILS))).toBe(1);
+  });
+
+  it("exits 0 against the same tree with its checks passing", () => {
+    expect(runPublishedStop(treeWhereChecksExit(PASSES))).toBe(0);
   });
 });
 
