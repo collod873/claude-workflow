@@ -10,7 +10,7 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Claim (lock)**: `gh issue edit <n> --add-assignee @me` — a session's first write when it means to work an issue now. `/triage`'s stop condition 3 honours this lock: an assigned issue already has a session talking about it, so the background run yields instead of fighting it.
+- **Claim (lock)**: `gh issue edit <n> --add-assignee @me` — a session's first write when it means to work an issue now, so any other session reading the tracker can see the issue is already taken.
 - **Close**: gated. A close is refused unless a checker has already posted a `## Closing record`
   comment with every criterion `MET` — never post that record yourself, and never close ahead of
   it. A ticket with no diff (a `task` ticket, or a map with truly no commit) still needs one: the
@@ -19,6 +19,8 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
   shape the record is checked against. The gate itself runs in Actions here
   (`.github/workflows/close-gate.yml`), not as a workstation hook — ADR-0021.
 - **Act on another repo**: every verb above takes `-R <owner>/<repo>` — `~/bin/file-issue <kind> -R <owner>/<repo> --title "..." --body-file <path>`. Needed whenever work belongs to a repo other than the one you are standing in; without `-R` the issue silently lands here instead.
+
+- **Issue and PR numbers share one space** on GitHub, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
@@ -47,12 +49,12 @@ Unblocked = every blocker closed. Any skill splitting a parent into children (e.
 ## Labels
 
 The four pipeline labels — `fuzzy`, `needs-human`, `prd`, `wayfinder:*` — and their meanings live
-in `docs/agents/triage-labels.md`. They assert only where work sits, never a readiness verdict, and
+in `docs/agents/pipeline-labels.md`. They assert only where work sits, never a readiness verdict, and
 their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
 means not yet judged.
 
-This repo's own pipeline writes five more, which are state rather than position and which no triage
-step reads:
+This repo's own pipeline writes five more, which are state rather than position and which no
+pipeline step reads as a position:
 
 | Label            | Written by                          | Means                                                              |
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
@@ -62,16 +64,10 @@ step reads:
 | `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
 
-GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not triage
-output — see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary. Lane 00's
-second form applies stock `bug` at creation, which is intake and not triage either: it records that
-the owner called it a break, and no step reads it as a verdict.
-
-## Pull requests as a triage surface
-
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
-
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not
+pipeline labels — see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary.
+Lane 00's second form applies stock `bug` at creation, which is intake, not a position: it records
+that the owner called it a break, and no step reads it as a verdict.
 
 ## When a skill says "publish to the issue tracker"
 
