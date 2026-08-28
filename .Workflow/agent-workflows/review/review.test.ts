@@ -8,9 +8,11 @@ import type { StageExec } from "../shared/stage";
 import {
   keepSurvivingFindings,
   runConformanceReview,
+  runReview,
   untestedCriteria,
   SPEC_GAP_LABEL,
 } from "./review";
+import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
 
 /**
@@ -199,6 +201,95 @@ describe("runConformanceReview", () => {
     });
 
     expect(result.findings).toEqual([]);
+  });
+});
+
+/**
+ * A `GhExec` stand-in wired for `runReview`'s own chain: `issue create` calls (findings, and
+ * `runCounter`'s own proposals) get a canned, incrementing issue URL; `issue list` calls (both of
+ * `runCounter`'s reads) get an empty JSON array, so the counter's below-threshold path is exercised
+ * without needing a fixture tracker.
+ */
+function fakeReviewGh(): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  let nextIssueNumber = 600;
+  const gh: GhExec = (args) => {
+    calls.push(args);
+    if (args[0] === "issue" && args[1] === "list") return "[]";
+    nextIssueNumber += 1;
+    return `https://github.com/example/repo/issues/${nextIssueNumber}`;
+  };
+  return { gh, calls };
+}
+
+describe("runReview", () => {
+  it("files exactly one issue per refuter survivor, carrying the finding label, and never a PR comment or other notification", async () => {
+    const responses = [
+      { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
+      { refuted: false, reason: "" },
+    ];
+    let call = 0;
+    const exec: StageExec = async () => JSON.stringify(responses[call++]);
+    const { gh, calls } = fakeReviewGh();
+
+    const result = await runReview(exec, gh, {
+      diff: DIFF,
+      greenGateChecks: [],
+      assignee: "collod873",
+    });
+
+    expect(result.survivors).toEqual([
+      { message: "src/widget.ts:12 returns undefined on the empty-cart path" },
+    ]);
+    expect(result.publishedIssues.length).toBe(1);
+    expect(result.tally).toEqual({ reached: 1, refuted: 0 });
+
+    const issueCreateCalls = calls.filter((call) => call[0] === "issue" && call[1] === "create");
+    // One for the finding, and (below both counter thresholds) none for a proposal.
+    expect(issueCreateCalls.length).toBe(1);
+    expect(issueCreateCalls[0]).toContain(FINDING_LABEL);
+    expect(issueCreateCalls[0]).toContain("--assignee");
+    expect(issueCreateCalls[0]).toContain("collod873");
+
+    const flat = calls.flat().map((token) => token.toLowerCase());
+    for (const needle of ["pr", "comment", "notify", "slack", "webhook"]) {
+      expect(flat).not.toContain(needle);
+    }
+  });
+
+  it("files no issue for a finding the structural refusal already drops", async () => {
+    const responses = [{ findings: [{ message: "This function is confusing." }] }];
+    let call = 0;
+    const exec: StageExec = async () => JSON.stringify(responses[call++]);
+    const { gh, calls } = fakeReviewGh();
+
+    const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks: [], assignee: "collod873" });
+
+    expect(result.survivors).toEqual([]);
+    expect(result.publishedIssues).toEqual([]);
+    expect(result.tally).toEqual({ reached: 0, refuted: 0 });
+    expect(calls.filter((call) => call[0] === "issue" && call[1] === "create").length).toBe(0);
+  });
+
+  it("counts a refuter refusal toward the tally without filing an issue for it", async () => {
+    const responses = [
+      { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
+      { refuted: true, reason: "no-unused-vars already covers this" },
+    ];
+    let call = 0;
+    const exec: StageExec = async () => JSON.stringify(responses[call++]);
+    const { gh, calls } = fakeReviewGh();
+
+    const result = await runReview(exec, gh, {
+      diff: DIFF,
+      greenGateChecks: ["no-unused-vars"],
+      assignee: "collod873",
+    });
+
+    expect(result.survivors).toEqual([]);
+    expect(result.publishedIssues).toEqual([]);
+    expect(result.tally).toEqual({ reached: 1, refuted: 1 });
+    expect(calls.filter((call) => call[0] === "issue" && call[1] === "create").length).toBe(0);
   });
 });
 
