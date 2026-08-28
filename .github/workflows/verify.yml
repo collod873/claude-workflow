@@ -98,6 +98,53 @@ jobs:
 
           echo "no changed file touches the immutable set"
 
+  # ADR-0032/ADR-0054: the verdict on an implementation pull request is over trunk's copy of
+  # `tests/acceptance/`, never the pull request's own — the restore is the guarantee, the
+  # Immutability job above is only the alarm that an implementer tried. Gated identically to
+  # Immutability (same dispatch action, same `needs:`) because both exist only to judge one
+  # implementer's dispatch and neither has anything to say about a plain `push` or `pull_request`.
+  restore-and-run-acceptance:
+    name: Restore and run acceptance
+    needs: [immutability]
+    if: always() && needs.immutability.result != 'failure' && github.event.action == 'implementation-pr-opened'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The guarantee itself. Runs before Node/npm below so a checkout that somehow lacks `main`
+      # fails here rather than after a wasted install.
+      - name: Restore tests/acceptance from trunk's tip
+        run: git checkout main -- tests/acceptance/
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Scopes the run to this slice: only the tests naming a criterion this dispatch carries
+      # (ADR-0033's grep, `shared/affected-tests.ts`), so a parallel pull request for a different
+      # slice is never reddened by tests nobody has built yet.
+      - name: Run this slice's acceptance tests
+        env:
+          SLICE_CRITERIA: ${{ toJson(github.event.client_payload.criteria) }}
+        run: |
+          set -euo pipefail
+          FILES=$(npx tsx -e "
+            import { testsForCriteria } from './.Workflow/agent-workflows/shared/affected-tests.ts';
+            const criteria = JSON.parse(process.env.SLICE_CRITERIA || '[]');
+            console.log(testsForCriteria(criteria).join('\n'));
+          ")
+          if [ -z "$FILES" ]; then
+            echo "::error::no acceptance test names a criterion this dispatch carries"
+            exit 1
+          fi
+          npx vitest run $FILES
+
   verify:
     needs: [immutability]
     # `immutability` only runs on the dispatch it gates on (above); on `push` and `pull_request` it
