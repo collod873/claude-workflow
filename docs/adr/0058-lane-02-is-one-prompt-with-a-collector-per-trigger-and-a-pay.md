@@ -2,7 +2,7 @@
 
 Recorded 2026-08-26.
 
-Status: superseded by ADR-0083
+Status: superseded by ADR-0083, ADR-0085
 
 There is **one** spec author, one prompt file, and a **collector per trigger** that assembles the
 same five-field object before the model runs. The three triggers differ in where decided context

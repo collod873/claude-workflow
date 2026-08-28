@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0085
+
 `~/bin/file-issue spec` applies `prd`, and `to-tickets.yml` fires on `prd` — so a published spec
 slices itself **immediately**, before the critic has read it and before a single open question has
 been answered. §02 budgets 5–15 owner minutes at exactly that point and the venue gives them nowhere
