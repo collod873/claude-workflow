@@ -171,7 +171,7 @@ describe("degraded — the gate could not do its job", () => {
   });
 });
 
-// ADR-0023. The label is what a triage query sees, so it has to mean "still
+// ADR-0023. The label is what a backlog query sees, so it has to mean "still
 // refused" and not "was refused once" — otherwise a repaired close counts as
 // outstanding work forever. History lives in the refusal comment and the run
 // log, neither of which this lifts.
