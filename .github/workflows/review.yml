@@ -90,5 +90,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `review.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
+      # a GitHub-hosted runner has none — so every non-skipped run of this lane died `spawn claude
+      # ENOENT` before the first reviewer said anything (#188). Same step, same pin, same reasoning
+      # as `shape.yml`, `to-tickets.yml` and `implement.yml`: `npm ci` cannot supply the binary
+      # because Claude Code is not a dependency of this project, and ADR-0002 wants a run to come
+      # from the checkout alone rather than from whatever was published this month.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
       - name: Run the correctness reviewer
         run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ github.event.workflow_run.head_sha }}"
