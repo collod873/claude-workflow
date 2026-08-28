@@ -3,6 +3,8 @@ import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
+import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
+import { readWorkflow } from "../shared/read-workflow";
 import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
@@ -238,5 +240,78 @@ describe("sliceAndPublish", () => {
     );
     expect(filesSection).toContain("- only/this/file.ts");
     expect(filesSection).not.toContain(seamLine);
+  });
+});
+
+/**
+ * Lane 03's hand-off to lane 05. Nothing sent this dispatch until #145's seam audit: #167 built
+ * `implement.yml`'s receiving end and recorded that the send belonged to whichever ticket owned
+ * this file, and no ticket ever claimed it — so 26 published tickets sat waiting for a dispatch
+ * that had no sender.
+ */
+describe("sliceAndPublish dispatches lane 05 for every ready slice", () => {
+  it("sends one ticket-ready dispatch per slice with no blocked-by edges, naming its issue", () => {
+    const plan = [
+      slice({ title: "Root" }),
+      slice({ title: "Also root" }),
+      slice({ title: "Depends on root", dependsOn: [1] }),
+    ];
+    const fake = createFakeGh();
+
+    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+    expect(fake.dispatches.map((d) => d.eventType)).toEqual([
+      IMPLEMENT_DISPATCH_EVENT_TYPE,
+      IMPLEMENT_DISPATCH_EVENT_TYPE,
+    ]);
+    expect(fake.dispatches.map((d) => d.payload.issue)).toEqual([
+      String(published[0].number),
+      String(published[1].number),
+    ]);
+  });
+
+  it("dispatches nothing for a slice that is blocked", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
+    const fake = createFakeGh();
+
+    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+    expect(fake.dispatches).toHaveLength(1);
+    expect(fake.dispatches[0].payload.issue).toBe(String(published[0].number));
+  });
+
+  it("names the same action implement.yml's job gates on", () => {
+    const { workflow } = readWorkflow<{ jobs: { implement: { if: string } } }>("implement.yml");
+    expect(workflow.jobs.implement.if).toContain(`github.event.action == '${IMPLEMENT_DISPATCH_EVENT_TYPE}'`);
+  });
+
+  /**
+   * Ordering, not merely "both happened". A dispatch sent before the read-back would start an
+   * implementer against a graph that then failed verification — and `verifyBlockedByGraph` throws,
+   * so nothing downstream would ever learn the run it started was against a graph nobody accepted.
+   */
+  it("dispatches only after the blocked-by read-back has verified the graph", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
+    const fake = createFakeGh();
+
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+    const readBacks = fake.calls
+      .map((args, index) => ({ args, index }))
+      .filter(({ args }) => args[0] === "api" && args[1]?.endsWith("dependencies/blocked_by") && !args.includes("-F"));
+    const lastReadBack = readBacks.length === 0 ? -1 : readBacks[readBacks.length - 1].index;
+    const firstDispatch = fake.calls.findIndex(
+      (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
+    );
+    expect(lastReadBack).toBeGreaterThan(-1);
+    expect(firstDispatch).toBeGreaterThan(lastReadBack);
+  });
+
+  it("throws before dispatching anything when the graph fails its read-back", () => {
+    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
+    const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
+
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow();
+    expect(fake.dispatches).toEqual([]);
   });
 });

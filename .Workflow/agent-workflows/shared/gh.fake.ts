@@ -46,6 +46,19 @@ export interface FakeGh {
    * they were wired — what the fake's read-back GET returns, except for any
    * edge named in `dropEdges`. */
   blockedByByNumber: Map<number, number[]>;
+  /** Every `POST /repos/{owner}/{repo}/dispatches` this fake received, in
+   * call order, with its `event_type` and `client_payload[…]` fields already
+   * split out — so a test asserts on what was dispatched rather than
+   * re-parsing argv. */
+  dispatches: FakeDispatch[];
+}
+
+/** One `repository_dispatch` send, as `createFakeGh` records it. */
+export interface FakeDispatch {
+  eventType: string;
+  /** `client_payload[k]=v` pairs. A repeated `client_payload[k][]=v` array
+   * field keeps only its last value here; assert those against `calls`. */
+  payload: Record<string, string>;
 }
 
 export interface FakeGhOptions {
@@ -63,6 +76,7 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
   const blockedByByNumber = new Map<number, number[]>();
   const idByNumber = new Map<number, number>();
   const numberById = new Map<number, number>();
+  const dispatches: FakeDispatch[] = [];
   const dropEdges = options.dropEdges ?? [];
   let nextNumber = options.firstIssueNumber ?? 100;
 
@@ -133,6 +147,29 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
         return `${JSON.stringify(ids)}\n`;
       }
 
+      // `POST /repos/{owner}/{repo}/dispatches` — what a lane sends to start the next one
+      // (`applyGate`, `dispatchReadySlices`, `openPrAndDispatch`). Recorded rather than answered:
+      // GitHub returns 204 with no body, and so does this.
+      if (path === "repos/{owner}/{repo}/dispatches") {
+        const payload: Record<string, string> = {};
+        let eventType = "";
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] !== "-f") continue;
+          const [key, ...rest] = (args[i + 1] ?? "").split("=");
+          const value = rest.join("=");
+          if (key === "event_type") {
+            eventType = value;
+            continue;
+          }
+          const fieldMatch = key?.match(/^client_payload\[(.+?)\](\[\])?$/);
+          if (fieldMatch) {
+            payload[fieldMatch[1]] = value;
+          }
+        }
+        dispatches.push({ eventType, payload });
+        return "";
+      }
+
       const issueMatch = path.match(issuePathMatcher);
       const jqFlag = args.indexOf("--jq");
       if (issueMatch && jqFlag !== -1 && args[jqFlag + 1] === ".id") {
@@ -148,5 +185,5 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
 
-  return { gh, calls, subIssuesByParent, blockedByByNumber };
+  return { gh, calls, subIssuesByParent, blockedByByNumber, dispatches };
 }
