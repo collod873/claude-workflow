@@ -28,7 +28,7 @@ name: Verify
 #
 # `repository_dispatch` is what an implementation PR is judged on: lane 05's `openPrAndDispatch`
 # sends it, and a dispatch-fired run always executes trunk's copy of this file, which ADR-0053 and
-# ADR-0054 both require. Left unfiltered by `types:` for the reason `close-gate-reconcile.yml`
+# ADR-0054 both require. Left unfiltered by `types:` for the reason `dispatch-reconcile.yml`
 # gives: the filter is per-workflow, not per-job, so a future sibling job riding this same trigger
 # would force this list to track every action any of them ever adds. The job-level `if:` below is
 # the scope rule, and it names the one constant the sender reads

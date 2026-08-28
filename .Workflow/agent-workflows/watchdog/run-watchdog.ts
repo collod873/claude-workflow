@@ -99,7 +99,7 @@ export type WatchdogAction = "skipped" | "swept";
 
 export interface WatchdogOutcome {
   action: WatchdogAction;
-  /** A stable slug for the log — mirrors `close-gate.ts`'s `Outcome.code`. */
+  /** A stable slug for the log — mirrors `run-audit.ts`'s `Outcome.code`. */
   code: string;
   /** Dead lanes found in the window. `0` on every skip. */
   deadCount: number;

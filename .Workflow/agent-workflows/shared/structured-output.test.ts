@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { SALVAGE_OUTPUT } from "../close-gate/close-gate";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT, Sweep } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT, SeamManifest } from "../to-tickets/seam-sweep/schema";
@@ -134,8 +133,8 @@ describe("parsing a response", () => {
   });
 
   it("returns the value as-is for a schema that needed no wrapper", () => {
-    expect(SALVAGE_OUTPUT.parse(JSON.stringify({ record: "## Closing record" }))).toEqual({
-      record: "## Closing record",
+    expect(structuredOutput(Greeting).parse(JSON.stringify({ greeting: "hello" }))).toEqual({
+      greeting: "hello",
     });
   });
 

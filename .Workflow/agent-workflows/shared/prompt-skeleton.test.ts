@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { SALVAGE_OUTPUT } from "../close-gate/close-gate";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
@@ -42,7 +41,6 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "to-tickets/seam-sweep/prompt.md", output: SEAM_SWEEP_OUTPUT },
   { path: "to-tickets/slice/prompt.md", output: SLICE_OUTPUT },
   { path: "to-tickets/audit/prompt.md", output: AUDIT_OUTPUT },
-  { path: "close-gate/salvage/prompt.md", output: SALVAGE_OUTPUT },
 ];
 
 function promptSource(promptPath: string): string {

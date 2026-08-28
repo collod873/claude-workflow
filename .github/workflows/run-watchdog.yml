@@ -18,7 +18,7 @@ name: Run watchdog
 # So this sweeps, on the dispatch the capture hook already sends at session end. ADR-0004 forbids a
 # cadence — a mechanism that can fire when nothing has happened since it last fired — and a session
 # that ended is work that happened, which dead runs only arrive during. Same reasoning and the same
-# dispatch as `close-gate-reconcile.yml` (ADR-0048), reused rather than given one of its own: a
+# dispatch as `dispatch-reconcile.yml` and `audit.yml`, reused rather than given one of its own: a
 # second dispatch is a second thing that can silently stop arriving.
 #
 # `on: repository_dispatch` is left unfiltered by `types:` on purpose — that filter is per-workflow,

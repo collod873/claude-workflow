@@ -7,7 +7,7 @@ name: Integrate
 # constant rather than trusting they were typed the same twice — the same split every other lane
 # in this pipeline holds to).
 #
-# `repository_dispatch` is left unfiltered by `types:` for the reason `close-gate-reconcile.yml`
+# `repository_dispatch` is left unfiltered by `types:` for the reason `dispatch-reconcile.yml`
 # and `audit.yml` give: the filter is per-workflow, not per-job, so a sibling sharing this trigger
 # surface would force this file's list to track every action any of them ever adds. The job-level
 # `if:` below is the scope rule.

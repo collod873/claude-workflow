@@ -22,9 +22,9 @@ import { runRelease, type RunReleaseOptions, type RunReleaseResult } from "./run
  */
 
 /**
- * The only close reason that claims a PRD was delivered — mirrors
- * `close-gate.ts`'s `DELIVERY_CLOSE_REASON` both in name and in why it
- * exists twice: `release-on-prd-close.yml`'s job-level `if` is the first
+ * The only close reason that claims a PRD was delivered, and the same rule
+ * `.claude/hooks/close-gate.py` holds for a ticket (ADR-0013). It exists
+ * twice here: `release-on-prd-close.yml`'s job-level `if` is the first
  * reader (so a close claiming nothing never starts a runner), and this
  * constant is the second, for a local run and for the case where that
  * condition is ever edited wrong. `release-on-prd-close.test.ts` asserts
@@ -59,8 +59,8 @@ export interface EntrypointInput {
   prBase?: string;
   /**
    * The release seam itself, injected so a test can record calls without
-   * exercising `run-release.ts`'s real git/gh behaviour — mirrors
-   * `close-gate.ts`'s injected `exec`/`gh`. Defaults to the real
+   * exercising `run-release.ts`'s real git/gh behaviour — the same seam
+   * every lane here injects. Defaults to the real
    * `runRelease`.
    */
   runRelease?: (options: RunReleaseOptions) => RunReleaseResult;

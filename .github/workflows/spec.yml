@@ -48,7 +48,7 @@ name: Spec
 # sends the dispatch as its last act instead. It carries no sender gate: `POST /dispatches` needs
 # write access, so the send is itself the gate (ADR-0073).
 #
-# `repository_dispatch` is left unfiltered by `types:` for the reason `close-gate-reconcile.yml`,
+# `repository_dispatch` is left unfiltered by `types:` for the reason `dispatch-reconcile.yml`,
 # `audit.yml` and `integrate.yml` all give — the filter is per-workflow rather than per-job. The
 # job-level `if:` is the scope rule, and it names the one constant the sender reads
 # (`SPEC_AUTHOR_DISPATCH_EVENT_TYPE`, `.Workflow/agent-workflows/spec/publish.ts`).

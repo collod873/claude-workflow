@@ -12,7 +12,7 @@ name: Back-stamp
 # under it can ever be a predecessor here (`back-stamp.ts`'s header says why) — a push that only
 # touches a research note derives nothing to write and commits nothing. The alternative considered
 # and rejected was riding the shared `session-captured` dispatch alongside the watchdog and the
-# close-gate reconciler; ADR-0046 rejects it because it would make the mechanism's silence a
+# readiness reconciler; ADR-0046 rejects it because it would make the mechanism's silence a
 # property of its output instead of its trigger.
 #
 # **This cannot loop itself.** The commit this workflow makes lands under `docs/adr/` and is pushed

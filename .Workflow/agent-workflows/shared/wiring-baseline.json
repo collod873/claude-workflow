@@ -4,11 +4,6 @@
   "findings": [
     {
       "kind": "exports",
-      "file": ".Workflow/agent-workflows/close-gate/record-grammar.ts",
-      "name": "judge"
-    },
-    {
-      "kind": "exports",
       "file": ".Workflow/agent-workflows/implement/implement.ts",
       "name": "IMPLEMENT_DISPATCH_EVENT_TYPE"
     },
@@ -71,11 +66,6 @@
       "kind": "exports",
       "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
       "name": "subIssuesPathMatcher"
-    },
-    {
-      "kind": "exports",
-      "file": ".Workflow/agent-workflows/shared/gh-paths.ts",
-      "name": "workflowPathMatcher"
     },
     {
       "kind": "exports",

@@ -50,8 +50,9 @@ import {
  * exception is needed. And ADR-0049's real criterion, *whether the evidence a mechanism reads
  * outlives the failure*, is met here completely: the dependency graph, every blocker's close state
  * and every slice's branch are durable API objects. **There is nothing to replay and nothing to
- * reconstruct.** The close gate's reconciler cannot say that; it has to reconstruct a verdict that
- * was never recorded.
+ * reconstruct.** ADR-0048's reconciler could not say that — it had to reconstruct a verdict that
+ * was never recorded, which is one of the reasons #185 retired it along with the venue that
+ * needed it.
  *
  * **Recomputes, stores nothing.** No cursor, no ledger, no state file. Every run derives its whole
  * answer from the tracker, so nothing it says can go stale and it cannot feed on its own output — a
@@ -60,8 +61,8 @@ import {
  */
 
 /**
- * The correctness floor: the capture hook's own dispatch, the same one `close-gate-reconcile.yml`,
- * `audit.yml` and `run-watchdog.yml` ride. Spelled here and in `dispatch-reconcile.yml`'s job-level
+ * The correctness floor: the capture hook's own dispatch, the same one `audit.yml` and
+ * `run-watchdog.yml` ride. Spelled here and in `dispatch-reconcile.yml`'s job-level
  * `if` — no compiler sees across that boundary, so `reconcile.test.ts` asserts the two still agree,
  * and `capture/dispatch-action.test.ts` holds this to the string the emitter actually sends.
  */

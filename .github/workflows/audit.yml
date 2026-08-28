@@ -12,11 +12,11 @@ name: Audit
 # sibling workflow might ever add. The job-level `if` is what actually scopes a run to an audit
 # dispatch instead, spelled here as well as in `run-audit.ts`'s own `AUDIT_DISPATCH_ACTION` check
 # on purpose — no compiler sees across this language boundary, so `run-audit.test.ts` asserts the
-# two still agree, mirroring `close-gate.yml`'s `state_reason` scope rule and `close-gate.ts`'s
-# `DELIVERY_CLOSE_REASON`.
+# two still agree, mirroring `release-on-prd-close.yml`'s `state_reason` scope rule and
+# `release-on-prd-close.ts`'s `DELIVERY_CLOSE_REASON`.
 #
 # That scope is spelled `session-captured` — the capture hook's own dispatch, shared with
-# `close-gate-reconcile.yml` rather than given a second one (#107). This file and `run-audit.ts`
+# `dispatch-reconcile.yml` and `run-watchdog.yml` rather than given a second one (#107). This file and `run-audit.ts`
 # once agreed on `audit`, a name nothing ever sent; both sides were pinned by a test and both
 # tests passed, because each looked only at its own side of the boundary. `dispatch-action.test.ts`
 # reads `session-capture-hook.mjs` and every consumer of it, which is the only place the
@@ -105,7 +105,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Same pin as `close-gate.yml`/`to-tickets.yml`, for the same reason (ADR-0002): a run comes
+      # Same pin as `to-tickets.yml`, for the same reason (ADR-0002): a run comes
       # from the checkout alone, and a floating install would let a release published next month
       # change what a rerun of this commit does.
       - name: Install Claude Code

@@ -40,7 +40,7 @@ function pathTemplate(
  * The same generator for a path whose variable segment is a **name** rather
  * than an issue number — a workflow file, today. Separate from
  * `pathTemplate` only in what it accepts and what its matcher captures:
- * `\d+` would not match `close-gate.yml`, and widening the number template
+ * `\d+` would not match `run-watchdog.yml`, and widening the number template
  * to take one would let an issue path be built from a string that is not a
  * number at all.
  */
@@ -79,7 +79,6 @@ function escapeRegExp(segment: string): string {
 const issue = pathTemplate`repos/{owner}/{repo}/issues/${0}`;
 const subIssues = pathTemplate`repos/{owner}/{repo}/issues/${0}/sub_issues`;
 const blockedBy = pathTemplate`repos/{owner}/{repo}/issues/${0}/dependencies/blocked_by`;
-const workflow = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}`;
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
@@ -111,23 +110,13 @@ export function blockedByPath(number: number): string {
 }
 
 /**
- * The path for one workflow itself — its `created_at` is the earliest
- * moment it could ever have fired, which is what
- * `close-gate/reconcile.ts` uses to keep from reopening closes that
- * predate the gate.
- */
-export function workflowPath(workflowFile: string): string {
-  return workflow.build(workflowFile);
-}
-
-/**
  * The path for one workflow's runs, newest first, with the page size on it.
  *
  * The page size is part of the path rather than a caller's concern because
- * it is load-bearing: `close-gate/reconcile.ts` reads how far back one page
- * reaches and refuses to answer for closes older than that, so a caller
+ * it is load-bearing: `watchdog/dead-lanes.ts` reads how far back one page
+ * reaches and refuses to answer for runs older than that, so a caller
  * that quietly asked for a smaller page would be narrowing the window that
- * reconciler trusts without saying so.
+ * sweep trusts without saying so.
  */
 export function workflowRunsPath(workflowFile: string, perPage: number): string {
   return `${workflowRuns.build(workflowFile)}?per_page=${perPage}`;
@@ -175,9 +164,6 @@ export const subIssuesPathMatcher: RegExp = subIssues.matcher;
 
 /** Matches a `blockedByPath`, capturing the blocked issue number. */
 export const blockedByPathMatcher: RegExp = blockedBy.matcher;
-
-/** Matches a `workflowPath`, capturing the workflow file. */
-export const workflowPathMatcher: RegExp = workflow.matcher;
 
 /** Matches a `workflowRunsPath` minus its query string, capturing the file. */
 export const workflowRunsPathMatcher: RegExp = workflowRuns.matcher;

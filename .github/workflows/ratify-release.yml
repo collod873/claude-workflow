@@ -5,7 +5,7 @@ name: Ratify release
 # into `RatificationRecord`s (`run-ratification.ts`), so the next release's `filterByRatificationMemory`
 # knows what was already declined and what site growth earns a re-proposal.
 #
-# The job-level `if` is the scope rule, same shape as `close-gate.yml`/`release-on-prd-close.yml`:
+# The job-level `if` is the scope rule, same shape as `release-on-prd-close.yml`:
 # `pull_request: closed` fires for every PR this repo merges, not only release PRs, and the estate
 # is over its 2,000-minute monthly cap — a runner that would decide "not a release PR" should never
 # start. The release PR title is the only thing distinguishing one from an ordinary feature PR, so

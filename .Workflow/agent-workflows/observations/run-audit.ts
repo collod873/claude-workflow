@@ -23,9 +23,9 @@ import { readSessionRecord, type HydratedSessionRecord } from "./session-notes";
  * release-on-PRD-close trigger) shares the same trigger surface with a
  * different `action` — so the job-level `if` is what actually scopes a run to
  * an audit dispatch. `AUDIT_DISPATCH_ACTION` is spelled there as well as
- * here, the same duplication `close-gate.ts`'s `DELIVERY_CLOSE_REASON` is
- * spelled in both `close-gate.ts` and `close-gate.yml`: no compiler sees
- * across that language boundary, so `run-audit.test.ts` asserts the two
+ * here, the same duplication `release-on-prd-close.ts`'s
+ * `DELIVERY_CLOSE_REASON` is spelled in both that file and its own workflow:
+ * no compiler sees across that language boundary, so `run-audit.test.ts` asserts the two
  * still agree, and this constant is the second reader for a local run and for
  * the case where the workflow's own `if` is ever edited wrong.
  *
@@ -73,7 +73,7 @@ export type AuditAction = "skipped" | "ran";
 
 export interface AuditOutcome {
   action: AuditAction;
-  /** A stable slug, for the log — mirrors `close-gate.ts`'s `Outcome.code`. */
+  /** A stable slug, for the log — mirrors `run-watchdog.ts`'s `Outcome.code`. */
   code: string;
   /** `computeReleaseScope`'s own count, reported whether or not a release opened. `0` on every skip. */
   releasedCount: number;

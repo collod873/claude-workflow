@@ -204,9 +204,9 @@ describe("every workflow that can reach `git notes add` configures a committer",
 
   it("does not mistake a workflow that writes no note for one that does", () => {
     // `release-on-prd-close.yml` writes `refs/release/last` with `git update-ref`, which needs no
-    // committer, and the close-gate lanes write no git object at all. A guard that flagged these
-    // would be asking three workflows to carry a step none of them needs.
-    const quiet = ["release-on-prd-close.yml", "close-gate.yml", "close-gate-reconcile.yml"];
+    // committer, and `dispatch-reconcile.yml` writes no git object at all. A guard that flagged
+    // these would be asking two workflows to carry a step neither of them needs.
+    const quiet = ["release-on-prd-close.yml", "dispatch-reconcile.yml"];
 
     for (const name of quiet) {
       const workflow = workflows.find((each) => each.name === name);

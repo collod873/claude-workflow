@@ -11,13 +11,14 @@ name: Release on PRD close
 # `release-on-prd-close.ts`'s `CLOSE_STATE_REASON`/`PRD_LABEL` on purpose — the estate is over its
 # 2,000-minute cap, so a job that would decide "nothing to do" should never start — and
 # `release-on-prd-close.test.ts` asserts the two still agree, since no compiler sees across this
-# language boundary. Same shape as `close-gate.yml`'s own `state_reason` mirror.
+# language boundary. The same scope rule `.claude/hooks/close-gate.py` holds for a ticket
+# (ADR-0013), spelled here for a PRD.
 #
 # `GITHUB_SHA` is the head this run scopes its release through: for an `issues` event it is the
 # default branch's own tip, which is exactly the range `computeReleaseScope` should read — no
 # extra `git rev-parse` needed. The connector makes no model call (`release.ts`'s `composeRelease`
 # only ever calls `gh pr create`), so there is no `CLAUDE_CODE_OAUTH_TOKEN` preflight here the way
-# `close-gate.yml`/`to-tickets.yml` need one.
+# `to-tickets.yml` needs one.
 
 "on":
   issues:

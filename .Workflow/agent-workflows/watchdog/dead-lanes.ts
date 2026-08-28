@@ -53,8 +53,7 @@ export interface DeadLane {
  * older than this is history: opening an issue about it would be filing work
  * against a break nobody remembers making.
  *
- * Mirrors `close-gate/reconcile.ts`'s own window, for the same reasons and
- * deliberately at the same size — both sweeps ride the same dispatch, and
+ * Deliberately the same size as every other sweep riding the same dispatch:
  * two lookbacks that differed would be two answers to "how far back does
  * this repo remember".
  */

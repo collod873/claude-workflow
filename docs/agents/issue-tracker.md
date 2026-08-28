@@ -11,13 +11,15 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Claim (lock)**: `gh issue edit <n> --add-assignee @me` — a session's first write when it means to work an issue now, so any other session reading the tracker can see the issue is already taken.
-- **Close**: gated. A close is refused unless a checker has already posted a `## Closing record`
-  comment with every criterion `MET` — never post that record yourself, and never close ahead of
-  it. A ticket with no diff (a `task` ticket, or a map with truly no commit) still needs one: the
-  record then reads `## Closing record` followed only by `No diff.`. Once the record exists,
-  `gh issue close <number> --comment "..."`. See `docs/agents/ticket-format.md` for the ticket
-  shape the record is checked against. The gate itself runs in Actions here
-  (`.github/workflows/close-gate.yml`), not as a workstation hook — ADR-0021.
+- **Close**: gated, in your own turn. Run `bin/close-ticket <number> <base>..<head> <checkout>` —
+  it runs each criterion's own `check:` marker, posts the `## Closing record` it observed, and
+  closes the ticket, in one command. Never write that record yourself and never close ahead of it:
+  a bare `gh issue close` carrying no record is refused by `.claude/hooks/close-gate.py` before it
+  runs, and the refusal reaches you in the same turn — at this workstation and inside every stage
+  on a runner alike. A ticket with no diff (a `task` ticket, or a map with truly no commit) closes
+  on a record reading `## Closing record` followed only by `No diff.`. A close marked `not planned`
+  or `duplicate` claims no delivery and is not judged at all (ADR-0013). See
+  `docs/agents/ticket-format.md` for the ticket shape the record is checked against.
 - **Act on another repo**: every verb above takes `-R <owner>/<repo>` — `~/bin/file-issue <kind> -R <owner>/<repo> --title "..." --body-file <path>`. Needed whenever work belongs to a repo other than the one you are standing in; without `-R` the issue silently lands here instead.
 
 - **Issue and PR numbers share one space** on GitHub, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
@@ -53,14 +55,13 @@ in `docs/agents/pipeline-labels.md`. They assert only where work sits, never a r
 their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
 means not yet judged.
 
-This repo's own pipeline writes five more, which are state rather than position and which no
+This repo's own pipeline writes four more, which are state rather than position and which no
 pipeline step reads as a position:
 
 | Label            | Written by                          | Means                                                              |
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
 | `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited |
 | `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
-| `close-refused`  | `.github/workflows/close-gate.yml`  | An open refusal — the gate reopened a close and has not since accepted one (ADR-0023: state, not history) |
 | `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
 

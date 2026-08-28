@@ -174,7 +174,7 @@ describe("in scope — a completed close of an issue labelled prd", () => {
 // The scope rule is enforced twice — once by the workflow's job-level `if`, so a close that
 // claims nothing never starts a runner, and once by the two constants above. No compiler sees
 // across that language boundary, so a test does — the same shape as
-// `close-gate.test.ts`'s own `close-gate.yml` agreement test.
+// `dispatch-action.test.ts`'s own workflow-agreement cases.
 describe("release-on-prd-close.yml agrees with the scope rule it is a copy of", () => {
   const workflow = readFileSync(
     fileURLToPath(new URL("../../../.github/workflows/release-on-prd-close.yml", import.meta.url)),

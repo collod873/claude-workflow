@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { RECONCILE_DISPATCH_ACTION } from "../close-gate/reconcile";
 import {
   RECONCILE_DISPATCH_ACTIONS,
   SESSION_CAPTURED_DISPATCH_ACTION,
@@ -52,16 +51,6 @@ describe("every consumer of the capture dispatch scopes on the name the hook sen
 
   it("run-audit.ts checks for it", () => {
     expect(AUDIT_DISPATCH_ACTION).toBe(WIRE_ACTION);
-  });
-
-  it("close-gate-reconcile.yml gates its job on it", () => {
-    expect(repoFile(".github/workflows/close-gate-reconcile.yml")).toContain(
-      `github.event.action == '${WIRE_ACTION}'`,
-    );
-  });
-
-  it("reconcile.ts checks for it", () => {
-    expect(RECONCILE_DISPATCH_ACTION).toBe(WIRE_ACTION);
   });
 
   it("run-watchdog.yml gates its job on it", () => {

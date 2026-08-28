@@ -4,7 +4,7 @@
  *
  * One module because this grammar has two sides that must not drift.
  * `render-body.ts` *writes* `## Acceptance criteria` into every ticket the
- * slicer publishes; `close-gate/record-grammar.ts` *reads* it back months
+ * slicer publishes; `.claude/hooks/close-gate.py` *reads* it back months
  * later to decide whether a close is honest. Those two spelled the heading
  * independently until this file existed, and a heading renamed on the write
  * side would have made every close refuse for a reason nobody could see —

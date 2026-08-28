@@ -350,7 +350,7 @@ describe("runReconcile refuses to answer when it cannot read its own inputs", ()
 /**
  * The dispatch actions are each spelled twice — once in `reconcile.ts` and once in the workflow
  * that runs it. No compiler sees across that language boundary, so a test does, the same way
- * `close-gate/reconcile.test.ts` pins its own pair.
+ * `capture/dispatch-action.test.ts` pins every consumer of the capture dispatch.
  */
 describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
   const { workflow, source } = readWorkflow<{
