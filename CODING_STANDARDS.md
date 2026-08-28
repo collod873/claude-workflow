@@ -26,22 +26,9 @@ How this doc stays small:
 - **Cite, don't restate** — the why behind a shared helper lives once, in the helper's docstring (or the ADR); a call site, test, or lint comment names the helper and at most the ticket or ADR number.
   Why: a rationale pasted at N sites is N edits when the reason changes, and the copies drift into telling different halves of the story.
   Red flag: a comment outside the helper's home that explains what the helper used to do, what the two copies used to disagree on, or why sharing fixed it — a cited ticket number should carry a naming clause and nothing more.
-**A test builds a schema-typed fixture through one exported builder, never a hand-rolled literal.**
-The builder lives beside the zod schema it constructs and takes `Partial<T>` plus whichever field
-the test is actually about.
-*Red flag:* an object literal in a test that spells out every field of a schema exported from
-`shared/`.
-*Why:* a field added to `Slice` then breaks one place instead of eight, and a test that names seven
-fields to exercise one hides which field it is about.
-
----
-
-**A stage is declared in one place, and the workflow is checked against it.** One `StageDef` in one
-exported record keyed by stage name; the name tuple, the dispatch and the CLI branch derive from
-that record's keys, not maintained alongside it. A test asserts the record's keys and
-`to-tickets.yml`'s `--stage` steps are the same set — no compiler sees across that language
-boundary, so a test does.
-*Red flag:* adding a stage edits anything beyond (a) that record and (b) one step in
-`.github/workflows/to-tickets.yml` — or edits (a) without (b).
-*Why:* seam-sweep, slice and audit each cost four to five coordinated edits, and the one edit
-nothing watched — the absent workflow step — makes a stage silently never run.
+- **Fixtures through one builder** — a test builds a schema-typed fixture through one exported builder, never a hand-rolled literal; the builder lives beside the zod schema it constructs and takes `Partial<T>` plus whichever field the test is actually about.
+  Why: a field added to `Slice` breaks one place instead of eight, and a test that names seven fields to exercise one hides which field it is about.
+  Red flag: an object literal in a test that spells out every field of a schema exported from `shared/`.
+- **One stage record, checked against the workflow** — a stage is declared in one exported `StageDef` record keyed by stage name, with the name tuple, the dispatch and the CLI branch derived from its keys; a test asserts those keys and `to-tickets.yml`'s `--stage` steps are the same set.
+  Why: seam-sweep, slice and audit each cost four to five coordinated edits, no compiler sees across that language boundary, and the one edit nothing watched — the absent workflow step — makes a stage silently never run.
+  Red flag: adding a stage edits anything beyond that record and one step in `.github/workflows/to-tickets.yml`, or edits the record without the step.
