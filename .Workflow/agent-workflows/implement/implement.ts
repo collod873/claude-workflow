@@ -9,6 +9,7 @@ import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { normalizeNewlines, sectionText } from "../shared/ticket-shape";
 import { runVitestJson, type TestRunResult } from "../acceptance/push-gate";
+import { recordOutOfBrief } from "./out-of-brief";
 
 /**
  * Lane: build one ticket from exactly the brief this file assembles — the
@@ -181,6 +182,15 @@ const ImplementerAnswer = z.object({
   files: z.array(z.object({ path: z.string().min(1), content: z.string().min(1) })).min(1),
   /** A short account of what was built — becomes the PR body's lead paragraph. */
   summary: z.string().min(1),
+  /**
+   * Every module this implementer read outside its brief — ADR-0042: it
+   * reads what it needs and carries on, never blocking, and names each
+   * module here rather than filing a `seam/question`. One entry per read,
+   * in read order; the same module named twice is two reads, not one — each
+   * becomes its own call to `recordOutOfBrief`, so a module read twice is
+   * counted twice on the tracker.
+   */
+  outOfBriefReads: z.array(z.string().min(1)).default([]),
 });
 type ImplementerAnswer = z.infer<typeof ImplementerAnswer>;
 
@@ -276,6 +286,13 @@ export async function runImplement(deps: ImplementDeps): Promise<string> {
   });
 
   const answer = await runImplementer(deps.exec, brief);
+
+  // Non-blocking (ADR-0042): every out-of-brief read the implementer reports is recorded on the
+  // standing tracker issue and nothing else — never a `dependencies/blocked_by` write, never a
+  // pause. The dependency graph stays lane 03's alone (ADR-0069).
+  for (const module of answer.outOfBriefReads) {
+    recordOutOfBrief(deps.gh, module);
+  }
 
   for (const file of answer.files) {
     deps.writeFile(file.path, file.content);
