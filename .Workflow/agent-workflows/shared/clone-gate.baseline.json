@@ -800,6 +800,16 @@
     ]
   },
   {
+    "hash": "b1fcc2e2a4109eb9",
+    "format": "typescript",
+    "lines": 7,
+    "tokens": 89,
+    "where": [
+      "tests/acceptance/241-tracer-rule-and-check-sentence-in-prompts.test.ts:120",
+      "tests/acceptance/241-tracer-rule-and-check-sentence-in-prompts.test.ts:131"
+    ]
+  },
+  {
     "hash": "b7b5ff5923562957",
     "format": "typescript",
     "lines": 9,

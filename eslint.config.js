@@ -14,6 +14,46 @@ const repoPathSelectorMessage =
   "or matched against .Workflow/agent-workflows/shared/gh-paths.ts, not inlined or hand-rolled.";
 
 /**
+ * The inline `err instanceof Error ? err.message : String(err)` narrowing, pointed at the one
+ * canonical implementation. Named rather than inlined because `tests/acceptance/**` has to re-declare
+ * `no-restricted-syntax` *without* it — that directory may not import the implementation this
+ * message names, so the rule cannot apply there (ADR-0102) — while keeping the rest.
+ */
+const INLINE_REASON_SELECTOR = {
+  selector:
+    "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error']",
+  message:
+    "Use reason(err) — or errorMessage(err) when you are matching on the failure rather " +
+    "than reporting it — from .Workflow/agent-workflows/shared/reason.ts instead of " +
+    "inline `err instanceof Error ? err.message : String(err)` narrowing.",
+};
+
+/**
+ * Hand-written GitHub REST paths, in the two forms they can take. Named for the same reason as
+ * `INLINE_REASON_SELECTOR`: these still hold inside `tests/acceptance/**`, so the re-declaration
+ * there spreads them back in rather than dropping them along with the one that cannot.
+ */
+const REPO_PATH_SELECTORS = [
+  {
+    // Catches a hand-written path built as a template literal, e.g.
+    // `repos/{owner}/{repo}/issues/${n}/sub_issues` — every real
+    // publisher/fake site interpolates a number, so it's a
+    // TemplateLiteral, never a plain string Literal.
+    selector: "TemplateElement[value.raw=/repos\\/\\{owner\\}\\/\\{repo\\}/]",
+    message: repoPathSelectorMessage,
+  },
+  {
+    // Catches a hand-written matcher built as a regex literal, e.g.
+    // /^repos\/\{owner\}\/\{repo\}\/issues\/(\d+)$/ — a regex
+    // literal's `value` stringifies with its escapes intact, so this
+    // must key off `regex.pattern`, never `Literal[value=...]`.
+    selector:
+      "Literal[regex.pattern=/repos\\\\\\/\\\\?\\{?owner\\\\?\\}?\\\\\\/\\\\?\\{?repo\\\\?\\}?/]",
+    message: repoPathSelectorMessage,
+  },
+];
+
+/**
  * The directory an acceptance test may not import outside of, found by walking `filename`'s own
  * path segments rather than trusting the linter's `cwd` — `acceptance-import-boundary.test.ts`
  * lints fixtures from a temp root, and this way it proves the rule without having to fake the
@@ -114,34 +154,7 @@ export default tseslint.config(
       // coincidences.
       "sonarjs/no-identical-functions": ["error", 3],
 
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error']",
-          message:
-            "Use reason(err) — or errorMessage(err) when you are matching on the failure rather " +
-            "than reporting it — from .Workflow/agent-workflows/shared/reason.ts instead of " +
-            "inline `err instanceof Error ? err.message : String(err)` narrowing.",
-        },
-        {
-          // Catches a hand-written path built as a template literal, e.g.
-          // `repos/{owner}/{repo}/issues/${n}/sub_issues` — every real
-          // publisher/fake site interpolates a number, so it's a
-          // TemplateLiteral, never a plain string Literal.
-          selector: "TemplateElement[value.raw=/repos\\/\\{owner\\}\\/\\{repo\\}/]",
-          message: repoPathSelectorMessage,
-        },
-        {
-          // Catches a hand-written matcher built as a regex literal, e.g.
-          // /^repos\/\{owner\}\/\{repo\}\/issues\/(\d+)$/ — a regex
-          // literal's `value` stringifies with its escapes intact, so this
-          // must key off `regex.pattern`, never `Literal[value=...]`.
-          selector:
-            "Literal[regex.pattern=/repos\\\\\\/\\\\?\\{?owner\\\\?\\}?\\\\\\/\\\\?\\{?repo\\\\?\\}?/]",
-          message: repoPathSelectorMessage,
-        },
-      ],
+      "no-restricted-syntax": ["error", INLINE_REASON_SELECTOR, ...REPO_PATH_SELECTORS],
     },
   },
   {
@@ -170,6 +183,18 @@ export default tseslint.config(
     },
     rules: {
       "acceptance-boundary/no-outside-import": "error",
+
+      // The `reason(err)` selector above points every call site at one canonical implementation,
+      // in `.Workflow/agent-workflows/shared/reason.ts`. This directory is forbidden from
+      // importing it — that is the rule immediately above, and it is the stronger of the two, so
+      // the pair as written was unsatisfiable: an acceptance test that reports an unknown error
+      // had to either import across the boundary or narrow inline, and both were errors. Lane 04
+      // authored #240 into exactly that corner and landed a batch nothing could lint
+      // ([ADR-0102](docs/adr/0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md)).
+      //
+      // Every other selector still holds here, so this re-declares the rule without the one that
+      // cannot rather than switching it off.
+      "no-restricted-syntax": ["error", ...REPO_PATH_SELECTORS],
     },
   },
 );

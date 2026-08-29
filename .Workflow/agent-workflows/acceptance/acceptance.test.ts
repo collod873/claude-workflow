@@ -316,6 +316,7 @@ describe("runAcceptanceAuthor", () => {
       writeFile: (path, content) => written.set(path, content),
       issueNumber: 162,
       runTests: () => ({ collected: true, failures: [] }),
+      lint: () => null,
       git: (args: string[]) => {
         gitCalls.push(args);
         return "";

@@ -53,17 +53,50 @@ wrong. Put it in one `{{TEST_DIR}}<name>.fixture.ts` and import it from each tes
 That path is allowed, it is not collected as a suite, and the clone checker this repo runs on every
 push reports the copies if you make them instead.
 
+**Nothing you write may import a path outside `{{TEST_DIR}}`.** Not the subject under test, not a
+helper, not a type — no `../` specifier that climbs out of that directory. This is a lint rule
+(`acceptance-boundary/no-outside-import`) and it fails the whole batch, so a single `import { thing }
+from "../../.Workflow/..."` costs every criterion in this run, not just the one file.
+
+The reason is what makes acceptance tests worth anything: CI restores `{{TEST_DIR}}` from trunk's tip
+before running it, and restores *only* that directory. A helper you imported from elsewhere is
+whatever the branch under test says it is, so an implementer could satisfy your test by editing the
+helper instead of building the ticket. Your directory is the sealed part; anything reached through
+an import is not.
+
+So reach the subject the way a shell would, not the way a module would:
+
+- **Run a command and read what it did** — `execFileSync` a CLI, a `bin/` script, `npx vitest run
+  <the subject's own test file>`, `npx tsx -e '<a few lines that import the subject and print>'`.
+  A child process resolves imports at runtime, which is not an import in your file.
+- **Read the file and assert on its text or its parsed form** — for a rule that is stated in a
+  config, a workflow YAML, a prompt, an ADR.
+- **Bare package specifiers are fine** (`vitest`, `node:fs`, `node:child_process`, `yaml`) — those
+  come from `package-lock.json`, which the restore already covers. It is only relative paths that
+  climb out.
+
+A `.fixture.ts` beside your tests is inside the boundary and may hold whatever the rule below asks
+you to factor out — but it is bound by this same rule, so it may not import outward either.
+
+One more house rule the linter enforces on anything you write: no hand-written
+`repos/{owner}/{repo}/...` REST paths, as a template literal or as a regex.
+
+Narrowing an unknown error inline — `err instanceof Error ? err.message : String(err)` — is banned
+everywhere else in this repo and allowed in your directory, precisely because the helper it would
+otherwise point you at is on the far side of the boundary above.
+
 For each criterion:
 
 1. Write a test whose name or a comment directly beside it **quotes the criterion's own text
    verbatim** — the exact string from the `- [ ] ...` line, unabbreviated. A checker matches this
    back against the issue body character-for-character; paraphrasing it, even for length, makes
    the match fail.
-2. Write the test as if the ticket were already implemented: import the real modules it names (in
-   "Files claimed"), call the real functions, assert the real behavior the criterion describes.
+2. Write the test as if the ticket were already implemented: reach the real modules it names (in
+   "Files claimed"), exercise the real functions, assert the real behavior the criterion describes.
    Do **not** import anything that doesn't exist yet purely to avoid a red test, and do not stub
    out the subject under test — a test that mocks away the very thing #{{ISSUE_NUMBER}} is
-   supposed to build proves nothing once that thing exists.
+   supposed to build proves nothing once that thing exists. **Reach it without importing it** —
+   see the boundary below.
 3. Expect it to fail. It should fail because the subject isn't built — an assertion that doesn't
    hold yet — not because the test itself is broken. A test that throws while importing, or
    references something that will never exist even after the ticket lands, is a bug in the test,

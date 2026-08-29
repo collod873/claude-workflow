@@ -245,6 +245,8 @@ export interface RunAcceptanceDeps {
   issueNumber: number;
   /** Runs the freshly written suite for `push-gate.ts` to classify. Defaults to a real vitest run over `ACCEPTANCE_TEST_DIR`. */
   runTests?: () => TestRunResult | Promise<TestRunResult>;
+  /** Lints the freshly written files for the gate to refuse on (ADR-0102). Defaults to a real eslint run over them. */
+  lint?: (paths: string[]) => string | null;
   git?: GitExec;
   /** Passed through to the gate. `"commit"` when a `contents: write` job does the push (ADR-0091). */
   landing?: Landing;
@@ -271,6 +273,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
 
   return runPushGate({
     runTests: deps.runTests ?? (() => runVitestJson(ACCEPTANCE_TEST_DIR)),
+    lint: deps.lint,
     git: deps.git ?? execGit,
     paths,
     commitMessage: authorCommitMessage(deps.issueNumber, paths),

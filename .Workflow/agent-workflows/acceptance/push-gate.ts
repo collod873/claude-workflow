@@ -89,6 +89,20 @@ export function landingFromEnv(env: NodeJS.ProcessEnv = process.env): Landing {
 export interface PushGateDeps {
   /** Runs the newly authored acceptance suite and classifies the result. */
   runTests: () => TestRunResult | Promise<TestRunResult>;
+  /**
+   * Lints the paths this run is landing, returning the linter's report when it found something and
+   * `null` when it is clean. Defaults to the real `runEslint`.
+   *
+   * **Why a red test is fine here and a lint error is not.** The classification above is built
+   * around one distinction: an `AssertionError` is a test that ran and found its ticket unbuilt,
+   * which is the whole point of landing it early. A lint error is neither — it is a file this repo
+   * cannot accept in any state, and lane 04 pushes straight to `main` with no review, so the only
+   * venue that can refuse one is this function. #240 landed three files violating
+   * `acceptance-boundary/no-outside-import` and turned every local gate in the repository red for
+   * work that had not started
+   * ([ADR-0102](../../../docs/adr/0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md)).
+   */
+  lint?: (paths: string[]) => string | null;
   git: GitExec;
   /** The acceptance test file paths this run is landing, repo-relative. */
   paths: string[];
@@ -136,6 +150,13 @@ export async function runPushGate(deps: PushGateDeps): Promise<PushGateOutcome> 
     };
   }
 
+  // Last, and still before any git call: a batch that lints clean but is red is exactly what this
+  // gate exists to land, while one that cannot lint is not landable in any state.
+  const lintReport = (deps.lint ?? runEslint)(deps.paths);
+  if (lintReport !== null) {
+    return { verdict: "refused", reason: `the authored files do not lint:\n${lintReport}` };
+  }
+
   commitAndPush(deps);
   return { verdict: "pushed" };
 }
@@ -160,6 +181,30 @@ function commitAndPush(deps: PushGateDeps): void {
   deps.git(["fetch", "origin", "main"]);
   deps.git(["rebase", "origin/main"]);
   deps.git(["push", "origin", "HEAD:main"]);
+}
+
+/**
+ * The real `lint`: runs the repo's own eslint over exactly the paths being landed, and returns its
+ * report or `null` when clean.
+ *
+ * Scoped to `paths` rather than the whole tree on purpose — this gate answers "may *these* files
+ * land", and a pre-existing finding elsewhere is not this batch's to be refused for. eslint exits
+ * non-zero on any finding, so the report is read off the caught error the same way `runVitestJson`
+ * reads vitest's.
+ */
+export function runEslint(paths: string[]): string | null {
+  if (paths.length === 0) return null;
+  try {
+    execFileSync("npx", ["eslint", ...paths], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      env: childEnv(),
+    });
+    return null;
+  } catch (err) {
+    const output = (err as { stdout?: string }).stdout;
+    return typeof output === "string" && output.trim() !== "" ? output.trim() : reason(err);
+  }
 }
 
 /**

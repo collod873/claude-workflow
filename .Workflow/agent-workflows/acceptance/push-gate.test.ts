@@ -8,6 +8,9 @@ function pushGateDeps(result: TestRunResult) {
     fake,
     deps: {
       runTests: () => result,
+      // Injected clean, so every case that is about the *test* classification stays about that.
+      // The real `runEslint` would shell out to eslint against a path no fixture creates.
+      lint: () => null,
       git: fake.git,
       paths: ["tests/acceptance/foo.test.ts"],
       commitMessage: "Author an acceptance test for #162's criteria",
@@ -59,6 +62,44 @@ describe("runPushGate", () => {
     expect(fake.calls.some((call) => call[0] === "push")).toBe(false);
   });
 
+  /**
+   * ADR-0102. Lane 04 pushes to `main` with nobody reviewing it, so a file the repo's own linter
+   * refuses has exactly one venue that can stop it, and this is it. #240's batch cleared the two
+   * checks above — every file collected, every failure an honest `AssertionError` — and still
+   * turned every gate in the repository red, because nothing here had ever looked at it.
+   */
+  it("refuses, without pushing, when the authored files do not lint", async () => {
+    const { fake, deps } = pushGateDeps({
+      collected: true,
+      failures: [{ name: "proves criterion one", errorName: "AssertionError" }],
+    });
+
+    const outcome = await runPushGate({
+      ...deps,
+      lint: () => "tests/acceptance/foo.test.ts\n  2:1  error  resolves outside tests/acceptance/",
+    });
+
+    expect(outcome.verdict).toBe("refused");
+    expect(outcome.verdict === "refused" && outcome.reason).toContain("resolves outside");
+    expect(fake.calls, "a lint refusal must land nothing at all, not merely skip the push").toEqual([]);
+  });
+
+  it("lints exactly the paths it is landing, not the whole tree", async () => {
+    const { deps } = pushGateDeps({ collected: true, failures: [] });
+    const linted: string[][] = [];
+
+    await runPushGate({
+      ...deps,
+      paths: ["tests/acceptance/240-a.test.ts", "tests/acceptance/240-b.fixture.ts"],
+      lint: (paths) => {
+        linted.push(paths);
+        return null;
+      },
+    });
+
+    expect(linted).toEqual([["tests/acceptance/240-a.test.ts", "tests/acceptance/240-b.fixture.ts"]]);
+  });
+
   it("commits and pushes only the paths it was given", async () => {
     const { fake, deps } = pushGateDeps({ collected: true, failures: [] });
 
@@ -79,6 +120,7 @@ describe("runPushGate", () => {
         collected: true,
         failures: [{ name: "proves criterion one", errorName: "AssertionError" }],
       }),
+      lint: () => null,
       git: fake.git,
       paths: ["tests/acceptance/227-one.test.ts", "tests/acceptance/workflow-shape.fixture.ts"],
       commitMessage: "Author acceptance tests for #227 from the spec alone",
