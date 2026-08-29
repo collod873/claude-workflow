@@ -9,7 +9,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { CRITERIA_HEADING_RE, CRITERIA_ITEM_RE, normalizeNewlines, sectionText } from "../shared/ticket-shape";
+import { CRITERIA_HEADING_RE, extractCriteria, parentPrdNumber } from "../shared/ticket-shape";
 import {
   landingFromEnv,
   runPushGate,
@@ -59,37 +59,12 @@ type AuthorAnswer = z.infer<typeof AuthorAnswer>;
 export const AUTHOR_OUTPUT = structuredOutput(AuthorAnswer);
 
 /**
- * One `## Parent PRD\n#<n>` heading, as `shared/render-body.ts` writes it on
- * every ticket this repo publishes. Read here rather than reused from there
- * because that module renders a body; this one only ever reads one back.
+ * `extractCriteria` and `parentPrdNumber` live in `shared/ticket-shape.ts`
+ * now, alongside `CRITERIA_HEADING_RE`/`CRITERIA_ITEM_RE`/`sectionText` — the
+ * rest of the grammar those two are built from. Re-exported here so this
+ * module's own callers, and the test file, don't need to know they moved.
  */
-const PARENT_PRD_RE = /^##[ \t]+Parent PRD[ \t]*\n#(\d+)/m;
-
-/**
- * The criterion strings a ticket body declares under `## Acceptance
- * criteria`, in the body's own order — each with its leading `- [ ]` and
- * surrounding whitespace stripped, everything after that verbatim.
- *
- * Built from `CRITERIA_HEADING_RE`/`CRITERIA_ITEM_RE`
- * (`shared/ticket-shape.ts`) rather than a second parser: those two already
- * define what a criterion line looks like for `render-body.ts` and the close
- * gate, and a third definition here is exactly the drift that module's own
- * header warns about.
- */
-export function extractCriteria(body: string): string[] {
-  const normalized = normalizeNewlines(body);
-  const section = sectionText(normalized, CRITERIA_HEADING_RE);
-  return section
-    .split("\n")
-    .filter((line) => CRITERIA_ITEM_RE.test(line))
-    .map((line) => line.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim());
-}
-
-/** The parent PRD's issue number, or `undefined` when the body carries none. */
-export function parentPrdNumber(body: string): number | undefined {
-  const match = PARENT_PRD_RE.exec(normalizeNewlines(body));
-  return match ? Number(match[1]) : undefined;
-}
+export { extractCriteria, parentPrdNumber };
 
 export interface TicketRead {
   title: string;

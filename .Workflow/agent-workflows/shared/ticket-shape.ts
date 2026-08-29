@@ -98,3 +98,29 @@ export function countCriteria(body: string): number | null {
   const section = sectionText(normalized, CRITERIA_HEADING_RE);
   return section.split("\n").filter((line) => CRITERIA_ITEM_RE.test(line)).length;
 }
+
+/**
+ * One `## Parent PRD\n#<n>` heading, as `shared/render-body.ts` writes it on
+ * every ticket this repo publishes.
+ */
+const PARENT_PRD_RE = /^##[ \t]+Parent PRD[ \t]*\n#(\d+)/m;
+
+/** The parent PRD's issue number, or `undefined` when the body carries none. */
+export function parentPrdNumber(body: string): number | undefined {
+  const match = PARENT_PRD_RE.exec(normalizeNewlines(body));
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * The criterion strings a ticket body declares under `## Acceptance
+ * criteria`, in the body's own order — each with its leading `- [ ]` and
+ * surrounding whitespace stripped, everything after that verbatim.
+ */
+export function extractCriteria(body: string): string[] {
+  const normalized = normalizeNewlines(body);
+  const section = sectionText(normalized, CRITERIA_HEADING_RE);
+  return section
+    .split("\n")
+    .filter((line) => CRITERIA_ITEM_RE.test(line))
+    .map((line) => line.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim());
+}
