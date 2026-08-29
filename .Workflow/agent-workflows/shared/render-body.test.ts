@@ -174,6 +174,27 @@ describe("a published body, read by the script that closes it", () => {
       .toThrow(/acceptance criterion/);
   });
 
+  it.each([
+    ["gh api against the tracker (#201's fourth criterion)", "Lane 04 has authored once — check: `gh api repos/collod873/claude-workflow/contents/tests/acceptance >/dev/null 2>&1`"],
+    ["gh issue view", "The spec says so — check: `gh issue view 42 --json body`"],
+    ["gh pr", "The PR merges — check: `gh pr view 7 --json mergeable`"],
+    ["gh run list", "The lane ran — check: `gh run list --limit 1`"],
+    ["curl", "The endpoint answers — check: `curl -sf https://example.com/health`"],
+    ["wget", "The artifact was fetched — check: `wget -q -O- https://example.com`"],
+  ])("refuses a check that reads the tracker instead of the tree: %s", (_label, criterion) => {
+    expect(() => renderBody(slice({ title: "A slice", acceptanceCriteria: [criterion] }), 1))
+      .toThrow(/checks the tracker instead of the tree/);
+  });
+
+  it("does not refuse a check that reaches an absolute path outside the repo (#220's own criteria)", () => {
+    const criterion =
+      "The drain skill resolves the repository's own `bin/close-ticket` in preference to the skill's copy — check: `grep -q 'bin/close-ticket' /home/collin/.agents/skills/drain/SKILL.md`";
+
+    expect(() =>
+      renderBody(slice({ title: "A slice", acceptanceCriteria: [criterion] }), 1),
+    ).not.toThrow();
+  });
+
   it("names every offending slice in one refusal, not just the first", () => {
     const plan = [
       slice({ title: "First", acceptanceCriteria: ["It works."] }),
