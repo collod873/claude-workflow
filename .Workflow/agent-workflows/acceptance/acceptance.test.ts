@@ -4,15 +4,8 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeStage } from "../shared/stage.fake";
-import { CRITERIA_ITEM_RE } from "../shared/ticket-shape";
-import {
-  authorAcceptanceTests,
-  extractCriteria,
-  parentPrdNumber,
-  readTicket,
-  refireAcceptance,
-  runAcceptanceAuthor,
-} from "./acceptance";
+import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
+import { authorAcceptanceTests, refireAcceptance, runAcceptanceAuthor } from "./acceptance";
 
 const TICKET_BODY = `## Parent PRD
 #145

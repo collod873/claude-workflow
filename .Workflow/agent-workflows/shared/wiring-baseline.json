@@ -9,11 +9,6 @@
     },
     {
       "kind": "exports",
-      "file": ".Workflow/agent-workflows/implement/implement.ts",
-      "name": "parentPrdNumber"
-    },
-    {
-      "kind": "exports",
       "file": ".Workflow/agent-workflows/implement/out-of-brief.ts",
       "name": "markedCount"
     },
