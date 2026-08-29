@@ -67,7 +67,9 @@ describe("both collectors normalize into the same Decided-context shape", () => 
   it("produces the identical five-field shape from a sheet and from a map", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: ["Gate"], route: "short" };
     const sheetGh = fakeSheetGh("the owner's words", [sheetMarker(sheet()), acceptedMarker(payload)]);
-    const sheetContext = collectSheetContext(sheetGh, 1);
+    // The sheet collector returns its decisions beside the context; the parity
+    // rule is about the context, which is the half every collector shares.
+    const { context: sheetContext } = collectSheetContext(sheetGh, 1);
 
     repoRoot = mkdtempSync(join(tmpdir(), "shape-parity-"));
     mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });

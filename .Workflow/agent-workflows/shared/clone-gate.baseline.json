@@ -100,16 +100,6 @@
     ]
   },
   {
-    "hash": "126262dc19d180e6",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 115,
-    "where": [
-      ".Workflow/agent-workflows/spec/rounds.test.ts:7",
-      ".Workflow/agent-workflows/spec/spec.test.ts:136"
-    ]
-  },
-  {
     "hash": "140b1e7b3bdcece0",
     "format": "typescript",
     "lines": 9,
@@ -1100,16 +1090,6 @@
     ]
   },
   {
-    "hash": "ef56299626497b37",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 99,
-    "where": [
-      ".Workflow/agent-workflows/review/review.test.ts:230",
-      ".Workflow/agent-workflows/review/review.test.ts:261"
-    ]
-  },
-  {
     "hash": "f222767a9f7c8cff",
     "format": "typescript",
     "lines": 9,
@@ -1127,16 +1107,6 @@
     "where": [
       ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:24",
       ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:14"
-    ]
-  },
-  {
-    "hash": "f5f67dfc0b9badf8",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 97,
-    "where": [
-      ".Workflow/agent-workflows/review/review.test.ts:229",
-      ".Workflow/agent-workflows/review/review.test.ts:277"
     ]
   },
   {

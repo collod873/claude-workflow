@@ -83,6 +83,7 @@ const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
+const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
 
 /**
  * Where a ref is **created**, which is how an implementer claims its slice (#179). No variable
@@ -93,6 +94,33 @@ const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-ref
  * fast-forwards has already done the whole job twice.
  */
 export const GIT_REFS_PATH = "repos/{owner}/{repo}/git/refs";
+
+/**
+ * How far `head` has run past `base`. Lane 05 asks this of a claim branch it found already there:
+ * a branch carrying commits is somebody's unfinished work, and never debris to be taken over
+ * (`implement/implement.ts`, #196).
+ *
+ * A plain builder with no matcher, like `GIT_REFS_PATH` above — nothing in this pipeline has to
+ * *recognise* a compare path, only send one, and a matcher no fake reads would be a shape claiming
+ * to be checked that nothing checks.
+ */
+export function comparePath(base: string, head: string): string {
+  return `repos/{owner}/{repo}/compare/${base}...${head}`;
+}
+
+/**
+ * When one branch was created, from the repository activity feed — newest entry first, one entry.
+ *
+ * The only place GitHub records a ref's age. A ref carries no timestamp of its own, and the commit
+ * it points at answers a different question: lane 05's claim ref is created at trunk's tip, so its
+ * commit date says when trunk last moved, not when the claim was made. Telling a claim made a
+ * minute ago from one a dead run left behind last night is the whole of #196, and this is the only
+ * endpoint that can (`implement/implement.ts`).
+ */
+export function branchCreationPath(branch: string): string {
+  const ref = encodeURIComponent(`refs/heads/${branch}`);
+  return `repos/{owner}/{repo}/activity?activity_type=branch_creation&per_page=1&ref=${ref}`;
+}
 
 /** The path for one issue: `repos/{owner}/{repo}/issues/<number>`. */
 export function issuePath(number: number): string {
@@ -156,6 +184,21 @@ export function matchingRefsPath(prefix: string): string {
   return matchingRefs.build(prefix);
 }
 
+/**
+ * Every pull request associated with one commit — **regardless of state**, which is the whole
+ * reason lane 07 reads this endpoint rather than `pr list`. The reviewer rides a `workflow_run`
+ * and is always behind the event that started it, so a fast lane 08 can merge the pull request
+ * before the reviewer reaches this lookup; an open-only query would make the conformance reviewer
+ * silently skip exactly the runs that moved quickest (#189).
+ *
+ * The caller still has to pick the pull request whose *own* head SHA is the commit it asked
+ * about: this endpoint also lists a pull request that merely contains the commit somewhere in its
+ * branch, which is a different question from "which pull request is this run reviewing?".
+ */
+export function commitPullsPath(head: string): string {
+  return commitPulls.build(head);
+}
+
 /** Matches an `issuePath`, capturing the issue number. */
 export const issuePathMatcher: RegExp = issue.matcher;
 
@@ -176,3 +219,12 @@ export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
 
 /** Matches a `matchingRefsPath`, capturing the ref prefix. */
 export const matchingRefsPathMatcher: RegExp = matchingRefs.matcher;
+
+/**
+ * Matches a `commitPullsPath`, capturing the commit.
+ *
+ * @fixture — no lane reads this; it exists so a `GhExec` stand-in answers the commit-to-pulls
+ * lookup by the same segments `commitPullsPath` sends, rather than restating the path in a way
+ * that could name a different endpoint from the one production actually calls.
+ */
+export const commitPullsPathMatcher: RegExp = commitPulls.matcher;

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { GIT_REFS_PATH } from "../shared/gh-paths";
+import { branchCreationPath, comparePath, GIT_REFS_PATH } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
@@ -208,6 +208,118 @@ function fsWriteFile(path: string, content: string): void {
 export { implementationBranch };
 
 /**
+ * How long a claim may sit unexplained before another run may take it — `implement.yml`'s own
+ * `timeout-minutes` for the `implement` job, which `implement.test.ts` pins against the workflow
+ * file so the two cannot drift.
+ *
+ * The number is load-bearing in one direction only: a run cannot outlive its own timeout, so a
+ * claim older than this is held by **no run at all**. Reading it any tighter would let a live run's
+ * claim be stolen out from under it; reading it looser only delays a retry.
+ */
+export const CLAIM_TIMEOUT_MINUTES = 30;
+
+/** The REST resource for one branch's ref, derived from `GIT_REFS_PATH` rather than restated. */
+function refPath(branch: string): string {
+  return `${GIT_REFS_PATH}/heads/${branch}`;
+}
+
+/**
+ * Creates the claim ref at `sha`, atomically. `POST git/refs` **fails when the ref exists**
+ * (HTTP 422) where a push may fast-forward, and a fast-forward is not a claim.
+ */
+function createClaimRef(gh: GhExec, branch: string, sha: string, log: (line: string) => void): boolean {
+  try {
+    gh(["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${branch}`, "-f", `sha=${sha}`]);
+    return true;
+  } catch (err) {
+    log(`\`${branch}\` was not claimed here: ${reason(err)}`);
+    return false;
+  }
+}
+
+/**
+ * Deletes the claim ref, so the next dispatch for this ticket finds the slice unstarted and is free
+ * to build it (#196). **Never throws**: a release that fails must not turn one failure into two,
+ * and the run's own outcome is what the caller is reporting.
+ */
+function releaseClaim(gh: GhExec, branch: string, log: (line: string) => void): void {
+  try {
+    gh(["api", "--method", "DELETE", refPath(branch)]);
+    log(`released the claim on \`${branch}\``);
+  } catch (err) {
+    log(`could not release the claim on \`${branch}\`: ${reason(err)}`);
+  }
+}
+
+/** Whether any pull request — open, closed or merged — has ever named `branch` as its head. */
+function hasPullRequest(gh: GhExec, branch: string): boolean {
+  const raw = gh(["pr", "list", "--head", branch, "--state", "all", "--json", "number"]);
+  return (JSON.parse(raw) as unknown[]).length > 0;
+}
+
+/**
+ * How many commits `branch` carries that `base` does not. Anything but a number reads as **has
+ * commits**, because every unknown here has to fall on the side that leaves the claim alone.
+ */
+function commitsAhead(gh: GhExec, branch: string, base: string): number {
+  const raw = gh(["api", comparePath(base, branch)]);
+  const ahead = (JSON.parse(raw) as { ahead_by?: unknown }).ahead_by;
+  return typeof ahead === "number" ? ahead : 1;
+}
+
+/** How long ago `branch` was created, in minutes, or `undefined` when GitHub records no creation. */
+function claimAgeMinutes(gh: GhExec, branch: string, now: Date): number | undefined {
+  const raw = gh(["api", branchCreationPath(branch)]);
+  const activity = (JSON.parse(raw) as Array<{ timestamp?: string }>)[0];
+  if (!activity?.timestamp) return undefined;
+  const created = Date.parse(activity.timestamp);
+  if (Number.isNaN(created)) return undefined;
+  return (now.getTime() - created) / 60_000;
+}
+
+/**
+ * Whether the claim already on `branch` is held by a run that is still going, or is debris a dead
+ * run left behind (#196).
+ *
+ * Debris is the conjunction the ticket names: **no pull request, no commits, and older than the
+ * lane's own timeout**. Each term alone would be wrong — a branch with commits is somebody's
+ * unfinished work, a branch with a PR is a finished run, and a young branch is a run still in its
+ * first minutes — and together they describe a ref that nothing on GitHub is still attached to.
+ *
+ * **Every uncertainty answers `live`**, including an error reading any of the three. Refusing a
+ * claim that was in fact debris costs one delayed retry; taking one that was in fact held costs two
+ * implementers building the same ticket at once, which is the failure the claim exists to prevent.
+ */
+function assessClaim(
+  gh: GhExec,
+  branch: string,
+  base: string,
+  now: Date,
+  log: (line: string) => void,
+): "live" | "stale" {
+  try {
+    if (hasPullRequest(gh, branch)) return "live";
+    if (commitsAhead(gh, branch, base) > 0) return "live";
+    const age = claimAgeMinutes(gh, branch, now);
+    if (age === undefined) {
+      log(`\`${branch}\` has no recorded creation time, so its claim is read as still held.`);
+      return "live";
+    }
+    return age > CLAIM_TIMEOUT_MINUTES ? "stale" : "live";
+  } catch (err) {
+    log(`could not tell whether \`${branch}\`'s claim is still held, so it is: ${reason(err)}`);
+    return "live";
+  }
+}
+
+/** What `claimImplementationBranch` answers: whether this run holds the slice, and how it got it. */
+export interface ClaimOutcome {
+  claimed: boolean;
+  /** True only when this run took a claim a dead run left behind, rather than making a fresh one. */
+  tookOverStaleClaim: boolean;
+}
+
+/**
  * Claims this slice, atomically, **before the model runs** (#179).
  *
  * Dispatch is at-least-once: the reconciler recomputes the ready set on every `graph-changed` and
@@ -217,29 +329,32 @@ export { implementationBranch };
  * implementers would both do the whole job and only the push would collide — a wasted Sonnet run
  * and, worse, a second one that might win the race with different files.
  *
- * The ref is created rather than pushed because `POST git/refs` **fails when the ref exists**
- * (HTTP 422) where a push may fast-forward, and a fast-forward is not a claim.
+ * A refusal is no longer the end of it (#196). The ref's existence was read as *somebody is
+ * building this*, which is true right up until the run holding it dies — after which every retry
+ * read the same 422, logged "already claimed", and exited 0 having done nothing, so the ticket was
+ * unbuildable until a human deleted the branch by hand. So a refusal now asks whether anything is
+ * actually holding the ref (`assessClaim`), and takes it when nothing is.
  *
- * Any refusal reads as *not claimed by me* and stops this run, not only the 422. That fails to the
- * safe side twice over: a transient failure leaves no ref, so the next recompute finds the slice
- * still unstarted and dispatches it again — the reason to have a reconciler at all — while
- * guessing that a refusal was transient would be guessing the one way that costs a duplicate
- * implementer.
+ * The takeover is a delete followed by the **same atomic create**, never an assumption that the
+ * delete made room for this run in particular: two runs that both find the same debris still race
+ * on `POST git/refs`, and still only one of them wins.
  */
 export function claimImplementationBranch(
   gh: GhExec,
   git: GitExec,
   branch: string,
   log: (line: string) => void = (line) => console.log(line),
-): boolean {
+  now: Date = new Date(),
+): ClaimOutcome {
   const sha = git(["rev-parse", "HEAD"]).trim();
-  try {
-    gh(["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${branch}`, "-f", `sha=${sha}`]);
-    return true;
-  } catch (err) {
-    log(`\`${branch}\` was not claimed here: ${reason(err)}`);
-    return false;
-  }
+  if (createClaimRef(gh, branch, sha, log)) return { claimed: true, tookOverStaleClaim: false };
+
+  if (assessClaim(gh, branch, sha, now, log) === "live") return { claimed: false, tookOverStaleClaim: false };
+
+  log(`\`${branch}\` is a claim no run is holding — taking it over.`);
+  releaseClaim(gh, branch, log);
+  if (!createClaimRef(gh, branch, sha, log)) return { claimed: false, tookOverStaleClaim: false };
+  return { claimed: true, tookOverStaleClaim: true };
 }
 
 /**
@@ -256,6 +371,66 @@ function commitAndPushBranch(git: GitExec, branch: string, paths: string[], comm
   git(["add", ...paths]);
   git(["commit", "-m", commitMessage]);
   git(["push", "origin", `HEAD:${branch}`]);
+}
+
+/**
+ * The files whose content the stage actually changes — every one it returned that is either absent
+ * from disk or already holds something else.
+ *
+ * Asked **before** the write, because after it every file is identical to what was written, and
+ * asked of the files rather than of git because that is the question this lane can answer without
+ * a staged index: an implementer that returns the file exactly as it already is has built nothing.
+ *
+ * That is not a hypothetical (#196). Run 33229214201 built #210, correctly found the ticket already
+ * implemented, and returned the files unchanged — and died on `git commit -m "Implement #210"` with
+ * `nothing to commit, working tree clean`, leaving its claim behind. A no-op is a legitimate
+ * outcome, and asking this before the commit is what lets the lane say so instead of failing.
+ */
+function filesThatChange(
+  files: ImplementerAnswer["files"],
+  readFile: (path: string) => string,
+  fileExists: (path: string) => boolean,
+): ImplementerAnswer["files"] {
+  return files.filter((file) => !fileExists(file.path) || readFile(file.path) !== file.content);
+}
+
+/**
+ * Says one thing on the ticket — that a stale claim was taken over, or that there was nothing to
+ * build. **Never throws**: the comment is this lane's signal to a human, not part of the claim
+ * mechanism, and a run that has already done its work must not fail for want of one.
+ *
+ * `implement.yml` grants `issues: read` today, so this is the call that 403s until that permission
+ * is widened to `issues: write`. Swallowing that leaves the release itself — the part that unblocks
+ * the ticket — working either way.
+ */
+function sayOnTicket(gh: GhExec, issueNumber: number, body: string, log: (line: string) => void): void {
+  try {
+    gh(["issue", "comment", String(issueNumber), "--body", body]);
+  } catch (err) {
+    log(`could not say this on #${issueNumber} (${reason(err)}): ${body}`);
+  }
+}
+
+/** What lane 05 says on the ticket when it takes over a claim a dead run left behind (#196). */
+export function staleClaimTakeoverNote(branch: string): string {
+  return [
+    `Took over a stale claim on \`${branch}\`.`,
+    "",
+    `The branch was already there when this run started, with no pull request, no commits, and older`,
+    `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout — a claim left behind by a run that`,
+    "died rather than one a run is still holding. This run took it over and is building the ticket now.",
+  ].join("\n");
+}
+
+/** What lane 05 says on the ticket when the implementer's files match what is already on disk. */
+export function nothingToBuildNote(issueNumber: number): string {
+  return [
+    `Found nothing to build for #${issueNumber}.`,
+    "",
+    "The implementer returned this ticket's files exactly as they already are on trunk, so there was",
+    "no commit to make and no pull request to open. That is an outcome, not a failure: the ticket may",
+    "already be true. The claim has been released, so a later dispatch is free to try again.",
+  ].join("\n");
 }
 
 /** What `openPrAndDispatch` opens a PR for and then tells the verification lane about. */
@@ -343,6 +518,42 @@ export interface ImplementDeps {
   failingTests: FailingTestFile[];
   /** Where a refused claim is reported. Injected so a test reads it rather than the run log. */
   log?: (line: string) => void;
+  /** When this run started, for judging a claim's age. Injected so a test can age one. */
+  now?: Date;
+}
+
+/**
+ * How one lane 05 run ended. Three outcomes, because two of them are green and only one of those
+ * opens a pull request — collapsing either into "no PR" is what made a dead run's leftover claim
+ * indistinguishable from a healthy duplicate dispatch (#196).
+ */
+export type ImplementOutcome =
+  /** A pull request was opened and the verification lane told about it. */
+  | { outcome: "opened"; pr: string }
+  /** Somebody is building this slice already — the ordinary price of at-least-once dispatch (#179). */
+  | { outcome: "already-claimed" }
+  /** The ticket was already true: the implementer's files matched trunk, so there was nothing to commit. */
+  | { outcome: "nothing-to-build" };
+
+/**
+ * Releases the claim a failed run is holding, unless a pull request now exists on it.
+ *
+ * The exception is the whole reason this asks GitHub rather than a local flag: `openPrAndDispatch`
+ * opens the PR and *then* sends the dispatch, so a failure in the send is a failure with a live PR
+ * standing behind it, and deleting that branch would take the run's finished work with it. Anything
+ * this cannot determine leaves the claim alone, for the reason `assessClaim` gives.
+ */
+function releaseFailedClaim(gh: GhExec, branch: string, log: (line: string) => void): void {
+  try {
+    if (hasPullRequest(gh, branch)) {
+      log(`\`${branch}\` already carries a pull request — leaving its claim in place.`);
+      return;
+    }
+  } catch (err) {
+    log(`could not tell whether \`${branch}\` carries a pull request, so its claim stands: ${reason(err)}`);
+    return;
+  }
+  releaseClaim(gh, branch, log);
 }
 
 /**
@@ -351,18 +562,38 @@ export interface ImplementDeps {
  * write what it returns, commit and push the claimed branch, then open exactly one PR
  * and send exactly one verification dispatch naming it.
  *
- * Returns the pull request's URL, or `null` when the branch was already claimed — a duplicate
- * `ticket-ready` for a slice somebody is already building, which is an ordinary and expected event
- * under at-least-once dispatch (#179) rather than a failure.
+ * **A claim this run made does not outlive it** (#196). Every path out of here that is not an open
+ * pull request gives the branch back: a throw anywhere after the claim, and the no-op where the
+ * implementer's files match trunk. The claim is the ready set's `started` term
+ * (`shared/ready-set.ts`), so a claim left standing by a dead run is not a stale ref — it is a
+ * ticket nothing will ever build again, which is exactly what happened twice in one evening and
+ * both times took a `git push origin --delete` by hand to clear.
  */
-export async function runImplement(deps: ImplementDeps): Promise<string | null> {
+export async function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
+  const log = deps.log ?? ((line: string) => console.log(line));
+
   // First, before the ticket read and long before the model: the claim is only a claim if nothing
   // expensive has happened yet.
   const branch = implementationBranch(deps.issueNumber);
-  if (!claimImplementationBranch(deps.gh, deps.git, branch, deps.log ?? ((line) => console.log(line)))) {
-    return null;
+  const claim = claimImplementationBranch(deps.gh, deps.git, branch, log, deps.now ?? new Date());
+  if (!claim.claimed) return { outcome: "already-claimed" };
+
+  // A retry that succeeded and a retry that was refused both used to look like a green run with no
+  // PR. Saying this on the ticket is what tells them apart, for a reader who has only the tracker.
+  if (claim.tookOverStaleClaim) {
+    sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
   }
 
+  try {
+    return await buildAndOpen(deps, branch, log);
+  } catch (err) {
+    releaseFailedClaim(deps.gh, branch, log);
+    throw err;
+  }
+}
+
+/** Everything between a held claim and an opened pull request — see `runImplement` for the frame. */
+async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const seamManifestLines = extractSeamsConsumed(ticket.body);
   const filesClaimed = extractFilesClaimed(ticket.body);
@@ -385,8 +616,17 @@ export async function runImplement(deps: ImplementDeps): Promise<string | null> 
     recordOutOfBrief(deps.gh, module);
   }
 
+  // Asked before the write, while disk still holds what the run started with.
+  const changing = filesThatChange(answer.files, deps.readFile, deps.fileExists);
+
   for (const file of answer.files) {
     deps.writeFile(file.path, file.content);
+  }
+
+  if (changing.length === 0) {
+    releaseClaim(deps.gh, branch, log);
+    sayOnTicket(deps.gh, deps.issueNumber, nothingToBuildNote(deps.issueNumber), log);
+    return { outcome: "nothing-to-build" };
   }
 
   const paths = answer.files.map((file) => file.path);
@@ -397,7 +637,7 @@ export async function runImplement(deps: ImplementDeps): Promise<string | null> 
     `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
   );
 
-  return openPrAndDispatch(deps.gh, {
+  const pr = openPrAndDispatch(deps.gh, {
     branch,
     title: ticket.title,
     body: `${answer.summary}\n\nCloses #${deps.issueNumber}`,
@@ -407,6 +647,7 @@ export async function runImplement(deps: ImplementDeps): Promise<string | null> 
     changedFiles: paths,
     criteria: extractCriteria(ticket.body),
   });
+  return { outcome: "opened", pr };
 }
 
 /**
@@ -441,7 +682,7 @@ async function main(): Promise<void> {
   }
   const issueNumber = Number(issueArg);
   try {
-    const prUrl = await runImplement({
+    const result = await runImplement({
       gh: execGh,
       exec: execClaude,
       git: execGit,
@@ -451,13 +692,19 @@ async function main(): Promise<void> {
       issueNumber,
       failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(path, "utf8")),
     });
-    if (prUrl === null) {
+    if (result.outcome === "already-claimed") {
       // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the
       // branch ref is what makes it free — exiting green here is that guarantee being kept.
       console.log(`#${issueNumber} is already claimed — nothing to do.`);
       return;
     }
-    console.log(`opened ${prUrl}`);
+    if (result.outcome === "nothing-to-build") {
+      // Also not a failure, and the distinction the run that died on `nothing to commit` could not
+      // make (#196): the ticket was already true, the claim is back, and the ticket says so.
+      console.log(`#${issueNumber} needed no changes — nothing to build.`);
+      return;
+    }
+    console.log(`opened ${result.pr}`);
   } catch (err) {
     console.error(`implement failed: ${reason(err)}`);
     process.exitCode = 1;

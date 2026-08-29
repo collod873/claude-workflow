@@ -79,8 +79,9 @@ export default {
   tags: ["-shell", "-fixture"],
 
   /**
-   * `execFileSync("bin/gauntlet", …)` and `execFileSync("bin/new-adr", …)` — knip reads an
-   * extensionless argv[0] as an unresolved import. They are subprocesses, not module edges.
+   * `execFileSync("bin/gauntlet", …)`, `execFileSync("bin/new-adr", …)` and
+   * `spawnSync("bin/close-ticket", …)` — knip reads an extensionless argv[0] as an unresolved
+   * import. They are subprocesses, not module edges.
    */
-  ignoreUnresolved: ["bin/gauntlet", "bin/new-adr"],
+  ignoreUnresolved: ["bin/gauntlet", "bin/new-adr", "bin/close-ticket"],
 };

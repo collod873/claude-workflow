@@ -24,9 +24,23 @@ name: Integrate
   repository_dispatch:
     types: [implementation-opened]
 
+# `issues: write` is what lets this lane finish a ticket rather than only merge one (#195,
+# ADR-0094): after the merge, `integrate.ts` shells to this repository's own `bin/close-ticket`,
+# which comments the `## Closing record` and closes the issue the pull request named. A
+# `permissions:` block replaces the default token rather than adding to it (see
+# `shared/workflow-permissions.test.ts`), so without this scope the close would fail on a token
+# holding `issues: none` — after the merge had already landed, where nobody is watching.
+#
+# `actions: read` is what lets this lane read lane 06's verdict (#197). `verify.yml` and this file
+# fire on the same dispatch, in parallel, and nothing else connects them: a dispatch run's
+# `pull_requests` is empty and the pull request's own head commit carries no check runs, so the
+# only place lane 06's answer exists is the Actions API — `verify.yml`'s runs, narrowed to this
+# run's own `github.sha`, and that run's jobs.
 permissions:
   contents: write
+  issues: write
   pull-requests: write
+  actions: read
 
 concurrency:
   group: integrate
@@ -39,6 +53,7 @@ jobs:
     timeout-minutes: 15
     env:
       PR: ${{ github.event.client_payload.pr }}
+      HEAD_SHA: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -63,6 +78,35 @@ jobs:
         run: npm ci
 
       # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
-      # against the rebased tree, and merge only on a completed run reporting green.
+      # against the rebased tree, read lane 06's verdict on this same head commit, merge only on a
+      # completed green run that lane 06 also cleared — and then close the ticket that merge
+      # delivered, via `bin/close-ticket` against this checkout (#195). One step, not two: the
+      # close is a decision about the merge that just happened, and a separate step would have to
+      # re-derive from the outside what `integrate.ts` already knows. A ticket that will not close
+      # leaves this step green — the merge landed either way.
+      #
+      # ## Which half of lane 06 binds (#197, ADR-0095)
+      #
+      # `verify.yml` has two jobs and they do not mean the same thing, so this lane does not treat
+      # them alike.
+      #
+      # **`Immutability` blocks outright.** It is the alarm that an implementer's diff touched
+      # `tests/acceptance/`, `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054) — a diff that can
+      # silence a check has invalidated whatever this lane's own gauntlet just said about it. A
+      # failing one refuses the merge, and so does a job that is skipped, cancelled or still
+      # running: `verify.yml` skips that job on its `push: main` runs and waves the skip through in
+      # its own downstream `if:`, which is a reading this lane may not copy.
+      #
+      # **`Restore and run acceptance` does not bind, and this is the reason.** Lane 04's
+      # first-authoring is unwired (#201), so no acceptance test names any criterion a dispatch
+      # carries and that job refuses on the empty set — it is red for *every* pull request today,
+      # and binding on it would stop the whole chain rather than catch anything. Lane 08 merges over
+      # it and posts a comment on the pull request saying it was red, so the red is on the record
+      # instead of in a run log nobody reads. When #201 lands and that job starts meaning something,
+      # this ruling is the thing to revisit.
+      #
+      # `github.sha` is how the two runs are joined: a `repository_dispatch` run executes trunk's
+      # copy of the workflow at trunk's tip (ADR-0054), so lane 06's run for this dispatch carries
+      # the same commit as this one.
       - name: Integrate the pull request
-        run: npx tsx .Workflow/agent-workflows/integrate/integrate.ts "$PR"
+        run: npx tsx .Workflow/agent-workflows/integrate/integrate.ts "$PR" "$HEAD_SHA"

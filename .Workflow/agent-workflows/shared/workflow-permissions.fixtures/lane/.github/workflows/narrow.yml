@@ -1,0 +1,20 @@
+name: Narrow
+
+# The defect this guard exists to catch, held still: a lane that runs an entrypoint reaching an
+# `issue create` while declaring `issues: read`. Real instances (#181's `implement.yml`, and the
+# `contents: read` dispatch before ADR-0091) get fixed, and a guard whose only subject is a correct
+# tree has never been shown to detect anything. This one stays wrong on purpose.
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  narrow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the lane
+        run: npx tsx src/lane.ts

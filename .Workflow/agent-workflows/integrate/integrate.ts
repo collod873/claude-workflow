@@ -1,8 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { z } from "zod";
 import { childEnv } from "../shared/child-env";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
+import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
@@ -32,8 +34,35 @@ export interface GauntletResult {
   exitCode: 0 | 1 | 2;
 }
 
+/**
+ * One `bin/close-ticket` invocation's outcome. Exit `0` is the only shape that closed anything:
+ * the record posted and the ticket closed. Every other exit means the ticket is still open —
+ * a criterion's `check:` command failed, the body's criteria came back every-one-unverified
+ * (the refusal #215 landed: zero of any number is not evidence), or the script could not run at
+ * all. Those are one case here on purpose: they differ in cause and not in consequence, and the
+ * consequence — the ticket stays open, said so on the ticket — is the whole decision this lane
+ * makes. Nothing downstream branches on the cause, so nothing downstream is offered it.
+ */
+export interface CloseTicketResult {
+  exitCode: number;
+  /** Everything the invocation said, stdout and stderr folded together. Quoted back onto the ticket when it refuses — that text names the criterion that did not check out, and nobody is watching this run's log. */
+  output: string;
+}
+
+/**
+ * What became of the ticket the merged pull request named (#195). A merge that landed is never
+ * undone by anything in here, so this rides *alongside* `merged: true` rather than qualifying it.
+ */
+export type ClosingOutcome =
+  /** `bin/close-ticket` verified the ticket's own criteria against the merge and posted the `## Closing record`. */
+  | { closed: true; ticket: number }
+  /** `bin/close-ticket` declined to close (see `CloseTicketResult`). The ticket stays open and carries a comment from this lane saying why. */
+  | { closed: false; reason: "refused"; ticket: number }
+  /** The pull request body names no ticket, so there is nothing to close — a branch pushed by hand, never lane 05's work. */
+  | { closed: false; reason: "no-ticket" };
+
 export type IntegrateOutcome =
-  | { merged: true }
+  | { merged: true; closing: ClosingOutcome }
   /** A completed run reported red — `bin/gauntlet push` exited `1`. */
   | { merged: false; reason: "red" }
   /**
@@ -43,21 +72,218 @@ export type IntegrateOutcome =
    * as "it ran and passed", the exact absence-of-evidence mistake ADR-0054
    * names.
    */
-  | { merged: false; reason: "no-run" };
+  | { merged: false; reason: "no-run" }
+  /**
+   * Lane 06's `Immutability` job failed for this dispatch's head commit: an implementer's diff
+   * crossed `tests/acceptance/`, `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054). The one
+   * alarm this lane never merges over — a diff that can silence a check has invalidated whatever
+   * this lane's own gauntlet just said about it.
+   */
+  | { merged: false; reason: "immutable-set" }
+  /**
+   * Lane 06 has not judged this head commit: no dispatch run of `verify.yml` carries it, or the
+   * `Immutability` job on the run that does is still queued, running, skipped or cancelled. Kept
+   * distinct from `"immutable-set"` for the same reason `"no-run"` is kept distinct from `"red"` —
+   * ADR-0054's property is that the *absence* of a completed verdict is its own refusal, never a
+   * pass by default (#197).
+   */
+  | { merged: false; reason: "unjudged" };
 
 export interface IntegrateDeps {
   git: GitExec;
   gh: GhExec;
   /** The PR this run integrates, as `gh` accepts it — a number, a URL, or `OWNER/REPO#123`. Same identifier `implement.ts`'s `openPrAndDispatch` names in its dispatch payload. */
   pr: string;
+  /**
+   * The commit lane 06's run for this dispatch carries as its head — `github.sha` in
+   * `integrate.yml`. Lane 06 and lane 08 fire on the *same* `repository_dispatch`, and a
+   * dispatch-triggered run always executes trunk's copy of the workflow file at trunk's tip
+   * (ADR-0054), so both runs carry that tip as `head_sha`. It is the only fact the two runs share
+   * that the Actions API will answer on: `pull_requests` on a dispatch run is empty, and the
+   * pull request's own head commit carries no check runs at all, so neither `gh pr checks` nor
+   * `--json statusCheckRollup` can see lane 06 from here.
+   */
+  headSha: string;
   /** Re-runs the gauntlet against the rebased tree. Real production behaviour shells to `bin/gauntlet push`; a test injects a canned result instead of paying for a real run. */
   runGauntlet: () => GauntletResult;
+  /** Closes `ticket` against `range`. Real production behaviour shells to this repository's own `bin/close-ticket` (`runRealCloseTicket`); a test injects a canned result rather than paying for a tracker write and the ticket's own checks. */
+  closeTicket: (ticket: number, range: string) => CloseTicketResult;
 }
 
-/** The PR's own head branch name, read through `gh` — the one read this lane makes before it writes anything. */
-function prHeadBranch(gh: GhExec, pr: string): string {
-  const raw = gh(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
-  return raw.trim();
+/** What one `gh pr view` tells this lane: the branch to rebase, and the ticket the merge will finish. */
+interface PullRequest {
+  /** The PR's own head branch name. */
+  branch: string;
+  /** The ticket this pull request's body says it closes, or `undefined` when it names none. */
+  ticket: number | undefined;
+}
+
+/**
+ * `Closes #123` in a pull request body — the form lane 05's `openPrAndDispatch` writes
+ * (`implement.ts`), widened to the rest of GitHub's own closing keywords so a hand-opened pull
+ * request reads the same way.
+ */
+const CLOSING_REFERENCE_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i;
+
+/**
+ * The one read this lane makes before it writes anything: the branch to rebase and the ticket to
+ * close, from a single `gh pr view`.
+ *
+ * The ticket comes from **parsing the body**, not from `--json closingIssuesReferences`, and that
+ * is the point rather than an omission. GitHub's linkage is what was already missing in the run
+ * #195 was filed on: [#193](https://github.com/collod873/claude-workflow/pull/193) ended in
+ * `Closes #190`, #190's timeline carried `referenced` and `cross-referenced` and no `connected`
+ * event at all, and #190 stayed open. Reading the linkage would have this lane ask GitHub the
+ * question GitHub had already answered wrong; reading the body asks the pull request what it says.
+ */
+function readPr(gh: GhExec, pr: string): PullRequest {
+  const raw = gh(["pr", "view", pr, "--json", "headRefName,body"]);
+  const json = JSON.parse(raw) as { headRefName?: string; body?: string };
+  const match = CLOSING_REFERENCE_RE.exec(json.body ?? "");
+  return {
+    branch: (json.headRefName ?? "").trim(),
+    ticket: match ? Number(match[1]) : undefined,
+  };
+}
+
+/**
+ * What lane 06 says about one of its jobs, for the head commit this dispatch names.
+ *
+ * Three states rather than a boolean, and the third is the point. `verify.yml`'s `Immutability`
+ * job is gated on the implementer's dispatch, so on a `push: main` run it is **skipped** — and
+ * `verify.yml`'s own downstream `if: always() && needs.immutability.result != 'failure'` waves
+ * that skip through on purpose. Lane 08 may not: a job that was skipped, cancelled, or is still
+ * running has said nothing, and "said nothing" must never collapse into "said yes" (ADR-0054).
+ */
+export type JobVerdict = "passed" | "failed" | "unjudged";
+
+/** Lane 06's two jobs, as lane 08 reads them for one head commit. */
+interface VerifyVerdict {
+  immutability: JobVerdict;
+  acceptance: JobVerdict;
+}
+
+/** `verify.yml`'s file name, which is how the Actions API addresses one workflow's own runs. */
+const VERIFY_WORKFLOW_FILE = "verify.yml";
+
+/**
+ * The `Immutability` job's `name:` in `verify.yml`. Spelled here as well as there — `shared/` may
+ * not import a workflow file and the Actions API answers job *names* — so `integrate.test.ts`
+ * parses `verify.yml` and asserts the two agree, the same split `immutable-set.ts` holds to for
+ * `IMMUTABLE_SET` and the dispatch action.
+ */
+export const IMMUTABILITY_JOB = "Immutability";
+
+/** The `Restore and run acceptance` job's `name:` in `verify.yml`, pinned the same way. */
+export const ACCEPTANCE_JOB = "Restore and run acceptance";
+
+/** The `event` an Actions run carries when lane 05's `openPrAndDispatch` started it. */
+const DISPATCH_EVENT = "repository_dispatch";
+
+/**
+ * How far back one lane-06 lookup reaches. The run being looked for was created by the same
+ * webhook delivery as this one, minutes ago at most, so a page this size is the entire fleet's
+ * recent history several times over — it is sized to survive a burst of parallel implementers,
+ * not to reach into last week.
+ */
+const VERIFY_RUN_PAGE_SIZE = 100;
+
+const ApiRun = z.object({ id: z.number(), head_sha: z.string(), event: z.string() });
+const ApiJob = z.object({ name: z.string(), status: z.string(), conclusion: z.string().nullable() });
+
+/**
+ * One job's verdict. Only a *completed* job that concluded `success` is a pass; `failure` is a
+ * fail; everything else — queued, in progress, skipped, cancelled, timed out — is `unjudged`,
+ * because each of those is a job that has not said this diff is fine.
+ */
+function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdict {
+  const job = jobs.find((each) => each.name === name);
+  if (!job || job.status !== "completed") return "unjudged";
+  if (job.conclusion === "success") return "passed";
+  if (job.conclusion === "failure") return "failed";
+  return "unjudged";
+}
+
+/**
+ * The strictest verdict among the runs that could be this pull request's.
+ *
+ * Two implementers dispatching off the same trunk tip produce two `verify.yml` runs this lane
+ * cannot tell apart — a dispatch run's `pull_requests` is empty and its payload is not on the API
+ * — so it does not guess. It takes the worst answer any of them gave: one crossed immutable set
+ * anywhere on this commit holds every merge on it until that pull request is dealt with. The
+ * mistake that costs something is merging a diff that silenced a check; the mistake this direction
+ * makes instead is a merge that waits, which the next dispatch retries.
+ *
+ * No candidate at all is `unjudged`, never `passed` — an empty set is the absence of a verdict.
+ */
+function strictest(verdicts: JobVerdict[]): JobVerdict {
+  if (verdicts.includes("failed")) return "failed";
+  if (verdicts.length === 0 || verdicts.includes("unjudged")) return "unjudged";
+  return "passed";
+}
+
+/**
+ * Lane 06's verdict on this dispatch's head commit, read off the Actions API.
+ *
+ * Runs are narrowed by `head_sha` **and** by `event`. The `head_sha` alone is not enough: the push
+ * that produced this trunk tip ran `verify.yml` at the very same commit, and that run's
+ * `Immutability` job is skipped by its own `if:` — so a `head_sha`-only filter would hand this
+ * lane a skipped job to read, which is exactly the reading `JobVerdict` exists to refuse.
+ */
+function readVerifyVerdict(gh: GhExec, headSha: string): VerifyVerdict {
+  const runsPath = workflowRunsPath(VERIFY_WORKFLOW_FILE, VERIFY_RUN_PAGE_SIZE);
+  const runs = ApiRun.array().parse(
+    JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event}]"])),
+  );
+  const candidates = runs.filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT);
+  const jobsPerRun = candidates.map((run) =>
+    ApiJob.array().parse(
+      JSON.parse(gh(["api", runJobsPath(run.id), "--jq", "[.jobs[] | {name, status, conclusion}]"])),
+    ),
+  );
+  return {
+    immutability: strictest(jobsPerRun.map((jobs) => jobVerdict(jobs, IMMUTABILITY_JOB))),
+    acceptance: strictest(jobsPerRun.map((jobs) => jobVerdict(jobs, ACCEPTANCE_JOB))),
+  };
+}
+
+/**
+ * Says on the pull request that lane 06's acceptance job was not green and this lane merged anyway
+ * — the ruling `integrate.yml`'s own comment states and
+ * [ADR-0095](../../../docs/adr/0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md)
+ * records. Posted before the merge, so it lands on a pull request that certainly still exists, and
+ * swallowed on failure: a comment that would not post is not a reason to withhold a merge the
+ * verdict already allowed.
+ */
+function noteAcceptanceUnbound(gh: GhExec, pr: string, verdict: JobVerdict): void {
+  const body = [
+    `Lane 06's \`${ACCEPTANCE_JOB}\` job is **${verdict}** for this head commit, and lane 08 merged anyway.`,
+    "",
+    "That job is red for every pull request today: lane 04's first-authoring is unwired (#201), so no",
+    "acceptance test names any criterion the dispatch carries and the job refuses on an empty set.",
+    "Binding on it would stop the chain dead, so it does not bind — and this comment is the record that",
+    "it was red, rather than a run log nobody reads. Lane 06's `Immutability` job still blocks outright.",
+  ].join("\n");
+  try {
+    gh(["pr", "comment", pr, "--body", body]);
+  } catch (err) {
+    console.error(`could not note lane 06's acceptance verdict on ${pr}: ${reason(err)}`);
+  }
+}
+
+/**
+ * The merged pull request's own commits, as the `BASE..HEAD` string `bin/close-ticket` records in
+ * the `## Closing record`.
+ *
+ * Read after the rebase and before the merge, which is the only window where both ends are true
+ * locally: `origin/main` is the trunk `rebaseOntoTrunk` just fetched and rebased onto, and `HEAD`
+ * is the rebased branch. `gh pr merge` moves trunk on the remote and this checkout never fetches
+ * again, so asking afterwards would name a base that had already stopped being the merge's parent.
+ */
+function prCommitRange(git: GitExec): string {
+  const base = git(["rev-parse", "origin/main"]).trim();
+  const head = git(["rev-parse", "HEAD"]).trim();
+  return `${base}..${head}`;
 }
 
 /**
@@ -79,10 +305,85 @@ function mergePr(gh: GhExec, pr: string): void {
   gh(["pr", "merge", pr, "--merge", "--delete-branch"]);
 }
 
+/** How much of `bin/close-ticket`'s own output the refusal comment carries. Same tail-not-head choice, and the same reason, as `shared/reason.ts`: a check runner prints its findings last, and an issue comment is capped at 65536 characters. */
+const REFUSAL_TAIL = 4000;
+
+/**
+ * Says on the ticket that it merged and could not close — the "says so on it rather than going
+ * red" half of #195. Without this the ticket is indistinguishable from one nobody has started,
+ * which is the exact defect that ticket names; a run log nobody reads is not a record.
+ */
+function noteRefusal(gh: GhExec, ticket: number, pr: string, result: CloseTicketResult): void {
+  const detail = result.output.trim().slice(-REFUSAL_TAIL);
+  const body = [
+    `Lane 08 merged ${pr} and could not close this ticket: \`bin/close-ticket\` exited ${result.exitCode}, so no \`## Closing record\` was posted and this stays open.`,
+    "",
+    "The merge stands — a criterion that did not check out does not un-land it. Re-run the same",
+    "`bin/close-ticket` invocation once the criterion is satisfied; that is the whole recovery path.",
+    "",
+    "```",
+    detail,
+    "```",
+  ].join("\n");
+  gh(["issue", "comment", String(ticket), "--body", body]);
+}
+
+/**
+ * Closes the ticket the merged pull request named, through the repository's own `bin/close-ticket`
+ * — which fetches the ticket's criteria, runs each one's `check:` marker against this checkout,
+ * posts the `## Closing record` and closes. Lane 08 supplies the arguments and interprets nothing:
+ * whether the work is done is the criteria's answer, and this lane has no model in it to second-
+ * guess them with.
+ *
+ * **Nothing in here may fail the lane.** It runs after `mergePr`, so by the time it is reached the
+ * merge is on trunk and no exit code can take it back; a red lane on a run that merged correctly
+ * would say the merge failed, and the next dispatch would try it again. So every path returns a
+ * `ClosingOutcome` — including a throw from the seam or from the comment, which is reported to
+ * stderr and read as a refusal, since the observable state is the same either way: ticket open.
+ */
+function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, range: string): ClosingOutcome {
+  if (ticket === undefined) return { closed: false, reason: "no-ticket" };
+  try {
+    const result = deps.closeTicket(ticket, range);
+    if (result.exitCode === 0) return { closed: true, ticket };
+    noteRefusal(deps.gh, ticket, deps.pr, result);
+  } catch (err) {
+    console.error(`could not close #${ticket}: ${reason(err)}`);
+  }
+  return { closed: false, reason: "refused", ticket };
+}
+
 /**
  * The whole flow: read the PR's branch, rebase it onto current trunk,
- * re-run the gauntlet against the rebased tree, merge only when that
- * run *completed* reporting green — and then ring the doorbell.
+ * re-run the gauntlet against the rebased tree, read lane 06's verdict on the same head commit,
+ * merge only when this lane's own run *completed* reporting green and lane 06 completed saying the
+ * immutable set was not crossed — then ring the doorbell, and finish the ticket the merge
+ * delivered.
+ *
+ * **Lane 06's verdict is read last, immediately before the merge, and that ordering is the whole
+ * reason this works** (#197). `verify.yml` and `integrate.yml` fire on the same dispatch, in
+ * parallel; lane 06's `Immutability` job is a checkout-free string comparison that finishes in
+ * seconds, while everything above this read — a checkout, an `npm ci`, a rebase and a full
+ * `bin/gauntlet push` — takes minutes. Reading before the rebase would race a lane that has not
+ * started, and a race that lands on `"unjudged"` refuses every pull request in the fleet. The cost
+ * of reading late is a gauntlet run spent on a diff the immutable-set alarm was going to refuse,
+ * which is a few runner-minutes on the rarest event this pipeline has.
+ *
+ * **Only `Immutability` binds.** `Restore and run acceptance` is red for every pull request until
+ * lane 04's first-authoring is wired (#201), so lane 08 merges over it and says so on the pull
+ * request instead
+ * ([ADR-0095](../../../docs/adr/0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md),
+ * and the comment in `integrate.yml` that states it there too).
+ *
+ * **The close comes last, and it does not wait for lane 07** (#195,
+ * [ADR-0094](../../../docs/adr/0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md)).
+ * Lane 07 reviews the pull request off the same dispatch and may still be reviewing one this lane
+ * has already merged; its verdict is advice on a diff, and it cannot change what a criterion's
+ * `check:` command observes. Waiting for it would hold a model's latency inside the `integrate`
+ * concurrency group — the merge lock — which is the one thing this lane's single fixed group
+ * exists to keep short. Behind the doorbell for the same reason: the criteria checks are the
+ * ticket author's own commands and can take minutes, and a successor whose last blocker just
+ * landed should not queue behind them.
  *
  * **The doorbell interprets nothing** (#179). A merge is what makes some other slice's last
  * blocker deliver, and this is the only thing that knows a merge happened. It says so and stops
@@ -101,20 +402,22 @@ function mergePr(gh: GhExec, pr: string): void {
  * downstream has to `await` a lane with no model in it.
  */
 export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
-  const branch = prHeadBranch(deps.gh, deps.pr);
-  rebaseOntoTrunk(deps.git, branch);
+  const pullRequest = readPr(deps.gh, deps.pr);
+  rebaseOntoTrunk(deps.git, pullRequest.branch);
+  const range = prCommitRange(deps.git);
 
   const result = deps.runGauntlet();
+  if (result.exitCode === 1) return { merged: false, reason: "red" };
+  if (result.exitCode !== 0) return { merged: false, reason: "no-run" };
 
-  if (result.exitCode === 0) {
-    mergePr(deps.gh, deps.pr);
-    announceGraphChanged(deps.gh, deps.pr);
-    return { merged: true };
-  }
-  if (result.exitCode === 1) {
-    return { merged: false, reason: "red" };
-  }
-  return { merged: false, reason: "no-run" };
+  const verdict = readVerifyVerdict(deps.gh, deps.headSha);
+  if (verdict.immutability === "failed") return { merged: false, reason: "immutable-set" };
+  if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
+  if (verdict.acceptance !== "passed") noteAcceptanceUnbound(deps.gh, deps.pr, verdict.acceptance);
+
+  mergePr(deps.gh, deps.pr);
+  announceGraphChanged(deps.gh, deps.pr);
+  return { merged: true, closing: closeMergedTicket(deps, pullRequest.ticket, range) };
 }
 
 /**
@@ -134,10 +437,41 @@ export function runRealGauntlet(): GauntletResult {
   }
 }
 
+/**
+ * The real `closeTicket`: shells to **this repository's own** `bin/close-ticket` — never the copy
+ * in `~/.agents/skills/bin`, which is a different, older program — with the runner's checkout as
+ * the tree the criteria run against. That checkout is already the merged content with dependencies
+ * installed, which is what makes a criterion like `npx vitest run …` mean anything here.
+ *
+ * `spawnSync` rather than `execFileSync`: the refusal path needs the output, and `execFileSync`
+ * splits it across a thrown `Error`'s message and a `stdout` field. `close-ticket` writes its
+ * verdict to stderr and its record to stdout, so both halves are folded together here.
+ */
+export function runRealCloseTicket(ticket: number, range: string): CloseTicketResult {
+  const result = spawnSync("bin/close-ticket", [String(ticket), range, "."], {
+    encoding: "utf8",
+    env: childEnv(),
+  });
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? result.error.message : ""}`;
+  // A spawn that never ran has a null status; it did not close the ticket, which is all the
+  // caller decides on (see `CloseTicketResult`).
+  return { exitCode: result.status ?? 1, output };
+}
+
+/** One line naming what became of the ticket, for the runner log — the lane's exit code says only whether the merge happened. */
+function describeClosing(closing: ClosingOutcome, pr: string): string {
+  if (closing.closed) return `closed #${closing.ticket}`;
+  if (closing.reason === "refused") return `#${closing.ticket} stays open: bin/close-ticket refused, noted on the ticket`;
+  return `nothing to close: ${pr} names no ticket`;
+}
+
 async function main(): Promise<void> {
   const pr = process.argv[2];
-  if (!pr) {
-    console.error("usage: integrate.ts <pr>");
+  // Required, never defaulted: without the head commit there is no way to find lane 06's run, and a
+  // lane that silently skipped the verdict read is the defect #197 was filed on.
+  const headSha = process.argv[3];
+  if (!pr || !headSha) {
+    console.error("usage: integrate.ts <pr> <head-sha>");
     process.exitCode = 1;
     return;
   }
@@ -147,7 +481,9 @@ async function main(): Promise<void> {
       git: execGit,
       gh: execGh,
       pr,
+      headSha,
       runGauntlet: runRealGauntlet,
+      closeTicket: runRealCloseTicket,
     });
 
     if (!outcome.merged) {
@@ -155,7 +491,9 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    console.log(`merged ${pr}`);
+    // Green whatever became of the ticket: the exit code is this lane's verdict on the *merge*,
+    // and the merge landed (see `closeMergedTicket`).
+    console.log(`merged ${pr} — ${describeClosing(outcome.closing, pr)}`);
   } catch (err) {
     console.error(`integrate failed: ${reason(err)}`);
     process.exitCode = 1;
