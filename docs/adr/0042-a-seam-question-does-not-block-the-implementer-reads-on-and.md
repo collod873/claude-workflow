@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0103
+
 An implementer that finds it needs to read outside its brief **reads what it needs and carries on**.
 It does not file a blocking `seam/question`, does not surrender its slice, and nobody is dispatched
 to answer it. It records that it went outside its brief and which module it read. That record is a
