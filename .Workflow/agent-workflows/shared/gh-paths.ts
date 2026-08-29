@@ -83,6 +83,7 @@ const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
+const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
 
 /**
  * Where a ref is **created**, which is how an implementer claims its slice (#179). No variable
@@ -156,6 +157,21 @@ export function matchingRefsPath(prefix: string): string {
   return matchingRefs.build(prefix);
 }
 
+/**
+ * Every pull request associated with one commit — **regardless of state**, which is the whole
+ * reason lane 07 reads this endpoint rather than `pr list`. The reviewer rides a `workflow_run`
+ * and is always behind the event that started it, so a fast lane 08 can merge the pull request
+ * before the reviewer reaches this lookup; an open-only query would make the conformance reviewer
+ * silently skip exactly the runs that moved quickest (#189).
+ *
+ * The caller still has to pick the pull request whose *own* head SHA is the commit it asked
+ * about: this endpoint also lists a pull request that merely contains the commit somewhere in its
+ * branch, which is a different question from "which pull request is this run reviewing?".
+ */
+export function commitPullsPath(head: string): string {
+  return commitPulls.build(head);
+}
+
 /** Matches an `issuePath`, capturing the issue number. */
 export const issuePathMatcher: RegExp = issue.matcher;
 
@@ -176,3 +192,12 @@ export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
 
 /** Matches a `matchingRefsPath`, capturing the ref prefix. */
 export const matchingRefsPathMatcher: RegExp = matchingRefs.matcher;
+
+/**
+ * Matches a `commitPullsPath`, capturing the commit.
+ *
+ * @fixture — no lane reads this; it exists so a `GhExec` stand-in answers the commit-to-pulls
+ * lookup by the same segments `commitPullsPath` sends, rather than restating the path in a way
+ * that could name a different endpoint from the one production actually calls.
+ */
+export const commitPullsPathMatcher: RegExp = commitPulls.matcher;

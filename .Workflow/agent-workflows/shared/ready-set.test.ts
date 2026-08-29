@@ -5,6 +5,7 @@ import {
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
   implementationBranch,
+  implementationBranchTicket,
   readySlices,
   TICKET_READY_DISPATCH_ACTION,
   unreachableSlices,
@@ -239,6 +240,23 @@ describe("the branch ref that is the claim", () => {
   it("is deterministic per issue, so two implementers race on one atomic create", () => {
     expect(implementationBranch(167)).toBe("implement/issue-167");
     expect(implementationBranch(167)).toBe(implementationBranch(167));
+  });
+
+  it("decodes back to the issue it was built from", () => {
+    expect(implementationBranchTicket(implementationBranch(167))).toBe(167);
+    expect(implementationBranchTicket("implement/issue-42")).toBe(42);
+  });
+
+  it("decodes anything that is not a claim to undefined, so the reader decides", () => {
+    for (const ref of [
+      "main",
+      "implement/issue-",
+      "implement/issue-abc",
+      "implement/issue-167/fix",
+      "feature/implement/issue-167",
+    ]) {
+      expect(implementationBranchTicket(ref)).toBeUndefined();
+    }
   });
 });
 

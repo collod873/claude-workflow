@@ -89,6 +89,31 @@ export function implementationBranch(issueNumber: number): string {
 export const IMPLEMENTATION_BRANCH_PREFIX = "implement/";
 
 /**
+ * The claim branch's shape, built from `implementationBranch` itself rather than restated — so
+ * the decoder below cannot recognise a shape the encoder does not produce. The split is on the
+ * placeholder number, whose decimal form appears nowhere else in a branch name.
+ */
+const IMPLEMENTATION_BRANCH_RE = (() => {
+  const [prefix, suffix] = implementationBranch(0).split("0");
+  return new RegExp(`^${prefix}(\\d+)${suffix}$`);
+})();
+
+/**
+ * The inverse of `implementationBranch`: the ticket number a claim branch names, or `undefined`
+ * when the ref is not one of this pipeline's claims at all.
+ *
+ * It lives beside the encoder so the two cannot drift — a pull request's head branch is the only
+ * thing lane 07 is handed that says which ticket the diff it is reviewing implements (#189), and
+ * a decoder written at that reader would be a second spelling of the same name. `undefined`
+ * rather than a throw because a ref that is not a claim is an ordinary fact about somebody else's
+ * pull request, not a failure: the reader decides what to do about it.
+ */
+export function implementationBranchTicket(branch: string): number | undefined {
+  const match = IMPLEMENTATION_BRANCH_RE.exec(branch);
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
  * The `repository_dispatch` action `implement.yml` gates on — **one wire name, one receiver, two
  * senders** now: `to-tickets/slice-and-publish.ts` at publish time and `dispatch/reconcile.ts` on
  * every recompute. It lives here rather than in the lane that receives it for the reason
