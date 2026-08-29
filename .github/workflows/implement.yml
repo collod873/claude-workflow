@@ -50,8 +50,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      # Outside the checkout, so the receipt can never be staged into the branch it describes.
-      IMPLEMENT_ANSWER_PATH: ${{ runner.temp }}/implementer-answer.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,6 +88,12 @@ jobs:
       # names, run the implementer stage, write what it returns, commit and push a branch, open
       # exactly one PR, and send exactly one verification dispatch naming it.
       - name: Implement the ticket
+        # Set here rather than in the job's `env:`, where the `runner` context does not exist —
+        # actionlint refuses that, and the invalid file stops the whole workflow being schedulable,
+        # so a `ticket-ready` dispatch lands on nothing at all. `runner.temp` puts the receipt
+        # outside the checkout, where it can never be staged into the branch it describes.
+        env:
+          IMPLEMENT_ANSWER_PATH: ${{ runner.temp }}/implementer-answer.json
         run: npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
 
       # `always()`, because the runs worth recovering are the ones that did not end in a pull
