@@ -2,6 +2,8 @@
 
 Recorded 2026-08-25.
 
+Status: superseded by ADR-0088
+
 A refused close reopens the issue and applies `close-refused`. Until now nothing removed it, so
 #55 wore the label after a *successful* repair — refused as `criteria-count-mismatch` in run
 32916493809, then passed as `met` in run 32916632278, and still labelled. The gate now lifts the

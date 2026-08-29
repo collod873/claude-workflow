@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0088
+
 The reconciler that finds closes the gate never judged fires on the `session-captured` dispatch, not
 on a schedule. A session that ended is work that happened, and closes only arrive during work, so it
 cannot fire against nothing — which is what

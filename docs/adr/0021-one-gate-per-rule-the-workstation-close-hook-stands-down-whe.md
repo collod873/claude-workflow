@@ -2,6 +2,8 @@
 
 Recorded 2026-08-25.
 
+Status: superseded by ADR-0088
+
 Lane 09 moved the close gate to `issues.closed` but left era 6's machine-global
 `~/.claude/hooks/close-gate.py` wired in `~/.claude/settings.json`, so one rule had two
 enforcers. They had already drifted when #55's drill found them: the tracker gate judges only a
