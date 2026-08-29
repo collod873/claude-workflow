@@ -114,8 +114,21 @@ jobs:
 
       # The guarantee itself. Runs before Node/npm below so a checkout that somehow lacks `main`
       # fails here rather than after a wasted install.
+      #
+      # Trunk carrying no `tests/acceptance/` at all is not that failure. Lane 04's first-authoring
+      # is still unwired (#183, held back from #188 on purpose), so the directory does not exist and
+      # `git checkout main -- tests/acceptance/` died on a pathspec error — before the step below
+      # could reach its own verdict, which is the one that actually says what is wrong ("no
+      # acceptance test names a criterion this dispatch carries"). A missing directory and a missing
+      # `main` are different facts and only one of them is this step's to report.
       - name: Restore tests/acceptance from trunk's tip
-        run: git checkout main -- tests/acceptance/
+        run: |
+          set -euo pipefail
+          if git cat-file -e main:tests/acceptance 2>/dev/null; then
+            git checkout main -- tests/acceptance/
+          else
+            echo "trunk carries no tests/acceptance/ yet; nothing to restore"
+          fi
 
       - name: Set up Node
         uses: actions/setup-node@v4
