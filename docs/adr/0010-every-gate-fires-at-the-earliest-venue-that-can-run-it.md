@@ -2,6 +2,8 @@
 
 Recorded 2026-08-23.
 
+Status: superseded by ADR-0101
+
 A gate is placed by its latency, not by its importance: it runs at the earliest venue whose budget
 it fits, and it moves later only when it physically cannot run earlier. Typecheck fits inside the
 agent's turn, so it fires there; a suite needing a live database cannot, so it fires in Actions.

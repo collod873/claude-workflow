@@ -2,7 +2,7 @@
 
 Recorded 2026-08-26.
 
-Status: superseded by ADR-0053, ADR-0054
+Status: superseded by ADR-0053, ADR-0054, ADR-0102
 
 Amends: [ADR-0011](0011-a-refusal-ships-only-once-something-can-clear-it.md), which does not hold
 this check back — see "This does not wait on lane 05's fixer" below.

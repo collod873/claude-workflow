@@ -2,6 +2,8 @@
 
 Recorded 2026-08-28.
 
+Status: superseded by ADR-0100
+
 Amends: ADR-0058, ADR-0062
 
 Lane 02 has a second entrance. The owner's own hand putting `prd` on an issue — which is what
