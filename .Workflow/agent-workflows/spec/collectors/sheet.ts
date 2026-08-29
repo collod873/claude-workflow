@@ -1,6 +1,7 @@
 import type { GhExec } from "../../shared/gh";
 import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shape/marker";
 import type { Decision, Sheet } from "../../shape/sheet-schema";
+import type { MarkedDecision } from "../open-questions";
 import type { DecidedContext } from "../spec";
 
 /**
@@ -36,13 +37,32 @@ function commentBodies(gh: GhExec, issueNumber: number): string[] {
 }
 
 /**
- * Assembles the Decided context for one accepted idea.
+ * Assembles the Decided context for one accepted idea, and hands back the
+ * sheet's own decisions alongside it.
+ *
+ * **Two returns because the context flattens.** `context` is the five-field
+ * `DecidedContext` every collector normalizes into, unchanged field for
+ * field — and its own `decisions` field is *prose*, the sheet's decisions
+ * rendered for a model to read. ADR-0061's arithmetic needs the marks
+ * themselves: which decision carries a mark, and whether an ADR title was
+ * ever drafted for it. Those survive the rendering nowhere, so widening
+ * `DecidedContext` would either mean two meanings for one field name or a
+ * sixth field the map collector has nothing to put in. The wrapper keeps the
+ * shared shape shared and lets the sheet trigger carry the extra it alone
+ * has.
+ *
+ * The decisions ride out here rather than being re-read downstream because a
+ * second read of the same issue is a second chance for the two reads to
+ * disagree.
  *
  * Throws when the idea carries no sheet, or the accept that fired this run
  * carries no readable payload — both are collector failures, because there
  * is no prose fallback for either (see the header comment above).
  */
-export function collectSheetContext(gh: GhExec, issueNumber: number): DecidedContext {
+export function collectSheetContext(
+  gh: GhExec,
+  issueNumber: number,
+): { context: DecidedContext; decisions: MarkedDecision[] } {
   const bodies = commentBodies(gh, issueNumber);
 
   const sheets = bodies.map(readSheetMarker).filter((each): each is Sheet => each !== undefined);
@@ -63,11 +83,14 @@ export function collectSheetContext(gh: GhExec, issueNumber: number): DecidedCon
   }
 
   return {
-    ownerWords: issueBody(gh, issueNumber),
-    decisions: formatDecisions(sheet.decisions),
-    rulings: formatRulings(payload),
-    boundaries: `Route: \`${payload.route}\` — ${sheet.routeReason}`,
-    openGuesses: formatOpenGuesses(sheet.survivors),
+    context: {
+      ownerWords: issueBody(gh, issueNumber),
+      decisions: formatDecisions(sheet.decisions),
+      rulings: formatRulings(payload),
+      boundaries: `Route: \`${payload.route}\` — ${sheet.routeReason}`,
+      openGuesses: formatOpenGuesses(sheet.survivors),
+    },
+    decisions: sheet.decisions,
   };
 }
 

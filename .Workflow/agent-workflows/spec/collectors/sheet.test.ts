@@ -47,7 +47,7 @@ describe("collectSheetContext", () => {
       `## Accepted\n\n${acceptedMarker(payload)}`,
     ]);
 
-    const context = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(gh, 1);
 
     expect(context.ownerWords).toBe("the owner's words");
     expect(context.rulings).toContain("docs/adr/0051-slug.md");
@@ -57,11 +57,38 @@ describe("collectSheetContext", () => {
     expect(context.boundaries).toContain("long");
   });
 
+  it("returns the sheet's own decisions beside a context unchanged field for field", () => {
+    // ADR-0061's arithmetic needs the marks themselves, which the context's
+    // `decisions` string has already flattened into prose. Both ride out, and
+    // the context side is asserted whole so a field added or reworded here
+    // fails rather than passing silently.
+    const decisions = [
+      { question: "q1", recommendation: "r1", rejected: "x1", mark: "ADR-0028", adrTitle: "" },
+      { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling" },
+    ];
+    const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
+    const gh = fakeGh("the owner's words", [
+      sheetMarker(sheet({ decisions, survivors: ["nobody checked the cap"] })),
+      acceptedMarker(payload),
+    ]);
+
+    const collected = collectSheetContext(gh, 1);
+
+    expect(collected.decisions).toEqual(decisions);
+    expect(collected.context).toEqual({
+      ownerWords: "the owner's words",
+      decisions: "- q1\n  r1\n  (Rejected: x1)\n- q2\n  r2\n  (Rejected: x2)",
+      rulings: "- docs/adr/0060-slug.md",
+      boundaries: "Route: `short` — Short — one file.",
+      openGuesses: "- nobody checked the cap",
+    });
+  });
+
   it("cites the rulings by path rather than restating the decision", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
     const gh = fakeGh("words", [sheetMarker(sheet()), acceptedMarker(payload)]);
 
-    const context = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(gh, 1);
 
     expect(context.rulings).toBe("- docs/adr/0060-slug.md");
   });
@@ -99,7 +126,7 @@ describe("collectSheetContext", () => {
       acceptedMarker(second),
     ]);
 
-    const context = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(gh, 1);
 
     expect(context.rulings).toContain("docs/adr/0002-new.md");
     expect(context.rulings).not.toContain("docs/adr/0001-old.md");
