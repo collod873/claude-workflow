@@ -40,6 +40,23 @@ permissions:
   pull-requests: write
   issues: write
 
+# One implementer at a time, across every ticket — the same fixed group `integrate.yml` uses, for a
+# reason that follows from it. Lane 08 merges serially by construction, so a second implementer
+# started before the first one's pull request lands is building against a trunk that is already
+# behind: it rebases onto work it never read, and two slices of one wave editing neighbouring files
+# meet as a conflict in a lane that #234 says nothing reacts to.
+#
+# `cancel-in-progress: false` queues rather than drops. A `ticket-ready` dispatch is the only thing
+# that will ever be sent for that ticket — nothing re-sends one — so a cancelled run is a slice that
+# silently never gets built, which is the failure this whole lane exists to stop.
+#
+# The cost is wall clock: a wave of five is now serial, up to `timeout-minutes` each. That is the
+# right trade at $6 a run. Five parallel implementers are not five times faster, they are five bills
+# and a rebase conflict.
+concurrency:
+  group: implement
+  cancel-in-progress: false
+
 jobs:
   implement:
     if: github.event.action == 'ticket-ready'
