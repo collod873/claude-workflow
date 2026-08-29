@@ -2,6 +2,8 @@
 
 Recorded 2026-08-28.
 
+Status: superseded by ADR-0104
+
 `verify.yml` and `integrate.yml` fire on the same `implementation-opened` dispatch, in parallel, and
 until #197 nothing made the merge actor read the verifier's answer: run 33227183464 finished failure
 while run 33227183471 merged the same pull request. The two jobs in `verify.yml` do not mean the same
