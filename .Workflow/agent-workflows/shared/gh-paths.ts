@@ -95,6 +95,33 @@ const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
  */
 export const GIT_REFS_PATH = "repos/{owner}/{repo}/git/refs";
 
+/**
+ * How far `head` has run past `base`. Lane 05 asks this of a claim branch it found already there:
+ * a branch carrying commits is somebody's unfinished work, and never debris to be taken over
+ * (`implement/implement.ts`, #196).
+ *
+ * A plain builder with no matcher, like `GIT_REFS_PATH` above — nothing in this pipeline has to
+ * *recognise* a compare path, only send one, and a matcher no fake reads would be a shape claiming
+ * to be checked that nothing checks.
+ */
+export function comparePath(base: string, head: string): string {
+  return `repos/{owner}/{repo}/compare/${base}...${head}`;
+}
+
+/**
+ * When one branch was created, from the repository activity feed — newest entry first, one entry.
+ *
+ * The only place GitHub records a ref's age. A ref carries no timestamp of its own, and the commit
+ * it points at answers a different question: lane 05's claim ref is created at trunk's tip, so its
+ * commit date says when trunk last moved, not when the claim was made. Telling a claim made a
+ * minute ago from one a dead run left behind last night is the whole of #196, and this is the only
+ * endpoint that can (`implement/implement.ts`).
+ */
+export function branchCreationPath(branch: string): string {
+  const ref = encodeURIComponent(`refs/heads/${branch}`);
+  return `repos/{owner}/{repo}/activity?activity_type=branch_creation&per_page=1&ref=${ref}`;
+}
+
 /** The path for one issue: `repos/{owner}/{repo}/issues/<number>`. */
 export function issuePath(number: number): string {
   return issue.build(number);
