@@ -7,6 +7,7 @@ import {
   SLICEABLE_LABEL,
   SPEC_DISPATCH_EVENT_TYPE,
   unfiledMarkGap,
+  unfiledMarks,
   type MarkedDecision,
 } from "./open-questions";
 
@@ -51,6 +52,35 @@ describe("unfiledMarkGap — ADR-0061's arithmetic", () => {
     const openQuestions = ["Something about docs/adr/0060."];
 
     expect(unfiledMarkGap(decisions, openQuestions)).toBe(1);
+  });
+});
+
+describe("unfiledMarks — the set unfiledMarkGap counts", () => {
+  it("returns the marked, unfiled decisions that no open question names", () => {
+    const named: MarkedDecision = { mark: "docs/adr/0060", adrTitle: "" };
+    const unnamed: MarkedDecision = { mark: "docs/adr/0061", adrTitle: "" };
+    const filed: MarkedDecision = { mark: "docs/adr/0062", adrTitle: "A ruling that files it" };
+    const decisions = [named, unnamed, filed];
+    const openQuestions = ["Something about docs/adr/0060."];
+
+    expect(unfiledMarks(decisions, openQuestions)).toEqual([unnamed]);
+  });
+
+  it("is not thrown off by a single question naming two marks — where subtracting counts would be", () => {
+    const decisions: MarkedDecision[] = [
+      { mark: "docs/adr/0060", adrTitle: "" },
+      { mark: "docs/adr/0061", adrTitle: "" },
+    ];
+    const openQuestions = ["Something about both docs/adr/0060 and docs/adr/0061."];
+
+    expect(unfiledMarks(decisions, openQuestions)).toEqual([]);
+  });
+
+  it("is not thrown off by two questions naming the same mark — where subtracting counts would be", () => {
+    const decisions: MarkedDecision[] = [{ mark: "docs/adr/0060", adrTitle: "" }];
+    const openQuestions = ["First question about docs/adr/0060.", "Second question about docs/adr/0060."];
+
+    expect(unfiledMarks(decisions, openQuestions)).toEqual([]);
   });
 });
 
