@@ -87,7 +87,16 @@ export type IntegrateOutcome =
    * ADR-0054's property is that the *absence* of a completed verdict is its own refusal, never a
    * pass by default (#197).
    */
-  | { merged: false; reason: "unjudged" };
+  | { merged: false; reason: "unjudged" }
+  /**
+   * Lane 06's `Restore and run acceptance` job failed for this head commit: the slice's own
+   * acceptance tests, restored from trunk, do not pass against this diff. The ticket is not built.
+   *
+   * This bound nothing until now, and ADR-0095 said why — the job was red for every pull request
+   * while lane 04's first-authoring was unwired, so binding on it would have stopped the chain
+   * rather than caught anything. That is no longer true (ADR-0104).
+   */
+  | { merged: false; reason: "acceptance" };
 
 export interface IntegrateDeps {
   git: GitExec;
@@ -108,6 +117,8 @@ export interface IntegrateDeps {
   runGauntlet: () => GauntletResult;
   /** Closes `ticket` against `range`. Real production behaviour shells to this repository's own `bin/close-ticket` (`runRealCloseTicket`); a test injects a canned result rather than paying for a tracker write and the ticket's own checks. */
   closeTicket: (ticket: number, range: string) => CloseTicketResult;
+  /** Waits between re-reads of lane 06's verdict. Injected so a test counts reads instead of sleeping. */
+  sleep?: (ms: number) => void;
 }
 
 /** What one `gh pr view` tells this lane: the branch to rebase, and the ticket the merge will finish. */
@@ -188,6 +199,30 @@ const DISPATCH_EVENT = "repository_dispatch";
  */
 const VERIFY_RUN_PAGE_SIZE = 100;
 
+/**
+ * How many times lane 08 re-reads lane 06 while its acceptance job is still running, and how long
+ * it waits between reads — about ten minutes end to end.
+ *
+ * `Immutability` needs none of this: it is a checkout-free string comparison that finishes in
+ * seconds, so reading it once after the rebase and the gauntlet always finds it done. `Restore and
+ * run acceptance` is a checkout, an `npm ci` and a vitest run, on the same order as this lane's own
+ * work — so which of the two finishes first is a genuine race, and a single read would resolve it
+ * by refusing whichever pull request happened to lose. Now that the job binds (ADR-0104), losing
+ * that race would block a merge that nothing retries, so this lane waits for the answer rather than
+ * treating "still running" as "not judged".
+ */
+const ACCEPTANCE_POLL_ATTEMPTS = 40;
+const ACCEPTANCE_POLL_MS = 15_000;
+
+/**
+ * Blocks the thread for `ms`. Synchronous on purpose: `runIntegrate` is deliberately not a
+ * `Promise` (see its header), and this lane holds the merge lock while it waits either way, so
+ * there is nothing else for this process to be doing.
+ */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 const ApiRun = z.object({ id: z.number(), head_sha: z.string(), event: z.string() });
 const ApiJob = z.object({ name: z.string(), status: z.string(), conclusion: z.string().nullable() });
 
@@ -248,21 +283,40 @@ function readVerifyVerdict(gh: GhExec, headSha: string): VerifyVerdict {
 }
 
 /**
- * Says on the pull request that lane 06's acceptance job was not green and this lane merged anyway
- * — the ruling `integrate.yml`'s own comment states and
- * [ADR-0095](../../../docs/adr/0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md)
- * records. Posted before the merge, so it lands on a pull request that certainly still exists, and
- * swallowed on failure: a comment that would not post is not a reason to withhold a merge the
- * verdict already allowed.
+ * Lane 06's verdict, re-read until its acceptance job stops being "still running" — see
+ * `ACCEPTANCE_POLL_ATTEMPTS` for why only this half needs waiting for.
+ *
+ * Gives up on the attempt budget rather than on a clock, so a test drives it by counting reads
+ * instead of by advancing time. Giving up leaves `acceptance` as `unjudged`, which the caller
+ * refuses on — the direction that costs a merge that waits rather than a merge that should not
+ * have happened.
  */
-function noteAcceptanceUnbound(gh: GhExec, pr: string, verdict: JobVerdict): void {
+function awaitVerifyVerdict(gh: GhExec, headSha: string, sleep: (ms: number) => void): VerifyVerdict {
+  let verdict = readVerifyVerdict(gh, headSha);
+  for (let attempt = 0; verdict.acceptance === "unjudged" && attempt < ACCEPTANCE_POLL_ATTEMPTS; attempt++) {
+    sleep(ACCEPTANCE_POLL_MS);
+    verdict = readVerifyVerdict(gh, headSha);
+  }
+  return verdict;
+}
+
+/**
+ * Says on the pull request why lane 08 withheld the merge — ADR-0104, which amends ADR-0095's
+ * "warns only" ruling now that lane 04 authors real tests and the job means something.
+ *
+ * Swallowed on failure, for the reason it always was: a comment that would not post must not change
+ * what this lane decided. The decision is the refusal itself; this only explains it to whoever
+ * opens the pull request next.
+ */
+function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict): void {
   const body = [
-    `Lane 06's \`${ACCEPTANCE_JOB}\` job is **${verdict}** for this head commit, and lane 08 merged anyway.`,
+    `Lane 06's \`${ACCEPTANCE_JOB}\` job is **${verdict}** for this head commit, so lane 08 did not merge.`,
     "",
-    "That job is red for every pull request today: lane 04's first-authoring is unwired (#201), so no",
-    "acceptance test names any criterion the dispatch carries and the job refuses on an empty set.",
-    "Binding on it would stop the chain dead, so it does not bind — and this comment is the record that",
-    "it was red, rather than a run log nobody reads. Lane 06's `Immutability` job still blocks outright.",
+    verdict === "failed"
+      ? "The slice's own acceptance tests, restored from trunk, do not pass against this diff — the ticket is not built."
+      : "The job never reached a verdict within the window this lane waits, and an absent verdict is a refusal, never a pass (ADR-0054).",
+    "",
+    "Re-dispatch the pull request once the cause is dealt with; nothing retries this on its own.",
   ].join("\n");
   try {
     gh(["pr", "comment", pr, "--body", body]);
@@ -369,11 +423,12 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  * of reading late is a gauntlet run spent on a diff the immutable-set alarm was going to refuse,
  * which is a few runner-minutes on the rarest event this pipeline has.
  *
- * **Only `Immutability` binds.** `Restore and run acceptance` is red for every pull request until
- * lane 04's first-authoring is wired (#201), so lane 08 merges over it and says so on the pull
- * request instead
- * ([ADR-0095](../../../docs/adr/0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md),
- * and the comment in `integrate.yml` that states it there too).
+ * **Both of lane 06's jobs now bind** (ADR-0104). `Restore and run acceptance` used to be waved
+ * through — it was red for every pull request while lane 04's first-authoring was unwired (#201),
+ * so binding on it would have stopped the chain rather than caught anything (ADR-0095). Lane 04
+ * authors real tests now, so the job means what its name says and a red one is a slice that is not
+ * built. Its verdict is *waited for* rather than merely read, because unlike `Immutability` it runs
+ * on the same order of minutes this lane does — see `ACCEPTANCE_POLL_ATTEMPTS`.
  *
  * **The close comes last, and it does not wait for lane 07** (#195,
  * [ADR-0094](../../../docs/adr/0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md)).
@@ -410,10 +465,17 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   if (result.exitCode === 1) return { merged: false, reason: "red" };
   if (result.exitCode !== 0) return { merged: false, reason: "no-run" };
 
-  const verdict = readVerifyVerdict(deps.gh, deps.headSha);
+  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.sleep ?? sleepSync);
   if (verdict.immutability === "failed") return { merged: false, reason: "immutable-set" };
   if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
-  if (verdict.acceptance !== "passed") noteAcceptanceUnbound(deps.gh, deps.pr, verdict.acceptance);
+  if (verdict.acceptance === "failed") {
+    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);
+    return { merged: false, reason: "acceptance" };
+  }
+  if (verdict.acceptance !== "passed") {
+    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);
+    return { merged: false, reason: "unjudged" };
+  }
 
   mergePr(deps.gh, deps.pr);
   announceGraphChanged(deps.gh, deps.pr);

@@ -67,8 +67,13 @@ interface IntegrateHarness {
   commentThrows?: boolean;
   /** Makes the pull-request comment throw, standing in for the acceptance warning failing to post. */
   prCommentThrows?: boolean;
-  /** What `verify.yml`'s run history answers with. Defaults to lane 06 having cleared both jobs. */
-  verifyRuns?: VerifyRunFixture[];
+  /**
+   * What `verify.yml`'s run history answers with. Defaults to lane 06 having cleared both jobs.
+   *
+   * A function is re-evaluated on every lookup, which is how a test scripts a job that is still
+   * running on one read and finished on the next — the case ADR-0104's wait exists for.
+   */
+  verifyRuns?: VerifyRunFixture[] | (() => VerifyRunFixture[]);
 }
 
 /**
@@ -99,16 +104,19 @@ function integrateDeps({
   const calls: string[][] = [];
   const closeCalls: Array<[number, string]> = [];
 
-  const runs = verifyRuns.map((run, index) => ({
-    id: run.id ?? 900 + index,
-    head_sha: run.headSha ?? TRUNK_SHA,
-    event: run.event ?? "repository_dispatch",
-    jobs: (run.jobs ?? []).map((job) => ({
-      name: job.name,
-      status: job.status ?? "completed",
-      conclusion: job.conclusion ?? null,
-    })),
-  }));
+  // Resolved per lookup, not once: a `verifyRuns` function is how a test scripts lane 06 finishing
+  // between two of this lane's reads.
+  const currentRuns = () =>
+    (typeof verifyRuns === "function" ? verifyRuns() : verifyRuns).map((run, index) => ({
+      id: run.id ?? 900 + index,
+      head_sha: run.headSha ?? TRUNK_SHA,
+      event: run.event ?? "repository_dispatch",
+      jobs: (run.jobs ?? []).map((job) => ({
+        name: job.name,
+        status: job.status ?? "completed",
+        conclusion: job.conclusion ?? null,
+      })),
+    }));
 
   const gh = (args: string[]): string => {
     calls.push(args);
@@ -120,11 +128,11 @@ function integrateDeps({
     }
     if (args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches") return "";
     if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
-      return JSON.stringify(runs.map(({ id, head_sha, event }) => ({ id, head_sha, event })));
+      return JSON.stringify(currentRuns().map(({ id, head_sha, event }) => ({ id, head_sha, event })));
     }
     const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
     if (args[0] === "api" && jobsMatch) {
-      return JSON.stringify(runs.find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []);
+      return JSON.stringify(currentRuns().find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []);
     }
     if (args[0] === "issue" && args[1] === "comment") {
       if (commentThrows) throw new Error("gh: could not comment");
@@ -133,16 +141,24 @@ function integrateDeps({
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
 
+  const sleeps: number[] = [];
+
   return {
     fakeGit,
     calls,
     closeCalls,
+    sleeps,
     deps: {
       git: fakeGit.git,
       gh,
       pr: PR,
       headSha: TRUNK_SHA,
       runGauntlet: () => gauntlet,
+      // Counted, never waited on: `awaitVerifyVerdict` re-reads lane 06 while its acceptance job is
+      // still running, and the production sleep would hold every one of these cases for ten minutes.
+      sleep: () => {
+        sleeps.push(1);
+      },
       closeTicket: (ticket: number, range: string): CloseTicketResult => {
         closeCalls.push([ticket, range]);
         if (closeTicket === undefined) throw new Error("closeTicket called when the test expected none");
@@ -501,11 +517,11 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
 });
 
 /**
- * The ruling on the other half of lane 06 (#197, ADR-0095): `Restore and run acceptance` does not
- * bind. Lane 04's first-authoring is unwired (#201), so no acceptance test names any criterion a
- * dispatch carries and that job refuses on the empty set — it is red for every pull request today,
- * and binding on it would stop the chain rather than catch anything. Lane 08 merges and says so on
- * the pull request, which is the difference between a ruling and the accident #197 was filed on.
+ * The ruling on the other half of lane 06, as ADR-0104 leaves it: `Restore and run acceptance`
+ * binds. ADR-0095 waved it through while lane 04's first-authoring was unwired (#201) — the job
+ * was red for every pull request then, and binding on it would have stopped the chain rather than
+ * caught anything. #201 has landed, so a red one now means the slice's own acceptance tests do not
+ * pass against the diff, which is the one thing this lane exists not to merge.
  */
 describe("runIntegrate's ruling when only lane 06's acceptance job is red", () => {
   const ACCEPTANCE_RED: VerifyRunFixture[] = [
@@ -517,17 +533,17 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     },
   ];
 
-  it("merges", () => {
-    const { calls, deps } = integrateDeps({ closeTicket: CLOSED, verifyRuns: ACCEPTANCE_RED });
+  it("refuses the merge", () => {
+    const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED });
 
     const outcome = runIntegrate(deps);
 
-    expect(outcome).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
-    expect(mergeCalls(calls)).toHaveLength(1);
+    expect(outcome).toEqual({ merged: false, reason: "acceptance" });
+    expect(mergeCalls(calls)).toEqual([]);
   });
 
-  it("says on the pull request that the job was red and why it did not bind, before the merge", () => {
-    const { calls, deps } = integrateDeps({ closeTicket: CLOSED, verifyRuns: ACCEPTANCE_RED });
+  it("says on the pull request that the job was red, so the refusal is not only a run log", () => {
+    const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED });
 
     runIntegrate(deps);
 
@@ -535,10 +551,8 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     expect(comments).toHaveLength(1);
     expect(comments[0].slice(0, 4)).toEqual(["pr", "comment", PR, "--body"]);
     expect(comments[0][4]).toContain(ACCEPTANCE_JOB);
-    // Names the reason, not just the fact — a warning nobody can act on is noise.
-    expect(comments[0][4]).toContain("#201");
-    // On a pull request that certainly still exists.
-    expect(calls.indexOf(comments[0])).toBeLessThan(calls.indexOf(mergeCalls(calls)[0]));
+    // Says what to do about it — a refusal nothing retries has to name its own next step.
+    expect(comments[0][4]).toContain("Re-dispatch");
   });
 
   it("says nothing on the pull request when lane 06 cleared both jobs", () => {
@@ -549,15 +563,59 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     expect(calls.filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([]);
   });
 
-  it("merges even when the warning comment itself fails to post", () => {
-    const { calls, deps } = integrateDeps({
+  it("still refuses when the explanatory comment itself fails to post", () => {
+    const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED, prCommentThrows: true });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "acceptance" });
+    expect(mergeCalls(calls)).toEqual([]);
+  });
+
+  /**
+   * The race ADR-0104's wait exists for. `Restore and run acceptance` is a checkout, an `npm ci`
+   * and a vitest run — the same order of minutes this lane spends on its own rebase and gauntlet —
+   * so a single read can easily catch it mid-run. Reading that as "unjudged" would refuse a pull
+   * request for being slow rather than for being wrong.
+   */
+  it("waits for an acceptance job still running, rather than refusing the pull request for it", () => {
+    let reads = 0;
+    const { calls, deps, sleeps } = integrateDeps({
       closeTicket: CLOSED,
-      verifyRuns: ACCEPTANCE_RED,
-      prCommentThrows: true,
+      // Green only from the third read on; before that the job has not concluded.
+      verifyRuns: () => {
+        reads += 1;
+        return [
+          {
+            jobs: [
+              { name: IMMUTABILITY_JOB, conclusion: "success" },
+              reads < 3
+                ? { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null }
+                : { name: ACCEPTANCE_JOB, conclusion: "success" },
+            ],
+          },
+        ];
+      },
     });
 
     expect(runIntegrate(deps)).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
     expect(mergeCalls(calls)).toHaveLength(1);
+    expect(sleeps.length, "waited between reads rather than spinning on the API").toBeGreaterThan(0);
+  });
+
+  it("gives up rather than waiting forever, and a merge is never what giving up produces", () => {
+    const { calls, deps, sleeps } = integrateDeps({
+      verifyRuns: [
+        {
+          jobs: [
+            { name: IMMUTABILITY_JOB, conclusion: "success" },
+            { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null },
+          ],
+        },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+    expect(mergeCalls(calls)).toEqual([]);
+    expect(sleeps.length, "the wait is bounded").toBeLessThan(100);
   });
 
   it("still refuses when the acceptance job is red and the immutability job is too", () => {
@@ -670,10 +728,11 @@ describe("integrate.yml wires and states lane 08's reading of lane 06", () => {
     expect(step?.run).toContain('"$HEAD_SHA"');
   });
 
-  it("states in a comment that the acceptance job does not bind, and names the reason", () => {
+  it("states in a comment that the acceptance job binds, and names what changed", () => {
     expect(source).toContain(ACCEPTANCE_JOB);
-    expect(source).toContain("does not bind");
-    // The reason, not just the ruling: lane 04's first-authoring is unwired.
+    expect(source).toContain("binds too");
+    // The ruling it replaces and the fact that retired it, so a reader can follow the change.
+    expect(source).toContain("ADR-0095");
     expect(source).toContain("#201");
   });
 

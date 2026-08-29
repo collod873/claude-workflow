@@ -227,8 +227,13 @@ export { implementationBranch };
  * The number is load-bearing in one direction only: a run cannot outlive its own timeout, so a
  * claim older than this is held by **no run at all**. Reading it any tighter would let a live run's
  * claim be stolen out from under it; reading it looser only delays a retry.
+ *
+ * Raised from 30 after run 33278318023 was killed at 30:15 building #237. Its implementer stage
+ * alone took ~28 minutes and the answer was already in hand; what the cap actually cut off was the
+ * commit and the pull request. The previous run of the same ticket finished in 23:20, so 30 was
+ * not a limit the lane was comfortably inside — it was a coin flip nobody had watched land.
  */
-export const CLAIM_TIMEOUT_MINUTES = 30;
+export const CLAIM_TIMEOUT_MINUTES = 45;
 
 /** The REST resource for one branch's ref, derived from `GIT_REFS_PATH` rather than restated. */
 function refPath(branch: string): string {

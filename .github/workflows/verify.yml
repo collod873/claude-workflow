@@ -47,6 +47,10 @@ name: Verify
 
 permissions:
   contents: read
+  # `Restore and run acceptance` resolves the head branch of the pull request it is judging, which
+  # a `repository_dispatch` payload names only by URL. Without this the job silently judges trunk
+  # (ADR-0104).
+  pull-requests: read
 
 jobs:
   # The alarm half of ADR-0053/ADR-0054's immutable set: `tests/acceptance/`, `vitest.config.ts`
@@ -118,8 +122,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Without this the job judges trunk and calls it a verdict on the pull request (ADR-0104).
+      # `actions/checkout` above has no ref to take from a `repository_dispatch` — the event names
+      # no branch — so it lands on the default branch, and every step after it, the restore
+      # included, then describes `main`. The tests ran green against a `main` that did not carry
+      # the implementation and the job reported a failure that was true of trunk and meaningless
+      # about the diff; the same reading would have passed any pull request whose ticket was
+      # already built. The head branch is resolved from the payload's PR URL rather than added to
+      # the dispatch, so no sender changes and an older dispatch still works.
+      - name: Check out the pull request under test
+        env:
+          PR: ${{ github.event.client_payload.pr }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+          echo "judging $PR on $BRANCH"
+          git fetch --no-tags origin "$BRANCH"
+          git checkout --detach FETCH_HEAD
+
       # The guarantee itself. Runs before Node/npm below so a checkout that somehow lacks `main`
-      # fails here rather than after a wasted install.
+      # fails here rather than after a wasted install. It restores over the pull request's tree,
+      # which is what makes it a guarantee rather than a formality.
       #
       # Trunk carrying no `tests/acceptance/` at all is not that failure. Lane 04's first-authoring
       # is still unwired (#183, held back from #188 on purpose), so the directory does not exist and

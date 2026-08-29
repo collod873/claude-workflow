@@ -50,7 +50,7 @@ jobs:
   integrate:
     if: github.event.action == 'implementation-opened'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       PR: ${{ github.event.client_payload.pr }}
       HEAD_SHA: ${{ github.sha }}
@@ -97,13 +97,17 @@ jobs:
       # running: `verify.yml` skips that job on its `push: main` runs and waves the skip through in
       # its own downstream `if:`, which is a reading this lane may not copy.
       #
-      # **`Restore and run acceptance` does not bind, and this is the reason.** Lane 04's
-      # first-authoring is unwired (#201), so no acceptance test names any criterion a dispatch
-      # carries and that job refuses on the empty set — it is red for *every* pull request today,
-      # and binding on it would stop the whole chain rather than catch anything. Lane 08 merges over
-      # it and posts a comment on the pull request saying it was red, so the red is on the record
-      # instead of in a run log nobody reads. When #201 lands and that job starts meaning something,
-      # this ruling is the thing to revisit.
+      # **`Restore and run acceptance` binds too, as of ADR-0104.** It did not while lane 04's
+      # first-authoring was unwired (#201): no acceptance test named any criterion a dispatch
+      # carried, the job refused on the empty set, and it was red for *every* pull request, so
+      # binding on it would have stopped the whole chain rather than caught anything (ADR-0095).
+      # That ruling named its own expiry — "when #201 lands and that job starts meaning something,
+      # this ruling is the thing to revisit" — and #201 has landed. A red one is now a slice whose
+      # own acceptance tests do not pass, which is the one thing this lane exists to not merge.
+      #
+      # Unlike `Immutability`, that job takes minutes rather than seconds, so `integrate.ts` waits
+      # for its verdict instead of reading once and calling a still-running job unjudged. The wait
+      # is why this job's `timeout-minutes` is 30 rather than 15.
       #
       # `github.sha` is how the two runs are joined: a `repository_dispatch` run executes trunk's
       # copy of the workflow at trunk's tip (ADR-0054), so lane 06's run for this dispatch carries
