@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import type { GhExec } from "../shared/gh";
+import { commitPullsPathMatcher } from "../shared/gh-paths";
 import type { StageExec } from "../shared/stage";
 import {
   keepSurvivingFindings,
@@ -79,12 +80,17 @@ describe("untestedCriteria", () => {
   });
 });
 
-/** A `StageExec` stand-in that answers with a canned response per call and records every prompt it saw. */
-function fakeExec(response: unknown): { exec: StageExec; prompts: string[] } {
+/**
+ * A `StageExec` stand-in that answers with `responses[n]` on the nth call — the last one once
+ * they run out, so a chain's tail (one refuter call per finding) needs no padding — and records
+ * every prompt it saw. `prompts.length` is the call counter; there is no second one to keep in
+ * step with it.
+ */
+function fakeExec(...responses: unknown[]): { exec: StageExec; prompts: string[] } {
   const prompts: string[] = [];
   const exec: StageExec = async (_argv, stdin) => {
     prompts.push(stdin ?? "");
-    return JSON.stringify(response);
+    return JSON.stringify(responses[Math.min(prompts.length - 1, responses.length - 1)]);
   };
   return { exec, prompts };
 }
@@ -204,39 +210,133 @@ describe("runConformanceReview", () => {
   });
 });
 
+/** One pull request as `commits/{head}/pulls` returns it, in the shape `runReview` reads. */
+interface FakePull {
+  headSha: string;
+  headRef: string;
+  /** Carried only so a test can show it is *not* a term — an already-merged pull request counts. */
+  state?: string;
+  merged_at?: string | null;
+}
+
+interface FakeReviewGhOptions {
+  /** What `commits/<sha>/pulls` answers, keyed by the commit asked about. Absent means `[]`. */
+  pullsByCommit?: Record<string, FakePull[]>;
+  /** What `issue view <n>` answers, keyed by issue number. An unlisted number is a read failure. */
+  tickets?: Record<number, { title: string; body: string }>;
+}
+
 /**
  * A `GhExec` stand-in wired for `runReview`'s own chain: `issue create` calls (findings, and
  * `runCounter`'s own proposals) get a canned, incrementing issue URL; `issue list` calls (both of
  * `runCounter`'s reads) get an empty JSON array, so the counter's below-threshold path is exercised
- * without needing a fixture tracker.
+ * without needing a fixture tracker; and the two reads the conformance half needs — the commit's
+ * pull requests, and a ticket or PRD body — are answered from `options`.
+ *
+ * The pulls lookup is recognised through `commitPullsPathMatcher` rather than a restated path, so
+ * this fake cannot answer an endpoint different from the one `commitPullsPath` actually sends.
  */
-function fakeReviewGh(): { gh: GhExec; calls: string[][] } {
+function fakeReviewGh(options: FakeReviewGhOptions = {}): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
   let nextIssueNumber = 600;
   const gh: GhExec = (args) => {
     calls.push(args);
     if (args[0] === "issue" && args[1] === "list") return "[]";
+
+    if (args[0] === "api") {
+      const pullsMatch = (args[1] ?? "").match(commitPullsPathMatcher);
+      if (pullsMatch) {
+        const pulls = options.pullsByCommit?.[pullsMatch[1]] ?? [];
+        return JSON.stringify(
+          pulls.map((pull) => ({
+            state: pull.state ?? "open",
+            merged_at: pull.merged_at ?? null,
+            head: { sha: pull.headSha, ref: pull.headRef },
+          })),
+        );
+      }
+    }
+
+    if (args[0] === "issue" && args[1] === "view") {
+      const ticket = options.tickets?.[Number(args[2])];
+      if (!ticket) throw new Error(`fake gh: no issue #${args[2]}`);
+      return JSON.stringify(ticket);
+    }
+
     nextIssueNumber += 1;
     return `https://github.com/example/repo/issues/${nextIssueNumber}`;
   };
   return { gh, calls };
 }
 
+/**
+ * The commit under review in the tests below, and the claim branch whose name is the only thing
+ * that says which ticket the diff implements.
+ */
+const HEAD_SHA = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c";
+const TICKET_NUMBER = 42;
+const PRD_NUMBER = 7;
+
+const claimedPulls = (overrides: Partial<FakePull> = {}) => ({
+  [HEAD_SHA]: [{ headSha: HEAD_SHA, headRef: `implement/issue-${TICKET_NUMBER}`, ...overrides }],
+});
+
+const SPEC_MARKER = "SPEC-MARKER-4c1";
+const CRITERION_MARKER = "npm test exits 0 with a criterion no fixture names at all";
+
+const ticketBody = (parent = true) =>
+  [
+    ...(parent ? ["## Parent PRD", `#${PRD_NUMBER}`, ""] : []),
+    "## Acceptance criteria",
+    `- [ ] ${CRITERION_MARKER}`,
+    "",
+  ].join("\n");
+
+const CONFORMANCE_TICKETS = {
+  [TICKET_NUMBER]: { title: "the ticket", body: ticketBody() },
+  [PRD_NUMBER]: { title: "the PRD", body: `${SPEC_MARKER}\n` },
+};
+
+/**
+ * The conformance reviewer's prompt template up to its first placeholder — enough of the file to
+ * identify *which* prompt a spawn carried, asserted against the real file rather than a literal
+ * copied out of it.
+ */
+const CONFORMANCE_PROMPT_HEAD = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "conformance-reviewer/prompt.md"),
+  "utf8",
+).split("{{")[0];
+
+const ASSIGNEE = "collod873";
+
+/**
+ * One whole run of lane 07 over `DIFF`, with the stage answering `responses` in order — plus the
+ * two things every assertion below is about: what the chain returned, what `gh` was asked, and
+ * which of the spawned prompts (if any) was the conformance reviewer's.
+ */
+async function reviewRun(
+  responses: unknown[],
+  options: FakeReviewGhOptions = {},
+  greenGateChecks: string[] = [],
+) {
+  const { exec, prompts } = fakeExec(...responses);
+  const { gh, calls } = fakeReviewGh(options);
+  const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks, assignee: ASSIGNEE, head: HEAD_SHA });
+  return {
+    result,
+    calls,
+    conformancePrompt: prompts.find((prompt) => prompt.includes(CONFORMANCE_PROMPT_HEAD)),
+  };
+}
+
+const issueCreates = (calls: string[][]) => calls.filter((call) => call[0] === "issue" && call[1] === "create");
+
 describe("runReview", () => {
   it("files exactly one issue per refuter survivor, carrying the finding label, and never a PR comment or other notification", async () => {
-    const responses = [
+    const { result, calls } = await reviewRun([
       { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
       { refuted: false, reason: "" },
-    ];
-    let call = 0;
-    const exec: StageExec = async () => JSON.stringify(responses[call++]);
-    const { gh, calls } = fakeReviewGh();
-
-    const result = await runReview(exec, gh, {
-      diff: DIFF,
-      greenGateChecks: [],
-      assignee: "collod873",
-    });
+    ]);
 
     expect(result.survivors).toEqual([
       { message: "src/widget.ts:12 returns undefined on the empty-cart path" },
@@ -244,12 +344,11 @@ describe("runReview", () => {
     expect(result.publishedIssues.length).toBe(1);
     expect(result.tally).toEqual({ reached: 1, refuted: 0 });
 
-    const issueCreateCalls = calls.filter((call) => call[0] === "issue" && call[1] === "create");
     // One for the finding, and (below both counter thresholds) none for a proposal.
-    expect(issueCreateCalls.length).toBe(1);
-    expect(issueCreateCalls[0]).toContain(FINDING_LABEL);
-    expect(issueCreateCalls[0]).toContain("--assignee");
-    expect(issueCreateCalls[0]).toContain("collod873");
+    expect(issueCreates(calls).length).toBe(1);
+    expect(issueCreates(calls)[0]).toContain(FINDING_LABEL);
+    expect(issueCreates(calls)[0]).toContain("--assignee");
+    expect(issueCreates(calls)[0]).toContain(ASSIGNEE);
 
     const flat = calls.flat().map((token) => token.toLowerCase());
     for (const needle of ["pr", "comment", "notify", "slack", "webhook"]) {
@@ -258,38 +357,130 @@ describe("runReview", () => {
   });
 
   it("files no issue for a finding the structural refusal already drops", async () => {
-    const responses = [{ findings: [{ message: "This function is confusing." }] }];
-    let call = 0;
-    const exec: StageExec = async () => JSON.stringify(responses[call++]);
-    const { gh, calls } = fakeReviewGh();
-
-    const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks: [], assignee: "collod873" });
+    const { result, calls } = await reviewRun([{ findings: [{ message: "This function is confusing." }] }]);
 
     expect(result.survivors).toEqual([]);
     expect(result.publishedIssues).toEqual([]);
     expect(result.tally).toEqual({ reached: 0, refuted: 0 });
-    expect(calls.filter((call) => call[0] === "issue" && call[1] === "create").length).toBe(0);
+    expect(issueCreates(calls).length).toBe(0);
   });
 
   it("counts a refuter refusal toward the tally without filing an issue for it", async () => {
-    const responses = [
-      { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
-      { refuted: true, reason: "no-unused-vars already covers this" },
-    ];
-    let call = 0;
-    const exec: StageExec = async () => JSON.stringify(responses[call++]);
-    const { gh, calls } = fakeReviewGh();
-
-    const result = await runReview(exec, gh, {
-      diff: DIFF,
-      greenGateChecks: ["no-unused-vars"],
-      assignee: "collod873",
-    });
+    const { result, calls } = await reviewRun(
+      [
+        { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
+        { refuted: true, reason: "no-unused-vars already covers this" },
+      ],
+      {},
+      ["no-unused-vars"],
+    );
 
     expect(result.survivors).toEqual([]);
     expect(result.publishedIssues).toEqual([]);
     expect(result.tally).toEqual({ reached: 1, refuted: 1 });
-    expect(calls.filter((call) => call[0] === "issue" && call[1] === "create").length).toBe(0);
+    expect(issueCreates(calls).length).toBe(0);
+  });
+});
+
+/**
+ * The half of lane 07 that had never executed once (#189): `runReview` called `runCorrectnessReview`
+ * and nothing else, so ADR-0038 — a diff judged against its spec — had no production caller. These
+ * assert the firing, the concatenation the refuter reads, and the one skip branch that stands in
+ * for every way the spec can fail to resolve.
+ */
+describe("runReview's conformance half", () => {
+  /** Both reviewers answering nothing — enough to see *whether* the conformance one was spawned. */
+  const QUIET = [{ findings: [] }, { items: [] }];
+  const CORRECTNESS_FINDING = "src/widget.ts:12 returns undefined on the empty-cart path";
+
+  it("runs the conformance reviewer, on the spec the head commit's pull request resolves to", async () => {
+    const { conformancePrompt } = await reviewRun(QUIET, {
+      pullsByCommit: claimedPulls(),
+      tickets: CONFORMANCE_TICKETS,
+    });
+
+    // The parent PRD's body is the spec, and the *ticket's* own criteria are the scope.
+    expect(conformancePrompt).toContain(SPEC_MARKER);
+    expect(conformancePrompt).toContain(CRITERION_MARKER);
+  });
+
+  it("reviews a ticket that names no parent PRD against its own body", async () => {
+    const { conformancePrompt } = await reviewRun(QUIET, {
+      pullsByCommit: claimedPulls(),
+      tickets: { [TICKET_NUMBER]: { title: "the ticket", body: ticketBody(false) } },
+    });
+
+    expect(conformancePrompt).toContain(CRITERION_MARKER);
+  });
+
+  it("finds the ticket for a pull request that is already merged, not only an open one", async () => {
+    // Lane 07 rides a `workflow_run` and is always behind the event that started it, so a fast
+    // lane 08 can merge before this lookup happens. Restricting to open pull requests would make
+    // the conformance reviewer skip exactly the runs that moved quickest.
+    const { conformancePrompt } = await reviewRun(QUIET, {
+      pullsByCommit: claimedPulls({ state: "closed", merged_at: "2026-08-28T12:00:00Z" }),
+      tickets: CONFORMANCE_TICKETS,
+    });
+
+    expect(conformancePrompt).toBeDefined();
+  });
+
+  it("hands the refuter a conformance divergence alongside a correctness finding", async () => {
+    const divergence = "src/widget.ts:12 never returns the cart total the spec asks for";
+    const { result } = await reviewRun(
+      [
+        { findings: [{ message: CORRECTNESS_FINDING }] },
+        { items: [{ classification: "divergence", message: divergence }] },
+        { refuted: false, reason: "" },
+        { refuted: false, reason: "" },
+      ],
+      { pullsByCommit: claimedPulls(), tickets: CONFORMANCE_TICKETS },
+    );
+
+    // Two reached the refuter, correctness first, and both survivors were filed.
+    expect(result.tally).toEqual({ reached: 2, refuted: 0 });
+    expect(result.survivors).toEqual([{ message: CORRECTNESS_FINDING }, { message: divergence }]);
+    expect(result.publishedIssues.length).toBe(2);
+  });
+
+  it("reviews the correctness half alone, without failing, when no pull request has the head commit as its head", async () => {
+    // A pull request that merely contains the commit — the exact case `commits/{head}/pulls` also
+    // returns, and the one this lane must not resolve a spec from.
+    const { result, conformancePrompt } = await reviewRun(
+      [{ findings: [{ message: CORRECTNESS_FINDING }] }, { refuted: false, reason: "" }],
+      {
+        pullsByCommit: { [HEAD_SHA]: [{ headSha: "cafef00d", headRef: `implement/issue-${TICKET_NUMBER}` }] },
+        tickets: CONFORMANCE_TICKETS,
+      },
+    );
+
+    expect(conformancePrompt).toBeUndefined();
+    expect(result.tally).toEqual({ reached: 1, refuted: 0 });
+    expect(result.survivors).toEqual([{ message: CORRECTNESS_FINDING }]);
+  });
+
+  /** Every other way the resolution can fail is the same one branch: skip, correctness only, no throw. */
+  const unresolvable: Array<[string, FakeReviewGhOptions]> = [
+    ["the commit has no pull request at all", { tickets: CONFORMANCE_TICKETS }],
+    [
+      "the head branch is not an implementation claim",
+      {
+        pullsByCommit: { [HEAD_SHA]: [{ headSha: HEAD_SHA, headRef: "some-contributors-branch" }] },
+        tickets: CONFORMANCE_TICKETS,
+      },
+    ],
+    ["the ticket will not read", { pullsByCommit: claimedPulls(), tickets: {} }],
+    [
+      "the parent PRD will not read",
+      { pullsByCommit: claimedPulls(), tickets: { [TICKET_NUMBER]: { title: "t", body: ticketBody() } } },
+    ],
+  ];
+
+  it.each(unresolvable)("skips the conformance half, without failing, when %s", async (_case, options) => {
+    const { result, conformancePrompt } = await reviewRun([{ findings: [] }], options);
+
+    expect(conformancePrompt).toBeUndefined();
+    expect(result.tally).toEqual({ reached: 0, refuted: 0 });
   });
 });
 

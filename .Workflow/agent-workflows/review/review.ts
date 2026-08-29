@@ -7,6 +7,9 @@ import { execGh, type GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { testsForCriteria } from "../shared/affected-tests";
+import { commitPullsPath } from "../shared/gh-paths";
+import { implementationBranchTicket } from "../shared/ready-set";
+import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 import { isStructurallyRefused, type Finding, type GreenGateCheck } from "./structural-refusal";
 import { runRefuter } from "./refuter";
 import { publishFindings } from "./publish-findings";
@@ -204,6 +207,62 @@ export interface RunReviewInput {
   greenGateChecks: GreenGateCheck[];
   /** Who a filed finding, and a filed counter proposal, is assigned to. */
   assignee: string;
+  /**
+   * The commit this run is reviewing — `workflow_run.head_sha`, passed through from the argv
+   * `review.yml` already builds. It is the *only* thing this function is told about which pull
+   * request it is looking at: the ticket, its parent PRD and its criteria are all resolved from
+   * it here (#189), so `main()` does no lookup of its own and `review.yml` needs no edit.
+   */
+  head: string;
+}
+
+/**
+ * The spec half of a review, resolved from the commit under review: which PRD text to judge the
+ * diff against, which criteria bound the judgement, and which issue a `spec/gap` is filed at.
+ */
+type ResolvedSpec = Pick<ConformanceReviewInput, "specText" | "criteria" | "prdIssueNumber">;
+
+/** One pull request, as `commits/{head}/pulls` returns it — only the head this lane matches on. */
+interface CommitPull {
+  head?: { sha?: string; ref?: string };
+}
+
+/**
+ * Resolves the spec for `head`, or throws naming the first thing that could not be resolved.
+ *
+ * Every step is a lookup that can legitimately come back empty on a real pull request, and
+ * `runReview`'s caller catches all of them as one branch — see the note there for why a missing
+ * spec is a fact about the pull request rather than a fault in lane 07.
+ */
+function resolveSpec(gh: GhExec, head: string): ResolvedSpec {
+  const pulls = JSON.parse(gh(["api", commitPullsPath(head)])) as CommitPull[];
+
+  // Every pull request *associated with* the commit comes back here, including ones that merely
+  // contain it further down their branch. The one this run is reviewing is the one whose own head
+  // is that commit — state is deliberately not a term: lane 07 rides a `workflow_run` and is
+  // always behind the event that started it, so the pull request may already be merged (#189).
+  const pull = pulls.find((candidate) => candidate.head?.sha === head);
+  if (!pull) throw new Error(`no pull request has ${head} as its head commit`);
+
+  const branch = pull.head?.ref ?? "";
+  const ticketNumber = implementationBranchTicket(branch);
+  if (ticketNumber === undefined) {
+    throw new Error(`head branch \`${branch}\` is not an implementation claim, so it names no ticket`);
+  }
+
+  const ticket = readTicket(gh, ticketNumber);
+  // The criteria are the *ticket's* own: they are the checkable statements this diff was asked to
+  // satisfy, and the parent PRD carries no machine-readable criteria of its own.
+  const criteria = extractCriteria(ticket.body);
+
+  // A ticket filed without a `## Parent PRD` heading is still a spec — it is reviewed against its
+  // own body, and a `spec/gap` is filed at the ticket. That is not the skip branch.
+  const prdNumber = parentPrdNumber(ticket.body);
+  if (prdNumber === undefined) {
+    return { specText: ticket.body, criteria, prdIssueNumber: ticketNumber };
+  }
+
+  return { specText: readTicket(gh, prdNumber).body, criteria, prdIssueNumber: prdNumber };
 }
 
 export interface RunReviewResult {
@@ -217,8 +276,9 @@ export interface RunReviewResult {
 }
 
 /**
- * Lane 07's whole chain, end to end (PRD #145, move 7a): the correctness reviewer's raw findings,
- * filtered by the structural refusal (`runCorrectnessReview`), each surviving one sent through the
+ * Lane 07's whole chain, end to end (PRD #145, move 7a; both reviewers since #189): the
+ * correctness reviewer's raw findings *and* the conformance reviewer's divergences, each filtered
+ * by the structural refusal, concatenated correctness-first and sent through the
  * refuter (`runRefuter`), and each survivor of *that* filed as its own issue — never a PR comment,
  * never any other notification (`publishFindings`, carrying `counter.ts`'s `FINDING_LABEL`). The
  * refuter's own tally — how many findings it read, how many it refused — is counted here, in the
@@ -227,7 +287,14 @@ export interface RunReviewResult {
  * rather than a second, undocumented place logging it.
  */
 export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
-  const candidates = await runCorrectnessReview(exec, { diff: input.diff, greenGateChecks: input.greenGateChecks });
+  const correctness = await runCorrectnessReview(exec, { diff: input.diff, greenGateChecks: input.greenGateChecks });
+
+  // Both reviewers, over the same diff and the same green gates, before anything reaches the
+  // refuter — correctness first, so the combined list reads in the order the reviewers ran and
+  // `tally.reached` counts both (#189).
+  const conformance = await reviewConformance(exec, gh, input);
+
+  const candidates = [...correctness, ...conformance];
   const survivors = await runRefuter(exec, candidates, input.diff, input.greenGateChecks);
   const tally: RefuterTally = { reached: candidates.length, refuted: candidates.length - survivors.length };
 
@@ -235,6 +302,38 @@ export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInp
   const counter = runCounter({ gh, tally, assignee: input.assignee });
 
   return { survivors, publishedIssues, tally, counter };
+}
+
+/**
+ * The conformance reviewer's findings, or none when this run has no spec to judge against.
+ *
+ * **One skip branch wrapping the whole resolution** (#189): no pull request for the head commit,
+ * a head branch that is not an implementation claim, the `gh` lookup throwing, or a ticket or
+ * parent PRD that will not read — every one of them prints a line naming what could not be
+ * resolved and leaves the correctness half to run alone, at exit 0. A reviewer that cannot find
+ * its spec has nothing to judge conformance against, and that is a fact about the pull request,
+ * not a fault in this lane; failing the run would block a merge over a missing heading.
+ *
+ * The resolution alone is inside the `try`. A conformance reviewer that *did* find its spec and
+ * then failed is a real failure of this lane, and it surfaces rather than being swallowed here.
+ */
+async function reviewConformance(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<Finding[]> {
+  let spec: ResolvedSpec;
+  try {
+    spec = resolveSpec(gh, input.head);
+  } catch (err) {
+    console.error(`conformance review skipped: ${reason(err)}`);
+    return [];
+  }
+
+  const result = await runConformanceReview(exec, gh, {
+    specText: spec.specText,
+    diff: input.diff,
+    criteria: spec.criteria,
+    greenGateChecks: input.greenGateChecks,
+    prdIssueNumber: spec.prdIssueNumber,
+  });
+  return result.findings;
 }
 
 async function main(): Promise<void> {
@@ -257,7 +356,9 @@ async function main(): Promise<void> {
 
   try {
     const diff = execGit(["diff", `${base}...${head}`]);
-    const result = await runReview(execClaude, execGh, { diff, greenGateChecks, assignee });
+    // `head` goes through unchanged: which pull request it belongs to, and which ticket that pull
+    // request implements, are `runReview`'s to resolve — this entrypoint looks nothing up.
+    const result = await runReview(execClaude, execGh, { diff, greenGateChecks, assignee, head });
     console.log(
       JSON.stringify({ publishedIssues: result.publishedIssues, tally: result.tally }),
     );
