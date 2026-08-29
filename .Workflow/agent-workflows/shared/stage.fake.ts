@@ -22,12 +22,37 @@ export interface FakeStage {
  * pins.
  */
 export function createFakeStage(response: string): FakeStage {
+  return recordingStage(() => response);
+}
+
+/**
+ * Creates a `FakeStage` that answers each call from `responses` in order — for
+ * a chain whose stages answer to different schemas, where one canned response
+ * would be parsed by every stage in it alike.
+ *
+ * **Running out of responses throws.** A chain that spawned a stage the test
+ * did not plan for is the failure a call-order assertion is usually there to
+ * catch, and a fake that quietly repeated its last answer would let the extra
+ * stage through whenever that answer happened to parse.
+ */
+export function createFakeStages(responses: string[]): FakeStage {
+  return recordingStage((call) => {
+    const response = responses[call - 1];
+    if (response === undefined) {
+      throw new Error(`fake stage: call ${call} has no response — ${responses.length} were supplied`);
+    }
+    return response;
+  });
+}
+
+/** The recorder both share: every argv and stdin kept in order, the answer left to the caller. */
+function recordingStage(answer: (call: number) => string): FakeStage {
   const calls: string[][] = [];
   const stdins: Array<string | undefined> = [];
   const exec: StageExec = async (argv, stdin) => {
     calls.push(argv);
     stdins.push(stdin);
-    return response;
+    return answer(calls.length);
   };
   return { exec, calls, stdins };
 }

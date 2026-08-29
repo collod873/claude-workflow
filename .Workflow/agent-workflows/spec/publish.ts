@@ -93,21 +93,48 @@ export function sourceMarker(source: SpecSource): string {
  * permanently un-openable.
  */
 export function readSourceMarker(body: string): SpecSource | undefined {
-  const open = body.lastIndexOf(SOURCE_OPEN);
-  if (open === -1) return undefined;
-
-  const close = body.indexOf(SOURCE_CLOSE, open + SOURCE_OPEN.length);
-  if (close === -1) return undefined;
+  const at = locateSourceMarker(body);
+  if (at === undefined) return undefined;
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(body.slice(open + SOURCE_OPEN.length, close));
+    parsed = JSON.parse(body.slice(at.open + SOURCE_OPEN.length, at.close));
   } catch {
     return undefined;
   }
 
   const result = SpecSource.safeParse(parsed);
   return result.success ? result.data : undefined;
+}
+
+/** Where the trailer's payload starts and ends in `body`, or `undefined` when there is no trailer. */
+function locateSourceMarker(body: string): { open: number; close: number } | undefined {
+  const open = body.lastIndexOf(SOURCE_OPEN);
+  if (open === -1) return undefined;
+
+  const close = body.indexOf(SOURCE_CLOSE, open + SOURCE_OPEN.length);
+  return close === -1 ? undefined : { open, close };
+}
+
+/**
+ * The body without its source trailer — what a stage asked to rewrite the body is handed
+ * (ADR-0100's reconciler).
+ *
+ * `specBody` puts the trailer back on every write, so a model shown one would produce a body
+ * carrying either two of them or none, depending on how it read a machine comment nobody told it
+ * about. Stripping it here and re-appending it there means the round trip is exact and the model
+ * never has to be trusted with it at all.
+ *
+ * A trailer `readSourceMarker` cannot parse is left in place rather than cut out: it is the only
+ * record of that spec's provenance, and nothing here can re-append what it could not read.
+ */
+export function withoutSourceMarker(body: string): string {
+  if (readSourceMarker(body) === undefined) return body;
+
+  const at = locateSourceMarker(body);
+  if (at === undefined) return body;
+
+  return `${body.slice(0, at.open)}${body.slice(at.close + SOURCE_CLOSE.length)}`.trimEnd();
 }
 
 /**
@@ -156,8 +183,12 @@ export function publishSpec(gh: GhExec, draft: SpecAuthorOutput, source: SpecSou
  * the dispatch, the rounds count and every one of the owner's own comments already hang off, and a
  * second issue would strand all of them. The source trailer is re-appended from what the caller
  * read off the existing body, so a re-run never loses the spec's provenance.
+ *
+ * Takes a title and a body rather than the author's whole output, because the other writer on this
+ * path has no author behind it: ADR-0100's reconciler returns a body alone and carries the spec's
+ * own title through unchanged, and `openQuestions` are not something either write records.
  */
-export function updateSpec(gh: GhExec, issueNumber: number, draft: SpecAuthorOutput, source: SpecSource | undefined): void {
+export function updateSpec(gh: GhExec, issueNumber: number, draft: PublishedSpec, source: SpecSource | undefined): void {
   gh([
     "issue",
     "edit",
@@ -174,7 +205,10 @@ export function readSpecBody(gh: GhExec, issueNumber: number): string {
   return gh(["issue", "view", String(issueNumber), "--json", "body", "--jq", ".body"]);
 }
 
-/** A published spec, read back off the tracker — the two fields the critic reads. */
+/**
+ * A spec's title and body — the two fields read back off the tracker for the critic, and the two
+ * `updateSpec` puts back.
+ */
 export interface PublishedSpec {
   title: string;
   body: string;

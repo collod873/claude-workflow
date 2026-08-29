@@ -290,16 +290,6 @@
     ]
   },
   {
-    "hash": "34b89cb574d8f327",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 82,
-    "where": [
-      ".Workflow/agent-workflows/shared/stage.fake.ts:25",
-      ".Workflow/agent-workflows/spec/spec.test.ts:39"
-    ]
-  },
-  {
     "hash": "3ac8ba3e73988f3d",
     "format": "typescript",
     "lines": 16,

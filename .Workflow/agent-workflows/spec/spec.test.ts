@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
-import { createFakeStage } from "../shared/stage.fake";
+import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shape/marker";
 import type { Sheet } from "../shape/sheet-schema";
 import { createIssueGh, type FakeIssueGh } from "./gh.fake";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
+import { sourceMarker } from "./publish";
 import { openQuestionsComment } from "./rounds";
 import {
   invocationFromEnv,
@@ -33,21 +34,13 @@ const RESPONSE = JSON.stringify({
 const SILENT_CRITIC = JSON.stringify({ findings: [] });
 
 /**
- * A fake `StageExec` that answers the author's call with `RESPONSE` and
- * every later call (the critic) with `SILENT_CRITIC` — good enough for a
- * test that only cares about the author's own argv or prompt, since the
- * critic's call comes after it in `fake.calls`.
+ * A fake `StageExec` that answers the author's call with `RESPONSE` and the
+ * critic's with `SILENT_CRITIC` — good enough for a test that only cares about
+ * the author's own argv or prompt, since the critic's call comes after it in
+ * `fake.calls`.
  */
 function fakeChain() {
-  const responses = [RESPONSE, SILENT_CRITIC];
-  const calls: string[][] = [];
-  const stdins: Array<string | undefined> = [];
-  const exec: StageExec = async (argv, stdin) => {
-    calls.push(argv);
-    stdins.push(stdin);
-    return responses[calls.length - 1] ?? SILENT_CRITIC;
-  };
-  return { exec, calls, stdins };
+  return createFakeStages([RESPONSE, SILENT_CRITIC]);
 }
 
 /** The body of the round a run posted, or `undefined` when it posted none. */
@@ -187,12 +180,10 @@ describe("the sheet door — ADR-0061's marks reach the gate", () => {
 
   /** The author's draft, then a silent critic — the two stages this door spends. */
   function chain(openQuestions: string[]): StageExec {
-    const responses = [
+    return createFakeStages([
       JSON.stringify({ title: "A spec", body: "## Problem\nIt is unbuilt.", openQuestions }),
       SILENT_CRITIC,
-    ];
-    let next = 0;
-    return async () => responses[next++] ?? SILENT_CRITIC;
+    ]).exec;
   }
 
   async function runSheetDoor(
@@ -281,15 +272,30 @@ describe("runSpecCritique — the critic-only entry", () => {
     body: "## Problem\nIt stalls on the tracker.",
   };
 
+  /** The body the reconciler hands back, as it comes off the wire and as the write should land it. */
+  const REWRITTEN = "## Problem\nIt stalls on the tracker.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed.";
+  const RECONCILED = JSON.stringify({ body: REWRITTEN });
+
+  /** One answering comment — enough for ADR-0100's "a spec that answered at least one round". */
+  const ANSWER = "Repoint every consumer and delete every duplicate.";
+
   /** The published spec as this door reads it: its own title and body, plus the owner's comments. */
-  function fakeGh(comments: string[] = []): FakeIssueGh {
+  function fakeGh(comments: string[] = [], body: string = SPEC.body): FakeIssueGh {
     return createIssueGh((fields) =>
       fields === "title,body"
-        ? JSON.stringify(SPEC)
+        ? JSON.stringify({ ...SPEC, body })
         : fields === "comments"
-          ? JSON.stringify({ comments: comments.map((body) => ({ body })) })
+          ? JSON.stringify({ comments: comments.map((commentBody) => ({ body: commentBody })) })
           : undefined,
     );
+  }
+
+  /** The `gh issue edit … --body <body>` a run made, or `undefined` when it rewrote nothing. */
+  function bodyWrite(calls: string[][]): string | undefined {
+    const edit = calls.find(
+      (args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body"),
+    );
+    return edit?.[edit.indexOf("--body") + 1];
   }
 
   it("reads the issue's own title and body and hands them to the critic", async () => {
@@ -320,7 +326,7 @@ describe("runSpecCritique — the critic-only entry", () => {
   });
 
   it("passes the owner's answering comments to the critic, and not this lane's own rounds", async () => {
-    const fake = createFakeStage(SILENT_CRITIC);
+    const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
     const { gh } = fakeGh([
       openQuestionsComment(["what does done mean?"]),
       "done means the gauntlet exits 0",
@@ -375,6 +381,97 @@ describe("runSpecCritique — the critic-only entry", () => {
 
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(0);
     expect(calls.filter((args) => args.includes("--body") && args[1] === "edit")).toHaveLength(0);
+  });
+
+  /**
+   * ADR-0100. This door is the one with no source to re-author from — the issue it fires on *is*
+   * the draft — so the rulings its rounds settle used to live in the comment thread and nowhere
+   * else, and lane 03 sliced the draft they had argued down (#189, #190).
+   */
+  describe("re-authoring the body from the answered thread", () => {
+    it("rewrites the body from the body and the answers when the count falls to zero", async () => {
+      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
+
+      const result = await runSpecCritique(fake.exec, gh, 180);
+
+      expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched", rewritten: true });
+      expect(bodyWrite(calls)).toBe(REWRITTEN);
+
+      // One model stage for the rewrite, not a second chain: the reconciler reads the body and the
+      // answers, and the answers are what it was given the round for.
+      expect(fake.calls).toHaveLength(2);
+      const reconcilerPrompt = fake.stdins[1] ?? "";
+      expect(reconcilerPrompt).toContain(SPEC.body);
+      expect(reconcilerPrompt).toContain(ANSWER);
+      expect(reconcilerPrompt).not.toContain("1. which one?");
+    });
+
+    it("lands the rewrite before sliceable and before the dispatch, so lane 03 cannot read a stale body", async () => {
+      // The whole point of the ordering: `sliceable` is what lane 03's dispatch hangs off, and a
+      // spec labelled before it was rewritten is one lane 03 may slice from the argued-down draft.
+      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
+
+      await runSpecCritique(fake.exec, gh, 180);
+
+      const wrote = calls.findIndex((args) => args[1] === "edit" && args.includes("--body"));
+      const labelled = calls.findIndex((args) => args.includes(SLICEABLE_LABEL));
+      const dispatched = calls.findIndex(
+        (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
+      );
+
+      expect(wrote).toBeGreaterThanOrEqual(0);
+      expect(wrote).toBeLessThan(labelled);
+      expect(labelled).toBeLessThan(dispatched);
+    });
+
+    it("rewrites nothing and spawns no second stage when the spec cleared on its first round", async () => {
+      // No answering comment means no round was ever answered, so there is nothing to fold in.
+      // The guard is the comment list, not a model's judgement of whether it found anything.
+      const fake = createFakeStages([SILENT_CRITIC]);
+      const { gh, calls } = fakeGh();
+
+      const result = await runSpecCritique(fake.exec, gh, 180);
+
+      expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched", rewritten: false });
+      expect(fake.calls).toHaveLength(1);
+      expect(bodyWrite(calls)).toBeUndefined();
+    });
+
+    it("rewrites nothing when the count is non-zero, and still posts its numbered round", async () => {
+      // A held spec has an open round. Re-authoring it would fold in answers to questions that are
+      // still being asked, and the owner would be answering a body that had moved under him.
+      const finding = "\"handles errors gracefully\" admits two implementations.";
+      const fake = createFakeStages([JSON.stringify({ findings: [finding] })]);
+      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
+
+      const result = await runSpecCritique(fake.exec, gh, 180);
+
+      expect(result).toMatchObject({ gateCount: 1, outcome: "held", rewritten: false });
+      expect(fake.calls).toHaveLength(1);
+      expect(bodyWrite(calls)).toBeUndefined();
+      expect(postedRound(calls)).toContain(`1. ${finding}`);
+      expectNothingDispatched(calls);
+    });
+
+    it("carries the title through unchanged and re-appends the source marker the body carried", async () => {
+      // A sheet spec re-labelled by hand reaches this door, and an `answer` whose trailer
+      // `planSpecRun` could not read routes here too — neither may lose its provenance.
+      const marker = sourceMarker({ kind: "sheet", issue: 42 });
+      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh([ANSWER], `${SPEC.body}\n\n${marker}`);
+
+      await runSpecCritique(fake.exec, gh, 180);
+
+      const edit = calls.find((args) => args[1] === "edit" && args.includes("--body")) ?? [];
+      expect(edit[edit.indexOf("--title") + 1]).toBe(SPEC.title);
+      expect(bodyWrite(calls)).toBe(`${REWRITTEN}\n\n${marker}`);
+
+      // Stripped before the model sees it and re-appended by the write, so the trailer is never
+      // something a model could duplicate or drop.
+      expect(fake.stdins[1]).not.toContain(marker);
+    });
   });
 });
 

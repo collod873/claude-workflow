@@ -20,8 +20,11 @@ import {
   readSourceMarker,
   readSpecBody,
   updateSpec,
+  withoutSourceMarker,
+  type PublishedSpec,
   type SpecSource,
 } from "./publish";
+import { runSpecReconciler } from "./reconcile";
 import { answeringComments, postOpenQuestions } from "./rounds";
 
 // Re-exported rather than wired into this file's own chain: ADR-0079's
@@ -293,10 +296,6 @@ export async function runSpecPublication(
  * `gateCount` as ADR-0061's second measure, and it reaches the posted round as the lines below,
  * from the same `unfiledMarks` call in both cases: the round is exactly as long as the count is
  * high, by construction rather than by two agreeing implementations.
- *
- * **A held round is never empty.** A draft that asked nothing but was handed a load-bearing mark
- * holds the gate on the arithmetic alone, and before this it posted a numbered list of nothing —
- * an owner with no way to see what he was being asked, and a spec parked forever.
  */
 function gateSpec(
   gh: GhExec,
@@ -305,6 +304,29 @@ function gateSpec(
   decisions: MarkedDecision[] = [],
 ): { count: number; outcome: GateOutcome } {
   const count = gateCount(openQuestions, decisions);
+  return { count, outcome: applySpecGate(gh, issueNumber, count, openQuestions, decisions) };
+}
+
+/**
+ * The half of the gate that writes: `sliceable` and the dispatch at zero, the numbered round at
+ * anything else.
+ *
+ * Split out from the count (ADR-0100) because the critique door now has work to do *between* the
+ * two — the count decides whether the body is re-authored, and the re-authored body is what
+ * `sliceable` must be applied to. Both doors still reach `applyGate` through here exactly once, so
+ * the split moved where the count is taken and nothing about what the gate does with it.
+ *
+ * **A held round is never empty.** A draft that asked nothing but was handed a load-bearing mark
+ * holds the gate on the arithmetic alone, and before this it posted a numbered list of nothing —
+ * an owner with no way to see what he was being asked, and a spec parked forever.
+ */
+function applySpecGate(
+  gh: GhExec,
+  issueNumber: number,
+  count: number,
+  openQuestions: string[],
+  decisions: MarkedDecision[] = [],
+): GateOutcome {
   const outcome = applyGate(gh, issueNumber, count);
 
   if (outcome === "held") {
@@ -312,7 +334,7 @@ function gateSpec(
     postOpenQuestions(gh, issueNumber, [...openQuestions, ...unfiled]);
   }
 
-  return { count, outcome };
+  return outcome;
 }
 
 /**
@@ -341,6 +363,14 @@ export interface SpecCritiqueResult {
   gateCount: number;
   /** `"dispatched"` at zero, `"held"` otherwise. */
   outcome: GateOutcome;
+  /**
+   * Whether ADR-0100's reconciler ran and rewrote the issue body.
+   *
+   * Reported rather than inferred from the count, because the rewrite is this door's one silent
+   * write: a run that spent a second Opus stage and edited the spec looks exactly like one that
+   * cleared on its first round unless the log says which it was.
+   */
+  rewritten: boolean;
 }
 
 /**
@@ -357,8 +387,14 @@ export interface SpecCritiqueResult {
  * re-run loop true here: with no author to redraft the body, a recount against unchanged text would
  * report the same findings forever, so the answer has to reach the only model on this door.
  *
- * Everything downstream is `runSpecPublication`'s own — the same `gateSpec`, so zero labels and
- * dispatches exactly as the runner path does, and non-zero comments the numbered questions.
+ * **Then the rounds are written back into the body** (ADR-0100). This is the one door with no
+ * source to re-author from — the issue it fires on *is* the draft — so before this the rulings its
+ * rounds settled lived in the comment thread and lane 03 sliced the draft they had argued down
+ * (#189, #190). `reconcile` below is what lands them, and it lands them before the gate applies
+ * anything, so no reader can see `sliceable` on a stale body.
+ *
+ * Everything downstream is `runSpecPublication`'s own — the same `applySpecGate`, so zero labels
+ * and dispatches exactly as the runner path does, and non-zero comments the numbered questions.
  */
 export async function runSpecCritique(
   exec: StageExec,
@@ -366,15 +402,54 @@ export async function runSpecCritique(
   issueNumber: number,
 ): Promise<SpecCritiqueResult> {
   const spec = readPublishedSpec(gh, issueNumber);
+  const answers = answeringComments(gh, issueNumber);
   const critique = await runSpecCritic(exec, {
     title: spec.title,
     body: spec.body,
-    answers: answeringComments(gh, issueNumber),
+    answers,
   });
 
-  const { count, outcome } = gateSpec(gh, issueNumber, critique.findings);
+  const count = gateCount(critique.findings);
+  const rewritten = count === 0 && answers.length > 0;
+  if (rewritten) {
+    await reconcile(exec, gh, issueNumber, spec, answers);
+  }
 
-  return { issueNumber, findings: critique.findings, gateCount: count, outcome };
+  const outcome = applySpecGate(gh, issueNumber, count, critique.findings);
+
+  return { issueNumber, findings: critique.findings, gateCount: count, outcome, rewritten };
+}
+
+/**
+ * ADR-0100's re-authoring: one stage over the body and the answers, written straight back to the
+ * issue it came from.
+ *
+ * Reached only at a zero count on a spec that answered at least one round, both of which are the
+ * caller's test rather than this function's — a non-zero count still has an open round, and an
+ * empty comment list means no round was ever answered, so there is nothing to fold in and no stage
+ * to spend. The rewrite is deliberately not re-critiqued either: the count was taken against the
+ * text the owner answered, and a fresh finding would re-hold a spec he has already cleared with no
+ * round left to answer it in.
+ *
+ * The title goes back unchanged and the `spec-source:v1` trailer is re-appended from the body this
+ * run read, because neither is the reconciler's to change and a spec that reaches this door may
+ * well carry one — a sheet spec re-labelled by hand, or an `answer` whose trailer `planSpecRun`
+ * could not read.
+ */
+async function reconcile(
+  exec: StageExec,
+  gh: GhExec,
+  issueNumber: number,
+  spec: PublishedSpec,
+  answers: string[],
+): Promise<void> {
+  const body = await runSpecReconciler(exec, {
+    title: spec.title,
+    body: withoutSourceMarker(spec.body),
+    answers,
+  });
+
+  updateSpec(gh, issueNumber, { title: spec.title, body }, readSourceMarker(spec.body));
 }
 
 /**
@@ -485,7 +560,8 @@ async function main(): Promise<void> {
     if (plan.path === "critique") {
       const result = await runSpecCritique(execClaude, execGh, plan.issueNumber);
       console.log(
-        `critiqued #${result.issueNumber}: ${result.gateCount} open question(s), ${result.outcome}`,
+        `critiqued #${result.issueNumber}: ${result.gateCount} open question(s), ${result.outcome}` +
+          `${result.rewritten ? ", body re-authored from the answered rounds" : ""}`,
       );
       return;
     }
