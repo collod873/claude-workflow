@@ -1,19 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
 import { CHANGE_REQUEST_CAP } from "../shape/sheet";
+import { createIssueGh, type FakeIssueGh } from "./gh.fake";
 import { answeringComments, openQuestionsComment, postOpenQuestions, roundFor } from "./rounds";
 
 /** A fake `GhExec` reading `comments` for issue 1 and recording every call verbatim. */
-function fakeGh(comments: string[] = []): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-    if (args[0] === "issue" && args[1] === "view") {
-      return JSON.stringify({ comments: comments.map((body) => ({ body })) });
-    }
-    return "";
-  };
-  return { gh, calls };
+function fakeGh(comments: string[] = []): FakeIssueGh {
+  return createIssueGh(() => JSON.stringify({ comments: comments.map((body) => ({ body })) }));
 }
 
 describe("roundFor — recomputed, never stored", () => {
