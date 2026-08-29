@@ -18,6 +18,7 @@ import {
   commentBody,
   entryLine,
   FINDING_MARKER,
+  retirementBody,
   signalBody,
   signalTitle,
   type UnreachableFinding,
@@ -323,9 +324,48 @@ function readStandingIssue(gh: GhExec): z.infer<typeof StandingIssue> | undefine
 }
 
 /**
+ * Retires the standing report once nothing is unreachable
+ * ([ADR-0099](../../../docs/adr/0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md)).
+ *
+ * **This reconciler recomputes its whole set every run, so it is entitled to say zero.** Nothing is
+ * stored, nothing is carried between runs, and the answer comes off the tracker each time — so an
+ * empty finding list is the assertion *nothing in the tracker is unreachable*, which is the exact
+ * fact the standing issue would need to keep asserting to stay open. `lost-dispatch-counter.ts`
+ * shares the marker pattern and gets no equivalent, because it sees one PRD per run and could only
+ * close a report about twelve others on evidence about one.
+ *
+ * Nothing else could close it: #216 named two slices that both delivered within the hour and stayed
+ * open regardless, because the zero path returned before it ever looked at the standing issue. A
+ * report nothing can clear is the park ADR-0011 forbids with an issue number attached.
+ */
+function retireStanding(gh: GhExec, log: (line: string) => void, dryRun: boolean): void {
+  const standing = readStandingIssue(gh);
+  if (!standing) return;
+
+  if (dryRun) {
+    log(`would close #${standing.number}: nothing is unreachable.`);
+    return;
+  }
+
+  try {
+    gh(["issue", "comment", String(standing.number), "--body", retirementBody()]);
+    gh(["issue", "close", String(standing.number), "--reason", "completed"]);
+    log(`closed #${standing.number}: nothing is unreachable.`);
+  } catch (err) {
+    // The rule the dispatch loop above already follows: one call that will not go through must not
+    // cost the run its answer. The next recompute finds the same zero and the same open issue, so a
+    // failure here is late, never lost.
+    log(`could not close #${standing.number}: ${reason(err)}`);
+  }
+}
+
+/**
  * Files the unreachable slices as **one** comment-or-create against one marker (ADR-0064's shape,
  * the pattern `watchdog/lost-dispatch-counter.ts` already implements) rather than as *n* silently
  * parked tickets. Returns what it actually named.
+ *
+ * The empty case is not a no-op: it is the one run that can close the report (ADR-0099), and it
+ * pays one `gh issue list` to do so.
  */
 function reportUnreachable(
   gh: GhExec,
@@ -333,7 +373,10 @@ function reportUnreachable(
   log: (line: string) => void,
   dryRun: boolean,
 ): number[] {
-  if (findings.length === 0) return [];
+  if (findings.length === 0) {
+    retireStanding(gh, log, dryRun);
+    return [];
+  }
 
   const standing = readStandingIssue(gh);
   const said = standing

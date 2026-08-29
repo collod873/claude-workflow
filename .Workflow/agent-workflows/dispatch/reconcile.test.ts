@@ -3,7 +3,7 @@ import type { GhExec } from "../shared/gh";
 import { matchingRefsPath } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
-import { FINDING_MARKER } from "../watchdog/unreachable";
+import { FINDING_MARKER, retirementBody } from "../watchdog/unreachable";
 import {
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
@@ -47,6 +47,7 @@ interface FakeGh {
   dispatches: number[];
   comments: Array<{ issue: number; body: string }>;
   created: Array<{ title: string; body: string }>;
+  closedByRun: Array<{ issue: number; reason: string }>;
 }
 
 function createFake(options: FakeOptions): FakeGh {
@@ -54,6 +55,7 @@ function createFake(options: FakeOptions): FakeGh {
   const dispatches: number[] = [];
   const comments: Array<{ issue: number; body: string }> = [];
   const created: Array<{ title: string; body: string }> = [];
+  const closedByRun: Array<{ issue: number; reason: string }> = [];
   const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
   const open = new Map(options.open.map((issue) => [issue.number, issue]));
 
@@ -97,6 +99,11 @@ function createFake(options: FakeOptions): FakeGh {
       return "";
     }
 
+    if (args[0] === "issue" && args[1] === "close") {
+      closedByRun.push({ issue: Number(args[2]), reason: args[args.indexOf("--reason") + 1] });
+      return "";
+    }
+
     if (args[0] === "issue" && args[1] === "create") {
       created.push({
         title: args[args.indexOf("--title") + 1],
@@ -137,7 +144,7 @@ function createFake(options: FakeOptions): FakeGh {
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
 
-  return { gh, calls, dispatches, comments, created };
+  return { gh, calls, dispatches, comments, created, closedByRun };
 }
 
 const silent = () => {};
@@ -291,6 +298,8 @@ describe("runReconcile reports what became unreachable", () => {
     expect(fake.comments).toHaveLength(1);
     expect(fake.comments[0].issue).toBe(400);
     expect(fake.comments[0].body).toContain("#20 —");
+    // And leaves it open: the report is only retired at a count of zero (ADR-0099).
+    expect(fake.closedByRun).toEqual([]);
   });
 
   it("says nothing twice about a slice the standing issue already names", () => {
@@ -320,6 +329,60 @@ describe("runReconcile reports what became unreachable", () => {
     expect(outcome.unreachable).toEqual([]);
     expect(fake.created).toEqual([]);
     expect(fake.comments).toEqual([]);
+    expect(fake.closedByRun).toEqual([]);
+  });
+});
+
+describe("runReconcile closes the standing report once nothing is unreachable", () => {
+  /** Nothing unreachable — #20 is merely waiting on an open blocker. */
+  const waiting = (standing?: FakeOptions["standing"]) =>
+    createFake({
+      open: [
+        { number: 11, title: "Still building" },
+        { number: 20, title: "Waiting on it", blockedBy: [11] },
+      ],
+      standing,
+    });
+
+  it("closes it, so a report that named slices which then delivered cannot outlive them (#216)", () => {
+    const fake = waiting({ number: 400, body: `#20 — Was unreachable\n\n${FINDING_MARKER}` });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.closedByRun).toEqual([{ issue: 400, reason: "completed" }]);
+  });
+
+  it("posts a closing record first, so the close gate's grammar is satisfied by the mechanism", () => {
+    const fake = waiting({ number: 400, body: `#20 — Was unreachable\n\n${FINDING_MARKER}` });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.comments).toEqual([{ issue: 400, body: retirementBody() }]);
+    // Ordered: the record has to exist before the close, or the gate reads a close with no record.
+    const order = fake.calls.filter((call) => call[0] === "issue").map((call) => call[1]);
+    expect(order.indexOf("comment")).toBeLessThan(order.indexOf("close"));
+  });
+
+  it("closes nothing in a dry run", () => {
+    const fake = waiting({ number: 400, body: `#20 — Was unreachable\n\n${FINDING_MARKER}` });
+
+    runReconcile({ gh: fake.gh, log: silent, dryRun: true });
+
+    expect(fake.closedByRun).toEqual([]);
+    expect(fake.comments).toEqual([]);
+  });
+
+  it("keeps its answer when the close will not go through, because the next recompute retries it", () => {
+    const fake = waiting({ number: 400, body: `#20 — Was unreachable\n\n${FINDING_MARKER}` });
+    const refusing: GhExec = (args) => {
+      if (args[0] === "issue" && args[1] === "close") throw new Error("gh: 403");
+      return fake.gh(args);
+    };
+
+    const outcome = runReconcile({ gh: refusing, log: silent });
+
+    expect(outcome.action).not.toBe("degraded");
+    expect(outcome.unreachable).toEqual([]);
   });
 });
 

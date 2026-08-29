@@ -4,6 +4,7 @@ import {
   commentBody,
   entryLine,
   FINDING_MARKER,
+  retirementBody,
   signalBody,
   signalTitle,
   type UnreachableFinding,
@@ -59,6 +60,30 @@ describe("the standing signal", () => {
 
     expect(comment).toContain("#91 —");
     expect(comment).not.toContain(FINDING_MARKER);
+  });
+});
+
+describe("retirementBody", () => {
+  it("opens with the heading the close gate parses, on its own first line", () => {
+    expect(retirementBody().split("\n")[0]).toBe("## Closing record");
+  });
+
+  it("declares `No diff.`, because a report's lines are cleared by other tickets' diffs", () => {
+    expect(retirementBody()).toContain("No diff.");
+  });
+
+  it("is a declaration the gate accepts, because the body it closes carries no acceptance criteria", () => {
+    // `No diff.` excuses the range only where the issue body declares no criteria (`close-gate.py`).
+    // The two agree by construction rather than by luck, so this asserts the construction.
+    expect(signalBody([finding(90, "A slice", [77])])).not.toContain("## Acceptance criteria");
+  });
+
+  it("says the mechanism survives the close, so a reader does not read this as a retirement", () => {
+    expect(retirementBody()).toContain("never the mechanism");
+  });
+
+  it("carries no marker, so closing the report cannot make the closed issue the standing one", () => {
+    expect(retirementBody()).not.toContain(FINDING_MARKER);
   });
 });
 

@@ -78,6 +78,30 @@ export function commentBody(entries: UnreachableFinding[]): string {
 }
 
 /**
+ * The comment that retires the standing issue once the count reaches zero
+ * ([ADR-0099](../../../docs/adr/0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md)).
+ *
+ * A closing record in `close-gate.py`'s own grammar, declaring `No diff.`: a standing report's
+ * lines are cleared by *other* tickets' diffs and never by one of its own, and `signalBody` writes
+ * no `## Acceptance criteria` heading, so `No diff.` is the declaration the gate accepts for every
+ * issue this counter opens.
+ */
+export function retirementBody(): string {
+  return [
+    "## Closing record",
+    "",
+    "No diff.",
+    "",
+    "Nothing is unreachable. Every slice named above has since been re-sliced, had its blocker",
+    "re-opened and delivered, or had its edge cut — so the standing count has nothing left to",
+    "stand for.",
+    "",
+    "This closes the report, never the mechanism: the next slice to become unreachable opens a",
+    "fresh one against the same marker.",
+  ].join("\n");
+}
+
+/**
  * Whether `number` is already named on a standing issue's body or one of its comments — the same
  * derived-not-stored check `lost-dispatch-counter.ts` makes, and for the same reason: this counter
  * keeps no cursor and no ledger, so "have I said this already?" is answered from what it actually
