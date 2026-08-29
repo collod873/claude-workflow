@@ -48,6 +48,20 @@ function stubGh(body: string, comments: { body: string; createdAt: string }[] = 
   return path;
 }
 
+/**
+ * An `AGENT_SKILLS_GH` that resolves to nothing, which `gh_bin()` reads as "gh not found"
+ * rather than falling through to a real one.
+ *
+ * The default used to be `""` — no override — and the cases below leaned on an overridden
+ * `HOME` to keep the real `gh` unauthenticated. That held on a workstation and nowhere
+ * else: `gh` reads `GH_TOKEN` from the environment before it reads `~/.config/gh`, and
+ * every stage in this pipeline exports one, so on a runner the hook reached the real
+ * tracker, read a real issue, and the case that asks whether an unreachable tracker denies
+ * was asking nothing. Naming the unresolvable path says what the case means instead of
+ * inferring it from a variable a runner sets.
+ */
+const NO_GH = join(REPO_ROOT, ".claude/hooks/no-such-gh");
+
 type HookResult = { status: number | null; stdout: string; denied: boolean; reason: string };
 
 function runHook(
@@ -65,7 +79,7 @@ function runHook(
       tool_input: { command },
     }),
     encoding: "utf8",
-    env: { ...process.env, HOME: home_, AGENT_SKILLS_GH: gh ?? "" },
+    env: { ...process.env, HOME: home_, AGENT_SKILLS_GH: gh ?? NO_GH },
   });
   const stdout = run.stdout ?? "";
   const parsed = stdout.trim() ? JSON.parse(stdout) : {};
