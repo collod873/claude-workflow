@@ -24,8 +24,15 @@ name: Integrate
   repository_dispatch:
     types: [implementation-opened]
 
+# `issues: write` is what lets this lane finish a ticket rather than only merge one (#195,
+# ADR-0094): after the merge, `integrate.ts` shells to this repository's own `bin/close-ticket`,
+# which comments the `## Closing record` and closes the issue the pull request named. A
+# `permissions:` block replaces the default token rather than adding to it (see
+# `shared/workflow-permissions.test.ts`), so without this scope the close would fail on a token
+# holding `issues: none` — after the merge had already landed, where nobody is watching.
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -63,6 +70,10 @@ jobs:
         run: npm ci
 
       # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
-      # against the rebased tree, and merge only on a completed run reporting green.
+      # against the rebased tree, merge only on a completed run reporting green — and then close
+      # the ticket that merge delivered, via `bin/close-ticket` against this checkout (#195).
+      # One step, not two: the close is a decision about the merge that just happened, and a
+      # separate step would have to re-derive from the outside what `integrate.ts` already knows.
+      # A ticket that will not close leaves this step green — the merge landed either way.
       - name: Integrate the pull request
         run: npx tsx .Workflow/agent-workflows/integrate/integrate.ts "$PR"
