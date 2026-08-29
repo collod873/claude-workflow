@@ -67,6 +67,31 @@ describe("runPushGate", () => {
     const add = fake.calls.find((call) => call[0] === "add");
     expect(add).toEqual(["add", "tests/acceptance/foo.test.ts"]);
   });
+
+  // #227: a reader more than one of a run's test files needs lives in a `.fixture.ts` beside them
+  // rather than being copied into each. Under `ACCEPTANCE_TEST_DIR` it is inside the one directory
+  // this lane may write, so it lands with the tests that import it — a run that pushed the tests
+  // and left the fixture behind would be a suite that cannot collect.
+  it("lands a .fixture.ts beside the tests, rather than treating it as an out-of-directory path", async () => {
+    const fake = createFakeGit(() => "");
+    const outcome = await runPushGate({
+      runTests: () => ({
+        collected: true,
+        failures: [{ name: "proves criterion one", errorName: "AssertionError" }],
+      }),
+      git: fake.git,
+      paths: ["tests/acceptance/227-one.test.ts", "tests/acceptance/workflow-shape.fixture.ts"],
+      commitMessage: "Author acceptance tests for #227 from the spec alone",
+    });
+
+    expect(outcome.verdict).toBe("pushed");
+    expect(fake.calls.find((call) => call[0] === "add")).toEqual([
+      "add",
+      "tests/acceptance/227-one.test.ts",
+      "tests/acceptance/workflow-shape.fixture.ts",
+    ]);
+    expect(fake.calls.filter((call) => call[0] === "push")).toHaveLength(1);
+  });
 });
 
 /**

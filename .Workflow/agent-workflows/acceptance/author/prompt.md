@@ -7,8 +7,9 @@ are not implementing the ticket, and you are not checking whether it is already 
 ## Scope
 
 This prompt and the text below it — which includes the current contents of every file the ticket
-claims. Do not explore the codebase beyond what is shown here, and do not run anything. You have
-no tools but the one you answer through.
+claims, and of everything already sitting beside the tests that is not itself a test. Do not
+explore the codebase beyond what is shown here, and do not run anything. You have no tools but the
+one you answer through.
 
 The claimed files are here so you can match the **shape** of what you assert against — a YAML key
 that is quoted, a job that names no event type, an export's real signature. They are not a
@@ -29,11 +30,28 @@ wrong about a file's form, not to decide what the criterion means.
 
 {{CLAIMED_FILES}}
 
+## The shared helpers already living under `{{TEST_DIR}}`
+
+These are the non-test files beside the acceptance tests — readers that earlier runs of this lane
+factored out of their own test files. A reader you need may already be here. Import it rather than
+writing your own copy of it, and if what you need is close but not identical, prefer widening your
+call over restating the reader.
+
+{{SHARED_FILES}}
+
 ## What to write
 
 One test file per criterion under `{{TEST_DIR}}` is the common shape, but write however many
 files it actually takes to cover every criterion — never fewer than one test per criterion, and
 never a test that doesn't name one.
+
+**A reader more than one of your files needs goes in a `.fixture.ts`, not in each of them.** You
+are writing every one of these files in a single answer, so a helper you copy into three of them is
+three copies you wrote knowingly — and copies diverge: the last run of this lane wrote one YAML
+block reader three times with three different bugs, two of which are what made the landed tests
+wrong. Put it in one `{{TEST_DIR}}<name>.fixture.ts` and import it from each test that needs it.
+That path is allowed, it is not collected as a suite, and the clone checker this repo runs on every
+push reports the copies if you make them instead.
 
 For each criterion:
 
@@ -66,6 +84,10 @@ For each criterion:
   nothing to do with the ticket, and it stays red after the ticket is built. That is the failure
   the section above exists to prevent, so check your assertion against the text you were given
   before you write it.
+- A `.fixture.ts` no test file of yours imports is dead code, and one holding a reader only a
+  single test uses is indirection for its own sake. Factor out what two or more of your files
+  need, and nothing else. A fixture is never a criterion's test either — every criterion still
+  needs its own test.
 
 ## Output
 

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -73,21 +73,65 @@ export interface AuthorDeps {
   /** The parent PRD's body, when the ticket names one — the other half of "from the spec alone". */
   prdBody?: string;
   /**
-   * Reads one repo-relative claimed file, `undefined` when it does not exist yet — the ordinary
-   * case for a slice whose whole job is to create it. Defaults to a real filesystem read.
+   * Reads one repo-relative file, `undefined` when it does not exist yet — the ordinary
+   * case for a slice whose whole job is to create the file it claims. Defaults to a real
+   * filesystem read.
    */
   readFile?: (path: string) => string | undefined;
+  /**
+   * Lists the file names directly under `ACCEPTANCE_TEST_DIR`. Defaults to a real directory read,
+   * and is empty on a checkout where no acceptance test has landed yet.
+   */
+  listTestDir?: () => string[];
 }
 
-/** What a claimed file that this ticket has not created yet is shown as. */
+/** What a file that does not exist yet is shown as. */
 export const CLAIMED_FILE_ABSENT = "(does not exist yet — this ticket creates it)";
 
 /** Shown in place of the section when the ticket claims no files at all. */
 export const NO_CLAIMED_FILES = "(this ticket claims no files)";
 
+/** Shown in place of the section when nothing shared has been factored out yet. */
+export const NO_SHARED_FILES = "(nothing shared lives there yet — you would be writing the first)";
+
 /**
- * The `## Files claimed` section, rendered as the files themselves rather than as a list of paths
+ * The suffix that makes a file under `ACCEPTANCE_TEST_DIR` a suite rather than something a suite
+ * imports — `vitest.config.ts`'s include glob, spelled once here.
+ */
+const TEST_SUFFIX = ".test.ts";
+
+/**
+ * Everything under `ACCEPTANCE_TEST_DIR` that is not itself a suite: the readers already factored
+ * out of tests this lane wrote on an earlier run, which a test it writes now may import instead of
+ * restating.
+ *
+ * The author needs these for the same reason ADR-0098 gave it its claimed files, one level along.
+ * It writes one file per criterion in a single answer, so several criteria about one workflow used
+ * to mean several copies of one reader — three copies with three different bugs, on #201, two of
+ * which are what made the landed tests wrong. `bin/clone-gate` reports that as clones on every
+ * authoring run, and a baseline cannot absorb it: each run hashes differently, so the baseline
+ * would grow forever and stop measuring anything (ADR-0056).
+ *
+ * The other tests are deliberately not shown. What the author needs is what it may *reuse*; a
+ * sibling suite is neither reusable nor a shape it has to match, and showing every test this lane
+ * has ever written would grow the prompt without bound.
+ */
+export function sharedTestFiles(listDir: () => string[] = listTestDirIfPresent): string[] {
+  return listDir()
+    .filter((name) => !name.endsWith(TEST_SUFFIX))
+    .sort()
+    .map((name) => `${ACCEPTANCE_TEST_DIR}${name}`);
+}
+
+/**
+ * A set of files rendered as the files themselves rather than as a list of paths
  * ([ADR-0098](../../../docs/adr/0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md)).
+ *
+ * One rendering serves both sections the author is shown — its ticket's `## Files claimed`, and the
+ * shared readers under `ACCEPTANCE_TEST_DIR` — because they are the same act: put the file's real
+ * text in front of the model instead of its name. `whenEmpty` is the only thing that differs, and
+ * it has to: *this ticket claims no files* and *nothing shared exists yet* are different facts, and
+ * an empty fenced block would read as a third one.
  *
  * Lane 04's first production run is what asked for this: authoring #201's four tests blind, the
  * model wrote a YAML mini-parser matching `^on\s*:` against a file that writes `"on":` — quoted,
@@ -105,11 +149,12 @@ export const NO_CLAIMED_FILES = "(this ticket claims no files)";
  * model shown two thirds of a workflow guesses about the last third exactly as it did about all of
  * it. The bound is the slice's own claim, which lane 03 already sizes to one session.
  */
-export function renderClaimedFiles(
+export function renderFiles(
   paths: string[],
   readFile: (path: string) => string | undefined,
+  whenEmpty: string,
 ): string {
-  if (paths.length === 0) return NO_CLAIMED_FILES;
+  if (paths.length === 0) return whenEmpty;
   return paths
     .map((path) => {
       const content = readFile(path);
@@ -125,6 +170,15 @@ function readIfPresent(path: string): string | undefined {
     return readFileSync(path, "utf8");
   } catch {
     return undefined;
+  }
+}
+
+/** `listTestDir`'s default: the names under `ACCEPTANCE_TEST_DIR`, empty when it does not exist. */
+function listTestDirIfPresent(): string[] {
+  try {
+    return readdirSync(ACCEPTANCE_TEST_DIR);
+  } catch {
+    return [];
   }
 }
 
@@ -155,9 +209,15 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<string[]>
       ISSUE_BODY: deps.ticket.body,
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
       TEST_DIR: ACCEPTANCE_TEST_DIR,
-      CLAIMED_FILES: renderClaimedFiles(
+      CLAIMED_FILES: renderFiles(
         extractFilesClaimed(deps.ticket.body),
         deps.readFile ?? readIfPresent,
+        NO_CLAIMED_FILES,
+      ),
+      SHARED_FILES: renderFiles(
+        sharedTestFiles(deps.listTestDir ?? listTestDirIfPresent),
+        deps.readFile ?? readIfPresent,
+        NO_SHARED_FILES,
       ),
     },
     deps.exec,

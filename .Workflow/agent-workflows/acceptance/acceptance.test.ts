@@ -9,9 +9,11 @@ import {
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
   NO_CLAIMED_FILES,
+  NO_SHARED_FILES,
   refireAcceptance,
-  renderClaimedFiles,
+  renderFiles,
   runAcceptanceAuthor,
+  sharedTestFiles,
 } from "./acceptance";
 
 const TICKET_BODY = `## Parent PRD
@@ -41,7 +43,10 @@ function authorResponse(files: Array<{ path: string; content: string }>): string
  * back the fake stage — so a test can read the prompt that was actually built (ADR-0098) rather
  * than restate the wiring that builds it.
  */
-async function authorAgainst(readFile: (path: string) => string | undefined): Promise<FakeStage> {
+async function authorAgainst(
+  readFile: (path: string) => string | undefined,
+  listTestDir: () => string[] = () => [],
+): Promise<FakeStage> {
   const stage = createFakeStage(
     authorResponse([{ path: "tests/acceptance/162-x.test.ts", content: "// x\n" }]),
   );
@@ -51,8 +56,30 @@ async function authorAgainst(readFile: (path: string) => string | undefined): Pr
     issueNumber: 162,
     ticket: { title: "t", body: TICKET_BODY },
     readFile,
+    listTestDir,
   });
   return stage;
+}
+
+/**
+ * `authorAgainst`'s write-side sibling: runs the author against `TICKET_BODY` with `files` as its
+ * canned answer, and hands back what reached `writeFile` — for the tests about which paths the
+ * author accepts and what it puts at them, rather than about the prompt it built.
+ */
+async function authorWriting(
+  files: Array<{ path: string; content: string }>,
+): Promise<{ paths: string[]; written: Map<string, string> }> {
+  const stage = createFakeStage(authorResponse(files));
+  const written = new Map<string, string>();
+  const paths = await authorAcceptanceTests({
+    exec: stage.exec,
+    writeFile: (path, content) => written.set(path, content),
+    issueNumber: 162,
+    ticket: { title: "Author acceptance tests", body: TICKET_BODY },
+    prdBody: PRD_BODY,
+    listTestDir: () => [],
+  });
+  return { paths, written };
 }
 
 describe("extractCriteria", () => {
@@ -85,23 +112,12 @@ describe("parentPrdNumber", () => {
 describe("authorAcceptanceTests", () => {
   it("writes the model's files, each carrying its criterion's text verbatim", async () => {
     const [firstCriterion] = extractCriteria(TICKET_BODY);
-    const stage = createFakeStage(
-      authorResponse([
-        {
-          path: "tests/acceptance/162-no-push-on-collection-error.test.ts",
-          content: `// ${firstCriterion}\nimport { describe, it, expect } from "vitest";\ndescribe("x", () => { it("y", () => { expect(true).toBe(false); }); });\n`,
-        },
-      ]),
-    );
-    const written = new Map<string, string>();
-
-    const paths = await authorAcceptanceTests({
-      exec: stage.exec,
-      writeFile: (path, content) => written.set(path, content),
-      issueNumber: 162,
-      ticket: { title: "Author acceptance tests", body: TICKET_BODY },
-      prdBody: PRD_BODY,
-    });
+    const { paths, written } = await authorWriting([
+      {
+        path: "tests/acceptance/162-no-push-on-collection-error.test.ts",
+        content: `// ${firstCriterion}\nimport { describe, it, expect } from "vitest";\ndescribe("x", () => { it("y", () => { expect(true).toBe(false); }); });\n`,
+      },
+    ]);
 
     expect(paths).toEqual(["tests/acceptance/162-no-push-on-collection-error.test.ts"]);
     const content = written.get("tests/acceptance/162-no-push-on-collection-error.test.ts");
@@ -123,6 +139,54 @@ describe("authorAcceptanceTests", () => {
     expect(prompt, "the author's prompt goes over stdin").toBeDefined();
     expect(prompt).toContain(".Workflow/agent-workflows/acceptance/acceptance.ts");
     expect(prompt, "the claimed file's own text, not just its path").toContain('"on": quoted');
+  });
+
+  // #227. The author writes every file of a run in one answer, so several criteria about one
+  // workflow used to mean several copies of one reader — the clone gate then reds trunk on the
+  // lane's own output. It cannot import what it does not know exists, so the shared readers reach
+  // it the same way its claimed files do: rendered into the prompt, through the same renderer.
+  it("shows the author the non-test files already sitting under the acceptance test dir", async () => {
+    const stage = await authorAgainst(
+      (path) =>
+        path === "tests/acceptance/workflow-shape.fixture.ts"
+          ? "export function topLevelBlock() {}\n"
+          : undefined,
+      () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
+    );
+
+    const prompt = stage.stdins[0];
+    expect(prompt).toContain("tests/acceptance/workflow-shape.fixture.ts");
+    expect(prompt, "the shared reader's own text, not just its path").toContain(
+      "export function topLevelBlock()",
+    );
+  });
+
+  // Not the sibling tests, though: what the author needs is what it may reuse, and every test this
+  // lane has ever written would grow the prompt on every run without giving it anything to import.
+  it("does not paste the acceptance tests themselves into the prompt", async () => {
+    const stage = await authorAgainst(
+      () => "// contents of whatever was asked for\n",
+      () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
+    );
+
+    expect(stage.stdins[0]).not.toContain("tests/acceptance/201-one.test.ts");
+  });
+
+  it("says nothing shared exists yet rather than showing an empty section", async () => {
+    const stage = await authorAgainst(() => undefined, () => []);
+    expect(stage.stdins[0]).toContain(NO_SHARED_FILES);
+  });
+
+  // A reader more than one of the run's files needs belongs beside them, and `push-gate.ts` is
+  // never reached if this throws first.
+  it("writes a .fixture.ts the model puts beside the tests, rather than refusing it", async () => {
+    const { paths, written } = await authorWriting([
+      { path: "tests/acceptance/162-one.test.ts", content: "// one\n" },
+      { path: "tests/acceptance/reads-the-workflow.fixture.ts", content: "export const x = 1;\n" },
+    ]);
+
+    expect(paths).toContain("tests/acceptance/reads-the-workflow.fixture.ts");
+    expect(written.get("tests/acceptance/reads-the-workflow.fixture.ts")).toBe("export const x = 1;\n");
   });
 
   // The reach is what reached the prompt, not a line the model was asked to honour (ADR-0098) —
@@ -163,9 +227,13 @@ describe("authorAcceptanceTests", () => {
   });
 });
 
-describe("renderClaimedFiles", () => {
-  it("renders each claimed file's contents under its own path, in the ticket's order", () => {
-    const rendered = renderClaimedFiles(["a/one.ts", "b/two.ts"], (path) => `contents of ${path}`);
+describe("renderFiles", () => {
+  it("renders each file's contents under its own path, in the order it was given", () => {
+    const rendered = renderFiles(
+      ["a/one.ts", "b/two.ts"],
+      (path: string) => `contents of ${path}`,
+      NO_CLAIMED_FILES,
+    );
     expect(rendered.indexOf("a/one.ts")).toBeLessThan(rendered.indexOf("b/two.ts"));
     expect(rendered).toContain("contents of a/one.ts");
     expect(rendered).toContain("contents of b/two.ts");
@@ -174,13 +242,31 @@ describe("renderClaimedFiles", () => {
   // The ordinary case for a slice whose whole job is to create the file. Saying so beats an empty
   // fenced block, which reads as "this file exists and is empty" — a different fact entirely.
   it("says so, rather than showing an empty block, when a claimed file does not exist yet", () => {
-    expect(renderClaimedFiles(["not/created/yet.ts"], () => undefined)).toContain(
+    expect(renderFiles(["not/created/yet.ts"], () => undefined, NO_CLAIMED_FILES)).toContain(
       CLAIMED_FILE_ABSENT,
     );
   });
 
-  it("says the ticket claims nothing rather than rendering an empty section", () => {
-    expect(renderClaimedFiles([], () => "unused")).toBe(NO_CLAIMED_FILES);
+  // The empty case is the one thing the two sections cannot share: "this ticket claims no files"
+  // and "nothing shared exists yet" are different facts, and the caller says which it means.
+  it("stands the caller's own sentence in for an empty list", () => {
+    expect(renderFiles([], () => "unused", NO_CLAIMED_FILES)).toBe(NO_CLAIMED_FILES);
+    expect(renderFiles([], () => "unused", NO_SHARED_FILES)).toBe(NO_SHARED_FILES);
+  });
+});
+
+describe("sharedTestFiles", () => {
+  it("names the non-test files under the acceptance dir, and none of the tests beside them", () => {
+    const shared = sharedTestFiles(() => [
+      "201-one.test.ts",
+      "workflow-shape.fixture.ts",
+      "201-two.test.ts",
+    ]);
+    expect(shared).toEqual(["tests/acceptance/workflow-shape.fixture.ts"]);
+  });
+
+  it("is empty on a checkout where no acceptance test has ever landed", () => {
+    expect(sharedTestFiles(() => [])).toEqual([]);
   });
 });
 
