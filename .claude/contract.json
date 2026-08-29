@@ -5,7 +5,7 @@
   },
   "test": {
     "cmd": "npm test",
-    "why": "package.json#scripts.test (vitest run && npm run clone:check)"
+    "why": "package.json#scripts.test (vitest run .Workflow .claude && npm run clone:check)"
   },
   "test_one": {
     "cmd": "npx vitest run <file>",

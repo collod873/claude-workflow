@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "test": "vitest run && npm run clone:check",
+    "test": "vitest run .Workflow .claude && npm run clone:check",
+    "test:acceptance": "vitest run tests/acceptance",
     "clone:check": "bin/clone-gate",
     "gauntlet": "bin/gauntlet",
     "check": "bin/gauntlet push && npm run clone:check",
