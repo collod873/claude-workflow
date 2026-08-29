@@ -43,11 +43,21 @@ permissions:
   contents: read
   issues: write
 
-# One re-fire per PRD at a time, newest wins — the same reasoning as `spec.yml`'s group: two edits
+# One run per issue at a time, newest wins — the same reasoning as `spec.yml`'s group: two edits
 # within seconds of each other would otherwise both read the same pre-edit test/criterion record
 # and each dispatch a redundant re-author.
+#
+# **The number has to come from whichever event carried it.** This lane has two triggers and they
+# name their subject in different places: the `issues: edited` re-fire carries a PRD number at
+# `github.event.issue.number`, and the `acceptance-wanted` dispatch carries a slice number at
+# `github.event.client_payload.issue`. A group written against only the first evaluates to the
+# bare prefix on every dispatch, so a publish of N slices puts all N runs in one group and
+# `cancel-in-progress` kills all but the last — which is exactly what happened to #233: six slices
+# published, five runs cancelled within seconds, one acceptance test authored, and a history that
+# reads like someone pressed stop. Both are issue numbers in one repository, so the two sources
+# share a namespace and cannot collide.
 concurrency:
-  group: acceptance-refire-${{ github.event.issue.number }}
+  group: acceptance-${{ github.event.issue.number || github.event.client_payload.issue }}
   cancel-in-progress: true
 
 jobs:

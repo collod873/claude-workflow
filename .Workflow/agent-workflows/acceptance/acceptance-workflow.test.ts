@@ -27,6 +27,7 @@ interface Job {
 
 const { workflow } = readWorkflow<{
   on: { repository_dispatch?: { types?: string[] }; issues?: unknown };
+  concurrency: { group: string; "cancel-in-progress"?: boolean };
   jobs: Record<string, Job>;
 }>("acceptance.yml");
 
@@ -34,6 +35,25 @@ describe("acceptance.yml authors a slice's tests the first time, not only on re-
   it("fires on the acceptance-wanted dispatch lane 03 sends, alongside the issues:edited re-fire", () => {
     expect(workflow.on.issues).toBeDefined();
     expect(workflow.on.repository_dispatch?.types).toEqual([ACCEPTANCE_WANTED_DISPATCH_ACTION]);
+  });
+
+  /**
+   * #233's stall: the group read `github.event.issue.number` alone, which the `acceptance-wanted`
+   * dispatch does not carry. Six slices published, six runs started in one group named by the bare
+   * prefix, and `cancel-in-progress` left one alive. A group that keys on only one of this lane's
+   * two triggers is a self-cancelling lane for the other, so this asserts it keys on both.
+   */
+  it("keys concurrency on the issue number whichever of its two triggers carried it", () => {
+    const group = workflow.concurrency.group;
+    expect(group, "the issues:edited re-fire names its PRD here").toContain("github.event.issue.number");
+    expect(group, "the acceptance-wanted dispatch names its slice here").toContain(
+      "github.event.client_payload.issue",
+    );
+    // Both inside one interpolation, so the group is that number and not a concatenation of a
+    // number with an empty string — two slices would otherwise still share `acceptance-237-`.
+    const interpolations = [...group.matchAll(/\$\{\{([^}]*)\}\}/g)].map((m) => m[1]);
+    expect(interpolations).toHaveLength(1);
+    expect(interpolations[0]).toMatch(/github\.event\.issue\.number\s*\|\|\s*github\.event\.client_payload\.issue/);
   });
 
   it("scopes the author job on that dispatch's action", () => {
