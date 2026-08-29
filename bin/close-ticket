@@ -54,6 +54,24 @@ already closed (a closed successor): superseding into a closed ticket retires th
 debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
 `SUPERSEDED_LINE_RE` and `DISPOSITION_RE`.
 
+`--spec` closes a spec (a `prd` issue) instead of a ticket. It is a mode, not a second script:
+`criteria_blocks`, `split_check_marker`, `run_check` and `render_record` are reused unchanged, so
+a spec's one criterion is run, recorded and refused exactly the way a ticket's is, with the same
+all-or-nothing contract. What `--spec` adds is a **precondition**, checked before any check
+command runs: every sub-issue must be **delivered** — closed by a *merged* pull request, not
+merely closed. A child closed as `not planned`, or closed by hand, is not delivered; the run
+refuses, names every undelivered child and why, and posts and closes nothing.
+
+The precondition comes first because a spec's check reads the world: running it against a spec
+whose slices have not all landed burns a run on a verdict that could not have been green, and
+reports red for a reason that is not the product's fault. A spec with no sub-issues at all has
+nothing undelivered and passes the precondition — the gate is "every child delivered", and
+vacuous truth is the honest reading of it for a spec that was never sliced.
+
+A spec's criterion is *required* to read the tracker or production, which is the exact opposite
+of the rule a published ticket's criterion is held to — see `bin/ticket_shape.py`'s `spec` branch
+for why the ban is not extended here.
+
 `gh` is resolved and invoked entirely through `bin/gh_support.py` (`gh_bin`, `bind_gh`,
 `run_gh`, `GhError`, `AGENT_SKILLS_GH`) — the one resolution path and one failure envelope
 every `gh`-calling tool in this repo shares (#102, #109); there is no second copy here.
@@ -101,6 +119,82 @@ def fetch_state(gh, issue) -> str:
     unresolvable successor apart from one that resolves but is closed."""
     out = gh_support.run_gh(gh, "issue", "view", str(issue), "--json", "state")
     return json.loads(out).get("state") or ""
+
+
+SUB_ISSUES_QUERY = """
+query {
+  repository(owner: "%(owner)s", name: "%(name)s") {
+    issue(number: %(issue)s) {
+      subIssues(first: 100) {
+        nodes {
+          number
+          state
+          stateReason
+          timelineItems(last: 20, itemTypes: CLOSED_EVENT) {
+            nodes {
+              ... on ClosedEvent {
+                closer {
+                  __typename
+                  ... on PullRequest { number merged }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
+    """Every sub-issue of `issue`, with the state and closing event `undelivered` needs.
+
+    One GraphQL call rather than a REST child list plus a call per child: the question is about
+    every child at once, and a spec with a dozen slices should cost one round trip.
+
+    Bound off `gh_path` with no `-R`, unlike every other call here. `bind_gh`'s `repo` appends
+    `-R` to the argv, and `gh api graphql` takes no such flag — the repository is named inside
+    the query instead. Still the one resolution path (`gh_bin`), which is what #102 and #109
+    actually require; a second *binding* of the same resolved binary is not a second way of
+    finding `gh`."""
+    owner, _, name = name_with_owner.partition("/")
+    query = SUB_ISSUES_QUERY % {"owner": owner, "name": name, "issue": issue}
+    api = gh_support.bind_gh(gh_path)
+    out = gh_support.run_gh(api, "api", "graphql", "-f", f"query={query}")
+    issue_node = json.loads(out)["data"]["repository"]["issue"]
+    if issue_node is None:
+        raise gh_support.GhError(f"issue #{issue} not found")
+    return issue_node["subIssues"]["nodes"]
+
+
+def undelivered(children: list[dict]) -> list[str]:
+    """One line per child that has not been delivered, naming the child and why — empty when
+    every child has.
+
+    Delivered is *closed by a merged pull request*, never merely closed: the distinction this
+    estate already draws for a blocker, applied to a spec's children. An issue closed by hand
+    proves someone thought it was done; a merged PR is the only closure that says code landed.
+    `not planned` is the case worth naming separately — it is a deliberate non-delivery, and a
+    spec whose slice was abandoned should be re-sliced or its criterion rewritten, not closed."""
+    problems = []
+    for child in children:
+        number = child.get("number")
+        if (child.get("state") or "").upper() != "CLOSED":
+            problems.append(f"#{number}: still open")
+            continue
+        if (child.get("stateReason") or "").upper() == "NOT_PLANNED":
+            problems.append(f"#{number}: closed as not planned — not delivered")
+            continue
+        events = child.get("timelineItems", {}).get("nodes") or []
+        closers = [e.get("closer") for e in events if e.get("closer")]
+        closer = closers[-1] if closers else None
+        if closer is None or closer.get("__typename") != "PullRequest":
+            problems.append(f"#{number}: closed by hand, not by a merged PR")
+        elif not closer.get("merged"):
+            problems.append(f"#{number}: closed by PR #{closer.get('number')}, which is not merged")
+    return problems
 
 
 def split_check_marker(criterion: str) -> tuple[str, str | None]:
@@ -244,6 +338,11 @@ def parse_args(argv):
     parser.add_argument("checkout")
     parser.add_argument("-R", "--repo")
     parser.add_argument(
+        "--spec", action="store_true",
+        help="Close a spec (a `prd` issue) rather than a ticket: refuse unless every sub-issue "
+             "is delivered (closed by a merged PR), then run the spec's one check as usual.",
+    )
+    parser.add_argument(
         "--superseded-by", type=int, metavar="N", default=None,
         help="Retire this ticket against already-open issue #N instead of running any checks; "
              "requires --moved/--dropped for every criterion in the body.",
@@ -329,6 +428,29 @@ def run(argv=None) -> int:
             print(error, file=sys.stderr)
             return 1
     else:
+        if args.spec:
+            # Before `render_record`, which is where check commands actually run — the whole
+            # point of the precondition is that a spec whose slices have not landed never
+            # spends a run on a verdict that could not have been green.
+            try:
+                name_with_owner = json.loads(gh_support.run_gh(
+                    gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
+                children = fetch_sub_issues(gh_path, name_with_owner, args.issue)
+            except (gh_support.GhError, KeyError, ValueError) as e:
+                print(f"error: could not read #{args.issue}'s sub-issues: {e}", file=sys.stderr)
+                return 1
+            ROW["children"] = len(children)
+            problems = undelivered(children)
+            if problems:
+                print(
+                    f"error: {len(problems)} of {len(children)} sub-issues not delivered — a "
+                    "spec closes on its own check, but only once every slice beneath it has "
+                    "actually landed:",
+                    file=sys.stderr,
+                )
+                for problem in problems:
+                    print(f"  {problem}", file=sys.stderr)
+                return 1
         record_text, ok = render_record(args.range, blocks, args.checkout)
         if not ok:
             return 1
