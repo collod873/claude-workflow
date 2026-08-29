@@ -268,5 +268,5 @@ jobs:
           set -euo pipefail
           printf '%s\n' "$DISPATCH_REQUESTS" | while IFS= read -r request; do
             [ -n "$request" ] || continue
-            printf '%s' "$request" | gh api --method POST repos/{owner}/{repo}/dispatches --input -
+            printf '%s' "$request" | gh api --method POST 'repos/{owner}/{repo}/dispatches' --input -
           done
