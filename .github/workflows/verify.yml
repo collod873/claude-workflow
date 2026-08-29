@@ -109,8 +109,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # `fetch-depth: 0` for the same reason the `verify` job below carries it: this job runs
+      # `tests/acceptance/` too, and an acceptance test is free to assert about history rather
+      # than about the working tree. At the default depth of 1 those tests read an empty `git log`
+      # and fail on a fact that is true in the repository.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The guarantee itself. Runs before Node/npm below so a checkout that somehow lacks `main`
       # fails here rather than after a wasted install.
@@ -172,8 +178,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # `fetch-depth: 0`, not the default 1. The gauntlet's `test` slot runs `tests/acceptance/`,
+      # and an acceptance test is written against a criterion — some criteria are facts about
+      # history, not about the working tree. `201-tests-acceptance-on-main.test.ts` asks whether a
+      # commit under `tests/acceptance/` was authored by the Actions bot, which is exactly the
+      # evidence lane 04 has run at all; at depth 1 that `git log` returns one commit, the test
+      # reddened every push from 9e85526 on, and since #197 made lane 08 read lane 06's verdict,
+      # nothing could merge behind it. A shallow clone is an artefact of the venue, so a check that
+      # asks a true question must not fail on it (the #223 class). 380 commits and 19M of history
+      # is not a cost worth a broken venue, and five other workflows here already fetch in full.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The one check that does not go through `bin/gauntlet`, deliberately: it needs a binary the
       # free venues would have to download on every clone, and C4 says a mechanism that needs a
