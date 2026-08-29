@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
+import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shape/marker";
+import type { Sheet } from "../shape/sheet-schema";
+import { createIssueGh, type FakeIssueGh } from "./gh.fake";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import { openQuestionsComment } from "./rounds";
 import {
   invocationFromEnv,
   runSpecAuthor,
   runSpecCritique,
+  runSpecPublication,
   SPEC_AUTHOR_ALLOWED_TOOLS,
   type DecidedContext,
 } from "./spec";
@@ -44,6 +48,24 @@ function fakeChain() {
     return responses[calls.length - 1] ?? SILENT_CRITIC;
   };
   return { exec, calls, stdins };
+}
+
+/** The body of the round a run posted, or `undefined` when it posted none. */
+function postedRound(calls: string[][]): string | undefined {
+  const comment = calls.find((args) => args[0] === "issue" && args[1] === "comment");
+  return comment?.[comment.indexOf("--body") + 1];
+}
+
+/**
+ * Asserts a held gate left none of a dispatched one's traces. ADR-0062 makes `sliceable` the
+ * durable evidence a dispatch was owed, so a held run writing either is the failure that would let
+ * lane 03 slice a spec still carrying questions.
+ */
+function expectNothingDispatched(calls: string[][]): void {
+  expect(calls.filter((args) => args.includes(SLICEABLE_LABEL))).toHaveLength(0);
+  expect(
+    calls.filter((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches"),
+  ).toHaveLength(0);
 }
 
 describe("the spec author's toolbelt", () => {
@@ -83,6 +105,9 @@ describe("runSpecAuthor", () => {
       title: "A spec",
       body: "The whole statement of the work.",
       openQuestions: [],
+      // A `DecidedContext` handed over directly carries no marks — no collector
+      // ran, so there is no sheet behind it to have marked anything.
+      decisions: [],
     });
   });
 
@@ -122,6 +147,130 @@ describe("runSpecAuthor", () => {
 });
 
 /**
+ * ADR-0061's arithmetic, end to end through the door that actually carries marks.
+ *
+ * `gateCount(openQuestions, decisions)` has had a second parameter since it was written and
+ * `gateSpec` passed one argument, so `unfiledMarkGap` returned 0 by construction on every real run
+ * and the check never once contributed to a gate. These drive the whole sheet door — collector,
+ * author, critic, publish, gate — because the seam that was broken is the hand-off between them,
+ * and a unit test either side of it is what missed this for as long as it did.
+ */
+describe("the sheet door — ADR-0061's marks reach the gate", () => {
+  const OWNER_WORDS = "make the accept file its own rulings";
+
+  function sheet(decisions: Sheet["decisions"]): Sheet {
+    return {
+      restatement: "the idea as work",
+      priorArt: [],
+      decisions,
+      survivors: [],
+      route: "short",
+      routeReason: "Short — one file.",
+      newTerms: [],
+      round: 0,
+    };
+  }
+
+  const PAYLOAD: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
+
+  /** The accepted idea as the collector reads it: the owner's words, the sheet, the accept. */
+  function fakeGh(decisions: Sheet["decisions"]): FakeIssueGh {
+    const bodies = [sheetMarker(sheet(decisions)), acceptedMarker(PAYLOAD)];
+    return createIssueGh((fields) =>
+      fields === "body"
+        ? JSON.stringify({ body: OWNER_WORDS })
+        : fields === "comments"
+          ? JSON.stringify({ comments: bodies.map((body) => ({ body })) })
+          : undefined,
+    );
+  }
+
+  /** The author's draft, then a silent critic — the two stages this door spends. */
+  function chain(openQuestions: string[]): StageExec {
+    const responses = [
+      JSON.stringify({ title: "A spec", body: "## Problem\nIt is unbuilt.", openQuestions }),
+      SILENT_CRITIC,
+    ];
+    let next = 0;
+    return async () => responses[next++] ?? SILENT_CRITIC;
+  }
+
+  async function runSheetDoor(
+    openQuestions: string[],
+    decisions: Sheet["decisions"],
+  ): Promise<{ result: Awaited<ReturnType<typeof runSpecPublication>>; calls: string[][] }> {
+    const { gh, calls } = fakeGh(decisions);
+    const result = await runSpecPublication(
+      chain(openQuestions),
+      gh,
+      { mode: "publish", source: { kind: "sheet", issue: 42 } },
+      { kind: "sheet", gh, issueNumber: 42 },
+    );
+    return { result, calls };
+  }
+
+  const UNFILED = {
+    question: "which module owns the retry?",
+    recommendation: "the caller",
+    rejected: "the transport",
+    mark: "shared/gh.ts",
+    adrTitle: "",
+  };
+
+  it("holds a draft that asked nothing but was handed one unfiled mark", async () => {
+    // The whole of #189's second problem statement: before this, the gate counted zero here and
+    // dispatched a spec that had guessed silently about `shared/gh.ts`.
+    const { result, calls } = await runSheetDoor([], [UNFILED]);
+
+    expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
+    expectNothingDispatched(calls);
+  });
+
+  it("names the mark in the round it posts, so a draft that asked nothing still says something", async () => {
+    const { calls } = await runSheetDoor([], [UNFILED]);
+
+    const round = postedRound(calls);
+    expect(round).toContain(UNFILED.mark);
+    expect(round).toContain("1. ");
+  });
+
+  it("numbers the questions and the marks as one continuing list", async () => {
+    // The owner replies by number, so a mark starting its own `1.` beneath a question already
+    // numbered `1.` would make his answer ambiguous (ADR-0061's numbered form).
+    const { result, calls } = await runSheetDoor(["What does done mean?"], [UNFILED]);
+
+    expect(result).toMatchObject({ gateCount: 2, outcome: "held" });
+
+    const round = postedRound(calls) ?? "";
+    expect(round).toContain("1. What does done mean?");
+    expect(round).toMatch(new RegExp(`^2\\. .*${UNFILED.mark.replace(".", "\\.")}`, "m"));
+  });
+
+  it("dispatches when every mark the sheet carried is either filed or asked about", async () => {
+    // The gate is not simply "a sheet with decisions holds": a decision carrying an ADR title was
+    // ruled on, and a mark some question names was surfaced. Neither is a silent guess.
+    const filed = { ...UNFILED, mark: "shape/accept.ts", adrTitle: "The accept files its rulings" };
+    const { result } = await runSheetDoor([], [filed]);
+
+    expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched" });
+  });
+
+  it("counts a question naming the mark once, not once per measure", async () => {
+    // `unfiledMarks` filters the decisions a question named out of the set, so the question is the
+    // only thing left to count — a draft that did surface its mark is held on that question alone.
+    const { result, calls } = await runSheetDoor(
+      [`Should \`${UNFILED.mark}\` own the retry?`],
+      [UNFILED],
+    );
+
+    expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
+    expect(postedRound(calls)).toBe(
+      openQuestionsComment([`Should \`${UNFILED.mark}\` own the retry?`]),
+    );
+  });
+});
+
+/**
  * ADR-0085's second door: a spec written by `/to-spec` in a live session lands on the tracker
  * already drafted, so the run enters lane 02 at the critic and skips the author entirely.
  * Everything past the critic is the runner path's own — the same `gateCount`, the same `applyGate`.
@@ -132,22 +281,15 @@ describe("runSpecCritique — the critic-only entry", () => {
     body: "## Problem\nIt stalls on the tracker.",
   };
 
-  /** A fake `GhExec` answering the two reads this path makes, and recording every call verbatim. */
-  function fakeGh(comments: string[] = []): { gh: GhExec; calls: string[][] } {
-    const calls: string[][] = [];
-    const gh: GhExec = (args) => {
-      calls.push([...args]);
-      if (args[0] === "issue" && args[1] === "view") {
-        const fields = args[args.indexOf("--json") + 1] ?? "";
-        if (fields === "title,body") return JSON.stringify(SPEC);
-        if (fields === "comments") {
-          return JSON.stringify({ comments: comments.map((body) => ({ body })) });
-        }
-        throw new Error(`fake gh: unhandled fields: ${fields}`);
-      }
-      return "";
-    };
-    return { gh, calls };
+  /** The published spec as this door reads it: its own title and body, plus the owner's comments. */
+  function fakeGh(comments: string[] = []): FakeIssueGh {
+    return createIssueGh((fields) =>
+      fields === "title,body"
+        ? JSON.stringify(SPEC)
+        : fields === "comments"
+          ? JSON.stringify({ comments: comments.map((body) => ({ body })) })
+          : undefined,
+    );
   }
 
   it("reads the issue's own title and body and hands them to the critic", async () => {
@@ -218,14 +360,9 @@ describe("runSpecCritique — the critic-only entry", () => {
     const result = await runSpecCritique(fake.exec, gh, 180);
 
     expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
+    expectNothingDispatched(calls);
 
-    expect(calls.filter((args) => args.includes(SLICEABLE_LABEL))).toHaveLength(0);
-    expect(
-      calls.filter((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches"),
-    ).toHaveLength(0);
-
-    const comment = calls.find((args) => args[0] === "issue" && args[1] === "comment");
-    expect(comment?.[comment.indexOf("--body") + 1]).toContain(
+    expect(postedRound(calls)).toContain(
       "1. \"handles errors gracefully\" admits two implementations.",
     );
   });

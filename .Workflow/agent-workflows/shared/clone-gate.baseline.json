@@ -100,16 +100,6 @@
     ]
   },
   {
-    "hash": "126262dc19d180e6",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 115,
-    "where": [
-      ".Workflow/agent-workflows/spec/rounds.test.ts:7",
-      ".Workflow/agent-workflows/spec/spec.test.ts:136"
-    ]
-  },
-  {
     "hash": "140b1e7b3bdcece0",
     "format": "typescript",
     "lines": 9,

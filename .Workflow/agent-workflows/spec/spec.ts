@@ -7,7 +7,13 @@ import { structuredOutput } from "../shared/structured-output";
 import { runSpecCritic } from "./critic";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
-import { applyGate, gateCount, type GateOutcome } from "./open-questions";
+import {
+  applyGate,
+  gateCount,
+  unfiledMarks,
+  type GateOutcome,
+  type MarkedDecision,
+} from "./open-questions";
 import {
   publishSpec,
   readPublishedSpec,
@@ -85,11 +91,19 @@ export interface DecidedContext {
  * it had to ask rather than invent. `openQuestions` is empty when nothing
  * needed guessing — `CONTEXT.md`'s **Open question**, numbered by position
  * when this is rendered.
+ *
+ * `decisions` is the *collector's*, not the model's: the sheet's own marked
+ * decisions, riding out on the author's return value so that the gate can
+ * run ADR-0061's arithmetic without reading the source issue a second time
+ * (a second read is a second chance for the two to disagree). It is `[]` for
+ * every door that carries no marks — the map collector, and a
+ * `DecidedContext` handed to `runSpecAuthor` already assembled.
  */
 export interface SpecAuthorOutput {
   title: string;
   body: string;
   openQuestions: string[];
+  decisions: MarkedDecision[];
 }
 
 export const SPEC_AUTHOR_OUTPUT = structuredOutput(
@@ -122,12 +136,25 @@ function isDecidedContext(input: DecidedContext | SpecTrigger): input is Decided
   return "ownerWords" in input;
 }
 
-function collect(trigger: SpecTrigger): DecidedContext {
+/**
+ * One collector run, normalized: the Decided context the author reads, plus
+ * whatever marked decisions the trigger's own source carried.
+ *
+ * Only the sheet has marks. The map's collector returns a bare
+ * `DecidedContext` and gets `[]` here rather than being widened to carry an
+ * empty list it has nothing to fill — ADR-0058 keeps the difference between
+ * triggers inside the collectors, and this is the one line where the two
+ * shapes meet.
+ */
+function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: MarkedDecision[] } {
   switch (trigger.kind) {
     case "sheet":
       return collectSheetContext(trigger.gh, trigger.issueNumber);
     case "map":
-      return collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot);
+      return {
+        context: collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot),
+        decisions: [],
+      };
   }
 }
 
@@ -151,7 +178,10 @@ export async function runSpecAuthor(
   exec: StageExec,
   input: DecidedContext | SpecTrigger,
 ): Promise<SpecAuthorOutput> {
-  const context = isDecidedContext(input) ? input : collect(input);
+  const collected = isDecidedContext(input)
+    ? { context: input, decisions: [] as MarkedDecision[] }
+    : collect(input);
+  const context = collected.context;
   const draft = await runStage(
     PROMPT_PATH,
     {
@@ -179,6 +209,7 @@ export async function runSpecAuthor(
     title: draft.title,
     body: draft.body,
     openQuestions: [...draft.openQuestions, ...critique.findings],
+    decisions: collected.decisions,
   };
 }
 
@@ -245,7 +276,7 @@ export async function runSpecPublication(
     updateSpec(gh, issueNumber, draft, target.source);
   }
 
-  const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
+  const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions, draft.decisions);
 
   return { ...draft, issueNumber, published: target.mode === "publish", gateCount: count, outcome };
 }
@@ -257,20 +288,47 @@ export async function runSpecPublication(
  * Shared as a function rather than as a rule both doors are trusted to follow, because "the label
  * is not a second implementation of the gate" is the whole reason firing on `prd` does not undo
  * ADR-0062. `gateCount` and `applyGate` are called from here, once each, by both.
+ *
+ * `decisions` is what the run's collector carried — the sheet's marks, or nothing. It reaches
+ * `gateCount` as ADR-0061's second measure, and it reaches the posted round as the lines below,
+ * from the same `unfiledMarks` call in both cases: the round is exactly as long as the count is
+ * high, by construction rather than by two agreeing implementations.
+ *
+ * **A held round is never empty.** A draft that asked nothing but was handed a load-bearing mark
+ * holds the gate on the arithmetic alone, and before this it posted a numbered list of nothing —
+ * an owner with no way to see what he was being asked, and a spec parked forever.
  */
 function gateSpec(
   gh: GhExec,
   issueNumber: number,
   openQuestions: string[],
+  decisions: MarkedDecision[] = [],
 ): { count: number; outcome: GateOutcome } {
-  const count = gateCount(openQuestions);
+  const count = gateCount(openQuestions, decisions);
   const outcome = applyGate(gh, issueNumber, count);
 
   if (outcome === "held") {
-    postOpenQuestions(gh, issueNumber, openQuestions);
+    const unfiled = unfiledMarks(decisions, openQuestions).map(unfiledMarkQuestion);
+    postOpenQuestions(gh, issueNumber, [...openQuestions, ...unfiled]);
   }
 
   return { count, outcome };
+}
+
+/**
+ * The question a mark the draft never asked about becomes, so it can take its place in the same
+ * numbered list the author's own questions are in — one continuing sequence, so the owner's reply
+ * by number is unambiguous (ADR-0061's numbered form).
+ *
+ * It names the mark, says the sheet decided it, and says the draft asks about none of it, because
+ * those three facts are the whole of why the gate held and the owner has no other way to learn any
+ * of them: the mark lives in the sheet's marker payload, which no rendered comment shows.
+ */
+function unfiledMarkQuestion(decision: MarkedDecision): string {
+  return (
+    `The sheet decided \`${decision.mark}\` and filed no ruling for it, and this draft asks about ` +
+    `none of it — is that guess right, and should it be written down?`
+  );
 }
 
 /** What `runSpecCritique` hands back: the spec it read, what the critic found, and what the gate did. */

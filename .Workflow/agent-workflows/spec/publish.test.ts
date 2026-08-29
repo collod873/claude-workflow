@@ -13,7 +13,7 @@ import {
   updateSpec,
   type SpecSource,
 } from "./publish";
-import { planSpecRun, runSpecPublication } from "./spec";
+import { planSpecRun, runSpecPublication, type SpecAuthorOutput } from "./spec";
 
 /**
  * A fake `GhExec` that answers a create with a URL and records everything else, so a test can
@@ -41,7 +41,15 @@ function fakeGh(options: { issueNumber?: number; specBody?: string } = {}): {
 
 const SHEET_SOURCE: SpecSource = { kind: "sheet", issue: 42 };
 
-const DRAFT = { title: "A thing", body: "## Problem\nIt is unbuilt.", openQuestions: [] as string[] };
+const DRAFT: SpecAuthorOutput = {
+  title: "A thing",
+  body: "## Problem\nIt is unbuilt.",
+  openQuestions: [],
+  // Nothing in this file reads the marks; they are here because the draft is
+  // the author's whole output, and typing the fixture as that is what makes a
+  // field added there fail here rather than drift.
+  decisions: [],
+};
 
 describe("specTitle", () => {
   it("prefixes a title the author did not prefix", () => {
