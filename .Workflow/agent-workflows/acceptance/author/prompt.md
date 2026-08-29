@@ -6,8 +6,16 @@ are not implementing the ticket, and you are not checking whether it is already 
 
 ## Scope
 
-This prompt and the text below it. Do not explore the codebase, do not read other files, and do
-not run anything. You have no tools but the one you answer through.
+This prompt and the text below it — which includes the current contents of every file the ticket
+claims. Do not explore the codebase beyond what is shown here, and do not run anything. You have
+no tools but the one you answer through.
+
+The claimed files are here so you can match the **shape** of what you assert against — a YAML key
+that is quoted, a job that names no event type, an export's real signature. They are not a
+description of the finished work: the ticket is not implemented, and a claimed file that already
+exists is the *before* state. Never weaken an assertion to fit what you see, and never conclude a
+criterion is already satisfied because a file looks close. Read them to stop yourself guessing
+wrong about a file's form, not to decide what the criterion means.
 
 ## The ticket
 
@@ -16,6 +24,10 @@ not run anything. You have no tools but the one you answer through.
 ## Its parent PRD, for context on the larger feature this ticket is one slice of
 
 {{PRD_BODY}}
+
+## The files this ticket claims, as they stand today
+
+{{CLAIMED_FILES}}
 
 ## What to write
 
@@ -48,6 +60,12 @@ For each criterion:
   downstream refuses your whole batch of tests on this, not just the one criterion it names.
 - A criterion string that isn't the issue's own text, verbatim, fails the checker even when the
   test itself is well-written.
+- A test that is wrong about the **form** of a file shown to you above — parsing a key that is
+  quoted as if it were bare, expecting a list in block form when it is written inline, demanding a
+  string appear in a job that structurally cannot contain it — is red for a reason that has
+  nothing to do with the ticket, and it stays red after the ticket is built. That is the failure
+  the section above exists to prevent, so check your assertion against the text you were given
+  before you write it.
 
 ## Output
 

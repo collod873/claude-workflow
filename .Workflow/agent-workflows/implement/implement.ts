@@ -12,6 +12,7 @@ import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractCriteria,
+  extractFilesClaimed,
   normalizeNewlines,
   parentPrdNumber,
   readTicket,
@@ -73,11 +74,6 @@ export const VERIFY_DISPATCH_EVENT_TYPE = IMPLEMENTATION_PR_DISPATCH_ACTION;
 /** `render-body.ts`'s `## Seams consumed` heading — present only when the slice consumed any. */
 const SEAMS_HEADING_RE = /^##[ \t]+Seams consumed[ \t]*$/m;
 
-/** `render-body.ts`'s `## Files claimed` heading — always present on a published ticket. */
-const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
-
-const FILE_ITEM_RE = /^[ \t]*-[ \t]*(.+?)[ \t]*$/;
-
 /**
  * The seam manifest lines a ticket's `## Seams consumed` section names, one
  * per line, in the body's own order. Empty when the section is absent — a
@@ -90,24 +86,6 @@ export function extractSeamsConsumed(body: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-}
-
-/**
- * The repo-relative paths a ticket's `## Files claimed` section names, one
- * per `- ` bullet, in the body's own order. `render-body.ts` writes
- * `- None — no files.` for an empty claim, which this filters out rather
- * than returning as a path — nothing on disk is named "None".
- */
-export function extractFilesClaimed(body: string): string[] {
-  const section = sectionText(normalizeNewlines(body), FILES_HEADING_RE);
-  const paths: string[] = [];
-  for (const line of section.split("\n")) {
-    const match = FILE_ITEM_RE.exec(line);
-    if (!match) continue;
-    const path = match[1].trim();
-    if (path.length > 0 && path !== "None — no files.") paths.push(path);
-  }
-  return paths;
 }
 
 /**

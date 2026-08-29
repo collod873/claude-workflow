@@ -3,9 +3,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { subIssuesPath } from "../shared/gh-paths";
-import { createFakeStage } from "../shared/stage.fake";
+import { createFakeStage, type FakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
-import { authorAcceptanceTests, refireAcceptance, runAcceptanceAuthor } from "./acceptance";
+import {
+  authorAcceptanceTests,
+  CLAIMED_FILE_ABSENT,
+  NO_CLAIMED_FILES,
+  refireAcceptance,
+  renderClaimedFiles,
+  runAcceptanceAuthor,
+} from "./acceptance";
 
 const TICKET_BODY = `## Parent PRD
 #145
@@ -27,6 +34,25 @@ The larger feature #162 is one slice of.
 
 function authorResponse(files: Array<{ path: string; content: string }>): string {
   return JSON.stringify({ files });
+}
+
+/**
+ * Runs the author against `TICKET_BODY` with `readFile` standing in for the checkout, and hands
+ * back the fake stage — so a test can read the prompt that was actually built (ADR-0098) rather
+ * than restate the wiring that builds it.
+ */
+async function authorAgainst(readFile: (path: string) => string | undefined): Promise<FakeStage> {
+  const stage = createFakeStage(
+    authorResponse([{ path: "tests/acceptance/162-x.test.ts", content: "// x\n" }]),
+  );
+  await authorAcceptanceTests({
+    exec: stage.exec,
+    writeFile: () => {},
+    issueNumber: 162,
+    ticket: { title: "t", body: TICKET_BODY },
+    readFile,
+  });
+  return stage;
 }
 
 describe("extractCriteria", () => {
@@ -84,6 +110,28 @@ describe("authorAcceptanceTests", () => {
     expect(content).toContain(firstCriterion);
   });
 
+  // ADR-0098. Lane 04's first production run wrote two tests that were wrong about the *shape* of
+  // a file the criterion named — a quoted YAML key read as bare, a job asserted to contain a
+  // string it structurally cannot. The fix is that the file reaches the prompt, so both of these
+  // assert on the prompt rather than on anything a model would say with it.
+  it("shows the author the current contents of every file the ticket claims", async () => {
+    const stage = await authorAgainst((path) =>
+      path === ".Workflow/agent-workflows/acceptance/acceptance.ts" ? '"on": quoted\n' : undefined,
+    );
+
+    const prompt = stage.stdins[0];
+    expect(prompt, "the author's prompt goes over stdin").toBeDefined();
+    expect(prompt).toContain(".Workflow/agent-workflows/acceptance/acceptance.ts");
+    expect(prompt, "the claimed file's own text, not just its path").toContain('"on": quoted');
+  });
+
+  // The reach is what reached the prompt, not a line the model was asked to honour (ADR-0098) —
+  // so the stage keeps no toolbelt, and an allow list would have granted the whole checkout.
+  it("gives the author no tools to read anything else with", async () => {
+    const stage = await authorAgainst(() => undefined);
+    expect(stage.calls[0]).not.toContain("--allowedTools");
+  });
+
   it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
     const stage = createFakeStage(authorResponse([{ path: "tests/acceptance/x.test.ts", content: "x" }]));
     const written = new Map<string, string>();
@@ -112,6 +160,27 @@ describe("authorAcceptanceTests", () => {
       }),
     ).rejects.toThrow(/outside/);
     expect(written.size).toBe(0);
+  });
+});
+
+describe("renderClaimedFiles", () => {
+  it("renders each claimed file's contents under its own path, in the ticket's order", () => {
+    const rendered = renderClaimedFiles(["a/one.ts", "b/two.ts"], (path) => `contents of ${path}`);
+    expect(rendered.indexOf("a/one.ts")).toBeLessThan(rendered.indexOf("b/two.ts"));
+    expect(rendered).toContain("contents of a/one.ts");
+    expect(rendered).toContain("contents of b/two.ts");
+  });
+
+  // The ordinary case for a slice whose whole job is to create the file. Saying so beats an empty
+  // fenced block, which reads as "this file exists and is empty" — a different fact entirely.
+  it("says so, rather than showing an empty block, when a claimed file does not exist yet", () => {
+    expect(renderClaimedFiles(["not/created/yet.ts"], () => undefined)).toContain(
+      CLAIMED_FILE_ABSENT,
+    );
+  });
+
+  it("says the ticket claims nothing rather than rendering an empty section", () => {
+    expect(renderClaimedFiles([], () => "unused")).toBe(NO_CLAIMED_FILES);
   });
 });
 

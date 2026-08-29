@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -9,7 +9,14 @@ import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { CRITERIA_HEADING_RE, extractCriteria, parentPrdNumber, readTicket, type TicketRead } from "../shared/ticket-shape";
+import {
+  CRITERIA_HEADING_RE,
+  extractCriteria,
+  extractFilesClaimed,
+  parentPrdNumber,
+  readTicket,
+  type TicketRead,
+} from "../shared/ticket-shape";
 import {
   landingFromEnv,
   runPushGate,
@@ -65,6 +72,60 @@ export interface AuthorDeps {
   ticket: TicketRead;
   /** The parent PRD's body, when the ticket names one — the other half of "from the spec alone". */
   prdBody?: string;
+  /**
+   * Reads one repo-relative claimed file, `undefined` when it does not exist yet — the ordinary
+   * case for a slice whose whole job is to create it. Defaults to a real filesystem read.
+   */
+  readFile?: (path: string) => string | undefined;
+}
+
+/** What a claimed file that this ticket has not created yet is shown as. */
+export const CLAIMED_FILE_ABSENT = "(does not exist yet — this ticket creates it)";
+
+/** Shown in place of the section when the ticket claims no files at all. */
+export const NO_CLAIMED_FILES = "(this ticket claims no files)";
+
+/**
+ * The `## Files claimed` section, rendered as the files themselves rather than as a list of paths
+ * ([ADR-0098](../../../docs/adr/0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md)).
+ *
+ * Lane 04's first production run is what asked for this: authoring #201's four tests blind, the
+ * model wrote a YAML mini-parser matching `^on\s*:` against a file that writes `"on":` — quoted,
+ * because YAML 1.1 reads a bare `on` as `true` — and a second test asserting the word `acceptance`
+ * appears in a workflow job that by construction never names an event type. Two of four tests were
+ * wrong, and both were wrong about a file's concrete shape rather than about the criterion.
+ *
+ * **Inlined, not handed over as a tool.** The stage keeps no toolbelt at all, so "reads its claimed
+ * files and nothing else" stays a fact about what reached the prompt rather than a line the model
+ * was asked to honour — the same reasoning
+ * [ADR-0030](../../../docs/adr/0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md)
+ * applies to lane 01's shaper. An allow list of `Read` would have given it the whole repository.
+ *
+ * Uncapped, deliberately: a truncated file is the half-seen state this exists to remove, and a
+ * model shown two thirds of a workflow guesses about the last third exactly as it did about all of
+ * it. The bound is the slice's own claim, which lane 03 already sizes to one session.
+ */
+export function renderClaimedFiles(
+  paths: string[],
+  readFile: (path: string) => string | undefined,
+): string {
+  if (paths.length === 0) return NO_CLAIMED_FILES;
+  return paths
+    .map((path) => {
+      const content = readFile(path);
+      if (content === undefined) return `### ${path}\n\n${CLAIMED_FILE_ABSENT}`;
+      return `### ${path}\n\n\`\`\`\n${content}\n\`\`\``;
+    })
+    .join("\n\n");
+}
+
+/** `readFile`'s default: the file's text, or `undefined` when it is not there yet. */
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -94,6 +155,10 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<string[]>
       ISSUE_BODY: deps.ticket.body,
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
       TEST_DIR: ACCEPTANCE_TEST_DIR,
+      CLAIMED_FILES: renderClaimedFiles(
+        extractFilesClaimed(deps.ticket.body),
+        deps.readFile ?? readIfPresent,
+      ),
     },
     deps.exec,
     AUTHOR_OUTPUT,

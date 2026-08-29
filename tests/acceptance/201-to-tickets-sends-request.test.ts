@@ -1,11 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { jobs, repoRoot, workflowPath } from "./workflow-shape.fixture";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const toTicketsDir = path.join(repoRoot, ".Workflow", "agent-workflows", "to-tickets");
-const toTicketsYml = path.join(repoRoot, ".github", "workflows", "to-tickets.yml");
+const toTicketsYml = workflowPath("to-tickets.yml");
 const dispatchRequest = path.join(
   repoRoot,
   ".Workflow",
@@ -21,35 +20,6 @@ function walk(dir: string): string[] {
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...walk(full));
     else out.push(full);
-  }
-  return out;
-}
-
-/** Second-level keys of `jobs:`, each mapped to its own block text. */
-function jobs(yml: string): Record<string, string> {
-  const lines = yml.split("\n");
-  const start = lines.findIndex((l) => /^jobs\s*:/.test(l));
-  if (start === -1) return {};
-  const body: string[] = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^\S/.test(lines[i])) break;
-    body.push(lines[i]);
-  }
-  const indents = body
-    .filter((l) => l.trim() !== "")
-    .map((l) => (l.match(/^\s*/) as RegExpMatchArray)[0].length);
-  if (indents.length === 0) return {};
-  const base = Math.min(...indents);
-  const out: Record<string, string> = {};
-  let current: string | null = null;
-  for (const line of body) {
-    const m = line.match(/^(\s*)([A-Za-z0-9_-]+)\s*:\s*$/);
-    if (m && m[1].length === base) {
-      current = m[2];
-      out[current] = "";
-      continue;
-    }
-    if (current) out[current] += line + "\n";
   }
   return out;
 }
@@ -73,19 +43,29 @@ describe("#201 lane 04 first authoring — lane 03 asks for it", () => {
     // Sending goes through the shared helper, from the dispatch job only.
     expect(existsSync(dispatchRequest)).toBe(true);
     expect(existsSync(toTicketsYml)).toBe(true);
-    const yml = readFileSync(toTicketsYml, "utf8");
-    const byJob = jobs(yml);
+    const byJob = jobs(readFileSync(toTicketsYml, "utf8"));
 
-    const senders = Object.entries(byJob).filter(([, text]) => text.includes("dispatch-request"));
+    // The send is `POST /dispatches`, so the job that performs it is the job naming that endpoint
+    // — not the job that mentions the helper, which both jobs do by construction.
+    const senders = Object.entries(byJob).filter(([, text]) => /\/dispatches/.test(text));
     expect(senders.length, "a to-tickets.yml job sends through shared/dispatch-request.ts").toBeGreaterThan(0);
     for (const [name, text] of senders) {
       expect(text, `job ${name} sends dispatches, so it holds contents: write`).toMatch(
         /contents:\s*write/,
       );
     }
+
+    // "the model job writes it, never sends it" (ADR-0091). The model job diverts every request it
+    // would otherwise send into `DISPATCH_REQUESTS_PATH` — the seam `shared/dispatch-request.ts`
+    // exists for — and the sender above posts those lines verbatim. That is why no sending job
+    // names `acceptance-wanted` at all: the event type lives in the file, never in the workflow.
+    const writers = Object.entries(byJob).filter(([name]) => !senders.some(([s]) => s === name));
     expect(
-      senders.some(([, text]) => /acceptance/.test(text)),
-      "the dispatch job is what sends the acceptance request",
+      writers.some(([, text]) => text.includes("DISPATCH_REQUESTS_PATH")),
+      "the model job records its dispatch requests rather than posting them",
     ).toBe(true);
+    for (const [name, text] of writers) {
+      expect(text, `model job ${name} never posts a dispatch itself`).not.toMatch(/\/dispatches/);
+    }
   });
 });

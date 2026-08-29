@@ -162,6 +162,35 @@ export function parentPrdNumber(body: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+/** `render-body.ts`'s `## Files claimed` heading — always present on a published ticket. */
+const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
+
+const FILE_ITEM_RE = /^[ \t]*-[ \t]*(.+?)[ \t]*$/;
+
+/**
+ * The repo-relative paths a ticket's `## Files claimed` section names, one
+ * per `- ` bullet, in the body's own order. `render-body.ts` writes
+ * `- None — no files.` for an empty claim, which this filters out rather
+ * than returning as a path — nothing on disk is named "None".
+ *
+ * Lives here rather than in `implement/implement.ts`, where it was written,
+ * because lane 04 reads the same section for a different purpose
+ * ([ADR-0098](../../../docs/adr/0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md)):
+ * a slice's claimed files are a fact about ticket shape, and two lanes
+ * asking the same question of the same heading must not be two parsers.
+ */
+export function extractFilesClaimed(body: string): string[] {
+  const section = sectionText(normalizeNewlines(body), FILES_HEADING_RE);
+  const paths: string[] = [];
+  for (const line of section.split("\n")) {
+    const match = FILE_ITEM_RE.exec(line);
+    if (!match) continue;
+    const path = match[1].trim();
+    if (path.length > 0 && path !== "None — no files.") paths.push(path);
+  }
+  return paths;
+}
+
 /** A ticket's title and body, as `readTicket` reads them off the tracker. */
 export interface TicketRead {
   title: string;

@@ -5,11 +5,10 @@ import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
 import { createFakeStage } from "../shared/stage.fake";
-import { parentPrdNumber } from "../shared/ticket-shape";
+import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   assembleBrief,
   CLAIM_TIMEOUT_MINUTES,
-  extractFilesClaimed,
   extractSeamsConsumed,
   IMPLEMENT_DISPATCH_EVENT_TYPE,
   moduleContextPath,
