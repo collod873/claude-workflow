@@ -12,28 +12,56 @@ const CRITERION_SHAPE =
   "on one line (e.g. ``- [ ] `foo` is exported — check: `npx vitest run bar.test.ts` ``)";
 
 /**
+ * A check command built to read the tracker or the network rather than the
+ * tree — `gh api`, `gh issue`, `gh pr`, `gh run`, `curl`, `wget`. Every one of
+ * these answers from GitHub's remote state (or some other remote entirely),
+ * never from the working directory `bin/close-ticket` hands the command, so
+ * it returns the same verdict before the ticket's diff exists and after it
+ * merges. #201's fourth criterion — `gh api
+ * repos/…/contents/tests/acceptance` — is the case this caught: three of
+ * four criteria passed against the merge, and this one could not have passed
+ * against any diff, because it was never reading the diff.
+ *
+ * This is deliberately narrower than "reaches outside the repository".
+ * #220's own criteria grep `/home/collin/.agents/skills/drain/SKILL.md`, an
+ * absolute path outside this repo, because the artifact under test lives
+ * there — a `grep` against that path still reads local disk, and can
+ * observe exactly what that ticket's own work produced. Refusing every
+ * absolute path, or `gh` outright, would have bounced that ticket along with
+ * #201's. See [ADR-0096](../../../docs/adr/0096-a-check-marker-is-refused-for-reading-the-tracker-instead-of.md).
+ */
+const REMOTE_TRACKER_RE = /\bgh\s+(?:api|issue|pr|run)\b|\bcurl\b|\bwget\b/i;
+
+/**
  * Why `criterion` cannot be published, or `undefined` when it can.
  *
- * Two refusals, and only two. **No well-formed `check:` marker**: the whole
- * verification story downstream is `close-ticket` running that command, so a
- * criterion without one is a criterion nothing will ever check — which is how
- * 26 tickets closed on `0 of N criteria verified` (#183, #215). **More than
- * one line**: the two readers of a published body disagree about a wrapped
- * criterion — `ticket-shape.ts`'s `extractCriteria` is line-shaped and reads
- * the first line only, while `bin/ticket_shape.py`'s `criteria_blocks` folds
- * the continuations in — and a claim that means two different things to the
- * lane that builds it and the script that closes it is not worth publishing.
- * The slicer has no reason to wrap: `SLICE_CAPS.acceptanceCriteria` caps an
- * entry at 200 characters.
+ * Three refusals, and only three. **No well-formed `check:` marker**: the
+ * whole verification story downstream is `close-ticket` running that
+ * command, so a criterion without one is a criterion nothing will ever check
+ * — which is how 26 tickets closed on `0 of N criteria verified` (#183,
+ * #215). **More than one line**: the two readers of a published body
+ * disagree about a wrapped criterion — `ticket-shape.ts`'s `extractCriteria`
+ * is line-shaped and reads the first line only, while `bin/ticket_shape.py`'s
+ * `criteria_blocks` folds the continuations in — and a claim that means two
+ * different things to the lane that builds it and the script that closes it
+ * is not worth publishing. The slicer has no reason to wrap:
+ * `SLICE_CAPS.acceptanceCriteria` caps an entry at 200 characters.
+ * **A remote-observing check** (`REMOTE_TRACKER_RE`): a criterion that
+ * parses and runs headlessly but can never be answered by a diff, which is
+ * how #201's fourth criterion survived every existing gate (#223).
  */
 function criterionProblem(criterion: string): string | undefined {
   if (/\n/.test(criterion)) {
     return "spans more than one line";
   }
-  if (parseCheckMarker(criterion) === undefined) {
+  const command = parseCheckMarker(criterion);
+  if (command === undefined) {
     return CHECK_MARKER_ATTEMPT_RE.test(criterion)
       ? "carries a `check:` marker that does not parse"
       : "names no `check:` marker";
+  }
+  if (REMOTE_TRACKER_RE.test(command)) {
+    return "checks the tracker instead of the tree — it can never be answered by a diff";
   }
   return undefined;
 }
