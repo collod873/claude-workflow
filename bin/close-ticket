@@ -15,12 +15,14 @@ stamp on this route — re-running the same invocation after the work is fixed i
 recovery path.
 
 Two shapes abort the same way, and for the same reason: **unverified is not a verdict this
-script may close on** (#215).
+script may close on**. Both come from `collod873/claude-workflow`'s #215, whose copy of this
+tool grew them first; they are merged back here so the source of truth `bin/re-seed` vendors
+out is a superset of what it would overwrite, never a silent revert of it (#194).
 
 - A criterion that says `check:` and hands this script nothing runnable (`UNPARSEABLE_CHECK_RE`)
   is a *failure*, never an `UNVERIFIED: no check` bullet. It was the second of those until
-  #215: lane 03 emitted `- [ ] check: grep -q ...` — no delimiter, no backticks — which read as
-  prose, so #203 and #210 each closed on `0 of 8 criteria verified` against work nobody had
+  #215 there: a producer emitted `- [ ] check: grep -q ...` — no delimiter, no backticks — which
+  read as prose, so two tickets each closed on `0 of 8 criteria verified` against work nobody had
   checked. A criterion meaning to be checked and failing to say how is a defect in the ticket.
 - A ticket whose criteria come back **every criterion unverified** does not close at all. The
   summary line was supposed to make that erosion visible; a record saying `0 of 8` still closed
@@ -65,13 +67,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gh_support  # noqa: E402
+try:
+    import run_log  # noqa: E402
+except ImportError:
+    # A vendored copy whose bin/run_log.py never arrived (#183 pairs only files the target
+    # repo already carries). Losing this repo's run rows is a gap in an audit; an
+    # ImportError here would be a broken tool.
+    run_log = None
 import ticket_shape  # noqa: E402
 
 NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
 
 # A criterion that mentions `check:` but yields no command. Wider than
-# `ticket_shape.CHECK_MARKER_ATTEMPT_RE` on purpose: that one requires the em-dash delimiter,
-# and the shape that actually reached the tracker carried none — so the criteria lane 03 wrote
+# `ticket_shape.CHECK_MARKER_ATTEMPT_RE` on purpose: that one requires the delimiter, and the
+# shape that actually reached the tracker carried none — so the criteria that producer wrote
 # were not *malformed* markers, they were invisible ones, and the run that closed on them
 # reported "no check" about a line whose first word is `check`. The looser question — did this
 # criterion mean to name a check — is the one worth asking, because a criterion that says
@@ -252,8 +261,27 @@ def parse_args(argv):
     return parser.parse_args(argv)
 
 
+ROW: dict = {}
+
+
 def main(argv=None) -> int:
+    """`run()` plus its run row (#182): one per invocation, verdict `closed` or `refused`,
+    carrying the issue, the criterion count and how many of them a check actually verified.
+
+    A wrapper rather than a call at each `return 1` because there are nine of them and a
+    gate whose record depends on nobody forgetting one is the shape this ticket exists to
+    end. `ROW` is filled in as `run()` learns each field, so a refusal still records
+    everything known before it refused."""
+    ROW.clear()
+    code = run(argv)
+    if run_log is not None:
+        run_log.append_log("closed" if code == 0 else "refused", **ROW)
+    return code
+
+
+def run(argv=None) -> int:
     args = parse_args(argv)
+    ROW["issue"] = args.issue
 
     base, sep, head = args.range.partition("..")
     if not sep or not base or not head:
@@ -276,6 +304,7 @@ def main(argv=None) -> int:
         return 1
 
     blocks = ticket_shape.criteria_blocks(body)
+    ROW["criteria"] = 0 if blocks is None else len(blocks)
 
     if args.superseded_by is not None:
         try:
@@ -303,6 +332,10 @@ def main(argv=None) -> int:
         record_text, ok = render_record(args.range, blocks, args.checkout)
         if not ok:
             return 1
+
+    # Counted off the record rather than threaded out of `render_record`: the record is
+    # what actually gets posted, so counting it is counting what was claimed.
+    ROW["verified"] = record_text.count("— MET: ")
 
     try:
         gh_support.run_gh(gh, "issue", "comment", args.issue, "--body-file", "-",
