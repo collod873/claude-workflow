@@ -198,7 +198,13 @@ done
 # given file or export. It gates on the delta against a committed baseline, not on the whole
 # answer, because it landed against 31 standing findings that are product decisions rather than
 # lint fixes. New code wired to nothing fails the push that introduced it.
-[ "$venue" = "push" ] && checks="$checks contract corpus wiring"
+#
+# `workflows` is actionlint, and it is here rather than only in `verify.yml` because a broken
+# workflow file is the one defect CI structurally cannot report: GitHub cannot parse it, so it never
+# schedules it, so every dispatch aimed at it lands on nothing and no run exists to go red
+# (ADR-0105). It costs nothing on a push that leaves `.github/workflows/` alone, which is nearly all
+# of them — see `workflow-lint.ts` for why that is the whole answer to needing Docker at all.
+[ "$venue" = "push" ] && checks="$checks contract corpus wiring workflows"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -234,6 +240,10 @@ if [ "$venue" = "push" ]; then
 
   run_check wiring node \
     "$repo_root/.Workflow/agent-workflows/shared/wiring-baseline.ts" check "$repo_root" &
+  pids+=($!)
+
+  run_check workflows node \
+    "$repo_root/.Workflow/agent-workflows/shared/workflow-lint.ts" "$repo_root" &
   pids+=($!)
 fi
 
@@ -303,13 +313,23 @@ fi
 # A command a slot names that no longer runs — renamed, uninstalled, a typo in the contract — is
 # the shell's own "command not found", exit 127. That is kept distinct from a check that ran and
 # found something: the former is a broken gauntlet (exit 2), the latter is a real finding (exit 1).
+#
+# The checks below that this repo writes itself speak the same three codes back, so their own exit 2
+# means "could not run" too — `workflow-lint` reporting that no Docker daemon answered is the case
+# in hand. That reading is per-check and never global, because `tsc --noEmit` exits **2** for type
+# errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
+# turn every type error in this repo into "the gauntlet is broken", which is the one report
+# ADR-0063 tells the bypass counter to ignore.
+own_protocol=" contract corpus wiring workflows "
 for name in $checks; do
   [ -f "$tmp/$name.exit" ] || continue
   code="$(cat "$tmp/$name.exit")"
   [ "$code" = "0" ] && continue
-  if [ "$code" = "127" ]; then
+  speaks_protocol=0
+  case "$own_protocol" in *" $name "*) speaks_protocol=1 ;; esac
+  if [ "$code" = "127" ] || { [ "$code" = "2" ] && [ "$speaks_protocol" = "1" ]; }; then
     could_not_run=1
-    echo "gauntlet: $name's command could not run" >&2
+    echo "gauntlet: $name could not run" >&2
     cat "$tmp/$name.out" >&2
     continue
   fi

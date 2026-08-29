@@ -172,15 +172,19 @@ describe("diffContract", () => {
  * `check-contract.ts` is imported by the one `node` call that resolves the contract's slots;
  * `generate-contract.ts` is spawned as `diff` for the push venue's contract check;
  * `generate-corpus-fixture.ts` (#140) is spawned the same way for the push venue's corpus check;
- * `wiring-baseline.ts` (#183) for the push venue's wiring check — each present here so a push
- * against this fixture root does not fail to find it. The fixture root has no `knip.config.ts`,
- * so the wiring check opts out of it rather than reporting a fixture as unwired code.
+ * `wiring-baseline.ts` (#183) for the push venue's wiring check; `workflow-lint.ts` (ADR-0105) and
+ * the `reason.ts` it imports for the workflow check — each present here so a push against this
+ * fixture root does not fail to find it. The fixture root has no `knip.config.ts`, so the wiring
+ * check opts out of it rather than reporting a fixture as unwired code, and no
+ * `.github/workflows/`, so the workflow check has nothing to lint and starts no container.
  */
 const GAUNTLET_MODULES = [
   ".Workflow/agent-workflows/shared/check-contract.ts",
   ".Workflow/agent-workflows/shared/generate-contract.ts",
   ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts",
   ".Workflow/agent-workflows/shared/wiring-baseline.ts",
+  ".Workflow/agent-workflows/shared/workflow-lint.ts",
+  ".Workflow/agent-workflows/shared/reason.ts",
 ];
 
 /** What the fixture root below declares for each slot the push venue runs. Deliberately nothing. */

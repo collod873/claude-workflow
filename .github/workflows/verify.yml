@@ -216,13 +216,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The one check that does not go through `bin/gauntlet`, deliberately: it needs a binary the
-      # free venues would have to download on every clone, and C4 says a mechanism that needs a
-      # ritual dies by month three. It earns the exception because it is the only venue that can
-      # catch a workflow file GitHub itself will refuse to parse — the failure in #40, where
-      # `runner.temp` in a job `env` block made `to-tickets.yml` unreadable, its `on:` trigger
-      # unarmed, and thirteen pushes fail with zero jobs and no reader. Runs before Node so an
-      # unparseable workflow costs nothing else.
+      # The check that catches a workflow file GitHub itself will refuse to parse — the failure in
+      # #40, where `runner.temp` in a job `env` block made `to-tickets.yml` unreadable, its `on:`
+      # trigger unarmed, and thirteen pushes fail with zero jobs and no reader. Runs before Node so
+      # an unparseable workflow costs nothing else.
+      #
+      # This used to say it was "the one check that does not go through `bin/gauntlet`,
+      # deliberately" — a binary the free venues would have to download, and C4's law that a
+      # mechanism needing a ritual dies by month three. `bin/gauntlet push` runs it too as of
+      # ADR-0105: the same defect cost a `ticket-ready` dispatch on 2026-08-29, and a report that
+      # arrives on the *next* push is addressed to a dispatch that no longer exists. The ritual
+      # objection is answered by only linting workflow files that differ from trunk, so a push that
+      # leaves them alone starts no container.
+      #
+      # This step stays. It is the venue that answers for what actually reached `main`, and the only
+      # one that still runs when a push arrives with `--no-verify`. The pin below is the single pin:
+      # `workflow-lint.ts` reads the image off this line rather than spelling its own.
       - name: Lint workflow files
         uses: docker://rhysd/actionlint:1.7.7
         with:

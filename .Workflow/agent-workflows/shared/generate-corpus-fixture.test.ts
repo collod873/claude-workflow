@@ -188,14 +188,18 @@ describe("diffCorpusFixture", () => {
 /**
  * The modules `bin/gauntlet push` loads by path off its own repo root, relative to that root —
  * `check-contract.ts` and `generate-contract.ts` for the existing contract check,
- * `generate-corpus-fixture.ts` for this one, `wiring-baseline.ts` (#183) for the wiring check.
- * The fixture root has no `knip.config.ts`, so the wiring check opts out of it.
+ * `generate-corpus-fixture.ts` for this one, `wiring-baseline.ts` (#183) for the wiring check,
+ * `workflow-lint.ts` (ADR-0105) and the `reason.ts` it imports for the workflow check.
+ * The fixture root has no `knip.config.ts`, so the wiring check opts out of it, and no
+ * `.github/workflows/`, so the workflow check has nothing to lint and starts no container.
  */
 const GAUNTLET_MODULES = [
   ".Workflow/agent-workflows/shared/check-contract.ts",
   ".Workflow/agent-workflows/shared/generate-contract.ts",
   ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts",
   ".Workflow/agent-workflows/shared/wiring-baseline.ts",
+  ".Workflow/agent-workflows/shared/workflow-lint.ts",
+  ".Workflow/agent-workflows/shared/reason.ts",
 ];
 
 const DOES_NOTHING = 'node -e ""';
