@@ -131,12 +131,20 @@ async function main(): Promise<void> {
     .map((label) => label.trim())
     .filter((label) => label.length > 0);
 
+  // `release-on-prd-close.yml`'s `actions/checkout` leaves the runner on the repo's default
+  // branch (an `issues` event carries no ref of its own to check out instead), which is exactly
+  // the branch a release PR merges into. Passed explicitly rather than left off the argv (#219):
+  // an unset `--base` falls back to `gh`'s own default-branch resolution, which is this same
+  // branch by coincidence today and a silent landmine the day the default branch is ever renamed.
+  const prBase = process.env.PR_BASE || "main";
+
   const outcome = runReleaseOnPrdClose({
     issueNumber,
     stateReason: process.env.STATE_REASON || null,
     labels,
     head,
     repoDir: process.cwd(),
+    prBase,
   });
 
   console.log(outcome.ran ? `ran (opened=${outcome.opened ?? false})` : "out of scope — no release attempted");
