@@ -1,6 +1,7 @@
 import { join } from "node:path";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE } from "../shared/ticket-shape";
@@ -181,7 +182,22 @@ describe("runAcceptanceAuthor", () => {
 });
 
 describe("refireAcceptance", () => {
-  const REFIRE_TESTS_DIR = join(__dirname, "refire-acceptance.tmp-fixtures");
+  /**
+   * A private directory per test, under the OS temp dir rather than beside this file.
+   *
+   * The fixtures below are named `*.test.ts`, because that is the shape `affectedSlices` greps
+   * for. Written under `.Workflow/` they were also the shape *vitest's own `include` glob* greps
+   * for, so the collector could be reading the directory at the moment `afterEach` removed it —
+   * one `ENOTEMPTY` in a green suite, rare enough to read as noise and frequent enough to red the
+   * pre-push hook and take a lane down with it. `testsDir` is injectable precisely so these never
+   * had to live in the scanned tree; and one directory shared by every test in the describe was
+   * the second half of the same bug.
+   */
+  let REFIRE_TESTS_DIR: string;
+
+  beforeEach(() => {
+    REFIRE_TESTS_DIR = mkdtempSync(join(tmpdir(), "refire-acceptance-"));
+  });
 
   afterEach(() => {
     rmSync(REFIRE_TESTS_DIR, { recursive: true, force: true });
