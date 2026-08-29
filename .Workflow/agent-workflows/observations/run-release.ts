@@ -112,6 +112,39 @@ function advanceLastReleaseRef(git: GitExec, repoDir: string, head: string): voi
 }
 
 /**
+ * Creates and pushes this release's own head branch (#219): a release has no
+ * diff of its own to carry — the mechanised half is still hard-coded empty
+ * below, spec #63 defers it — so a branch pointing straight at `head` would
+ * have no commits beyond what `base` already has, and `gh pr create` refuses
+ * a head with nothing to show against its base. An empty commit is what
+ * makes the branch openable without inventing content this lane isn't
+ * ratifying.
+ *
+ * Built with plumbing (`commit-tree` + a pushed ref), not `checkout`/
+ * `commit`: this repo's own working tree and `HEAD` are not this branch's —
+ * `runRelease` may be called against the very checkout it is about to keep
+ * running other commands in (the production entrypoint's `repoDir` is
+ * `process.cwd()`), and moving `HEAD` out from under a caller is a
+ * side-effect nothing here asked for.
+ */
+function createReleaseBranch(git: GitExec, repoDir: string, head: string): string {
+  const name = `release/${head.slice(0, 12)}`;
+  const tree = git(["-C", repoDir, "rev-parse", `${head}^{tree}`]).trim();
+  const commit = git([
+    "-C",
+    repoDir,
+    "commit-tree",
+    tree,
+    "-p",
+    head,
+    "-m",
+    "Release: observations from this batch",
+  ]).trim();
+  git(["-C", repoDir, "push", "origin", `${commit}:refs/heads/${name}`]);
+  return name;
+}
+
+/**
  * The release-eligible observations as of `head`: the most recent
  * observation note in `base..head`, filtered to what has cleared the
  * two-site gate (`Observation.released`).
@@ -167,11 +200,15 @@ export interface RunReleaseResult {
  * observations, drops whatever ratification memory says stays declined
  * (`filterByRatificationMemory`), renders a prose-only `ReleaseBatch` (the
  * mechanised half is always empty — spec #63 is explicit that the
- * mechanised half is a later spec), and hands it to `composeRelease`
- * exactly once. `composeRelease` itself makes no `gh` call for an empty
- * batch, so an empty release costs nothing beyond the reads above and
- * leaves the ref untouched. Only a successful open (`opened: true`) moves
- * `LAST_RELEASE_REF` to `head`.
+ * mechanised half is a later spec) and, only once that batch is non-empty,
+ * creates and pushes this release's own head branch (`createReleaseBranch`,
+ * #219 — a prose-only release has no upstream branch to point `head` at,
+ * unlike the mechanised half's applied-diff branch) before handing the
+ * batch to `composeRelease` exactly once with that branch as `head`. An
+ * empty batch returns early without creating a branch or calling
+ * `composeRelease` at all, so an empty release still costs nothing beyond
+ * the reads above and leaves the ref untouched. Only a successful open
+ * (`opened: true`) moves `LAST_RELEASE_REF` to `head`.
  */
 export function runRelease(options: RunReleaseOptions): RunReleaseResult {
   const { git, gh, repoDir, head, prdClosed, threshold, isMachineryCommit, prBase } = options;
@@ -192,7 +229,12 @@ export function runRelease(options: RunReleaseOptions): RunReleaseResult {
     prose: surviving.map((observation) => ({ observation, checklistItem: renderChecklistItem(observation) })),
   };
 
-  const result = composeRelease({ gh, batch, base: prBase });
+  if (batch.mechanised.length === 0 && batch.prose.length === 0) {
+    return { opened: false, releasedCount: scope.releasedCount };
+  }
+
+  const releaseHead = createReleaseBranch(git, repoDir, head);
+  const result = composeRelease({ gh, batch, base: prBase, head: releaseHead });
 
   if (result.opened) {
     advanceLastReleaseRef(git, repoDir, head);

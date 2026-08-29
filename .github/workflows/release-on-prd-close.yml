@@ -39,6 +39,10 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       STATE_REASON: ${{ github.event.issue.state_reason }}
       LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+      # The branch a release PR merges into (#219) — passed explicitly rather than leaving `--base`
+      # to `gh`'s own default-branch resolution, which `release-on-prd-close.ts` also falls back to
+      # for a local run where this variable is unset.
+      PR_BASE: ${{ github.event.repository.default_branch }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:

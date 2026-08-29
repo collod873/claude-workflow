@@ -53,6 +53,13 @@ function flagValue(args: string[], flag: string): string | undefined {
   return index === -1 ? undefined : args[index + 1];
 }
 
+/** Asserts `gh` was called with exactly one `pr create`, and hands back that call's argv. */
+function singlePrCreateCall(calls: string[][]): string[] {
+  const prCreateCalls = calls.filter((args) => args[0] === "pr" && args[1] === "create");
+  expect(prCreateCalls).toHaveLength(1);
+  return prCreateCalls[0];
+}
+
 /** Reads `refs/release/last`, or `undefined` when it has never been written — mirrors `runRelease`'s own read. */
 function readLastReleaseRef(dir: string): string | undefined {
   try {
@@ -65,20 +72,47 @@ function readLastReleaseRef(dir: string): string | undefined {
   }
 }
 
+/**
+ * `makeRepo`, plus a bare `origin` remote (#219): `runRelease` now pushes its
+ * own release head branch there, so a repo with no remote at all would fail
+ * a push this suite isn't trying to exercise. `originDir` is exposed so a
+ * test can assert the branch actually landed on "the far side," not just
+ * that `git push` didn't throw locally. `checkoutBranch` moves the repo's
+ * current branch, for the one test that needs to start on a named branch
+ * rather than whatever `git init`'s own default is.
+ */
+function makeReleaseRepo(): ReturnType<typeof makeRepo> & { originDir: string; checkoutBranch: (name: string) => void } {
+  const repo = makeRepo();
+
+  const originDir = mkdtempSync(join(tmpdir(), "run-release-origin-"));
+  execGit(["init", "-q", "--bare", originDir]);
+  execGit(["-C", repo.dir, "remote", "add", "origin", originDir]);
+
+  function checkoutBranch(name: string): void {
+    execGit(["-C", repo.dir, "checkout", "-q", "-B", name]);
+  }
+
+  return { ...repo, originDir, checkoutBranch };
+}
+
 describe("runRelease", () => {
   let dir: string | undefined;
+  let originDir: string | undefined;
 
   afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
+    if (originDir) rmSync(originDir, { recursive: true, force: true });
     dir = undefined;
+    originDir = undefined;
   });
 
   it(
     "includes a declined finding whose sites grew, excludes one that hasn't, opens exactly one " +
       "PR, and stamps a parseable marker on every checklist item",
     () => {
-      const repo = makeRepo();
+      const repo = makeReleaseRepo();
       dir = repo.dir;
+      originDir = repo.originDir;
 
       repo.commit("a.ts", "export const a = 1;\n", "seed");
       const head = repo.commit("b.ts", "export const b = 1;\n", "the session's own commit");
@@ -107,10 +141,9 @@ describe("runRelease", () => {
 
       expect(result.opened).toBe(true);
 
-      const prCreateCalls = calls.filter((args) => args[0] === "pr" && args[1] === "create");
-      expect(prCreateCalls).toHaveLength(1);
+      const prCreateCall = singlePrCreateCall(calls);
 
-      const body = flagValue(prCreateCalls[0], "--body") ?? "";
+      const body = flagValue(prCreateCall, "--body") ?? "";
       const checklistLines = body.split("\n").filter((line) => line.startsWith("- [ ] "));
 
       expect(checklistLines).toHaveLength(1);
@@ -121,6 +154,17 @@ describe("runRelease", () => {
       expect(marker).toEqual({ finding: "grew past the decision", sites: ["a.ts:1", "b.ts:1"] });
 
       expect(readLastReleaseRef(repo.dir)).toBe(head);
+
+      // #219: runRelease creates and pushes the release's own head branch, under a `release/`
+      // prefix, and hands it to composeRelease as --head — never leaving head to gh's own
+      // current-branch fallback.
+      const releaseHead = flagValue(prCreateCall, "--head");
+      expect(releaseHead).toMatch(/^release\//);
+      expect(
+        execFileSync("git", ["-C", repo.originDir, "rev-parse", "--verify", "--quiet", `refs/heads/${releaseHead}`], {
+          encoding: "utf8",
+        }).trim(),
+      ).not.toBe("");
     },
   );
 
@@ -166,4 +210,35 @@ describe("runRelease", () => {
     expect(calls).toHaveLength(0);
     expect(readLastReleaseRef(repo.dir)).toBeUndefined();
   });
+
+  it(
+    "opens a PR instead of erroring when the run starts on the branch composeRelease would " +
+      "otherwise default its base to (#219 — 'head branch \"main\" is the same as base branch " +
+      '"main"\')',
+    () => {
+      const repo = makeReleaseRepo();
+      dir = repo.dir;
+      originDir = repo.originDir;
+
+      repo.checkoutBranch("main");
+      const head = repo.commit("a.ts", "export const a = 1;\n", "the session's own commit");
+
+      writeObservationNote({
+        git: execGit,
+        repoDir: repo.dir,
+        commit: head,
+        observations: [observation({ finding: "a release-eligible finding", sites: ["a.ts:1"], released: true })],
+      });
+
+      const { gh, calls } = fakeGh();
+      const result = runRelease({ git: execGit, gh, repoDir: repo.dir, head, prdClosed: true, prBase: "main" });
+
+      expect(result.opened).toBe(true);
+
+      const prCreateCall = singlePrCreateCall(calls);
+      expect(flagValue(prCreateCall, "--base")).toBe("main");
+      expect(flagValue(prCreateCall, "--head")).not.toBe("main");
+      expect(flagValue(prCreateCall, "--head")).toMatch(/^release\//);
+    },
+  );
 });
