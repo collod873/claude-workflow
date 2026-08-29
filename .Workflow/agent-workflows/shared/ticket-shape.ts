@@ -52,6 +52,55 @@ export const PATH_LINE_RE = /[\w./-]*[/.][\w./-]*:\d+/;
 const NEXT_HEADING_RE = /^##[ \t]/m;
 
 /**
+ * The delimiter a trailing marker sits behind — em dash, en dash, or a
+ * space-delimited single/double hyphen. Ported verbatim from
+ * `bin/ticket_shape.py`'s `CHECK_MARKER_DELIM`, which took it from the close
+ * gate's own `VERDICT_RE`, so a ticket author never learns two dash rules for
+ * two trailing markers.
+ */
+const CHECK_MARKER_DELIM = "(?:—|–|(?<=\\s)-{1,2}(?=\\s))";
+
+/**
+ * An *attempt* at a `check:` marker: the delimiter and the label, whatever
+ * follows. Case-insensitive, deliberately — `— Check: \`x\`` is a criterion
+ * that tried and got the shape wrong, which is a different fact from prose
+ * that never mentioned a check at all.
+ */
+export const CHECK_MARKER_ATTEMPT_RE = new RegExp(`${CHECK_MARKER_DELIM}\\s*check:`, "i");
+
+/**
+ * A well-formed marker: the attempt, then exactly one backtick-quoted command
+ * and nothing else before the criterion ends. Anchored at both ends so a
+ * second backtick span, or trailing prose, fails to parse rather than
+ * silently grabbing the wrong span.
+ *
+ * **This is a port, and the port is the point.** `bin/close-ticket` runs a
+ * criterion's check by parsing it with `bin/ticket_shape.py`'s
+ * `CHECK_MARKER_RE`; lane 03 writes that criterion through
+ * `render-body.ts`. Until #215 the two had never met — the slicer emitted a
+ * bare `check: <command>` with no delimiter and no backticks, which the
+ * Python side reads as prose, so every ticket the chain sliced closed on
+ * `0 of N criteria verified`. `render-body.test.ts` drives a rendered body
+ * through the real Python reader rather than trusting this copy of the
+ * pattern, which is what keeps the port honest.
+ */
+export const CHECK_MARKER_RE = new RegExp(
+  `${CHECK_MARKER_DELIM}\\s*check:\\s*\`([^\`\\n]+)\`\\s*$`,
+);
+
+/**
+ * The command a criterion's trailing `check:` marker names, or `undefined`
+ * when it carries no well-formed one — matching `parse_check_marker`'s
+ * deliberate blindness to *why*: prose and a malformed marker both answer
+ * `undefined` here, and telling those apart is the caller's job
+ * (`CHECK_MARKER_ATTEMPT_RE`).
+ */
+export function parseCheckMarker(criterion: string): string | undefined {
+  const match = CHECK_MARKER_RE.exec(criterion.trim());
+  return match ? match[1].trim() : undefined;
+}
+
+/**
  * Normalises the line endings of anything read off the tracker before a
  * line-anchored pattern is run over it.
  *

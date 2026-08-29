@@ -171,19 +171,31 @@ describe("a plan-emitting stage prints one measurement line against the Slice ca
     vi.restoreAllMocks();
   });
 
+  /**
+   * A criterion of exactly `length` characters that a publisher will still
+   * accept — padding plus a real `check:` marker (`render-body.ts`). The
+   * measurement is about length, but `audit-and-publish` publishes the plan it
+   * measures, and a criterion `bin/close-ticket` could not run never gets that
+   * far (#215).
+   */
+  const criterionOfLength = (length: number) => {
+    const marker = " — check: `z`";
+    return "z".repeat(length - marker.length) + marker;
+  };
+
   const knownPlan = [
     slice({
       title: "Narrow",
       whatToBuild: "x".repeat(120),
       whyNotMerged: "y".repeat(40),
-      acceptanceCriteria: ["z".repeat(30), "z".repeat(75)],
+      acceptanceCriteria: [criterionOfLength(30), criterionOfLength(75)],
       filesClaimed: ["a.ts"],
     }),
     slice({
       title: "Wide",
       whatToBuild: "x".repeat(300),
       whyNotMerged: "y".repeat(90),
-      acceptanceCriteria: ["z".repeat(55)],
+      acceptanceCriteria: [criterionOfLength(55)],
       filesClaimed: ["a.ts", "b.ts", "c.ts", "d.ts"],
     }),
   ];
