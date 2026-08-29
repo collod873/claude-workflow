@@ -1,0 +1,123 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { runCloneGate } from "./clone-gate.ts";
+
+/**
+ * The gate is a thing whose contract is its exit code and its printed banner, and the defect this
+ * file was written for (#218) does not exist in this repo's own tree: `knowledge-base/` is checked
+ * out by `audit.yml` on the runner and nowhere else. So every test here builds a scratch repository
+ * with the shape in question and runs the real gate against it — the only venue where a nested
+ * checkout is present to be mishandled.
+ */
+
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+
+let scratchDirs: string[] = [];
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true });
+  scratchDirs = [];
+});
+
+/**
+ * A repository the gate can actually scan: one TypeScript file long enough to be worth reading, and
+ * this repo's own `node_modules` linked in, because `scan()` runs `<root>/node_modules/.bin/jscpd`
+ * and a scratch tree has no dependency tree of its own. `node_modules` is gitignored so the link
+ * never enters the file set, and `.gitignore` buckets as an already-declared extension.
+ */
+function makeScratchRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "clone-gate-"));
+  scratchDirs.push(dir);
+  execFileSync("git", ["init", "-q", dir]);
+  writeFileSync(join(dir, ".gitignore"), "node_modules\n", "utf8");
+  writeFileSync(
+    join(dir, "source.ts"),
+    ["export function add(a: number, b: number): number {", "  return a + b;", "}", "", "export const ONE = 1;", ""].join("\n"),
+    "utf8",
+  );
+  symlinkSync(join(REPO_ROOT, "node_modules"), join(dir, "node_modules"));
+  return dir;
+}
+
+/** Checks out a second, independent repository inside `dir` — the `knowledge-base/` shape. */
+function nestRepository(dir: string, name: string): void {
+  const nested = join(dir, name);
+  mkdirSync(nested, { recursive: true });
+  execFileSync("git", ["init", "-q", nested]);
+  writeFileSync(join(nested, "corpus.md"), "# corpus\n", "utf8");
+}
+
+/** Runs the gate with the venue guard neutralised, and returns its code plus everything it printed. */
+function runGate(root: string): { code: number; out: string } {
+  // `bin/gauntlet` exports GAUNTLET_VENUE, and the gate declines to run when it sees one (rule 6).
+  // A suite invoked from `npm run check` inside the gauntlet would otherwise no-op and pass.
+  vi.stubEnv("GAUNTLET_VENUE", "");
+  const lines: string[] = [];
+  const collect = (...args: unknown[]): void => void lines.push(args.join(" "));
+  vi.spyOn(console, "log").mockImplementation(collect);
+  vi.spyOn(console, "error").mockImplementation(collect);
+  const code = runCloneGate(root, []);
+  return { code, out: lines.join("\n") };
+}
+
+describe("runCloneGate", () => {
+  it("scans a tree containing a nested git repository instead of refusing it", () => {
+    const dir = makeScratchRepo();
+    nestRepository(dir, "knowledge-base");
+
+    const { code, out } = runGate(dir);
+
+    // `git ls-files` reports the nested checkout as `knowledge-base/`, whose extension is `""` —
+    // which used to land in `undeclared` and take the whole Audit lane's `pre-push` down with it.
+    expect(out).not.toContain("refusing to scan");
+    expect(code).toBe(0);
+    expect(out).toContain("scanned 1 files");
+  });
+
+  it("names the nested repository it skipped, so the skip is not the silent one rule 3 forbids", () => {
+    const dir = makeScratchRepo();
+    nestRepository(dir, "knowledge-base");
+
+    const { out } = runGate(dir);
+
+    expect(out).toContain("knowledge-base/");
+    expect(out).toMatch(/skipped 1 nested git repository/);
+  });
+
+  it("still refuses a genuinely undeclared extension bucket", () => {
+    const dir = makeScratchRepo();
+    nestRepository(dir, "knowledge-base");
+    // A language the gate has neither a jscpd format nor an IGNORED_EXTENSIONS entry for. The
+    // nested-repo skip must not have widened into "anything unaccounted for is fine" — that is the
+    // vacuous pass the gate exists to make impossible.
+    writeFileSync(join(dir, "program.cobol"), "IDENTIFICATION DIVISION.\n", "utf8");
+
+    const { code, out } = runGate(dir);
+
+    expect(code).toBe(2);
+    expect(out).toContain("refusing to scan");
+    expect(out).toContain(".cobol");
+  });
+
+  it("still refuses an extensionless file whose language nothing states", () => {
+    const dir = makeScratchRepo();
+    nestRepository(dir, "knowledge-base");
+    // The nested-repo entry and this one bucket identically on extension — both `""`. If the skip
+    // had been keyed on the empty bucket rather than on an actual `.git`, it would have taken
+    // `bin/gauntlet`, `bin/clone-gate` and `.husky/pre-push` out of scope with it, which is the
+    // founding mistake `docs/agents/clone-gate.md` records.
+    writeFileSync(join(dir, "runner"), "no shebang here\n", "utf8");
+
+    const { code, out } = runGate(dir);
+
+    expect(code).toBe(2);
+    expect(out).toContain("refusing to scan");
+    // One file in the bucket, and it is this one — the nested checkout is not in there with it.
+    expect(out).toContain(".(no extension) — 1 file(s), e.g. runner");
+  });
+});

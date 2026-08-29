@@ -202,11 +202,32 @@ function repoFiles(root: string): string[] {
   return out.split("\0").filter((path) => path.length > 0);
 }
 
+/**
+ * True for the one entry shape `git ls-files` uses that is not a file: a **nested git repository**,
+ * reported as its directory with a trailing slash — `knowledge-base/` — because everything inside
+ * it belongs to *that* repository's index, not this one's. CI checks the private corpus repo out
+ * there (`audit.yml`), so the entry exists on the runner and nowhere else, which is how every local
+ * gauntlet stayed green while the Audit lane's `pre-push` died on a refusal (#218).
+ *
+ * It is not enough to trust the slash. A directory that is not a repository would be a real gap in
+ * scope, and letting it through on punctuation alone is exactly the silent skip rule 3 forbids — so
+ * the entry has to actually carry a `.git`, and anything else with a trailing slash still lands in
+ * `undeclared` and still refuses the run.
+ */
+function isNestedRepository(root: string, path: string): boolean {
+  return path.endsWith("/") && existsSync(join(root, path, ".git"));
+}
+
 /** What bucketing the tree produced: what will be scanned, and what nothing accounts for. */
 interface Scope {
   files: ScopedFile[];
   /** Extension → the files nothing declares. The refusal in rule 3 is built from this. */
   undeclared: Map<string, string[]>;
+  /**
+   * Nested repositories skipped, in `git ls-files` spelling. Named in the banner rather than
+   * dropped: rule 3's whole point is that a skip nobody can see reads the same as a clean scan.
+   */
+  nested: string[];
 }
 
 /**
@@ -219,9 +240,14 @@ export function scopeOf(root: string): Scope {
   const ignored = new Set(IGNORED_EXTENSIONS.map((entry) => entry.ext));
   const files: ScopedFile[] = [];
   const undeclared = new Map<string, string[]>();
+  const nested: string[] = [];
 
   for (const path of repoFiles(root)) {
     if (EXCLUDED_PATHS.some((entry) => path === entry.path || path.startsWith(`${entry.path}/`))) continue;
+    if (isNestedRepository(root, path)) {
+      nested.push(path);
+      continue;
+    }
     const ext = extensionOf(path);
     const byExtension = byExt.get(ext);
     if (byExtension && !ignored.has(ext)) {
@@ -242,7 +268,8 @@ export function scopeOf(root: string): Scope {
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path));
-  return { files, undeclared };
+  nested.sort((a, b) => a.localeCompare(b));
+  return { files, undeclared, nested };
 }
 
 /**
@@ -433,7 +460,15 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
     return 0;
   }
 
-  const { files, undeclared } = scopeOf(root);
+  const { files, undeclared, nested } = scopeOf(root);
+  if (nested.length > 0) {
+    // Rule 3 permits the skip and forbids doing it quietly. Printed before the refusal check as
+    // well as before the banner, so the line is there whichever way the run ends.
+    console.log(
+      `clone gate: skipped ${nested.length} nested git ${nested.length === 1 ? "repository" : "repositories"} — ${nested.join(", ")}` +
+        " — each is another repo's checkout, and its files are that repo's to scan, not this one's.",
+    );
+  }
   if (undeclared.size > 0) {
     console.error(refusal(undeclared));
     return 2;
