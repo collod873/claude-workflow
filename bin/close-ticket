@@ -14,6 +14,18 @@ the issue stays open, and this exits non-zero. There is no partial close and no 
 stamp on this route — re-running the same invocation after the work is fixed is the entire
 recovery path.
 
+Two shapes abort the same way, and for the same reason: **unverified is not a verdict this
+script may close on** (#215).
+
+- A criterion that says `check:` and hands this script nothing runnable (`UNPARSEABLE_CHECK_RE`)
+  is a *failure*, never an `UNVERIFIED: no check` bullet. It was the second of those until
+  #215: lane 03 emitted `- [ ] check: grep -q ...` — no delimiter, no backticks — which read as
+  prose, so #203 and #210 each closed on `0 of 8 criteria verified` against work nobody had
+  checked. A criterion meaning to be checked and failing to say how is a defect in the ticket.
+- A ticket whose criteria come back **every criterion unverified** does not close at all. The
+  summary line was supposed to make that erosion visible; a record saying `0 of 8` still closed
+  the issue, which made it visible to nobody. Zero of any number is not evidence.
+
 A body carrying no `## Acceptance criteria` heading closes on the `No diff.` form, matching a
 map or task ticket's existing exit (`ticket_shape.criteria_blocks` returns `None` for that
 shape).
@@ -46,6 +58,7 @@ every `gh`-calling tool in this repo shares (#102, #109); there is no second cop
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +68,15 @@ import gh_support  # noqa: E402
 import ticket_shape  # noqa: E402
 
 NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
+
+# A criterion that mentions `check:` but yields no command. Wider than
+# `ticket_shape.CHECK_MARKER_ATTEMPT_RE` on purpose: that one requires the em-dash delimiter,
+# and the shape that actually reached the tracker carried none — so the criteria lane 03 wrote
+# were not *malformed* markers, they were invisible ones, and the run that closed on them
+# reported "no check" about a line whose first word is `check`. The looser question — did this
+# criterion mean to name a check — is the one worth asking, because a criterion that says
+# `check:` and does not parse is a ticket defect either way.
+UNPARSEABLE_CHECK_RE = re.compile(r"\bcheck:", re.IGNORECASE)
 
 
 def fetch_body(gh, issue: str) -> str:
@@ -113,6 +135,18 @@ def render_record(range_spec: str, blocks: list[str] | None,
     for criterion in blocks:
         reference, command = split_check_marker(criterion)
         if command is None:
+            if UNPARSEABLE_CHECK_RE.search(criterion):
+                print(
+                    "error: criterion names a check this script cannot run: "
+                    f"{reference}",
+                    file=sys.stderr,
+                )
+                print(
+                    "  a runnable criterion reads: <what is observably true> — check: "
+                    "`<command>` — one backtick-quoted command, nothing after it",
+                    file=sys.stderr,
+                )
+                return None, False
             bullets.append(f"- {reference} — UNVERIFIED: no check")
             continue
         result = run_check(command, checkout)
@@ -129,6 +163,18 @@ def render_record(range_spec: str, blocks: list[str] | None,
 
     total = len(bullets)
     unverified = total - verified
+    if total and not verified:
+        print(
+            f"error: {total} acceptance criteria and every criterion unverified — nothing "
+            "here was checked, so there is nothing to close on",
+            file=sys.stderr,
+        )
+        print(
+            "  give each criterion a trailing — check: `<command>` marker, or close this "
+            "as not planned if it is not being delivered",
+            file=sys.stderr,
+        )
+        return None, False
     summary = f"{verified} of {total} criteria verified · {unverified} unverified"
     body = "\n".join([f"`{range_spec}`", "", summary, "", *bullets])
     return f"## Closing record\n\n{body}\n", True

@@ -182,7 +182,10 @@ describe("sliceAndPublish", () => {
     const plan = [
       slice({
         title: "Root",
-        acceptanceCriteria: ["First thing is true.", "Second thing is true."],
+        acceptanceCriteria: [
+          "First thing is true — check: `npm test`",
+          "Second thing is true — check: `npm run lint`",
+        ],
         filesClaimed: ["a/b.ts", "a/c.ts"],
       }),
     ];
@@ -200,8 +203,8 @@ describe("sliceAndPublish", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
 
     expect(body).toContain(`#${PRD_NUMBER}`);
-    expect(body).toContain("- [ ] First thing is true.");
-    expect(body).toContain("- [ ] Second thing is true.");
+    expect(body).toContain("- [ ] First thing is true — check: `npm test`");
+    expect(body).toContain("- [ ] Second thing is true — check: `npm run lint`");
     expect(body).toContain("- a/b.ts");
     expect(body).toContain("- a/c.ts");
     expect(body).not.toMatch(/closes/i);
