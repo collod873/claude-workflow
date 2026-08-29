@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
@@ -246,11 +247,28 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
     withHandoffDir();
     delete process.env.FAILURE_REASON_PATH;
 
-    expect(handoffPath()).toBe(DEFAULT_HANDOFF_PATH);
+    // DEFAULT_HANDOFF_PATH is repo-relative by design (that's the fallback
+    // under test), which means it resolves against process.cwd() — the real
+    // checkout root, shared by every worker in this suite's pool. Pinning
+    // the relative-path behaviour without colliding with a sibling worker
+    // means giving this one test a private cwd for its duration, not a
+    // private handoff path (#222): a fixed absolute path here would stop
+    // testing the fallback it exists to pin. chdir is process-wide within a
+    // vitest worker, so it must be restored — and the temp dir removed —
+    // before this test hands the worker back, success or failure.
+    const cwd = mkdtempSync(join(tmpdir(), "handoff-cwd-"));
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      expect(handoffPath()).toBe(DEFAULT_HANDOFF_PATH);
 
-    writeFailure("seam-sweep", "boom");
+      writeFailure("seam-sweep", "boom");
 
-    expect(readFileSync(DEFAULT_HANDOFF_PATH, "utf8")).toBe("seam-sweep: boom\n");
+      expect(readFileSync(join(cwd, DEFAULT_HANDOFF_PATH), "utf8")).toBe("seam-sweep: boom\n");
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
 
