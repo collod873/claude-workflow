@@ -39,6 +39,15 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    trust the number: the alternative to a loud failure is a vacuous pass, and a vacuous pass is
    indistinguishable from a clean one.
 
+   A **nested repository** is the one entry that is neither a file to scan nor a bucket to refuse.
+   `git ls-files` reports another repo's checkout as its directory with a trailing slash — CI checks
+   the private corpus repo into `knowledge-base/`, so the entry exists on the runner and in no local
+   tree, which is how a refusal there survived every local run green. Its files belong to that
+   repository's index, and scanning them here would report its duplication as this repo's. So it is
+   skipped — and, because rule 3 is about the skip being *visible*, the run prints the directory it
+   skipped. Read on punctuation alone that guard would be the vacuous pass again, so the entry has
+   to actually carry a `.git`; a trailing slash over anything else still refuses.
+
 4. **It prints how many files it actually scanned.** A count is what makes a vacuous pass visible
    to a human reading CI output, and what makes "the gate stopped seeing `bin/`" a reviewable
    one-line diff rather than an archaeology exercise.
