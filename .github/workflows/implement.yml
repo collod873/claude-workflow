@@ -29,10 +29,16 @@ name: Implement
   repository_dispatch:
     types: [ticket-ready]
 
+# `issues: write`, not `read`: `implement.ts` reaches `implement/out-of-brief.ts`, which files and
+# comments on the out-of-brief tracker with `gh issue create` / `gh issue comment`. Under `read`
+# that is a `Resource not accessible by integration (createIssue)` at the *end* of the run — lane 05
+# run 33230260687 hit it after 19 turns and $0.44, and left the claim branch `implement/issue-212`
+# behind for a human to delete (#181, #196). `workflow-permissions.test.ts` now derives this
+# requirement from the entrypoint rather than trusting the block, so narrowing it back fails locally.
 permissions:
   contents: write
   pull-requests: write
-  issues: read
+  issues: write
 
 jobs:
   implement:
