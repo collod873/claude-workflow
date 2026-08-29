@@ -178,6 +178,40 @@ export function runImplementer(exec: StageExec, brief: string): Promise<Implemen
   });
 }
 
+/**
+ * Where a run drops the implementer's answer, verbatim, the moment it has one. `implement.yml`
+ * points this at the runner's temp directory and uploads the file with `if: always()`; unset — a
+ * workstation run — means don't bother.
+ */
+export const ANSWER_PATH_ENV = "IMPLEMENT_ANSWER_PATH";
+
+/**
+ * Writes the implementer's answer down **before anything is decided about it**.
+ *
+ * A lane 05 answer exists in exactly one place — the model's reply — and run 33275876786 is what
+ * that costs when a later step throws it away: 23 minutes and $6.36 of correct work gone, with no
+ * artifact, no commit, and a runner log that renders the call as a bare `StructuredOutput()` with
+ * its payload elided. Nothing on GitHub held a copy (ADR-0103). This is the copy.
+ *
+ * **Never throws.** A receipt is for the humans reading the run afterwards; a run that cannot write
+ * one still has a ticket to build.
+ */
+function keepAnswer(
+  writeFile: (path: string, content: string) => void,
+  env: Record<string, string | undefined>,
+  answer: ImplementerAnswer,
+  log: (line: string) => void,
+): void {
+  const path = env[ANSWER_PATH_ENV];
+  if (!path) return;
+  try {
+    writeFile(path, JSON.stringify(answer, null, 2));
+    log(`kept the implementer's answer at ${path}`);
+  } catch (err) {
+    log(`could not keep the implementer's answer at ${path}: ${reason(err)}`);
+  }
+}
+
 function fsWriteFile(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content, "utf8");
@@ -352,24 +386,31 @@ function commitAndPushBranch(git: GitExec, branch: string, paths: string[], comm
 }
 
 /**
- * The files whose content the stage actually changes — every one it returned that is either absent
- * from disk or already holds something else.
+ * Whatever `paths` carry that the commit this run started at does not — asked of **git**, after the
+ * write, so the answer covers work however it arrived on disk.
  *
- * Asked **before** the write, because after it every file is identical to what was written, and
- * asked of the files rather than of git because that is the question this lane can answer without
- * a staged index: an implementer that returns the file exactly as it already is has built nothing.
+ * A no-op is a legitimate outcome and this is the question that establishes one (#196): run
+ * 33229214201 built #210, correctly found the ticket already implemented, returned its files
+ * unchanged, and died on `git commit` with `nothing to commit, working tree clean`, leaving its
+ * claim behind.
  *
- * That is not a hypothetical (#196). Run 33229214201 built #210, correctly found the ticket already
- * implemented, and returned the files unchanged — and died on `git commit -m "Implement #210"` with
- * `nothing to commit, working tree clean`, leaving its claim behind. A no-op is a legitimate
- * outcome, and asking this before the commit is what lets the lane say so instead of failing.
+ * It has to be git that answers, because the implementer is not only a thing that *returns* files —
+ * it holds Edit, Write and Bash, and building a ticket is what it does with them. Comparing its
+ * answer against the filesystem compares that answer to its own edits, which agree by construction:
+ * run 33275876786 built #237 over 23 minutes, reported the five files it had already written, was
+ * told every one of them matched disk, and had the lot discarded as "nothing to build"
+ * ([ADR-0103](docs/adr/0103-what-a-lane-05-run-built-is-a-question-only-git-can-answer.md)).
+ * `git status` is indifferent to who wrote a file and answers both cases correctly: clean when the
+ * implementer genuinely changed nothing, dirty when it did the work itself.
+ *
+ * Scoped to `paths` — the implementer's own report of what it wrote — so a stray edit it made and
+ * did not report cannot smuggle itself into the commit.
  */
-function filesThatChange(
-  files: ImplementerAnswer["files"],
-  readFile: (path: string) => string,
-  fileExists: (path: string) => boolean,
-): ImplementerAnswer["files"] {
-  return files.filter((file) => !fileExists(file.path) || readFile(file.path) !== file.content);
+export function worktreeChanges(git: GitExec, paths: string[]): string[] {
+  if (paths.length === 0) return [];
+  return git(["status", "--porcelain", "--", ...paths])
+    .split("\n")
+    .filter((line) => line.trim() !== "");
 }
 
 /**
@@ -498,6 +539,8 @@ export interface ImplementDeps {
   log?: (line: string) => void;
   /** When this run started, for judging a claim's age. Injected so a test can age one. */
   now?: Date;
+  /** Read for `ANSWER_PATH_ENV` only. Injected so a test names a path without setting one. */
+  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -586,6 +629,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   });
 
   const answer = await runImplementer(deps.exec, brief);
+  keepAnswer(deps.writeFile, deps.env ?? process.env, answer, log);
 
   // Non-blocking (ADR-0042): every out-of-brief read the implementer reports is recorded on the
   // standing tracker issue and nothing else — never a `dependencies/blocked_by` write, never a
@@ -594,12 +638,12 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     recordOutOfBrief(deps.gh, module);
   }
 
-  // Asked before the write, while disk still holds what the run started with.
-  const changing = filesThatChange(answer.files, deps.readFile, deps.fileExists);
-
   for (const file of answer.files) {
     deps.writeFile(file.path, file.content);
   }
+
+  // Asked of git, after the write — see `worktreeChanges` for why the filesystem cannot answer it.
+  const changing = worktreeChanges(deps.git, answer.files.map((file) => file.path));
 
   if (changing.length === 0) {
     releaseClaim(deps.gh, branch, log);

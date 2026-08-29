@@ -50,6 +50,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # Outside the checkout, so the receipt can never be staged into the branch it describes.
+      IMPLEMENT_ANSWER_PATH: ${{ runner.temp }}/implementer-answer.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,3 +91,17 @@ jobs:
       # exactly one PR, and send exactly one verification dispatch naming it.
       - name: Implement the ticket
         run: npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
+
+      # `always()`, because the runs worth recovering are the ones that did not end in a pull
+      # request. The implementer's answer lives in the model's reply and nowhere else: the runner
+      # log renders the call as a bare `StructuredOutput()` with the payload elided, so a run that
+      # builds a ticket and then discards it leaves nothing on GitHub to rebuild it from. Run
+      # 33275876786 lost 23 minutes and $6.36 of correct work that way (ADR-0103).
+      - name: Keep the implementer's answer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: implementer-answer-${{ github.event.client_payload.issue }}
+          path: ${{ runner.temp }}/implementer-answer.json
+          if-no-files-found: ignore
+          retention-days: 30

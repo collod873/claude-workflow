@@ -7,6 +7,7 @@ import { implementationBranch } from "../shared/ready-set";
 import { createFakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
+  ANSWER_PATH_ENV,
   assembleBrief,
   CLAIM_TIMEOUT_MINUTES,
   extractSeamsConsumed,
@@ -208,11 +209,22 @@ const ticketCommentsIn = (calls: string[][]): string[] =>
   calls.filter((call) => call[0] === "issue" && call[1] === "comment").map((call) => call[call.indexOf("--body") + 1]);
 
 /** A fake `GitExec` that records every call and answers a fixed HEAD for `rev-parse`. */
-function fakeGit(): { git: GitExec; calls: string[][] } {
+/**
+ * `status` scripts what `git status --porcelain -- <paths>` reports, which is how the lane decides
+ * whether its implementer built anything. The default says every path it asks about is modified —
+ * the ordinary run, where the implementer did the work — so only a test about the no-op has to say
+ * otherwise.
+ */
+function fakeGit(status: (paths: string[]) => string = (paths) => paths.map((path) => ` M ${path}`).join("\n")): {
+  git: GitExec;
+  calls: string[][];
+} {
   const calls: string[][] = [];
   const git: GitExec = (args) => {
     calls.push([...args]);
-    return args[0] === "rev-parse" ? `${HEAD_SHA}\n` : "";
+    if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
+    if (args[0] === "status") return status(args.slice(args.indexOf("--") + 1));
+    return "";
   };
   return { git, calls };
 }
@@ -517,6 +529,74 @@ describe("a claim does not outlive the run that made it", () => {
 });
 
 /**
+ * ADR-0103. A lane 05 answer exists in the model's reply and nowhere else — the runner log elides
+ * the payload, and a run that opens no pull request commits nothing — so the only copy that can
+ * survive a run is one written before the run decides anything about it.
+ */
+describe("the implementer's answer, kept", () => {
+  const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
+  const ANSWER = { files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it." };
+
+  async function runWith(env: Record<string, string | undefined>, writeFile: (path: string, content: string) => void) {
+    const { gh } = fakeGh(ticket);
+    const { git } = fakeGit(() => "");
+    await runImplement({
+      gh,
+      exec: createFakeStage(JSON.stringify(ANSWER)).exec,
+      git,
+      readFile: () => "# CONTEXT\n",
+      fileExists: () => false,
+      writeFile,
+      issueNumber: 167,
+      failingTests: [],
+      log: () => {},
+      now: NOW,
+      env,
+    });
+  }
+
+  it("writes the whole answer where the workflow can upload it, even on the run that builds nothing", async () => {
+    const written: Record<string, string> = {};
+    await runWith({ [ANSWER_PATH_ENV]: "/tmp/answer.json" }, (path, content) => {
+      written[path] = content;
+    });
+
+    // The no-op path: `git status` said clean, so nothing was committed and no PR was opened. The
+    // receipt is the only thing this run leaves behind, which is the case it exists for.
+    expect(JSON.parse(written["/tmp/answer.json"])).toMatchObject(ANSWER);
+  });
+
+  it("writes nothing extra on a workstation run, which sets no path", async () => {
+    const written: string[] = [];
+    await runWith({}, (path) => written.push(path));
+
+    expect(written).toEqual(["a/b.ts"]);
+  });
+
+  it("still builds the ticket when the receipt cannot be written", async () => {
+    const { gh } = fakeGh(ticket);
+    const { git } = fakeGit();
+    const result = await runImplement({
+      gh,
+      exec: createFakeStage(JSON.stringify(ANSWER)).exec,
+      git,
+      readFile: () => "# CONTEXT\n",
+      fileExists: () => false,
+      writeFile: (path) => {
+        if (path === "/tmp/answer.json") throw new Error("read-only filesystem");
+      },
+      issueNumber: 167,
+      failingTests: [],
+      log: () => {},
+      now: NOW,
+      env: { [ANSWER_PATH_ENV]: "/tmp/answer.json" },
+    });
+
+    expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
+  });
+});
+
+/**
  * A run that builds nothing is a legitimate outcome, not a crash (#196).
  *
  * Run 33229214201 built #210, the model correctly found the ticket already implemented and returned
@@ -528,9 +608,16 @@ describe("a run whose implementer changes nothing", () => {
   const branch = implementationBranch(167);
   const ALREADY_ON_DISK = "export const x = 1;\n";
 
-  async function runAgainstDisk(disk: Record<string, string>) {
+  /**
+   * `worktreeState` is what `git status --porcelain` reports for `a/b.ts` — the tree as it stands
+   * when the implementer is done, whoever put it in that state. The disk always ends up holding
+   * exactly what the implementer reported, because that is true of every real run: the stage writes
+   * the answer out before anything is decided about it.
+   */
+  async function runAgainstTree(worktreeState: string) {
+    const disk: Record<string, string> = { "a/b.ts": ALREADY_ON_DISK };
     const { gh, calls, refs } = fakeGh(ticket);
-    const { git, calls: gitCalls } = fakeGit();
+    const { git, calls: gitCalls } = fakeGit(() => worktreeState);
     const stage = createFakeStage(
       JSON.stringify({ files: [{ path: "a/b.ts", content: ALREADY_ON_DISK }], summary: "Already implemented." }),
     );
@@ -553,7 +640,7 @@ describe("a run whose implementer changes nothing", () => {
   }
 
   it("exits green without a commit, releases its claim, and says on the ticket that it found nothing to build", async () => {
-    const { result, calls, gitCalls, refs } = await runAgainstDisk({ "a/b.ts": ALREADY_ON_DISK });
+    const { result, calls, gitCalls, refs } = await runAgainstTree("");
 
     expect(result).toEqual({ outcome: "nothing-to-build" });
     expect(gitCalls.some((call) => call[0] === "commit"), "the commit that died on `nothing to commit`").toBe(false);
@@ -564,12 +651,37 @@ describe("a run whose implementer changes nothing", () => {
     expect(ticketCommentsIn(calls)).toEqual([nothingToBuildNote(167)]);
   });
 
-  it("commits as usual when even one of the implementer's files differs from what is on disk", async () => {
-    const { result, gitCalls, refs } = await runAgainstDisk({ "a/b.ts": "export const x = 0;\n" });
+  /**
+   * The regression ADR-0103 is about, and the reason this suite asks git rather than the filesystem.
+   *
+   * The implementer holds Edit, Write and Bash, and building a ticket is what it does with them — so
+   * by the time it reports a file, that file has been on disk for twenty minutes. This is precisely
+   * the setup of the no-op above (answer identical to disk, byte for byte) and the opposite outcome,
+   * and only `git status` can tell the two apart. Run 33275876786 built #237, was compared against
+   * its own edits, agreed with itself, and was discarded as "nothing to build" — 23 minutes and
+   * $6.36, unrecoverable.
+   */
+  it("commits work the implementer did itself, even though its answer matches disk byte for byte", async () => {
+    const { result, gitCalls, refs } = await runAgainstTree(" M a/b.ts");
 
     expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
-    expect(gitCalls.some((call) => call[0] === "commit")).toBe(true);
+    expect(gitCalls.some((call) => call[0] === "commit"), "the work was on disk, so there was a commit to make").toBe(
+      true,
+    );
     expect(refs.has(branch)).toBe(true);
+  });
+
+  it("counts a file the implementer created, which a diff against HEAD alone would not show", async () => {
+    const { result } = await runAgainstTree("?? a/b.ts");
+
+    expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
+  });
+
+  it("asks git only about the paths the implementer reported, so a stray edit cannot ride along", async () => {
+    const { gitCalls } = await runAgainstTree(" M a/b.ts");
+
+    const status = gitCalls.find((call) => call[0] === "status");
+    expect(status).toEqual(["status", "--porcelain", "--", "a/b.ts"]);
   });
 });
 
