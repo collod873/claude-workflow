@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
 import { createFakeGit } from "../shared/git.fake";
 import {
+  ACCEPTANCE_JOB,
   GRAPH_CHANGED_DISPATCH_ACTION,
+  IMMUTABILITY_JOB,
   runIntegrate,
   VERIFY_DISPATCH_EVENT_TYPE,
   type CloseTicketResult,
@@ -12,12 +15,47 @@ import {
 const PR = "https://github.com/owner/repo/pull/42";
 const BRANCH = "implement/issue-42";
 const TICKET = 190;
+/**
+ * Trunk's tip. It is `origin/main` in the rebased checkout *and* the `github.sha` both lane 06's
+ * run and lane 08's run carry — a `repository_dispatch` run executes trunk's copy of the workflow
+ * at trunk's tip (ADR-0054), which is the whole reason lane 08 can find lane 06 at all.
+ */
 const TRUNK_SHA = "1111111111111111111111111111111111111111";
 const HEAD_SHA = "2222222222222222222222222222222222222222";
 const RANGE = `${TRUNK_SHA}..${HEAD_SHA}`;
 
 /** What lane 05's `openPrAndDispatch` writes: the implementer's summary, then the closing reference. */
 const PR_BODY = `Rebuilt the thing.\n\nCloses #${TICKET}`;
+
+/** One job on a scripted `verify.yml` run, as the Actions jobs API reports it. */
+interface VerifyJobFixture {
+  name: string;
+  /** `queued`, `in_progress` or `completed`; defaults to `completed`. */
+  status?: string;
+  /** `success`, `failure`, `skipped`, `cancelled`, … or `null` while it is still running. */
+  conclusion?: string | null;
+}
+
+/** One scripted `verify.yml` run, as the Actions runs API reports it. */
+interface VerifyRunFixture {
+  id?: number;
+  /** Defaults to `TRUNK_SHA` — the commit lane 08's own run carries. */
+  headSha?: string;
+  /** Defaults to `repository_dispatch`; `push` is the trunk run at the very same commit. */
+  event?: string;
+  jobs?: VerifyJobFixture[];
+}
+
+/** Lane 06 having judged this head commit and cleared both jobs. */
+const LANE_06_ALL_GREEN: VerifyRunFixture[] = [
+  {
+    id: 900,
+    jobs: [
+      { name: IMMUTABILITY_JOB, conclusion: "success" },
+      { name: ACCEPTANCE_JOB, conclusion: "success" },
+    ],
+  },
+];
 
 interface IntegrateHarness {
   gauntlet?: GauntletResult;
@@ -27,17 +65,33 @@ interface IntegrateHarness {
   body?: string;
   /** Makes the ticket comment throw, standing in for a tracker write that fails after the merge. */
   commentThrows?: boolean;
+  /** Makes the pull-request comment throw, standing in for the acceptance warning failing to post. */
+  prCommentThrows?: boolean;
+  /** What `verify.yml`'s run history answers with. Defaults to lane 06 having cleared both jobs. */
+  verifyRuns?: VerifyRunFixture[];
 }
 
 /**
  * A minimal `GhExec` stand-in for this lane's own calls — `pr view` (the branch to rebase and the
- * ticket to close), `pr merge` (the one write a green run makes), the `graph-changed` doorbell,
- * and the `issue comment` a refused close leaves behind.
+ * ticket to close), lane 06's run history and that run's jobs (the verdict this lane merges on),
+ * `pr merge` (the one write a green run makes), the `graph-changed` doorbell, the `pr comment` a
+ * non-binding acceptance red leaves behind, and the `issue comment` a refused close leaves behind.
  * `shared/gh.fake.ts`'s `FakeGh` models a different consumer's endpoints
  * (sub-issues, blocked-by edges) and would throw on either of these, so this
  * test scripts its own rather than reusing it.
+ *
+ * The two Actions endpoints are recognised through `gh-paths.ts`'s own matchers rather than
+ * restated paths, so this fake cannot answer an endpoint different from the one `integrate.ts`
+ * actually sends.
  */
-function integrateDeps({ gauntlet = { exitCode: 0 }, closeTicket, body = PR_BODY, commentThrows = false }: IntegrateHarness = {}) {
+function integrateDeps({
+  gauntlet = { exitCode: 0 },
+  closeTicket,
+  body = PR_BODY,
+  commentThrows = false,
+  prCommentThrows = false,
+  verifyRuns = LANE_06_ALL_GREEN,
+}: IntegrateHarness = {}) {
   const fakeGit = createFakeGit((args) => {
     if (args[0] === "rev-parse") return `${args[1] === "HEAD" ? HEAD_SHA : TRUNK_SHA}\n`;
     return "";
@@ -45,11 +99,33 @@ function integrateDeps({ gauntlet = { exitCode: 0 }, closeTicket, body = PR_BODY
   const calls: string[][] = [];
   const closeCalls: Array<[number, string]> = [];
 
+  const runs = verifyRuns.map((run, index) => ({
+    id: run.id ?? 900 + index,
+    head_sha: run.headSha ?? TRUNK_SHA,
+    event: run.event ?? "repository_dispatch",
+    jobs: (run.jobs ?? []).map((job) => ({
+      name: job.name,
+      status: job.status ?? "completed",
+      conclusion: job.conclusion ?? null,
+    })),
+  }));
+
   const gh = (args: string[]): string => {
     calls.push(args);
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, body });
     if (args[0] === "pr" && args[1] === "merge") return "";
+    if (args[0] === "pr" && args[1] === "comment") {
+      if (prCommentThrows) throw new Error("gh: could not comment on the pull request");
+      return "";
+    }
     if (args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches") return "";
+    if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
+      return JSON.stringify(runs.map(({ id, head_sha, event }) => ({ id, head_sha, event })));
+    }
+    const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
+    if (args[0] === "api" && jobsMatch) {
+      return JSON.stringify(runs.find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []);
+    }
     if (args[0] === "issue" && args[1] === "comment") {
       if (commentThrows) throw new Error("gh: could not comment");
       return "";
@@ -65,6 +141,7 @@ function integrateDeps({ gauntlet = { exitCode: 0 }, closeTicket, body = PR_BODY
       git: fakeGit.git,
       gh,
       pr: PR,
+      headSha: TRUNK_SHA,
       runGauntlet: () => gauntlet,
       closeTicket: (ticket: number, range: string): CloseTicketResult => {
         closeCalls.push([ticket, range]);
@@ -73,6 +150,11 @@ function integrateDeps({ gauntlet = { exitCode: 0 }, closeTicket, body = PR_BODY
       },
     },
   };
+}
+
+/** Every `pr merge` this run made — the one write a merge is, for assertions that it did not happen. */
+function mergeCalls(calls: string[][]): string[][] {
+  return calls.filter((call) => call[0] === "pr" && call[1] === "merge");
 }
 
 const CLOSED: CloseTicketResult = { exitCode: 0, output: "## Closing record\n" };
@@ -288,11 +370,241 @@ describe("runIntegrate announces the merge without interpreting it", () => {
   });
 });
 
+/**
+ * Lane 08 reads lane 06's verdict before it merges (#197).
+ *
+ * Before this, `verify.yml` run 33227183464 finished **failure** and `integrate.yml` run
+ * 33227183471 merged [#193](https://github.com/collod873/claude-workflow/pull/193) anyway — the two
+ * lanes ride the same dispatch in parallel and nothing made the merge actor look. The failing job
+ * that time was the acceptance one, which this lane rules does not bind; a red `Immutability` job
+ * would have been merged over in exactly the same way, and that one does.
+ */
+describe("runIntegrate reads lane 06's immutability verdict before merging", () => {
+  it("refuses to merge when lane 06's immutability job failed for this head commit", () => {
+    const { calls, closeCalls, deps } = integrateDeps({
+      verifyRuns: [{ jobs: [{ name: IMMUTABILITY_JOB, conclusion: "failure" }] }],
+    });
+
+    const outcome = runIntegrate(deps);
+
+    expect(outcome).toEqual({ merged: false, reason: "immutable-set" });
+    expect(mergeCalls(calls)).toEqual([]);
+    // Nothing downstream of the merge happens either: no doorbell, no close.
+    expect(calls.some((call) => call[1] === "repos/{owner}/{repo}/dispatches")).toBe(false);
+    expect(closeCalls).toEqual([]);
+  });
+
+  it("refuses even though its own gauntlet came back green, so the two verdicts are not interchangeable", () => {
+    const { deps } = integrateDeps({
+      gauntlet: { exitCode: 0 },
+      verifyRuns: [{ jobs: [{ name: IMMUTABILITY_JOB, conclusion: "failure" }] }],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
+  });
+
+  // The green case is the harness default (`LANE_06_ALL_GREEN`), so every merge asserted above —
+  // "merges on a completed green verification run" and the closing tests — is already a merge that
+  // read a completed, successful `Immutability` job. It is not restated here.
+
+  it("reads the verdict against its own head commit, and asks lane 06's own workflow for it", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED });
+
+    runIntegrate(deps);
+
+    const runsRead = calls.find((call) => workflowRunsPathMatcher.test((call[1] ?? "").split("?")[0]));
+    expect(runsRead, "no read of verify.yml's own run history").toBeDefined();
+    expect((runsRead ?? [])[1]).toContain("verify.yml");
+    // And the jobs of the run that matched, by id — never a guess from the runs listing alone.
+    expect(calls.some((call) => runJobsPathMatcher.test(call[1] ?? ""))).toBe(true);
+  });
+
+  it("spends nothing on the lookup until its own gauntlet has reported green", () => {
+    // The immutable-set alarm is cheap and this lane's gauntlet is not, but the ordering is the
+    // other way round on purpose: lane 06 runs in parallel and would still be starting.
+    const lookups = ([1, 2] as const).flatMap((exitCode) => {
+      const { calls, deps } = integrateDeps({ gauntlet: { exitCode } });
+      runIntegrate(deps);
+      return calls.filter((call) => workflowRunsPathMatcher.test((call[1] ?? "").split("?")[0]));
+    });
+
+    expect(lookups, "lane 06's run history was read on a run that was never going to merge").toEqual([]);
+  });
+});
+
+/**
+ * The third case ADR-0054 names, and the one that is not "no red check": a head commit lane 06 has
+ * not finished judging. A skipped, cancelled, queued or still-running job has said nothing, and
+ * `verify.yml`'s own downstream `if: always() && needs.immutability.result != 'failure'` reads a
+ * skip as permission to continue — a reading that is right for a job in the same run and wrong for
+ * a lane deciding whether to merge.
+ */
+describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
+  it("refuses when no dispatch run of verify.yml carries this head commit", () => {
+    const { calls, deps } = integrateDeps({ verifyRuns: [] });
+
+    const outcome = runIntegrate(deps);
+
+    expect(outcome).toEqual({ merged: false, reason: "unjudged" });
+    expect(mergeCalls(calls)).toEqual([]);
+    // Distinct from a failed immutability job, not merely another way to spell "no merge".
+    expect(outcome).not.toEqual({ merged: false, reason: "immutable-set" });
+  });
+
+  it("refuses while the immutability job is still running", () => {
+    const { deps } = integrateDeps({
+      verifyRuns: [{ jobs: [{ name: IMMUTABILITY_JOB, status: "in_progress", conclusion: null }] }],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
+  it("does not read a skipped immutability job as a pass", () => {
+    const { deps } = integrateDeps({
+      verifyRuns: [{ jobs: [{ name: IMMUTABILITY_JOB, conclusion: "skipped" }] }],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
+  it("ignores the push run at the same commit, whose immutability job is skipped by its own gate", () => {
+    // `verify.yml` also fires on `push: main`, and the push that produced this trunk tip ran at
+    // exactly this SHA — with `Immutability` skipped, because that job is gated on the dispatch.
+    // Matching on the commit alone would hand this lane that run to read.
+    const { deps } = integrateDeps({
+      verifyRuns: [{ event: "push", jobs: [{ name: IMMUTABILITY_JOB, conclusion: "skipped" }] }],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
+  it("ignores a dispatch run for a different head commit", () => {
+    const { deps } = integrateDeps({
+      verifyRuns: [{ headSha: HEAD_SHA, jobs: [{ name: IMMUTABILITY_JOB, conclusion: "success" }] }],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
+  it("takes the strictest verdict when two dispatch runs share this head commit", () => {
+    // Two implementers dispatching off the same trunk tip are indistinguishable from here — a
+    // dispatch run's `pull_requests` is empty — so a failure anywhere on the commit holds the merge.
+    const { deps } = integrateDeps({
+      verifyRuns: [
+        { id: 901, jobs: [{ name: IMMUTABILITY_JOB, conclusion: "success" }] },
+        { id: 902, jobs: [{ name: IMMUTABILITY_JOB, conclusion: "failure" }] },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
+  });
+});
+
+/**
+ * The ruling on the other half of lane 06 (#197, ADR-0095): `Restore and run acceptance` does not
+ * bind. Lane 04's first-authoring is unwired (#201), so no acceptance test names any criterion a
+ * dispatch carries and that job refuses on the empty set — it is red for every pull request today,
+ * and binding on it would stop the chain rather than catch anything. Lane 08 merges and says so on
+ * the pull request, which is the difference between a ruling and the accident #197 was filed on.
+ */
+describe("runIntegrate's ruling when only lane 06's acceptance job is red", () => {
+  const ACCEPTANCE_RED: VerifyRunFixture[] = [
+    {
+      jobs: [
+        { name: IMMUTABILITY_JOB, conclusion: "success" },
+        { name: ACCEPTANCE_JOB, conclusion: "failure" },
+      ],
+    },
+  ];
+
+  it("merges", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED, verifyRuns: ACCEPTANCE_RED });
+
+    const outcome = runIntegrate(deps);
+
+    expect(outcome).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
+    expect(mergeCalls(calls)).toHaveLength(1);
+  });
+
+  it("says on the pull request that the job was red and why it did not bind, before the merge", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED, verifyRuns: ACCEPTANCE_RED });
+
+    runIntegrate(deps);
+
+    const comments = calls.filter((call) => call[0] === "pr" && call[1] === "comment");
+    expect(comments).toHaveLength(1);
+    expect(comments[0].slice(0, 4)).toEqual(["pr", "comment", PR, "--body"]);
+    expect(comments[0][4]).toContain(ACCEPTANCE_JOB);
+    // Names the reason, not just the fact — a warning nobody can act on is noise.
+    expect(comments[0][4]).toContain("#201");
+    // On a pull request that certainly still exists.
+    expect(calls.indexOf(comments[0])).toBeLessThan(calls.indexOf(mergeCalls(calls)[0]));
+  });
+
+  it("says nothing on the pull request when lane 06 cleared both jobs", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED });
+
+    runIntegrate(deps);
+
+    expect(calls.filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([]);
+  });
+
+  it("merges even when the warning comment itself fails to post", () => {
+    const { calls, deps } = integrateDeps({
+      closeTicket: CLOSED,
+      verifyRuns: ACCEPTANCE_RED,
+      prCommentThrows: true,
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
+    expect(mergeCalls(calls)).toHaveLength(1);
+  });
+
+  it("still refuses when the acceptance job is red and the immutability job is too", () => {
+    const { deps } = integrateDeps({
+      verifyRuns: [
+        {
+          jobs: [
+            { name: IMMUTABILITY_JOB, conclusion: "failure" },
+            { name: ACCEPTANCE_JOB, conclusion: "failure" },
+          ],
+        },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
+  });
+});
+
+interface VerifyWorkflow {
+  jobs: Record<string, { name?: string }>;
+}
+
+/**
+ * The Actions API answers job *names*, and `shared/` may not import a workflow file — so
+ * `integrate.ts` spells lane 06's two job names itself. This is the assertion that keeps the two
+ * spellings from drifting, the same split `immutable-set.ts` holds to for `IMMUTABLE_SET`: a
+ * renamed job in `verify.yml` would otherwise make every lookup here find nothing, which reads as
+ * `unjudged` and silently stops every merge in the fleet.
+ */
+describe("the lane 06 job names integrate.ts reads are verify.yml's own", () => {
+  const { workflow } = readWorkflow<VerifyWorkflow>("verify.yml");
+  const names = Object.values(workflow.jobs).map((job) => job.name);
+
+  it("names the immutability job exactly as verify.yml does", () => {
+    expect(names).toContain(IMMUTABILITY_JOB);
+  });
+
+  it("names the acceptance job exactly as verify.yml does", () => {
+    expect(names).toContain(ACCEPTANCE_JOB);
+  });
+});
+
 interface IntegrateWorkflow {
   on?: { repository_dispatch?: unknown };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs: { integrate: { if?: string } };
+  jobs: { integrate: { if?: string; env?: Record<string, string>; steps?: Array<{ name?: string; run?: string }> } };
 }
 
 /**
@@ -336,5 +648,36 @@ describe("integrate.yml's token can close a ticket", () => {
 
   it("grants issues: write, the scope bin/close-ticket's comment and close both need", () => {
     expect(workflow.permissions?.issues).toBe("write");
+  });
+});
+
+/**
+ * `integrate.yml` has to hand `integrate.ts` the head commit and the scope to look it up, and it
+ * has to state the ruling on the acceptance job where the next reader of the workflow will meet it
+ * (#197's second criterion). A ruling that lives only in the code is the thing the ticket asks not
+ * to be built: the reason lane 08 merges over a red job has to be findable from the lane itself.
+ */
+describe("integrate.yml wires and states lane 08's reading of lane 06", () => {
+  const { workflow, source } = readWorkflow<IntegrateWorkflow>("integrate.yml");
+  const step = (workflow.jobs.integrate.steps ?? []).find((each) => each.run?.includes("integrate.ts"));
+
+  it("grants actions: read, without which the verdict lookup 403s after the gauntlet has run", () => {
+    expect(workflow.permissions?.actions).toBe("read");
+  });
+
+  it("passes this run's own head commit through to integrate.ts", () => {
+    expect(workflow.jobs.integrate.env?.HEAD_SHA).toBe("${{ github.sha }}");
+    expect(step?.run).toContain('"$HEAD_SHA"');
+  });
+
+  it("states in a comment that the acceptance job does not bind, and names the reason", () => {
+    expect(source).toContain(ACCEPTANCE_JOB);
+    expect(source).toContain("does not bind");
+    // The reason, not just the ruling: lane 04's first-authoring is unwired.
+    expect(source).toContain("#201");
+  });
+
+  it("states in the same comment that the immutability job does block", () => {
+    expect(source).toContain(`\`${IMMUTABILITY_JOB}\` blocks outright`);
   });
 });
