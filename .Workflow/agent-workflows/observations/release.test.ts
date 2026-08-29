@@ -38,7 +38,7 @@ describe("composeRelease", () => {
       ],
     });
 
-    const result = composeRelease({ gh, batch });
+    const result = composeRelease({ gh, batch, base: "main", head: "release/abc123" });
 
     const prCreateCalls = calls.filter((args) => args[0] === "pr" && args[1] === "create");
     expect(prCreateCalls).toHaveLength(1);
@@ -47,6 +47,8 @@ describe("composeRelease", () => {
     const body = flagValue(prCreateCalls[0], "--body");
     expect(body).toContain("- [ ] Add a CODING_STANDARDS.md entry for the retry count.");
     expect(body).not.toMatch(/closes/i);
+    expect(flagValue(prCreateCalls[0], "--head")).toBe("release/abc123");
+    expect(flagValue(prCreateCalls[0], "--base")).toBe("main");
   });
 
   it("makes no gh call at all for a batch with nothing release-eligible", () => {
@@ -57,5 +59,25 @@ describe("composeRelease", () => {
 
     expect(calls).toHaveLength(0);
     expect(result.opened).toBe(false);
+  });
+
+  it("refuses a call with no head, without making any gh call", () => {
+    const { gh, calls } = fakeGh();
+    const batch = releaseBatch({
+      prose: [proseFinding({ observation: observation({ finding: "no head" }) })],
+    });
+
+    expect(() => composeRelease({ gh, batch, base: "main" })).toThrow(/head/i);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a call whose head equals base, without making any gh call", () => {
+    const { gh, calls } = fakeGh();
+    const batch = releaseBatch({
+      prose: [proseFinding({ observation: observation({ finding: "head equals base" }) })],
+    });
+
+    expect(() => composeRelease({ gh, batch, base: "main", head: "main" })).toThrow(/head/i);
+    expect(calls).toHaveLength(0);
   });
 });

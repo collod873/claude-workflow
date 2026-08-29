@@ -5,10 +5,8 @@ import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
-import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
-import { readWorkflow } from "../shared/read-workflow";
 import { readySlices, type SliceState } from "../shared/ready-set";
-import { sliceAndPublish } from "./slice-and-publish";
+import { ACCEPTANCE_WANTED_DISPATCH_ACTION, sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
 
@@ -250,13 +248,15 @@ describe("sliceAndPublish", () => {
 });
 
 /**
- * Lane 03's hand-off to lane 05. Nothing sent this dispatch until #145's seam audit: #167 built
+ * Lane 03's hand-off to lane 04. Nothing sent this dispatch until #145's seam audit: #167 built
  * `implement.yml`'s receiving end and recorded that the send belonged to whichever ticket owned
  * this file, and no ticket ever claimed it — so 26 published tickets sat waiting for a dispatch
- * that had no sender.
+ * that had no sender. #201 rewires the send again: lane 03 asks lane 04 to author each slice's
+ * acceptance tests, naming which slices are ready, rather than telling lane 05 directly — see
+ * `dispatchReadySlices`'s header for why the order matters.
  */
-describe("sliceAndPublish dispatches lane 05 for every ready slice", () => {
-  it("sends one ticket-ready dispatch per slice with no blocked-by edges, naming its issue", () => {
+describe("sliceAndPublish asks lane 04 to author acceptance tests for every published slice", () => {
+  it("sends one acceptance-wanted dispatch per published slice, naming its issue", () => {
     const plan = [
       slice({ title: "Root" }),
       slice({ title: "Also root" }),
@@ -267,28 +267,26 @@ describe("sliceAndPublish dispatches lane 05 for every ready slice", () => {
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
     expect(fake.dispatches.map((d) => d.eventType)).toEqual([
-      IMPLEMENT_DISPATCH_EVENT_TYPE,
-      IMPLEMENT_DISPATCH_EVENT_TYPE,
+      ACCEPTANCE_WANTED_DISPATCH_ACTION,
+      ACCEPTANCE_WANTED_DISPATCH_ACTION,
+      ACCEPTANCE_WANTED_DISPATCH_ACTION,
     ]);
     expect(fake.dispatches.map((d) => d.payload.issue)).toEqual([
       String(published[0].number),
       String(published[1].number),
+      String(published[2].number),
     ]);
   });
 
-  it("dispatches nothing for a slice that is blocked", () => {
+  it("flags a slice with no blocked-by edges as ready, and a blocked one as not", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
     const fake = createFakeGh();
 
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
-    expect(fake.dispatches).toHaveLength(1);
-    expect(fake.dispatches[0].payload.issue).toBe(String(published[0].number));
-  });
-
-  it("names the same action implement.yml's job gates on", () => {
-    const { workflow } = readWorkflow<{ jobs: { implement: { if: string } } }>("implement.yml");
-    expect(workflow.jobs.implement.if).toContain(`github.event.action == '${IMPLEMENT_DISPATCH_EVENT_TYPE}'`);
+    expect(fake.dispatches).toHaveLength(2);
+    expect(fake.dispatches[0].payload).toEqual({ issue: String(published[0].number), ready: "1" });
+    expect(fake.dispatches[1].payload).toEqual({ issue: String(published[1].number), ready: "0" });
   });
 
   /**
@@ -343,8 +341,12 @@ describe("sliceAndPublish dispatches lane 05 for every ready slice", () => {
       { number: published[2].number, blockedBy: [], delivery: "open", started: false },
     ];
 
+    const readyNumbers = new Set(readySlices(states).map((state) => state.number));
     expect(fake.dispatches.map((dispatch) => Number(dispatch.payload.issue))).toEqual(
-      readySlices(states).map((state) => state.number),
+      published.map((issue) => issue.number),
+    );
+    expect(fake.dispatches.map((dispatch) => dispatch.payload.ready)).toEqual(
+      published.map((issue) => (readyNumbers.has(issue.number) ? "1" : "0")),
     );
   });
 
