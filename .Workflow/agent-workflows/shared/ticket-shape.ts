@@ -1,3 +1,5 @@
+import type { GhExec } from "./gh";
+
 /**
  * The ticket body grammar: the headings a published ticket carries, and the
  * shapes a reader is allowed to recognise them by.
@@ -109,6 +111,18 @@ const PARENT_PRD_RE = /^##[ \t]+Parent PRD[ \t]*\n#(\d+)/m;
 export function parentPrdNumber(body: string): number | undefined {
   const match = PARENT_PRD_RE.exec(normalizeNewlines(body));
   return match ? Number(match[1]) : undefined;
+}
+
+/** A ticket's title and body, as `readTicket` reads them off the tracker. */
+export interface TicketRead {
+  title: string;
+  body: string;
+}
+
+/** Reads a ticket's title and body through `gh` — a plain `gh issue view`, nothing else. */
+export function readTicket(gh: GhExec, issueNumber: number): TicketRead {
+  const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
+  return JSON.parse(raw) as TicketRead;
 }
 
 /**

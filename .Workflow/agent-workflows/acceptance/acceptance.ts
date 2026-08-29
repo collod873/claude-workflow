@@ -9,7 +9,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { CRITERIA_HEADING_RE, extractCriteria, parentPrdNumber } from "../shared/ticket-shape";
+import { CRITERIA_HEADING_RE, extractCriteria, parentPrdNumber, readTicket, type TicketRead } from "../shared/ticket-shape";
 import {
   landingFromEnv,
   runPushGate,
@@ -57,25 +57,6 @@ type AuthorAnswer = z.infer<typeof AuthorAnswer>;
 
 /** The author's structured-output contract (`shared/structured-output.ts`). */
 export const AUTHOR_OUTPUT = structuredOutput(AuthorAnswer);
-
-/**
- * `extractCriteria` and `parentPrdNumber` live in `shared/ticket-shape.ts`
- * now, alongside `CRITERIA_HEADING_RE`/`CRITERIA_ITEM_RE`/`sectionText` — the
- * rest of the grammar those two are built from. Re-exported here so this
- * module's own callers, and the test file, don't need to know they moved.
- */
-export { extractCriteria, parentPrdNumber };
-
-export interface TicketRead {
-  title: string;
-  body: string;
-}
-
-/** Reads a ticket's title and body through `gh` — the one `GhExec` call this lane makes. */
-export function readTicket(gh: GhExec, issueNumber: number): TicketRead {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
-  return JSON.parse(raw) as TicketRead;
-}
 
 export interface AuthorDeps {
   exec: StageExec;

@@ -10,8 +10,14 @@ import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/re
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { normalizeNewlines, sectionText } from "../shared/ticket-shape";
-import { extractCriteria } from "../acceptance/acceptance";
+import {
+  extractCriteria,
+  normalizeNewlines,
+  parentPrdNumber,
+  readTicket,
+  sectionText,
+  type TicketRead,
+} from "../shared/ticket-shape";
 import { runVitestJson, type TestRunResult } from "../acceptance/push-gate";
 import { recordOutOfBrief } from "./out-of-brief";
 
@@ -64,9 +70,6 @@ export const IMPLEMENT_DISPATCH_EVENT_TYPE = TICKET_READY_DISPATCH_ACTION;
  */
 export const VERIFY_DISPATCH_EVENT_TYPE = IMPLEMENTATION_PR_DISPATCH_ACTION;
 
-/** One `## Parent PRD\n#<n>` heading, as `shared/render-body.ts` writes it. */
-const PARENT_PRD_RE = /^##[ \t]+Parent PRD[ \t]*\n#(\d+)/m;
-
 /** `render-body.ts`'s `## Seams consumed` heading — present only when the slice consumed any. */
 const SEAMS_HEADING_RE = /^##[ \t]+Seams consumed[ \t]*$/m;
 
@@ -74,23 +77,6 @@ const SEAMS_HEADING_RE = /^##[ \t]+Seams consumed[ \t]*$/m;
 const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
 
 const FILE_ITEM_RE = /^[ \t]*-[ \t]*(.+?)[ \t]*$/;
-
-export interface TicketRead {
-  title: string;
-  body: string;
-}
-
-/** Reads a ticket's title and body through `gh` — one of two `GhExec` reads this lane makes. */
-export function readTicket(gh: GhExec, issueNumber: number): TicketRead {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
-  return JSON.parse(raw) as TicketRead;
-}
-
-/** The parent PRD's issue number, or `undefined` when the body carries none. */
-export function parentPrdNumber(body: string): number | undefined {
-  const match = PARENT_PRD_RE.exec(normalizeNewlines(body));
-  return match ? Number(match[1]) : undefined;
-}
 
 /**
  * The seam manifest lines a ticket's `## Seams consumed` section names, one
