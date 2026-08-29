@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { matchingRefsPath } from "../shared/gh-paths";
+import { issueCommentPathMatcher, issueCommentsPathMatcher, matchingRefsPath, subIssuesPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../watchdog/unreachable";
@@ -22,6 +22,12 @@ interface FakeIssue {
   /** Defaults to a published-slice body; pass a bare string for a hand-written issue. */
   body?: string;
   blockedBy?: number[];
+  /** Label names, as `prd` and `needs-human` are spelled on the tracker. */
+  labels?: string[];
+  /** Comment bodies already standing on the issue, oldest first. */
+  comments?: string[];
+  /** Sub-issue numbers — what puts a `prd` issue in the spec-evaluate pass's scope. */
+  children?: number[];
 }
 
 interface FakeClosed {
@@ -48,6 +54,10 @@ interface FakeGh {
   comments: Array<{ issue: number; body: string }>;
   created: Array<{ title: string; body: string }>;
   closedByRun: Array<{ issue: number; reason: string }>;
+  /** Every comment rewritten whole via `gh api ... -X PATCH`, by the id the fake handed out. */
+  commentEdits: Array<{ id: number; body: string }>;
+  labelsAdded: Array<{ issue: number; name: string }>;
+  labelsRemoved: Array<{ issue: number; name: string }>;
 }
 
 function createFake(options: FakeOptions): FakeGh {
@@ -56,6 +66,9 @@ function createFake(options: FakeOptions): FakeGh {
   const comments: Array<{ issue: number; body: string }> = [];
   const created: Array<{ title: string; body: string }> = [];
   const closedByRun: Array<{ issue: number; reason: string }> = [];
+  const commentEdits: Array<{ id: number; body: string }> = [];
+  const labelsAdded: Array<{ issue: number; name: string }> = [];
+  const labelsRemoved: Array<{ issue: number; name: string }> = [];
   const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
   const open = new Map(options.open.map((issue) => [issue.number, issue]));
 
@@ -84,6 +97,7 @@ function createFake(options: FakeOptions): FakeGh {
           number: issue.number,
           title: issue.title,
           body: issue.body ?? sliceBody(),
+          labels: (issue.labels ?? []).map((name) => ({ name })),
         })),
       );
     }
@@ -101,6 +115,15 @@ function createFake(options: FakeOptions): FakeGh {
 
     if (args[0] === "issue" && args[1] === "close") {
       closedByRun.push({ issue: Number(args[2]), reason: args[args.indexOf("--reason") + 1] });
+      return "";
+    }
+
+    if (args[0] === "issue" && args[1] === "edit") {
+      const issue = Number(args[2]);
+      const add = args[args.indexOf("--add-label") + 1];
+      const remove = args[args.indexOf("--remove-label") + 1];
+      if (args.includes("--add-label")) labelsAdded.push({ issue, name: add });
+      if (args.includes("--remove-label")) labelsRemoved.push({ issue, name: remove });
       return "";
     }
 
@@ -126,6 +149,19 @@ function createFake(options: FakeOptions): FakeGh {
         return "";
       }
 
+      const commentPatch = issueCommentPathMatcher.exec(path);
+      if (commentPatch) {
+        const body = args[args.indexOf("-f") + 1]?.replace(/^body=/, "") ?? "";
+        commentEdits.push({ id: Number(commentPatch[1]), body });
+        return "{}";
+      }
+
+      const commentsList = issueCommentsPathMatcher.exec(path);
+      if (commentsList) {
+        const bodies = open.get(Number(commentsList[1]))?.comments ?? [];
+        return JSON.stringify(bodies.map((body, index) => ({ id: Number(commentsList[1]) * 1000 + index, body })));
+      }
+
       const edges = /\/issues\/(\d+)\/dependencies\/blocked_by$/.exec(path);
       if (edges) {
         if (options.fail === "edges") throw new Error("gh: 403");
@@ -139,12 +175,18 @@ function createFake(options: FakeOptions): FakeGh {
           }),
         );
       }
+
+      const subIssues = subIssuesPathMatcher.exec(path);
+      if (subIssues) {
+        const children = open.get(Number(subIssues[1]))?.children ?? [];
+        return JSON.stringify(children.map((number) => ({ number })));
+      }
     }
 
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
 
-  return { gh, calls, dispatches, comments, created, closedByRun };
+  return { gh, calls, dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved };
 }
 
 const silent = () => {};
@@ -407,6 +449,114 @@ describe("runReconcile refuses to answer when it cannot read its own inputs", ()
 
     expect(runReconcile({ gh: fake.gh, log: silent }).action).toBe("degraded");
     expect(fake.dispatches).toEqual([]);
+  });
+});
+
+describe("runReconcile's spec-evaluate pass (#237)", () => {
+  const RUNNABLE_BODY = [
+    "## Acceptance criteria",
+    "",
+    "- [ ] I'll know it works when I can see a verdict on the spec — check: `true`",
+    "",
+  ].join("\n");
+
+  const UNRUNNABLE_BODY = [
+    "## Acceptance criteria",
+    "",
+    "- [ ] I'll know it works when I can see a verdict — check: `true`",
+    "- [ ] And also when I can see the second thing — check: `true`",
+    "",
+  ].join("\n");
+
+  /**
+   * One reconcile pass over a tracker holding exactly one open issue, returning the fake for the
+   * assertions. Every case in this block differs only in the issue it starts from and the verdict
+   * it expects, so the pass itself is written once.
+   */
+  function passOver(issue: FakeIssue): FakeGh {
+    const fake = createFake({ open: [issue] });
+    runReconcile({ gh: fake.gh, log: silent });
+    return fake;
+  }
+
+  /** Every write — a fresh `issue comment` or a rewritten `commentEdits` entry — carrying `marker`. */
+  function commentsCarrying(fake: FakeGh, marker: string): string[] {
+    return [...fake.comments.map((entry) => entry.body), ...fake.commentEdits.map((entry) => entry.body)].filter(
+      (body) => body.includes(marker),
+    );
+  }
+
+  it("upserts prd-check:v1 for a runnable spec with a sub-issue, and writes neither prd-unrunnable:v1 nor needs-human", () => {
+    const fake = createFake({
+      open: [{ number: 300, title: "A spec", body: RUNNABLE_BODY, labels: ["prd"], children: [301] }],
+    });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(commentsCarrying(fake, "prd-check:v1").length).toBeGreaterThan(0);
+    expect(commentsCarrying(fake, "prd-unrunnable:v1")).toEqual([]);
+    expect(fake.labelsAdded.map((entry) => entry.name)).not.toContain("needs-human");
+  });
+
+  it("upserts prd-unrunnable:v1 and needs-human for a spec whose body cannot run, and never prd-check:v1", () => {
+    const fake = createFake({
+      open: [{ number: 310, title: "A spec", body: UNRUNNABLE_BODY, labels: ["prd"], children: [311] }],
+    });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(commentsCarrying(fake, "prd-unrunnable:v1").length).toBeGreaterThan(0);
+    expect(commentsCarrying(fake, "prd-check:v1")).toEqual([]);
+    expect(fake.labelsAdded.map((entry) => entry.name)).toContain("needs-human");
+  });
+
+  it("never evaluates a prd issue that has grown no sub-issue yet", () => {
+    const fake = passOver({
+      number: 320,
+      title: "A spec still being sliced",
+      body: RUNNABLE_BODY,
+      labels: ["prd"],
+      children: [],
+    });
+
+    expect(commentsCarrying(fake, "prd-check:v1")).toEqual([]);
+    expect(commentsCarrying(fake, "prd-unrunnable:v1")).toEqual([]);
+  });
+
+  it("never evaluates an open issue that isn't labelled prd, however ready it looks", () => {
+    const fake = passOver({ number: 325, title: "Not a spec", body: RUNNABLE_BODY, labels: [], children: [326] });
+
+    expect(commentsCarrying(fake, "prd-check:v1")).toEqual([]);
+    expect(commentsCarrying(fake, "prd-unrunnable:v1")).toEqual([]);
+  });
+
+  it("clears the needs-human it set, in the same act that rewrites its own refusal to a verdict", () => {
+    const fake = passOver({
+      number: 330,
+      title: "A spec fixed since the last session",
+      body: RUNNABLE_BODY,
+      labels: ["prd", "needs-human"],
+      comments: ["Could not run this spec's check: its body carried two criteria.\n\n<!-- prd-unrunnable:v1 -->"],
+      children: [331],
+    });
+
+    expect(commentsCarrying(fake, "prd-check:v1").length).toBeGreaterThan(0);
+    expect(fake.labelsRemoved).toEqual([{ issue: 330, name: "needs-human" }]);
+  });
+
+  it("leaves a needs-human another lane wrote alone, even while writing that spec's verdict", () => {
+    const fake = passOver({
+      number: 340,
+      title: "A spec another lane flagged",
+      body: RUNNABLE_BODY,
+      labels: ["prd", "needs-human"],
+      // No prd-unrunnable:v1 anywhere on it — this needs-human isn't paired with this pass.
+      comments: ["A criterion is still unmet after the fix pass.\n\n<!-- fix-pass:v1 -->"],
+      children: [341],
+    });
+
+    expect(commentsCarrying(fake, "prd-check:v1").length).toBeGreaterThan(0);
+    expect(fake.labelsRemoved).toEqual([]);
   });
 });
 

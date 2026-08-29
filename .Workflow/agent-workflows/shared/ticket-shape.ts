@@ -216,3 +216,21 @@ export function extractCriteria(body: string): string[] {
     .filter((line) => CRITERIA_ITEM_RE.test(line))
     .map((line) => line.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim());
 }
+
+/**
+ * Whether `body` is a spec a mechanical closer could run unattended: exactly
+ * one acceptance criterion, carrying a well-formed `check:` marker.
+ *
+ * Mirrors `bin/ticket_shape.py`'s `ticket` branch's own instinct — a
+ * criterion is only as good as the command that verifies it — but tightens
+ * it for a spec rather than a ticket: a ticket may declare several criteria
+ * because several tickets close it piece by piece, but a spec's own check is
+ * the one thing lane 09's spec-evaluate pass (`dispatch/reconcile.ts`) can
+ * run by itself, so zero, two, or an unparseable marker are all refused
+ * alike rather than three different shapes of "close enough".
+ */
+export function isRunnableSpec(body: string): boolean {
+  const criteria = extractCriteria(body);
+  if (criteria.length !== 1) return false;
+  return parseCheckMarker(criteria[0]) !== undefined;
+}

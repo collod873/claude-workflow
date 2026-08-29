@@ -1,7 +1,14 @@
+import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { blockedByPath, matchingRefsPath } from "../shared/gh-paths";
+import {
+  blockedByPath,
+  issueCommentPath,
+  issueCommentsPath,
+  matchingRefsPath,
+  subIssuesPath,
+} from "../shared/gh-paths";
 import {
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
@@ -13,6 +20,7 @@ import {
   type SliceState,
 } from "../shared/ready-set";
 import { reason } from "../shared/reason";
+import { countCriteria, extractCriteria, isRunnableSpec, parseCheckMarker } from "../shared/ticket-shape";
 import {
   alreadyNamed,
   commentBody,
@@ -124,6 +132,8 @@ const OpenIssue = z.object({
   number: z.number(),
   title: z.string(),
   body: z.string().nullable(),
+  /** Absent on a `gh` response that never asked for it — every reader below treats that as "no labels". */
+  labels: z.array(z.object({ name: z.string() })).optional(),
 });
 const OpenIssues = z.array(OpenIssue);
 type OpenIssue = z.infer<typeof OpenIssue>;
@@ -176,7 +186,7 @@ function fetchOpenIssues(gh: GhExec, log: (line: string) => void): OpenIssue[] |
       "--limit",
       String(ISSUE_PAGE_SIZE),
       "--json",
-      "number,title,body",
+      "number,title,body,labels",
     ]);
     const parsed = OpenIssues.safeParse(JSON.parse(raw));
     if (!parsed.success) return null;
@@ -299,6 +309,153 @@ function publishedSliceNumbers(issues: OpenIssue[]): Set<number> {
   return new Set(
     issues.filter((issue) => PARENT_PRD_HEADING.test(issue.body ?? "")).map((issue) => issue.number),
   );
+}
+
+/**
+ * Lane 09's spec-evaluate pass (#233, #237): every open `prd` issue that has grown at least one
+ * sub-issue gets its own check run directly, and the verdict — or the refusal, when its body isn't
+ * a shape a mechanical run can even attempt — lands as one upserted comment. `needs-human` is the
+ * only label this pass touches, and only ever paired with its own refusal: a spec someone else
+ * flagged is not this pass's to clear, and a spec this pass flagged is not something a human should
+ * still be carrying once the body validates again.
+ *
+ * The label every published spec carries (`spec/publish.ts`'s `PRD_LABEL`) — declared again here,
+ * the way `observations/release-on-prd-close.ts` already does, rather than imported: a spec that
+ * carries no sub-issue yet is still being sliced, which is a different lane's business, so this
+ * pass's own scope is `prd` **and** `>=1 sub-issue`, not `prd` alone.
+ */
+const PRD_LABEL = "prd";
+
+/** Shared pipeline vocabulary (`shape/shape.ts`'s `NEEDS_LIVE_SESSION_LABEL`) — declared locally for the same reason `PRD_LABEL` is. */
+const NEEDS_HUMAN_LABEL = "needs-human";
+
+/** Stands on the one comment recording a spec's own check having run and what it found. */
+const PRD_CHECK_MARKER = "<!-- prd-check:v1 -->";
+
+/** Stands on the one comment recording that this pass could not run the spec's check at all. Mutually exclusive with `PRD_CHECK_MARKER` on any one spec. */
+const PRD_UNRUNNABLE_MARKER = "<!-- prd-unrunnable:v1 -->";
+
+const PrdComment = z.object({ id: z.number(), body: z.string() });
+type PrdComment = z.infer<typeof PrdComment>;
+const PrdComments = z.array(PrdComment);
+
+const SubIssueList = z.array(z.object({ number: z.number() }));
+
+/** Rewrites one comment whole, by the REST id `issueCommentsPath` reads back — never `gh issue view`'s GraphQL node id, which this endpoint does not accept. */
+function rewriteComment(gh: GhExec, id: number, body: string): void {
+  gh(["api", issueCommentPath(id), "-X", "PATCH", "-f", `body=${body}`]);
+}
+
+/** A spec's comments, read fresh every run — this pass keeps no cursor and no ledger of what it said last time. */
+function fetchPrdComments(gh: GhExec, number: number): PrdComment[] | null {
+  try {
+    const raw = gh(["api", issueCommentsPath(number)]);
+    const parsed = PrdComments.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** How many sub-issues `number` has grown — the term that puts a `prd` issue in this pass's scope at all. */
+function fetchSubIssueCount(gh: GhExec, number: number): number | null {
+  try {
+    const raw = gh(["api", subIssuesPath(number)]);
+    const parsed = SubIssueList.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data.length : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why `isRunnableSpec` refused `body` — named for the refusal comment, since "not runnable" alone tells a reader nothing to fix. */
+function unrunnableReason(body: string): string {
+  const count = countCriteria(body);
+  if (count === null) return "its body carries no `## Acceptance criteria` heading";
+  if (count === 0) return "its `## Acceptance criteria` heading has no `- [ ]` item";
+  if (count > 1) return `its body carries ${count} acceptance criteria — this pass can only run one`;
+  return "its one acceptance criterion carries no well-formed `check:` marker";
+}
+
+function refusalCommentBody(body: string): string {
+  return [`Could not run this spec's check: ${unrunnableReason(body)}.`, "", PRD_UNRUNNABLE_MARKER].join(
+    "\n",
+  );
+}
+
+function verdictCommentBody(command: string, run: { code: number; output: string }): string {
+  const trimmed = run.output.trim();
+  return [
+    `Ran this spec's own check: \`${command}\``,
+    "",
+    `Exit ${run.code}.`,
+    ...(trimmed.length > 0 ? ["", "```", trimmed, "```"] : []),
+    "",
+    PRD_CHECK_MARKER,
+  ].join("\n");
+}
+
+/** Runs `command` the way `bin/close-ticket`'s `run_check` already does — a shell command, this checkout as its cwd, output captured rather than left to spray the run log. */
+function runCheckCommand(command: string): { code: number; output: string } {
+  const result = spawnSync(command, { shell: true, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+  return { code: result.status ?? 1, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+}
+
+/**
+ * Locates the one comment already carrying either marker and rewrites it whole; creates a fresh
+ * comment when neither has ever been written. One implementation for the verdict write, the
+ * refusal write and the needs-human-clearing write's own comment rewrite — never three ways to say
+ * "this is the current answer".
+ */
+function upsertPrdComment(gh: GhExec, number: number, comments: PrdComment[], body: string): void {
+  const existing = comments.find(
+    (comment) => comment.body.includes(PRD_CHECK_MARKER) || comment.body.includes(PRD_UNRUNNABLE_MARKER),
+  );
+  if (existing) {
+    rewriteComment(gh, existing.id, body);
+  } else {
+    gh(["issue", "comment", String(number), "--body", body]);
+  }
+}
+
+interface PrdCheckCandidate {
+  number: number;
+  body: string;
+  labels: string[];
+}
+
+/** Evaluates one `prd` issue's own check and upserts its verdict or refusal — see this section's header for the label rule. */
+function evaluateSpecCheck(gh: GhExec, prd: PrdCheckCandidate, log: (line: string) => void): void {
+  const comments = fetchPrdComments(gh, prd.number);
+  if (comments === null) {
+    log(`could not read #${prd.number}'s comments — skipping its spec check this run.`);
+    return;
+  }
+
+  const hasOwnRefusal = comments.some((comment) => comment.body.includes(PRD_UNRUNNABLE_MARKER));
+  const hasNeedsHuman = prd.labels.includes(NEEDS_HUMAN_LABEL);
+
+  if (!isRunnableSpec(prd.body)) {
+    upsertPrdComment(gh, prd.number, comments, refusalCommentBody(prd.body));
+    if (!hasNeedsHuman) gh(["issue", "edit", String(prd.number), "--add-label", NEEDS_HUMAN_LABEL]);
+    log(`#${prd.number}: refused — ${unrunnableReason(prd.body)}.`);
+    return;
+  }
+
+  const command = parseCheckMarker(extractCriteria(prd.body)[0] ?? "");
+  if (command === undefined) {
+    // isRunnableSpec already guarantees a well-formed marker on the sole criterion; this only
+    // keeps the branch below from ever calling runCheckCommand with an empty string.
+    log(`#${prd.number}: isRunnableSpec accepted a body whose marker didn't parse — skipping.`);
+    return;
+  }
+
+  const run = runCheckCommand(command);
+  upsertPrdComment(gh, prd.number, comments, verdictCommentBody(command, run));
+  if (hasOwnRefusal && hasNeedsHuman) {
+    gh(["issue", "edit", String(prd.number), "--remove-label", NEEDS_HUMAN_LABEL]);
+  }
+  log(`#${prd.number}: ran \`${command}\`, exit ${run.code}.`);
 }
 
 /** The open issue carrying `FINDING_MARKER`, if one is already standing. */
@@ -448,6 +605,31 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
   const graph = buildGraph(gh, issues, claimed, log);
   if (graph === null) return degraded("the dependency graph could not be read for every open issue.");
+
+  for (const issue of issues) {
+    const labels = (issue.labels ?? []).map((each) => each.name);
+    if (!labels.includes(PRD_LABEL)) continue;
+
+    const subIssueCount = fetchSubIssueCount(gh, issue.number);
+    if (subIssueCount === null) {
+      log(`could not read #${issue.number}'s sub-issues — skipping its spec check this run.`);
+      continue;
+    }
+    if (subIssueCount < 1) continue;
+
+    if (input.dryRun) {
+      log(`would evaluate #${issue.number}'s spec check.`);
+      continue;
+    }
+
+    try {
+      evaluateSpecCheck(gh, { number: issue.number, body: issue.body ?? "", labels }, log);
+    } catch (err) {
+      // One spec's check crashing must not cost every other spec its own verdict — and the next
+      // recompute reads the same tracker state and tries again.
+      log(`could not evaluate #${issue.number}'s spec check: ${reason(err)}`);
+    }
+  }
 
   const slices = publishedSliceNumbers(issues);
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]));

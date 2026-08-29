@@ -84,6 +84,8 @@ const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
 const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
+const issueComments = pathTemplate`repos/{owner}/{repo}/issues/${0}/comments`;
+const issueComment = pathTemplate`repos/{owner}/{repo}/issues/comments/${0}`;
 
 /**
  * Where a ref is **created**, which is how an implementer claims its slice (#179). No variable
@@ -135,6 +137,22 @@ export function subIssuesPath(prdNumber: number): string {
 /** The path to wire or read back `number`'s blocked-by graph. */
 export function blockedByPath(number: number): string {
   return blockedBy.build(number);
+}
+
+/**
+ * Every comment on `number`, oldest first, with the REST integer id each one carries — the id
+ * `issueCommentPath` accepts, not the GraphQL node id `gh issue view --json comments` would hand
+ * back instead. Read fresh rather than cached: a caller upserting a marker-keyed comment
+ * (`dispatch/reconcile.ts`'s spec-evaluate pass) needs to find one it already wrote before
+ * deciding whether to rewrite it or create a fresh one.
+ */
+export function issueCommentsPath(number: number): string {
+  return issueComments.build(number);
+}
+
+/** The path to rewrite one comment whole, by the REST id `issueCommentsPath` reads back. */
+export function issueCommentPath(id: number): string {
+  return issueComment.build(id);
 }
 
 /**
@@ -207,6 +225,24 @@ export const subIssuesPathMatcher: RegExp = subIssues.matcher;
 
 /** Matches a `blockedByPath`, capturing the blocked issue number. */
 export const blockedByPathMatcher: RegExp = blockedBy.matcher;
+
+/**
+ * Matches an `issueCommentsPath`, capturing the issue number.
+ *
+ * @fixture — no lane reads this; it exists so a `GhExec` stand-in (`dispatch/reconcile.test.ts`'s
+ * fake) answers the comments-list lookup by the same segments `issueCommentsPath` sends, rather
+ * than restating the path in a way that could name a different endpoint from the one production
+ * actually calls.
+ */
+export const issueCommentsPathMatcher: RegExp = issueComments.matcher;
+
+/**
+ * Matches an `issueCommentPath`, capturing the comment id.
+ *
+ * @fixture — no lane reads this; same reason as `issueCommentsPathMatcher` above, for the rewrite
+ * side of the same pair.
+ */
+export const issueCommentPathMatcher: RegExp = issueComment.matcher;
 
 /** Matches a `workflowRunsPath` minus its query string, capturing the file. */
 export const workflowRunsPathMatcher: RegExp = workflowRuns.matcher;
