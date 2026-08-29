@@ -23,6 +23,17 @@ name: Acceptance
 "on":
   issues:
     types: [edited]
+  # Lane 03's first-authoring request (#201), alongside the re-fire above: `refireAcceptance`
+  # only re-authors a slice whose test already exists, and nothing ever asked this lane to author
+  # one the first time — so `tests/acceptance/` had never existed on `main`, and lane 06/08's
+  # immutability check (`IMMUTABLE_SET` in `.Workflow/agent-workflows/shared/immutable-set.ts`) ran
+  # against a directory nothing had written. Sent once per published slice by
+  # `to-tickets/slice-and-publish.ts`'s `dispatchReadySlices`, naming `ACCEPTANCE_WANTED_DISPATCH_ACTION`
+  # (`acceptance-wanted`) at the wire. `types:` names it, per ADR-0090, for the same reason
+  # `implement.yml` and `to-tickets.yml` name theirs: an unfiltered trigger wakes this lane on every
+  # unrelated dispatch, and its whole run history becomes runs it had nothing to say about.
+  repository_dispatch:
+    types: [acceptance-wanted]
 
 # `contents: read`, and the push is the `land` job's — ADR-0053 rules this lane's unattended write
 # to `main` the thing to be careful about, and it was happening in the same job as the Opus author
@@ -99,33 +110,85 @@ jobs:
 
       # Commits do not survive a job. A patch series does, through the artifact store, and `git am`
       # on the other side replays each commit with its own message intact — which matters, because
-      # the message names the slice each test file was authored for.
+      # the message names the slice each test file was authored for. Shared with `author` below
+      # through `.github/actions/acceptance-bundle` (#201) — see that action's header for why this
+      # is a composite action rather than a second copy of the same steps.
       - name: Bundle the authored commits
         id: bundle
+        uses: ./.github/actions/acceptance-bundle
+
+  # The other half of #201: `refire` above only re-authors a slice whose test already exists, so
+  # nothing ever authored one the first time. Same shape as `refire` — one Opus stage
+  # (`acceptance.ts`'s single-issue mode, not `--refire`) commits and stops
+  # (`ACCEPTANCE_LANDING: commit`), and `land` below pushes what it left behind (ADR-0091) — but
+  # triggered by the dispatch above instead of a spec edit, and authoring exactly the one slice the
+  # dispatch names rather than walking a PRD's whole sub-issue list.
+  author:
+    if: github.event.action == 'acceptance-wanted'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      # Same meaning as `refire`'s own output: `""` when the author wrote nothing (it never does —
+      # `authorAcceptanceTests` throws rather than returning zero files — but the shape is shared
+      # with `refire` on purpose, not because this one can actually take the empty path).
+      authored: ${{ steps.bundle.outputs.authored }}
+    env:
+      TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ACCEPTANCE_LANDING: commit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Identify the committer
         run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/acceptance-patches"
-          git format-patch "$ACCEPTANCE_BASE..HEAD" -o "$RUNNER_TEMP/acceptance-patches"
-          if [ -n "$(ls -A "$RUNNER_TEMP/acceptance-patches")" ]; then
-            echo "authored=true" >> "$GITHUB_OUTPUT"
-          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Upload the authored commits
-        if: steps.bundle.outputs.authored == 'true'
-        uses: actions/upload-artifact@v4
+      - name: Note the commit this run starts from
+        run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          name: acceptance-commits
-          path: ${{ runner.temp }}/acceptance-patches
-          retention-days: 7
+          node-version: "24"
 
-  # ADR-0091's other half: `contents: write`, no model, and nothing to do but replay the commits the
-  # author already made and the gate already cleared. Rebasing onto `origin/main` happens here
-  # rather than in the job above because this is the job holding a token that can fetch and push at
-  # all — the same add-commit-fetch-rebase-push sequence, split across the boundary it needed.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # Single-issue mode: `acceptance.ts`'s `main()` takes the non-`--refire` branch when its
+      # only argument is a bare issue number, authoring exactly the slice this dispatch names.
+      - name: Author acceptance tests for the published slice
+        run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts "$TICKET_NUMBER"
+
+      # Same composite action `refire` above uses — see `.github/actions/acceptance-bundle`.
+      - name: Bundle the authored commits
+        id: bundle
+        uses: ./.github/actions/acceptance-bundle
+
+  # ADR-0091's other half: `contents: write`, no model, and nothing to do but replay the commits
+  # whichever author job ran already made and the gate already cleared. Rebasing onto
+  # `origin/main` happens here rather than in either job above because this is the job holding a
+  # token that can fetch and push at all — the same add-commit-fetch-rebase-push sequence, split
+  # across the boundary it needed.
+  #
+  # `needs` both author jobs because exactly one of them runs per trigger (`issues: edited` scopes
+  # `refire`, the dispatch above scopes `author`) — the other is skipped, not failed, and `always()`
+  # is what stops a skip from cascading into this job being skipped too; the explicit `result ==
+  # 'success'` checks are what keep a *failed* author job from being read as "nothing to land"
+  # and landing the other one's stale commits regardless.
   land:
     name: Land on main
-    needs: [refire]
-    if: needs.refire.outputs.authored == 'true'
+    needs: [refire, author]
+    if: >-
+      always() &&
+      ((needs.refire.result == 'success' && needs.refire.outputs.authored == 'true') ||
+      (needs.author.result == 'success' && needs.author.outputs.authored == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -161,3 +224,22 @@ jobs:
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
+
+      # #201's one design point: lane 05 learns a slice is startable from lane 04, after that
+      # slice's acceptance tests are on `main`, never from lane 03 at publish time — otherwise the
+      # implementer's first push-gate run sees no tests for its ticket. `ready` is the flag
+      # `dispatchReadySlices` (`to-tickets/slice-and-publish.ts`) already computed and carried on
+      # the `acceptance-wanted` dispatch, so this asks nothing about the graph itself: a slice
+      # `refireAcceptance` re-authored (the `issues: edited` path, `github.event.action` unset) has
+      # no such flag and sends nothing here, because it was already started — a re-fire exists
+      # only for a slice the tracker already dispatched once.
+      - name: Tell lane 05 this slice is ready
+        if: github.event.action == 'acceptance-wanted' && github.event.client_payload.ready == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=ticket-ready \
+            -f "client_payload[issue]=${{ github.event.client_payload.issue }}"

@@ -1,6 +1,7 @@
+import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
 import type { Plan } from "../shared/plan-schema";
-import { dispatchTicketReady, readySlices, type SliceState } from "../shared/ready-set";
+import { readySlices, type SliceState } from "../shared/ready-set";
 import {
   publishSubIssues,
   verifyBlockedByGraph,
@@ -11,13 +12,42 @@ import { validateCriteriaShape } from "../shared/render-body";
 import { validatePlan } from "../shared/validate-graph";
 
 /**
- * Sends one `ticket-ready` dispatch per slice this publish leaves ready — the send `implement.yml`
- * fires on, and #167's own words for when: "for every slice with zero unresolved blocked-by edges".
+ * The `repository_dispatch` action lane 04 (`acceptance.yml`) is told by, once per published
+ * slice — the first-authoring request lane 04 never had a sender for (#201). Before this, lane 04
+ * had only its `issues: edited` re-fire (`refireAcceptance` in `acceptance.ts`), which re-authors a
+ * slice's test after a spec edit but never authors it the first time, so `tests/acceptance/` had
+ * never existed on `main` and lane 06/08's immutability check ran against a directory that had
+ * never been written (#193 merged that way).
  *
- * Nothing sent it until #145's seam audit. #167 built and tested the receiving end and recorded in
- * `implement.ts` that wiring the send "belongs to whichever ticket owns
+ * `client_payload.ready` rides along rather than being recomputed by lane 04: it is exactly the
+ * fact `readySlices` establishes right here (below), and a second read of the same graph downstream
+ * would answer a question this dispatch has already settled. It is `1`/`0`, never a boolean —
+ * `shared/dispatch-request.ts`'s `client_payload` is `string | number`.
+ */
+export const ACCEPTANCE_WANTED_DISPATCH_ACTION = "acceptance-wanted";
+
+function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready: boolean): void {
+  requestDispatch(gh, {
+    event_type: ACCEPTANCE_WANTED_DISPATCH_ACTION,
+    client_payload: { issue: issueNumber, ready: ready ? 1 : 0 },
+  });
+}
+
+/**
+ * Sends one `acceptance-wanted` dispatch per slice this publish creates, naming which of them are
+ * ready — the send `acceptance.yml`'s new `author` job fires on.
+ *
+ * Nothing sent it until #145's seam audit. #167 built and tested `implement.yml`'s receiving end
+ * and recorded that wiring its send "belongs to whichever ticket owns
  * `to-tickets/slice-and-publish.ts`" — and no slice in the PRD ever claimed that file, so lane 03
- * published 26 tickets that lane 05 could never be told about.
+ * published 26 tickets that lane 05 could never be told about. #201 rewires the send again: lane 03
+ * no longer tells lane 05 directly. **Order matters, and it is the one design point #201 names**:
+ * lane 03 has to land a slice's tests on `main` *before* lane 05 claims the slice, or the
+ * implementer's first push-gate run sees no tests for its ticket. The cheapest true ordering is for
+ * lane 04 to be the one that tells lane 05, after that slice's tests are on `main` — so this
+ * function no longer calls `dispatchTicketReady` (`shared/ready-set.ts`) itself; it asks for
+ * acceptance authoring instead, and `acceptance.yml`'s `land` job sends `ticket-ready` once that
+ * authoring has landed, for exactly the slices this function marked `ready`.
  *
  * **This asks `readySlices`; it does not answer readiness itself** (#179). It used to filter on
  * `dependsOn.length === 0` and explain that at publish time every edge is unresolved by
@@ -31,10 +61,10 @@ import { validatePlan } from "../shared/validate-graph";
  * merged, nothing started. So the answer here is unchanged — the slices with no declared edges —
  * and it is now the same answer, from the same function, that the reconciler will give tomorrow.
  *
- * Runs after `verifyBlockedByGraph`, so no implementer is ever dispatched against a graph that
+ * Runs after `verifyBlockedByGraph`, so no slice is ever handed to lane 04 against a graph that
  * failed its read-back. A dispatch that throws stops the rest: a partially dispatched wave is
  * visible (the issues exist, some runs started) where a swallowed error would leave a slice
- * looking published-and-started when nothing was ever told to build it.
+ * looking published-and-started when nothing was ever told to author its tests.
  */
 export function dispatchReadySlices(plan: Plan, published: PublishedIssue[], gh: GhExec): PublishedIssue[] {
   const states: SliceState[] = published.map((issue, index) => ({
@@ -45,11 +75,10 @@ export function dispatchReadySlices(plan: Plan, published: PublishedIssue[], gh:
   }));
 
   const readyNumbers = new Set(readySlices(states).map((state) => state.number));
-  const ready = published.filter((issue) => readyNumbers.has(issue.number));
-  for (const issue of ready) {
-    dispatchTicketReady(gh, issue.number);
+  for (const issue of published) {
+    dispatchAcceptanceWanted(gh, issue.number, readyNumbers.has(issue.number));
   }
-  return ready;
+  return published.filter((issue) => readyNumbers.has(issue.number));
 }
 
 /**

@@ -1,0 +1,38 @@
+name: Bundle and upload acceptance commits
+description: >
+  Turns whatever commits an acceptance-authoring step just made (since $ACCEPTANCE_BASE, set by the
+  caller before its own authoring step runs) into a patch-series artifact the `land` job in
+  acceptance.yml downloads and replays (ADR-0091) — neither authoring job holds a token that can
+  push, so the commits it made only survive the run as this artifact.
+#
+# #201 pulled this out of acceptance.yml's `refire` job into its own composite action rather than
+# copy-pasting it into the new `author` job too: `bin/clone-gate` treats a second copy of the same
+# nine-line bundle-and-upload block as the clone it is, and a fix that lets it through would be a
+# baseline entry lying about a duplication that was never load-bearing — `refire` and `author` do
+# genuinely different authoring, but "package whatever commits authoring left behind" is the same
+# operation either way.
+outputs:
+  authored:
+    description: "'true' when git format-patch produced at least one commit; unset otherwise."
+    value: ${{ steps.bundle.outputs.authored }}
+runs:
+  using: composite
+  steps:
+    - name: Bundle the authored commits
+      id: bundle
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/acceptance-patches"
+        git format-patch "$ACCEPTANCE_BASE..HEAD" -o "$RUNNER_TEMP/acceptance-patches"
+        if [ -n "$(ls -A "$RUNNER_TEMP/acceptance-patches")" ]; then
+          echo "authored=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload the authored commits
+      if: steps.bundle.outputs.authored == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: acceptance-commits
+        path: ${{ runner.temp }}/acceptance-patches
+        retention-days: 7
