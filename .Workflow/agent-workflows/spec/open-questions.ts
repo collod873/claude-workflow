@@ -32,19 +32,33 @@ export interface MarkedDecision {
 }
 
 /**
- * ADR-0061's arithmetic, spelled exactly as the ADR states it: the sheet's
- * decisions carrying a mark and no adrTitle, minus the open questions naming
- * a mark. Zero when every marked-and-unfiled decision was named by some open
- * question (or there is no such decision at all); positive when the author
- * let a load-bearing guess through with no ADR and no question naming it —
- * the silent-guess case ADR-0061 exists to catch.
+ * ADR-0061's silent-guess case, spelled as the set itself rather than as two
+ * counts subtracted: the sheet's decisions that carry a mark, have no
+ * adrTitle, and are named by no open question. Subtracting the count of
+ * unfiled decisions from the count of questions naming a mark (the prior
+ * shape of this file) is only correct when the two counts pair up
+ * one-for-one — a single question naming two marks, or two questions naming
+ * the same mark, throws that pairing off. Filtering the actual set decisions
+ * never miscounts either way.
+ */
+export function unfiledMarks(decisions: MarkedDecision[], openQuestions: string[]): MarkedDecision[] {
+  return decisions.filter(
+    (decision) =>
+      decision.mark !== "" &&
+      decision.adrTitle === "" &&
+      !openQuestions.some((question) => question.includes(decision.mark)),
+  );
+}
+
+/**
+ * ADR-0061's arithmetic: the size of `unfiledMarks` — zero when every
+ * marked-and-unfiled decision was named by some open question (or there is
+ * no such decision at all); positive when the author let a load-bearing
+ * guess through with no ADR and no question naming it — the silent-guess
+ * case ADR-0061 exists to catch.
  */
 export function unfiledMarkGap(decisions: MarkedDecision[], openQuestions: string[]): number {
-  const unfiled = decisions.filter((decision) => decision.mark !== "" && decision.adrTitle === "");
-  const namingAMark = openQuestions.filter((question) =>
-    decisions.some((decision) => decision.mark !== "" && question.includes(decision.mark)),
-  );
-  return unfiled.length - namingAMark.length;
+  return unfiledMarks(decisions, openQuestions).length;
 }
 
 /**
