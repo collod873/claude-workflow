@@ -125,7 +125,7 @@ const PARENT_PRD_HEADING = /^##[ \t]+Parent PRD[ \t]*$/m;
 /** The `state_reason` GitHub reports for a delivery claim, as the REST dependencies API spells it. */
 const COMPLETED = "completed";
 
-/** A pull request state, as `gh issue view --json closedByPullRequestsReferences` spells a merge. */
+/** A pull request state, as `gh pr view --json state` spells a merge. */
 const MERGED = "MERGED";
 
 const OpenIssue = z.object({
@@ -147,7 +147,7 @@ const Blocker = z.object({
 const Blockers = z.array(Blocker);
 type Blocker = z.infer<typeof Blocker>;
 
-const ClosingPrStates = z.array(z.string());
+const ClosingPrNumbers = z.array(z.number());
 const Refs = z.array(z.string());
 
 export interface ReconcileInput {
@@ -221,8 +221,17 @@ function fetchBlockers(gh: GhExec, number: number): Blocker[] | null {
  * answer is *undelivered*, which reports rather than dispatches. Reporting a false unreachable costs
  * one line on a standing issue; dispatching against a blocker that never landed costs an implementer
  * building on code that does not exist.
+ *
+ * **Two calls, because the one-call form could only ever answer no.** This used to ask
+ * `gh issue view --json closedByPullRequestsReferences --jq '[…[].state]'`, and that field does not
+ * carry a `state` — GitHub serves `id`, `number`, `repository` and `url`, so the jq returned
+ * `[null]`, the schema refused it, and every delivered ticket read as undelivered. #237 merged as
+ * PR #244 and closed completed, and the reconciler still filed all five slices behind it as
+ * unreachable (#245). The number is asked of the issue, the state is asked of the pull request, and
+ * each is a field the endpoint being asked actually serves (ADR-0106).
  */
-function closedByMergedPr(gh: GhExec, number: number): boolean {
+export function closedByMergedPr(gh: GhExec, number: number): boolean {
+  let closers: number[];
   try {
     const raw = gh([
       "issue",
@@ -231,10 +240,25 @@ function closedByMergedPr(gh: GhExec, number: number): boolean {
       "--json",
       "closedByPullRequestsReferences",
       "--jq",
-      "[.closedByPullRequestsReferences[].state]",
+      "[.closedByPullRequestsReferences[].number]",
     ]);
-    const parsed = ClosingPrStates.safeParse(JSON.parse(raw));
-    return parsed.success && parsed.data.includes(MERGED);
+    const parsed = ClosingPrNumbers.safeParse(JSON.parse(raw));
+    if (!parsed.success) return false;
+    closers = parsed.data;
+  } catch {
+    return false;
+  }
+  return closers.some((pr) => prIsMerged(gh, pr));
+}
+
+/**
+ * One pull request's own state. Compared as a trimmed string rather than parsed as JSON: `gh --jq`
+ * prints a string result raw, the way `jq -r` does, so `.state` arrives as `MERGED` and not as
+ * `"MERGED"` — and `JSON.parse` of the former throws.
+ */
+function prIsMerged(gh: GhExec, pr: number): boolean {
+  try {
+    return gh(["pr", "view", String(pr), "--json", "state", "--jq", ".state"]).trim() === MERGED;
   } catch {
     return false;
   }

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { issueCommentPathMatcher, issueCommentsPathMatcher, matchingRefsPath, subIssuesPathMatcher } from "../shared/gh-paths";
@@ -5,6 +7,7 @@ import { readWorkflow } from "../shared/read-workflow";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../watchdog/unreachable";
 import {
+  closedByMergedPr,
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
   runReconcile,
@@ -36,6 +39,15 @@ interface FakeClosed {
   /** Whether a merged pull request closed it. */
   merged?: boolean;
 }
+
+/**
+ * The pull request the fake says closed issue `n`, and the inverse. An issue and its closer are
+ * different numbers in the real tracker — #237 was closed by PR #244 — so the fake gives them
+ * different numbers too, and a reader that confused the two would fail here rather than pass by
+ * coincidence.
+ */
+const closingPrFor = (issue: number) => issue * 10 + 4;
+const closerOwner = (pr: number) => (pr - 4) / 10;
 
 interface FakeOptions {
   open: FakeIssue[];
@@ -102,10 +114,19 @@ function createFake(options: FakeOptions): FakeGh {
       );
     }
 
+    // The two calls the delivery question actually takes, answered the way GitHub answers them.
+    // This branch used to return `["MERGED"]` — a state served straight off the issue — and that
+    // fiction is the whole reason the reader shipped asking for a field that does not exist
+    // (ADR-0106). `closedByPullRequestsReferences` carries a PR's *number*; only the pull request
+    // itself knows whether it merged, so the fake makes the reader go and ask.
     if (args[0] === "issue" && args[1] === "view") {
-      const number = Number(args[2]);
-      const record = closed.get(number);
-      return JSON.stringify(record?.merged ? ["MERGED"] : []);
+      const record = closed.get(Number(args[2]));
+      return JSON.stringify(record ? [closingPrFor(record.number)] : []);
+    }
+
+    if (args[0] === "pr" && args[1] === "view") {
+      const record = closed.get(closerOwner(Number(args[2])));
+      return `${record?.merged ? "MERGED" : "CLOSED"}\n`;
     }
 
     if (args[0] === "issue" && args[1] === "comment") {
@@ -190,6 +211,64 @@ function createFake(options: FakeOptions): FakeGh {
 }
 
 const silent = () => {};
+
+/**
+ * The delivery question, replayed against payloads recorded from the live tracker rather than
+ * against a shape this file made up — `gh issue view 237 --json closedByPullRequestsReferences` and
+ * `gh pr view 244 --json state`, both captured on 2026-08-29.
+ *
+ * This is the guard the old reader never had. Its jq asked each node for a `state`, GitHub serves
+ * none, and the only witness that could have said so was a fake in this file answering `["MERGED"]`
+ * to a question the real endpoint answers `[null]`. A fixture cannot be talked into agreeing.
+ *
+ * `applyJq` is deliberately tiny and deliberately fed the reader's *own* `--jq` string: the point is
+ * that the expression the code ships is the expression the recorded data is read with, so putting
+ * `.state` back reproduces the `[null]` that started this.
+ */
+describe("the delivery question, against payloads GitHub actually served", () => {
+  const fixture = (name: string) =>
+    JSON.parse(readFileSync(join(import.meta.dirname, "closing-prs.fixtures", name), "utf8"));
+
+  const CLOSED_BY = fixture("issue-237-closed-by.json");
+  const PR_STATE = fixture("pr-244-state.json");
+
+  /** `[.a[].b]` and `.a`, the only two forms the reader sends. Strings print raw, as `gh --jq` does. */
+  function applyJq(expression: string, payload: unknown): string {
+    const collect = /^\[\.([A-Za-z]+)\[\]\.([A-Za-z_]+)\]$/.exec(expression);
+    if (collect) {
+      const nodes = (payload as Record<string, Record<string, unknown>[]>)[collect[1]] ?? [];
+      return JSON.stringify(nodes.map((node) => node[collect[2]] ?? null));
+    }
+    const field = /^\.([A-Za-z]+)$/.exec(expression)![1];
+    return String((payload as Record<string, unknown>)[field]);
+  }
+
+  const replay: GhExec = (args) => {
+    const expression = args[args.indexOf("--jq") + 1];
+    return applyJq(expression, args[0] === "issue" ? CLOSED_BY : PR_STATE);
+  };
+
+  it("carries the closing pull request's number, and no state anywhere on it", () => {
+    const [node] = CLOSED_BY.closedByPullRequestsReferences;
+    expect(node.number).toBe(244);
+    expect(node).not.toHaveProperty("state");
+  });
+
+  it("reads #237 as delivered, which is what it is: merged as PR #244", () => {
+    expect(closedByMergedPr(replay, 237)).toBe(true);
+  });
+
+  it("asks the pull request for the state, never the issue", () => {
+    const asked: string[][] = [];
+    const watched: GhExec = (args) => {
+      asked.push([...args]);
+      return replay(args);
+    };
+    closedByMergedPr(watched, 237);
+    expect(asked[0].slice(0, 2)).toEqual(["issue", "view"]);
+    expect(asked[1].slice(0, 3)).toEqual(["pr", "view", "244"]);
+  });
+});
 
 describe("deliveryOf", () => {
   it("reads an open blocker as open", () => {
