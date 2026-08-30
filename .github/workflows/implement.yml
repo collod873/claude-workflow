@@ -40,21 +40,25 @@ permissions:
   pull-requests: write
   issues: write
 
-# One implementer at a time, across every ticket — the same fixed group `integrate.yml` uses, for a
-# reason that follows from it. Lane 08 merges serially by construction, so a second implementer
-# started before the first one's pull request lands is building against a trunk that is already
-# behind: it rebases onto work it never read, and two slices of one wave editing neighbouring files
-# meet as a conflict in a lane that #234 says nothing reacts to.
+# **Keyed on the ticket, so a wave runs as wide as lane 03 cut it.** This is what ADR-0039 ruled —
+# implementer concurrency is whatever lane 03 published as ready disjoint slices, absorbed by lane
+# 08's single serialised merge — and the guarantee behind it is the chain-shape ladder: two slices
+# that touch the same file are either repartitioned onto disjoint sets or separated by a `dependsOn`
+# edge. Two slices that are *simultaneously ready* therefore claim disjoint files by construction.
+# Serialising them buys nothing the ladder has not already bought, and costs a merge cycle each.
 #
-# `cancel-in-progress: false` queues rather than drops. A `ticket-ready` dispatch is the only thing
-# that will ever be sent for that ticket — nothing re-sends one — so a cancelled run is a slice that
-# silently never gets built, which is the failure this whole lane exists to stop.
+# A single fixed group across every ticket — what `integrate.yml` correctly uses, because there is
+# one trunk to merge onto — was wrong here and lost work. GitHub holds **at most one pending run per
+# group**, and a newly queued run cancels whatever was pending: `cancel-in-progress: false` protects
+# the run that is *executing* and nothing else. A wave of three therefore ran one, queued one, and
+# silently cancelled the third (#241, runs 33284271370/33284271425/33284271618) — the exact
+# silently-unbuilt slice the fixed group was introduced to prevent.
 #
-# The cost is wall clock: a wave of five is now serial, up to `timeout-minutes` each. That is the
-# right trade at $6 a run. Five parallel implementers are not five times faster, they are five bills
-# and a rebase conflict.
+# `cancel-in-progress: false` still, and now it means what it says: keyed per ticket, the only run
+# that can contend for this group is a re-dispatch of the same ticket, and the one already building
+# is the one to keep.
 concurrency:
-  group: implement
+  group: implement-${{ github.event.client_payload.issue }}
   cancel-in-progress: false
 
 jobs:

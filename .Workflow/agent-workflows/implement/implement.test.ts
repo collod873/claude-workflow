@@ -731,4 +731,19 @@ describe("implement.yml", () => {
     const { workflow } = readWorkflow<{ jobs: Record<string, { "timeout-minutes"?: number }> }>("implement.yml");
     expect(workflow.jobs.implement["timeout-minutes"]).toBe(CLAIM_TIMEOUT_MINUTES);
   });
+
+  it("keys concurrency on the ticket, so a wave runs as wide as lane 03 cut it", () => {
+    // A fixed group here serialises the whole lane, which ADR-0039 rules against — and worse, it
+    // drops slices: GitHub keeps at most one *pending* run per group, and a newly queued run
+    // cancels whatever was pending, `cancel-in-progress: false` notwithstanding (that setting only
+    // ever protected the executing run). A three-wide wave lost its middle ticket to exactly this.
+    // ADR-0108 has the ruling. Keyed per ticket, the group's only contender is a re-dispatch of the
+    // same ticket, which is the one case where keeping the running one is right.
+    const { workflow } = readWorkflow<{
+      concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+    }>("implement.yml");
+
+    expect(workflow.concurrency?.group).toContain("client_payload.issue");
+    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
 });
