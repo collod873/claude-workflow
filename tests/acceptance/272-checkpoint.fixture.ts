@@ -44,9 +44,17 @@ import { repoRoot } from "./workflow-shape.fixture";
  *   The one case that is about an uncomputable key deletes it and moves the child's cwd outside any
  *   checkout, so the `git rev-parse HEAD` fallback has nothing to answer with either.
  *
- * The venue is one temp directory per scenario: FAILURE_REASON_PATH is set to <tmp>/handoff.txt, so
- * join(dirname(handoffPath()), "checkpoints") is <tmp>/checkpoints - the directory the ticket names,
- * reached the way the code reaches it rather than by hard-coding a runner path.
+ * The venue is one temp directory per scenario: FAILURE_REASON_PATH is <tmp>/handoff.txt and
+ * CHECKPOINTS_DIR is <tmp>/checkpoints, so one probe can never read a checkpoint another one wrote.
+ *
+ * Why the checkpoint directory is named rather than derived: the ticket says "<stage>.json under
+ * checkpoints/" without saying rooted where, and these tests originally read that as relative to the
+ * handoff file while the implementation read it as relative to the checkout. Both are faithful to the
+ * sentence, which is the defect - but the ticket also claims .gitignore, and a directory is only worth
+ * ignoring if it is inside the repo, so the checkout-rooted reading is the one the ticket's own other
+ * artifact settles on. CHECKPOINTS_DIR is the override the implementation offers for exactly this, so
+ * pointing it at the temp venue keeps per-scenario isolation while reaching the code the way the code
+ * expects to be reached. See #278 for how the ambiguity got here.
  */
 
 const lane = (...parts: string[]): string =>
@@ -63,10 +71,15 @@ export const TO_TICKETS_SOURCE = lane("to-tickets", "to-tickets.ts");
 /** The per-test-file isolation the last criterion is about. */
 export const ISOLATE_CHECKPOINTS_SETUP = lane("shared", "isolate-checkpoints.setup.ts");
 
+/**
+ * Where an unisolated stage writes: the checkout's own checkpoint directory, the default
+ * CHECKPOINTS_DIR overrides. Nothing may be left here after a suite run - a checkpoint that outlives
+ * the test file that wrote it is one the next file reads as a stale key-matching hit.
+ */
+export const CHECKOUT_CHECKPOINTS_DIR = lane("checkpoints");
+
 /** The test file the first criterion's own check command names. */
 export const RESUME_TEST_SOURCE = lane("to-tickets", "resume.test.ts");
-
-export const VITEST_CONFIG = path.join(repoRoot, "vitest.config.ts");
 
 /** The commit a run and its retry both pin, so the SHA half of the key is the same on each. */
 export const PINNED_SHA = "0f1e2d3c4b5a69788796a5b4c3d2e1f009182736";
@@ -106,7 +119,7 @@ export function handoffOf(tmp: string): string {
   return path.join(tmp, "handoff.txt");
 }
 
-/** join(dirname(handoffPath()), "checkpoints"), resolved for this venue. */
+/** The CHECKPOINTS_DIR a probe is given - this scenario's own, never the checkout's. */
 export function checkpointDirOf(tmp: string): string {
   return path.join(tmp, "checkpoints");
 }
@@ -202,6 +215,7 @@ const CONFIG = JSON.parse(process.env.PROBE_CONFIG || "{}");
     const structured = await import(CONFIG.structuredOutputModule);
     const stage = await import(CONFIG.stageModule);
     process.env.FAILURE_REASON_PATH = CONFIG.handoff;
+    process.env.CHECKPOINTS_DIR = CONFIG.checkpoints;
     if (CONFIG.sha === null) {
       delete process.env.GITHUB_SHA;
     } else {
@@ -273,6 +287,7 @@ export function runStageProbe(
         stageModule: moduleUrl(STAGE_SOURCE),
         structuredOutputModule: moduleUrl(STRUCTURED_OUTPUT_SOURCE),
         handoff: handoffOf(tmp),
+        checkpoints: checkpointDirOf(tmp),
         promptPath: promptPath,
         sha: options.sha === undefined ? PINNED_SHA : options.sha,
         cwd: options.cwd ?? null,
@@ -312,6 +327,7 @@ const CONFIG = JSON.parse(process.env.PROBE_CONFIG || "{}");
   const out = { steps: [], error: null };
   try {
     process.env.FAILURE_REASON_PATH = CONFIG.handoff;
+    process.env.CHECKPOINTS_DIR = CONFIG.checkpoints;
     if (CONFIG.sha === null) {
       delete process.env.GITHUB_SHA;
     } else {
@@ -373,6 +389,7 @@ export function runLaneProbe(tmp: string, steps: LaneStep[], options: ProbeOptio
       PROBE_CONFIG: JSON.stringify({
         module: moduleUrl(TO_TICKETS_SOURCE),
         handoff: handoffOf(tmp),
+        checkpoints: checkpointDirOf(tmp),
         sha: options.sha === undefined ? PINNED_SHA : options.sha,
         steps: steps,
       }),
