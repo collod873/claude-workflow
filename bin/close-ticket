@@ -130,15 +130,8 @@ query {
           number
           state
           stateReason
-          timelineItems(last: 20, itemTypes: CLOSED_EVENT) {
-            nodes {
-              ... on ClosedEvent {
-                closer {
-                  __typename
-                  ... on PullRequest { number merged }
-                }
-              }
-            }
+          closedByPullRequestsReferences(first: 20, includeClosedPrs: true) {
+            nodes { number merged }
           }
         }
       }
@@ -149,7 +142,10 @@ query {
 
 
 def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
-    """Every sub-issue of `issue`, with the state and closing event `undelivered` needs.
+    """Every sub-issue of `issue`, with the state and the pull requests `undelivered` needs.
+
+    `includeClosedPrs: true` because the pull request this is looking for is by definition no
+    longer open — a merged one is a closed one, and the default omits it.
 
     One GraphQL call rather than a REST child list plus a call per child: the question is about
     every child at once, and a spec with a dozen slices should cost one round trip.
@@ -177,7 +173,17 @@ def undelivered(children: list[dict]) -> list[str]:
     estate already draws for a blocker, applied to a spec's children. An issue closed by hand
     proves someone thought it was done; a merged PR is the only closure that says code landed.
     `not planned` is the case worth naming separately — it is a deliberate non-delivery, and a
-    spec whose slice was abandoned should be re-sliced or its criterion rewritten, not closed."""
+    spec whose slice was abandoned should be re-sliced or its criterion rewritten, not closed.
+
+    The question is asked from the *pull request's* side — `closedByPullRequestsReferences`,
+    GitHub's own index of `Closes #N` in PR bodies — and never from the child's close event
+    (#253). Lane 08 closes each slice itself, with this script, after its own gate (#195), so by
+    the time the PR merges the issue is already closed and GitHub's merge-time auto-close never
+    fires: every slice this chain delivers carries no pull request on its close event at all.
+    Reading that event called all six of #233's merged slices "closed by hand" and left the rule
+    #233 exists to introduce unable to close itself. `integrate.ts:127-145` had already ruled
+    GitHub's closing linkage untrustworthy and read `Closes #N` out of the PR body instead; this
+    asks the same question of the same index."""
     problems = []
     for child in children:
         number = child.get("number")
@@ -187,13 +193,14 @@ def undelivered(children: list[dict]) -> list[str]:
         if (child.get("stateReason") or "").upper() == "NOT_PLANNED":
             problems.append(f"#{number}: closed as not planned — not delivered")
             continue
-        events = child.get("timelineItems", {}).get("nodes") or []
-        closers = [e.get("closer") for e in events if e.get("closer")]
-        closer = closers[-1] if closers else None
-        if closer is None or closer.get("__typename") != "PullRequest":
+        naming = (child.get("closedByPullRequestsReferences") or {}).get("nodes") or []
+        if any(pr.get("merged") for pr in naming):
+            continue
+        if naming:
+            unmerged = ", ".join(f"#{pr.get('number')}" for pr in naming)
+            problems.append(f"#{number}: closed by PR {unmerged}, which is not merged")
+        else:
             problems.append(f"#{number}: closed by hand, not by a merged PR")
-        elif not closer.get("merged"):
-            problems.append(f"#{number}: closed by PR #{closer.get('number')}, which is not merged")
     return problems
 
 
