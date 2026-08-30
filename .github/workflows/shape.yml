@@ -30,15 +30,22 @@ permissions:
   contents: read
   issues: write
 
-# One shaping per idea at a time, newest wins. Both triggers can fire within
-# seconds of each other — filing an idea and then immediately adding a
-# clarifying comment is an ordinary thing to do — and two concurrent chains
-# would each read a round count that did not include the other and post two
-# sheets. Cancelling the older one is right rather than merely cheap: the newer
-# run is the one holding the comment.
+# One shaping per idea at a time, and the older run finishes rather than dying.
+# Both triggers can fire within seconds of each other — filing an idea and then
+# immediately adding a clarifying comment is an ordinary thing to do — and two
+# concurrent chains would each read a round count that did not include the
+# other and post two sheets. So they serialise.
+#
+# They do not cancel. This group used to say `true`, on the reasoning that the
+# newer run is the one holding the comment; but the run it was cancelling is
+# holding a paid model call, and killing that spends the money and throws the
+# answer away, leaving a history that reads `cancelled` as though a human
+# pressed stop (ADR-0111). Queueing pays for both sheets and keeps both; the
+# second run reads a round count the first one's sheet is already part of,
+# which is the ordering the cancel was reaching for anyway.
 concurrency:
   group: shape-${{ github.event.issue.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   shape:

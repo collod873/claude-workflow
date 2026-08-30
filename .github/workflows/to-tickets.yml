@@ -56,6 +56,18 @@ permissions:
   contents: read
   issues: write
 
+# One slicing per PRD at a time. `prd-sliceable` is a dispatch, and a dispatch can arrive twice for
+# one PRD — a re-send after a lost hand-off, a second `spec.yml` run reaching a zero open-question
+# count — with nothing to stop the two runs from publishing two full sets of sub-issues under the
+# same parent. The "PRD already has sub-issues" refusal below cannot catch it: both runs read that
+# count before either has published, so both see zero and both proceed. Keyed per PRD for
+# ADR-0108's reason — a fixed group would make one PRD's slicing wait on an unrelated one's —
+# and queued rather than cancelled, since the run in flight is holding a paid model call
+# (ADR-0111).
+concurrency:
+  group: to-tickets-${{ github.event.client_payload.issue }}
+  cancel-in-progress: false
+
 jobs:
   to-tickets:
     if: github.event.action == 'prd-sliceable'

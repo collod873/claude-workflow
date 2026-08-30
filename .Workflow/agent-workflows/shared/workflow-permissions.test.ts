@@ -6,13 +6,16 @@ import { describe, expect, it } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
 
 /**
- * Two guards over `.github/workflows`, both derived from what a workflow *does* rather than from a
- * list of the files that happened to be wrong on the day someone looked.
+ * Four guards over `.github/workflows`, every one of them derived from what a workflow *does*
+ * rather than from a list of the files that happened to be wrong on the day someone looked.
  *
- * A `permissions:` block does not add to the default token — it **replaces** it, and every scope
- * left out is set to `none`. There is no local venue where a token exists at all, so the only
- * evidence that a lane holds the permissions its own code needs arrives as a 403 in production,
- * after the run has spent whatever it spent getting there.
+ * The first two are about the token. A `permissions:` block does not add to the default token — it
+ * **replaces** it, and every scope left out is set to `none`. There is no local venue where a token
+ * exists at all, so the only evidence that a lane holds the permissions its own code needs arrives
+ * as a 403 in production, after the run has spent whatever it spent getting there.
+ *
+ * The last two are about the run surviving to use that token. A model cancelled mid-call is the
+ * same sentence with a different ending: the run spent the money and the answer is gone.
  */
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -406,5 +409,125 @@ describe("a job grants itself the writes its entrypoints perform", () => {
       "issues",
       "pull-requests",
     ]);
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
+/* Guard 3: a lane that spends a model does not cancel itself.                                    */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `cancel-in-progress: true` on a job that is holding a paid model call throws that call away the
+ * moment the same group fires again — and every model lane's upstream can fire twice for one
+ * subject: a critic comment, an `issues: edited` re-fire, a second slice in one publish.
+ *
+ * Five Spec runs on #233 died this way between 18:31 and 20:27 on 2026-08-29, each new critic
+ * comment killing the run in flight, and two Acceptance runs went the same way in the same window.
+ * The run history reads `cancelled`, which looks like a human pressed stop rather than a lane
+ * cancelling itself, so the money is gone and the evidence points at the wrong culprit.
+ *
+ * Lane 04's near-identical loss was fixed by re-keying its group (`ed3e603`) — the *key* was wrong
+ * there and the fix left the *cancel* in place. This is the other half of that defect.
+ * `cancel-in-progress: false` queues instead, which is what `integrate.yml` and `audit.yml` have
+ * always said and for the same reason. See
+ * [ADR-0111](../../../docs/adr/0111-a-lane-that-spends-a-model-queues-behind-itself-rather-than.md).
+ */
+
+/**
+ * Spending a model, read off what the file *does* — not off the string `CLAUDE_CODE_OAUTH_TOKEN`
+ * appearing anywhere in it. `release-on-prd-close.yml` names that secret in a header comment
+ * explaining why it needs *no* preflight, and a substring sweep counts that comment as a model
+ * call. Two spellings, either of which is a run that pays: the pinned global install every lane
+ * makes before it can spawn `claude`, and the secret bound into a job's environment.
+ */
+const INSTALLS_CLAUDE = /npm install -g @anthropic-ai\/claude-code@/;
+const BINDS_MODEL_SECRET = /^\s+CLAUDE_CODE_OAUTH_TOKEN: \$\{\{ secrets\.CLAUDE_CODE_OAUTH_TOKEN \}\}$/m;
+
+const spendsModel = (source: string) => INSTALLS_CLAUDE.test(source) || BINDS_MODEL_SECRET.test(source);
+
+/** `cancel-in-progress: true` at either level — workflow-wide or inside one job's own block. */
+const CANCELS_IN_PROGRESS = /^\s*cancel-in-progress: true\s*$/m;
+
+describe("a lane that spends a model does not cancel itself", () => {
+  it.each(workflows)("$name", ({ name, source }) => {
+    if (!spendsModel(source)) return;
+
+    expect(
+      CANCELS_IN_PROGRESS.test(source),
+      `${name} spends a model and carries cancel-in-progress: true — the next event on the same ` +
+        "group kills the run mid-call, so the money is spent and the answer is thrown away, and " +
+        "the run history reads `cancelled` as though a human pressed stop. Use " +
+        "`cancel-in-progress: false` so a second event queues behind the first",
+    ).toBe(false);
+  });
+
+  it("actually finds the lanes that spend a model, so a passing suite is not an empty sweep", () => {
+    const spending = workflows.filter(({ source }) => spendsModel(source)).map(({ name }) => name);
+
+    // The eight model lanes: 01 shape, 02 spec, 03 to-tickets, 04 acceptance, 05 implement,
+    // 06 review, the fixer, and the audit. `release-on-prd-close.yml` is deliberately absent —
+    // it only mentions the secret in prose (see the comment on the predicate above).
+    expect(spending.length).toBeGreaterThanOrEqual(8);
+    expect(spending).toEqual(expect.arrayContaining(["shape.yml", "spec.yml", "acceptance.yml"]));
+    expect(spending).not.toContain("release-on-prd-close.yml");
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
+/* Guard 4: a lane that spends or writes declares a concurrency group.                            */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * The guard above stops a second event from *killing* the first run. This one stops a second event
+ * from *duplicating* it: with no `concurrency:` block at all there is no group to queue in, so two
+ * events for one subject run side by side to completion and both act.
+ *
+ * `to-tickets.yml` declared none, so two `prd-sliceable` dispatches slice the same PRD twice into
+ * two sets of sub-issues. `release-on-prd-close.yml` declared none, so two closes of one PRD open
+ * two release pull requests. `implement.yml` had the same hole and closed it under
+ * [ADR-0108](../../../docs/adr/0108-implementer-concurrency-is-keyed-per-ticket-because-a-fixed.md);
+ * these two were not in that ticket's claim.
+ *
+ * The predicate is wider than guard 3's on purpose. Spending a model is one reason a run must not
+ * happen twice; performing a write is the other, and it is the one that leaves duplicate issues and
+ * duplicate pull requests behind. `reachableWrites` above already answers the second question for
+ * every entrypoint in the estate, so this asks it rather than keeping a second list. That is what
+ * excludes `ratify-release.yml`, whose entrypoint imports a parser and performs no write.
+ */
+
+/** A `concurrency:` block with a group named in it — an empty block groups nothing. */
+const DECLARES_CONCURRENCY = /^concurrency:\s*$/m;
+const NAMES_GROUP = /^ {2}(?:#.*\n)*\s*group: \S/m;
+
+/** Whether any entrypoint this workflow runs reaches a write, by the same walk guard 2 uses. */
+function performsWrite(source: string): boolean {
+  for (const [, path] of source.matchAll(ENTRYPOINT)) {
+    if (reachableWrites(join(REPO_ROOT, path), REPO_ROOT).size > 0) return true;
+  }
+  return false;
+}
+
+describe("a lane that spends or writes declares a concurrency group", () => {
+  it.each(workflows)("$name", ({ name, source }) => {
+    if (!spendsModel(source) && !performsWrite(source)) return;
+
+    expect(
+      DECLARES_CONCURRENCY.test(source) && NAMES_GROUP.test(source),
+      `${name} spends a model or performs a write and declares no concurrency group — two events ` +
+        "for the same subject run side by side and both act, so one PRD slices into two sets of " +
+        "sub-issues, or one close opens two release pull requests. Declare a group keyed on the " +
+        "subject the run acts for",
+    ).toBe(true);
+  });
+
+  it("actually finds the lanes that act, so a passing suite is not an empty sweep", () => {
+    const acting = workflows
+      .filter(({ source }) => spendsModel(source) || performsWrite(source))
+      .map(({ name }) => name);
+
+    expect(acting.length).toBeGreaterThanOrEqual(10);
+    expect(acting).toEqual(
+      expect.arrayContaining(["to-tickets.yml", "release-on-prd-close.yml", "implement.yml"]),
+    );
   });
 });
