@@ -142,6 +142,20 @@ jobs:
       # `always()` for the same reason the upload above carries it, and more so: the run this most
       # needs to clean up after is the one that died. A `running` label left behind by a timeout is
       # a lie the tracker keeps telling, which is worse than never having written it.
+      # Rings lane Recover directly. `recover.yml` also listens on `workflow_run`, the documented
+      # door, and on 2026-08-30 that event arrived five to fourteen minutes late for two Verify runs
+      # and never at all for Implement run 33326295612. A `repository_dispatch` sent with
+      # `GITHUB_TOKEN` is the wire every lane in this pipeline already chains on, and it did not
+      # miss once that day. Both doors stay: Recover's marker comment makes the second arrival a
+      # no-op, so the cost of two is nothing and the cost of one was a run nobody recovered.
+      - name: Tell Recover this run failed
+        if: failure()
+        run: |
+          gh api "repos/{owner}/{repo}/dispatches" \
+            -f event_type=implement-failed \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID" \
+            -f "client_payload[issue]=$TICKET_NUMBER"
+
       - name: Unmark the ticket
         if: always()
         uses: ./.github/actions/running-label

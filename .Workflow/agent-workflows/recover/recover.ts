@@ -13,6 +13,7 @@ import { execGenerator, type GeneratorExec } from "../implement/regenerate-artif
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { runArtifactsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { touchesImmutableSet } from "../shared/immutable-set";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { implementationBranch } from "../shared/ready-set";
@@ -198,6 +199,8 @@ export type RecoverOutcome =
   | { outcome: "nothing-to-recover" }
   | { outcome: "stopped"; attempts: number }
   | { outcome: "already-claimed" }
+  | { outcome: "already-handled" }
+  | { outcome: "immutable"; files: string[] }
   | { outcome: "redispatched"; ticket: number }
   | { outcome: "opened"; pr: string }
   | { outcome: "nothing-to-build" };
@@ -218,6 +221,13 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const { ticket, hasArtifact } = target;
 
   const priorRuns = priorAttemptRunIds(deps.gh, ticket);
+  // Two doors can ring for one failed run — `implement.yml`'s own `implement-failed` dispatch and
+  // the `workflow_run` event, which arrived minutes late or not at all three times on 2026-08-30 —
+  // and the marker comment is what makes the second arrival a no-op rather than a second attempt.
+  if (priorRuns.includes(deps.runId)) {
+    log(`run ${deps.runId} was already reacted to (see the marker comment on #${ticket}); nothing to do`);
+    return { outcome: "already-handled" };
+  }
   if (priorRuns.length >= MAX_RECOVER_ATTEMPTS) {
     stopAndEscalate(deps.gh, ticket, deps.runId, priorRuns);
     return { outcome: "stopped", attempts: priorRuns.length };
@@ -234,19 +244,37 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
     return { outcome: "redispatched", ticket };
   }
 
+  const artifactName = `implementer-answer-${ticket}`;
+  const artifactDir = deps.downloadArtifact(deps.runId, artifactName);
+  const raw = deps.readFile(join(artifactDir, "implementer-answer.json"));
+  const answer = ImplementerAnswer.parse(JSON.parse(raw));
+
+  // An answer that writes into the immutable set cannot land by any road: lane 06 refuses the
+  // diff, and before that the push itself is refused — a `GITHUB_TOKEN` may not touch
+  // `.github/workflows/` at all, which is how run 33326295612 lost #275 (its ticket *claimed*
+  // `shape.yml` and `to-tickets.yml`). The defect is the ticket's, not the run's (#278), so
+  // re-landing the same files three times would spend three runs proving one thing. Escalate now,
+  // naming the files, and claim nothing.
+  const forbidden = answer.files.map((file) => file.path).filter((path) => touchesImmutableSet([path]));
+  if (forbidden.length > 0) {
+    escalateToOwner(deps.gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
+    postAttemptComment(
+      deps.gh,
+      ticket,
+      deps.runId,
+      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) writes into the immutable set, which no pull request may change — the ticket itself needs fixing.\n\n${forbidden.map((path) => `- \`${path}\``).join("\n")}`,
+    );
+    return { outcome: "immutable", files: forbidden };
+  }
+
   const branch = implementationBranch(ticket);
-  // Before anything else: the same atomic claim `implement.ts` itself takes, so this run and a
-  // fresh dispatch (or a human who already pushed by hand) cannot both act on the same slice.
+  // The same atomic claim `implement.ts` itself takes, so this run and a fresh dispatch (or a
+  // human who already pushed by hand) cannot both act on the same slice.
   const claim = claimImplementationBranch(deps.gh, deps.git, branch, log);
   if (!claim.claimed) {
     log(`\`${branch}\` is already claimed or recovered — a pull request may already be open; nothing to do.`);
     return { outcome: "already-claimed" };
   }
-
-  const artifactName = `implementer-answer-${ticket}`;
-  const artifactDir = deps.downloadArtifact(deps.runId, artifactName);
-  const raw = deps.readFile(join(artifactDir, "implementer-answer.json"));
-  const answer = ImplementerAnswer.parse(JSON.parse(raw));
 
   const ticketRead = readTicket(deps.gh, ticket);
   const commitMessage = `Recover #${ticket} from run ${deps.runId}\n\n${answer.summary}\n\nPart of #${ticket}`;

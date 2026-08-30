@@ -342,10 +342,11 @@ interface VitestJsonReport {
  * so a fixer attempt that cannot even be collected still gets a signature
  * to compare against rather than being read as silently green.
  */
-export function runVitestJsonForFixer(dir: string): FixerTestResult {
+export function runVitestJsonForFixer(targets: string[]): FixerTestResult {
+  const dir = targets.join(" ");
   let stdout: string;
   try {
-    stdout = execFileSync("npx", ["vitest", "run", dir, "--reporter=json"], {
+    stdout = execFileSync("npx", ["vitest", "run", ...targets, "--reporter=json"], {
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
       env: childEnv(),
@@ -431,9 +432,17 @@ async function runFix(): Promise<void> {
     // attempts go to a model with nothing to fix — which then edits something, pushes it, and
     // ends by labelling a pull request `blocked` over a failure it was never shown. Declining is
     // the honest answer: this lane fixes what it can reproduce, and the run log says which.
-    const initialFailure = runVitestJsonForFixer(dir).failures;
+    // `dir` plus this ticket's own acceptance tests, `tests/acceptance/<n>-*.test.ts` — a vitest
+    // positional is a substring filter over `include`, and that directory is in it. Without the
+    // second target this lane judged itself by a suite Verify does not judge by: run 33326974110
+    // read the `.Workflow` suite green while #274's acceptance test was the red that had summoned
+    // it, said "nothing to fix", and left PR #280 exactly as it found it. What is red here is
+    // what Verify refused, so the brief names the failure that actually matters and the loop's
+    // "green" means the same thing lane 06's does.
+    const targets = [dir, `tests/acceptance/${issueArg}-`];
+    const initialFailure = runVitestJsonForFixer(targets).failures;
     if (initialFailure.length === 0) {
-      console.log(`nothing to fix: no test under ${dir} is failing in this checkout`);
+      console.log(`nothing to fix: no test under ${targets.join(" or ")} is failing in this checkout`);
       return;
     }
 
@@ -441,7 +450,7 @@ async function runFix(): Promise<void> {
       gh: execGh,
       exec: execClaude,
       git: execGit,
-      runTests: () => runVitestJsonForFixer(dir),
+      runTests: () => runVitestJsonForFixer(targets),
       writeFile: (path, content) => {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, content, "utf8");

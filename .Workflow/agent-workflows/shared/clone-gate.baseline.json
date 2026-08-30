@@ -380,16 +380,6 @@
     ]
   },
   {
-    "hash": "5ce829c488b32b6b",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 90,
-    "where": [
-      ".Workflow/agent-workflows/acceptance/push-gate.ts:171",
-      ".Workflow/agent-workflows/fixer/fixer.ts:264"
-    ]
-  },
-  {
     "hash": "5f76e458f2613bef",
     "format": "yaml",
     "lines": 18,

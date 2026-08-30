@@ -247,6 +247,55 @@ describe("runRecover — recovery path", () => {
   });
 });
 
+describe("runRecover — one failed run, two doors", () => {
+  it("does nothing the second time it is told about a run it already reacted to", async () => {
+    const { gh, calls } = fakeGh({
+      artifacts: ["implementer-answer-266"],
+      comments: ["<!-- recover-attempt:555 -->\nRecovered #266 from run 555: opened a PR."],
+    });
+    const { git, calls: gitCalls } = fakeGit();
+
+    const outcome = await runRecover(baseDeps(gh, git, { runId: 555 }));
+
+    expect(outcome).toEqual({ outcome: "already-handled" });
+    expect(gitCalls).toEqual([]);
+    expect(calls.some((call) => call[0] === "issue" && call[1] === "comment")).toBe(false);
+  });
+});
+
+describe("runRecover — an answer no pull request may land", () => {
+  it("escalates without claiming a branch when the answer writes into the immutable set", async () => {
+    const { gh, calls } = fakeGh({ artifacts: ["implementer-answer-275"] });
+    const { git, calls: gitCalls } = fakeGit();
+    const writes: string[] = [];
+
+    const outcome = await runRecover(
+      baseDeps(gh, git, {
+        runId: 61,
+        writeFile: (path) => writes.push(path),
+        readFile: () =>
+          JSON.stringify({
+            files: [
+              { path: ".github/workflows/shape.yml", content: "x" },
+              { path: ".Workflow/agent-workflows/shape/shape.ts", content: "y" },
+            ],
+            summary: "wired the checkpoints",
+          }),
+      }),
+    );
+
+    expect(outcome).toEqual({ outcome: "immutable", files: [".github/workflows/shape.yml"] });
+    expect(writes).toEqual([]);
+    expect(gitCalls).toEqual([]);
+    expect(calls.some((call) => call[0] === "api" && call[1] === GIT_REFS_PATH)).toBe(false);
+    expect(calls).toContainEqual(["issue", "edit", "275", "--add-label", "needs-human"]);
+    const marker = calls.find((call) => call[0] === "issue" && call[1] === "comment");
+    expect(marker?.[4]).toContain("<!-- recover-attempt:61 -->");
+    expect(marker?.[4]).toContain(".github/workflows/shape.yml");
+    expect(marker?.[4]).not.toContain("shape/shape.ts");
+  });
+});
+
 describe("runRecover — already claimed", () => {
   it("exits without writing files or opening a PR when the branch is already claimed", async () => {
     const branch = implementationBranch(266);
@@ -290,7 +339,7 @@ describe("runRecover — re-dispatch path", () => {
 });
 
 interface RecoverWorkflow {
-  on?: { workflow_run?: { workflows?: string[]; types?: string[] }; workflow_dispatch?: unknown };
+  on?: { workflow_run?: { workflows?: string[]; types?: string[] }; repository_dispatch?: { types?: string[] }; workflow_dispatch?: unknown };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   jobs: { recover: { if?: string; steps?: Array<{ run?: string }> } };
@@ -308,6 +357,23 @@ describe("recover.yml is the listener a red Implement never had", () => {
   it("reacts only to a failed run (or the hand door)", () => {
     expect(workflow.jobs.recover.if).toContain("github.event.workflow_run.conclusion == 'failure'");
     expect(workflow.jobs.recover.if).toContain("workflow_dispatch");
+  });
+
+  /**
+   * The second door. `workflow_run` arrived minutes late for two Verify runs and not at all for
+   * Implement run 33326295612 on 2026-08-30; the dispatch lane 05 sends from its own
+   * `if: failure()` step is the wire the rest of the pipeline chains on and did not miss once.
+   * The names are pinned on both ends so neither file can rename the event alone (ADR-0090).
+   */
+  it("also answers the implement-failed dispatch lane 05 sends itself, keyed on the failed run", () => {
+    expect(workflow.on?.repository_dispatch?.types).toEqual(["implement-failed"]);
+    expect(workflow.jobs.recover.if).toContain("github.event.action == 'implement-failed'");
+    expect(source).toContain("github.event.client_payload.run_id");
+
+    const implement = readWorkflow<{ jobs: { implement: { steps: Array<{ if?: string; run?: string }> } } }>("implement.yml");
+    const ring = implement.workflow.jobs.implement.steps.find((step) => step.run?.includes("event_type=implement-failed"));
+    expect(ring?.if).toBe("failure()");
+    expect(ring?.run).toContain("client_payload[run_id]=$GITHUB_RUN_ID");
   });
 
   it("grants the writes recover.ts performs: contents, pull-requests and issues, plus actions:read to resolve a run", () => {
