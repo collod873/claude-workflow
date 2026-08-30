@@ -248,6 +248,31 @@ jobs:
         if: steps.target.outputs.mode == 'model'
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
+      # Onto trunk first, for one reason that is not about the merge: the `fixer.ts` this job runs
+      # is the one in its checkout, and the checkout above is the pull request's branch — so
+      # without this step the fixer that runs is whichever one the implementer branched from. Run
+      # 33327321534 ran a fixer trunk had already replaced, read the wrong suite green, and did
+      # nothing. Lane 08 rebases the same branch the same way before it merges (and force-pushes
+      # the result), so this changes nothing about what eventually lands; `commitAndPushAttempt`
+      # pushes with `--force-with-lease` for the same reason. A conflict is lane 08's finding, not
+      # this lane's: it is escalated with the paths and no model is spent on a tree that will not
+      # replay.
+      - name: Rebase onto trunk so trunk's fixer runs
+        id: rebase
+        if: steps.target.outputs.mode == 'model'
+        env:
+          ISSUE: ${{ steps.target.outputs.issue }}
+          PR_NUMBER: ${{ steps.target.outputs.pr }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if ! git rebase origin/main; then
+            paths=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+            git rebase --abort
+            npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "rebase onto trunk" "conflicts in: $paths"
+            echo "conflicted=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # `.Workflow` is the directory, not `tests/acceptance/`, and not the repo root.
       #
       # It is the bulk of what the gauntlet's own `test` slot runs (`vitest run .Workflow .claude`),
@@ -265,7 +290,7 @@ jobs:
       # so a branch name is a shell *variable* and never a fragment of the command line — the same
       # shape `verify.yml` and `integrate.yml` use for everything they read off an event.
       - name: Run the fixer
-        if: steps.target.outputs.mode == 'model'
+        if: steps.target.outputs.mode == 'model' && steps.rebase.outputs.conflicted != 'true'
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}

@@ -147,7 +147,12 @@ function commitAndPushAttempt(
   git(["checkout", branch]);
   git(["add", ...paths]);
   git(["commit", "-m", `fix: attempt ${attempt} at #${issueNumber}\n\n${summary}\n\nPart of #${issueNumber}`]);
-  git(["push", "origin", `HEAD:${branch}`]);
+  // `--force-with-lease`, because `fixer.yml` rebases the branch onto trunk before this lane runs
+  // (so that the fixer executing is trunk's, not whichever one the implementer branched from), and
+  // a rebased branch is a rewritten history a plain push refuses. Lane 08 force-pushes the same
+  // rebase when it merges, so an implement branch's history is already understood to be rewritten
+  // by lanes; the lease keeps it from clobbering a push nobody here has seen.
+  git(["push", "--force-with-lease", "origin", `HEAD:${branch}`]);
 }
 
 /** The comment posted when the fixer stops, naming why and what every attempt tried. */
