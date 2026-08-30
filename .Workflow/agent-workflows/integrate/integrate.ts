@@ -7,6 +7,7 @@ import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { escalateToOwner } from "../shared/needs-human";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 
@@ -117,6 +118,8 @@ export interface IntegrateDeps {
   headSha: string;
   /** Re-runs the gauntlet against the rebased tree. Real production behaviour shells to `bin/gauntlet push`; a test injects a canned result instead of paying for a real run. */
   runGauntlet: () => GauntletResult;
+  /** Who a rebase conflict assigns the ticket to — `SIGNAL_ASSIGNEE`, the repository owner. Absent on a workstation run, which then labels without assigning. */
+  assignee?: string;
   /** Closes `ticket` against `range`. Real production behaviour shells to this repository's own `bin/close-ticket` (`runRealCloseTicket`); a test injects a canned result rather than paying for a tracker write and the ticket's own checks. */
   closeTicket: (ticket: number, range: string) => CloseTicketResult;
   /** Waits between re-reads of lane 06's verdict. Injected so a test counts reads instead of sleeping. */
@@ -391,19 +394,17 @@ function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
 }
 
 /**
- * The record a conflict leaves: `blocked` on the pull request, and a comment naming what would not
- * replay. This lane's own constant — `fixer.ts` used to export the same string, and stopped: its
- * escalation moved to `needs-human` on the ticket (a label this repo actually seeds), which is not
- * what this call site does. Lane 08's own use of `blocked` is unreviewed by this ticket's measured
- * facts and is left exactly as it was rather than folded into a change nobody asked for here.
+ * The record a conflict leaves: `needs-human` on the ticket, assigned to the owner, and a comment on
+ * the pull request naming what would not replay. It was `blocked` on the pull request until
+ * 2026-08-30 — a label this repo never created, so the `gh pr edit` threw and the one refusal that
+ * is meant to leave a green run was leaving a red one with no record at all. The escalation is
+ * `shared/needs-human.ts`'s, the same write the fixer and the recover lane make when they stop.
  *
  * Deliberately **not** swallowed the way `noteAcceptanceRefusal` is. That one explains a decision
  * that stands either way; this one *is* the outcome. A conflict with no label and no comment is the
  * silent stop this whole change exists to end, so a failure to write it fails the run.
  */
-const BLOCKED_LABEL = "blocked";
-
-function blockOnConflict(gh: GhExec, pr: string, paths: string[]): void {
+function blockOnConflict(gh: GhExec, pr: string, paths: string[], ticket: number | undefined, assignee: string | undefined): void {
   const body = [
     "**Blocked — rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",
     "aborted the rebase and merged nothing. No model ran and nothing here judged the diff.",
@@ -414,7 +415,9 @@ function blockOnConflict(gh: GhExec, pr: string, paths: string[]): void {
     "",
     "Rebase it by hand and re-dispatch the pull request; nothing retries this on its own.",
   ].join("\n");
-  gh(["pr", "edit", pr, "--add-label", BLOCKED_LABEL]);
+  // A pull request with no `Closes #n` has no ticket to escalate; the comment is then the whole
+  // record, as it was before.
+  if (ticket !== undefined) escalateToOwner(gh, ticket, assignee);
   gh(["pr", "comment", pr, "--body", body]);
 }
 
@@ -529,7 +532,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   const pullRequest = readPr(deps.gh, deps.pr);
   const rebase = rebaseOntoTrunk(deps.git, pullRequest.branch);
   if (rebase.conflicted) {
-    blockOnConflict(deps.gh, deps.pr, rebase.paths);
+    blockOnConflict(deps.gh, deps.pr, rebase.paths, pullRequest.ticket, deps.assignee);
     return { merged: false, reason: "conflict", paths: rebase.paths };
   }
   const range = prCommitRange(deps.git);
@@ -611,12 +614,13 @@ async function main(): Promise<void> {
       headSha,
       runGauntlet: runRealGauntlet,
       closeTicket: runRealCloseTicket,
+      assignee: process.env.SIGNAL_ASSIGNEE,
     });
 
     if (!outcome.merged) {
       console.error(`not merged (${outcome.reason}): ${pr}`);
-      // A rebase conflict is the one refusal that leaves the run green. The pull request carries
-      // `blocked` and a comment naming every path that would not replay, which is the whole account
+      // A rebase conflict is the one refusal that leaves the run green. The ticket carries
+      // `needs-human` and the pull request a comment naming every path that would not replay, which is the whole account
       // — and a red run beside that record would say the merge actor broke rather than that trunk
       // moved. Every other refusal still reddens, because each of those is a verdict on the diff.
       if (outcome.reason !== "conflict") process.exitCode = 1;

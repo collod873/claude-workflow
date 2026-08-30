@@ -57,6 +57,11 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    baseline of what was already there, and then the baseline only ever shrinks — every entry
    removed is permanent, and the gate is not done until the file is gone.
 
+   One growth is permitted, and only to the acceptance lane at its push to `main`: a clone whose
+   every location is under `tests/acceptance/`. Those files are in the immutable set, so no other
+   lane may ever dedupe them, and a ratchet nobody can turn is not a ratchet — it was a red `main`
+   that lane 05 got blamed for, four times in one week (`acceptance/land-gate.ts`, ADR-0114).
+
 6. **It runs in `test` and `all`, and in CI. Never in `stop`.** Token-window matching across a few
    hundred files takes seconds, not the sub-second budget the turn-end gate reserves (ADR-0022).
    The contract slots are where the gate belongs; the turn-end gate is where it would only ever be

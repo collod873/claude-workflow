@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import type { StageExec } from "../shared/stage";
 import {
   applyUnfixable,
   assembleFixBrief,
   MAX_ATTEMPTS,
-  NEEDS_HUMAN_LABEL,
   runFixer,
   signaturesEqual,
   unfixableComment,

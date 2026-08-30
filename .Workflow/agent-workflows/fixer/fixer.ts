@@ -6,6 +6,7 @@ import { z } from "zod";
 import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
+import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
@@ -45,22 +46,6 @@ import { structuredOutput } from "../shared/structured-output";
 
 /** No comparison and no cap outrun this. §3 of the ticket: "capped at three attempts". */
 export const MAX_ATTEMPTS = 3;
-
-/**
- * The canonical label for "an agent tried and stopped" (`docs/agents/pipeline-labels.md`), applied
- * to the **ticket**, not the pull request. It used to be `blocked` on the PR — a label nothing in
- * this repo created, so `gh pr edit --add-label blocked` had been failing on every capped fixer
- * without anyone finding out (measured: `gh label list` carries no `blocked` entry, and nothing
- * reads one). Moving it fixes two things at once: it is a label that actually exists, and it lands
- * where the owner looks. The tracker is worked from the issue list; the pull request list is not —
- * `needs-human` on a PR nobody is triaging notifies nobody, the same hole #41's run watchdog exists
- * to close for a dead run.
- */
-export const NEEDS_HUMAN_LABEL = "needs-human";
-
-/** Same colour and description `shape.yml`'s label-seeding step uses — one meaning, one look. */
-const NEEDS_HUMAN_COLOR = "d93f0b";
-const NEEDS_HUMAN_DESCRIPTION = "Ticket stalled; a human decision or action is required";
 
 export const FIXER_PROMPT_PATH = ".Workflow/agent-workflows/fixer/prompt.md";
 
@@ -182,18 +167,6 @@ export function blockedComment(stopReason: "no-progress" | "capped", attemptSumm
  */
 export function unfixableComment(failedJob: string, errorLine: string): string {
   return `**Needs a human.** \`${failedJob}\` failed before \`Restore and run acceptance\` ever ran, so there is nothing this lane can reproduce and fix.\n\n${errorLine}`;
-}
-
-/**
- * Ensures `needs-human` exists (the label itself, not just the string — `gh issue edit
- * --add-label` fails on a label nobody has created yet, `--force` makes this idempotent), applies
- * it to the ticket, and assigns the repository owner so the ticket notifies rather than sits in a
- * list — the same shape `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses for a dead lane.
- */
-function escalateToOwner(gh: GhExec, issueNumber: number, assignee: string): void {
-  gh(["label", "create", NEEDS_HUMAN_LABEL, "--color", NEEDS_HUMAN_COLOR, "--description", NEEDS_HUMAN_DESCRIPTION, "--force"]);
-  gh(["issue", "edit", String(issueNumber), "--add-label", NEEDS_HUMAN_LABEL]);
-  gh(["issue", "edit", String(issueNumber), "--add-assignee", assignee]);
 }
 
 /** Applies `needs-human` to the ticket and comments the PR with what every attempt tried — the one write a stopped fixer always makes. */

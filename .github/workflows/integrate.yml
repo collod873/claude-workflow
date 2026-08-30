@@ -56,6 +56,9 @@ jobs:
       HEAD_SHA: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      # A rebase conflict assigns the ticket so it notifies rather than sits in a list — the same
+      # variable `run-watchdog.yml` and `fixer.yml` set for the same reason.
+      SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

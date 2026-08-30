@@ -154,6 +154,9 @@ function integrateDeps({
       if (commentThrows) throw new Error("gh: could not comment");
       return "";
     }
+    // The conflict escalation (`shared/needs-human.ts`): seed the label, apply it, assign.
+    if (args[0] === "label" && args[1] === "create") return "";
+    if (args[0] === "issue" && args[1] === "edit") return "";
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
 
@@ -676,13 +679,19 @@ describe("runIntegrate when the rebase onto trunk conflicts", () => {
     expect(spelled.some((call) => call.startsWith("push"))).toBe(false);
   });
 
-  it("labels the pull request blocked and comments the conflicting paths", () => {
+  it("labels the ticket needs-human, assigns the owner, and comments the conflicting paths on the pull request", () => {
     const { calls, deps } = integrateDeps({ rebaseLeavesUnmerged: CONFLICTS });
 
-    runIntegrate(deps);
+    runIntegrate({ ...deps, assignee: "collod873" });
 
-    const labels = calls.filter((call) => call[0] === "pr" && call[1] === "edit");
-    expect(labels).toEqual([["pr", "edit", PR, "--add-label", "blocked"]]);
+    // Never `pr edit`: the label this used to apply to the pull request did not exist in the repo,
+    // so the escalation threw for as long as it was reachable.
+    expect(calls.filter((call) => call[0] === "pr" && call[1] === "edit")).toEqual([]);
+    const issueEdits = calls.filter((call) => call[0] === "issue" && call[1] === "edit");
+    expect(issueEdits).toEqual([
+      ["issue", "edit", String(TICKET), "--add-label", "needs-human"],
+      ["issue", "edit", String(TICKET), "--add-assignee", "collod873"],
+    ]);
 
     const comments = calls.filter((call) => call[0] === "pr" && call[1] === "comment");
     expect(comments).toHaveLength(1);

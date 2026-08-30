@@ -13,6 +13,7 @@ import { execGenerator, type GeneratorExec } from "../implement/regenerate-artif
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { runArtifactsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { implementationBranch } from "../shared/ready-set";
 import { readTicket } from "../shared/ticket-shape";
@@ -38,9 +39,6 @@ import { readTicket } from "../shared/ticket-shape";
 /** ADR-0041's ceiling on the fixer, reused here for the same reason: a run this cannot land in
  * a bounded number of tries needs a human, not a fourth try. */
 export const MAX_RECOVER_ATTEMPTS = 3;
-
-/** The label this lane applies once it stops trying — copied from `shape.yml`'s own creation call. */
-const NEEDS_HUMAN_LABEL = "needs-human";
 
 /** The `implementer-answer-<n>` artifact name `implement.yml` uploads, read back for its ticket number. */
 const ARTIFACT_NAME_RE = /^implementer-answer-(\d+)$/;
@@ -151,30 +149,16 @@ function postAttemptComment(gh: GhExec, issueNumber: number, runId: number, line
 
 /**
  * Applies `needs-human`, assigns the repository owner, and posts the marker comment that stops the
- * loop — the cap's whole action. Creates the label first (copied from `shape.yml`'s own creation
- * call) so a fresh repo can apply it on the first run that ever needs to.
+ * loop — the cap's whole action, through the one escalation every stopping lane shares
+ * (`shared/needs-human.ts`). `GITHUB_REPOSITORY_OWNER` is set on every runner without a workflow
+ * naming it, which is why this lane needs no `SIGNAL_ASSIGNEE` of its own.
  *
  * Deliberately not wrapped in a swallowing try/catch the way `sayOnTicket` is in `implement.ts`:
  * this *is* the escalation, not a side note beside one, so a write that fails here should fail the
  * run loudly rather than leave a ticket capped at three attempts with nobody told.
  */
 function stopAndEscalate(gh: GhExec, ticket: number, runId: number, priorRuns: number[]): void {
-  gh([
-    "label",
-    "create",
-    NEEDS_HUMAN_LABEL,
-    "--color",
-    "d93f0b",
-    "--description",
-    "Ticket stalled; a human decision or action is required",
-    "--force",
-  ]);
-  gh(["issue", "edit", String(ticket), "--add-label", NEEDS_HUMAN_LABEL]);
-
-  const owner = process.env.GITHUB_REPOSITORY_OWNER;
-  if (owner) {
-    gh(["issue", "edit", String(ticket), "--add-assignee", owner]);
-  }
+  escalateToOwner(gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
 
   const runs = [...priorRuns, runId].map((id) => `- ${runUrl(id)}`).join("\n");
   postAttemptComment(
