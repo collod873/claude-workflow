@@ -570,8 +570,15 @@ export function runRealGauntlet(): GauntletResult {
     execFileSync("bin/gauntlet", ["push"], { encoding: "utf8", env: childEnv() });
     return { exitCode: 0 };
   } catch (err) {
-    const status = (err as { status?: number | null }).status;
-    return { exitCode: status === 1 ? 1 : 2 };
+    // The exit code is still the whole verdict. The output is forwarded because a refusal that says
+    // only `not merged (red)` is a red nobody can act on: run 33325622921 refused PR #281 on a
+    // gauntlet that was green on the same tree at every other venue, and the log held no clue
+    // which of its eight checks disagreed. `bin/gauntlet` prints one `--- name ---` section per
+    // failed check; that is what a reader of this run needs, and it costs nothing to keep.
+    const failure = err as { status?: number | null; stdout?: string; stderr?: string };
+    const output = `${failure.stdout ?? ""}${failure.stderr ?? ""}`.trim();
+    if (output) console.error(output);
+    return { exitCode: failure.status === 1 ? 1 : 2 };
   }
 }
 
