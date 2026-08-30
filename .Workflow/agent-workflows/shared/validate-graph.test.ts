@@ -41,12 +41,20 @@ describe("validatePlan", () => {
     expect(() => validatePlan(plan)).toThrow(/no unblocked root/);
   });
 
-  it("refuses a plan with more than one unblocked root, naming both offenders by position and title", () => {
+  it("accepts a wave 0 holding several slices, since the slice stage draws one per independent start", () => {
+    // `slice/prompt.md` defines wave 0 as "every slice you draw with no
+    // `dependsOn`" — plural by construction. This used to throw, so a spec
+    // whose work starts in several independent places could only be published
+    // by inventing an edge that made the graph lie about what blocks what.
     const plan = [slice("First root"), slice("Second root"), slice("Depends on both", [1, 2])];
 
-    expect(() => validatePlan(plan)).toThrow(/more than one unblocked root/);
-    expect(() => validatePlan(plan)).toThrow(/slice 1 \("First root"\)/);
-    expect(() => validatePlan(plan)).toThrow(/slice 2 \("Second root"\)/);
+    expect(() => validatePlan(plan)).not.toThrow();
+  });
+
+  it("accepts a plan that is nothing but independent roots", () => {
+    const plan = [slice("First"), slice("Second"), slice("Third"), slice("Fourth")];
+
+    expect(() => validatePlan(plan)).not.toThrow();
   });
 
   it("refuses a cycle, naming both slices involved, in a graph that has an unblocked root elsewhere", () => {
