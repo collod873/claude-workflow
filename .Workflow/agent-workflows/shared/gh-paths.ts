@@ -81,6 +81,7 @@ const subIssues = pathTemplate`repos/{owner}/{repo}/issues/${0}/sub_issues`;
 const blockedBy = pathTemplate`repos/{owner}/{repo}/issues/${0}/dependencies/blocked_by`;
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
+const runArtifacts = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/artifacts`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
 const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
@@ -176,6 +177,16 @@ export function workflowRunsPath(workflowFile: string, perPage: number): string 
  */
 export function runJobsPath(runId: number): string {
   return runJobs.build(runId);
+}
+
+/**
+ * The path for one run's artifacts — `recover/recover.ts`'s first source for the ticket a failed
+ * `Implement` run was building: an `implementer-answer-<n>` artifact names it, and its presence is
+ * also what tells the recovery path from the re-dispatch path (a run that never reached the
+ * upload step left the model's answer nowhere to recover).
+ */
+export function runArtifactsPath(runId: number): string {
+  return runArtifacts.build(runId);
 }
 
 /**

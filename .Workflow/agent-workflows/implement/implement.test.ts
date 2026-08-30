@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
+import { simulateClaimRef } from "../shared/gh.fake";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
@@ -166,16 +167,8 @@ function fakeGh(
 
   const gh: GhExec = (args) => {
     calls.push([...args]);
-    if (args[0] === "api" && args[1] === GIT_REFS_PATH) {
-      const ref = (args.find((arg) => arg.startsWith("ref=refs/heads/")) ?? "").slice("ref=refs/heads/".length);
-      if (refs.has(ref)) throw new Error("HTTP 422: Reference already exists");
-      refs.add(ref);
-      return "";
-    }
-    if (args[0] === "api" && args[1] === "--method" && args[2] === "DELETE") {
-      refs.delete(args[3].slice(`${GIT_REFS_PATH}/heads/`.length));
-      return "";
-    }
+    const claimResult = simulateClaimRef(args, refs);
+    if (claimResult !== undefined) return claimResult;
     if (args[0] === "pr" && args[1] === "list") {
       return JSON.stringify(Array.from({ length: claim?.pullRequests ?? 0 }, (_, index) => ({ number: index + 1 })));
     }

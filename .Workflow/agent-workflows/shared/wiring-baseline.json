@@ -4,11 +4,6 @@
   "findings": [
     {
       "kind": "exports",
-      "file": ".Workflow/agent-workflows/implement/implement.ts",
-      "name": "IMPLEMENT_DISPATCH_EVENT_TYPE"
-    },
-    {
-      "kind": "exports",
       "file": ".Workflow/agent-workflows/implement/out-of-brief.ts",
       "name": "markedCount"
     },
