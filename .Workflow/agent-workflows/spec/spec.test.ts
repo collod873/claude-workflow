@@ -334,9 +334,17 @@ describe("runSpecCritique — the critic-only entry", () => {
     body: "## Problem\nIt stalls on the tracker.",
   };
 
-  /** The body the reconciler hands back, as it comes off the wire and as the write should land it. */
-  const REWRITTEN = "## Problem\nIt stalls on the tracker.\n\n## Assumptions\n\n- **assumed.** because.";
-  const RECONCILED = JSON.stringify({ body: REWRITTEN });
+  /**
+   * The prose the reconciler's model hands back, carrying an assumptions section of its own — and
+   * the body the write should land, whose section `reconcile.ts` rewrites from the critic's own
+   * resolutions rather than trusting the model to have listed them.
+   */
+  const MODEL_REWRITE =
+    "## Problem\nIt stalls on the tracker.\n\n## Assumptions\n\n- **assumed.** because.";
+  const REWRITTEN =
+    "## Problem\nIt stalls on the tracker.\n\n## Assumptions\n\n" +
+    "- **\"handles errors gracefully\" becomes \"returns a 400 on a malformed request\".** The body already implies malformed input is rejected; this is the observable version.";
+  const RECONCILED = JSON.stringify({ body: MODEL_REWRITE });
 
   /** The published spec as this door reads it: its own title and body, plus whatever comments exist. */
   function fakeGh(comments: string[] = [], body: string = SPEC.body): FakeIssueGh {

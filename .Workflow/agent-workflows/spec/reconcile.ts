@@ -82,6 +82,50 @@ function formatResolution(resolution: Resolution): string {
   return `Decision: ${resolution.decision}\nReason: ${resolution.reason}`;
 }
 
+/** The heading the assumptions section is spelled with, wherever it is written or read. */
+const ASSUMPTIONS_HEADING = "## Assumptions";
+
+/** One resolution as the line the owner reads: what was decided, in bold, and why. */
+function assumptionLine(resolution: Resolution): string {
+  return `- **${resolution.decision}** ${resolution.reason}`;
+}
+
+/**
+ * The body with everything under `## Assumptions` removed — the rest of the document untouched,
+ * including a heading that follows the section.
+ */
+function withoutAssumptions(body: string): string[] {
+  const lines = body.split("\n");
+  const start = lines.findIndex((line) => line.trim() === ASSUMPTIONS_HEADING);
+  if (start === -1) return lines;
+
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^##\s/.test(line));
+  return [...lines.slice(0, start), ...(end === -1 ? [] : rest.slice(end))];
+}
+
+/**
+ * Writes the assumptions section from the resolutions themselves, replacing whatever the model
+ * wrote under that heading.
+ *
+ * **Why this is code and not the prompt.** `reconcile/prompt.md` asks for the section, and an
+ * earlier draft of this stage stopped there. But the section is the whole safety mechanism of the
+ * redesign — the owner reads this list *instead of* answering questions — and there is no longer
+ * anyone reading the output to notice a model quietly left it out. That is the same argument the
+ * never-drop bound below is built on, so it gets the same treatment: derived from the input, not
+ * requested of a model. The prompt's copy stays, because a model that knows the section is coming
+ * writes the criteria around it better than one surprised by it.
+ *
+ * It goes last, after the prose the model returned, so a resolution is never spliced between a
+ * criterion and the heading it sits under.
+ */
+function withAssumptions(body: string, resolutions: Resolution[]): string {
+  const kept = withoutAssumptions(body);
+  while (kept.length > 0 && kept[kept.length - 1].trim() === "") kept.pop();
+
+  return [...kept, "", ASSUMPTIONS_HEADING, "", ...resolutions.map(assumptionLine)].join("\n");
+}
+
 /**
  * Runs the reconciler on one drafted or published spec and returns the body
  * it should now read as — after checking that the rewrite dropped no
@@ -130,5 +174,5 @@ export async function runSpecReconciler(
     );
   }
 
-  return body;
+  return withAssumptions(body, input.resolutions);
 }

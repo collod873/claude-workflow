@@ -22,8 +22,19 @@ const RESOLUTIONS = [
   },
 ];
 
+/** The prose the model hands back — carrying a partial assumptions section of its own. */
 const REWRITTEN =
   "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`\n- [ ] The check is the gauntlet, not a unit test — check: `bin/gauntlet push`\n\n## Assumptions\n\n- **Repoint every consumer and delete every duplicate.** The restatement already rules out keeping a compatibility shim.";
+
+/**
+ * What the stage resolves to: the model's prose, with the assumptions section rewritten from the
+ * resolutions themselves. The model listed one of the two it was handed, which is exactly the
+ * fail-open the section is written in code to close.
+ */
+const RECONCILED =
+  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`\n- [ ] The check is the gauntlet, not a unit test — check: `bin/gauntlet push`\n\n## Assumptions\n\n" +
+  "- **Repoint every consumer and delete every duplicate — a re-export would leave it in place.** The restatement already rules out keeping a compatibility shim.\n" +
+  "- **The check is the gauntlet, not the unit test.** Only the gauntlet observes the whole tree the criterion is actually about.";
 
 const reconciled = (body: string) => JSON.stringify({ body });
 
@@ -58,12 +69,16 @@ describe("runSpecReconciler", () => {
     expect(prompt).not.toContain("{{");
   });
 
-  it("returns the rewritten body, unwrapped", async () => {
+  it("returns the rewritten body unwrapped, with the assumptions section written from the resolutions", async () => {
+    // The model listed one of the two resolutions it was handed. The section that comes back
+    // carries both, because it is derived from the input rather than requested of the model —
+    // the same treatment the never-drop bound gets, and for the same reason: there is no owner
+    // reading the output to notice a missing line.
     const fake = createFakeStage(reconciled(REWRITTEN));
 
     await expect(
       runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS }),
-    ).resolves.toBe(REWRITTEN);
+    ).resolves.toBe(RECONCILED);
   });
 
   it("refuses an empty body rather than writing one over the spec", async () => {
