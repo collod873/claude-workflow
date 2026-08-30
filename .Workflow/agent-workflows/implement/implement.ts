@@ -21,6 +21,7 @@ import {
 } from "../shared/ticket-shape";
 import { runVitestJson, type TestRunResult } from "../acceptance/push-gate";
 import { recordOutOfBrief } from "./out-of-brief";
+import { execGenerator, regenerateArtifacts, type GeneratorExec } from "./regenerate-artifacts";
 
 /**
  * Lane: build one ticket from exactly the brief this file assembles — the
@@ -546,6 +547,15 @@ export interface ImplementDeps {
   now?: Date;
   /** Read for `ANSWER_PATH_ENV` only. Injected so a test names a path without setting one. */
   env?: Record<string, string | undefined>;
+  /**
+   * Runs one of `GENERATED_ARTIFACTS`' generators — wired to `execGenerator` by `main`, and absent
+   * everywhere else. Absent means *do not regenerate*, which is the right default for the only
+   * callers that leave it out: a test spawning the real generators would rewrite this repo's own
+   * `.claude/contract.json` from whatever tree the suite happens to be running against.
+   */
+  runGenerator?: GeneratorExec;
+  /** The repo root the generators are pointed at. Defaults to this process's cwd, which is the checkout. */
+  repoRoot?: string;
 }
 
 /**
@@ -656,7 +666,14 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     return { outcome: "nothing-to-build" };
   }
 
-  const paths = answer.files.map((file) => file.path);
+  // Only now, once there is something to commit: a run that built nothing has nothing to make a
+  // generated artifact stale, and spending two subprocesses to prove that is spending them for
+  // nothing. Regenerated paths ride along on the commit — see `regenerate-artifacts.ts` for why the
+  // implementer is not the one asked to keep them fresh.
+  const paths = [
+    ...answer.files.map((file) => file.path),
+    ...(deps.runGenerator ? regenerateArtifacts(deps.runGenerator, deps.repoRoot ?? process.cwd(), log) : []),
+  ];
   commitAndPushBranch(
     deps.git,
     branch,
@@ -718,6 +735,7 @@ async function main(): Promise<void> {
       writeFile: fsWriteFile,
       issueNumber,
       failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(path, "utf8")),
+      runGenerator: execGenerator,
     });
     if (result.outcome === "already-claimed") {
       // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the

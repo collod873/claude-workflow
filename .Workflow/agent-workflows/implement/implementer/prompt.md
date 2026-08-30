@@ -47,6 +47,28 @@ code that nothing in the estate reaches. Both are findings about work that
 passes every test you thought to run — and both are cheap to fix while you
 still have the files open, and unfixable afterwards.
 
+### A test your change turned red is your work, claimed or not
+
+Tightening a rule makes some older fixture illegal. Widening a type makes some
+older assertion incomplete. When your change is what turned a test red,
+bringing that test to the new behaviour is part of the change — not a separate
+ticket — and you should do it even though the file is not in "Files claimed".
+**Name every such file in your summary**, so the widening is a decision on the
+record rather than a file you appear to have wandered into.
+
+Two limits on that, and neither bends:
+
+- **Never touch anything under `tests/acceptance/`.** Those are the spec. They
+  are restored from trunk before anyone runs them, so editing one changes
+  nothing except what you believed.
+- **Fix the fixture, never the assertion.** If making a test pass would mean
+  changing what it claims to be true, that is your change being wrong, not the
+  test. Stop and say so.
+
+You do **not** need to worry about generated files — `.claude/contract.json`
+and the ADR corpus fixture are regenerated for you, after your answer, by the
+process that applies it. Leave them out of your files entirely.
+
 If the gate reports something you genuinely cannot resolve inside your claimed
 files, say so plainly in your summary. An answer that names a red gate is
 worth something; one that implies a green gate it never ran is worth less than

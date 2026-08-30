@@ -20,7 +20,9 @@ import {
   staleClaimTakeoverNote,
   VERIFY_DISPATCH_EVENT_TYPE,
   type BriefInputs,
+  type ImplementDeps,
 } from "./implement";
+import { GENERATED_ARTIFACTS } from "./regenerate-artifacts";
 
 describe("assembleBrief", () => {
   it("contains only the ticket body, seam manifest lines, module CONTEXT.md, and failing test file(s), and nothing else", () => {
@@ -237,6 +239,45 @@ const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
 const dispatchesIn = (calls: string[][]): string[][] =>
   calls.filter((call) => call[0] === "api" && call[1] === "repos/{owner}/{repo}/dispatches");
 
+/**
+ * The ordinary run, on fakes: one claimed file, an implementer that writes it, a `git status` that
+ * says it changed, and nothing refusing anything. `extra` is whatever the case under test is
+ * actually about — every other field is scenery, and repeating the scenery per case is what the
+ * clone gate reads as a copy.
+ */
+function ordinaryRun(extra: Partial<ImplementDeps> = {}): {
+  deps: ImplementDeps;
+  ticket: { title: string; body: string };
+  stage: ReturnType<typeof createFakeStage>;
+  ghCalls: string[][];
+  gitCalls: string[][];
+} {
+  const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
+  const { gh, calls: ghCalls } = fakeGh(ticket);
+  const { git, calls: gitCalls } = fakeGit();
+  const stage = createFakeStage(
+    JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }),
+  );
+
+  return {
+    ticket,
+    stage,
+    ghCalls,
+    gitCalls,
+    deps: {
+      gh,
+      exec: stage.exec,
+      git,
+      readFile: () => "# CONTEXT\n",
+      fileExists: () => false,
+      writeFile: () => {},
+      issueNumber: 167,
+      failingTests: [],
+      ...extra,
+    },
+  };
+}
+
 describe("runImplement — on fakes", () => {
   it("opens exactly one PR, then sends exactly one repository_dispatch naming that PR", async () => {
     const ticket = {
@@ -295,24 +336,14 @@ describe("runImplement — on fakes", () => {
   });
 
   it("hands the implementer stage a brief carrying the ticket body and the failing test content", async () => {
-    const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const { gh } = fakeGh(ticket);
-    const { git } = fakeGit();
-    const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
-
-    await runImplement({
-      gh,
-      exec: stage.exec,
-      git,
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
+    const run = ordinaryRun({
       failingTests: [{ path: "tests/acceptance/foo.test.ts", content: "the failing assertion" }],
     });
 
-    const prompt = stage.stdins[0] ?? "";
-    expect(prompt).toContain(ticket.body);
+    await runImplement(run.deps);
+
+    const prompt = run.stage.stdins[0] ?? "";
+    expect(prompt).toContain(run.ticket.body);
     expect(prompt).toContain("the failing assertion");
   });
 
@@ -336,6 +367,85 @@ describe("runImplement — on fakes", () => {
 
     expect(npmScripts.scripts).toHaveProperty("check");
     expect(prompt).toContain("npm run check");
+  });
+
+  /**
+   * The other half of ADR-0107, and the half run 33284271370 paid for: the stage ran the gate, saw
+   * the ADR corpus fixture had gone stale under its own new ADR, and could not act — the fixture
+   * was outside its claim and is 472 KB besides. So the wrapper regenerates, and its paths ride the
+   * same commit. See `regenerate-artifacts.ts`.
+   */
+  it("regenerates the generated artifacts and commits them alongside the implementer's files", async () => {
+    const regenerated: string[] = [];
+    const run = ordinaryRun({
+      repoRoot: "/repo",
+      runGenerator: (generator, root) => {
+        regenerated.push(`${generator} ${root}`);
+        return { exitCode: 0, output: "" };
+      },
+    });
+
+    await runImplement(run.deps);
+
+    expect(regenerated).toEqual(GENERATED_ARTIFACTS.map((artifact) => `${artifact.generator} /repo`));
+
+    const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
+    expect(addCall).toContain("a/b.ts");
+    for (const artifact of GENERATED_ARTIFACTS) {
+      expect(addCall).toContain(artifact.path);
+    }
+  });
+
+  it("still opens its PR when a generator fails, because a stale artifact is the push gate's to name", async () => {
+    const logged: string[] = [];
+    const run = ordinaryRun({
+      log: (line) => logged.push(line),
+      runGenerator: () => ({ exitCode: 1, output: "generator exploded" }),
+    });
+
+    const result = await runImplement(run.deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
+    expect(logged.join("\n")).toContain("generator exploded");
+  });
+
+  /**
+   * The generators and the push-venue checks that diff them are spelled in two languages, and no
+   * compiler sees across that boundary. A generator renamed in `bin/gauntlet` and not here leaves
+   * lane 05 refreshing a file nothing checks, which reads exactly like working.
+   */
+  it("regenerates exactly what bin/gauntlet's push venue diffs", () => {
+    const gauntlet = readFileSync(fileURLToPath(new URL("../../../bin/gauntlet", import.meta.url)), "utf8");
+
+    for (const artifact of GENERATED_ARTIFACTS) {
+      expect(gauntlet, `bin/gauntlet does not diff ${artifact.path}`).toContain(artifact.path);
+      expect(gauntlet, `bin/gauntlet does not run ${artifact.generator}`).toContain(artifact.generator);
+    }
+  });
+
+  /**
+   * The wiring baseline is the one `regenerate && diff` artifact lane 05 must never refresh: it
+   * grandfathers standing debt and only ever shrinks, so regenerating it would swallow exactly the
+   * finding the gate exists to raise (ADR-0086, and `CLAUDE.md`'s own instruction to drop entries
+   * rather than add them).
+   */
+  it("leaves the wiring baseline alone", () => {
+    expect(GENERATED_ARTIFACTS.map((artifact) => artifact.path)).not.toContain(
+      ".Workflow/agent-workflows/shared/wiring-baseline.json",
+    );
+  });
+
+  /**
+   * The second legal widening (the first being the generated files above, which the implementer is
+   * told not to touch at all): a test its own change turned red. Both limits on it are load-bearing
+   * — an implementer that edits the acceptance tests is editing the spec it is being judged against.
+   */
+  it("tells the implementer it may fix a test its change broke, but never the acceptance tests", () => {
+    const prompt = readFileSync(fileURLToPath(new URL("./implementer/prompt.md", import.meta.url)), "utf8");
+
+    expect(prompt).toContain("tests/acceptance/");
+    expect(prompt).toMatch(/never the assertion/i);
+    expect(prompt).toMatch(/name every such file in your summary/i);
   });
 });
 
