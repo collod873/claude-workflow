@@ -10,9 +10,10 @@ silently. Kind -> required shape:
   note      none
   question  `## Question` heading
   ticket    `## Acceptance criteria` with >=1 `- [ ]` item, and `## Files claimed`
-  spec      none (title/label handling is the caller's job, not the body's)
+  spec      `## Acceptance criteria` with exactly one `- [ ]` item, and that item must carry a
+            well-formed `check:` marker — no escape marker lets a `spec` close without one
 
-A refusal raises `ValidationError` naming the missing heading. A `ticket` whose criteria carry
+A refusal raises `ValidationError` naming the missing heading or the malformed shape. A `ticket` whose criteria carry
 no verifiable evidence — a `path:line`, a backtick-quoted command, or a file/artifact reference
 — is not refused, only warned about: `validate` returns that warning in its result rather than
 raising, so a caller can print it to stderr and still proceed. Same treatment for a `## Files
@@ -198,8 +199,8 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     """Validate `body` against `kind`'s required shape.
 
     Returns a (possibly empty) list of warning strings on success. Raises `ValidationError`,
-    naming what's missing, on refusal. `note` and `spec` never raise — the empty body `note`
-    accepts is itself the shape, and `spec` carries no body requirement at all.
+    naming what's missing or malformed, on refusal. Only `note` never raises — the empty body
+    it accepts is itself the shape.
 
     `repo_root` is the tree a `ticket`'s `## Files claimed` bullets are resolved against;
     it defaults to `caller_repo_root()`, so a caller filing from another repo checks that
@@ -243,7 +244,27 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         warnings.extend(migration_without_post_state(body))
         return warnings
 
-    # kind == "spec"
+    # kind == "spec" — a spec closes on exactly one well-formed check-marked criterion; there is
+    # no escape marker that lets it close without one.
+    if not CRITERIA_HEADING_RE.search(body):
+        raise ValidationError(
+            "missing required '## Acceptance criteria' heading — a `spec` closes on exactly "
+            "one well-formed check-marked criterion, with no escape marker"
+        )
+    blocks = criteria_blocks(body) or []
+    if len(blocks) != 1:
+        raise ValidationError(
+            "a `spec`'s '## Acceptance criteria' must carry exactly one '- [ ]' item, found "
+            f"{len(blocks)}"
+        )
+    criterion = blocks[0]
+    if _malformed_check_marker(criterion):
+        raise ValidationError(_malformed_check_marker_warning(criterion))
+    if parse_check_marker(criterion) is None:
+        raise ValidationError(
+            "a `spec`'s single acceptance criterion must carry a well-formed `check:` marker "
+            "naming the command that closes it — no escape marker is accepted"
+        )
     return []
 
 
