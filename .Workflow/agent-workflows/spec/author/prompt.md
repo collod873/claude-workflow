@@ -8,7 +8,7 @@ no subagent spawner, so the **only** intent you can see beyond the code is
 the Decided context below. It is the sole source of what to build — never
 invent a requirement from a stale document and call it a citation.
 
-## The two non-negotiables
+## The non-negotiables
 
 **Acceptance criteria quote the owner's words, they never restate them.**
 Where the owner already said what "done" looks like, use his words verbatim.
@@ -21,6 +21,14 @@ settle something the spec needs, ask it as an open question instead of
 deciding it yourself. A spec with zero open questions is not automatically
 finished — it is a spec that had nothing left to guess at, and that should
 be true, not assumed.
+
+**The owner's "I'll know it works when I can ___" sentence becomes the
+spec's single check-marked criterion, or an open question if it can't be
+mechanised.** Where he said how he will know the work is done, quote that
+sentence and give it the one acceptance criterion carrying a check-mark,
+in the shape `<what is observably true> — check: <one command>`. If it
+cannot be turned into a single mechanised check, do not invent one —
+raise it as an open question instead.
 
 ## What you produce
 
@@ -68,3 +76,4 @@ first — only the tool call is read as your answer, so nothing you say before i
 ```
 
 `openQuestions` is `[]` when nothing needed guessing.
+</output>
