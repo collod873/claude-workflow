@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { dispatchVerify } from "../implement/implement";
 import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
@@ -10,6 +11,7 @@ import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { extractCriteria, readTicket } from "../shared/ticket-shape";
 
 /**
  * The fixer: what runs against a red completed verification run on an
@@ -207,6 +209,30 @@ export interface FixerDeps {
   assignee: string;
 }
 
+/**
+ * A green attempt is a new head on the pull request, and a head lane 06 has not judged is one lane
+ * 08 will never merge: the fixer's first real green (PR #280, 2026-08-30) pushed its fix and then
+ * nothing happened, because the only `implementation-opened` this pipeline sends is the one lane 05
+ * sends when it opens the PR. This sends the same one, with the same three fields, so a fixed PR
+ * takes the same road a fresh one does — Verify, Review, Integrate — and the fixer's "green" is
+ * the suite's word rather than only its own.
+ *
+ * `changed_files` is every path the PR touches against trunk, not only what the attempts wrote:
+ * the Immutability job judges the whole diff, and a list that named only the fix would let an
+ * implementer's own immutable-set touch through on the fixer's ticket.
+ */
+function rejudge(gh: GhExec, prNumber: number, issueNumber: number): void {
+  const pr = JSON.parse(gh(["pr", "view", String(prNumber), "--json", "url,files"])) as {
+    url: string;
+    files: Array<{ path: string }>;
+  };
+  dispatchVerify(gh, {
+    prUrl: pr.url,
+    changedFiles: pr.files.map((file) => file.path),
+    criteria: extractCriteria(readTicket(gh, issueNumber).body),
+  });
+}
+
 export type FixerOutcome =
   | { verdict: "green"; attempts: number }
   | { verdict: "blocked"; attempts: number; stopReason: "no-progress" | "capped" };
@@ -242,6 +268,7 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     const result = await deps.runTests();
 
     if (result.failures.length === 0) {
+      rejudge(deps.gh, deps.prNumber, deps.issueNumber);
       return { verdict: "green", attempts: attempt };
     }
 

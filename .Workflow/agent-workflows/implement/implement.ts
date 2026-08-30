@@ -517,18 +517,31 @@ export function openPrAndDispatch(gh: GhExec, dispatch: PrDispatch): string {
     dispatch.branch,
   ]).trim();
 
+  dispatchVerify(gh, { prUrl, changedFiles: dispatch.changedFiles, criteria: dispatch.criteria });
+  return prUrl;
+}
+
+/**
+ * The dispatch half of `openPrAndDispatch` on its own, for a pull request that already exists and
+ * has changed since lane 06 last judged it. The fixer is the caller: a fix it pushes is a new head
+ * nothing re-judges unless this is sent, and PR #280 sat green-by-the-fixer and unmerged on
+ * 2026-08-30 for exactly that reason. Same three fields, same receivers, same reasons as above.
+ */
+export function dispatchVerify(
+  gh: GhExec,
+  dispatch: { prUrl: string; changedFiles: string[]; criteria: string[] },
+): void {
   gh([
     "api",
     "repos/{owner}/{repo}/dispatches",
     "-f",
     `event_type=${VERIFY_DISPATCH_EVENT_TYPE}`,
     "-f",
-    `client_payload[pr]=${prUrl}`,
+    `client_payload[pr]=${dispatch.prUrl}`,
     "-f",
     `client_payload[changed_files]=${dispatch.changedFiles.join(",")}`,
     ...dispatch.criteria.flatMap((criterion) => ["-f", `client_payload[criteria][]=${criterion}`]),
   ]);
-  return prUrl;
 }
 
 export interface ImplementDeps {

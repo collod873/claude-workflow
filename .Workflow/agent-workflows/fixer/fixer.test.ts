@@ -208,9 +208,23 @@ describe("runFixer — capped stop", () => {
 });
 
 describe("runFixer — goes green", () => {
-  it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment", async () => {
+  it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment, and sends the PR back to Verify", async () => {
     const stage = fakeStage([answer(1)]);
+    // A `gh` that answers the two reads `rejudge` makes — the PR's url and whole diff, and the
+    // ticket's body — and records everything, so the dispatch can be checked field by field.
+    const ghCalls: string[][] = [];
+    const gh: GhExec = (args) => {
+      ghCalls.push([...args]);
+      if (args[0] === "pr" && args[1] === "view") {
+        return JSON.stringify({ url: "https://example/pull/7", files: [{ path: "a.ts" }, { path: "fix-1.ts" }] });
+      }
+      if (args[0] === "issue" && args[1] === "view") {
+        return JSON.stringify({ title: "t", body: "## Acceptance criteria\n- [ ] it works — check: `true`\n" });
+      }
+      return "";
+    };
     const deps = baseDeps({
+      gh,
       exec: stage.exec,
       runTestsSequence: [{ failures: [] }],
     });
@@ -219,9 +233,19 @@ describe("runFixer — goes green", () => {
 
     expect(stage.callCount()).toBe(1);
     expect(outcome).toEqual({ verdict: "green", attempts: 1 });
-    expect(deps.ghCalls).toHaveLength(0);
     expect(deps.writes).toEqual([{ path: "fix-1.ts", content: "// attempt 1" }]);
     expect(deps.gitCalls.some((call) => call[0] === "push")).toBe(true);
+
+    // No escalation of any kind on a green.
+    expect(ghCalls.filter((call) => call[0] === "issue" && call[1] === "edit")).toEqual([]);
+    expect(ghCalls.filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([]);
+
+    // The same dispatch lane 05 sends when it opens a PR: the whole diff, the ticket's criteria.
+    const dispatch = ghCalls.find((call) => call[0] === "api" && call[1] === "repos/{owner}/{repo}/dispatches");
+    expect(dispatch).toContain("event_type=implementation-opened");
+    expect(dispatch).toContain("client_payload[pr]=https://example/pull/7");
+    expect(dispatch).toContain("client_payload[changed_files]=a.ts,fix-1.ts");
+    expect(dispatch).toContain("client_payload[criteria][]=it works — check: `true`");
   });
 });
 
