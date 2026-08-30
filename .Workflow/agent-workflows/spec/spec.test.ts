@@ -31,7 +31,19 @@ const RESPONSE = JSON.stringify({
   openQuestions: [],
 });
 
-const SILENT_CRITIC = JSON.stringify({ findings: [] });
+const SILENT_CRITIC = JSON.stringify({ resolutions: [] });
+
+const RESOLVED_CRITIC = JSON.stringify({
+  resolutions: [
+    {
+      decision: "\"handles errors gracefully\" becomes \"returns a 400 on a malformed request\".",
+      reason: "The body already implies malformed input is rejected; this is the observable version.",
+    },
+  ],
+});
+
+const RECONCILED_BODY =
+  "The whole statement of the work.\n\n## Assumptions\n\n- **\"handles errors gracefully\" becomes \"returns a 400 on a malformed request\".** The body already implies malformed input is rejected; this is the observable version.";
 
 /** The sweep's own answer, empty — good enough for a test that does not care what it found. */
 const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
@@ -40,7 +52,7 @@ const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
  * A fake `StageExec` that answers the sweep's call with `SWEEP_RESPONSE`, the author's with
  * `RESPONSE`, and the critic's with `SILENT_CRITIC` — good enough for a test that only cares about
  * the author's own argv or prompt, since the sweep's call comes before it and the critic's after it
- * in `fake.calls`.
+ * in `fake.calls`. Nothing to fold in means no fourth, reconciler call.
  */
 function fakeChain() {
   return createFakeStages([SWEEP_RESPONSE, RESPONSE, SILENT_CRITIC]);
@@ -129,9 +141,9 @@ describe("runSpecAuthor", () => {
   });
 
   it("invokes the sweep, then the author, then the critic — each strictly before the next", async () => {
-    // ADR-0062: "the critic runs in the same chain, before publication," and sweep.ts's sweep runs
-    // ahead of the author. `runSpecAuthor` is the entrypoint publication is built on, so this checks
-    // the whole order lands before this function resolves — by call order on a fake `StageExec`.
+    // sweep.ts's sweep runs ahead of the author, and the critic runs on the author's own draft.
+    // `runSpecAuthor` is the entrypoint publication is built on, so this checks the whole order
+    // lands before this function resolves — by call order on a fake `StageExec`.
     const fake = fakeChain();
 
     await runSpecAuthor(fake.exec, CONTEXT);
@@ -145,35 +157,40 @@ describe("runSpecAuthor", () => {
     expect(criticArgv).not.toContain("--allowedTools");
   });
 
-  it("folds the critic's findings into openQuestions and never overwrites the author's draft body", async () => {
-    const responses = [
-      SWEEP_RESPONSE,
-      RESPONSE,
-      JSON.stringify({
-        findings: ["\"handles errors gracefully\" admits two implementations."],
-      }),
-    ];
-    const exec: StageExec = async () => responses.shift() ?? SILENT_CRITIC;
+  it("runs no reconciler stage when the critic resolves nothing and no sheet mark is unfiled", async () => {
+    const fake = fakeChain();
 
-    const result = await runSpecAuthor(exec, CONTEXT);
+    await runSpecAuthor(fake.exec, CONTEXT);
 
-    expect(result.body).toBe("The whole statement of the work.");
-    expect(result.openQuestions).toEqual([
-      "\"handles errors gracefully\" admits two implementations.",
-    ]);
+    // Three calls total (sweep, author, critic) — a fourth would be the reconciler, and there is
+    // nothing here for it to fold in.
+    expect(fake.calls).toHaveLength(3);
+  });
+
+  it("folds the critic's resolutions into the body via the reconciler, and leaves openQuestions to the author alone", async () => {
+    const fake = createFakeStages([SWEEP_RESPONSE, RESPONSE, RESOLVED_CRITIC, JSON.stringify({ body: RECONCILED_BODY })]);
+
+    const result = await runSpecAuthor(fake.exec, CONTEXT);
+
+    expect(result.body).toBe(RECONCILED_BODY);
+    expect(result.openQuestions).toEqual([]);
+    expect(fake.calls).toHaveLength(4);
+    // The reconciler runs on the author's own allow-list, same as the sweep and the author, and
+    // is the only stage besides them to carry one.
+    expect(fake.calls[3]).toContain("--allowedTools");
+
+    const reconcilerPrompt = fake.stdins[3] ?? "";
+    expect(reconcilerPrompt).toContain(
+      "\"handles errors gracefully\" becomes \"returns a 400 on a malformed request\".",
+    );
   });
 });
 
 /**
- * ADR-0061's arithmetic, end to end through the door that actually carries marks.
- *
- * `gateCount(openQuestions, decisions)` has had a second parameter since it was written and
- * `gateSpec` passed one argument, so `unfiledMarkGap` returned 0 by construction on every real run
- * and the check never once contributed to a gate. These drive the whole sheet door — collector,
- * author, critic, publish, gate — because the seam that was broken is the hand-off between them,
- * and a unit test either side of it is what missed this for as long as it did.
+ * ADR-0061's arithmetic, end to end through the door that actually carries marks — now folded into
+ * the draft's body as a stated assumption rather than held on until the owner resolves it.
  */
-describe("the sheet door — ADR-0061's marks reach the gate", () => {
+describe("the sheet door — unfiled marks reach the assumptions section", () => {
   const OWNER_WORDS = "make the accept file its own rulings";
 
   function sheet(decisions: Sheet["decisions"]): Sheet {
@@ -203,22 +220,29 @@ describe("the sheet door — ADR-0061's marks reach the gate", () => {
     );
   }
 
-  /** An empty sweep, the author's draft, then a silent critic — the three stages this door spends. */
-  function chain(openQuestions: string[]): StageExec {
-    return createFakeStages([
+  /**
+   * An empty sweep, the author's draft, a critic's own resolutions (or silence), and — only when
+   * something needs folding in — the reconciler's rewritten body.
+   */
+  function chain(openQuestions: string[], critic: string, reconciledBody?: string): StageExec {
+    const stages = [
       SWEEP_RESPONSE,
       JSON.stringify({ title: "A spec", body: "## Problem\nIt is unbuilt.", openQuestions }),
-      SILENT_CRITIC,
-    ]).exec;
+      critic,
+    ];
+    if (reconciledBody !== undefined) stages.push(JSON.stringify({ body: reconciledBody }));
+    return createFakeStages(stages).exec;
   }
 
   async function runSheetDoor(
     openQuestions: string[],
     decisions: Sheet["decisions"],
+    critic: string = SILENT_CRITIC,
+    reconciledBody?: string,
   ): Promise<{ result: Awaited<ReturnType<typeof runSpecPublication>>; calls: string[][] }> {
     const { gh, calls } = fakeGh(decisions);
     const result = await runSpecPublication(
-      chain(openQuestions),
+      chain(openQuestions, critic, reconciledBody),
       gh,
       { mode: "publish", source: { kind: "sheet", issue: 42 } },
       { kind: "sheet", gh, issueNumber: 42 },
@@ -234,53 +258,66 @@ describe("the sheet door — ADR-0061's marks reach the gate", () => {
     adrTitle: "",
   };
 
-  it("holds a draft that asked nothing but was handed one unfiled mark", async () => {
-    // The whole of #189's second problem statement: before this, the gate counted zero here and
-    // dispatched a spec that had guessed silently about `shared/gh.ts`.
-    const { result, calls } = await runSheetDoor([], [UNFILED]);
+  it("folds a load-bearing mark the draft never asked about into the body, via the reconciler", async () => {
+    const reconciledBody =
+      "## Problem\nIt is unbuilt.\n\n## Assumptions\n\n" +
+      "- **`shared/gh.ts` follows the sheet's own recommendation, with no ADR filed for it.** " +
+      "The sheet decided `shared/gh.ts` and filed no ruling for it, and the draft asks about none of it.";
+    const { result, calls } = await runSheetDoor([], [UNFILED], SILENT_CRITIC, reconciledBody);
 
-    expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
-    expectNothingDispatched(calls);
+    // The mark is no longer something the gate holds on — it is resolved by being written down.
+    expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched", body: reconciledBody });
+    expect(result.body).toContain(UNFILED.mark);
+
+    const dispatch = calls.find(
+      (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
+    );
+    expect(dispatch).toBeDefined();
   });
 
-  it("names the mark in the round it posts, so a draft that asked nothing still says something", async () => {
-    const { calls } = await runSheetDoor([], [UNFILED]);
+  it("passes the mark's decision and reason to the reconciler's own prompt", async () => {
+    const reconciledBody = "## Problem\nIt is unbuilt.\n\n## Assumptions\n\n- **assumed.** because.";
+    const fake = createFakeStages([
+      SWEEP_RESPONSE,
+      JSON.stringify({ title: "A spec", body: "## Problem\nIt is unbuilt.", openQuestions: [] }),
+      SILENT_CRITIC,
+      JSON.stringify({ body: reconciledBody }),
+    ]);
+    const { gh } = fakeGh([UNFILED]);
 
-    const round = postedRound(calls);
-    expect(round).toContain(UNFILED.mark);
-    expect(round).toContain("1. ");
+    await runSpecPublication(
+      fake.exec,
+      gh,
+      { mode: "publish", source: { kind: "sheet", issue: 42 } },
+      { kind: "sheet", gh, issueNumber: 42 },
+    );
+
+    const reconcilerPrompt = fake.stdins[3] ?? "";
+    expect(reconcilerPrompt).toContain(UNFILED.mark);
   });
 
-  it("numbers the questions and the marks as one continuing list", async () => {
-    // The owner replies by number, so a mark starting its own `1.` beneath a question already
-    // numbered `1.` would make his answer ambiguous (ADR-0061's numbered form).
-    const { result, calls } = await runSheetDoor(["What does done mean?"], [UNFILED]);
-
-    expect(result).toMatchObject({ gateCount: 2, outcome: "held" });
-
-    const round = postedRound(calls) ?? "";
-    expect(round).toContain("1. What does done mean?");
-    expect(round).toMatch(new RegExp(`^2\\. .*${UNFILED.mark.replace(".", "\\.")}`, "m"));
-  });
-
-  it("dispatches when every mark the sheet carried is either filed or asked about", async () => {
-    // The gate is not simply "a sheet with decisions holds": a decision carrying an ADR title was
-    // ruled on, and a mark some question names was surfaced. Neither is a silent guess.
+  it("dispatches, spending no reconciler stage, when every mark the sheet carried is either filed or asked about", async () => {
+    // The gate is not simply "a sheet with decisions dispatches": a decision carrying an ADR title
+    // was ruled on, and a mark some question names was surfaced. Neither is a silent guess, so
+    // neither reaches the reconciler.
     const filed = { ...UNFILED, mark: "shape/accept.ts", adrTitle: "The accept files its rulings" };
-    const { result } = await runSheetDoor([], [filed]);
+    const { result, calls } = await runSheetDoor([], [filed]);
 
     expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched" });
+    expect(result.body).toBe("## Problem\nIt is unbuilt.");
+    expect(calls.filter((args) => args.includes("--body") && args[1] === "edit")).toHaveLength(0);
   });
 
-  it("counts a question naming the mark once, not once per measure", async () => {
-    // `unfiledMarks` filters the decisions a question named out of the set, so the question is the
-    // only thing left to count — a draft that did surface its mark is held on that question alone.
+  it("holds when the author itself leaves a real open question, independent of any mark", async () => {
+    // A mark the draft already asked about does not reach the reconciler (`unfiledMarks` filters
+    // it out), and the author's own question is what the gate still holds on.
     const { result, calls } = await runSheetDoor(
       [`Should \`${UNFILED.mark}\` own the retry?`],
       [UNFILED],
     );
 
     expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
+    expectNothingDispatched(calls);
     expect(postedRound(calls)).toBe(
       openQuestionsComment([`Should \`${UNFILED.mark}\` own the retry?`]),
     );
@@ -290,7 +327,6 @@ describe("the sheet door — ADR-0061's marks reach the gate", () => {
 /**
  * ADR-0085's second door: a spec written by `/to-spec` in a live session lands on the tracker
  * already drafted, so the run enters lane 02 at the critic and skips the author entirely.
- * Everything past the critic is the runner path's own — the same `gateCount`, the same `applyGate`.
  */
 describe("runSpecCritique — the critic-only entry", () => {
   const SPEC = {
@@ -299,13 +335,10 @@ describe("runSpecCritique — the critic-only entry", () => {
   };
 
   /** The body the reconciler hands back, as it comes off the wire and as the write should land it. */
-  const REWRITTEN = "## Problem\nIt stalls on the tracker.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed.";
+  const REWRITTEN = "## Problem\nIt stalls on the tracker.\n\n## Assumptions\n\n- **assumed.** because.";
   const RECONCILED = JSON.stringify({ body: REWRITTEN });
 
-  /** One answering comment — enough for ADR-0100's "a spec that answered at least one round". */
-  const ANSWER = "Repoint every consumer and delete every duplicate.";
-
-  /** The published spec as this door reads it: its own title and body, plus the owner's comments. */
+  /** The published spec as this door reads it: its own title and body, plus whatever comments exist. */
   function fakeGh(comments: string[] = [], body: string = SPEC.body): FakeIssueGh {
     return createIssueGh((fields) =>
       fields === "title,body"
@@ -351,8 +384,8 @@ describe("runSpecCritique — the critic-only entry", () => {
     }
   });
 
-  it("passes the owner's answering comments to the critic, and not this lane's own rounds", async () => {
-    const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
+  it("passes whatever comments already sit on the issue to the critic as context, not as a thing it waits on", async () => {
+    const fake = createFakeStage(SILENT_CRITIC);
     const { gh } = fakeGh([
       openQuestionsComment(["what does done mean?"]),
       "done means the gauntlet exits 0",
@@ -365,13 +398,13 @@ describe("runSpecCritique — the critic-only entry", () => {
     expect(prompt).not.toContain("1. what does done mean?");
   });
 
-  it("adds sliceable and sends the dispatch when the critic found nothing", async () => {
+  it("adds sliceable and sends the dispatch when the critic resolved nothing", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
     const { gh, calls } = fakeGh();
 
     const result = await runSpecCritique(fake.exec, gh, 180);
 
-    expect(result).toMatchObject({ issueNumber: 180, gateCount: 0, outcome: "dispatched" });
+    expect(result).toMatchObject({ issueNumber: 180, gateCount: 0, outcome: "dispatched", rewritten: false });
 
     const labelWrite = calls.find((args) => args.includes("--add-label"));
     expect(labelWrite).toContain(SLICEABLE_LABEL);
@@ -381,22 +414,6 @@ describe("runSpecCritique — the critic-only entry", () => {
     );
     expect(dispatch).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
     expect(dispatch).toContain("client_payload[issue]=180");
-  });
-
-  it("comments the numbered questions and sends no dispatch when the critic found something", async () => {
-    const fake = createFakeStage(
-      JSON.stringify({ findings: ["\"handles errors gracefully\" admits two implementations."] }),
-    );
-    const { gh, calls } = fakeGh();
-
-    const result = await runSpecCritique(fake.exec, gh, 180);
-
-    expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
-    expectNothingDispatched(calls);
-
-    expect(postedRound(calls)).toContain(
-      "1. \"handles errors gracefully\" admits two implementations.",
-    );
   });
 
   it("publishes nothing — the spec is already on the tracker", async () => {
@@ -409,11 +426,11 @@ describe("runSpecCritique — the critic-only entry", () => {
     expect(calls.filter((args) => args.includes("--body") && args[1] === "edit")).toHaveLength(0);
   });
 
-  /** ADR-0100, whose home is `reconcile.ts`'s module docstring. */
-  describe("re-authoring the body from the answered thread", () => {
-    it("rewrites the body from the body and the answers when the count falls to zero", async () => {
-      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
+  /** ADR-0100, amended by the sweep-and-pen redesign, whose home is `reconcile.ts`'s module docstring. */
+  describe("re-authoring the body from the critic's own resolutions", () => {
+    it("rewrites the body from the body and the critic's resolutions when it resolved something, and still dispatches", async () => {
+      const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh();
 
       const result = await runSpecCritique(fake.exec, gh, 180);
 
@@ -421,19 +438,20 @@ describe("runSpecCritique — the critic-only entry", () => {
       expect(bodyWrite(calls)).toBe(REWRITTEN);
 
       // One model stage for the rewrite, not a second chain: the reconciler reads the body and the
-      // answers, and the answers are what it was given the round for.
+      // critic's own resolutions.
       expect(fake.calls).toHaveLength(2);
       const reconcilerPrompt = fake.stdins[1] ?? "";
       expect(reconcilerPrompt).toContain(SPEC.body);
-      expect(reconcilerPrompt).toContain(ANSWER);
-      expect(reconcilerPrompt).not.toContain("1. which one?");
+      expect(reconcilerPrompt).toContain(
+        "\"handles errors gracefully\" becomes \"returns a 400 on a malformed request\".",
+      );
     });
 
     it("lands the rewrite before sliceable and before the dispatch, so lane 03 cannot read a stale body", async () => {
       // The whole point of the ordering: `sliceable` is what lane 03's dispatch hangs off, and a
-      // spec labelled before it was rewritten is one lane 03 may slice from the argued-down draft.
-      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
+      // spec labelled before it was rewritten is one lane 03 may slice from the un-reconciled draft.
+      const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh();
 
       await runSpecCritique(fake.exec, gh, 180);
 
@@ -448,9 +466,7 @@ describe("runSpecCritique — the critic-only entry", () => {
       expect(labelled).toBeLessThan(dispatched);
     });
 
-    it("rewrites nothing and spawns no second stage when the spec cleared on its first round", async () => {
-      // No answering comment means no round was ever answered, so there is nothing to fold in.
-      // The guard is the comment list, not a model's judgement of whether it found anything.
+    it("rewrites nothing and spawns no second stage when the critic resolves nothing", async () => {
       const fake = createFakeStages([SILENT_CRITIC]);
       const { gh, calls } = fakeGh();
 
@@ -461,28 +477,12 @@ describe("runSpecCritique — the critic-only entry", () => {
       expect(bodyWrite(calls)).toBeUndefined();
     });
 
-    it("rewrites nothing when the count is non-zero, and still posts its numbered round", async () => {
-      // A held spec has an open round. Re-authoring it would fold in answers to questions that are
-      // still being asked, and the owner would be answering a body that had moved under him.
-      const finding = "\"handles errors gracefully\" admits two implementations.";
-      const fake = createFakeStages([JSON.stringify({ findings: [finding] })]);
-      const { gh, calls } = fakeGh([openQuestionsComment(["which one?"]), ANSWER]);
-
-      const result = await runSpecCritique(fake.exec, gh, 180);
-
-      expect(result).toMatchObject({ gateCount: 1, outcome: "held", rewritten: false });
-      expect(fake.calls).toHaveLength(1);
-      expect(bodyWrite(calls)).toBeUndefined();
-      expect(postedRound(calls)).toContain(`1. ${finding}`);
-      expectNothingDispatched(calls);
-    });
-
     it("carries the title through unchanged and re-appends the source marker the body carried", async () => {
       // A sheet spec re-labelled by hand reaches this door, and an `answer` whose trailer
       // `planSpecRun` could not read routes here too — neither may lose its provenance.
       const marker = sourceMarker({ kind: "sheet", issue: 42 });
-      const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh([ANSWER], `${SPEC.body}\n\n${marker}`);
+      const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
+      const { gh, calls } = fakeGh([], `${SPEC.body}\n\n${marker}`);
 
       await runSpecCritique(fake.exec, gh, 180);
 

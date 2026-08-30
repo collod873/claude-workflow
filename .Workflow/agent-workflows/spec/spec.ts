@@ -4,7 +4,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { runSpecCritic } from "./critic";
+import { runSpecCritic, type Resolution } from "./critic";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
 import {
@@ -37,12 +37,15 @@ export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "
 
 /**
  * Lane 02 — Spec. First stage: the spec author, which turns a Decided
- * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062),
- * reading the author's own draft in the same chain and folding what it finds
- * into `openQuestions` — never into `body`, which is the author's alone.
- * Both are dispatched by trigger over the author's collector per trigger (an
- * accepted sheet, or a closed map — ADR-0058); the critic reads only the
- * author's output, not the trigger.
+ * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062,
+ * amended by the sweep-and-pen redesign), reading the author's own draft in
+ * the same chain and resolving what it finds on its own authority. This
+ * file is what folds those resolutions — and the sheet's own unfiled
+ * load-bearing marks — into the draft's `body`, through `reconcile.ts`'s
+ * reconciler, before the spec is ever published. Both stages are dispatched
+ * by trigger over the author's collector per trigger (an accepted sheet, or
+ * a closed map — ADR-0058); the critic reads only the author's output, not
+ * the trigger.
  *
  * **The lane has a second entrance, and it starts at the critic.** A spec
  * written by `/to-spec` in a live session is filed by the owner's own hand
@@ -97,11 +100,12 @@ export interface DecidedContext {
  * when this is rendered.
  *
  * `decisions` is the *collector's*, not the model's: the sheet's own marked
- * decisions, riding out on the author's return value so that the gate can
- * run ADR-0061's arithmetic without reading the source issue a second time
- * (a second read is a second chance for the two to disagree). It is `[]` for
- * every door that carries no marks — the map collector, and a
- * `DecidedContext` handed to `runSpecAuthor` already assembled.
+ * decisions, riding out on the author's return value so that `runSpecAuthor`
+ * can find its own unfiled marks — ADR-0061's arithmetic — without reading
+ * the source issue a second time (a second read is a second chance for the
+ * two to disagree). It is `[]` for every door that carries no marks — the
+ * map collector, and a `DecidedContext` handed to `runSpecAuthor` already
+ * assembled.
  */
 export interface SpecAuthorOutput {
   title: string;
@@ -165,7 +169,9 @@ function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: Ma
 /**
  * Runs the spec author on one Decided context, then the critic on the
  * author's own draft (ADR-0062: "the critic runs in the same chain, before
- * publication"), and returns the PRD payload the two together produce.
+ * publication"), folds what the critic resolved — and the sheet's own
+ * unfiled load-bearing marks — into the draft's body, and returns the PRD
+ * payload the three together produce.
  *
  * Takes either a `DecidedContext` already assembled, or a `SpecTrigger` to
  * assemble one from first — the one entrypoint every trigger dispatches
@@ -211,14 +217,21 @@ export async function runSpecAuthor(
   );
 
   const critique = await runSpecCritic(exec, { title: draft.title, body: draft.body });
+  const marks = unfiledMarks(collected.decisions, draft.openQuestions);
+  const resolutions = [...critique.resolutions, ...marks.map(unfiledMarkResolution)];
 
-  // The critic only ever adds to `openQuestions`; `title` and `body` are the
-  // author's alone, carried through unchanged (ADR-0062: the critic
-  // "proposes no fixes").
+  // A run with nothing to fold in spends no reconciler stage (ADR-0100's
+  // guard, carried over rather than rediscovered) — `title` and `body` come
+  // back untouched.
+  const body =
+    resolutions.length === 0
+      ? draft.body
+      : await runSpecReconciler(exec, { title: draft.title, body: draft.body, resolutions });
+
   return {
     title: draft.title,
-    body: draft.body,
-    openQuestions: [...draft.openQuestions, ...critique.findings],
+    body,
+    openQuestions: draft.openQuestions,
     decisions: collected.decisions,
   };
 }
@@ -249,9 +262,8 @@ export type SpecTarget =
   | { mode: "rerun"; issueNumber: number; source: SpecSource | undefined };
 
 /**
- * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft plus
- * critic, already folded into one `openQuestions` list — publishes the result,
- * then gates on it.
+ * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft, critic and reconciler
+ * already folded into one `body` — publishes the result, then gates on it.
  *
  * Publication comes first and is unconditional, which is ADR-0062's step 1 read
  * literally: the spec carries `prd` whatever its count, and "a spec that never
@@ -262,10 +274,12 @@ export type SpecTarget =
  *
  * At a zero gate count: `applyGate` labels the spec `sliceable` and sends
  * the `repository_dispatch` lane 03 fires on. At any other count:
- * `postOpenQuestions` comments the numbered questions on the issue —
- * ADR-0062's "the only thing that reaches the owner" — so his answering
- * comment is what `rounds.ts`'s `roundFor` counts toward the next, uncapped,
- * re-run.
+ * `postOpenQuestions` comments the numbered questions on the issue, so an
+ * answering comment is what `rounds.ts`'s `roundFor` counts toward the
+ * next, uncapped, re-run — every load-bearing guess the sheet marked has
+ * already been folded into the draft's own `## Assumptions` by
+ * `runSpecAuthor`, so what remains here is only what the author itself
+ * could not settle.
  *
  * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
  * plus the `gh` every write needs — kept a separate parameter from the
@@ -286,7 +300,7 @@ export async function runSpecPublication(
     updateSpec(gh, issueNumber, draft, target.source);
   }
 
-  const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions, draft.decisions);
+  const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
 
   return { ...draft, issueNumber, published: target.mode === "publish", gateCount: count, outcome };
 }
@@ -299,19 +313,17 @@ export async function runSpecPublication(
  * is not a second implementation of the gate" is the whole reason firing on `prd` does not undo
  * ADR-0062. `gateCount` and `applyGate` are called from here, once each, by both.
  *
- * `decisions` is what the run's collector carried — the sheet's marks, or nothing. It reaches
- * `gateCount` as ADR-0061's second measure, and it reaches the posted round as the lines below,
- * from the same `unfiledMarks` call in both cases: the round is exactly as long as the count is
- * high, by construction rather than by two agreeing implementations.
+ * Takes no `decisions` — ADR-0061's arithmetic still runs, but earlier: `runSpecAuthor` already
+ * folded every unfiled mark into the draft's body as a stated assumption before this is ever
+ * called, so a mark reaching here would double-count a guess that is no longer silent.
  */
 function gateSpec(
   gh: GhExec,
   issueNumber: number,
   openQuestions: string[],
-  decisions: MarkedDecision[] = [],
 ): { count: number; outcome: GateOutcome } {
-  const count = gateCount(openQuestions, decisions);
-  return { count, outcome: applySpecGate(gh, issueNumber, count, openQuestions, decisions) };
+  const count = gateCount(openQuestions);
+  return { count, outcome: applySpecGate(gh, issueNumber, count, openQuestions) };
 }
 
 /**
@@ -322,51 +334,42 @@ function gateSpec(
  * two — the count decides whether the body is re-authored, and the re-authored body is what
  * `sliceable` must be applied to. Both doors still reach `applyGate` through here exactly once, so
  * the split moved where the count is taken and nothing about what the gate does with it.
- *
- * **A held round is never empty.** A draft that asked nothing but was handed a load-bearing mark
- * holds the gate on the arithmetic alone, and before this it posted a numbered list of nothing —
- * an owner with no way to see what he was being asked, and a spec parked forever.
  */
 function applySpecGate(
   gh: GhExec,
   issueNumber: number,
   count: number,
   openQuestions: string[],
-  decisions: MarkedDecision[] = [],
 ): GateOutcome {
   const outcome = applyGate(gh, issueNumber, count);
 
   if (outcome === "held") {
-    const unfiled = unfiledMarks(decisions, openQuestions).map(unfiledMarkQuestion);
-    postOpenQuestions(gh, issueNumber, [...openQuestions, ...unfiled]);
+    postOpenQuestions(gh, issueNumber, openQuestions);
   }
 
   return outcome;
 }
 
 /**
- * The question a mark the draft never asked about becomes, so it can take its place in the same
- * numbered list the author's own questions are in — one continuing sequence, so the owner's reply
- * by number is unambiguous (ADR-0061's numbered form).
- *
- * It names the mark, says the sheet decided it, and says the draft asks about none of it, because
- * those three facts are the whole of why the gate held and the owner has no other way to learn any
- * of them: the mark lives in the sheet's marker payload, which no rendered comment shows.
+ * What an unfiled sheet mark becomes for the reconciler: a stated assumption saying the sheet's
+ * own recommendation was followed, with the reason nobody filed a ruling for it. Names the mark
+ * so the owner can find it in `## Assumptions` the same way `CONTEXT.md`'s **Assumption mark**
+ * names what it moves.
  */
-function unfiledMarkQuestion(decision: MarkedDecision): string {
-  return (
-    `The sheet decided \`${decision.mark}\` and filed no ruling for it, and this draft asks about ` +
-    `none of it — is that guess right, and should it be written down?`
-  );
+function unfiledMarkResolution(decision: MarkedDecision): Resolution {
+  return {
+    decision: `\`${decision.mark}\` follows the sheet's own recommendation, with no ADR filed for it.`,
+    reason: `The sheet decided \`${decision.mark}\` and filed no ruling for it, and the draft asks about none of it.`,
+  };
 }
 
-/** What `runSpecCritique` hands back: the spec it read, what the critic found, and what the gate did. */
+/** What `runSpecCritique` hands back: the spec it read, what the critic resolved, and what the gate did. */
 export interface SpecCritiqueResult {
   /** The already-published spec this run critiqued. */
   issueNumber: number;
-  /** What the critic flagged — the whole of this door's open-question list, since no author ran. */
-  findings: string[];
-  /** `gateCount` over those findings. */
+  /** What the critic resolved — always folded into the body when non-empty, never left for the owner. */
+  resolutions: Resolution[];
+  /** `gateCount` over this door's own open questions — always `0`, since the critic never leaves one. */
   gateCount: number;
   /** `"dispatched"` at zero, `"held"` otherwise. */
   outcome: GateOutcome;
@@ -385,21 +388,22 @@ export interface SpecCritiqueResult {
  * run against a spec that arrived already written.
  *
  * `/to-spec` in a live session files a `prd` issue through `bin/file-issue` and stops there: no
- * critic, no count, no `sliceable`, no dispatch, and nothing anywhere knowing it is stuck, because
- * no dispatch was ever owed. This is the path that reaches the gate from that door. The issue's own
- * title and body are the draft — there is no collector and no author, because the expensive half
- * already happened in the session with the owner in it.
+ * critic, no reconciliation, no `sliceable`, no dispatch, and nothing anywhere knowing it is stuck,
+ * because no dispatch was ever owed. This is the path that reaches the gate from that door. The
+ * issue's own title and body are the draft — there is no collector and no author, because the
+ * expensive half already happened in the session with the owner in it.
  *
- * The owner's answering comments ride along to the critic, and they are what keeps ADR-0062's
- * re-run loop true here: with no author to redraft the body, a recount against unchanged text would
- * report the same findings forever, so the answer has to reach the only model on this door.
+ * Whatever answering comments already sit on the issue ride along to the critic as context it may
+ * use in reaching its own decision — never as something it is waiting to be told.
  *
- * **Then the rounds are written back into the body** (ADR-0100; `reconcile.ts`'s module docstring
- * is the home for why this door in particular needs it). `reconcile` below is what lands them, and
- * it lands them before the gate applies anything, so no reader can see `sliceable` on a stale body.
+ * **Then what the critic resolved is written back into the body** (ADR-0100, amended by the
+ * sweep-and-pen redesign; `reconcile.ts`'s module docstring is the home for why this door in
+ * particular needs it). `reconcileSpec` below is what lands it, and it lands it before the gate
+ * applies anything, so no reader can see `sliceable` on a stale body.
  *
- * Everything downstream is `runSpecPublication`'s own — the same `applySpecGate`, so zero labels
- * and dispatches exactly as the runner path does, and non-zero comments the numbered questions.
+ * **This door never holds.** The critic no longer leaves a finding for anyone to answer — every
+ * ambiguity it raises, it resolves — so there is nothing left for `gateCount` to count and the run
+ * always dispatches.
  */
 export async function runSpecCritique(
   exec: StageExec,
@@ -414,44 +418,41 @@ export async function runSpecCritique(
     answers,
   });
 
-  const count = gateCount(critique.findings);
-  const rewritten = count === 0 && answers.length > 0;
+  const rewritten = critique.resolutions.length > 0;
   if (rewritten) {
-    await reconcile(exec, gh, issueNumber, spec, answers);
+    await reconcileSpec(exec, gh, issueNumber, spec, critique.resolutions);
   }
 
-  const outcome = applySpecGate(gh, issueNumber, count, critique.findings);
+  const outcome = applySpecGate(gh, issueNumber, 0, []);
 
-  return { issueNumber, findings: critique.findings, gateCount: count, outcome, rewritten };
+  return { issueNumber, resolutions: critique.resolutions, gateCount: 0, outcome, rewritten };
 }
 
 /**
- * ADR-0100's re-authoring: one stage over the body and the answers, written straight back to the
- * issue it came from.
+ * ADR-0100's re-authoring, amended by the sweep-and-pen redesign: one stage over the body and the
+ * critic's own resolutions, written straight back to the issue it came from.
  *
- * Reached only at a zero count on a spec that answered at least one round, both of which are the
- * caller's test rather than this function's — a non-zero count still has an open round, and an
- * empty comment list means no round was ever answered, so there is nothing to fold in and no stage
- * to spend. The rewrite is deliberately not re-critiqued either: the count was taken against the
- * text the owner answered, and a fresh finding would re-hold a spec he has already cleared with no
- * round left to answer it in.
+ * Reached only when the critic resolved at least one thing, which is the caller's test rather than
+ * this function's — an empty resolutions list means the draft held up, so there is nothing to fold
+ * in and no stage to spend. The rewrite is deliberately not re-critiqued either: a fresh finding
+ * would re-open a spec this door has already resolved, with the same critic that just resolved it.
  *
  * The title goes back unchanged and the `spec-source:v1` trailer is re-appended from the body this
  * run read, because neither is the reconciler's to change and a spec that reaches this door may
  * well carry one — a sheet spec re-labelled by hand, or an `answer` whose trailer `planSpecRun`
  * could not read.
  */
-async function reconcile(
+async function reconcileSpec(
   exec: StageExec,
   gh: GhExec,
   issueNumber: number,
   spec: PublishedSpec,
-  answers: string[],
+  resolutions: Resolution[],
 ): Promise<void> {
   const body = await runSpecReconciler(exec, {
     title: spec.title,
     body: withoutSourceMarker(spec.body),
-    answers,
+    resolutions,
   });
 
   updateSpec(gh, issueNumber, { title: spec.title, body }, readSourceMarker(spec.body));
@@ -566,7 +567,7 @@ async function main(): Promise<void> {
       const result = await runSpecCritique(execClaude, execGh, plan.issueNumber);
       console.log(
         `critiqued #${result.issueNumber}: ${result.gateCount} open question(s), ${result.outcome}` +
-          `${result.rewritten ? ", body re-authored from the answered rounds" : ""}`,
+          `${result.rewritten ? ", body re-authored from the critic's resolutions" : ""}`,
       );
       return;
     }

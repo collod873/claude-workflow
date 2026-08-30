@@ -8,7 +8,12 @@ const DRAFT = {
 };
 
 const RESPONSE = JSON.stringify({
-  findings: ["\"handles errors gracefully\" admits two implementations and names no observable check."],
+  resolutions: [
+    {
+      decision: "\"Handles errors gracefully\" becomes \"returns a 400 on a malformed request.\"",
+      reason: "The restatement already says malformed input is rejected; this is the observable version of it.",
+    },
+  ],
 });
 
 describe("runSpecCritic", () => {
@@ -26,9 +31,8 @@ describe("runSpecCritic", () => {
   });
 
   it("substitutes the owner's answering comments as the prompt's third variable", async () => {
-    // The critic-only door has no author to re-draft the body, so a re-run against unchanged
-    // text would report the same findings forever and the count could never fall. The answers
-    // are what let this stage see a finding as answered.
+    // The critic-only door has no author to re-draft the body, so the answers it reads are context
+    // it may use in reaching its own decision.
     const fake = createFakeStage(RESPONSE);
 
     await runSpecCritic(fake.exec, {
@@ -53,17 +57,32 @@ describe("runSpecCritic", () => {
     expect(prompt).toMatch(/nothing has been answered/i);
   });
 
-  it("returns the response parsed as a list of findings", async () => {
+  it("returns the response parsed as a list of resolutions, each carrying a decision and a reason", async () => {
     const fake = createFakeStage(RESPONSE);
 
     await expect(runSpecCritic(fake.exec, DRAFT)).resolves.toEqual({
-      findings: ["\"handles errors gracefully\" admits two implementations and names no observable check."],
+      resolutions: [
+        {
+          decision: "\"Handles errors gracefully\" becomes \"returns a 400 on a malformed request.\"",
+          reason: "The restatement already says malformed input is rejected; this is the observable version of it.",
+        },
+      ],
     });
   });
 
-  it("returns an empty findings list when the critic agrees", async () => {
-    const fake = createFakeStage(JSON.stringify({ findings: [] }));
+  it("returns an empty resolutions list when the critic agrees", async () => {
+    const fake = createFakeStage(JSON.stringify({ resolutions: [] }));
 
-    await expect(runSpecCritic(fake.exec, DRAFT)).resolves.toEqual({ findings: [] });
+    await expect(runSpecCritic(fake.exec, DRAFT)).resolves.toEqual({ resolutions: [] });
+  });
+
+  it("refuses a resolution carrying a decision with no reason, or a reason with no decision", async () => {
+    // A reason that is a field can be checked for; one that is missing entirely is refused rather
+    // than silently accepted as an empty string riding along with a decision nobody can weigh.
+    const fake = createFakeStage(
+      JSON.stringify({ resolutions: [{ decision: "Pick reading A.", reason: "" }] }),
+    );
+
+    await expect(runSpecCritic(fake.exec, DRAFT)).rejects.toThrow();
   });
 });

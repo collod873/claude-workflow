@@ -1,87 +1,119 @@
 import { describe, expect, it } from "vitest";
+import { extractCriteria } from "../shared/ticket-shape";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { createIssueGh } from "./gh.fake";
 import { runSpecReconciler, SPEC_RECONCILE_MODEL } from "./reconcile";
-import { openQuestionsComment } from "./rounds";
 import { runSpecCritique, SPEC_AUTHOR_ALLOWED_TOOLS } from "./spec";
 
 const SPEC = {
   title: "PRD: A spec written in a session",
-  body: "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] The re-export is deleted.",
+  body:
+    "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] The re-export is deleted.\n- [ ] The consumer is repointed.",
 };
 
-const ANSWERS = [
-  "Round 9: repoint every consumer and delete every duplicate — a re-export would leave it in place.",
-  "Round 11: the check is the gauntlet, not the unit test.",
+const RESOLUTIONS = [
+  {
+    decision: "Repoint every consumer and delete every duplicate — a re-export would leave it in place.",
+    reason: "The restatement already rules out keeping a compatibility shim.",
+  },
+  {
+    decision: "The check is the gauntlet, not the unit test.",
+    reason: "Only the gauntlet observes the whole tree the criterion is actually about.",
+  },
 ];
 
-const REWRITTEN = "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`";
+const REWRITTEN =
+  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`\n- [ ] The check is the gauntlet, not a unit test — check: `bin/gauntlet push`\n\n## Assumptions\n\n- **Repoint every consumer and delete every duplicate.** The restatement already rules out keeping a compatibility shim.";
 
 const reconciled = (body: string) => JSON.stringify({ body });
-
-const SILENT_CRITIC = JSON.stringify({ findings: [] });
 
 describe("runSpecReconciler", () => {
   it("runs on the Opus model, on the author's own toolbelt, with its prompt on stdin", async () => {
     // The author's allow list rather than the critic's open belt (ADR-0060).
     const fake = createFakeStage(reconciled(REWRITTEN));
 
-    await runSpecReconciler(fake.exec, { ...SPEC, answers: ANSWERS });
+    await runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS });
 
     expect(fake.calls).toHaveLength(1);
     const [argv] = fake.calls;
     expect(argv[argv.indexOf("--model") + 1]).toBe(SPEC_RECONCILE_MODEL);
     expect(argv[argv.indexOf("--allowedTools") + 1]).toBe(SPEC_AUTHOR_ALLOWED_TOOLS.join(","));
-    // Via stdin, not argv: a spec body plus every comment on it has no upper bound, and a single
+    // Via stdin, not argv: a spec body plus every resolution on it has no upper bound, and a single
     // argv element is capped at 128 KiB.
     expect(fake.stdins[0]).toContain(SPEC.body);
   });
 
-  it("substitutes the spec's title and body and every answer into the prompt", async () => {
+  it("substitutes the spec's title, body and every resolution's decision and reason into the prompt", async () => {
     const fake = createFakeStage(reconciled(REWRITTEN));
 
-    await runSpecReconciler(fake.exec, { ...SPEC, answers: ANSWERS });
+    await runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS });
 
     const prompt = fake.stdins[0] ?? "";
     expect(prompt).toContain(SPEC.title);
     expect(prompt).toContain(SPEC.body);
-    for (const answer of ANSWERS) expect(prompt).toContain(answer);
+    for (const resolution of RESOLUTIONS) {
+      expect(prompt).toContain(resolution.decision);
+      expect(prompt).toContain(resolution.reason);
+    }
     expect(prompt).not.toContain("{{");
   });
 
   it("returns the rewritten body, unwrapped", async () => {
     const fake = createFakeStage(reconciled(REWRITTEN));
 
-    await expect(runSpecReconciler(fake.exec, { ...SPEC, answers: ANSWERS })).resolves.toBe(
-      REWRITTEN,
-    );
+    await expect(
+      runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS }),
+    ).resolves.toBe(REWRITTEN);
   });
 
   it("refuses an empty body rather than writing one over the spec", async () => {
     // The one answer this stage may never give: `updateSpec` would blank the issue with it, and
-    // there is no round left in which anyone would notice.
+    // there is no reader left to notice.
     const fake = createFakeStage(reconciled(""));
 
-    await expect(runSpecReconciler(fake.exec, { ...SPEC, answers: ANSWERS })).rejects.toThrow();
+    await expect(
+      runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS }),
+    ).rejects.toThrow();
+  });
+
+  describe("the never-drop bound", () => {
+    it("refuses a rewrite that comes back with fewer checkbox lines than it was given", async () => {
+      const shorter =
+        "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed — check: `bin/gauntlet push`";
+      const fake = createFakeStage(reconciled(shorter));
+
+      // Handed two criteria, the fake stage answers with one — the arithmetic bound (`countCriteria`
+      // before and after) is what refuses this, not a promise stated only in the prompt.
+      await expect(
+        runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS }),
+      ).rejects.toThrow();
+    });
+
+    it("keeps criteria matchable verbatim against the body after a rewrite", async () => {
+      const fake = createFakeStage(reconciled(REWRITTEN));
+
+      const body = await runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS });
+
+      expect(extractCriteria(body)).toEqual([
+        "Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`",
+        "The check is the gauntlet, not a unit test — check: `bin/gauntlet push`",
+      ]);
+    });
   });
 });
 
 /**
- * ADR-0100's second consequence, checked where the chain is: the count was taken against the text
- * the owner answered, so the rewrite is the *last* thing a clearing run spends a model on. A critic
- * re-reading it could raise a fresh finding and re-hold a spec the owner has already cleared, with
- * no round left for him to answer it in.
+ * ADR-0100's second consequence, checked where the chain is: the critic's resolutions are the ground
+ * truth the rewrite folds in, so the rewrite is the *last* thing a clearing run spends a model on. A
+ * critic re-reading it could resolve something fresh and re-open a spec this run already settled.
  */
 describe("the reconciler is the end of a clearing run", () => {
   it("runs no critic stage after it", async () => {
     const gh = createIssueGh((fields) =>
-      fields === "title,body"
-        ? JSON.stringify(SPEC)
-        : fields === "comments"
-          ? JSON.stringify({ comments: [{ body: openQuestionsComment(["what?"]) }, { body: ANSWERS[0] }] })
-          : undefined,
+      fields === "title,body" ? JSON.stringify(SPEC) : fields === "comments" ? JSON.stringify({ comments: [] }) : undefined,
     ).gh;
-    const fake = createFakeStages([SILENT_CRITIC, reconciled(REWRITTEN)]);
+    const critiqued = JSON.stringify({ resolutions: RESOLUTIONS });
+    const fake = createFakeStages([critiqued, reconciled(REWRITTEN)]);
 
     await runSpecCritique(fake.exec, gh, 194);
 

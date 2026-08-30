@@ -3,14 +3,21 @@ import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 
 /**
- * Lane 02's critic (ADR-0062): a second stage, reading the author's own
- * output in the same chain — "which is exactly how lane 01's refuter reads
- * the shaper's" (ADR-0062). It hunts a drafted PRD for a sentence that admits
- * two implementations and a criterion nobody could observe, and proposes no
- * fixes: "proposing lets it paper over the ambiguity it exists to surface"
- * (§02, quoted in ADR-0062). Its findings feed the open-question count
- * (ADR-0061) rather than editing the draft — `spec.ts` is what folds them in
- * and never lets them touch the author's `body`.
+ * Lane 02's critic (ADR-0062, amended by the sweep-and-pen redesign): a
+ * second stage, reading the author's own output in the same chain — "which
+ * is exactly how lane 01's refuter reads the shaper's" (ADR-0062). It hunts
+ * a drafted PRD for a sentence that admits two implementations and a
+ * criterion nobody could observe, and now **resolves** what it finds rather
+ * than merely reporting it: "the critic gains a pen and loses its outbox …
+ * it stops returning a findings list for someone else to post and starts
+ * returning its resolutions." Its bound is that it may sharpen an acceptance
+ * criterion, never remove one, and never reduce the scope of the work to
+ * make an ambiguity go away — `reconcile.ts` is what turns that bound into
+ * arithmetic rather than trusting the prompt below to hold it.
+ *
+ * `spec.ts` is what folds a resolution into the draft's body, through
+ * `reconcile.ts`'s reconciler — never the critic's own job, and never done
+ * by editing `body` here.
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -28,10 +35,10 @@ export interface SpecCriticInput {
    * never been seen by anyone and there is nothing to have answered.
    *
    * They exist for the critic-only door, which has no author behind it: there
-   * the body is fixed, so re-reading it alone would report the same findings
-   * forever and the gate count could never fall. ADR-0062's *"his answer
-   * re-runs the chain, which recomputes the count"* holds on that door only
-   * because the answer reaches this stage.
+   * the body is fixed, so re-reading it alone would resolve the same
+   * ambiguity the same way every time. A comment thread the critic can read
+   * is context it may use in reaching its own decision, the same way it
+   * reads the body itself.
    */
   answers?: string[];
 }
@@ -40,19 +47,42 @@ export interface SpecCriticInput {
 const NO_ANSWERS = "Nothing has been answered — this is the first read of this spec.";
 
 /**
- * What the critic hands back: the sentences it flagged, each naming what it
- * found and why — never a fix, and never a rewrite of `body`. Empty when the
- * draft held up.
+ * One thing the critic decided: what it resolved an ambiguity or an
+ * unobservable criterion to mean, and why.
+ *
+ * Two fields rather than one sentence carrying both, because "carrying its
+ * reason" is a property nothing can check when the reason is a convention
+ * inside prose and everything can check when it is a field
+ * (spec #236's own implementation decision).
+ */
+export interface Resolution {
+  /** What the critic decided — the sharpened criterion or the disambiguated reading, stated plainly. */
+  decision: string;
+  /** Why it decided that, rather than the alternative. */
+  reason: string;
+}
+
+/**
+ * What the critic hands back: every ambiguity and unobservable criterion it
+ * found, each already resolved rather than left for someone else to answer.
+ * Empty when the draft held up.
  */
 export interface SpecCriticOutput {
-  findings: string[];
+  resolutions: Resolution[];
 }
 
 export const SPEC_CRITIC_OUTPUT = structuredOutput(
-  z.object({ findings: z.array(z.string().min(1)) }),
+  z.object({
+    resolutions: z.array(
+      z.object({
+        decision: z.string().min(1),
+        reason: z.string().min(1),
+      }),
+    ),
+  }),
 );
 
-/** Runs the critic on one drafted PRD and returns what it flagged. */
+/** Runs the critic on one drafted PRD and returns what it resolved. */
 export async function runSpecCritic(
   exec: StageExec,
   input: SpecCriticInput,

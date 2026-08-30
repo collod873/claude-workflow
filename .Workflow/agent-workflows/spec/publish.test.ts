@@ -215,7 +215,7 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
 
   /**
    * Three stages run in this chain and they answer different schemas — the sweep's `{rulings}`,
-   * the author's `{title, body, openQuestions}`, then the critic's `{findings}` — so the shared
+   * the author's `{title, body, openQuestions}`, then the critic's `{resolutions}` — so the shared
    * one-response fake cannot drive it. This answers each call in turn instead.
    */
   function chainStage(responses: string[]): FakeStage {
@@ -237,17 +237,17 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
     };
   }
 
-  const chain = (openQuestions: string[], findings: string[] = []) =>
+  const chain = (openQuestions: string[]) =>
     chainStage([
       SWEEP_RESPONSE,
       JSON.stringify({ title: "A thing", body: "## Problem\nIt is unbuilt.", openQuestions }),
-      JSON.stringify({ findings }),
+      JSON.stringify({ resolutions: [] }),
     ]);
 
   it("publishes, then applies sliceable and dispatches, when nothing was left open", async () => {
     const { gh, calls } = fakeGh({ issueNumber: 901 });
-    // Both stages in the chain — the author and the critic — read the same canned answer; the
-    // critic's `findings` are absent from it, which folds to no extra questions.
+    // The critic resolves nothing here, which folds to no extra questions and spends no reconciler
+    // stage.
     const stage = chain([]);
 
     const result = await runSpecPublication(
