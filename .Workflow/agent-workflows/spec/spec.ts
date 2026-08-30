@@ -208,6 +208,7 @@ export async function runSpecAuthor(
       model: SPEC_AUTHOR_MODEL,
       allowedTools: SPEC_AUTHOR_ALLOWED_TOOLS,
       promptViaStdin: true,
+      stage: "author",
     },
   );
 
