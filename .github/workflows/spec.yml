@@ -1,127 +1,93 @@
 name: Spec
 
-# Lane 02 (PRD #145, move 6). Two triggers feed the spec **author** (ADR-0058) — an accepted
-# decision sheet, and a closed Wayfinder Map carrying `to-spec`. A third door feeds the **critic**
-# alone: the owner's own hand putting `prd` on a spec he already wrote in a live session
-# (ADR-0085). That door arrives with the spec already drafted, so it runs one Opus stage where the
-# cold doors run two, and it publishes nothing — the issue it fires on *is* the draft.
+# Lane 02 (PRD #145, move 6; redesigned by #263). One hand label, `to-spec`, starts the lane
+# whatever the source: the owner applies it to an accepted idea carrying a decision sheet, or to a
+# closed Wayfinder Map — the same gesture ADR-0059 already established for the map alone. The lane
+# itself reads the labelled issue to pick its collector (`spec.ts`'s `planSpecRun`); this file no
+# longer tells the two apart, and no longer carries a separate `repository_dispatch` trigger for an
+# accepted sheet.
 #
-# ADR-0058's "a live session never fires a runner" was the reason this file used to gate only two
-# triggers. It was wrong about the mechanism: ADR-0062's "an event caused by the built-in
-# `GITHUB_TOKEN` starts no workflow run" does not bind here, because `bin/file-issue spec` runs
-# under the owner's own credentials. His issue creation is a real event; nothing was listening at
-# it, and a session-written spec sat on the tracker forever (#180, #145).
+# A second door, `prd`, still feeds the **critic** alone: the owner's own hand putting `prd` on a
+# spec he already wrote in a live session (ADR-0085). That door arrives with the spec already
+# drafted, so it runs one Opus stage where the cold door runs several, and it publishes nothing —
+# the issue it fires on *is* the draft.
 #
-# **Both triggers are gated on who caused them, because both spend model (ADR-0073).** The
-# repository is public, so a label or a comment can arrive from anyone, not only the owner — the
-# same fact `shape.yml` was rewritten against, and this is that file's exact two-sided shape,
-# reused rather than re-derived (`shared/read-workflow.ts` is what lets both workflows' tests read
-# their own `if:` back out of the YAML instead of trusting a copy-paste by eye).
+# **Both branches are gated on who caused them, because both spend model (ADR-0073).** The
+# repository is public, so a label can arrive from anyone, not only the owner — the same fact
+# `shape.yml` was rewritten against, and this is that file's exact shape, reused rather than
+# re-derived (`shared/read-workflow.ts` is what lets this workflow's tests read its own `if:` back
+# out of the YAML instead of trusting a copy-paste by eye).
 #
 # `github.event.sender` is who performed the act, not who owns the thing acted on: applying
-# `to-spec` to a closed map is a hand-applied label exactly like `idea` in `shape.yml`, so the
-# sender gate covers it the same way — a stranger's map is refused, the owner's own hand on the
-# label is not. The `prd` clause carries the identical gate for the identical reason: `prd` can be
-# applied by anyone with write access and `file-issue spec` is not the only way it lands.
-# Remove-and-re-add of the label is the re-run gesture, as it is in lane 01.
+# `to-spec` to a closed map, or to an accepted idea, is a hand-applied label exactly like `idea` in
+# `shape.yml`, so the sender gate covers it the same way — a stranger's label is refused, the
+# owner's own hand on it is not. The `prd` clause carries the identical gate for the identical
+# reason. Remove-and-re-add of the label is the re-run gesture, as it is in lane 01.
 #
-# That clause is narrowed to a spec without `sliceable`. A spec that has already passed the gate
-# has nothing left for the critic to decide, and re-labelling one would spend an Opus stage to
-# re-derive a count that already dispatched.
+# The `prd` clause is narrowed to a spec without `sliceable` — a spec that has already passed the
+# gate has nothing left for the critic to decide, and re-labelling one would spend an Opus stage to
+# re-derive a result that already dispatched. `to-spec` carries no equivalent narrowing here: the
+# label lands on the *source* issue, not on the spec it produces, so whether that source's spec
+# already dispatched is not a fact this file's `if:` can see. `spec.ts`'s `planSpecRun` is where
+# that refusal lives instead — it searches the tracker for a spec already recording the source as
+# its own and already carrying `sliceable`, and throws before a model ever runs (#263).
 #
-# A comment is gated on `author_association` instead, `MEMBER` and `COLLABORATOR` riding along
-# with `OWNER` so the rule need not be reopened the day a second person is added. This is
-# `rounds.ts`'s re-run door (ADR-0062): the owner's answer to a posted round of open questions is a
-# comment on the spec issue, and that comment is what re-runs the chain and recounts.
+# **#263 also removes the comment-triggered re-run.** The round counter, the posted open-questions
+# comment and the owner's answer that used to recompute it are gone: every run that reaches the
+# gate now dispatches unconditionally, so there is nothing left for a comment on a `prd` issue to
+# answer. This file used to carry an `issue_comment` trigger and a third branch gated on
+# `author_association`; neither exists any more.
 #
-# That door is narrowed to a spec **still holding questions** — open, and without `sliceable`.
-# ADR-0062 scopes the re-run to "his answer" to a posted round, and a spec that has already
-# dispatched has no round outstanding to answer. Without the narrowing, every comment on any `prd`
-# issue re-ran the whole lane: closing #145 fired two runs off its own closing record. They failed
-# safe on the missing source marker and spent no model, but a spec that *had* one would have paid
-# two Opus stages to redraft a finished spec from a comment that answered nothing.
-#
-# The accepted sheet arrives as a `repository_dispatch` and **not** as the `approved` label
-# (ADR-0083). The sheet collector reads the accept's payload marker out of the accept comment and
-# throws without it, so a job firing on the same label would race the write it depends on — and
-# lose, because lane 01 files ADRs, commits and pushes before it ever comments. `shape/accept.ts`
-# sends the dispatch as its last act instead. It carries no sender gate: `POST /dispatches` needs
-# write access, so the send is itself the gate (ADR-0073).
-#
-# `types:` names that one action, for the reason `audit.yml` gives and ADR-0090 rules: unfiltered,
-# this lane woke on every `session-captured` the capture hook sent and skipped, so its eight runs
-# read as a lane that has never worked rather than a lane that has rarely been asked. The
-# job-level `if:` is still the scope rule, and it names the one constant the sender reads
-# (`SPEC_AUTHOR_DISPATCH_EVENT_TYPE`, `.Workflow/agent-workflows/spec/publish.ts`).
+# `types:` names the one action lane 01's own label events fire, for the reason `audit.yml` gives
+# and ADR-0090 rules: unfiltered, this lane would wake on every label applied to any issue and skip
+# on all but two of them.
 #
 # `SPEC_TRIGGER` is decided here and read by `invocationFromEnv` rather than re-derived in
-# TypeScript from the raw event: the `if:` below has already decided which of the four fired, and a
-# second copy of that condition is a second thing that can disagree with it. Two of the four are
-# now the same `issues: labeled` event, so the expression tests the *label* rather than the event
-# name — an `event_name == 'issues'` arm would send both doors to whichever one it named.
+# TypeScript from the raw event: the `if:` below has already decided which of the two fired, and a
+# second copy of that condition is a second thing that can disagree with it. Both doors are the
+# same `issues: labeled` event, so the expression tests the *label* rather than the event name.
 
 "on":
   issues:
     types: [labeled]
-  issue_comment:
-    types: [created]
-  repository_dispatch:
-    types: [sheet-accepted]
 
 # `contents: read` is the model job's, and it is deliberate: ADR-0053 is careful about what a job
-# that runs a model may write, and this one runs two Opus stages. `POST /dispatches` needs
-# `contents: write`, so the dispatch this lane owes lane 03 is sent by the second job below —
-# `permissions:` is per-job, which is the whole reason the split works
+# that runs a model may write. `POST /dispatches` needs `contents: write`, so the dispatch this lane
+# owes lane 03 is sent by the second job below — `permissions:` is per-job, which is the whole
+# reason the split works
 # ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
 
 # One spec run per issue at a time — the same reasoning as `shape.yml`'s group: a label and a
-# fast-follow comment can both arrive within seconds, and two concurrent chains would each read a
-# round count that did not include the other.
-#
-# Queued, never cancelled (ADR-0111). A critic comment is the ordinary rhythm of this lane, so
-# `cancel-in-progress: true` here meant the busier the critique, the less of it ever got answered.
+# fast-follow re-label can both arrive within seconds, and two concurrent chains would each search
+# the tracker for an already-dispatched spec without seeing the other's write.
 concurrency:
-  group: spec-${{ github.event.issue.number || github.event.client_payload.issue }}
+  group: spec-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   spec:
     if: >-
-      (github.event_name == 'repository_dispatch' &&
-       github.event.action == 'sheet-accepted') ||
       (github.event_name == 'issues' &&
        github.event.label.name == 'to-spec' &&
        github.event.sender.login == github.repository_owner) ||
       (github.event_name == 'issues' &&
        github.event.label.name == 'prd' &&
        !contains(github.event.issue.labels.*.name, 'sliceable') &&
-       github.event.sender.login == github.repository_owner) ||
-      (github.event_name == 'issue_comment' &&
-       !github.event.issue.pull_request &&
-       github.event.issue.state == 'open' &&
-       contains(github.event.issue.labels.*.name, 'prd') &&
-       !contains(github.event.issue.labels.*.name, 'sliceable') &&
-       github.event.comment.user.type != 'Bot' &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-                github.event.comment.author_association))
+       github.event.sender.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      # What `applyGate` asked to be dispatched, as one JSON body per line. Empty on every run that
-      # held — the `dispatch` job below is skipped on empty rather than sending nothing.
+      # What `applyGate` asked to be dispatched, as one JSON body per line. Empty on a run whose
+      # `planSpecRun` refused before spending anything — the `dispatch` job below is skipped on
+      # empty rather than sending nothing.
       dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
-      # The dispatch names its subject in `client_payload.issue` (`dispatchSpecAuthor`); the two
-      # tracker events carry it as the issue they happened on. One of the two is always empty.
-      ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
       SPEC_TRIGGER: >-
-        ${{ (github.event_name == 'repository_dispatch' && 'sheet') ||
-            (github.event.label.name == 'to-spec' && 'map') ||
-            (github.event.label.name == 'prd' && 'critique') ||
-            'answer' }}
+        ${{ (github.event.label.name == 'prd' && 'critique') || 'to-spec' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -158,10 +124,10 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # The whole lane: on a cold door, collect the decided context this trigger names, run the
-      # author and the critic, publish (or rewrite) the `PRD:` issue; on the critic-only door, read
-      # the spec that is already there. Both then gate on the open-question count — `sliceable`
-      # plus a dispatch at zero, the numbered questions as a comment otherwise.
+      # The whole lane: on the cold door, read the labelled issue to pick a collector, refuse a
+      # source whose spec already dispatched, then run the author and the critic and publish the
+      # `PRD:` issue; on the critic-only door, read the spec that is already there. Both then apply
+      # `sliceable` and ask for the dispatch unconditionally (#263).
       - name: Spec author
         run: npx tsx .Workflow/agent-workflows/spec/spec.ts
 
@@ -179,13 +145,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # The other half of ADR-0091's split: `contents: write`, no model, no checkout, and nothing to do
-  # but post what the job above decided. It runs only when there is something to send, so a spec
-  # that held its questions produces no job here at all rather than a green one that sent nothing.
+  # but post what the job above decided. It runs only when there is something to send, so a run
+  # that refused before spending anything produces no job here at all rather than a green one that
+  # sent nothing.
   #
-  # `sliceable` was written by the job above *before* this one runs, which is ADR-0062's ordering
-  # kept: if this job fails, the spec still carries the label with no slicing run behind it, and
-  # `lost-dispatch-counter.yml` finds it. The split moves where the send happens, not what a lost
-  # send leaves behind.
+  # `sliceable` was written by the job above *before* this one runs, which is `open-questions.ts`'s
+  # ordering kept: if this job fails, the spec still carries the label with no slicing run behind
+  # it, and `lost-dispatch-counter.yml` finds it. The split moves where the send happens, not what a
+  # lost send leaves behind.
   dispatch:
     name: Start lane 03
     needs: [spec]

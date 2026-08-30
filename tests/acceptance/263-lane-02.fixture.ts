@@ -592,6 +592,11 @@ export const REWRITTEN_BODY = [
  * fields such a thing could plausibly ride out on - and a resolution in the two fields the design
  * gives one. The body it returns carries the same checkbox lines as the body it was handed, in the
  * same order, so a rewrite made from it drops no criterion.
+ *
+ * `rulings` is the sweep's `{ref, quote}` list. The sweep is a sibling slice of this same PRD and
+ * lands ahead of the author, so the one payload every stage gets has to satisfy its schema too — a
+ * superset only parses everywhere if every field it names is the shape its own schema asks for.
+ * #263's criteria are about the gate, never about what the sweep found.
  */
 export const STAGE_RESPONSE = JSON.stringify({
   title: "PRD: A spec the lane could not fully resolve",
@@ -599,6 +604,7 @@ export const STAGE_RESPONSE = JSON.stringify({
   openQuestions: [UNRESOLVED],
   findings: [UNRESOLVED],
   unresolved: [UNRESOLVED],
+  rulings: [{ ref: "ADR-0060", quote: "the lane reaches no second source of intent." }],
   resolutions: [
     {
       decision: "The retry lives in the caller.",
