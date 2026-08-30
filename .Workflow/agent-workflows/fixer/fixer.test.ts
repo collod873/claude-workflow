@@ -4,11 +4,13 @@ import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import type { StageExec } from "../shared/stage";
 import {
+  applyUnfixable,
   assembleFixBrief,
-  BLOCKED_LABEL,
   MAX_ATTEMPTS,
+  NEEDS_HUMAN_LABEL,
   runFixer,
   signaturesEqual,
+  unfixableComment,
   type FailureSignature,
   type FixerDeps,
   type FixerTestResult,
@@ -60,6 +62,30 @@ function answer(n: number) {
   return { files: [{ path: `fix-${n}.ts`, content: `// attempt ${n}` }], summary: `attempt ${n} tried something` };
 }
 
+/**
+ * The one assertion both stop paths share: `needs-human` is created before it is applied, applied
+ * to the *ticket*, the owner is assigned, and nothing labels or edits the pull request itself — the
+ * escalation moved there. Shared so `runFixer`'s two stop describes and `applyUnfixable`'s own test
+ * assert the identical shape rather than three copies of it drifting apart.
+ */
+function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee: string): void {
+  const labelCall = calls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-label"));
+  expect(labelCall).toEqual(["issue", "edit", issueNumber, "--add-label", NEEDS_HUMAN_LABEL]);
+
+  const assignCall = calls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-assignee"));
+  expect(assignCall).toEqual(["issue", "edit", issueNumber, "--add-assignee", assignee]);
+
+  // The label is created (idempotently, `--force`) before it is ever applied — `gh issue edit
+  // --add-label` fails outright on a label nobody has created yet.
+  const labelCreateIndex = calls.findIndex((call) => call[0] === "label" && call[1] === "create");
+  const labelApplyIndex = calls.indexOf(labelCall!);
+  expect(labelCreateIndex).toBeGreaterThanOrEqual(0);
+  expect(labelCreateIndex).toBeLessThan(labelApplyIndex);
+
+  // Nothing labels or edits the pull request itself — the escalation moved to the ticket.
+  expect(calls.some((call) => call[0] === "pr" && call[1] === "edit")).toBe(false);
+}
+
 function baseDeps(overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestResult[] }): FixerDeps & {
   ghCalls: string[][];
   gitCalls: string[][];
@@ -85,6 +111,7 @@ function baseDeps(overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestR
     prNumber: 7,
     branch: "implement/issue-42",
     issueNumber: 42,
+    assignee: "collod873",
     ...rest,
     ghCalls,
     gitCalls,
@@ -136,7 +163,7 @@ describe("assembleFixBrief", () => {
 });
 
 describe("runFixer — no-progress stop", () => {
-  it("stops after exactly 2 stage invocations when attempts 1 and 2 report the identical signature, and applies blocked + a comment", async () => {
+  it("stops after exactly 2 stage invocations when attempts 1 and 2 report the identical signature, and applies needs-human + a comment", async () => {
     const stage = fakeStage([answer(1), answer(2)]);
     const deps = baseDeps({
       exec: stage.exec,
@@ -148,8 +175,7 @@ describe("runFixer — no-progress stop", () => {
     expect(stage.callCount()).toBe(2);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "no-progress" });
 
-    const labelCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "edit");
-    expect(labelCall).toEqual(["pr", "edit", "7", "--add-label", BLOCKED_LABEL]);
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
 
     const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
     expect(commentCall?.[0]).toBe("pr");
@@ -161,7 +187,7 @@ describe("runFixer — no-progress stop", () => {
 });
 
 describe("runFixer — capped stop", () => {
-  it("stops after exactly 3 stage invocations when every attempt reports a different signature, and applies blocked + a comment", async () => {
+  it("stops after exactly 3 stage invocations when every attempt reports a different signature, and applies needs-human + a comment", async () => {
     const thirdSignature: FailureSignature = [{ testName: "multiplies two numbers", errorMessage: "expected 6, got 5" }];
     const stage = fakeStage([answer(1), answer(2), answer(3)]);
     const deps = baseDeps({
@@ -174,15 +200,15 @@ describe("runFixer — capped stop", () => {
     expect(stage.callCount()).toBe(MAX_ATTEMPTS);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 3, stopReason: "capped" });
 
-    const labelCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "edit");
-    expect(labelCall).toEqual(["pr", "edit", "7", "--add-label", BLOCKED_LABEL]);
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
+
     const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
     expect(commentCall?.[4]).toContain("attempt 3 tried something");
   });
 });
 
 describe("runFixer — goes green", () => {
-  it("stops as soon as an attempt leaves nothing failing, applying neither blocked nor a comment", async () => {
+  it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment", async () => {
     const stage = fakeStage([answer(1)]);
     const deps = baseDeps({
       exec: stage.exec,
@@ -196,6 +222,36 @@ describe("runFixer — goes green", () => {
     expect(deps.ghCalls).toHaveLength(0);
     expect(deps.writes).toEqual([{ path: "fix-1.ts", content: "// attempt 1" }]);
     expect(deps.gitCalls.some((call) => call[0] === "push")).toBe(true);
+  });
+});
+
+/**
+ * The escalate path: `fixer.yml`'s resolve step reaches `applyUnfixable` (via `fixer.ts escalate`)
+ * when Verify's red job was not `Restore and run acceptance` — no test signature exists for a
+ * model to work from, so this is the whole write, with no attempt loop above it.
+ */
+describe("applyUnfixable — the escalate path's one write", () => {
+  it("creates needs-human before applying it, applies it to the ticket, assigns the owner, and comments the PR naming what failed", () => {
+    const { gh, calls } = fakeGh();
+
+    applyUnfixable(gh, 42, 7, "collod873", "Immutability", "::error::vitest.config.ts touches the immutable set");
+
+    expectEscalatedToOwner(calls, "42", "collod873");
+
+    const labelCreateCall = calls.find((call) => call[0] === "label" && call[1] === "create");
+    expect(labelCreateCall).toEqual(["label", "create", NEEDS_HUMAN_LABEL, "--color", "d93f0b", "--description", "Ticket stalled; a human decision or action is required", "--force"]);
+
+    const commentCall = calls.find((call) => call[0] === "pr" && call[1] === "comment");
+    expect(commentCall).toEqual(["pr", "comment", "7", "--body", unfixableComment("Immutability", "::error::vitest.config.ts touches the immutable set")]);
+  });
+});
+
+describe("unfixableComment", () => {
+  it("names the failed job and carries its error line", () => {
+    const comment = unfixableComment("Immutability", "::error::vitest.config.ts touches the immutable set");
+    expect(comment).toContain("Immutability");
+    expect(comment).toContain("Restore and run acceptance");
+    expect(comment).toContain("::error::vitest.config.ts touches the immutable set");
   });
 });
 
@@ -228,12 +284,14 @@ describe("fixer.yml is the listener a red Verify never had", () => {
     expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.event != 'push'");
   });
 
-  it("grants the writes fixer.ts performs: a push to the branch, and a label plus a comment", () => {
-    // Every attempt is committed onto the pull request's own branch (`commitAndPushAttempt`), and
-    // a stopped fixer applies `blocked` and comments (`applyBlocked`). A `permissions:` block
-    // replaces the default token rather than adding to it, so an omitted scope is `none`.
+  it("grants the writes fixer.ts performs: a push to the branch, a PR comment, and needs-human plus an assignee on the ticket", () => {
+    // Every attempt is committed onto the pull request's own branch (`commitAndPushAttempt`), a
+    // stopped fixer always comments the PR (`applyBlocked`, `applyUnfixable`), and both stop paths
+    // apply `needs-human` plus an assignee to the *ticket* (`escalateToOwner`). A `permissions:`
+    // block replaces the default token rather than adding to it, so an omitted scope is `none`.
     expect(workflow.permissions?.contents).toBe("write");
     expect(workflow.permissions?.["pull-requests"]).toBe("write");
+    expect(workflow.permissions?.issues).toBe("write");
     // The resolve step reads the failed run's jobs and one job's log.
     expect(workflow.permissions?.actions).toBe("read");
   });
@@ -296,5 +354,22 @@ describe("fixer.yml reads the pull request out of the line verify.yml actually e
     const printed = "judging https://github.com/collod873/claude-workflow/pull/250 on somebodys-branch";
 
     expect(new RegExp(grepped ?? "$^").test(printed)).toBe(false);
+  });
+
+  /**
+   * The Immutability job's own copy of the line (#272/#277: a red `Immutability` job leaves
+   * `Restore and run acceptance` skipped, so its `judging` line is never written — this one is
+   * what the escalate path resolves from instead). Same shape, same echo string, so the grep above
+   * resolves either job without a second pattern.
+   */
+  it("Immutability also echoes the line — the job that always runs, so its log is where the escalate path resolves from", () => {
+    const immutability = readWorkflow<{ jobs: { immutability: { steps: Array<{ run?: string }> } } }>("verify.yml");
+    const echoed = (immutability.workflow.jobs.immutability.steps ?? []).some((step) =>
+      step.run?.includes('echo "judging $PR on $BRANCH"'),
+    );
+    expect(echoed, "Immutability carries no judging line of its own").toBe(true);
+
+    const printed = "judging https://github.com/collod873/claude-workflow/pull/277 on implement/issue-272";
+    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(true);
   });
 });

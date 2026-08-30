@@ -3,7 +3,6 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { childEnv } from "../shared/child-env";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
-import { BLOCKED_LABEL } from "../fixer/fixer";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
@@ -393,12 +392,17 @@ function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
 
 /**
  * The record a conflict leaves: `blocked` on the pull request, and a comment naming what would not
- * replay. The label is spelled once, as `fixer.ts`'s `BLOCKED_LABEL`, and imported from there.
+ * replay. This lane's own constant — `fixer.ts` used to export the same string, and stopped: its
+ * escalation moved to `needs-human` on the ticket (a label this repo actually seeds), which is not
+ * what this call site does. Lane 08's own use of `blocked` is unreviewed by this ticket's measured
+ * facts and is left exactly as it was rather than folded into a change nobody asked for here.
  *
  * Deliberately **not** swallowed the way `noteAcceptanceRefusal` is. That one explains a decision
  * that stands either way; this one *is* the outcome. A conflict with no label and no comment is the
  * silent stop this whole change exists to end, so a failure to write it fails the run.
  */
+const BLOCKED_LABEL = "blocked";
+
 function blockOnConflict(gh: GhExec, pr: string, paths: string[]): void {
   const body = [
     "**Blocked — rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",

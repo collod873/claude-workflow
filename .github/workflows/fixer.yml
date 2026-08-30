@@ -41,9 +41,12 @@ permissions:
   # write: every attempt is committed onto the pull request's own branch and pushed there
   # (`commitAndPushAttempt`) — this lane never opens a branch or a pull request of its own.
   contents: write
-  # write: a stopped fixer applies `blocked` and comments what each attempt tried, which is the one
-  # write it always makes (`applyBlocked`).
+  # write: a stopped fixer always comments the PR with what happened (`applyBlocked`,
+  # `applyUnfixable`) — the escalate path also needs `gh pr view` to check the PR is still open.
   pull-requests: write
+  # write: a stopped fixer applies `needs-human` and assigns the owner on the *ticket*
+  # (`escalateToOwner`) — moved here from the PR because that is where the label now lands.
+  issues: write
   # read: the resolve step below reads the failed run's jobs and one job's log — the only place the
   # pull request that run was judging is written down (see that step).
   actions: read
@@ -71,6 +74,10 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # Who a stop assigns the ticket to, on both paths below — the same pattern
+      # `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses: assigned so the ticket notifies rather than
+      # sits in a list, and `github.repository_owner` because this repo has one owner.
+      SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
     steps:
       # ## Which pull request that run was judging
       #
@@ -80,12 +87,24 @@ jobs:
       # (ADR-0054), so nothing on the run object names the branch under test. `head_sha` is trunk's
       # own tip, which every open implementation branch descends from, so it does not narrow either.
       #
-      # The one place the answer is recorded is `verify.yml`'s own `Check out the pull request
-      # under test` step, which echoes `judging <pr-url> on <branch>` before it does anything else
-      # (ADR-0104). That is a log line, so this reads it as one — the same split `integrate.ts`
-      # holds to for lane 06's job *names*, which the Actions API also answers only as strings.
-      # `fixer.test.ts` asserts `verify.yml` still echoes in exactly this shape, so a reworded step
-      # there fails a test here rather than silently making every fixer run resolve nothing.
+      # The one place the answer is recorded is a `judging <pr-url> on <branch>` log line
+      # (ADR-0104). `verify.yml`'s `Restore and run acceptance` job echoes it once its own checkout
+      # step resolves the branch; its `Immutability` job now echoes the same shape from a step that
+      # runs before that job can itself fail, for the reason the case below explains. That is a log
+      # line either way, so this reads it as one — the same split `integrate.ts` holds to for lane
+      # 06's job *names*, which the Actions API also answers only as strings. `fixer.test.ts`
+      # asserts `verify.yml` still echoes in exactly this shape, so a reworded step there fails a
+      # test here rather than silently making every fixer run resolve nothing.
+      #
+      # ## Which job actually failed
+      #
+      # A red `Restore and run acceptance` is the only job this lane can act on with a model: its
+      # own log is where `fixer.ts`'s vitest run reads back the signature it fixes. A red
+      # `Immutability` or plain `verify` job means Verify never got that far — there is nothing
+      # under `.Workflow` for a model to reproduce, only a job name and whatever `::error::` line it
+      # printed. That case escalates instead: `Immutability` always runs first on a dispatch (both
+      # later jobs carry `needs: [immutability]`), so its `judging` line is readable from its own
+      # log regardless of which of the two downstream jobs actually reddened.
       #
       # Exits 0 on every "nothing to work on": a run this cannot resolve, or a pull request that is
       # no longer open (lane 08 may have merged it, or a person may have closed it). None of those
@@ -101,11 +120,21 @@ jobs:
             exit 0
           fi
 
-          JOB_ID=$(gh run view "$RUN_ID" --json jobs \
-            --jq '[.jobs[] | select(.name == "Restore and run acceptance") | .databaseId] | first // empty')
-          if [ -z "$JOB_ID" ]; then
-            echo "run $RUN_ID has no 'Restore and run acceptance' job; nothing to fix"
-            exit 0
+          JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs')
+
+          ACCEPTANCE_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance")][0].databaseId // empty')
+          ACCEPTANCE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance")][0].conclusion // empty')
+
+          MODE="model"
+          if [ -n "$ACCEPTANCE_ID" ] && [ "$ACCEPTANCE_CONCLUSION" = "failure" ]; then
+            RESOLVE_JOB_ID="$ACCEPTANCE_ID"
+          else
+            MODE="escalate"
+            RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability")][0].databaseId // empty')
+            if [ -z "$RESOLVE_JOB_ID" ]; then
+              echo "run $RUN_ID has neither a failed acceptance job nor an Immutability job; nothing to fix"
+              exit 0
+            fi
           fi
 
           # `|| true` because grep exits 1 on no match, which is the ordinary case here, not a
@@ -113,7 +142,7 @@ jobs:
           # carries the literal `$PR` — cannot match. Spelled with `[^ ]` rather than a POSIX
           # `[[:space:]]` class so that `fixer.test.ts` can compile this exact pattern as a
           # JavaScript `RegExp` and check it against what `verify.yml` actually prints.
-          LINE=$(gh run view --job "$JOB_ID" --log \
+          LINE=$(gh run view --job "$RESOLVE_JOB_ID" --log \
             | grep -oE 'judging https://[^ ]+/pull/[0-9]+ on implement/issue-[0-9]+' \
             | tail -1 || true)
           if [ -z "$LINE" ]; then
@@ -124,8 +153,8 @@ jobs:
           URL=${LINE#judging }
           URL=${URL%% on *}
           BRANCH=${LINE##* on }
-          # `fixer.ts` takes the pull request as a number — it is what `gh pr edit`/`gh pr comment`
-          # are handed and what the attempt commits' `Part of #<n>` trailer is built from.
+          # `fixer.ts` takes the pull request as a number — it is what `gh pr comment` is handed and
+          # what the attempt commits' `Part of #<n>` trailer is built from.
           PR=${URL##*/}
           ISSUE=${BRANCH#implement/issue-}
 
@@ -135,32 +164,64 @@ jobs:
             exit 0
           fi
 
-          echo "fixing $URL on $BRANCH for #$ISSUE"
-          {
-            echo "pr=$PR"
-            echo "branch=$BRANCH"
-            echo "issue=$ISSUE"
-          } >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "model" ]; then
+            echo "fixing $URL on $BRANCH for #$ISSUE"
+            {
+              echo "mode=model"
+              echo "pr=$PR"
+              echo "branch=$BRANCH"
+              echo "issue=$ISSUE"
+            } >> "$GITHUB_OUTPUT"
+          else
+            FAILED_NAME=$(echo "$JOBS" | jq -r '[.[] | select(.conclusion == "failure")][0].name // empty')
+            FAILED_ID=$(echo "$JOBS" | jq -r '[.[] | select(.conclusion == "failure")][0].databaseId // empty')
+            if [ -z "$FAILED_NAME" ]; then
+              echo "run $RUN_ID reports no failed job; nothing to fix"
+              exit 0
+            fi
+            ERROR_LINE=$(gh run view --job "$FAILED_ID" --log | grep -m1 -oE '::error::.*' || true)
+
+            echo "escalating $URL (#$ISSUE): $FAILED_NAME failed before acceptance ran"
+            {
+              echo "mode=escalate"
+              echo "pr=$PR"
+              echo "issue=$ISSUE"
+              echo "failed_job=$FAILED_NAME"
+            } >> "$GITHUB_OUTPUT"
+            # Multiline-safe append for the one output that can carry characters $GITHUB_OUTPUT's
+            # plain `key=value` form cannot: an `::error::` line is arbitrary log text.
+            {
+              echo "error_line<<FIXER_EOF"
+              echo "${ERROR_LINE:-(no ::error:: line found in the $FAILED_NAME log)}"
+              echo "FIXER_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
 
       # The pull request's own branch, not the head SHA `review.yml` checks out: every attempt is
       # committed and force-free-pushed back here, so this checkout has to be the branch itself.
       - name: Checkout the pull request's branch
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode == 'model'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.target.outputs.branch }}
           fetch-depth: 0
 
+      # The escalate path never commits — it only needs `fixer.ts` itself on disk — so trunk's tip
+      # is enough and there is no branch to check out onto.
+      - name: Checkout trunk to escalate
+        if: steps.target.outputs.mode == 'escalate'
+        uses: actions/checkout@v4
+
       # A runner has no git identity, and this lane commits — same fix `integrate.yml`,
-      # `implement.yml` and `audit.yml` all needed.
+      # `implement.yml` and `audit.yml` all needed. Only the model path commits.
       - name: Identify the committer
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode == 'model'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode == 'model'
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
@@ -168,21 +229,23 @@ jobs:
             exit 1
           fi
 
+      # Both paths run `fixer.ts` through `npx tsx`, which needs `node_modules` — the escalate path
+      # only reaches `escalateToOwner`, but it is the same entrypoint file.
       - name: Set up Node
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode != ''
         uses: actions/setup-node@v4
         with:
           node-version: "24"
 
       - name: Install dependencies
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode != ''
         run: npm ci
 
       # `fixer.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
       # a GitHub-hosted runner has none. Same step, same pin, same reasoning as `review.yml`,
-      # `implement.yml` and `shape.yml`.
+      # `implement.yml` and `shape.yml`. Only the model path spawns a stage.
       - name: Install Claude Code
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode == 'model'
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
       # `.Workflow` is the directory, not `tests/acceptance/`, and not the repo root.
@@ -191,19 +254,31 @@ jobs:
       # which is the red this lane is usually reacting to. `tests/acceptance/` is deliberately not
       # it: an acceptance test is *expected* red until the ticket it names is built (vitest.config.ts
       # says so, and it is why `npm test` leaves that directory out), so a fixer pointed at it would
-      # chase other tickets' unbuilt criteria and end by labelling every pull request `blocked`.
+      # chase other tickets' unbuilt criteria and end by labelling every pull request `needs-human`.
       #
-      # A Verify that went red on something under no test at all — lint, typecheck, the clone gate,
-      # lane 06's acceptance-restore job — leaves nothing failing here, and `fixer.ts` says so and
-      # stops rather than handing a model an empty brief.
+      # A Verify that went red on something under no test at all — lint, typecheck, the clone gate —
+      # leaves nothing failing here, and `fixer.ts` says so and stops rather than handing a model an
+      # empty brief. (An immutable-set or plain-`verify` failure never reaches this step at all —
+      # the resolve step above already routed those to "Escalate to the owner".)
       #
       # The three resolved values arrive through `env:` rather than as `${{ }}` inside the script,
       # so a branch name is a shell *variable* and never a fragment of the command line — the same
       # shape `verify.yml` and `integrate.yml` use for everything they read off an event.
       - name: Run the fixer
-        if: steps.target.outputs.branch != ''
+        if: steps.target.outputs.mode == 'model'
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
           BRANCH: ${{ steps.target.outputs.branch }}
         run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" .Workflow
+
+      # The no-model path: Verify never reached the one job this lane can reproduce and fix, so
+      # instead of a brief with nothing in it, this names what actually failed.
+      - name: Escalate to the owner
+        if: steps.target.outputs.mode == 'escalate'
+        env:
+          ISSUE: ${{ steps.target.outputs.issue }}
+          PR_NUMBER: ${{ steps.target.outputs.pr }}
+          FAILED_JOB: ${{ steps.target.outputs.failed_job }}
+          ERROR_LINE: ${{ steps.target.outputs.error_line }}
+        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "$FAILED_JOB" "$ERROR_LINE"

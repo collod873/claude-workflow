@@ -27,19 +27,40 @@ import { structuredOutput } from "../shared/structured-output";
  * without landing green, and the point of a cap is that it never depends on
  * anything the loop itself decided.
  *
- * Stopping either way applies the same two writes: `blocked` on the PR, and
- * a comment naming what was tried — never nothing, and never a label with
- * no comment beside it, because a `blocked` PR with no account of what was
- * attempted is exactly as unreadable as no label at all. Going green drops
- * out of the loop with neither write: a green run needs no record, the
- * verification job it just landed a passing run for already is one.
+ * Stopping either way applies the same two writes: `needs-human` on the
+ * *ticket*, and a comment on the PR naming what was tried — never nothing,
+ * and never a label with no comment beside it, because a `needs-human`
+ * ticket with no account of what was attempted sends the owner in blind.
+ * Going green drops out of the loop with neither write: a green run needs no
+ * record, the verification job it just landed a passing run for already is
+ * one.
+ *
+ * A run whose `Verify` went red before `Restore and run acceptance` ever
+ * executed (the immutable set was crossed, or the plain `verify` job itself
+ * failed) reaches `runEscalate` instead of `runFixer`: there is no test
+ * signature under `.Workflow` to build a brief from, so this applies
+ * `needs-human` and comments what the failed job's log actually said rather
+ * than spending three Sonnet attempts on a brief with nothing in it.
  */
 
 /** No comparison and no cap outrun this. §3 of the ticket: "capped at three attempts". */
 export const MAX_ATTEMPTS = 3;
 
-/** The label a stopped fixer applies to the PR it could not land green. */
-export const BLOCKED_LABEL = "blocked";
+/**
+ * The canonical label for "an agent tried and stopped" (`docs/agents/pipeline-labels.md`), applied
+ * to the **ticket**, not the pull request. It used to be `blocked` on the PR — a label nothing in
+ * this repo created, so `gh pr edit --add-label blocked` had been failing on every capped fixer
+ * without anyone finding out (measured: `gh label list` carries no `blocked` entry, and nothing
+ * reads one). Moving it fixes two things at once: it is a label that actually exists, and it lands
+ * where the owner looks. The tracker is worked from the issue list; the pull request list is not —
+ * `needs-human` on a PR nobody is triaging notifies nobody, the same hole #41's run watchdog exists
+ * to close for a dead run.
+ */
+export const NEEDS_HUMAN_LABEL = "needs-human";
+
+/** Same colour and description `shape.yml`'s label-seeding step uses — one meaning, one look. */
+const NEEDS_HUMAN_COLOR = "d93f0b";
+const NEEDS_HUMAN_DESCRIPTION = "Ticket stalled; a human decision or action is required";
 
 export const FIXER_PROMPT_PATH = ".Workflow/agent-workflows/fixer/prompt.md";
 
@@ -154,10 +175,44 @@ export function blockedComment(stopReason: "no-progress" | "capped", attemptSumm
   return `**Blocked.** ${why}\n\nWhat was tried:\n\n${tried}`;
 }
 
-/** Applies `blocked` and comments what every attempt tried — the one write a stopped fixer always makes. */
-function applyBlocked(gh: GhExec, prNumber: number, stopReason: "no-progress" | "capped", attemptSummaries: string[]): void {
-  gh(["pr", "edit", String(prNumber), "--add-label", BLOCKED_LABEL]);
+/**
+ * The comment posted when Verify never reached the acceptance job at all — the immutable set was
+ * crossed, or the plain `verify` job (lint/typecheck/test/gauntlet) went red — so there is no
+ * reproducible test signature for a model to work from.
+ */
+export function unfixableComment(failedJob: string, errorLine: string): string {
+  return `**Needs a human.** \`${failedJob}\` failed before \`Restore and run acceptance\` ever ran, so there is nothing this lane can reproduce and fix.\n\n${errorLine}`;
+}
+
+/**
+ * Ensures `needs-human` exists (the label itself, not just the string — `gh issue edit
+ * --add-label` fails on a label nobody has created yet, `--force` makes this idempotent), applies
+ * it to the ticket, and assigns the repository owner so the ticket notifies rather than sits in a
+ * list — the same shape `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses for a dead lane.
+ */
+function escalateToOwner(gh: GhExec, issueNumber: number, assignee: string): void {
+  gh(["label", "create", NEEDS_HUMAN_LABEL, "--color", NEEDS_HUMAN_COLOR, "--description", NEEDS_HUMAN_DESCRIPTION, "--force"]);
+  gh(["issue", "edit", String(issueNumber), "--add-label", NEEDS_HUMAN_LABEL]);
+  gh(["issue", "edit", String(issueNumber), "--add-assignee", assignee]);
+}
+
+/** Applies `needs-human` to the ticket and comments the PR with what every attempt tried — the one write a stopped fixer always makes. */
+function applyBlocked(
+  gh: GhExec,
+  issueNumber: number,
+  prNumber: number,
+  assignee: string,
+  stopReason: "no-progress" | "capped",
+  attemptSummaries: string[],
+): void {
+  escalateToOwner(gh, issueNumber, assignee);
   gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries)]);
+}
+
+/** Applies `needs-human` to the ticket and comments the PR naming the job Verify actually failed in — the escalate path's one write. */
+export function applyUnfixable(gh: GhExec, issueNumber: number, prNumber: number, assignee: string, failedJob: string, errorLine: string): void {
+  escalateToOwner(gh, issueNumber, assignee);
+  gh(["pr", "comment", String(prNumber), "--body", unfixableComment(failedJob, errorLine)]);
 }
 
 export interface FixerDeps {
@@ -173,8 +228,10 @@ export interface FixerDeps {
   prNumber: number;
   /** The branch that PR is open from — every attempt lands here, never a new branch. */
   branch: string;
-  /** The ticket the PR implements, for the `Part of #<n>` trailer on each attempt's commit. */
+  /** The ticket the PR implements, for the `Part of #<n>` trailer on each attempt's commit and for `needs-human` on a stop. */
   issueNumber: number;
+  /** Who a stopped fixer assigns the ticket to — the repository owner, read from `SIGNAL_ASSIGNEE`. */
+  assignee: string;
 }
 
 export type FixerOutcome =
@@ -216,12 +273,12 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     }
 
     if (attempt >= 2 && signaturesEqual(result.failures, previousSignature)) {
-      applyBlocked(deps.gh, deps.prNumber, "no-progress", attemptSummaries);
+      applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "no-progress", attemptSummaries);
       return { verdict: "blocked", attempts: attempt, stopReason: "no-progress" };
     }
 
     if (attempt === MAX_ATTEMPTS) {
-      applyBlocked(deps.gh, deps.prNumber, "capped", attemptSummaries);
+      applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "capped", attemptSummaries);
       return { verdict: "blocked", attempts: attempt, stopReason: "capped" };
     }
 
@@ -302,7 +359,38 @@ export function runVitestJsonForFixer(dir: string): FixerTestResult {
   return { failures };
 }
 
-async function main(): Promise<void> {
+/** `SIGNAL_ASSIGNEE`, the same env var `run-watchdog.yml` sets from `github.repository_owner` — read here rather than three times, one per caller. */
+function readAssignee(): string {
+  const assignee = process.env.SIGNAL_ASSIGNEE;
+  if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned ticket notifies nobody");
+  return assignee;
+}
+
+/**
+ * The escalate path: `fixer.yml`'s resolve step reaches this when the failed job was not
+ * `Restore and run acceptance` — the immutable set was crossed, or the plain `verify` job
+ * (lint/typecheck/test/gauntlet) went red. Neither leaves a test signature under `.Workflow` for
+ * the model loop to work from, so this applies `needs-human` and comments what actually failed
+ * instead of handing three Sonnet attempts a brief with nothing to fix.
+ */
+async function runEscalate(): Promise<void> {
+  const [issueArg, prArg, failedJob, errorLine] = process.argv.slice(3);
+  if (!issueArg || !prArg || !failedJob || !errorLine) {
+    console.error("usage: fixer.ts escalate <issue-number> <pr-number> <failed-job-name> <error-line>");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    applyUnfixable(execGh, Number(issueArg), Number(prArg), readAssignee(), failedJob, errorLine);
+    console.log(`escalated #${issueArg}: ${failedJob} failed before acceptance ran`);
+  } catch (err) {
+    console.error(`fixer failed: ${reason(err)}`);
+    process.exitCode = 1;
+  }
+}
+
+async function runFix(): Promise<void> {
   const [issueArg, prArg, branch, dir] = process.argv.slice(2);
   if (!issueArg || !prArg || !branch || !dir) {
     console.error("usage: fixer.ts <issue-number> <pr-number> <branch> <acceptance-tests-dir>");
@@ -338,6 +426,7 @@ async function main(): Promise<void> {
       prNumber: Number(prArg),
       branch,
       issueNumber: Number(issueArg),
+      assignee: readAssignee(),
     });
 
     if (outcome.verdict === "green") {
@@ -348,6 +437,15 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error(`fixer failed: ${reason(err)}`);
     process.exitCode = 1;
+  }
+}
+
+/** `escalate` as the first argument selects the no-model path; anything else is the attempt loop. */
+async function main(): Promise<void> {
+  if (process.argv[2] === "escalate") {
+    await runEscalate();
+  } else {
+    await runFix();
   }
 }
 
