@@ -27,17 +27,18 @@ Read before drafting:
 ```
 
 3. Draw the ticket graph: tracer-bullet vertical slices, each demoable on its own and sized to one agent session. Resolve file overlaps through the chain-shape ladder, and follow the six runner rules in the references.
-4. Validate every acceptance criterion against the headless-checkability gate, and write each one in the shape the closer parses:
+4. Wave 0 — the unblocked root, every slice you draw with no `dependsOn` — is a tracer: it has to trace the thinnest possible end-to-end path through every layer the work touches, stubs expected wherever a full implementation would cost the wave its thinness. Wave 0 is never a wiring slice that only connects layers with nothing behind them, and it is never a bare seam slice that ships an abstraction with no consumer proving it end-to-end.
+5. Validate every acceptance criterion against the headless-checkability gate, and write each one in the shape the closer parses:
 
    ```
    <what is observably true> — check: `<one command>`
    ```
 
    An em dash, the word `check:`, then exactly one backtick-quoted command and nothing after it, all on one line. `bin/close-ticket` runs that command to decide whether the ticket may close, and it reads nothing else — a bare command, a command outside backticks, two commands, or trailing prose all read as "no check", and a ticket where nothing parsed is refused rather than closed. The command must also be answerable from a checkout of the slice: it has to read the tree, not the tracker. `gh api`, `gh issue`, `gh pr`, `gh run`, `curl`, and `wget` read GitHub or the network instead of the working directory, so they return the same verdict whether or not the diff exists, and the publisher refuses them too — a criterion asserting that something ran in production belongs in the PRD, not here. The publisher refuses the whole plan before it files anything, so a slice carrying one unreadable or unanswerable criterion costs the run.
-5. When a slice consumes a seam manifest entry, place that line verbatim in `seamsConsumed`. `filesClaimed` contains only file paths modified by the slice.
-6. Give every slice one sentence in `whyNotMerged` justifying why it does not fold into its neighbour.
-7. Follow the output contract for every field (`dependsOn` uses 1-based indexing of earlier positions only). `whatToBuild` and `acceptanceCriteria` define technical scope (issue lifecycle directives like `Closes` are handled externally).
-8. Keep the prose inside its ceilings — the tool refuses a field that runs over, so aim under them rather than at them: `whatToBuild` at most 400 characters, `whyNotMerged` at most 200, and each `acceptanceCriteria` entry at most 200. There is no ceiling on how many files a slice claims or how many criteria it carries; claim every file the slice modifies.
+6. When a slice consumes a seam manifest entry, place that line verbatim in `seamsConsumed`. `filesClaimed` contains only file paths modified by the slice.
+7. Give every slice one sentence in `whyNotMerged` justifying why it does not fold into its neighbour.
+8. Follow the output contract for every field (`dependsOn` uses 1-based indexing of earlier positions only). `whatToBuild` and `acceptanceCriteria` define technical scope (issue lifecycle directives like `Closes` are handled externally).
+9. Keep the prose inside its ceilings — the tool refuses a field that runs over, so aim under them rather than at them: `whatToBuild` at most 400 characters, `whyNotMerged` at most 200, and each `acceptanceCriteria` entry at most 200. There is no ceiling on how many files a slice claims or how many criteria it carries; claim every file the slice modifies.
 
 ## Output
 
@@ -52,3 +53,4 @@ Example:
 ```structured-output
 {"slices":[{"title":"Ship the injected GhExec seam, wired into the publisher","whatToBuild":"Add `GhExec` as an injected `(args: string[]) => string` executor around `gh`, and use it from the publisher's first real write.","acceptanceCriteria":["The publisher writes through an injected `GhExec` and no test reaches the real `gh` binary — check: `npx vitest run shared/publish-sub-issues.test.ts`","`GhExec` is exported from shared/gh.ts — check: `grep -q 'export type GhExec' shared/gh.ts`"],"filesClaimed":["shared/gh.ts","shared/publish-sub-issues.ts"],"seamsConsumed":[],"whyNotMerged":"It ships the seam together with its first real consumer rather than standing alone as unused abstraction.","dependsOn":[]},{"title":"Wire blocked-by edges through the injected GhExec","whatToBuild":"Use the `GhExec` seam to wire native blocked-by edges after issue creation.","acceptanceCriteria":["Each declared edge is wired through the fake `GhExec` — check: `npx vitest run shared/publish-sub-issues.test.ts`"],"filesClaimed":["shared/publish-sub-issues.ts"],"seamsConsumed":["`GhExec` — an injected `(args: string[]) => string` executor around `gh` — shared/gh.ts — consumed by the publisher and every test that stands in for GitHub."],"whyNotMerged":"It is the edge-wiring behavior built on top of the seam the first slice ships, not the seam itself.","dependsOn":[1]}]}
 ```
+</output>
