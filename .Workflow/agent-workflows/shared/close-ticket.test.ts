@@ -4,22 +4,13 @@ import { describe, expect, it } from "vitest";
 
 /**
  * `bin/close-ticket`'s `undelivered` — the precondition `--spec` refuses on — driven in the real
- * interpreter against the real function.
+ * interpreter against the real function. `undelivered`'s own docstring in `bin/close-ticket` is the
+ * home for why the question is asked from the pull request's side (#195, #233, #253).
  *
- * The question it answers is "did a merged pull request deliver this slice", and this repo has two
- * mechanisms that used to answer it differently. `undelivered` read the child's own
- * `ClosedEvent.closer` and demanded a merged `PullRequest` there; lane 08 closes each slice itself,
- * with `bin/close-ticket` after its own gate (#195), so GitHub's merge-time auto-close never fires
- * and that field is `null` on every slice the chain delivers. #233's six slices all landed by
- * merged PR and `--spec` still called all six "closed by hand" (#253).
- *
- * So the question is asked from the pull request's side now, the way `integrate.ts` already asks it
- * (#127-145: GitHub's closing linkage is not trusted, `Closes #N` in the PR body is) — through
- * `closedByPullRequestsReferences`, GitHub's own index of exactly that reference. The cases below
- * are the payload shapes that index returns, not a second copy of the parsing.
- *
- * Driven through Python rather than restated in TypeScript for `render-body.test.ts`'s reason: a
- * TypeScript belief about what the Python decides is the thing that was wrong.
+ * The cases below are the payload shapes `closedByPullRequestsReferences` returns, not a second
+ * copy of the parsing. Driven through Python rather than restated in TypeScript for
+ * `render-body.test.ts`'s reason: a TypeScript belief about what the Python decides is the thing
+ * that was wrong.
  */
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");

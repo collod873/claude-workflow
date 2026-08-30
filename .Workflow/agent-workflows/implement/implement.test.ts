@@ -369,12 +369,7 @@ describe("runImplement — on fakes", () => {
     expect(prompt).toContain("npm run check");
   });
 
-  /**
-   * The other half of ADR-0107, and the half run 33284271370 paid for: the stage ran the gate, saw
-   * the ADR corpus fixture had gone stale under its own new ADR, and could not act — the fixture
-   * was outside its claim and is 472 KB besides. So the wrapper regenerates, and its paths ride the
-   * same commit. See `regenerate-artifacts.ts`.
-   */
+  /** The other half of ADR-0107 — `regenerate-artifacts.ts`'s docstring is the home for why. */
   it("regenerates the generated artifacts and commits them alongside the implementer's files", async () => {
     const regenerated: string[] = [];
     const run = ordinaryRun({

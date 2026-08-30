@@ -207,10 +207,9 @@ interface FixerWorkflow {
 }
 
 /**
- * The lane this file's code had never been part of (#169, #234). `fixer.ts` was built, unit-tested
- * and reachable from nothing — the shape #183 exists to find — because a red `Verify` had no
- * listener at all. These assert the listener, not the loop: the trigger, the conclusion it reacts
- * to, and the one coupling that decides whether any of it resolves a pull request.
+ * The lane this file's code had never been part of (#169, #234) — `fixer.yml`'s own header comment
+ * is the home for why it exists. These assert the listener, not the loop: the trigger, the
+ * conclusion it reacts to, and the one coupling that decides whether any of it resolves a PR.
  */
 describe("fixer.yml is the listener a red Verify never had", () => {
   const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");

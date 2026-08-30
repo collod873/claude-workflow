@@ -657,13 +657,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
 
 /**
  * A rebase conflict is an outcome this lane records, never an exception it dies on (#234).
- *
- * `rebaseOntoTrunk` used to let a conflict propagate straight out of `runIntegrate` — the header
- * said so, and while one lane merged into `main` it was nearly true that it never happened. With
- * three lanes merging it stops the chain the #183 way: the run goes red on a `git` error, the pull
- * request stays green and open forever, and the ticket behind it never closes, because the lane
- * after the failure does not exist. So the conflict becomes this lane's last write instead: abort,
- * `blocked`, and a comment naming the paths, which is a record a person or the fixer can act on.
+ * `rebaseOntoTrunk`'s own docstring in `integrate.ts` is the home for why.
  */
 describe("runIntegrate when the rebase onto trunk conflicts", () => {
   const CONFLICTS = [".Workflow/agent-workflows/integrate/integrate.ts", "docs/adr/README.md"];
