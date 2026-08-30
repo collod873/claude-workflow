@@ -52,12 +52,13 @@ second return value, never collapsed into an empty dict silently — close-gate
 is the one caller that branches on it, to write its ADR-0005 log row before
 staying silent; every other hook already fails open on bad stdin regardless.
 
-`append_log()` / `LOG_RETENTION_DAYS` — the one JSONL log writer (#108), the
-function CODING_STANDARDS.md's "One log shape" entry names: one `ts` format,
-one retention constant, mkdir handled, write errors swallowed so a verdict
-never depends on a writable log (ADR-0005's observability rule). Exempt:
-close-gate's own TSV verification record at `~/.claude/close-gate.log`,
-which predates and is not a log in this sense — see ADR-0005.
+`append_log()` / `run_row()` / `LOG_RETENTION_DAYS` — the one JSONL log writer
+(#108, #182), the function CODING_STANDARDS.md's "One log shape" entry names:
+one `ts` format, one retention constant, mkdir handled, write errors swallowed
+so a verdict never depends on a writable log (ADR-0005's observability rule).
+Nothing is exempt: close-gate's private seven-column TSV was the last holdout
+and became rows here in #182, so `~/.claude/logs/` is now the whole estate's
+run record and `bin/hook-report` can read it without knowing thirteen shapes.
 
 `quoted_spans()` / `unquoted_matches()` — the one shell-quote span scanner
 (#106): both PreToolUse/Bash gates (ADR-0012) need the same answer to "is
@@ -76,8 +77,16 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Wall clock starts the moment a hook imports this module, which is the first
+# statement of every hook on this machine and therefore the closest thing to
+# "when the process began reading stdin" a pure-Python helper can observe.
+# `run_row`'s `seconds` is measured from here, so a hook cannot forget to start
+# a timer and report a fire as free.
+_STARTED = time.monotonic()
 
 _HOOKS_DIR = Path(__file__).resolve().parent
 # Bounded to these two candidates on purpose. Walking `.parents` to the first hit would
@@ -174,6 +183,17 @@ def read_payload() -> tuple[dict, bool]:
 # rather than renamed, so every existing test fixture that isolates its rows
 # from the real `~/.claude/logs/` audit trail keeps working unchanged.
 LOG_DIR = Path(os.environ.get("STOP_GATE_LOG_DIR") or (Path.home() / ".claude" / "logs"))
+
+# Retention, stated where the rows are rather than in a doc nobody reads while
+# deleting them (#182): every hook's and every tool's rows are pruned at 30
+# days, and that stands — the window exists so `bin/hook-report --days 30`
+# always answers from a bounded directory, and so a machine-global log cannot
+# grow without an owner. The consequence is the rule: a *finding* meant to
+# outlive the window — a guard's catch rate, a slug that never fired, a
+# denominator an argument rests on — is copied into `docs/research/` with its
+# date and its window, the way `docs/research/machinery-audit-2026-08-27.md`
+# did by hand before these rows existed. Rows are evidence with an expiry;
+# `docs/research/` is where evidence becomes a record.
 LOG_RETENTION_DAYS = 30
 
 
@@ -205,6 +225,44 @@ def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
         _prune_old_logs(hook)
 
 
+def run_row(payload: dict, verdict: str, **extra) -> dict:
+    """The one run row (#182): the six fields every mechanism owes an audit,
+    stamped here so thirteen hooks cannot spell them thirteen ways and no
+    caller can forget one.
+
+    `hook` is `HOOK_NAME`; `event` is the payload's own `hook_event_name`,
+    which is the only thing that tells `circuit-breaker`'s three wirings apart
+    once the rows are in one directory; `session_id` and `project` (the
+    basename of the payload's `cwd`) locate the fire; `verdict` is one word
+    from the calling hook's own fixed vocabulary, so a report can count
+    without parsing prose; `seconds` is wall time since the hook started
+    (`_STARTED`, above). `ts` is left to `append_log`, the one place a
+    timestamp format is chosen.
+
+    `extra` is whatever that hook alone knows — a guard slug, a pattern name,
+    an unchecked count — and overrides a stamped field only if a caller
+    deliberately spells one (`stop-fire-log` predates this and keeps its own
+    `project`/`session_id` reading). Pass `{}` for a payload that never
+    parsed: every read is `.get()`-safe, so a bad-stdin path still gets a row
+    rather than an exception on the way to one.
+
+    A `bin/` tool has no stdin payload and no event; it passes `{}` and names
+    itself with `tool=` through `bin/run_log.py`, which is why the reader in
+    `_harness.rows()` keys on `hook` *or* `tool`.
+    """
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    row = {
+        "hook": HOOK_NAME,
+        "event": (isinstance(payload, dict) and payload.get("hook_event_name")) or "",
+        "session_id": (isinstance(payload, dict) and payload.get("session_id")) or "",
+        "project": Path(cwd).name if isinstance(cwd, str) and cwd else "",
+        "verdict": verdict,
+        "seconds": round(time.monotonic() - _STARTED, 4),
+    }
+    row.update(extra)
+    return row
+
+
 def _prune_old_logs(hook: str) -> None:
     """Delete `LOG_DIR/<hook>-*.jsonl` files older than `LOG_RETENTION_DAYS`.
     Best-effort, swallowed — observability must never change a caller's
@@ -227,17 +285,79 @@ def _prune_old_logs(hook: str) -> None:
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 EDIT_TOOL_RE = re.compile(rb'"name"\s*:\s*"(?:Edit|Write|MultiEdit|NotebookEdit)"')
 
+# The matcher string every PreToolUse/PostToolUse hook that watches an edit is registered
+# with, stated here beside the roster it must agree with. A settings matcher made only of
+# `A-Za-z0-9_- ,|` is an *exact* pipe OR-list, not a regex — so `Edit|Write` matches those
+# two tool names and nothing else, and every hook on it was blind to `NotebookEdit` while
+# both Stop gates counted a NotebookEdit as an edit. A secret written into a `.ipynb` was
+# never scanned. `hooks/test__hook.py` asserts this string against the live settings.json,
+# so the roster and the registration cannot drift apart again in silence.
+EDIT_TOOL_MATCHER = "|".join(EDIT_TOOLS)
+
+
+def edited_path(tool_input: dict) -> str:
+    """The file an edit tool is about to write, whatever that tool calls the field.
+
+    `Edit`/`Write`/`MultiEdit` spell it `file_path`; `NotebookEdit` spells it
+    `notebook_path`. Four hooks read this and all four read `file_path` only, so adding
+    `NotebookEdit` to their matcher without this would have registered them for an event
+    whose payload they cannot parse — a fix that looks applied and changes nothing.
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+    for key in ("file_path", "notebook_path"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def new_content(tool_input: dict) -> str:
+    """Every piece of text an edit tool is about to introduce, joined by newlines.
+
+    `Write` carries `content`, `Edit` carries `new_string`, `NotebookEdit` carries
+    `new_source`, and `MultiEdit` carries a list of `edits` each with its own
+    `new_string`. `credential-scan` scans whatever this returns, so a field missing here
+    is a channel a secret can be written through unscanned — which is what `new_source`
+    was. Only the *new* text is collected: `old_string` is what is being removed, and
+    scanning it would refuse an edit for deleting a secret.
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+    parts = []
+    for key in ("content", "new_string", "new_source"):
+        value = tool_input.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for edit in edits:
+            if isinstance(edit, dict) and isinstance(edit.get("new_string"), str):
+                parts.append(edit["new_string"])
+    return "\n".join(parts)
+
 
 def exposure(payload: dict) -> tuple[bool | None, int]:
     """(exposed, edit_count) from `payload["transcript_path"]`.
 
     `(None, 0)` when the transcript can't be read at all — unknowable, not
-    "no". A byte-level regex over the whole file, no JSON parse, so a
-    multi-MB transcript costs milliseconds, not a second. `exposed` is
-    whether the session's transcript shows any Edit/Write/MultiEdit/
-    NotebookEdit `tool_use` block: only exposed stops count toward a gate's
-    or flag's record, because a planning turn that changed nothing is a
-    fire, not a trial.
+    "no". `exposed` is whether the session's transcript shows any
+    Edit/Write/MultiEdit/NotebookEdit `tool_use` block *issued by the
+    assistant*: only exposed stops count toward a gate's or flag's record,
+    because a planning turn that changed nothing is a fire, not a trial.
+
+    Structural, not textual (#196). This used to be one byte-regex over the
+    whole file — fast, and wrong in the one direction that matters: a session
+    that only *read* a hook, a settings file, or a transcript fixture has
+    `"name": "Edit"` sitting in a tool result and was counted as having edited.
+    All 27 stop-gate refusals in the 30 days before the fix read `exposed:
+    true`, including the "just questions" sessions the liveness rule
+    (ADR-0033) exists for, so the flag could not tell the two apart. The regex
+    survives as a prefilter — only a line it matches is JSON-parsed — so a
+    multi-MB transcript still costs milliseconds; the parse then keeps only an
+    assistant-role message's own `tool_use` blocks, which is the one place an
+    edit the session performed can appear. A line that matches the prefilter
+    but won't parse is skipped, never counted.
     """
     transcript_path = payload.get("transcript_path") if isinstance(payload, dict) else None
     if not transcript_path:
@@ -246,8 +366,106 @@ def exposure(payload: dict) -> tuple[bool | None, int]:
         data = Path(transcript_path).read_bytes()
     except Exception:
         return None, 0
-    n = len(EDIT_TOOL_RE.findall(data))
+    n = 0
+    for line in data.splitlines():
+        if not EDIT_TOOL_RE.search(line):
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        message = rec.get("message")
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") != "assistant" and rec.get("type") != "assistant":
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (isinstance(block, dict) and block.get("type") == "tool_use"
+                    and block.get("name") in EDIT_TOOLS):
+                n += 1
     return n > 0, n
+
+
+# --- liveness: who else is working in this project right now ------------------
+
+# How recently another session must have written a run row to count as active in a
+# project. Five minutes is one long tool call: a session mid-`bin/lint` or mid-edit
+# writes a row per tool call (validate-bash alone is the machine's hottest hook), so a
+# session that has gone quiet for longer than this is not mid-work — it is gone, or
+# thinking, and either way the next red check in that checkout has no one else to belong
+# to. Bounded above by how long a break may stay unforced once its author walks away.
+LIVENESS_SECONDS = 300
+_LIVENESS_TAIL_BYTES = 256 * 1024
+
+
+def active_sessions(project: str, exclude_session_id: str | None = None,
+                    within_seconds: int = LIVENESS_SECONDS,
+                    log_dir: Path | str | None = None,
+                    now: datetime | None = None) -> dict[str, str]:
+    """`{session_id: latest_ts}` for every *other* session that wrote a run row for
+    `project` within `within_seconds` — the Stop gate's liveness signal (ADR-0033).
+
+    The one place a gate reads the run log back. `_harness.py` states the seam the other
+    way round — reading is a grader's and a report's job — and this is the deliberate
+    exception, kept narrow: today's and yesterday's files only (a window can straddle
+    midnight), the last `_LIVENESS_TAIL_BYTES` of each, rows filtered on `project` and
+    `ts`. It answers exactly one question — is a different session provably mid-work in
+    this checkout *right now* — and the rows are the cheapest signal that already exists
+    for it: every tool-level hook writes one per fire, so a working session leaves a
+    heartbeat without any hook having to add one on the hot path.
+
+    `project` is the basename of the payload's `cwd`, the same field `run_row` stamps,
+    so a worktree (`wt-<tag>`) never collides with the checkout it was cut from. A file
+    that can't be read, a line that won't parse, a `ts` in an unexpected shape: skipped.
+    Unknowable liveness reads as "nobody", which on the Stop gate is the *blocking*
+    direction — the safe one.
+    """
+    base = Path(log_dir) if log_dir is not None else LOG_DIR
+    now = now or datetime.now()
+    cutoff = now - timedelta(seconds=within_seconds)
+    days = {now.date(), (now - timedelta(seconds=within_seconds)).date()}
+    seen: dict[str, str] = {}
+    for day in sorted(days):
+        try:
+            files = sorted(base.glob(f"*-{day:%Y-%m-%d}.jsonl"))
+        except OSError:
+            continue
+        for f in files:
+            try:
+                with f.open("rb") as fh:
+                    fh.seek(0, 2)
+                    size = fh.tell()
+                    fh.seek(max(0, size - _LIVENESS_TAIL_BYTES))
+                    tail = fh.read().decode("utf-8", errors="replace")
+            except OSError:
+                continue
+            for line in tail.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict) or row.get("project") != project:
+                    continue
+                sid = row.get("session_id")
+                if not isinstance(sid, str) or not sid or sid == exclude_session_id:
+                    continue
+                ts = row.get("ts")
+                try:
+                    when = datetime.fromisoformat(ts) if isinstance(ts, str) else None
+                except ValueError:
+                    when = None
+                if when is None or when < cutoff or when > now + timedelta(seconds=60):
+                    continue
+                if sid not in seen or seen[sid] < ts:
+                    seen[sid] = ts
+    return dict(sorted(seen.items(), key=lambda kv: kv[1], reverse=True))
 
 
 # --- shell-quote spans, shared by both Bash gates ----------------------------

@@ -68,6 +68,17 @@ Declared ceiling — read before relying on this:
   - It is not a lock. No permission rule backs it, and none can: any rule wide
     enough to catch the `gh api` bypass would also break the sub-issue and
     dependency APIs the tracker requires.
+  - Failing closed is only true while the hook is alive to refuse. The harness
+    kills a `command` hook at its registered `timeout` and treats the kill as a
+    non-blocking error, so an over-budget fire lets the close through — a
+    fail-open wearing this gate's fail-closed clothes, arriving exactly when
+    GitHub or the disk is slow. The deadlines below are therefore a budget, not
+    four independent numbers: their worst-case sum (`derive_repo` +
+    `repo_toplevel`, memoised to one call + `gh issue view`) must stay under the
+    `timeout` this hook is registered with in `settings.json`.
+    `hooks/test_close_gate.py` asserts that sum against the registered value, so
+    adding a fifth subprocess or shortening the deadline fails a test rather
+    than quietly converting the gate's failure mode.
   - A command that only *names* a close inside a quoted argument — a grep for
     the phrase, an echo, a commit message describing this gate — is not treated
     as one, so long as it names no issue number either. This is scope, not a
@@ -83,18 +94,17 @@ never `allow` — since `allow` would skip the permission prompt and loosen a
 layer this hook exists only to tighten.
 """
 
+import functools
 import json
 import os
 import re
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 
 import _hook  # puts bin/ on sys.path (#109)
 import gh_support  # noqa: E402
 import ticket_shape  # noqa: E402
 
-LOG_PATH = Path.home() / ".claude" / "close-gate.log"
 GH_TIMEOUT_SECONDS = 5
 GIT_REMOTE_TIMEOUT_SECONDS = 2
 
@@ -474,6 +484,7 @@ def derive_repo(cwd: str | None) -> str:
     return m.group(1) if m else ""
 
 
+@functools.lru_cache(maxsize=None)
 def repo_toplevel(cwd: str | None) -> Path | None:
     """The working tree's root, or None when `cwd` is not a repo or git won't answer.
 
@@ -482,6 +493,16 @@ def repo_toplevel(cwd: str | None) -> Path | None:
     `close_ticket_stub` hands it over as the `close-ticket` invocation's `<checkout>` —
     and neither is allowed to fail loudly: a hook that raised here would refuse closes
     over a slow disk.
+
+    Memoised because those two callers ask the same question about the same `cwd` within
+    one fire, and each miss costs a `GIT_REMOTE_TIMEOUT_SECONDS` deadline. That mattered:
+    this hook is registered with a wall-clock `timeout` in settings.json, and the sum of
+    its worst-case subprocess deadlines — `derive_repo` + two `repo_toplevel` calls +
+    `gh issue view` — used to exceed it. A hook the harness kills mid-flight is a
+    non-blocking error, so the tool proceeds: the one gate on this machine that
+    deliberately fails *closed* would have failed **open**, and only when GitHub or the
+    disk was slow, which is exactly when nobody is watching. One process per fire, and the
+    budget fits under the registered deadline with room to spare.
     """
     if not cwd:
         return None
@@ -575,33 +596,38 @@ def fetch_issue(gh_path: str, cwd: str | None, issue_number: int,
 # --- observability -----------------------------------------------------------
 
 
-def log_row(session_id: str, repo: str, issue_number, verdict: str, reason: str, gh_path: str) -> None:
-    row = "\t".join([
-        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        session_id or "",
-        repo or "",
-        "" if issue_number is None else str(issue_number),
-        verdict,
-        reason,
-        gh_path or "",
-    ])
-    # The write can never change the exit code — wrapped and swallowed.
-    try:
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_PATH, "a", encoding="utf-8") as fh:
-            fh.write(row + "\n")
-    except OSError:
-        pass
+def _row(payload: dict, repo: str, issue_number, verdict: str, reason: str,
+         gh_path: str) -> None:
+    """One JSONL run row through the machine's single writer (#182).
+
+    This used to be a private seven-column TSV of its own beside `~/.claude/` — its own
+    timestamp format, no rotation, no retention, 950 rows and growing, and a hand-written
+    exemption in `bin/lint` and `_hook.py` holding the "one log shape" rule open for it.
+    The columns survive verbatim as fields (`repo`, `issue`, `reason`, `gh`); what changes
+    is that they now sit beside every other mechanism's rows, under one prune, where
+    `bin/hook-report` can count them without knowing this hook exists. The old TSV is left
+    on disk as an archive, not migrated — anything in it worth keeping past 30 days belongs
+    in `docs/research/`, which is the rule `_hook.LOG_RETENTION_DAYS` states.
+
+    Verdicts: `allow` · `deny` · `degraded`. `reason` stays the slug it always was, so a
+    30-day count per refusal reason is one field away."""
+    _hook.append_log(_hook.HOOK_NAME, _hook.run_row(
+        payload, verdict,
+        repo=repo or "",
+        issue=issue_number,
+        reason=reason,
+        gh=gh_path or "",
+    ))
 
 
-def deny(session_id: str, repo: str, issue_number, reason: str, gh_path: str,
+def deny(payload: dict, repo: str, issue_number, reason: str, gh_path: str,
          human_message: str, verdict: str = "deny") -> None:
-    log_row(session_id, repo, issue_number, verdict, reason, gh_path)
+    _row(payload, repo, issue_number, verdict, reason, gh_path)
     _hook.deny(human_message)
 
 
-def allow(session_id: str, repo: str, issue_number, reason: str, gh_path: str) -> None:
-    log_row(session_id, repo, issue_number, "allow", reason, gh_path)
+def allow(payload: dict, repo: str, issue_number, reason: str, gh_path: str) -> None:
+    _row(payload, repo, issue_number, "allow", reason, gh_path)
     # Silent — never `permissionDecision: "allow"`. No stdout at all.
 
 
@@ -610,16 +636,15 @@ def main() -> None:
 
     payload, ok = _hook.read_payload()
     if not ok:
-        log_row("", "", None, "allow", "unparseable-stdin", resolved_gh or "")
+        _row(payload, "", None, "allow", "unparseable-stdin", resolved_gh or "")
         return
 
-    session_id = payload.get("session_id") or ""
     cwd = payload.get("cwd")
     tool_input = payload["tool_input"]  # _hook.read_payload() guarantees a dict
 
     command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
-        log_row(session_id, "", None, "allow", "unparseable-stdin", resolved_gh or "")
+        _row(payload, "", None, "allow", "unparseable-stdin", resolved_gh or "")
         return
 
     route = detect_close_route(command)
@@ -630,7 +655,7 @@ def main() -> None:
     if issue_number is None and close_is_only_quoted_prose(command):
         # Names a close without invoking one. Logged rather than silent: a near-miss on a
         # machine-global gate is worth being able to audit after the fact.
-        log_row(session_id, "", None, "allow", "close-mentioned-not-invoked", resolved_gh or "")
+        _row(payload, "", None, "allow", "close-mentioned-not-invoked", resolved_gh or "")
         return
 
     # The repo actually verified against, not merely the one the session happened to sit in.
@@ -650,8 +675,8 @@ def main() -> None:
     # that repo does or does not ship. Logged rather than silent — this estate counts what its
     # gates do, and a stand-down that left no row would be indistinguishable from a pass.
     if repo_flag in (None, "", cwd_repo) and ships_repo_gate(gh_cwd):
-        log_row(session_id, repo, issue_number, "allow", "repo-gate-owns-repo",
-                resolved_gh or "")
+        _row(payload, repo, issue_number, "allow", "repo-gate-owns-repo",
+             resolved_gh or "")
         return
 
     # ADR-0013's scope rule, now that this gate is the only one left to hold it: a close
@@ -661,12 +686,12 @@ def main() -> None:
     # the command line, and a scope rule that spent a network call would be paying to learn
     # it has nothing to do.
     if declares_non_delivery(command):
-        log_row(session_id, repo, issue_number, "allow", "non-delivery-close",
-                resolved_gh or "")
+        _row(payload, repo, issue_number, "allow", "non-delivery-close",
+             resolved_gh or "")
         return
 
     if issue_number is None:
-        deny(session_id, repo, None, "unparseable-issue-number", resolved_gh or "",
+        deny(payload, repo, None, "unparseable-issue-number", resolved_gh or "",
              "could not parse an issue number from this close command.")
         return
 
@@ -681,21 +706,21 @@ def main() -> None:
     # criteria requires reading the issue, so the call is not optional.
 
     if resolved_gh is None:
-        deny(session_id, repo, issue_number, "gh-not-found", "",
+        deny(payload, repo, issue_number, "gh-not-found", "",
              "gh is not resolvable on this machine — cannot verify, so the close is refused.",
              verdict="degraded")
         return
 
     body, comments, fetch_err = fetch_issue(resolved_gh, gh_cwd, issue_number, repo_flag)
     if fetch_err:
-        deny(session_id, repo, issue_number, fetch_err, resolved_gh,
+        deny(payload, repo, issue_number, fetch_err, resolved_gh,
              f"could not verify against GitHub ({fetch_err}) — failing closed.",
              verdict="degraded")
         return
 
     record_text = inline_record if inline_record is not None else most_recent_record(comments)
     if record_text is None:
-        deny(session_id, repo, issue_number, "no-closing-record", resolved_gh,
+        deny(payload, repo, issue_number, "no-closing-record", resolved_gh,
              "no `## Closing record` found — neither on the close command's own "
              "--comment nor as an issue comment. Run close-ticket instead — it verifies "
              f"the criteria, posts the record, and closes in one step:\n\n    {stub_text}"
@@ -706,9 +731,9 @@ def main() -> None:
     criteria_count = count_body_criteria(body)
     verdict, reason, message = evaluate_record(record_text, criteria_count, stub_text)
     if verdict == "allow":
-        allow(session_id, repo, issue_number, reason, resolved_gh)
+        allow(payload, repo, issue_number, reason, resolved_gh)
     else:
-        deny(session_id, repo, issue_number, reason, resolved_gh, message)
+        deny(payload, repo, issue_number, reason, resolved_gh, message)
 
 
 if __name__ == "__main__":
