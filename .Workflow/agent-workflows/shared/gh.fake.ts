@@ -1,5 +1,5 @@
 import type { GhExec } from "./gh";
-import { blockedByPathMatcher, issuePathMatcher, subIssuesPathMatcher } from "./gh-paths";
+import { blockedByPathMatcher, GIT_REFS_PATH, issuePathMatcher, subIssuesPathMatcher } from "./gh-paths";
 
 /**
  * The extra sentence a field-shape rejection carries when the call used
@@ -186,4 +186,29 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
   };
 
   return { gh, calls, subIssuesByParent, blockedByByNumber, dispatches };
+}
+
+/**
+ * Simulates `POST`/`DELETE .../git/refs` — the atomic claim primitive `claimImplementationBranch`
+ * uses (#179) — honestly enough for a takeover test to be about anything (#196): `POST` 422s when
+ * `refs` already holds the ref, exactly like the real endpoint, and `DELETE` releases it.
+ *
+ * A standalone function rather than another `FakeGh` branch: `implement/implement.test.ts` and
+ * `recover/recover.test.ts` each model a *different* rest of `gh` around the same claim mechanic,
+ * so what they share is this one primitive, called from inside each file's own `GhExec` before it
+ * falls through to whatever else it answers. Returns `undefined` for any call that isn't one of
+ * these two, which is what lets a caller compose it in with a plain `if`.
+ */
+export function simulateClaimRef(args: string[], refs: Set<string>): string | undefined {
+  if (args[0] === "api" && args[1] === GIT_REFS_PATH) {
+    const ref = (args.find((arg) => arg.startsWith("ref=refs/heads/")) ?? "").slice("ref=refs/heads/".length);
+    if (refs.has(ref)) throw new Error("HTTP 422: Reference already exists");
+    refs.add(ref);
+    return "";
+  }
+  if (args[0] === "api" && args[1] === "--method" && args[2] === "DELETE") {
+    refs.delete(args[3].slice(`${GIT_REFS_PATH}/heads/`.length));
+    return "";
+  }
+  return undefined;
 }

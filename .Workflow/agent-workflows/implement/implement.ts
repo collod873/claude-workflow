@@ -152,7 +152,12 @@ export function assembleBrief(inputs: BriefInputs): string {
   ].join("\n\n");
 }
 
-const ImplementerAnswer = z.object({
+/**
+ * Exported for `recover/recover.ts`: a recovered run parses the artifact `implement.yml` uploaded
+ * with this exact shape rather than trusting untyped JSON — the same contract the model's own
+ * reply is held to here.
+ */
+export const ImplementerAnswer = z.object({
   files: z.array(z.object({ path: z.string().min(1), content: z.string().min(1) })).min(1),
   /** A short account of what was built — becomes the PR body's lead paragraph. */
   summary: z.string().min(1),
@@ -166,7 +171,7 @@ const ImplementerAnswer = z.object({
    */
   outOfBriefReads: z.array(z.string().min(1)).default([]),
 });
-type ImplementerAnswer = z.infer<typeof ImplementerAnswer>;
+export type ImplementerAnswer = z.infer<typeof ImplementerAnswer>;
 
 /** The implementer stage's structured-output contract (`shared/structured-output.ts`). */
 export const IMPLEMENTER_OUTPUT = structuredOutput(ImplementerAnswer);
@@ -628,6 +633,69 @@ export async function runImplement(deps: ImplementDeps): Promise<ImplementOutcom
   }
 }
 
+/**
+ * What `landAnswer` needs from a caller that already holds a claim and an answer — the tail of
+ * `ImplementDeps` that has nothing to do with how the answer was obtained (a fresh stage run here,
+ * a recovered artifact in `recover/recover.ts`).
+ */
+type LandDeps = Pick<ImplementDeps, "gh" | "git" | "writeFile" | "runGenerator" | "repoRoot">;
+
+/**
+ * Everything from a held answer to an opened pull request: write the files, ask git what actually
+ * changed, commit and push the claimed branch, then open the PR and dispatch verification —
+ * or release the claim and say so when the answer changed nothing.
+ *
+ * Split out of `buildAndOpen` so `recover/recover.ts` can hand this the *same* answer twice —
+ * once assembled fresh by a stage, once read back off an `implementer-answer-<n>` artifact a dead
+ * run left behind — without either caller re-deriving what happens after an answer exists. Only
+ * the commit message differs between the two, so it is the one thing this takes as a parameter
+ * rather than building itself.
+ */
+export async function landAnswer(
+  deps: LandDeps,
+  branch: string,
+  issueNumber: number,
+  ticket: TicketRead,
+  answer: ImplementerAnswer,
+  commitMessage: string,
+  log: (line: string) => void,
+): Promise<ImplementOutcome> {
+  for (const file of answer.files) {
+    deps.writeFile(file.path, file.content);
+  }
+
+  // Asked of git, after the write — see `worktreeChanges` for why the filesystem cannot answer it.
+  const changing = worktreeChanges(deps.git, answer.files.map((file) => file.path));
+
+  if (changing.length === 0) {
+    releaseClaim(deps.gh, branch, log);
+    sayOnTicket(deps.gh, issueNumber, nothingToBuildNote(issueNumber), log);
+    return { outcome: "nothing-to-build" };
+  }
+
+  // Only now, once there is something to commit: a run that built nothing has nothing to make a
+  // generated artifact stale, and spending two subprocesses to prove that is spending them for
+  // nothing. Regenerated paths ride along on the commit — see `regenerate-artifacts.ts` for why the
+  // implementer is not the one asked to keep them fresh.
+  const paths = [
+    ...answer.files.map((file) => file.path),
+    ...(deps.runGenerator ? regenerateArtifacts(deps.runGenerator, deps.repoRoot ?? process.cwd(), log) : []),
+  ];
+  commitAndPushBranch(deps.git, branch, paths, commitMessage);
+
+  const pr = openPrAndDispatch(deps.gh, {
+    branch,
+    title: ticket.title,
+    body: `${answer.summary}\n\nCloses #${issueNumber}`,
+    // The same `paths` just staged and pushed — the implementer's own report of what it wrote,
+    // not a `git diff` re-read, so the list the Immutability job judges is the list this lane
+    // committed.
+    changedFiles: paths,
+    criteria: extractCriteria(ticket.body),
+  });
+  return { outcome: "opened", pr };
+}
+
 /** Everything between a held claim and an opened pull request — see `runImplement` for the frame. */
 async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {
   const ticket = readTicket(deps.gh, deps.issueNumber);
@@ -653,45 +721,15 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     recordOutOfBrief(deps.gh, module);
   }
 
-  for (const file of answer.files) {
-    deps.writeFile(file.path, file.content);
-  }
-
-  // Asked of git, after the write — see `worktreeChanges` for why the filesystem cannot answer it.
-  const changing = worktreeChanges(deps.git, answer.files.map((file) => file.path));
-
-  if (changing.length === 0) {
-    releaseClaim(deps.gh, branch, log);
-    sayOnTicket(deps.gh, deps.issueNumber, nothingToBuildNote(deps.issueNumber), log);
-    return { outcome: "nothing-to-build" };
-  }
-
-  // Only now, once there is something to commit: a run that built nothing has nothing to make a
-  // generated artifact stale, and spending two subprocesses to prove that is spending them for
-  // nothing. Regenerated paths ride along on the commit — see `regenerate-artifacts.ts` for why the
-  // implementer is not the one asked to keep them fresh.
-  const paths = [
-    ...answer.files.map((file) => file.path),
-    ...(deps.runGenerator ? regenerateArtifacts(deps.runGenerator, deps.repoRoot ?? process.cwd(), log) : []),
-  ];
-  commitAndPushBranch(
-    deps.git,
+  return landAnswer(
+    deps,
     branch,
-    paths,
+    deps.issueNumber,
+    ticket,
+    answer,
     `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
+    log,
   );
-
-  const pr = openPrAndDispatch(deps.gh, {
-    branch,
-    title: ticket.title,
-    body: `${answer.summary}\n\nCloses #${deps.issueNumber}`,
-    // The same `paths` just staged and pushed — the implementer's own report of what it wrote,
-    // not a `git diff` re-read, so the list the Immutability job judges is the list this lane
-    // committed.
-    changedFiles: paths,
-    criteria: extractCriteria(ticket.body),
-  });
-  return { outcome: "opened", pr };
 }
 
 /**

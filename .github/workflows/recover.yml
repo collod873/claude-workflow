@@ -1,0 +1,103 @@
+name: Recover
+
+# What runs when `Implement` (lane 05) completes red **after the model already answered** — run
+# 33316096960 is the bill for not having this: 40 minutes of Sonnet, then `git push` rejected by
+# the pre-push gauntlet, and the work survived only as the `implementer-answer-<n>` artifact
+# `implement.yml` uploads with `if: always()`. Nothing retried, nothing escalated, and a human
+# recovered it by hand.
+#
+# `fixer.yml` is this file's structural twin: same `workflow_run` shape, same job-level `if:` on
+# the conclusion (`workflow_run` carries no `conclusion` filter of its own — that comment on
+# `fixer.yml` is the reason), same hand door for a run this trigger cannot reach on its own.
+# `implement.yml` carries no `push` trigger the way `verify.yml` does, so this needs none of
+# `fixer.yml`'s second condition (`event != 'push'`) — every completed `Implement` run this reacts
+# to already has a ticket behind it.
+#
+# **No model is ever run here.** `recover.ts` either finishes lane 05's own tail over an answer
+# that already exists, or sends the same dispatch lane 05 itself listens for — both are argv
+# through `GhExec`/`GitExec`, never a `claude` spawn, so this lane installs no CLI and binds no
+# OAuth secret the other lanes need to spend a model.
+
+"on":
+  workflow_run:
+    workflows: ["Implement"]
+    types: [completed]
+  # The hand door. A `workflow_run` trigger cannot be fired by a person — no way to react to a
+  # failed run from before this file existed, no way to retry one after the cause was dealt with
+  # by hand, no way to find out whether this lane runs at all short of waiting for a real failure.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "A completed Implement run to react to. Empty resolves no ticket and exits."
+        required: false
+        default: ""
+
+permissions:
+  # write: a recovered answer is committed onto the branch this run claims and pushed there
+  # (`landAnswer` → `commitAndPushBranch`).
+  contents: write
+  # write: a recovered answer opens a pull request (`landAnswer` → `openPrAndDispatch`).
+  pull-requests: write
+  # write: every reaction posts one marker comment on the ticket (`postAttemptComment`), and the
+  # capped path labels it `needs-human` and assigns it.
+  issues: write
+  # read: resolving which ticket a run was building reads that run's artifacts and, failing that,
+  # its own log.
+  actions: read
+
+concurrency:
+  # Per failed run, not a single fixed group — two `Implement` runs can fail at once, on different
+  # tickets, and each one's recovery works on its own branch. Never cancelled: an attempt that was
+  # already committed and pushed, or a marker comment already posted, is not undone by dropping
+  # the run that made it.
+  group: recover-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+    steps:
+      # Plain checkout, no `ref:` — unlike `fixer.yml`, which lands on a pull request's own
+      # branch, this run may need to *claim a fresh one* (`claimImplementationBranch` reads
+      # `git rev-parse HEAD` as the commit to claim at, the same way `implement.yml` does), so it
+      # starts at trunk's tip exactly like lane 05 itself does.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A runner has no git identity, and a recovered answer is committed here — same fix
+      # `implement.yml`, `fixer.yml` and `audit.yml` all needed for their own commits.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `recover.ts` reuses `implement.ts`'s own tail (`landAnswer`), which pushes onto the branch
+      # it just claimed. That push meets the same `.husky/pre-push` gauntlet the owner's own
+      # pushes do — `npm ci` above installs the hook — and it is a gauntlet a **recovered** push
+      # cannot always clear: the whole reason this lane exists is a run whose push a red tree
+      # rejected. `HUSKY=0` here is not a gate bypass (ADR-0063, CONTEXT.md's "Gate bypass"): the
+      # gate bypass this repo actually counts is red reaching `main`, and this branch is not
+      # `main` — it is the same implementation branch `Verify` and `Fixer` judge next, exactly as
+      # red as it would have been had the original push gone through. Skipping a local hook that
+      # only re-runs what Actions is about to run anyway costs nothing `Verify` does not already
+      # cover.
+      - name: Recover or re-dispatch
+        env:
+          HUSKY: "0"
+        run: npx tsx .Workflow/agent-workflows/recover/recover.ts
