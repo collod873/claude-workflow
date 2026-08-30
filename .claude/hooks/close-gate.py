@@ -598,16 +598,9 @@ def fetch_issue(gh_path: str, cwd: str | None, issue_number: int,
 
 def _row(payload: dict, repo: str, issue_number, verdict: str, reason: str,
          gh_path: str) -> None:
-    """One JSONL run row through the machine's single writer (#182).
-
-    This used to be a private seven-column TSV of its own beside `~/.claude/` — its own
-    timestamp format, no rotation, no retention, 950 rows and growing, and a hand-written
-    exemption in `bin/lint` and `_hook.py` holding the "one log shape" rule open for it.
-    The columns survive verbatim as fields (`repo`, `issue`, `reason`, `gh`); what changes
-    is that they now sit beside every other mechanism's rows, under one prune, where
-    `bin/hook-report` can count them without knowing this hook exists. The old TSV is left
-    on disk as an archive, not migrated — anything in it worth keeping past 30 days belongs
-    in `docs/research/`, which is the rule `_hook.LOG_RETENTION_DAYS` states.
+    """One JSONL run row through the machine's single writer — `_hook.append_log` and
+    `_hook.run_row`, whose module docstring in `_hook.py` is the home for the one-log-shape
+    rule and why this hook stopped keeping its own (#182).
 
     Verdicts: `allow` · `deny` · `degraded`. `reason` stays the slug it always was, so a
     30-day count per refusal reason is one field away."""

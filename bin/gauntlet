@@ -200,10 +200,9 @@ done
 # lint fixes. New code wired to nothing fails the push that introduced it.
 #
 # `workflows` is actionlint, and it is here rather than only in `verify.yml` because a broken
-# workflow file is the one defect CI structurally cannot report: GitHub cannot parse it, so it never
-# schedules it, so every dispatch aimed at it lands on nothing and no run exists to go red
-# (ADR-0105). It costs nothing on a push that leaves `.github/workflows/` alone, which is nearly all
-# of them — see `workflow-lint.ts` for why that is the whole answer to needing Docker at all.
+# workflow file is the one defect CI structurally cannot report (ADR-0105). `workflow-lint.ts`'s
+# docstring is the home for why, and for why needing Docker is not the ritual objection it looks
+# like: the check costs nothing on a push that leaves `.github/workflows/` alone.
 [ "$venue" = "push" ] && checks="$checks contract corpus wiring workflows"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of

@@ -141,10 +141,8 @@ describe("authorAcceptanceTests", () => {
     expect(prompt, "the claimed file's own text, not just its path").toContain('"on": quoted');
   });
 
-  // #227. The author writes every file of a run in one answer, so several criteria about one
-  // workflow used to mean several copies of one reader — the clone gate then reds trunk on the
-  // lane's own output. It cannot import what it does not know exists, so the shared readers reach
-  // it the same way its claimed files do: rendered into the prompt, through the same renderer.
+  // #227: `sharedTestFiles` reaches the author the same way its claimed files do, through the
+  // same renderer. Its docstring in `acceptance.ts` is the home for why.
   it("shows the author the non-test files already sitting under the acceptance test dir", async () => {
     const stage = await authorAgainst(
       (path) =>
@@ -247,8 +245,7 @@ describe("renderFiles", () => {
     );
   });
 
-  // The empty case is the one thing the two sections cannot share: "this ticket claims no files"
-  // and "nothing shared exists yet" are different facts, and the caller says which it means.
+  // `renderFiles`'s `whenEmpty` — the one thing the two sections cannot share; see its docstring.
   it("stands the caller's own sentence in for an empty list", () => {
     expect(renderFiles([], () => "unused", NO_CLAIMED_FILES)).toBe(NO_CLAIMED_FILES);
     expect(renderFiles([], () => "unused", NO_SHARED_FILES)).toBe(NO_SHARED_FILES);

@@ -417,20 +417,10 @@ describe("a job grants itself the writes its entrypoints perform", () => {
 /* -------------------------------------------------------------------------------------------- */
 
 /**
- * `cancel-in-progress: true` on a job that is holding a paid model call throws that call away the
- * moment the same group fires again — and every model lane's upstream can fire twice for one
- * subject: a critic comment, an `issues: edited` re-fire, a second slice in one publish.
- *
- * Five Spec runs on #233 died this way between 18:31 and 20:27 on 2026-08-29, each new critic
- * comment killing the run in flight, and two Acceptance runs went the same way in the same window.
- * The run history reads `cancelled`, which looks like a human pressed stop rather than a lane
- * cancelling itself, so the money is gone and the evidence points at the wrong culprit.
- *
- * Lane 04's near-identical loss was fixed by re-keying its group (`ed3e603`) — the *key* was wrong
- * there and the fix left the *cancel* in place. This is the other half of that defect.
- * `cancel-in-progress: false` queues instead, which is what `integrate.yml` and `audit.yml` have
- * always said and for the same reason. See
- * [ADR-0111](../../../docs/adr/0111-a-lane-that-spends-a-model-queues-behind-itself-rather-than.md).
+ * A lane that spends a model sets `cancel-in-progress: false`, and a lane that spends a model or
+ * performs a write declares a `concurrency:` group at all — both halves of
+ * [ADR-0111](../../../docs/adr/0111-a-lane-that-spends-a-model-queues-behind-itself-rather-than.md),
+ * which is where the reasoning and the incident that produced it live.
  */
 
 /**

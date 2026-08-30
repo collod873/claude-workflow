@@ -23,8 +23,7 @@ const SILENT_CRITIC = JSON.stringify({ findings: [] });
 
 describe("runSpecReconciler", () => {
   it("runs on the Opus model, on the author's own toolbelt, with its prompt on stdin", async () => {
-    // The author's allow list rather than the critic's open belt (ADR-0060): this stage writes
-    // spec prose, so it reads the repository and must reach no second source of intent.
+    // The author's allow list rather than the critic's open belt (ADR-0060).
     const fake = createFakeStage(reconciled(REWRITTEN));
 
     await runSpecReconciler(fake.exec, { ...SPEC, answers: ANSWERS });

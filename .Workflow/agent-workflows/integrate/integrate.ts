@@ -38,9 +38,7 @@ export interface GauntletResult {
 
 /**
  * One `bin/close-ticket` invocation's outcome, re-exported from the shared seam both closing lanes
- * reach it through (`shared/close-ticket.ts`). Exit `0` is the only shape that closed anything: the
- * record posted and the ticket closed. Every other exit means the ticket is still open, and the
- * reasons it can decline are deliberately one case — see the seam for why.
+ * reach it through — `shared/close-ticket.ts`, whose docstring is its home.
  */
 export type { CloseTicketResult };
 
@@ -395,9 +393,7 @@ function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
 
 /**
  * The record a conflict leaves: `blocked` on the pull request, and a comment naming what would not
- * replay. `blocked` is spelled once, in `fixer.ts` — the fixer applies the same label for the same
- * meaning, that a machine stopped here and the next move is a person's, and two lanes labelling the
- * same state under two spellings is a state nobody can list.
+ * replay. The label is spelled once, as `fixer.ts`'s `BLOCKED_LABEL`, and imported from there.
  *
  * Deliberately **not** swallowed the way `noteAcceptanceRefusal` is. That one explains a decision
  * that stands either way; this one *is* the outcome. A conflict with no label and no comment is the

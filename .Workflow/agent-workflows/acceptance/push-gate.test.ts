@@ -109,10 +109,7 @@ describe("runPushGate", () => {
     expect(add).toEqual(["add", "tests/acceptance/foo.test.ts"]);
   });
 
-  // #227: a reader more than one of a run's test files needs lives in a `.fixture.ts` beside them
-  // rather than being copied into each. Under `ACCEPTANCE_TEST_DIR` it is inside the one directory
-  // this lane may write, so it lands with the tests that import it — a run that pushed the tests
-  // and left the fixture behind would be a suite that cannot collect.
+  // #227's `.fixture.ts` rule, whose home is `author/prompt.md`.
   it("lands a .fixture.ts beside the tests, rather than treating it as an out-of-directory path", async () => {
     const fake = createFakeGit(() => "");
     const outcome = await runPushGate({

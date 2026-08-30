@@ -81,10 +81,7 @@ permissions:
 # fast-follow comment can both arrive within seconds, and two concurrent chains would each read a
 # round count that did not include the other.
 #
-# Queued, never cancelled. This lane is where the cost of the other setting was measured: five runs
-# on #233 died between 18:31 and 20:27 on 2026-08-29, each killed mid-model by the next critic
-# comment landing on the same issue, and every one of them reads `cancelled` in the run history as
-# though a human pressed stop (ADR-0111). A critic comment is the ordinary rhythm of this lane, so
+# Queued, never cancelled (ADR-0111). A critic comment is the ordinary rhythm of this lane, so
 # `cancel-in-progress: true` here meant the busier the critique, the less of it ever got answered.
 concurrency:
   group: spec-${{ github.event.issue.number || github.event.client_payload.issue }}

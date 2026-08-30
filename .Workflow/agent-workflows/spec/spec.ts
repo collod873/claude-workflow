@@ -387,11 +387,9 @@ export interface SpecCritiqueResult {
  * re-run loop true here: with no author to redraft the body, a recount against unchanged text would
  * report the same findings forever, so the answer has to reach the only model on this door.
  *
- * **Then the rounds are written back into the body** (ADR-0100). This is the one door with no
- * source to re-author from — the issue it fires on *is* the draft — so before this the rulings its
- * rounds settled lived in the comment thread and lane 03 sliced the draft they had argued down
- * (#189, #190). `reconcile` below is what lands them, and it lands them before the gate applies
- * anything, so no reader can see `sliceable` on a stale body.
+ * **Then the rounds are written back into the body** (ADR-0100; `reconcile.ts`'s module docstring
+ * is the home for why this door in particular needs it). `reconcile` below is what lands them, and
+ * it lands them before the gate applies anything, so no reader can see `sliceable` on a stale body.
  *
  * Everything downstream is `runSpecPublication`'s own — the same `applySpecGate`, so zero labels
  * and dispatches exactly as the runner path does, and non-zero comments the numbered questions.

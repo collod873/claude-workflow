@@ -40,12 +40,8 @@ permissions:
   pull-requests: write
   issues: write
 
-# **Keyed on the ticket, so a wave runs as wide as lane 03 cut it.** This is what ADR-0039 ruled —
-# implementer concurrency is whatever lane 03 published as ready disjoint slices, absorbed by lane
-# 08's single serialised merge — and the guarantee behind it is the chain-shape ladder: two slices
-# that touch the same file are either repartitioned onto disjoint sets or separated by a `dependsOn`
-# edge. Two slices that are *simultaneously ready* therefore claim disjoint files by construction.
-# Serialising them buys nothing the ladder has not already bought, and costs a merge cycle each.
+# **Keyed on the ticket, so a wave runs as wide as lane 03 cut it** — ADR-0039's ruling, and the
+# chain-shape ladder is the guarantee behind it.
 #
 # A single fixed group across every ticket — what `integrate.yml` correctly uses, because there is
 # one trunk to merge onto — was wrong here and lost work. GitHub holds **at most one pending run per

@@ -383,11 +383,7 @@ describe("runSpecCritique — the critic-only entry", () => {
     expect(calls.filter((args) => args.includes("--body") && args[1] === "edit")).toHaveLength(0);
   });
 
-  /**
-   * ADR-0100. This door is the one with no source to re-author from — the issue it fires on *is*
-   * the draft — so the rulings its rounds settle used to live in the comment thread and nowhere
-   * else, and lane 03 sliced the draft they had argued down (#189, #190).
-   */
+  /** ADR-0100, whose home is `reconcile.ts`'s module docstring. */
   describe("re-authoring the body from the answered thread", () => {
     it("rewrites the body from the body and the answers when the count falls to zero", async () => {
       const fake = createFakeStages([SILENT_CRITIC, RECONCILED]);
