@@ -41,6 +41,14 @@ describe("validatePlan", () => {
     expect(() => validatePlan(plan)).toThrow(/no unblocked root/);
   });
 
+  it("refuses a plan with more than one unblocked root, naming both offenders by position and title", () => {
+    const plan = [slice("First root"), slice("Second root"), slice("Depends on both", [1, 2])];
+
+    expect(() => validatePlan(plan)).toThrow(/more than one unblocked root/);
+    expect(() => validatePlan(plan)).toThrow(/slice 1 \("First root"\)/);
+    expect(() => validatePlan(plan)).toThrow(/slice 2 \("Second root"\)/);
+  });
+
   it("refuses a cycle, naming both slices involved, in a graph that has an unblocked root elsewhere", () => {
     // Slice 1 is a genuine unblocked root, so the no-root check passes and
     // the cycle between slices 2 and 3 is what has to catch this.

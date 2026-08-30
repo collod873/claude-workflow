@@ -257,9 +257,12 @@ describe("sliceAndPublish", () => {
  */
 describe("sliceAndPublish asks lane 04 to author acceptance tests for every published slice", () => {
   it("sends one acceptance-wanted dispatch per published slice, naming its issue", () => {
+    // One root and two dependents: a plan `validatePlan` accepts, since it now refuses more than
+    // one unblocked root (#240). What this test is about is the dispatch per published slice, so
+    // the shape only has to be three slices and legal.
     const plan = [
       slice({ title: "Root" }),
-      slice({ title: "Also root" }),
+      slice({ title: "Also depends on root", dependsOn: [1] }),
       slice({ title: "Depends on root", dependsOn: [1] }),
     ];
     const fake = createFakeGh();
@@ -328,7 +331,13 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
   });
 
   it("gives the same answer the predicate gives for the state a publish is in", () => {
-    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] }), slice({ title: "Also root" })];
+    // The mix this test needs is ready alongside not-ready, which one root and two dependents gives
+    // just as well as two roots did — and `validatePlan` now refuses the two-root version (#240).
+    const plan = [
+      slice({ title: "Root" }),
+      slice({ title: "Blocked", dependsOn: [1] }),
+      slice({ title: "Also blocked", dependsOn: [1] }),
+    ];
     const fake = createFakeGh();
 
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
@@ -338,7 +347,7 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
     const states: SliceState[] = [
       { number: published[0].number, blockedBy: [], delivery: "open", started: false },
       { number: published[1].number, blockedBy: [published[0].number], delivery: "open", started: false },
-      { number: published[2].number, blockedBy: [], delivery: "open", started: false },
+      { number: published[2].number, blockedBy: [published[0].number], delivery: "open", started: false },
     ];
 
     const readyNumbers = new Set(readySlices(states).map((state) => state.number));

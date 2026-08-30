@@ -2,7 +2,7 @@ import type { Plan } from "./plan-schema";
 
 /**
  * Refuses a malformed ticket graph before anything downstream can act on it:
- * every `dependsOn` in range, no self-reference, at least one unblocked root,
+ * every `dependsOn` in range, no self-reference, exactly one unblocked root,
  * no cycle. Passes silently (returns nothing) when the plan is well-formed;
  * throws naming the offending slice by 1-based position and title otherwise.
  *
@@ -29,11 +29,18 @@ export function validatePlan(plan: Plan): void {
     }
   }
 
-  const hasUnblockedRoot = plan.some((slice) => slice.dependsOn.length === 0);
-  if (!hasUnblockedRoot) {
+  const roots = plan
+    .map((slice, index) => ({ slice, position: index + 1 }))
+    .filter(({ slice }) => slice.dependsOn.length === 0);
+
+  if (roots.length === 0) {
     throw new Error(
       "plan has no unblocked root: every slice declares at least one dependsOn, so nothing can start",
     );
+  }
+  if (roots.length > 1) {
+    const named = roots.map(({ position, slice }) => `slice ${position} ("${slice.title}")`).join(", ");
+    throw new Error(`plan has more than one unblocked root: ${named} each declare no dependsOn`);
   }
 
   const UNVISITED = 0;
