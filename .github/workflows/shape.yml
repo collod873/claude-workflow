@@ -36,12 +36,8 @@ permissions:
 # concurrent chains would each read a round count that did not include the
 # other and post two sheets. So they serialise.
 #
-# They do not cancel. This group used to say `true`, on the reasoning that the
-# newer run is the one holding the comment; but the run it was cancelling is
-# holding a paid model call, and killing that spends the money and throws the
-# answer away, leaving a history that reads `cancelled` as though a human
-# pressed stop (ADR-0111). Queueing pays for both sheets and keeps both; the
-# second run reads a round count the first one's sheet is already part of,
+# They do not cancel (ADR-0111). Queueing pays for both sheets and keeps both;
+# the second run reads a round count the first one's sheet is already part of,
 # which is the ordering the cancel was reaching for anyway.
 concurrency:
   group: shape-${{ github.event.issue.number }}

@@ -716,8 +716,8 @@ function retireStanding(gh: GhExec, log: (line: string) => void, dryRun: boolean
  * the pattern `watchdog/lost-dispatch-counter.ts` already implements) rather than as *n* silently
  * parked tickets. Returns what it actually named.
  *
- * The empty case is not a no-op: it is the one run that can close the report (ADR-0099), and it
- * pays one `gh issue list` to do so.
+ * The empty case is not a no-op: it hands off to `retireStanding` below, whose docstring is the
+ * home for why zero is an assertion this reconciler is entitled to make (ADR-0099).
  */
 function reportUnreachable(
   gh: GhExec,

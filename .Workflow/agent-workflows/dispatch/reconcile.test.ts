@@ -264,9 +264,9 @@ function commentsCarrying(fake: FakeGh, marker: string): string[] {
  * against a shape this file made up — `gh issue view 237 --json closedByPullRequestsReferences` and
  * `gh pr view 244 --json state`, both captured on 2026-08-29.
  *
- * This is the guard the old reader never had. Its jq asked each node for a `state`, GitHub serves
- * none, and the only witness that could have said so was a fake in this file answering `["MERGED"]`
- * to a question the real endpoint answers `[null]`. A fixture cannot be talked into agreeing.
+ * This is the guard the old reader never had — `closedByMergedPr`'s docstring in `reconcile.ts` is
+ * the home for the defect it exists to catch (ADR-0106). A fixture cannot be talked into agreeing
+ * the way the hand-written fake that missed it could.
  *
  * `applyJq` is deliberately tiny and deliberately fed the reader's *own* `--jq` string: the point is
  * that the expression the code ships is the expression the recorded data is read with, so putting

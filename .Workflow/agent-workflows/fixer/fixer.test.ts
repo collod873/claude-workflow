@@ -262,14 +262,9 @@ describe("fixer.yml is the listener a red Verify never had", () => {
 });
 
 /**
- * The one coupling that decides whether this lane resolves anything.
- *
- * A `verify.yml` run started by lane 05's dispatch carries `head_branch: main`, trunk's tip as its
- * `head_sha`, and an empty `pull_requests` — nothing on the run object names the branch under
- * test. The only record is the line `verify.yml`'s own checkout step echoes, so `fixer.yml` reads
- * that line out of the job's log, and this is what keeps the two spellings from drifting: a
- * reworded echo over there would otherwise make every fixer run resolve nothing and report it as
- * "nothing to fix", which is indistinguishable from a healthy quiet lane.
+ * The one coupling that decides whether this lane resolves anything: `fixer.yml`'s resolve step
+ * reads the pull request out of the line `verify.yml`'s checkout step echoes, and that step's own
+ * comment is the home for why. These tests are what keep the two spellings from drifting.
  *
  * The same split, for the same reason, as `integrate.ts`'s lane 06 job names — the Actions API
  * answers strings, and `shared/` may not import a workflow file.
