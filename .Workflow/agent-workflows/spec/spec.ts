@@ -26,6 +26,7 @@ import {
 } from "./publish";
 import { runSpecReconciler } from "./reconcile";
 import { answeringComments, postOpenQuestions } from "./rounds";
+import { applySweep, runSpecSweep } from "./sweep";
 
 // Re-exported rather than wired into this file's own chain: ADR-0079's
 // amendment path fires on `spec/gap`, an existing PRD's re-entry, never on
@@ -172,6 +173,11 @@ function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: Ma
  * that already holds a `DecidedContext` never has to name which trigger
  * produced it.
  *
+ * **The sweep runs first, on the collected context, and its findings
+ * replace `rulings` before the author ever reads it** (`sweep.ts`): a
+ * collector only ever carries what its own source happened to cite, and the
+ * sweep is what goes and reads the record for whatever that source missed.
+ *
  * On stdin rather than argv: the Decided context's fields — decisions,
  * rulings, an accepted sheet's own prose — carry no upper bound by
  * construction, the same reasoning `shape.ts`'s shaper documents for its own
@@ -184,7 +190,8 @@ export async function runSpecAuthor(
   const collected = isDecidedContext(input)
     ? { context: input, decisions: [] as MarkedDecision[] }
     : collect(input);
-  const context = collected.context;
+  const sweep = await runSpecSweep(exec, collected.context);
+  const context = applySweep(collected.context, sweep);
   const draft = await runStage(
     PROMPT_PATH,
     {
