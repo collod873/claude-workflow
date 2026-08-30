@@ -72,7 +72,24 @@ jobs:
     env:
       IMMUTABLE_SET: "tests/acceptance/,vitest.config.ts,.github/"
       CHANGED_FILES: ${{ github.event.client_payload.changed_files }}
+      PR: ${{ github.event.client_payload.pr }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      # `fixer.ts` (`fixer.yml`'s resolve step) has nowhere else to learn which pull request a red
+      # run was judging when the refusal below is what actually fails: `Restore and run acceptance`
+      # never starts, so its own `judging` line (below) never gets written. This job always runs
+      # first on a dispatch-triggered run (`needs: [immutability]` on both jobs after it), and
+      # always reaches this line before it can itself fail, so it is the one place that line is
+      # guaranteed to exist regardless of which job actually reddens. Same shape as that job's own
+      # line — `judging <pr-url> on <branch>` — so `fixer.yml`'s existing grep resolves either one;
+      # this job has no branch of its own to read off the event, so it resolves one the same way
+      # that job resolves the head branch: `gh pr view --json headRefName`.
+      - name: Name the pull request this run is judging
+        run: |
+          set -euo pipefail
+          BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+          echo "judging $PR on $BRANCH"
+
       # Refuses rather than skips when the changed-files input is missing or empty (never
       # `continue-on-error`) — an implementer's dispatch that omits it is not "nothing to check",
       # it is a broken guarantee, and a broken guarantee must read as red, not as green-by-absence.

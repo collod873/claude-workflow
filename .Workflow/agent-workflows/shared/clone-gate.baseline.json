@@ -510,16 +510,6 @@
     ]
   },
   {
-    "hash": "7788b9281bfea8d9",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 120,
-    "where": [
-      ".Workflow/agent-workflows/fixer/fixer.test.ts:148",
-      ".Workflow/agent-workflows/fixer/fixer.test.ts:174"
-    ]
-  },
-  {
     "hash": "789f1b057b01becc",
     "format": "typescript",
     "lines": 8,
