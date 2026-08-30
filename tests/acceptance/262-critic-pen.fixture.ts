@@ -100,8 +100,15 @@ export function specBody(criteria: string[] = CRITERIA): string {
 }
 
 /**
- * The one response every model stage in a lane probe gets: a superset of the author's, the critic's
- * and the reconciler's wire shapes.
+ * The one response every model stage in a lane probe gets: a superset of the author's, the critic's,
+ * the reconciler's and the sweep's wire shapes.
+ *
+ * `rulings` is the sweep's `{ref, quote}` list rather than the one prose line this first carried.
+ * The superset was written to survive the sibling slice landing a sweep ahead of the author, and it
+ * does — but a superset only parses everywhere if every field it names is the shape its own schema
+ * asks for, and this one guessed prose where `spec/sweep.ts` declares an array. Nothing else in the
+ * lane reads `rulings` off the wire: the author's own `rulings` is a rendered string the sweep hands
+ * it, never a field a stage returns.
  */
 export function stageResponse(body: string, resolutions: Resolution[]): string {
   return JSON.stringify({
@@ -110,7 +117,9 @@ export function stageResponse(body: string, resolutions: Resolution[]): string {
     openQuestions: [],
     findings: [],
     resolutions,
-    rulings: "ADR-0060 — the lane reaches no second source of intent.",
+    rulings: [
+      { ref: "ADR-0060", quote: "the lane reaches no second source of intent." },
+    ],
     decisions: [],
   });
 }

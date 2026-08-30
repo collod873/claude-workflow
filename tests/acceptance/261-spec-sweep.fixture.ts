@@ -226,7 +226,11 @@ function makeExec(state, sweepResponse) {
     if (kind === "author") {
       return JSON.stringify({ title: MARK.specTitle, body: MARK.draftBody, openQuestions: [] });
     }
-    return JSON.stringify({ findings: [] });
+    // A superset of every shape the critic has had: \`findings\` for the stage that posted
+    // questions, \`resolutions\` for the pen the sibling slice gives it. Zod strips what a schema
+    // does not name, so one object parses against either — and #261's criteria are about the
+    // sweep, never about which of the two the critic is on the day this runs.
+    return JSON.stringify({ findings: [], resolutions: [] });
   };
 }
 
