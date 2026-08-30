@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { IMMUTABLE_SET } from "./immutable-set";
 import { slice } from "./plan.fixture";
-import { renderBody, validateCriteriaShape } from "./render-body";
+import { renderBody, validateClaimsAreMutable, validateCriteriaShape } from "./render-body";
 
 /**
  * The two ends of one contract, driven against each other.
@@ -250,5 +251,58 @@ describe("close-ticket, on a body it cannot verify", () => {
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("1 of 1 criteria verified");
     expect(run.calls.some((call) => call.startsWith("issue close"))).toBe(true);
+  });
+});
+
+/**
+ * #272: the ticket that could never pass. Lane 03 published a slice claiming `vitest.config.ts`,
+ * lane 04 authored an acceptance test that required the edit because the ticket claimed it, and
+ * lane 06 refused the pull request that made it — a contradiction only reachable after a paid
+ * implementer run, and identical on every retry. ADR-0010 puts the gate at the earliest venue that
+ * can run it, which is the claim itself.
+ */
+describe("validateClaimsAreMutable", () => {
+  it.each([
+    ["the config the acceptance allowlist lives in", "vitest.config.ts"],
+    ["an acceptance test", "tests/acceptance/272-checkpoint.fixture.ts"],
+    ["a workflow the implementation would run under", ".github/workflows/verify.yml"],
+  ])("refuses a slice claiming %s", (_label, path) => {
+    const plan = [slice({ title: "Checkpoint core", filesClaimed: [path] })];
+
+    expect(() => validateClaimsAreMutable(plan)).toThrow(/no pull request may touch/);
+  });
+
+  it("names every offending slice, so one re-fire fixes the whole plan", () => {
+    const plan = [
+      slice({ title: "First", filesClaimed: ["vitest.config.ts"] }),
+      slice({ title: "Second", filesClaimed: [".Workflow/agent-workflows/shared/stage.ts"] }),
+      slice({ title: "Third", filesClaimed: [".github/workflows/spec.yml"] }),
+    ];
+
+    expect(() => validateClaimsAreMutable(plan)).toThrow(/First[\s\S]*Third/);
+  });
+
+  it("passes a plan whose claims are all ordinary source", () => {
+    const plan = [
+      slice({
+        title: "Checkpoint core",
+        filesClaimed: [
+          ".Workflow/agent-workflows/shared/stage.ts",
+          ".Workflow/agent-workflows/shared/handoff-path.ts",
+        ],
+      }),
+    ];
+
+    expect(() => validateClaimsAreMutable(plan)).not.toThrow();
+  });
+
+  it("reads the same set the Immutability job reads, rather than a second copy", () => {
+    // The refusal quotes IMMUTABLE_SET itself. If lane 06's set and this gate's set ever drifted
+    // apart, a slice would be published that verify refuses — which is the whole failure this
+    // exists to stop, reintroduced by a copy-paste.
+    for (const entry of IMMUTABLE_SET) {
+      const claimed = entry.endsWith("/") ? `${entry}something.ts` : entry;
+      expect(() => validateClaimsAreMutable([slice({ title: "S", filesClaimed: [claimed] })])).toThrow();
+    }
   });
 });

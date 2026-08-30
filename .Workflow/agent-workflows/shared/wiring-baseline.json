@@ -64,11 +64,6 @@
     },
     {
       "kind": "exports",
-      "file": ".Workflow/agent-workflows/shared/immutable-set.ts",
-      "name": "touchesImmutableSet"
-    },
-    {
-      "kind": "exports",
       "file": ".Workflow/agent-workflows/shared/spine.ts",
       "name": "extractSpine"
     },

@@ -8,7 +8,7 @@ import {
   wireBlockedByEdges,
   type PublishedIssue,
 } from "../shared/publish-sub-issues";
-import { validateCriteriaShape } from "../shared/render-body";
+import { validateClaimsAreMutable, validateCriteriaShape } from "../shared/render-body";
 import { validatePlan } from "../shared/validate-graph";
 
 /**
@@ -101,16 +101,19 @@ export function dispatchReadySlices(plan: Plan, published: PublishedIssue[], gh:
  * loudly instead of silently — and only then does `dispatchReadySlices`
  * start lane 05 on the slices that have nothing to wait for.
  *
- * **Two validations, not one** (#215). `validatePlan` asks whether the graph
+ * **Three validations, not one** (#215, then #272). `validatePlan` asks whether the graph
  * is buildable; `validateCriteriaShape` asks whether the tickets it is about
  * to publish can ever be *verified* — whether `bin/close-ticket` can parse a
  * command out of each acceptance criterion, or will close them on nothing the
- * way it closed all 26 of PRD #145's. Both run before the first `gh` write,
- * so either refusal costs one re-fired slicer run and no tracker litter.
+ * way it closed all 26 of PRD #145's; `validateClaimsAreMutable` asks whether they can ever be
+ * *merged*, since a slice claiming a file in the immutable set is one lane 06 will refuse however
+ * well it is built. All three run before the first `gh` write,
+ * so any refusal costs one re-fired slicer run and no tracker litter.
  */
 export function sliceAndPublish(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
   validatePlan(plan);
   validateCriteriaShape(plan);
+  validateClaimsAreMutable(plan);
   const published = publishSubIssues(plan, prdNumber, gh);
   wireBlockedByEdges(plan, published, gh);
   verifyBlockedByGraph(plan, published, gh);

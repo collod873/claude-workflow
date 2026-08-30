@@ -1,3 +1,4 @@
+import { IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
 import type { Plan, Slice } from "./plan-schema";
 import { reason } from "./reason";
 import { CHECK_MARKER_ATTEMPT_RE, CRITERIA_HEADING, parseCheckMarker } from "./ticket-shape";
@@ -104,6 +105,43 @@ export function validateCriteriaShape(plan: Plan): void {
       assertCheckableCriteria(slice.acceptanceCriteria, `slice ${index + 1} ("${slice.title}")`);
     } catch (err) {
       problems.push(reason(err));
+    }
+  });
+  if (problems.length > 0) {
+    throw new Error(problems.join("\n"));
+  }
+}
+
+/**
+ * Refuses a slice that claims a file no pull request may ever touch.
+ *
+ * ADR-0010 — *every gate fires at the earliest venue that can run it* — and this one was firing at
+ * the last. `IMMUTABLE_SET` was read in exactly one place, the Immutability job in `verify.yml`,
+ * which runs after a slice has been published, had acceptance tests authored against it, and been
+ * implemented by a paid model. #272 claimed `vitest.config.ts`, so lane 04 wrote an acceptance test
+ * that *required* the edit and lane 06 refused the pull request that made it: a ticket no
+ * implementer could ever satisfy, discovered forty minutes and one model run too late, and
+ * unsatisfiable identically on every retry.
+ *
+ * The claim is the earliest place the contradiction is visible — it is the slicer's own statement
+ * of what the ticket will change, available before a single `gh` write. Read from the same
+ * `touchesImmutableSet` the Immutability job reads, so the two can never disagree about what the
+ * set contains; a claim naming an immutable path is the ticket admitting up front that it cannot
+ * pass its own verification.
+ *
+ * Reports every offending slice rather than the first, for the reason `validateCriteriaShape`
+ * gives: one re-fired slicer run should fix the whole plan.
+ */
+export function validateClaimsAreMutable(plan: Plan): void {
+  const problems: string[] = [];
+  plan.forEach((slice, index) => {
+    const claimed = slice.filesClaimed.filter((path) => touchesImmutableSet([path]));
+    if (claimed.length > 0) {
+      problems.push(
+        `slice ${index + 1} ("${slice.title}") claims ${claimed.map((path) => JSON.stringify(path)).join(", ")}, ` +
+          `which no pull request may touch (${IMMUTABLE_SET.join(", ")}) — lane 06 would refuse the ` +
+          `implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.`,
+      );
     }
   });
   if (problems.length > 0) {
