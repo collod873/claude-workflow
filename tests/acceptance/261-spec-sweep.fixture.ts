@@ -404,6 +404,28 @@ export function describeCalls(door: DoorProbe): string {
   return door.calls.map((call) => `${call.kind}(${call.model || "no --model"})`).join(" -> ");
 }
 
+/**
+ * The sweep stage the sheet door ran, or a throw naming the order it actually ran instead.
+ *
+ * Two of #261's criteria ask about this one stage's argv and differ only in which flag they read,
+ * so the reach-and-check that gets there is written once rather than copied into both — the same
+ * reason this fixture exists at all.
+ */
+export function sweepCall(): ProbeCall {
+  const { cold } = runSweepProbe();
+
+  if (cold.error !== null) {
+    throw new Error(`the sheet door threw before any assertion could run:\n${cold.error}`);
+  }
+
+  const sweep = callOfKind(cold, "sweep");
+  if (sweep === undefined) {
+    throw new Error(`no sweep stage ran — the door ran ${describeCalls(cold)}`);
+  }
+
+  return sweep;
+}
+
 export interface VitestRun {
   status: number | null;
   stdout: string;
@@ -432,4 +454,18 @@ export function runVitest(testFile: string): VitestRun {
   });
 
   return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "" };
+}
+
+/**
+ * Runs a criterion's own `npx vitest run <file>` check and throws that run's output when it is red.
+ *
+ * Three of #261's criteria close on this same shape and differ only in the path, so the
+ * run-and-report is written once here; three copies of it were three chances to drift.
+ */
+export function expectVitestPasses(testFile: string): void {
+  const run = runVitest(testFile);
+
+  if (run.status !== 0) {
+    throw new Error(`\`npx vitest run ${testFile}\` is red:\n${run.stdout}\n${run.stderr}`);
+  }
 }

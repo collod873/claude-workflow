@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { labelWrites } from "./237-spec-pass.fixture";
 import {
   describeCalls,
+  expectVitestPasses,
   indexOfKind,
   runSweepProbe,
-  runVitest,
   SPEC_TEST_PATH,
   type DoorProbe,
 } from "./261-spec-sweep.fixture";
@@ -60,8 +60,6 @@ describe("#261 — both of lane 02's entrances", () => {
 
   // Both entrances still reach the gate with the sweep inserted ahead of the author — check: `npx vitest run .Workflow/agent-workflows/spec/spec.test.ts`
   it("passes lane 02's own test file with the sweep in the chain", () => {
-    const run = runVitest(SPEC_TEST_PATH);
-
-    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expectVitestPasses(SPEC_TEST_PATH);
   }, 600_000);
 });

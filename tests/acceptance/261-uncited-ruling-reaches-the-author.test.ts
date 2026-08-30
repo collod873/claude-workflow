@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   callOfKind,
   describeCalls,
+  expectVitestPasses,
   MARKS,
   runSweepProbe,
-  runVitest,
   SWEEP_TEST_PATH,
 } from "./261-spec-sweep.fixture";
 
@@ -37,8 +37,6 @@ describe("#261 — a ruling the collectors forgot", () => {
 
   // A ruling no upstream sheet or map cited still reaches the author as rulings — check: `npx vitest run .Workflow/agent-workflows/spec/sweep.test.ts`
   it("passes the sweep's own test file", () => {
-    const run = runVitest(SWEEP_TEST_PATH);
-
-    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expectVitestPasses(SWEEP_TEST_PATH);
   }, 600_000);
 });

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   callOfKind,
-  describeCalls,
   flagValue,
   readSource,
   runSweepProbe,
+  sweepCall,
   SWEEP_SOURCE,
 } from "./261-spec-sweep.fixture";
 
@@ -26,17 +26,11 @@ describe("#261 — the sweep's model", () => {
 
   // The sweep names the same cheap model lane 01's own first stage names — check: `grep -q 'claude-haiku-4-5-20251001' .Workflow/agent-workflows/spec/sweep.ts`
   it("passes that model to the stage it runs, while the author keeps the expensive one", () => {
-    const { cold } = runSweepProbe();
-
-    expect(cold.error).toBeNull();
-
-    const sweep = callOfKind(cold, "sweep");
-    expect(sweep, `the door ran ${describeCalls(cold)}`).toBeDefined();
-    expect(flagValue(sweep?.argv ?? [], "--model")).toBe(CHEAP_MODEL);
+    expect(flagValue(sweepCall().argv, "--model")).toBe(CHEAP_MODEL);
 
     // This is the first stage in this lane that is not Opus — so the author beside it still is,
     // and the cheap stage is a new one rather than the author downgraded.
-    const author = callOfKind(cold, "author");
+    const author = callOfKind(runSweepProbe().cold, "author");
     expect(author).toBeDefined();
     expect(flagValue(author?.argv ?? [], "--model")).toBe(AUTHOR_MODEL);
   }, 600_000);

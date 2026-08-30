@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   callOfKind,
   describeCalls,
+  expectVitestPasses,
   MARKS,
   runSweepProbe,
-  runVitest,
   SWEEP_TEST_PATH,
 } from "./261-spec-sweep.fixture";
 
@@ -40,8 +40,6 @@ describe("#261 — the sweep's result and the collector's rulings", () => {
 
   // The sweep's result replaces the collector's rulings rather than appending to them — check: `npx vitest run .Workflow/agent-workflows/spec/sweep.test.ts`
   it("passes the sweep's own test file", () => {
-    const run = runVitest(SWEEP_TEST_PATH);
-
-    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expectVitestPasses(SWEEP_TEST_PATH);
   }, 600_000);
 });

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  callOfKind,
-  describeCalls,
   flagValue,
   readSource,
-  runSweepProbe,
+  sweepCall,
   SPEC_SOURCE,
   SWEEP_SOURCE,
 } from "./261-spec-sweep.fixture";
@@ -35,14 +33,8 @@ describe("#261 — the sweep's toolbelt", () => {
 
   // The sweep reads the author's exported allow-list rather than restating the tool names — check: `grep -q 'SPEC_AUTHOR_ALLOWED_TOOLS' .Workflow/agent-workflows/spec/sweep.ts`
   it("reaches the CLI with exactly the author's three tools and no disallowedTools", () => {
-    const { cold } = runSweepProbe();
+    const argv = sweepCall().argv;
 
-    expect(cold.error).toBeNull();
-
-    const sweep = callOfKind(cold, "sweep");
-    expect(sweep, `the door ran ${describeCalls(cold)}`).toBeDefined();
-
-    const argv = sweep?.argv ?? [];
     expect(flagValue(argv, "--allowedTools")).toBe("Read,Grep,Glob");
     expect(argv).not.toContain("--disallowedTools");
   }, 600_000);
