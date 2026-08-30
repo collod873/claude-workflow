@@ -137,7 +137,9 @@ export const acceptanceImportBoundaryRule = {
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "dist/**", "build/**"],
+    // `.clone-gate-scan/` is the clone gate's in-repo staging tree, created and torn down while a
+    // push's other checks are walking the repo (`shared/clone-gate.ts`, `stageForScan`).
+    ignores: ["node_modules/**", "dist/**", "build/**", ".clone-gate-scan/**"],
   },
   ...tseslint.configs.recommended,
   {

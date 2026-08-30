@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FORMATS } from "@jscpd/tokenizer";
@@ -58,8 +58,10 @@ const MAX_SIZE = "8mb";
 /**
  * Where a file whose language its name does not carry is copied for the scan. Inside the repo, not
  * `os.tmpdir()`: jscpd resolves its inputs against the working directory and silently drops a path
- * outside it. Deleted after every run, and excluded from scope so a killed run's leftovers can
- * never enter the next one.
+ * outside it. Each run stages into its own child of this directory (`stageForScan`) and deletes
+ * only that child; the parent is excluded from scope, gitignored, and listed in `eslint.config.js`'s
+ * ignores, so a killed run's leftovers never enter the next one and no concurrent walker ever
+ * descends into a tree mid-deletion.
  */
 const SCAN_DIR = ".clone-gate-scan";
 
@@ -370,9 +372,15 @@ function refusal(undeclared: Map<string, string[]>): string {
  * report line. Returns the scratch directory (to delete) and that mapping.
  */
 function stageForScan(root: string, files: ScopedFile[]): { dir: string; scanPath: Map<string, string> } {
-  const dir = join(root, SCAN_DIR);
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
+  // One child per run under a fixed, ignored parent — never the parent itself. Two gates run at
+  // once on a push (`bin/gauntlet push`'s `clones` check beside the `test` slot's `clone:check`),
+  // and `.claude/hooks/gauntlet.test.ts` drives a whole-repo eslint in between: a shared directory
+  // one run deletes while another scans it is a wrong answer, and a directory that vanishes under
+  // eslint's walker is `ENOENT: scandir .clone-gate-scan` (Integrate run 33325994300). The parent
+  // stays put and every walker is told to skip it; only the child is created and removed here.
+  const parent = join(root, SCAN_DIR);
+  mkdirSync(parent, { recursive: true });
+  const dir = mkdtempSync(join(parent, "run-"));
   const scanPath = new Map<string, string>();
   for (const file of files) {
     if (!file.staged) {

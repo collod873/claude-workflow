@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BASELINE_RELATIVE_PATH, repairAcceptanceBaseline, runCloneGate } from "./clone-gate.ts";
 
@@ -225,5 +226,18 @@ describe("repairAcceptanceBaseline", () => {
 
     expect(again.verdict).toBe("clean");
     expect(readFileSync(join(dir, BASELINE_RELATIVE_PATH), "utf8")).toBe(written);
+  });
+});
+
+describe("the scan's staging tree", () => {
+  /**
+   * The gate stages inside the repo (jscpd drops paths outside its cwd) while a push's other
+   * checks are walking that same tree. eslint's walker reads a directory the moment it sees it,
+   * and a staging child deleted between the listing and the read is `ENOENT: scandir` — Integrate
+   * run 33325994300 refused PR #281 on exactly that. The ignore is what keeps the two apart.
+   */
+  it("is ignored by eslint, so a push's concurrent lint never descends into a tree mid-deletion", () => {
+    const config = readFileSync(fileURLToPath(new URL("../../../eslint.config.js", import.meta.url)), "utf8");
+    expect(config).toContain('".clone-gate-scan/**"');
   });
 });
