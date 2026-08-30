@@ -33,14 +33,17 @@ const RESPONSE = JSON.stringify({
 
 const SILENT_CRITIC = JSON.stringify({ findings: [] });
 
+/** The sweep's own answer, empty — good enough for a test that does not care what it found. */
+const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
+
 /**
- * A fake `StageExec` that answers the author's call with `RESPONSE` and the
- * critic's with `SILENT_CRITIC` — good enough for a test that only cares about
- * the author's own argv or prompt, since the critic's call comes after it in
- * `fake.calls`.
+ * A fake `StageExec` that answers the sweep's call with `SWEEP_RESPONSE`, the author's with
+ * `RESPONSE`, and the critic's with `SILENT_CRITIC` — good enough for a test that only cares about
+ * the author's own argv or prompt, since the sweep's call comes before it and the critic's after it
+ * in `fake.calls`.
  */
 function fakeChain() {
-  return createFakeStages([RESPONSE, SILENT_CRITIC]);
+  return createFakeStages([SWEEP_RESPONSE, RESPONSE, SILENT_CRITIC]);
 }
 
 /** The body of the round a run posted, or `undefined` when it posted none. */
@@ -65,12 +68,13 @@ describe("the spec author's toolbelt", () => {
   it("is invoked through runStage with exactly Read, Grep, Glob allowed, and no disallowedTools", async () => {
     // ADR-0060: an allow list, enforced by the CLI rather than the prompt —
     // asserted on the argv, because a prompt-only prohibition would leave
-    // nothing that looked different.
+    // nothing that looked different. The sweep (sweep.ts) runs first, on the
+    // same allow-list, so the author's own call is the second one.
     const fake = fakeChain();
 
     await runSpecAuthor(fake.exec, CONTEXT);
 
-    const [argv] = fake.calls;
+    const [, argv] = fake.calls;
     expect(argv[argv.indexOf("--allowedTools") + 1]).toBe("Read,Grep,Glob");
     expect(SPEC_AUTHOR_ALLOWED_TOOLS).toEqual(["Read", "Grep", "Glob"]);
     expect(argv).not.toContain("--disallowedTools");
@@ -78,17 +82,37 @@ describe("the spec author's toolbelt", () => {
 });
 
 describe("runSpecAuthor", () => {
-  it("substitutes the Decided context's five fields into the prompt", async () => {
+  it("substitutes the Decided context's own words, decisions, boundaries and open guesses into the author's prompt", async () => {
     const fake = fakeChain();
 
     await runSpecAuthor(fake.exec, CONTEXT);
 
-    const prompt = fake.stdins[0] ?? "";
+    const prompt = fake.stdins[1] ?? "";
     expect(prompt).toContain(CONTEXT.ownerWords);
     expect(prompt).toContain(CONTEXT.decisions);
-    expect(prompt).toContain(CONTEXT.rulings);
     expect(prompt).toContain(CONTEXT.boundaries);
     expect(prompt).toContain(CONTEXT.openGuesses);
+  });
+
+  it("hands the author the sweep's own rulings rather than the collector's", async () => {
+    // sweep.ts's `applySweep` replaces `rulings` rather than appending to it — the author never
+    // sees the context's own `rulings` once the sweep has run. A distinct fixture value here,
+    // rather than `CONTEXT.rulings`, because "ADR-0060" also appears in the author's own prompt
+    // boilerplate and so is not a safe absence to assert on.
+    const collectorOnlyRuling = "COLLECTOR-ONLY-RULING-no-sweep-ever-confirmed-this";
+    const context = { ...CONTEXT, rulings: collectorOnlyRuling };
+    const sweepFinding = JSON.stringify({
+      rulings: [
+        { ref: "docs/adr/0104-a-ruling-the-sheet-never-cited.md", quote: "found only by the sweep" },
+      ],
+    });
+    const fake = createFakeStages([sweepFinding, RESPONSE, SILENT_CRITIC]);
+
+    await runSpecAuthor(fake.exec, context);
+
+    const prompt = fake.stdins[1] ?? "";
+    expect(prompt).toContain("found only by the sweep");
+    expect(prompt).not.toContain(collectorOnlyRuling);
   });
 
   it("returns the response parsed as a PRD title, body and open-questions payload", async () => {
@@ -104,25 +128,26 @@ describe("runSpecAuthor", () => {
     });
   });
 
-  it("invokes the critic stage after the author stage and before returning (publication)", async () => {
-    // ADR-0062: "the critic runs in the same chain, before publication."
-    // `runSpecAuthor` is the entrypoint publication is built on, so "before
-    // publication" here means the critic's call has landed before this
-    // function resolves — checked by call order on a fake `StageExec`.
+  it("invokes the sweep, then the author, then the critic — each strictly before the next", async () => {
+    // ADR-0062: "the critic runs in the same chain, before publication," and sweep.ts's sweep runs
+    // ahead of the author. `runSpecAuthor` is the entrypoint publication is built on, so this checks
+    // the whole order lands before this function resolves — by call order on a fake `StageExec`.
     const fake = fakeChain();
 
     await runSpecAuthor(fake.exec, CONTEXT);
 
-    expect(fake.calls).toHaveLength(2);
-    const [authorArgv, criticArgv] = fake.calls;
-    // The author is the Read/Grep/Glob-bound stage; the critic carries no
-    // such allow list, so the two argvs are distinguishable by that alone.
+    expect(fake.calls).toHaveLength(3);
+    const [sweepArgv, authorArgv, criticArgv] = fake.calls;
+    // The sweep and the author both carry the allow list (the sweep reads the author's own); the
+    // critic carries neither, so the three argvs are distinguishable by that alone.
+    expect(sweepArgv).toContain("--allowedTools");
     expect(authorArgv).toContain("--allowedTools");
     expect(criticArgv).not.toContain("--allowedTools");
   });
 
   it("folds the critic's findings into openQuestions and never overwrites the author's draft body", async () => {
     const responses = [
+      SWEEP_RESPONSE,
       RESPONSE,
       JSON.stringify({
         findings: ["\"handles errors gracefully\" admits two implementations."],
@@ -178,9 +203,10 @@ describe("the sheet door — ADR-0061's marks reach the gate", () => {
     );
   }
 
-  /** The author's draft, then a silent critic — the two stages this door spends. */
+  /** An empty sweep, the author's draft, then a silent critic — the three stages this door spends. */
   function chain(openQuestions: string[]): StageExec {
     return createFakeStages([
+      SWEEP_RESPONSE,
       JSON.stringify({ title: "A spec", body: "## Problem\nIt is unbuilt.", openQuestions }),
       SILENT_CRITIC,
     ]).exec;

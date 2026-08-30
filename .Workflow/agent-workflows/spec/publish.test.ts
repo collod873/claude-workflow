@@ -210,10 +210,13 @@ describe("planSpecRun", () => {
 });
 
 describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
+  /** The sweep's own answer, empty — good enough for a test that does not care what it found. */
+  const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
+
   /**
-   * Two stages run in this chain and they answer different schemas — the author's
-   * `{title, body, openQuestions}`, then the critic's `{findings}` — so the shared one-response
-   * fake cannot drive it. This answers each call in turn instead.
+   * Three stages run in this chain and they answer different schemas — the sweep's `{rulings}`,
+   * the author's `{title, body, openQuestions}`, then the critic's `{findings}` — so the shared
+   * one-response fake cannot drive it. This answers each call in turn instead.
    */
   function chainStage(responses: string[]): FakeStage {
     const calls: string[][] = [];
@@ -236,6 +239,7 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
 
   const chain = (openQuestions: string[], findings: string[] = []) =>
     chainStage([
+      SWEEP_RESPONSE,
       JSON.stringify({ title: "A thing", body: "## Problem\nIt is unbuilt.", openQuestions }),
       JSON.stringify({ findings }),
     ]);
