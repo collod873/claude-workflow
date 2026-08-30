@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0108
+
 Amends: [ADR-0024](0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md), which left
 the queue-depth and WIP limits standing — see "What this amends" below.
 
