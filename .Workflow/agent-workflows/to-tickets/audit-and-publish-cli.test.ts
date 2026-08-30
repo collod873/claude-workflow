@@ -1,12 +1,22 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { slice } from "../shared/plan.fixture";
 import { stubGhCli } from "./gh-cli.stub";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
+
+// Every test here runs `--stage audit-and-publish --issue 13` against the
+// same seeded slice checkpoint — without a fresh CHECKPOINTS_DIR per test,
+// two tests could compute the same checkpoint key and the second would
+// silently reuse the first's cached answer. See `isolateCheckpointsPerTest`'s
+// own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 /**
  * These exercise the real `--stage audit-and-publish` CLI end to end: a stub
@@ -15,11 +25,12 @@ const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
  * standing in for GitHub — the second subprocess seam this branch, alone
  * among the three stages, also shells out to. `audit-and-publish` reads a
  * sliced plan as its own `PLAN` input, exactly like `slice` reads a seam
- * manifest, so every test here seeds one at the handoff path via
- * `stubClaudeCli`'s `priorHandoff`.
+ * manifest, so every test here seeds slice's checkpoint via
+ * `stubClaudeCli`'s `priorCheckpoint`.
  */
 describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
   const slicedPlan = [slice({ title: "Root" })];
+  const slicedCheckpoint = { stage: "slice", response: JSON.stringify({ slices: slicedPlan }) };
 
   it("publishes, exits 0, and prints the exact success line", () => {
     const dir = withHandoffDir();
@@ -27,7 +38,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     const { env } = stubClaudeCli(
       dir,
       { structured: { notes: "Granularity: fine as-is.", slices: auditedPlan } },
-      JSON.stringify(slicedPlan),
+      slicedCheckpoint,
     );
     stubGhCli(dir, { issueNumber: 200 });
 
@@ -45,7 +56,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     const { env, handoffFile } = stubClaudeCli(
       dir,
       "the model just graded out loud, and never called the tool",
-      JSON.stringify(slicedPlan),
+      slicedCheckpoint,
     );
     stubGhCli(dir, { issueNumber: 200 });
 
@@ -64,7 +75,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     const { env, handoffFile } = stubClaudeCli(
       dir,
       { structured: { notes: "", slices: slicedPlan } },
-      JSON.stringify(slicedPlan),
+      slicedCheckpoint,
     );
     stubGhCli(dir, { fails: "HTTP 422: Validation Failed" });
 
