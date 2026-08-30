@@ -397,3 +397,40 @@ describe("fixer.yml reads the pull request out of the line verify.yml actually e
     expect(new RegExp(grepped ?? "$^").test(printed)).toBe(true);
   });
 });
+
+/**
+ * The ceiling is per ticket, not per run: a green attempt is sent back to Verify, and a red Verify
+ * starts a fresh fixer run, so without this the loop is fix → judge → fix with a model spend each
+ * round and no end. The count is read off the branch's own `fix: attempt` commits.
+ */
+describe("the cap across fixer runs", () => {
+  it("spends no stage when three attempts already sit on the branch, and escalates instead", async () => {
+    const stage = fakeStage([answer(1)]);
+    const deps = baseDeps({
+      exec: stage.exec,
+      git: (args) => (args[0] === "log" ? "fix: attempt 1 at #42\nfix: attempt 2 at #42\nfix: attempt 3 at #42\nImplement #42\n" : ""),
+      runTestsSequence: [{ failures: [] }],
+    });
+
+    const outcome = await runFixer(deps);
+
+    expect(stage.callCount()).toBe(0);
+    expect(outcome).toEqual({ verdict: "blocked", attempts: 0, stopReason: "capped" });
+    expect(deps.ghCalls).toContainEqual(["issue", "edit", "42", "--add-label", NEEDS_HUMAN_LABEL]);
+    expect(deps.writes).toEqual([]);
+  });
+
+  it("takes only the remainder when earlier runs used part of the ceiling", async () => {
+    const stage = fakeStage([answer(1), answer(2), answer(3)]);
+    const deps = baseDeps({
+      exec: stage.exec,
+      git: (args) => (args[0] === "log" ? "fix: attempt 1 at #42\nImplement #42\n" : ""),
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }],
+    });
+
+    const outcome = await runFixer(deps);
+
+    expect(stage.callCount()).toBe(2);
+    expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "capped" });
+  });
+});

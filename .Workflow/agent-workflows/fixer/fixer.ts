@@ -244,11 +244,35 @@ export type FixerOutcome =
  * first — and applying `blocked` plus a comment on either stop. Returns
  * without writing anything when an attempt lands green.
  */
+/**
+ * How many attempts earlier fixer runs already committed onto this branch, read off the commits
+ * themselves (`fix: attempt N at #n`, the subject `commitAndPushAttempt` writes) — durable, free,
+ * and the only place the count survives a run ending.
+ *
+ * Needed because a green attempt now goes back to Verify (`rejudge`), and a Verify that comes back
+ * red starts a *new* fixer run with a fresh loop. Three per run is then no ceiling at all: the
+ * loop would be fix → judge → fix, each round a model spend, until something else broke it.
+ * ADR-0041's three is per ticket, so the loop counts what is already on the branch and takes only
+ * the remainder.
+ */
+export function priorAttempts(git: GitExec): number {
+  const subjects = git(["log", "origin/main..HEAD", "--format=%s"]);
+  return subjects.split("\n").filter((line) => /^fix: attempt \d+ at #\d+/.test(line)).length;
+}
+
 export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
   let previousSignature = deps.initialFailure;
   const attemptSummaries: string[] = [];
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  const already = priorAttempts(deps.git);
+  if (already >= MAX_ATTEMPTS) {
+    applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "capped", [
+      `${already} attempt(s) were already on this branch from earlier fixer runs, and Verify refused every one.`,
+    ]);
+    return { verdict: "blocked", attempts: 0, stopReason: "capped" };
+  }
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS - already; attempt += 1) {
     const brief = assembleFixBrief(previousSignature, attempt, attemptSummaries);
     const answer = await runFixerStage(deps.exec, brief);
 
@@ -277,7 +301,7 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
       return { verdict: "blocked", attempts: attempt, stopReason: "no-progress" };
     }
 
-    if (attempt === MAX_ATTEMPTS) {
+    if (attempt === MAX_ATTEMPTS - already) {
       applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "capped", attemptSummaries);
       return { verdict: "blocked", attempts: attempt, stopReason: "capped" };
     }
@@ -285,7 +309,7 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     previousSignature = result.failures;
   }
 
-  // Unreachable: the loop above always returns by attempt === MAX_ATTEMPTS.
+  // Unreachable: the loop above always returns by attempt === MAX_ATTEMPTS - already.
   throw new Error("runFixer: exited its loop without a verdict");
 }
 
