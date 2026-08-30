@@ -24,9 +24,14 @@ import { defineConfig } from "vitest/config";
 // ticket it names is built, which is what makes it an acceptance test rather than a report on
 // working code — so a red `npm test` here is the suite doing its job, and the venue that decides
 // whether one may land is `acceptance/push-gate.ts`, not this list.
+// `.claude/worktrees/` is excluded because `.claude/**` is included: an agent session working in a
+// worktree puts a whole second checkout under that path, and the suite ran every test in it —
+// three worktrees, three extra copies of `tests/acceptance/`, and `gauntlet-test-slot.test.ts`
+// red on files that were never this tree's.
 export default defineConfig({
   test: {
     include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "tests/acceptance/**/*.test.ts"],
+    exclude: ["**/node_modules/**", ".claude/worktrees/**"],
     setupFiles: [".Workflow/agent-workflows/shared/scrub-git-env.setup.ts"],
     maxWorkers: 4,
     testTimeout: 30_000,

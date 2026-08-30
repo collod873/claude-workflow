@@ -20,6 +20,12 @@ import { childEnv } from "../shared/child-env.ts";
  * The wiring baseline is deliberately **not** on this list. It is an allowlist of standing debt
  * that only ever shrinks, so regenerating it would let new code that nothing runs through the gate
  * that exists to catch it — see `CLAUDE.md` and ADR-0086.
+ *
+ * The clone-gate baseline **is**, and the difference is what "shrinks" means for each. A wiring
+ * entry leaves when the code gets wired; a clone entry leaves when the clone is gone. Pruning the
+ * second cannot admit a duplicate — `--prune-baseline` has no way to add — it only stops the push
+ * gate refusing a run for having *paid off* a clone, which is how run 33324207385 lost #273 at its
+ * push. `prune-clone-baseline.ts` carries the rest of the argument.
  */
 export interface GeneratedArtifact {
   /** Repo-relative path of the committed file, for the `git add` that follows. */
@@ -36,6 +42,10 @@ export const GENERATED_ARTIFACTS: readonly GeneratedArtifact[] = [
   {
     path: ".Workflow/agent-workflows/watchdog/adr-corpus.evidence.json",
     generator: ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts",
+  },
+  {
+    path: ".Workflow/agent-workflows/shared/clone-gate.baseline.json",
+    generator: ".Workflow/agent-workflows/shared/prune-clone-baseline.ts",
   },
 ];
 

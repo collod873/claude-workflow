@@ -203,7 +203,7 @@ done
 # workflow file is the one defect CI structurally cannot report (ADR-0105). `workflow-lint.ts`'s
 # docstring is the home for why, and for why needing Docker is not the ritual objection it looks
 # like: the check costs nothing on a push that leaves `.github/workflows/` alone.
-[ "$venue" = "push" ] && checks="$checks contract corpus wiring workflows"
+[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -236,6 +236,23 @@ if [ "$venue" = "push" ]; then
     "$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts" \
     diff "$repo_root" "$repo_root/.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json" &
   pids+=($!)
+
+  # `clones` is the clone-gate baseline in the same `regenerate && diff` family, here so that what
+  # lane 05 regenerates before its push (`regenerate-artifacts.ts`) is judged by the same venue
+  # that judges its other two artifacts — `implement.test.ts` holds the two lists to each other.
+  # `bin/clone-gate` in `npm run check` still runs after this on a push; the scan is the same and
+  # both are concurrent with typecheck, so the wall clock does not move.
+  #
+  # Gated on the baseline file existing, because this script is portable (Lumaria runs it) and a
+  # repo that never seeded a baseline has no clone gate turned on — the missing `clones.exit` below
+  # reads as "did not run", never as a finding.
+  clone_baseline="$repo_root/.Workflow/agent-workflows/shared/clone-gate.baseline.json"
+  if [ -f "$clone_baseline" ]; then
+    run_check clones node \
+      "$repo_root/.Workflow/agent-workflows/shared/prune-clone-baseline.ts" \
+      diff "$repo_root" "$clone_baseline" &
+    pids+=($!)
+  fi
 
   run_check wiring node \
     "$repo_root/.Workflow/agent-workflows/shared/wiring-baseline.ts" check "$repo_root" &
@@ -319,7 +336,7 @@ fi
 # errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
 # turn every type error in this repo into "the gauntlet is broken", which is the one report
 # ADR-0063 tells the bypass counter to ignore.
-own_protocol=" contract corpus wiring workflows "
+own_protocol=" contract corpus clones wiring workflows "
 for name in $checks; do
   [ -f "$tmp/$name.exit" ] || continue
   code="$(cat "$tmp/$name.exit")"

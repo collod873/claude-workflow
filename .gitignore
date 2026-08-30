@@ -48,3 +48,5 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+# Agent worktrees are machine-local sessions, never part of the tree they branch from.
+.claude/worktrees/
