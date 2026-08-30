@@ -215,10 +215,12 @@ _Avoid_: PRD document, requirements doc, brief
 A numbered question in a spec, naming something specifying could not settle — intent it would
 otherwise have invented, a ruling it was handed that is wrong or conflicts with another, or a guess
 the sheet marked and no ruling ever recorded. It is the only form those three take, and the count of
-unanswered ones is what holds work back: at zero the spec dispatches, and a non-zero count is the one
-thing that reaches the owner. Distinct from an **Assumption mark**, which lives on a sheet and is the
-shaper's own flag on its own recommendation; a mark *becomes* one of these only when it crosses into a
-spec with no ruling behind it.
+unanswered ones is what holds work back: at zero the spec dispatches, and a non-zero count holds it
+back the same way, with nothing routed to the owner about it
+([ADR-0112](docs/adr/0112-a-non-zero-open-question-count-no-longer-waits-on-the-owner.md)). Distinct
+from an **Assumption mark**, which lives on a sheet and is the shaper's own flag on its own
+recommendation; a mark *becomes* one of these only when it crosses into a spec with no ruling behind
+it.
 _Avoid_: assumption mark, TODO, caveat, clarification
 
 **Slice**:
