@@ -1,4 +1,4 @@
-import type { GhExec } from "../../shared/gh";
+import { issueComments, type GhExec } from "../../shared/gh";
 import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shape/marker";
 import type { Decision, Sheet } from "../../shape/sheet-schema";
 import type { MarkedDecision } from "../open-questions";
@@ -21,19 +21,9 @@ import type { DecidedContext } from "../spec";
  * this payload existed — is a collector failure, not a fallback.
  */
 
-interface RawComment {
-  body?: string;
-}
-
 function issueBody(gh: GhExec, issueNumber: number): string {
   const raw = gh(["issue", "view", String(issueNumber), "--json", "body"]);
   return (JSON.parse(raw) as { body?: string }).body ?? "";
-}
-
-function commentBodies(gh: GhExec, issueNumber: number): string[] {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
-  const parsed = JSON.parse(raw) as { comments?: RawComment[] };
-  return (parsed.comments ?? []).map((comment) => comment.body ?? "");
 }
 
 /**
@@ -63,7 +53,7 @@ export function collectSheetContext(
   gh: GhExec,
   issueNumber: number,
 ): { context: DecidedContext; decisions: MarkedDecision[] } {
-  const bodies = commentBodies(gh, issueNumber);
+  const bodies = issueComments(gh, issueNumber);
 
   const sheets = bodies.map(readSheetMarker).filter((each): each is Sheet => each !== undefined);
   const sheet = sheets.at(-1);

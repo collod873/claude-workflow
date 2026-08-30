@@ -23,17 +23,18 @@ import type { SpecAuthorOutput } from "./spec";
 export const PRD_LABEL = "prd";
 
 /**
- * The `repository_dispatch` action that starts lane 02 from an accepted sheet — sent by
- * `shape/accept.ts` after it posts the accept comment, and gated on by `.github/workflows/spec.yml`.
+ * The `repository_dispatch` action `shape/accept.ts` sends after it posts the accept comment.
  *
  * A dispatch and not the `approved` label, which is what ADR-0058's trigger table originally said:
  * the sheet collector reads the accept payload out of that comment and throws without it, so a
  * lane 02 firing on the same label would race the write it depends on ([ADR-0083](../../../docs/adr/0083-the-accept-dispatches-lane-02-rather-than-lane-02-firing-on.md)).
  *
- * Declared in lane 02 rather than in the lane that sends it because lane 02 is the one with a
- * receiver to keep it honest — `spec-workflow.test.ts` checks `spec.yml`'s `if:` against this
- * constant, the same one-declaration rule `IMPLEMENTATION_PR_DISPATCH_ACTION` holds to after two
- * copies of one wire name left the verification lane unreachable.
+ * **`.github/workflows/spec.yml` no longer listens for it.** #263 moved the cold door onto the
+ * `to-spec` label, applied by hand to the accepted idea the same way ADR-0059 already had the
+ * owner apply it to a closed map — the label is the durable trace ADR-0083's race concern needed,
+ * arriving instead as a second, later click rather than as a dispatch this accept sends itself.
+ * `accept.test.ts` still pins that `shape/accept.ts` sends this dispatch; nothing downstream reads
+ * it, which is a known gap left for the ticket that retires the send itself.
  */
 export const SPEC_AUTHOR_DISPATCH_EVENT_TYPE = "sheet-accepted";
 
@@ -53,13 +54,11 @@ export function dispatchSpecAuthor(gh: GhExec, issueNumber: number): void {
 /**
  * Where a published spec came from, recorded on the spec itself.
  *
- * ADR-0062's re-run loop is "his answer re-runs the chain, which recomputes the count" — and the
- * chain starts at a collector, which needs the *source* the spec was drafted from, not the spec.
- * A comment-fired re-run arrives knowing only the spec's own issue number, so without this the
- * lane could re-run nothing: it would have to re-derive the decided context from the rendered spec,
- * which is precisely what `shape/marker.ts` exists to stop this estate doing.
+ * `spec.ts`'s `planSpecRun` reads this back to refuse a second `to-spec` on a source that already
+ * has a `sliceable` spec drafted from it (#263) — searching every published spec's own trailer for
+ * one naming the same source issue, since there is no tracker query that reaches into a body.
  *
- * So the same trailer idiom `decision-sheet:v1` and `shape-accepted:v1` already use, for the same
+ * The same trailer idiom `decision-sheet:v1` and `shape-accepted:v1` already use, for the same
  * reason and with the same escaping. Only the two collector-backed doors appear here: a spec
  * written in a live session has no source issue to re-collect from, and needs none — it *is* its
  * own source, so it re-enters the lane at the critic and never reads a marker at all (ADR-0085).
@@ -176,17 +175,17 @@ export function publishSpec(gh: GhExec, draft: SpecAuthorOutput, source: SpecSou
 }
 
 /**
- * Rewrites an already-published spec in place — the re-run half of ADR-0062's loop, where the
- * owner's answers have been folded in and the body must reflect them.
+ * Rewrites an already-published spec in place — `spec.ts`'s critic-only door, once the critic has
+ * resolved something and the reconciler has folded it into the body (ADR-0100).
  *
  * It edits rather than filing a second issue on purpose: the spec's number is what `sliceable`,
- * the dispatch, the rounds count and every one of the owner's own comments already hang off, and a
- * second issue would strand all of them. The source trailer is re-appended from what the caller
- * read off the existing body, so a re-run never loses the spec's provenance.
+ * the dispatch and every one of the owner's own comments already hang off, and a second issue
+ * would strand all of them. The source trailer is re-appended from what the caller read off the
+ * existing body, so the rewrite never loses the spec's provenance.
  *
- * Takes a title and a body rather than the author's whole output, because the other writer on this
- * path has no author behind it: ADR-0100's reconciler returns a body alone and carries the spec's
- * own title through unchanged, and `openQuestions` are not something either write records.
+ * Takes a title and a body rather than the author's whole output, because the writer on this path
+ * has no author behind it: ADR-0100's reconciler returns a body alone and carries the spec's own
+ * title through unchanged, and `openQuestions` are not something this write records.
  */
 export function updateSpec(gh: GhExec, issueNumber: number, draft: PublishedSpec, source: SpecSource | undefined): void {
   gh([
@@ -198,11 +197,6 @@ export function updateSpec(gh: GhExec, issueNumber: number, draft: PublishedSpec
     "--body",
     specBody(draft.body, source),
   ]);
-}
-
-/** The spec issue's current body — what a re-run reads its source trailer back out of. */
-export function readSpecBody(gh: GhExec, issueNumber: number): string {
-  return gh(["issue", "view", String(issueNumber), "--json", "body", "--jq", ".body"]);
 }
 
 /**

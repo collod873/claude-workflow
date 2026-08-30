@@ -29,3 +29,23 @@ export type GhExec = (args: string[]) => string;
  */
 export const execGh: GhExec = (args) =>
   execFileSync("gh", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
+
+/** One comment as `gh issue view --json comments` returns it. */
+interface RawComment {
+  body?: string;
+}
+
+/**
+ * Every comment already on an issue, in the order it was written, with a missing body read as `""`.
+ *
+ * Lives here rather than in any one lane because three of them had written it: `shape/rounds.ts`
+ * counts rounds off it, `spec/collectors/sheet.ts` reads the decision sheet off it, and
+ * `spec/spec.ts` picks its collector off it. The three copies were identical down to the `?? ""`,
+ * and the clone gate only reported two of them at a time — deleting one lane's module surfaced the
+ * pair it had been masking, which is a poor way to find out.
+ */
+export function issueComments(gh: GhExec, issueNumber: number): string[] {
+  const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
+  const parsed = JSON.parse(raw) as { comments?: RawComment[] };
+  return (parsed.comments ?? []).map((comment) => comment.body ?? "");
+}

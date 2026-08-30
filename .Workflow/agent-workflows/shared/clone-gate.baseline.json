@@ -570,16 +570,6 @@
     ]
   },
   {
-    "hash": "8097978635f982d2",
-    "format": "typescript",
-    "lines": 12,
-    "tokens": 116,
-    "where": [
-      ".Workflow/agent-workflows/spec/collectors/sheet.ts:32",
-      ".Workflow/agent-workflows/spec/rounds.ts:29"
-    ]
-  },
-  {
     "hash": "8ae3def78772471d",
     "format": "typescript",
     "lines": 33,
@@ -850,16 +840,6 @@
     ]
   },
   {
-    "hash": "bb6927efdb3795ed",
-    "format": "typescript",
-    "lines": 20,
-    "tokens": 124,
-    "where": [
-      ".Workflow/agent-workflows/shape/probation.ts:94",
-      ".Workflow/agent-workflows/spec/collectors/sheet.ts:29"
-    ]
-  },
-  {
     "hash": "bdefcd5371cbad2d",
     "format": "typescript",
     "lines": 12,
@@ -1030,16 +1010,6 @@
     ]
   },
   {
-    "hash": "e3f7f1c66f400cc6",
-    "format": "typescript",
-    "lines": 11,
-    "tokens": 136,
-    "where": [
-      ".Workflow/agent-workflows/shape/rounds.ts:18",
-      ".Workflow/agent-workflows/spec/rounds.ts:25"
-    ]
-  },
-  {
     "hash": "e79be67923271fcc",
     "format": "typescript",
     "lines": 6,
@@ -1127,16 +1097,6 @@
     "where": [
       ".Workflow/agent-workflows/observations/ratification.test.ts:122",
       ".Workflow/agent-workflows/shared/git.test.ts:15"
-    ]
-  },
-  {
-    "hash": "fab2de792e014790",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 97,
-    "where": [
-      ".Workflow/agent-workflows/spec/publish.test.ts:239",
-      ".Workflow/agent-workflows/spec/publish.test.ts:264"
     ]
   },
   {
