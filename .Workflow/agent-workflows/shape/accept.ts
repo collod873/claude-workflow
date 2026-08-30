@@ -18,13 +18,16 @@ import { roundFor } from "./rounds";
  * W5 restated as something that happens rather than something asserted:
  * agents draft, the owner signs, and the signature is a label.
  *
- * **What is deliberately not here.** The dispatch. §01's `approved` row also
- * says *dispatches on the route; the same click starts the work* — and the
- * lane it dispatches into does not exist. Lane 02 on a runner is move 6, and
- * what an accepted sheet hands it is still open (#96). So this files the
- * rulings, coins the terms, records the route, and says on the issue that
- * nothing was dispatched. Move 6 fires on this same `approved` label, so
- * there is nothing here for it to replace.
+ * **The dispatch is here**, and §01's `approved` row is met in full: *dispatches on the route; the
+ * same click starts the work*. This files the rulings, coins the terms, records the route, swaps
+ * the label to `to-spec` so the tracker shows where the work sits, and sends the `sheet-accepted`
+ * dispatch that `spec.yml` listens for.
+ *
+ * That last part was true, then briefly was not. This comment used to say lane 02 did not exist
+ * yet and would fire on this same `approved` label; ADR-0083 replaced that with the dispatch,
+ * because a lane 02 firing on `approved` races the accept's own push. #263 then deleted `spec.yml`'s
+ * listener while leaving the send here, and for three days an accepted idea dispatched into nothing
+ * and stopped dead. The listener is back. Keep the two ends of this in the same change.
  */
 
 /** Where a coined term is inserted, per `CONTEXT.md`'s own headings. */
@@ -140,6 +143,8 @@ function approve(deps: AcceptDeps, issueNumber: number): AcceptOutcome {
     "--body",
     acceptComment(adrs, terms, route, sheet),
   ]);
+
+  handOffToSpec(deps.gh, issueNumber);
 
   // Last, and only after the comment above has landed (ADR-0083). Lane 02's sheet collector reads
   // the accept payload out of that comment and throws without it, so a lane 02 that fired on the
@@ -361,4 +366,34 @@ ${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), 
 /** Drops `idea`, which is the only thing that stops this lane re-firing. */
 function dropIdea(gh: GhExec, issueNumber: number): void {
   gh(["issue", "edit", String(issueNumber), "--remove-label", "idea"]);
+}
+
+/**
+ * Moves the issue's label from the verb that was spent to the lane that is now owed.
+ *
+ * **This does not start lane 02** — `dispatchSpecAuthor` does, immediately below the call site. A
+ * label applied by this job's built-in `GITHUB_TOKEN` starts no workflow run at all (ADR-0054), so
+ * a reader who takes this for the trigger will go looking for a race that cannot happen and miss
+ * the dispatch that can.
+ *
+ * What it is for is the tracker. `approved` is a verb in the past tense: it says the owner signed,
+ * which the accept comment already says better and permanently. Left on the issue it reads as a
+ * position, and the position it implies — *accepted, nothing pending* — is wrong for the whole
+ * window in which lane 02 owes a spec. `to-spec` is where the work actually sits, which is the only
+ * thing `docs/agents/pipeline-labels.md` lets a label assert.
+ *
+ * Removing `approved` cannot make the accept re-fire: `roundFor` judges an issue accepted from the
+ * `shape-accepted:v1` marker on its comments, never from the label, so a re-applied `approved`
+ * still returns `already-accepted`.
+ */
+function handOffToSpec(gh: GhExec, issueNumber: number): void {
+  gh([
+    "issue",
+    "edit",
+    String(issueNumber),
+    "--add-label",
+    "to-spec",
+    "--remove-label",
+    "approved",
+  ]);
 }

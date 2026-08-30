@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
 import { readWorkflow } from "./read-workflow";
 
 /**
- * `spec.yml`'s trigger, redesigned by #263: one hand label, `to-spec`, starts the cold door
- * whatever the source, and a second label, `prd`, still feeds the critic-only door alone
- * (ADR-0085). Both are `issues: labeled` events gated on `github.event.sender` being the
- * repository owner, the same shape ADR-0073 gives `shape.yml`. This reads the workflow's own YAML
- * `if:` rather than grepping the file for strings, so a reformatting that preserves meaning does
- * not fail it, and a reformatting that loses meaning does.
+ * `spec.yml`'s three doors: the hand label `to-spec` starts the cold door whatever the source, the
+ * label `prd` feeds the critic-only door alone (ADR-0085), and the accept's `sheet-accepted`
+ * dispatch starts the cold door without a hand at all. The two label doors are `issues: labeled`
+ * events gated on `github.event.sender` being the repository owner, the same shape ADR-0073 gives
+ * `shape.yml`; the dispatch needs no such gate. This reads the workflow's own YAML `if:` rather
+ * than grepping the file for strings, so a reformatting that preserves meaning does not fail it,
+ * and a reformatting that loses meaning does.
  */
 
 const { workflow } = readWorkflow<{
@@ -29,12 +31,23 @@ describe("spec.yml's trigger, the owner-gated to-spec door", () => {
     // require two different label names on one event. Split on the top-level `) ||` so the test
     // asserts the shape rather than the order.
     const branches = condition.split(") ||").map((branch) => branch.trim());
-    expect(branches.length).toBeGreaterThanOrEqual(2);
+    expect(branches.length).toBeGreaterThanOrEqual(3);
 
-    // Both branches name the same event — the only event this workflow listens for since #263
-    // dropped the comment door and the accepted-sheet dispatch.
+    // Every branch names the event it fires on, and there are two of them: the two label doors, and
+    // the accept's dispatch. A branch naming neither would fire on anything this file listens for.
     for (const branch of branches) {
-      expect(branch).toContain("github.event_name == 'issues'");
+      expect(branch).toMatch(/github\.event_name == '(issues|repository_dispatch)'/);
+    }
+  });
+
+  it("gates both label doors on the sender, and the dispatch on nothing", () => {
+    // A label can be applied by anyone on a public repo, so both label branches carry ADR-0073's
+    // sender gate. A `repository_dispatch` can only come from something already holding a token
+    // here, so its branch carries none — the same reasoning `implement.yml` records.
+    const branches = condition.split(") ||").map((branch) => branch.trim());
+    for (const branch of branches) {
+      const gated = branch.includes("github.event.sender.login == github.repository_owner");
+      expect(gated).toBe(branch.includes("github.event_name == 'issues'"));
     }
   });
 });
@@ -82,17 +95,29 @@ describe("spec.yml drops the comment-triggered re-run (#263)", () => {
 });
 
 /**
- * #263: the accepted-sheet trigger is no longer a `repository_dispatch` this file listens for — the
- * owner now applies `to-spec` to the accepted idea by hand, the same gesture ADR-0059 already gave
- * a closed map.
+ * The accept's own dispatch, restored. #263 deleted this listener and left `accept.ts` still
+ * sending `sheet-accepted`, so every approve fired a dispatch into nothing and the idea stopped —
+ * the failure #143 sat in. These two ends are asserted together *here*, against the live YAML and
+ * the live constant, because the only thing that went wrong last time was the two halves being
+ * edited apart.
  */
-describe("spec.yml no longer listens for the accept's own dispatch", () => {
-  it("declares no repository_dispatch trigger", () => {
-    expect(workflow.on).not.toHaveProperty("repository_dispatch");
+describe("spec.yml listens for the accept's own dispatch", () => {
+  it("declares the repository_dispatch trigger", () => {
+    expect(workflow.on).toHaveProperty("repository_dispatch");
   });
 
-  it("carries no repository_dispatch branch in the job condition", () => {
-    expect(condition).not.toContain("repository_dispatch");
+  it("listens for exactly the event type accept.ts sends", () => {
+    const dispatch = workflow.on.repository_dispatch as { types: string[] };
+    expect(dispatch.types).toContain(SPEC_AUTHOR_DISPATCH_EVENT_TYPE);
+  });
+
+  it("carries a repository_dispatch branch in the job condition", () => {
+    expect(condition).toContain("github.event_name == 'repository_dispatch'");
+  });
+
+  it("takes the issue number from the payload, since a dispatch carries no issue", () => {
+    const jobEnv = (workflow.jobs.spec as unknown as { env: Record<string, string> }).env;
+    expect(jobEnv.ISSUE_NUMBER).toContain("github.event.client_payload.issue");
   });
 });
 

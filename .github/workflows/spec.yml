@@ -3,9 +3,24 @@ name: Spec
 # Lane 02 (PRD #145, move 6; redesigned by #263). One hand label, `to-spec`, starts the lane
 # whatever the source: the owner applies it to an accepted idea carrying a decision sheet, or to a
 # closed Wayfinder Map — the same gesture ADR-0059 already established for the map alone. The lane
-# itself reads the labelled issue to pick its collector (`spec.ts`'s `planSpecRun`); this file no
-# longer tells the two apart, and no longer carries a separate `repository_dispatch` trigger for an
-# accepted sheet.
+# itself reads the labelled issue to pick its collector (`spec.ts`'s `planSpecRun`); this file does
+# not tell the two apart.
+#
+# **The accept's own dispatch is a third door, restored.** #263 deleted this trigger and left
+# `accept.ts:148` still sending `sheet-accepted` on every approve, so from 2026-08-27 an accepted
+# idea fired a dispatch nobody listened for and then sat there — the owner's `approved` did
+# everything except the one thing that made it a pipeline. `lost-dispatch-counter.yml` did not catch
+# it, because that counter watches `sliceable` and this dispatch is upstream of any spec existing.
+#
+# It has to be a dispatch rather than the accept applying `to-spec` itself: a label applied by the
+# built-in `GITHUB_TOKEN` starts no workflow run (ADR-0054's forcing fact, and ADR-0083's whole
+# argument). The accept applies `to-spec` anyway, for the tracker to read — but the label is the
+# *record* that this lane is owed, and this dispatch is what actually starts it. Those are two jobs
+# and it is worth not confusing them.
+#
+# No sender gate on this branch, and none is needed: a `repository_dispatch` can only be sent by
+# something already holding a token on this repository, which is the same reason `implement.yml`
+# omits one.
 #
 # A second door, `prd`, still feeds the **critic** alone: the owner's own hand putting `prd` on a
 # spec he already wrote in a live session (ADR-0085). That door arrives with the spec already
@@ -50,6 +65,8 @@ name: Spec
 "on":
   issues:
     types: [labeled]
+  repository_dispatch:
+    types: [sheet-accepted]
 
 # `contents: read` is the model job's, and it is deliberate: ADR-0053 is careful about what a job
 # that runs a model may write. `POST /dispatches` needs `contents: write`, so the dispatch this lane
@@ -64,12 +81,13 @@ permissions:
 # fast-follow re-label can both arrive within seconds, and two concurrent chains would each search
 # the tracker for an already-dispatched spec without seeing the other's write.
 concurrency:
-  group: spec-${{ github.event.issue.number }}
+  group: spec-${{ github.event.issue.number || github.event.client_payload.issue }}
   cancel-in-progress: false
 
 jobs:
   spec:
     if: >-
+      (github.event_name == 'repository_dispatch') ||
       (github.event_name == 'issues' &&
        github.event.label.name == 'to-spec' &&
        github.event.sender.login == github.repository_owner) ||
@@ -85,7 +103,12 @@ jobs:
       # empty rather than sending nothing.
       dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      # A `repository_dispatch` carries no issue, so the accept names it in the payload. The `||`
+      # is GitHub's, not a default — `github.event.issue.number` is empty on the dispatch and
+      # `client_payload` is empty on both label doors, so exactly one side is ever set.
+      ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
+      # The dispatch takes the `to-spec` arm: `github.event.label.name` is empty on it, so the
+      # `prd` test is false and the fallback is the cold door — which is what an accepted sheet is.
       SPEC_TRIGGER: >-
         ${{ (github.event.label.name == 'prd' && 'critique') || 'to-spec' }}
       GH_TOKEN: ${{ github.token }}
@@ -143,6 +166,22 @@ jobs:
             cat "$DISPATCH_REQUESTS_PATH"
             echo "DISPATCH_REQUESTS_EOF"
           } >> "$GITHUB_OUTPUT"
+
+      # Lane 01's two workflows both post their failure onto the issue the owner is already looking
+      # at; this one did not, and that is the whole reason a `to-spec` that fired, ran and died at
+      # the collector was indistinguishable from a label that started nothing at all. A lane whose
+      # only failure channel is the Actions tab is a lane the tracker reports as idle.
+      #
+      # `!success()` rather than `failure()`, for `shape-accept.yml`'s reason: a timed-out job is
+      # cancelled, not failed, and this job's timeout is 30 minutes of model time — exactly the run
+      # most worth hearing about.
+      - name: Report failure
+        if: ${{ !success() }}
+        run: |
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
+          body=$(printf 'The spec lane did not finish.\n\nNothing here is automatic to recover: the run below says where it stopped, and re-applying `to-spec` starts it again.\n\n**Workflow run:** %s\n' "$run_url")
+          gh issue comment "$ISSUE_NUMBER" --body "$body"
 
   # The other half of ADR-0091's split: `contents: write`, no model, no checkout, and nothing to do
   # but post what the job above decided. It runs only when there is something to send, so a run

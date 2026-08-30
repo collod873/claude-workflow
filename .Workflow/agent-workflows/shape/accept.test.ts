@@ -308,6 +308,25 @@ describe("approved", () => {
     expect(tracker.calls[dispatchIndex]).toContain("client_payload[issue]=1");
   });
 
+  it("swaps the spent verb for the lane that is now owed", () => {
+    // The tracker is what the owner reads, and `approved` left on the issue asserts a verdict
+    // rather than a position — `docs/agents/pipeline-labels.md` allows only the latter. The label
+    // is a record, never the trigger: a `GITHUB_TOKEN` label starts no run (ADR-0054), which is why
+    // the dispatch above exists and why this assertion does not claim to start anything.
+    const { deps, tracker } = harness({ sheet: sheet() });
+
+    accept(deps, 1, "approved");
+
+    const swap = tracker.calls.find(
+      (args) => args[0] === "issue" && args[1] === "edit" && args.includes("to-spec"),
+    );
+    expect(swap).toBeDefined();
+    expect(swap).toContain("--add-label");
+    expect(swap).toContain("to-spec");
+    expect(swap).toContain("--remove-label");
+    expect(swap).toContain("approved");
+  });
+
   it("refuses to invent a route when there is no sheet to read", () => {
     const { deps, tracker, git } = harness();
 
