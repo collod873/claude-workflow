@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FORMATS } from "@jscpd/tokenizer";
 import { childEnv } from "./child-env.ts";
@@ -168,6 +168,52 @@ function lineCount(absolutePath: string): number {
   } catch {
     return 0;
   }
+}
+
+/**
+ * Splits every in-scope file jscpd did not report reading into the two shapes rule 3 tells apart:
+ * `tooShort` is arithmetic (nothing under `MIN_LINES` could hold a clone), `unread` is the hole rule
+ * 3 exists to catch. Shared by `runCloneGate`'s own scan and `repairAcceptanceBaseline`'s, which
+ * would otherwise restate this identically — the fix for the clone `bin/clone-gate` found in this
+ * file itself once `repairAcceptanceBaseline` first landed.
+ */
+function unreadFiles(
+  root: string,
+  files: ScopedFile[],
+  analyzed: Set<string>,
+): { tooShort: ScopedFile[]; unread: string[] } {
+  const missing = files.filter((file) => !analyzed.has(file.path));
+  const tooShort = missing.filter((file) => lineCount(join(root, file.path)) < MIN_LINES);
+  const unread = missing.filter((file) => !tooShort.includes(file)).map((file) => file.path);
+  return { tooShort, unread };
+}
+
+/** `unreadFiles`' message, in the one shape both its callers report it in — a refusal, never a partial run. */
+function unreadRefusal(unread: string[]): string {
+  return (
+    `clone gate: ${unread.length} in-scope file(s) were handed to jscpd and not read back:\n  ${unread.join("\n  ")}\n` +
+    "Exclude them by path with a reason, or find out why the scan dropped them."
+  );
+}
+
+/**
+ * The baseline read against one scan's duplicates, and the two diffs every caller of the baseline
+ * needs from that pairing: `introduced` (a clone the baseline does not carry) and `stale` (a
+ * baseline entry that no longer reproduces). `runCloneGate`'s own report and
+ * `repairAcceptanceBaseline` both start from exactly this pair.
+ */
+function baselineDiff(
+  root: string,
+  duplicates: Duplicate[],
+): { baseline: BaselineEntry[]; introduced: Duplicate[]; stale: BaselineEntry[] } {
+  const baseline = readBaseline(root);
+  const baselineHashes = new Set(baseline.map((entry) => entry.hash));
+  const foundHashes = new Set(duplicates.map((entry) => entry.hash));
+  const introduced = [
+    ...new Map(duplicates.filter((entry) => !baselineHashes.has(entry.hash)).map((entry) => [entry.hash, entry])).values(),
+  ];
+  const stale = baseline.filter((entry) => !foundHashes.has(entry.hash));
+  return { baseline, introduced, stale };
 }
 
 /** The interpreter a `#!` line names, by basename, or `undefined` when there is no shebang. */
@@ -446,7 +492,12 @@ function readBaseline(root: string): BaselineEntry[] {
 
 function writeBaseline(root: string, entries: BaselineEntry[]): void {
   const sorted = [...entries].sort((a, b) => a.hash.localeCompare(b.hash));
-  writeFileSync(join(root, BASELINE_RELATIVE_PATH), `${JSON.stringify(sorted, null, 2)}\n`);
+  const path = join(root, BASELINE_RELATIVE_PATH);
+  // `mkdirSync` because `repairAcceptanceBaseline` can write the first baseline entry a scratch
+  // fixture (or a checkout that never seeded one) has ever had — `--seed-baseline` never hits this
+  // path in a real repo, where the directory already exists.
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
 /** `format a, format b` — the per-language file counts the banner carries alongside the total. */
@@ -508,9 +559,7 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
   // rather than reporting it as read. That is arithmetic, not a coverage hole — but it is counted
   // in the banner, because the difference between "nothing to match" and "never looked" is the
   // only thing a reader of a green run has to go on.
-  const missing = files.filter((file) => !analyzed.has(file.path));
-  const tooShort = missing.filter((file) => lineCount(join(root, file.path)) < MIN_LINES);
-  const unread = missing.filter((file) => !tooShort.includes(file)).map((file) => file.path);
+  const { tooShort, unread } = unreadFiles(root, files, analyzed);
 
   const shortNote = tooShort.length > 0 ? ` (${tooShort.length} under the ${MIN_LINES}-line minimum, nothing to match)` : "";
   console.log(`clone gate: scanned ${files.length} files${shortNote} — ${formatBreakdown(files)}`);
@@ -519,16 +568,11 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
     // The other half of rule 3: a file that was in scope and that jscpd did not report reading is a
     // hole, whatever the reason (its maxSize default, an extension its tokeniser declined). A
     // number that silently stopped covering a file is the failure this whole runner exists for.
-    console.error(
-      `clone gate: ${unread.length} in-scope file(s) were handed to jscpd and not read back:\n  ${unread.join("\n  ")}\n` +
-        "Exclude them by path with a reason, or find out why the scan dropped them. Do not leave this unresolved.",
-    );
+    console.error(`${unreadRefusal(unread)} Do not leave this unresolved.`);
     return 2;
   }
 
-  const baseline = readBaseline(root);
-  const baselineHashes = new Set(baseline.map((entry) => entry.hash));
-  const foundHashes = new Set(duplicates.map((entry) => entry.hash));
+  const { baseline, introduced, stale } = baselineDiff(root, duplicates);
 
   if (argv.includes("--seed-baseline")) {
     // Write-once, by refusal. Rule 5 lets a repo carry the debt it already had; it does not let a
@@ -547,16 +591,13 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
   }
 
   if (argv.includes("--prune-baseline")) {
-    const kept = baseline.filter((entry) => foundHashes.has(entry.hash));
+    const kept = baseline.filter((entry) => !stale.includes(entry));
     writeBaseline(root, kept);
     console.log(
       `clone gate: pruned ${baseline.length - kept.length} entries that no longer reproduce; ${kept.length} left`,
     );
     return 0;
   }
-
-  const introduced = [...new Map(duplicates.filter((entry) => !baselineHashes.has(entry.hash)).map((entry) => [entry.hash, entry])).values()];
-  const stale = baseline.filter((entry) => !foundHashes.has(entry.hash));
 
   if (introduced.length > 0) {
     console.error(`clone gate: ${introduced.length} clone(s) not in the baseline:\n${introduced.map(describe).join("\n")}`);
@@ -573,6 +614,79 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
 
   console.log(`clone gate: ${duplicates.length} clone(s), all carried by ${BASELINE_RELATIVE_PATH} (${baseline.length} entries)`);
   return 0;
+}
+
+/** What one call to `repairAcceptanceBaseline` decided. */
+export type AcceptanceRepairOutcome =
+  | { verdict: "clean" }
+  | { verdict: "repaired"; added: number }
+  | { verdict: "refused"; reason: string };
+
+/**
+ * The one baseline write this gate allows itself outside `--seed-baseline`, and the mechanism
+ * `.Workflow/agent-workflows/acceptance/land-gate.ts` calls before the acceptance lane pushes to
+ * `main`.
+ *
+ * `tests/acceptance/` is immutable to every pull request (`docs/agents/clone-gate.md`'s `IMMUTABLE_SET`
+ * reasoning, ADR-0053) — lane 04 is the only writer that will ever touch it, on its own separate
+ * runs, from the spec alone. So a clone introduced entirely between files under `testDir` can never
+ * be somebody else's to dedupe; it is lane 04's own overlap
+ * (`acceptance.ts`'s `sharedTestFiles` doc names the shape: two fixtures authored on different
+ * tickets that each reach the same probe the same way). Recording it in the baseline is arithmetic
+ * the file set already answers, not a judgement — the ADR-0110 line between a decision and a
+ * repair. A clone naming any file *outside* `testDir` is a real one, and this refuses the whole
+ * batch rather than baselining the acceptance-only entries and hoping — CONTEXT.md's **Gate
+ * bypass** is defined by what reached `main`, not by how much of the batch was fixable.
+ *
+ * Never used by `bin/clone-gate` itself: `--seed-baseline` refuses to add to a non-empty baseline
+ * (see its own comment, below), because a later run absorbing whatever is there now is exactly the
+ * silent widening rule 5 exists to forbid. This function bypasses that refusal on purpose, for the
+ * one caller with a machine-checkable reason — every location on both sides of the clone under a
+ * directory nobody but this lane may ever edit — that a human reviewing `--seed-baseline`'s refusal
+ * would accept on sight.
+ */
+export function repairAcceptanceBaseline(root: string, testDir: string): AcceptanceRepairOutcome {
+  const { files, undeclared } = scopeOf(root);
+  if (undeclared.size > 0) {
+    return { verdict: "refused", reason: refusal(undeclared) };
+  }
+
+  const { duplicates, analyzed } = scan(root, files);
+  const { unread } = unreadFiles(root, files, analyzed);
+  if (unread.length > 0) {
+    return { verdict: "refused", reason: unreadRefusal(unread) };
+  }
+
+  const { baseline, introduced, stale } = baselineDiff(root, duplicates);
+
+  if (introduced.length === 0 && stale.length === 0) {
+    return { verdict: "clean" };
+  }
+
+  if (stale.length > 0) {
+    // This repair only ever adds (mirroring rule 5's "only ever shrinks" from the other direction) —
+    // a stale entry needs `--prune-baseline`, a human decision about debt that was paid off, not
+    // something a push-time repair should silently delete on its way past.
+    return {
+      verdict: "refused",
+      reason:
+        `clone gate: ${stale.length} baseline entr(ies) no longer reproduce. This repair only ever adds — run bin/clone-gate --prune-baseline:\n` +
+        stale.map(describe).join("\n"),
+    };
+  }
+
+  const outside = introduced.filter((entry) => !entry.where.every((loc) => loc.startsWith(testDir)));
+  if (outside.length > 0) {
+    return {
+      verdict: "refused",
+      reason:
+        `clone gate: ${outside.length} clone(s) not in the baseline touch a file outside ${testDir} — ` +
+        `this run may not baseline them, and must not push a red tree:\n${outside.map(describe).join("\n")}`,
+    };
+  }
+
+  writeBaseline(root, [...baseline, ...introduced]);
+  return { verdict: "repaired", added: introduced.length };
 }
 
 // --- CLI -------------------------------------------------------------------------------------
