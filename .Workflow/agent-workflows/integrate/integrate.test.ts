@@ -74,6 +74,12 @@ interface IntegrateHarness {
    * running on one read and finished on the next — the case ADR-0104's wait exists for.
    */
   verifyRuns?: VerifyRunFixture[] | (() => VerifyRunFixture[]);
+  /**
+   * Makes `git rebase origin/main` fail, leaving these paths unmerged. `[]` is the other failure
+   * this scripts: a rebase that died for some reason that is not a conflict at all, which leaves
+   * nothing in `--diff-filter=U` and is not this lane's to swallow.
+   */
+  rebaseLeavesUnmerged?: string[];
 }
 
 /**
@@ -96,13 +102,22 @@ function integrateDeps({
   commentThrows = false,
   prCommentThrows = false,
   verifyRuns = LANE_06_ALL_GREEN,
+  rebaseLeavesUnmerged,
 }: IntegrateHarness = {}) {
   const fakeGit = createFakeGit((args) => {
     if (args[0] === "rev-parse") return `${args[1] === "HEAD" ? HEAD_SHA : TRUNK_SHA}\n`;
+    // git reports a stopped rebase the same way it reports any other failed command: a nonzero
+    // exit, which `execGit` turns into a throw. What separates a conflict from every other reason
+    // a rebase can die is the unmerged-paths read below, never the exception.
+    if (args[0] === "rebase" && args[1] === "origin/main" && rebaseLeavesUnmerged !== undefined) {
+      throw new Error("git: could not apply 2a8fd1e… CONFLICT (content)");
+    }
+    if (args[0] === "diff") return `${(rebaseLeavesUnmerged ?? []).join("\n")}\n`;
     return "";
   });
   const calls: string[][] = [];
   const closeCalls: Array<[number, string]> = [];
+  let gauntletRuns = 0;
 
   // Resolved per lookup, not once: a `verifyRuns` function is how a test scripts lane 06 finishing
   // between two of this lane's reads.
@@ -122,6 +137,7 @@ function integrateDeps({
     calls.push(args);
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, body });
     if (args[0] === "pr" && args[1] === "merge") return "";
+    if (args[0] === "pr" && args[1] === "edit") return "";
     if (args[0] === "pr" && args[1] === "comment") {
       if (prCommentThrows) throw new Error("gh: could not comment on the pull request");
       return "";
@@ -148,12 +164,17 @@ function integrateDeps({
     calls,
     closeCalls,
     sleeps,
+    /** How many times this lane spent a `bin/gauntlet push` — the cost a refusal upstream of it saves. */
+    gauntletRuns: () => gauntletRuns,
     deps: {
       git: fakeGit.git,
       gh,
       pr: PR,
       headSha: TRUNK_SHA,
-      runGauntlet: () => gauntlet,
+      runGauntlet: () => {
+        gauntletRuns += 1;
+        return gauntlet;
+      },
       // Counted, never waited on: `awaitVerifyVerdict` re-reads lane 06 while its acceptance job is
       // still running, and the production sleep would hold every one of these cases for ten minutes.
       sleep: () => {
@@ -631,6 +652,76 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     });
 
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
+  });
+});
+
+/**
+ * A rebase conflict is an outcome this lane records, never an exception it dies on (#234).
+ *
+ * `rebaseOntoTrunk` used to let a conflict propagate straight out of `runIntegrate` — the header
+ * said so, and while one lane merged into `main` it was nearly true that it never happened. With
+ * three lanes merging it stops the chain the #183 way: the run goes red on a `git` error, the pull
+ * request stays green and open forever, and the ticket behind it never closes, because the lane
+ * after the failure does not exist. So the conflict becomes this lane's last write instead: abort,
+ * `blocked`, and a comment naming the paths, which is a record a person or the fixer can act on.
+ */
+describe("runIntegrate when the rebase onto trunk conflicts", () => {
+  const CONFLICTS = [".Workflow/agent-workflows/integrate/integrate.ts", "docs/adr/README.md"];
+
+  it("aborts the rebase and never force-pushes the branch it could not rebase", () => {
+    const { fakeGit, deps } = integrateDeps({ rebaseLeavesUnmerged: CONFLICTS });
+
+    runIntegrate(deps);
+
+    const spelled = fakeGit.calls.map((call) => call.join(" "));
+    expect(spelled).toContain("rebase --abort");
+    // The unmerged paths are read *before* the abort — after it, git has thrown them away.
+    expect(spelled.indexOf("diff --name-only --diff-filter=U")).toBeLessThan(
+      spelled.indexOf("rebase --abort"),
+    );
+    expect(spelled.some((call) => call.startsWith("push"))).toBe(false);
+  });
+
+  it("labels the pull request blocked and comments the conflicting paths", () => {
+    const { calls, deps } = integrateDeps({ rebaseLeavesUnmerged: CONFLICTS });
+
+    runIntegrate(deps);
+
+    const labels = calls.filter((call) => call[0] === "pr" && call[1] === "edit");
+    expect(labels).toEqual([["pr", "edit", PR, "--add-label", "blocked"]]);
+
+    const comments = calls.filter((call) => call[0] === "pr" && call[1] === "comment");
+    expect(comments).toHaveLength(1);
+    for (const path of CONFLICTS) expect(comments[0][4]).toContain(path);
+  });
+
+  it("returns a conflict outcome rather than throwing, and merges nothing", () => {
+    const { calls, closeCalls, deps } = integrateDeps({ rebaseLeavesUnmerged: CONFLICTS });
+
+    const outcome = runIntegrate(deps);
+
+    expect(outcome).toEqual({ merged: false, reason: "conflict", paths: CONFLICTS });
+    expect(mergeCalls(calls)).toEqual([]);
+    expect(closeCalls).toEqual([]);
+    // Distinct from every other refusal: nothing was judged, so nothing was found wrong.
+    expect(outcome).not.toEqual({ merged: false, reason: "no-run" });
+  });
+
+  it("spends no gauntlet run on a branch it never rebased", () => {
+    const { deps, gauntletRuns } = integrateDeps({ rebaseLeavesUnmerged: CONFLICTS });
+
+    runIntegrate(deps);
+
+    expect(gauntletRuns(), "a tree that is still trunk's tells this lane nothing").toBe(0);
+  });
+
+  it("re-throws a rebase that failed with nothing left unmerged, which is not a conflict", () => {
+    // A bad ref, a dirty tree, a network failure. Swallowing those under `blocked` would file the
+    // repository's own breakage as the pull request author's problem.
+    const { calls, deps } = integrateDeps({ rebaseLeavesUnmerged: [] });
+
+    expect(() => runIntegrate(deps)).toThrow(/CONFLICT/);
+    expect(calls.filter((call) => call[0] === "pr" && call[1] === "edit")).toEqual([]);
   });
 });
 

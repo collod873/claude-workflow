@@ -311,6 +311,20 @@ async function main(): Promise<void> {
   }
 
   try {
+    // Read the suite once before the loop, and stop here when it is green.
+    //
+    // Not every red `Verify` run is one this lane can see: lint, typecheck, the clone gate and
+    // lane 06's acceptance-restore job all fail a run without failing a test under `dir`. Handed
+    // an empty signature, `assembleFixBrief` writes "Currently failing: (none)" and three Sonnet
+    // attempts go to a model with nothing to fix — which then edits something, pushes it, and
+    // ends by labelling a pull request `blocked` over a failure it was never shown. Declining is
+    // the honest answer: this lane fixes what it can reproduce, and the run log says which.
+    const initialFailure = runVitestJsonForFixer(dir).failures;
+    if (initialFailure.length === 0) {
+      console.log(`nothing to fix: no test under ${dir} is failing in this checkout`);
+      return;
+    }
+
     const outcome = await runFixer({
       gh: execGh,
       exec: execClaude,
@@ -320,7 +334,7 @@ async function main(): Promise<void> {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, content, "utf8");
       },
-      initialFailure: runVitestJsonForFixer(dir).failures,
+      initialFailure,
       prNumber: Number(prArg),
       branch,
       issueNumber: Number(issueArg),

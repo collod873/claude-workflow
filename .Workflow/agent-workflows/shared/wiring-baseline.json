@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-29",
+  "generated": "2026-08-30",
   "why": "Standing wiring debt at the day this gate landed (#183). The gate fails on anything added to this set, never on the set itself; entries leave as each is wired to a caller or deleted.",
   "findings": [
     {
@@ -106,11 +106,6 @@
       "kind": "files",
       "file": ".Workflow/agent-workflows/capture/backfill.ts",
       "name": ".Workflow/agent-workflows/capture/backfill.ts"
-    },
-    {
-      "kind": "files",
-      "file": ".Workflow/agent-workflows/fixer/fixer.ts",
-      "name": ".Workflow/agent-workflows/fixer/fixer.ts"
     },
     {
       "kind": "files",

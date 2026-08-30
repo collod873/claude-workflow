@@ -1,0 +1,209 @@
+name: Fixer
+
+# Lane 07's other half (#169, ADR-0054, wired by #234): what runs when `Verify` comes back **red**
+# on an implementer's pull request.
+#
+# `review.yml` is this file's mirror image — same `workflow_run` on `Verify`, same
+# `types: [completed]`, and a job-level `if:` on the opposite conclusion. That symmetry is the
+# whole point of the ticket that added this: a green Verify reached lane 07 and a red one reached
+# nothing at all, so an implementer's pull request that failed its checks sat green-labelled and
+# open forever while the ticket behind it never closed. `fixer.ts` had been built for exactly this
+# — three capped attempts, `blocked` plus a comment on stopping — and had no workflow file, which
+# is why it sat in `shared/wiring-baseline.json` as known-unwired debt (#183).
+#
+# `conclusion == 'failure'` is filtered at the job level rather than in the trigger for the reason
+# `review.yml` gives: `workflow_run` carries no `conclusion` filter of its own.
+#
+# `event != 'push'` is the same second condition, and it is not cosmetic here either. `verify.yml`
+# fires on `push: main` as well as on the implementer's dispatch, and a red push run is trunk being
+# broken — there is no pull request to fix, no branch to push attempts to, and nothing this lane
+# could do but spend a model on `main`. Stated as "not the push run" rather than by naming the
+# dispatch, which `review.yml`'s own tests establish is the same condition (`verify.yml` has
+# exactly two doors) and which keeps ADR-0090's sweep from reading this as a dispatch-triggered
+# workflow it is not.
+
+"on":
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+  # The hand door. A `workflow_run` trigger cannot be fired by a person, so without this there is
+  # no way to run this lane at a pull request whose Verify went red before this file existed, no
+  # way to retry one after the cause was dealt with by hand — and, the reason #183 exists, no way
+  # to find out whether this lane runs at all short of waiting for the next real failure.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "A completed Verify run to react to. Empty resolves no pull request and exits."
+        required: false
+        default: ""
+
+permissions:
+  # write: every attempt is committed onto the pull request's own branch and pushed there
+  # (`commitAndPushAttempt`) — this lane never opens a branch or a pull request of its own.
+  contents: write
+  # write: a stopped fixer applies `blocked` and comments what each attempt tried, which is the one
+  # write it always makes (`applyBlocked`).
+  pull-requests: write
+  # read: the resolve step below reads the failed run's jobs and one job's log — the only place the
+  # pull request that run was judging is written down (see that step).
+  actions: read
+
+concurrency:
+  # Per failed run, not a single fixed group: two implementers can fail their checks at once, and
+  # each one's fixer works on its own branch, so there is nothing for them to serialise over. Never
+  # cancelled — an attempt that was already committed and pushed is not undone by dropping the run
+  # that made it, so a cancelled fixer leaves a half-finished loop with no record of stopping.
+  group: fixer-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  fixer:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event != 'push')
+    runs-on: ubuntu-latest
+    # Three capped attempts, each a Sonnet stage plus a full vitest run over `.Workflow`. Sized off
+    # `integrate.yml`'s 30 rather than `review.yml`'s 15 for that reason.
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      # ## Which pull request that run was judging
+      #
+      # There is no field for it. A `verify.yml` run started by lane 05's dispatch carries
+      # `head_branch: main`, `head_sha` at trunk's tip, and `pull_requests: []` — a
+      # dispatch-triggered run always executes trunk's copy of the workflow at trunk's tip
+      # (ADR-0054), so nothing on the run object names the branch under test. `head_sha` is trunk's
+      # own tip, which every open implementation branch descends from, so it does not narrow either.
+      #
+      # The one place the answer is recorded is `verify.yml`'s own `Check out the pull request
+      # under test` step, which echoes `judging <pr-url> on <branch>` before it does anything else
+      # (ADR-0104). That is a log line, so this reads it as one — the same split `integrate.ts`
+      # holds to for lane 06's job *names*, which the Actions API also answers only as strings.
+      # `fixer.test.ts` asserts `verify.yml` still echoes in exactly this shape, so a reworded step
+      # there fails a test here rather than silently making every fixer run resolve nothing.
+      #
+      # Exits 0 on every "nothing to work on": a run this cannot resolve, or a pull request that is
+      # no longer open (lane 08 may have merged it, or a person may have closed it). None of those
+      # is a broken lane, and a red run for one would be a failure notification about a pull request
+      # that no longer needs anything.
+      - name: Resolve the pull request that Verify run was judging
+        id: target
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RUN_ID:-}" ]; then
+            echo "no Verify run named; nothing to resolve"
+            exit 0
+          fi
+
+          JOB_ID=$(gh run view "$RUN_ID" --json jobs \
+            --jq '[.jobs[] | select(.name == "Restore and run acceptance") | .databaseId] | first // empty')
+          if [ -z "$JOB_ID" ]; then
+            echo "run $RUN_ID has no 'Restore and run acceptance' job; nothing to fix"
+            exit 0
+          fi
+
+          # `|| true` because grep exits 1 on no match, which is the ordinary case here, not a
+          # failure. The pattern requires a real URL, so the echoed command line itself — which
+          # carries the literal `$PR` — cannot match. Spelled with `[^ ]` rather than a POSIX
+          # `[[:space:]]` class so that `fixer.test.ts` can compile this exact pattern as a
+          # JavaScript `RegExp` and check it against what `verify.yml` actually prints.
+          LINE=$(gh run view --job "$JOB_ID" --log \
+            | grep -oE 'judging https://[^ ]+/pull/[0-9]+ on implement/issue-[0-9]+' \
+            | tail -1 || true)
+          if [ -z "$LINE" ]; then
+            echo "run $RUN_ID names no implementation pull request; nothing to fix"
+            exit 0
+          fi
+
+          URL=${LINE#judging }
+          URL=${URL%% on *}
+          BRANCH=${LINE##* on }
+          # `fixer.ts` takes the pull request as a number — it is what `gh pr edit`/`gh pr comment`
+          # are handed and what the attempt commits' `Part of #<n>` trailer is built from.
+          PR=${URL##*/}
+          ISSUE=${BRANCH#implement/issue-}
+
+          STATE=$(gh pr view "$PR" --json state --jq .state)
+          if [ "$STATE" != "OPEN" ]; then
+            echo "$URL is $STATE; nothing to fix"
+            exit 0
+          fi
+
+          echo "fixing $URL on $BRANCH for #$ISSUE"
+          {
+            echo "pr=$PR"
+            echo "branch=$BRANCH"
+            echo "issue=$ISSUE"
+          } >> "$GITHUB_OUTPUT"
+
+      # The pull request's own branch, not the head SHA `review.yml` checks out: every attempt is
+      # committed and force-free-pushed back here, so this checkout has to be the branch itself.
+      - name: Checkout the pull request's branch
+        if: steps.target.outputs.branch != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.branch }}
+          fetch-depth: 0
+
+      # A runner has no git identity, and this lane commits — same fix `integrate.yml`,
+      # `implement.yml` and `audit.yml` all needed.
+      - name: Identify the committer
+        if: steps.target.outputs.branch != ''
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+        if: steps.target.outputs.branch != ''
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." >&2
+            exit 1
+          fi
+
+      - name: Set up Node
+        if: steps.target.outputs.branch != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        if: steps.target.outputs.branch != ''
+        run: npm ci
+
+      # `fixer.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
+      # a GitHub-hosted runner has none. Same step, same pin, same reasoning as `review.yml`,
+      # `implement.yml` and `shape.yml`.
+      - name: Install Claude Code
+        if: steps.target.outputs.branch != ''
+        run: npm install -g @anthropic-ai/claude-code@2.1.241
+
+      # `.Workflow` is the directory, not `tests/acceptance/`, and not the repo root.
+      #
+      # It is the bulk of what the gauntlet's own `test` slot runs (`vitest run .Workflow .claude`),
+      # which is the red this lane is usually reacting to. `tests/acceptance/` is deliberately not
+      # it: an acceptance test is *expected* red until the ticket it names is built (vitest.config.ts
+      # says so, and it is why `npm test` leaves that directory out), so a fixer pointed at it would
+      # chase other tickets' unbuilt criteria and end by labelling every pull request `blocked`.
+      #
+      # A Verify that went red on something under no test at all — lint, typecheck, the clone gate,
+      # lane 06's acceptance-restore job — leaves nothing failing here, and `fixer.ts` says so and
+      # stops rather than handing a model an empty brief.
+      #
+      # The three resolved values arrive through `env:` rather than as `${{ }}` inside the script,
+      # so a branch name is a shell *variable* and never a fragment of the command line — the same
+      # shape `verify.yml` and `integrate.yml` use for everything they read off an event.
+      - name: Run the fixer
+        if: steps.target.outputs.branch != ''
+        env:
+          ISSUE: ${{ steps.target.outputs.issue }}
+          PR_NUMBER: ${{ steps.target.outputs.pr }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" .Workflow

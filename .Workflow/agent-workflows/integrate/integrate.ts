@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { childEnv } from "../shared/child-env";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
+import { BLOCKED_LABEL } from "../fixer/fixer";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
@@ -90,7 +91,17 @@ export type IntegrateOutcome =
    * while lane 04's first-authoring was unwired, so binding on it would have stopped the chain
    * rather than caught anything. That is no longer true (ADR-0104).
    */
-  | { merged: false; reason: "acceptance" };
+  | { merged: false; reason: "acceptance" }
+  /**
+   * The rebase onto trunk stopped on a conflict, and this lane wrote the record rather than
+   * throwing one (#234): the rebase is aborted, the pull request carries `blocked`, and a comment
+   * names `paths`. Unlike every other refusal here, nothing judged the diff and nothing was found
+   * wrong with it — trunk simply moved somewhere the branch cannot be replayed onto by machine.
+   *
+   * It is also the one refusal that does not redden the run (see `main`): the pull request carries
+   * the whole account, and a red lane beside that record would say the merge actor broke.
+   */
+  | { merged: false; reason: "conflict"; paths: string[] };
 
 export interface IntegrateDeps {
   git: GitExec;
@@ -334,18 +345,77 @@ function prCommitRange(git: GitExec): string {
   return `${base}..${head}`;
 }
 
+/** What `rebaseOntoTrunk` found: a branch now sitting on trunk, or the paths git could not replay. */
+type RebaseOutcome = { conflicted: false } | { conflicted: true; paths: string[] };
+
+/**
+ * The paths git left unmerged, read out of the stopped rebase itself rather than out of its error
+ * message. `git rebase`'s stderr is prose meant for a person and changes between versions; the
+ * index is the fact.
+ */
+function conflictingPaths(git: GitExec): string[] {
+  return git(["diff", "--name-only", "--diff-filter=U"])
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}
+
 /**
  * Rebases `branch` onto current trunk and pushes the result back — the
- * "rebase the PR onto current trunk" half of this lane's whole job. A
- * rebase conflict surfaces as an ordinary `git` failure and propagates
- * straight out of `runIntegrate`; no conflict-resolution logic is added
- * here (the ticket's own scope line).
+ * "rebase the PR onto current trunk" half of this lane's whole job.
+ *
+ * A conflict used to propagate straight out of `runIntegrate` as an ordinary `git` failure, on the
+ * scope line of the ticket that built this lane. With three lanes merging into `main` that is the
+ * #183 disease (#234): the run goes red on a `git` error nobody is subscribed to, the pull request
+ * stays green and open, and the ticket behind it never closes, because the lane that reacts to the
+ * failure does not exist. So the conflict is returned rather than thrown, and the caller writes the
+ * record.
+ *
+ * **Only a conflict is caught, and the index is what says so.** A rebase can also die on a bad ref,
+ * a dirty tree or a failed fetch, and those leave nothing in `--diff-filter=U`. Reading any rebase
+ * failure as a conflict would file the repository's own breakage as the pull request author's
+ * problem, so a failure with no unmerged path is re-thrown exactly as it arrived.
  */
-function rebaseOntoTrunk(git: GitExec, branch: string): void {
+function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
   git(["fetch", "origin", "main", branch]);
   git(["checkout", branch]);
-  git(["rebase", "origin/main"]);
+  try {
+    git(["rebase", "origin/main"]);
+  } catch (err) {
+    const paths = conflictingPaths(git);
+    if (paths.length === 0) throw err;
+    // Read first, abort second: after the abort git has thrown the unmerged index away, and the
+    // paths are the only thing the record has to say.
+    git(["rebase", "--abort"]);
+    return { conflicted: true, paths };
+  }
   git(["push", "--force-with-lease", "origin", `HEAD:${branch}`]);
+  return { conflicted: false };
+}
+
+/**
+ * The record a conflict leaves: `blocked` on the pull request, and a comment naming what would not
+ * replay. `blocked` is spelled once, in `fixer.ts` — the fixer applies the same label for the same
+ * meaning, that a machine stopped here and the next move is a person's, and two lanes labelling the
+ * same state under two spellings is a state nobody can list.
+ *
+ * Deliberately **not** swallowed the way `noteAcceptanceRefusal` is. That one explains a decision
+ * that stands either way; this one *is* the outcome. A conflict with no label and no comment is the
+ * silent stop this whole change exists to end, so a failure to write it fails the run.
+ */
+function blockOnConflict(gh: GhExec, pr: string, paths: string[]): void {
+  const body = [
+    "**Blocked — rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",
+    "aborted the rebase and merged nothing. No model ran and nothing here judged the diff.",
+    "",
+    "Conflicting paths:",
+    "",
+    ...paths.map((path) => `- \`${path}\``),
+    "",
+    "Rebase it by hand and re-dispatch the pull request; nothing retries this on its own.",
+  ].join("\n");
+  gh(["pr", "edit", pr, "--add-label", BLOCKED_LABEL]);
+  gh(["pr", "comment", pr, "--body", body]);
 }
 
 /** Merges `pr` — the one write this lane makes on a completed green run. */
@@ -408,6 +478,11 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  * immutable set was not crossed — then ring the doorbell, and finish the ticket the merge
  * delivered.
  *
+ * **A rebase conflict ends the run here, with a record instead of a stack trace** (#234). It is
+ * checked first because it is the one refusal that costs nothing to find: the branch never reached
+ * trunk, so there is no rebased tree for the gauntlet to have an opinion about, and every minute
+ * spent below this point would be spent on a diff that does not exist yet.
+ *
  * **Lane 06's verdict is read last, immediately before the merge, and that ordering is the whole
  * reason this works** (#197). `verify.yml` and `integrate.yml` fire on the same dispatch, in
  * parallel; lane 06's `Immutability` job is a checkout-free string comparison that finishes in
@@ -452,7 +527,11 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  */
 export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   const pullRequest = readPr(deps.gh, deps.pr);
-  rebaseOntoTrunk(deps.git, pullRequest.branch);
+  const rebase = rebaseOntoTrunk(deps.git, pullRequest.branch);
+  if (rebase.conflicted) {
+    blockOnConflict(deps.gh, deps.pr, rebase.paths);
+    return { merged: false, reason: "conflict", paths: rebase.paths };
+  }
   const range = prCommitRange(deps.git);
 
   const result = deps.runGauntlet();
@@ -536,7 +615,11 @@ async function main(): Promise<void> {
 
     if (!outcome.merged) {
       console.error(`not merged (${outcome.reason}): ${pr}`);
-      process.exitCode = 1;
+      // A rebase conflict is the one refusal that leaves the run green. The pull request carries
+      // `blocked` and a comment naming every path that would not replay, which is the whole account
+      // — and a red run beside that record would say the merge actor broke rather than that trunk
+      // moved. Every other refusal still reddens, because each of those is a verdict on the diff.
+      if (outcome.reason !== "conflict") process.exitCode = 1;
       return;
     }
     // Green whatever became of the ticket: the exit code is this lane's verdict on the *merge*,

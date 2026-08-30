@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
+import { readWorkflow } from "../shared/read-workflow";
 import type { StageExec } from "../shared/stage";
 import {
   assembleFixBrief,
@@ -195,5 +196,111 @@ describe("runFixer — goes green", () => {
     expect(deps.ghCalls).toHaveLength(0);
     expect(deps.writes).toEqual([{ path: "fix-1.ts", content: "// attempt 1" }]);
     expect(deps.gitCalls.some((call) => call[0] === "push")).toBe(true);
+  });
+});
+
+interface FixerWorkflow {
+  on?: { workflow_run?: { workflows?: string[]; types?: string[] }; workflow_dispatch?: unknown; pull_request?: unknown };
+  permissions?: Record<string, string>;
+  concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+  jobs: { fixer: { if?: string; steps?: Array<{ name?: string; run?: string; with?: { ref?: string } }> } };
+}
+
+/**
+ * The lane this file's code had never been part of (#169, #234). `fixer.ts` was built, unit-tested
+ * and reachable from nothing — the shape #183 exists to find — because a red `Verify` had no
+ * listener at all. These assert the listener, not the loop: the trigger, the conclusion it reacts
+ * to, and the one coupling that decides whether any of it resolves a pull request.
+ */
+describe("fixer.yml is the listener a red Verify never had", () => {
+  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
+
+  it("fires on a completed workflow_run of Verify, the same trigger review.yml carries", () => {
+    expect(workflow.on?.workflow_run?.workflows).toEqual(["Verify"]);
+    expect(workflow.on?.workflow_run?.types).toEqual(["completed"]);
+    expect(workflow.on?.pull_request, "a pull_request trigger runs the PR's own copy of this file").toBeUndefined();
+  });
+
+  it("reacts to the conclusion review.yml turns away, and only that one", () => {
+    expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.conclusion == 'failure'");
+  });
+
+  it("leaves a red push run on trunk alone, which has no pull request to fix", () => {
+    expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.event != 'push'");
+  });
+
+  it("grants the writes fixer.ts performs: a push to the branch, and a label plus a comment", () => {
+    // Every attempt is committed onto the pull request's own branch (`commitAndPushAttempt`), and
+    // a stopped fixer applies `blocked` and comments (`applyBlocked`). A `permissions:` block
+    // replaces the default token rather than adding to it, so an omitted scope is `none`.
+    expect(workflow.permissions?.contents).toBe("write");
+    expect(workflow.permissions?.["pull-requests"]).toBe("write");
+    // The resolve step reads the failed run's jobs and one job's log.
+    expect(workflow.permissions?.actions).toBe("read");
+  });
+
+  it("never cancels a run in flight, because an attempt it already pushed is not undone", () => {
+    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
+
+  it("checks out the pull request's own branch, which is where every attempt is pushed", () => {
+    const checkout = (workflow.jobs.fixer.steps ?? []).find((step) => step.with?.ref !== undefined);
+    expect(checkout?.with?.ref).toContain("steps.target.outputs.branch");
+  });
+
+  it("runs fixer.ts, which is the whole of what wiring this lane means", () => {
+    expect(source).toContain(".Workflow/agent-workflows/fixer/fixer.ts");
+  });
+
+  it("points the fixer at the gauntlet's own test target, never at tests/acceptance/", () => {
+    // An acceptance test is expected red until the ticket it names is built (vitest.config.ts), so
+    // a fixer aimed there would chase other tickets' unbuilt criteria and block every pull request.
+    const step = (workflow.jobs.fixer.steps ?? []).find((each) => each.run?.includes("npx tsx"));
+    expect(step?.run).toContain(".Workflow");
+    expect(step?.run).not.toContain("tests/acceptance");
+  });
+});
+
+/**
+ * The one coupling that decides whether this lane resolves anything.
+ *
+ * A `verify.yml` run started by lane 05's dispatch carries `head_branch: main`, trunk's tip as its
+ * `head_sha`, and an empty `pull_requests` — nothing on the run object names the branch under
+ * test. The only record is the line `verify.yml`'s own checkout step echoes, so `fixer.yml` reads
+ * that line out of the job's log, and this is what keeps the two spellings from drifting: a
+ * reworded echo over there would otherwise make every fixer run resolve nothing and report it as
+ * "nothing to fix", which is indistinguishable from a healthy quiet lane.
+ *
+ * The same split, for the same reason, as `integrate.ts`'s lane 06 job names — the Actions API
+ * answers strings, and `shared/` may not import a workflow file.
+ */
+describe("fixer.yml reads the pull request out of the line verify.yml actually echoes", () => {
+  const fixer = readWorkflow<FixerWorkflow>("fixer.yml");
+  const verify = readWorkflow("verify.yml");
+
+  /** The pattern `fixer.yml`'s resolve step greps the job log with, read off the workflow itself. */
+  const grepped = /grep -oE '([^']+)'/.exec(fixer.source)?.[1];
+
+  it("greps for a pattern, rather than having quietly stopped doing so", () => {
+    expect(grepped).toBeDefined();
+  });
+
+  it("matches what verify.yml would print for a real pull request on a claim branch", () => {
+    const printed = "judging https://github.com/collod873/claude-workflow/pull/250 on implement/issue-241";
+
+    expect(verify.source, "verify.yml no longer echoes the line this lane resolves from").toContain(
+      'echo "judging $PR on $BRANCH"',
+    );
+    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(true);
+  });
+
+  it("does not match the echoed command line itself, which carries the literal $PR", () => {
+    expect(new RegExp(grepped ?? "$^").test('echo "judging $PR on $BRANCH"')).toBe(false);
+  });
+
+  it("does not match a branch that is not an implementation claim", () => {
+    const printed = "judging https://github.com/collod873/claude-workflow/pull/250 on somebodys-branch";
+
+    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(false);
   });
 });
