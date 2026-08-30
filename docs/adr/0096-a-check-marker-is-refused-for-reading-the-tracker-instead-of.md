@@ -2,6 +2,8 @@
 
 Recorded 2026-08-29.
 
+Status: superseded by ADR-0109
+
 [#201](https://github.com/collod873/claude-workflow/issues/201)'s fourth criterion checked
 `gh api …/contents/tests/acceptance`: it parsed, it was headless, and it still could not be
 answered by any diff, because it reads GitHub's remote default branch rather than the tree

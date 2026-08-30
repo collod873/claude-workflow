@@ -2,6 +2,8 @@
 
 Recorded 2026-08-29.
 
+Status: superseded by ADR-0110
+
 A stage whose output is checked by a gate it never runs cannot fail cheaply. Every stage prompt
 names the gate its answer will actually meet — for the implementer, `npm run check` — and the stage
 answers only once that gate is green, or says plainly that it is not.
