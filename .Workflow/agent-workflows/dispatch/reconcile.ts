@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
 import {
   blockedByPath,
@@ -160,6 +161,14 @@ export interface ReconcileInput {
    * only honest one is this reconciler itself.
    */
   dryRun?: boolean;
+  /**
+   * Closes a spec `number` against `range` via `bin/close-ticket --spec`. Real production
+   * behaviour shells to this repository's own `bin/close-ticket` (`runRealSpecClose`); a test
+   * injects a canned result instead of paying for a tracker write and the spec's own check —
+   * `integrate.ts`'s `IntegrateDeps.closeTicket`/`runRealCloseTicket` pattern, reused rather than
+   * restated for a second `bin/close-ticket` mode.
+   */
+  closeSpec?: (number: number, range: string) => CloseTicketResult;
 }
 
 export interface ReconcileOutcome {
@@ -231,6 +240,18 @@ function fetchBlockers(gh: GhExec, number: number): Blocker[] | null {
  * each is a field the endpoint being asked actually serves (ADR-0106).
  */
 export function closedByMergedPr(gh: GhExec, number: number): boolean {
+  return mergedCloser(gh, number) !== undefined;
+}
+
+/**
+ * The merged pull request that closed `number`, or `undefined` when none of its closers ever
+ * merged — or the lookup itself failed, same fail-closed direction `closedByMergedPr` documents
+ * above. `closedByMergedPr` is this collapsed to a boolean; the spec-closing pass (#233) needs the
+ * actual PR number too, to synthesize its own closing range, so the number is kept here and
+ * `closedByMergedPr` is defined in terms of it rather than the two drifting into two copies of
+ * the same two `gh` calls.
+ */
+function mergedCloser(gh: GhExec, number: number): number | undefined {
   let closers: number[];
   try {
     const raw = gh([
@@ -243,12 +264,12 @@ export function closedByMergedPr(gh: GhExec, number: number): boolean {
       "[.closedByPullRequestsReferences[].number]",
     ]);
     const parsed = ClosingPrNumbers.safeParse(JSON.parse(raw));
-    if (!parsed.success) return false;
+    if (!parsed.success) return undefined;
     closers = parsed.data;
   } catch {
-    return false;
+    return undefined;
   }
-  return closers.some((pr) => prIsMerged(gh, pr));
+  return closers.find((pr) => prIsMerged(gh, pr));
 }
 
 /**
@@ -392,6 +413,108 @@ function fetchSubIssueCount(gh: GhExec, number: number): number | null {
   }
 }
 
+/** One spec's sub-issues, with each child's own state — the shape the spec-closing pass's delivery check needs, unlike `fetchSubIssueCount`'s bare numbers. Same endpoint, same `Blocker` shape `fetchBlockers` already reads a blocker with. */
+function fetchChildren(gh: GhExec, number: number): Blocker[] | null {
+  try {
+    const raw = gh(["api", subIssuesPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
+    const parsed = Blockers.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+const PrMergeInfo = z.object({
+  mergedAt: z.string().nullable(),
+  mergeCommit: z.object({ oid: z.string() }).nullable(),
+});
+
+/**
+ * When `pr` merged and the commit it landed as — or `undefined` when either is missing, which
+ * only happens for a PR that never actually merged or a lookup that failed. This is the "branch
+ * position" the spec-closing pass sorts by: merges into this repo's trunk are serialised by lane
+ * 08's own `integrate` concurrency group, so the order they landed in *is* the order they sit on
+ * the branch, and `mergedAt` is the field GitHub actually answers that with — there is no
+ * ordering endpoint that answers "which commit is first" more directly than "which merged first".
+ */
+function fetchMergeInfo(gh: GhExec, pr: number): { mergedAt: string; sha: string } | undefined {
+  try {
+    const raw = gh(["pr", "view", String(pr), "--json", "mergedAt,mergeCommit"]);
+    const parsed = PrMergeInfo.safeParse(JSON.parse(raw));
+    if (!parsed.success || parsed.data.mergedAt === null || parsed.data.mergeCommit === null) return undefined;
+    return { mergedAt: parsed.data.mergedAt, sha: parsed.data.mergeCommit.oid };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `<first-merge>^..<last-merge>`, ordered by when each delivering pull request actually merged —
+ * never by the child issue's own number, which is a filing-time artifact and no guarantee of
+ * merge order. One child collapses to `<merge>^..<merge>`, the same shape `integrate.ts`'s
+ * `prCommitRange` produces for a single pull request. `undefined` when any merge's own info could
+ * not be read, since a closing range built from a partial set would misname the spec's own diff.
+ */
+function synthesizeRange(gh: GhExec, mergedPrs: number[]): string | undefined {
+  const infos = mergedPrs.map((pr) => fetchMergeInfo(gh, pr));
+  if (infos.some((info) => info === undefined)) return undefined;
+  const sorted = (infos as Array<{ mergedAt: string; sha: string }>)
+    .slice()
+    .sort((a, b) => a.mergedAt.localeCompare(b.mergedAt));
+  const first = sorted[0].sha;
+  const last = sorted[sorted.length - 1].sha;
+  return `${first}^..${last}`;
+}
+
+/** What one closing attempt found, once the closer actually ran. */
+interface SpecClosingAttempt {
+  /** Whether `bin/close-ticket --spec` refused after this pass's own check just read green. */
+  disagreement: boolean;
+  result: CloseTicketResult;
+}
+
+/**
+ * Attempts to close `prdNumber` through `bin/close-ticket --spec`, invoked only when both hold:
+ * the pass's own check just read green (the caller's job — see its call site) and every child is
+ * delivered, reusing `deliveryOf` and the same merged-closer lookup `closedByMergedPr` answers
+ * with, rather than asking the delivery question a second way. Never invoked with an undelivered
+ * child: the loop below returns the moment one child's delivery isn't `"delivered"`, before a
+ * single closing range is built or `closeSpec` is called at all.
+ *
+ * `undefined` means "did not even try": an undelivered child, a sub-issues read that failed, or a
+ * closing range that could not be synthesized. Only a `SpecClosingAttempt` means the closer
+ * actually ran, and `disagreement` is the one fact `evaluateSpecCheck` needs back from it.
+ */
+function attemptSpecClose(
+  gh: GhExec,
+  prdNumber: number,
+  closeSpec: (number: number, range: string) => CloseTicketResult,
+  log: (line: string) => void,
+): SpecClosingAttempt | undefined {
+  const children = fetchChildren(gh, prdNumber);
+  if (children === null) {
+    log(`could not read #${prdNumber}'s sub-issues for its own closing attempt.`);
+    return undefined;
+  }
+  if (children.length === 0) return undefined;
+
+  const mergedPrs: number[] = [];
+  for (const child of children) {
+    const pr = mergedCloser(gh, child.number);
+    if (deliveryOf(child, () => pr !== undefined) !== "delivered") return undefined;
+    mergedPrs.push(pr as number);
+  }
+
+  const range = synthesizeRange(gh, mergedPrs);
+  if (range === undefined) {
+    log(`#${prdNumber}: every child delivered but its closing range could not be synthesized — skipping the close attempt.`);
+    return undefined;
+  }
+
+  const result = closeSpec(prdNumber, range);
+  return { disagreement: result.exitCode !== 0, result };
+}
+
 /** Why `isRunnableSpec` refused `body` — named for the refusal comment, since "not runnable" alone tells a reader nothing to fix. */
 function unrunnableReason(body: string): string {
   const count = countCriteria(body);
@@ -413,6 +536,31 @@ function verdictCommentBody(command: string, run: { code: number; output: string
     `Ran this spec's own check: \`${command}\``,
     "",
     `Exit ${run.code}.`,
+    ...(trimmed.length > 0 ? ["", "```", trimmed, "```"] : []),
+    "",
+    PRD_CHECK_MARKER,
+  ].join("\n");
+}
+
+/**
+ * Names both verdicts rather than either alone — the pass's own check just read green, and
+ * `bin/close-ticket --spec` still refused, so a comment carrying only one of the two would read
+ * as this pass being wrong or as the closer being wrong, when the fact worth recording is that
+ * they disagreed. Kept under `PRD_CHECK_MARKER`, the same comment `verdictCommentBody` writes,
+ * because this is still that comment's answer for this run — not a second thing standing beside
+ * it, and not `PRD_UNRUNNABLE_MARKER`'s `needs-human` pairing, which belongs to a body this pass
+ * could not even attempt.
+ */
+function disagreementCommentBody(
+  command: string,
+  run: { code: number; output: string },
+  closerResult: CloseTicketResult,
+): string {
+  const trimmed = closerResult.output.trim();
+  return [
+    `Ran this spec's own check: \`${command}\` — exit ${run.code}.`,
+    "",
+    `\`bin/close-ticket --spec\` disagreed: exit ${closerResult.exitCode}. This spec stays open.`,
     ...(trimmed.length > 0 ? ["", "```", trimmed, "```"] : []),
     "",
     PRD_CHECK_MARKER,
@@ -448,8 +596,20 @@ interface PrdCheckCandidate {
   labels: string[];
 }
 
-/** Evaluates one `prd` issue's own check and upserts its verdict or refusal — see this section's header for the label rule. */
-function evaluateSpecCheck(gh: GhExec, prd: PrdCheckCandidate, log: (line: string) => void): void {
+/**
+ * Evaluates one `prd` issue's own check and upserts its verdict or refusal — see this section's
+ * header for the label rule — then, only once that check reads green, attempts to close the spec
+ * itself through `closeSpec` (see `attemptSpecClose`). A pass/closer disagreement rewrites this
+ * same verdict comment naming both exit codes and returns before the `needs-human` label is ever
+ * touched: that label is `PRD_UNRUNNABLE_MARKER`'s pairing, for a body this pass could not even
+ * attempt, and a disagreement is a body it could.
+ */
+function evaluateSpecCheck(
+  gh: GhExec,
+  prd: PrdCheckCandidate,
+  log: (line: string) => void,
+  closeSpec: (number: number, range: string) => CloseTicketResult,
+): void {
   const comments = fetchPrdComments(gh, prd.number);
   if (comments === null) {
     log(`could not read #${prd.number}'s comments — skipping its spec check this run.`);
@@ -475,6 +635,17 @@ function evaluateSpecCheck(gh: GhExec, prd: PrdCheckCandidate, log: (line: strin
   }
 
   const run = runCheckCommand(command);
+  const closing = run.code === 0 ? attemptSpecClose(gh, prd.number, closeSpec, log) : undefined;
+
+  if (closing?.disagreement) {
+    upsertPrdComment(gh, prd.number, comments, disagreementCommentBody(command, run, closing.result));
+    log(
+      `#${prd.number}: pass/closer disagreement — ran \`${command}\` exit ${run.code}, ` +
+        `bin/close-ticket --spec exited ${closing.result.exitCode}.`,
+    );
+    return;
+  }
+
   upsertPrdComment(gh, prd.number, comments, verdictCommentBody(command, run));
   if (hasOwnRefusal && hasNeedsHuman) {
     gh(["issue", "edit", String(prd.number), "--remove-label", NEEDS_HUMAN_LABEL]);
@@ -607,6 +778,7 @@ function reportUnreachable(
 export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const gh = input.gh ?? execGh;
   const log = input.log ?? ((line: string) => console.log(line));
+  const closeSpec = input.closeSpec ?? runRealSpecClose;
 
   const degraded = (note: string): ReconcileOutcome => ({
     action: "degraded",
@@ -647,7 +819,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
 
     try {
-      evaluateSpecCheck(gh, { number: issue.number, body: issue.body ?? "", labels }, log);
+      evaluateSpecCheck(gh, { number: issue.number, body: issue.body ?? "", labels }, log, closeSpec);
     } catch (err) {
       // One spec's check crashing must not cost every other spec its own verdict — and the next
       // recompute reads the same tracker state and tries again.
@@ -703,6 +875,18 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     unreachable: filed,
     note: `dispatched ticket-ready for #${dispatched.join(", #")}.`,
   };
+}
+
+/**
+ * The real `closeSpec`: shells to this repository's own `bin/close-ticket --spec`, the same
+ * binary `integrate.ts`'s `runRealCloseTicket` shells to for an ordinary ticket, with this
+ * runner's checkout as the tree the spec's own check runs against.
+ *
+ * `--spec` is the whole difference between this closer and lane 08's; the spawn itself is
+ * `shared/close-ticket.ts`, so the two cannot drift in how they read an exit code or fold output.
+ */
+export function runRealSpecClose(number: number, range: string): CloseTicketResult {
+  return closeTicketProcess(["--spec", String(number), range, "."]);
 }
 
 function main(): void {
