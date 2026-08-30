@@ -198,6 +198,9 @@ describe("a plan-emitting stage prints one measurement line against the Slice ca
       whyNotMerged: "y".repeat(90),
       acceptanceCriteria: [criterionOfLength(55)],
       filesClaimed: ["a.ts", "b.ts", "c.ts", "d.ts"],
+      // Edged onto "Narrow" so the plan has exactly one unblocked root, which `validatePlan` now
+      // requires (#240). Nothing the measurement line reports reads `dependsOn`.
+      dependsOn: [1],
     }),
   ];
   const expectedLine =
