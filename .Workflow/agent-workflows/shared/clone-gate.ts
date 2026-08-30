@@ -228,6 +228,17 @@ interface Scope {
    * dropped: rule 3's whole point is that a skip nobody can see reads the same as a clean scan.
    */
   nested: string[];
+  /**
+   * Index entries with no file on disk — a `git rm`'d path, or one deleted in the worktree and not
+   * staged yet. `git ls-files --cached` reports them because they are still in the index, and
+   * handing one to jscpd killed the whole run with an empty exit 1: no message, no report, no way
+   * to tell it from a real refusal. A run that deleted a module then lost its push to that is how
+   * #263's implementer lost 31 minutes of work.
+   *
+   * Skipped, because a file that is not on disk is not part of the tree being scanned — and named,
+   * because rule 3's whole point is that a skip nobody can see reads the same as a clean one.
+   */
+  deleted: string[];
 }
 
 /**
@@ -241,11 +252,19 @@ export function scopeOf(root: string): Scope {
   const files: ScopedFile[] = [];
   const undeclared = new Map<string, string[]>();
   const nested: string[] = [];
+  const deleted: string[] = [];
 
   for (const path of repoFiles(root)) {
     if (EXCLUDED_PATHS.some((entry) => path === entry.path || path.startsWith(`${entry.path}/`))) continue;
     if (isNestedRepository(root, path)) {
       nested.push(path);
+      continue;
+    }
+    // Checked before the extension rules, so a deleted file is never bucketed as undeclared and
+    // never reaches the scan — the two ways an absent path turns into a message about the wrong
+    // thing.
+    if (!existsSync(join(root, path))) {
+      deleted.push(path);
       continue;
     }
     const ext = extensionOf(path);
@@ -269,7 +288,8 @@ export function scopeOf(root: string): Scope {
 
   files.sort((a, b) => a.path.localeCompare(b.path));
   nested.sort((a, b) => a.localeCompare(b));
-  return { files, undeclared, nested };
+  deleted.sort((a, b) => a.localeCompare(b));
+  return { files, undeclared, nested, deleted };
 }
 
 /**
@@ -460,7 +480,15 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
     return 0;
   }
 
-  const { files, undeclared, nested } = scopeOf(root);
+  const { files, undeclared, nested, deleted } = scopeOf(root);
+  if (deleted.length > 0) {
+    // Named for the same reason the nested skip is, and printed before the refusal check so the
+    // line survives whichever way the run ends.
+    console.log(
+      `clone gate: skipped ${deleted.length} path${deleted.length === 1 ? "" : "s"} in the index with no file on disk — ${deleted.join(", ")}` +
+        " — deleted but not staged, or staged and not yet committed; nothing to scan either way.",
+    );
+  }
   if (nested.length > 0) {
     // Rule 3 permits the skip and forbids doing it quietly. Printed before the refusal check as
     // well as before the banner, so the line is there whichever way the run ends.

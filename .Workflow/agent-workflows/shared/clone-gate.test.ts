@@ -89,6 +89,27 @@ describe("runCloneGate", () => {
     expect(out).toMatch(/skipped 1 nested git repository/);
   });
 
+  it("scans a tree where a tracked file has been deleted, and names the path it skipped", () => {
+    // `git ls-files --cached` still reports a path deleted in the worktree, and handing one to
+    // jscpd killed the run with an empty exit 1 — no message, no report, indistinguishable from a
+    // real refusal. A ticket whose whole job is deleting a module met this on its own pre-push.
+    const dir = makeScratchRepo();
+    // A second file, so the deletion leaves a non-empty scan set and this test stays about the
+    // absent path rather than about an empty one.
+    writeFileSync(join(dir, "doomed.ts"), ["export const TWO = 2;", "", "export const THREE = 3;", ""].join("\n"), "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: dir });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "in"], {
+      cwd: dir,
+    });
+    rmSync(join(dir, "doomed.ts"));
+
+    const { code, out } = runGate(dir);
+
+    expect(code, out).toBe(0);
+    expect(out).toContain("doomed.ts");
+    expect(out).toMatch(/skipped 1 path in the index with no file on disk/);
+  });
+
   it("still refuses a genuinely undeclared extension bucket", () => {
     const dir = makeScratchRepo();
     nestRepository(dir, "knowledge-base");
