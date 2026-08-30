@@ -790,6 +790,16 @@
     ]
   },
   {
+    "hash": "b1b3be65ed78ee0e",
+    "format": "typescript",
+    "lines": 8,
+    "tokens": 95,
+    "where": [
+      "tests/acceptance/261-spec-sweep.fixture.ts:445",
+      "tests/acceptance/274-stage-names.fixture.ts:53"
+    ]
+  },
+  {
     "hash": "b1fcc2e2a4109eb9",
     "format": "typescript",
     "lines": 7,

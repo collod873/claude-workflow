@@ -101,6 +101,12 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+      - name: Mark the ticket running
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.TICKET_NUMBER }}
+          mode: "on"
+
       # The whole flow: read the ticket, assemble its brief from exactly the four ingredients #167
       # names, run the implementer stage, write what it returns, commit and push a branch, open
       # exactly one PR, and send exactly one verification dispatch naming it.
@@ -126,3 +132,13 @@ jobs:
           path: ${{ runner.temp }}/implementer-answer.json
           if-no-files-found: ignore
           retention-days: 30
+
+      # `always()` for the same reason the upload above carries it, and more so: the run this most
+      # needs to clean up after is the one that died. A `running` label left behind by a timeout is
+      # a lie the tracker keeps telling, which is worse than never having written it.
+      - name: Unmark the ticket
+        if: always()
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.TICKET_NUMBER }}
+          mode: "off"

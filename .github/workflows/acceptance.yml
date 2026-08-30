@@ -173,6 +173,12 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
+      - name: Mark the ticket running
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.TICKET_NUMBER }}
+          mode: "on"
+
       # Single-issue mode: `acceptance.ts`'s `main()` takes the non-`--refire` branch when its
       # only argument is a bare issue number, authoring exactly the slice this dispatch names.
       - name: Author acceptance tests for the published slice
@@ -182,6 +188,13 @@ jobs:
       - name: Bundle the authored commits
         id: bundle
         uses: ./.github/actions/acceptance-bundle
+
+      - name: Unmark the ticket
+        if: always()
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.TICKET_NUMBER }}
+          mode: "off"
 
   # ADR-0091's other half: `contents: write`, no model, and nothing to do but replay the commits
   # whichever author job ran already made and the gate already cleared. Rebasing onto

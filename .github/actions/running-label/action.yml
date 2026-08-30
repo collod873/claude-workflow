@@ -1,0 +1,59 @@
+name: Mark a lane running
+description: >
+  Puts `running` on the issue a lane is working, and takes it off when the lane stops. This is the
+  only thing on the tracker that says a lane is *in flight*: every other label asserts a position
+  the work reached and then stayed at, so without this a ticket being implemented right now and a
+  ticket nobody has touched render identically on a GitHub issue list — which is where the owner
+  actually looks, rather than the Actions tab.
+#
+# **It is a record, never a trigger.** These labels are applied by the job's built-in `GITHUB_TOKEN`,
+# and a `GITHUB_TOKEN` label starts no workflow run at all (ADR-0054). That is the feature here: a
+# status label physically cannot wake a lane, so nothing downstream has to be taught to ignore it.
+#
+# **It asserts a position, not a verdict**, which is what `docs/agents/pipeline-labels.md` allows a
+# label to do. "A lane holds this right now" is where the work sits; it is not a judgement about
+# whether the work is good, ready, or blocked.
+#
+# **Fail-open, deliberately.** Every call is `|| true`. A status label is a saving, not a gate, and
+# CONTEXT.md's Fail-open entry rules that a mechanism which can park real work over its own failure
+# does not ship — a lane that spent twenty minutes of model time must never go red because a
+# cosmetic label could not be written. The cost of the miss is a stale label, which is exactly what
+# the `off` call at `always()` and the watchdog's sweep are for.
+
+inputs:
+  issue:
+    description: The issue the lane is working. Empty is a no-op, so a caller may pass a value that
+      is only set on one of its triggers.
+    required: true
+  mode:
+    description: "`on` when the lane is starting, `off` when it has stopped for any reason."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Mark the issue
+      shell: bash
+      env:
+        RUNNING_ISSUE: ${{ inputs.issue }}
+        RUNNING_MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+
+        # A caller whose issue number is empty gets silence rather than a failure: `spec.yml` reads
+        # it from two different places depending on which door fired, and a lane that has not
+        # resolved one yet has nothing to label.
+        if [ -z "${RUNNING_ISSUE:-}" ]; then
+          echo "running-label: no issue number, nothing to mark"
+          exit 0
+        fi
+
+        if [ "$RUNNING_MODE" = "on" ]; then
+          gh issue edit "$RUNNING_ISSUE" --add-label running \
+            || echo "::warning::running-label: could not mark #$RUNNING_ISSUE as running"
+        else
+          # `--remove-label` on an issue that does not carry it is an error, and reaching this step
+          # with the label already gone is the normal path for a lane that failed before the `on`
+          # call — so the failure is swallowed rather than reported.
+          gh issue edit "$RUNNING_ISSUE" --remove-label running >/dev/null 2>&1 || true
+        fi

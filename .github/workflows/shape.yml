@@ -150,6 +150,12 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
+      - name: Mark the idea running
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.IDEA_NUMBER }}
+          mode: "on"
+
       - name: Shape
         run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
 
@@ -179,3 +185,10 @@ jobs:
           fi
           body=$(printf 'Shape run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$IDEA_NUMBER" --body "$body"
+
+      - name: Unmark the idea
+        if: always()
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.IDEA_NUMBER }}
+          mode: "off"

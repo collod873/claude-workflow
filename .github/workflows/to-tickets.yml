@@ -176,6 +176,12 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
+      - name: Mark the PRD running
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.PRD_NUMBER }}
+          mode: "on"
+
       # The first of three stages, each following runStage's shape (see
       # .Workflow/agent-workflows/shared/stage.ts). Spawns one headless `claude` process against
       # seam-sweep/prompt.md and writes its validated structured output — the seam manifest — to
@@ -256,6 +262,13 @@ jobs:
           body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$PRD_NUMBER" --body "$body"
           gh issue edit "$PRD_NUMBER" --add-label slice-failed
+
+      - name: Unmark the PRD
+        if: always()
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.PRD_NUMBER }}
+          mode: "off"
 
   # ADR-0091's other half: `contents: write`, no model, no checkout, and nothing to do but post the
   # wave the job above decided on. Sub-issues already exist and are already edged by the time this

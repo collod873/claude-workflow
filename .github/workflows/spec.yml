@@ -147,6 +147,12 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
+      - name: Mark the source running
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.ISSUE_NUMBER }}
+          mode: "on"
+
       # The whole lane: on the cold door, read the labelled issue to pick a collector, refuse a
       # source whose spec already dispatched, then run the author and the critic and publish the
       # `PRD:` issue; on the critic-only door, read the spec that is already there. Both then apply
@@ -182,6 +188,13 @@ jobs:
           # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
           body=$(printf 'The spec lane did not finish.\n\nNothing here is automatic to recover: the run below says where it stopped, and re-applying `to-spec` starts it again.\n\n**Workflow run:** %s\n' "$run_url")
           gh issue comment "$ISSUE_NUMBER" --body "$body"
+
+      - name: Unmark the source
+        if: always()
+        uses: ./.github/actions/running-label
+        with:
+          issue: ${{ env.ISSUE_NUMBER }}
+          mode: "off"
 
   # The other half of ADR-0091's split: `contents: write`, no model, no checkout, and nothing to do
   # but post what the job above decided. It runs only when there is something to send, so a run
