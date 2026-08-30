@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
@@ -312,6 +314,28 @@ describe("runImplement — on fakes", () => {
     const prompt = stage.stdins[0] ?? "";
     expect(prompt).toContain(ticket.body);
     expect(prompt).toContain("the failing assertion");
+  });
+
+  /**
+   * The gate the implementer's work actually has to survive is the one on the **push**, not the
+   * ones it thinks to run. Run 33282084838 built #238 correctly in 72 turns and $4.00 with a clean
+   * `tsc`, a clean `eslint` and 45 passing tests, then lost all of it to a `pre-push` clone-gate
+   * finding it had never been told existed — the money is spent by the time that gate speaks.
+   *
+   * Pinned against `package.json`'s own script name rather than a copy of it, so renaming the
+   * script fails here instead of leaving the prompt naming a command that no longer exists.
+   */
+  it("tells the implementer to run the same gate the push will run", () => {
+    const npmScripts = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8"),
+    ) as { scripts: Record<string, string> };
+    const prompt = readFileSync(
+      fileURLToPath(new URL("./implementer/prompt.md", import.meta.url)),
+      "utf8",
+    );
+
+    expect(npmScripts.scripts).toHaveProperty("check");
+    expect(prompt).toContain("npm run check");
   });
 });
 

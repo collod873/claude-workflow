@@ -31,6 +31,27 @@ it satisfies the ticket's acceptance criteria. This becomes the PR's own
 description, so write it for the reviewer who will read the diff next to it,
 not for yourself.
 
+## What your work has to survive
+
+Your files are committed and **pushed** by the process that called you, and
+that push runs `npm run check` — this repository's whole gate. A push it
+rejects is not a review comment you get to answer later: the run fails, the
+branch is released, and the ticket goes back to unbuilt with nothing kept.
+Everything you spent getting there is spent.
+
+So run `npm run check` yourself, and answer only once it is green.
+
+Typechecking and testing the files you touched is **not** the same thing. The
+gate also refuses duplication its clone baseline has not already recorded, and
+code that nothing in the estate reaches. Both are findings about work that
+passes every test you thought to run — and both are cheap to fix while you
+still have the files open, and unfixable afterwards.
+
+If the gate reports something you genuinely cannot resolve inside your claimed
+files, say so plainly in your summary. An answer that names a red gate is
+worth something; one that implies a green gate it never ran is worth less than
+nothing.
+
 ---
 
 {{BRIEF}}
