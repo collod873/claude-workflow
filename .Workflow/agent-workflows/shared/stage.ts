@@ -285,7 +285,13 @@ function isCheckpointEnvelope(value: unknown): value is CheckpointEnvelope {
  *
  * A checkpoint that *does* match is not trusted blindly either: `parse` runs
  * the same schema a live response goes through, so a hand-edited or
- * corrupted-but-still-JSON file still has to pass it.
+ * corrupted-but-still-JSON file still has to pass it — and a refusal there
+ * fails open like every other, rather than throwing. Re-validation exists to
+ * catch a checkpoint whose shape no longer fits the stage that would reuse it,
+ * which is what a schema change between a run and its retry produces; if that
+ * rejection killed the run instead of spawning the model, widening a schema
+ * would wedge every retry until someone deleted the file by hand — the exact
+ * failure checkpoints are here to prevent.
  */
 function loadCheckpoint<T>(stage: string, prompt: string, output: StructuredOutput<T>): T | undefined {
   const key = checkpointKey(prompt);
@@ -307,7 +313,11 @@ function loadCheckpoint<T>(stage: string, prompt: string, output: StructuredOutp
 
   if (!isCheckpointEnvelope(parsed) || parsed.key !== key) return undefined;
 
-  return output.parse(parsed.response);
+  try {
+    return output.parse(parsed.response);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
