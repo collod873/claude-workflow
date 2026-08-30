@@ -330,16 +330,6 @@
     ]
   },
   {
-    "hash": "546d65777d387c01",
-    "format": "typescript",
-    "lines": 24,
-    "tokens": 166,
-    "where": [
-      ".Workflow/agent-workflows/shape/shape.ts:136",
-      ".Workflow/agent-workflows/to-tickets/to-tickets.ts:224"
-    ]
-  },
-  {
     "hash": "556a67e96eb33c0d",
     "format": "typescript",
     "lines": 13,

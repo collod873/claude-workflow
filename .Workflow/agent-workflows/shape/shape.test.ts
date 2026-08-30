@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import type { StageExec } from "../shared/stage";
 import { REFUSAL_MARKER, readSheetMarker } from "./marker";
 import { runChain, SHAPER_DENIED_TOOLS, type ChainDeps } from "./shape";
@@ -13,6 +14,17 @@ import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.f
  * claims about calls that did not happen, which is only checkable against a
  * recorded call list.
  */
+
+// Every test here runs against the same real commit, and several share both
+// an issue number and a first-pass focus — the same shape of collision
+// `to-tickets.test.ts` isolates against, now that the chain's three stages
+// checkpoint through `runStage`'s `stage` option. Without a fresh
+// `CHECKPOINTS_DIR` per test, a later test's `runStage` call would find an
+// earlier test's checkpoint keyed on the same commit and prompt and skip the
+// spawn this test means to observe.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 /** Which stage a spawn belongs to, read off the model tier §3 assigns it. */
 function stageOf(argv: string[]): "sweep" | "shaper" | "refuter" | "unknown" {

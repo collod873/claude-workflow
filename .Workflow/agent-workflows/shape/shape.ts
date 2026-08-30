@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
+import { handoffPath } from "../shared/handoff-path";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
-import { rejectedResponse } from "../shared/structured-output";
 import { REFUSAL_MARKER } from "./marker";
 import {
   renderChangeRequest,
@@ -89,61 +89,16 @@ export const NEEDS_LIVE_SESSION_LABEL = "needs-human";
  */
 export const LABELS_APPLIED = [REFUSED_LABEL, NEEDS_LIVE_SESSION_LABEL];
 
-const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
-
 const PROMPTS = {
   sweep: ".Workflow/agent-workflows/shape/sweep/prompt.md",
   shaper: ".Workflow/agent-workflows/shape/shaper/prompt.md",
   refuter: ".Workflow/agent-workflows/shape/refuter/prompt.md",
 };
 
-/**
- * Where a dying stage's reason lands, for `shape.yml`'s `if: failure()`
- * reporter. Resolved live rather than at import time so the runner and a
- * local debug run agree on one file — the same arrangement, and the same
- * reason, as `to-tickets.ts`'s. Not shared with it: extracting the seam is a
- * change to `shared/`, which this lane has no claim on, and the proposed
- * lens's two-site gate is exactly the mechanism that should surface it now
- * that a second site exists.
- */
-export function handoffPath(): string {
-  return process.env.FAILURE_REASON_PATH || DEFAULT_HANDOFF_PATH;
-}
-
 function writeFailure(stage: string, detail: string): void {
   const path = handoffPath();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${stage}: ${detail}\n`, "utf8");
-}
-
-/**
- * Where a stage's rejected raw response is kept — beside the handoff file,
- * named for the stage, and uploaded as an artifact by the workflow. #42 is
- * what its absence costs: a two-minute model run leaving one line about why
- * its answer was refused, and no way to see the answer.
- */
-function rawResponsePath(stage: string): string {
-  return join(dirname(handoffPath()), `${stage}-raw-response.txt`);
-}
-
-/**
- * Runs one stage and, if its response is refused, writes that response to
- * `rawResponsePath(stage)` before rethrowing with the path named. Anything
- * that is not a refused response — a dead CLI, a bad spawn — is rethrown
- * untouched: there is nothing to save, and a file named for a stage that
- * never answered would be a lie.
- */
-async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<R> {
-  try {
-    return await work();
-  } catch (err) {
-    const raw = rejectedResponse(err);
-    if (raw === undefined) throw err;
-    const path = rawResponsePath(stage);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, raw, "utf8");
-    throw new Error(`${reason(err)} — the model's raw response is saved at ${path}`);
-  }
 }
 
 /**
@@ -194,14 +149,12 @@ export function fetchRef(gh: GhExec): Fetch {
 }
 
 async function runSweep(deps: ChainDeps, issueNumber: number, focus: string): Promise<Sweep> {
-  return preservingRaw("sweep", () =>
-    runStage(
-      PROMPTS.sweep,
-      { ISSUE_NUMBER: String(issueNumber), FOCUS: focus },
-      deps.exec,
-      SWEEP_OUTPUT,
-      { model: SWEEP_MODEL },
-    ),
+  return runStage(
+    PROMPTS.sweep,
+    { ISSUE_NUMBER: String(issueNumber), FOCUS: focus },
+    deps.exec,
+    SWEEP_OUTPUT,
+    { model: SWEEP_MODEL, stage: "sweep" },
   );
 }
 
@@ -212,42 +165,38 @@ async function runShaper(
   changeRequest: string,
   reSweep: string,
 ): Promise<ShaperOutput> {
-  return preservingRaw("shaper", () =>
-    runStage(
-      PROMPTS.shaper,
-      {
-        IDEA: idea,
-        CHANGE_REQUEST: renderChangeRequest(changeRequest),
-        CONTEXT_MD: deps.fetch("CONTEXT.md") ?? "",
-        CODING_STANDARDS_MD: deps.fetch("CODING_STANDARDS.md") ?? "",
-        READING_LIST: renderReadingList(sweep.readingList, deps.fetch),
-        PRIOR_ART: renderPriorArt(sweep.priorArt),
-        RESWEEP: reSweep,
-      },
-      deps.exec,
-      SHAPER_OUTPUT,
-      // On stdin, because this is the one prompt in the estate that inlines
-      // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading
-      // list clear the 128 KiB argv-element limit on any idea whose sweep
-      // listed a long file. ADR-0030 rejected capping that list, so the
-      // transport has to be the thing that gives.
-      { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true },
-    ),
+  return runStage(
+    PROMPTS.shaper,
+    {
+      IDEA: idea,
+      CHANGE_REQUEST: renderChangeRequest(changeRequest),
+      CONTEXT_MD: deps.fetch("CONTEXT.md") ?? "",
+      CODING_STANDARDS_MD: deps.fetch("CODING_STANDARDS.md") ?? "",
+      READING_LIST: renderReadingList(sweep.readingList, deps.fetch),
+      PRIOR_ART: renderPriorArt(sweep.priorArt),
+      RESWEEP: reSweep,
+    },
+    deps.exec,
+    SHAPER_OUTPUT,
+    // On stdin, because this is the one prompt in the estate that inlines
+    // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading
+    // list clear the 128 KiB argv-element limit on any idea whose sweep
+    // listed a long file. ADR-0030 rejected capping that list, so the
+    // transport has to be the thing that gives.
+    { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true, stage: "shaper" },
   );
 }
 
 async function runRefuter(deps: ChainDeps, shaped: ShaperSheet): Promise<Refutations> {
-  return preservingRaw("refuter", () =>
-    runStage(
-      PROMPTS.refuter,
-      {
-        DECISIONS: JSON.stringify(shaped.decisions, null, 2),
-        RESTATEMENT: shaped.restatement,
-      },
-      deps.exec,
-      REFUTER_OUTPUT,
-      { model: REFUTER_MODEL },
-    ),
+  return runStage(
+    PROMPTS.refuter,
+    {
+      DECISIONS: JSON.stringify(shaped.decisions, null, 2),
+      RESTATEMENT: shaped.restatement,
+    },
+    deps.exec,
+    REFUTER_OUTPUT,
+    { model: REFUTER_MODEL, stage: "refuter" },
   );
 }
 
