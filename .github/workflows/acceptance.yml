@@ -218,6 +218,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # `land-gate.ts` comments on the ticket when it refuses — the one push in this pipeline that
+      # fires no `Verify` run (ADR-0053), so a refusal that only reached this job's log would be the
+      # same silent-red-main hole this step exists to close.
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -229,6 +233,14 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
 
       # Into `runner.temp`, never the checkout: a patch file sitting in the working tree is a file
       # `git am` would then be replaying on top of.
@@ -248,7 +260,22 @@ jobs:
           git am --3way "$RUNNER_TEMP"/acceptance-patches/*.patch
           git fetch origin main
           git rebase origin/main
-          git push origin HEAD:main
+
+      # #274's fix: judge the tree this is about to push by the same gauntlet a human push is
+      # (`bin/gauntlet push`), on the tree as it actually stands after the rebase above — not a
+      # second, looser mechanism. `land-gate.ts`'s own header explains why `bin/gauntlet push` alone
+      # is not the whole check, and what its one mechanical repair covers and where it stops. A
+      # refusal here exits non-zero, which is what stops `git push` on the next line from ever
+      # running — a red run reaches this job's log and the ticket; a red `main` reaches nobody.
+      - name: Judge the tree by the gauntlet a human push is judged by
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
+        run: npx tsx .Workflow/agent-workflows/acceptance/land-gate.ts
+
+      - name: Push to main
+        run: git push origin HEAD:main
 
       # #201's one design point: lane 05 learns a slice is startable from lane 04, after that
       # slice's acceptance tests are on `main`, never from lane 03 at publish time — otherwise the

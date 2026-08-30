@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runCloneGate } from "./clone-gate.ts";
+import { BASELINE_RELATIVE_PATH, repairAcceptanceBaseline, runCloneGate } from "./clone-gate.ts";
 
 /**
  * The gate is a thing whose contract is its exit code and its printed banner, and the defect this
@@ -140,5 +140,90 @@ describe("runCloneGate", () => {
     expect(out).toContain("refusing to scan");
     // One file in the bucket, and it is this one — the nested checkout is not in there with it.
     expect(out).toContain(".(no extension) — 1 file(s), e.g. runner");
+  });
+});
+
+/**
+ * `repairAcceptanceBaseline` — the mechanical fix `land-gate.ts` runs before the acceptance lane
+ * pushes to `main` (see that file, and its own doc comment above the function it calls). A block of
+ * duplicated content, long enough to clear jscpd's 50-token/5-line minimum twice over so the tests
+ * are not sitting on the threshold.
+ */
+const DUP_BLOCK = [
+  "export function summariseRun(samples: number[]): { total: number; peak: number; mean: number } {",
+  "  let total = 0;",
+  "  let peak = Number.NEGATIVE_INFINITY;",
+  "  for (const sample of samples) {",
+  "    total += sample;",
+  "    if (sample > peak) {",
+  "      peak = sample;",
+  "    }",
+  "  }",
+  "  return { total, peak, mean: samples.length === 0 ? 0 : total / samples.length };",
+  "}",
+  "",
+].join("\n");
+
+describe("repairAcceptanceBaseline", () => {
+  it("baselines a clone the scan finds entirely between files under testDir", () => {
+    const dir = makeScratchRepo();
+    mkdirSync(join(dir, "tests/acceptance"), { recursive: true });
+    writeFileSync(join(dir, "tests/acceptance/261-spec-sweep.fixture.ts"), DUP_BLOCK, "utf8");
+    writeFileSync(join(dir, "tests/acceptance/274-stage-names.fixture.ts"), DUP_BLOCK, "utf8");
+
+    const outcome = repairAcceptanceBaseline(dir, "tests/acceptance/");
+
+    expect(outcome.verdict).toBe("repaired");
+    expect(outcome.verdict === "repaired" && outcome.added).toBe(1);
+    const baseline = JSON.parse(readFileSync(join(dir, BASELINE_RELATIVE_PATH), "utf8")) as Array<{
+      where: string[];
+    }>;
+    expect(baseline).toHaveLength(1);
+    expect(baseline[0].where).toEqual([
+      "tests/acceptance/261-spec-sweep.fixture.ts:1",
+      "tests/acceptance/274-stage-names.fixture.ts:1",
+    ]);
+
+    // The repair actually clears the gate it just fed — the point of running this before the push.
+    vi.stubEnv("GAUNTLET_VENUE", "");
+    expect(runCloneGate(dir, [])).toBe(0);
+  });
+
+  it("refuses, and writes nothing, when a clone not in the baseline touches a file outside testDir", () => {
+    const dir = makeScratchRepo();
+    mkdirSync(join(dir, "tests/acceptance"), { recursive: true });
+    writeFileSync(join(dir, "tests/acceptance/261-spec-sweep.fixture.ts"), DUP_BLOCK, "utf8");
+    // Same fragment, but the second copy lives outside tests/acceptance/ — nobody but lane 04 may
+    // touch the acceptance side, but a pull request could touch this one, so it is a real clone.
+    writeFileSync(join(dir, "src-other.ts"), DUP_BLOCK, "utf8");
+
+    const outcome = repairAcceptanceBaseline(dir, "tests/acceptance/");
+
+    expect(outcome.verdict).toBe("refused");
+    expect(outcome.verdict === "refused" && outcome.reason).toContain("outside tests/acceptance/");
+    expect(existsSync(join(dir, BASELINE_RELATIVE_PATH))).toBe(false);
+  });
+
+  it("changes nothing when the scan finds no clone the baseline does not already carry", () => {
+    const dir = makeScratchRepo();
+    mkdirSync(join(dir, "tests/acceptance"), { recursive: true });
+    writeFileSync(join(dir, "tests/acceptance/one.fixture.ts"), "export const ONE = 1;\n", "utf8");
+
+    const before = repairAcceptanceBaseline(dir, "tests/acceptance/");
+    expect(before.verdict).toBe("clean");
+    expect(existsSync(join(dir, BASELINE_RELATIVE_PATH))).toBe(false);
+
+    // Seed a clone, baseline it once, then confirm a second call over the same tree is a no-op —
+    // "nothing changes" holds for an already-baselined clone, not only for a tree with none at all.
+    writeFileSync(join(dir, "tests/acceptance/261-spec-sweep.fixture.ts"), DUP_BLOCK, "utf8");
+    writeFileSync(join(dir, "tests/acceptance/274-stage-names.fixture.ts"), DUP_BLOCK, "utf8");
+    const seeded = repairAcceptanceBaseline(dir, "tests/acceptance/");
+    expect(seeded.verdict).toBe("repaired");
+    const written = readFileSync(join(dir, BASELINE_RELATIVE_PATH), "utf8");
+
+    const again = repairAcceptanceBaseline(dir, "tests/acceptance/");
+
+    expect(again.verdict).toBe("clean");
+    expect(readFileSync(join(dir, BASELINE_RELATIVE_PATH), "utf8")).toBe(written);
   });
 });
