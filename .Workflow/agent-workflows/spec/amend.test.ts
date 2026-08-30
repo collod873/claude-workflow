@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGit } from "../shared/git.fake";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { createFakeStage } from "../shared/stage.fake";
 import { countCriteria } from "../shared/ticket-shape";
 import { runSpecAmendment, type SpecGapReport } from "./amend";
+
+// Every test in this file feeds `runSpecAmendment` the same `GAP`, so every
+// call renders the same substituted prompt for the "amend" stage — without a
+// fresh CHECKPOINTS_DIR per test, the second test to run would silently reuse
+// whichever canned response the first test's checkpoint happened to record.
+// See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 const PRD_BODY = [
   "## What to build",
