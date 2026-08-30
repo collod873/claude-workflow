@@ -1,7 +1,11 @@
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { handoffPath } from "./handoff-path";
+import { reason } from "./reason";
 import { createStreamJsonParser } from "./stream-json";
-import type { StructuredOutput } from "./structured-output";
+import { rejectedResponse, type StructuredOutput } from "./structured-output";
 
 /**
  * One `claude` invocation, as its argv (not including the `claude` binary
@@ -196,6 +200,169 @@ function tail(stderr: string, limit = 2000): string {
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 
+/**
+ * Where a checkpoint (`<stage>.json`) is written and read from — a run's own
+ * directory, distinct from `handoffPath()`'s (a *failure* surface, and one
+ * every lane shares whether or not it checkpoints). `CHECKPOINTS_DIR`
+ * mirrors `FAILURE_REASON_PATH`'s shape for the same reason: a runner job and
+ * a local debug run need to agree on where it is without either hardcoding
+ * the other's path, and a test needs to point it somewhere private without
+ * touching this repo's own checkout.
+ */
+const DEFAULT_CHECKPOINTS_DIR = ".Workflow/agent-workflows/checkpoints";
+
+function checkpointsDir(): string {
+  return process.env.CHECKPOINTS_DIR || DEFAULT_CHECKPOINTS_DIR;
+}
+
+/**
+ * `<stage>.json` under the checkpoints dir. Exported so a lane can read a
+ * sibling stage's checkpoint directly — `to-tickets.ts`'s `readPriorHandoff`
+ * reads the upstream stage's file this way, the same file that stage's own
+ * `runStage` call last wrote.
+ */
+export function checkpointPath(stage: string): string {
+  return join(checkpointsDir(), `${stage}.json`);
+}
+
+/**
+ * Where a stage's rejected raw response is kept: beside the handoff file,
+ * named for the stage. A sibling rather than the handoff path itself
+ * because that one file is the failure *reason*, which the workflow's
+ * `if: failure()` reporter reads and comments — a raw model response
+ * written there would be the comment.
+ */
+export function rawResponsePath(stage: string): string {
+  return join(dirname(handoffPath()), `${stage}-raw-response.txt`);
+}
+
+/**
+ * What a checkpoint is keyed on: this stage's fully substituted prompt,
+ * paired with the commit it ran against, hashed down to one string. A retry
+ * against the same commit with the same prompt reuses the answer; a new
+ * commit, or a prompt an edit changed, is a miss rather than a stale hit.
+ *
+ * `undefined` when the commit can't be named — no `git`, or a directory
+ * that isn't a checkout — which the caller treats as "uncomputable" and
+ * spawns rather than guess at a key nothing could ever match twice.
+ */
+function checkpointKey(prompt: string): string | undefined {
+  let sha: string;
+  try {
+    sha = execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    }).trim();
+  } catch {
+    return undefined;
+  }
+  return createHash("sha256").update(sha).update("\0").update(prompt).digest("hex");
+}
+
+/** What a checkpoint file holds on disk: the key it's good for, and the model's raw response — exactly what `exec` returned, so a read re-validates through the same `output.parse` a live call would. */
+interface CheckpointEnvelope {
+  key: string;
+  response: string;
+}
+
+function isCheckpointEnvelope(value: unknown): value is CheckpointEnvelope {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { key: unknown }).key === "string" &&
+    typeof (value as { response: unknown }).response === "string"
+  );
+}
+
+/**
+ * A stage's checkpointed answer, re-validated through `output.parse` — or
+ * `undefined` for every way this fails open: no checkpoints dir yet, a
+ * checkpoint that can't be read or isn't valid JSON, one shaped wrong, one
+ * keyed for a different prompt or commit, or a commit that can't be named at
+ * all. Fail-open by design — in an unattended pipeline a checkpoint this
+ * can't confidently reuse still has to let the stage run, not refuse it
+ * (CONTEXT.md: *fail-open*).
+ *
+ * A checkpoint that *does* match is not trusted blindly either: `parse` runs
+ * the same schema a live response goes through, so a hand-edited or
+ * corrupted-but-still-JSON file still has to pass it.
+ */
+function loadCheckpoint<T>(stage: string, prompt: string, output: StructuredOutput<T>): T | undefined {
+  const key = checkpointKey(prompt);
+  if (key === undefined) return undefined;
+
+  let raw: string;
+  try {
+    raw = readFileSync(checkpointPath(stage), "utf8");
+  } catch {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+
+  if (!isCheckpointEnvelope(parsed) || parsed.key !== key) return undefined;
+
+  return output.parse(parsed.response);
+}
+
+/**
+ * Persists a stage's accepted response as its checkpoint, keyed on the same
+ * prompt+commit pair a later run would recompute. Silently skipped — never
+ * thrown — when the commit can't be named, or when the write itself fails
+ * (an unwritable checkpoints dir, a path a stray directory is squatting on):
+ * fail-open cuts both ways, and a stage whose *answer* is good must not fail
+ * on the write of a cache entry nothing downstream needs to succeed.
+ */
+function writeCheckpoint(stage: string, prompt: string, response: string): void {
+  const key = checkpointKey(prompt);
+  if (key === undefined) return;
+  try {
+    const path = checkpointPath(stage);
+    mkdirSync(dirname(path), { recursive: true });
+    const envelope: CheckpointEnvelope = { key, response };
+    writeFileSync(path, JSON.stringify(envelope), "utf8");
+  } catch {
+    // Fail open — see above.
+  }
+}
+
+/**
+ * Runs the part of a stage that can reject the model's response, and — if
+ * it does — writes that response to `rawResponsePath(stage)` before
+ * rethrowing with the path named. An error that carries no response — a dead
+ * CLI, a bad spawn — is rethrown untouched.
+ *
+ * This exists because #42 could not be diagnosed from the run that raised
+ * it. Run 32677530530 spent two minutes of real model time and left exactly
+ * one line, `response has 2 <output> blocks`; the response those blocks were
+ * counted in died with the stack, so the only way to see what the model
+ * actually sent was to spend the two minutes again locally and hope the
+ * failure recurred. A stage that refuses a response and discards it is the
+ * shape #41 names — a mechanism that fails without telling anyone — and the
+ * cost lands on whoever has to reproduce it rather than on the run that
+ * already had the evidence in hand.
+ *
+ * Only the rejection paths write: a stage that succeeds leaves no file, so
+ * the presence of one is itself the signal.
+ */
+async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<R> {
+  try {
+    return await work();
+  } catch (err) {
+    const raw = rejectedResponse(err);
+    if (raw === undefined) throw err;
+    const path = rawResponsePath(stage);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, raw, "utf8");
+    throw new Error(`${reason(err)} — the model's raw response is saved at ${path}`);
+  }
+}
+
 /** Per-stage overrides of how the model is invoked. */
 export interface StageOptions {
   /**
@@ -253,6 +420,16 @@ export interface StageOptions {
    * does so only for the ideas whose reading lists happened to be long.
    */
   promptViaStdin?: boolean;
+  /**
+   * This stage's identity for checkpointing and raw-response preservation —
+   * both are keyed on it, and both are opt-in on setting it. Omitted (every
+   * call site outside `to-tickets.ts` today) means neither runs: no
+   * checkpoints directory is touched, and a rejected response is not saved
+   * anywhere beyond the error it's already part of. `to-tickets.ts` is the
+   * one lane retried under its own name (a failed workflow run, re-dispatched
+   * against the same commit), which is what checkpointing is for.
+   */
+  stage?: string;
 }
 
 /**
@@ -273,6 +450,14 @@ export interface StageOptions {
  * placeholder `vars` doesn't cover — a stage prompt with an unresolved
  * `{{VAR}}` is a wiring bug to catch here, not a partially-substituted
  * prompt to hand to a model.
+ *
+ * **Checkpointing, when `options.stage` is set.** Before spawning, a
+ * checkpoint keyed on this stage's substituted prompt and the current commit
+ * is looked up; a match skips `exec` entirely and returns the checkpointed
+ * answer re-validated through `output.parse`. A miss — for any reason, see
+ * `loadCheckpoint` — spawns as usual, and an accepted answer is checkpointed
+ * for the next call to find. A rejected response is preserved the same way
+ * it always was (`preservingRaw`), just relocated here from its one caller.
  */
 export async function runStage<T>(
   promptPath: string,
@@ -290,6 +475,13 @@ export async function runStage<T>(
 
   const template = readFileSync(promptPath, "utf8");
   const prompt = substitute(promptPath, template, vars);
+
+  const stage = options.stage;
+  if (stage !== undefined) {
+    const cached = loadCheckpoint(stage, prompt, output);
+    if (cached !== undefined) return cached;
+  }
+
   const model = options.model ? ["--model", options.model] : [];
   const denied = options.disallowedTools?.length
     ? ["--disallowedTools", options.disallowedTools.join(",")]
@@ -306,21 +498,28 @@ export async function runStage<T>(
     ...allowed,
   ];
 
-  if (options.promptViaStdin) {
-    return output.parse(await exec(["-p", ...flags], prompt));
-  }
+  const spawnAndParse = async (): Promise<T> => {
+    let responseText: string;
+    if (options.promptViaStdin) {
+      responseText = await exec(["-p", ...flags], prompt);
+    } else {
+      // Named rather than left to errno. A stage that outgrows the argv limit
+      // should be told to set `promptViaStdin`, not handed an ENOENT-shaped
+      // failure from `spawn` that mentions nothing about its prompt.
+      if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
+        throw new Error(
+          `${promptPath} renders to ${Buffer.byteLength(prompt, "utf8")} bytes, over the ${MAX_ARG_STRLEN}-byte ` +
+            "limit on a single argv element — this stage needs `promptViaStdin`",
+        );
+      }
+      responseText = await exec(["-p", prompt, ...flags]);
+    }
+    const value = output.parse(responseText);
+    if (stage !== undefined) writeCheckpoint(stage, prompt, responseText);
+    return value;
+  };
 
-  // Named rather than left to errno. A stage that outgrows the argv limit
-  // should be told to set `promptViaStdin`, not handed an ENOENT-shaped
-  // failure from `spawn` that mentions nothing about its prompt.
-  if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
-    throw new Error(
-      `${promptPath} renders to ${Buffer.byteLength(prompt, "utf8")} bytes, over the ${MAX_ARG_STRLEN}-byte ` +
-        "limit on a single argv element — this stage needs `promptViaStdin`",
-    );
-  }
-
-  return output.parse(await exec(["-p", prompt, ...flags]));
+  return stage !== undefined ? preservingRaw(stage, spawnAndParse) : spawnAndParse();
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

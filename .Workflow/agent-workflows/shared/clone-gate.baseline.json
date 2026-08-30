@@ -10,16 +10,6 @@
     ]
   },
   {
-    "hash": "004b9b8a76ab9ba5",
-    "format": "typescript",
-    "lines": 12,
-    "tokens": 96,
-    "where": [
-      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:386",
-      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:405"
-    ]
-  },
-  {
     "hash": "02cceed5646a58f4",
     "format": "typescript",
     "lines": 13,

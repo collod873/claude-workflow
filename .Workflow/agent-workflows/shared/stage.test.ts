@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createFakeStage } from "./stage.fake";
-import { runStage } from "./stage";
+import { checkpointPath, runStage, type StageExec } from "./stage";
 import { structuredOutput } from "./structured-output";
 
 /** A stage schema small enough to read in one line, and object-rooted like every real one. */
@@ -179,5 +179,117 @@ describe("runStage", () => {
       expect(fake.stdins[0]).toBeUndefined();
       expect(fake.calls[0]).toContain("Plain prompt.");
     });
+  });
+});
+
+/**
+ * `StageOptions.stage` opts a call into checkpointing (and raw-response
+ * preservation, covered elsewhere) — every test above leaves it unset, and
+ * behaves exactly as it always has, which is the point of it being opt-in.
+ * Every test here uses its own `stage` name so leftover checkpoint files
+ * from one test can never be mistaken for another's — they'd only collide if
+ * both the stage name *and* the substituted prompt matched, and these tests
+ * mostly reuse the same prompt text.
+ */
+describe("runStage checkpointing (StageOptions.stage)", () => {
+  const checkpointTestDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of checkpointTestDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function writePrompt(contents: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "stage-checkpoint-test-"));
+    checkpointTestDirs.push(dir);
+    const path = join(dir, "prompt.md");
+    writeFileSync(path, contents, "utf8");
+    return path;
+  }
+
+  it("a stage with a key-matching checkpoint calls no StageExec and returns it re-validated through output.parse", async () => {
+    const promptPath = writePrompt("Checkpointed prompt, no vars.");
+    const fake = createFakeStage(RESPONSE);
+
+    const firstValue = await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-hit" });
+    expect(fake.calls).toHaveLength(1);
+
+    const unreachable: StageExec = async () => {
+      throw new Error("StageExec should not have been called for a checkpoint hit");
+    };
+
+    const secondValue = await runStage(promptPath, {}, unreachable, GREETING, { stage: "checkpoint-hit" });
+
+    expect(secondValue).toEqual(firstValue);
+    expect(secondValue).toEqual({ greeting: "hi" });
+  });
+
+  it("writes a checkpoint after a successful run, holding the raw response `output.parse` will re-validate on a hit", async () => {
+    const promptPath = writePrompt("Prompt for a written checkpoint.");
+    const fake = createFakeStage(RESPONSE);
+
+    await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-write" });
+
+    const envelope = JSON.parse(readFileSync(checkpointPath("checkpoint-write"), "utf8"));
+    expect(envelope.response).toBe(RESPONSE);
+  });
+
+  it("does not reuse a checkpoint written for a different prompt", async () => {
+    const firstPromptPath = writePrompt("First prompt.");
+    const first = createFakeStage(RESPONSE);
+    await runStage(firstPromptPath, {}, first.exec, GREETING, { stage: "checkpoint-mismatch" });
+
+    const secondPromptPath = writePrompt("A different prompt.");
+    const second = createFakeStage(RESPONSE);
+    await runStage(secondPromptPath, {}, second.exec, GREETING, { stage: "checkpoint-mismatch" });
+
+    expect(second.calls).toHaveLength(1);
+  });
+
+  it("spawns when there is no checkpoint yet (an absent checkpoints dir)", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+
+    const value = await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-absent" });
+
+    expect(fake.calls).toHaveLength(1);
+    expect(value).toEqual({ greeting: "hi" });
+  });
+
+  it("spawns when the checkpoint file can't be read (not a regular file)", async () => {
+    const promptPath = writePrompt("Prompt.");
+    mkdirSync(checkpointPath("checkpoint-unreadable"), { recursive: true });
+    const fake = createFakeStage(RESPONSE);
+
+    const value = await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-unreadable" });
+
+    expect(fake.calls).toHaveLength(1);
+    expect(value).toEqual({ greeting: "hi" });
+  });
+
+  it("spawns when the checkpoint isn't valid JSON", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const path = checkpointPath("checkpoint-garbage");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "not json", "utf8");
+    const fake = createFakeStage(RESPONSE);
+
+    await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-garbage" });
+
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("spawns when the commit can't be named (not a git checkout)", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+    const cwd = mkdtempSync(join(tmpdir(), "no-git-cwd-"));
+    const originalCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      await runStage(promptPath, {}, fake.exec, GREETING, { stage: "checkpoint-no-git" });
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+
+    expect(fake.calls).toHaveLength(1);
   });
 });

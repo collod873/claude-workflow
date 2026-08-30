@@ -1,7 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
+import { writeFailure } from "../shared/handoff-path";
 import {
   AUDIT_OUTPUT,
   Plan,
@@ -11,66 +12,11 @@ import {
 } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
-import { rejectedResponse, type StructuredOutput } from "../shared/structured-output";
+import { checkpointPath, execClaude, rawResponsePath, runStage, type StageExec } from "../shared/stage";
+import type { StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
 import { sliceAndPublish } from "./slice-and-publish";
 import { SEAM_SWEEP_OUTPUT, type SeamManifest } from "./seam-sweep/schema";
-
-/**
- * The repo-relative fallback for `handoffPath()` — used for a local run,
- * where the runner's `FAILURE_REASON_PATH` env var is never set.
- */
-const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
-
-/**
- * The fixed path every stage hands its typed output to the next stage
- * through, and where a dying stage's failure reason lands instead. One
- * path, reused across the pipeline's sequential steps: whichever stage runs
- * last before a failure overwrites it, which is exactly what the workflow's
- * `if: failure()` reporter (see `.github/workflows/to-tickets.yml`) reads to
- * name which stage died. There is no per-stage path — a stage's own output
- * is consumed (via `{{VAR}}` substitution into the next stage's prompt)
- * before the next stage's write would overwrite this file.
- *
- * Resolved live, not fixed at import time, so both venues this pipeline
- * runs in agree on the same file rather than two paths that can drift
- * apart: the runner sets `FAILURE_REASON_PATH` to
- * `${{ runner.temp }}/failure_reason.txt`, which `to-tickets.yml`'s
- * `if: failure()` step reads, so a runner run must write there; a local
- * debug run has no such env var, so it falls back to a repo-relative path
- * instead. Every write in this file — success or failure — goes through
- * this one function.
- */
-export function handoffPath(): string {
-  return process.env.FAILURE_REASON_PATH || DEFAULT_HANDOFF_PATH;
-}
-
-/**
- * Writes a stage's failure reason to the handoff path. Overwrites whatever
- * was there — on failure there is nothing downstream left to read a stale
- * success from.
- */
-export function writeFailure(stage: string, reason: string): void {
-  writeHandoff(`${stage}: ${reason}\n`);
-}
-
-/**
- * Where a stage's rejected raw response is kept: beside the handoff file,
- * named for the stage. A sibling rather than the handoff path itself
- * because that one file is the failure *reason*, which the workflow's
- * `if: failure()` reporter reads and comments — a raw model response
- * written there would be the comment.
- */
-export function rawResponsePath(stage: string): string {
-  return join(dirname(handoffPath()), `${stage}-raw-response.txt`);
-}
-
-function writeHandoff(contents: string): void {
-  const path = handoffPath();
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, contents, "utf8");
-}
 
 /**
  * Local-debug entrypoint for the plan half of the pipeline: reads a plan as
@@ -172,11 +118,15 @@ interface TypedStageConfig<T> {
 
 /**
  * Shared plumbing every stage's `run` closure is built from: substitutes
- * `config`'s vars into its prompt, spawns it through the injected `exec` with
- * its JSON Schema on the argv, runs any additional validation `config`
- * declares, and writes the typed result to the handoff path. A bad spawn, a
+ * `config`'s vars into its prompt, spawns it through the injected `exec`,
+ * checkpointing under the stage's own name (`runStage`'s `options.stage`),
+ * and runs any additional validation `config` declares. A bad spawn, a
  * response the schema refuses, or a failed validation all throw — there is
  * no repair path here; the caller reports and exits.
+ *
+ * A checkpoint hit skips the spawn but still runs `config.validate` and
+ * `config.measure` against whatever it returned — a checkpointed answer gets
+ * exactly the scrutiny a fresh one would, never less.
  */
 async function runTypedStage<T>(
   stage: string,
@@ -184,59 +134,19 @@ async function runTypedStage<T>(
   issueNumber: string,
   exec: StageExec,
 ): Promise<T> {
-  const output = await preservingRaw(stage, async () => {
-    const value = await runStage(
-      config.promptPath,
-      config.buildVars(issueNumber),
-      exec,
-      config.output,
-    );
-    config.validate?.(value);
-    return value;
+  const value = await runStage(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
+    stage,
   });
+  config.validate?.(value);
   if (config.measure) {
-    console.log(`${stage}: ${config.measure(output)}`);
+    console.log(`${stage}: ${config.measure(value)}`);
   }
-  writeHandoff(JSON.stringify(output));
-  return output;
-}
-
-/**
- * Runs the part of a stage that can reject the model's response, and — if
- * it does — writes that response to `rawResponsePath(stage)` before
- * rethrowing with the path named. An error that carries no response — a dead
- * CLI, a bad spawn, a graph validation that ran on an accepted plan — is
- * rethrown untouched.
- *
- * This exists because #42 could not be diagnosed from the run that raised
- * it. Run 32677530530 spent two minutes of real model time and left exactly
- * one line, `response has 2 <output> blocks`; the response those blocks were
- * counted in died with the stack, so the only way to see what the model
- * actually sent was to spend the two minutes again locally and hope the
- * failure recurred. A stage that refuses a response and discards it is the
- * shape #41 names — a mechanism that fails without telling anyone — and the
- * cost lands on whoever has to reproduce it rather than on the run that
- * already had the evidence in hand.
- *
- * Only the rejection paths write: a stage that succeeds leaves no file, so
- * the presence of one is itself the signal.
- */
-async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<R> {
-  try {
-    return await work();
-  } catch (err) {
-    const raw = rejectedResponse(err);
-    if (raw === undefined) throw err;
-    const path = rawResponsePath(stage);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, raw, "utf8");
-    throw new Error(`${reason(err)} — the model's raw response is saved at ${path}`);
-  }
+  return value;
 }
 
 /**
  * Builds a `StageDef` for a plain schema-checked stage: run it, log the
- * same two success lines every such stage has always logged, and return the
+ * same success line every such stage has always logged, and return the
  * typed output — erased, from here out, to `unknown`. `gh` is accepted (for
  * a uniform `run` signature across every stage) but never called.
  */
@@ -244,7 +154,7 @@ function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   return {
     run: async (issueNumber, exec) => {
       const output = await runTypedStage(name, config, issueNumber, exec);
-      console.log(`${name}: wrote a schema-valid output to ${handoffPath()}`);
+      console.log(`${name}: wrote a schema-valid output`);
       console.log(JSON.stringify(output, null, 2));
       return output;
     },
@@ -315,14 +225,13 @@ const SEAM_SWEEP_CONFIG: TypedStageConfig<SeamManifest> = {
 };
 
 /**
- * The slice stage consumes the seam manifest the seam-sweep stage just wrote
- * to the shared handoff path — read live here, at call time, so this stage
- * always sees whatever currently sits there rather than a value captured at
- * import time. Its own output (a `Plan`) then overwrites that same file,
- * which is how the pipeline hands work from one stage to the next (see
- * `handoffPath()` above). Beyond schema validation, a plan must also pass
- * `validatePlan` (graph shape: no self-reference, no cycle, no out-of-range
- * edge, at least one unblocked root) before it's handed off.
+ * The slice stage consumes the seam manifest the seam-sweep stage's
+ * checkpoint holds — read live here, at call time, through
+ * `readPriorHandoff`, so this stage always sees whatever that stage's most
+ * recent run left rather than a value captured at import time. Beyond
+ * schema validation, a plan must also pass `validatePlan` (graph shape: no
+ * self-reference, no cycle, no out-of-range edge, at least one unblocked
+ * root) before it's handed off.
  */
 const SLICE_CONFIG: TypedStageConfig<Plan> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/slice/prompt.md",
@@ -330,27 +239,51 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
     VOCABULARY: vocabulary(),
-    SEAM_MANIFEST: readPriorHandoff("slice"),
+    SEAM_MANIFEST: readPriorHandoff("seam-sweep", SEAM_SWEEP_OUTPUT),
   }),
   validate: validatePlan,
   measure: measurePlan,
 };
 
 /**
- * Reads whatever the previous stage left at the shared handoff path, for a
- * stage (like slice, or audit-and-publish) whose prompt needs that as an
- * input. Wraps the read error with which stage needed it and where it
- * looked, since "ENOENT" alone doesn't say a prior stage never ran.
+ * Reads the named upstream stage's checkpoint (`../shared/stage.ts`'s
+ * `checkpointPath`) and re-validates it through that stage's own
+ * `StructuredOutput`, for a stage (like slice, or audit-and-publish) whose
+ * prompt needs the prior stage's answer as an input. Returns it re-serialised
+ * as JSON — the same shape `{{VAR}}` substitution has always injected.
+ *
+ * **Reads the checkpoint, not the shared handoff.** A successful stage no
+ * longer writes its accepted output to `handoffPath()` (see
+ * `../shared/handoff-path.ts`) — that file is a failure surface now, nothing
+ * else. Its checkpoint is the only place its answer still lives, which is
+ * also what makes a retry cheap: `--stage slice` on a re-run finds the same
+ * checkpoint here that a fresh `--stage seam-sweep` would have written, and
+ * spawns nothing to get it.
+ *
+ * Wraps every read failure — missing file, invalid JSON, a response the
+ * schema now refuses — with which stage needed it and where it looked,
+ * since "ENOENT" alone doesn't say a prior stage never ran.
  */
-function readPriorHandoff(stageName: string): string {
+function readPriorHandoff<T>(priorStage: string, priorOutput: StructuredOutput<T>): string {
+  const path = checkpointPath(priorStage);
+  let raw: string;
   try {
-    return readFileSync(handoffPath(), "utf8");
+    raw = readFileSync(path, "utf8");
   } catch (err) {
-    const detail = reason(err);
-    throw new Error(
-      `${stageName} needs the prior stage's handoff at ${handoffPath()}, but it could not be read: ${detail}`,
-    );
+    throw new Error(`needs ${priorStage}'s checkpoint at ${path}, but it could not be read: ${reason(err)}`);
   }
+
+  let envelope: { response?: unknown };
+  try {
+    envelope = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`needs ${priorStage}'s checkpoint at ${path}, but it is not valid JSON: ${reason(err)}`);
+  }
+  if (typeof envelope.response !== "string") {
+    throw new Error(`needs ${priorStage}'s checkpoint at ${path}, but it has no response field`);
+  }
+
+  return JSON.stringify(priorOutput.parse(envelope.response));
 }
 
 /**
@@ -369,7 +302,7 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
     VOCABULARY: vocabulary(),
-    PLAN: readPriorHandoff("audit"),
+    PLAN: readPriorHandoff("slice", SLICE_OUTPUT),
   }),
   measure: (audited) => measurePlan(audited.slices),
 };
@@ -384,15 +317,19 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
  * how many sub-issues published. `sliceAndPublish`'s own `validatePlan` call
  * is what makes an audited plan that fails graph validation exit nonzero with
  * zero `gh` calls made — nothing here re-checks graph shape separately.
+ *
+ * Checkpointed like every other stage (`runTypedStage`'s `stage` arg), so a
+ * retry after this alone failed — the other two stages' checkpoints still
+ * matching the commit — spawns a model only here.
  */
 const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => {
   const audited = await runTypedStage("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
   if (audited.notes) {
     console.log(audited.notes);
   }
-  // A graph rejection is the one way left to lose an accepted plan: the
-  // failure path overwrites the handoff file with its reason, so the plan
-  // this refuses would otherwise go with it.
+  // A graph rejection is the one way left to lose an accepted plan: preserved
+  // beside the checkpoint, the same bargain `preservingRaw` makes for a
+  // refused response, so the plan this refuses is not simply gone.
   const published = keepingPlan(audited.slices, () =>
     sliceAndPublish(audited.slices, Number(issueNumber), gh),
   );
@@ -405,8 +342,9 @@ const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => 
 /**
  * Runs the publish and, if it refuses the plan, writes that plan beside the
  * handoff before rethrowing with the path named — the same bargain
- * `preservingRaw` makes for a refused response, for the one rejection that
- * happens after a response has already been accepted.
+ * `preservingRaw` (`../shared/stage.ts`) makes for a refused response, for
+ * the one rejection that happens after a response has already been accepted
+ * and checkpointed.
  */
 function keepingPlan<R>(plan: Plan, work: () => R): R {
   try {

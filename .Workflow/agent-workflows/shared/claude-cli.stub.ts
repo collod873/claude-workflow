@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { checkpointPath } from "./stage";
 
 /**
  * What the stub `claude` answers with.
@@ -25,14 +26,18 @@ export type StubAnswer = string | { structured: unknown };
  * noise with no result event behind it.
  *
  * Takes `dir` rather than creating one, so its lifetime is the caller's to
- * own — typically `withHandoffDir()`. When `priorHandoff` is given, it is
- * seeded at the handoff path before the stub runs, for a stage (like
- * `slice`) that reads a prior stage's handoff as its own input.
+ * own — typically `withHandoffDir()`. When `priorCheckpoint` is given, it is
+ * seeded at that stage's checkpoint path before the stub runs, for a stage
+ * (like `slice`) that reads a prior stage's checkpoint as its own input —
+ * `response` is the prior stage's wire-format answer, exactly the shape its
+ * own `StructuredOutput` would parse (e.g. `{"entries":["a seam"]}` for
+ * seam-sweep), since that is what a real checkpoint holds and what the
+ * reading stage's `output.parse` is run against.
  */
 export function stubClaudeCli(
   dir: string,
   answer: StubAnswer,
-  priorHandoff?: string,
+  priorCheckpoint?: { stage: string; response: string },
 ): { env: NodeJS.ProcessEnv; handoffFile: string } {
   const result =
     typeof answer === "string"
@@ -54,14 +59,18 @@ export function stubClaudeCli(
   chmodSync(stubPath, 0o755);
 
   const handoffFile = join(dir, "handoff.txt");
-  if (priorHandoff !== undefined) {
-    writeFileSync(handoffFile, priorHandoff, "utf8");
-  }
 
   const env = {
     ...process.env,
     PATH: `${stubDir}:${process.env.PATH ?? ""}`,
     FAILURE_REASON_PATH: handoffFile,
   };
+
+  if (priorCheckpoint !== undefined) {
+    const path = checkpointPath(priorCheckpoint.stage);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ key: "stub", response: priorCheckpoint.response }), "utf8");
+  }
+
   return { env, handoffFile };
 }
