@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0112
+
 The numbered open question is lane 02's **only** output for anything it cannot settle. §02 already
 made one thing take that form — *every place it had to invent intent becomes a numbered open question
 rather than a silent assumption* — and two more join it rather than getting mechanisms of their own:

@@ -2,6 +2,8 @@
 
 Recorded 2026-08-29.
 
+Status: superseded by ADR-0112
+
 Amends: ADR-0085
 
 ADR-0085 gave the warm door a critic and no author, so the rounds it settles reach the owner's
