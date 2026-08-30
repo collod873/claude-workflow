@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { CloseTicketResult } from "../shared/close-ticket";
 import type { GhExec } from "../shared/gh";
 import { issueCommentPathMatcher, issueCommentsPathMatcher, matchingRefsPath, subIssuesPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
@@ -38,6 +39,10 @@ interface FakeClosed {
   stateReason: "completed" | "not_planned";
   /** Whether a merged pull request closed it. */
   merged?: boolean;
+  /** When the closing PR merged — the spec-closing pass's own "branch position" ordering. */
+  mergedAt?: string;
+  /** The closing PR's own merge commit — what the spec-closing pass's synthesized range names. */
+  mergeSha?: string;
 }
 
 /**
@@ -84,6 +89,22 @@ function createFake(options: FakeOptions): FakeGh {
   const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
   const open = new Map(options.open.map((issue) => [issue.number, issue]));
 
+  /**
+   * How this fake reports a related issue: its number and its state, resolved off the one
+   * `closed`/`open` bookkeeping every handler here shares. Both edge endpoints answer in this
+   * shape — blocked-by edges and sub-issues — and the reconciler reads `state`/`state_reason` from
+   * each, so they are answered by one function rather than two that can drift apart.
+   */
+  const issueRefs = (numbers: number[]): string =>
+    JSON.stringify(
+      numbers.map((number) => {
+        const record = closed.get(number);
+        return record
+          ? { number, state: "closed", state_reason: record.stateReason }
+          : { number, state: "open", state_reason: null };
+      }),
+    );
+
   const gh: GhExec = (args) => {
     calls.push([...args]);
 
@@ -126,7 +147,13 @@ function createFake(options: FakeOptions): FakeGh {
 
     if (args[0] === "pr" && args[1] === "view") {
       const record = closed.get(closerOwner(Number(args[2])));
-      return `${record?.merged ? "MERGED" : "CLOSED"}\n`;
+      if (args.includes("--jq")) return `${record?.merged ? "MERGED" : "CLOSED"}\n`;
+      // `--json mergedAt,mergeCommit`, no `--jq` — the spec-closing pass's own "branch position"
+      // read, asked only of a PR the two-call delivery question above already found merged.
+      return JSON.stringify({
+        mergedAt: record?.merged ? record.mergedAt ?? null : null,
+        mergeCommit: record?.merged && record.mergeSha ? { oid: record.mergeSha } : null,
+      });
     }
 
     if (args[0] === "issue" && args[1] === "comment") {
@@ -186,21 +213,15 @@ function createFake(options: FakeOptions): FakeGh {
       const edges = /\/issues\/(\d+)\/dependencies\/blocked_by$/.exec(path);
       if (edges) {
         if (options.fail === "edges") throw new Error("gh: 403");
-        const blockers = open.get(Number(edges[1]))?.blockedBy ?? [];
-        return JSON.stringify(
-          blockers.map((number) => {
-            const record = closed.get(number);
-            return record
-              ? { number, state: "closed", state_reason: record.stateReason }
-              : { number, state: "open", state_reason: null };
-          }),
-        );
+        return issueRefs(open.get(Number(edges[1]))?.blockedBy ?? []);
       }
 
       const subIssues = subIssuesPathMatcher.exec(path);
       if (subIssues) {
-        const children = open.get(Number(subIssues[1]))?.children ?? [];
-        return JSON.stringify(children.map((number) => ({ number })));
+        // `{number}` is all `fetchSubIssueCount` asks for; the spec-closing pass's own
+        // `fetchChildren` reads `state`/`state_reason` off the same endpoint, so both are served
+        // the same way.
+        return issueRefs(open.get(Number(subIssues[1]))?.children ?? []);
       }
     }
 
@@ -211,6 +232,32 @@ function createFake(options: FakeOptions): FakeGh {
 }
 
 const silent = () => {};
+
+/** A runnable spec body: one criterion, one well-formed `check:` marker. Shared by the spec-evaluate and spec-closing describes below. */
+const RUNNABLE_BODY = [
+  "## Acceptance criteria",
+  "",
+  "- [ ] I'll know it works when I can see a verdict on the spec — check: `true`",
+  "",
+].join("\n");
+
+/**
+ * One reconcile pass over a tracker holding exactly one open issue, returning the fake for the
+ * assertions. Every case in the spec-evaluate block differs only in the issue it starts from, so
+ * the pass itself is written once.
+ */
+function passOver(issue: FakeIssue): FakeGh {
+  const fake = createFake({ open: [issue] });
+  runReconcile({ gh: fake.gh, log: silent });
+  return fake;
+}
+
+/** Every write — a fresh `issue comment` or a rewritten `commentEdits` entry — carrying `marker`. */
+function commentsCarrying(fake: FakeGh, marker: string): string[] {
+  return [...fake.comments.map((entry) => entry.body), ...fake.commentEdits.map((entry) => entry.body)].filter(
+    (body) => body.includes(marker),
+  );
+}
 
 /**
  * The delivery question, replayed against payloads recorded from the live tracker rather than
@@ -532,13 +579,6 @@ describe("runReconcile refuses to answer when it cannot read its own inputs", ()
 });
 
 describe("runReconcile's spec-evaluate pass (#237)", () => {
-  const RUNNABLE_BODY = [
-    "## Acceptance criteria",
-    "",
-    "- [ ] I'll know it works when I can see a verdict on the spec — check: `true`",
-    "",
-  ].join("\n");
-
   const UNRUNNABLE_BODY = [
     "## Acceptance criteria",
     "",
@@ -546,24 +586,6 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
     "- [ ] And also when I can see the second thing — check: `true`",
     "",
   ].join("\n");
-
-  /**
-   * One reconcile pass over a tracker holding exactly one open issue, returning the fake for the
-   * assertions. Every case in this block differs only in the issue it starts from and the verdict
-   * it expects, so the pass itself is written once.
-   */
-  function passOver(issue: FakeIssue): FakeGh {
-    const fake = createFake({ open: [issue] });
-    runReconcile({ gh: fake.gh, log: silent });
-    return fake;
-  }
-
-  /** Every write — a fresh `issue comment` or a rewritten `commentEdits` entry — carrying `marker`. */
-  function commentsCarrying(fake: FakeGh, marker: string): string[] {
-    return [...fake.comments.map((entry) => entry.body), ...fake.commentEdits.map((entry) => entry.body)].filter(
-      (body) => body.includes(marker),
-    );
-  }
 
   it("upserts prd-check:v1 for a runnable spec with a sub-issue, and writes neither prd-unrunnable:v1 nor needs-human", () => {
     const fake = createFake({
@@ -636,6 +658,152 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
 
     expect(commentsCarrying(fake, "prd-check:v1").length).toBeGreaterThan(0);
     expect(fake.labelsRemoved).toEqual([]);
+  });
+});
+
+/**
+ * Lane 09's spec-closing pass (#233): once a spec's own check reads green, its own
+ * `bin/close-ticket --spec` — injected here the way `integrate.test.ts` injects `closeTicket` —
+ * runs against a range synthesized from its children's own delivering merges, and never runs at
+ * all with an undelivered child.
+ */
+describe("runReconcile's spec-closing pass (#233)", () => {
+  interface CloseCall {
+    number: number;
+    range: string;
+  }
+
+  /** Records every `closeSpec` invocation, in call order, and hands back the canned `result` for each. */
+  function fakeCloser(result: CloseTicketResult): {
+    closeSpec: (number: number, range: string) => CloseTicketResult;
+    calls: CloseCall[];
+  } {
+    const calls: CloseCall[] = [];
+    return {
+      calls,
+      closeSpec: (number, range) => {
+        calls.push({ number, range });
+        return result;
+      },
+    };
+  }
+
+  /** A child closed as completed by a merged pull request — the estate's `delivered`. */
+  function delivered(number: number, mergedAt: string, mergeSha: string): FakeClosed {
+    return { number, stateReason: "completed", merged: true, mergedAt, mergeSha };
+  }
+
+  /** A runnable spec carrying `children`, which is the only thing that differs between these cases. */
+  function spec(number: number, children: number[], body: string = RUNNABLE_BODY) {
+    return { number, title: "A spec", body, labels: ["prd"], children };
+  }
+
+  /**
+   * Builds the tracker `setup` describes, runs the pass over it, and hands back every closer
+   * invocation. Arranging a fake, injecting a recording closer and running the pass is the same
+   * three lines in every case below — so each case spells out only the tracker it starts from,
+   * which is the thing it is actually about.
+   */
+  function runClosingPass(setup: FakeOptions, result: CloseTicketResult = { exitCode: 0, output: "" }): CloseCall[] {
+    const fake = createFake(setup);
+    const closer = fakeCloser(result);
+    runReconcile({ gh: fake.gh, log: silent, closeSpec: closer.closeSpec });
+    return closer.calls;
+  }
+
+  /** A spec whose own criterion cannot check out — `false` never exits 0. */
+  const UNMET_BODY = [
+    "## Acceptance criteria",
+    "",
+    "- [ ] I'll know it works when I can see a verdict on the spec — check: `false`",
+    "",
+  ].join("\n");
+
+  it("invokes bin/close-ticket --spec once its own check reads green and every child is delivered", () => {
+    const calls = runClosingPass(
+      {
+        open: [spec(400, [401, 402])],
+        closed: [delivered(401, "2026-01-01T00:00:00Z", "aaa111"), delivered(402, "2026-01-02T00:00:00Z", "bbb222")],
+      },
+      { exitCode: 0, output: "## Closing record\n\n..." },
+    );
+
+    expect(calls).toEqual([{ number: 400, range: "aaa111^..bbb222" }]);
+  });
+
+  /**
+   * Every way a spec can fail to be closeable. The act and the assertion are identical across all
+   * of them — the closer is never reached — so the tracker each starts from is the whole of the
+   * case, and a table says that more plainly than five near-identical bodies do.
+   */
+  it.each([
+    { why: "a child is still open", setup: { open: [spec(420, [421])] } },
+    {
+      why: "a child was closed as not planned",
+      setup: { open: [spec(430, [431])], closed: [{ number: 431, stateReason: "not_planned" as const }] },
+    },
+    {
+      why: "a child was closed by hand rather than by a merged pull request",
+      setup: { open: [spec(440, [441])], closed: [{ number: 441, stateReason: "completed" as const }] },
+    },
+    {
+      // #447 carries no `closed` record at all — still open.
+      why: "one child among several is undelivered",
+      setup: { open: [spec(445, [446, 447])], closed: [delivered(446, "2026-01-01T00:00:00Z", "x")] },
+    },
+    {
+      why: "the spec's own check does not read green, whatever the children's delivery",
+      setup: { open: [spec(490, [491], UNMET_BODY)], closed: [delivered(491, "2026-01-01T00:00:00Z", "y")] },
+    },
+  ])("never invokes the closer when $why", ({ setup }) => {
+    expect(runClosingPass(setup)).toEqual([]);
+  });
+
+  /**
+   * The range is `<first merge>^..<last merge>` by **branch position** — where the delivering
+   * commits sit, not what the child issues are numbered. Each row varies only the merges, which is
+   * exactly the variable the rule is about.
+   */
+  it.each([
+    {
+      what: "orders the range by when each delivering pull request merged, not by the child issue's own number",
+      // #460 carries the higher issue number but merged first — the range must still start there.
+      setup: {
+        open: [spec(450, [452, 460])],
+        closed: [delivered(460, "2026-01-01T00:00:00Z", "early111"), delivered(452, "2026-01-02T00:00:00Z", "late222")],
+      },
+      expected: { number: 450, range: "early111^..late222" },
+    },
+    {
+      what: "collapses a single delivering child to <merge>^..<merge>",
+      setup: { open: [spec(470, [471])], closed: [delivered(471, "2026-01-01T00:00:00Z", "solo333")] },
+      expected: { number: 470, range: "solo333^..solo333" },
+    },
+  ])("$what", ({ setup, expected }) => {
+    expect(runClosingPass(setup)).toEqual([expected]);
+  });
+
+  it("rewrites the verdict naming both exit codes on a pass/closer disagreement, leaves the spec open, and writes no needs-human", () => {
+    const fake = createFake({
+      open: [spec(480, [481])],
+      closed: [delivered(481, "2026-01-01T00:00:00Z", "sha444")],
+    });
+
+    runReconcile({
+      gh: fake.gh,
+      log: silent,
+      closeSpec: () => ({ exitCode: 1, output: "error: #481 is not delivered enough after all" }),
+    });
+
+    const verdicts = commentsCarrying(fake, "prd-check:v1");
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toContain("exit 0");
+    expect(verdicts[0]).toContain("bin/close-ticket --spec");
+    expect(verdicts[0]).toContain("exit 1");
+    expect(verdicts[0]).toContain("error: #481 is not delivered enough after all");
+
+    expect(fake.labelsAdded.map((entry) => entry.name)).not.toContain("needs-human");
+    expect(fake.closedByRun).toEqual([]);
   });
 });
 

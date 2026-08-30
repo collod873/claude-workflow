@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { childEnv } from "../shared/child-env";
+import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
@@ -35,19 +36,12 @@ export interface GauntletResult {
 }
 
 /**
- * One `bin/close-ticket` invocation's outcome. Exit `0` is the only shape that closed anything:
- * the record posted and the ticket closed. Every other exit means the ticket is still open —
- * a criterion's `check:` command failed, the body's criteria came back every-one-unverified
- * (the refusal #215 landed: zero of any number is not evidence), or the script could not run at
- * all. Those are one case here on purpose: they differ in cause and not in consequence, and the
- * consequence — the ticket stays open, said so on the ticket — is the whole decision this lane
- * makes. Nothing downstream branches on the cause, so nothing downstream is offered it.
+ * One `bin/close-ticket` invocation's outcome, re-exported from the shared seam both closing lanes
+ * reach it through (`shared/close-ticket.ts`). Exit `0` is the only shape that closed anything: the
+ * record posted and the ticket closed. Every other exit means the ticket is still open, and the
+ * reasons it can decline are deliberately one case — see the seam for why.
  */
-export interface CloseTicketResult {
-  exitCode: number;
-  /** Everything the invocation said, stdout and stderr folded together. Quoted back onto the ticket when it refuses — that text names the criterion that did not check out, and nobody is watching this run's log. */
-  output: string;
-}
+export type { CloseTicketResult };
 
 /**
  * What became of the ticket the merged pull request named (#195). A merge that landed is never
@@ -505,19 +499,11 @@ export function runRealGauntlet(): GauntletResult {
  * the tree the criteria run against. That checkout is already the merged content with dependencies
  * installed, which is what makes a criterion like `npx vitest run …` mean anything here.
  *
- * `spawnSync` rather than `execFileSync`: the refusal path needs the output, and `execFileSync`
- * splits it across a thrown `Error`'s message and a `stdout` field. `close-ticket` writes its
- * verdict to stderr and its record to stdout, so both halves are folded together here.
+ * The argv is the whole of this lane's contribution; the spawn and its output folding live in
+ * `shared/close-ticket.ts`, which lane 09's `--spec` closer reaches through too.
  */
 export function runRealCloseTicket(ticket: number, range: string): CloseTicketResult {
-  const result = spawnSync("bin/close-ticket", [String(ticket), range, "."], {
-    encoding: "utf8",
-    env: childEnv(),
-  });
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? result.error.message : ""}`;
-  // A spawn that never ran has a null status; it did not close the ticket, which is all the
-  // caller decides on (see `CloseTicketResult`).
-  return { exitCode: result.status ?? 1, output };
+  return closeTicketProcess([String(ticket), range, "."]);
 }
 
 /** One line naming what became of the ticket, for the runner log — the lane's exit code says only whether the merge happened. */
