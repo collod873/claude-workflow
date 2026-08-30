@@ -27,10 +27,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "tests/acceptance/**/*.test.ts"],
-    setupFiles: [
-      ".Workflow/agent-workflows/shared/scrub-git-env.setup.ts",
-      ".Workflow/agent-workflows/shared/isolate-checkpoints.setup.ts",
-    ],
+    setupFiles: [".Workflow/agent-workflows/shared/scrub-git-env.setup.ts"],
     maxWorkers: 4,
     testTimeout: 30_000,
   },

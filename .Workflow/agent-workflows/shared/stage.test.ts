@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { isolateCheckpointsPerTest } from "./isolate-checkpoints.setup";
 import { createFakeStage } from "./stage.fake";
 import { checkpointPath, runStage, type StageExec } from "./stage";
 import { structuredOutput } from "./structured-output";
@@ -20,6 +21,10 @@ function jsonSchemaFlag(argv: string[]): string | undefined {
 }
 
 describe("runStage", () => {
+  // Without this, two tests here that checkpoint the same stage could
+  // collide on the same key and one would silently read the other's answer.
+  beforeEach(isolateCheckpointsPerTest);
+
   let dir: string | undefined;
 
   afterEach(() => {
