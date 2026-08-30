@@ -1,4 +1,4 @@
-import type { GhExec } from "../shared/gh";
+import { issueComments, type GhExec } from "../shared/gh";
 import { isAccepted, isRefusal, readSheetMarker } from "./marker";
 import type { Sheet } from "./sheet-schema";
 import { CHANGE_REQUEST_CAP } from "./sheet";
@@ -13,17 +13,6 @@ import { CHANGE_REQUEST_CAP } from "./sheet";
  * list on every run rather than stored anywhere — which also means it cannot
  * go stale, the property §6 credits for making a count free.
  */
-
-/** One comment as `gh issue view --json comments` returns it. */
-interface RawComment {
-  body?: string;
-}
-
-function readComments(gh: GhExec, issueNumber: number): string[] {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
-  const parsed = JSON.parse(raw) as { comments?: RawComment[] };
-  return (parsed.comments ?? []).map((comment) => comment.body ?? "");
-}
 
 export interface Round {
   /** 0 for the first run on an idea, then one per change request. */
@@ -56,7 +45,7 @@ export interface Round {
 
 /** Reads the issue and works out where this run sits. */
 export function roundFor(gh: GhExec, issueNumber: number): Round {
-  const bodies = readComments(gh, issueNumber);
+  const bodies = issueComments(gh, issueNumber);
 
   const sheets = bodies.map(readSheetMarker).filter((sheet): sheet is Sheet => sheet !== undefined);
   const spoken = sheets.length + bodies.filter(isRefusal).length;

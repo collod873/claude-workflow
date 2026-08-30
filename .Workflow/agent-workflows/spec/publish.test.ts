@@ -147,57 +147,14 @@ describe("updateSpec", () => {
   });
 });
 
+/**
+ * #263 moved collector selection off the trigger and onto the labelled issue's own content —
+ * `spec.test.ts`'s own `planSpecRun` describe block covers that reading directly, with a `gh` fake
+ * that answers both `issue view --json comments` and the `issue list` search `alreadySliced` runs.
+ * These two are kept here because `fakeGh` above already answers `issue view` with `options.specBody`
+ * for every field set, which is exactly what the critique door needs and nothing more.
+ */
 describe("planSpecRun", () => {
-  it("sends a sheet trigger to the sheet collector and publishes a new spec", () => {
-    const { gh } = fakeGh();
-
-    const plan = planSpecRun(gh, { trigger: "sheet", issueNumber: 42 });
-
-    expect(plan).toMatchObject({
-      path: "author",
-      input: { kind: "sheet", issueNumber: 42 },
-      target: { mode: "publish", source: { kind: "sheet", issue: 42 } },
-    });
-  });
-
-  it("sends a map trigger to the map collector and publishes a new spec", () => {
-    const { gh } = fakeGh();
-
-    const plan = planSpecRun(gh, { trigger: "map", issueNumber: 76 });
-
-    expect(plan).toMatchObject({
-      path: "author",
-      input: { kind: "map", issueNumber: 76 },
-      target: { mode: "publish", source: { kind: "map", issue: 76 } },
-    });
-  });
-
-  it("re-runs an answer against the spec's recorded source, and rewrites the spec in place", () => {
-    // The point of the marker: a comment event knows the spec's number, and every collector reads
-    // the *source* the spec was drafted from.
-    const { gh } = fakeGh({ specBody: specBody("the spec", SHEET_SOURCE) });
-
-    const plan = planSpecRun(gh, { trigger: "answer", issueNumber: 901 });
-
-    expect(plan).toMatchObject({
-      path: "author",
-      input: { kind: "sheet", issueNumber: 42 },
-      target: { mode: "rerun", issueNumber: 901, source: SHEET_SOURCE },
-    });
-  });
-
-  it("routes an answer on a spec recording no source to the critic, rather than throwing", () => {
-    // ADR-0085, replacing the throw this used to assert. A spec with no trailer was written in a
-    // live session and *is* its own source — there is no collector to reach, so the run enters the
-    // lane at the critic and the owner's answer still recomputes the count.
-    const { gh } = fakeGh({ specBody: "a spec with no trailer" });
-
-    expect(planSpecRun(gh, { trigger: "answer", issueNumber: 901 })).toEqual({
-      path: "critique",
-      issueNumber: 901,
-    });
-  });
-
   it("sends a critique trigger straight to the critic, reading no source marker at all", () => {
     const { gh, calls } = fakeGh();
 
@@ -244,20 +201,29 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
       JSON.stringify({ resolutions: [] }),
     ]);
 
+  /** A bare Decided context — these tests are about the gate, never about what the author read. */
+  const BARE_CONTEXT = {
+    ownerWords: "build it",
+    decisions: "",
+    rulings: "",
+    boundaries: "",
+    openGuesses: "",
+  };
+
+  /** The sheet door, run over `chain`'s stage responses. Written once: the two tests below differ
+   * only in what the author left open, and a copied five-line call is a copy to get subtly wrong. */
+  const publishFromSheet = (stage: { exec: StageExec }, gh: GhExec) =>
+    runSpecPublication(stage.exec, gh, SHEET_SOURCE, BARE_CONTEXT);
+
   it("publishes, then applies sliceable and dispatches, when nothing was left open", async () => {
     const { gh, calls } = fakeGh({ issueNumber: 901 });
     // The critic resolves nothing here, which folds to no extra questions and spends no reconciler
     // stage.
     const stage = chain([]);
 
-    const result = await runSpecPublication(
-      stage.exec,
-      gh,
-      { mode: "publish", source: SHEET_SOURCE },
-      { ownerWords: "build it", decisions: "", rulings: "", boundaries: "", openGuesses: "" },
-    );
+    const result = await publishFromSheet(stage, gh);
 
-    expect(result).toMatchObject({ issueNumber: 901, published: true, gateCount: 0, outcome: "dispatched" });
+    expect(result).toMatchObject({ issueNumber: 901, gateCount: 0, outcome: "dispatched" });
 
     const createIndex = calls.findIndex((args) => args[0] === "issue" && args[1] === "create");
     const dispatchIndex = calls.findIndex(
@@ -268,44 +234,20 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
     expect(calls[dispatchIndex]).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
   });
 
-  it("publishes anyway when questions are open, so a held spec is visible", async () => {
-    // ADR-0062: "a spec that never reaches zero never slices — that is the correct behaviour and
-    // it is visible: the issue sits carrying `prd` without `sliceable`." A gate that decided
-    // whether to publish would hide the one outcome meant to reach the owner.
+  it("publishes and dispatches even when the author leaves a question unresolved (#263 — no more held spec)", async () => {
     const { gh, calls } = fakeGh({ issueNumber: 902 });
     const stage = chain(["What does done mean?"]);
 
-    const result = await runSpecPublication(
-      stage.exec,
-      gh,
-      { mode: "publish", source: SHEET_SOURCE },
-      { ownerWords: "build it", decisions: "", rulings: "", boundaries: "", openGuesses: "" },
-    );
+    const result = await publishFromSheet(stage, gh);
 
-    expect(result).toMatchObject({ issueNumber: 902, gateCount: 1, outcome: "held" });
+    expect(result).toMatchObject({ issueNumber: 902, gateCount: 1, outcome: "dispatched" });
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(1);
 
     const labelWrites = calls.filter((args) => args.includes(SLICEABLE_LABEL));
-    expect(labelWrites).toHaveLength(0);
+    expect(labelWrites).toHaveLength(1);
 
+    // The round loop is gone (#263) — nothing about the unresolved question is ever posted.
     const comments = calls.filter((args) => args[0] === "issue" && args[1] === "comment");
-    expect(comments).toHaveLength(1);
-    expect(comments[0].join(" ")).toContain("1. What does done mean?");
-  });
-
-  it("rewrites rather than re-files on a re-run", async () => {
-    const { gh, calls } = fakeGh();
-    const stage = chain([]);
-
-    const result = await runSpecPublication(
-      stage.exec,
-      gh,
-      { mode: "rerun", issueNumber: 901, source: SHEET_SOURCE },
-      { ownerWords: "build it", decisions: "", rulings: "", boundaries: "", openGuesses: "" },
-    );
-
-    expect(result).toMatchObject({ issueNumber: 901, published: false, outcome: "dispatched" });
-    expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(0);
-    expect(calls.some((args) => args[0] === "issue" && args[1] === "edit" && args[2] === "901")).toBe(true);
+    expect(comments).toHaveLength(0);
   });
 });

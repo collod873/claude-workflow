@@ -3,7 +3,6 @@ import type { GhExec } from "../shared/gh";
 import {
   applyGate,
   gateCount,
-  numberedOpenQuestions,
   SLICEABLE_LABEL,
   SPEC_DISPATCH_EVENT_TYPE,
   unfiledMarkGap,
@@ -21,7 +20,7 @@ function fakeGh(): { gh: GhExec; calls: string[][] } {
   return { gh, calls };
 }
 
-describe("unfiledMarkGap — ADR-0061's arithmetic", () => {
+describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
   it("is zero when every marked decision has a filed ADR and no open question names an unfiled mark", () => {
     const decisions: MarkedDecision[] = [
       { mark: "ADR-0060", adrTitle: "A ruling that files it" },
@@ -84,7 +83,7 @@ describe("unfiledMarks — the set unfiledMarkGap counts", () => {
   });
 });
 
-describe("gateCount — ADR-0062's dispatch gate", () => {
+describe("gateCount — how much a run left unresolved", () => {
   it("is zero with no open questions and no decisions", () => {
     expect(gateCount([])).toBe(0);
   });
@@ -104,21 +103,17 @@ describe("gateCount — ADR-0062's dispatch gate", () => {
   });
 });
 
-describe("numberedOpenQuestions — ADR-0061's numbered form", () => {
-  it("renders each question numbered, in order", () => {
-    expect(numberedOpenQuestions(["first", "second"])).toBe("1. first\n2. second");
-  });
-
-  it("renders nothing for an empty list", () => {
-    expect(numberedOpenQuestions([])).toBe("");
-  });
-});
-
-describe("applyGate", () => {
-  it("applies sliceable before sending the dispatch, at a zero count", () => {
+describe("applyGate — unconditional since #263", () => {
+  // Both arms of "unconditional": no count at all, and a count saying something went unresolved.
+  // One body rather than two, because the whole claim is that the count changes nothing — two
+  // copies asserting the same calls would be two places to weaken it by halves.
+  it.each([
+    ["called with no count at all", undefined],
+    ["the count says something was left unresolved", 3],
+  ])("labels sliceable and requests the dispatch when %s", (_case, count) => {
     const { gh, calls } = fakeGh();
 
-    const outcome = applyGate(gh, 42, 0);
+    const outcome = count === undefined ? applyGate(gh, 42) : applyGate(gh, 42, count);
 
     expect(outcome).toBe("dispatched");
     expect(calls).toHaveLength(2);
@@ -127,12 +122,20 @@ describe("applyGate", () => {
     expect(calls[1]).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
   });
 
-  it("sends no dispatch and applies no sliceable label at a non-zero count", () => {
-    const { gh, calls } = fakeGh();
+  it("writes the label before it asks for the dispatch, whatever the count", () => {
+    for (const count of [undefined, 0, 5]) {
+      const { gh, calls } = fakeGh();
 
-    const outcome = applyGate(gh, 42, 1);
+      if (count === undefined) applyGate(gh, 42);
+      else applyGate(gh, 42, count);
 
-    expect(outcome).toBe("held");
-    expect(calls).toHaveLength(0);
+      const labelAt = calls.findIndex((call) => call.includes(SLICEABLE_LABEL));
+      const dispatchAt = calls.findIndex(
+        (call) => call[0] === "api" && call.some((arg) => arg.includes(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`)),
+      );
+      expect(labelAt, JSON.stringify({ count, calls })).toBeGreaterThanOrEqual(0);
+      expect(dispatchAt, JSON.stringify({ count, calls })).toBeGreaterThanOrEqual(0);
+      expect(labelAt).toBeLessThan(dispatchAt);
+    }
   });
 });

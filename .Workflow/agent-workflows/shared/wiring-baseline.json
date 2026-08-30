@@ -79,11 +79,6 @@
     },
     {
       "kind": "exports",
-      "file": ".Workflow/agent-workflows/spec/rounds.ts",
-      "name": "roundFor"
-    },
-    {
-      "kind": "exports",
       "file": ".Workflow/agent-workflows/spec/spec.ts",
       "name": "runSpecAmendment"
     },

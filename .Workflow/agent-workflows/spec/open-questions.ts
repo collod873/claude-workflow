@@ -2,27 +2,17 @@ import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
 
 /**
- * The open-question gate: ADR-0061's numbered form and ADR-0062's arithmetic
- * for what it gates.
+ * #263's gate: every lane 02 run labels the spec `sliceable` and asks for the dispatch — the label
+ * written first, so a lost dispatch stays a countable durable trace rather than a silent stop
+ * (ADR-0062's ordering argument, kept after the count it used to gate on was retired). There is no
+ * longer a "held" outcome: a run whose author or critic could not resolve everything dispatches
+ * anyway, on the theory that a spec sitting unsliced while nobody reads its unresolved edges is
+ * worse than one that ships with an edge still rough. Getting the owner in front of what a run
+ * could not settle is `spec.ts`'s reconciler now (folded into the body as a stated assumption),
+ * never this gate holding a dispatch back to ask him.
  *
- * ADR-0061 turns "a spec that ships with zero open questions is treated as
- * suspect — it guessed silently" into arithmetic for the one trigger that
- * carries assumption marks (the sheet): *the sheet's decisions carrying a
- * mark and no adrTitle, minus the open questions naming a mark, is zero.*
- * That is `unfiledMarkGap` below — an independent check run beside the plain
- * open-question count, because nothing else verifies the author actually
- * asked about every load-bearing guess it was handed rather than missing it.
- * No other door carries marks — not the map, and not the critic-only entry a
- * session-written spec arrives through (ADR-0085) — so this contributes
- * nothing for them (`decisions` defaults to `[]`, whose gap is always zero)
- * — "suspicion stays a heuristic there" (ADR-0061).
- *
- * ADR-0062: *the gate is a count. Zero unanswered open questions → the job
- * applies `sliceable` and sends a `repository_dispatch`.* `gateCount` folds
- * both numbers into the one count `spec.ts` decides on, and `applyGate` is
- * the side effect zero drives — the label written *before* the dispatch, so
- * a lost dispatch stays a detectable durable trace rather than a silent
- * stop (ADR-0062's "Why the trigger had to move" option analysis).
+ * `gateCount` still exists to say *how much* a run left unresolved — worth carrying in a log line —
+ * but nothing downstream branches on it any more.
  */
 
 /** The two fields of a sheet's `Decision` (`shape/sheet-schema.ts`) this arithmetic needs — nothing else. */
@@ -32,14 +22,10 @@ export interface MarkedDecision {
 }
 
 /**
- * ADR-0061's silent-guess case, spelled as the set itself rather than as two
- * counts subtracted: the sheet's decisions that carry a mark, have no
- * adrTitle, and are named by no open question. Subtracting the count of
- * unfiled decisions from the count of questions naming a mark (the prior
- * shape of this file) is only correct when the two counts pair up
- * one-for-one — a single question naming two marks, or two questions naming
- * the same mark, throws that pairing off. Filtering the actual set decisions
- * never miscounts either way.
+ * The set of a sheet's decisions that carry a mark, have no filed `adrTitle`, and are named by no
+ * open question — the load-bearing guesses the author let through with nothing on the record for
+ * them. `spec.ts`'s `runSpecAuthor` folds each of these into the draft as a stated assumption before
+ * the gate is ever reached; this is the set that folding acts on, not a thing the gate itself reads.
  */
 export function unfiledMarks(decisions: MarkedDecision[], openQuestions: string[]): MarkedDecision[] {
   return decisions.filter(
@@ -50,77 +36,51 @@ export function unfiledMarks(decisions: MarkedDecision[], openQuestions: string[
   );
 }
 
-/**
- * ADR-0061's arithmetic: the size of `unfiledMarks` — zero when every
- * marked-and-unfiled decision was named by some open question (or there is
- * no such decision at all); positive when the author let a load-bearing
- * guess through with no ADR and no question naming it — the silent-guess
- * case ADR-0061 exists to catch.
- */
+/** The size of `unfiledMarks` — zero when every marked-and-unfiled decision was named by some open question. */
 export function unfiledMarkGap(decisions: MarkedDecision[], openQuestions: string[]): number {
   return unfiledMarks(decisions, openQuestions).length;
 }
 
 /**
- * ADR-0062's gate: the total count of what still blocks a dispatch. Every
- * explicit open question the chain produced (ADR-0061's numbered form —
- * invented intent, a disputed ruling, or an unfiled mark the author already
- * surfaced) plus `unfiledMarkGap`'s count of any mark the author never
- * surfaced at all. Zero only when nothing is left open by either measure.
- *
- * `openQuestions` is the already-folded result `spec.ts` produces — the
- * author's own questions plus the critic's findings (ADR-0062: "the critic
- * runs in the same chain … its findings become more numbered open
- * questions"). This function never talks to the critic or the author
- * itself; it only counts what they already produced.
+ * How much a run left unresolved: every open question the chain produced, plus `unfiledMarkGap`'s
+ * count of any sheet mark the author never surfaced at all. Reported alongside the gate's own
+ * outcome (`spec.ts`'s `gateSpec`) — nothing here or downstream of it holds a dispatch back on this
+ * number any more.
  */
 export function gateCount(openQuestions: string[], decisions: MarkedDecision[] = []): number {
   return openQuestions.length + unfiledMarkGap(decisions, openQuestions);
 }
 
-/** ADR-0061's numbered form: open questions rendered `1.`, `2.`, … in the order they arrived. */
-export function numberedOpenQuestions(openQuestions: string[]): string {
-  return openQuestions.map((question, index) => `${index + 1}. ${question}`).join("\n");
-}
-
-/** The label a zero gate count applies before it dispatches (ADR-0062). */
+/** The label every lane 02 run applies before it dispatches. */
 export const SLICEABLE_LABEL = "sliceable";
 
 /**
- * The `repository_dispatch` action name a zero gate count sends — the wire
- * name lane 03's trigger reads for instead of the `prd` label (ADR-0062:
- * "Lane 03 fires on that dispatch, never on a label").
+ * The `repository_dispatch` action name a run sends — the wire name lane 03's trigger reads for
+ * instead of the `prd` label.
  */
 export const SPEC_DISPATCH_EVENT_TYPE = "prd-sliceable";
 
-export type GateOutcome = "dispatched" | "held";
+export type GateOutcome = "dispatched";
 
 /**
- * Carries out what `gateCount` decided.
+ * Labels the spec `sliceable`, then asks for the dispatch — unconditionally (#263).
  *
- * At zero: labels the spec `sliceable` and *then* sends the dispatch — that
- * order is the point. ADR-0062 rules `sliceable` written before the
- * dispatch the durable trace that one was owed, so a spec carrying the label
- * with no sub-issues and no completed run is a lost dispatch and is
- * countable (`watchdog/lost-dispatch.ts`); reversing the order would let a
- * dispatch that failed to send leave no trace at all.
+ * The label first, dispatch second: that order is the point. A spec carrying the label with no
+ * sub-issues and no completed run behind it is a lost dispatch and is countable
+ * (`watchdog/lost-dispatch.ts`); reversing the order would let a dispatch that failed to send leave
+ * no trace at all.
  *
- * At any other count: does nothing. ADR-0062 rules `sliceable` applied by a
- * job inert on its own — nothing here writes anything about a held spec.
- * Getting the open questions in front of the owner is `rounds.ts`'s job, not
- * this one's.
+ * `count` is accepted rather than required: `spec.ts` still passes `gateCount`'s number through for
+ * the log line it reports, and a caller holding one costs nothing to pass here, but nothing in this
+ * function reads it — there is no threshold left to compare it against.
  *
- * The send goes through `shared/dispatch-request.ts`, which on a runner
- * records it for the `contents: write` job that can actually make the call:
- * this function runs inside a job that spends a model, and that job holds
- * `contents: read` on ADR-0053's grounds, so the dispatch it used to make
- * itself 403'd every time (#181). The *ordering* ADR-0062 rules on is
- * unaffected — `sliceable` is still written before anything asks for a
- * dispatch, so a dispatch that never reaches lane 03 still leaves the durable
- * trace `watchdog/lost-dispatch.ts` counts.
+ * The send goes through `shared/dispatch-request.ts`, which on a runner records it for the
+ * `contents: write` job that can actually make the call: this function runs inside a job that spends
+ * a model, and that job holds `contents: read` on ADR-0053's grounds, so the dispatch it used to make
+ * itself 403'd every time (#181).
  */
-export function applyGate(gh: GhExec, issueNumber: number, count: number): GateOutcome {
-  if (count !== 0) return "held";
+export function applyGate(gh: GhExec, issueNumber: number, count?: number): GateOutcome {
+  void count;
 
   gh(["issue", "edit", String(issueNumber), "--add-label", SLICEABLE_LABEL]);
   requestDispatch(gh, {

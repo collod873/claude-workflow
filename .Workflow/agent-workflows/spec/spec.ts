@@ -1,31 +1,32 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { execGh, type GhExec } from "../shared/gh";
+import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { readSheetMarker } from "../shape/marker";
 import { runSpecCritic, type Resolution } from "./critic";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
 import {
   applyGate,
   gateCount,
+  SLICEABLE_LABEL,
   unfiledMarks,
   type GateOutcome,
   type MarkedDecision,
 } from "./open-questions";
 import {
+  PRD_LABEL,
   publishSpec,
   readPublishedSpec,
   readSourceMarker,
-  readSpecBody,
   updateSpec,
   withoutSourceMarker,
   type PublishedSpec,
   type SpecSource,
 } from "./publish";
 import { runSpecReconciler } from "./reconcile";
-import { answeringComments, postOpenQuestions } from "./rounds";
 import { applySweep, runSpecSweep } from "./sweep";
 
 // Re-exported rather than wired into this file's own chain: ADR-0079's
@@ -36,25 +37,26 @@ import { applySweep, runSpecSweep } from "./sweep";
 export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "./amend";
 
 /**
- * Lane 02 — Spec. First stage: the spec author, which turns a Decided
- * context into a `PRD:` issue payload. Second stage: the critic (ADR-0062,
- * amended by the sweep-and-pen redesign), reading the author's own draft in
- * the same chain and resolving what it finds on its own authority. This
- * file is what folds those resolutions — and the sheet's own unfiled
- * load-bearing marks — into the draft's `body`, through `reconcile.ts`'s
- * reconciler, before the spec is ever published. Both stages are dispatched
- * by trigger over the author's collector per trigger (an accepted sheet, or
- * a closed map — ADR-0058); the critic reads only the author's output, not
- * the trigger.
+ * Lane 02 — Spec, redesigned by #263. One hand label, `to-spec`, starts the lane whatever the
+ * source: the owner applies it to an accepted idea carrying a decision sheet, or to a closed
+ * Wayfinder map, the same gesture ADR-0059 already established for the map alone. The lane no
+ * longer trusts which label fired to say which collector runs — `planSpecRun` reads the *issue*
+ * a `to-spec` event names and picks the sheet collector when it finds a decision sheet on it,
+ * the map collector otherwise. A second door, `prd`, still feeds the critic alone (ADR-0085): the
+ * owner's own hand putting `prd` on a spec he already wrote in a live session.
  *
- * **The lane has a second entrance, and it starts at the critic.** A spec
- * written by `/to-spec` in a live session is filed by the owner's own hand
- * and arrives already drafted — so ADR-0085 gives it `runSpecCritique`
- * below, which reads the published issue and runs the *back half* of this
- * chain against it. One Opus stage where the cold doors cost two, because
- * the expensive half already happened in the session with the owner in it.
- * Both doors reach the same `gateCount` and the same `applyGate`, which is
- * the only thing lane 03 fires on.
+ * **Every run that gets as far as the gate dispatches.** #263 deletes the round counter, the
+ * posted open-questions comment and the comment-triggered re-run: a run whose author or critic
+ * left something unresolved used to hold, post the numbered questions, and wait on the owner's
+ * answer to re-run. Now `gateSpec` labels the spec `sliceable` and asks for the dispatch
+ * regardless of what `gateCount` reports — what a run could not settle reaches the owner as a
+ * stated assumption in the spec's own body (folded in by the reconciler, `reconcile.ts`), never
+ * as a question held open on the tracker.
+ *
+ * **A source whose spec already dispatched is refused before a model runs.** `planSpecRun`
+ * searches the published specs for one recording this issue as its source and already carrying
+ * `sliceable`, and throws before the collector, the sweep, the author or the critic ever spend
+ * anything — a second `to-spec` on the same idea or map is a no-op, not a second spec.
  */
 
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
@@ -123,17 +125,10 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
 );
 
 /**
- * The two triggers `runSpecAuthor` dispatches over — one per surviving row of
- * ADR-0058's table, each naming exactly what its collector needs and
- * nothing more. `kind` is what tells `runSpecAuthor` a `DecidedContext` was
- * *not* handed to it directly (see `isDecidedContext` below), so it doubles
- * as the discriminant a `switch` narrows on.
- *
- * ADR-0058's third row lost its collector, not its door (ADR-0085). A
- * collector exists to hand a package to a model that is not in the room, and
- * the session door now writes the spec in the room — so there is nothing to
- * assemble, and the door enters this lane at `runSpecCritique` rather than
- * here.
+ * The two collectors `runSpecAuthor` dispatches over — one per source kind `planSpecRun` can
+ * detect on the issue a `to-spec` event names, each naming exactly what its collector needs and
+ * nothing more. `kind` is what tells `runSpecAuthor` a `DecidedContext` was *not* handed to it
+ * directly (see `isDecidedContext` below), so it doubles as the discriminant a `switch` narrows on.
  */
 export type SpecTrigger =
   | { kind: "sheet"; gh: GhExec; issueNumber: number }
@@ -238,116 +233,56 @@ export async function runSpecAuthor(
 
 /** What `runSpecPublication` hands back: the draft, where it landed, and what the gate did with it. */
 export interface SpecPublicationResult extends SpecAuthorOutput {
-  /** The `PRD:` issue this run published, or re-ran and rewrote. */
+  /** The `PRD:` issue this run published. */
   issueNumber: number;
-  /** `true` when this run filed the issue, `false` when it rewrote one that already existed. */
-  published: boolean;
-  /** The count `open-questions.ts`'s `gateCount` computed over the folded `openQuestions`. */
+  /** How much `open-questions.ts`'s `gateCount` found unresolved in the folded `openQuestions` — reported, never gated on. */
   gateCount: number;
-  /** `"dispatched"` at zero, `"held"` otherwise — `open-questions.ts`'s `applyGate` outcome. */
+  /** Always `"dispatched"` (#263) — `open-questions.ts`'s `applyGate` outcome. */
   outcome: GateOutcome;
 }
 
 /**
- * Which issue this run's draft lands on.
+ * The tail of lane 02's cold door: runs `runSpecAuthor` — draft, critic and reconciler already
+ * folded into one `body` — publishes the result as a new `PRD:` issue recording `target` as its
+ * source, then gates on it.
  *
- * `publish` is a first run: no spec exists, and the source is recorded on the one this files so a
- * later re-run can find its way back to the collector. `rerun` is ADR-0062's answering round: the
- * spec exists, carries the owner's answers as comments, and must be rewritten rather than filed
- * again — its number is what `sliceable`, the dispatch, the round count and every comment already
- * hang off.
- */
-export type SpecTarget =
-  | { mode: "publish"; source: SpecSource | undefined }
-  | { mode: "rerun"; issueNumber: number; source: SpecSource | undefined };
-
-/**
- * The tail of lane 02's chain (ADR-0062): runs `runSpecAuthor` — draft, critic and reconciler
- * already folded into one `body` — publishes the result, then gates on it.
+ * Publication is unconditional and comes first, which is ADR-0062's step 1 read literally: the
+ * spec carries `prd` whatever the author or critic left unresolved. Since #263 the gate that
+ * follows is unconditional too — `sliceable` and the dispatch, every time, whatever `gateCount`
+ * reports — so publication no longer anticipates a "held" outcome that does not exist.
  *
- * Publication comes first and is unconditional, which is ADR-0062's step 1 read
- * literally: the spec carries `prd` whatever its count, and "a spec that never
- * reaches zero never slices — that is the correct behaviour and it is visible:
- * the issue sits carrying `prd` without `sliceable`." A gate that decided
- * whether to publish would make the held case invisible, which is the one
- * outcome that is supposed to reach the owner.
- *
- * At a zero gate count: `applyGate` labels the spec `sliceable` and sends
- * the `repository_dispatch` lane 03 fires on. At any other count:
- * `postOpenQuestions` comments the numbered questions on the issue, so an
- * answering comment is what `rounds.ts`'s `roundFor` counts toward the
- * next, uncapped, re-run — every load-bearing guess the sheet marked has
- * already been folded into the draft's own `## Assumptions` by
- * `runSpecAuthor`, so what remains here is only what the author itself
- * could not settle.
- *
- * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does,
- * plus the `gh` every write needs — kept a separate parameter from the
- * trigger's own so a caller holding an already-assembled `DecidedContext`,
- * which carries no `gh` at all, can still be published.
+ * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does, plus the `gh` every
+ * write needs and the `target` recording where this spec came from, kept separate from the
+ * trigger's own so a caller holding an already-assembled `DecidedContext` can still be published.
  */
 export async function runSpecPublication(
   exec: StageExec,
   gh: GhExec,
-  target: SpecTarget,
+  target: SpecSource,
   input: DecidedContext | SpecTrigger,
 ): Promise<SpecPublicationResult> {
   const draft = await runSpecAuthor(exec, input);
 
-  const issueNumber =
-    target.mode === "publish" ? publishSpec(gh, draft, target.source) : target.issueNumber;
-  if (target.mode === "rerun") {
-    updateSpec(gh, issueNumber, draft, target.source);
-  }
-
+  const issueNumber = publishSpec(gh, draft, target);
   const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
 
-  return { ...draft, issueNumber, published: target.mode === "publish", gateCount: count, outcome };
+  return { ...draft, issueNumber, gateCount: count, outcome };
 }
 
 /**
- * The gate itself, and the one place either door reaches it (ADR-0085): count, apply, and comment
- * the questions when the count held.
+ * The gate itself, and the one place either door reaches it: count (for the log line), then apply
+ * unconditionally.
  *
- * Shared as a function rather than as a rule both doors are trusted to follow, because "the label
- * is not a second implementation of the gate" is the whole reason firing on `prd` does not undo
- * ADR-0062. `gateCount` and `applyGate` are called from here, once each, by both.
+ * Shared as a function rather than as a rule both doors are trusted to follow — `gateCount` and
+ * `applyGate` are called from here, once each, by both.
  *
  * Takes no `decisions` — ADR-0061's arithmetic still runs, but earlier: `runSpecAuthor` already
  * folded every unfiled mark into the draft's body as a stated assumption before this is ever
  * called, so a mark reaching here would double-count a guess that is no longer silent.
  */
-function gateSpec(
-  gh: GhExec,
-  issueNumber: number,
-  openQuestions: string[],
-): { count: number; outcome: GateOutcome } {
+function gateSpec(gh: GhExec, issueNumber: number, openQuestions: string[]): { count: number; outcome: GateOutcome } {
   const count = gateCount(openQuestions);
-  return { count, outcome: applySpecGate(gh, issueNumber, count, openQuestions) };
-}
-
-/**
- * The half of the gate that writes: `sliceable` and the dispatch at zero, the numbered round at
- * anything else.
- *
- * Split out from the count (ADR-0100) because the critique door now has work to do *between* the
- * two — the count decides whether the body is re-authored, and the re-authored body is what
- * `sliceable` must be applied to. Both doors still reach `applyGate` through here exactly once, so
- * the split moved where the count is taken and nothing about what the gate does with it.
- */
-function applySpecGate(
-  gh: GhExec,
-  issueNumber: number,
-  count: number,
-  openQuestions: string[],
-): GateOutcome {
-  const outcome = applyGate(gh, issueNumber, count);
-
-  if (outcome === "held") {
-    postOpenQuestions(gh, issueNumber, openQuestions);
-  }
-
-  return outcome;
+  return { count, outcome: applyGate(gh, issueNumber, count) };
 }
 
 /**
@@ -371,7 +306,7 @@ export interface SpecCritiqueResult {
   resolutions: Resolution[];
   /** `gateCount` over this door's own open questions — always `0`, since the critic never leaves one. */
   gateCount: number;
-  /** `"dispatched"` at zero, `"held"` otherwise. */
+  /** Always `"dispatched"` (#263). */
   outcome: GateOutcome;
   /**
    * Whether ADR-0100's reconciler ran and rewrote the issue body.
@@ -393,8 +328,9 @@ export interface SpecCritiqueResult {
  * issue's own title and body are the draft — there is no collector and no author, because the
  * expensive half already happened in the session with the owner in it.
  *
- * Whatever answering comments already sit on the issue ride along to the critic as context it may
- * use in reaching its own decision — never as something it is waiting to be told.
+ * Whatever comments already sit on the issue ride along to the critic as context it may use in
+ * reaching its own decision — never as something it is waiting to be told, and never filtered: with
+ * the round loop gone (#263) nothing on this issue's comment list is this lane's own writing.
  *
  * **Then what the critic resolved is written back into the body** (ADR-0100, amended by the
  * sweep-and-pen redesign; `reconcile.ts`'s module docstring is the home for why this door in
@@ -405,13 +341,9 @@ export interface SpecCritiqueResult {
  * ambiguity it raises, it resolves — so there is nothing left for `gateCount` to count and the run
  * always dispatches.
  */
-export async function runSpecCritique(
-  exec: StageExec,
-  gh: GhExec,
-  issueNumber: number,
-): Promise<SpecCritiqueResult> {
+export async function runSpecCritique(exec: StageExec, gh: GhExec, issueNumber: number): Promise<SpecCritiqueResult> {
   const spec = readPublishedSpec(gh, issueNumber);
-  const answers = answeringComments(gh, issueNumber);
+  const answers = issueComments(gh, issueNumber);
   const critique = await runSpecCritic(exec, {
     title: spec.title,
     body: spec.body,
@@ -423,7 +355,7 @@ export async function runSpecCritique(
     await reconcileSpec(exec, gh, issueNumber, spec, critique.resolutions);
   }
 
-  const outcome = applySpecGate(gh, issueNumber, 0, []);
+  const { outcome } = gateSpec(gh, issueNumber, []);
 
   return { issueNumber, resolutions: critique.resolutions, gateCount: 0, outcome, rewritten };
 }
@@ -439,8 +371,8 @@ export async function runSpecCritique(
  *
  * The title goes back unchanged and the `spec-source:v1` trailer is re-appended from the body this
  * run read, because neither is the reconciler's to change and a spec that reaches this door may
- * well carry one — a sheet spec re-labelled by hand, or an `answer` whose trailer `planSpecRun`
- * could not read.
+ * well carry one — a sheet spec re-labelled by hand, or one filed before this door's own guard
+ * existed.
  */
 async function reconcileSpec(
   exec: StageExec,
@@ -459,72 +391,83 @@ async function reconcileSpec(
 }
 
 /**
- * The event `spec.yml` hands this file, reduced to the two facts that pick a path: which trigger
- * fired, and the issue it names.
- *
- * `sheet` arrives as ADR-0083's `repository_dispatch` after the accept has written its marker;
- * `map` arrives as the owner's `to-spec` click (ADR-0059); `answer` is a comment on a spec that is
- * already published, which is ADR-0062's re-run. `critique` is ADR-0085's second door: the owner's
- * own hand putting `prd` on a spec he wrote in a session, which arrives already drafted and so
- * files no issue and runs no author.
+ * Which collector a source issue's own content calls for — the property #263 asks `planSpecRun` to
+ * have instead of trusting the label that fired it: a decision sheet on the issue (`shape/marker.ts`'s
+ * own marker, the same one `collectSheetContext` reads) means the sheet collector, anything else
+ * means the map collector. There is no third kind on the cold door, so a map is what is left when a
+ * sheet is absent rather than a thing detected of its own.
  */
-export type SpecInvocation =
-  | { trigger: "sheet"; issueNumber: number }
-  | { trigger: "map"; issueNumber: number }
-  | { trigger: "answer"; issueNumber: number }
-  | { trigger: "critique"; issueNumber: number };
+function detectSourceKind(gh: GhExec, issueNumber: number): SpecSource["kind"] {
+  const hasSheet = issueComments(gh, issueNumber).some((body) => readSheetMarker(body) !== undefined);
+  return hasSheet ? "sheet" : "map";
+}
+
+interface RawSpecIssue {
+  body?: string;
+  labels?: Array<{ name?: string }>;
+}
 
 /**
- * Which of lane 02's two entrances this run takes.
+ * Whether some published spec already records `sourceIssue` as its source and already carries
+ * `sliceable` — #263's refusal, read off the tracker rather than off this run's own arguments, so a
+ * second `to-spec` on the same idea or map is refused before the collector, the sweep, the author or
+ * the critic spend anything at all.
  *
- * `author` is the cold path: a collector assembles a Decided context, the author drafts, the critic
- * reads the draft, and the result is published or rewritten. `critique` is ADR-0085's warm one: the
- * spec is already on the tracker, so there is nothing to collect and nothing to draft, and the run
- * starts at the critic.
+ * Searched by the `prd` label rather than by source, because the source lives inside each spec's own
+ * `spec-source:v1` trailer (`publish.ts`) and there is no tracker query that reaches into a body.
  */
-export type SpecPlan =
-  | { path: "author"; input: SpecTrigger; target: SpecTarget }
-  | { path: "critique"; issueNumber: number };
+function alreadySliced(gh: GhExec, sourceIssue: number): boolean {
+  const raw = gh(["issue", "list", "--label", PRD_LABEL, "--state", "all", "--limit", "200", "--json", "number,body,labels"]);
+  const issues = JSON.parse(raw) as RawSpecIssue[];
+
+  return issues.some((issue) => {
+    const labels = (issue.labels ?? []).map((label) => label.name ?? "");
+    if (!labels.includes(SLICEABLE_LABEL)) return false;
+    return readSourceMarker(issue.body ?? "")?.issue === sourceIssue;
+  });
+}
+
+/**
+ * The event `spec.yml` hands this file, reduced to the two facts that pick a path: which door
+ * fired, and the issue it names.
+ *
+ * `to-spec` is #263's single cold-door label, applied by hand to an accepted idea or a closed map
+ * alike (ADR-0059's gesture, now the only one). `critique` is ADR-0085's warm door: the owner's own
+ * hand putting `prd` on a spec he wrote in a session, which arrives already drafted and so files no
+ * issue and runs no author.
+ */
+export type SpecInvocation = { trigger: "to-spec"; issueNumber: number } | { trigger: "critique"; issueNumber: number };
+
+/**
+ * Which of lane 02's two entrances this run takes, and — on the cold door — which collector the
+ * source issue itself calls for.
+ */
+export type SpecPlan = { path: "author"; input: SpecTrigger; target: SpecSource } | { path: "critique"; issueNumber: number };
 
 /**
  * Turns one invocation into the plan `main` carries out — the whole of the runner's
  * decision-making, kept out of `spec.yml` so it is testable without a runner and so the workflow
  * stays a trigger and an `npx tsx` line.
  *
- * The re-run reads its source back off the spec's own body (`spec-source:v1`), because a comment
- * event knows only the spec's number and the collectors all read the *source* — the accepted idea
- * or the closed map — never the spec drafted from it.
- *
- * **A spec carrying no readable source marker routes to the critic instead of throwing**
- * (ADR-0085). It used to throw, and the message was honest about the cold path's constraint and
- * wrong about this one: a spec written in a live session *is* its own source. The trailer exists
- * only because the collectors read the idea or the map rather than the spec drafted from them, and
- * this door has no such indirection. A spec published before the marker existed lands here too,
- * which is the right place for it — its body is on the tracker either way.
+ * On the cold door: refuses a source whose spec already dispatched (`alreadySliced`, before
+ * anything spends a model), then reads the issue itself to pick sheet or map
+ * (`detectSourceKind`) — never the label that fired this run, since one label now starts the lane
+ * for both.
  */
 export function planSpecRun(gh: GhExec, invocation: SpecInvocation): SpecPlan {
   if (invocation.trigger === "critique") {
     return { path: "critique", issueNumber: invocation.issueNumber };
   }
 
-  if (invocation.trigger !== "answer") {
-    const source: SpecSource = { kind: invocation.trigger, issue: invocation.issueNumber };
-    return {
-      path: "author",
-      input: { kind: invocation.trigger, gh, issueNumber: invocation.issueNumber },
-      target: { mode: "publish", source },
-    };
+  if (alreadySliced(gh, invocation.issueNumber)) {
+    throw new Error(`spec: issue #${invocation.issueNumber} already has a sliceable spec drafted from it`);
   }
 
-  const source = readSourceMarker(readSpecBody(gh, invocation.issueNumber));
-  if (!source) {
-    return { path: "critique", issueNumber: invocation.issueNumber };
-  }
-
+  const kind = detectSourceKind(gh, invocation.issueNumber);
   return {
     path: "author",
-    input: { kind: source.kind, gh, issueNumber: source.issue },
-    target: { mode: "rerun", issueNumber: invocation.issueNumber, source },
+    input: { kind, gh, issueNumber: invocation.issueNumber },
+    target: { kind, issue: invocation.issueNumber },
   };
 }
 
@@ -532,24 +475,16 @@ export function planSpecRun(gh: GhExec, invocation: SpecInvocation): SpecPlan {
  * Reads `spec.yml`'s environment into a `SpecInvocation`.
  *
  * `SPEC_TRIGGER` is set by the workflow rather than re-derived here from `GITHUB_EVENT_NAME` and a
- * label: the workflow's `if:` has already decided which of the four fired, and re-deciding it from
- * the raw event would be a second copy of that condition that could disagree with the first. That
- * matters more since ADR-0085, because two of the four are now the same `issues: labeled` event
- * and only the label tells them apart.
+ * label: the workflow's `if:` has already decided which of the two fired, and re-deciding it from
+ * the raw event would be a second copy of that condition that could disagree with the first. Both
+ * doors fire on the same `issues: labeled` event and are told apart only by which label arrived.
  */
 export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
   const trigger = env.SPEC_TRIGGER;
   const issueNumber = Number(env.ISSUE_NUMBER);
 
-  if (
-    trigger !== "sheet" &&
-    trigger !== "map" &&
-    trigger !== "answer" &&
-    trigger !== "critique"
-  ) {
-    throw new Error(
-      `SPEC_TRIGGER must be one of sheet, map, answer, critique — got ${JSON.stringify(trigger)}`,
-    );
+  if (trigger !== "to-spec" && trigger !== "critique") {
+    throw new Error(`SPEC_TRIGGER must be one of to-spec, critique — got ${JSON.stringify(trigger)}`);
   }
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
     throw new Error(`ISSUE_NUMBER must be a positive integer — got ${JSON.stringify(env.ISSUE_NUMBER)}`);
@@ -566,7 +501,7 @@ async function main(): Promise<void> {
     if (plan.path === "critique") {
       const result = await runSpecCritique(execClaude, execGh, plan.issueNumber);
       console.log(
-        `critiqued #${result.issueNumber}: ${result.gateCount} open question(s), ${result.outcome}` +
+        `critiqued #${result.issueNumber}: ${result.outcome}` +
           `${result.rewritten ? ", body re-authored from the critic's resolutions" : ""}`,
       );
       return;
@@ -575,8 +510,7 @@ async function main(): Promise<void> {
     const result = await runSpecPublication(execClaude, execGh, plan.target, plan.input);
 
     console.log(
-      `${result.published ? "published" : "re-ran"} #${result.issueNumber}: ` +
-        `${result.gateCount} open question(s), ${result.outcome}`,
+      `published #${result.issueNumber}: ${result.gateCount} open question(s) left, ${result.outcome}`,
     );
   } catch (err) {
     console.error(`spec failed: ${reason(err)}`);

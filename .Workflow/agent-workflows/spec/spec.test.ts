@@ -6,10 +6,10 @@ import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shape/mark
 import type { Sheet } from "../shape/sheet-schema";
 import { createIssueGh, type FakeIssueGh } from "./gh.fake";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
-import { sourceMarker } from "./publish";
-import { openQuestionsComment } from "./rounds";
+import { sourceMarker, type SpecSource } from "./publish";
 import {
   invocationFromEnv,
+  planSpecRun,
   runSpecAuthor,
   runSpecCritique,
   runSpecPublication,
@@ -56,24 +56,6 @@ const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
  */
 function fakeChain() {
   return createFakeStages([SWEEP_RESPONSE, RESPONSE, SILENT_CRITIC]);
-}
-
-/** The body of the round a run posted, or `undefined` when it posted none. */
-function postedRound(calls: string[][]): string | undefined {
-  const comment = calls.find((args) => args[0] === "issue" && args[1] === "comment");
-  return comment?.[comment.indexOf("--body") + 1];
-}
-
-/**
- * Asserts a held gate left none of a dispatched one's traces. ADR-0062 makes `sliceable` the
- * durable evidence a dispatch was owed, so a held run writing either is the failure that would let
- * lane 03 slice a spec still carrying questions.
- */
-function expectNothingDispatched(calls: string[][]): void {
-  expect(calls.filter((args) => args.includes(SLICEABLE_LABEL))).toHaveLength(0);
-  expect(
-    calls.filter((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches"),
-  ).toHaveLength(0);
 }
 
 describe("the spec author's toolbelt", () => {
@@ -188,7 +170,8 @@ describe("runSpecAuthor", () => {
 
 /**
  * ADR-0061's arithmetic, end to end through the door that actually carries marks — now folded into
- * the draft's body as a stated assumption rather than held on until the owner resolves it.
+ * the draft's body as a stated assumption, and, since #263, dispatched unconditionally whatever is
+ * left unresolved.
  */
 describe("the sheet door — unfiled marks reach the assumptions section", () => {
   const OWNER_WORDS = "make the accept file its own rulings";
@@ -244,7 +227,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     const result = await runSpecPublication(
       chain(openQuestions, critic, reconciledBody),
       gh,
-      { mode: "publish", source: { kind: "sheet", issue: 42 } },
+      { kind: "sheet", issue: 42 },
       { kind: "sheet", gh, issueNumber: 42 },
     );
     return { result, calls };
@@ -288,7 +271,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     await runSpecPublication(
       fake.exec,
       gh,
-      { mode: "publish", source: { kind: "sheet", issue: 42 } },
+      { kind: "sheet", issue: 42 },
       { kind: "sheet", gh, issueNumber: 42 },
     );
 
@@ -308,19 +291,22 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     expect(calls.filter((args) => args.includes("--body") && args[1] === "edit")).toHaveLength(0);
   });
 
-  it("holds when the author itself leaves a real open question, independent of any mark", async () => {
-    // A mark the draft already asked about does not reach the reconciler (`unfiledMarks` filters
-    // it out), and the author's own question is what the gate still holds on.
+  it("dispatches anyway when the author itself leaves a real open question, independent of any mark", async () => {
+    // #263: a mark the draft already asked about does not reach the reconciler (`unfiledMarks`
+    // filters it out), and the author's own open question no longer holds anything back — it is
+    // simply left off the record, and the run labels and dispatches like any other.
     const { result, calls } = await runSheetDoor(
       [`Should \`${UNFILED.mark}\` own the retry?`],
       [UNFILED],
     );
 
-    expect(result).toMatchObject({ gateCount: 1, outcome: "held" });
-    expectNothingDispatched(calls);
-    expect(postedRound(calls)).toBe(
-      openQuestionsComment([`Should \`${UNFILED.mark}\` own the retry?`]),
-    );
+    expect(result).toMatchObject({ gateCount: 1, outcome: "dispatched" });
+    expect(calls.some((args) => args.includes(SLICEABLE_LABEL))).toBe(true);
+    expect(
+      calls.some((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches"),
+    ).toBe(true);
+    // The round loop is gone — nothing about the unresolved question is ever posted as a comment.
+    expect(calls.filter((args) => args[0] === "issue" && args[1] === "comment")).toHaveLength(0);
   });
 });
 
@@ -377,7 +363,7 @@ describe("runSpecCritique — the critic-only entry", () => {
   });
 
   it("never runs the author's stage — the expensive half already happened in the session", async () => {
-    // One Opus stage where the cold doors cost two. The author is the only stage in this lane
+    // One Opus stage where the cold doors cost several. The author is the only stage in this lane
     // bound by `--allowedTools` (ADR-0060), so its absence from every argv is what says it never
     // ran — checked alongside the call count, which pins the stage that did run as the only one.
     const fake = createFakeStage(SILENT_CRITIC);
@@ -393,17 +379,16 @@ describe("runSpecCritique — the critic-only entry", () => {
   });
 
   it("passes whatever comments already sit on the issue to the critic as context, not as a thing it waits on", async () => {
+    // The round loop is gone (#263): every comment on the issue is the owner's own — there is no
+    // marker of this lane's own writing left to filter out.
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh } = fakeGh([
-      openQuestionsComment(["what does done mean?"]),
-      "done means the gauntlet exits 0",
-    ]);
+    const { gh } = fakeGh(["what does done mean?", "done means the gauntlet exits 0"]);
 
     await runSpecCritique(fake.exec, gh, 180);
 
     const prompt = fake.stdins[0] ?? "";
+    expect(prompt).toContain("what does done mean?");
     expect(prompt).toContain("done means the gauntlet exits 0");
-    expect(prompt).not.toContain("1. what does done mean?");
   });
 
   it("adds sliceable and sends the dispatch when the critic resolved nothing", async () => {
@@ -421,7 +406,6 @@ describe("runSpecCritique — the critic-only entry", () => {
       (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
     );
     expect(dispatch).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
-    expect(dispatch).toContain("client_payload[issue]=180");
   });
 
   it("publishes nothing — the spec is already on the tracker", async () => {
@@ -486,8 +470,8 @@ describe("runSpecCritique — the critic-only entry", () => {
     });
 
     it("carries the title through unchanged and re-appends the source marker the body carried", async () => {
-      // A sheet spec re-labelled by hand reaches this door, and an `answer` whose trailer
-      // `planSpecRun` could not read routes here too — neither may lose its provenance.
+      // A sheet spec re-labelled by hand reaches this door, and one filed before this door's own
+      // guard existed reaches it too — neither may lose its provenance.
       const marker = sourceMarker({ kind: "sheet", issue: 42 });
       const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
       const { gh, calls } = fakeGh([], `${SPEC.body}\n\n${marker}`);
@@ -505,9 +489,114 @@ describe("runSpecCritique — the critic-only entry", () => {
   });
 });
 
+/**
+ * #263: one hand label, `to-spec`, starts the cold door whatever the source. `planSpecRun` no
+ * longer trusts which label fired to say which collector runs — it reads the labelled issue
+ * itself — and refuses a source whose spec already dispatched before any of that reading happens.
+ */
+describe("planSpecRun — the cold door reads the issue, not the label", () => {
+  const SHEET: Sheet = {
+    restatement: "the idea as work",
+    priorArt: [],
+    decisions: [],
+    survivors: [],
+    route: "short",
+    routeReason: "Short — one file.",
+    newTerms: [],
+    round: 0,
+  };
+  const ACCEPTED: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
+
+  /** A `gh` answering `issue view --json comments` for the source, and `issue list` for the search `alreadySliced` runs. */
+  function fakeSpecGh(
+    options: { comments?: string[]; slicedSpecs?: Array<{ number: number; source: SpecSource }> } = {},
+  ): { gh: GhExec; calls: string[][] } {
+    const calls: string[][] = [];
+    const gh: GhExec = (args) => {
+      calls.push([...args]);
+      if (args[0] === "issue" && args[1] === "list") {
+        const specs = (options.slicedSpecs ?? []).map((spec) => ({
+          number: spec.number,
+          body: sourceMarker(spec.source),
+          labels: [{ name: "prd" }, { name: "sliceable" }],
+        }));
+        return JSON.stringify(specs);
+      }
+      if (args[0] === "issue" && args[1] === "view") {
+        const fields = args[args.indexOf("--json") + 1];
+        if (fields === "comments") {
+          return JSON.stringify({ comments: (options.comments ?? []).map((body) => ({ body })) });
+        }
+      }
+      return "";
+    };
+    return { gh, calls };
+  }
+
+  it("picks the sheet collector when the labelled issue carries a decision sheet", () => {
+    const { gh } = fakeSpecGh({ comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)] });
+
+    const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 });
+
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "sheet", issueNumber: 42 },
+      target: { kind: "sheet", issue: 42 },
+    });
+  });
+
+  it("picks the map collector when the labelled issue carries no decision sheet", () => {
+    const { gh } = fakeSpecGh({ comments: [] });
+
+    const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 });
+
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "map", issueNumber: 76 },
+      target: { kind: "map", issue: 76 },
+    });
+  });
+
+  it("sends a critique trigger straight to the critic, reading nothing off the issue first", () => {
+    const { gh, calls } = fakeSpecGh();
+
+    expect(planSpecRun(gh, { trigger: "critique", issueNumber: 902 })).toEqual({
+      path: "critique",
+      issueNumber: 902,
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a source whose spec already carries sliceable, before reading anything else about it", () => {
+    const { gh, calls } = fakeSpecGh({
+      comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)],
+      slicedSpecs: [{ number: 900, source: { kind: "sheet", issue: 42 } }],
+    });
+
+    expect(() => planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 })).toThrow(/already/);
+    // The refusal is the very first thing it does — the source's own comments were never read.
+    expect(calls.some((call) => call[1] === "view")).toBe(false);
+  });
+
+  it("does not refuse a source whose already-dispatched spec came from a different issue", () => {
+    const { gh } = fakeSpecGh({
+      comments: [],
+      slicedSpecs: [{ number: 900, source: { kind: "map", issue: 999 } }],
+    });
+
+    expect(() => planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 })).not.toThrow();
+  });
+
+  it("does not refuse a source whose spec exists but has not dispatched yet", () => {
+    const { gh } = fakeSpecGh({ comments: [] });
+
+    expect(() => planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 })).not.toThrow();
+  });
+});
+
 describe("invocationFromEnv", () => {
-  it("accepts all four triggers spec.yml can set", () => {
-    for (const trigger of ["sheet", "map", "answer", "critique"]) {
+  it("accepts both triggers spec.yml can set", () => {
+    for (const trigger of ["to-spec", "critique"]) {
       expect(invocationFromEnv({ SPEC_TRIGGER: trigger, ISSUE_NUMBER: "180" })).toEqual({
         trigger,
         issueNumber: 180,
@@ -515,9 +604,9 @@ describe("invocationFromEnv", () => {
     }
   });
 
-  it("names all four in the error it throws on an unknown one", () => {
+  it("names both in the error it throws on an unknown one", () => {
     expect(() => invocationFromEnv({ SPEC_TRIGGER: "invented", ISSUE_NUMBER: "180" })).toThrow(
-      /sheet, map, answer, critique/,
+      /to-spec, critique/,
     );
   });
 });
