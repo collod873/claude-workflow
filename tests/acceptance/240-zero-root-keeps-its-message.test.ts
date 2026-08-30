@@ -7,9 +7,13 @@ import { slice, validatePlanProbe } from "./validate-graph-probe.fixture";
  * A plan with zero roots keeps its existing no-root error message — check: `npx vitest run .Workflow/agent-workflows/shared/validate-graph.test.ts`
  *
  * A plan with no root and a plan with two roots are different defects, so the no-root wording has
- * to survive the tightening *and* stay reserved for the plan that actually has no root. Both halves
- * are asserted here: the exact message for zero roots, and its absence from the refusal a two-root
- * plan now earns.
+ * to survive *and* stay reserved for the plan that actually has no root.
+ *
+ * **ADR-0113 reversed the tightening this criterion was written alongside.** A two-root plan is now
+ * accepted rather than refused with a different message — `slice/prompt.md` draws wave 0 as every
+ * slice with no `dependsOn`, so a plural wave 0 was never the defect #240 took it for. The half of
+ * this criterion that survives is the one it was actually about: the zero-root message, exact, and
+ * reserved.
  */
 
 const CRITERION =
@@ -36,16 +40,17 @@ describe(CRITERION, () => {
   );
 
   it(
-    "keeps that message for the zero-root defect alone: a two-root plan is refused with a different one",
+    "keeps that message for the zero-root defect alone: a two-root plan is not refused at all",
     () => {
+      // ADR-0113 retired #240's other half. A plan with two roots has roots, so the no-root message
+      // was never true of it — and demanding exactly one contradicted `slice/prompt.md`, which
+      // draws wave 0 as every slice with no `dependsOn`. What survives from this criterion is the
+      // half that still holds: the message stays reserved for the plan that genuinely has none.
       const plan = [slice("Tracer"), slice("Also unblocked")];
 
       const result = validatePlanProbe(plan);
 
-      expect(result.threw).toBe(true);
-      expect(result.message).not.toBe(NO_ROOT_MESSAGE);
-      // A plan with two roots has roots; saying it has none would be a lie, not a reused message.
-      expect(result.message).not.toMatch(/no unblocked root/);
+      expect(result.threw).toBe(false);
     },
     TIMEOUT_MS,
   );
