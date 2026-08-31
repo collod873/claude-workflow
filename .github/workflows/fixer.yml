@@ -291,11 +291,25 @@ jobs:
       # shape `verify.yml` and `integrate.yml` use for everything they read off an event.
       - name: Run the fixer
         if: steps.target.outputs.mode == 'model' && steps.rebase.outputs.conflicted != 'true'
+        # Shorter than the job's own timeout on purpose: a hung model turn that outlives the *job*
+        # is cancelled, and cancellation skips every later step — the stop reaches nobody (run
+        # 33327720079 hung 22 minutes after its fix was written and vanished without a label). A
+        # *step* timeout is a plain failure, so the escalation below still gets to speak.
+        timeout-minutes: 20
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
           BRANCH: ${{ steps.target.outputs.branch }}
         run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" .Workflow
+
+      # A fixer that dies mid-loop is still a stop, and every stop reaches the owner: without this,
+      # a crash or timeout ends the repair line silently and the ticket just goes cold.
+      - name: Escalate a fixer that died
+        if: failure() && steps.target.outputs.mode == 'model'
+        env:
+          ISSUE: ${{ steps.target.outputs.issue }}
+          PR_NUMBER: ${{ steps.target.outputs.pr }}
+        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "the fixer itself" "the attempt loop crashed or timed out before it could finish"
 
       # The no-model path: Verify never reached the one job this lane can reproduce and fix, so
       # instead of a brief with nothing in it, this names what actually failed.
