@@ -30,7 +30,21 @@ out is a superset of what it would overwrite, never a silent revert of it (#194)
 
 A body carrying no `## Acceptance criteria` heading closes on the `No diff.` form, matching a
 map or task ticket's existing exit (`ticket_shape.criteria_blocks` returns `None` for that
-shape).
+shape) — **but only against a range that really is empty**. `No diff.` is a claim about the
+range, not about the body, and this branch used to reach it without ever looking at the range
+it was handed: a body with no criteria heading was read as "this is a map or task ticket", and
+`args.range` was discarded unread. `claude-workflow`'s #283 closed COMPLETED on `No diff.`
+against `3fc1769..7f9d443`, a range carrying a real commit, and the record had to be corrected
+by hand; 18 issues had closed that way, twelve of them referenced by real commits (#300).
+
+So the branch counts (`count_commits`, `git rev-list --count`) and refuses when the answer is
+not zero — naming the range and the count on stderr, posting nothing and closing nothing. A
+range git cannot count refuses down the same path: a claim that a range is empty is only
+writable when the range can be read, and reading nothing is not reading zero. The other half of
+#300 — labelling a `ticket` `ticket` at filing time so this script can read the kind instead of
+sniffing the body — lands in `bin/file-issue`; this half is the belt-and-braces one, because it
+holds regardless of kind, label, or body shape and so covers every issue already filed without
+a label.
 
 The record's wire shape is unchanged from the one 445 existing checker-written records already
 use — `hooks/close-gate.py`'s `RECORD_HEADING`, `RANGE_LINE_RE` and `BULLET_RE` parse this
@@ -255,6 +269,30 @@ def run_check(command: str, checkout: str) -> subprocess.CompletedProcess:
     return subprocess.run(command, shell=True, cwd=checkout, capture_output=True, text=True)
 
 
+def count_commits(range_spec: str, checkout: str) -> tuple[int | None, str]:
+    """The commits `range_spec` spans, counted in `checkout` — `(count, "")`, or `(None,
+    reason)` when git could not count them.
+
+    `--` terminates the revision arguments so a range that happens to name a path in the
+    checkout is still read as a range, which is the only thing this asks. Argument list, never
+    a shell: `range_spec` is argv the caller typed, and `run_check`'s `shell=True` is a
+    deliberate exception for author-written marker commands, not a house style.
+
+    Not a `git log`, a `git diff`, or a read of the merge: counting revisions is the cheapest
+    question that distinguishes "this ticket carried nothing" from "nobody looked", and it is
+    the whole of what the `No diff.` branch needs to know."""
+    result = subprocess.run(
+        ["git", "rev-list", "--count", range_spec, "--"],
+        cwd=checkout, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return None, ((result.stderr or result.stdout) or "").strip().replace("\n", "; ")
+    try:
+        return int(result.stdout.strip()), ""
+    except ValueError:
+        return None, f"git printed {result.stdout.strip()!r}, which is not a count"
+
+
 def quote_evidence(output: str) -> list[str]:
     """`output` as record lines that can never be miscounted as a criterion's bullet.
 
@@ -293,6 +331,32 @@ def render_record(range_spec: str, blocks: list[str] | None,
     which is what `grep -q` and `test -f` have always been — see the module docstring for why
     the two modes read the same exit status differently."""
     if blocks is None:
+        count, reason = count_commits(range_spec, checkout)
+        if count is None:
+            print(
+                f"error: could not count the commits in {range_spec}: {reason}",
+                file=sys.stderr,
+            )
+            print(
+                "  `No diff.` says this range is empty, so it is only writable when the range "
+                f"can be read in {checkout} — reading nothing is not reading zero.",
+                file=sys.stderr,
+            )
+            return None, False
+        if count:
+            plural = "" if count == 1 else "s"
+            print(
+                f"error: {range_spec} carries {count} commit{plural}, and this body declares "
+                "no acceptance criteria — `No diff.` would record that the ticket carried "
+                "none, which is the opposite of what happened",
+                file=sys.stderr,
+            )
+            print(
+                "  give the body a `## Acceptance criteria` heading so this close has "
+                "something to check, or name the empty range the ticket really carried.",
+                file=sys.stderr,
+            )
+            return None, False
         return NO_DIFF_RECORD, True
 
     lines = []

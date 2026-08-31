@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { stubGh as sharedStubGh } from "../../.Workflow/agent-workflows/shared/stub-gh.fixture.ts";
 
 /**
  * The close gate, driven from this repo rather than from the machine that authored it.
@@ -35,17 +36,16 @@ afterEach(() => {
 
 /**
  * A `gh` that answers the one call this hook makes (`gh issue view --json body,comments`)
- * from a fixed payload, and records nothing else. Pointed at through `AGENT_SKILLS_GH`,
- * `bin/gh_support.py`'s override — so no case here reaches the network or the real tracker.
+ * from a fixed payload. Pointed at through `AGENT_SKILLS_GH`, `bin/gh_support.py`'s override
+ * — so no case here reaches the network or the real tracker.
+ *
+ * The double itself lives in `shared/stub-gh.fixture.ts`: `shared/close-ticket.test.ts` drives
+ * the other half of the same close path through the same override, and the clone gate found
+ * the two hand-written copies of it. This is the thin wrapper that spends its record of the
+ * calls, which only that suite asserts on, and keeps this file's cases reading in paths.
  */
 function stubGh(body: string, comments: { body: string; createdAt: string }[] = []): string {
-  const dir = mkdtempSync(join(tmpdir(), "close-gate-gh-"));
-  scratch.push(dir);
-  const path = join(dir, "gh");
-  const payload = JSON.stringify(JSON.stringify({ body, comments }));
-  writeFileSync(path, `#!/bin/bash\nprintf '%s' ${payload}\n`);
-  chmodSync(path, 0o755);
-  return path;
+  return sharedStubGh({ body, comments }).path;
 }
 
 /**

@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { stubGh } from "./stub-gh.fixture.ts";
 
 /**
  * The two halves of what `--spec` adds to a close, driven in the real interpreter against the real
@@ -13,11 +16,18 @@ import { describe, expect, it } from "vitest";
  * copy of the parsing. Driven through Python rather than restated in TypeScript for
  * `render-body.test.ts`'s reason: a TypeScript belief about what the Python decides is the thing
  * that was wrong.
+ *
+ * The last block is the exception, and deliberately so: `No diff.` is a claim about what a close
+ * *did to the tracker*, so it is driven through the process boundary — a real `bin/close-ticket`,
+ * a real repository, a stub `gh` that records every call — and asserted on what got posted and
+ * whether the close ran. #300's defect was invisible to every function-level reading of this
+ * script, because each function did exactly what it said; the range simply never reached one.
  */
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CLOSE_TICKET = join(REPO_ROOT, "bin/close-ticket");
 const CLOSE_GATE = join(REPO_ROOT, ".claude/hooks/close-gate.py");
+
 
 /** Loads `bin/close-ticket` as a module and runs `body` against it, JSON in, JSON out. */
 function inCloseTicket(body: string, payload: unknown): { stdout: string; stderr: string } {
@@ -259,5 +269,104 @@ describe("render_record in ticket mode", () => {
     const { record } = renderRecord([criterion("the module exists", "echo 271")], {});
 
     expect(record).not.toContain("> 271");
+  });
+});
+
+/** A repository at a fresh temp path with `commits` commits on it, newest SHA last. */
+function repoWithCommits(commits: number): { checkout: string; shas: string[] } {
+  const checkout = mkdtempSync(join(tmpdir(), "close-ticket-repo-"));
+  onTestFinished(() => rmSync(checkout, { recursive: true, force: true }));
+  // Identity on the command line, not in a config file: the fixture's own, never whatever the
+  // runner's `~/.gitconfig` says, and never a prompt for a signing passphrase.
+  const ident = [
+    "-c",
+    "user.name=close-ticket tests",
+    "-c",
+    "user.email=tests@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "init.defaultBranch=main",
+  ];
+  const git = (...args: string[]): string => {
+    const run = spawnSync("git", [...ident, ...args], { cwd: checkout, encoding: "utf8" });
+    expect(run.status, `git ${args.join(" ")}: ${run.stderr}`).toBe(0);
+    return run.stdout.trim();
+  };
+  git("init", "-q");
+  const shas: string[] = [];
+  for (let n = 0; n < commits; n += 1) {
+    writeFileSync(join(checkout, `file-${n}.txt`), `${n}\n`);
+    git("add", "-A");
+    git("commit", "-q", "--no-gpg-sign", "-m", `commit ${n}`);
+    shas.push(git("rev-parse", "HEAD"));
+  }
+  return { checkout, shas };
+}
+
+/** One real `bin/close-ticket` invocation against `gh`. */
+function closeTicket(args: string[], gh: string): { status: number | null; stdout: string; stderr: string } {
+  const run = spawnSync("python3", [CLOSE_TICKET, ...args], {
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    env: { ...process.env, AGENT_SKILLS_GH: gh },
+  });
+  return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "" };
+}
+
+describe("the No diff. close, driven end to end", () => {
+  const NO_CRITERIA = "Just a task. No acceptance criteria in this body at all.\n";
+
+  it("posts nothing and closes nothing when the range it was handed carries a commit", () => {
+    // #283 exactly: `bin/close-ticket 283 3fc1769..7f9d443 .` posted `## Closing record / No
+    // diff.` and exited 0 against a range carrying a real commit. The body has no acceptance
+    // criteria, which used to be read as "map or task ticket" — a kind — and took a branch that
+    // discarded the range unread. The record then said the ticket carried no diff; it carried
+    // one, and a human had to correct it.
+    const { checkout, shas } = repoWithCommits(2);
+    const { path: gh, calls } = stubGh(NO_CRITERIA);
+
+    const result = closeTicket(["283", `${shas[0]}..${shas[1]}`, checkout], gh);
+
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(calls().map((call: string[]) => call.slice(0, 2))).toEqual([["issue", "view"]]);
+    expect(result.stderr).toContain(`${shas[0]}..${shas[1]}`);
+    expect(result.stderr).toContain("carries 1 commit");
+  });
+
+  it("still closes on No diff. when the range really is empty", () => {
+    // The behaviour a map or task ticket depends on, unchanged — and the reason the guard is a
+    // count rather than a ban: a ticket that carried nothing says so by naming the empty range
+    // it carried, which is a thing the closer can check rather than take on faith.
+    const { checkout, shas } = repoWithCommits(2);
+    const { path: gh, calls } = stubGh(NO_CRITERIA);
+    const head = shas[1];
+
+    const result = closeTicket(["55", `${head}..${head}`, checkout], gh);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe("## Closing record\n\nNo diff.\n");
+    expect(calls().map((call: string[]) => call.slice(0, 2))).toEqual([
+      ["issue", "view"],
+      ["issue", "comment"],
+      ["issue", "close"],
+    ]);
+  });
+
+  it("refuses rather than assumes zero when the range cannot be counted", () => {
+    // A checkout that is not a repository, or a range it does not resolve. Reading nothing is
+    // not reading zero — and were this the fallback instead, every case above would be one bad
+    // `<checkout>` argument away from the old behaviour.
+    const notARepo = mkdtempSync(join(tmpdir(), "close-ticket-bare-"));
+    onTestFinished(() => rmSync(notARepo, { recursive: true, force: true }));
+    const { path: gh, calls } = stubGh(NO_CRITERIA);
+
+    const result = closeTicket(["56", "aaa1111..bbb2222", notARepo], gh);
+
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("could not count the commits in aaa1111..bbb2222");
+    expect(calls().map((call: string[]) => call.slice(0, 2))).toEqual([["issue", "view"]]);
   });
 });
