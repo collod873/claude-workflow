@@ -89,6 +89,7 @@ async function runOne(
       // The diff has no upper bound by construction — the same reasoning
       // `review.ts` already applies to the correctness reviewer's own prompt.
       promptViaStdin: true,
+      stage: "refuter",
     },
   );
 }

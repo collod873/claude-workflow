@@ -181,6 +181,7 @@ export function runImplementer(exec: StageExec, brief: string): Promise<Implemen
   return runStage(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
+    stage: "implementer",
   });
 }
 

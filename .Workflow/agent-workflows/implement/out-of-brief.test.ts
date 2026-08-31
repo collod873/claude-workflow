@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { createFakeStage } from "../shared/stage.fake";
 import { runImplement } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
+
+// Every one of these tests drives the lane against fixed fixtures and canned
+// responses, so more than one call can render the identical substituted prompt
+// for the one stage name this lane now carries (#274) — without a fresh
+// CHECKPOINTS_DIR per test, a later test would silently reuse an earlier
+// test's checkpointed answer. See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
+
 
 /**
  * An in-memory `gh` issue tracker: `issue create`/`issue comment`/`issue

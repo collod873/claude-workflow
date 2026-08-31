@@ -10,16 +10,6 @@
     ]
   },
   {
-    "hash": "02cceed5646a58f4",
-    "format": "typescript",
-    "lines": 13,
-    "tokens": 107,
-    "where": [
-      ".Workflow/agent-workflows/fixer/fixer.test.ts:14",
-      ".Workflow/agent-workflows/spec/open-questions.test.ts:11"
-    ]
-  },
-  {
     "hash": "03ccb995a204ac84",
     "format": "typescript",
     "lines": 7,

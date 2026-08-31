@@ -222,7 +222,7 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<string[]>
     },
     deps.exec,
     AUTHOR_OUTPUT,
-    { model: AUTHOR_MODEL, promptViaStdin: true },
+    { model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
   );
 
   for (const file of answer.files) {
