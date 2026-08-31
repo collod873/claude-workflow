@@ -43,21 +43,37 @@ interface VerifyRunFixture {
   headSha?: string;
   /** Defaults to `repository_dispatch`; `push` is the trunk run at the very same commit. */
   event?: string;
+  /**
+   * The run's own `status`. Defaults to what its jobs say — `completed` only when every one of
+   * them has finished — so a fixture that scripts a job mid-flight scripts a live run without
+   * having to say so twice.
+   */
+  status?: string;
   /** The pull request this run's log says it was judging (ADR-0104). Defaults to the one under test. */
   judging?: string;
   jobs?: VerifyJobFixture[];
 }
 
-/** Lane 06 having judged this head commit and cleared both jobs. */
-const LANE_06_ALL_GREEN: VerifyRunFixture[] = [
-  {
-    id: 900,
-    jobs: [
-      { name: IMMUTABILITY_JOB, conclusion: "success" },
-      { name: ACCEPTANCE_JOB, conclusion: "success" },
-    ],
-  },
+/** Lane 06's two jobs, both cleared — the only reading that lets a merge through. */
+const BOTH_JOBS_GREEN: VerifyJobFixture[] = [
+  { name: IMMUTABILITY_JOB, conclusion: "success" },
+  { name: ACCEPTANCE_JOB, conclusion: "success" },
 ];
+
+/** The immutable set cleared and the slice's own acceptance tests red — the verdict a fixer reacts to. */
+const ACCEPTANCE_JOB_RED: VerifyJobFixture[] = [
+  { name: IMMUTABILITY_JOB, conclusion: "success" },
+  { name: ACCEPTANCE_JOB, conclusion: "failure" },
+];
+
+/** Lane 06 mid-verdict: the immutable set cleared, the acceptance job still running. */
+const ACCEPTANCE_JOB_RUNNING: VerifyJobFixture[] = [
+  { name: IMMUTABILITY_JOB, conclusion: "success" },
+  { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null },
+];
+
+/** Lane 06 having judged this head commit and cleared both jobs. */
+const LANE_06_ALL_GREEN: VerifyRunFixture[] = [{ id: 900, jobs: BOTH_JOBS_GREEN }];
 
 interface IntegrateHarness {
   gauntlet?: GauntletResult;
@@ -124,24 +140,47 @@ function integrateDeps({
   // Resolved per lookup, not once: a `verifyRuns` function is how a test scripts lane 06 finishing
   // between two of this lane's reads.
   const currentRuns = () =>
-    (typeof verifyRuns === "function" ? verifyRuns() : verifyRuns).map((run, index) => ({
-      id: run.id ?? 900 + index,
-      head_sha: run.headSha ?? TRUNK_SHA,
-      event: run.event ?? "repository_dispatch",
-      judging: run.judging ?? PR,
-      jobs: (run.jobs ?? []).map((job) => ({
+    (typeof verifyRuns === "function" ? verifyRuns() : verifyRuns).map((run, index) => {
+      const id = run.id ?? 900 + index;
+      const jobs = (run.jobs ?? []).map((job, jobIndex) => ({
+        // A job id the Actions API would answer with, derived from its run so the fake can route a
+        // `--job <id> --log` read back to the run that owns it.
+        id: id * 10 + jobIndex,
         name: job.name,
         status: job.status ?? "completed",
         conclusion: job.conclusion ?? null,
-      })),
-    }));
+      }));
+      return {
+        id,
+        head_sha: run.headSha ?? TRUNK_SHA,
+        event: run.event ?? "repository_dispatch",
+        status: run.status ?? (jobs.every((job) => job.status === "completed") ? "completed" : "in_progress"),
+        judging: run.judging ?? PR,
+        jobs,
+      };
+    });
 
   const gh = (args: string[]): string => {
     calls.push(args);
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, body });
+    // `gh run view --job <id> --log`, the job-addressed read `integrate.ts` makes. It throws for a
+    // job that has not finished, exactly as `gh` does ("job N is still in progress; logs will be
+    // available when it is complete") — the constraint that makes this read job-addressed at all,
+    // so a fake that answered anyway would hide the defect (#286).
+    if (args[0] === "run" && args[1] === "view" && args[2] === "--job" && args[4] === "--log") {
+      const jobId = Number(args[3]);
+      const run = currentRuns().find((each) => each.jobs.some((job) => job.id === jobId));
+      const job = run?.jobs.find((each) => each.id === jobId);
+      if (!run || !job) return "";
+      if (job.status !== "completed") {
+        throw new Error(`gh: job ${jobId} is still in progress; logs will be available when it is complete`);
+      }
+      return `judging ${run.judging} on implement/issue-190\n`;
+    }
+    // The run-addressed read this lane must never make: `gh` refuses it for the whole several
+    // minutes lane 06's acceptance job runs, which is precisely when a re-judge needs recognising.
     if (args[0] === "run" && args[1] === "view" && args[3] === "--log") {
-      const run = currentRuns().find((each) => each.id === Number(args[2]));
-      return run ? `judging ${run.judging} on implement/issue-190\n` : "";
+      throw new Error(`gh: run ${args[2]} is still in progress; logs will be available when it is complete`);
     }
     if (args[0] === "pr" && args[1] === "merge") return "";
     if (args[0] === "pr" && args[1] === "edit") return "";
@@ -151,7 +190,9 @@ function integrateDeps({
     }
     if (args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches") return "";
     if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
-      return JSON.stringify(currentRuns().map(({ id, head_sha, event }) => ({ id, head_sha, event })));
+      return JSON.stringify(
+        currentRuns().map(({ id, head_sha, event, status }) => ({ id, head_sha, event, status })),
+      );
     }
     const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
     if (args[0] === "api" && jobsMatch) {
@@ -560,20 +601,8 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     const { deps } = integrateDeps({
       closeTicket: CLOSED,
       verifyRuns: [
-        {
-          id: 901,
-          jobs: [
-            { name: IMMUTABILITY_JOB, conclusion: "success" },
-            { name: ACCEPTANCE_JOB, conclusion: "failure" },
-          ],
-        },
-        {
-          id: 902,
-          jobs: [
-            { name: IMMUTABILITY_JOB, conclusion: "success" },
-            { name: ACCEPTANCE_JOB, conclusion: "success" },
-          ],
-        },
+        { id: 901, jobs: ACCEPTANCE_JOB_RED },
+        { id: 902, jobs: BOTH_JOBS_GREEN },
       ],
     });
 
@@ -591,18 +620,79 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
   });
 
+  it("waits for a re-judge still in flight instead of reading the failure it supersedes", () => {
+    // The other half of #286, and the one that survived the newest-run-first fix. A fixer's
+    // re-dispatch starts lane 06 and lane 08 together, so by the time this lane has rebased and run
+    // the gauntlet the re-judge exists but is minutes from finishing — and `gh run view <run>
+    // --log` refuses an unfinished run, so a run-addressed read could not see it and fell through
+    // to the completed failure underneath. `Immutability` finishes in seconds and names the pull
+    // request, so a job-addressed read recognises the re-judge and waits for it.
+    let reads = 0;
+    const { deps, sleeps } = integrateDeps({
+      closeTicket: CLOSED,
+      verifyRuns: () => {
+        reads += 1;
+        return [
+          { id: 901, jobs: ACCEPTANCE_JOB_RED },
+          { id: 902, jobs: reads < 4 ? ACCEPTANCE_JOB_RUNNING : BOTH_JOBS_GREEN },
+        ];
+      },
+    });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
+    // It actually waited — reading the superseded failure would have returned a verdict on the
+    // first read and merged nothing.
+    expect(sleeps.length).toBeGreaterThan(0);
+  });
+
+  it("refuses while a newer run has not yet said which pull request it judges", () => {
+    // `Immutability` is where the name gets written, so a run whose copy of it has not finished
+    // might be this pull request's own re-judge. Reading the older verdict underneath would settle
+    // a question the newer run is still answering.
+    const { deps } = integrateDeps({
+      verifyRuns: [
+        { id: 901, jobs: BOTH_JOBS_GREEN },
+        { id: 902, jobs: [{ name: IMMUTABILITY_JOB, status: "queued", conclusion: null }] },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
+  it("skips a finished run that never named anyone, rather than waiting on it forever", () => {
+    // A run cancelled before its `Immutability` job started names nobody and never will. Blocking
+    // on that would spend the whole poll budget and refuse a pull request lane 06 has judged.
+    const { deps } = integrateDeps({
+      closeTicket: CLOSED,
+      verifyRuns: [
+        { id: 901, jobs: BOTH_JOBS_GREEN },
+        {
+          id: 902,
+          status: "completed",
+          jobs: [{ name: IMMUTABILITY_JOB, status: "queued", conclusion: null }],
+        },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
+  });
+
+  it("resolves the judging run by job, never by run — a run-addressed log read cannot see one in flight", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED });
+
+    runIntegrate(deps);
+
+    const logReads = calls.filter((call) => call[0] === "run" && call[1] === "view");
+    expect(logReads).not.toEqual([]);
+    for (const read of logReads) expect(read[2]).toBe("--job");
+  });
+
   it("ignores a run whose log names a different pull request", () => {
     // Two implementers dispatching off the same trunk tip produce two runs at one sha; the
     // `judging <pr-url> on <branch>` line each prints (ADR-0104) is what tells them apart.
     const { deps } = integrateDeps({
       verifyRuns: [
-        {
-          judging: "https://github.com/collod873/claude-workflow/pull/999",
-          jobs: [
-            { name: IMMUTABILITY_JOB, conclusion: "success" },
-            { name: ACCEPTANCE_JOB, conclusion: "success" },
-          ],
-        },
+        { judging: "https://github.com/collod873/claude-workflow/pull/999", jobs: BOTH_JOBS_GREEN },
       ],
     });
 
@@ -619,14 +709,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
  * pass against the diff, which is the one thing this lane exists not to merge.
  */
 describe("runIntegrate's ruling when only lane 06's acceptance job is red", () => {
-  const ACCEPTANCE_RED: VerifyRunFixture[] = [
-    {
-      jobs: [
-        { name: IMMUTABILITY_JOB, conclusion: "success" },
-        { name: ACCEPTANCE_JOB, conclusion: "failure" },
-      ],
-    },
-  ];
+  const ACCEPTANCE_RED: VerifyRunFixture[] = [{ jobs: ACCEPTANCE_JOB_RED }];
 
   it("refuses the merge", () => {
     const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED });
@@ -676,19 +759,11 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     const { calls, deps, sleeps } = integrateDeps({
       closeTicket: CLOSED,
       // Green only from the second verdict read on. One verdict read is three lookups — the runs
-      // list, the winning run's judging log, its jobs — and this fixture is re-evaluated on each.
+      // list, the candidate's jobs, its Immutability job's judging log — and this fixture is
+      // re-evaluated on each.
       verifyRuns: () => {
         reads += 1;
-        return [
-          {
-            jobs: [
-              { name: IMMUTABILITY_JOB, conclusion: "success" },
-              reads < 4
-                ? { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null }
-                : { name: ACCEPTANCE_JOB, conclusion: "success" },
-            ],
-          },
-        ];
+        return [{ jobs: reads < 4 ? ACCEPTANCE_JOB_RUNNING : BOTH_JOBS_GREEN }];
       },
     });
 
@@ -699,14 +774,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
 
   it("gives up rather than waiting forever, and a merge is never what giving up produces", () => {
     const { calls, deps, sleeps } = integrateDeps({
-      verifyRuns: [
-        {
-          jobs: [
-            { name: IMMUTABILITY_JOB, conclusion: "success" },
-            { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null },
-          ],
-        },
-      ],
+      verifyRuns: [{ jobs: ACCEPTANCE_JOB_RUNNING }],
     });
 
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });

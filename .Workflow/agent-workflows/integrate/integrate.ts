@@ -228,8 +228,18 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-const ApiRun = z.object({ id: z.number(), head_sha: z.string(), event: z.string() });
-const ApiJob = z.object({ name: z.string(), status: z.string(), conclusion: z.string().nullable() });
+const ApiRun = z.object({
+  id: z.number(),
+  head_sha: z.string(),
+  event: z.string(),
+  status: z.string(),
+});
+const ApiJob = z.object({
+  id: z.number(),
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+});
 
 /**
  * One job's verdict. Only a *completed* job that concluded `success` is a pass; `failure` is a
@@ -244,15 +254,34 @@ function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdi
   return "unjudged";
 }
 
+/** Lane 06 has said nothing about this pull request — the reading every refusal below collapses to. */
+const NOT_JUDGED: VerifyVerdict = { immutability: "unjudged", acceptance: "unjudged" };
+
+/** One run's jobs, as the Actions API answers them — the four fields this lane reads. */
+function readJobs(gh: GhExec, runId: number): Array<z.infer<typeof ApiJob>> {
+  return ApiJob.array().parse(
+    JSON.parse(gh(["api", runJobsPath(runId), "--jq", "[.jobs[] | {id, name, status, conclusion}]"])),
+  );
+}
+
 /**
- * Whether `runId`'s own log says it was judging `pr` — the `judging <pr-url> on <branch>` line
- * both of `verify.yml`'s jobs print first (ADR-0104), the same line `fixer.yml` resolves its
- * target from. A log that cannot be read names nothing: the safe reading is "not this pull
- * request's run", which costs a wait, never a merge on someone else's verdict.
+ * Whether one job's own log says it was judging `pr` — the `judging <pr-url> on <branch>` line
+ * `verify.yml`'s jobs print first (ADR-0104), the same line `fixer.yml` resolves its target from.
+ *
+ * Addressed by **job** rather than by run, which is the whole of the fix's second half. `gh run
+ * view <run> --log` refuses a run that is still going ("run N is still in progress; logs will be
+ * available when it is complete"), and lane 06's run is still going for the whole several minutes
+ * its acceptance job takes — so a run-addressed read could never recognise the re-judge that was
+ * in flight, and fell back to the stale failure underneath it every time (#286). `--job` refuses
+ * only while *that* job is unfinished, and `Immutability` — a checkout-free string comparison that
+ * runs before both other jobs — is done seconds in.
+ *
+ * A log that cannot be read names nothing: the safe reading is "not this pull request's run",
+ * which costs a wait, never a merge on someone else's verdict.
  */
-function runJudged(gh: GhExec, runId: number, pr: string): boolean {
+function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
   try {
-    return gh(["run", "view", String(runId), "--log"]).includes(`judging ${pr} on `);
+    return gh(["run", "view", "--job", String(jobId), "--log"]).includes(`judging ${pr} on `);
   } catch {
     return false;
   }
@@ -265,28 +294,43 @@ function runJudged(gh: GhExec, runId: number, pr: string): boolean {
  * that produced this trunk tip ran `verify.yml` at the very same commit, and that run's
  * `Immutability` job is skipped by its own `if:` — so a `head_sha`-only filter would hand this
  * lane a skipped job to read, which is exactly the reading `JobVerdict` exists to refuse.
+ *
+ * Among what is left, **newest first, and the newest run that names this pull request wins
+ * outright**. Several dispatch runs can share trunk's sha while judging different pull requests,
+ * and a fixer's re-judge shares it with the failed run it supersedes — reading the strictest
+ * verdict across all of them let a superseded failure outvote its own green re-judge forever
+ * (#286).
+ *
+ * A newer run that has not yet named anyone stops the read rather than being skipped past. Its
+ * `Immutability` job is where the name gets written, so until that job finishes the run *might* be
+ * this pull request's own re-judge, and reading the older verdict underneath it would settle a
+ * question the newer run is still answering. Silence from a live run is not permission to read a
+ * superseded one — the same direction ADR-0054 takes on a job that has said nothing: wait and ask
+ * again, which costs a poll rather than a merge on a stale verdict. A run that finished without
+ * ever naming anyone is genuinely not ours and is skipped.
  */
 function readVerifyVerdict(gh: GhExec, headSha: string, pr: string): VerifyVerdict {
   const runsPath = workflowRunsPath(VERIFY_WORKFLOW_FILE, VERIFY_RUN_PAGE_SIZE);
   const runs = ApiRun.array().parse(
-    JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event}]"])),
+    JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event, status}]"])),
   );
-  // Newest first by id, then the first run whose own log names this pull request wins outright.
-  // Several dispatch runs can share trunk's sha while judging different pull requests, and a
-  // fixer's re-judge shares it with the failed run it supersedes — reading the strictest verdict
-  // across all of them let a superseded failure outvote its own green re-judge forever (#286).
   const candidates = runs
     .filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT)
     .sort((a, b) => b.id - a.id);
-  const judging = candidates.find((run) => runJudged(gh, run.id, pr));
-  if (judging === undefined) return { immutability: "unjudged", acceptance: "unjudged" };
-  const jobs = ApiJob.array().parse(
-    JSON.parse(gh(["api", runJobsPath(judging.id), "--jq", "[.jobs[] | {name, status, conclusion}]"])),
-  );
-  return {
-    immutability: jobVerdict(jobs, IMMUTABILITY_JOB),
-    acceptance: jobVerdict(jobs, ACCEPTANCE_JOB),
-  };
+  for (const run of candidates) {
+    const jobs = readJobs(gh, run.id);
+    const immutability = jobs.find((job) => job.name === IMMUTABILITY_JOB);
+    if (immutability === undefined || immutability.status !== "completed") {
+      if (run.status !== "completed") return NOT_JUDGED;
+      continue;
+    }
+    if (!jobJudged(gh, immutability.id, pr)) continue;
+    return {
+      immutability: jobVerdict(jobs, IMMUTABILITY_JOB),
+      acceptance: jobVerdict(jobs, ACCEPTANCE_JOB),
+    };
+  }
+  return NOT_JUDGED;
 }
 
 /**

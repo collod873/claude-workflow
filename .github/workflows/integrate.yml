@@ -35,7 +35,10 @@ name: Integrate
 # fire on the same dispatch, in parallel, and nothing else connects them: a dispatch run's
 # `pull_requests` is empty and the pull request's own head commit carries no check runs, so the
 # only place lane 06's answer exists is the Actions API — `verify.yml`'s runs, narrowed to this
-# run's own `github.sha`, and that run's jobs.
+# run's own `github.sha`, those runs' jobs, and the `Immutability` job's log, which is where the
+# pull request a run was judging is written down (ADR-0104). The log is read per *job* rather than
+# per run, the same way `fixer.yml` reads it: `gh run view <run> --log` refuses a run that is still
+# going, which is every re-judge lane 08 needs to recognise while it waits (#286).
 permissions:
   contents: write
   issues: write
