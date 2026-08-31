@@ -284,3 +284,58 @@ jobs:
       - name: Clone gate
         if: always()
         run: npm run clone:check
+
+  # ## The door a red Verify rings itself
+  #
+  # `fixer.yml` reaches a red run of this workflow through `workflow_run`, and `workflow_run` keeps
+  # not arriving. Three no-shows on 2026-08-30/31 alone; the last was run 33346638810 on PR #284,
+  # which completed as `failure` at 01:07:58 and reached no Fixer at all until a person dispatched
+  # one by hand eight minutes later (#285). Twice before that the same ghosting hit Recover, which
+  # is why `implement.yml` now rings Recover from its own `if: failure()` step (ADR-0114) — a
+  # `repository_dispatch` sent with `GITHUB_TOKEN` is the wire every lane in this pipeline already
+  # chains on, and it did not miss once across the days `workflow_run` was losing runs. This job is
+  # that step, for this workflow's own red. Both of the Fixer's doors stay open: a marker comment
+  # on the pull request makes whichever one arrives second a no-op (`fixer.yml`), so the cost of
+  # two doors is nothing and the cost of one was a red pull request nobody repaired.
+  #
+  # **A job rather than a step**, because a red run is red in any of the three jobs above and each
+  # of them can be the only one that ran — a failed `Immutability` skips both jobs after it, and a
+  # failed `Restore and run acceptance` leaves `verify` green beside it. One job gated on all three
+  # sends exactly one dispatch per red run, which is what the Fixer's per-run concurrency group and
+  # its per-run marker both expect; an `if: failure()` step in each job would send up to two for one
+  # failure and buy a second attempt loop at the same ticket.
+  #
+  # `github.event.action == 'implementation-opened'` is the same scope the two jobs above carry, and
+  # it is the sending side of `fixer.yml`'s `event != 'push'`: a red `push: main` run is trunk being
+  # broken, with no pull request to fix and nothing that lane could do but spend a model on `main`.
+  #
+  # The condition names `failure()` per job rather than using the bare `failure()` `implement.yml`'s
+  # step carries, because `always()` is what gets this job past three `needs:` a red run has already
+  # left in mixed states — and once `always()` is in, `cancelled` has to be excluded by name. It is:
+  # a cancelled run's conclusion is not `failure`, so the `workflow_run` door would not open for it
+  # either, and two doors onto one lane have to agree about what counts as red.
+  signal-fixer:
+    name: Signal the fixer
+    needs: [immutability, restore-and-run-acceptance, verify]
+    if: >-
+      always() && github.event.action == 'implementation-opened' &&
+      (needs.immutability.result == 'failure' ||
+      needs.restore-and-run-acceptance.result == 'failure' ||
+      needs.verify.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # This job's own block, not the workflow's `contents: read` above: the dispatch endpoint is a
+    # write, and the three jobs that actually judge a pull request have no business holding a token
+    # that can perform one. A `permissions:` block on a job replaces the workflow default rather
+    # than narrowing it, so this line is the whole of what this job can do.
+    permissions:
+      contents: write
+    steps:
+      - name: Tell the Fixer this run went red
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/{owner}/{repo}/dispatches" \
+            -f event_type=fixer-needed \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID"

@@ -14,18 +14,30 @@ name: Fixer
 # `conclusion == 'failure'` is filtered at the job level rather than in the trigger for the reason
 # `review.yml` gives: `workflow_run` carries no `conclusion` filter of its own.
 #
-# `event != 'push'` is the same second condition, and it is not cosmetic here either. `verify.yml`
-# fires on `push: main` as well as on the implementer's dispatch, and a red push run is trunk being
-# broken — there is no pull request to fix, no branch to push attempts to, and nothing this lane
-# could do but spend a model on `main`. Stated as "not the push run" rather than by naming the
-# dispatch, which `review.yml`'s own tests establish is the same condition (`verify.yml` has
-# exactly two doors) and which keeps ADR-0090's sweep from reading this as a dispatch-triggered
-# workflow it is not.
+# **`workflow_run` is no longer the only door**, because it kept not arriving — three no-shows on
+# 2026-08-30/31 alone, the last of them run 33346638810 on PR #284, red at 01:07:58 and reaching
+# this lane only when a person dispatched it by hand (#285). `verify.yml` now rings `fixer-needed`
+# from a job of its own on the red path, the same second door lane 05 opened for Recover under
+# ADR-0114. Both stay: the marker comment the resolve step writes makes whichever arrives second a
+# no-op, so the cost of two doors is one comment and the cost of one was a red pull request that sat
+# until somebody noticed.
+#
+# `event != 'push'` is the same second condition on that door, and it is not cosmetic here either.
+# `verify.yml` fires on `push: main` as well as on the implementer's dispatch, and a red push run is
+# trunk being broken — there is no pull request to fix, no branch to push attempts to, and nothing
+# this lane could do but spend a model on `main`. Stated as "not the push run" rather than by naming
+# the dispatch, which `review.yml`'s own tests establish is the same condition (`verify.yml` has
+# exactly two doors).
 
 "on":
   workflow_run:
     workflows: ["Verify"]
     types: [completed]
+  # The door lane 06 rings itself, from its own `Signal the fixer` job — see `verify.yml` for why
+  # `workflow_run` alone was not enough, and `implement.yml`/`recover.yml` (ADR-0114) for the same
+  # pattern one lane earlier. `types:` names this lane's one action (ADR-0090).
+  repository_dispatch:
+    types: [fixer-needed]
   # The hand door. A `workflow_run` trigger cannot be fired by a person, so without this there is
   # no way to run this lane at a pull request whose Verify went red before this file existed, no
   # way to retry one after the cause was dealt with by hand — and, the reason #183 exists, no way
@@ -42,7 +54,8 @@ permissions:
   # (`commitAndPushAttempt`) — this lane never opens a branch or a pull request of its own.
   contents: write
   # write: a stopped fixer always comments the PR with what happened (`applyBlocked`,
-  # `applyUnfixable`) — the escalate path also needs `gh pr view` to check the PR is still open.
+  # `applyUnfixable`), and the resolve step below reads the PR's comments for its own per-run marker
+  # and writes one — the escalate path also needs `gh pr view` to check the PR is still open.
   pull-requests: write
   # write: a stopped fixer applies `needs-human` and assigns the owner on the *ticket*
   # (`escalateToOwner`) — moved here from the PR because that is where the label now lands.
@@ -56,13 +69,20 @@ concurrency:
   # each one's fixer works on its own branch, so there is nothing for them to serialise over. Never
   # cancelled — an attempt that was already committed and pushed is not undone by dropping the run
   # that made it, so a cancelled fixer leaves a half-finished loop with no record of stopping.
-  group: fixer-${{ github.event.workflow_run.id || github.run_id }}
+  #
+  # Keyed on the *failed Verify run*, whichever door named it, so the dispatch and the late
+  # `workflow_run` for one failure queue behind each other rather than racing for the same branch —
+  # the same key `recover.yml` uses for the same pair of doors. Queueing is what makes the marker
+  # comment in the resolve step a reliable no-op: the second arrival reads a record the first one
+  # has already finished writing.
+  group: fixer-${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   fixer:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event.action == 'fixer-needed' ||
       (github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.event != 'push')
     runs-on: ubuntu-latest
@@ -72,7 +92,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+      RUN_ID: ${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       # Who a stop assigns the ticket to, on both paths below — the same pattern
       # `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses: assigned so the ticket notifies rather than
@@ -106,10 +126,14 @@ jobs:
       # later jobs carry `needs: [immutability]`), so its `judging` line is readable from its own
       # log regardless of which of the two downstream jobs actually reddened.
       #
-      # Exits 0 on every "nothing to work on": a run this cannot resolve, or a pull request that is
-      # no longer open (lane 08 may have merged it, or a person may have closed it). None of those
-      # is a broken lane, and a red run for one would be a failure notification about a pull request
-      # that no longer needs anything.
+      # Exits 0 on every "nothing to work on": a run this cannot resolve, a pull request that is no
+      # longer open (lane 08 may have merged it, or a person may have closed it), or a run the other
+      # door already reacted to. None of those is a broken lane, and a red run for one would be a
+      # failure notification about a pull request that no longer needs anything.
+      #
+      # The one exit 1 is the wait below timing out, and the difference is the point: those are
+      # cases where this step *knows* there is nothing to do, and that one is the case where it
+      # could not find out.
       - name: Resolve the pull request that Verify run was judging
         id: target
         run: |
@@ -118,6 +142,33 @@ jobs:
           if [ -z "${RUN_ID:-}" ]; then
             echo "no Verify run named; nothing to resolve"
             exit 0
+          fi
+
+          # ## Why a completed run has to be waited for
+          #
+          # The dispatch door is rung from *inside* the run it names: `verify.yml`'s `Signal the
+          # fixer` job is the last job of the very run this step resolves from, so when this lane
+          # starts, that run is still `in_progress`. `gh run view --log` refuses an in-progress run
+          # outright ("logs will be available when it is complete") — and the grep below is the only
+          # place the pull request under test is written down (ADR-0104). Without this wait the new
+          # door would resolve "names no implementation pull request" every single time, exit 0, and
+          # look exactly like nothing being wrong: the silence #285 exists to end, reproduced by the
+          # fix for it.
+          #
+          # The signal job sends and then ends, so the wait is seconds in practice, and it is a
+          # no-op on the `workflow_run` and hand doors, which only ever name a run already finished.
+          # Five minutes then refuses out loud rather than exiting 0, because a run this cannot read
+          # is not "nothing to work on" — it is a red Verify this lane could not reach, and a red
+          # Fixer run is the only version of that a person will see.
+          STATUS=""
+          for _ in $(seq 1 30); do
+            STATUS=$(gh run view "$RUN_ID" --json status --jq .status)
+            if [ "$STATUS" = "completed" ]; then break; fi
+            sleep 10
+          done
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::Verify run $RUN_ID is still \"$STATUS\" after five minutes; its log cannot be read, so no pull request was resolved"
+            exit 1
           fi
 
           JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs')
@@ -163,6 +214,32 @@ jobs:
             echo "$URL is $STATE; nothing to fix"
             exit 0
           fi
+
+          # ## One reaction per red Verify run, whichever door named it
+          #
+          # Both doors ring for the same failure whenever `workflow_run` does eventually arrive, and
+          # the concurrency group above makes the late one queue behind the dispatch rather than
+          # race it — so without a record, every red Verify would buy a *second* full attempt loop
+          # at the same ticket, at a second model's price, for a repair that already happened.
+          # `recover.yml` met the identical problem when lane 05 grew its second door and answered
+          # it with a marker comment (ADR-0114); this is that marker, on the pull request because
+          # that is where this lane's other comments already go.
+          #
+          # Written here — before the checkout, before the rebase, before a model — so that a fixer
+          # which dies mid-loop still leaves the second arrival a no-op. The crash escalation at the
+          # bottom of this file is what speaks for a run that died; a fresh loop over a branch half
+          # an earlier one already wrote is not.
+          MARKER="<!-- fixer-run:$RUN_ID -->"
+          COMMENTS=$(gh pr view "$PR" --json comments --jq '.comments[].body')
+          case "$COMMENTS" in
+            *"$MARKER"*)
+              echo "run $RUN_ID was already reacted to (see the marker comment on $URL); nothing to do"
+              exit 0
+              ;;
+          esac
+          gh pr comment "$PR" --body "$(printf '%s\n%s\n' \
+            "$MARKER" \
+            "[Verify run $RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID) came back red; the fixer is reacting to it.")"
 
           if [ "$MODE" = "model" ]; then
             echo "fixing $URL on $BRANCH for #$ISSUE"

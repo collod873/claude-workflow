@@ -283,7 +283,12 @@ describe("unfixableComment", () => {
 });
 
 interface FixerWorkflow {
-  on?: { workflow_run?: { workflows?: string[]; types?: string[] }; workflow_dispatch?: unknown; pull_request?: unknown };
+  on?: {
+    workflow_run?: { workflows?: string[]; types?: string[] };
+    repository_dispatch?: { types?: string[] };
+    workflow_dispatch?: unknown;
+    pull_request?: unknown;
+  };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   jobs: { fixer: { if?: string; steps?: Array<{ name?: string; run?: string; with?: { ref?: string } }> } };
@@ -342,6 +347,93 @@ describe("fixer.yml is the listener a red Verify never had", () => {
     const step = (workflow.jobs.fixer.steps ?? []).find((each) => each.run?.includes("npx tsx"));
     expect(step?.run).toContain(".Workflow");
     expect(step?.run).not.toContain("tests/acceptance");
+  });
+});
+
+/**
+ * The second door (#285). `workflow_run` went missing three times over 2026-08-30/31 — the last of
+ * them run 33346638810 on PR #284, red at 01:07:58, reaching this lane only when a person
+ * dispatched it by hand — so `verify.yml` now rings `fixer-needed` from a job of its own, the same
+ * shape lane 05 opened for Recover under ADR-0114. These pin both ends: neither file can rename the
+ * event alone, and neither can drop the two things that make a second door safe to add — the wait
+ * for the run to finish, and the marker that makes the later arrival a no-op.
+ */
+describe("the door a red Verify rings itself", () => {
+  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
+  const verify = readWorkflow<{
+    jobs: Record<string, { name?: string; if?: string; needs?: string[]; permissions?: Record<string, string>; steps?: Array<{ run?: string }> }>;
+  }>("verify.yml");
+
+  const signal = Object.values(verify.workflow.jobs).find((job) => job.steps?.some((step) => step.run?.includes("event_type=fixer-needed")));
+
+  it("answers the fixer-needed dispatch verify.yml sends, keyed on the failed run", () => {
+    expect(workflow.on?.repository_dispatch?.types).toEqual(["fixer-needed"]);
+    expect(workflow.jobs.fixer.if).toContain("github.event.action == 'fixer-needed'");
+    expect(source).toContain("github.event.client_payload.run_id");
+
+    expect(signal, "verify.yml sends no fixer-needed dispatch").toBeDefined();
+    const ring = signal?.steps?.find((step) => step.run?.includes("event_type=fixer-needed"));
+    expect(ring?.run).toContain("client_payload[run_id]=$GITHUB_RUN_ID");
+  });
+
+  it("is rung only for the dispatch Verify judges a pull request on, never for a red push to trunk", () => {
+    // The sending side of this lane's own `event != 'push'`: a red `push: main` run is trunk being
+    // broken, with no pull request to fix. Both doors have to agree on that or the new one reopens
+    // a hole the old one closes.
+    expect(signal?.if).toContain("github.event.action == 'implementation-opened'");
+  });
+
+  it("is rung on a red run and not on a cancelled one, which the workflow_run door also ignores", () => {
+    // `always()` is what gets the signal job past three `needs:` a red run left in mixed states,
+    // and once it is in, `cancelled` has to be excluded by name. A cancelled run's conclusion is
+    // not `failure`, so `workflow_run` would not open for it either.
+    expect(signal?.if).toContain("always()");
+    expect(signal?.needs).toEqual(["immutability", "restore-and-run-acceptance", "verify"]);
+    for (const job of signal?.needs ?? []) {
+      expect(signal?.if, `the signal job ignores a red ${job}`).toContain(`needs.${job}.result == 'failure'`);
+    }
+    expect(signal?.if).not.toContain("cancelled");
+  });
+
+  it("sends from a job holding contents: write, which verify.yml's judging jobs deliberately do not", () => {
+    // A job-level block replaces the workflow default rather than narrowing it, so the three jobs
+    // that judge a pull request keep the `contents: read` at the top of the file and only this one
+    // can write.
+    expect(signal?.permissions?.contents).toBe("write");
+    expect(verify.workflow.jobs.verify.permissions).toBeUndefined();
+  });
+
+  it("waits for the run to finish before reading its log, because this door is rung from inside it", () => {
+    // `verify.yml`'s signal job is the last job of the run this lane resolves from, so the run is
+    // still `in_progress` when the dispatch lands — and `gh run view --log` refuses an in-progress
+    // run. Without the wait the grep below resolves nothing and this lane exits 0, which is the
+    // silence #285 exists to end.
+    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
+    expect(resolve?.run).toContain('gh run view "$RUN_ID" --json status');
+    expect(resolve?.run).toContain('[ "$STATUS" = "completed" ]');
+    // And refuses out loud rather than exiting 0: a run it cannot read is a red Verify it could not
+    // reach, not "nothing to work on".
+    expect(resolve?.run).toMatch(/is still \\"\$STATUS\\" after five minutes[\s\S]*?\n\s*exit 1/);
+  });
+
+  it("reacts once per Verify run, whichever door named it", () => {
+    // Both doors ring for one failure whenever `workflow_run` does arrive, and the concurrency
+    // group makes the late one queue behind the dispatch rather than race it — so without the
+    // marker every red Verify buys a second attempt loop at the same ticket.
+    expect(workflow.concurrency?.group).toContain("github.event.client_payload.run_id");
+
+    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
+    expect(resolve?.run).toContain('MARKER="<!-- fixer-run:$RUN_ID -->"');
+    expect(resolve?.run).toContain('gh pr view "$PR" --json comments');
+    expect(resolve?.run).toContain('gh pr comment "$PR" --body');
+  });
+
+  it("writes the marker before it spends anything, so a fixer that dies is not retried into", () => {
+    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
+    const steps = workflow.jobs.fixer.steps ?? [];
+    // The marker is written in the resolve step, which is the first step of the job — everything
+    // that costs money (the checkout, the rebase, the stage) comes after it.
+    expect(steps.indexOf(resolve as (typeof steps)[number])).toBe(0);
   });
 });
 
