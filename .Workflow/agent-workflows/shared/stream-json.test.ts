@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
+import { isolateCheckpointsPerTest } from "./isolate-checkpoints.setup";
 import { runStage, type StageExec } from "./stage";
 import { createStreamJsonParser, progressLine } from "./stream-json";
 import { structuredOutput } from "./structured-output";
@@ -255,6 +256,10 @@ describe("progress lines", () => {
  * has to dig through.
  */
 describe("a stage's answer, from the CLI's bytes to a typed value", () => {
+  // Without this, the checkpoint this test's now-required `stage` writes
+  // lands in this repo's real checkpoints dir instead of a throwaway one.
+  beforeEach(isolateCheckpointsPerTest);
+
   const OUTPUT = structuredOutput(z.object({ entries: z.array(z.string()) }));
 
   /** A `StageExec` that runs the given stdout through the real parser, as `execClaude` does. */
@@ -291,7 +296,9 @@ describe("a stage's answer, from the CLI's bytes to a typed value", () => {
     // nothing left to mark: the answer is a field, not a span of prose.
     expect(stream).not.toContain("<output>");
 
-    await expect(runStage(promptPath, {}, execOverStream([stream]), OUTPUT)).resolves.toEqual({
+    await expect(
+      runStage(promptPath, {}, execOverStream([stream]), OUTPUT, { stage: "test" }),
+    ).resolves.toEqual({
       entries: ["a seam", "another seam"],
     });
   });
