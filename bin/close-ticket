@@ -55,12 +55,25 @@ debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
 `SUPERSEDED_LINE_RE` and `DISPOSITION_RE`.
 
 `--spec` closes a spec (a `prd` issue) instead of a ticket. It is a mode, not a second script:
-`criteria_blocks`, `split_check_marker`, `run_check` and `render_record` are reused unchanged, so
-a spec's one criterion is run, recorded and refused exactly the way a ticket's is, with the same
-all-or-nothing contract. What `--spec` adds is a **precondition**, checked before any check
-command runs: every sub-issue must be **delivered** — closed by a *merged* pull request, not
-merely closed. A child closed as `not planned`, or closed by hand, is not delivered; the run
-refuses, names every undelivered child and why, and posts and closes nothing.
+`criteria_blocks`, `split_check_marker`, `run_check` and `render_record` are the same functions a
+ticket's close runs, so a spec's one criterion is run, recorded and refused inside the same
+all-or-nothing contract. What `--spec` adds is a **precondition** and a stricter **verdict**.
+
+The precondition is checked before any check command runs: every sub-issue must be **delivered**
+— closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
+closed by hand, is not delivered; the run refuses, names every undelivered child and why, and
+posts and closes nothing.
+
+The verdict: a spec's criterion is `MET` only when its check exits 0 **and** prints something on
+stdout, and the `MET` bullet carries that stdout (trimmed and capped, quoted by `quote_evidence`)
+beneath the command. An exit 0 that printed **no evidence** is a failure, refused down the same
+path as a non-zero exit — name the criterion on stderr, post nothing, close nothing. #236 closed
+on `gh issue list --label sliceable … | xargs -r …`, whose first half returns `[]` in a world
+where nothing was built and whose second half runs nothing and exits 0 on empty input: an unbuilt
+world and a proven one scored identically, because this script read the exit status and never
+what the check said (#270). Ticket mode is unmoved — `grep -q`, `! grep -q` and `test -f` succeed
+in silence by design, and every ticket check written so far relies on that. The rule belongs to
+the world-reading check a spec carries, the one place a silent pass can mean nothing happened.
 
 The precondition comes first because a spec's check reads the world: running it against a spec
 whose slices have not all landed burns a run on a verdict that could not have been green, and
@@ -104,6 +117,17 @@ NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
 # criterion mean to name a check — is the one worth asking, because a criterion that says
 # `check:` and does not parse is a ticket defect either way.
 UNPARSEABLE_CHECK_RE = re.compile(r"\bcheck:", re.IGNORECASE)
+
+# A `MET` bullet as this script writes one, anchored to the start of its own line. Counted off
+# the rendered record for the run row, so it must not also match the text a spec's check printed
+# — `quote_evidence` guarantees no evidence line begins with `- `, and this anchor is the other
+# half of that guarantee.
+MET_BULLET_RE = re.compile(r"^- .* — MET: ", re.MULTILINE)
+
+# How much of a spec check's stdout the record carries: enough to show what the check saw — an
+# issue number, a count, the line that matched — without pasting a build log onto the issue.
+EVIDENCE_MAX_LINES = 10
+EVIDENCE_MAX_CHARS = 800
 
 
 def fetch_body(gh, issue: str) -> str:
@@ -231,16 +255,47 @@ def run_check(command: str, checkout: str) -> subprocess.CompletedProcess:
     return subprocess.run(command, shell=True, cwd=checkout, capture_output=True, text=True)
 
 
+def quote_evidence(output: str) -> list[str]:
+    """`output` as record lines that can never be miscounted as a criterion's bullet.
+
+    `hooks/close-gate.py`'s `BULLET_RE` is `^[ \\t]*-\\s+` run over the raw record text — it
+    counts bullets before any markdown is rendered, so indenting a fence hides nothing: a `- `
+    the check printed still starts its line, and the gate would then see more bullets than the
+    body has criteria and deny the close. Only a non-whitespace first character keeps that from
+    happening, so every line is prefixed `> `. The fence inside the quote is what keeps the
+    output monospaced and its leading whitespace intact, and it is one backtick longer than the
+    longest run in the output so a check that prints a fence of its own cannot end this one
+    early.
+
+    Trimmed to `EVIDENCE_MAX_CHARS`/`EVIDENCE_MAX_LINES`: the record is evidence that the check
+    read a real world, not a transcript of everything it read."""
+    text = output.strip()
+    if len(text) > EVIDENCE_MAX_CHARS:
+        text = text[:EVIDENCE_MAX_CHARS].rstrip() + " […]"
+    lines = text.split("\n")
+    if len(lines) > EVIDENCE_MAX_LINES:
+        lines = lines[:EVIDENCE_MAX_LINES] + ["[…]"]
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [f"> {fence}", *(f"> {line}".rstrip() for line in lines), f"> {fence}"]
+
+
 def render_record(range_spec: str, blocks: list[str] | None,
-                   checkout: str) -> tuple[str | None, bool]:
+                   checkout: str, spec: bool = False) -> tuple[str | None, bool]:
     """Returns `(record_text, ok)`. `ok` is False the moment a criterion's check exits
     non-zero — `record_text` is then `None`, and the failing criterion plus the command's
     combined output have already gone to stderr. The caller must not post or close in that
-    case (module docstring)."""
+    case (module docstring).
+
+    `spec` is the `--spec` verdict: a criterion is `MET` only when its check exits 0 *and*
+    prints something, and the `MET` bullet then carries that output. A silent exit 0 refuses
+    down the same path a non-zero exit does. Ticket mode (`spec=False`) accepts a silent exit 0,
+    which is what `grep -q` and `test -f` have always been — see the module docstring for why
+    the two modes read the same exit status differently."""
     if blocks is None:
         return NO_DIFF_RECORD, True
 
-    bullets = []
+    lines = []
     verified = 0
     for criterion in blocks:
         reference, command = split_check_marker(criterion)
@@ -257,7 +312,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
                     file=sys.stderr,
                 )
                 return None, False
-            bullets.append(f"- {reference} — UNVERIFIED: no check")
+            lines.append(f"- {reference} — UNVERIFIED: no check")
             continue
         result = run_check(command, checkout)
         if result.returncode != 0:
@@ -268,10 +323,25 @@ def render_record(range_spec: str, blocks: list[str] | None,
             if output.strip():
                 print(output.rstrip("\n"), file=sys.stderr)
             return None, False
-        bullets.append(f"- {reference} — MET: `{command}` exit 0")
+        evidence = (result.stdout or "").strip()
+        if spec and not evidence:
+            print(f"error: check printed no evidence for criterion: {reference}",
+                   file=sys.stderr)
+            print(f"  command: {command}", file=sys.stderr)
+            print(
+                "  exit status: 0, stdout empty — a spec's check reads the world, and a "
+                "reading that produced nothing is not a reading. Exit 0 against an empty "
+                "world and exit 0 against a proven one are the same status; only the output "
+                "tells them apart.",
+                file=sys.stderr,
+            )
+            return None, False
+        lines.append(f"- {reference} — MET: `{command}` exit 0")
+        if spec:
+            lines.extend(quote_evidence(evidence))
         verified += 1
 
-    total = len(bullets)
+    total = len(blocks)
     unverified = total - verified
     if total and not verified:
         print(
@@ -286,7 +356,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
         )
         return None, False
     summary = f"{verified} of {total} criteria verified · {unverified} unverified"
-    body = "\n".join([f"`{range_spec}`", "", summary, "", *bullets])
+    body = "\n".join([f"`{range_spec}`", "", summary, "", *lines])
     return f"## Closing record\n\n{body}\n", True
 
 
@@ -458,13 +528,16 @@ def run(argv=None) -> int:
                 for problem in problems:
                     print(f"  {problem}", file=sys.stderr)
                 return 1
-        record_text, ok = render_record(args.range, blocks, args.checkout)
+        record_text, ok = render_record(args.range, blocks, args.checkout, spec=args.spec)
         if not ok:
             return 1
 
     # Counted off the record rather than threaded out of `render_record`: the record is
-    # what actually gets posted, so counting it is counting what was claimed.
-    ROW["verified"] = record_text.count("— MET: ")
+    # what actually gets posted, so counting it is counting what was claimed. Anchored to the
+    # start of a line (`MET_BULLET_RE`) rather than matched anywhere in the text, because a
+    # spec's record now also carries what its check printed, and a check is free to print
+    # anything.
+    ROW["verified"] = len(MET_BULLET_RE.findall(record_text))
 
     try:
         gh_support.run_gh(gh, "issue", "comment", args.issue, "--body-file", "-",

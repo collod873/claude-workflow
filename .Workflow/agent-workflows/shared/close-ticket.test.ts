@@ -3,9 +3,11 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * `bin/close-ticket`'s `undelivered` — the precondition `--spec` refuses on — driven in the real
- * interpreter against the real function. `undelivered`'s own docstring in `bin/close-ticket` is the
- * home for why the question is asked from the pull request's side (#195, #233, #253).
+ * The two halves of what `--spec` adds to a close, driven in the real interpreter against the real
+ * functions: `undelivered`, the precondition it refuses on, and `render_record`, the verdict it
+ * reaches. Each function's own docstring in `bin/close-ticket` is the home for why — the pull
+ * request's side of the delivery question (#195, #233, #253), and evidence rather than exit status
+ * (#270).
  *
  * The cases below are the payload shapes `closedByPullRequestsReferences` returns, not a second
  * copy of the parsing. Driven through Python rather than restated in TypeScript for
@@ -15,6 +17,29 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CLOSE_TICKET = join(REPO_ROOT, "bin/close-ticket");
+const CLOSE_GATE = join(REPO_ROOT, ".claude/hooks/close-gate.py");
+
+/** Loads `bin/close-ticket` as a module and runs `body` against it, JSON in, JSON out. */
+function inCloseTicket(body: string, payload: unknown): { stdout: string; stderr: string } {
+  const reader = `
+import importlib.util, json, sys
+from importlib.machinery import SourceFileLoader
+# Named through an explicit loader: the script has no \`.py\` suffix, and
+# \`spec_from_file_location\` alone declines to guess a loader for that.
+loader = SourceFileLoader("close_ticket", ${JSON.stringify(CLOSE_TICKET)})
+module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(module)
+payload = json.load(sys.stdin)
+${body}
+`;
+  const run = spawnSync("python3", ["-c", reader], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+  });
+  expect(run.status, run.stderr).toBe(0);
+  return { stdout: run.stdout, stderr: run.stderr };
+}
 
 /** A `subIssues` node as the GraphQL query returns it. */
 function child(
@@ -35,23 +60,49 @@ function child(
 
 /** `undelivered(children)`, run by the real `bin/close-ticket` loaded as a module. */
 function undelivered(children: unknown[]): string[] {
+  const { stdout } = inCloseTicket(`print(json.dumps(module.undelivered(payload)))`, children);
+  return JSON.parse(stdout) as string[];
+}
+
+/** What one `render_record` call decided, plus the stderr it refused on. */
+interface Rendered {
+  record: string | null;
+  ok: boolean;
+  stderr: string;
+}
+
+/**
+ * `render_record` over `blocks`, in ticket mode or `--spec` mode.
+ *
+ * The checks are real shell commands run in a real cwd — `REPO_ROOT` — because the thing under
+ * test is what `run_check` observes, and a stub that reports an exit status and an output is a
+ * restatement of the belief this ticket exists to correct.
+ */
+function renderRecord(blocks: string[], opts: { spec?: boolean } = {}): Rendered {
+  const { stdout, stderr } = inCloseTicket(
+    `record, ok = module.render_record("base..head", payload["blocks"], ".", spec=payload["spec"])
+print(json.dumps({"record": record, "ok": ok}))`,
+    { blocks, spec: opts.spec ?? false },
+  );
+  return { ...(JSON.parse(stdout) as Omit<Rendered, "stderr">), stderr };
+}
+
+/** Every bullet the real close gate counts in `record` — its `BULLET_RE`, not a copy of it. */
+function gateBullets(record: string): string[] {
   const reader = `
 import importlib.util, json, sys
 from importlib.machinery import SourceFileLoader
-# Named through an explicit loader: the script has no \`.py\` suffix, and
-# \`spec_from_file_location\` alone declines to guess a loader for that.
-loader = SourceFileLoader("close_ticket", ${JSON.stringify(CLOSE_TICKET)})
-spec = importlib.util.spec_from_loader(loader.name, loader)
-module = importlib.util.module_from_spec(spec)
+# The gate imports its sibling \`_hook\`, which normally resolves off the script's own
+# directory; loading it as a module rather than running it means saying so here.
+sys.path.insert(0, ${JSON.stringify(join(REPO_ROOT, ".claude/hooks"))})
+loader = SourceFileLoader("close_gate", ${JSON.stringify(CLOSE_GATE)})
+module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(module)
-print(json.dumps(module.undelivered(json.load(sys.stdin))))
+print(json.dumps(module.BULLET_RE.findall(sys.stdin.read())))
 `;
-  const run = spawnSync("python3", ["-c", reader], {
-    input: JSON.stringify(children),
-    encoding: "utf8",
-  });
+  const run = spawnSync("python3", ["-c", reader], { input: record, encoding: "utf8" });
   expect(run.status, run.stderr).toBe(0);
-  return JSON.parse(run.stdout) as string[];
+  return (JSON.parse(run.stdout) as string[]).map((b) => b.trim()).filter(Boolean);
 }
 
 describe("undelivered", () => {
@@ -127,5 +178,86 @@ describe("undelivered", () => {
       "#2: closed by hand, not by a merged PR",
       "#3: still open",
     ]);
+  });
+});
+
+/** A criterion block as `ticket_shape.criteria_blocks` hands one to `render_record`. */
+function criterion(text: string, command: string): string {
+  return `- [ ] ${text} — check: \`${command}\``;
+}
+
+describe("render_record in --spec mode", () => {
+  it("refuses a check that exits 0 having printed nothing", () => {
+    // #236's own check in a world where nothing was built: `gh issue list … | xargs -r`, whose
+    // second half runs nothing and exits 0 on empty input.
+    const empty = criterion("the door fires", "printf '' | xargs -r -I{} echo {}");
+
+    const { record, ok, stderr } = renderRecord([empty], { spec: true });
+
+    expect(ok).toBe(false);
+    expect(record).toBeNull();
+    expect(stderr).toContain("printed no evidence");
+    expect(stderr).toContain("the door fires");
+  });
+
+  it("carries the check's own output in the MET bullet", () => {
+    const found = criterion("a spec sourced from #143 exists", "echo 271");
+
+    const { record, ok } = renderRecord([found], { spec: true });
+
+    expect(ok).toBe(true);
+    expect(record).toContain("- a spec sourced from #143 exists — MET: `echo 271` exit 0");
+    expect(record).toContain("> 271");
+    expect(record).toContain("1 of 1 criteria verified · 0 unverified");
+  });
+
+  it("still refuses a non-zero exit, output or not", () => {
+    const failing = criterion("the door fires", "echo 271; exit 3");
+
+    const { ok, stderr } = renderRecord([failing], { spec: true });
+
+    expect(ok).toBe(false);
+    expect(stderr).toContain("exit status: 3");
+  });
+
+  it("quotes evidence so the close gate still counts one bullet per criterion", () => {
+    // A check whose output is itself a markdown list: the shape that would otherwise inflate
+    // `BULLET_RE`'s count past the body's criteria and get the close denied.
+    const listy = criterion("the sweep ran", "printf -- '- one\\n- two\\n'");
+
+    const { record, ok } = renderRecord([listy], { spec: true });
+
+    expect(ok).toBe(true);
+    expect(gateBullets(record as string)).toEqual([
+      "the sweep ran — MET: `printf -- '- one\\n- two\\n'` exit 0",
+    ]);
+  });
+
+  it("caps the evidence it quotes rather than pasting a whole log", () => {
+    const noisy = criterion("the sweep ran", "seq 1 500");
+
+    const { record } = renderRecord([noisy], { spec: true });
+
+    expect(record).toContain("> 1");
+    expect(record).toContain("[…]");
+    expect(record).not.toContain("> 400");
+  });
+});
+
+describe("render_record in ticket mode", () => {
+  it("accepts a silent exit 0 — `grep -q` and `test -f` are how ticket checks are written", () => {
+    const quiet = criterion("the module exists", "test -f bin/close-ticket");
+
+    const { record, ok } = renderRecord([quiet], {});
+
+    expect(ok).toBe(true);
+    expect(record).toContain("- the module exists — MET: `test -f bin/close-ticket` exit 0");
+    expect(record).toContain("1 of 1 criteria verified · 0 unverified");
+  });
+
+  it("quotes no evidence, so 445 existing records keep their shape", () => {
+    const { record } = renderRecord([criterion("the module exists", "echo 271")], {});
+
+    expect(record).not.toContain("> 271");
   });
 });
