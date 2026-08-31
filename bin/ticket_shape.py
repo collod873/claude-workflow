@@ -10,10 +10,9 @@ silently. Kind -> required shape:
   note      none
   question  `## Question` heading
   ticket    `## Acceptance criteria` with >=1 `- [ ]` item, and `## Files claimed`
-  spec      `## Acceptance criteria` with exactly one `- [ ]` item, and that item must carry a
-            well-formed `check:` marker — no escape marker lets a `spec` close without one
+  spec      none (title/label handling is the caller's job, not the body's)
 
-A refusal raises `ValidationError` naming the missing heading or the malformed shape. A `ticket` whose criteria carry
+A refusal raises `ValidationError` naming the missing heading. A `ticket` whose criteria carry
 no verifiable evidence — a `path:line`, a backtick-quoted command, or a file/artifact reference
 — is not refused, only warned about: `validate` returns that warning in its result rather than
 raising, so a caller can print it to stderr and still proceed. Same treatment for a `## Files
@@ -103,6 +102,31 @@ CHECK_MARKER_ATTEMPT_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:", re.IGNOR
 CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$")
 
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
+
+# A spec's own criterion. `spec` used to be the kind with no body requirement at all, which is
+# why the one behavioural sentence the pipeline asks its owner for — "I'll know it works when I
+# can ___" — landed in prose and nothing ever read it again. A spec closes on a run of its own
+# check (`bin/close-ticket --spec`), so that sentence has to arrive as something runnable.
+SPEC_NO_CRITERIA = (
+    "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item — "
+    "the one behavioural claim this spec closes on, in the owner's own words, with a trailing "
+    "— check: `<command>` marker naming what proves it"
+)
+# Exactly one, never "at least one": a spec with three behavioural claims is three specs, and
+# the entire value of the rule is that there is a single sentence to point at when asking
+# whether the product does the thing.
+SPEC_CRITERIA_COUNT = (
+    "a spec body carries exactly one '- [ ]' acceptance criterion, not {n} — three behavioural "
+    "claims are three specs, and a closer handed several has no single sentence to run"
+)
+# The grammar is `CHECK_MARKER_RE`, unforked: an author who has written a ticket criterion
+# already knows how to write a spec's, and a second dash rule for a second kind of body is
+# exactly what the shared `CHECK_MARKER_DELIM` exists to prevent.
+SPEC_CRITERION_UNRUNNABLE = (
+    "a spec's one acceptance criterion must carry a well-formed trailing — check: `<command>` "
+    "marker; a spec closes on that command running green, so a criterion nobody can run leaves "
+    "the spec with no definition of done: {criterion}"
+)
 
 # The vocabulary that marks work done *to* existing state rather than work that adds a new
 # capability (#144). Deliberately narrow: this is one half of an AND, and the other half —
@@ -199,8 +223,10 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     """Validate `body` against `kind`'s required shape.
 
     Returns a (possibly empty) list of warning strings on success. Raises `ValidationError`,
-    naming what's missing or malformed, on refusal. Only `note` never raises — the empty body
-    it accepts is itself the shape.
+    naming what's missing, on refusal. `note` never raises — the empty body it accepts is itself
+    the shape. `spec` used to be the same and no longer is: it now carries the one shape a spec's
+    close depends on (exactly one runnable criterion), refused here at filing time rather than
+    discovered six weeks later when nothing can close it.
 
     `repo_root` is the tree a `ticket`'s `## Files claimed` bullets are resolved against;
     it defaults to `caller_repo_root()`, so a caller filing from another repo checks that
@@ -244,27 +270,31 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         warnings.extend(migration_without_post_state(body))
         return warnings
 
-    # kind == "spec" — a spec closes on exactly one well-formed check-marked criterion; there is
-    # no escape marker that lets it close without one.
+    # kind == "spec"
+    #
+    # What is deliberately *not* applied here is the remote-tracker refusal a published ticket's
+    # criterion gets (`render-body.ts`, in `collod873/claude-workflow`, which bans a check command
+    # reaching `gh api`, `gh issue`, `gh pr`, `gh run`, `curl` or `wget`). That refusal is right
+    # for a ticket and wrong here, and the asymmetry is the point: **a ticket's check reads the
+    # tree, a spec's check reads the world.** A ticket's criterion must return a different verdict
+    # before the diff exists and after it merges, so a command that queries the tracker is no
+    # check at all. A spec's criterion has the opposite obligation — it is required to be
+    # answerable only by production having changed — so extending that ban here would refuse
+    # every honest spec check there is.
     if not CRITERIA_HEADING_RE.search(body):
-        raise ValidationError(
-            "missing required '## Acceptance criteria' heading — a `spec` closes on exactly "
-            "one well-formed check-marked criterion, with no escape marker"
-        )
+        raise ValidationError(SPEC_NO_CRITERIA)
     blocks = criteria_blocks(body) or []
     if len(blocks) != 1:
-        raise ValidationError(
-            "a `spec`'s '## Acceptance criteria' must carry exactly one '- [ ]' item, found "
-            f"{len(blocks)}"
-        )
-    criterion = blocks[0]
-    if _malformed_check_marker(criterion):
-        raise ValidationError(_malformed_check_marker_warning(criterion))
-    if parse_check_marker(criterion) is None:
-        raise ValidationError(
-            "a `spec`'s single acceptance criterion must carry a well-formed `check:` marker "
-            "naming the command that closes it — no escape marker is accepted"
-        )
+        raise ValidationError(SPEC_CRITERIA_COUNT.format(n=len(blocks)))
+    # A marker that was attempted and doesn't parse is refused by its own message, the same one
+    # a ticket's criterion is warned with. The generic "must carry a marker" text is right for an
+    # author who wrote none and useless to one who wrote a second backtick span by mistake — the
+    # `spec` branch raises where the `ticket` branch warns, so the distinction has to survive the
+    # change in severity.
+    if _malformed_check_marker(blocks[0]):
+        raise ValidationError(_malformed_check_marker_warning(blocks[0]))
+    if parse_check_marker(blocks[0]) is None:
+        raise ValidationError(SPEC_CRITERION_UNRUNNABLE.format(criterion=blocks[0]))
     return []
 
 

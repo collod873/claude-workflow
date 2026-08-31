@@ -40,13 +40,14 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    indistinguishable from a clean one.
 
    A **nested repository** is the one entry that is neither a file to scan nor a bucket to refuse.
-   `git ls-files` reports another repo's checkout as its directory with a trailing slash — CI checks
-   the private corpus repo into `knowledge-base/`, so the entry exists on the runner and in no local
-   tree, which is how a refusal there survived every local run green. Its files belong to that
-   repository's index, and scanning them here would report its duplication as this repo's. So it is
-   skipped — and, because rule 3 is about the skip being *visible*, the run prints the directory it
-   skipped. Read on punctuation alone that guard would be the vacuous pass again, so the entry has
-   to actually carry a `.git`; a trailing slash over anything else still refuses.
+   `git ls-files` reports another repo's checkout as its directory with a trailing slash, so a repo
+   whose CI checks a second repository into a subdirectory carries an entry that exists on the
+   runner and in no local tree — which is how a refusal there survives every local run green. Its
+   files belong to that repository's index, and scanning them here would report its duplication as
+   this repo's. So it is skipped — and, because rule 3 is about the skip being *visible*, the run
+   prints the directory it skipped. Read on punctuation alone that guard would be the vacuous pass
+   again, so the entry has to actually carry a `.git`; a trailing slash over anything else still
+   refuses.
 
 4. **It prints how many files it actually scanned.** A count is what makes a vacuous pass visible
    to a human reading CI output, and what makes "the gate stopped seeing `bin/`" a reviewable
@@ -54,13 +55,23 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
 
 5. **Absolute by default; a baseline must ratchet to empty.** A new gate ships with no baseline,
    no grandfather list and no warn tier. A repo turning one on over existing debt may carry a
-   baseline of what was already there, and then the baseline only ever shrinks — every entry
-   removed is permanent, and the gate is not done until the file is gone.
+   baseline of what was already there — a per-repo file the config names (`bin/clone-check`: a
+   `baseline` key; each entry identifies a pair by its two paths and a hash of the duplicated
+   text, never by line number, so unrelated edits above a clone can't force a re-record), written
+   only by an explicit flag whose run still fails, so recording is never mistaken for going
+   green. What makes that a ratchet rather than the grandfather list it would otherwise be is
+   that the gate enforces the shrinking: a clone missing from the baseline fails like any other,
+   and **an entry matching no clone in the current scan fails the run and names itself**, so the
+   file is trimmed in the same commit that removes the duplication and no entry can outlive what
+   it excused. The banner names the baselined count beside the file count, so a passing run
+   states what it is not looking at. Every entry removed is permanent, and the gate is not done
+   until the file is gone.
 
-   One growth is permitted, and only to the acceptance lane at its push to `main`: a clone whose
-   every location is under `tests/acceptance/`. Those files are in the immutable set, so no other
-   lane may ever dedupe them, and a ratchet nobody can turn is not a ratchet — it was a red `main`
-   that lane 05 got blamed for, four times in one week (`acceptance/land-gate.ts`, ADR-0114).
+   One growth is permitted, and only for a clone whose every location sits in the repo's
+   **immutable set** — files a lane is forbidden to edit. No lane may ever dedupe them, and a
+   ratchet nobody can turn is not a ratchet: it is a red `main` that whichever lane pushed last
+   gets blamed for. In `collod873/claude-workflow` that set is `tests/acceptance/`, and the growth
+   is permitted only to the acceptance lane at its push to `main` (ADR-0114, recorded there).
 
    **A ratchet also needs a door for an entry that moved.** An entry is a fingerprint of the
    duplicated text, and that text is not the same thing as the clone: a detector reports a span of
@@ -68,12 +79,12 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    in the middle of a baselined clone and the fingerprint changes with the duplication untouched;
    land the same line in both files beside it and the match grows through it. Either way the old
    entry reads as paid off *and* the new one reads as introduced, and a baseline that only deletes
-   has no way back in — which turns every tolerated clone into a landmine under every nearby edit
-   (#282, [ADR-0116](../adr/0116-a-clone-the-detector-re-cut-is-carried-across-not-deleted-an.md)).
-   So the gate recognises a **re-cut**: the same code, in the same files, over a
-   different span. It is carried, one entry substituted for one, and the count never rises. The
-   fence is the file set and the detector's own token comparison — duplication in a pair of files
-   the baseline never named, or code the baseline never carried, is a finding exactly as before.
+   has no way back in — which turns every tolerated clone into a landmine under every nearby edit.
+   So the gate recognises a **re-cut**: the same code, in the same files, over a different span. It
+   is carried, one entry substituted for one, and the count never rises. The fence is the file set
+   and the detector's own token comparison — duplication in a pair of files the baseline never
+   named, or code the baseline never carried, is a finding exactly as before. See ADR-0116,
+   recorded in `collod873/claude-workflow`.
 
 6. **It runs in `test` and `all`, and in CI. Never in `stop`.** Token-window matching across a few
    hundred files takes seconds, not the sub-second budget the turn-end gate reserves (ADR-0022).

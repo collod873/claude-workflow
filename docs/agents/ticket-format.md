@@ -4,7 +4,7 @@ The one shape a ticket body takes in this pipeline, read by every producer (`/to
 `/wayfinder`, `~/bin/file-issue`) and parsed by the close gate (`close-gate.py` — the machine-global hook, or the repo's own
 `.claude/hooks/` copy where it ships one; the same file either way).
 Producers reference this doc rather than restate it — a restated copy is exactly what let
-`/wayfinder`'s template drift out of sync with the parser it feeds (#57).
+`/wayfinder`'s template drift out of sync with the parser it feeds.
 
 Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
 (`close-gate.py`) — see
@@ -48,9 +48,8 @@ scrub — is worded as **the run**, never as the artifact. "Ship a script that s
 the moment the file exists; "Scrub X" isn't. At least one criterion must assert the **post-state of
 what is being migrated**, checkable against the real target rather than against a fixture the
 ticket's own test builds — `git rev-list --all --objects | grep -c <path>` prints 0, not `npm test
--- scrub.test.ts` exits 0. A suite passing proves the script works; it never proves the script ran,
-and spec #134 closed COMPLETED over two migrations nobody had run because every criterion beneath
-it was the former. `bin/ticket_shape.py` warns — never refuses — when a migration-shaped body's
+-- scrub.test.ts` exits 0. A suite passing proves the script works; it never proves the script ran.
+`bin/ticket_shape.py` warns — never refuses — when a migration-shaped body's
 every criterion is satisfied by a test passing or by a path the ticket itself claims. See ADR-0076,
 recorded in `collod873/claude-workflow`.
 
@@ -77,20 +76,19 @@ or missing section:
 A ticket missing this heading entirely was never shaped by a producer that computes claims —
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
-Repo-relative means **from the repository root**, always:
-`.Workflow/agent-workflows/shared/stage.ts`, never `shared/stage.ts`. The rest of the body may
-abbreviate a path this section spells in full, and may not name a path it does not — a ticket is
-read independently by the acceptance author and the implementer, neither of whom can ask the other,
-so an unrooted path is one decision answered twice
-([ADR-0118](../adr/0118-a-ticket-roots-every-path-it-names-because-lane-04-and-lane.md)). Lane 03's
-publisher refuses a plan that breaks this before it files anything.
+Repo-relative means **from the repository root**, always: `src/router/index.ts`, never
+`router/index.ts`. The rest of the body may abbreviate a path this section spells in full, and may
+not name a path it does not — a ticket is read independently by whoever writes its acceptance
+check and whoever implements it, neither of whom can ask the other, so an unrooted path is one
+decision answered twice. A producer that publishes a plan refuses one breaking this before it
+files anything, rather than leaving it for a reader to trip over. See ADR-0118, recorded in
+`collod873/claude-workflow`.
 
 ## Variants
 
 Each producer's body is the core above plus its own framing. These are complete, verbatim
-examples — `test_ticket_templates.py` feeds each one through `count_body_criteria` as a test
-case, so a producer whose actual output drifts from what's below fails a test rather than a denied
-close.
+examples, each run through `count_body_criteria` as a test case, so a producer whose actual
+output drifts from what's below fails a test rather than a denied close.
 
 ### Spec sub-issue (`/to-tickets`, real tracker)
 
@@ -125,7 +123,7 @@ The end-to-end behaviour this ticket makes work, from the user's perspective —
 ### Local-file ticket (`/to-tickets`, local tracker)
 
 One ticket per file under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. One body shape on every
-tracker (#57) — only the edge encoding differs: a local ticket names its blockers by number/title
+tracker — only the edge encoding differs: a local ticket names its blockers by number/title
 directly in prose instead of a native dependency link.
 
 ```markdown
