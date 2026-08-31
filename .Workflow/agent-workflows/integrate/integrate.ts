@@ -245,21 +245,17 @@ function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdi
 }
 
 /**
- * The strictest verdict among the runs that could be this pull request's.
- *
- * Two implementers dispatching off the same trunk tip produce two `verify.yml` runs this lane
- * cannot tell apart — a dispatch run's `pull_requests` is empty and its payload is not on the API
- * — so it does not guess. It takes the worst answer any of them gave: one crossed immutable set
- * anywhere on this commit holds every merge on it until that pull request is dealt with. The
- * mistake that costs something is merging a diff that silenced a check; the mistake this direction
- * makes instead is a merge that waits, which the next dispatch retries.
- *
- * No candidate at all is `unjudged`, never `passed` — an empty set is the absence of a verdict.
+ * Whether `runId`'s own log says it was judging `pr` — the `judging <pr-url> on <branch>` line
+ * both of `verify.yml`'s jobs print first (ADR-0104), the same line `fixer.yml` resolves its
+ * target from. A log that cannot be read names nothing: the safe reading is "not this pull
+ * request's run", which costs a wait, never a merge on someone else's verdict.
  */
-function strictest(verdicts: JobVerdict[]): JobVerdict {
-  if (verdicts.includes("failed")) return "failed";
-  if (verdicts.length === 0 || verdicts.includes("unjudged")) return "unjudged";
-  return "passed";
+function runJudged(gh: GhExec, runId: number, pr: string): boolean {
+  try {
+    return gh(["run", "view", String(runId), "--log"]).includes(`judging ${pr} on `);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -270,20 +266,26 @@ function strictest(verdicts: JobVerdict[]): JobVerdict {
  * `Immutability` job is skipped by its own `if:` — so a `head_sha`-only filter would hand this
  * lane a skipped job to read, which is exactly the reading `JobVerdict` exists to refuse.
  */
-function readVerifyVerdict(gh: GhExec, headSha: string): VerifyVerdict {
+function readVerifyVerdict(gh: GhExec, headSha: string, pr: string): VerifyVerdict {
   const runsPath = workflowRunsPath(VERIFY_WORKFLOW_FILE, VERIFY_RUN_PAGE_SIZE);
   const runs = ApiRun.array().parse(
     JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event}]"])),
   );
-  const candidates = runs.filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT);
-  const jobsPerRun = candidates.map((run) =>
-    ApiJob.array().parse(
-      JSON.parse(gh(["api", runJobsPath(run.id), "--jq", "[.jobs[] | {name, status, conclusion}]"])),
-    ),
+  // Newest first by id, then the first run whose own log names this pull request wins outright.
+  // Several dispatch runs can share trunk's sha while judging different pull requests, and a
+  // fixer's re-judge shares it with the failed run it supersedes — reading the strictest verdict
+  // across all of them let a superseded failure outvote its own green re-judge forever (#286).
+  const candidates = runs
+    .filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT)
+    .sort((a, b) => b.id - a.id);
+  const judging = candidates.find((run) => runJudged(gh, run.id, pr));
+  if (judging === undefined) return { immutability: "unjudged", acceptance: "unjudged" };
+  const jobs = ApiJob.array().parse(
+    JSON.parse(gh(["api", runJobsPath(judging.id), "--jq", "[.jobs[] | {name, status, conclusion}]"])),
   );
   return {
-    immutability: strictest(jobsPerRun.map((jobs) => jobVerdict(jobs, IMMUTABILITY_JOB))),
-    acceptance: strictest(jobsPerRun.map((jobs) => jobVerdict(jobs, ACCEPTANCE_JOB))),
+    immutability: jobVerdict(jobs, IMMUTABILITY_JOB),
+    acceptance: jobVerdict(jobs, ACCEPTANCE_JOB),
   };
 }
 
@@ -296,11 +298,11 @@ function readVerifyVerdict(gh: GhExec, headSha: string): VerifyVerdict {
  * refuses on — the direction that costs a merge that waits rather than a merge that should not
  * have happened.
  */
-function awaitVerifyVerdict(gh: GhExec, headSha: string, sleep: (ms: number) => void): VerifyVerdict {
-  let verdict = readVerifyVerdict(gh, headSha);
+function awaitVerifyVerdict(gh: GhExec, headSha: string, pr: string, sleep: (ms: number) => void): VerifyVerdict {
+  let verdict = readVerifyVerdict(gh, headSha, pr);
   for (let attempt = 0; verdict.acceptance === "unjudged" && attempt < ACCEPTANCE_POLL_ATTEMPTS; attempt++) {
     sleep(ACCEPTANCE_POLL_MS);
-    verdict = readVerifyVerdict(gh, headSha);
+    verdict = readVerifyVerdict(gh, headSha, pr);
   }
   return verdict;
 }
@@ -542,7 +544,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   if (result.exitCode === 1) return { merged: false, reason: "red" };
   if (result.exitCode !== 0) return { merged: false, reason: "no-run" };
 
-  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.sleep ?? sleepSync);
+  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.pr, deps.sleep ?? sleepSync);
   if (verdict.immutability === "failed") return { merged: false, reason: "immutable-set" };
   if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
   if (verdict.acceptance === "failed") {

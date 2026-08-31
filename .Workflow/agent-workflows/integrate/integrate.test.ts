@@ -43,6 +43,8 @@ interface VerifyRunFixture {
   headSha?: string;
   /** Defaults to `repository_dispatch`; `push` is the trunk run at the very same commit. */
   event?: string;
+  /** The pull request this run's log says it was judging (ADR-0104). Defaults to the one under test. */
+  judging?: string;
   jobs?: VerifyJobFixture[];
 }
 
@@ -126,6 +128,7 @@ function integrateDeps({
       id: run.id ?? 900 + index,
       head_sha: run.headSha ?? TRUNK_SHA,
       event: run.event ?? "repository_dispatch",
+      judging: run.judging ?? PR,
       jobs: (run.jobs ?? []).map((job) => ({
         name: job.name,
         status: job.status ?? "completed",
@@ -136,6 +139,10 @@ function integrateDeps({
   const gh = (args: string[]): string => {
     calls.push(args);
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, body });
+    if (args[0] === "run" && args[1] === "view" && args[3] === "--log") {
+      const run = currentRuns().find((each) => each.id === Number(args[2]));
+      return run ? `judging ${run.judging} on implement/issue-190\n` : "";
+    }
     if (args[0] === "pr" && args[1] === "merge") return "";
     if (args[0] === "pr" && args[1] === "edit") return "";
     if (args[0] === "pr" && args[1] === "comment") {
@@ -547,9 +554,33 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
   });
 
-  it("takes the strictest verdict when two dispatch runs share this head commit", () => {
-    // Two implementers dispatching off the same trunk tip are indistinguishable from here — a
-    // dispatch run's `pull_requests` is empty — so a failure anywhere on the commit holds the merge.
+  it("reads the newest run naming this pull request, so a re-judge supersedes what it re-judged", () => {
+    // A fixer's green re-judge shares trunk's sha with the failed run it supersedes; the old
+    // strictest-across-runs reading let that failure outvote its own repair forever (#286).
+    const { deps } = integrateDeps({
+      closeTicket: CLOSED,
+      verifyRuns: [
+        {
+          id: 901,
+          jobs: [
+            { name: IMMUTABILITY_JOB, conclusion: "success" },
+            { name: ACCEPTANCE_JOB, conclusion: "failure" },
+          ],
+        },
+        {
+          id: 902,
+          jobs: [
+            { name: IMMUTABILITY_JOB, conclusion: "success" },
+            { name: ACCEPTANCE_JOB, conclusion: "success" },
+          ],
+        },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
+  });
+
+  it("a newer failure also supersedes an older pass — newest is newest in both directions", () => {
     const { deps } = integrateDeps({
       verifyRuns: [
         { id: 901, jobs: [{ name: IMMUTABILITY_JOB, conclusion: "success" }] },
@@ -559,6 +590,25 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
 
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "immutable-set" });
   });
+
+  it("ignores a run whose log names a different pull request", () => {
+    // Two implementers dispatching off the same trunk tip produce two runs at one sha; the
+    // `judging <pr-url> on <branch>` line each prints (ADR-0104) is what tells them apart.
+    const { deps } = integrateDeps({
+      verifyRuns: [
+        {
+          judging: "https://github.com/collod873/claude-workflow/pull/999",
+          jobs: [
+            { name: IMMUTABILITY_JOB, conclusion: "success" },
+            { name: ACCEPTANCE_JOB, conclusion: "success" },
+          ],
+        },
+      ],
+    });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+  });
+
 });
 
 /**
@@ -625,14 +675,15 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     let reads = 0;
     const { calls, deps, sleeps } = integrateDeps({
       closeTicket: CLOSED,
-      // Green only from the third read on; before that the job has not concluded.
+      // Green only from the second verdict read on. One verdict read is three lookups — the runs
+      // list, the winning run's judging log, its jobs — and this fixture is re-evaluated on each.
       verifyRuns: () => {
         reads += 1;
         return [
           {
             jobs: [
               { name: IMMUTABILITY_JOB, conclusion: "success" },
-              reads < 3
+              reads < 4
                 ? { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null }
                 : { name: ACCEPTANCE_JOB, conclusion: "success" },
             ],
