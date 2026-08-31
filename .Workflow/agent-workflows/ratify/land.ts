@@ -87,11 +87,8 @@ export function advanceRatifierRef(git: GitExec, repoDir: string, head: string):
  * next finding's `write-tree` reads this one's result as its own starting
  * point.
  *
- * Every commit carries `Machinery-Commit: true`. That is not decoration: it
- * is what keeps ADR-0017's invariant true under the new shape — the audit
- * lane's own scope filter (`./scope.ts`, `isMachineryCommit`) drops these
- * commits, so a ratifier landing can never feed the next audit's scope and a
- * landing never triggers another pass.
+ * Every commit carries `MACHINERY_TRAILER_LINE`, the sending half of
+ * `./scope.ts`'s `isMachineryCommit` (ADR-0017).
  */
 export function commitWorkingTree(
   git: GitExec,
