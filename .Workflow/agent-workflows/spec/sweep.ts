@@ -61,6 +61,7 @@ export async function runSpecSweep(exec: StageExec, context: DecidedContext): Pr
       model: SPEC_SWEEP_MODEL,
       allowedTools: SPEC_AUTHOR_ALLOWED_TOOLS,
       promptViaStdin: true,
+      stage: "sweep",
     },
   );
 }

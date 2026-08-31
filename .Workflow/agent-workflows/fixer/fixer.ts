@@ -132,6 +132,7 @@ export function runFixerStage(exec: StageExec, brief: string): Promise<FixerAnsw
   return runStage(FIXER_PROMPT_PATH, { BRIEF: brief }, exec, FIXER_OUTPUT, {
     model: FIXER_MODEL,
     promptViaStdin: true,
+    stage: "fixer",
   });
 }
 

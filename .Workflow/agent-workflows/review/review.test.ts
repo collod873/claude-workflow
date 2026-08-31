@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { parse } from "yaml";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
@@ -15,6 +16,16 @@ import {
 } from "./review";
 import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
+
+// Every one of these tests drives the lane against fixed fixtures and canned
+// responses, so more than one call can render the identical substituted prompt
+// for the one stage name this lane now carries (#274) — without a fresh
+// CHECKPOINTS_DIR per test, a later test would silently reuse an earlier
+// test's checkpointed answer. See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
+
 
 /**
  * Two things this ticket adds: the filter that stands between the reviewer's raw findings and

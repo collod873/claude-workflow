@@ -76,6 +76,7 @@ export async function runCorrectnessReview(
       // The diff has no upper bound by construction — see `stage.ts`'s own note on `spec.ts`'s
       // Decided context, the same reasoning applied to a diff instead of a sheet.
       promptViaStdin: true,
+      stage: "correctness",
     },
   );
   return keepSurvivingFindings(raw.findings, input.diff, input.greenGateChecks);
@@ -186,6 +187,7 @@ export async function runConformanceReview(
       // Same reasoning as the correctness reviewer's own call: a spec has no upper bound by
       // construction any more than a diff does.
       promptViaStdin: true,
+      stage: "conformance",
     },
   );
 

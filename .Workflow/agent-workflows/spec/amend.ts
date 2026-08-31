@@ -116,7 +116,7 @@ export async function runSpecAmendment(
     },
     deps.exec,
     SPEC_AMEND_OUTPUT,
-    { model: SPEC_AMEND_MODEL, promptViaStdin: true },
+    { model: SPEC_AMEND_MODEL, promptViaStdin: true, stage: "amend" },
   );
 
   if (answer.verdict === "needs-scope" || answer.clarifiedCriterion.trim() === "") {

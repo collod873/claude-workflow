@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { createRecordingGh } from "../shared/gh.fake";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
@@ -16,15 +18,7 @@ import {
   type FixerTestResult,
 } from "./fixer";
 
-/** A fake `GhExec` that records every call verbatim, in order, answering nothing. */
-function fakeGh(): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-    return "";
-  };
-  return { gh, calls };
-}
+
 
 /** A fake `GitExec` that records every call and answers nothing. */
 function fakeGit(): { git: GitExec; calls: string[][] } {
@@ -91,7 +85,7 @@ function baseDeps(overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestR
   gitCalls: string[][];
   writes: Array<{ path: string; content: string }>;
 } {
-  const { gh, calls: ghCalls } = fakeGh();
+  const { gh, calls: ghCalls } = createRecordingGh();
   const { git, calls: gitCalls } = fakeGit();
   const writes: Array<{ path: string; content: string }> = [];
   let testCall = 0;
@@ -118,6 +112,15 @@ function baseDeps(overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestR
     writes,
   };
 }
+
+// Every one of these tests drives the lane against fixed fixtures and canned
+// responses, so more than one call can render the identical substituted prompt
+// for the one stage name this lane now carries (#274) — without a fresh
+// CHECKPOINTS_DIR per test, a later test would silently reuse an earlier
+// test's checkpointed answer. See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 describe("signaturesEqual", () => {
   it("is true for the same tests failing with the same messages, regardless of order", () => {
@@ -256,7 +259,7 @@ describe("runFixer — goes green", () => {
  */
 describe("applyUnfixable — the escalate path's one write", () => {
   it("creates needs-human before applying it, applies it to the ticket, assigns the owner, and comments the PR naming what failed", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createRecordingGh();
 
     applyUnfixable(gh, 42, 7, "collod873", "Immutability", "::error::vitest.config.ts touches the immutable set");
 

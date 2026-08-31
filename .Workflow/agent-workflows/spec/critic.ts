@@ -104,6 +104,7 @@ export async function runSpecCritic(
       // reasoning `stage.ts` documents for the Decided context this draft
       // was itself built from.
       promptViaStdin: true,
+      stage: "critic",
     },
   );
 }

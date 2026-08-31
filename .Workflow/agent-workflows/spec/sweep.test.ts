@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { createFakeStage } from "../shared/stage.fake";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext } from "./spec";
 import { applySweep, renderSweepRulings, runSpecSweep, type SpecSweep } from "./sweep";
+
+// Every test in this file runs the sweep against the same `CONTEXT`, so every
+// call renders the same substituted prompt for the "sweep" stage — without a
+// fresh CHECKPOINTS_DIR per test, the second test to run would silently reuse
+// whichever canned response the first test's checkpoint happened to record.
+// See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 const CONTEXT: DecidedContext = {
   ownerWords: "the owner's words",

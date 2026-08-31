@@ -1,3 +1,4 @@
+import { createRecordingGh } from "../shared/gh.fake";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import {
@@ -9,16 +10,6 @@ import {
   unfiledMarks,
   type MarkedDecision,
 } from "./open-questions";
-
-/** A fake `GhExec` that records every call verbatim, in order, answering nothing. */
-function fakeGh(): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-    return "";
-  };
-  return { gh, calls };
-}
 
 describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
   it("is zero when every marked decision has a filed ADR and no open question names an unfiled mark", () => {
@@ -111,7 +102,7 @@ describe("applyGate — unconditional since #263", () => {
     ["called with no count at all", undefined],
     ["the count says something was left unresolved", 3],
   ])("labels sliceable and requests the dispatch when %s", (_case, count) => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createRecordingGh();
 
     const outcome = count === undefined ? applyGate(gh, 42) : applyGate(gh, 42, count);
 
@@ -124,7 +115,7 @@ describe("applyGate — unconditional since #263", () => {
 
   it("writes the label before it asks for the dispatch, whatever the count", () => {
     for (const count of [undefined, 0, 5]) {
-      const { gh, calls } = fakeGh();
+      const { gh, calls } = createRecordingGh();
 
       if (count === undefined) applyGate(gh, 42);
       else applyGate(gh, 42, count);

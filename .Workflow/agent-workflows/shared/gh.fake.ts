@@ -212,3 +212,18 @@ export function simulateClaimRef(args: string[], refs: Set<string>): string | un
   }
   return undefined;
 }
+
+/**
+ * A fake `GhExec` that records every call verbatim, in order, and answers
+ * nothing — for tests that assert only on what was sent. `createFakeGh`
+ * above simulates GitHub's answers; this one deliberately does not, so a
+ * lane under test cannot come to depend on a response its test never wrote.
+ */
+export function createRecordingGh(): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  const gh: GhExec = (args) => {
+    calls.push([...args]);
+    return "";
+  };
+  return { gh, calls };
+}

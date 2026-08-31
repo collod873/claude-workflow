@@ -162,6 +162,7 @@ export async function runSpecReconciler(
       model: SPEC_RECONCILE_MODEL,
       allowedTools: SPEC_AUTHOR_ALLOWED_TOOLS,
       promptViaStdin: true,
+      stage: "reconcile",
     },
   );
 

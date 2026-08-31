@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { extractCriteria } from "../shared/ticket-shape";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { createIssueGh } from "./gh.fake";
 import { runSpecReconciler, SPEC_RECONCILE_MODEL } from "./reconcile";
 import { runSpecCritique, SPEC_AUTHOR_ALLOWED_TOOLS } from "./spec";
+
+// Several tests in this file reconcile the same `SPEC` against the same
+// `RESOLUTIONS`, so more than one call renders the same substituted prompt
+// for the "reconcile" stage — without a fresh CHECKPOINTS_DIR per test, a
+// later test would silently reuse an earlier test's checkpointed answer. See
+// `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
 
 const SPEC = {
   title: "PRD: A spec written in a session",
