@@ -184,7 +184,7 @@ describe("sliceAndPublish", () => {
           "First thing is true — check: `npm test`",
           "Second thing is true — check: `npm run lint`",
         ],
-        filesClaimed: ["a/b.ts", "a/c.ts"],
+        filesClaimed: ["bin/b.ts", "bin/c.ts"],
       }),
     ];
     const fake = createFakeGh();
@@ -203,8 +203,8 @@ describe("sliceAndPublish", () => {
     expect(body).toContain(`#${PRD_NUMBER}`);
     expect(body).toContain("- [ ] First thing is true — check: `npm test`");
     expect(body).toContain("- [ ] Second thing is true — check: `npm run lint`");
-    expect(body).toContain("- a/b.ts");
-    expect(body).toContain("- a/c.ts");
+    expect(body).toContain("- bin/b.ts");
+    expect(body).toContain("- bin/c.ts");
     expect(body).not.toMatch(/closes/i);
   });
 
@@ -225,7 +225,7 @@ describe("sliceAndPublish", () => {
     const plan = [
       slice({
         title: "Consumes a seam",
-        filesClaimed: ["only/this/file.ts"],
+        filesClaimed: ["docs/only/this/file.ts"],
         seamsConsumed: [seamLine],
       }),
     ];
@@ -242,7 +242,7 @@ describe("sliceAndPublish", () => {
       body.indexOf("## Files claimed"),
       body.indexOf("## Seams consumed") === -1 ? undefined : body.indexOf("## Seams consumed"),
     );
-    expect(filesSection).toContain("- only/this/file.ts");
+    expect(filesSection).toContain("- docs/only/this/file.ts");
     expect(filesSection).not.toContain(seamLine);
   });
 });

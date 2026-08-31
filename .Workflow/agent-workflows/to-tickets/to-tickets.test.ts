@@ -229,14 +229,14 @@ describe("a plan-emitting stage prints one measurement line against the Slice ca
       whatToBuild: "x".repeat(120),
       whyNotMerged: "y".repeat(40),
       acceptanceCriteria: [criterionOfLength(30), criterionOfLength(75)],
-      filesClaimed: ["a.ts"],
+      filesClaimed: ["bin/a.ts"],
     }),
     slice({
       title: "Wide",
       whatToBuild: "x".repeat(300),
       whyNotMerged: "y".repeat(90),
       acceptanceCriteria: [criterionOfLength(55)],
-      filesClaimed: ["a.ts", "b.ts", "c.ts", "d.ts"],
+      filesClaimed: ["bin/a.ts", "bin/b.ts", "bin/c.ts", "bin/d.ts"],
       // Edged onto "Narrow" so the plan has exactly one unblocked root, which `validatePlan` now
       // requires (#240). Nothing the measurement line reports reads `dependsOn`.
       dependsOn: [1],

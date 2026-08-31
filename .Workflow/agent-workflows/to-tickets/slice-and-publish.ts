@@ -8,7 +8,7 @@ import {
   wireBlockedByEdges,
   type PublishedIssue,
 } from "../shared/publish-sub-issues";
-import { validateClaimsAreMutable, validateCriteriaShape } from "../shared/render-body";
+import { validateClaimsAreMutable, validateCriteriaShape, validatePathsAreRooted } from "../shared/render-body";
 import { validatePlan } from "../shared/validate-graph";
 
 /**
@@ -101,19 +101,22 @@ export function dispatchReadySlices(plan: Plan, published: PublishedIssue[], gh:
  * loudly instead of silently — and only then does `dispatchReadySlices`
  * start lane 05 on the slices that have nothing to wait for.
  *
- * **Three validations, not one** (#215, then #272). `validatePlan` asks whether the graph
+ * **Four validations, not one** (#215, then #272, then #278). `validatePlan` asks whether the graph
  * is buildable; `validateCriteriaShape` asks whether the tickets it is about
  * to publish can ever be *verified* — whether `bin/close-ticket` can parse a
  * command out of each acceptance criterion, or will close them on nothing the
  * way it closed all 26 of PRD #145's; `validateClaimsAreMutable` asks whether they can ever be
  * *merged*, since a slice claiming a file in the immutable set is one lane 06 will refuse however
- * well it is built. All three run before the first `gh` write,
+ * well it is built; `validatePathsAreRooted` asks whether the ticket means one thing, since a path
+ * it leaves relative is a decision handed to lane 04 and lane 05 separately, and they answer it
+ * separately. All four run before the first `gh` write,
  * so any refusal costs one re-fired slicer run and no tracker litter.
  */
 export function sliceAndPublish(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
   validatePlan(plan);
   validateCriteriaShape(plan);
   validateClaimsAreMutable(plan);
+  validatePathsAreRooted(plan);
   const published = publishSubIssues(plan, prdNumber, gh);
   wireBlockedByEdges(plan, published, gh);
   verifyBlockedByGraph(plan, published, gh);

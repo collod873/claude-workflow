@@ -5,7 +5,8 @@ import { z } from "zod";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
-import { AUDIT_OUTPUT, SLICE_CAPS, SLICE_OUTPUT } from "./plan-schema";
+import { AUDIT_OUTPUT, Plan, SLICE_CAPS, SLICE_OUTPUT } from "./plan-schema";
+import { validatePathsAreRooted } from "./render-body";
 import type { StructuredOutput } from "./structured-output";
 
 /**
@@ -173,6 +174,21 @@ describe("the Slice caps, on the wire and in both prompts", () => {
   it.each(wireSlices)("$stage: neither filesClaimed nor acceptanceCriteria carries an item-count cap", ({ properties }) => {
     expect(properties.filesClaimed).not.toHaveProperty("maxItems");
     expect(properties.acceptanceCriteria).not.toHaveProperty("maxItems");
+  });
+
+  /**
+   * A skeleton is what a model copies, so a skeleton the publisher would refuse teaches the
+   * refusal. Both plan prompts showed `shared/gh.ts` and `shared/publish-sub-issues.test.ts` —
+   * paths that name no top-level entry of this repository and that a reader has to root by
+   * guessing, which is exactly the ambiguity #272 was published carrying (#278). This runs the
+   * real gate over the real example rather than asserting a string, so the example cannot drift
+   * away from the rule without failing here.
+   */
+  it.each(PLAN_PROMPTS)("%s shows an example the publisher would accept", (promptPath) => {
+    for (const skeleton of skeletons(promptPath)) {
+      const plan = Plan.parse((skeleton as { slices: unknown }).slices);
+      expect(() => validatePathsAreRooted(plan)).not.toThrow();
+    }
   });
 
   it.each(PLAN_PROMPTS)("%s states each cap beside the field it bounds", (promptPath) => {

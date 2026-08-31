@@ -77,6 +77,14 @@ or missing section:
 A ticket missing this heading entirely was never shaped by a producer that computes claims —
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
+Repo-relative means **from the repository root**, always:
+`.Workflow/agent-workflows/shared/stage.ts`, never `shared/stage.ts`. The rest of the body may
+abbreviate a path this section spells in full, and may not name a path it does not — a ticket is
+read independently by the acceptance author and the implementer, neither of whom can ask the other,
+so an unrooted path is one decision answered twice
+([ADR-0118](../adr/0118-a-ticket-roots-every-path-it-names-because-lane-04-and-lane.md)). Lane 03's
+publisher refuses a plan that breaks this before it files anything.
+
 ## Variants
 
 Each producer's body is the core above plus its own framing. These are complete, verbatim

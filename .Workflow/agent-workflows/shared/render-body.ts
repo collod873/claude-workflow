@@ -1,3 +1,6 @@
+import { readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
 import type { Plan, Slice } from "./plan-schema";
 import { reason } from "./reason";
@@ -141,6 +144,127 @@ export function validateClaimsAreMutable(plan: Plan): void {
         `slice ${index + 1} ("${slice.title}") claims ${claimed.map((path) => JSON.stringify(path)).join(", ")}, ` +
           `which no pull request may touch (${IMMUTABLE_SET.join(", ")}) — lane 06 would refuse the ` +
           `implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.`,
+      );
+    }
+  });
+  if (problems.length > 0) {
+    throw new Error(problems.join("\n"));
+  }
+}
+
+/**
+ * The repository's own top level, read once from this file's position in it — `shared/` is three
+ * levels down in every checkout of this repo and in every repo it is installed into, which is the
+ * same anchor `affected-tests.ts` uses. Memoised because a plan asks this question once per path
+ * token and the answer cannot change inside a run.
+ */
+let topLevelCache: ReadonlySet<string> | undefined;
+function repoTopLevel(): ReadonlySet<string> {
+  topLevelCache ??= new Set(readdirSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../..")));
+  return topLevelCache;
+}
+
+/**
+ * The extensions that make a token a file rather than a sentence. Deliberately a closed list: the
+ * alternative — "a dot near the end" — reads `output.parse`, `StageOptions.stage`, `e.g.` and
+ * `package.json#scripts.test` as filenames and refuses tickets over prose.
+ */
+const FILE_EXTENSION_RE = /\.(?:[jt]sx?|[mc]js|json|ya?ml|md|py|sh|toml|txt|lock)$/;
+
+/**
+ * Every path-shaped token in a piece of a ticket's prose.
+ *
+ * A token counts as a path when it carries a directory (`a/b.ts`, `checkpoints/`) or, with no
+ * directory at all, ends in one of the extensions above (`stage.ts`). Markdown link targets and
+ * URLs are removed first: `](0034-….md)` and `https://github.com/…/x.md` are references to
+ * documents, not instructions about where a file lives, and reading them as paths is the one
+ * false-positive shape this gate would otherwise produce.
+ */
+function pathTokens(text: string): string[] {
+  const prose = text.replace(/\]\([^)]*\)/g, "]").replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, " ");
+  return prose
+    .split(/[^A-Za-z0-9_.\-/@*]+/)
+    .map((token) => token.replace(/\.+$/, ""))
+    .filter((token) => !token.startsWith("-") && !token.startsWith("@"))
+    .filter((token) => {
+      const withoutTrailingSlash = token.replace(/\/+\**$/, "");
+      if (withoutTrailingSlash.length === 0) return false;
+      const last = withoutTrailingSlash.slice(withoutTrailingSlash.lastIndexOf("/") + 1);
+      const named = FILE_EXTENSION_RE.test(last) && /[\w-]\.[^.]*$/.test(last);
+      return token.includes("/") ? token.endsWith("/") || named : named;
+    });
+}
+
+/** `true` when `token` is a run of whole segments inside `claimed` — `shared/stage.ts` in `.Workflow/…/shared/stage.ts`. */
+function isSegmentRunOf(token: string, claimed: string): boolean {
+  const needle = token.replace(/\/+\**$/, "");
+  const haystack = `/${claimed}`;
+  return haystack.endsWith(`/${needle}`) || haystack.includes(`/${needle}/`);
+}
+
+/**
+ * Whether a path a ticket names can be resolved from the ticket alone — rooted at the repository,
+ * or spelled in full somewhere in `filesClaimed` and abbreviated here.
+ */
+function isResolvable(token: string, claimed: string[], roots: ReadonlySet<string>): boolean {
+  const first = token.split("/")[0];
+  return roots.has(first) || claimed.some((path) => isSegmentRunOf(token, path));
+}
+
+/**
+ * Refuses a slice that names a path the ticket never roots —
+ * [ADR-0118](../../../docs/adr/0118-a-ticket-roots-every-path-it-names-because-lane-04-and-lane.md).
+ *
+ * A ticket body is the entire coordination mechanism between lane 04 and lane 05: neither reads the
+ * other's output, neither can ask a question, and neither runs first in a way that would surface a
+ * disagreement. So a path the ticket leaves relative is not a small imprecision — it is a decision
+ * handed to two blind readers, who make it independently and are not obliged to agree.
+ *
+ * #272 is the worked case (#278). Its `What to build` said the checkpoint is written as
+ * `<stage>.json` **under `checkpoints/`**, and never said rooted where. Lane 04 read it as
+ * `join(dirname(handoffPath()), "checkpoints")` and probed `<tmp>/checkpoints`; lane 05 read it as
+ * `.Workflow/agent-workflows/checkpoints` and wrote there. Both readings are faithful to the
+ * sentence. Three acceptance tests went red, and a red acceptance test has exactly one presentation
+ * — *the implementation does not satisfy the test* — so the retry loop re-fires the one lane that
+ * was not wrong, against a reading it was never given, forever.
+ *
+ * **The rule is resolvable from the ticket, not absolute.** A path is fine when its first segment
+ * is a real top-level entry of the repository, and equally fine when `filesClaimed` spells it in
+ * full and the prose abbreviates it — `shared/stage.ts` beside a claim of
+ * `.Workflow/agent-workflows/shared/stage.ts` names one file and only one. What it refuses is a
+ * path with no anchor anywhere in the body, which is the only shape a reader has to guess at.
+ * Measured against the four tickets of PRD #271 as published: #274, #275 and #276 pass untouched,
+ * and #272 is refused on `checkpoints/` alone.
+ *
+ * `filesClaimed` is held to the rooted half only, because it is what the prose anchors *to* — an
+ * abbreviation there resolves to nothing, and a slice that genuinely introduces a new top-level
+ * directory is rare enough to be worth stating in full.
+ *
+ * Reports every offending slice rather than the first, for the reason `validateCriteriaShape`
+ * gives: one re-fired slicer run should fix the whole plan.
+ */
+export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = repoTopLevel()): void {
+  const problems: string[] = [];
+  plan.forEach((slice, index) => {
+    const label = `slice ${index + 1} ("${slice.title}")`;
+    const unrootedClaims = slice.filesClaimed.filter((path) => !roots.has(path.split("/")[0]));
+    if (unrootedClaims.length > 0) {
+      problems.push(
+        `${label} claims ${unrootedClaims.map((path) => JSON.stringify(path)).join(", ")}, ` +
+          `which name no top-level entry of the repository — a claim is what the ticket's prose is ` +
+          `rooted against, so it has to be the full path from the repository root.`,
+      );
+    }
+    const prose = [slice.whatToBuild, ...slice.acceptanceCriteria];
+    const unresolvable = [...new Set(prose.flatMap(pathTokens))].filter(
+      (token) => !isResolvable(token, slice.filesClaimed, roots),
+    );
+    if (unresolvable.length > 0) {
+      problems.push(
+        `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. ` +
+          `Lane 04 and lane 05 read this ticket independently and cannot ask each other, so an unrooted path ` +
+          `is a decision handed to two blind readers (#272, #278). Spell it from the repository root, or claim ` +
+          `the full path in filesClaimed.`,
       );
     }
   });

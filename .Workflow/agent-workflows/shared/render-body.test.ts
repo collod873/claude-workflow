@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { IMMUTABLE_SET } from "./immutable-set";
 import { slice } from "./plan.fixture";
-import { renderBody, validateClaimsAreMutable, validateCriteriaShape } from "./render-body";
+import { reason } from "./reason";
+import { renderBody, validateClaimsAreMutable, validateCriteriaShape, validatePathsAreRooted } from "./render-body";
 
 /**
  * The two ends of one contract, driven against each other.
@@ -304,5 +305,166 @@ describe("validateClaimsAreMutable", () => {
       const claimed = entry.endsWith("/") ? `${entry}something.ts` : entry;
       expect(() => validateClaimsAreMutable([slice({ title: "S", filesClaimed: [claimed] })])).toThrow();
     }
+  });
+});
+
+/**
+ * #278: lane 03 publishes prose that lane 04 and lane 05 then read independently, and a path the
+ * ticket leaves relative is a decision handed to both of them at once. The corpus below is PRD
+ * #271's four tickets exactly as lane 03 published them — the only real evidence this gate has, and
+ * the shape of both halves of the bet: #272 is refused on the one token that actually diverged, and
+ * the three tickets that built cleanly are untouched.
+ */
+const PRD_271 = {
+  272: slice({
+    title: "Checkpoint core in runStage, proven end-to-end through to-tickets' resume",
+    whatToBuild:
+      "Extract `handoffPath`/`DEFAULT_HANDOFF_PATH` into `shared/handoff-path.ts`; add checkpoint " +
+      "key/write/skip (prompt+SHA hash, `<stage>.json` under `checkpoints/`, `output.parse` " +
+      "revalidation, fail-open) to `runStage`, relocating `preservingRaw`/`rawResponsePath` there; " +
+      "wire to-tickets.ts's 3 stages onto it; isolate checkpoint writes per test file.",
+    acceptanceCriteria: [
+      "A retry after audit-and-publish failed spawns a model only for it — check: `npx vitest run .Workflow/agent-workflows/to-tickets/resume.test.ts`",
+      "A stage with a key-matching checkpoint calls no StageExec and returns it re-validated through the stage's output.parse — check: `npx vitest run .Workflow/agent-workflows/shared/stage.test.ts`",
+      "readPriorHandoff reads the upstream stage's checkpoint file, not the shared handoff — check: `npx vitest run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
+      "A successful stage no longer writes its output to handoffPath() — check: `npx vitest run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
+      "The full pre-existing suite passes with checkpoint writes isolated per test file — check: `npx vitest run .Workflow .claude`",
+    ],
+    filesClaimed: [
+      ".Workflow/agent-workflows/shared/handoff-path.ts",
+      ".Workflow/agent-workflows/shared/stage.ts",
+      ".Workflow/agent-workflows/shared/stage.test.ts",
+      ".Workflow/agent-workflows/shared/isolate-checkpoints.setup.ts",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.ts",
+      ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts",
+      ".Workflow/agent-workflows/to-tickets/resume.test.ts",
+      ".gitignore",
+    ],
+  }),
+  274: slice({
+    title: "Name every remaining runStage call site",
+    whatToBuild:
+      "Add a literal `stage: \"<name>\"` to StageOptions at every remaining runStage call: spec.ts, " +
+      "sweep.ts, critic.ts, reconcile.ts, amend.ts, review.ts (both calls), refuter.ts, implement.ts, " +
+      "fixer.ts, acceptance.ts. No other change — each stays exactly what it does today.",
+    acceptanceCriteria: [
+      "Every one of the ten call sites' StageOptions literal includes a stage key — check: `npx vitest run .Workflow/agent-workflows/shared/lane-stage-names.test.ts`",
+      "The full existing suite still passes — check: `npx vitest run .Workflow .claude`",
+    ],
+    filesClaimed: [
+      ".Workflow/agent-workflows/spec/spec.ts",
+      ".Workflow/agent-workflows/spec/sweep.ts",
+      ".Workflow/agent-workflows/spec/critic.ts",
+      ".Workflow/agent-workflows/spec/reconcile.ts",
+      ".Workflow/agent-workflows/spec/amend.ts",
+      ".Workflow/agent-workflows/review/review.ts",
+      ".Workflow/agent-workflows/review/refuter.ts",
+      ".Workflow/agent-workflows/implement/implement.ts",
+      ".Workflow/agent-workflows/fixer/fixer.ts",
+      ".Workflow/agent-workflows/acceptance/acceptance.ts",
+      ".Workflow/agent-workflows/shared/lane-stage-names.test.ts",
+    ],
+  }),
+  275: slice({
+    title: "Carry checkpoints across runs as an artifact",
+    whatToBuild:
+      "Add `.github/actions/checkpoints/action.yml` (restore/upload phases; restore resolves the " +
+      "latest `checkpoints-<lane>-<issue>` artifact via `gh api .../actions/artifacts`, logging what " +
+      "it restored). Wire restore and `if: always()` upload steps into to-tickets.yml and shape.yml; " +
+      "delete the raw-response upload steps; repoint failure comments at the artifact.",
+    acceptanceCriteria: [
+      "Both workflows restore before their first stage step and upload with if: always() after their last — check: `npx vitest run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
+      "The restore phase queries actions/artifacts rather than a plain download-artifact — check: `grep -q 'actions/artifacts' .github/actions/checkpoints/action.yml`",
+      "Both 'Upload the refused raw response' if: failure() steps are removed from to-tickets.yml and shape.yml — check: `npx vitest run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
+    ],
+    filesClaimed: [
+      ".github/actions/checkpoints/action.yml",
+      ".github/workflows/to-tickets.yml",
+      ".github/workflows/shape.yml",
+      ".Workflow/agent-workflows/shared/checkpoint-wiring.test.ts",
+    ],
+  }),
+  276: slice({
+    title: "Make StageOptions.stage required",
+    whatToBuild:
+      "Now that every runStage call site names its stage, drop the `?` on `StageOptions.stage` in " +
+      "shared/stage.ts, making it required, and remove any code path that tolerated a missing name. " +
+      "No caller changes: every real one already passes it.",
+    acceptanceCriteria: [
+      "The whole repo still typechecks once every call site is required to name its stage — check: `npx tsc --noEmit`",
+      "stage is declared non-optional on StageOptions — check: `grep -q 'stage: string;' .Workflow/agent-workflows/shared/stage.ts`",
+      "The full suite still passes — check: `npx vitest run .Workflow .claude`",
+    ],
+    filesClaimed: [
+      ".Workflow/agent-workflows/shared/stage.ts",
+      ".Workflow/agent-workflows/shared/stage.test.ts",
+    ],
+  }),
+};
+
+describe("validatePathsAreRooted, on PRD #271 as lane 03 actually published it", () => {
+  it("refuses #272 on `checkpoints/`, the one token lane 04 and lane 05 rooted differently", () => {
+    expect(() => validatePathsAreRooted([PRD_271[272]])).toThrow(/checkpoints\//);
+  });
+
+  it("refuses #272 on nothing else — every other path it names resolves from the body", () => {
+    // `shared/handoff-path.ts` and `to-tickets.ts` are abbreviations of paths the same ticket
+    // claims in full, which is the rule being satisfied rather than dodged. If this ever widened
+    // to catch them, the gate would be refusing the tickets that built cleanly.
+    let refusal = "";
+    try {
+      validatePathsAreRooted([PRD_271[272]]);
+    } catch (err) {
+      refusal = reason(err);
+    }
+
+    expect(refusal).toMatch(/checkpoints\//);
+    expect(refusal).not.toMatch(/handoff-path/);
+    expect(refusal).not.toMatch(/to-tickets\.ts/);
+  });
+
+  it.each([274, 275, 276] as const)("passes #%i, which built and merged unchanged", (number) => {
+    expect(() => validatePathsAreRooted([PRD_271[number]])).not.toThrow();
+  });
+});
+
+describe("validatePathsAreRooted", () => {
+  it("refuses a claim that names no top-level entry, since the prose is rooted against it", () => {
+    const plan = [slice({ title: "Root", filesClaimed: ["shared/stage.ts"] })];
+
+    expect(() => validatePathsAreRooted(plan)).toThrow(/no top-level entry/);
+  });
+
+  it("names every offending slice, so one re-fire fixes the whole plan", () => {
+    const plan = [
+      slice({ title: "First", whatToBuild: "Write it under `checkpoints/`." }),
+      slice({ title: "Second", filesClaimed: [".Workflow/agent-workflows/shared/stage.ts"] }),
+      slice({ title: "Third", whatToBuild: "Write it under `scratch/`." }),
+    ];
+
+    expect(() => validatePathsAreRooted(plan)).toThrow(/First[\s\S]*Third/);
+  });
+
+  it.each([
+    ["a documented decision", "See docs/adr/0010-every-gate.md for why."],
+    ["a bare filename that is a top-level entry", "Edit vitest.config.ts and package.json."],
+    ["a property access that looks like an extension", "Revalidate through the stage's output.parse."],
+    ["a command flag", "It typechecks — check: `npx tsc --noEmit`"],
+    ["a label with a slash in it", "The reviewer files spec/gap rather than a finding."],
+    ["a markdown link to an unrooted target", "See [ADR-0010](0010-every-gate-fires-at-the-earliest.md)."],
+    ["a URL", "Recorded at https://github.com/collod873/claude-workflow/blob/main/x.md today."],
+  ])("does not read %s as an unrooted path", (_label, prose) => {
+    expect(() => validatePathsAreRooted([slice({ title: "S", whatToBuild: prose })])).not.toThrow();
+  });
+
+  it("refuses an unrooted path in a criterion, not only in What to build", () => {
+    const plan = [
+      slice({
+        title: "Root",
+        acceptanceCriteria: ["The setup file is declared — check: `grep -q setup config/vitest.setup.ts`"],
+      }),
+    ];
+
+    expect(() => validatePathsAreRooted(plan)).toThrow(/vitest\.setup\.ts/);
   });
 });
