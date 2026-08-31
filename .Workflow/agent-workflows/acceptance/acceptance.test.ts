@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
@@ -15,6 +16,15 @@ import {
   runAcceptanceAuthor,
   sharedTestFiles,
 } from "./acceptance";
+
+// The author's runStage names its stage (#274), which opts it into checkpointing — and without a
+// fresh CHECKPOINTS_DIR per test, a later test whose fixtures render the same substituted prompt
+// silently replays an earlier test's canned answer off the real on-disk directory (the stop gate
+// caught exactly that as a flake). See `isolateCheckpointsPerTest`'s own comment.
+beforeEach(() => {
+  isolateCheckpointsPerTest();
+});
+
 
 const TICKET_BODY = `## Parent PRD
 #145
