@@ -19,8 +19,8 @@ name: Audit
 # The job-level `if` stays, and is still the scope rule: `types:` is a filter GitHub applies before
 # the run exists, and the `if` is what holds this file to `run-audit.ts`'s own
 # `AUDIT_DISPATCH_ACTION`. No compiler sees across that language boundary, so `run-audit.test.ts`
-# asserts the two still agree, mirroring `release-on-prd-close.yml`'s `state_reason` scope rule and
-# `release-on-prd-close.ts`'s `DELIVERY_CLOSE_REASON`.
+# asserts the two still agree, mirroring `ratify-on-prd-close.yml`'s `state_reason` scope rule and
+# `ratify/prd-close.ts`'s `CLOSE_STATE_REASON`.
 #
 # That scope is spelled `session-captured` — the capture hook's own dispatch, shared with
 # `dispatch-reconcile.yml` and `run-watchdog.yml` rather than given a second one (#107). This file and `run-audit.ts`

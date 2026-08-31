@@ -2,41 +2,35 @@ import { pathToFileURL } from "node:url";
 import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { normalizeNewlines } from "../shared/ticket-shape";
+import { parseFindingMarker } from "../ratify/finding-marker";
 import type { RatificationRecord } from "./ratification-schema";
 import { writeRatificationNote } from "./ratification";
-import { parseFindingMarker } from "./run-release";
 
 /**
- * The ratification connector (spec #63 §Solution move 5, "the release PR's
- * checklist ratifies itself"): fires once a release PR (`run-release.ts`'s
- * `composeRelease`) closes, and turns the owner's checkbox decisions back
- * into `RatificationRecord`s — the same memory `filterByRatificationMemory`
- * (./ratification.ts) reads on the *next* release to decide whether a
- * declined finding has earned another look.
+ * **Ratified = merged.** This is where that becomes memory: the moment a
+ * ratifier pull request (`ratify/land.ts`'s `openRatifierPr`) merges, the
+ * standards it landed are recorded as `ratified`, each carrying the
+ * `landedAs` the revert detector keys on.
  *
- * A merge is the only close this module reads anything from: a release PR
- * closed without merging carried no decision at all — every box on it is
- * exactly as undecided as before the PR opened — so nothing is written and
- * `refs/notes/ratifications` is never touched.
+ * There is no checkbox to read any more. #296 deleted the release-PR channel
+ * and with it the parse that turned a box into a verdict; what survives is
+ * this module's notes-write path, now fed by the pull request's own hidden
+ * markers rather than by an owner's ticks. The owner's lever is a revert, and
+ * only a revert.
+ *
+ * A merge is still the only close this reads anything from: a ratifier pull
+ * request closed without merging landed nothing, so nothing is written and
+ * `refs/notes/ratifications` is never touched. That is the unchanged rule.
  */
-
-/**
- * One checklist line, capturing whether its box is checked. Deliberately not
- * `ticket-shape.ts`'s `CRITERIA_ITEM_RE`: that pattern only needs to know a
- * line *is* a checkbox item to count it, while this reader needs the checked
- * state itself, so it carries its own capture group rather than widening a
- * shared one two callers would then have to agree stays compatible.
- */
-const CHECKLIST_ITEM_RE = /^[ \t]*-[ \t]*\[([ xX])\]/;
 
 export interface EntrypointInput {
   /** For the log line only — not read by any decision this module makes. */
   prNumber?: number;
   /** `github.event.pull_request.merged`. */
   merged: boolean;
-  /** `github.event.pull_request.body` — the release PR's checklist, one item per prose finding. */
+  /** `github.event.pull_request.body` — one section per landed finding, each carrying its marker. */
   body: string | null | undefined;
-  /** The commit these decisions are recorded against — `github.event.pull_request.merge_commit_sha`. */
+  /** The commit these records key to — `github.event.pull_request.merge_commit_sha`. */
   commit: string;
   /** The repo the ratification note is written and pushed into. */
   repoDir: string;
@@ -47,42 +41,34 @@ export interface EntrypointInput {
 export interface EntrypointOutcome {
   /** `false` when the PR closed without merging — nothing was read or written. */
   ran: boolean;
-  /** How many checklist items carried a parseable finding marker, present whenever `ran` is true. */
+  /** How many sections carried a parseable finding marker, present whenever `ran` is true. */
   recordCount?: number;
 }
 
 /**
- * Turns a release PR's checklist item into the `RatificationRecord` its
- * checkbox state means: checked is `ratified`, unchecked is `declined`
- * carrying the marker's own site list — `filterByRatificationMemory`'s
- * "carry the site list; that is what distinguishes 'recurred again' from
- * 'grew'" applies to what a decision remembers, not just what re-proposes
- * one, so a `declined` record's `sites` here is exactly what the release run
- * proposed, not re-derived from anything this module reads itself.
+ * Turns a merged ratifier pull request's body into one `ratified` record per
+ * landed finding.
  *
- * A line with no checkbox, or a checkbox whose marker fails to parse (a
- * hand-edited or otherwise foreign checklist line), yields no record —
- * `parseFindingMarker` already declines to trust those, and this reader
- * declines to guess a `finding`/`sites` pair on its behalf.
+ * A line carrying no marker, or a marker that fails to parse, yields no
+ * record — `parseFindingMarker` already declines to trust a hand-edited body,
+ * and this reader declines to guess a finding on its behalf. A marker with no
+ * `landedAs` yields no record either: without it there is nothing for the
+ * revert detector to ever look for, so a record claiming ratification would
+ * be memory nobody could act on.
  */
-function parseChecklist(body: string, prNumber: number | undefined): RatificationRecord[] {
+export function parseLandedFindings(body: string, prNumber: number | undefined): RatificationRecord[] {
   const records: RatificationRecord[] = [];
 
   for (const line of normalizeNewlines(body).split("\n")) {
-    const checkbox = CHECKLIST_ITEM_RE.exec(line);
-    if (!checkbox) continue;
-
     const marker = parseFindingMarker(line);
-    if (!marker) continue;
+    if (!marker?.landedAs) continue;
 
-    const checked = checkbox[1].trim().length > 0;
     records.push({
       finding: marker.finding,
       sites: marker.sites,
-      decision: checked ? "ratified" : "declined",
-      reason: checked
-        ? `checked off in release PR #${prNumber ?? "?"}`
-        : `left unchecked in release PR #${prNumber ?? "?"}`,
+      decision: "ratified",
+      reason: `landed as "${marker.landedAs}" in ratifier PR #${prNumber ?? "?"}`,
+      landedAs: marker.landedAs,
     });
   }
 
@@ -90,12 +76,9 @@ function parseChecklist(body: string, prNumber: number | undefined): Ratificatio
 }
 
 /**
- * The connector. A merged PR with no parseable checklist item writes
- * nothing — the same "an empty batch costs nothing beyond the reads above"
- * shape `runRelease` (./run-release.ts) already holds for the opening half
- * of this same pipeline, applied here to its closing half: `syncNotesRef`
- * (and the push it makes) only ever runs when there is at least one record
- * to publish.
+ * The connector. A merged pull request with no parseable marker writes
+ * nothing: `syncNotesRef` (and the push it makes) only ever runs when there
+ * is at least one record to publish.
  */
 export function runRatification(input: EntrypointInput): EntrypointOutcome {
   const git = input.git ?? execGit;
@@ -103,14 +86,14 @@ export function runRatification(input: EntrypointInput): EntrypointOutcome {
   const { merged, commit, repoDir, prNumber } = input;
 
   if (!merged) {
-    log(`#${prNumber ?? "?"} closed without merging — nothing to ratify.`);
+    log(`#${prNumber ?? "?"} closed without merging — nothing was ratified.`);
     return { ran: false };
   }
 
-  const records = parseChecklist(input.body ?? "", prNumber);
+  const records = parseLandedFindings(input.body ?? "", prNumber);
 
   if (records.length === 0) {
-    log(`#${prNumber ?? "?"} merged with no checklist findings to ratify.`);
+    log(`#${prNumber ?? "?"} merged with no landed findings to record.`);
     return { ran: true, recordCount: 0 };
   }
 

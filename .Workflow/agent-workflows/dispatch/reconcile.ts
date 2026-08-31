@@ -365,7 +365,7 @@ function publishedSliceNumbers(issues: OpenIssue[]): Set<number> {
  * still be carrying once the body validates again.
  *
  * The label every published spec carries (`spec/publish.ts`'s `PRD_LABEL`) — declared again here,
- * the way `observations/release-on-prd-close.ts` already does, rather than imported: a spec that
+ * the way `ratify/prd-close.ts` already does, rather than imported: a spec that
  * carries no sub-issue yet is still being sliced, which is a different lane's business, so this
  * pass's own scope is `prd` **and** `>=1 sub-issue`, not `prd` alone.
  */

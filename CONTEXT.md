@@ -119,6 +119,24 @@ repaired record *is* the output. See
 [ADR-0044](docs/adr/0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md).
 _Avoid_: backlink, cross-reference, index, tombstone
 
+**Ratifier**:
+The stage that turns a finding which cleared the two-site gate into something the repository
+enforces — a lint rule with every site it flags fixed in the same branch, a `CODING_STANDARDS.md`
+entry, or a reasoned rejection. Named for the act rather than the artifact because the three
+outcomes are one decision made in a forced order. Its output is a pull request that lands through
+the same judged door every implementation pull request uses; **ratified means merged**, and the
+owner declines by reverting. See
+[ADR-0122](docs/adr/0122-findings-land-through-the-implementation-door-the-release-pr.md).
+_Avoid_: release, publisher, standards author, approver
+
+**Rule trial**:
+Running a newly authored lint rule against the tree as it stood *before* the fixes that rule
+justified, and requiring it to flag every site the finding carries. What makes it a trial rather
+than a test is where the threshold comes from: the observed failure itself, not a number anyone
+chose. A rule that misses one is demoted to a prose entry rather than landed. See
+[ADR-0124](docs/adr/0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md).
+_Avoid_: dry run, smoke test, rule validation, self-check
+
 **Counter**:
 A lens that spends no model. It names an event that happens on its own, a count at which it acts, the
 issue it files at that count, and the action that issue proposes — four fields, and a thing missing

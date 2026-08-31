@@ -1,30 +1,32 @@
 name: Ratify release
 
-# Spec #63 §Solution move 5, the ratification connector: the moment the owner's review of a release
-# PR (`run-release.ts`'s `composeRelease`) lands, this workflow turns their checkbox decisions back
-# into `RatificationRecord`s (`run-ratification.ts`), so the next release's `filterByRatificationMemory`
-# knows what was already declined and what site growth earns a re-proposal.
+# **Ratified = merged** (#296). The moment a ratifier pull request (`ratify/land.ts`'s
+# `openRatifierPr`) lands, this workflow records each standard it carried as a `ratified`
+# `RatificationRecord` — each with the `landedAs` that `decline-on-revert.yml` later keys on to
+# notice the owner took it back out.
 #
-# The job-level `if` is the scope rule, same shape as `release-on-prd-close.yml`:
-# `pull_request: closed` fires for every PR this repo merges, not only release PRs, and the estate
-# is over its 2,000-minute monthly cap — a runner that would decide "not a release PR" should never
-# start. The release PR title is the only thing distinguishing one from an ordinary feature PR, so
-# it is spelled here as well as in `release.ts`'s own `RELEASE_PR_TITLE`; no compiler sees across
-# that language boundary, so `run-ratification.test.ts`'s "agrees with" test does. A closed-without-
-# merging release PR still gets a runner (there is no `merged`-only job condition — GitHub Actions'
-# `if` cannot see `pull_request.merged` any more reliably than the script can), but costs almost
-# nothing: `run-ratification.ts` reads `merged` itself and returns before any git write.
+# It used to read checkboxes. There are none now: the release-PR channel and its "Needs a decision"
+# checklist are deleted, and what this parses instead are the hidden finding markers the ratifier's
+# own body carries (`ratify/finding-marker.ts`). Same trigger, same title filter, same merge-only
+# rule, new content — which is why this file was rewritten rather than replaced.
 #
-# `merge_commit_sha` — not `GITHUB_SHA` — is what these decisions key to: for a `pull_request` event
-# `GITHUB_SHA` is the PR branch's own last commit, never the commit that actually landed on the base
-# branch. `actions/checkout`'s `ref:` below checks that commit out explicitly so `git notes add` has
-# an object to attach to; unset (a PR closed without merging) checks out the default ref instead,
-# which the script never reads a note onto.
+# The job-level `if` is the scope rule: `pull_request: closed` fires for every pull request this
+# repo merges, not only ratifier ones, and the estate is over its 2,000-minute monthly cap — a
+# runner that would decide "not a ratifier PR" should never start. The title is the only thing
+# distinguishing one from an ordinary implementation pull request, so it is spelled here as well as
+# in `ratify/land.ts`'s `RATIFIER_PR_TITLE`; no compiler sees across that boundary, so
+# `run-ratification.test.ts`'s "agrees with" test does.
 #
-# Unlike `release-on-prd-close.yml`'s `refs/release/last`, there is no separate "Publish" step here:
-# `run-ratification.ts` writes `refs/notes/ratifications` through `notes-sync.ts`'s `syncNotesRef`,
-# which fetches, applies and pushes itself (retrying once on a race) — the module's own write, not a
-# bare local `update-ref` a workflow step would otherwise have to push on its behalf.
+# A closed-without-merging ratifier pull request still gets a runner (Actions' `if` cannot see
+# `pull_request.merged` any more reliably than the script can) but costs almost nothing:
+# `run-ratification.ts` reads `merged` itself and returns before any git write. That case is also
+# the owner's *other* decline: a ratifier PR closed unmerged landed nothing, so nothing is recorded
+# and the findings re-batch at the next trigger.
+#
+# `merge_commit_sha` — not `GITHUB_SHA` — is what these records key to: for a `pull_request` event
+# `GITHUB_SHA` is the PR branch's own last commit, never the commit that landed on the base branch.
+# `actions/checkout`'s `ref:` below checks that commit out explicitly so `git notes add` has an
+# object to attach to.
 
 "on":
   pull_request:
@@ -36,7 +38,7 @@ permissions:
 
 jobs:
   ratify-release:
-    if: "github.event.pull_request.title == 'Release: observations from this batch'"
+    if: "github.event.pull_request.title == 'Ratified: standards from this batch'"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -55,20 +57,15 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
       # `checkout`'s default refspec (`refs/heads/*`) never carries a notes ref — `syncNotesRef`
-      # itself re-fetches `refs/notes/ratifications` before it writes (`shared/notes-sync.ts`'s own
-      # `fetchNotesRef`), but only once it has a local ref to compare against; a completely fresh
-      # checkout has none. Let to fail: a repo before its first ratification has no such ref yet,
-      # the same absence `syncNotesRef`'s own `ls-remote` check already tolerates.
+      # re-fetches `refs/notes/ratifications` before it writes, but only once it has a local ref to
+      # compare against; a completely fresh checkout has none. Let to fail: a repo before its first
+      # ratification has no such ref yet.
       - name: Fetch the ratifications ref
         run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
 
-      # A runner has no git identity, and `git notes add` writes an object with a committer on it.
-      # `audit.yml` learned this the expensive way (#107): its first non-skipped run died on
-      # `empty ident name` after spending both lens passes. This lane reaches the same write through
-      # `run-ratification.ts`'s `writeRatificationNote`, and has never run — so the same defect sat
-      # here unfixed, because the first fix travelled no further than the file it was made in (#109).
-      # `runner-committer.test.ts` is what now makes it travel. The bot is the honest author: this
-      # note records what the run read off the PR, not a person's own commit.
+      # A runner has no git identity, and `git notes add` writes an object with a committer on it
+      # (#107, #109). The bot is the honest author: this note records what the run read off the pull
+      # request, not a person's own commit.
       - name: Identify the committer
         run: |
           git config user.name 'github-actions[bot]'
@@ -85,5 +82,5 @@ jobs:
       # The connector's own write — at most one `git notes add` plus the push `syncNotesRef` makes
       # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
       # reporting step here.
-      - name: Ratify the release PR's checklist
+      - name: Record what this batch ratified
         run: npx tsx .Workflow/agent-workflows/observations/run-ratification.ts

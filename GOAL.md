@@ -183,6 +183,20 @@ Ordered. Nothing further up the list is optional for anything below it.
    - **ADR-0003's lint audit**, which points it at the rules and is **ruled but unbuilt** —
      `/standards-pass` does not implement it, and `/ratify`'s "zero hits against the repo as it
      stands" is a static tree scan rather than a question about history.
+
+     *Narrowed at the other end, 2026-08-31.* [ADR-0124](docs/adr/0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md)
+     makes a rule prove it catches something **at birth**: the ratifier lane
+     (`.Workflow/agent-workflows/ratify/`) runs every authored rule against the tree as it stood
+     before that finding's fixes, and a rule that cannot flag the two sites that warranted it is
+     demoted to a prose entry. So a landed rule now starts with evidence it caught something, and
+     what ADR-0003's audit still owes is the question about *history* — whether it kept catching
+     things. That half is unbuilt.
+
+     *And `CODING_STANDARDS.md` gained its second exit.* The file "can only grow" was true while
+     the sole exit was *mechanised*. [ADR-0123](docs/adr/0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md)
+     adds *reverted*: the owner deletes an entry or switches a rule off, and a push-triggered
+     detector (`.github/workflows/decline-on-revert.yml`) reads that as a decision and writes the
+     declined memory that keeps the finding from coming back.
 4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. ADR-0018, ADR-0020.
 5. **The pre-merge gate — mostly retired, and the rest is accepted.** Retired by the gauntlet and its
    four venues; `bin/gauntlet` and [ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)

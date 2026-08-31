@@ -5,6 +5,7 @@ import { z } from "zod";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
+import { RATIFIER_OUTPUT } from "../ratify/verdict-schema";
 import { AUDIT_OUTPUT, Plan, SLICE_CAPS, SLICE_OUTPUT } from "./plan-schema";
 import { validatePathsAreRooted } from "./render-body";
 import type { StructuredOutput } from "./structured-output";
@@ -42,6 +43,7 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "to-tickets/seam-sweep/prompt.md", output: SEAM_SWEEP_OUTPUT },
   { path: "to-tickets/slice/prompt.md", output: SLICE_OUTPUT },
   { path: "to-tickets/audit/prompt.md", output: AUDIT_OUTPUT },
+  { path: "ratify/prompt.md", output: RATIFIER_OUTPUT },
 ];
 
 function promptSource(promptPath: string): string {

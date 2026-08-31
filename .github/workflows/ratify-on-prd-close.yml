@@ -1,0 +1,71 @@
+name: Ratify on PRD close
+
+# ADR-0017's second work-volume trigger, rewired (#296): a PRD closing as delivered rings the
+# ratifier lane's door. The trigger survived the overhaul verbatim; only what it fires changed —
+# the channel it used to open a release pull request through is deleted.
+#
+# This workflow decides nothing about the batch. `ratify/prd-close.ts` is a gate and a dispatch,
+# and the heavy stage runs in `ratify.yml` on that dispatch (ADR-0090's filtered `types:`), never
+# inside the run that noticed the close.
+#
+# The job-level `if` is the scope rule: only a close marked `completed` claims a PRD was delivered
+# (the same rule `.claude/hooks/close-gate.py` holds for a ticket, ADR-0013), and only an issue
+# carrying the `prd` label was a PRD at all. Both conditions are spelled here as well as in
+# `prd-close.ts`'s `CLOSE_STATE_REASON`/`PRD_LABEL` on purpose — the estate is over its 2,000-minute
+# cap, so a job that would decide "nothing to do" should never start — and `prd-close.test.ts`
+# asserts the two still agree, since no compiler sees across this language boundary.
+#
+# `GITHUB_SHA` is the head the ratifier run scopes through: for an `issues` event it is the default
+# branch's own tip, which is exactly the range the scope walk should read. The connector makes no
+# model call and no checkout-dependent read, so there is no `CLAUDE_CODE_OAUTH_TOKEN` preflight
+# here and no `fetch-depth: 0`.
+
+"on":
+  issues:
+    types: [closed]
+
+permissions:
+  # write: the `repository_dispatch` this connector sends is a write on the contents scope.
+  contents: write
+  issues: read
+
+# One dispatch per PRD at a time. A PRD can be closed, reopened and closed again — an ordinary
+# correction — and each close fires this connector afresh; without a group, two of them would ring
+# the door twice for one decision. Keyed per PRD rather than fixed, because two different PRDs
+# closing in the same minute are two genuinely separate events. Never cancelled: the run is a
+# single dispatch, and killing it mid-flight would lose the trigger rather than defer it.
+concurrency:
+  group: ratify-on-prd-close-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  ratify-on-prd-close:
+    if: github.event.issue.state_reason == 'completed' && contains(github.event.issue.labels.*.name, 'prd')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      STATE_REASON: ${{ github.event.issue.state_reason }}
+      LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # This connector performs no git write — its one action is a `gh api` dispatch — so the
+      # checkout has no business leaving a push credential in the local git config.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The connector's own write — one `repository_dispatch` — goes through the `gh` seam in
+      # `shared/gh.ts`, so there is no separate reporting step here.
+      - name: Ring the ratifier lane
+        run: npx tsx .Workflow/agent-workflows/ratify/prd-close.ts

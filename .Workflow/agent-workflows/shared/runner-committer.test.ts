@@ -26,10 +26,10 @@ import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
  * committer — including a workflow, an entrypoint, and a note writer that do
  * not exist yet.
  *
- * The walk follows *declarations*, not files. `release-on-prd-close.yml`
- * imports `readObservations` from the same module `writeObservationNote`
- * lives in; a file-level walk calls that lane a note writer and asks it for
- * a step it does not need. Importing a module is not calling every function
+ * The walk follows *declarations*, not files. A lane can import
+ * `readObservations` from the same module `writeObservationNote` lives in;
+ * a file-level walk would call that lane a note writer and ask it for a step
+ * it does not need. Importing a module is not calling every function
  * in it, and this guard is only worth having if it says the true thing about
  * every lane rather than the safe thing about all of them.
  */
@@ -195,18 +195,18 @@ describe("every workflow that can reach `git notes add` configures a committer",
     const reaching = workflows.filter(({ source }) => entrypointsOf(source).some(writesAGitNote));
 
     // The check above is vacuously true for a workflow it finds nothing in, and a broken walk finds
-    // nothing in all of them. These two are the lanes that write a note today; the assertion is
+    // nothing in all of them. These are the lanes that write a note today; the assertion is
     // that the walk still sees them, not that they are the only ones it may ever see.
     expect(reaching.map(({ name }) => name).sort()).toEqual(
-      expect.arrayContaining(["audit.yml", "ratify-release.yml"]),
+      expect.arrayContaining(["audit.yml", "decline-on-revert.yml", "ratify-release.yml", "ratify.yml"]),
     );
   });
 
   it("does not mistake a workflow that writes no note for one that does", () => {
-    // `release-on-prd-close.yml` writes `refs/release/last` with `git update-ref`, which needs no
-    // committer, and `dispatch-reconcile.yml` writes no git object at all. A guard that flagged
-    // these would be asking two workflows to carry a step neither of them needs.
-    const quiet = ["release-on-prd-close.yml", "dispatch-reconcile.yml"];
+    // `ratify-on-prd-close.yml` sends one `repository_dispatch` and writes no git object at all,
+    // and neither does `dispatch-reconcile.yml`. A guard that flagged these would be asking two
+    // workflows to carry a step neither of them needs.
+    const quiet = ["ratify-on-prd-close.yml", "dispatch-reconcile.yml"];
 
     for (const name of quiet) {
       const workflow = workflows.find((each) => each.name === name);

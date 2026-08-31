@@ -7,27 +7,28 @@ import { reason } from "../shared/reason";
 import { syncNotesRef } from "../shared/notes-sync";
 import { execClaude, type StageExec } from "../shared/stage";
 import { repoScoped } from "../capture/touched-paths";
+import { dispatchRatificationDue } from "../ratify/dispatch";
+import { computeRatificationScope } from "../ratify/scope";
+import { readRatifierBase } from "../ratify/land";
 import { writeObservationNote } from "./notes";
 import { runObservations } from "./run-observations";
-import { runRelease } from "./run-release";
 import { readSessionRecord, type HydratedSessionRecord } from "./session-notes";
 
 /**
  * The connector spec #63 names as still missing: the piece
- * that actually fires `runObservations` and `runRelease` on a real session,
- * at the one venue ADR-0002 allows (`.github/workflows/audit.yml`, this
- * module's own `main`).
+ * that actually fires `runObservations` on a real session and, when the work
+ * volume has crossed the threshold, rings the ratifier lane's door — at the
+ * one venue ADR-0002 allows (`.github/workflows/audit.yml`, this module's own
+ * `main`).
  *
- * `.github/workflows/audit.yml` triggers broadly on `repository_dispatch` —
- * left unfiltered by `types:` on purpose, since a sibling workflow (spec #63's
- * release-on-PRD-close trigger) shares the same trigger surface with a
- * different `action` — so the job-level `if` is what actually scopes a run to
- * an audit dispatch. `AUDIT_DISPATCH_ACTION` is spelled there as well as
- * here, the same duplication `release-on-prd-close.ts`'s
- * `DELIVERY_CLOSE_REASON` is spelled in both that file and its own workflow:
- * no compiler sees across that language boundary, so `run-audit.test.ts` asserts the two
- * still agree, and this constant is the second reader for a local run and for
- * the case where the workflow's own `if` is ever edited wrong.
+ * `.github/workflows/audit.yml`'s `types:` names this lane's own action
+ * (ADR-0090) and the job-level `if` is what scopes a run to an audit
+ * dispatch. `AUDIT_DISPATCH_ACTION` is spelled there as well as here, the
+ * same duplication `ratify/prd-close.ts`'s `CLOSE_STATE_REASON` is spelled in
+ * both that file and its own workflow: no compiler sees across that language
+ * boundary, so `run-audit.test.ts` asserts the two still agree, and this
+ * constant is the second reader for a local run and for the case where the
+ * workflow's own `if` is ever edited wrong.
  *
  * The name is the emitter's, not this lane's (#107). This constant and
  * `audit.yml` both used to read `audit`, agreeing with each other and with
@@ -56,9 +57,9 @@ export interface RunAuditOptions {
   gh: GhExec;
   /** The injected executor the auditor's sandboxed `claude -p` calls run through. */
   exec: StageExec;
-  /** The repo the session's notes, its commit range, and the release ref all live in. */
+  /** The repo the session's notes, its commit range, and the ratifier's bookmark all live in. */
   repoDir: string;
-  /** The session's own head commit — the note this run reads is keyed here, and the release scope ends here. */
+  /** The session's own head commit — the note this run reads is keyed here, and the ratification scope ends here. */
   head: string;
   /** Ratified `CODING_STANDARDS.md` text, forwarded to `runObservations`'s VIOLATION lens. */
   standards: string;
@@ -75,8 +76,10 @@ export interface AuditOutcome {
   action: AuditAction;
   /** A stable slug, for the log — mirrors `run-watchdog.ts`'s `Outcome.code`. */
   code: string;
-  /** `computeReleaseScope`'s own count, reported whether or not a release opened. `0` on every skip. */
+  /** `computeRatificationScope`'s own count, reported whether or not the ratifier was rung. `0` on every skip. */
   releasedCount: number;
+  /** True when this run rang the ratifier lane's door. `false` on every skip. */
+  ratificationDue: boolean;
 }
 
 /**
@@ -105,11 +108,15 @@ function fetchNotesRef(git: GitExec, repoDir: string, ref: string, remote: strin
  * session that made no commit has no diff for either lens to read), runs
  * both lenses (`run-observations.ts`'s `runObservations`) over the rest,
  * pushes the merged note through `notes-sync.ts`'s fetch/apply/push-with-retry
- * helper, and evaluates this run's release scope with `prdClosed: false`
- * (`run-release.ts`'s `runRelease` — a PRD close fires through the sibling
- * release-on-PRD-close workflow instead, never through this one). Reports
- * the released count whether or not a release actually opened, matching
- * `RunReleaseResult`'s own convention.
+ * helper, and evaluates this run's ratification scope with `prdClosed: false`
+ * — a PRD close fires the same dispatch through the sibling
+ * `ratify-on-prd-close.yml` instead, never through this one.
+ *
+ * When the scope says a run is due, this rings the ratifier lane's door and
+ * stops there (#296). It never decides a finding itself: the heavy stage runs
+ * in its own workflow on that dispatch (ADR-0090), never inside the audit
+ * lane, so an audit run's cost stays the two lens passes it always was.
+ * Reports the released count whether or not the door was rung.
  */
 export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> {
   const { git, gh, exec, repoDir, head, standards, eventAction } = options;
@@ -117,7 +124,7 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
   const log = options.log ?? ((line: string) => console.log(line));
 
   if (eventAction !== AUDIT_DISPATCH_ACTION) {
-    return { action: "skipped", code: "not-an-audit-dispatch", releasedCount: 0 };
+    return { action: "skipped", code: "not-an-audit-dispatch", releasedCount: 0, ratificationDue: false };
   }
 
   fetchNotesRef(git, repoDir, "sessions", remote);
@@ -129,15 +136,15 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
     record = readSessionRecord({ git, repoDir, head, corpusDir });
   } catch (err) {
     log(`skipped: session record at ${head} has no readable corpus: ${reason(err)}`);
-    return { action: "skipped", code: "corpus-missing", releasedCount: 0 };
+    return { action: "skipped", code: "corpus-missing", releasedCount: 0, ratificationDue: false };
   }
   if (!record) {
     log(`skipped: no session record at ${head}`);
-    return { action: "skipped", code: "no-session-record", releasedCount: 0 };
+    return { action: "skipped", code: "no-session-record", releasedCount: 0, ratificationDue: false };
   }
   if (record.base === record.head) {
     log(`skipped: session ${record.sessionId}'s range is empty at ${head}`);
-    return { action: "skipped", code: "empty-range", releasedCount: 0 };
+    return { action: "skipped", code: "empty-range", releasedCount: 0, ratificationDue: false };
   }
 
   // Records written before `touched-paths.ts` existed carry absolute workstation paths, and a
@@ -171,10 +178,23 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
     apply: () => writeObservationNote({ git, repoDir, commit: record.head, observations }),
   });
 
-  const release = runRelease({ git, gh, repoDir, head: record.head, prdClosed: false });
-  log(`audited: released ${release.releasedCount}`);
+  const scope = computeRatificationScope({
+    git,
+    repoDir,
+    base: readRatifierBase(git, repoDir),
+    head: record.head,
+    prdClosed: false,
+  });
 
-  return { action: "ran", code: "audited", releasedCount: release.releasedCount };
+  if (scope.shouldRatify) dispatchRatificationDue(gh, { head: record.head, prdClosed: false });
+
+  log(`audited: released ${scope.releasedCount}${scope.shouldRatify ? " — ratification is due" : ""}`);
+  return {
+    action: "ran",
+    code: "audited",
+    releasedCount: scope.releasedCount,
+    ratificationDue: scope.shouldRatify,
+  };
 }
 
 async function main(): Promise<void> {

@@ -93,8 +93,8 @@ describe("a workflow that checks out grants itself contents", () => {
  *    step — a workflow-level block only supplies the default a job did not override.
  * 3. **Reachability is by call, not by import.** `integrate.ts` imports a *constant* from
  *    `implement.ts`, which imports the out-of-brief filer, which creates an issue.
- *    `run-ratification.ts` imports a *parser* from `run-release.ts`, which composes a release PR.
- *    Neither lane performs the write, and a guard that walked the import closure would demand two
+ *    `run-ratification.ts` imports a *parser* from `ratify/finding-marker.ts`, whose lane opens a
+ *    pull request. Neither lane performs the write, and a guard that walked the import closure would demand two
  *    permissions nobody needs — which is how a guard trains its readers to widen tokens. So this
  *    walks a symbol-level call graph from the entrypoint's module body outwards.
  *
@@ -425,7 +425,7 @@ describe("a job grants itself the writes its entrypoints perform", () => {
 
 /**
  * Spending a model, read off what the file *does* — not off the string `CLAUDE_CODE_OAUTH_TOKEN`
- * appearing anywhere in it. `release-on-prd-close.yml` names that secret in a header comment
+ * appearing anywhere in it. `ratify-on-prd-close.yml` names that secret in a header comment
  * explaining why it needs *no* preflight, and a substring sweep counts that comment as a model
  * call. Two spellings, either of which is a run that pays: the pinned global install every lane
  * makes before it can spawn `claude`, and the secret bound into a job's environment.
@@ -454,12 +454,12 @@ describe("a lane that spends a model does not cancel itself", () => {
   it("actually finds the lanes that spend a model, so a passing suite is not an empty sweep", () => {
     const spending = workflows.filter(({ source }) => spendsModel(source)).map(({ name }) => name);
 
-    // The eight model lanes: 01 shape, 02 spec, 03 to-tickets, 04 acceptance, 05 implement,
-    // 06 review, the fixer, and the audit. `release-on-prd-close.yml` is deliberately absent —
-    // it only mentions the secret in prose (see the comment on the predicate above).
-    expect(spending.length).toBeGreaterThanOrEqual(8);
-    expect(spending).toEqual(expect.arrayContaining(["shape.yml", "spec.yml", "acceptance.yml"]));
-    expect(spending).not.toContain("release-on-prd-close.yml");
+    // The nine model lanes: 01 shape, 02 spec, 03 to-tickets, 04 acceptance, 05 implement,
+    // 06 review, the fixer, the audit, and the ratifier. `ratify-on-prd-close.yml` is deliberately
+    // absent — it only mentions the secret in prose (see the comment on the predicate above).
+    expect(spending.length).toBeGreaterThanOrEqual(9);
+    expect(spending).toEqual(expect.arrayContaining(["shape.yml", "spec.yml", "acceptance.yml", "ratify.yml"]));
+    expect(spending).not.toContain("ratify-on-prd-close.yml");
   });
 });
 
@@ -473,8 +473,8 @@ describe("a lane that spends a model does not cancel itself", () => {
  * events for one subject run side by side to completion and both act.
  *
  * `to-tickets.yml` declared none, so two `prd-sliceable` dispatches slice the same PRD twice into
- * two sets of sub-issues. `release-on-prd-close.yml` declared none, so two closes of one PRD open
- * two release pull requests. `implement.yml` had the same hole and closed it under
+ * two sets of sub-issues. The PRD-close connector declared none, so two closes of one PRD rang
+ * the lane behind it twice. `implement.yml` had the same hole and closed it under
  * [ADR-0108](../../../docs/adr/0108-implementer-concurrency-is-keyed-per-ticket-because-a-fixed.md);
  * these two were not in that ticket's claim.
  *
@@ -517,7 +517,7 @@ describe("a lane that spends or writes declares a concurrency group", () => {
 
     expect(acting.length).toBeGreaterThanOrEqual(10);
     expect(acting).toEqual(
-      expect.arrayContaining(["to-tickets.yml", "release-on-prd-close.yml", "implement.yml"]),
+      expect.arrayContaining(["to-tickets.yml", "ratify-on-prd-close.yml", "implement.yml"]),
     );
   });
 });

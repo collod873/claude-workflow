@@ -7,7 +7,7 @@ import ts from "typescript";
 /**
  * The wiring acceptance test #56 opened with:
  *
- *   grep -rn "runObservations\|computeReleaseScope\|composeRelease" --exclude-dir=node_modules .
+ *   grep -rn "runObservations\|<the two release-lane exports beside it>" --exclude-dir=node_modules .
  *
  * — every hit outside a `.test.ts` file was the definition itself. Spec #63 built the connector;
  * this generalises that grep to every export under this directory rather than three names picked
@@ -19,9 +19,17 @@ import ts from "typescript";
  * `process.argv` guard calling the function it exports for testability is real wiring), and so
  * does a reference in a sibling module's test (`run-audit.test.ts` driving `runObservations`
  * through a fake is also real wiring, just exercised from a test).
+ *
+ * **The exports come from this directory; the callers may be anywhere.** Those were the same set
+ * until #296 moved the consumer of ratification memory into the ratifier lane, at which point
+ * `readRatificationRecords` and `filterByRatificationMemory` read as unwired while both had a real
+ * caller two directories over. A search scoped to the defining directory can only ever answer
+ * "does this lane call itself", which is a narrower question than the one this file asks.
  */
 
 const OBSERVATIONS_DIR = dirname(fileURLToPath(import.meta.url));
+/** Every lane, because a caller of an observations export may live in any of them. */
+const LANES_DIR = dirname(OBSERVATIONS_DIR);
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -44,9 +52,10 @@ function stem(path: string): string {
   return base.endsWith(".test.ts") ? base.slice(0, -".test.ts".length) : base.slice(0, -".ts".length);
 }
 
-const allFiles = listTsFiles(OBSERVATIONS_DIR);
-const testFiles = allFiles.filter((f) => f.endsWith(".test.ts"));
-const sourceFiles = allFiles.filter((f) => !f.endsWith(".test.ts"));
+const allFiles = listTsFiles(LANES_DIR);
+const ownFiles = allFiles.filter((f) => f.startsWith(`${OBSERVATIONS_DIR}/`));
+const testFiles = ownFiles.filter((f) => f.endsWith(".test.ts"));
+const sourceFiles = ownFiles.filter((f) => !f.endsWith(".test.ts"));
 const ownTestFileByStem = new Map(testFiles.map((f) => [stem(f), f]));
 
 interface ParsedFile {

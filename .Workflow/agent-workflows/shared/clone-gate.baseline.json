@@ -77,17 +77,6 @@
     "fragment": "**Slice**:\nOne tracer-bullet vertical cut through every layer, demoable on its own and sized to a single agent\nsession. Vertical is the whole point: a horizontal cut through one layer is not a slice.\n_Avoid_: task, chunk, story, unit\n\n**Ticket**:\nA published slice — a child issue carrying acceptance criteria, file claims and native blocked-by\nedges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.\n_Avoid_: issue, sub-issue, card, item\n\n**Seam manifest**:\nThe list of shared shapes a batch needs, one line each, naming what it is, where it lives or should\nlive, and what consumes it. The one-line bound is load-bearing: every line is injected into every\nconsuming ticket's body, and therefore into every worker's context.\n_Avoid_: shared components, abstractions, helpers, utilities\n\n**Stage**:\nOne agent process in a pipeline run, with no memory of the ones before it. Named separately from\nActions' own words because a stage is a context boundary, and a job or a step is not.\n_Avoid_: phase, pass, step, job"
   },
   {
-    "hash": "11544d09b9c2771c",
-    "format": "typescript",
-    "lines": 13,
-    "tokens": 233,
-    "where": [
-      ".Workflow/agent-workflows/observations/notes.test.ts:22",
-      ".Workflow/agent-workflows/shared/git.test.ts:15"
-    ],
-    "fragment": "));\n  execFileSync(\"git\", [\"init\", \"-q\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  function remove"
-  },
-  {
     "hash": "140b1e7b3bdcece0",
     "format": "typescript",
     "lines": 9,
@@ -119,17 +108,6 @@
       ".Workflow/agent-workflows/to-tickets/to-tickets.test.ts:123"
     ],
     "fragment": ", slices: slicedPlan }));\n    const fakeGh = createFakeGh();\n    const logSpy = vi.spyOn(console, \"log\").mockImplementation(() => undefined);\n\n    await runNamedStage(\"audit-and-publish\", \"13\", fakeStage.exec, fakeGh.gh);\n\n    expect(logSpy.mock.calls.map((call) => call[0])).toEqual"
-  },
-  {
-    "hash": "1c0717e6a344799d",
-    "format": "typescript",
-    "lines": 7,
-    "tokens": 79,
-    "where": [
-      ".Workflow/agent-workflows/observations/run-release.test.ts:102",
-      ".Workflow/agent-workflows/observations/run-release.test.ts:144"
-    ],
-    "fragment": "],\n    });\n\n    const { gh, calls } = fakeGh();\n    const result = runRelease({ git: execGit, gh, repoDir: repo.dir, head, prdClosed: true });\n\n    expect(result.opened).toBe(false"
   },
   {
     "hash": "204682fc1137ba5b",
@@ -440,17 +418,6 @@
     "fragment": "${ghBinDir}:${process.env.PATH}`,\n      },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    // Waits for `published`, not merely `skipped push-` — see the \"missing checkout\" test above.\n    const log = waitForLogToContain(result.logPath, \"published\");\n    expect(log).toContain(\"skipped push-\");\n    expect(log).not"
   },
   {
-    "hash": "60b74c831763def5",
-    "format": "typescript",
-    "lines": 15,
-    "tokens": 170,
-    "where": [
-      ".Workflow/agent-workflows/observations/release.test.ts:14",
-      ".Workflow/agent-workflows/observations/run-release.test.ts:42"
-    ],
-    "fragment": "function fakeGh(): { gh: GhExec; calls: string[][] } {\n  const calls: string[][] = [];\n  const gh: GhExec = (args) => {\n    calls.push(args);\n    return \"https://github.com/owner/repo/pull/1\\n\";\n  };\n  return { gh, calls };\n}\n\nfunction flagValue(args: string[], flag: string): string | undefined {\n  const index = args.indexOf(flag);\n  return index === -1 ? undefined : args[index + 1];\n}\n\ndescribe"
-  },
-  {
     "hash": "61892db0a345939c",
     "format": "typescript",
     "lines": 14,
@@ -504,17 +471,6 @@
       ".Workflow/agent-workflows/review/counter.test.ts:245"
     ],
     "fragment": "}],\n    });\n\n    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: \"collod873\", now: NOW });\n\n    expect(outcome.grow).toMatchObject({ code: \"proposed\", issue: 42 });\n  }"
-  },
-  {
-    "hash": "76bb0032b6ed9b77",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 78,
-    "where": [
-      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:14",
-      ".Workflow/agent-workflows/observations/run-audit.test.ts:56"
-    ],
-    "fragment": "/** A minimal recording `GhExec` — mirrors `run-release.test.ts`'s `fakeGh`. */\nfunction fakeGh(): { gh: GhExec; calls: string[][] } {\n  const calls: string[][] = [];\n  const gh: GhExec = (args) => {\n    calls.push(args);\n    return \"\""
   },
   {
     "hash": "789f1b057b01becc",
@@ -583,17 +539,6 @@
     "fragment": "} = fakeGh();\n\n    const result = await runConformanceReview(fake.exec, gh, {\n      specText: \"the spec\",\n      diff: CONFORMANCE_DIFF,\n      criteria: [],\n      greenGateChecks: [],\n      prdIssueNumber: 42,\n    });\n\n    expect(result.findings).toEqual([]);\n  }"
   },
   {
-    "hash": "8ba7f776ee98aa54",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 99,
-    "where": [
-      ".Workflow/agent-workflows/observations/run-audit.test.ts:57",
-      ".Workflow/agent-workflows/observations/run-release.test.ts:42"
-    ],
-    "fragment": "function fakeGh(): { gh: GhExec; calls: string[][] } {\n  const calls: string[][] = [];\n  const gh: GhExec = (args) => {\n    calls.push(args);\n    return \"https://github.com/owner/repo/pull/1\\n\";\n  };\n  return { gh, calls };\n}\n\n/** Reads back the note a fresh clone of `origin` sees for `sha` on `ref` — mirrors `notes-sync.test.ts`'s `verifyNote`. */"
-  },
-  {
     "hash": "8c36a00f44ac79ec",
     "format": "typescript",
     "lines": 9,
@@ -614,17 +559,6 @@
       ".github/workflows/run-watchdog.yml:60"
     ],
     "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no"
-  },
-  {
-    "hash": "90aa992c9957c2b8",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 102,
-    "where": [
-      ".Workflow/agent-workflows/observations/notes.test.ts:2",
-      ".Workflow/agent-workflows/observations/release-scope.test.ts:2"
-    ],
-    "fragment": ", writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"../shared/git\";\nimport { createFakeGit } from \"../shared/git.fake\";\nimport { observation } from \"./observation.fixture\";\nimport { readObservations"
   },
   {
     "hash": "913c03a36ca58871",
@@ -891,17 +825,6 @@
     "fragment": ", hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile"
   },
   {
-    "hash": "c1f0e935ea1f92f4",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 110,
-    "where": [
-      ".Workflow/agent-workflows/observations/diff.test.ts:1",
-      ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
-    ],
-    "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"../shared/git\";\nimport { createFakeGit } from \"../shared/git.fake\";\nimport { sessionRangeDiff"
-  },
-  {
     "hash": "c22c0db18b4eb9c4",
     "format": "typescript",
     "lines": 6,
@@ -957,17 +880,6 @@
     "fragment": ");\n\n    const stdout = execFileSync(\"npx\", [\"tsx\", RUN_AUDIT_PATH], {\n      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },\n      encoding: \"utf8\",\n    });\n\n    expect(stdout).toContain(\"skipped (empty-range)\""
   },
   {
-    "hash": "cf03bc7e6735b926",
-    "format": "typescript",
-    "lines": 16,
-    "tokens": 246,
-    "where": [
-      ".Workflow/agent-workflows/observations/run-release.test.ts:26",
-      ".Workflow/agent-workflows/shared/git.test.ts:15"
-    ],
-    "fragment": "));\n  execFileSync(\"git\", [\"init\", \"-q\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, commit };\n}\n\n/** A minimal recording `GhExec` — mirrors `release.test.ts`'s `fakeGh`. */"
-  },
-  {
     "hash": "d37f6e6d7242b02b",
     "format": "typescript",
     "lines": 11,
@@ -1010,17 +922,6 @@
       ".claude/hooks/session-capture.test.ts:953"
     ],
     "fragment": ", () => {\n    const bareDir = makeBareRemote();\n    const repoDir = cloneRepo(bareDir);\n    const head = commitAndPush(repoDir, \"a.ts\", \"export const a = 1;\\n\", \"work\", \"2026-08-10T12:00:00Z\");\n    const sessionRepo = cloneRepo(bareDir);\n\n    const kbBareDir = makeBareRemote();\n    const kbCloneDir = cloneRepo(kbBareDir);\n    const kbOutputDir = join(kbCloneDir, \"raw\", \"sessions\");\n    const racerRepo"
-  },
-  {
-    "hash": "db2af158893a4f51",
-    "format": "typescript",
-    "lines": 14,
-    "tokens": 92,
-    "where": [
-      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:43",
-      ".Workflow/agent-workflows/observations/release-on-prd-close.test.ts:76"
-    ],
-    "fragment": "],\n      head: \"abc123\",\n      repoDir: \"/repo\",\n      gh,\n      runRelease,\n      log: silent,\n    });\n\n    expect(outcome).toEqual({ ran: false });\n    expect(calls).toEqual([]);\n    expect(ghCalls).toEqual([]);\n  });\n\n  it(\"ignores a close marked duplicate carrying no labels at all\""
   },
   {
     "hash": "deed80fb94256748",

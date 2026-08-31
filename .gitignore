@@ -26,6 +26,11 @@ scratch/
 # run's leftovers are never committed.
 .clone-gate-scan/
 
+# The rule trial's detached worktree (.Workflow/agent-workflows/ratify/rule-trial.ts). Staged
+# inside the repo so eslint resolves its plugins out of node_modules; torn down after every trial,
+# ignored so a killed run's leftovers are never committed into the batch it was deciding.
+.ratify-trial/
+
 # Node
 node_modules/
 dist/

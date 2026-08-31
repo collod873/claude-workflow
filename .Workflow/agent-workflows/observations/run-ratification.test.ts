@@ -2,12 +2,18 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GitExec } from "../shared/git";
+import { RATIFIER_PR_TITLE } from "../ratify/land";
 import { runRatification } from "./run-ratification";
 
-/** Builds one release-PR checklist line — the same prose-plus-marker shape `run-release.ts`'s (private) `renderChecklistItem` writes, reconstructed here from the exported `parseFindingMarker` grammar since that's the contract this reader is allowed to depend on. */
-function checklistLine(checked: boolean, finding: string, sites: string[]): string {
-  const marker = `<!-- release-finding: ${JSON.stringify({ finding, sites })} -->`;
-  return `- [${checked ? "x" : " "}] ${finding} (\`${sites.join(", ")}\`) ${marker}`;
+/**
+ * Builds one ratifier-PR body section — the same prose-plus-marker shape
+ * `ratify/land.ts`'s `renderRatifierBody` writes, reconstructed here from the
+ * exported `parseFindingMarker` grammar since that is the contract this
+ * reader is allowed to depend on.
+ */
+function section(landedAs: string | undefined, finding: string, sites: string[]): string {
+  const marker = `<!-- release-finding: ${JSON.stringify({ finding, sites, landedAs })} -->`;
+  return [`## ${landedAs ?? "(nothing)"}`, "", finding, "", `Sites: ${sites.join(", ")}`, "", marker].join("\n");
 }
 
 /** A recording `GitExec` where every read (`ls-remote`) reports the ref absent remotely, so `syncNotesRef` skips its fetch and every write goes straight through. */
@@ -25,11 +31,10 @@ const silent = () => {};
 describe("runRatification — scope: merged vs. merely closed", () => {
   it("writes nothing to refs/notes/ratifications when the PR closed without merging", () => {
     const { git, calls } = fakeGit();
-    const body = checklistLine(true, "some finding", ["a.ts:1"]);
 
     const outcome = runRatification({
       merged: false,
-      body,
+      body: section("Some standard", "some finding", ["a.ts:1"]),
       commit: "abc123",
       repoDir: "/some/repo",
       git,
@@ -41,15 +46,13 @@ describe("runRatification — scope: merged vs. merely closed", () => {
   });
 });
 
-describe("runRatification — a merged release PR's checklist", () => {
-  it("writes a ratified record for a checked item and a declined record carrying its site list for an unchecked one", () => {
+describe("runRatification — a merged ratifier PR's landed standards", () => {
+  it("writes one ratified record per section, each carrying the landedAs the revert detector keys on", () => {
     const { git, calls } = fakeGit();
     const body = [
-      "## Needs a decision",
-      "",
-      checklistLine(true, "checked finding", ["a.ts:1"]),
-      checklistLine(false, "unchecked finding", ["b.ts:2", "c.ts:3"]),
-    ].join("\n");
+      section("Lane-local imports", "cross-lane reach for a shared helper", ["a.ts:1"]),
+      section("lane-boundary/no-cross-lane-import", "another finding", ["b.ts:2", "c.ts:3"]),
+    ].join("\n\n");
 
     const outcome = runRatification({
       merged: true,
@@ -72,16 +75,18 @@ describe("runRatification — a merged release PR's checklist", () => {
 
     expect(records).toEqual([
       {
-        finding: "checked finding",
+        finding: "cross-lane reach for a shared helper",
         sites: ["a.ts:1"],
         decision: "ratified",
         reason: expect.any(String),
+        landedAs: "Lane-local imports",
       },
       {
-        finding: "unchecked finding",
+        finding: "another finding",
         sites: ["b.ts:2", "c.ts:3"],
-        decision: "declined",
+        decision: "ratified",
         reason: expect.any(String),
+        landedAs: "lane-boundary/no-cross-lane-import",
       },
     ]);
 
@@ -90,12 +95,12 @@ describe("runRatification — a merged release PR's checklist", () => {
     expect(pushCall).toEqual(["-C", "/some/repo", "push", "origin", "refs/notes/ratifications:refs/notes/ratifications"]);
   });
 
-  it("skips checklist lines whose marker doesn't parse, without dropping the ones that do", () => {
+  it("skips a marker with no landedAs, because a record naming nothing is memory nobody can act on", () => {
     const { git, calls } = fakeGit();
     const body = [
-      "- [ ] a hand-edited line with no marker at all",
-      checklistLine(true, "the real one", ["a.ts:1"]),
-    ].join("\n");
+      section(undefined, "a marker from before the ratifier existed", ["a.ts:1"]),
+      section("The real one", "the real finding", ["b.ts:2"]),
+    ].join("\n\n");
 
     const outcome = runRatification({
       merged: true,
@@ -109,11 +114,17 @@ describe("runRatification — a merged release PR's checklist", () => {
     expect(outcome).toEqual({ ran: true, recordCount: 1 });
     const notesCall = calls.find((argv) => argv[2] === "notes")!;
     expect(JSON.parse(notesCall[7])).toEqual([
-      { finding: "the real one", sites: ["a.ts:1"], decision: "ratified", reason: expect.any(String) },
+      {
+        finding: "the real finding",
+        sites: ["b.ts:2"],
+        decision: "ratified",
+        reason: expect.any(String),
+        landedAs: "The real one",
+      },
     ]);
   });
 
-  it("writes nothing when the merged PR's body carries no parseable checklist item", () => {
+  it("writes nothing when the merged PR's body carries no parseable marker", () => {
     const { git, calls } = fakeGit();
 
     const outcome = runRatification({
@@ -149,11 +160,9 @@ describe("runRatification — push retry", () => {
       return "";
     };
 
-    const body = checklistLine(true, "a finding", ["a.ts:1"]);
-
     const outcome = runRatification({
       merged: true,
-      body,
+      body: section("A standard", "a finding", ["a.ts:1"]),
       commit: "abc123",
       repoDir: "/some/repo",
       git,
@@ -171,21 +180,17 @@ describe("runRatification — push retry", () => {
   });
 });
 
-describe("ratify-release.yml agrees with the release PR title it scopes on", () => {
+describe("ratify-release.yml agrees with the ratifier PR title it scopes on", () => {
   const workflow = readFileSync(
     fileURLToPath(new URL("../../../.github/workflows/ratify-release.yml", import.meta.url)),
     "utf8",
   );
-  const releaseSource = readFileSync(fileURLToPath(new URL("./release.ts", import.meta.url)), "utf8");
 
   it("fires on pull_request closed and nothing else", () => {
     expect(workflow).toMatch(/pull_request:\s*\n\s*types:\s*\[closed\]/);
   });
 
-  it("gates the job on the same release PR title release.ts opens, so an ordinary PR merge never starts this runner", () => {
-    const match = /RELEASE_PR_TITLE = "([^"]+)"/.exec(releaseSource);
-    expect(match).not.toBeNull();
-    const title = match![1];
-    expect(workflow).toContain(title);
+  it("gates the job on the same title the ratifier opens with, so an ordinary PR merge never starts this runner", () => {
+    expect(workflow).toContain(`github.event.pull_request.title == '${RATIFIER_PR_TITLE}'`);
   });
 });

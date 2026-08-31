@@ -15,7 +15,7 @@ import { AUDIT_DISPATCH_ACTION, KNOWLEDGE_BASE_CHECKOUT_DIR, runAudit } from "./
 
 const RUN_AUDIT_PATH = fileURLToPath(new URL("./run-audit.ts", import.meta.url));
 
-/** A throwaway git repo with a bare `origin` — mirrors `run-release.test.ts`'s `makeRepo`, extended with a remote since `runAudit` fetches notes refs from one before it reads anything. */
+/** A throwaway git repo with a bare `origin` — `runAudit` fetches notes refs from one before it reads anything. */
 function makeRepo(): {
   dir: string;
   origin: string;
@@ -53,7 +53,7 @@ function writeCorpusFile(repoDir: string, corpusPath: string, spine: string): vo
   writeFileSync(path, spine, "utf8");
 }
 
-/** A minimal recording `GhExec` — mirrors `run-release.test.ts`'s `fakeGh`. */
+/** A minimal recording `GhExec` — the seam the ratification-due dispatch would go out through. */
 function fakeGh(): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
   const gh: GhExec = (args) => {
@@ -95,7 +95,7 @@ describe("runAudit — scope: which dispatches are judged at all", () => {
       log: () => {},
     });
 
-    expect(outcome).toEqual({ action: "skipped", code: "not-an-audit-dispatch", releasedCount: 0 });
+    expect(outcome).toEqual({ action: "skipped", code: "not-an-audit-dispatch", releasedCount: 0, ratificationDue: false });
     expect(git.calls).toEqual([]);
     expect(stage.calls).toEqual([]);
   });
@@ -120,7 +120,7 @@ describe("runAudit — a session with nothing to read spends no model", () => {
       log: () => {},
     });
 
-    expect(outcome).toEqual({ action: "skipped", code: "no-session-record", releasedCount: 0 });
+    expect(outcome).toEqual({ action: "skipped", code: "no-session-record", releasedCount: 0, ratificationDue: false });
     expect(stage.calls).toEqual([]);
   });
 
@@ -145,7 +145,7 @@ describe("runAudit — a session with nothing to read spends no model", () => {
       log: () => {},
     });
 
-    expect(outcome).toEqual({ action: "skipped", code: "empty-range", releasedCount: 0 });
+    expect(outcome).toEqual({ action: "skipped", code: "empty-range", releasedCount: 0, ratificationDue: false });
     expect(stage.calls).toEqual([]);
   });
 });
@@ -177,13 +177,13 @@ describe("runAudit — a session record whose corpus file is missing", () => {
       log: () => {},
     });
 
-    expect(outcome).toEqual({ action: "skipped", code: "corpus-missing", releasedCount: 0 });
+    expect(outcome).toEqual({ action: "skipped", code: "corpus-missing", releasedCount: 0, ratificationDue: false });
     expect(stage.calls).toEqual([]);
   });
 });
 
 describe("runAudit — an ordinary session", () => {
-  it("runs both lenses, pushes one merged note, evaluates release with prdClosed false, and reports the released count", async () => {
+  it("runs both lenses, pushes one merged note, evaluates ratification scope with prdClosed false, and reports the released count", async () => {
     const repo = makeRepo();
     dirs.push(repo.dir, repo.origin);
 
@@ -210,11 +210,11 @@ describe("runAudit — an ordinary session", () => {
 
     // VIOLATION carries no two-site gate (always released); PROPOSED's first
     // sighting does not clear it — so exactly one of the two lands released.
-    expect(outcome).toEqual({ action: "ran", code: "audited", releasedCount: 1 });
+    expect(outcome).toEqual({ action: "ran", code: "audited", releasedCount: 1, ratificationDue: false });
     expect(logs.some((line) => line.includes("released 1"))).toBe(true);
 
-    // Below `DEFAULT_RELEASE_THRESHOLD` and `prdClosed: false` — the release
-    // trigger itself never fires, so no `gh` call was made at all.
+    // Below `DEFAULT_RATIFICATION_THRESHOLD` and `prdClosed: false` — the trigger never fires, so
+    // the ratifier lane's door was not rung and no `gh` call was made at all.
     expect(gh.calls).toEqual([]);
 
     const note = JSON.parse(verifyNote(repo.origin, "observations", head)) as unknown[];

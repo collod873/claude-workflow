@@ -1,0 +1,79 @@
+name: Decline on revert
+
+# **The owner's one lever** (#296): a standard he dislikes, reverted, is remembered as declined.
+#
+# The release channel this replaces asked the owner to tick a checkbox per finding on a pull request
+# only he could merge. The checkboxes were senior-dev calls — exactly what GOAL.md's C2 says never
+# to quiz the owner on — and an unticked box is indistinguishable from a pull request nobody read.
+# A revert costs a deliberate act, so it is the stronger signature of the two, and it is one the
+# owner already makes in GitHub without leaving what he was doing.
+#
+# **The trigger is the moment the answer can have changed.** A standard enters or leaves the tree
+# only through `CODING_STANDARDS.md` or `eslint.config.js`, so no other push moves the graph and
+# every other push is silent by construction rather than by a filter — ADR-0046's rule, applied to
+# this mechanism. The output is a committed write derived entirely from state and recomputed every
+# run, which makes this a back-stamp rather than a counter (ADR-0044/0046): no reader, no DESIGN.md
+# §6 row, no ADR-0064 counter admission.
+#
+# **This cannot loop itself.** Lane 08 merges a ratifier pull request with the built-in
+# `GITHUB_TOKEN`, whose pushes start no workflow runs (ADR-0054) — the same property `back-stamp.yml`
+# and `shape-accept.yml` already rely on. So the ratifier's own landings never fire this, and a
+# human's push does, which is exactly the event it exists for.
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "CODING_STANDARDS.md"
+      - "eslint.config.js"
+
+permissions:
+  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to origin.
+  contents: write
+
+concurrency:
+  group: decline-on-revert
+  cancel-in-progress: false
+
+jobs:
+  decline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `readRatificationRecords` walks the commit range this push landed on, which a shallow
+          # checkout does not carry.
+          fetch-depth: 0
+
+      # `checkout`'s default refspec (`refs/heads/*`) never carries a notes ref. Let to fail: a repo
+      # before its first ratification has none, the same absence `syncNotesRef`'s own `ls-remote`
+      # check already tolerates.
+      - name: Fetch the ratifications ref
+        run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
+
+      # A runner has no git identity, and `git notes add` writes an object with a committer on it
+      # (#107, #109). The bot is the honest author: this note records what the run derived from the
+      # tree, not a person's own commit.
+      - name: Identify the committer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The detector's own write — at most one `git notes add` plus the push `syncNotesRef` makes
+      # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
+      # reporting step here.
+      - name: Write declined memory for anything the owner took back out
+        run: npx tsx .Workflow/agent-workflows/ratify/run-revert-detector.ts
