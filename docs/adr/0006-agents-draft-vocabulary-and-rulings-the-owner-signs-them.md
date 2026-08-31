@@ -2,6 +2,8 @@
 
 Recorded 2026-08-23.
 
+Status: superseded by ADR-0123
+
 `GOAL.md` named vocabulary as one of three places the human deliberately stays, citing W5 and two
 independent rulings. The record does not support it. Across 34 ADRs and two glossaries inside the
 surviving transcript window, the owner originated 3; the other 31 were proposed by an agent and

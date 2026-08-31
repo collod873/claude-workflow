@@ -2,6 +2,8 @@
 
 Recorded 2026-08-25.
 
+Status: superseded by ADR-0122
+
 Observations accumulate silently and are released as one decision on a work-volume event: a PRD
 closing, **or** N unreleased observations having piled up, whichever arrives first. N starts at 20
 and is a number to be measured, not a constant to be defended. Ruled in
