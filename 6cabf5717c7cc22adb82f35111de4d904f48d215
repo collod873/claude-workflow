@@ -1,0 +1,1 @@
+[{"sessionId":"72362c1f-dee9-4f73-b3a1-39f1be9a060a","base":"971cb4493c7d4ff02c320b5dcca6cc242e1f8b16","head":"6cabf5717c7cc22adb82f35111de4d904f48d215","touchedPaths":[".Workflow/agent-workflows/fixer/fixer.test.ts",".github/workflows/fixer.yml",".github/workflows/verify.yml"],"corpusPath":"raw/sessions/2026-08-31-72362c1f.md"}]
