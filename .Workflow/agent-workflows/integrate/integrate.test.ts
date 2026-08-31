@@ -378,6 +378,27 @@ describe("runIntegrate announces the merge without interpreting it", () => {
     expect(calls.indexOf(dispatches[0])).toBeGreaterThan(mergeIndex);
   });
 
+  it("rings only after the close, so the reconciler reads the graph the doorbell announces", () => {
+    const { calls, deps } = integrateDeps({ closeTicket: CLOSED });
+    const wrapped = {
+      ...deps,
+      closeTicket: (ticket: number, range: string) => {
+        calls.push(["closeTicket", String(ticket)]);
+        return deps.closeTicket(ticket, range);
+      },
+    };
+
+    runIntegrate(wrapped);
+
+    // ADR-0115, amending ADR-0094: a doorbell rung before the close announced an untrue graph and
+    // stalled the wave on every merge (#279).
+    const closeIndex = calls.findIndex((call) => call[0] === "closeTicket");
+    const bell = calls.find((call) => call[0] === "api" && call[1] === "repos/{owner}/{repo}/dispatches");
+    expect(closeIndex).toBeGreaterThan(-1);
+    expect(bell).toBeDefined();
+    expect(calls.indexOf(bell!)).toBeGreaterThan(closeIndex);
+  });
+
   it("rings nothing when nothing merged", () => {
     for (const exitCode of [1, 2] as const) {
       const { calls, deps } = integrateDeps({ gauntlet: { exitCode } });

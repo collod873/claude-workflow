@@ -588,7 +588,9 @@ export type ImplementOutcome =
   /** Somebody is building this slice already — the ordinary price of at-least-once dispatch (#179). */
   | { outcome: "already-claimed" }
   /** The ticket was already true: the implementer's files matched trunk, so there was nothing to commit. */
-  | { outcome: "nothing-to-build" };
+  | { outcome: "nothing-to-build" }
+  /** The dispatch named a ticket that is already closed — a stale doorbell read (#279). Nothing was spent and the claim is released. */
+  | { outcome: "ticket-closed" };
 
 /**
  * Releases the claim a failed run is holding, unless a pull request now exists on it.
@@ -712,6 +714,20 @@ export async function landAnswer(
 
 /** Everything between a held claim and an opened pull request — see `runImplement` for the frame. */
 async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {
+  // Before the brief and long before the model: a dispatch can name a ticket that already merged
+  // and closed — #279's stalled wave arrived exactly here, as a full model run against finished
+  // work that exited green and made the stall invisible. A closed ticket is refused out loud and
+  // the claim is put back. Its own read, not a field on `readTicket`: that call's argv is a pinned
+  // seam three other lanes' fakes route on.
+  const stateRead = JSON.parse(deps.gh(["issue", "view", String(deps.issueNumber), "--json", "state"])) as {
+    state?: string;
+  };
+  if (stateRead.state === "CLOSED") {
+    log(`refusing #${deps.issueNumber}: the ticket is already closed — a stale dispatch builds nothing`);
+    releaseFailedClaim(deps.gh, branch, log);
+    return { outcome: "ticket-closed" };
+  }
+
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const seamManifestLines = extractSeamsConsumed(ticket.body);
   const filesClaimed = extractFilesClaimed(ticket.body);
@@ -793,6 +809,12 @@ async function main(): Promise<void> {
       // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the
       // branch ref is what makes it free — exiting green here is that guarantee being kept.
       console.log(`#${issueNumber} is already claimed — nothing to do.`);
+      return;
+    }
+    if (result.outcome === "ticket-closed") {
+      // A refusal, not a failure: the graph moved between the dispatch and this run (#279). Red
+      // here would summon Recover to rebuild a ticket that is already done.
+      console.log(`#${issueNumber} is already closed — refused the stale dispatch.`);
       return;
     }
     if (result.outcome === "nothing-to-build") {

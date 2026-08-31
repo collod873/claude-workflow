@@ -508,9 +508,10 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  * has already merged; its verdict is advice on a diff, and it cannot change what a criterion's
  * `check:` command observes. Waiting for it would hold a model's latency inside the `integrate`
  * concurrency group — the merge lock — which is the one thing this lane's single fixed group
- * exists to keep short. Behind the doorbell for the same reason: the criteria checks are the
- * ticket author's own commands and can take minutes, and a successor whose last blocker just
- * landed should not queue behind them.
+ * exists to keep short. No longer ahead of the doorbell: ADR-0115 reversed the ordering
+ * ADR-0094 chose here. The doorbell announces "a blocker just closed", so it rings after the close
+ * or it announces something false — the reconciler read the stale graph and re-dispatched every
+ * merged ticket while withholding its successors (#279).
  *
  * **The doorbell interprets nothing** (#179). A merge is what makes some other slice's last
  * blocker deliver, and this is the only thing that knows a merge happened. It says so and stops
@@ -521,7 +522,7 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  * [ADR-0069](../../../docs/adr/0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md)
  * is applied rather than amended.
  *
- * Sent after the merge and never before, and its failure is nobody's problem: the reconciler also
+ * Sent after the merge and the close, never before either (ADR-0115), and its failure is nobody's problem: the reconciler also
  * rides `session-captured`, so a doorbell that never rings costs latency, not the wave.
  *
  * Deliberately not a `Promise` — every step here is synchronous (`git`,
@@ -554,8 +555,12 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   }
 
   mergePr(deps.gh, deps.pr);
+  // Close before the doorbell: readiness is defined as every blocker closed (`shared/ready-set.ts`),
+  // so a doorbell rung first announces a graph that is not yet true — every merge re-dispatched the
+  // ticket it had just merged and withheld its successors (#279; ADR-0115, amending ADR-0094).
+  const closing = closeMergedTicket(deps, pullRequest.ticket, range);
   announceGraphChanged(deps.gh, deps.pr);
-  return { merged: true, closing: closeMergedTicket(deps, pullRequest.ticket, range) };
+  return { merged: true, closing };
 }
 
 /**

@@ -168,7 +168,7 @@ interface ExistingClaim {
 }
 
 function fakeGh(
-  ticket: { title: string; body: string },
+  ticket: { title: string; body: string; state?: string },
   options: { existingClaim?: ExistingClaim; branch?: string; prCreateFails?: boolean } = {},
 ): { gh: GhExec; calls: string[][]; refs: Set<string> } {
   const calls: string[][] = [];
@@ -473,6 +473,23 @@ describe("runImplement claims its branch before it spends anything", () => {
       now: NOW,
     };
   }
+
+  // ADR-0115 / #279: a dispatch can name a ticket that already merged and closed, and the model
+  // run it used to buy exited green — the stall was invisible. The open path needs no twin test:
+  // every other test here answers the state read without a state field, the same "not CLOSED" arm.
+  it("refuses a closed ticket before the model: no stage call, claim released, said out loud", async () => {
+    const { gh, calls, refs } = fakeGh({ title: "already merged", body: "", state: "CLOSED" });
+    const { git } = fakeGit();
+    const stage = createFakeStage(JSON.stringify({ files: [], summary: "s" }));
+    const log: string[] = [];
+
+    const result = await runImplement(deps(gh, git, stage, log));
+
+    expect(result).toEqual({ outcome: "ticket-closed" });
+    expect(stage.stdins, "the refusal fires before any model spend").toHaveLength(0);
+    expect(refs.size, "the claim does not outlive the refusal").toBe(0);
+    expect(calls.filter((call) => call[0] === "pr" && call[1] === "create")).toEqual([]);
+  });
 
   it("creates the ref at HEAD before running the model", async () => {
     const { gh, calls } = fakeGh(ticket);
