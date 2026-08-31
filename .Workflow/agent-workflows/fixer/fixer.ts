@@ -1,6 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { dispatchVerify } from "../implement/implement";
@@ -99,9 +97,26 @@ export function signaturesEqual(a: FailureSignature, b: FailureSignature): boole
   return signatureKey(a) === signatureKey(b);
 }
 
-/** One file the fix stage wrote, applied verbatim the same way `implement.ts`'s answer is. */
+/**
+ * What one attempt answers with: an account of itself, and nothing else.
+ *
+ * **It used to carry the files too** — `{path, content}` for every file the fix touched, complete
+ * content, never a diff — and that is what killed two consecutive runs on PR #280 (#283). The stage
+ * edits the checkout in-session and runs the suite against those edits; the `files` array was the
+ * model then *retyping* everything it had already written, so that the lane could write it back to
+ * the same paths. On #274 — a ten-file migration adding one line to each — that was 12 files and
+ * ~231 KB of verbatim TypeScript in a single JSON response, at the model's per-response output
+ * ceiling and twenty-odd minutes of generation. Both runs died there with the fix already on disk
+ * and green, and both looked like a hang because `stream-json` prints one event per *completed*
+ * message and that message never completed.
+ *
+ * The cost scaled with the number of files touched and not at all with the size of the edits, which
+ * makes "one line in ten files" the worst case and also an ordinary one. So the transport is gone:
+ * the working tree is the answer, and `changedPaths` reads it off git
+ * ([ADR-0121](../../../docs/adr/0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md)).
+ * What is left here is the one thing only the model can say.
+ */
 const FixerAnswer = z.object({
-  files: z.array(z.object({ path: z.string().min(1), content: z.string().min(1) })).min(1),
   /** A short account of what this attempt changed and why — becomes part of the blocked comment if the fixer stops. */
   summary: z.string().min(1),
 });
@@ -142,6 +157,41 @@ export function runFixerStage(exec: StageExec, brief: string): Promise<FixerAnsw
     promptViaStdin: true,
     stage: "fixer",
   });
+}
+
+/**
+ * Every path the stage's edits left changed in the checkout — the fix itself, read off git rather
+ * than dictated back by the model (see `FixerAnswer`).
+ *
+ * `--porcelain` because it is the one `git status` format promised to be stable across versions and
+ * unaffected by the user's config, which is the whole reason it exists. `-uall` lists new files
+ * individually instead of collapsing them into a directory entry, so a fix that adds two files
+ * under one new directory commits as two paths rather than as a directory `git add` would then have
+ * to re-expand. Ignored files stay out by default, which is what keeps `node_modules/`,
+ * `.Workflow/agent-workflows/checkpoints/` and the rest of `.gitignore` from ever reaching a
+ * commit — the stage runs a vitest suite in this checkout and those are its leavings.
+ *
+ * A rename is reported as `old -> new`, and only `new` is a path to add; `old`'s deletion is
+ * already staged by the rename detection that produced the line. Paths containing a space are
+ * unquoted and reach the end of the line intact, so the field split is on the *first* space after
+ * the two status columns and nothing else.
+ */
+export function changedPaths(git: GitExec): string[] {
+  return git(["status", "--porcelain", "-uall"])
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    // Two status columns, one space, then the path — `slice(3)` rather than a split on whitespace,
+    // which would truncate every path with a space in it.
+    .map((line) => line.slice(3))
+    .map((path) => {
+      const arrow = path.indexOf(" -> ");
+      return arrow === -1 ? path : path.slice(arrow + 4);
+    })
+    // Git quotes a path with characters outside the printable ASCII range (`core.quotePath`), and a
+    // quoted path handed back to `git add` verbatim is not the path it names. Nothing in this repo
+    // has one, so rather than reimplement git's own C-style unquoting, the quotes are stripped —
+    // the one shape `git add` still resolves correctly for the paths that actually occur.
+    .map((path) => (path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path));
 }
 
 /** Commits one attempt's files onto the PR's existing branch and pushes — never a fresh branch, never a new PR. */
@@ -288,7 +338,6 @@ export interface FixerDeps {
   git: GitExec;
   /** Re-runs the suite after an attempt's fix is pushed and classifies what is still red. */
   runTests: () => FixerTestResult | Promise<FixerTestResult>;
-  writeFile: (path: string, content: string) => void;
   /** The signature that made the verification run red in the first place — attempt 1's brief. */
   initialFailure: FailureSignature;
   /** The pull request this fixer is working against. */
@@ -368,17 +417,16 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     const brief = assembleFixBrief(previousSignature, attempt, attemptSummaries);
     const answer = await runFixerStage(deps.exec, brief);
 
-    for (const file of answer.files) {
-      deps.writeFile(file.path, file.content);
+    // The stage edited this checkout; what it changed is the attempt. An attempt that changed
+    // nothing is committed as nothing rather than as an empty commit — `git commit` refuses one
+    // anyway, and a `fix: attempt N` commit with no diff would inflate `priorAttempts`' count
+    // against the ticket's ceiling for a round that did not spend it on a fix. The summary is still
+    // recorded, so it reaches the blocked comment and says why; the loop carries on and the
+    // no-progress comparison stops it a round later, when the identical red comes back twice.
+    const paths = changedPaths(deps.git);
+    if (paths.length > 0) {
+      commitAndPushAttempt(deps.git, deps.branch, paths, attempt, answer.summary, deps.issueNumber);
     }
-    commitAndPushAttempt(
-      deps.git,
-      deps.branch,
-      answer.files.map((file) => file.path),
-      attempt,
-      answer.summary,
-      deps.issueNumber,
-    );
     attemptSummaries.push(answer.summary);
 
     const result = await deps.runTests();
@@ -551,10 +599,6 @@ async function runFix(): Promise<void> {
       exec: execClaude,
       git: execGit,
       runTests: () => runVitestJsonForFixer(targets),
-      writeFile: (path, content) => {
-        mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, content, "utf8");
-      },
       initialFailure,
       prNumber: Number(prArg),
       branch,

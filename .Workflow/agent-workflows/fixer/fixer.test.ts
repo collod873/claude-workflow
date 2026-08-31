@@ -10,6 +10,7 @@ import type { StageExec } from "../shared/stage";
 import {
   applyUnfixable,
   assembleFixBrief,
+  changedPaths,
   MAX_ATTEMPTS,
   runFixer,
   signaturesEqual,
@@ -21,12 +22,17 @@ import {
 
 
 
-/** A fake `GitExec` that records every call and answers nothing. */
-function fakeGit(): { git: GitExec; calls: string[][] } {
+/**
+ * A fake `GitExec` that records every call and answers nothing — except `status --porcelain`,
+ * which is where the fix itself now comes from (#283): the stage edits the checkout and
+ * `changedPaths` reads back what moved, so a git that reports a clean tree models a stage that
+ * changed nothing rather than the ordinary case. `porcelain` is what it reports having changed.
+ */
+function fakeGit(porcelain = " M fix.ts"): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
   const git: GitExec = (args) => {
     calls.push([...args]);
-    return "";
+    return args[0] === "status" ? porcelain : "";
   };
   return { git, calls };
 }
@@ -36,7 +42,7 @@ function fakeGit(): { git: GitExec; calls: string[][] } {
  * and counts how many times it was invoked — the number a "no third stage
  * invocation" assertion reads.
  */
-function fakeStage(answers: Array<{ files: Array<{ path: string; content: string }>; summary: string }>): {
+function fakeStage(answers: Array<{ summary: string }>): {
   exec: StageExec;
   callCount: () => number;
 } {
@@ -54,7 +60,7 @@ const IDENTICAL_B: FailureSignature = [{ testName: "adds two numbers", errorMess
 const DIFFERENT: FailureSignature = [{ testName: "subtracts two numbers", errorMessage: "expected 1, got 0" }];
 
 function answer(n: number) {
-  return { files: [{ path: `fix-${n}.ts`, content: `// attempt ${n}` }], summary: `attempt ${n} tried something` };
+  return { summary: `attempt ${n} tried something` };
 }
 
 /**
@@ -116,12 +122,10 @@ function baseDeps(
 ): FixerDeps & {
   ghCalls: string[][];
   gitCalls: string[][];
-  writes: Array<{ path: string; content: string }>;
 } {
   const { parentPrd, ...withoutPrd } = overrides;
   const { gh, calls: ghCalls } = recordingGhWithTicket("parentPrd" in overrides ? parentPrd : 41);
   const { git, calls: gitCalls } = fakeGit();
-  const writes: Array<{ path: string; content: string }> = [];
   let testCall = 0;
   const { runTestsSequence, ...rest } = withoutPrd;
 
@@ -134,7 +138,6 @@ function baseDeps(
       testCall += 1;
       return result;
     },
-    writeFile: (path, content) => writes.push({ path, content }),
     initialFailure: IDENTICAL_A,
     prNumber: 7,
     branch: "implement/issue-42",
@@ -143,7 +146,6 @@ function baseDeps(
     ...rest,
     ghCalls,
     gitCalls,
-    writes,
   };
 }
 
@@ -199,6 +201,55 @@ describe("assembleFixBrief", () => {
   });
 });
 
+/**
+ * Where the fix comes from now (#283). The stage edits the checkout and this reads back what it
+ * changed, which is the whole reason the answer no longer carries the files: a model retyping every
+ * file it touched is an output cost that scales with the number of files and not with the size of
+ * the edits, and it killed two runs on PR #280 at ~231 KB of verbatim TypeScript in one response.
+ */
+describe("changedPaths", () => {
+  function gitReporting(porcelain: string) {
+    return ((args) => (args[0] === "status" ? porcelain : "")) as GitExec;
+  }
+
+  it("asks git for the stable, config-independent format, listing new files one by one", () => {
+    const calls: string[][] = [];
+    changedPaths((args) => {
+      calls.push([...args]);
+      return "";
+    });
+    expect(calls).toEqual([["status", "--porcelain", "-uall"]]);
+  });
+
+  it("reads back a modified, an added and a deleted path", () => {
+    expect(changedPaths(gitReporting(" M a.ts\n?? b.ts\n D c.ts"))).toEqual(["a.ts", "b.ts", "c.ts"]);
+  });
+
+  it("is empty for a clean tree — a stage that answered without changing anything", () => {
+    expect(changedPaths(gitReporting(""))).toEqual([]);
+    expect(changedPaths(gitReporting("\n"))).toEqual([]);
+  });
+
+  /** Only the new name is a path to add; the old one's deletion came staged with the rename. */
+  it("takes the destination of a rename, not the source", () => {
+    expect(changedPaths(gitReporting("R  old.ts -> new.ts"))).toEqual(["new.ts"]);
+  });
+
+  /**
+   * The reason this splits on the status columns' fixed width rather than on whitespace. A path
+   * with a space in it is unquoted and runs to the end of the line; a `split(/\s+/)` would commit
+   * `docs/adr/0119-a` and leave the rest of the file uncommitted.
+   */
+  it("keeps a path that contains spaces intact", () => {
+    expect(changedPaths(gitReporting(" M docs/some notes.md"))).toEqual(["docs/some notes.md"]);
+  });
+
+  /** `core.quotePath` wraps a path with non-ASCII characters; `git add` wants the bare path. */
+  it("strips the quotes git puts around a non-ASCII path", () => {
+    expect(changedPaths(gitReporting(' M "docs/caf\\303\\251.md"'))).toEqual(["docs/caf\\303\\251.md"]);
+  });
+});
+
 describe("runFixer — no-progress stop", () => {
   it("stops after exactly 2 stage invocations when attempts 1 and 2 report the identical signature, and applies needs-human + a comment", async () => {
     const stage = fakeStage([answer(1), answer(2)]);
@@ -220,6 +271,34 @@ describe("runFixer — no-progress stop", () => {
     expect(commentCall?.[2]).toBe("7");
     expect(commentCall?.[4]).toContain("attempt 1 tried something");
     expect(commentCall?.[4]).toContain("attempt 2 tried something");
+  });
+
+  /**
+   * The case the old `files: […].min(1)` schema made unrepresentable and the working tree makes
+   * ordinary: a stage that answered with an account of itself and changed nothing.
+   *
+   * Nothing is committed, because there is nothing to commit — `git commit` refuses an empty one,
+   * and a `fix: attempt N` commit with no diff would be counted against the ticket's three-attempt
+   * ceiling by `priorAttempts` for a round that never spent one on a fix. The summary is still
+   * recorded and still reaches the comment, so the stop says what the model claimed it did; the
+   * identical red coming back twice is what actually stops the loop.
+   */
+  it("commits nothing for an attempt that left the tree unchanged, but still records its summary", async () => {
+    const stage = fakeStage([answer(1), answer(2)]);
+    const { git, calls: gitCalls } = fakeGit("");
+    const deps = baseDeps({
+      exec: stage.exec,
+      git,
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
+    });
+
+    const outcome = await runFixer(deps);
+
+    expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "no-progress" });
+    expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
+
+    const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
+    expect(commentCall?.[4]).toContain("attempt 1 tried something");
   });
 });
 
@@ -358,7 +437,9 @@ describe("runFixer — goes green", () => {
 
     expect(stage.callCount()).toBe(1);
     expect(outcome).toEqual({ verdict: "green", attempts: 1 });
-    expect(deps.writes).toEqual([{ path: "fix-1.ts", content: "// attempt 1" }]);
+    // The fix is what the stage left in the checkout, not what it dictated back (#283): the paths
+    // committed are the ones `git status --porcelain` reported, and the model's answer names none.
+    expect(deps.gitCalls).toContainEqual(["add", "fix.ts"]);
     expect(deps.gitCalls.some((call) => call[0] === "push")).toBe(true);
 
     // No escalation of any kind on a green.
@@ -634,7 +715,7 @@ describe("the cap across fixer runs", () => {
     expect(stage.callCount()).toBe(0);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 0, stopReason: "capped" });
     expect(deps.ghCalls).toContainEqual(["issue", "edit", "42", "--add-label", NEEDS_HUMAN_LABEL]);
-    expect(deps.writes).toEqual([]);
+    expect(deps.gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
   });
 
   it("takes only the remainder when earlier runs used part of the ceiling", async () => {

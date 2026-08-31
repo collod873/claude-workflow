@@ -18,15 +18,28 @@ and left the same tests red with the same errors is not worth trying again
 — if you cannot see what the earlier attempt missed, say so plainly in your
 summary rather than resubmitting its diff.
 
-## What you produce
+## How your fix lands
 
-**Files** — every file your fix touches, each with its complete final
-content (never a diff, never an excerpt).
+**Edit the files in this checkout.** The working tree is your answer: this
+lane reads back whatever you changed, commits exactly those paths, and
+pushes them to the pull request's branch. So make the edits in place, and
+run the failing tests against them until they pass.
 
-**A summary** — one paragraph, in your own words, of what this attempt
-changed and why you expect it to move the still-failing tests. If the fixer
-stops after this attempt, this summary is what a person reads to see what
-was tried.
+Do not describe the fix instead of making it, and do not repeat the changed
+files back in your answer — a file you edited is already recorded. Do not
+commit or push either; the lane does that, and a commit of your own would
+be counted as an attempt twice.
+
+Leave nothing behind that is not part of the fix. Scratch files you write
+into the checkout get committed along with it — put them somewhere outside
+the repository, or delete them before you finish.
+
+## What you answer with
+
+**A summary, and only a summary** — one paragraph, in your own words, of
+what this attempt changed and why you expect it to move the still-failing
+tests. If the fixer stops after this attempt, this summary is what a person
+reads to see what was tried.
 
 ---
 
