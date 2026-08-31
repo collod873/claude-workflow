@@ -64,6 +64,7 @@ pipeline step reads as a position:
 | `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
 | `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
+| `spec/gap`       | lane 07's conformance reviewer; the fixer's no-progress stop | The contract is wrong rather than the diff. Filed at a PRD, read by lane 02's amendment path — ADR-0034, ADR-0038, ADR-0119 |
 
 GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not
 pipeline labels — see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary.

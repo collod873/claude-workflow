@@ -56,6 +56,8 @@ const AuthoredFile = z.object({
   path: z.string().min(1),
   content: z.string().min(1),
 });
+/** One file the author wrote. Returned as well as written, so the gate judges the answer itself. */
+export type AuthoredFile = z.infer<typeof AuthoredFile>;
 
 const AuthorAnswer = z.object({
   files: z.array(AuthoredFile).min(1),
@@ -193,7 +195,7 @@ function listTestDirIfPresent(): string[] {
  * this lane's to place, and `push-gate.ts` never gets a chance to refuse it
  * either, since nothing here has committed it yet.
  */
-export async function authorAcceptanceTests(deps: AuthorDeps): Promise<string[]> {
+export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredFile[]> {
   const criteria = extractCriteria(deps.ticket.body);
   if (criteria.length === 0) {
     throw new Error(
@@ -235,7 +237,7 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<string[]>
     deps.writeFile(file.path, file.content);
   }
 
-  return answer.files.map((file) => file.path);
+  return answer.files;
 }
 
 export interface RunAcceptanceDeps {
@@ -263,17 +265,21 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);
 
-  const paths = await authorAcceptanceTests({
+  const files = await authorAcceptanceTests({
     exec: deps.exec,
     writeFile: deps.writeFile,
     issueNumber: deps.issueNumber,
     ticket,
     prdBody: prd?.body,
   });
+  const paths = files.map((file) => file.path);
 
   return runPushGate({
     runTests: deps.runTests ?? (() => runVitestJson(ACCEPTANCE_TEST_DIR)),
     lint: deps.lint,
+    // The gate reads what the author actually returned rather than re-opening the files it just
+    // wrote: same bytes, one fewer thing that can be true of the disk and false of the answer.
+    readSource: (path) => files.find((file) => file.path === path)?.content ?? "",
     git: deps.git ?? execGit,
     paths,
     commitMessage: authorCommitMessage(deps.issueNumber, paths),

@@ -9,9 +9,10 @@ import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
+import { fileSpecGap } from "../shared/spec-gap";
 import { execClaude, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { extractCriteria, readTicket } from "../shared/ticket-shape";
+import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 
 /**
  * The fixer: what runs against a red completed verification run on an
@@ -37,6 +38,13 @@ import { extractCriteria, readTicket } from "../shared/ticket-shape";
  * Going green drops out of the loop with neither write: a green run needs no
  * record, the verification job it just landed a passing run for already is
  * one.
+ *
+ * The two stops route differently on top of those writes (ADR-0119): a
+ * `capped` stop is ordinary difficulty and reaches the owner alone, while a
+ * `no-progress` stop — a test whose demand did not move under two
+ * independent attempts — is also filed as `spec/gap` at the parent PRD,
+ * because a test no diff can satisfy is a defect in the contract rather than
+ * in the diff. See `applyBlocked`.
  *
  * A run whose `Verify` went red before `Restore and run acceptance` ever
  * executed (the immutable set was crossed, or the plain `verify` job itself
@@ -157,15 +165,54 @@ function commitAndPushAttempt(
 }
 
 /** The comment posted when the fixer stops, naming why and what every attempt tried. */
-export function blockedComment(stopReason: "no-progress" | "capped", attemptSummaries: string[]): string {
+export function blockedComment(stopReason: "no-progress" | "capped", attemptSummaries: string[], gapIssue?: number): string {
   const why =
     stopReason === "no-progress"
       ? "Two consecutive attempts left the identical tests failing with the identical errors — nothing further will change that."
       : `${MAX_ATTEMPTS} attempts is this lane's cap, reached without landing a green run.`;
 
   const tried = attemptSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n");
+  const routed =
+    gapIssue === undefined
+      ? ""
+      : `\n\nFiled as \`spec/gap\` #${gapIssue}: an immovable test is a defect in the contract, not in this diff (ADR-0119).`;
 
-  return `**Blocked.** ${why}\n\nWhat was tried:\n\n${tried}`;
+  return `**Blocked.** ${why}\n\nWhat was tried:\n\n${tried}${routed}`;
+}
+
+/**
+ * The `spec/gap` a no-progress stop files: the immovable signature, verbatim, and what every
+ * attempt tried against it.
+ *
+ * The signature is the evidence and the reason it is worth a lane 02 run — two independent Sonnet
+ * attempts, each given what the last one tried, moved this failure by exactly nothing. What the
+ * spec author has to decide is which reading of the criterion the test encodes, which is the
+ * question the report puts in front of it.
+ */
+export function immovableGapReport(
+  ticketNumber: number,
+  signature: FailureSignature,
+  attemptSummaries: string[],
+): string {
+  const failing = signature.map((failure) => `### ${failure.testName}\n\n${failure.errorMessage}`).join("\n\n");
+  const tried = attemptSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n");
+
+  return [
+    `The fixer made ${MAX_ATTEMPTS === attemptSummaries.length ? "every" : `${attemptSummaries.length}`} attempt(s) at #${ticketNumber} and two consecutive ones left the identical tests failing with the identical errors.`,
+    "",
+    "An acceptance test that does not move under two independent attempts is not being failed by the",
+    "diff — it is asking for something the ticket did not decide, and ADR-0034 rules that the spec,",
+    "not the test, is what settles that. The reading the test encodes is below; the criterion it was",
+    "authored from is the one to clarify.",
+    "",
+    "## What stayed red, unchanged",
+    "",
+    failing,
+    "",
+    "## What the fixer tried",
+    "",
+    tried,
+  ].join("\n");
 }
 
 /**
@@ -177,7 +224,31 @@ export function unfixableComment(failedJob: string, errorLine: string): string {
   return `**Needs a human.** \`${failedJob}\` failed before \`Restore and run acceptance\` ever ran, so there is nothing this lane can reproduce and fix.\n\n${errorLine}`;
 }
 
-/** Applies `needs-human` to the ticket and comments the PR with what every attempt tried — the one write a stopped fixer always makes. */
+/**
+ * The two writes a stopped fixer makes, and the one decision between them: **where** the stop is
+ * routed — [ADR-0119](../../../docs/adr/0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md).
+ *
+ * A `capped` stop is ordinary difficulty: three attempts, each of them moving the failure, and no
+ * green. Nobody but the owner can size that, so it goes to `needs-human` as it always has.
+ *
+ * A `no-progress` stop is a different event wearing the same clothes. Two independent attempts, the
+ * second told what the first tried, left the identical tests failing with the identical messages —
+ * the test's demand did not move, so no diff is going to move it. That is the disagreement #278
+ * says the pipeline cannot express: lane 04 encoded one reading of the ticket and lane 05 built
+ * another, neither could ask the other, and lane 06 shows it as *the implementation does not
+ * satisfy the test* whichever side is wrong. It is filed as `spec/gap` at the parent PRD, where
+ * ADR-0034's route already runs — the spec author clarifies the criterion, ADR-0033 re-fires
+ * acceptance for the slices whose tests name it, and the PR is judged against the corrected
+ * reading.
+ *
+ * **The ticket still gets `needs-human` either way.** A `spec/gap` that reaches lane 02 is a repair
+ * in flight, not a delivery, and ADR-0079 lets the spec author refuse one it cannot fix with a
+ * clarification. Dropping the label on the strength of a repair that may refuse would leave a
+ * stalled ticket in nobody's list, which is the failure `shared/needs-human.ts` was written after.
+ *
+ * A ticket with no `## Parent PRD` — a hand-written one entering at lane 06 (#184) — has no spec to
+ * amend, so the route does not exist for it and the stop is the owner's, unrouted.
+ */
 function applyBlocked(
   gh: GhExec,
   issueNumber: number,
@@ -185,9 +256,24 @@ function applyBlocked(
   assignee: string,
   stopReason: "no-progress" | "capped",
   attemptSummaries: string[],
+  immovable?: FailureSignature,
 ): void {
   escalateToOwner(gh, issueNumber, assignee);
-  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries)]);
+
+  let gapIssue: number | undefined;
+  if (stopReason === "no-progress" && immovable) {
+    const prd = parentPrdNumber(readTicket(gh, issueNumber).body);
+    if (prd !== undefined) {
+      gapIssue = fileSpecGap(
+        gh,
+        prd,
+        `spec/gap: #${issueNumber}'s acceptance test does not move under any fix`,
+        immovableGapReport(issueNumber, immovable, attemptSummaries),
+      );
+    }
+  }
+
+  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries, gapIssue)]);
 }
 
 /** Applies `needs-human` to the ticket and comments the PR naming the job Verify actually failed in — the escalate path's one write. */
@@ -303,7 +389,15 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     }
 
     if (attempt >= 2 && signaturesEqual(result.failures, previousSignature)) {
-      applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "no-progress", attemptSummaries);
+      applyBlocked(
+        deps.gh,
+        deps.issueNumber,
+        deps.prNumber,
+        deps.assignee,
+        "no-progress",
+        attemptSummaries,
+        result.failures,
+      );
       return { verdict: "blocked", attempts: attempt, stopReason: "no-progress" };
     }
 

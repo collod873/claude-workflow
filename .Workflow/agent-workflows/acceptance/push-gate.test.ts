@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
 import { landingFromEnv, runPushGate, type TestRunResult } from "./push-gate";
 
-function pushGateDeps(result: TestRunResult) {
+function pushGateDeps(result: TestRunResult, source = "") {
   const fake = createFakeGit(() => "");
   return {
     fake,
@@ -11,6 +11,9 @@ function pushGateDeps(result: TestRunResult) {
       // Injected clean, so every case that is about the *test* classification stays about that.
       // The real `runEslint` would shell out to eslint against a path no fixture creates.
       lint: () => null,
+      // Same reason: the real reader would open a path no fixture writes. Empty names no
+      // immutable-set path, so every case that is not about that check is unaffected by it.
+      readSource: () => source,
       git: fake.git,
       paths: ["tests/acceptance/foo.test.ts"],
       commitMessage: "Author an acceptance test for #162's criteria",
@@ -118,6 +121,7 @@ describe("runPushGate", () => {
         failures: [{ name: "proves criterion one", errorName: "AssertionError" }],
       }),
       lint: () => null,
+      readSource: () => "",
       git: fake.git,
       paths: ["tests/acceptance/227-one.test.ts", "tests/acceptance/workflow-shape.fixture.ts"],
       commitMessage: "Author acceptance tests for #227 from the spec alone",
@@ -173,6 +177,60 @@ describe("runPushGate with the landing delegated", () => {
       "-m",
       "Author an acceptance test for #162's criteria",
     ]);
+  });
+});
+
+/**
+ * ADR-0120. The classifier above splits failures by error name, and #272's defect 2 threw a clean
+ * `AssertionError` on every possible implementation — so the gate as first written would have
+ * pushed a test that could never turn green, and it became the permanent contract for its
+ * criterion (#278).
+ */
+describe("runPushGate, on a test whose verdict no diff can move", () => {
+  /** The shape of #272's defect 2: read the text of `vitest.config.ts`, assert something about it. */
+  const READS_VITEST_CONFIG = [
+    'import { readFileSync } from "node:fs";',
+    'const config = readFileSync("vitest.config.ts", "utf8");',
+    'const at = config.indexOf("setupFiles");',
+    'expect(config.slice(at)).toContain("isolate-checkpoints.setup.ts");',
+  ].join("\n");
+
+  it("refuses a batch asserting on vitest.config.ts, however honestly it fails", async () => {
+    const { fake, deps } = pushGateDeps(
+      // Collected, and every failure an AssertionError — the two conditions that used to be the
+      // whole bar, and both of which #272's unsatisfiable test met.
+      { collected: true, failures: [{ name: "proves the criterion", errorName: "AssertionError" }] },
+      READS_VITEST_CONFIG,
+    );
+
+    const outcome = await runPushGate(deps);
+
+    expect(outcome.verdict).toBe("refused");
+    expect(outcome.verdict === "refused" && outcome.reason).toContain("vitest.config.ts");
+    expect(fake.calls).toEqual([]); // refused before any git call, like every other refusal here
+  });
+
+  it("refuses a batch asserting on a workflow file, which no pull request may edit either", async () => {
+    const { deps } = pushGateDeps(
+      { collected: true, failures: [] },
+      'const yml = readFileSync(".github/workflows/verify.yml", "utf8");',
+    );
+
+    const outcome = await runPushGate(deps);
+
+    expect(outcome.verdict).toBe("refused");
+    expect(outcome.verdict === "refused" && outcome.reason).toContain(".github/");
+  });
+
+  it("pushes a test that reads its own directory, which is where its fixtures live", async () => {
+    // `tests/acceptance/` is in the immutable set too, and is dropped from this check on purpose:
+    // a test is *in* that directory and imports its own `.fixture.ts` from it.
+    const { deps } = pushGateDeps(
+      { collected: true, failures: [] },
+      'import { checkpointDirOf } from "./272-checkpoint.fixture";\nconst dir = "tests/acceptance/";',
+    );
+
+    expect((await runPushGate(deps)).verdict).toBe("pushed");
   });
 });
 

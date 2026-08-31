@@ -5,6 +5,7 @@ import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { SPEC_GAP_LABEL } from "../shared/spec-gap";
 import type { StageExec } from "../shared/stage";
 import {
   applyUnfixable,
@@ -80,16 +81,49 @@ function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee
   expect(calls.some((call) => call[0] === "pr" && call[1] === "edit")).toBe(false);
 }
 
-function baseDeps(overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestResult[] }): FixerDeps & {
+/**
+ * The ticket the fixer reads on a no-progress stop, to find the PRD a `spec/gap` is routed at
+ * (ADR-0119). `parentPrd: undefined` models a hand-written ticket entering at lane 06 (#184), which
+ * has no spec to amend and so has no route.
+ */
+function ticketBody(parentPrd: number | undefined): string {
+  const parent = parentPrd === undefined ? "" : `## Parent PRD\n#${parentPrd}\n\n`;
+  return `${parent}## Acceptance criteria\n\n- [ ] It adds two numbers — check: \`npm test\`\n`;
+}
+
+/**
+ * `createRecordingGh` answers nothing, which is the point of it — but the no-progress stop now
+ * reads the ticket and creates an issue, and both of those are parsed. This answers exactly those
+ * two and records everything, so a test still asserts on `calls` rather than on a simulated GitHub.
+ */
+function recordingGhWithTicket(parentPrd: number | undefined): { gh: GhExec; calls: string[][] } {
+  const { gh: recording, calls } = createRecordingGh();
+  const gh: GhExec = (args) => {
+    recording(args);
+    if (args[0] === "issue" && args[1] === "view") {
+      return JSON.stringify({ title: "Adds two numbers", body: ticketBody(parentPrd) });
+    }
+    if (args[0] === "issue" && args[1] === "create") {
+      return "https://github.com/owner/repo/issues/500\n";
+    }
+    return "";
+  };
+  return { gh, calls };
+}
+
+function baseDeps(
+  overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestResult[]; parentPrd?: number },
+): FixerDeps & {
   ghCalls: string[][];
   gitCalls: string[][];
   writes: Array<{ path: string; content: string }>;
 } {
-  const { gh, calls: ghCalls } = createRecordingGh();
+  const { parentPrd, ...withoutPrd } = overrides;
+  const { gh, calls: ghCalls } = recordingGhWithTicket("parentPrd" in overrides ? parentPrd : 41);
   const { git, calls: gitCalls } = fakeGit();
   const writes: Array<{ path: string; content: string }> = [];
   let testCall = 0;
-  const { runTestsSequence, ...rest } = overrides;
+  const { runTestsSequence, ...rest } = withoutPrd;
 
   return {
     gh,
@@ -186,6 +220,94 @@ describe("runFixer — no-progress stop", () => {
     expect(commentCall?.[2]).toBe("7");
     expect(commentCall?.[4]).toContain("attempt 1 tried something");
     expect(commentCall?.[4]).toContain("attempt 2 tried something");
+  });
+});
+
+/**
+ * ADR-0119. The two stops are two different events, and until now they reached one place. A test
+ * that does not move under two independent attempts is not being failed by the diff — it is asking
+ * for something the ticket did not decide — and #278's whole complaint is that the pipeline had no
+ * way to say so: a red acceptance test means *the implementation is wrong*, whichever side is.
+ */
+describe("runFixer — where a stop is routed", () => {
+  function specGapCall(calls: string[][]): string[] | undefined {
+    return calls.find((call) => call[0] === "issue" && call[1] === "create" && call.includes(SPEC_GAP_LABEL));
+  }
+
+  /**
+   * Two attempts leaving the identical signature — the stop this whole describe is about.
+   * `null` is "the ticket names no parent PRD": passing `undefined` here would re-trigger the
+   * default rather than override it.
+   */
+  async function stoppedWithNoProgress(parentPrd: number | null = 41) {
+    const stage = fakeStage([answer(1), answer(2)]);
+    const deps = baseDeps({
+      exec: stage.exec,
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
+      parentPrd: parentPrd ?? undefined,
+    });
+    const outcome = await runFixer(deps);
+    return { deps, outcome };
+  }
+
+  it("files a spec/gap at the parent PRD when the signature never moved", async () => {
+    const { deps } = await stoppedWithNoProgress();
+
+    const filed = specGapCall(deps.ghCalls);
+    expect(filed).toBeDefined();
+
+    // Routed at the PRD the ticket names, not at the ticket — lane 02 amends a spec.
+    const body = filed![filed!.indexOf("--body") + 1];
+    expect(body).toContain("#41");
+    // Carries the immovable signature itself: it is both the evidence and the thing the spec
+    // author has to read a decision out of.
+    expect(body).toContain("adds two numbers");
+    expect(body).toContain("expected 3, got 4");
+
+    // The label is created before it is used, for `escalateToOwner`'s reason.
+    const labelCreate = deps.ghCalls.findIndex((call) => call[0] === "label" && call[1] === "create" && call[2] === SPEC_GAP_LABEL);
+    expect(labelCreate).toBeGreaterThanOrEqual(0);
+    expect(labelCreate).toBeLessThan(deps.ghCalls.indexOf(filed!));
+  });
+
+  it("still labels the ticket needs-human, because a spec/gap may refuse", async () => {
+    // ADR-0079 lets the spec author refuse a gap only new scope could repair. A ticket whose label
+    // was dropped on the strength of that repair would be stalled in nobody's list.
+    const { deps } = await stoppedWithNoProgress();
+
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
+  });
+
+  it("names the filed gap in the comment, so the PR says where the stop went", async () => {
+    const { deps } = await stoppedWithNoProgress();
+
+    const comment = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
+    expect(comment?.[4]).toContain("#500");
+    expect(comment?.[4]).toContain("spec/gap");
+  });
+
+  it("files nothing on a capped stop, where every attempt moved the failure", async () => {
+    // Three attempts that each changed the failure is evidence the diff is in play and the
+    // contract is not. Filing here would make the label mean "the fixer gave up".
+    const third: FailureSignature = [{ testName: "multiplies", errorMessage: "expected 6, got 5" }];
+    const stage = fakeStage([answer(1), answer(2), answer(3)]);
+    const deps = baseDeps({
+      exec: stage.exec,
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: third }],
+    });
+
+    const outcome = await runFixer(deps);
+
+    expect(outcome).toEqual({ verdict: "blocked", attempts: 3, stopReason: "capped" });
+    expect(specGapCall(deps.ghCalls)).toBeUndefined();
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
+  });
+
+  it("files nothing for a ticket with no parent PRD, which has no spec to amend", async () => {
+    const { deps } = await stoppedWithNoProgress(null);
+
+    expect(specGapCall(deps.ghCalls)).toBeUndefined();
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
   });
 });
 

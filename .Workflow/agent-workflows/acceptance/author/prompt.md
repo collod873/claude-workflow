@@ -70,7 +70,11 @@ So reach the subject the way a shell would, not the way a module would:
   <the subject's own test file>`, `npx tsx -e '<a few lines that import the subject and print>'`.
   A child process resolves imports at runtime, which is not an import in your file.
 - **Read the file and assert on its text or its parsed form** — for a rule that is stated in a
-  config, a workflow YAML, a prompt, an ADR.
+  config, a workflow YAML, a prompt, an ADR. Never `vitest.config.ts` and never anything under
+  `.github/`: no pull request may edit those, so an assertion about their contents returns the
+  same verdict before the ticket is built and after it merges, and no implementation can ever move
+  it. Assert the behaviour such a file configures instead. A gate downstream refuses your whole
+  batch for this.
 - **Bare package specifiers are fine** (`vitest`, `node:fs`, `node:child_process`, `yaml`) — those
   come from `package-lock.json`, which the restore already covers. It is only relative paths that
   climb out.
@@ -109,6 +113,14 @@ For each criterion:
   nothing again once the ticket is done — it never turns red, then never turns green either.
 - A test file that fails to import or has a syntax error is not "strict", it's broken — a gate
   downstream refuses your whole batch of tests on this, not just the one criterion it names.
+- A test that **no implementation could pass** is worse than a broken one, because it looks
+  honest. It fails with a clean assertion error on the branch that builds the ticket, and a red
+  acceptance test has exactly one meaning downstream — *the implementation is wrong* — so the
+  repair loop re-fires the implementer, who is not wrong, against a demand nothing can meet. Two
+  shapes cause it: an assertion about a file no pull request may edit (above), and an assertion
+  that pins down something the ticket left open. Where the ticket does not say — a path's root, a
+  name, an order — assert what the criterion actually claims and leave the rest alone, because the
+  implementer is reading the same sentence you are and cannot ask you what you decided.
 - A criterion string that isn't the issue's own text, verbatim, fails the checker even when the
   test itself is well-written.
 - A test that is wrong about the **form** of a file shown to you above — parsing a key that is

@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { childEnv } from "../shared/child-env";
 import { execGit, type GitExec } from "../shared/git";
+import { IMMUTABLE_SET } from "../shared/immutable-set";
 import { reason } from "../shared/reason";
 
 /**
@@ -29,6 +31,17 @@ import { reason } from "../shared/reason";
  * This gate refuses the second shape and pushes the first. It never
  * inspects *which* criteria passed or failed — that judgement belongs to
  * whoever implements the ticket the test is for.
+ *
+ * **A third shape, added after #278.** The two above are distinguished by
+ * error name, and that classifier reads a *permanently unsatisfiable*
+ * assertion as an honest red: #272's acceptance test threw a clean
+ * `AssertionError` on every possible implementation, and this gate as first
+ * written would have pushed it. The whole question — can any diff satisfy
+ * this? — is undecidable, but one slice of it is not: an assertion whose
+ * subject is a file no pull request may touch has its verdict fixed before
+ * the ticket is built. `immovableSubjects` is that slice, and
+ * [ADR-0120](../../../docs/adr/0120-an-acceptance-test-may-not-turn-on-a-file-no-pull-request-ma.md)
+ * is the ruling.
  */
 
 /** One test's outcome, as the classifier needs it — nothing else is read. */
@@ -61,6 +74,41 @@ export interface TestRunResult {
 
 /** The only non-refusing verdict a failure may carry. */
 const ASSERTION_FAILURE = "AssertionError";
+
+/**
+ * The paths an acceptance test may not turn on: the immutable set, minus the directory the test
+ * itself lives in.
+ *
+ * Derived rather than spelled, so this can never claim a different set from the Immutability job
+ * that enforces it. `tests/acceptance/` is dropped because a test is *in* it and legitimately
+ * imports its own fixtures; what is left — `vitest.config.ts` and `.github/` — is the set no pull
+ * request may change.
+ */
+const IMMOVABLE_SUBJECTS: readonly string[] = IMMUTABLE_SET.filter(
+  (entry: string) => entry !== "tests/acceptance/",
+);
+
+/**
+ * The immutable-set paths a test's source names, if any.
+ *
+ * **Why this is a satisfiability question and not a style one.** A permanently-false assertion is
+ * undecidable in general, which is why lane 04 has had no `validateCriteriaShape` of its own. A
+ * permanently-*fixed* one is not: an assertion whose subject is a file no pull request may touch
+ * returns the same verdict before the ticket is built and after it merges, because nothing a diff
+ * is allowed to contain can move it. That is exactly one decidable slice of the undecidable
+ * question, and it is the slice #272's defect 2 fell into — the test read the text of
+ * `vitest.config.ts` and asserted that a `setupFiles` entry appeared in it, against a file the
+ * Immutability job forbids any pull request from editing (#278).
+ *
+ * Matched against the source text rather than parsed, deliberately. A path an acceptance test does
+ * not read has no reason to be written in it, so the false positives this shape admits — a mention
+ * inside a comment or a string that is never opened — are a sentence to rewrite rather than a
+ * ticket to re-slice, and the alternative is a TypeScript-aware reader that has to be right about
+ * every way a path can reach `readFileSync`.
+ */
+export function immovableSubjects(source: string): string[] {
+  return IMMOVABLE_SUBJECTS.filter((entry) => source.includes(entry));
+}
 
 /**
  * Where a commit this gate clears actually lands.
@@ -103,6 +151,11 @@ export interface PushGateDeps {
    * ([ADR-0102](../../../docs/adr/0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md)).
    */
   lint?: (paths: string[]) => string | null;
+  /**
+   * Reads one of `paths` back as text, for the immovable-subject check. Defaults to the real file;
+   * injected so a test can hand this a source without writing one to disk.
+   */
+  readSource?: (path: string) => string;
   git: GitExec;
   /** The acceptance test file paths this run is landing, repo-relative. */
   paths: string[];
@@ -147,6 +200,26 @@ export async function runPushGate(deps: PushGateDeps): Promise<PushGateOutcome> 
     return {
       verdict: "refused",
       reason: `${nonAssertion.length} failure(s) are not AssertionErrors: ${names}`,
+    };
+  }
+
+  // A test that ran and asserted honestly can still be one no implementation can ever satisfy.
+  // This is the decidable slice of that: an assertion whose subject is a file no pull request may
+  // touch has its verdict fixed before the ticket is built (ADR-0120).
+  const read = deps.readSource ?? ((path: string) => readFileSync(path, "utf8"));
+  const immovable = deps.paths
+    .map((path) => ({ path, subjects: immovableSubjects(read(path)) }))
+    .filter((found) => found.subjects.length > 0);
+  if (immovable.length > 0) {
+    const named = immovable
+      .map((found) => `${found.path} (${found.subjects.join(", ")})`)
+      .join(", ");
+    return {
+      verdict: "refused",
+      reason:
+        `${immovable.length} test file(s) turn on a path no pull request may change: ${named}. ` +
+        `The Immutability job refuses any diff against those, so the assertion returns the same ` +
+        `verdict whatever is built — test the behaviour the file configures, not the file's text.`,
     };
   }
 

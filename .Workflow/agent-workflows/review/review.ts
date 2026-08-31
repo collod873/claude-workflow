@@ -6,6 +6,7 @@ import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
+import { fileSpecGap } from "../shared/spec-gap";
 import { testsForCriteria } from "../shared/affected-tests";
 import { commitPullsPath } from "../shared/gh-paths";
 import { implementationBranchTicket } from "../shared/ready-set";
@@ -96,8 +97,6 @@ export async function runCorrectnessReview(
 const CONFORMANCE_REVIEWER_PROMPT_PATH =
   ".Workflow/agent-workflows/review/conformance-reviewer/prompt.md";
 
-/** The label a filed spec/gap issue carries — read back by lane 02's amendment path (ADR-0034, `spec/amend.ts`). */
-export const SPEC_GAP_LABEL = "spec/gap";
 
 export const CONFORMANCE_REVIEWER_OUTPUT = structuredOutput(
   z.object({
@@ -147,20 +146,19 @@ export function untestedCriteria(criteria: string[], dir?: string): string[] {
 }
 
 /**
- * Files one `spec/gap` issue against `prdIssueNumber` and returns its number. The only place this
- * lane writes an issue for a "the spec is silent" finding rather than filtering one through
- * `keepSurvivingFindings` — a gap is a defect in the spec, not a finding against the diff, so it
- * never reaches that filter at all.
+ * This lane's `spec/gap`: the only place it writes an issue for a "the spec is silent" finding
+ * rather than filtering one through `keepSurvivingFindings` — a gap is a defect in the spec, not a
+ * finding against the diff, so it never reaches that filter at all. The filing itself is
+ * `shared/spec-gap.ts`, shared with the fixer (ADR-0119); what belongs to this lane is the title,
+ * which says which lane noticed and how.
  */
-function fileSpecGap(gh: GhExec, prdIssueNumber: number, report: string): number {
-  const title = `spec/gap: #${prdIssueNumber}'s spec is silent on part of this diff`;
-  const body = [
-    `Filed by lane 07's conformance reviewer against #${prdIssueNumber} (ADR-0038).`,
-    "",
-    report,
-  ].join("\n");
-  const created = gh(["issue", "create", "--title", title, "--body", body, "--label", SPEC_GAP_LABEL]);
-  return parseIssueNumber(created, title);
+function fileConformanceGap(gh: GhExec, prdIssueNumber: number, report: string): number {
+  return fileSpecGap(
+    gh,
+    prdIssueNumber,
+    `spec/gap: #${prdIssueNumber}'s spec is silent on part of this diff`,
+    `Filed by lane 07's conformance reviewer (ADR-0038).\n\n${report}`,
+  );
 }
 
 /**
@@ -198,7 +196,7 @@ export async function runConformanceReview(
 
   const gapIssues = raw.items
     .filter((item) => item.classification === "gap")
-    .map((item) => fileSpecGap(gh, input.prdIssueNumber, item.message));
+    .map((item) => fileConformanceGap(gh, input.prdIssueNumber, item.message));
 
   return { findings, gapIssues };
 }

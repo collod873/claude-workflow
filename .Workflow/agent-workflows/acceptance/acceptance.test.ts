@@ -81,7 +81,7 @@ async function authorWriting(
 ): Promise<{ paths: string[]; written: Map<string, string> }> {
   const stage = createFakeStage(authorResponse(files));
   const written = new Map<string, string>();
-  const paths = await authorAcceptanceTests({
+  const authored = await authorAcceptanceTests({
     exec: stage.exec,
     writeFile: (path, content) => written.set(path, content),
     issueNumber: 162,
@@ -89,7 +89,7 @@ async function authorWriting(
     prdBody: PRD_BODY,
     listTestDir: () => [],
   });
-  return { paths, written };
+  return { paths: authored.map((file) => file.path), written };
 }
 
 describe("extractCriteria", () => {

@@ -7,12 +7,12 @@ import { parse } from "yaml";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
 import type { StageExec } from "../shared/stage";
+import { SPEC_GAP_LABEL } from "../shared/spec-gap";
 import {
   keepSurvivingFindings,
   runConformanceReview,
   runReview,
   untestedCriteria,
-  SPEC_GAP_LABEL,
 } from "./review";
 import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
@@ -176,10 +176,15 @@ describe("runConformanceReview", () => {
 
     expect(result.findings).toEqual([]);
     expect(result.gapIssues).toEqual([777]);
-    expect(calls.length).toBe(1);
-    expect(calls[0]).toContain("--label");
-    expect(calls[0]).toContain(SPEC_GAP_LABEL);
-    expect(calls[0].join(" ")).toContain("42");
+
+    // Two calls, in this order: the label is seeded `--force` before it is used, because
+    // `gh issue create --label` fails outright on a label nobody has created yet
+    // (`shared/spec-gap.ts`, shared with the fixer since ADR-0119).
+    expect(calls.map((call) => `${call[0]} ${call[1]}`)).toEqual(["label create", "issue create"]);
+    const created = calls[1];
+    expect(created).toContain("--label");
+    expect(created).toContain(SPEC_GAP_LABEL);
+    expect(created.join(" ")).toContain("42");
   });
 
   it("a clear-spec-divergence classification produces the reverse", async () => {
