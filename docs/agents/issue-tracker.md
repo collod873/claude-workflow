@@ -5,7 +5,7 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
 
 ## Conventions
 
-- **File an issue**: `~/bin/file-issue <kind> --title "..." --body-file <path>` — never call `gh issue create` directly. `<kind>` is one of `note` (no shape requirement, no label), `question` (requires a `## Question` heading, labelled `fuzzy`), `ticket` (requires `## Acceptance criteria` and `## Files claimed`, no label), or `spec` (no shape requirement; title gets `PRD: ` prefixed, labelled `prd`, created once if missing). `file-issue ticketify <n>` is the one exit from `fuzzy` — see `docs/agents/ticket-format.md`.
+- **File an issue**: `~/bin/file-issue <kind> --title "..." --body-file <path>` — never call `gh issue create` directly. `<kind>` is one of `note` (no shape requirement, no label), `question` (requires a `## Question` heading, labelled `fuzzy`), `ticket` (requires `## Acceptance criteria` and `## Files claimed`, labelled `ticket`, created once if missing), or `spec` (no shape requirement; title gets `PRD: ` prefixed, labelled `prd`, created once if missing). `file-issue ticketify <n>` is the one exit from `fuzzy` — see `docs/agents/ticket-format.md`.
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
@@ -17,7 +17,9 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
   a bare `gh issue close` carrying no record is refused by `.claude/hooks/close-gate.py` before it
   runs, and the refusal reaches you in the same turn — at this workstation and inside every stage
   on a runner alike. A ticket with no diff (a `task` ticket, or a map with truly no commit) closes
-  on a record reading `## Closing record` followed only by `No diff.`. A close marked `not planned`
+  on a record reading `## Closing record` followed only by `No diff.` — hand it the empty range
+  the ticket really carried (`<head>..<head>`), because `close-ticket` counts the range and
+  refuses when it carries commits rather than recording that the ticket carried none (#300). A close marked `not planned`
   or `duplicate` claims no delivery and is not judged at all (ADR-0013). See
   `docs/agents/ticket-format.md` for the ticket shape the record is checked against.
 - **Act on another repo**: every verb above takes `-R <owner>/<repo>` — `~/bin/file-issue <kind> -R <owner>/<repo> --title "..." --body-file <path>`. Needed whenever work belongs to a repo other than the one you are standing in; without `-R` the issue silently lands here instead.
@@ -55,11 +57,12 @@ in `docs/agents/pipeline-labels.md`. They assert only where work sits, never a r
 their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
 means not yet judged.
 
-This repo's own pipeline writes four more, which are state rather than position and which no
+This repo's own pipeline writes five more, which are state rather than position and which no
 pipeline step reads as a position:
 
 | Label            | Written by                          | Means                                                              |
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `ticket`         | `~/bin/file-issue ticket` / `ticketify` | The issue's **kind**, stated at filing rather than inferred later from its body. Nothing reads it as a position, and its absence on the 187 issues filed before it says nothing about them — #300, which is also why `bin/close-ticket` counts the range instead of trusting a kind |
 | `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited |
 | `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
 | `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
