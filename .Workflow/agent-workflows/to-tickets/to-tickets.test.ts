@@ -2,13 +2,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { handoffPath, writeFailure } from "../shared/handoff-path";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { slice } from "../shared/plan.fixture";
 import { SLICE_OUTPUT, type Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
@@ -25,14 +24,6 @@ const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
 const unreachableGh: GhExec = (args) => {
   throw new Error(`gh should not have been called: ${JSON.stringify(args)}`);
 };
-
-// Every test in this file uses the same `--issue 13`, and most exercise the
-// same three stage prompts — without a fresh CHECKPOINTS_DIR per test, two
-// tests could compute the same checkpoint key and the second would silently
-// reuse the first's answer. See `isolateCheckpointsPerTest`'s own comment.
-beforeEach(() => {
-  isolateCheckpointsPerTest();
-});
 
 /**
  * Seeds `stage`'s checkpoint file directly, in the wire-format shape a real

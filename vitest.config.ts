@@ -15,6 +15,12 @@ import { defineConfig } from "vitest/config";
 // spawns `git` with the default inherited environment reads the *worker's* `process.env`, not
 // this config's. It is listed here rather than imported per test file because the tests that need
 // it are the ones nobody has written yet — see the file's own comment and #86.
+// `isolate-checkpoints.setup.ts` is here for the second half of that argument. It was written as a
+// `setupFiles` entry, never wired into one, and was stood in for by eighteen test files each
+// importing its helper and calling it in their own `beforeEach` — until `ratify/ratifier.test.ts`
+// did not, and one of its tests read the checkpoint the next test in the file had written on the
+// previous run (#299). A convention eighteen files remember is not a mechanism; a `setupFiles`
+// entry covers the nineteenth file too. See ADR-0125 and the file's own comment.
 // `tests/acceptance/` is in `include` because nothing else can put it there. A positional argument
 // to `vitest run` is a *filter over* `include`, never an addition to it — so `push-gate.ts`'s
 // `npx vitest run tests/acceptance/` and `verify.yml`'s per-slice `npx vitest run <file...>` both
@@ -32,7 +38,10 @@ export default defineConfig({
   test: {
     include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "tests/acceptance/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".claude/worktrees/**"],
-    setupFiles: [".Workflow/agent-workflows/shared/scrub-git-env.setup.ts"],
+    setupFiles: [
+      ".Workflow/agent-workflows/shared/scrub-git-env.setup.ts",
+      ".Workflow/agent-workflows/shared/isolate-checkpoints.setup.ts",
+    ],
     maxWorkers: 4,
     testTimeout: 30_000,
   },

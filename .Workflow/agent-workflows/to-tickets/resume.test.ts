@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { slice } from "../shared/plan.fixture";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import type { StageExec } from "../shared/stage";
@@ -24,10 +23,6 @@ import { runNamedStage } from "./to-tickets";
  * spawning a real `npx tsx` process is needed to observe it.
  */
 describe("a retry after audit-and-publish alone failed", () => {
-  // Without this, a checkpoint left behind by another test file could
-  // key-match one of this file's stages and get read back as its answer.
-  beforeEach(isolateCheckpointsPerTest);
-
   it("spawns a model only for audit-and-publish, reading seam-sweep and slice back from checkpoints", async () => {
     withHandoffDir();
 

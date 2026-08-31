@@ -1,10 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { withHandoffDir } from "./handoff-dir.fixture";
-import { isolateCheckpointsPerTest } from "./isolate-checkpoints.setup";
 import { createFakeStage } from "./stage.fake";
 import { checkpointPath, runStage, type StageExec } from "./stage";
 import { structuredOutput } from "./structured-output";
@@ -22,10 +21,6 @@ function jsonSchemaFlag(argv: string[]): string | undefined {
 }
 
 describe("runStage", () => {
-  // Without this, two tests here that checkpoint the same stage could
-  // collide on the same key and one would silently read the other's answer.
-  beforeEach(isolateCheckpointsPerTest);
-
   let dir: string | undefined;
 
   afterEach(() => {
@@ -305,5 +300,45 @@ describe("runStage checkpointing (StageOptions.stage)", () => {
     }
 
     expect(fake.calls).toHaveLength(1);
+  });
+});
+
+/**
+ * The guard on `isolate-checkpoints.setup.ts` being wired into `vitest.config.ts`'s `setupFiles`,
+ * written as the thing that went wrong rather than as an assertion about the config file — which
+ * is in the immutable set and so cannot be read by an acceptance test anyway (ADR-0120).
+ *
+ * #299: `ratify/ratifier.test.ts` had two `it` blocks whose fixtures rendered a byte-identical
+ * ratifier prompt. At one commit that is one checkpoint key and one `ratifier.json`, so whichever
+ * ran last wrote the file and the other read that verdict back on the next run — with its own fake
+ * `StageExec` never called and every in-memory collaborator it injected looking innocent. The two
+ * tests below are that pair, deliberately: same stage, same prompt, different canned answers.
+ *
+ * They fail if the setup file is unwired, or if its isolation is ever weakened back to once per
+ * *file* — per-file is not enough, because two tests sharing a prompt is the normal case for a test
+ * file that drives one lane against one set of fixtures.
+ */
+describe("two tests in one file that render the same prompt for the same stage", () => {
+  const SHARED_STAGE = "shared-prompt-across-tests";
+  const SHARED_PROMPT = "One prompt, rendered identically by both tests below. No vars.";
+
+  /** Runs the shared stage with its own answer, and reports whether the model was spawned. */
+  async function runShared(greeting: string): Promise<{ spawned: boolean; value: unknown }> {
+    const dir = mkdtempSync(join(tmpdir(), "shared-prompt-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const promptPath = join(dir, "prompt.md");
+    writeFileSync(promptPath, SHARED_PROMPT, "utf8");
+
+    const fake = createFakeStage(JSON.stringify({ greeting }));
+    const value = await runStage(promptPath, {}, fake.exec, GREETING, { stage: SHARED_STAGE });
+    return { spawned: fake.calls.length === 1, value };
+  }
+
+  it("gets its own answer, first", async () => {
+    expect(await runShared("first")).toEqual({ spawned: true, value: { greeting: "first" } });
+  });
+
+  it("gets its own answer, second — not the checkpoint the first one just wrote", async () => {
+    expect(await runShared("second")).toEqual({ spawned: true, value: { greeting: "second" } });
   });
 });

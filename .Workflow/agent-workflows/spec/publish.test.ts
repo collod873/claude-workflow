@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import type { StageExec } from "../shared/stage";
 import type { FakeStage } from "../shared/stage.fake";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
@@ -15,15 +14,6 @@ import {
   type SpecSource,
 } from "./publish";
 import { planSpecRun, runSpecPublication, type SpecAuthorOutput } from "./spec";
-
-// Several tests in this file run the full author/critic/reconciler chain
-// `runSpecPublication` drives, sometimes against the same fixtures — without
-// a fresh CHECKPOINTS_DIR per test, a later test could read an earlier
-// test's checkpointed answer for one of those stages. See
-// `isolateCheckpointsPerTest`'s own comment.
-beforeEach(() => {
-  isolateCheckpointsPerTest();
-});
 
 /**
  * A fake `GhExec` that answers a create with a URL and records everything else, so a test can

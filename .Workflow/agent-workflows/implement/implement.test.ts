@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, expect, it } from "vitest";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
+import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { simulateClaimRef } from "../shared/gh.fake";
@@ -25,15 +24,6 @@ import {
   type ImplementDeps,
 } from "./implement";
 import { GENERATED_ARTIFACTS } from "./regenerate-artifacts";
-
-// Every one of these tests drives the lane against fixed fixtures and canned
-// responses, so more than one call can render the identical substituted prompt
-// for the one stage name this lane now carries (#274) — without a fresh
-// CHECKPOINTS_DIR per test, a later test would silently reuse an earlier
-// test's checkpointed answer. See `isolateCheckpointsPerTest`'s own comment.
-beforeEach(() => {
-  isolateCheckpointsPerTest();
-});
 
 
 describe("assembleBrief", () => {

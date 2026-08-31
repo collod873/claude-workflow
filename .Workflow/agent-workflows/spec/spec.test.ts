@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shape/marker";
@@ -41,16 +40,6 @@ const RESOLVED_CRITIC = JSON.stringify({
       reason: "The body already implies malformed input is rejected; this is the observable version.",
     },
   ],
-});
-
-// Many tests in this file drive the sweep/author/critic/reconciler chain
-// against the same fixed `CONTEXT` and canned responses, so more than one
-// call renders the same substituted prompt for a given stage — without a
-// fresh CHECKPOINTS_DIR per test, a later test would silently reuse an
-// earlier test's checkpointed answer. See `isolateCheckpointsPerTest`'s own
-// comment.
-beforeEach(() => {
-  isolateCheckpointsPerTest();
 });
 
 const RECONCILED_BODY =

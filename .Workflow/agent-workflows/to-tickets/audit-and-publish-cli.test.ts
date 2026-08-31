@@ -1,22 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
-import { isolateCheckpointsPerTest } from "../shared/isolate-checkpoints.setup";
 import { slice } from "../shared/plan.fixture";
 import { stubGhCli } from "./gh-cli.stub";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
-
-// Every test here runs `--stage audit-and-publish --issue 13` against the
-// same seeded slice checkpoint — without a fresh CHECKPOINTS_DIR per test,
-// two tests could compute the same checkpoint key and the second would
-// silently reuse the first's cached answer. See `isolateCheckpointsPerTest`'s
-// own comment.
-beforeEach(() => {
-  isolateCheckpointsPerTest();
-});
 
 /**
  * These exercise the real `--stage audit-and-publish` CLI end to end: a stub
