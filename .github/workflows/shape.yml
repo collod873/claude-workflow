@@ -103,6 +103,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Restored before the stage runs: the checkpoints directory `runStage` checks
+      # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout
+      # and dies with the runner, so a retry against the same commit only finds a stage that already
+      # answered if this ran first. See `.github/actions/checkpoints/action.yml`.
+      - name: Restore checkpoints
+        uses: ./.github/actions/checkpoints
+        with:
+          phase: restore
+          lane: shape
+          issue: ${{ env.IDEA_NUMBER }}
+
       # Every label this lane needs, including the four the owner answers with. They are created
       # here rather than by the accept workflow because a sheet posts before any verb is applied,
       # and a verb the owner cannot find on his phone is a verb that does not exist. `--force`
@@ -159,14 +170,16 @@ jobs:
       - name: Shape
         run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
 
-      - name: Upload the refused raw response
-        if: failure()
-        uses: actions/upload-artifact@v4
+      # Uploaded with if: always() rather than if: failure() — a successful run's checkpoints are
+      # exactly what the *next* run on this issue needs to restore, not only a failed one's. See
+      # `.github/actions/checkpoints/action.yml`.
+      - name: Upload checkpoints
+        if: always()
+        uses: ./.github/actions/checkpoints
         with:
-          name: refused-raw-response
-          path: ${{ runner.temp }}/*-raw-response.txt
-          if-no-files-found: ignore
-          retention-days: 30
+          phase: upload
+          lane: shape
+          issue: ${{ env.IDEA_NUMBER }}
 
       - name: Report failure
         if: failure()
@@ -176,13 +189,10 @@ jobs:
             reason=$(cat "$FAILURE_REASON_PATH")
           fi
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          evidence=""
-          if ls "$RUNNER_TEMP"/*-raw-response.txt >/dev/null 2>&1; then
-            # Backticks here are markdown for the issue comment, not command substitution, which is
-            # what SC2016 cannot tell. `%b` below is what turns the \n escapes into newlines.
-            # shellcheck disable=SC2016
-            evidence='\n**Refused response:** the `refused-raw-response` artifact on that run.\n'
-          fi
+          # The reason names a runner-local path, which is gone by the time anyone reads this
+          # comment. Point at the checkpoints artifact instead — uploaded with if: always() just
+          # above, so it is the one address that outlives the job on every failure.
+          evidence="\n**Checkpoints:** the \`checkpoints-shape-${IDEA_NUMBER}\` artifact on that run.\n"
           body=$(printf 'Shape run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$IDEA_NUMBER" --body "$body"
 

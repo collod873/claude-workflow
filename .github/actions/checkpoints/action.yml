@@ -1,0 +1,71 @@
+name: Checkpoints
+description: >
+  Persists a lane's per-stage checkpoints (CONTEXT.md's Checkpoint: "a stage's validated output...
+  kept after the run") across separate workflow runs on the same issue. The directory `runStage`
+  reads and writes (`CHECKPOINTS_DIR` in .Workflow/agent-workflows/shared/stage.ts) lives in the
+  checkout and dies with the runner otherwise, so a retry against the same commit would always
+  respawn the model rather than finding the answer a prior run already got. `restore` runs before a
+  lane's first stage and unpacks the latest `checkpoints-<lane>-<issue>` artifact it can find;
+  `upload` runs — paired with the caller's own `if: always()`, so a successful run's checkpoints are
+  saved for the next run just as a failed one's are — after the lane's last stage and saves whatever
+  this run wrote back under that same name.
+#
+# Restore queries `actions/artifacts` rather than using `actions/download-artifact`: that action
+# only ever looks inside the current workflow run, and the artifact this needs was written by a
+# *previous*, different run on the same issue — there may be several, and the latest one by
+# `created_at` is the one whose checkpoints are still good for this commit (`runStage`'s own key
+# re-validates that; a stale restore just misses rather than misleading anyone).
+#
+# Fails open throughout: a restore that cannot find or unpack an artifact starts the lane with an
+# empty checkpoints directory, exactly as if this action did not run at all, rather than failing the
+# job over a cache it does not need to succeed.
+
+inputs:
+  phase:
+    description: "`restore` before the lane's first stage, `upload` after its last."
+    required: true
+  lane:
+    description: The lane name half of the artifact's name (e.g. `to-tickets`, `shape`).
+    required: true
+  issue:
+    description: The issue number half of the artifact's name.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore checkpoints
+      if: inputs.phase == 'restore'
+      shell: bash
+      env:
+        ARTIFACT_NAME: checkpoints-${{ inputs.lane }}-${{ inputs.issue }}
+        CHECKPOINTS_DIR: .Workflow/agent-workflows/checkpoints
+      run: |
+        set -uo pipefail
+        mkdir -p "$CHECKPOINTS_DIR"
+
+        artifact_id=$(gh api "repos/${GH_REPO}/actions/artifacts?name=${ARTIFACT_NAME}&per_page=100" \
+          --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty' \
+          2>/dev/null)
+
+        if [ -z "${artifact_id:-}" ]; then
+          echo "checkpoints: no prior artifact named $ARTIFACT_NAME — starting clean"
+          exit 0
+        fi
+
+        if gh api "repos/${GH_REPO}/actions/artifacts/${artifact_id}/zip" > "$RUNNER_TEMP/checkpoints.zip" 2>/dev/null \
+            && unzip -o -q "$RUNNER_TEMP/checkpoints.zip" -d "$CHECKPOINTS_DIR"; then
+          echo "checkpoints: restored $ARTIFACT_NAME from artifact $artifact_id"
+        else
+          echo "::warning::checkpoints: found artifact $artifact_id for $ARTIFACT_NAME but could not restore it — starting clean"
+        fi
+        rm -f "$RUNNER_TEMP/checkpoints.zip"
+
+    - name: Upload checkpoints
+      if: inputs.phase == 'upload'
+      uses: actions/upload-artifact@v4
+      with:
+        name: checkpoints-${{ inputs.lane }}-${{ inputs.issue }}
+        path: .Workflow/agent-workflows/checkpoints
+        if-no-files-found: ignore
+        retention-days: 90

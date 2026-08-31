@@ -97,6 +97,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Restored before any stage: the checkpoints directory `runStage` checks
+      # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout
+      # and dies with the runner, so a retry against the same commit only finds a stage that already
+      # answered if this ran first. See `.github/actions/checkpoints/action.yml`.
+      - name: Restore checkpoints
+        uses: ./.github/actions/checkpoints
+        with:
+          phase: restore
+          lane: to-tickets
+          issue: ${{ env.PRD_NUMBER }}
+
       # Idempotent so a repeated run (or a fresh repo, like this one today) never fails the step
       # that is supposed to fail closed — `--force` updates rather than errors when the label
       # already exists.
@@ -221,22 +232,16 @@ jobs:
             echo "DISPATCH_REQUESTS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # The response a stage refused, kept where a human can read it. `to-tickets.ts` writes
-      # `<stage>-raw-response.txt` next to the handoff file — i.e. into `runner.temp`, which this
-      # job's teardown discards — so without this step the evidence exists only for as long as the
-      # runner does. #42 is what that costs: run 32677530530 rejected a seam-sweep response and
-      # left one line about why, and diagnosing it meant spending the model time again locally
-      # and hoping the failure recurred. `if-no-files-found: ignore` because most failures never
-      # reach a stage at all (the refusals and the preflight above), and an absent file is the
-      # normal case rather than a second failure to report.
-      - name: Upload the refused raw response
-        if: failure()
-        uses: actions/upload-artifact@v4
+      # Uploaded with if: always() rather than if: failure() — a successful run's checkpoints are
+      # exactly what the *next* run on this issue needs to restore, not only a failed one's. See
+      # `.github/actions/checkpoints/action.yml`.
+      - name: Upload checkpoints
+        if: always()
+        uses: ./.github/actions/checkpoints
         with:
-          name: refused-raw-response
-          path: ${{ runner.temp }}/*-raw-response.txt
-          if-no-files-found: ignore
-          retention-days: 30
+          phase: upload
+          lane: to-tickets
+          issue: ${{ env.PRD_NUMBER }}
 
       # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
       # gets exactly one comment rather than the refusal's plus this one.
@@ -248,17 +253,10 @@ jobs:
             reason=$(cat "$FAILURE_REASON_PATH")
           fi
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # The reason names the runner-local path the raw response was written to, which is gone
-          # by the time anyone reads this comment. Point at the artifact instead — the same file,
-          # at the only address that outlives the job.
-          evidence=""
-          if ls "$RUNNER_TEMP"/*-raw-response.txt >/dev/null 2>&1; then
-            # The backticks are markdown code formatting for the issue comment, not a command
-            # substitution — single quotes are exactly right here, which is what SC2016 cannot
-            # tell. `%b` below is what turns the \n escapes into newlines.
-            # shellcheck disable=SC2016
-            evidence='\n**Refused response:** the `refused-raw-response` artifact on that run.\n'
-          fi
+          # The reason names a runner-local path, which is gone by the time anyone reads this
+          # comment. Point at the checkpoints artifact instead — uploaded with if: always() just
+          # above, so it is the one address that outlives the job on every failure.
+          evidence="\n**Checkpoints:** the \`checkpoints-to-tickets-${PRD_NUMBER}\` artifact on that run.\n"
           body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$PRD_NUMBER" --body "$body"
           gh issue edit "$PRD_NUMBER" --add-label slice-failed
