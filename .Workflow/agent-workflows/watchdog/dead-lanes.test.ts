@@ -3,13 +3,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  citedRuns,
   deadLanes,
   executedNothing,
   isCandidate,
   LOOKBACK_DAYS,
+  markedLane,
+  retirementBody,
   signalBody,
   signalMarker,
   signalTitle,
+  stillDeadBody,
+  unreportedRuns,
   type RunSummary,
 } from "./dead-lanes";
 
@@ -214,5 +219,63 @@ describe("the signal", () => {
     expect(signalBody(lane)).toContain(signalMarker(lane.path));
     expect(signalMarker("a.yml")).not.toBe(signalMarker("b.yml"));
     expect(signalMarker("a.yml")).toMatch(/^<!--.*-->$/);
+  });
+
+  it("reads its own marker back, which is how retirement finds a lane this sweep said nothing about", () => {
+    expect(markedLane(signalBody(lane))).toBe(lane.path);
+    expect(markedLane("no marker here")).toBeUndefined();
+  });
+});
+
+describe("what a signal already said", () => {
+  const url = (id: number) => `https://github.com/collod873/claude-workflow/actions/runs/${id}`;
+  const dead = (id: number, createdAt: string): RunSummary =>
+    run({ id, htmlUrl: url(id), createdAt, jobCount: 0 });
+
+  it("reads cited runs off their URLs, not off numbers in the prose", () => {
+    // A human writing "this has failed 33278011242 times" is not a citation, and a date in a
+    // comment is not one either: a loose match would silence the next genuine report.
+    const text = `Most recent: [run 11](${url(11)})\nSee also 12, filed 2026-08-30T01:34:24Z.`;
+
+    expect(citedRuns(text)).toEqual(new Set([11]));
+  });
+
+  it("holds back a lane whose every dead run is already cited", () => {
+    const lane = deadLanes([dead(11, "2026-08-26T00:00:00Z")])[0];
+
+    expect(unreportedRuns(lane, citedRuns(`[run 11](${url(11)})`))).toEqual([]);
+  });
+
+  it("keeps the runs a standing signal has never named, newest first", () => {
+    const lane = deadLanes([dead(11, "2026-08-26T00:00:00Z"), dead(12, "2026-08-27T00:00:00Z")])[0];
+
+    expect(unreportedRuns(lane, citedRuns(`[run 11](${url(11)})`)).map((each) => each.id)).toEqual([12]);
+  });
+
+  it("lists the further dead runs when more than one arrived since it last spoke", () => {
+    const lane = deadLanes([dead(11, "2026-08-26T00:00:00Z"), dead(12, "2026-08-27T00:00:00Z")])[0];
+    const body = stillDeadBody(unreportedRuns(lane, new Set()));
+
+    expect(body).toContain("Still dead: [run 12]");
+    expect(body).toContain("1 further dead run since");
+    expect(body).toContain("[11]");
+  });
+});
+
+describe("retirement", () => {
+  it("declares `No diff.` under a closing record, which is the grammar the close gate reads", () => {
+    // `signalBody` writes no `## Acceptance criteria`, so `No diff.` is the form `close-gate.py`
+    // accepts for every issue this mechanism opens — the two agree by construction (ADR-0099).
+    const body = retirementBody(".github/workflows/to-tickets.yml", run({ id: 99, jobCount: 4 }));
+
+    expect(body.split("\n")[0]).toBe("## Closing record");
+    expect(body).toContain("No diff.");
+  });
+
+  it("cites the run that proves the lane starts, and says it closes the signal and not the mechanism", () => {
+    const body = retirementBody(".github/workflows/to-tickets.yml", run({ id: 99, jobCount: 4 }));
+
+    expect(body).toContain("run 99");
+    expect(body).toContain("never the mechanism");
   });
 });

@@ -253,17 +253,6 @@
     "fragment": "SIGNAL_ASSIGNEE: ${{ github.repository_owner }}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate\n      # reporting step here.\n      - name: Count"
   },
   {
-    "hash": "312cd12ccdc5fb71",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 142,
-    "where": [
-      ".Workflow/agent-workflows/watchdog/missing-trailer.test.ts:311",
-      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:62"
-    ],
-    "fragment": "if (args[0] === \"issue\" && args[1] === \"list\") return JSON.stringify(options.issues ?? []);\n    if (args[0] === \"issue\" && args[1] === \"create\") return \"https://github.com/owner/repo/issues/42\\n\";\n    if (args[0] === \"issue\" && args[1] === \"comment\") return \"\";\n    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);\n  };\n  return { gh, calls };\n}\n\ndescribe"
-  },
-  {
     "hash": "33282df5dc36c427",
     "format": "typescript",
     "lines": 8,
@@ -1076,17 +1065,6 @@
       ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
     ],
     "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"../shared/git\""
-  },
-  {
-    "hash": "e86739522a21205a",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 107,
-    "where": [
-      ".Workflow/agent-workflows/watchdog/bypass.test.ts:182",
-      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:33"
-    ],
-    "fragment": ";\n}): { gh: GhExec; calls: string[][] } {\n  const runs = options.runs ?? [];\n  const calls: string[][] = [];\n\n  const gh: GhExec = (args) => {\n    calls.push(args);\n\n    if (args[0] === \"api\" && workflowRunsPathMatcher"
   },
   {
     "hash": "e8a170d71c5ead19",

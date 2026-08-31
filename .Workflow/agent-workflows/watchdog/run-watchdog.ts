@@ -4,14 +4,20 @@ import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPath, runJobsPath } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
 import {
+  citedRuns,
   deadLanes,
+  inWindow,
   isCandidate,
+  markedLane,
   MAX_JOB_READS,
   MAX_SIGNALS,
+  retirementBody,
   RUN_PAGE_SIZE,
   signalBody,
   signalMarker,
   signalTitle,
+  stillDeadBody,
+  unreportedRuns,
   type DeadLane,
   type RunSummary,
 } from "./dead-lanes";
@@ -48,7 +54,18 @@ import {
  * **Recomputes, stores nothing.** No cursor and no ledger. Whether a lane
  * has already been reported is derived from the issues themselves, so a
  * signal that gets closed is simply not a standing one next sweep, and
- * nothing this says can go stale.
+ * nothing this says can go stale. That derivation covers all three things
+ * this sweep can say: whether to open (the marker), whether a standing signal
+ * has anything new to add (the runs it already cites, #288), and whether it
+ * still has anything to say at all (`retireRecovered`). Both of the latter two
+ * are ADR-0117, which amends ADR-0099.
+ *
+ * **It speaks only on new evidence.** A sweep that finds nothing the tracker
+ * does not already say writes nothing, because it rides session end
+ * (ADR-0049) — so a mechanism that re-states itself per sweep re-states itself
+ * at the owner's own working rate, and a `Still dead` a reader has read before
+ * teaches them to close this mechanism's issues unread. That is the failure
+ * the one-issue-per-lane collapse was built to avoid, reached one step later.
  *
  * **Declared ceiling.** The sweep sees one page of runs (`RUN_PAGE_SIZE`)
  * and spends at most `MAX_JOB_READS` job-count reads inside it. A repo that
@@ -103,8 +120,8 @@ export interface WatchdogOutcome {
   code: string;
   /** Dead lanes found in the window. `0` on every skip. */
   deadCount: number;
-  /** Issues opened and comments added, in the order they were written. */
-  signals: Array<{ lane: string; issue: number; wrote: "opened" | "commented" }>;
+  /** Issues opened, commented on and retired, in the order they were written. */
+  signals: Array<{ lane: string; issue: number; wrote: "opened" | "commented" | "retired" }>;
 }
 
 function readRuns(gh: GhExec): RunSummary[] {
@@ -171,6 +188,23 @@ function readSignals(gh: GhExec): Array<z.infer<typeof SignalIssue>> {
   return SignalIssue.array().parse(JSON.parse(raw));
 }
 
+const IssueComments = z.object({ comments: z.array(z.object({ body: z.string() })) });
+
+/**
+ * Everything a standing signal has already said — its body and every comment
+ * on it — as one blob for `citedRuns` to read run ids out of.
+ *
+ * Read per standing signal rather than folded into `readSignals`'s listing:
+ * `--json comments` over two hundred issues fetches every comment in the
+ * tracker to answer a question about at most `MAX_SIGNALS` of them, and this
+ * sweep's whole claim is that it declares its own bounds.
+ */
+function readSaid(gh: GhExec, issue: number, body: string | null): string {
+  const raw = gh(["issue", "view", String(issue), "--json", "comments"]);
+  const parsed = IssueComments.parse(JSON.parse(raw));
+  return [body ?? "", ...parsed.comments.map((comment) => comment.body)].join("\n");
+}
+
 export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
   const { gh, eventAction, assignee } = options;
   const now = options.now ?? new Date();
@@ -186,7 +220,8 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
   // What the page did not reach is said out loud. A window silently clipped to whatever fitted is
   // the exact shape of the failure this watches for: an all-clear that was never actually checked.
   const oldest = runs[runs.length - 1];
-  if (runs.length >= RUN_PAGE_SIZE && oldest && isCandidate(oldest, now)) {
+  const pageClipped = runs.length >= RUN_PAGE_SIZE && Boolean(oldest) && isCandidate(oldest, now);
+  if (pageClipped) {
     log(`note: one page of ${RUN_PAGE_SIZE} runs reaches only back to ${oldest.createdAt} — anything older was not swept`);
   }
 
@@ -197,13 +232,13 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
 
   const counted = read.map((run) => ({ ...run, jobCount: jobCount(gh, run.id) }));
   const lanes = deadLanes(counted);
-  if (lanes.length === 0) {
-    log("swept: no lane executed zero jobs");
-    return { action: "swept", code: "all-lanes-live", deadCount: 0, signals: [] };
-  }
 
+  // The zero path reads the tracker too. Returning here on `lanes.length === 0` is the shape
+  // ADR-0099 rules against: the one state in which a standing report has nothing left to say would
+  // be the one state in which nobody looked at it. It costs one `gh issue list` per sweep.
   const signals: WatchdogOutcome["signals"] = [];
   const existing = readSignals(gh);
+
   const reportable = lanes.slice(0, MAX_SIGNALS);
   if (lanes.length > reportable.length) {
     log(`note: ${lanes.length - reportable.length} further dead lane(s) not written about this sweep — at most ${MAX_SIGNALS} per sweep`);
@@ -214,8 +249,78 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
     if (written) signals.push(written);
   }
 
+  // Only a sweep that saw its whole window may say a lane is not dead — see `retireRecovered`.
+  if (pageClipped || candidates.length > read.length) {
+    log("note: this sweep did not see its whole window, so no standing signal was retired");
+  } else {
+    signals.push(...retireRecovered({ gh, runs, lanes, existing, now, log }));
+  }
+
+  if (lanes.length === 0) {
+    log(`swept: no lane executed zero jobs, ${signals.length} signal(s) retired`);
+    return { action: "swept", code: "all-lanes-live", deadCount: 0, signals };
+  }
+
   log(`swept: ${lanes.length} dead lane(s), ${signals.length} signal(s) written`);
   return { action: "swept", code: "dead-lanes-found", deadCount: lanes.length, signals };
+}
+
+/**
+ * Closes every standing signal whose lane has started running again
+ * ([ADR-0099](../../../docs/adr/0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md)
+ * gives a recomputing counter an end;
+ * [ADR-0117](../../../docs/adr/0117-a-standing-report-speaks-only-on-evidence-it-has-not-already.md)
+ * says what a window-shaped one is allowed to read as that end).
+ *
+ * **The evidence is a live run, not an absence of dead ones.** A lane whose signal is standing and
+ * whose dead runs have simply aged out of the window has not recovered — it may be a lane nobody
+ * has triggered in a week, still unable to start the moment somebody does. So retirement needs a
+ * run of that same workflow file, inside the window, that executed something. A run that executed
+ * nothing cannot conclude anything but `failure` (`dead-lanes.ts`'s header — all 25 in this repo's
+ * history did), so any non-dead completed run of the lane is that evidence.
+ *
+ * **A clipped sweep retires nothing.** The caller only calls this when every candidate in the
+ * window was actually job-counted; a lane's dead run sitting unread behind `MAX_JOB_READS` would
+ * otherwise read as recovery, which is this whole mechanism's failure with the sign flipped.
+ *
+ * **A failed close costs the sweep nothing.** Logged and dropped, the rule `reconcile.ts`'s
+ * `retireStanding` already follows: the next sweep finds the same live lane and the same open
+ * issue, so the close is late, never lost.
+ */
+function retireRecovered(options: {
+  gh: GhExec;
+  runs: RunSummary[];
+  lanes: DeadLane[];
+  existing: Array<z.infer<typeof SignalIssue>>;
+  now: Date;
+  log: (line: string) => void;
+}): WatchdogOutcome["signals"] {
+  const { gh, runs, lanes, existing, now, log } = options;
+  const dead = new Set(lanes.map((lane) => lane.path));
+  const retired: WatchdogOutcome["signals"] = [];
+
+  for (const issue of existing) {
+    if (issue.state.toUpperCase() !== "OPEN") continue;
+    const path = markedLane(issue.body ?? "");
+    if (!path || dead.has(path)) continue;
+
+    const live = runs.find((run) => run.path === path && run.status === "completed" && inWindow(run, now));
+    if (!live) {
+      log(`left #${issue.number} open: ${path} has not run inside the window, so nothing says it recovered`);
+      continue;
+    }
+
+    try {
+      gh(["issue", "comment", String(issue.number), "--body", retirementBody(path, live)]);
+      gh(["issue", "close", String(issue.number), "--reason", "completed"]);
+      log(`closed #${issue.number}: ${path} runs again (run ${live.id})`);
+      retired.push({ lane: path, issue: issue.number, wrote: "retired" });
+    } catch (err) {
+      log(`could not close #${issue.number}: ${reason(err)}`);
+    }
+  }
+
+  return retired;
 }
 
 function report(options: {
@@ -233,15 +338,21 @@ function report(options: {
   if (standing) {
     // Thirteen dead runs are one dead lane. A second issue per run would be this ticket's failure
     // with the sign flipped — a signal nobody reads because there is too much of it.
-    const newest = lane.runs[0];
-    gh([
-      "issue",
-      "comment",
-      String(standing.number),
-      "--body",
-      `Still dead: [run ${newest.id}](${newest.htmlUrl}) on \`${newest.headBranch}\` also executed zero jobs (${newest.createdAt}).`,
-    ]);
-    log(`commented on #${standing.number}: ${lane.path} is still dead`);
+    //
+    // And so is a comment per sweep. This path used to take `lane.runs[0]` and write `also executed
+    // zero jobs` every time it ran, whether or not that run was new: #252 carried two identical
+    // `Still dead` notes citing one run fifteen minutes apart, and the word `also` asserted a
+    // novelty nothing had checked (#288). The guard the closed path below already applies against
+    // `closedAt` belongs here too, against a different reference point — what the issue itself
+    // already cites, recomputed from its own comments, with no cursor to keep.
+    const fresh = unreportedRuns(lane, citedRuns(readSaid(gh, standing.number, standing.body)));
+    if (fresh.length === 0) {
+      log(`silent on #${standing.number}: ${lane.path} is still dead, and it already says so`);
+      return undefined;
+    }
+
+    gh(["issue", "comment", String(standing.number), "--body", stillDeadBody(fresh)]);
+    log(`commented on #${standing.number}: ${lane.path} died in ${fresh.length} further run(s)`);
     return { lane: lane.path, issue: standing.number, wrote: "commented" };
   }
 

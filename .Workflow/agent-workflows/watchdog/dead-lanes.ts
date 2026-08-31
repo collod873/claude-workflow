@@ -91,6 +91,17 @@ export const MAX_SIGNALS = 3;
  */
 export function isCandidate(run: RunSummary, now: Date): boolean {
   if (run.status !== "completed" || run.conclusion !== "failure") return false;
+  return inWindow(run, now);
+}
+
+/**
+ * Whether `run` falls inside the lookback window at all, regardless of how it
+ * concluded. `isCandidate` above is this plus "and it failed", and the two are
+ * spelled apart because retirement asks the opposite question of the same
+ * window: a run of a reported lane that *did* execute jobs is the evidence
+ * that the lane can start again.
+ */
+export function inWindow(run: RunSummary, now: Date): boolean {
   const age = now.getTime() - new Date(run.createdAt).getTime();
   return age >= 0 && age <= LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 }
@@ -131,6 +142,46 @@ export function deadLanes(runs: RunSummary[]): DeadLane[] {
  */
 export function signalMarker(path: string): string {
   return `<!-- dead-lane:${path} -->`;
+}
+
+/**
+ * The lane an existing signal is about, read back out of its own marker.
+ *
+ * The sweep already asks "is this lane's signal standing?" by building the
+ * marker and searching for it. Retirement asks the question from the other
+ * end — *which* lanes have a standing signal, including ones this sweep found
+ * nothing about — and that direction needs the marker parsed rather than
+ * matched.
+ */
+export function markedLane(body: string): string | undefined {
+  return /<!-- dead-lane:(.+?) -->/.exec(body)?.[1];
+}
+
+/**
+ * Every run already cited in `text` — a signal's body plus every comment on
+ * it — read out of the run URLs themselves rather than out of the prose
+ * around them.
+ *
+ * The URL is the one part of a citation this module writes in exactly one
+ * shape (`signalBody` and `stillDeadBody` both link `htmlUrl`), so a run id
+ * matched here was named on purpose. Matching loose numbers or timestamps in
+ * the text would let a human's comment mentioning a date silence the next
+ * genuine report, which is a worse failure than the one this fixes.
+ */
+export function citedRuns(text: string): Set<number> {
+  return new Set([...text.matchAll(/\/actions\/runs\/(\d+)/g)].map((match) => Number(match[1])));
+}
+
+/**
+ * Dead runs of `lane` that its standing signal has not already cited, newest
+ * first. Empty means the signal already says everything this sweep knows,
+ * which is the whole reason it exists: the standing path used to take
+ * `lane.runs[0]` and comment on every sweep, so one dead run produced one
+ * `Still dead` per session the owner ran — the word `also` asserting a novelty
+ * nothing had checked (#288).
+ */
+export function unreportedRuns(lane: DeadLane, cited: Set<number>): RunSummary[] {
+  return lane.runs.filter((run) => !cited.has(run.id));
 }
 
 /** The signal's title. Stable across sweeps so a reader recognises a repeat. */
@@ -174,5 +225,58 @@ export function signalBody(lane: DeadLane): string {
         ]
       : []),
     signalMarker(lane.path),
+  ].join("\n");
+}
+
+/**
+ * The comment added to a standing signal, naming the dead runs it had not
+ * already cited. Called only with a non-empty `fresh`, because a comment that
+ * says `also` about a run the issue already links is noise wearing evidence's
+ * clothes.
+ */
+export function stillDeadBody(fresh: RunSummary[]): string {
+  const newest = fresh[0];
+  const rest = fresh.slice(1);
+  return [
+    `Still dead: [run ${newest.id}](${newest.htmlUrl}) on \`${newest.headBranch}\` also executed zero jobs (${newest.createdAt}).`,
+    ...(rest.length > 0
+      ? [
+          "",
+          `${rest.length} further dead run${rest.length === 1 ? "" : "s"} since this lane was last noted here:`,
+          "",
+          ...rest.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}) — \`${run.headBranch}\`, ${run.createdAt}`),
+          ...(rest.length > 10 ? [`- …and ${rest.length - 10} more`] : []),
+        ]
+      : []),
+  ].join("\n");
+}
+
+/**
+ * The comment that retires a standing signal once its lane runs again
+ * ([ADR-0117](../../../docs/adr/0117-a-standing-report-speaks-only-on-evidence-it-has-not-already.md),
+ * amending [ADR-0099](../../../docs/adr/0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md)).
+ *
+ * A closing record in `close-gate.py`'s own grammar, declaring `No diff.`:
+ * `signalBody` writes no `## Acceptance criteria` heading, and a dead lane is
+ * cleared by whatever commit fixed the workflow file rather than by a diff of
+ * this issue's own.
+ *
+ * It cites the live run rather than asserting recovery, because "no dead runs
+ * lately" and "this lane works" are different claims and only the second one
+ * is worth closing an issue on — see `retireRecovered` in `./run-watchdog.ts`
+ * for why the sweep will not retire on the first.
+ */
+export function retirementBody(lane: string, live: RunSummary): string {
+  return [
+    "## Closing record",
+    "",
+    "No diff.",
+    "",
+    `\`${lane}\` starts again: [run ${live.id}](${live.htmlUrl}) on \`${live.headBranch}\` executed jobs`,
+    `(${live.createdAt}), and nothing in the last ${LOOKBACK_DAYS} days executed zero. The signal has`,
+    "nothing left to stand for.",
+    "",
+    "This closes the signal, never the mechanism: the next run of this lane that executes nothing",
+    "opens a fresh one against the same marker.",
   ].join("\n");
 }
