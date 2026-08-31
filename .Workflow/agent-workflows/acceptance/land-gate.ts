@@ -42,7 +42,7 @@ import { ACCEPTANCE_TEST_DIR } from "./acceptance";
 /** What one run of the gate decided. */
 export type LandGateOutcome =
   | { verdict: "clear" }
-  | { verdict: "repaired"; added: number }
+  | { verdict: "repaired"; added: number; carried: number }
   | { verdict: "refused"; reason: string };
 
 export interface LandGateDeps {
@@ -61,14 +61,20 @@ export interface LandGateDeps {
 }
 
 /** CLAUDE.md: why, not what. */
-function repairCommitMessage(added: number): string {
+function repairCommitMessage(added: number, carried: number): string {
+  const recut =
+    carried === 0
+      ? ""
+      : `\n\n${carried} of the entries changed fingerprint without the duplication changing: jscpd re-cut a
+clone this lane already carried, because content beside it became shared (#282). Those are
+substituted one for one, never added to.`;
   return `Baseline ${added} clone(s) between this lane's own acceptance tests
 
 tests/acceptance/ is immutable to every pull request, so a clone found entirely inside it is
 lane 04's own overlap and nobody else could ever have deduped it — mechanical, not a judgement
 call, and the same reasoning that already carries #261's overlap with #274's
 (see clone-gate.baseline.json's own history). Baselined here, before the push, so main never
-carries a tree bin/clone-gate refuses.
+carries a tree bin/clone-gate refuses.${recut}
 
 Part of #162`;
 }
@@ -96,7 +102,7 @@ export function runLandGate(deps: LandGateDeps): LandGateOutcome {
   }
 
   deps.git(["add", BASELINE_RELATIVE_PATH]);
-  deps.git(["commit", "-m", repairCommitMessage(repair.added)]);
+  deps.git(["commit", "-m", repairCommitMessage(repair.added, repair.carried)]);
   return repair;
 }
 
@@ -157,7 +163,7 @@ async function main(): Promise<void> {
   }
   console.log(
     outcome.verdict === "repaired"
-      ? `land gate: baselined ${outcome.added} clone(s) among this lane's own output`
+      ? `land gate: baselined ${outcome.added} clone(s) among this lane's own output, carried ${outcome.carried} across a re-cut`
       : "land gate: clear",
   );
 }

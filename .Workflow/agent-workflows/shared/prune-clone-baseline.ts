@@ -16,6 +16,11 @@ import { BASELINE_RELATIVE_PATH, runCloneGate } from "./clone-gate.ts";
  * at its push on exactly that: one baseline entry that no longer reproduced, in a file it had just
  * deduplicated, forty minutes in.
  *
+ * Since ADR-0116 it also carries a **re-cut** entry — the same clone, in the same files, reported
+ * over a different span of text because a comment inside it changed or the match grew through
+ * content beside it. That is still not an add: one entry is substituted for one, and the count
+ * cannot rise. Without it a tolerated clone wedged every nearby edit, which is #282.
+ *
  * `node prune-clone-baseline.ts <root>`               prunes; exit 0 unless the gate could not run.
  * `node prune-clone-baseline.ts diff <root> <path>`   the scan with no write — exit 1 on a stale
  *                                                      entry *or* an unbaselined clone, which is

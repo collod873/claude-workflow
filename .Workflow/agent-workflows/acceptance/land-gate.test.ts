@@ -50,14 +50,32 @@ describe("runLandGate", () => {
 
   it("commits the repaired baseline when the only clones are the acceptance lane's own overlap", () => {
     const { fake, refusals, deps: d } = deps({
-      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 1 }),
+      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 1, carried: 0 }),
     });
 
     const outcome = runLandGate(d);
 
-    expect(outcome).toEqual({ verdict: "repaired", added: 1 });
+    expect(outcome).toEqual({ verdict: "repaired", added: 1, carried: 0 });
     expect(fake.calls[0]?.[0]).toBe("add");
     expect(fake.calls[1]?.[0]).toBe("commit");
+    expect(refusals).toEqual([]);
+  });
+
+  it("commits the baseline when nothing was added and a re-cut entry was only carried across", () => {
+    // #282's trap reaches this lane too: a clone it already carries can change fingerprint without
+    // the duplication changing, and the repair writes a file with the same number of entries in it.
+    // "Nothing added" is not "nothing to commit" — leaving it uncommitted pushes a tree the gate
+    // refuses, which is the silent-red-main hole this whole gate exists to close.
+    const { fake, refusals, deps: d } = deps({
+      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 0, carried: 1 }),
+    });
+
+    const outcome = runLandGate(d);
+
+    expect(outcome).toEqual({ verdict: "repaired", added: 0, carried: 1 });
+    expect(fake.calls[0]?.[0]).toBe("add");
+    expect(fake.calls[1]?.[0]).toBe("commit");
+    expect(fake.calls[1]?.[2]).toContain("#282");
     expect(refusals).toEqual([]);
   });
 

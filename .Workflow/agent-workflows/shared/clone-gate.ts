@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { FORMATS } from "@jscpd/tokenizer";
+import { weak } from "@jscpd/core";
+import { FORMATS, tokenize } from "@jscpd/tokenizer";
 import { childEnv } from "./child-env.ts";
 
 /**
@@ -26,7 +27,9 @@ import { childEnv } from "./child-env.ts";
  *
  * Rule 5 is `clone-gate.baseline.json`: written once, at turn-on, over the 98 clones this repo
  * already had, and it only ever shrinks — a clone that stops reproducing is a finding here until
- * its baseline entry is deleted.
+ * its baseline entry is deleted. Its one door is `recut`, for the entry whose fingerprint moved
+ * without the duplication moving (#282, ADR-0116); a carry substitutes one entry for one and the
+ * count never rises.
  *
  * Rule 6 is where it runs: the `test` and `all` slots of `.claude/contract.json` and CI, never the
  * `stop` slot. This repo's `stop` slot is `bin/gauntlet stop`, which runs the `test` slot — so the
@@ -198,24 +201,158 @@ function unreadRefusal(unread: string[]): string {
   );
 }
 
+/** The paths a clone names, without the line numbers that move under any edit above them. */
+function filesOf(where: readonly string[]): string {
+  return [...where].map((location) => location.slice(0, location.lastIndexOf(":"))).sort().join("\0");
+}
+
+/** How many lines a fragment spans — read off the fragment rather than trusted from the entry. */
+function fragmentLines(fragment: string): number {
+  return fragment.split("\n").length;
+}
+
 /**
- * The baseline read against one scan's duplicates, and the two diffs every caller of the baseline
- * needs from that pairing: `introduced` (a clone the baseline does not carry) and `stale` (a
- * baseline entry that no longer reproduces). `runCloneGate`'s own report and
- * `repairAcceptanceBaseline` both start from exactly this pair.
+ * A fragment reduced to the code in it: jscpd's own tokens, filtered by jscpd's own `weak` handler,
+ * which is the one of its three that drops comments as well as blank lines and line breaks.
+ *
+ * Imported rather than restated for the reason the `format` list is derived from `FORMATS` rather
+ * than typed — a rule about a tokeniser, written down twice, is a rule that is right the day it is
+ * written. A format `tokenize` cannot read falls back to the raw text, which is the answer this
+ * comparison had before it existed.
+ */
+function signature(format: string, fragment: string): string[] {
+  try {
+    return tokenize(fragment, format)
+      .filter((token) => weak(token))
+      .map((token) => `${token.type} ${token.value}`);
+  } catch {
+    return [fragment];
+  }
+}
+
+/** True when `needle` appears in `haystack` unbroken — token identity, never string containment. */
+function containsRun(haystack: string[], needle: string[]): boolean {
+  if (needle.length === 0 || needle.length > haystack.length) return false;
+  for (let start = 0; start <= haystack.length - needle.length; start++) {
+    let matched = true;
+    for (let offset = 0; matched && offset < needle.length; offset++) {
+      matched = haystack[start + offset] === needle[offset];
+    }
+    if (matched) return true;
+  }
+  return false;
+}
+
+/**
+ * True when `found` is `entry`'s own clone, re-cut — the same duplication, reported over a different
+ * span of text, and therefore under a different `hash`.
+ *
+ * This is the door #282 found missing. A fingerprint is the reported fragment's text, which is not
+ * the same thing as the clone: jscpd's fragment is a slice of the source between two matched tokens,
+ * and it carries whatever sits inside that slice — including comments, which the detector's default
+ * mode does not require to match. So **rewording a comment inside a baselined clone changes its
+ * fingerprint while changing nothing about the duplication**. That is what #274 hit: `fakeGh` in
+ * `fixer.test.ts` and `open-questions.test.ts`, 13 lines and 107 tokens before and after, in the same
+ * two files at the same two lines, under a new hash. The old entry stopped reproducing (a finding),
+ * the new one was not in the baseline (a finding), and `--prune-baseline` only ever deleted — so a
+ * clone the repo had agreed to tolerate became an unlandable tree, escapable only by refactoring in
+ * the middle of an unrelated change. The same happens when the *extent* moves, which it does when
+ * content beside the clone becomes shared and the matched run grows through it.
+ *
+ * A carry is a substitution, never a growth (`--prune-baseline` still has no way to *add* an entry),
+ * and the three conditions are what keep it from being one:
+ *
+ * - **the same files**, so a baselined clone's identity can never migrate onto duplication
+ *   somewhere else — this is what fences the looseness of `signature` to the one pair of files the
+ *   baseline already named;
+ * - **one signature inside the other**, so the new entry is the old debt's own code with its edges
+ *   redrawn or its commentary rewritten, not a different clone that happens to share a file pair;
+ * - **grown by less than a clone**, in lines read off the fragments. The gate reports nothing under
+ *   `MIN_LINES`, so an edge smaller than that is an edge it has no opinion about, and refusing it
+ *   would be refusing something this gate cannot measure. Anything bigger is new duplication and
+ *   stays a finding.
+ *
+ * Nothing here reads `lines`, `tokens` or the entry's own line numbers. Every input is either the
+ * fragment — which `hash` is over, so `baselineDiff` can re-derive it and a hand-edited one cannot
+ * lie — or the paths. That is what keeps the new field from widening what a baseline file can claim.
+ */
+function recut(entry: BaselineEntry, found: Duplicate): boolean {
+  if (entry.fragment === undefined || entry.format !== found.format) return false;
+  if (filesOf(entry.where) !== filesOf(found.where)) return false;
+  const was = signature(entry.format, entry.fragment);
+  const now = signature(found.format, found.fragment);
+  if (!containsRun(now, was) && !containsRun(was, now)) return false;
+  return fragmentLines(found.fragment) - fragmentLines(entry.fragment) < MIN_LINES;
+}
+
+/** A baseline entry and the re-cut of it this scan found, the pair `--prune-baseline` substitutes. */
+interface Carry {
+  from: BaselineEntry;
+  to: Duplicate;
+}
+
+/**
+ * Pairs each stale entry with its re-cut, at most one apiece and each found clone claimed once.
+ * Deterministic — stale entries in hash order, and the smallest re-cut wins — because two runs over
+ * the same tree that carried different entries would be a ratchet nobody could review.
+ */
+function carriesOf(stale: BaselineEntry[], introduced: Duplicate[]): Carry[] {
+  const claimed = new Set<string>();
+  const carries: Carry[] = [];
+  for (const entry of [...stale].sort((a, b) => a.hash.localeCompare(b.hash))) {
+    const candidate = introduced
+      .filter((found) => !claimed.has(found.hash) && recut(entry, found))
+      .sort((a, b) => fragmentLines(a.fragment) - fragmentLines(b.fragment) || a.hash.localeCompare(b.hash))[0];
+    if (candidate === undefined) continue;
+    claimed.add(candidate.hash);
+    carries.push({ from: entry, to: candidate });
+  }
+  return carries;
+}
+
+/**
+ * The baseline read against one scan's duplicates, and the three diffs every caller of the baseline
+ * needs from that pairing: `introduced` (a clone the baseline does not carry), `stale` (a baseline
+ * entry that no longer reproduces), and `carried` (a stale entry and the introduced clone that is
+ * the same debt re-cut — see `recut`). A carry is in neither of the other two lists: it is not new
+ * duplication and it is not paid-off debt. `runCloneGate`'s own report and
+ * `repairAcceptanceBaseline` both start from exactly this split.
+ *
+ * `corrupt` is a baseline entry carrying a `fragment` that does not hash to its own `hash`. Only a
+ * hand edit can produce one, and it is a refusal rather than a skip for the reason rule 3 gives
+ * about every other hole: a fingerprint nobody re-derives is a fingerprint that stops meaning
+ * anything, quietly.
  */
 function baselineDiff(
   root: string,
   duplicates: Duplicate[],
-): { baseline: BaselineEntry[]; introduced: Duplicate[]; stale: BaselineEntry[] } {
+): {
+  baseline: BaselineEntry[];
+  introduced: Duplicate[];
+  stale: BaselineEntry[];
+  carried: Carry[];
+  corrupt: BaselineEntry[];
+} {
   const baseline = readBaseline(root);
+  const corrupt = baseline.filter(
+    (entry) => entry.fragment !== undefined && fingerprint(entry.format, entry.fragment) !== entry.hash,
+  );
   const baselineHashes = new Set(baseline.map((entry) => entry.hash));
   const foundHashes = new Set(duplicates.map((entry) => entry.hash));
-  const introduced = [
+  const unbaselined = [
     ...new Map(duplicates.filter((entry) => !baselineHashes.has(entry.hash)).map((entry) => [entry.hash, entry])).values(),
   ];
-  const stale = baseline.filter((entry) => !foundHashes.has(entry.hash));
-  return { baseline, introduced, stale };
+  const unreproduced = baseline.filter((entry) => !foundHashes.has(entry.hash));
+  const carried = corrupt.length > 0 ? [] : carriesOf(unreproduced, unbaselined);
+  const carriedFrom = new Set(carried.map((carry) => carry.from.hash));
+  const carriedTo = new Set(carried.map((carry) => carry.to.hash));
+  return {
+    baseline,
+    introduced: unbaselined.filter((entry) => !carriedTo.has(entry.hash)),
+    stale: unreproduced.filter((entry) => !carriedFrom.has(entry.hash)),
+    carried,
+    corrupt,
+  };
 }
 
 /** The interpreter a `#!` line names, by basename, or `undefined` when there is no shebang. */
@@ -401,12 +538,24 @@ interface Duplicate {
   format: string;
   lines: number;
   tokens: number;
-  /** Repo-relative, for a human reading the failure. Never part of `hash`. */
+  /**
+   * Repo-relative, for a human reading the failure. Never part of `hash`, and never refreshed once
+   * written — the line numbers are where the clone was when the entry was recorded, and rewriting
+   * them on every prune would put this file in the diff of every change that moves a line above one.
+   */
   where: string[];
+  /** The duplicated text itself. What `hash` is over, and the only thing a re-cut is recognisable by. */
+  fragment: string;
 }
 
-/** One baseline entry — a `Duplicate` minus nothing, so a stale entry is readable on its own. */
-type BaselineEntry = Duplicate;
+/**
+ * One baseline entry — a `Duplicate` minus nothing, so a stale entry is readable on its own.
+ *
+ * `fragment` is optional for one reason: a baseline written before the field existed. Such an entry
+ * still matches by `hash` exactly as it always did; it simply cannot be carried across a re-cut
+ * (`recut`), and `--prune-baseline` fills the fragment in the first time it sees the clone reproduce.
+ */
+type BaselineEntry = Omit<Duplicate, "fragment"> & { fragment?: string };
 
 interface JscpdReport {
   statistics: { formats: Record<string, { sources: Record<string, unknown> }> };
@@ -483,6 +632,7 @@ function scan(root: string, files: ScopedFile[]): ScanResult {
         lines: duplicate.lines,
         tokens: duplicate.tokens,
         where,
+        fragment: duplicate.fragment,
       };
     });
 
@@ -508,6 +658,40 @@ function writeBaseline(root: string, entries: BaselineEntry[]): void {
   writeFileSync(path, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
+/**
+ * What `--prune-baseline` writes: the same entries minus the ones that no longer reproduce, with
+ * each carried entry replaced by its re-cut. One entry out per entry in, never one more — which is
+ * the property `regenerate-artifacts.ts` puts this file on its list for, and the one a carry must
+ * not cost.
+ *
+ * Survivors are written back untouched but for one thing: an entry recorded before `fragment`
+ * existed gets its fragment filled in from the scan that just matched it by hash. That is the whole
+ * migration — no rewrite of `where`, `lines` or `tokens`, so the file lands in a diff once and then
+ * stops moving under changes that only shift lines.
+ */
+function prunedBaseline(
+  baseline: BaselineEntry[],
+  duplicates: Duplicate[],
+  stale: BaselineEntry[],
+  carried: Carry[],
+): BaselineEntry[] {
+  const found = new Map(duplicates.map((entry) => [entry.hash, entry]));
+  const carriedFrom = new Map(carried.map((carry) => [carry.from.hash, carry.to]));
+  const gone = new Set(stale.map((entry) => entry.hash));
+  const next: BaselineEntry[] = [];
+  for (const entry of baseline) {
+    if (gone.has(entry.hash)) continue;
+    const replacement = carriedFrom.get(entry.hash);
+    if (replacement !== undefined) {
+      next.push(replacement);
+      continue;
+    }
+    const fragment = entry.fragment ?? found.get(entry.hash)?.fragment;
+    next.push(fragment === undefined ? entry : { ...entry, fragment });
+  }
+  return next;
+}
+
 /** `format a, format b` — the per-language file counts the banner carries alongside the total. */
 function formatBreakdown(files: ScopedFile[]): string {
   const counts = new Map<string, number>();
@@ -518,8 +702,22 @@ function formatBreakdown(files: ScopedFile[]): string {
     .join(", ");
 }
 
-function describe(entry: Duplicate): string {
+function describe(entry: BaselineEntry): string {
   return `  ${entry.format}, ${entry.lines} lines / ${entry.tokens} tokens [${entry.hash}]\n    ${entry.where.join("\n    ")}`;
+}
+
+/** A carry, in the one shape both the finding and `--prune-baseline`'s receipt print it. */
+function describeCarry(carry: Carry): string {
+  return `${describe(carry.from)}\n  → re-cut as ${carry.to.lines} lines / ${carry.to.tokens} tokens [${carry.to.hash}]\n    ${carry.to.where.join("\n    ")}`;
+}
+
+/** `baselineDiff`'s `corrupt` message, in the one shape both its callers report it in. */
+function corruptRefusal(corrupt: BaselineEntry[]): string {
+  return (
+    `clone gate: ${corrupt.length} baseline entr(ies) carry a fragment that does not hash to their own hash:\n` +
+    `${corrupt.map(describe).join("\n")}\n` +
+    `Only a hand edit can do that, and the fragment is what a re-cut is recognised by — restore ${BASELINE_RELATIVE_PATH} from git.`
+  );
 }
 
 /**
@@ -580,7 +778,12 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
     return 2;
   }
 
-  const { baseline, introduced, stale } = baselineDiff(root, duplicates);
+  const { baseline, introduced, stale, carried, corrupt } = baselineDiff(root, duplicates);
+
+  if (corrupt.length > 0) {
+    console.error(corruptRefusal(corrupt));
+    return 2;
+  }
 
   if (argv.includes("--seed-baseline")) {
     // Write-once, by refusal. Rule 5 lets a repo carry the debt it already had; it does not let a
@@ -599,10 +802,10 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
   }
 
   if (argv.includes("--prune-baseline")) {
-    const kept = baseline.filter((entry) => !stale.includes(entry));
-    writeBaseline(root, kept);
+    writeBaseline(root, prunedBaseline(baseline, duplicates, stale, carried));
+    const left = baseline.length - stale.length;
     console.log(
-      `clone gate: pruned ${baseline.length - kept.length} entries that no longer reproduce; ${kept.length} left`,
+      `clone gate: pruned ${stale.length} entries that no longer reproduce, carried ${carried.length} across a re-cut; ${left} left`,
     );
     return 0;
   }
@@ -618,7 +821,19 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
         `${stale.map(describe).join("\n")}\n  bin/clone-gate --prune-baseline`,
     );
   }
-  if (introduced.length > 0 || stale.length > 0) return 1;
+  if (carried.length > 0) {
+    // Still a finding — the committed baseline disagrees with the tree, and this run writes nothing.
+    // What it is not is a choice between two impossible things, which is what #282 hit: the same
+    // debt reported as both paid off and newly introduced, with prune only able to delete.
+    console.error(
+      `clone gate: ${carried.length} baselined clone(s) were re-cut — the same code, in the same files, reported over a\n` +
+        "different span of text: a comment inside it was reworded, or content beside it became shared and the\n" +
+        "match grew through it. Nothing was deduplicated and nothing new was written. The baseline substitutes\n" +
+        "the new fingerprint for the old, one entry for one:\n" +
+        `${carried.map(describeCarry).join("\n")}\n  bin/clone-gate --prune-baseline`,
+    );
+  }
+  if (introduced.length > 0 || stale.length > 0 || carried.length > 0) return 1;
 
   console.log(`clone gate: ${duplicates.length} clone(s), all carried by ${BASELINE_RELATIVE_PATH} (${baseline.length} entries)`);
   return 0;
@@ -627,7 +842,7 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
 /** What one call to `repairAcceptanceBaseline` decided. */
 export type AcceptanceRepairOutcome =
   | { verdict: "clean" }
-  | { verdict: "repaired"; added: number }
+  | { verdict: "repaired"; added: number; carried: number }
   | { verdict: "refused"; reason: string };
 
 /**
@@ -665,9 +880,13 @@ export function repairAcceptanceBaseline(root: string, testDir: string): Accepta
     return { verdict: "refused", reason: unreadRefusal(unread) };
   }
 
-  const { baseline, introduced, stale } = baselineDiff(root, duplicates);
+  const { baseline, introduced, stale, carried, corrupt } = baselineDiff(root, duplicates);
 
-  if (introduced.length === 0 && stale.length === 0) {
+  if (corrupt.length > 0) {
+    return { verdict: "refused", reason: corruptRefusal(corrupt) };
+  }
+
+  if (introduced.length === 0 && stale.length === 0 && carried.length === 0) {
     return { verdict: "clean" };
   }
 
@@ -693,15 +912,19 @@ export function repairAcceptanceBaseline(root: string, testDir: string): Accepta
     };
   }
 
-  writeBaseline(root, [...baseline, ...introduced]);
-  return { verdict: "repaired", added: introduced.length };
+  // `prunedBaseline` with nothing stale to drop: the substitution half only, so a clone of this
+  // lane's own that jscpd re-cut keeps its one entry instead of wedging the push the way #282
+  // wedged a workstation. Nothing is deleted here and nothing is added but `introduced`.
+  writeBaseline(root, [...prunedBaseline(baseline, duplicates, [], carried), ...introduced]);
+  return { verdict: "repaired", added: introduced.length, carried: carried.length };
 }
 
 // --- CLI -------------------------------------------------------------------------------------
 //
 // `bin/clone-gate`                    scan; red on a clone the baseline does not carry.
 // `bin/clone-gate --seed-baseline`    write the baseline once, at turn-on. Refuses if one exists.
-// `bin/clone-gate --prune-baseline`   drop entries that no longer reproduce. Only ever shrinks.
+// `bin/clone-gate --prune-baseline`   drop entries that no longer reproduce, and carry the ones the
+//                                     detector re-cut. Never more entries out than in.
 //
 // `pathToFileURL(process.argv[1])` rather than a hand-built `file://` — this repo's own checkout
 // path has a space in it, and the naive form loses the percent-encoding.

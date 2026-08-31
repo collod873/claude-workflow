@@ -62,6 +62,19 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    lane may ever dedupe them, and a ratchet nobody can turn is not a ratchet — it was a red `main`
    that lane 05 got blamed for, four times in one week (`acceptance/land-gate.ts`, ADR-0114).
 
+   **A ratchet also needs a door for an entry that moved.** An entry is a fingerprint of the
+   duplicated text, and that text is not the same thing as the clone: a detector reports a span of
+   source between two matched tokens, and the span carries whatever sits inside it. Reword a comment
+   in the middle of a baselined clone and the fingerprint changes with the duplication untouched;
+   land the same line in both files beside it and the match grows through it. Either way the old
+   entry reads as paid off *and* the new one reads as introduced, and a baseline that only deletes
+   has no way back in — which turns every tolerated clone into a landmine under every nearby edit
+   (#282, [ADR-0116](../adr/0116-a-clone-the-detector-re-cut-is-carried-across-not-deleted-an.md)).
+   So the gate recognises a **re-cut**: the same code, in the same files, over a
+   different span. It is carried, one entry substituted for one, and the count never rises. The
+   fence is the file set and the detector's own token comparison — duplication in a pair of files
+   the baseline never named, or code the baseline never carried, is a finding exactly as before.
+
 6. **It runs in `test` and `all`, and in CI. Never in `stop`.** Token-window matching across a few
    hundred files takes seconds, not the sub-second budget the turn-end gate reserves (ADR-0022).
    The contract slots are where the gate belongs; the turn-end gate is where it would only ever be

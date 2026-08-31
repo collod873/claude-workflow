@@ -145,6 +145,150 @@ describe("runCloneGate", () => {
 });
 
 /**
+ * The re-cut door (#282). Every test here is the same shape: seed a clone, baseline it, change
+ * something that is *not* the duplication, and check what the ratchet does with a fingerprint that
+ * moved on its own.
+ */
+describe("a baselined clone whose fingerprint moves", () => {
+  /** A clone worth reporting, with a comment inside the span jscpd will report as the fragment. */
+  const cloned = (comment: string): string =>
+    [
+      "export const SENTINEL = 1;",
+      "",
+      `/** ${comment} */`,
+      "export function summariseRun(samples: number[]): { total: number; peak: number; mean: number } {",
+      "  let total = 0;",
+      "  let peak = Number.NEGATIVE_INFINITY;",
+      "  for (const sample of samples) {",
+      "    total += sample;",
+      "    if (sample > peak) {",
+      "      peak = sample;",
+      "    }",
+      "  }",
+      "  return { total, peak, mean: samples.length === 0 ? 0 : total / samples.length };",
+      "}",
+      "",
+    ].join("\n");
+
+  /** A scratch repo holding the clone twice, with its baseline already seeded over it. */
+  function baselinedClone(comment = "what this measures"): string {
+    const dir = makeScratchRepo();
+    writeFileSync(join(dir, "left.ts"), cloned(comment), "utf8");
+    writeFileSync(join(dir, "right.ts"), cloned(comment), "utf8");
+    vi.stubEnv("GAUNTLET_VENUE", "");
+    expect(runCloneGate(dir, ["--seed-baseline"])).toBe(0);
+    return dir;
+  }
+
+  /** The baseline as written, for the assertions that are about the file rather than the exit code. */
+  function baselineOf(dir: string): Array<{ hash: string; where: string[]; fragment?: string }> {
+    return JSON.parse(readFileSync(join(dir, BASELINE_RELATIVE_PATH), "utf8")) as Array<{
+      hash: string;
+      where: string[];
+      fragment?: string;
+    }>;
+  }
+
+  it("is carried across a reworded comment instead of being both paid off and newly introduced", () => {
+    // The live failure: `fakeGh` in fixer.test.ts and open-questions.test.ts, 13 lines and 107
+    // tokens before and after, in the same two files — under a new hash, because jscpd's fragment
+    // is a slice of source and carries comments its default mode never required to match. The old
+    // entry read as paid off, the new one as introduced, and `--prune-baseline` only deleted.
+    const dir = baselinedClone();
+    const before = baselineOf(dir);
+    writeFileSync(join(dir, "left.ts"), cloned("what this actually measures, at some length"), "utf8");
+
+    const { code, out } = runGate(dir);
+
+    expect(code, out).toBe(1);
+    expect(out).toContain("were re-cut");
+    // Not the two messages that used to fire, which pointed at deleting the entry and at refactoring.
+    expect(out).not.toContain("no longer reproduce");
+    expect(out).not.toContain("not in the baseline");
+
+    expect(runCloneGate(dir, ["--prune-baseline"])).toBe(0);
+    const after = baselineOf(dir);
+    expect(after).toHaveLength(before.length);
+    expect(after[0].hash).not.toBe(before[0].hash);
+    expect(runGate(dir).code).toBe(0);
+  });
+
+  it("is carried when the match grows through content beside it that became shared", () => {
+    // The other way a fingerprint moves with nobody touching the duplication: land the same line
+    // in both files next to the clone and jscpd extends the matched run through it.
+    const dir = baselinedClone();
+    const before = baselineOf(dir);
+    for (const file of ["left.ts", "right.ts"]) {
+      writeFileSync(join(dir, file), `export const SHARED_LIMIT = 32;\n${cloned("what this measures")}`, "utf8");
+    }
+
+    const { code, out } = runGate(dir);
+    expect(code, out).toBe(1);
+    expect(out).toContain("were re-cut");
+
+    expect(runCloneGate(dir, ["--prune-baseline"])).toBe(0);
+    expect(baselineOf(dir)).toHaveLength(before.length);
+    expect(runGate(dir).code).toBe(0);
+  });
+
+  it("still refuses a second, genuinely new clone between the very same two files", () => {
+    // The carry is fenced by the file pair, so this is the case that says the fence is not a hole:
+    // duplication nobody baselined, in the pair a baselined entry already names, is still a finding.
+    const dir = baselinedClone();
+    const second = [
+      "",
+      "export function widen(range: [number, number], by: number): [number, number] {",
+      "  const [low, high] = range;",
+      "  const nextLow = low - by;",
+      "  const nextHigh = high + by;",
+      "  if (nextLow > nextHigh) {",
+      "    return [nextHigh, nextLow];",
+      "  }",
+      "  return [nextLow, nextHigh];",
+      "}",
+      "",
+    ].join("\n");
+    for (const file of ["left.ts", "right.ts"]) {
+      writeFileSync(join(dir, file), cloned("what this measures") + second, "utf8");
+    }
+
+    const { code, out } = runGate(dir);
+
+    expect(code, out).toBe(1);
+    expect(out).toContain("not in the baseline");
+  });
+
+  it("still reports a clone that was actually deduplicated as paid-off debt to delete", () => {
+    // The ratchet's own half. A carry must not have turned every stale entry into a shrug.
+    const dir = baselinedClone();
+    writeFileSync(join(dir, "right.ts"), "export const OTHER = 2;\n", "utf8");
+
+    const { code, out } = runGate(dir);
+
+    expect(code, out).toBe(1);
+    expect(out).toContain("no longer reproduce");
+    expect(out).not.toContain("were re-cut");
+
+    expect(runCloneGate(dir, ["--prune-baseline"])).toBe(0);
+    expect(baselineOf(dir)).toHaveLength(0);
+  });
+
+  it("refuses a baseline whose fragment was edited to something its own hash does not cover", () => {
+    // `fragment` is what a re-cut is recognised by, so it is the one new thing a hand-edited
+    // baseline could lie with. It cannot: the hash is over it, and the gate re-derives that.
+    const dir = baselinedClone();
+    const baseline = baselineOf(dir);
+    baseline[0].fragment = "return 1;";
+    writeFileSync(join(dir, BASELINE_RELATIVE_PATH), `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
+
+    const { code, out } = runGate(dir);
+
+    expect(code).toBe(2);
+    expect(out).toContain("does not hash to their own hash");
+  });
+});
+
+/**
  * `repairAcceptanceBaseline` — the mechanical fix `land-gate.ts` runs before the acceptance lane
  * pushes to `main` (see that file, and its own doc comment above the function it calls). A block of
  * duplicated content, long enough to clear jscpd's 50-token/5-line minimum twice over so the tests

@@ -9,7 +9,7 @@
 #
 #   bin/clone-gate                   scan; red on a clone the baseline does not carry
 #   bin/clone-gate --seed-baseline   write the baseline once, at turn-on
-#   bin/clone-gate --prune-baseline  drop entries that no longer reproduce
+#   bin/clone-gate --prune-baseline  drop entries that no longer reproduce, carry the re-cut ones
 #
 # Exit codes are the gauntlet's three: 0 clean, 1 a finding, 2 the gate could not run.
 set -uo pipefail
