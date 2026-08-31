@@ -432,14 +432,12 @@ export interface StageOptions {
   promptViaStdin?: boolean;
   /**
    * This stage's identity for checkpointing and raw-response preservation —
-   * both are keyed on it, and both are opt-in on setting it. Omitted (every
-   * call site outside `to-tickets.ts` today) means neither runs: no
-   * checkpoints directory is touched, and a rejected response is not saved
-   * anywhere beyond the error it's already part of. `to-tickets.ts` is the
-   * one lane retried under its own name (a failed workflow run, re-dispatched
-   * against the same commit), which is what checkpointing is for.
+   * both are keyed on it. Required: #274 made every `runStage` call site name
+   * its stage explicitly (`lane-stage-names.test.ts` pins the ten it
+   * migrated), so there is no longer a call site left for an omitted name to
+   * quietly opt out of either mechanism.
    */
-  stage?: string;
+  stage: string;
 }
 
 /**
@@ -461,20 +459,20 @@ export interface StageOptions {
  * `{{VAR}}` is a wiring bug to catch here, not a partially-substituted
  * prompt to hand to a model.
  *
- * **Checkpointing, when `options.stage` is set.** Before spawning, a
- * checkpoint keyed on this stage's substituted prompt and the current commit
- * is looked up; a match skips `exec` entirely and returns the checkpointed
- * answer re-validated through `output.parse`. A miss — for any reason, see
- * `loadCheckpoint` — spawns as usual, and an accepted answer is checkpointed
- * for the next call to find. A rejected response is preserved the same way
- * it always was (`preservingRaw`), just relocated here from its one caller.
+ * **Checkpointing.** Before spawning, a checkpoint keyed on this stage's
+ * substituted prompt and the current commit is looked up; a match skips
+ * `exec` entirely and returns the checkpointed answer re-validated through
+ * `output.parse`. A miss — for any reason, see `loadCheckpoint` — spawns as
+ * usual, and an accepted answer is checkpointed for the next call to find. A
+ * rejected response is preserved the same way it always was
+ * (`preservingRaw`), just relocated here from its one caller.
  */
 export async function runStage<T>(
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
   output: StructuredOutput<T>,
-  options: StageOptions = {},
+  options: StageOptions,
 ): Promise<T> {
   if (options.allowedTools?.length && options.disallowedTools?.length) {
     throw new Error(
@@ -487,10 +485,8 @@ export async function runStage<T>(
   const prompt = substitute(promptPath, template, vars);
 
   const stage = options.stage;
-  if (stage !== undefined) {
-    const cached = loadCheckpoint(stage, prompt, output);
-    if (cached !== undefined) return cached;
-  }
+  const cached = loadCheckpoint(stage, prompt, output);
+  if (cached !== undefined) return cached;
 
   const model = options.model ? ["--model", options.model] : [];
   const denied = options.disallowedTools?.length
@@ -525,11 +521,11 @@ export async function runStage<T>(
       responseText = await exec(["-p", prompt, ...flags]);
     }
     const value = output.parse(responseText);
-    if (stage !== undefined) writeCheckpoint(stage, prompt, responseText);
+    writeCheckpoint(stage, prompt, responseText);
     return value;
   };
 
-  return stage !== undefined ? preservingRaw(stage, spawnAndParse) : spawnAndParse();
+  return preservingRaw(stage, spawnAndParse);
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

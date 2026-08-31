@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { withHandoffDir } from "./handoff-dir.fixture";
 import { isolateCheckpointsPerTest } from "./isolate-checkpoints.setup";
 import { createFakeStage } from "./stage.fake";
 import { checkpointPath, runStage, type StageExec } from "./stage";
@@ -43,7 +44,9 @@ describe("runStage", () => {
     const promptPath = writePrompt("Sweep issue #{{ISSUE_NUMBER}} for seams in {{REPO}}.");
     const fake = createFakeStage(RESPONSE);
 
-    await runStage(promptPath, { ISSUE_NUMBER: "13", REPO: "claude-workflow" }, fake.exec, GREETING);
+    await runStage(promptPath, { ISSUE_NUMBER: "13", REPO: "claude-workflow" }, fake.exec, GREETING, {
+      stage: "test",
+    });
 
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0].join(" ")).toContain("Sweep issue #13 for seams in claude-workflow.");
@@ -53,7 +56,7 @@ describe("runStage", () => {
     const promptPath = writePrompt("Plain prompt, no vars.");
     const fake = createFakeStage(RESPONSE);
 
-    await runStage(promptPath, {}, fake.exec, GREETING);
+    await runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" });
 
     const [argv] = fake.calls;
     expect(argv[0]).toBe("-p");
@@ -74,7 +77,7 @@ describe("runStage", () => {
     const promptPath = writePrompt("Prompt.");
     const fake = createFakeStage(RESPONSE);
 
-    await runStage(promptPath, {}, fake.exec, GREETING);
+    await runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" });
 
     const schema = jsonSchemaFlag(fake.calls[0]);
     expect(schema).toBeDefined();
@@ -85,16 +88,18 @@ describe("runStage", () => {
     const promptPath = writePrompt("Prompt.");
     const fake = createFakeStage(RESPONSE);
 
-    await expect(runStage(promptPath, {}, fake.exec, GREETING)).resolves.toEqual({
+    await expect(runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" })).resolves.toEqual({
       greeting: "hi",
     });
   });
 
   it("rejects a response the stage's schema refuses, rather than returning it", async () => {
+    const handoffDir = withHandoffDir();
+    process.env.FAILURE_REASON_PATH = join(handoffDir, "handoff.txt");
     const promptPath = writePrompt("Prompt.");
     const fake = createFakeStage(JSON.stringify({ greeting: "" }));
 
-    await expect(runStage(promptPath, {}, fake.exec, GREETING)).rejects.toThrow(
+    await expect(runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" })).rejects.toThrow(
       /failed schema validation/,
     );
   });
@@ -105,6 +110,7 @@ describe("runStage", () => {
 
     await runStage(promptPath, {}, fake.exec, GREETING, {
       allowedTools: ["Read", "Grep", "Glob"],
+      stage: "test",
     });
 
     const [argv] = fake.calls;
@@ -120,6 +126,7 @@ describe("runStage", () => {
       runStage(promptPath, {}, fake.exec, GREETING, {
         allowedTools: ["Read"],
         disallowedTools: ["Bash"],
+        stage: "test",
       }),
     ).rejects.toThrow(/allowedTools and disallowedTools/);
     expect(fake.calls).toHaveLength(0);
@@ -129,7 +136,9 @@ describe("runStage", () => {
     const promptPath = writePrompt("Needs {{MISSING}}.");
     const fake = createFakeStage(RESPONSE);
 
-    await expect(runStage(promptPath, {}, fake.exec, GREETING)).rejects.toThrow(/MISSING/);
+    await expect(runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" })).rejects.toThrow(
+      /MISSING/,
+    );
     expect(fake.calls).toHaveLength(0);
   });
 
@@ -148,7 +157,7 @@ describe("runStage", () => {
       const promptPath = writePrompt(huge);
       const fake = createFakeStage(RESPONSE);
 
-      await runStage(promptPath, {}, fake.exec, GREETING, { promptViaStdin: true });
+      await runStage(promptPath, {}, fake.exec, GREETING, { promptViaStdin: true, stage: "test" });
 
       expect(fake.stdins[0]).toBe(huge);
       // The schema still rides along — it is a flag, not part of the prompt,
@@ -169,9 +178,9 @@ describe("runStage", () => {
       const promptPath = writePrompt(huge);
       const fake = createFakeStage(RESPONSE);
 
-      await expect(runStage(promptPath, {}, fake.exec, GREETING)).rejects.toThrow(
-        /promptViaStdin/,
-      );
+      await expect(
+        runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" }),
+      ).rejects.toThrow(/promptViaStdin/);
       expect(fake.calls).toHaveLength(0);
     });
 
@@ -179,7 +188,7 @@ describe("runStage", () => {
       const promptPath = writePrompt("Plain prompt.");
       const fake = createFakeStage(RESPONSE);
 
-      await runStage(promptPath, {}, fake.exec, GREETING);
+      await runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" });
 
       expect(fake.stdins[0]).toBeUndefined();
       expect(fake.calls[0]).toContain("Plain prompt.");
