@@ -2,6 +2,8 @@
 
 Recorded 2026-08-29.
 
+Status: superseded by ADR-0117
+
 [ADR-0064](0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) makes a counter name
 the event that fires it, the count it acts at, the issue it files and the action that issue
 proposes. It says nothing about the issue's end, so every standing report this repo files is opened
