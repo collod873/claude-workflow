@@ -135,14 +135,31 @@ describe("the prompts the chain names exist", () => {
     // six-space indent, so wrapping the `runStage` call in anything (a
     // `preservingRaw`, a retry) silently emptied the supplied set and turned
     // this assertion into a failure about the prompt.
+    //
+    // Anchored on the character before the key rather than on the line start,
+    // for the same reason one step on: a var map short enough to fit on one
+    // line yields only its first key to a line-anchored match, and the keys
+    // after it read as unsupplied. The sweep's three-key map is exactly that
+    // shape.
     const supplied = [
       ...readFileSync(".Workflow/agent-workflows/shape/shape.ts", "utf8").matchAll(
-        /^\s+([A-Z][A-Z0-9_]*):/gm,
+        /[\s{,]([A-Z][A-Z0-9_]*):\s/g,
       ),
     ].map((match) => match[1]);
 
-    for (const name of declared(".Workflow/agent-workflows/shape/shaper/prompt.md")) {
-      expect(supplied, `the shaper's prompt references {{${name}}}`).toContain(name);
+    // Every prompt in the chain, not only the shaper's. The sweep's went
+    // unchecked until it grew an `{{IDEA}}`, which is the shape of thing this
+    // catches — a placeholder added to a template without a var behind it.
+    const prompts = [
+      ".Workflow/agent-workflows/shape/sweep/prompt.md",
+      ".Workflow/agent-workflows/shape/shaper/prompt.md",
+      ".Workflow/agent-workflows/shape/refuter/prompt.md",
+    ];
+
+    for (const prompt of prompts) {
+      for (const name of declared(prompt)) {
+        expect(supplied, `${prompt} references {{${name}}}`).toContain(name);
+      }
     }
   });
 });

@@ -75,6 +75,31 @@ export const SHAPER_DENIED_TOOLS = [
   "TodoWrite",
 ];
 
+/**
+ * What the sweep may not do. Narrower than the shaper's list because this
+ * stage's whole job is reading: it keeps the file tools and `Bash`, which is
+ * how it reaches `gh`.
+ *
+ * What it loses is every reach *past* this repository. The prompt has always
+ * said the sweep's scope is the checkout and this repo's issues, and until
+ * this list existed that was a sentence rather than a fact — the stage ran on
+ * whatever the CLI defaults to, under `--dangerously-skip-permissions`, with
+ * the web and the subagent spawner live. ADR-0050 is the ruling that describes
+ * the boundary; this is what holds it.
+ *
+ * `shape.test.ts` asserts the list reaches the argv, for the same reason it
+ * does for `SHAPER_DENIED_TOOLS`: a deny list that silently stopped being
+ * passed leaves a prompt-only prohibition behind and nothing looks different.
+ */
+export const SWEEP_DENIED_TOOLS = [
+  "WebFetch",
+  "WebSearch",
+  "Task",
+  "Edit",
+  "Write",
+  "NotebookEdit",
+];
+
 /** Applied when stage 1 refuses. The evidence is in the comment; this is what a query can see. */
 export const REFUSED_LABEL = "shape-refused";
 
@@ -148,13 +173,30 @@ export function fetchRef(gh: GhExec): Fetch {
   };
 }
 
-async function runSweep(deps: ChainDeps, issueNumber: number, focus: string): Promise<Sweep> {
+/**
+ * The idea is substituted rather than fetched. `readIdea` has already read it
+ * for the shaper, so a sweep that ran `gh issue view` for itself spent a tool
+ * call on a string this process was holding — and a `gh` that failed there
+ * killed the stage having never read the thing it was sweeping for.
+ *
+ * It still gets `ISSUE_NUMBER`, which is the number its own search has to skip.
+ */
+async function runSweep(
+  deps: ChainDeps,
+  issueNumber: number,
+  idea: string,
+  focus: string,
+): Promise<Sweep> {
   return runStage(
     PROMPTS.sweep,
-    { ISSUE_NUMBER: String(issueNumber), FOCUS: focus },
+    {
+      ISSUE_NUMBER: String(issueNumber),
+      IDEA: idea,
+      FOCUS: focus,
+    },
     deps.exec,
     SWEEP_OUTPUT,
-    { model: SWEEP_MODEL, stage: "sweep" },
+    { model: SWEEP_MODEL, disallowedTools: SWEEP_DENIED_TOOLS, stage: "sweep" },
   );
 }
 
@@ -231,10 +273,10 @@ export async function runChain(
   }
 
   const idea = readIdea(deps.gh, issueNumber);
-  let sweep = await runSweep(deps, issueNumber, firstPassFocus(changeRequest));
+  let sweep = await runSweep(deps, issueNumber, idea, firstPassFocus(changeRequest));
 
   if (round.refusalApplies) {
-    const refusal = refusalFor(sweep);
+    const refusal = refusalFor(sweep, issueNumber);
     if (refusal) {
       comment(deps.gh, issueNumber, `${refusalComment(refusal)}\n\n${REFUSAL_MARKER}`);
       label(deps.gh, issueNumber, REFUSED_LABEL);
@@ -247,7 +289,7 @@ export async function runChain(
   // ADR-0030's one re-sweep. The cap is this branch not being a loop.
   if (shaped.kind === "re-sweep") {
     const needs = shaped.needs;
-    const second = await runSweep(deps, issueNumber, reSweepFocus(shaped.needs, shaped.why));
+    const second = await runSweep(deps, issueNumber, idea, reSweepFocus(shaped.needs, shaped.why));
     sweep = mergeSweeps(sweep, second);
     shaped = await runShaper(deps, idea, sweep, changeRequest, renderReSweepAnswer(needs));
 
@@ -308,7 +350,9 @@ The shaper read your first sweep and could not decide without this:
 > **Needs:** ${needs}
 > **Why:** ${why}
 
-Find it, and put whatever bears on it on the reading list. If it does not exist, return an empty \`readingList\` — saying so is a real answer, and the shaper will mark the decision and write the sheet anyway.`;
+Find it, and put whatever bears on it on the reading list. If it does not exist, return an empty \`readingList\` — saying so is a real answer, and the shaper will mark the decision and write the sheet anyway.
+
+**Prior art is settled.** Job 1 ran on the first pass and its verdicts already cleared; that answer stands and anything you return for it now is discarded. Return an empty \`priorArt\` and spend this pass on the reading list.`;
 }
 
 /** Union of two sweeps, second pass last, deduplicated by ref. */

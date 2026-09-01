@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StageExec } from "../shared/stage";
 import { REFUSAL_MARKER, readSheetMarker } from "./marker";
-import { runChain, SHAPER_DENIED_TOOLS, type ChainDeps } from "./shape";
+import { runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 
 /**
@@ -104,13 +104,29 @@ function spawnOf(model: FakeModel, stage: string): Spawn {
   return model.spawns.find((spawn) => stageOf(spawn.argv) === stage)!;
 }
 
+/**
+ * Canned answers for a run in which every stage behaves — one sweep, one
+ * five-under sheet, a refuter that survives nothing. Most tests here are about
+ * something *other* than the answers, so this is the background against which
+ * the one thing they vary is visible.
+ */
+function healthyModel(): FakeModel {
+  return createFakeModel({
+    sweep: [EMPTY_SWEEP],
+    shaper: [ONE_DECISION_SHEET],
+    refuter: [SILENT_REFUTER],
+  });
+}
+
+/** The `--disallowedTools` list a stage actually reached the CLI with. */
+function deniedIn(model: FakeModel, stage: string): string[] {
+  const { argv } = spawnOf(model, stage);
+  return argv[argv.indexOf("--disallowedTools") + 1].split(",");
+}
+
 describe("the ordinary run", () => {
   it("spends three stages and posts one sheet", async () => {
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+    const model = healthyModel();
     const tracker = createFakeTracker();
 
     const outcome = await runChain(depsFor(model, tracker), 1, "");
@@ -121,11 +137,7 @@ describe("the ordinary run", () => {
   });
 
   it("posts a sheet whose trailer reads back as the sheet that was rendered", async () => {
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+    const model = healthyModel();
     const tracker = createFakeTracker();
 
     await runChain(depsFor(model, tracker), 1, "");
@@ -141,31 +153,50 @@ describe("the shaper's toolbelt", () => {
     // that silently stopped being passed would leave a prompt-only
     // prohibition behind and nothing would look different, which is why this
     // asserts on the argv rather than on the prompt.
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+    const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
 
-    const { argv } = spawnOf(model, "shaper");
-    const denied = argv[argv.indexOf("--disallowedTools") + 1].split(",");
+    const denied = deniedIn(model, "shaper");
 
     expect(denied).toEqual(SHAPER_DENIED_TOOLS);
     expect(denied).toEqual(expect.arrayContaining(["Read", "Grep", "Glob", "Bash", "Task"]));
   });
+});
 
-  it("is left alone for the sweep, which has to search to do its job", async () => {
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+describe("the sweep's toolbelt", () => {
+  it("keeps what it searches with and loses every reach past this repo", async () => {
+    // The prompt's scope line was a sentence until this list existed: the
+    // stage ran on the CLI default belt under `--dangerously-skip-permissions`
+    // with the web and the subagent spawner live. Asserted on the argv for the
+    // same reason the shaper's is.
+    const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
 
-    expect(spawnOf(model, "sweep").argv).not.toContain("--disallowedTools");
+    const denied = deniedIn(model, "sweep");
+
+    expect(denied).toEqual(SWEEP_DENIED_TOOLS);
+    expect(denied).toEqual(expect.arrayContaining(["WebFetch", "WebSearch", "Task"]));
+    // Reading is the job. A sweep denied these is a sweep that cannot do it,
+    // and `Bash` is how it reaches `gh`.
+    expect(denied).not.toEqual(expect.arrayContaining(["Read", "Grep", "Glob", "Bash"]));
+  });
+
+  it("is handed the idea rather than sent to fetch it", async () => {
+    // `readIdea` already read it for the shaper. A sweep running `gh issue
+    // view` for itself spends a tool call on a string this process is holding,
+    // and a `gh` that fails there kills the stage having never read the idea.
+    const model = healthyModel();
+    const tracker = createFakeTracker({ title: "Idea: cap the corpus", body: "it is 52k words" });
+
+    await runChain(depsFor(model, tracker), 1, "");
+
+    const { prompt } = spawnOf(model, "sweep");
+    expect(prompt).toContain("Idea: cap the corpus");
+    expect(prompt).toContain("it is 52k words");
+    // And it still knows its own number, which is what its search has to skip.
+    expect(prompt).toContain("#1");
   });
 });
 
@@ -315,11 +346,7 @@ describe("a change request", () => {
     const tracker = createFakeTracker({
       comments: new Map([[1, [`<!-- decision-sheet:v1 {"restatement":"r","priorArt":[],"decisions":[],"survivors":[],"route":"short","routeReason":"x","newTerms":[],"round":0} -->`]]]),
     });
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+    const model = healthyModel();
 
     await runChain(depsFor(model, tracker), 1, "you missed the close gate");
 
@@ -328,11 +355,7 @@ describe("a change request", () => {
   });
 
   it("is absent from a first-round prompt rather than empty in it", async () => {
-    const model = createFakeModel({
-      sweep: [EMPTY_SWEEP],
-      shaper: [ONE_DECISION_SHEET],
-      refuter: [SILENT_REFUTER],
-    });
+    const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
 

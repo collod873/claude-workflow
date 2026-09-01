@@ -22,17 +22,6 @@
     "fragment": ", () => {\n  const dirs: string[] = [];\n  afterEach(() => {\n    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });\n  });\n\n  function writeCopy"
   },
   {
-    "hash": "04cd834d4727cb8f",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 87,
-    "where": [
-      ".Workflow/agent-workflows/shape/shape.test.ts:159",
-      ".Workflow/agent-workflows/shape/shape.test.ts:330"
-    ],
-    "fragment": ", async () => {\n    const model = createFakeModel({\n      sweep: [EMPTY_SWEEP],\n      shaper: [ONE_DECISION_SHEET],\n      refuter: [SILENT_REFUTER],\n    });\n\n    await runChain(depsFor(model, createFakeTracker()), 1, \"\");\n\n    expect(spawnOf(model, \"shaper\""
-  },
-  {
     "hash": "0945b5ac284f5c72",
     "format": "typescript",
     "lines": 10,

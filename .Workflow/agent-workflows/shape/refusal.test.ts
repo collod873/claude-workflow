@@ -15,6 +15,9 @@ import type { PriorArt, Sweep } from "./sweep-schema";
  * "the model cannot be talked past" a claim about code.
  */
 
+/** The idea every sweep below was run for, so a self-citation has a number to be. */
+const SUBJECT = 9;
+
 function sweep(...priorArt: PriorArt[]): Sweep {
   return { priorArt, readingList: [] };
 }
@@ -25,24 +28,24 @@ function art(over: Partial<PriorArt>): PriorArt {
 
 describe("the stage-1 refusal", () => {
   it("refuses an idea a cited issue already carries", () => {
-    const refusal = refusalFor(sweep(art({ verdict: "duplicate", ref: "#42" })));
+    const refusal = refusalFor(sweep(art({ verdict: "duplicate", ref: "#42" })), SUBJECT);
 
     expect(refusal?.cause).toBe("already-exists");
     expect(refusal?.evidence.ref).toBe("#42");
   });
 
   it("refuses an idea a cited ADR already ruled on", () => {
-    const refusal = refusalFor(sweep(art({ verdict: "ruled", ref: "ADR-0007" })));
+    const refusal = refusalFor(sweep(art({ verdict: "ruled", ref: "ADR-0014" })), SUBJECT);
 
     expect(refusal?.cause).toBe("already-ruled");
   });
 
   it("lets a related hit through — it funds a prior-art line, it does not refuse", () => {
-    expect(refusalFor(sweep(art({ verdict: "related", ref: "ADR-0007" })))).toBeUndefined();
+    expect(refusalFor(sweep(art({ verdict: "related", ref: "ADR-0014" })), SUBJECT)).toBeUndefined();
   });
 
   it("passes an empty sweep, which is the ordinary case", () => {
-    expect(refusalFor(sweep())).toBeUndefined();
+    expect(refusalFor(sweep(), SUBJECT)).toBeUndefined();
   });
 
   describe("the citation has to be of the kind the verdict claims", () => {
@@ -50,19 +53,56 @@ describe("the stage-1 refusal", () => {
       // A sweep saying "an ADR ruled this" while pointing at an issue has not
       // found a ruling, whatever it believes. Killing an idea on it would be
       // the model rendering the verdict.
-      expect(refusalFor(sweep(art({ verdict: "ruled", ref: "#42" })))).toBeUndefined();
+      expect(refusalFor(sweep(art({ verdict: "ruled", ref: "#42" })), SUBJECT)).toBeUndefined();
     });
 
     it("does not refuse a `duplicate` that cites an ADR", () => {
-      expect(refusalFor(sweep(art({ verdict: "duplicate", ref: "ADR-0007" })))).toBeUndefined();
+      expect(
+        refusalFor(sweep(art({ verdict: "duplicate", ref: "ADR-0014" })), SUBJECT),
+      ).toBeUndefined();
     });
 
     it("still refuses on a later hit when an earlier one was miscited", () => {
       const refusal = refusalFor(
         sweep(art({ verdict: "ruled", ref: "#42" }), art({ verdict: "duplicate", ref: "#7" })),
+        SUBJECT,
       );
 
       expect(refusal?.evidence.ref).toBe("#7");
+    });
+  });
+
+  describe("an idea is not a duplicate of itself", () => {
+    it("does not refuse on a `duplicate` citing the idea being swept", () => {
+      // The subject sits inside the sweep's own search space: `gh issue list
+      // --search` on an idea's terms returns that idea, and `#9` is shaped
+      // exactly like a real citation. The prompt says to skip it; this is why
+      // the gate does not depend on that.
+      expect(
+        refusalFor(sweep(art({ verdict: "duplicate", ref: `#${SUBJECT}` })), SUBJECT),
+      ).toBeUndefined();
+    });
+
+    it("still refuses on a real duplicate found alongside the self-citation", () => {
+      // Skipping the subject is not skipping the sweep — the entries after it
+      // are judged exactly as they would have been.
+      const refusal = refusalFor(
+        sweep(
+          art({ verdict: "duplicate", ref: `#${SUBJECT}` }),
+          art({ verdict: "duplicate", ref: "#42" }),
+        ),
+        SUBJECT,
+      );
+
+      expect(refusal?.evidence.ref).toBe("#42");
+    });
+
+    it("keeps a `related` self-citation off the gate without dropping it from the sheet", () => {
+      // `related` refuses nothing either way; what matters is that the skip is
+      // about the refusal, and `renderPriorArt` still carries every entry.
+      expect(
+        refusalFor(sweep(art({ verdict: "related", ref: `#${SUBJECT}` })), SUBJECT),
+      ).toBeUndefined();
     });
   });
 

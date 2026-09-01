@@ -24,6 +24,20 @@ import type { PriorArt, Sweep } from "./sweep-schema";
 /** A `duplicate` must cite an issue; `#42` is the only shape that is one. */
 const ISSUE_REF = /^#\d+$/;
 
+/**
+ * The one issue a `duplicate` can never be: the idea being swept.
+ *
+ * `gh issue list --state all --search '<terms>'` searched on an idea's own
+ * terms returns that idea, so the subject sits inside the sweep's own search
+ * space and a citation of it is shaped exactly like a real one. The prompt
+ * says to skip it, but *an idea is not a duplicate of itself* is grammar
+ * rather than judgement, and ADR-0014 puts grammar here — a self-refusal
+ * costs the owner a round on the lane's least recoverable outcome.
+ */
+function citesItself(ref: string, subject: number): boolean {
+  return ref === `#${subject}`;
+}
+
 /** A `ruled` must cite a ruling; `ADR-0007` is the only shape that is one. */
 const ADR_REF = /^ADR-\d{4}$/;
 
@@ -38,9 +52,13 @@ export interface Refusal {
  * The refusal a sweep's prior art earns, or `undefined` when the chain may
  * proceed. The first citable hit wins; a sweep that found several says so on
  * the sheet it never gets to write, and one refusal is one comment.
+ *
+ * `subject` is the idea being swept, and the only issue number a `duplicate`
+ * may not cite — see `citesItself`.
  */
-export function refusalFor(sweep: Sweep): Refusal | undefined {
+export function refusalFor(sweep: Sweep, subject: number): Refusal | undefined {
   for (const entry of sweep.priorArt) {
+    if (citesItself(entry.ref, subject)) continue;
     if (entry.verdict === "duplicate" && ISSUE_REF.test(entry.ref)) {
       return { cause: "already-exists", evidence: entry };
     }
