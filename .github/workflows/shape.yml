@@ -19,12 +19,23 @@ name: Shape
 # `to-tickets.yml`. The chain loops — the shaper may spend one re-sweep (ADR-0030), which re-runs
 # stage 1 and then stage 2 — and a cap of one is a local variable in one call stack and a tracker
 # query across two steps. Each `claude` spawn is still its own process with no memory of the last.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `shape-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
+# This repository is its own first caller: the caller stub lives next to this file, at the same
+# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
+# (the machine, for the prompts, the stages and the checkpoints directory a spawned `claude` reads
+# and writes) and the calling repository's own tree (the target, for the prior-art paths `fetchRef`
+# reads off disk) — never one copy standing in for the other. The machine checkout carries no
+# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
+# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
+# Every `gh` call below still reaches the target's own tracker regardless of which checkout is the
+# process's cwd — `GH_REPO` names it, not the working directory — so only the disk read `fetchRef`
+# makes needs telling which checkout is the one a prior-art reference actually names
+# (`TARGET_WORKSPACE`, on the `Shape` step below).
 
 "on":
-  issues:
-    types: [labeled]
-  issue_comment:
-    types: [created]
+  workflow_call:
 
 permissions:
   contents: read
@@ -100,8 +111,15 @@ jobs:
       - name: Export the handoff path
         run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
 
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       # Restored before the stage runs: the checkpoints directory `runStage` checks
       # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout
@@ -163,6 +181,8 @@ jobs:
           mode: "on"
 
       - name: Shape
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
 
       # Uploaded with if: always() rather than if: failure() — a successful run's checkpoints are

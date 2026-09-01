@@ -1,0 +1,10 @@
+name: Dispatch reconcile (caller)
+
+"on":
+  repository_dispatch:
+    types: [session-captured, graph-changed]
+  workflow_dispatch:
+
+jobs:
+  reconcile:
+    uses: collod873/claude-workflow/.github/workflows/dispatch-reconcile.yml@main

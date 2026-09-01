@@ -1,0 +1,9 @@
+name: Ratify on PRD close (caller)
+
+"on":
+  issues:
+    types: [closed]
+
+jobs:
+  ratify-on-prd-close:
+    uses: collod873/claude-workflow/.github/workflows/ratify-on-prd-close.yml@main

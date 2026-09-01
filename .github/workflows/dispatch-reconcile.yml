@@ -34,11 +34,20 @@ name: Dispatch reconcile
 # **Lane 08 never reads the graph and this never writes it.** The doorbell says "something changed,
 # go look" and nothing else, and the only reader is this — so ADR-0069 is applied, not amended, and
 # there is no second writer.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `dispatch-reconcile-caller.yml`, a trigger and a `uses:`, never a copy of
+# the machine. This repository is its own first caller: the caller stub lives next to this file, at
+# the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target) — never one copy standing in for the other, even though this reconciler reads
+# neither tree directly: it recomputes the ready set over the target's tracker and sends the wave
+# entirely through `gh`, scoped by `GH_REPO` rather than by cwd. The machine checkout carries no
+# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
+# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
 
 "on":
-  repository_dispatch:
-    types: [session-captured, graph-changed]
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   # `contents: write` is for the `repository_dispatch` this sends, not for the tree: creating a
@@ -72,8 +81,15 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node

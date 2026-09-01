@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
 import { childEnv } from "../shared/child-env";
 import { writeCorpusFixture } from "../shared/generate-corpus-fixture";
@@ -35,17 +36,24 @@ function isVerb(value: string | undefined): value is Verb {
  * blocked until the job's 10-minute timeout, having already written the ADR it
  * would never push. The guard is in the script rather than in this call's
  * `env`, so a caller cannot forget it.
+ *
+ * `cwd` is the target repo, not wherever this process itself started —
+ * `bin/new-adr` reads and writes `docs/adr/` relative to the directory it
+ * runs in, and once the machine and target are separate checkouts (#314,
+ * ADR-0055) that is never the same directory this file was launched from.
  */
-function newAdr(title: string): string {
-  return execFileSync("bin/new-adr", [title], { encoding: "utf8", env: childEnv() });
+function newAdr(title: string, cwd: string): string {
+  return execFileSync("bin/new-adr", [title], { encoding: "utf8", env: childEnv(), cwd });
 }
 
 /**
  * `bin/new-adr --land`, the other half of the same tool: it fetches `origin/main`, renames the
- * draft onto the next free number and prints the landed path (ADR-0080).
+ * draft onto the next free number and prints the landed path (ADR-0080). Same `cwd` reasoning as
+ * `newAdr` above — the fetch, the rename and the push it makes all have to land in the target's
+ * own tree and the target's own `origin`, never the machine's.
  */
-function landAdr(draftPath: string): string {
-  return execFileSync("bin/new-adr", ["--land", draftPath], { encoding: "utf8", env: childEnv() });
+function landAdr(draftPath: string, cwd: string): string {
+  return execFileSync("bin/new-adr", ["--land", draftPath], { encoding: "utf8", env: childEnv(), cwd });
 }
 
 function usage(): never {
@@ -65,17 +73,27 @@ function main(): void {
     usage();
   }
 
+  // `TARGET_WORKSPACE` is set only by the reusable workflow (#314, ADR-0055): the machine checkout
+  // this script runs from is a different directory than the checkout `bin/new-adr`, `CONTEXT.md`
+  // and the ADR corpus live in once a caller's own checkout is a separate step — the same seam
+  // `back-stamp-walk.ts` and `missing-trailer-counter.ts` read for the same reason. Falling back to
+  // `process.cwd()` is what lets a local run (or the owner's own shell) hand in nothing and still
+  // work, since there the checkout root and the process's own cwd are the same directory.
+  const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
+  // `path.resolve`, not `path.join`: `newAdr`/`landAdr` hand back an absolute path (`bin/new-adr`
+  // derives its own repo root the same way, from where it runs), while `accept.ts` also passes a
+  // bare relative one ("CONTEXT.md"). `resolve` leaves the former alone and anchors the latter to
+  // the target, which is what `join` cannot do for both in one call.
+  const resolveInTarget = (path: string) => resolvePath(targetWorkspace, path);
+
   const deps: AcceptDeps = {
     gh: execGh,
     git: execGit,
-    newAdr,
-    landAdr,
-    // `process.cwd()` as the repo root, which is the assumption `newAdr` above already makes by
-    // invoking `bin/new-adr` as a relative path: this entrypoint only ever runs from the checkout
-    // root, whether that is a workflow's `run:` step or the owner's own shell.
-    regenerateCorpus: () => writeCorpusFixture(process.cwd()),
-    readFile: (path) => readFileSync(path, "utf8"),
-    writeFile: (path, content) => writeFileSync(path, content, "utf8"),
+    newAdr: (title) => newAdr(title, targetWorkspace),
+    landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
+    regenerateCorpus: () => writeCorpusFixture(targetWorkspace),
+    readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
+    writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
   };
 
   console.log(`accept: ${JSON.stringify(accept(deps, issueNumber, verb))}`);

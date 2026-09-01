@@ -1,0 +1,9 @@
+name: Run watchdog (caller)
+
+"on":
+  repository_dispatch:
+    types: [session-captured]
+
+jobs:
+  watch:
+    uses: collod873/claude-workflow/.github/workflows/run-watchdog.yml@main
