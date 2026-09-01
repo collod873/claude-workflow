@@ -174,7 +174,13 @@ function reportToTicket(
 }
 
 async function main(): Promise<void> {
-  const root = process.cwd();
+  // `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine checkout
+  // this script runs from is a different directory than the target checkout `bin/gauntlet push`
+  // has to judge and `git push origin HEAD:main` has already targeted — the same seam `shape.ts`,
+  // `run-audit.ts` and `run-accept.ts` read for the same reason. Falling back to `process.cwd()` is
+  // what lets a local run (or a test driving this file as a real subprocess) hand in a different
+  // one without needing to run from inside it too.
+  const root = process.env.TARGET_WORKSPACE || process.cwd();
   const issueEnv = process.env.ISSUE_NUMBER;
   const issueNumber = issueEnv ? Number(issueEnv) : undefined;
 

@@ -17,6 +17,10 @@ const { workflow } = readWorkflow<{
   jobs: { spec: { if?: string } };
 }>("spec.yml");
 
+// #315 (ADR-0055): spec.yml is a reusable workflow now — its own trigger is `workflow_call`, and
+// the three doors this file's job `if:` still tells apart live in spec-caller.yml instead.
+const { workflow: caller } = readWorkflow<{ on: Record<string, unknown> }>("spec-caller.yml");
+
 const condition = workflow.jobs.spec.if ?? "";
 
 describe("spec.yml's trigger, the owner-gated to-spec door", () => {
@@ -82,9 +86,15 @@ describe("spec.yml's critic-only door fires on the owner's own prd label", () =>
  * deleted, so there is nothing left for a comment on a `prd` issue to answer — and nothing left
  * that reads `author_association` at all, since the comment door was the only branch that ever did.
  */
+describe("spec.yml is a reusable workflow, triggered by spec-caller.yml's own trigger (#315)", () => {
+  it("carries only workflow_call", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
+  });
+});
+
 describe("spec.yml drops the comment-triggered re-run (#263)", () => {
   it("declares no issue_comment trigger", () => {
-    expect(workflow.on).not.toHaveProperty("issue_comment");
+    expect(caller.on).not.toHaveProperty("issue_comment");
   });
 
   it("carries no issue_comment branch in the job condition", () => {
@@ -103,11 +113,11 @@ describe("spec.yml drops the comment-triggered re-run (#263)", () => {
  */
 describe("spec.yml listens for the accept's own dispatch", () => {
   it("declares the repository_dispatch trigger", () => {
-    expect(workflow.on).toHaveProperty("repository_dispatch");
+    expect(caller.on).toHaveProperty("repository_dispatch");
   });
 
   it("listens for exactly the event type accept.ts sends", () => {
-    const dispatch = workflow.on.repository_dispatch as { types: string[] };
+    const dispatch = caller.on.repository_dispatch as { types: string[] };
     expect(dispatch.types).toContain(SPEC_AUTHOR_DISPATCH_EVENT_TYPE);
   });
 

@@ -183,11 +183,22 @@ async function main(): Promise<void> {
     const head = process.env.HEAD_SHA;
     if (!head) throw new Error("HEAD_SHA must be set");
 
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine
+    // checkout this script runs from is a different directory than the checkout whose standards,
+    // notes and bookmark it reads and writes once a caller's own checkout is a separate step — the
+    // same seam `shape.ts`, `run-audit.ts` and `run-accept.ts` already read for the same reason.
+    // `GITHUB_WORKSPACE` is the checkout's own path, set by every Actions runner without this
+    // workflow needing to name it in `env:`, and still covers the pre-reusable shape where the one
+    // checkout was both; falling back further to `process.cwd()` is what lets a local run (or a
+    // test driving this file as a real subprocess against a throwaway fixture repo) hand in a
+    // different one without needing to run from inside it too.
+    const repoDir = process.env.TARGET_WORKSPACE || process.env.GITHUB_WORKSPACE || process.cwd();
+
     const outcome = await runRatify({
       git: execGit,
       gh: execGh,
       exec: execClaude,
-      repoDir: process.env.GITHUB_WORKSPACE || process.cwd(),
+      repoDir,
       head,
       prdClosed: process.env.PRD_CLOSED === "true",
       prBase: process.env.PR_BASE || "main",

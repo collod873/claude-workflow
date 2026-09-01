@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { childEnv } from "../shared/child-env";
@@ -610,15 +611,19 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
 }
 
 /**
- * The real `runGauntlet`: shells to `bin/gauntlet push` in the current
- * working directory (the rebased checkout `rebaseOntoTrunk` just produced)
- * and classifies its exit code. Never reads stdout/stderr for a verdict —
- * the exit code is the whole contract `bin/gauntlet`'s own header states,
- * the same contract `verify.yml`'s "Run gauntlet" step reads.
+ * The real `runGauntlet`: shells to `<repoDir>/bin/gauntlet push` against the rebased checkout
+ * `rebaseOntoTrunk` just produced, and classifies its exit code. Never reads stdout/stderr for a
+ * verdict — the exit code is the whole contract `bin/gauntlet`'s own header states, the same
+ * contract `verify.yml`'s "Run gauntlet" step reads.
+ *
+ * `repoDir` is absolute, not `"bin/gauntlet"` relative to `cwd` — `execFileSync` resolves a path
+ * containing a `/` against the calling process's own working directory, not the `cwd` option, on a
+ * relative spelling. Defaults to `process.cwd()` for the pre-#315 shape, where the one checkout
+ * this process ran from was the target too.
  */
-export function runRealGauntlet(): GauntletResult {
+export function runRealGauntlet(repoDir: string = process.cwd()): GauntletResult {
   try {
-    execFileSync("bin/gauntlet", ["push"], { encoding: "utf8", env: childEnv() });
+    execFileSync(join(repoDir, "bin/gauntlet"), ["push"], { cwd: repoDir, encoding: "utf8", env: childEnv() });
     return { exitCode: 0 };
   } catch (err) {
     // The exit code is still the whole verdict. The output is forwarded because a refusal that says
@@ -640,10 +645,15 @@ export function runRealGauntlet(): GauntletResult {
  * installed, which is what makes a criterion like `npx vitest run …` mean anything here.
  *
  * The argv is the whole of this lane's contribution; the spawn and its output folding live in
- * `shared/close-ticket.ts`, which lane 09's `--spec` closer reaches through too.
+ * `shared/close-ticket.ts`, which lane 09's `--spec` closer reaches through too. `closeTicketProcess`
+ * itself always resolves `bin/close-ticket` against this process's own cwd — the machine's, unlike
+ * `repoDir` below — because a target repository never carries a copy of it (ADR-0055); `repoDir` is
+ * only the `<checkout>` argument the criteria's `check:` markers actually run against. Defaults to
+ * `process.cwd()` for the pre-#315 shape, where the one checkout was both the machine and the
+ * target.
  */
-export function runRealCloseTicket(ticket: number, range: string): CloseTicketResult {
-  return closeTicketProcess([String(ticket), range, "."]);
+export function runRealCloseTicket(ticket: number, range: string, repoDir: string = process.cwd()): CloseTicketResult {
+  return closeTicketProcess([String(ticket), range, repoDir]);
 }
 
 /** One line naming what became of the ticket, for the runner log — the lane's exit code says only whether the merge happened. */
@@ -665,13 +675,25 @@ async function main(): Promise<void> {
   }
 
   try {
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine
+    // checkout this script runs from is a different directory than the target checkout it rebases,
+    // re-judges and merges into — the same seam `shape.ts`, `run-audit.ts` and `run-ratify.ts`
+    // already read for the same reason. Falling back to `process.cwd()` is what lets a local run
+    // (or a test driving this file as a real subprocess) hand in a different one without needing to
+    // run from inside it too.
+    const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+    // `execGit` carries no working directory of its own (`shared/git.ts`'s own docstring): every
+    // caller threads the repo it means through argv, so this binds `-C repoDir` in once here rather
+    // than teaching every git-calling function in this file its own repoDir parameter.
+    const git: GitExec = (args) => execGit(["-C", repoDir, ...args]);
+
     const outcome = runIntegrate({
-      git: execGit,
+      git,
       gh: execGh,
       pr,
       headSha,
-      runGauntlet: runRealGauntlet,
-      closeTicket: runRealCloseTicket,
+      runGauntlet: () => runRealGauntlet(repoDir),
+      closeTicket: (ticket, range) => runRealCloseTicket(ticket, range, repoDir),
       assignee: process.env.SIGNAL_ASSIGNEE,
     });
 

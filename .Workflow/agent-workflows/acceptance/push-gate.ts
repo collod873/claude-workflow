@@ -304,10 +304,11 @@ function commitAndPush(deps: PushGateDeps): void {
  * non-zero on any finding, so the report is read off the caught error the same way `runVitestJson`
  * reads vitest's.
  */
-export function runEslint(paths: string[]): string | null {
+export function runEslint(paths: string[], repoDir: string = process.cwd()): string | null {
   if (paths.length === 0) return null;
   try {
     execFileSync("npx", ["eslint", ...paths], {
+      cwd: repoDir,
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
       env: childEnv(),
@@ -357,10 +358,11 @@ function errorNameOf(failureMessage: string | undefined): string {
  * vitest exits non-zero on any red test, collected or not — so this always
  * reads the JSON report rather than the exit code.
  */
-export function runVitestJson(dir: string): TestRunResult {
+export function runVitestJson(dir: string, repoDir: string = process.cwd()): TestRunResult {
   let stdout: string;
   try {
     stdout = execFileSync("npx", ["vitest", "run", dir, "--reporter=json"], {
+      cwd: repoDir,
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
       env: childEnv(),

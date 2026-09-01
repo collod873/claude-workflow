@@ -89,9 +89,19 @@ describe("ratify.yml agrees with the dispatch action it is a copy of", () => {
     fileURLToPath(new URL("../../../.github/workflows/ratify.yml", import.meta.url)),
     "utf8",
   );
+  // #315 (ADR-0055): ratify.yml is a reusable workflow now — the trigger itself lives in
+  // ratify-caller.yml, and ratify.yml carries only `workflow_call`.
+  const caller = readFileSync(
+    fileURLToPath(new URL("../../../.github/workflows/ratify-caller.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("is a reusable workflow, triggered by ratify-caller.yml's own trigger", () => {
+    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
+  });
 
   it("filters its trigger to this lane's one action (ADR-0090), not every dispatch", () => {
-    expect(workflow).toMatch(
+    expect(caller).toMatch(
       new RegExp(`repository_dispatch:\\s*\\n\\s*types: \\[${RATIFICATION_DUE_DISPATCH_ACTION}\\]`),
     );
   });

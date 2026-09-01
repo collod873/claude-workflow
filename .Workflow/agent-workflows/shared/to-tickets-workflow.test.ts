@@ -21,17 +21,27 @@ interface Step {
 }
 
 const { workflow } = readWorkflow<{
-  on: { repository_dispatch?: unknown; issues?: unknown };
+  on: { repository_dispatch?: unknown; issues?: unknown; workflow_call?: unknown };
   jobs: { "to-tickets": { if?: string; steps: Step[] } };
 }>("to-tickets.yml");
+
+// #315 (ADR-0055): to-tickets.yml is a reusable workflow now — the trigger itself lives in
+// to-tickets-caller.yml, and to-tickets.yml carries only `workflow_call`.
+const { workflow: caller } = readWorkflow<{
+  on: { repository_dispatch?: unknown; issues?: unknown };
+}>("to-tickets-caller.yml");
 
 const job = workflow.jobs["to-tickets"];
 const condition = job.if ?? "";
 
 describe("to-tickets.yml's trigger, moved from the prd label to lane 02's dispatch", () => {
+  it("is a reusable workflow, triggered by to-tickets-caller.yml's own trigger", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
+  });
+
   it("fires on repository_dispatch instead of the issues/labeled event", () => {
-    expect(workflow.on).toHaveProperty("repository_dispatch");
-    expect(workflow.on.issues).toBeUndefined();
+    expect(caller.on).toHaveProperty("repository_dispatch");
+    expect(caller.on.issues).toBeUndefined();
   });
 
   it("scopes the job on the dispatch action lane 02 sends, not the prd label", () => {
