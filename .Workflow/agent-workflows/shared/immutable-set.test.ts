@@ -168,10 +168,15 @@ describe("every reader of ADR-0054's dispatch gates on the one action the sender
  * outlived the ruling until #145's seam audit, and it was load-bearing — a `pull_request` run
  * executes the *pull request's* copy of this file, so an implementer that deleted the two
  * dispatch-gated jobs from its own branch still earned a green `verify` job from its own copy.
+ *
+ * `verify.yml` itself moved to `on: workflow_call` (ADR-0055/ADR-0132), which `pull_request` can
+ * never reach at all — the ruling now holds by construction rather than by omission. What still
+ * needs asserting is `verify-caller.yml`, the file that actually starts a run: it carries the
+ * `push`/`repository_dispatch` pair this file used to, and still must never grow `pull_request`.
  */
-describe("verify.yml carries no pull_request trigger", () => {
+describe("verify-caller.yml carries no pull_request trigger", () => {
   it("fires on push and repository_dispatch only", () => {
-    const { workflow } = readWorkflow<{ on: Record<string, unknown> }>("verify.yml");
+    const { workflow } = readWorkflow<{ on: Record<string, unknown> }>("verify-caller.yml");
     expect(Object.keys(workflow.on).sort()).toEqual(["push", "repository_dispatch"]);
   });
 });
