@@ -106,8 +106,10 @@ queue is full. *(Issue [#125](https://github.com/collod873/agent-skills/issues/1
 
 > **The constraint stands; the Foundry's mechanism for it does not** — the queue cap, the five-day
 > expiry and the governor were struck on measurement
-> ([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)). The
-> brief is the only thing permitted to reach the owner.
+> ([ADR-0039](docs/adr/0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md)), and
+> the batched digest with them
+> ([ADR-0131](docs/adr/0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md)). The
+> tracker is what reaches the owner.
 
 ### The owner points
 

@@ -138,5 +138,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) | constraint |
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) | constraint |
 | 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) | constraint |
+| 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) | constraint |
 
-130 ADRs · 55 constraint · 44 note · 31 superseded · 11,666 words total.
+131 ADRs · 56 constraint · 44 note · 31 superseded · 11,813 words total.
