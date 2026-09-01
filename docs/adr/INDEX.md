@@ -139,5 +139,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) | constraint |
 | 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) | constraint |
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) | constraint |
+| 0132 | [A caller checks out the machine with no credential at all, because the repository is public](0132-a-caller-checks-out-the-machine-with-no-credential-at-all-be.md) | constraint |
+| 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | constraint |
 
-131 ADRs · 56 constraint · 44 note · 31 superseded · 11,813 words total.
+133 ADRs · 58 constraint · 44 note · 31 superseded · 12,110 words total.
