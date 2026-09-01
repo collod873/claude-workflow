@@ -1,4 +1,3 @@
-import { seedCorpus } from "./push-fixture.ts";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -256,7 +255,12 @@ describe("bin/gauntlet push's regenerate && diff", () => {
     );
     mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
 
-    seedCorpus(root);
+    // No ADR corpus: this fixture exists for the contract diff, and both the corpus check and
+    // the adrs check are content with an empty docs/adr. Seeding one would duplicate the corpus
+    // fixture's own setup, which the clone gate refuses and which no shared module can hold — a
+    // module reached only from a test is the gap #183's wiring check closes.
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    mkdirSync(join(root, "docs/research"), { recursive: true });
     mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });
     writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));
 

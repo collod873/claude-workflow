@@ -1,7 +1,7 @@
-import { seedCorpus } from "./push-fixture.ts";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -249,7 +249,29 @@ describe("bin/gauntlet push's regenerate && diff for the corpus fixture", () => 
       )}\n`,
     );
 
-    seedCorpus(root);
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    mkdirSync(join(root, "docs/research"), { recursive: true });
+    writeFileSync(
+      join(root, "docs/adr/0001-a-decision.md"),
+      "---\nstatus: constraint\ndate: 2026-08-20\nreversal: the fixture exists so the corpus check has something real to generate from\n---\n\n# A decision that binds later work\n\nWhy it binds.\n",
+    );
+    writeFileSync(
+      join(root, "docs/research/topic-2026-08.md"),
+      "**Resolves:** [x](https://example/1)\n\n## Section\n\nBody.\n",
+    );
+    // The `adrs` check regenerates docs/adr/INDEX.md and reports it stale when it disagrees with
+    // the corpus, so a fixture that writes ADRs but no index is a repo that never ran the tool.
+    // Skipped where the machine-global tool is absent (a CI runner has no ~/bin), exactly as the
+    // check itself stands down there. Spelled out in both push fixtures rather than shared: a
+    // module reached only from a test is the gap #183's wiring check exists to close.
+    const adrCheck = join(process.env.HOME ?? "", "bin/adr-check");
+    if (existsSync(adrCheck)) {
+      try {
+        execFileSync(adrCheck, ["--fix"], { cwd: root, stdio: "ignore", maxBuffer: 10 * 1024 * 1024 });
+      } catch {
+        // A non-zero exit is the check's own business; the fixture only needs the index.
+      }
+    }
 
     mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
     writeFileSync(join(root, CONTRACT_RELATIVE_PATH), generateContract(root));

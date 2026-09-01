@@ -324,8 +324,8 @@
     "lines": 17,
     "tokens": 175,
     "where": [
-      ".Workflow/agent-workflows/shared/generate-contract.test.ts:259",
-      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:255"
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:263",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:277"
     ],
     "fragment": ");\n    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });\n    writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));\n\n    return root;\n  }\n\n  function runPush(root: string): { status: number | null; stdout: string } {\n    const run = spawnSync(join(root, \"bin/gauntlet\"), [\"push\"], {\n      encoding: \"utf8\",\n      cwd: root,\n      env: process.env,\n    });\n    return { status: run.status, stdout: run.stdout };\n  }\n\n  it(\"exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again\""
   },
