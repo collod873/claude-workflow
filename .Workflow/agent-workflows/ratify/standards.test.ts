@@ -88,3 +88,38 @@ describe("enabledRuleIds", () => {
     expect([...ids]).toEqual([]);
   });
 });
+
+/** The four declarations the acceptance test copies verbatim, by the name both files give them. */
+const GRAMMAR = ["STANDARDS_HEADING", "ENTRY_HEAD", "ENTRY_WHY", "ENTRY_RED_FLAG"];
+
+function repoFile(path: string): string {
+  return readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf8");
+}
+
+/** Each `const NAME = <literal>;` in `source`, as written — the grammar as text, from either file. */
+function grammarLiterals(source: string): Record<string, string> {
+  const literals: Record<string, string> = {};
+  for (const name of GRAMMAR) {
+    const declaration = new RegExp(`^const ${name} = (.+);$`, "m").exec(source);
+    if (declaration) literals[name] = declaration[1];
+  }
+  return literals;
+}
+
+describe("the acceptance test's grammar agrees with the one it is a copy of", () => {
+  it("declares the same four literals as this module, character for character", () => {
+    const source = grammarLiterals(repoFile(".Workflow/agent-workflows/ratify/standards.ts"));
+    const copy = grammarLiterals(
+      repoFile("tests/acceptance/296-ratifier-standards-are-well-formed.test.ts"),
+    );
+
+    expect(Object.keys(source).sort(), "this module no longer declares the grammar under these names").toEqual(
+      [...GRAMMAR].sort(),
+    );
+    expect(
+      copy,
+      "tests/acceptance/ is restored from trunk before CI runs it, so its copy cannot follow an edit here — " +
+        "an entry this module parses and that copy calls malformed fails every ratifier batch",
+    ).toEqual(source);
+  });
+});

@@ -166,10 +166,7 @@ describe("the shaper's toolbelt", () => {
 
 describe("the sweep's toolbelt", () => {
   it("keeps what it searches with and loses every reach past this repo", async () => {
-    // The prompt's scope line was a sentence until this list existed: the
-    // stage ran on the CLI default belt under `--dangerously-skip-permissions`
-    // with the web and the subagent spawner live. Asserted on the argv for the
-    // same reason the shaper's is.
+    // Why this list holds what it holds: `SWEEP_DENIED_TOOLS` (ADR-0050).
     const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
@@ -178,15 +175,11 @@ describe("the sweep's toolbelt", () => {
 
     expect(denied).toEqual(SWEEP_DENIED_TOOLS);
     expect(denied).toEqual(expect.arrayContaining(["WebFetch", "WebSearch", "Task"]));
-    // Reading is the job. A sweep denied these is a sweep that cannot do it,
-    // and `Bash` is how it reaches `gh`.
     expect(denied).not.toEqual(expect.arrayContaining(["Read", "Grep", "Glob", "Bash"]));
   });
 
   it("is handed the idea rather than sent to fetch it", async () => {
-    // `readIdea` already read it for the shaper. A sweep running `gh issue
-    // view` for itself spends a tool call on a string this process is holding,
-    // and a `gh` that fails there kills the stage having never read the idea.
+    // Why the idea is substituted rather than fetched: `runSweep`.
     const model = healthyModel();
     const tracker = createFakeTracker({ title: "Idea: cap the corpus", body: "it is 52k words" });
 

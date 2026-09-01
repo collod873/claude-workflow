@@ -74,10 +74,7 @@ describe("the stage-1 refusal", () => {
 
   describe("an idea is not a duplicate of itself", () => {
     it("does not refuse on a `duplicate` citing the idea being swept", () => {
-      // The subject sits inside the sweep's own search space: `gh issue list
-      // --search` on an idea's terms returns that idea, and `#9` is shaped
-      // exactly like a real citation. The prompt says to skip it; this is why
-      // the gate does not depend on that.
+      // The self-citation `citesItself` skips (ADR-0014).
       expect(
         refusalFor(sweep(art({ verdict: "duplicate", ref: `#${SUBJECT}` })), SUBJECT),
       ).toBeUndefined();

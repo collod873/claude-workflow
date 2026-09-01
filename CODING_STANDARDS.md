@@ -35,3 +35,6 @@ How this doc stays small:
 - **One stage record, checked against the workflow** — a stage is declared in one exported `StageDef` record keyed by stage name, with the name tuple, the dispatch and the CLI branch derived from its keys; a test asserts those keys and `to-tickets.yml`'s `--stage` steps are the same set.
   Why: seam-sweep, slice and audit each cost four to five coordinated edits, no compiler sees across that language boundary, and the one edit nothing watched — the absent workflow step — makes a stage silently never run.
   Red flag: adding a stage edits anything beyond that record and one step in `.github/workflows/to-tickets.yml`, or edits the record without the step.
+- **Pin a mandated copy to its source** — where a boundary forces a definition to be written twice, one test reads both texts and asserts they still say the same thing.
+  Why: no compiler sees across that boundary, so the copies drift in silence and the copy goes on enforcing a rule its source has already dropped.
+  Red flag: a constant, grammar or literal restated in a second file — a workflow's YAML, an acceptance test's own copy — that no "agrees with the … it is a copy of" test names.
