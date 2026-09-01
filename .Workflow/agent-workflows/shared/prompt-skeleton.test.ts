@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { AUTHOR_OUTPUT } from "../acceptance/acceptance";
+import { IMPLEMENTER_OUTPUT } from "../implement/implement";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
@@ -46,6 +47,7 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "to-tickets/audit/prompt.md", output: AUDIT_OUTPUT },
   { path: "ratify/prompt.md", output: RATIFIER_OUTPUT },
   { path: "acceptance/author/prompt.md", output: AUTHOR_OUTPUT },
+  { path: "implement/implementer/prompt.md", output: IMPLEMENTER_OUTPUT },
 ];
 
 function promptSource(promptPath: string): string {

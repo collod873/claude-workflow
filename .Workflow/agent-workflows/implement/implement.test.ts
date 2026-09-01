@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { simulateClaimRef } from "../shared/gh.fake";
+import { IMMUTABLE_SET } from "../shared/immutable-set";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
@@ -435,6 +436,39 @@ describe("runImplement — on fakes", () => {
     expect(prompt).toContain("tests/acceptance/");
     expect(prompt).toMatch(/never the assertion/i);
     expect(prompt).toMatch(/name every such file in your summary/i);
+  });
+
+  /**
+   * Two lists in the prompt are copies of constants held in TypeScript, and a prompt is a language
+   * no compiler reads — CODING_STANDARDS.md's *pin a mandated copy to its source*.
+   *
+   * They are copies rather than pointers on purpose: the implementer is a headless stage reading
+   * one string, so a prompt that cited `GENERATED_ARTIFACTS` by name would cost it a file read
+   * mid-run to learn which reds to ignore. The prompt paid that cost in staleness instead until
+   * this test existed — it named two of the three artifacts, missing the clone baseline that had
+   * been added to the list underneath it, and one of the two by a description
+   * (*"the ADR corpus fixture"*) that resolves to no path at all.
+   */
+  it("names every generated artifact the implementer is told to leave alone", () => {
+    const prompt = readFileSync(fileURLToPath(new URL("./implementer/prompt.md", import.meta.url)), "utf8");
+
+    for (const artifact of GENERATED_ARTIFACTS) {
+      expect(prompt, `the prompt does not name ${artifact.path}`).toContain(artifact.path);
+    }
+  });
+
+  /**
+   * The same pin on the other list. Every entry is refused by `verify.yml`'s Immutability job
+   * *after* the run has been paid for, so an entry the prompt omits is a whole implementer run
+   * spent on a pull request that was never going to be judged. The prompt named `tests/acceptance/`
+   * alone while the set has carried three since ADR-0053.
+   */
+  it("names every entry of the immutable set the implementer must not touch", () => {
+    const prompt = readFileSync(fileURLToPath(new URL("./implementer/prompt.md", import.meta.url)), "utf8");
+
+    for (const entry of IMMUTABLE_SET) {
+      expect(prompt, `the prompt does not name ${entry}`).toContain(entry);
+    }
   });
 });
 
