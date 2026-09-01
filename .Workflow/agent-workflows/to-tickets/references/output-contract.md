@@ -6,6 +6,7 @@ A plan reaches the pipeline through the `StructuredOutput` tool the CLI injects 
 
 Nothing outside the tool call is read as the answer. Reasoning written before it costs nothing and is discarded; the notes an auditor wants a human to see go in `notes`, not in prose.
 
-- **`dependsOn` indexing**: 1-based indices naming earlier positions only (values strictly less than the slice's own 1-based index). Position 1 represents the first slice in the array.
-- **`filesClaimed`**: Array of relative file paths modified by the slice. Set to `[]` when no files are claimed.
-- **Technical scope only**: `whatToBuild` and `acceptanceCriteria` define implementation boundaries. Issue lifecycle directives (`Closes`) are handled by external automation.
+`dependsOn` indexing and the technical-scope rule are stated once, in the slicing rules a stage's
+own prompt carries — this file is the wrapper mechanics the tool call rides on, not a second copy
+of what a field means. `filesClaimed`'s shape is the ticket contract's — see `{{TICKET_FORMAT}}`
+in `slice/prompt.md`.

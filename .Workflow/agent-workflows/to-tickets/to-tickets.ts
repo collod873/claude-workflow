@@ -218,6 +218,54 @@ export function vocabulary(): string {
   return entries.trim();
 }
 
+/**
+ * The one ticket-body contract every producer references rather than
+ * restates — `docs/agents/ticket-format.md`. The slice stage is the one
+ * place in this lane that drafts a ticket's shape, so it's the one stage
+ * that takes it, injected as `{{TICKET_FORMAT}}` the same way `vocabulary()`
+ * injects `{{VOCABULARY}}` above: an instruction to read a file is something
+ * a model can decline, and `runStage`'s substitution throws on an
+ * uncovered `{{VAR}}` before spending model time, which makes the contract a
+ * precondition rather than a request (ADR-0044, ADR-0082).
+ *
+ * Only the spec-sub-issue variant travels — the core sections (`##
+ * Acceptance criteria`, `## Files claimed`) plus the `### Spec sub-issue`
+ * example, never the local-file, wayfinder, or question variants this lane
+ * never publishes. Those extra variants would cost tokens and teach nothing:
+ * this lane always runs against a real GitHub tracker
+ * (`publish-issue-graph`), so it is always the spec-sub-issue shape.
+ */
+const TICKET_FORMAT_PATH = "docs/agents/ticket-format.md";
+
+/**
+ * Reads `docs/agents/ticket-format.md` and cuts it down to the core sections
+ * plus the `### Spec sub-issue` variant — see `TICKET_FORMAT_PATH` above for
+ * why only that slice of the doc travels.
+ *
+ * Splits on `### `, the variants' own heading marker: the first chunk is
+ * everything before the first variant (the doc's title, the core `##`
+ * sections, and `## Variants`'s own intro sentence), and the chunk starting
+ * `Spec sub-issue` is the one variant this lane ever publishes.
+ */
+export function ticketFormat(): string {
+  let page: string;
+  try {
+    page = readFileSync(TICKET_FORMAT_PATH, "utf8");
+  } catch (err) {
+    throw new Error(`the ticket contract at ${TICKET_FORMAT_PATH} could not be read: ${reason(err)}`);
+  }
+
+  const sections = page.split(/^### /m);
+  const core = sections[0]?.trim();
+  const specSubIssue = sections.find((section) => section.startsWith("Spec sub-issue"));
+  if (!core || !specSubIssue) {
+    throw new Error(
+      `${TICKET_FORMAT_PATH} has no "### Spec sub-issue" variant — the slicer's ticket contract would be empty`,
+    );
+  }
+  return `${core}\n\n### ${specSubIssue.trim()}\n`;
+}
+
 const SEAM_SWEEP_CONFIG: TypedStageConfig<SeamManifest> = {
   promptPath: ".Workflow/agent-workflows/to-tickets/seam-sweep/prompt.md",
   output: SEAM_SWEEP_OUTPUT,
@@ -239,6 +287,7 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
   buildVars: (issueNumber) => ({
     ISSUE_NUMBER: issueNumber,
     VOCABULARY: vocabulary(),
+    TICKET_FORMAT: ticketFormat(),
     SEAM_MANIFEST: readPriorHandoff("seam-sweep", SEAM_SWEEP_OUTPUT),
   }),
   validate: validatePlan,

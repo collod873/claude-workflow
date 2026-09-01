@@ -43,6 +43,15 @@ reading the diff rather than a command's exit status. A marker that's attempted 
 parse — a missing command, or prose trailing the closing backtick — is warned about by
 `bin/ticket_shape.py`'s validator rather than silently read as plain prose.
 
+The command has to be answerable from a checkout of the ticket alone: it has to read the tree,
+never the tracker or the network. `gh api`, `gh issue`, `gh pr`, `gh run`, `curl`, and `wget` all
+read GitHub or some other remote instead of the working directory, so they return the same verdict
+whether or not the diff exists — a criterion asserting that something ran in production belongs in
+the spec, not in a ticket's check. `bin/ticket_shape.py`'s validator does not check for this today;
+this pipeline's own publisher (`render-body.ts`, in `collod873/claude-workflow`) refuses a check
+command shaped like one of these before the ticket is ever filed — see ADR-0096, recorded in
+`collod873/claude-workflow`.
+
 A ticket whose deliverable is a **migration** — a history rewrite, a schema backfill, a one-off
 scrub — is worded as **the run**, never as the artifact. "Ship a script that scrubs X" is satisfied
 the moment the file exists; "Scrub X" isn't. At least one criterion must assert the **post-state of

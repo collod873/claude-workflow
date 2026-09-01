@@ -1,4 +1,6 @@
 import type { Plan } from "./plan-schema";
+import { renderBody } from "./render-body";
+import { TicketShapeError, validateTicket } from "./ticket-shape";
 
 /**
  * Refuses a malformed ticket graph before anything downstream can act on it:
@@ -78,6 +80,34 @@ export function validatePlan(plan: Plan): void {
   for (let position = 1; position <= size; position++) {
     if (state[position] === UNVISITED) {
       visit(position);
+    }
+  }
+
+  // A malformed ticket body used to be a warning nobody read: lane 03 runs
+  // unattended in Actions, so `bin/ticket_shape.py`'s own warn-not-refuse
+  // stance (right for an interactive `file-issue` run a human can read the
+  // stderr of) left a headless run filing a ticket the close gate could
+  // never parse. `renderBody`'s own fixed template already guarantees the
+  // two required headings exist and carry at least one item, so this is
+  // defence against that template drifting out from under the shape
+  // `validateTicket` checks, not a check expected to fire on an
+  // otherwise-healthy plan. Only `TicketShapeError` (a refusal) escalates
+  // here — `validateTicket`'s warnings (an unresolved claimed path, a
+  // migration with no post-state criterion) stay warnings even here: they
+  // are judgement calls that are legitimately true of a healthy ticket (a
+  // slice claiming a file it is about to create has no unresolved-path
+  // problem at all), and ADR-0076 is explicit that refusing on them stops
+  // legitimate filing dead.
+  for (let index = 0; index < size; index++) {
+    const slice = plan[index];
+    const position = index + 1;
+    try {
+      validateTicket(renderBody(slice, 0));
+    } catch (err) {
+      if (err instanceof TicketShapeError) {
+        throw new Error(`slice ${position} ("${slice.title}") would publish a ticket body ${err.message}`);
+      }
+      throw err;
     }
   }
 }

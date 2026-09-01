@@ -2,11 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { Slice } from "./plan-schema";
 import { validatePlan } from "./validate-graph";
 
+/**
+ * The default criterion carries a real `check:` marker, matching
+ * `plan.fixture.ts`'s own default (#304): `validatePlan` now renders each
+ * slice's ticket body and validates its shape, and a criterion with no
+ * marker at all is refused by `renderBody` before graph shape is ever
+ * reached — a fixture without one would be describing a plan the pipeline
+ * refuses regardless of what this file is testing.
+ */
 function slice(title: string, dependsOn: number[] = []): Slice {
   return {
     title,
     whatToBuild: `Build ${title}.`,
-    acceptanceCriteria: [`${title} works.`],
+    acceptanceCriteria: [`${title} works — check: \`npm test\``],
     filesClaimed: [],
     seamsConsumed: [],
     whyNotMerged: `${title} is its own vertical slice.`,

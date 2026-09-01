@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { GhExec } from "./gh";
 
 /**
@@ -58,7 +61,7 @@ const NEXT_HEADING_RE = /^##[ \t]/m;
  * gate's own `VERDICT_RE`, so a ticket author never learns two dash rules for
  * two trailing markers.
  */
-const CHECK_MARKER_DELIM = "(?:—|–|(?<=\\s)-{1,2}(?=\\s))";
+export const CHECK_MARKER_DELIM = "(?:—|–|(?<=\\s)-{1,2}(?=\\s))";
 
 /**
  * An *attempt* at a `check:` marker: the delimiter and the label, whatever
@@ -163,7 +166,7 @@ export function parentPrdNumber(body: string): number | undefined {
 }
 
 /** `render-body.ts`'s `## Files claimed` heading — always present on a published ticket. */
-const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
+export const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
 
 const FILE_ITEM_RE = /^[ \t]*-[ \t]*(.+?)[ \t]*$/;
 
@@ -233,4 +236,213 @@ export function isRunnableSpec(body: string): boolean {
   const criteria = extractCriteria(body);
   if (criteria.length !== 1) return false;
   return parseCheckMarker(criteria[0]) !== undefined;
+}
+
+/**
+ * Raised by `validateTicket` when `body` doesn't fit a ticket's required
+ * shape — the same distinction `bin/ticket_shape.py`'s `ValidationError`
+ * makes: a refusal, never a warning.
+ */
+export class TicketShapeError extends Error {}
+
+/** Every `- [ ]` item under `## Acceptance criteria`, folded with its continuation lines into one
+ * string per criterion, in document order — the port of `bin/ticket_shape.py`'s `criteria_blocks`.
+ * A criterion wrapped across several lines is one claim; judging only its first line reads half a
+ * sentence. `null` when `body` carries no `## Acceptance criteria` heading at all. */
+export function criteriaBlocks(body: string): string[] | null {
+  const normalized = normalizeNewlines(body);
+  if (!CRITERIA_HEADING_RE.test(normalized)) {
+    return null;
+  }
+  const blocks: string[] = [];
+  for (const line of sectionText(normalized, CRITERIA_HEADING_RE).split("\n")) {
+    if (CRITERIA_ITEM_RE.test(line)) {
+      blocks.push(line.trim());
+    } else if (blocks.length > 0 && line.trim().length > 0) {
+      blocks[blocks.length - 1] += ` ${line.trim()}`;
+    }
+  }
+  return blocks;
+}
+
+/** A backtick-quoted span — the port of `bin/ticket_shape.py`'s `BACKTICK_RE`. */
+const BACKTICK_RE = /`[^`\n]+`/;
+
+/** A slashed repo-relative-looking path — the port of `bin/ticket_shape.py`'s `FILE_PATH_RE`. */
+const FILE_PATH_RE = /\b[\w.-]+(?:\/[\w.-]+)+\b/;
+
+/** Whether `line` carries evidence a fresh reader could check against — a `path:line`, a
+ * backtick-quoted span, or a slashed path. Port of `bin/ticket_shape.py`'s `_has_evidence`. */
+function hasEvidence(line: string): boolean {
+  return PATH_LINE_RE.test(line) || BACKTICK_RE.test(line) || FILE_PATH_RE.test(line);
+}
+
+const NO_EVIDENCE_WARNING =
+  "no acceptance criterion names a path:line, a backtick-quoted command, or a " +
+  "file/artifact reference — criteria should be verifiable by a fresh context that has " +
+  "not seen the diff";
+
+const MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse";
+
+function malformedCheckMarker(criterion: string): boolean {
+  return CHECK_MARKER_ATTEMPT_RE.test(criterion) && parseCheckMarker(criterion) === undefined;
+}
+
+function malformedCheckMarkerWarning(criterion: string): string {
+  return (
+    `${MALFORMED_CHECK_MARKER_PREFIX}: ${criterion} — a well-formed marker names exactly ` +
+    "one backtick-quoted command immediately after `check:`, with nothing else following " +
+    "it before the criterion ends"
+  );
+}
+
+/** The literal `## Files claimed` no-files sentinel `render-body.ts` writes — the port of
+ * `bin/ticket_shape.py`'s `NO_FILES_SENTINEL_RE`. */
+const NO_FILES_SENTINEL_RE = /^None\b.*no files/i;
+
+/** Glob metacharacters — a claim carrying one of these is a fan-out, never a literal path
+ * (ADR-0007), so `unresolvedClaimedPaths` skips it rather than resolving it. */
+const GLOB_CHAR_RE = /[*?[]/;
+
+/** Parses `## Files claimed` bullets into normalized path/glob strings — the port of
+ * `bin/ticket_shape.py`'s `claimed_paths`: strips the leading `-`, surrounding backticks and
+ * whitespace, and drops the no-files sentinel. */
+function claimedPaths(body: string): string[] {
+  const paths: string[] = [];
+  for (const line of sectionText(normalizeNewlines(body), FILES_HEADING_RE).split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) continue;
+    const item = trimmed.slice(1).trim().replace(/^`+|`+$/g, "").trim();
+    if (item.length > 0 && !NO_FILES_SENTINEL_RE.test(item)) paths.push(item);
+  }
+  return paths;
+}
+
+/** The repository root a ticket's claimed paths resolve against — three levels up from `shared/`
+ * in every checkout, the same anchor `render-body.ts`'s `repoTopLevel` uses. */
+function defaultRepoRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+}
+
+/** Warns about every `## Files claimed` bullet naming neither an existing path nor a glob — the
+ * port of `bin/ticket_shape.py`'s `unresolved_claimed_paths`. Never refuses: a ticket may
+ * legitimately claim a path it is about to create. */
+function unresolvedClaimedPaths(body: string, repoRoot: string): string[] {
+  const warnings: string[] = [];
+  for (const path of claimedPaths(body)) {
+    if (GLOB_CHAR_RE.test(path)) continue;
+    if (existsSync(resolve(repoRoot, path))) continue;
+    warnings.push(`claimed path \`${path}\` not found in the working tree`);
+  }
+  return warnings;
+}
+
+/** The vocabulary marking work done *to* existing state — the port of `bin/ticket_shape.py`'s
+ * `MIGRATION_RE`. */
+const MIGRATION_RE =
+  /\b(?:migrat(?:e|es|ed|ing|ion|ions)|backfill(?:s|ed|ing)?|scrub(?:s|bed|bing)?|purg(?:e|es|ed|ing)|rewrit(?:e|es|ing|ten)|reindex(?:es|ed|ing)?|one-off)\b/i;
+
+/** A criterion naming a test — the port of `bin/ticket_shape.py`'s `TEST_MENTION_RE`. */
+const TEST_MENTION_RE = /\btests?\b|\bvitest\b|\bpytest\b|\bjest\b/i;
+
+/** A bare filename carrying an extension — the port of `bin/ticket_shape.py`'s `BASENAME_RE`. */
+const BASENAME_RE = /\b[\w-]+(?:\.[\w-]+)+\b/;
+
+const MIGRATION_NO_POST_STATE_WARNING =
+  "this reads like a migration, but every acceptance criterion is satisfied by the " +
+  "artifact existing — a test passing, or a path this ticket already claims. A migration " +
+  "ticket closes on the migration having run: add a criterion asserting the post-state of " +
+  "what is being migrated, checkable against the real target rather than a fixture the " +
+  "ticket's own test builds (ADR-0076 in collod873/claude-workflow, #134)";
+
+/** Every file-ish token `text` names — the port of `bin/ticket_shape.py`'s `_evidence_tokens`. */
+function evidenceTokens(text: string): string[] {
+  const tokens: string[] = [];
+  for (const match of text.matchAll(new RegExp(PATH_LINE_RE, "g"))) {
+    tokens.push(match[0].replace(/:\d+$/, ""));
+  }
+  for (const match of text.matchAll(new RegExp(FILE_PATH_RE, "g"))) {
+    tokens.push(match[0]);
+  }
+  for (const match of text.matchAll(new RegExp(BASENAME_RE, "g"))) {
+    tokens.push(match[0]);
+  }
+  return tokens.filter((token) => token.length > 0);
+}
+
+/** True when `token` names one of the ticket's own claims — the port of `bin/ticket_shape.py`'s
+ * `_is_claimed`. */
+function isClaimed(token: string, claimed: string[]): boolean {
+  for (const raw of claimed) {
+    const claim = raw.replace(/^`+|`+$/g, "");
+    if (token === claim || claim.endsWith(`/${token}`) || token.endsWith(`/${claim}`)) return true;
+    if (GLOB_CHAR_RE.test(claim)) {
+      const pattern = new RegExp(`^${claim.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
+      if (pattern.test(token)) return true;
+    }
+    if (token.split("/").at(-1) === claim.split("/").at(-1)) return true;
+  }
+  return false;
+}
+
+/** Warns when a ticket reads like a migration but every acceptance criterion is satisfied by its
+ * artifact existing — the port of `bin/ticket_shape.py`'s `migration_without_post_state`
+ * (#144, ADR-0076). Never refuses, matching `NO_EVIDENCE_WARNING`'s severity. */
+function migrationWithoutPostState(body: string): string[] {
+  if (!MIGRATION_RE.test(body)) return [];
+  const blocks = criteriaBlocks(body) ?? [];
+  if (blocks.length === 0) return [];
+  const claimed = claimedPaths(body);
+  for (const block of blocks) {
+    if (TEST_MENTION_RE.test(block)) continue;
+    const tokens = evidenceTokens(block);
+    if (tokens.length > 0 && tokens.every((token) => isClaimed(token, claimed))) continue;
+    return [];
+  }
+  return [MIGRATION_NO_POST_STATE_WARNING];
+}
+
+/**
+ * Validates `body` against a ticket's required shape — the same verdict as `bin/ticket_shape.py`'s
+ * `validate("ticket", body)`, ported rather than re-derived: `ticket-shape.test.ts` drives both
+ * readers over the same corpus of bodies so the two can never silently disagree about what a
+ * ticket has to look like.
+ *
+ * Throws `TicketShapeError`, naming what's missing, on refusal — a body missing either required
+ * heading, or an `## Acceptance criteria` heading with no `- [ ]` items. Returns a (possibly
+ * empty) array of warnings on success: no criterion carries verifiable evidence, a `## Files
+ * claimed` bullet that doesn't resolve against the working tree, a malformed `check:` marker, or
+ * a migration-shaped body whose every criterion is satisfied by its own artifact existing.
+ *
+ * `repoRoot` is the tree `## Files claimed` bullets resolve against; defaults to this repo's own
+ * root. Pass it explicitly to validate a body against a different checkout.
+ */
+export function validateTicket(body: string, repoRoot: string = defaultRepoRoot()): string[] {
+  const normalized = normalizeNewlines(body);
+
+  if (!CRITERIA_HEADING_RE.test(normalized)) {
+    throw new TicketShapeError("missing required '## Acceptance criteria' heading");
+  }
+  if (!CRITERIA_ITEM_RE.test(sectionText(normalized, CRITERIA_HEADING_RE))) {
+    throw new TicketShapeError(
+      "'## Acceptance criteria' heading has no '- [ ]' items — plain '- ' bullets don't count",
+    );
+  }
+  if (!FILES_HEADING_RE.test(normalized)) {
+    throw new TicketShapeError("missing required '## Files claimed' heading");
+  }
+
+  const warnings: string[] = [];
+  const lines = extractCriteria(normalized);
+  if (lines.length > 0 && !lines.some((line) => hasEvidence(line))) {
+    warnings.push(NO_EVIDENCE_WARNING);
+  }
+  for (const block of criteriaBlocks(normalized) ?? []) {
+    if (malformedCheckMarker(block)) {
+      warnings.push(malformedCheckMarkerWarning(block));
+    }
+  }
+  warnings.push(...unresolvedClaimedPaths(normalized, repoRoot));
+  warnings.push(...migrationWithoutPostState(normalized));
+  return warnings;
 }
