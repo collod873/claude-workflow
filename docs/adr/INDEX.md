@@ -137,5 +137,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) | constraint |
 | 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) | constraint |
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) | constraint |
+| 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) | constraint |
 
-129 ADRs · 54 constraint · 44 note · 31 superseded · 11,516 words total.
+130 ADRs · 55 constraint · 44 note · 31 superseded · 11,666 words total.

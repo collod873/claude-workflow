@@ -19,7 +19,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const VENDORED_PATH = join(REPO_ROOT, "bin/ticket_shape.py");
 
 /** sha256 of `bin/ticket_shape.py`, recorded at vendor time. Never fetched — only compared. */
-const VENDORED_DIGEST = "fba6cf271e187921961e1cfa11e11e4ec74d5f08d47e2c671234b8f70993904a";
+const VENDORED_DIGEST = "8f50b81a3e910e5c2737a6fcb2a3b853768fe63423a2f429cb4d28e79885a2d6";
 
 function digestOf(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");

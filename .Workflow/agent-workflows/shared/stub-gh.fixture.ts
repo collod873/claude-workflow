@@ -24,6 +24,26 @@ export interface IssuePayload {
   comments?: { body: string; createdAt: string }[];
 }
 
+/**
+ * Every argv line an `argv.jsonl` call log holds, oldest first — the reading half of the stub
+ * `gh`s in this file and in `close-ticket.test.ts`'s `routedGhStub`, which log a call the same
+ * way this one does but answer it differently. Shared so the two stubs' *logs* can never drift
+ * from what a caller reads back out of them, even though their *answers* legitimately do.
+ */
+export function readArgvLog(log: string): string[][] {
+  let text = "";
+  try {
+    text = readFileSync(log, "utf8");
+  } catch {
+    // No log at all means no invocation — the shape a refusal that never reached `gh` takes.
+    return [];
+  }
+  return text
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as string[]);
+}
+
 export interface GhStub {
   /** Absolute path to the stub, for `AGENT_SKILLS_GH`. */
   path: string;
@@ -66,20 +86,5 @@ export function stubGh(payload: IssuePayload | string): GhStub {
   );
   chmodSync(path, 0o755);
 
-  return {
-    path,
-    calls: () => {
-      let text = "";
-      try {
-        text = readFileSync(log, "utf8");
-      } catch {
-        // No log at all means no invocation — the shape a refusal that never reached `gh` takes.
-        return [];
-      }
-      return text
-        .split("\n")
-        .filter((line) => line.trim() !== "")
-        .map((line) => JSON.parse(line) as string[]);
-    },
-  };
+  return { path, calls: () => readArgvLog(log) };
 }

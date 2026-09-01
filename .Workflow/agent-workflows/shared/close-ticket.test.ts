@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { stubGh } from "./stub-gh.fixture.ts";
+import { readArgvLog, stubGh } from "./stub-gh.fixture.ts";
 
 /**
  * The two halves of what `--spec` adds to a close, driven in the real interpreter against the real
@@ -51,6 +51,40 @@ ${body}
   return { stdout: run.stdout, stderr: run.stderr };
 }
 
+/**
+ * A `gh` stub whose answer depends on *which* subcommand was called — `stub-gh.fixture.ts`'s
+ * `stubGh` answers every call identically, which is enough for a single `issue view` read but not
+ * for `fetch_closing_pr`/`fetch_verify_verdict` (#306), each of which makes several different
+ * calls in sequence and needs a different answer to each. `routes` is tried in order; the first
+ * whose `contains` substrings all appear in the call's space-joined argv wins, and its `respond`
+ * is printed verbatim to stdout. A call matching nothing gets `{}`.
+ */
+function routedGhStub(routes: { contains: string[]; respond: string }[]): {
+  path: string;
+  calls: () => string[][];
+} {
+  const dir = mkdtempSync(join(tmpdir(), "routed-gh-stub-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, "gh");
+  const log = join(dir, "argv.jsonl");
+  const script = `#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+with open(${JSON.stringify(log)}, "a") as f:
+    f.write(json.dumps(args) + "\\n")
+joined = " ".join(args)
+routes = ${JSON.stringify(routes)}
+for route in routes:
+    if all(needle in joined for needle in route["contains"]):
+        print(route["respond"])
+        sys.exit(0)
+print("{}")
+`;
+  writeFileSync(path, script);
+  chmodSync(path, 0o755);
+  return { path, calls: () => readArgvLog(log) };
+}
+
 /** A `subIssues` node as the GraphQL query returns it. */
 function child(
   number: number,
@@ -88,11 +122,15 @@ interface Rendered {
  * test is what `run_check` observes, and a stub that reports an exit status and an output is a
  * restatement of the belief this ticket exists to correct.
  */
-function renderRecord(blocks: string[], opts: { spec?: boolean } = {}): Rendered {
+function renderRecord(
+  blocks: string[],
+  opts: { spec?: boolean; closingPr?: { number: number; url: string; merge_sha: string | null }; verify?: string } = {},
+): Rendered {
   const { stdout, stderr } = inCloseTicket(
-    `record, ok = module.render_record("base..head", payload["blocks"], ".", spec=payload["spec"])
+    `record, ok = module.render_record("base..head", payload["blocks"], ".", spec=payload["spec"],
+                                     closing_pr=payload["closing_pr"], verify=payload["verify"])
 print(json.dumps({"record": record, "ok": ok}))`,
-    { blocks, spec: opts.spec ?? false },
+    { blocks, spec: opts.spec ?? false, closing_pr: opts.closingPr ?? null, verify: opts.verify ?? null },
   );
   return { ...(JSON.parse(stdout) as Omit<Rendered, "stderr">), stderr };
 }
@@ -272,6 +310,200 @@ describe("render_record in ticket mode", () => {
   });
 });
 
+/**
+ * The record's own claim rests on what `render_record` was handed for `closing_pr`/`verify`
+ * (#306) — the closing pull request, its merge SHA, and Verify's conclusion on it, appended as
+ * one line neither a bullet (`hooks/close-gate.py`'s `BULLET_RE`) nor the range line
+ * (`RANGE_LINE_RE`) can mistake for something else. `fetch_closing_pr`/`fetch_verify_verdict`
+ * themselves — the functions that *find* these values — are exercised separately, against a real
+ * `gh` stub, below; this block is about what `render_record` does with them once found.
+ */
+describe("render_record's closing-pull-request line", () => {
+  const quiet = criterion("the module exists", "test -f bin/close-ticket");
+
+  it("adds nothing when no closing pull request was found", () => {
+    const { record } = renderRecord([quiet], {});
+
+    expect(record).not.toContain("Closed by");
+  });
+
+  it("carries the pull request, its merge SHA, and Verify's conclusion", () => {
+    const { record } = renderRecord([quiet], {
+      closingPr: { number: 42, url: "https://github.com/acme/widgets/pull/42", merge_sha: "deadbeef" },
+      verify: "passed",
+    });
+
+    expect(record).toContain("Closed by #42");
+    expect(record).toContain("merge `deadbeef`");
+    expect(record).toContain("Verify: passed");
+  });
+
+  it("names Verify unjudged rather than staying silent about it", () => {
+    const { record } = renderRecord([quiet], {
+      closingPr: { number: 42, url: "https://github.com/acme/widgets/pull/42", merge_sha: "deadbeef" },
+    });
+
+    expect(record).toContain("Verify: unjudged");
+  });
+
+  it("is never miscounted as a criterion bullet or as the range line", () => {
+    const { record } = renderRecord([quiet], {
+      closingPr: { number: 42, url: "https://github.com/acme/widgets/pull/42", merge_sha: "deadbeef" },
+      verify: "passed",
+    });
+
+    expect(gateBullets(record as string)).toEqual([
+      "the module exists — MET: `test -f bin/close-ticket` exit 0",
+    ]);
+  });
+});
+
+/**
+ * `fetch_closing_pr` and `fetch_verify_verdict`, driven against a `gh` this repo controls
+ * (`routedGhStub`) rather than the real tracker — the two functions `render_record`'s caller
+ * (`run()`) uses to fill in `closing_pr`/`verify` itself, never accepting either from its own
+ * caller (#306).
+ */
+/** One `closedByPullRequestsReferences` node, in the shape `fetch_closing_pr` reads. */
+interface PrRefNode {
+  number: number;
+  url: string;
+  merged: boolean;
+  mergedAt: string | null;
+  mergeCommit: { oid: string } | null;
+}
+
+describe("fetch_closing_pr", () => {
+  function fetchClosingPr(ghPath: string, issue: string): unknown {
+    const { stdout } = inCloseTicket(
+      `print(json.dumps(module.fetch_closing_pr(payload["gh_path"], "acme/widgets", payload["issue"])))`,
+      { gh_path: ghPath, issue },
+    );
+    return JSON.parse(stdout);
+  }
+
+  /** A `gh api graphql` stub answering `fetch_closing_pr`'s query with `nodes` as its issue's `closedByPullRequestsReferences`. */
+  function closingPrStub(nodes: PrRefNode[]): ReturnType<typeof routedGhStub> {
+    return routedGhStub([
+      {
+        contains: ["api", "graphql"],
+        respond: JSON.stringify({
+          data: { repository: { issue: { closedByPullRequestsReferences: { nodes } } } },
+        }),
+      },
+    ]);
+  }
+
+  it("reads the merged pull request closedByPullRequestsReferences names", () => {
+    const gh = closingPrStub([
+      {
+        number: 42,
+        url: "https://github.com/acme/widgets/pull/42",
+        merged: true,
+        mergedAt: "2026-09-01T00:00:00Z",
+        mergeCommit: { oid: "deadbeef" },
+      },
+    ]);
+
+    expect(fetchClosingPr(gh.path, "999")).toEqual({
+      number: 42,
+      url: "https://github.com/acme/widgets/pull/42",
+      merge_sha: "deadbeef",
+    });
+  });
+
+  it("returns null when no pull request naming this issue ever merged", () => {
+    const gh = closingPrStub([
+      { number: 9, url: "https://github.com/acme/widgets/pull/9", merged: false, mergedAt: null, mergeCommit: null },
+    ]);
+
+    expect(fetchClosingPr(gh.path, "999")).toBeNull();
+  });
+
+  it("picks the most recently merged pull request when more than one names the issue", () => {
+    const gh = closingPrStub([
+      {
+        number: 9,
+        url: "https://github.com/acme/widgets/pull/9",
+        merged: true,
+        mergedAt: "2026-01-01T00:00:00Z",
+        mergeCommit: { oid: "old" },
+      },
+      {
+        number: 42,
+        url: "https://github.com/acme/widgets/pull/42",
+        merged: true,
+        mergedAt: "2026-09-01T00:00:00Z",
+        mergeCommit: { oid: "new" },
+      },
+    ]);
+
+    expect((fetchClosingPr(gh.path, "999") as { number: number }).number).toBe(42);
+  });
+});
+
+describe("fetch_verify_verdict", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/42";
+
+  function fetchVerifyVerdict(ghPath: string): string {
+    const { stdout } = inCloseTicket(
+      `gh = module.gh_support.bind_gh(payload["gh_path"])
+print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
+      { gh_path: ghPath, pr_url: PR_URL },
+    );
+    return JSON.parse(stdout) as string;
+  }
+
+  /** The two-call sequence every scenario below shares: the run list, then that run's jobs. */
+  function verifyRoutes(jobs: { name: string; status: string; conclusion: string | null }[]): { contains: string[]; respond: string }[] {
+    return [
+      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      {
+        contains: ["actions/runs/555/jobs"],
+        respond: JSON.stringify(jobs.map((j, i) => ({ id: i + 1, ...j }))),
+      },
+      { contains: ["run", "view", "--job", "1", "--log"], respond: `judging ${PR_URL} on implement/issue-999` },
+    ];
+  }
+
+  it("reads passed when both jobs concluded success", () => {
+    const gh = routedGhStub(verifyRoutes([
+      { name: "Immutability", status: "completed", conclusion: "success" },
+      { name: "Restore and run acceptance", status: "completed", conclusion: "success" },
+    ]));
+
+    expect(fetchVerifyVerdict(gh.path)).toBe("passed");
+  });
+
+  it("reads failed when the acceptance job concluded failure", () => {
+    const gh = routedGhStub(verifyRoutes([
+      { name: "Immutability", status: "completed", conclusion: "success" },
+      { name: "Restore and run acceptance", status: "completed", conclusion: "failure" },
+    ]));
+
+    expect(fetchVerifyVerdict(gh.path)).toBe("failed");
+  });
+
+  it("reads unjudged when no run's Immutability job log names this pull request", () => {
+    const gh = routedGhStub([
+      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      {
+        contains: ["actions/runs/555/jobs"],
+        respond: JSON.stringify([{ id: 1, name: "Immutability", status: "completed", conclusion: "success" }]),
+      },
+      { contains: ["run", "view"], respond: "judging https://github.com/acme/widgets/pull/999 on implement/issue-1" },
+    ]);
+
+    expect(fetchVerifyVerdict(gh.path)).toBe("unjudged");
+  });
+
+  it("reads unjudged rather than throwing when gh itself fails", () => {
+    const gh = routedGhStub([]); // every call falls through to "{}", which json.loads reads as {} — no "workflow_runs" key
+
+    expect(fetchVerifyVerdict(gh.path)).toBe("unjudged");
+  });
+});
+
 /** A repository at a fresh temp path with `commits` commits on it, newest SHA last. */
 function repoWithCommits(commits: number): { checkout: string; shas: string[] } {
   const checkout = mkdtempSync(join(tmpdir(), "close-ticket-repo-"));
@@ -313,6 +545,68 @@ function closeTicket(args: string[], gh: string): { status: number | null; stdou
   });
   return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "" };
 }
+
+describe("a ticket close carries its closing pull request, driven end to end", () => {
+  const CRITERION_BODY = [
+    "## Acceptance criteria",
+    "",
+    "- [ ] the first commit's file exists — check: `test -f file-0.txt`",
+    "",
+    "## Files claimed",
+    "- file-0.txt",
+    "",
+  ].join("\n");
+
+  it("posts a record naming the PR, its merge SHA, and Verify's conclusion — read, not handed", () => {
+    const { checkout, shas } = repoWithCommits(2);
+    const gh = routedGhStub([
+      { contains: ["issue", "view"], respond: JSON.stringify({ body: CRITERION_BODY, comments: [] }) },
+      { contains: ["repo", "view"], respond: JSON.stringify({ nameWithOwner: "acme/widgets" }) },
+      {
+        contains: ["api", "graphql"],
+        respond: JSON.stringify({
+          data: {
+            repository: {
+              issue: {
+                closedByPullRequestsReferences: {
+                  nodes: [
+                    {
+                      number: 42,
+                      url: "https://github.com/acme/widgets/pull/42",
+                      merged: true,
+                      mergedAt: "2026-09-01T00:00:00Z",
+                      mergeCommit: { oid: "deadbeef" },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      },
+      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      {
+        contains: ["actions/runs/555/jobs"],
+        respond: JSON.stringify([
+          { id: 1, name: "Immutability", status: "completed", conclusion: "success" },
+          { id: 2, name: "Restore and run acceptance", status: "completed", conclusion: "success" },
+        ]),
+      },
+      { contains: ["run", "view"], respond: "judging https://github.com/acme/widgets/pull/42 on implement/issue-999" },
+      { contains: ["issue", "comment"], respond: "" },
+      { contains: ["issue", "close"], respond: "" },
+    ]);
+
+    const result = closeTicket(["999", `${shas[0]}..${shas[1]}`, checkout], gh.path);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Closed by #42 · merge `deadbeef` · Verify: passed");
+    expect(result.stdout).toContain(`${shas[0]}..${shas[1]}`);
+    // Posted to the tracker, not just printed — the `--body-file -` comment is the record itself.
+    const commentCall = gh.calls().find((call) => call[0] === "issue" && call[1] === "comment");
+    expect(commentCall).toBeDefined();
+  });
+});
 
 describe("the No diff. close, driven end to end", () => {
   const NO_CRITERIA = "Just a task. No acceptance criteria in this body at all.\n";

@@ -127,16 +127,31 @@ describe("validateTicket, driven against the real bin/ticket_shape.py", () => {
     return dir;
   }
 
-  /** The real Python validator's verdict: `{ok: true, warnings}` or `{ok: false, error}`. */
-  function pythonVerdict(body: string, repoRoot: string): { ok: true; warnings: string[] } | { ok: false; error: string } {
+  /**
+   * The real Python validator's verdict: `{ok: true, warnings}` or `{ok: false, error}`, for
+   * `kind` — `"ticket"` (compared against `validateTicket` below) or `"spec"` (#306's
+   * red-at-publish branch, which has no TypeScript port to compare against, so it is driven for
+   * its own sake rather than for a diff).
+   *
+   * `timeoutSeconds`, when given, overrides `ticket_shape.RED_AT_PUBLISH_TIMEOUT_SECONDS` before
+   * `validate` runs — only `"spec"` reads it, and only the timeout-path test below sets it, to
+   * keep that one test fast without touching the 30s production budget (ADR-0130).
+   */
+  function pythonVerdict(
+    kind: "ticket" | "spec",
+    body: string,
+    repoRoot: string,
+    opts: { timeoutSeconds?: number } = {},
+  ): { ok: true; warnings: string[] } | { ok: false; error: string } {
     const reader = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(TICKET_SHAPE_PY)})
 import ticket_shape
 from pathlib import Path
+${opts.timeoutSeconds !== undefined ? `ticket_shape.RED_AT_PUBLISH_TIMEOUT_SECONDS = ${opts.timeoutSeconds}` : ""}
 body = sys.stdin.read()
 try:
-    warnings = ticket_shape.validate("ticket", body, repo_root=Path(${JSON.stringify(repoRoot)}))
+    warnings = ticket_shape.validate(${JSON.stringify(kind)}, body, repo_root=Path(${JSON.stringify(repoRoot)}))
     print(json.dumps({"ok": True, "warnings": warnings}))
 except ticket_shape.ValidationError as e:
     print(json.dumps({"ok": False, "error": str(e)}))
@@ -229,6 +244,44 @@ except ticket_shape.ValidationError as e:
 
   it.each(CASES)("$label", ({ body, existingPaths }) => {
     const repoRoot = scratchRepoRoot(existingPaths ?? []);
-    expect(tsVerdict(body, repoRoot)).toEqual(pythonVerdict(body, repoRoot));
+    expect(tsVerdict(body, repoRoot)).toEqual(pythonVerdict("ticket", body, repoRoot));
+  });
+
+  // Red-at-publish (#306, ADR-0130): the one refusal `validate` reaches only for `spec`, by
+  // actually running the criterion's `check:` command in `repoRoot` rather than reading it as
+  // text. There is no TypeScript port of this branch to compare against — `bin/ticket_shape.py`
+  // is the only place it is decided — so `pythonVerdict("spec", …)` above is driven for its own
+  // sake rather than for a side-by-side diff, the same reason `close-ticket.test.ts` drives
+  // `undelivered`/`fetch_closing_pr` through `inCloseTicket` directly.
+
+  function specBody(command: string): string {
+    return [heading, "", `- [ ] I'll know it works when I can see a verdict — check: \`${command}\``, ""].join("\n");
+  }
+
+  it("refuses a spec whose one criterion's check already exits 0 before any work exists", () => {
+    const repoRoot = scratchRepoRoot([]);
+
+    const verdict = pythonVerdict("spec", specBody("true"), repoRoot);
+
+    expect(verdict.ok).toBe(false);
+    expect((verdict as { ok: false; error: string }).error).toContain("already true before any work exists");
+    expect((verdict as { ok: false; error: string }).error).toContain("`true`");
+  });
+
+  it("passes a spec whose criterion is honestly red at filing", () => {
+    const repoRoot = scratchRepoRoot([]);
+
+    expect(pythonVerdict("spec", specBody("false"), repoRoot)).toEqual({ ok: true, warnings: [] });
+  });
+
+  it("warns rather than refuses when the check cannot be run to a verdict at all", () => {
+    // The 30s production budget (ADR-0130) is overridden to keep this test fast; the shape under
+    // test is the timeout path itself, not the specific number of seconds it waits.
+    const repoRoot = scratchRepoRoot([]);
+
+    const verdict = pythonVerdict("spec", specBody("sleep 3"), repoRoot, { timeoutSeconds: 1 });
+
+    expect(verdict.ok).toBe(true);
+    expect((verdict as { ok: true; warnings: string[] }).warnings.join(" ")).toContain("did not finish within");
   });
 });

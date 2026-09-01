@@ -179,14 +179,11 @@ query {
 """
 
 
-def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
-    """Every sub-issue of `issue`, with the state and the pull requests `undelivered` needs.
-
-    `includeClosedPrs: true` because the pull request this is looking for is by definition no
-    longer open — a merged one is a closed one, and the default omits it.
-
-    One GraphQL call rather than a REST child list plus a call per child: the question is about
-    every child at once, and a spec with a dozen slices should cost one round trip.
+def fetch_issue_node(gh_path: str, name_with_owner: str, issue: str, query_template: str) -> dict:
+    """Runs `query_template` — one of the `%(owner)s`/`%(name)s`/`%(issue)s` GraphQL queries
+    above — and returns its `repository.issue` node. Shared by `fetch_sub_issues` and
+    `fetch_closing_pr` (#306): both ask this same node a different question, and the asking —
+    interpolate, bind, call, unwrap, refuse a `None` node — was the same four lines twice.
 
     Bound off `gh_path` with no `-R`, unlike every other call here. `bind_gh`'s `repo` appends
     `-R` to the argv, and `gh api graphql` takes no such flag — the repository is named inside
@@ -194,13 +191,157 @@ def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dic
     actually require; a second *binding* of the same resolved binary is not a second way of
     finding `gh`."""
     owner, _, name = name_with_owner.partition("/")
-    query = SUB_ISSUES_QUERY % {"owner": owner, "name": name, "issue": issue}
+    query = query_template % {"owner": owner, "name": name, "issue": issue}
     api = gh_support.bind_gh(gh_path)
     out = gh_support.run_gh(api, "api", "graphql", "-f", f"query={query}")
     issue_node = json.loads(out)["data"]["repository"]["issue"]
     if issue_node is None:
         raise gh_support.GhError(f"issue #{issue} not found")
+    return issue_node
+
+
+def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
+    """Every sub-issue of `issue`, with the state and the pull requests `undelivered` needs.
+
+    `includeClosedPrs: true` because the pull request this is looking for is by definition no
+    longer open — a merged one is a closed one, and the default omits it.
+
+    One GraphQL call rather than a REST child list plus a call per child: the question is about
+    every child at once, and a spec with a dozen slices should cost one round trip."""
+    issue_node = fetch_issue_node(gh_path, name_with_owner, issue, SUB_ISSUES_QUERY)
     return issue_node["subIssues"]["nodes"]
+
+
+CLOSING_PR_QUERY = """
+query {
+  repository(owner: "%(owner)s", name: "%(name)s") {
+    issue(number: %(issue)s) {
+      closedByPullRequestsReferences(first: 10, includeClosedPrs: true) {
+        nodes { number url merged mergedAt mergeCommit { oid } }
+      }
+    }
+  }
+}
+"""
+
+
+def fetch_repo_name(gh) -> str:
+    """`owner/repo`, the one shape `fetch_sub_issues`/`fetch_closing_pr`'s GraphQL queries take —
+    read through `run_gh` so it goes through the same failure envelope every other call here
+    does, never a second `gh repo view` spelled out at each call site."""
+    return json.loads(gh_support.run_gh(gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
+
+
+def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | None:
+    """The pull request that closes `issue`, read the same way `fetch_sub_issues` reads a spec's
+    children (#306) — GitHub's own `closedByPullRequestsReferences` index of `Closes #N` in a PR
+    body, not the issue's close event. `render_record` calls this itself rather than accepting a
+    PR from its caller: a record is evidence only when it names what actually happened, not what
+    a caller *says* happened.
+
+    `None` when no merged pull request names this issue at all — a ticket closed without one (by
+    hand, or the `No diff.` path), or a spec, which is never closed by a PR of its own (a spec's
+    slices carry the PRs; `undelivered` already reads those). `includeClosedPrs: true` for the
+    same reason `fetch_sub_issues` sets it: the PR being looked for is by definition no longer
+    open once merged.
+
+    Several merged PRs naming the same issue is possible (a re-opened ticket, closed twice) —
+    the most recently merged one wins, since that is the close this invocation is for."""
+    issue_node = fetch_issue_node(gh_path, name_with_owner, issue, CLOSING_PR_QUERY)
+    merged = [
+        pr for pr in issue_node["closedByPullRequestsReferences"]["nodes"] if pr.get("merged")
+    ]
+    if not merged:
+        return None
+    merged.sort(key=lambda pr: pr.get("mergedAt") or "")
+    newest = merged[-1]
+    return {
+        "number": newest["number"],
+        "url": newest["url"],
+        "merge_sha": (newest.get("mergeCommit") or {}).get("oid"),
+    }
+
+
+# `judging <pr-url> on <branch>` — `verify.yml`'s own log line (ADR-0104), read here the same way
+# `fixer.yml`'s "Resolve the pull request that Verify run was judging" step already greps it, and
+# `integrate.ts`'s `jobJudged` already matches it. Not a second grammar: a reworded echo in
+# `verify.yml` would silently break all three readers alike, which is the point — one shape, three
+# readers, none of them the source of truth for it.
+JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
+
+VERIFY_WORKFLOW_FILE = "verify.yml"
+IMMUTABILITY_JOB = "Immutability"
+ACCEPTANCE_JOB = "Restore and run acceptance"
+# How far back this scan reaches. Unlike `integrate.ts`'s `readVerifyVerdict`, this has no
+# `head_sha` to filter on — `fetch_closing_pr` names a merge, never the pre-merge dispatch commit
+# both lane 06 and lane 08 shared (see that field's docstring in integrate.ts) — so this scans
+# recent runs newest-first instead and stops at the first whose `Immutability` job log names this
+# PR. One page is the whole fleet's recent history several times over (`integrate.ts`'s own
+# comment on the same number), and the newest-first order means it is also the cheapest case.
+VERIFY_RUN_PAGE_SIZE = 100
+
+
+def fetch_verify_verdict(gh, pr_url: str) -> str:
+    """`"passed"`, `"failed"`, or `"unjudged"` — Verify's conclusion on the pull request that
+    closed this ticket, read from the Actions API rather than trusted from a caller (#306): the
+    same two jobs `integrate.ts`'s `awaitVerifyVerdict` reads before it ever merges, `Immutability`
+    and `Restore and run acceptance`, found here by scanning `verify.yml`'s recent dispatch runs
+    for the one whose `Immutability` job log names `pr_url` (`JUDGING_LINE_RE`).
+
+    `"unjudged"` covers every way this can come back empty-handed: no run found within
+    `VERIFY_RUN_PAGE_SIZE`, a run whose job log could not be read, or a job still incomplete — the
+    same "silence is never a pass" reading ADR-0054 already applies to lane 08 itself. `"failed"`
+    means either job concluded `failure`; both must conclude `success` for `"passed"`, since a
+    merge in this repo's own pipeline never happens unless both did (`runIntegrate`)."""
+    try:
+        runs = json.loads(gh_support.run_gh(
+            gh, "api", f"repos/{{owner}}/{{repo}}/actions/workflows/{VERIFY_WORKFLOW_FILE}/runs",
+            "-f", f"per_page={VERIFY_RUN_PAGE_SIZE}", "-f", "event=repository_dispatch",
+            "--jq", "[.workflow_runs[] | {id, status}]",
+        ))
+    except gh_support.GhError:
+        return "unjudged"
+    for run in runs:
+        if run.get("status") != "completed":
+            continue
+        run_id = run["id"]
+        try:
+            jobs = json.loads(gh_support.run_gh(
+                gh, "api", f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/jobs",
+                "--jq", "[.jobs[] | {id, name, status, conclusion}]",
+            ))
+        except gh_support.GhError:
+            continue
+        immutability = next((j for j in jobs if j.get("name") == IMMUTABILITY_JOB), None)
+        if immutability is None or immutability.get("status") != "completed":
+            continue
+        try:
+            log = gh_support.run_gh(gh, "run", "view", "--job", str(immutability["id"]), "--log")
+        except gh_support.GhError:
+            continue
+        matches = JUDGING_LINE_RE.findall(log)
+        if not matches or matches[-1] != pr_url:
+            continue
+        acceptance = next((j for j in jobs if j.get("name") == ACCEPTANCE_JOB), None)
+
+        def verdict(job: dict | None) -> str:
+            if job is None or job.get("status") != "completed":
+                return "unjudged"
+            conclusion = job.get("conclusion")
+            if conclusion == "success":
+                return "passed"
+            if conclusion == "failure":
+                return "failed"
+            return "unjudged"
+
+        immutability_verdict = verdict(immutability)
+        acceptance_verdict = verdict(acceptance)
+        if immutability_verdict == "failed" or acceptance_verdict == "failed":
+            return "failed"
+        if immutability_verdict == "passed" and acceptance_verdict == "passed":
+            return "passed"
+        return "unjudged"
+    return "unjudged"
 
 
 def undelivered(children: list[dict]) -> list[str]:
@@ -319,7 +460,9 @@ def quote_evidence(output: str) -> list[str]:
 
 
 def render_record(range_spec: str, blocks: list[str] | None,
-                   checkout: str, spec: bool = False) -> tuple[str | None, bool]:
+                   checkout: str, spec: bool = False,
+                   closing_pr: dict | None = None, verify: str | None = None,
+                   ) -> tuple[str | None, bool]:
     """Returns `(record_text, ok)`. `ok` is False the moment a criterion's check exits
     non-zero — `record_text` is then `None`, and the failing criterion plus the command's
     combined output have already gone to stderr. The caller must not post or close in that
@@ -329,7 +472,16 @@ def render_record(range_spec: str, blocks: list[str] | None,
     prints something, and the `MET` bullet then carries that output. A silent exit 0 refuses
     down the same path a non-zero exit does. Ticket mode (`spec=False`) accepts a silent exit 0,
     which is what `grep -q` and `test -f` have always been — see the module docstring for why
-    the two modes read the same exit status differently."""
+    the two modes read the same exit status differently.
+
+    `closing_pr` and `verify` are what the record's own claim rests on (#306): the closing pull
+    request (`fetch_closing_pr`'s result — `number`, `url`, `merge_sha`) and Verify's conclusion
+    on it (`fetch_verify_verdict`'s `"passed"`/`"failed"`/`"unjudged"`). Both are the *caller's*
+    job to fetch, never this function's — `render_record` stays a pure function of what it is
+    handed, the same split `run()` already keeps for `blocks`, so a test drives it without paying
+    for a `gh` round trip. `closing_pr=None` (a ticket closed with no merged PR found — by hand,
+    or a spec, which is never closed by a PR of its own) renders no extra line at all; the record
+    then reads exactly as it did before this parameter existed."""
     if blocks is None:
         count, reason = count_commits(range_spec, checkout)
         if count is None:
@@ -420,8 +572,31 @@ def render_record(range_spec: str, blocks: list[str] | None,
         )
         return None, False
     summary = f"{verified} of {total} criteria verified · {unverified} unverified"
-    body = "\n".join([f"`{range_spec}`", "", summary, "", *lines])
+    header = [f"`{range_spec}`"]
+    if closing_pr is not None:
+        header.append(render_closing_pr_line(closing_pr, verify))
+    body = "\n".join([*header, "", summary, "", *lines])
     return f"## Closing record\n\n{body}\n", True
+
+
+def render_closing_pr_line(closing_pr: dict, verify: str | None) -> str:
+    """The one extra line `render_record` adds when it was handed a `closing_pr` (#306): the
+    pull request that closed this ticket, its merge SHA, and Verify's conclusion on it — every
+    one of them `run()` read itself rather than accepted from a caller.
+
+    Never a bullet: `hooks/close-gate.py`'s `BULLET_RE` counts every `^[ \\t]*- ` line and
+    denies a close whose bullet count disagrees with the body's criterion count, so this starts
+    with a non-`-` character on its own line, the same discipline `quote_evidence` already keeps.
+    Never the range line either — `RANGE_LINE_RE` is anchored to a whole line reading
+    `revspec..revspec`, and a merge SHA has no `..` in it to collide with that pattern by
+    accident, but this still sits on a line of its own so nothing has to reason about it.
+
+    `verify` renders `unjudged` rather than being omitted when it is `None` or `"unjudged"` — the
+    silence itself is the fact worth recording (ADR-0054's reading, applied to this record):
+    a closing record that goes quiet about Verify reads as "nobody looked", never as "nothing to
+    say"."""
+    sha = closing_pr.get("merge_sha") or "unknown"
+    return f"Closed by #{closing_pr['number']} · merge `{sha}` · Verify: {verify or 'unjudged'}"
 
 
 def render_superseded_record(successor: int, blocks: list[str] | None,
@@ -569,30 +744,53 @@ def run(argv=None) -> int:
             print(error, file=sys.stderr)
             return 1
     else:
-        if args.spec:
-            # Before `render_record`, which is where check commands actually run — the whole
-            # point of the precondition is that a spec whose slices have not landed never
-            # spends a run on a verdict that could not have been green.
+        closing_pr = None
+        verify = None
+        # Nothing below this line runs for a `No diff.` close (`blocks is None`): that record
+        # carries no extra line either way (`render_record`), so there is nothing here worth a
+        # `gh repo view` and a GraphQL round trip — the stub-driven "No diff." tests pin the exact
+        # call sequence such a close makes, and this would only add calls to it for no reason.
+        if blocks is not None:
+            if args.spec:
+                # Before `render_record`, which is where check commands actually run — the whole
+                # point of the precondition is that a spec whose slices have not landed never
+                # spends a run on a verdict that could not have been green.
+                try:
+                    name_with_owner = fetch_repo_name(gh)
+                    children = fetch_sub_issues(gh_path, name_with_owner, args.issue)
+                except (gh_support.GhError, KeyError, ValueError) as e:
+                    print(f"error: could not read #{args.issue}'s sub-issues: {e}", file=sys.stderr)
+                    return 1
+                ROW["children"] = len(children)
+                problems = undelivered(children)
+                if problems:
+                    print(
+                        f"error: {len(problems)} of {len(children)} sub-issues not delivered — a "
+                        "spec closes on its own check, but only once every slice beneath it has "
+                        "actually landed:",
+                        file=sys.stderr,
+                    )
+                    for problem in problems:
+                        print(f"  {problem}", file=sys.stderr)
+                    return 1
+
+            # Read, never accepted from a caller (#306): the closing pull request, its merge SHA,
+            # and Verify's conclusion on it, all discovered from `args.issue` itself. Swallowed on
+            # failure rather than refusing the whole close — a `gh` hiccup reading the *evidence
+            # for* a close must not become a reason the close, already earned by the checks
+            # below, cannot post at all; `closing_pr=None` is exactly the "no PR known" shape
+            # `render_record` already renders nothing extra for.
             try:
-                name_with_owner = json.loads(gh_support.run_gh(
-                    gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
-                children = fetch_sub_issues(gh_path, name_with_owner, args.issue)
+                name_with_owner = fetch_repo_name(gh)
+                closing_pr = fetch_closing_pr(gh_path, name_with_owner, args.issue)
+                if closing_pr is not None:
+                    verify = fetch_verify_verdict(gh, closing_pr["url"])
             except (gh_support.GhError, KeyError, ValueError) as e:
-                print(f"error: could not read #{args.issue}'s sub-issues: {e}", file=sys.stderr)
-                return 1
-            ROW["children"] = len(children)
-            problems = undelivered(children)
-            if problems:
-                print(
-                    f"error: {len(problems)} of {len(children)} sub-issues not delivered — a "
-                    "spec closes on its own check, but only once every slice beneath it has "
-                    "actually landed:",
-                    file=sys.stderr,
-                )
-                for problem in problems:
-                    print(f"  {problem}", file=sys.stderr)
-                return 1
-        record_text, ok = render_record(args.range, blocks, args.checkout, spec=args.spec)
+                print(f"warning: could not read #{args.issue}'s closing pull request: {e}",
+                      file=sys.stderr)
+
+        record_text, ok = render_record(args.range, blocks, args.checkout, spec=args.spec,
+                                         closing_pr=closing_pr, verify=verify)
         if not ok:
             return 1
 
