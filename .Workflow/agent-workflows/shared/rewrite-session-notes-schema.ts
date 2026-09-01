@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { SessionRecord } from "../observations/session-record-schema";
+import { SessionRecord } from "./session-record-schema";
 import { execGit, type GitExec } from "./git";
 import { reason } from "./reason";
 

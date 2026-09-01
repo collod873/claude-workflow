@@ -136,5 +136,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0126 | [No diff. counts the range it was handed, and refuses a range it cannot count](0126-no-diff-counts-the-range-it-was-handed-and-refuses-a-range-i.md) | note |
 | 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) | constraint |
 | 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) | constraint |
+| 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) | constraint |
 
-128 ADRs · 53 constraint · 44 note · 31 superseded · 11,368 words total.
+129 ADRs · 54 constraint · 44 note · 31 superseded · 11,516 words total.
