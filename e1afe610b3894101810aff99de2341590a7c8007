@@ -1,0 +1,1 @@
+[{"sessionId":"40a0734b-803f-4948-bbbc-3f034c56f5ea","base":"69914edd8b5cf6ecd4abca85f7084fd08f6c6d9c","head":"e1afe610b3894101810aff99de2341590a7c8007","touchedPaths":[".Workflow/agent-workflows/shared/ticket-shape-vendor.test.ts","bin/ticket_shape.py"],"corpusPath":"raw/sessions/2026-09-01-40a0734b.md"}]
