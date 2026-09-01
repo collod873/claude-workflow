@@ -11,6 +11,7 @@ import {
   NO_CLAIMED_FILES,
   NO_SHARED_FILES,
   refireAcceptance,
+  renderCriteria,
   renderFiles,
   runAcceptanceAuthor,
   sharedTestFiles,
@@ -171,6 +172,19 @@ describe("authorAcceptanceTests", () => {
     expect(stage.stdins[0]).not.toContain("tests/acceptance/201-one.test.ts");
   });
 
+  it("puts the exact criterion strings in the prompt, not just the body they came from", async () => {
+    // ADR-0128. Without this the author re-derives them by eye from {{ISSUE_BODY}}, and a copy that
+    // differs by one character selects no test in verify.yml's grep — failing the *implementer's*
+    // pull request for a test the implementer did not write (ADR-0034).
+    const stage = await authorAgainst(() => undefined);
+    const prompt = stage.stdins[0] as string;
+
+    for (const criterion of extractCriteria(TICKET_BODY)) {
+      expect(prompt).toContain(`~~~\n${criterion}\n~~~`);
+    }
+    expect(prompt, "the count, so the author can check its own coverage").toContain("2 acceptance criteria");
+  });
+
   it("says nothing shared exists yet rather than showing an empty section", async () => {
     const stage = await authorAgainst(() => undefined, () => []);
     expect(stage.stdins[0]).toContain(NO_SHARED_FILES);
@@ -223,6 +237,28 @@ describe("authorAcceptanceTests", () => {
       }),
     ).rejects.toThrow(/outside/);
     expect(written.size).toBe(0);
+  });
+});
+
+describe("renderCriteria", () => {
+  // ADR-0128: the criterion string is an identifier, matched by `String.includes` on the far side
+  // of a dispatch, so what the author is shown has to be byte-identical to what the grep looks for.
+  it("shows each criterion exactly as extractCriteria lifted it, numbered and fenced", () => {
+    const rendered = renderCriteria(extractCriteria(TICKET_BODY));
+
+    expect(rendered).toContain("### Criterion 1");
+    expect(rendered).toContain("### Criterion 2");
+    for (const criterion of extractCriteria(TICKET_BODY)) {
+      expect(rendered).toContain(`~~~\n${criterion}\n~~~`);
+    }
+  });
+
+  it("fences with tildes, so a criterion carrying backticks survives the render", () => {
+    // Every criterion in TICKET_BODY carries backticks, and a criterion with a `check:` marker
+    // carries a fenced command inside itself — a backtick fence here would end at the wrong place.
+    const rendered = renderCriteria(["`npm test` exits 0 — check: `npm test`"]);
+
+    expect(rendered).toContain("~~~\n`npm test` exits 0 — check: `npm test`\n~~~");
   });
 });
 

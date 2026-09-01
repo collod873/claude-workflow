@@ -58,6 +58,17 @@ export interface LandGateDeps {
    * `issueNumber` is `undefined`, which a caller with nowhere to write should not have to fake.
    */
   reportRefusal: (message: string) => void;
+  /**
+   * Reaches the same reader when this *repairs* rather than refuses.
+   *
+   * A repair is the quieter half of the same silence. `repairAcceptanceBaseline` absorbs a clone
+   * found entirely inside `tests/acceptance/` and lets the push through, correctly — nobody but
+   * lane 04 may ever edit that directory, so nobody else could have deduped it — but the absorption
+   * is unattended, unreviewed, and lands on `main` with no `Verify` run behind it. Its only trace
+   * was a baseline file growing by a few entries per authoring run. A machine that may add to a
+   * ratchet without asking should at least say what it added.
+   */
+  reportRepair: (message: string) => void;
 }
 
 /** CLAUDE.md: why, not what. */
@@ -103,6 +114,13 @@ export function runLandGate(deps: LandGateDeps): LandGateOutcome {
 
   deps.git(["add", BASELINE_RELATIVE_PATH]);
   deps.git(["commit", "-m", repairCommitMessage(repair.added, repair.carried)]);
+  deps.reportRepair(
+    `This lane baselined ${repair.added} clone(s) among its own acceptance tests and pushed, ` +
+      `carrying ${repair.carried} across a re-cut. Nothing was deduplicated — the duplication is ` +
+      `still there, and ${BASELINE_RELATIVE_PATH} now measures tests/acceptance/ by that much ` +
+      `less. Only lane 04 writes that directory, so only lane 04's author prompt can stop it ` +
+      `growing.\n\n${repair.report}`,
+  );
   return repair;
 }
 
@@ -124,10 +142,20 @@ function runGauntletPushReal(root: string): { ok: true } | { ok: false; report: 
   }
 }
 
-/** The real `reportRefusal`: one comment on the ticket the push was for, via `gh`. */
-function reportRefusalReal(gh: GhExec, issueNumber: number | undefined): (message: string) => void {
+/**
+ * The real reporters: one comment on the ticket the push was for, via `gh`.
+ *
+ * One factory for both outcomes rather than two near-identical ones — they differ in the sentence
+ * that opens the comment and in whether the console line is an error, and in nothing else.
+ */
+function reportToTicket(
+  gh: GhExec,
+  issueNumber: number | undefined,
+  kind: { label: string; opener: string; toStderr: boolean },
+): (message: string) => void {
   return (message) => {
-    console.error(`land gate: refused —\n${message}`);
+    const console_ = kind.toStderr ? console.error : console.log;
+    console_(`land gate: ${kind.label} —\n${message}`);
     if (issueNumber === undefined || !Number.isFinite(issueNumber)) return;
     try {
       gh([
@@ -135,7 +163,7 @@ function reportRefusalReal(gh: GhExec, issueNumber: number | undefined): (messag
         "comment",
         String(issueNumber),
         "--body",
-        `This lane's push to \`main\` was refused before it happened — nothing landed.\n\n\`\`\`\n${message}\n\`\`\``,
+        `${kind.opener}\n\n\`\`\`\n${message}\n\`\`\``,
       ]);
     } catch (err) {
       // A failed comment must not turn a refusal into a silent one at the process level either —
@@ -154,7 +182,17 @@ async function main(): Promise<void> {
     runGauntletPush: () => runGauntletPushReal(root),
     repairAcceptanceBaseline: () => repairAcceptanceBaseline(root, ACCEPTANCE_TEST_DIR),
     git: execGit,
-    reportRefusal: reportRefusalReal(execGh, issueNumber),
+    reportRefusal: reportToTicket(execGh, issueNumber, {
+      label: "refused",
+      opener: "This lane's push to `main` was refused before it happened — nothing landed.",
+      toStderr: true,
+    }),
+    reportRepair: reportToTicket(execGh, issueNumber, {
+      label: "repaired",
+      opener:
+        "This lane pushed to `main` after quietly widening the clone baseline for its own tests.",
+      toStderr: false,
+    }),
   });
 
   if (outcome.verdict === "refused") {

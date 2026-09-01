@@ -89,7 +89,35 @@ const IMMOVABLE_SUBJECTS: readonly string[] = IMMUTABLE_SET.filter(
 );
 
 /**
- * The immutable-set paths a test's source names, if any.
+ * `source` with its whole-line comments dropped — every line whose first non-whitespace opens a
+ * line comment or a block comment, and every line inside a block one.
+ *
+ * A trailing comment after code on the same line is deliberately left in: that line carries code,
+ * so keeping it costs a false positive at worst, where dropping it would cost a false negative on
+ * the real subject beside it. Whole-line comments are the shape that actually collided (see
+ * `immovableSubjects`), because that is where the author's prompt requires the criterion to go.
+ */
+function codeOf(source: string): string {
+  const lines: string[] = [];
+  let inBlock = false;
+  for (const line of source.split("\n")) {
+    const trimmed = line.trim();
+    if (inBlock) {
+      if (trimmed.includes("*/")) inBlock = false;
+      continue;
+    }
+    if (trimmed.startsWith("//")) continue;
+    if (trimmed.startsWith("/*")) {
+      if (!trimmed.includes("*/")) inBlock = true;
+      continue;
+    }
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The immutable-set paths a test's **code** names, if any — comments excluded.
  *
  * **Why this is a satisfiability question and not a style one.** A permanently-false assertion is
  * undecidable in general, which is why lane 04 has had no `validateCriteriaShape` of its own. A
@@ -100,14 +128,25 @@ const IMMOVABLE_SUBJECTS: readonly string[] = IMMUTABLE_SET.filter(
  * `vitest.config.ts` and asserted that a `setupFiles` entry appeared in it, against a file the
  * Immutability job forbids any pull request from editing (#278).
  *
- * Matched against the source text rather than parsed, deliberately. A path an acceptance test does
- * not read has no reason to be written in it, so the false positives this shape admits — a mention
- * inside a comment or a string that is never opened — are a sentence to rewrite rather than a
- * ticket to re-slice, and the alternative is a TypeScript-aware reader that has to be right about
- * every way a path can reach `readFileSync`.
+ * **Why comments are cut before the match.** ADR-0120 first matched the whole source text, on the
+ * reasoning that a path an acceptance test does not read has no reason to be written in it. A
+ * criterion is the counter-example, and it is not a rare one: an acceptance test names the
+ * criterion it proves verbatim, that text is what `shared/affected-tests.ts` greps for, and a
+ * criterion's own trailing `check:` marker routinely names a workflow file. Thirteen of the
+ * seventy-four files already under `tests/acceptance/` carry `.github/` or `vitest.config.ts` for
+ * exactly that reason. Matching them made the author's two rules unsatisfiable together — quote the
+ * criterion verbatim, and never name an immovable path — which is ADR-0102's corner one level
+ * along. Comments cannot open a file, so cutting them removes the collision without widening what
+ * an assertion may turn on.
+ *
+ * Still matched against text rather than parsed: the alternative is a TypeScript-aware reader that
+ * has to be right about every way a path can reach `readFileSync`.
+ * [ADR-0127](../../../docs/adr/0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md)
+ * is the ruling.
  */
 export function immovableSubjects(source: string): string[] {
-  return IMMOVABLE_SUBJECTS.filter((entry) => source.includes(entry));
+  const code = codeOf(source);
+  return IMMOVABLE_SUBJECTS.filter((entry) => code.includes(entry));
 }
 
 /**

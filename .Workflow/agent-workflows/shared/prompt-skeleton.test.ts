@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { AUTHOR_OUTPUT } from "../acceptance/acceptance";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
 import { SWEEP_OUTPUT } from "../shape/sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
@@ -44,6 +45,7 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "to-tickets/slice/prompt.md", output: SLICE_OUTPUT },
   { path: "to-tickets/audit/prompt.md", output: AUDIT_OUTPUT },
   { path: "ratify/prompt.md", output: RATIFIER_OUTPUT },
+  { path: "acceptance/author/prompt.md", output: AUTHOR_OUTPUT },
 ];
 
 function promptSource(promptPath: string): string {

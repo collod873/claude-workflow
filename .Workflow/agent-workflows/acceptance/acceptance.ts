@@ -110,9 +110,16 @@ const TEST_SUFFIX = ".test.ts";
  * The author needs these for the same reason ADR-0098 gave it its claimed files, one level along.
  * It writes one file per criterion in a single answer, so several criteria about one workflow used
  * to mean several copies of one reader — three copies with three different bugs, on #201, two of
- * which are what made the landed tests wrong. `bin/clone-gate` reports that as clones on every
- * authoring run, and a baseline cannot absorb it: each run hashes differently, so the baseline
- * would grow forever and stop measuring anything (ADR-0056).
+ * which are what made the landed tests wrong.
+ *
+ * Nothing downstream will stop it, which is why this is a prompt input rather than a gate. eslint
+ * is per-file, so `push-gate.ts`'s lint pass cannot see a reader copied across two files;
+ * `bin/clone-gate` can, but `land-gate.ts` hands a clone whose every location is under
+ * `ACCEPTANCE_TEST_DIR` to `repairAcceptanceBaseline`, which baselines it and lets the push
+ * through. That absorption is right — nobody but this lane may ever edit that directory, so nobody
+ * else could dedupe it — and it is also the whole cost: each run hashes differently, so the
+ * baseline grows on every authoring run and measures this directory a little less each time
+ * (ADR-0056). Showing the author what it may import is what keeps that from being the normal case.
  *
  * The other tests are deliberately not shown. What the author needs is what it may *reuse*; a
  * sibling suite is neither reusable nor a shape it has to match, and showing every test this lane
@@ -166,6 +173,35 @@ export function renderFiles(
     .join("\n\n");
 }
 
+/**
+ * The ticket's criteria as the author is shown them: numbered, one per tilde-fenced block, each
+ * the exact string `extractCriteria` lifted.
+ *
+ * **Why the author is handed these rather than asked to find them.** ADR-0098 gave lane 04 its
+ * claimed files because a model that cannot see a file guesses about its shape; this is the same
+ * move on the ticket's own text. The criterion string is not prose the author paraphrases — it is
+ * an identifier. `implement.ts` sends `extractCriteria(ticket.body)` on the verify dispatch, and
+ * `verify.yml` selects this slice's tests with `testsForCriteria`, a literal `String.includes` over
+ * test source. A test whose copy of the criterion differs by one character selects nothing, and
+ * the job fails on the *implementer's* pull request with "no acceptance test names a criterion this
+ * dispatch carries" — a defect in the test, charged to somebody who did not write it (ADR-0034).
+ *
+ * So the exact string the grep will look for is rendered into the prompt, from the same function
+ * that produces the one on the wire. Asking the model to re-derive it from `{{ISSUE_BODY}}` by eye
+ * was asking it to reimplement `extractCriteria` — including the part where the trailing `check:`
+ * marker stays in the string (`docs/agents/ticket-format.md`), which is the character-for-character
+ * detail an author reading for meaning drops first.
+ *
+ * Tilde fences rather than backticks: a criterion may carry backticks of its own, and often does.
+ * [ADR-0128](../../../docs/adr/0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md)
+ * is the ruling.
+ */
+export function renderCriteria(criteria: string[]): string {
+  return criteria
+    .map((criterion, index) => `### Criterion ${index + 1}\n\n~~~\n${criterion}\n~~~`)
+    .join("\n\n");
+}
+
 /** `readFile`'s default: the file's text, or `undefined` when it is not there yet. */
 function readIfPresent(path: string): string | undefined {
   try {
@@ -211,6 +247,8 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
       ISSUE_BODY: deps.ticket.body,
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
       TEST_DIR: ACCEPTANCE_TEST_DIR,
+      CRITERIA: renderCriteria(criteria),
+      CRITERIA_COUNT: String(criteria.length),
       CLAIMED_FILES: renderFiles(
         extractFilesClaimed(deps.ticket.body),
         deps.readFile ?? readIfPresent,

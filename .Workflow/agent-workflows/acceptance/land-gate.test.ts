@@ -2,17 +2,25 @@ import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
 import { runLandGate, type LandGateDeps } from "./land-gate";
 
-function deps(overrides: Partial<LandGateDeps> = {}): { fake: ReturnType<typeof createFakeGit>; refusals: string[]; deps: LandGateDeps } {
+function deps(overrides: Partial<LandGateDeps> = {}): {
+  fake: ReturnType<typeof createFakeGit>;
+  refusals: string[];
+  repairs: string[];
+  deps: LandGateDeps;
+} {
   const fake = createFakeGit(() => "");
   const refusals: string[] = [];
+  const repairs: string[] = [];
   return {
     fake,
     refusals,
+    repairs,
     deps: {
       runGauntletPush: () => ({ ok: true }),
       repairAcceptanceBaseline: () => ({ verdict: "clean" }),
       git: fake.git,
       reportRefusal: (message) => refusals.push(message),
+      reportRepair: (message) => repairs.push(message),
       ...overrides,
     },
   };
@@ -50,15 +58,41 @@ describe("runLandGate", () => {
 
   it("commits the repaired baseline when the only clones are the acceptance lane's own overlap", () => {
     const { fake, refusals, deps: d } = deps({
-      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 1, carried: 0 }),
+      repairAcceptanceBaseline: () => ({
+        verdict: "repaired",
+        added: 1,
+        carried: 0,
+        report: "  typescript, 9 lines / 61 tokens [abc123]\n    tests/acceptance/a.ts:3",
+      }),
     });
 
     const outcome = runLandGate(d);
 
-    expect(outcome).toEqual({ verdict: "repaired", added: 1, carried: 0 });
+    expect(outcome).toMatchObject({ verdict: "repaired", added: 1, carried: 0 });
     expect(fake.calls[0]?.[0]).toBe("add");
     expect(fake.calls[1]?.[0]).toBe("commit");
     expect(refusals).toEqual([]);
+  });
+
+  it("tells the ticket what it absorbed, so the one ratchet a machine may widen has a reader", () => {
+    // The repair is right — nobody outside lane 04 may edit tests/acceptance/, so nobody else could
+    // have deduped it — and it is also unattended, unreviewed, and behind the one push in this
+    // pipeline that fires no Verify run. Its only trace was a JSON file with a few more entries.
+    const { repairs, deps: d } = deps({
+      repairAcceptanceBaseline: () => ({
+        verdict: "repaired",
+        added: 2,
+        carried: 0,
+        report: "  typescript, 9 lines / 61 tokens [abc123]\n    tests/acceptance/a.ts:3",
+      }),
+    });
+
+    runLandGate(d);
+
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0], "says how much was absorbed").toContain("2 clone(s)");
+    expect(repairs[0], "names where, not just how many").toContain("tests/acceptance/a.ts:3");
+    expect(repairs[0], "says the duplication is still there").toMatch(/still there/i);
   });
 
   it("commits the baseline when nothing was added and a re-cut entry was only carried across", () => {
@@ -67,12 +101,12 @@ describe("runLandGate", () => {
     // "Nothing added" is not "nothing to commit" — leaving it uncommitted pushes a tree the gate
     // refuses, which is the silent-red-main hole this whole gate exists to close.
     const { fake, refusals, deps: d } = deps({
-      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 0, carried: 1 }),
+      repairAcceptanceBaseline: () => ({ verdict: "repaired", added: 0, carried: 1, report: "" }),
     });
 
     const outcome = runLandGate(d);
 
-    expect(outcome).toEqual({ verdict: "repaired", added: 0, carried: 1 });
+    expect(outcome).toMatchObject({ verdict: "repaired", added: 0, carried: 1 });
     expect(fake.calls[0]?.[0]).toBe("add");
     expect(fake.calls[1]?.[0]).toBe("commit");
     expect(fake.calls[1]?.[2]).toContain("#282");

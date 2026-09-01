@@ -842,7 +842,20 @@ export function runCloneGate(root: string, argv: readonly string[]): number {
 /** What one call to `repairAcceptanceBaseline` decided. */
 export type AcceptanceRepairOutcome =
   | { verdict: "clean" }
-  | { verdict: "repaired"; added: number; carried: number }
+  | {
+      verdict: "repaired";
+      added: number;
+      carried: number;
+      /**
+       * The entries this repair wrote, in `describe`'s shape — what was absorbed, and where.
+       *
+       * Carried so `land-gate.ts` can put it somewhere a person reads. A repair that only ever
+       * appears as a growing JSON file is debt with no reader: this baseline is the one in the
+       * repository that a machine may add to unattended, and it grows on every authoring run that
+       * duplicates.
+       */
+      report: string;
+    }
   | { verdict: "refused"; reason: string };
 
 /**
@@ -916,7 +929,12 @@ export function repairAcceptanceBaseline(root: string, testDir: string): Accepta
   // lane's own that jscpd re-cut keeps its one entry instead of wedging the push the way #282
   // wedged a workstation. Nothing is deleted here and nothing is added but `introduced`.
   writeBaseline(root, [...prunedBaseline(baseline, duplicates, [], carried), ...introduced]);
-  return { verdict: "repaired", added: introduced.length, carried: carried.length };
+  return {
+    verdict: "repaired",
+    added: introduced.length,
+    carried: carried.length,
+    report: [...introduced.map(describe), ...carried.map(describeCarry)].join("\n"),
+  };
 }
 
 // --- CLI -------------------------------------------------------------------------------------

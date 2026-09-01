@@ -134,5 +134,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0124 | [A lint rule is ratified only by reproducing its own evidence](0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md) | constraint |
 | 0125 | [Checkpoint isolation is a setupFiles entry that every test gets, not a helper every test file remembers to call](0125-checkpoint-isolation-is-a-setupfiles-entry-that-every-test-g.md) | note |
 | 0126 | [No diff. counts the range it was handed, and refuses a range it cannot count](0126-no-diff-counts-the-range-it-was-handed-and-refuses-a-range-i.md) | note |
+| 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) | constraint |
+| 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) | constraint |
 
-126 ADRs · 53 constraint · 44 note · 29 superseded · 11,078 words total.
+128 ADRs · 55 constraint · 44 note · 29 superseded · 11,368 words total.

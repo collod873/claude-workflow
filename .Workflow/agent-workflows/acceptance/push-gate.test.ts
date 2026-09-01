@@ -222,6 +222,43 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
     expect(outcome.verdict === "refused" && outcome.reason).toContain(".github/");
   });
 
+  it("pushes a test whose criterion comment names a workflow file, because a comment opens nothing", async () => {
+    // The collision this check used to create: lane 04's author is told to quote its criterion
+    // verbatim in a comment — that text is what `shared/affected-tests.ts` greps for — and a
+    // criterion's own trailing `check:` marker routinely names a workflow file. Both rules could
+    // not be obeyed at once while the match read comments too (ADR-0102's corner, one level along).
+    const { deps } = pushGateDeps(
+      { collected: true, failures: [{ name: "proves the criterion", errorName: "AssertionError" }] },
+      [
+        "// - [ ] `ticket-ready` for a slice is sent after that slice's acceptance tests are on",
+        '//       `main` — check: `grep -q "ticket-ready" .github/workflows/acceptance.yml`',
+        "/**",
+        " * A block comment naming vitest.config.ts is no more a subject than a line one is.",
+        " */",
+        'import { execFileSync } from "node:child_process";',
+        'const out = execFileSync("npx", ["tsx", "-e", "console.log(1)"], { encoding: "utf8" });',
+        'expect(out).toContain("ticket-ready");',
+      ].join("\n"),
+    );
+
+    expect((await runPushGate(deps)).verdict).toBe("pushed");
+  });
+
+  it("still refuses when the path is in code, however much comment surrounds it", async () => {
+    const { deps } = pushGateDeps(
+      { collected: true, failures: [] },
+      [
+        "// - [ ] the runner config carries a setup file — check: `npm test`",
+        'const yml = readFileSync(".github/workflows/verify.yml", "utf8");',
+      ].join("\n"),
+    );
+
+    const outcome = await runPushGate(deps);
+
+    expect(outcome.verdict).toBe("refused");
+    expect(outcome.verdict === "refused" && outcome.reason).toContain(".github/");
+  });
+
   it("pushes a test that reads its own directory, which is where its fixtures live", async () => {
     // `tests/acceptance/` is in the immutable set too, and is dropped from this check on purpose:
     // a test is *in* that directory and imports its own `.fixture.ts` from it.
