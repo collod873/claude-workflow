@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   claimImplementationBranch,
@@ -313,15 +313,22 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Which checkout the recovered answer lands in. `TARGET_WORKSPACE` is set only by the reusable
+  // workflow (ADR-0055): there this process runs from the machine checkout and every path in the
+  // answer is the target's. `readFile` is deliberately not bound to it — the only thing this lane
+  // reads is the downloaded artifact, at an absolute path in the runner's temp directory.
+  const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+
   try {
     const outcome = await runRecover({
       gh: execGh,
-      git: execGit,
+      git: (args) => execGit(["-C", repoDir, ...args]),
       runId,
       readFile: (path) => readFileSync(path, "utf8"),
-      writeFile: fsWriteFile,
+      writeFile: (path, content) => fsWriteFile(resolve(repoDir, path), content),
       downloadArtifact: downloadArtifactTo,
       runGenerator: execGenerator,
+      repoRoot: repoDir,
     });
     console.log(`recover: ${outcome.outcome}`);
   } catch (err) {

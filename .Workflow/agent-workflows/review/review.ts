@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
@@ -354,11 +354,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Which checkout is the repository under review. `TARGET_WORKSPACE` is set only by the reusable
+  // workflow (ADR-0055): there this process runs from the machine checkout, where the diff being
+  // reviewed does not exist and never will. Absent — a workstation run — cwd is both.
+  const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+
   try {
-    const diff = execGit(["diff", `${base}...${head}`]);
+    const diff = execGit(["-C", repoDir, "diff", `${base}...${head}`]);
     // `head` goes through unchanged: which pull request it belongs to, and which ticket that pull
     // request implements, are `runReview`'s to resolve — this entrypoint looks nothing up.
-    const result = await runReview(execClaude, execGh, { diff, greenGateChecks, assignee, head });
+    // The reviewer's own working directory is the target too: the diff is inlined in its prompt,
+    // but what it reads *around* the diff has to be the code that diff belongs to.
+    const result = await runReview(execClaudeIn(repoDir), execGh, { diff, greenGateChecks, assignee, head });
     console.log(
       JSON.stringify({ publishedIssues: result.publishedIssues, tally: result.tally }),
     );

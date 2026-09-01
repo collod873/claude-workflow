@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { simulateClaimRef } from "../shared/gh.fake";
@@ -901,22 +902,7 @@ describe("implement.yml", () => {
     // ADR-0055's whole point: a target repository never carries a copy of the machine. This lane is
     // the one where conflating them is worst — the implementer holds Edit, Write and Bash, so a run
     // pointed at the wrong tree edits the pipeline instead of the repository it was dispatched for.
-    const { workflow } = readWorkflow<{
-      jobs: Record<string, { steps: Array<{ name: string; with?: Record<string, string>; env?: Record<string, string> }> }>;
-    }>("implement.yml");
-    const steps = workflow.jobs.implement.steps;
-
-    const machine = steps.find((step) => step.name === "Checkout machine");
-    expect(machine?.with?.repository).toBe("collod873/claude-workflow");
-    // No credential on the machine checkout (ADR-0132): this repository is public, so a caller
-    // reads it anonymously rather than holding a PAT that would have to be rotated everywhere.
-    expect(machine?.with?.token).toBeUndefined();
-
-    const target = steps.find((step) => step.name === "Checkout target");
-    expect(target?.with?.path).toBe("target");
-
-    const build = steps.find((step) => step.name === "Implement the ticket");
-    expect(build?.env?.TARGET_WORKSPACE).toBe("${{ github.workspace }}/target");
+    expectMachineAndTargetCheckouts({ workflow: "implement.yml", job: "implement", runs: "implement.ts" });
   });
 
   it("times its job out at exactly the age CLAIM_TIMEOUT_MINUTES calls a claim dead", () => {

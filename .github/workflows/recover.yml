@@ -16,6 +16,14 @@ name: Recover (reusable)
 # through `workflow_call`, so `recover-caller.yml` is what actually carries them now, and only the
 # run id it resolves crosses the boundary, as the `run_id` input below.
 #
+# Two checkouts, never one standing in for the other (ADR-0055): `collod873/claude-workflow` (the
+# machine, for `recover.ts` and the generators it re-runs) and the calling repository's own tree
+# (the target, which is where a recovered answer is written, committed and pushed). This shipped as
+# a single plain checkout, which in a called workflow is the *caller's* repository: this repository
+# read as both, and any other caller would have died on a `.Workflow/` that does not exist there.
+# The machine checkout carries no credential input of its own — ADR-0132 made this repository
+# public.
+#
 # **No model is ever run here.** `recover.ts` either finishes lane 05's own tail over an answer
 # that already exists, or sends the same dispatch lane 05 itself listens for — both are argv
 # through `GhExec`/`GitExec`, never a `claude` spawn, so this lane installs no CLI and binds no
@@ -68,16 +76,25 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RUN_ID: ${{ inputs.run_id }}
     steps:
-      # Plain checkout, no `ref:` — unlike `fixer.yml`, which lands on a pull request's own
-      # branch, this run may need to *claim a fresh one* (`claimImplementationBranch` reads
-      # `git rev-parse HEAD` as the commit to claim at, the same way `implement.yml` does), so it
-      # starts at trunk's tip exactly like lane 05 itself does.
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      # Plain, no `ref:` — unlike `fixer.yml`, which lands on a pull request's own branch, this run
+      # may need to *claim a fresh one* (`claimImplementationBranch` reads `git rev-parse HEAD` as
+      # the commit to claim at, the same way `implement.yml` does), so it starts at trunk's tip
+      # exactly like lane 05 itself does.
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       # A runner has no git identity, and a recovered answer is committed here — same fix
-      # `implement.yml`, `fixer.yml` and `audit.yml` all needed for their own commits.
+      # `implement.yml`, `fixer.yml` and `audit.yml` all needed for their own commits. Scoped to the
+      # target checkout: it is the only one this job ever commits into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -98,4 +115,9 @@ jobs:
       - name: Recover or re-dispatch
         env:
           HUSKY: "0"
+          # Which checkout the recovered answer is written into, committed from and pushed from
+          # (ADR-0055) — `recover.ts` threads it through `landAnswer`'s git, its file writes and the
+          # generators. The artifact it reads the answer back from is a runner temp path and is not
+          # relative to either checkout.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/recover/recover.ts

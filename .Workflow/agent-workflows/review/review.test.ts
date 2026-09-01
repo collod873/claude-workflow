@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
 import type { StageExec } from "../shared/stage";
@@ -560,7 +561,17 @@ describe("review-caller.yml's trigger", () => {
 describe("review.yml, the reusable workflow review-caller.yml calls", () => {
   const workflow = parse(readFileSync(REVIEW_YML_PATH, "utf8")) as {
     on: Record<string, unknown>;
-    jobs: { review: { env?: Record<string, string> } };
+    jobs: {
+      review: {
+        env?: Record<string, string>;
+        steps?: Array<{
+          name?: string;
+          run?: string;
+          env?: Record<string, string>;
+          with?: { path?: string; repository?: string; token?: string; "fetch-depth"?: number };
+        }>;
+      };
+    };
   };
 
   it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
@@ -569,5 +580,11 @@ describe("review.yml, the reusable workflow review-caller.yml calls", () => {
 
   it("sets the assignee review.ts refuses to run without", () => {
     expect(workflow.jobs.review.env?.SIGNAL_ASSIGNEE).toBeDefined();
+  });
+
+  it("separates the machine it runs from the target it reviews", () => {
+    // `fetchDepth: 0` because the diff under review is `origin/main...<head>`, and a shallow
+    // checkout carries neither ref far enough back to compute it.
+    expectMachineAndTargetCheckouts({ workflow: "review.yml", job: "review", runs: "review.ts", fetchDepth: 0 });
   });
 });

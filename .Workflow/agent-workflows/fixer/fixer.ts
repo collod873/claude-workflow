@@ -8,7 +8,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 
@@ -489,12 +489,17 @@ interface VitestJsonReport {
  * broken import) is reported as a single synthetic failure naming the file,
  * so a fixer attempt that cannot even be collected still gets a signature
  * to compare against rather than being read as silently green.
+ *
+ * `repoDir` is the tree the suite runs in — the target checkout under the
+ * reusable workflow (ADR-0055), where the branch being fixed actually is,
+ * and cwd anywhere else.
  */
-export function runVitestJsonForFixer(targets: string[]): FixerTestResult {
+export function runVitestJsonForFixer(targets: string[], repoDir: string = process.cwd()): FixerTestResult {
   const dir = targets.join(" ");
   let stdout: string;
   try {
     stdout = execFileSync("npx", ["vitest", "run", ...targets, "--reporter=json"], {
+      cwd: repoDir,
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
       env: childEnv(),
@@ -588,7 +593,16 @@ async function runFix(): Promise<void> {
     // what Verify refused, so the brief names the failure that actually matters and the loop's
     // "green" means the same thing lane 06's does.
     const targets = [dir, `tests/acceptance/${issueArg}-`];
-    const initialFailure = runVitestJsonForFixer(targets).failures;
+
+    // Which checkout holds the branch being fixed. `TARGET_WORKSPACE` is set only by the reusable
+    // workflow (ADR-0055): there this process runs from the machine checkout, and the suite, the
+    // tree the model edits and the branch every attempt is committed onto are all the target's.
+    // The model's own working directory is bound to it too — this lane's whole job is editing
+    // code, so a model sitting in the machine checkout would repair the pipeline instead of the
+    // pull request it was summoned for.
+    const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+
+    const initialFailure = runVitestJsonForFixer(targets, repoDir).failures;
     if (initialFailure.length === 0) {
       console.log(`nothing to fix: no test under ${targets.join(" or ")} is failing in this checkout`);
       return;
@@ -596,9 +610,9 @@ async function runFix(): Promise<void> {
 
     const outcome = await runFixer({
       gh: execGh,
-      exec: execClaude,
-      git: execGit,
-      runTests: () => runVitestJsonForFixer(targets),
+      exec: execClaudeIn(repoDir),
+      git: (args) => execGit(["-C", repoDir, ...args]),
+      runTests: () => runVitestJsonForFixer(targets, repoDir),
       initialFailure,
       prNumber: Number(prArg),
       branch,

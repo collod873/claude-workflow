@@ -21,6 +21,16 @@ name: Review (reusable)
 # request runs no verification, and with no verification there is no "Verify" run for
 # `review-caller.yml`'s own trigger to ever see. The only runs this can fire on already passed
 # through that door.
+#
+# Two checkouts, never one standing in for the other (ADR-0055): `collod873/claude-workflow` (the
+# machine, for `review.ts` and the reviewer's own prompt) and the calling repository's own tree at
+# the reviewed head SHA (the target, which is the diff under review and the code the reviewer reads
+# around it). `TARGET_WORKSPACE` on the reviewer step below is what tells `review.ts` which is
+# which — it threads it through the `git diff` that produces the diff and through the reviewer's own
+# working directory. This shipped as a single plain checkout, which in a called workflow is the
+# *caller's* repository: this repository read as both, and any other caller would have died on a
+# `.Workflow/` that does not exist there. The machine checkout carries no credential input of its
+# own — ADR-0132 made this repository public.
 
 "on":
   workflow_call:
@@ -59,9 +69,17 @@ jobs:
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      # `fetch-depth: 0` because the diff under review is `origin/main...<head>`, and a shallow
+      # checkout carries neither ref far enough back to compute it.
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           ref: ${{ inputs.head_sha }}
           fetch-depth: 0
 
@@ -86,4 +104,6 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
       - name: Run the correctness reviewer
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ inputs.head_sha }}"

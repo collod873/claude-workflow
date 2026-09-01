@@ -1,5 +1,6 @@
 import { createRecordingGh } from "../shared/gh.fake";
 import { describe, expect, it } from "vitest";
+import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
@@ -481,14 +482,20 @@ interface FixerWorkflow {
     repository_dispatch?: { types?: string[] };
     workflow_dispatch?: unknown;
     pull_request?: unknown;
+    workflow_call?: { inputs?: Record<string, { type?: string; required?: boolean; default?: string }> };
   };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   jobs: {
     fixer: {
       if?: string;
-      with?: { run_id?: string };
-      steps?: Array<{ name?: string; run?: string; with?: { ref?: string } }>;
+      with?: { run_id?: string; test_dir?: string };
+      steps?: Array<{
+        name?: string;
+        run?: string;
+        env?: Record<string, string>;
+        with?: { ref?: string; path?: string; repository?: string; token?: string };
+      }>;
     };
   };
 }
@@ -553,12 +560,29 @@ describe("fixer.yml, the reusable workflow fixer-caller.yml calls", () => {
     expect(source).toContain(".Workflow/agent-workflows/fixer/fixer.ts");
   });
 
-  it("points the fixer at the gauntlet's own test target, never at tests/acceptance/", () => {
+  it("separates the machine it runs from the target it fixes", () => {
+    // Two target checkouts, because this lane takes two paths into the target and only ever runs
+    // one: the pull request's own branch to fix, or trunk to escalate from.
+    expectMachineAndTargetCheckouts({ workflow: "fixer.yml", job: "fixer", runs: "fixer.ts \"$ISSUE\"", targets: 2 });
+  });
+
+  it("points the fixer at the caller's own test target, never at tests/acceptance/", () => {
     // An acceptance test is expected red until the ticket it names is built (vitest.config.ts), so
     // a fixer aimed there would chase other tickets' unbuilt criteria and block every pull request.
-    const step = (workflow.jobs.fixer.steps ?? []).find((each) => each.run?.includes("npx tsx"));
-    expect(step?.run).toContain(".Workflow");
+    //
+    // Which suite that is, is the caller's fact and not the machine's, so it crosses as a required
+    // input with no default: a default would be this repository's answer imposed on every caller,
+    // and it would fail silently — a target that collects nothing reads as "nothing is failing".
+    const step = (workflow.jobs.fixer.steps ?? []).find((each) => each.run?.includes("npx tsx") && each.name === "Run the fixer");
+    expect(step?.env?.TEST_DIR).toBe("${{ inputs.test_dir }}");
     expect(step?.run).not.toContain("tests/acceptance");
+
+    const testDir = workflow.on?.workflow_call?.inputs?.test_dir;
+    expect(testDir?.required).toBe(true);
+    expect(testDir?.default).toBeUndefined();
+
+    const { workflow: caller } = readWorkflow<FixerWorkflow>("fixer-caller.yml");
+    expect(caller.jobs.fixer.with?.test_dir).toBe(".Workflow");
   });
 });
 

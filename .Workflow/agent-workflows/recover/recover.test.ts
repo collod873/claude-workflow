@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
+import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
 import type { GhExec } from "../shared/gh";
@@ -342,7 +343,18 @@ interface RecoverWorkflow {
   on?: { workflow_run?: { workflows?: string[]; types?: string[] }; repository_dispatch?: { types?: string[] }; workflow_dispatch?: unknown };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs: { recover: { if?: string; with?: { run_id?: string }; steps?: Array<{ run?: string }> } };
+  jobs: {
+    recover: {
+      if?: string;
+      with?: { run_id?: string };
+      steps?: Array<{
+        name?: string;
+        run?: string;
+        env?: Record<string, string>;
+        with?: { path?: string; repository?: string; token?: string };
+      }>;
+    };
+  };
 }
 
 /**
@@ -412,6 +424,10 @@ describe("recover.yml, the reusable workflow recover-caller.yml calls", () => {
   it("installs no Claude CLI and binds no model secret — this lane never runs a model", () => {
     expect(source).not.toContain("npm install -g @anthropic-ai/claude-code");
     expect(source).not.toContain("secrets.CLAUDE_CODE_OAUTH_TOKEN");
+  });
+
+  it("separates the machine it runs from the target a recovered answer lands in", () => {
+    expectMachineAndTargetCheckouts({ workflow: "recover.yml", job: "recover", runs: "recover.ts" });
   });
 });
 

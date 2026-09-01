@@ -33,6 +33,15 @@ name: Fixer (reusable)
 # run is trunk being broken: there is no pull request to fix, no branch to push attempts to, and
 # nothing this lane could do but spend a model on `main`. That check now lives on `fixer-caller.yml`
 # too, alongside the rest of the routing decision.
+#
+# Two checkouts, never one standing in for the other (ADR-0055): `collod873/claude-workflow` (the
+# machine, for `fixer.ts` and the attempt prompt) and the calling repository's own tree at the pull
+# request's branch (the target — the suite this lane reproduces a failure from, the code the model
+# edits, and the branch every attempt is committed onto). `TARGET_WORKSPACE` on the fixer step
+# below is what tells `fixer.ts` which is which. This shipped as a single plain checkout, which in
+# a called workflow is the *caller's* repository: this repository read as both, and any other
+# caller would have died on a `.Workflow/` that does not exist there. The machine checkout carries
+# no credential input of its own — ADR-0132 made this repository public.
 
 "on":
   workflow_call:
@@ -45,6 +54,19 @@ name: Fixer (reusable)
         type: string
         required: false
         default: ""
+      # Where the caller's own suite lives — the first of the two vitest targets the fixer
+      # reproduces a failure from (the second, `tests/acceptance/<n>-`, is this pipeline's own
+      # convention and stays in `fixer.ts`). It is the one thing in this lane that is genuinely a
+      # fact about the calling repository rather than about the machine: this repository's is
+      # `.Workflow`, and nothing the machine can read tells it what another repository's is.
+      #
+      # Required, with no default, on purpose. A default would be this repository's answer imposed
+      # on every caller, and it would fail *quietly* — a suite target that does not exist collects
+      # nothing, which reads as "no test is failing" and leaves the pull request exactly as it was
+      # found. A missing input refuses the call outright instead.
+      test_dir:
+        type: string
+        required: true
 
 permissions:
   # write: every attempt is committed onto the pull request's own branch and pushed there
@@ -270,25 +292,39 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      # `fixer.ts`, its prompt, and the Node the whole job runs on. Skipped along with everything
+      # else when the resolve step found nothing to act on.
+      - name: Checkout machine
+        if: steps.target.outputs.mode != ''
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
       # The pull request's own branch, not the head SHA `review.yml` checks out: every attempt is
       # committed and force-free-pushed back here, so this checkout has to be the branch itself.
-      - name: Checkout the pull request's branch
+      - name: Checkout target
         if: steps.target.outputs.mode == 'model'
         uses: actions/checkout@v4
         with:
+          path: target
           ref: ${{ steps.target.outputs.branch }}
           fetch-depth: 0
 
-      # The escalate path never commits — it only needs `fixer.ts` itself on disk — so trunk's tip
-      # is enough and there is no branch to check out onto.
-      - name: Checkout trunk to escalate
+      # The escalate path never commits and reads nothing out of the target's tree — it only needs
+      # `fixer.ts` itself, which is in the machine checkout above — so trunk's tip is enough and
+      # there is no branch to check out onto.
+      - name: Checkout target at trunk to escalate
         if: steps.target.outputs.mode == 'escalate'
         uses: actions/checkout@v4
+        with:
+          path: target
 
       # A runner has no git identity, and this lane commits — same fix `integrate.yml`,
-      # `implement.yml` and `audit.yml` all needed. Only the model path commits.
+      # `implement.yml` and `audit.yml` all needed. Only the model path commits, and only ever into
+      # the target checkout.
       - name: Identify the committer
         if: steps.target.outputs.mode == 'model'
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -307,6 +343,16 @@ jobs:
       - name: Set up Node and install dependencies
         if: steps.target.outputs.mode != ''
         uses: ./.github/actions/node
+
+      # The target's own `node_modules`: the model path runs the target's vitest against the target's
+      # tree, which is the failure this lane exists to reproduce. Only that path needs it — the
+      # escalate path runs no suite. The machine's install above is what puts `tsx` itself on PATH,
+      # resolved from the nearest ancestor `node_modules` since `target/` sits directly under the
+      # machine checkout that already has one.
+      - name: Install target dependencies
+        if: steps.target.outputs.mode == 'model'
+        working-directory: target
+        run: npm ci
 
       # `fixer.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
       # a GitHub-hosted runner has none. Same step, same pin, same reasoning as `review.yml`,
@@ -330,17 +376,21 @@ jobs:
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
+        # `git -C target` rather than `working-directory: target`, because this step is both halves
+        # at once: the rebase is the target's, and the `npx tsx` that escalates a conflict is the
+        # machine's, resolved from this job's own cwd.
         run: |
           set -euo pipefail
-          git fetch origin main
-          if ! git rebase origin/main; then
-            paths=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
-            git rebase --abort
+          git -C target fetch origin main
+          if ! git -C target rebase origin/main; then
+            paths=$(git -C target diff --name-only --diff-filter=U | tr '\n' ' ')
+            git -C target rebase --abort
             npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "rebase onto trunk" "conflicts in: $paths"
             echo "conflicted=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # `.Workflow` is the directory, not `tests/acceptance/`, and not the repo root.
+      # `inputs.test_dir` is the directory — the caller's own suite root, `.Workflow` when the caller
+      # is this repository — not `tests/acceptance/`, and not the repo root.
       #
       # It is the bulk of what the gauntlet's own `test` slot runs (`vitest run .Workflow .claude`),
       # which is the red this lane is usually reacting to. `tests/acceptance/` is deliberately not
@@ -367,7 +417,12 @@ jobs:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
           BRANCH: ${{ steps.target.outputs.branch }}
-        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" .Workflow
+          TEST_DIR: ${{ inputs.test_dir }}
+          # Which checkout holds the branch being fixed (ADR-0055) — `fixer.ts` threads it through
+          # the suite it reproduces the failure from, the model's own working directory, and every
+          # `git` call the attempt loop makes.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
+        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" "$TEST_DIR"
 
       # A fixer that dies mid-loop is still a stop, and every stop reaches the owner: without this,
       # a crash or timeout ends the repair line silently and the ticket just goes cold.

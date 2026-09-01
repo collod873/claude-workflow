@@ -49,6 +49,10 @@ jobs:
       # The same `||` chain `fixer.yml`'s own `RUN_ID` used to resolve directly — whichever of the
       # three doors fired is the one with a value here.
       run_id: ${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}
+      # This repository's own suite root — the one fact about the *calling* repository that the
+      # machine cannot derive, which is why `fixer.yml` takes it as a required input rather than
+      # defaulting to this answer for everybody. Another caller names its own here.
+      test_dir: .Workflow
     # A `uses:` job passes no secret to the reusable workflow unless told to — `fixer.yml` spends
     # `CLAUDE_CODE_OAUTH_TOKEN` on its model path, so without this its preflight fails closed on
     # every run.
