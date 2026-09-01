@@ -341,6 +341,27 @@ describe("runBypassCounter", () => {
   });
 });
 
+/**
+ * ADR-0055 (amended by ADR-0132) split this lane: `bypass-counter-caller.yml` carries the
+ * `workflow_run` trigger and the "only a run on main" scope check `bypass-counter.yml`'s own job
+ * `if:` used to make (`workflow_run` cannot be parameterized through `workflow_call`), and
+ * `bypass-counter.yml` itself is the reusable workflow it calls.
+ */
+describe("bypass-counter-caller.yml rides Verify completing rather than a clock", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const caller = readFileSync(join(here, "../../../.github/workflows/bypass-counter-caller.yml"), "utf8");
+
+  it("rides verify.yml completing rather than a clock, per ADR-0004", () => {
+    expect(caller).toContain("workflow_run:");
+    expect(caller).toMatch(/workflows:\s*\["Verify"\]/);
+    expect(caller).not.toContain("schedule:");
+  });
+
+  it("scopes the job to main, where a bypass reaching trunk actually means something", () => {
+    expect(caller).toContain("github.event.workflow_run.head_branch == 'main'");
+  });
+});
+
 describe("bypass-counter.yml agrees with the module it runs", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const workflow = readFileSync(join(here, "../../../.github/workflows/bypass-counter.yml"), "utf8");
@@ -349,19 +370,14 @@ describe("bypass-counter.yml agrees with the module it runs", () => {
     expect(workflow).toContain("npx tsx .Workflow/agent-workflows/watchdog/bypass-counter.ts");
   });
 
-  it("rides verify.yml completing rather than a clock, per ADR-0004", () => {
-    expect(workflow).toContain("workflow_run:");
-    expect(workflow).toMatch(/workflows:\s*\["Verify"\]/);
-    expect(workflow).not.toContain("schedule:");
+  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
+    expect(workflow).toContain("workflow_call:");
+    expect(workflow).not.toContain("workflow_run:");
   });
 
   it("grants the reads it needs, and the write the signal is", () => {
     expect(workflow).toMatch(/^ {2}actions: read$/m);
     expect(workflow).toMatch(/^ {2}issues: write$/m);
-  });
-
-  it("scopes the job to main, where a bypass reaching trunk actually means something", () => {
-    expect(workflow).toContain("github.event.workflow_run.head_branch == 'main'");
   });
 
   it("sets every variable the entrypoint reads", () => {

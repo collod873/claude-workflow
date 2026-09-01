@@ -1,0 +1,29 @@
+name: Review
+
+# Not "six lines with nothing in them" the way `verify-caller.yml` is (ADR-0055, amended by
+# ADR-0132): `workflow_run` cannot be parameterized through `workflow_call`, so the "was this a
+# passing, non-push run" decision `review.yml`'s own job `if:` used to make lives here now — see
+# that file's header for why both halves of it matter. Only the head SHA the decision turned up
+# crosses into the reusable workflow, as a `workflow_call` input.
+
+"on":
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+
+jobs:
+  review:
+    # The same two conditions `review.yml`'s job `if:` carried before the split. `event != 'push'`
+    # is not cosmetic: `verify-caller.yml` fires on `push: main` as well as on an implementer's
+    # dispatch, and on the push run `workflow_run.head_sha` *is* trunk's tip — so without this,
+    # every commit the owner pushes himself would spend two Opus reviewers and a refuter fleet
+    # reading `origin/main..head_sha` as empty, out of his personal subscription.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event != 'push'
+    uses: collod873/claude-workflow/.github/workflows/review.yml@main
+    with:
+      head_sha: ${{ github.event.workflow_run.head_sha }}
+    # A `uses:` job passes no secret to the reusable workflow unless told to — `review.yml` spends
+    # `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.
+    secrets: inherit

@@ -1,4 +1,4 @@
-name: Fixer
+name: Fixer (reusable)
 
 # Lane 07's other half (#169, ADR-0054, wired by #234): what runs when `Verify` comes back **red**
 # on an implementer's pull request.
@@ -11,8 +11,13 @@ name: Fixer
 # — three capped attempts, `blocked` plus a comment on stopping — and had no workflow file, which
 # is why it sat in `shared/wiring-baseline.json` as known-unwired debt (#183).
 #
-# `conclusion == 'failure'` is filtered at the job level rather than in the trigger for the reason
-# `review.yml` gives: `workflow_run` carries no `conclusion` filter of its own.
+# `conclusion == 'failure'` was filtered at the job level rather than in the trigger for the reason
+# `review.yml` gives: `workflow_run` carries no `conclusion` filter of its own. ADR-0055 (amended
+# by ADR-0132) moved that filtering again, out of this file entirely: `workflow_run` cannot be
+# parameterized through `workflow_call`, so `fixer-caller.yml` is what actually holds all three of
+# this lane's doors now, and its own job `if:` is where a run gets turned away before this workflow
+# is ever called — the run id it resolves to is the one thing that crosses the boundary, as the
+# `run_id` input below. This file no longer reads `github.event.workflow_run` at all.
 #
 # **`workflow_run` is no longer the only door**, because it kept not arriving — three no-shows on
 # 2026-08-30/31 alone, the last of them run 33346638810 on PR #284, red at 01:07:58 and reaching
@@ -20,32 +25,24 @@ name: Fixer
 # from a job of its own on the red path, the same second door lane 05 opened for Recover under
 # ADR-0114. Both stay: the marker comment the resolve step writes makes whichever arrives second a
 # no-op, so the cost of two doors is one comment and the cost of one was a red pull request that sat
-# until somebody noticed.
+# until somebody noticed. `fixer-caller.yml` is the file that actually carries both, plus the hand
+# door — see it for the routing decision this file used to make itself.
 #
-# `event != 'push'` is the same second condition on that door, and it is not cosmetic here either.
-# `verify.yml` fires on `push: main` as well as on the implementer's dispatch, and a red push run is
-# trunk being broken — there is no pull request to fix, no branch to push attempts to, and nothing
-# this lane could do but spend a model on `main`. Stated as "not the push run" rather than by naming
-# the dispatch, which `review.yml`'s own tests establish is the same condition (`verify.yml` has
-# exactly two doors).
+# `event != 'push'` was the same second condition on that door, and it is not cosmetic —
+# `verify-caller.yml` fires on `push: main` as well as on the implementer's dispatch, and a red push
+# run is trunk being broken: there is no pull request to fix, no branch to push attempts to, and
+# nothing this lane could do but spend a model on `main`. That check now lives on `fixer-caller.yml`
+# too, alongside the rest of the routing decision.
 
 "on":
-  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
-  # The door lane 06 rings itself, from its own `Signal the fixer` job — see `verify.yml` for why
-  # `workflow_run` alone was not enough, and `implement.yml`/`recover.yml` (ADR-0114) for the same
-  # pattern one lane earlier. `types:` names this lane's one action (ADR-0090).
-  repository_dispatch:
-    types: [fixer-needed]
-  # The hand door. A `workflow_run` trigger cannot be fired by a person, so without this there is
-  # no way to run this lane at a pull request whose Verify went red before this file existed, no
-  # way to retry one after the cause was dealt with by hand — and, the reason #183 exists, no way
-  # to find out whether this lane runs at all short of waiting for the next real failure.
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      # The run id `fixer-caller.yml` resolved from whichever of its three doors fired — see that
+      # file for the `||` chain. Not required: a call this cannot resolve (an empty hand dispatch)
+      # still reaches the resolve step below, which is what actually says "nothing to resolve" and
+      # exits clean, exactly as it always has.
       run_id:
-        description: "A completed Verify run to react to. Empty resolves no pull request and exits."
+        type: string
         required: false
         default: ""
 
@@ -74,17 +71,16 @@ concurrency:
   # `workflow_run` for one failure queue behind each other rather than racing for the same branch —
   # the same key `recover.yml` uses for the same pair of doors. Queueing is what makes the marker
   # comment in the resolve step a reliable no-op: the second arrival reads a record the first one
-  # has already finished writing.
-  group: fixer-${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.run_id }}
+  # has already finished writing. `|| github.run_id` still covers the same gap it always did — a
+  # call this cannot resolve a run id for groups on itself rather than colliding with every other.
+  group: fixer-${{ inputs.run_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   fixer:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.action == 'fixer-needed' ||
-      (github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.event != 'push')
+    # No `if:` here — `fixer-caller.yml`'s own job already decided this call should happen at all
+    # (its `if:` is the union this used to be), so every call that reaches this workflow is one to
+    # act on.
     runs-on: ubuntu-latest
     # Three capped attempts, each a Sonnet stage plus a full vitest run over `.Workflow`. Sized off
     # `integrate.yml`'s 30 rather than `review.yml`'s 15 for that reason.
@@ -92,7 +88,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RUN_ID: ${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}
+      RUN_ID: ${{ inputs.run_id }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       # Who a stop assigns the ticket to, on both paths below — the same pattern
       # `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses: assigned so the ticket notifies rather than

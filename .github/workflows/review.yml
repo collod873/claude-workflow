@@ -1,4 +1,4 @@
-name: Review
+name: Review (reusable)
 
 # Lane 07 — the correctness reviewer (PRD #145, move 7a). Fires on a completed "Verify" run
 # (ADR-0036): lint, typecheck, the test suite and lane 04's immutable acceptance tests have
@@ -6,56 +6,47 @@ name: Review
 # covers — `review.ts`'s own `keepSurvivingFindings` drops those before anything downstream
 # reads them.
 #
-# `types: [completed]`, filtered to a successful conclusion at the job level rather than in the
-# trigger: `workflow_run` carries no `conclusion` filter of its own, so the job's `if:` is where
-# a failed or cancelled Verify run is turned away — reviewing a diff CI has not actually passed
-# would be reviewing against a check that never happened.
+# `types: [completed]`, filtered to a successful conclusion at the job level, used to be this
+# file's own trigger and its own job `if:` — `workflow_run` carries no `conclusion` filter of its
+# own. ADR-0055 (amended by ADR-0132) moved both out of this file: `workflow_run` cannot be
+# parameterized through `workflow_call`, so `review-caller.yml` is what actually holds the trigger
+# and makes the "was this a passing, non-push run" decision now, before this workflow is ever
+# called — a failed or cancelled Verify run, or the push run itself, never reaches this file at
+# all. The one fact this workflow still needs from that decision — which SHA to check out and
+# review — crosses the boundary as the `head_sha` input below.
 #
-# No `pull_request` trigger, and no sender gate — PRD #145's "Cross-cutting: who may fire a lane"
-# section rules an author gate here is a check that can never fire. `verify.yml` carries no
-# `pull_request` trigger after ADR-0054, so a stranger's pull request runs no verification, and
-# with no verification there is no "Verify" run for this workflow's own trigger to ever see. The
-# only runs this can fire on already passed through that door.
+# No `pull_request` trigger anywhere in this pair, and no sender gate — PRD #145's "Cross-cutting:
+# who may fire a lane" section rules an author gate here is a check that can never fire.
+# `verify-caller.yml` carries no `pull_request` trigger after ADR-0054, so a stranger's pull
+# request runs no verification, and with no verification there is no "Verify" run for
+# `review-caller.yml`'s own trigger to ever see. The only runs this can fire on already passed
+# through that door.
 
 "on":
-  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
+  workflow_call:
+    inputs:
+      # The head SHA of the pull request `review-caller.yml`'s `workflow_run` named — the one fact
+      # this workflow needs out of an event it can no longer read directly.
+      head_sha:
+        type: string
+        required: true
 
 permissions:
   # read: the checkout, at the reviewed run's own head SHA.
   contents: read
-  # read: the `workflow_run` payload's own fields are enough for the trigger; nothing here calls
-  # the Actions API, but the checkout below still needs contents and the job reads no other scope.
-  actions: read
   # write: a surviving finding is filed as an issue against trunk (PRD #145: "its survivors reach
   # the owner as issues, never a notification").
   issues: write
 
 concurrency:
-  group: review-${{ github.event.workflow_run.head_sha }}
+  group: review-${{ inputs.head_sha }}
   cancel-in-progress: false
 
 jobs:
   review:
-    # Two conditions, and the second is not cosmetic. `verify.yml` fires on `push: main` as well as
-    # on an implementer's dispatch, and on the push run `workflow_run.head_sha` *is* trunk's tip —
-    # so `origin/main..head_sha` is empty and this lane spent two Opus reviewers and a refuter fleet
-    # reading nothing, on every commit the owner pushed himself, out of his personal subscription.
-    # Lane 07 reviews an implementation pull request's diff, and the push run is the one Verify run
-    # that never has one.
-    #
-    # Stated as "not the push run" rather than by naming the dispatch event, which is the same
-    # condition read off `verify.yml`'s trigger list — `immutable-set.test.ts` holds that list to
-    # exactly two doors, a push to `main` and the implementer's dispatch, and `review.test.ts`
-    # re-asserts it here, so the two spellings are equivalent by a checked premise rather than by a
-    # reader's memory. It is also the
-    # honest side to state it from: this workflow is not itself dispatch-triggered, and naming that
-    # event here made it read as one to the sweep that requires every dispatch-triggered workflow to
-    # filter its own `types:` ([ADR-0090](../../docs/adr/0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md), #188).
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event != 'push'
+    # No `if:` here — `review-caller.yml`'s own job already decided this call should happen at
+    # all (conclusion `success`, and not the push run — see that file), so every call that reaches
+    # this workflow is one to review.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -71,7 +62,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.head_sha }}
           fetch-depth: 0
 
       - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
@@ -95,4 +86,4 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
       - name: Run the correctness reviewer
-        run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ github.event.workflow_run.head_sha }}"
+        run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ inputs.head_sha }}"
