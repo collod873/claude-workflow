@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { affectedSlices, testsForCriteria, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
@@ -19,6 +19,7 @@ import {
 } from "../shared/ticket-shape";
 import {
   landingFromEnv,
+  runEslint,
   runPushGate,
   runVitestJson,
   type Landing,
@@ -50,6 +51,16 @@ export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/p
 
 /** Every acceptance test this lane writes lives under here. `push-gate.ts` refuses anything outside it. */
 export const ACCEPTANCE_TEST_DIR = "tests/acceptance/";
+
+/**
+ * `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine checkout
+ * this script runs from is a different directory than the target checkout its
+ * `tests/acceptance/` reads and writes, its eslint/vitest spawns judge, and its git commit lands
+ * in — the same seam `shape.ts`, `run-audit.ts` and `run-ratify.ts` already read for the same
+ * reason. Falling back to `process.cwd()` is what lets a local run (or a test driving this file as
+ * a real subprocess) hand in a different one without needing to run from inside it too.
+ */
+const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
 
 const AuthoredFile = z.object({
   /** Repo-relative, always under `ACCEPTANCE_TEST_DIR`. */
@@ -205,7 +216,7 @@ export function renderCriteria(criteria: string[]): string {
 /** `readFile`'s default: the file's text, or `undefined` when it is not there yet. */
 function readIfPresent(path: string): string | undefined {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync(join(REPO_DIR, path), "utf8");
   } catch {
     return undefined;
   }
@@ -214,7 +225,7 @@ function readIfPresent(path: string): string | undefined {
 /** `listTestDir`'s default: the names under `ACCEPTANCE_TEST_DIR`, empty when it does not exist. */
 function listTestDirIfPresent(): string[] {
   try {
-    return readdirSync(ACCEPTANCE_TEST_DIR);
+    return readdirSync(join(REPO_DIR, ACCEPTANCE_TEST_DIR));
   } catch {
     return [];
   }
@@ -313,12 +324,15 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
   const paths = files.map((file) => file.path);
 
   return runPushGate({
-    runTests: deps.runTests ?? (() => runVitestJson(ACCEPTANCE_TEST_DIR)),
-    lint: deps.lint,
+    runTests: deps.runTests ?? (() => runVitestJson(ACCEPTANCE_TEST_DIR, REPO_DIR)),
+    lint: deps.lint ?? ((lintPaths) => runEslint(lintPaths, REPO_DIR)),
     // The gate reads what the author actually returned rather than re-opening the files it just
     // wrote: same bytes, one fewer thing that can be true of the disk and false of the answer.
     readSource: (path) => files.find((file) => file.path === path)?.content ?? "",
-    git: deps.git ?? execGit,
+    // `execGit` carries no working directory of its own (`shared/git.ts`'s own docstring): every
+    // caller threads the repo it means through argv, so this binds `-C REPO_DIR` in once here
+    // rather than teaching `push-gate.ts`'s `commitAndPush` its own repoDir parameter.
+    git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
     paths,
     commitMessage: authorCommitMessage(deps.issueNumber, paths),
     landing: deps.landing,

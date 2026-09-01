@@ -1,0 +1,9 @@
+name: Integrate (caller)
+
+"on":
+  repository_dispatch:
+    types: [implementation-opened]
+
+jobs:
+  integrate:
+    uses: collod873/claude-workflow/.github/workflows/integrate.yml@main

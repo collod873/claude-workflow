@@ -1,0 +1,14 @@
+name: Spec (caller)
+
+"on":
+  issues:
+    types: [labeled]
+  repository_dispatch:
+    types: [sheet-accepted]
+
+jobs:
+  spec:
+    uses: collod873/claude-workflow/.github/workflows/spec.yml@main
+    # A `uses:` job passes no secret to the reusable workflow unless told to — `spec.yml` spends
+    # `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.
+    secrets: inherit

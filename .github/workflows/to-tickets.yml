@@ -43,10 +43,24 @@ name: To-Tickets
 # On success, no step writes to the tracker at all — the sub-issues a real run creates are the
 # only output. Anything the auditor flagged but chose not to act on prints to this step's own log,
 # never to the PRD.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `to-tickets-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the three stages and the checkpoints directory a
+# spawned `claude` reads and writes) and the calling repository's own tree (the target) — never one
+# copy standing in for the other, even though none of the three stages reads the target's tree
+# directly: seam sweep, slice and audit-and-publish all read the PRD and publish tickets entirely
+# through `gh`, scoped by `GH_REPO` rather than by cwd, the same reason `dispatch-reconcile.yml`
+# carries a checkout pair nothing in it reads. The vocabulary and ticket-format pages `to-tickets.ts`
+# reads (`VOCABULARY_PATH`, `TICKET_FORMAT_PATH`) are this lane's own documents, shipped with its
+# code — machine-relative, not the target's. The machine checkout carries no credential input of
+# its own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously and no
+# PAT is added here that would have to be rotated in every enrolled repository.
 
 "on":
-  repository_dispatch:
-    types: [prd-sliceable]
+  workflow_call:
 
 # `contents: read` on the model job, and the `ticket-ready` wave sent from the `dispatch` job below
 # instead — `POST /dispatches` needs `contents: write`, so every slice this lane published was
@@ -94,8 +108,15 @@ jobs:
           echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
           echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
 
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       # Restored before any stage: the checkpoints directory `runStage` checks
       # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout

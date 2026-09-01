@@ -61,12 +61,21 @@ name: Spec
 # TypeScript from the raw event: the `if:` below has already decided which of the two fired, and a
 # second copy of that condition is a second thing that can disagree with it. Both doors are the
 # same `issues: labeled` event, so the expression tests the *label* rather than the event name.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `spec-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
+# This repository is its own first caller: the caller stub lives next to this file, at the same
+# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
+# (the machine, for the script) and the calling repository's own tree (the target) — never one copy
+# standing in for the other, even though `spec.ts` reads neither tree directly: it reads and writes
+# the target's tracker entirely through `gh`, scoped by `GH_REPO` rather than by cwd, the same
+# reason `dispatch-reconcile.yml` carries a checkout pair nothing in it reads. The machine checkout
+# carries no credential input of its own: ADR-0132 made this repository public, so
+# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
+# every enrolled repository.
 
 "on":
-  issues:
-    types: [labeled]
-  repository_dispatch:
-    types: [sheet-accepted]
+  workflow_call:
 
 # `contents: read` is the model job's, and it is deliberate: ADR-0053 is careful about what a job
 # that runs a model may write. `POST /dispatches` needs `contents: write`, so the dispatch this lane
@@ -122,8 +131,15 @@ jobs:
       - name: Export the dispatch handoff path
         run: echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
 
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       # Same shape as every other model-spending lane's preflight: fail closed on an empty secret
       # before Node is set up, rather than let the stage spawn `claude` with nothing to

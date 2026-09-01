@@ -11,6 +11,15 @@ description: >
 # baseline entry lying about a duplication that was never load-bearing — `refire` and `author` do
 # genuinely different authoring, but "package whatever commits authoring left behind" is the same
 # operation either way.
+inputs:
+  working-directory:
+    description: >
+      Where the commits since $ACCEPTANCE_BASE actually are. Defaults to the job's own default
+      directory — the pre-#315 shape, where the one checkout was both the machine and the target.
+      #315 (ADR-0055) splits the two: `acceptance.yml`'s authoring steps commit into `target/`, and
+      this is what lets the bundle step find them there instead of the empty machine checkout.
+    required: false
+    default: "."
 outputs:
   authored:
     description: "'true' when git format-patch produced at least one commit; unset otherwise."
@@ -21,6 +30,7 @@ runs:
     - name: Bundle the authored commits
       id: bundle
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         mkdir -p "$RUNNER_TEMP/acceptance-patches"

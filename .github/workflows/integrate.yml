@@ -19,10 +19,23 @@ name: Integrate
 # behind the first rather than dropping it — a merge attempt that never runs looks exactly like
 # one that ran and found nothing, and this lane's whole job is never reading those two as the same
 # thing (see `integrate.ts`'s `IntegrateOutcome`).
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `integrate-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script and `bin/close-ticket`) and the calling
+# repository's own tree (the target, for the branch this lane rebases and merges, and the ticket's
+# own `bin/gauntlet`) — never one copy standing in for the other. `integrate.ts` threads the target
+# checkout through every git call and through `runRealGauntlet`/`runRealCloseTicket` rather than
+# assuming its own cwd is the target, and `bin/close-ticket` is still the machine's own copy —
+# ADR-0055's whole point is that a target repository never carries one. The machine checkout
+# carries no credential input of its own: ADR-0132 made this repository public, so
+# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
+# every enrolled repository.
 
 "on":
-  repository_dispatch:
-    types: [implementation-opened]
+  workflow_call:
 
 # `issues: write` is what lets this lane finish a ticket rather than only merge one (#195,
 # ADR-0094): after the merge, `integrate.ts` shells to this repository's own `bin/close-ticket`,
@@ -63,20 +76,36 @@ jobs:
       # variable `run-watchdog.yml` and `fixer.yml` set for the same reason.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           fetch-depth: 0
 
       # A runner has no git identity, and the rebase this pushes is committed here — same fix
-      # `implement.yml` and `audit.yml` needed for their own notes.
+      # `implement.yml` and `audit.yml` needed for their own notes. Scoped to the target checkout —
+      # the only one this job ever writes into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
+
+      # `runRealGauntlet` re-runs the target's own `bin/gauntlet push`, which needs the target's own
+      # `node_modules` — the machine's install above is what puts `tsx` itself on PATH, resolved
+      # from the nearest ancestor `node_modules` since `target/` sits directly under the machine
+      # checkout that already has one.
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
 
       # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
       # against the rebased tree, read lane 06's verdict on this same head commit, merge only on a
@@ -114,4 +143,6 @@ jobs:
       # copy of the workflow at trunk's tip (ADR-0054), so lane 06's run for this dispatch carries
       # the same commit as this one.
       - name: Integrate the pull request
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/integrate/integrate.ts "$PR" "$HEAD_SHA"

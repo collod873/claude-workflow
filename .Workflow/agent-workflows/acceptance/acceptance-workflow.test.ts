@@ -26,15 +26,25 @@ interface Job {
 }
 
 const { workflow } = readWorkflow<{
-  on: { repository_dispatch?: { types?: string[] }; issues?: unknown };
+  on: { repository_dispatch?: { types?: string[] }; issues?: unknown; workflow_call?: unknown };
   concurrency: { group: string; "cancel-in-progress"?: boolean };
   jobs: Record<string, Job>;
 }>("acceptance.yml");
 
+// #315 (ADR-0055): acceptance.yml is a reusable workflow now — the trigger this lane fires on
+// lives in acceptance-caller.yml, and acceptance.yml itself carries only `workflow_call`.
+const { workflow: caller } = readWorkflow<{
+  on: { repository_dispatch?: { types?: string[] }; issues?: unknown };
+}>("acceptance-caller.yml");
+
 describe("acceptance.yml authors a slice's tests the first time, not only on re-fire", () => {
+  it("is a reusable workflow, triggered by acceptance-caller.yml's own trigger", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
+  });
+
   it("fires on the acceptance-wanted dispatch lane 03 sends, alongside the issues:edited re-fire", () => {
-    expect(workflow.on.issues).toBeDefined();
-    expect(workflow.on.repository_dispatch?.types).toEqual([ACCEPTANCE_WANTED_DISPATCH_ACTION]);
+    expect(caller.on.issues).toBeDefined();
+    expect(caller.on.repository_dispatch?.types).toEqual([ACCEPTANCE_WANTED_DISPATCH_ACTION]);
   });
 
   /**
