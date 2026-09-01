@@ -1,0 +1,14 @@
+name: Lost-dispatch counter (caller)
+
+"on":
+  issues:
+    types: [labeled]
+
+jobs:
+  count:
+    # Scopes to the sliceable label, matching lost-dispatch-counter.ts's own SLICEABLE_LABEL
+    # constant — no compiler sees across this boundary, so lost-dispatch.test.ts asserts the two
+    # still agree. `workflow_call` carries no `on.issues.types` of its own to filter by label
+    # value, so the gate sits on this calling job instead.
+    if: github.event.label.name == 'sliceable'
+    uses: collod873/claude-workflow/.github/workflows/lost-dispatch-counter.yml@main

@@ -63,7 +63,7 @@
       ".Workflow/agent-workflows/to-tickets/vocabulary.md:30",
       "CONTEXT.md:224"
     ],
-    "fragment": "**Slice**:\nOne tracer-bullet vertical cut through every layer, demoable on its own and sized to a single agent\nsession. Vertical is the whole point: a horizontal cut through one layer is not a slice.\n_Avoid_: task, chunk, story, unit\n\n**Ticket**:\nA published slice — a child issue carrying acceptance criteria, file claims and native blocked-by\nedges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.\n_Avoid_: issue, sub-issue, card, item\n\n**Seam manifest**:\nThe list of shared shapes a batch needs, one line each, naming what it is, where it lives or should\nlive, and what consumes it. The one-line bound is load-bearing: every line is injected into every\nconsuming ticket's body, and therefore into every worker's context.\n_Avoid_: shared components, abstractions, helpers, utilities\n\n**Stage**:\nOne agent process in a pipeline run, with no memory of the ones before it. Named separately from\nActions' own words because a stage is a context boundary, and a job or a step is not.\n_Avoid_: phase, pass, step, job"
+    "fragment": "**Slice**:\nOne tracer-bullet vertical cut through every layer, demoable on its own and sized to a single agent\nsession. Vertical is the whole point: a horizontal cut through one layer is not a slice.\n_Avoid_: task, chunk, story, unit\n\n**Ticket**:\nA published slice \u2014 a child issue carrying acceptance criteria, file claims and native blocked-by\nedges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.\n_Avoid_: issue, sub-issue, card, item\n\n**Seam manifest**:\nThe list of shared shapes a batch needs, one line each, naming what it is, where it lives or should\nlive, and what consumes it. The one-line bound is load-bearing: every line is injected into every\nconsuming ticket's body, and therefore into every worker's context.\n_Avoid_: shared components, abstractions, helpers, utilities\n\n**Stage**:\nOne agent process in a pipeline run, with no memory of the ones before it. Named separately from\nActions' own words because a stage is a context boundary, and a job or a step is not.\n_Avoid_: phase, pass, step, job"
   },
   {
     "hash": "140b1e7b3bdcece0",
@@ -107,7 +107,7 @@
       ".Workflow/agent-workflows/shared/git.test.ts:1",
       ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
     ],
-    "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"./git\";\n\n/**\n * A throwaway repo with one commit, distinguishable from whatever repo an\n * inherited `GIT_DIR` might point at — `execGit`'s job under test is\n * reporting on *this* repo regardless of what the ambient environment\n * claims the repo is.\n */"
+    "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"./git\";\n\n/**\n * A throwaway repo with one commit, distinguishable from whatever repo an\n * inherited `GIT_DIR` might point at \u2014 `execGit`'s job under test is\n * reporting on *this* repo regardless of what the ambient environment\n * claims the repo is.\n */"
   },
   {
     "hash": "22dc7a008887e661",
@@ -129,7 +129,7 @@
       ".Workflow/agent-workflows/acceptance/push-gate.ts:140",
       ".Workflow/agent-workflows/fixer/fixer.ts:236"
     ],
-    "fragment": "interface VitestJsonAssertion {\n  fullName?: string;\n  title?: string;\n  status: string;\n  failureMessages?: string[];\n}\n\ninterface VitestJsonTestResult {\n  name: string;\n  status: string;\n  message?: string;\n  assertionResults: VitestJsonAssertion[];\n}\n\ninterface VitestJsonReport {\n  testResults: VitestJsonTestResult[];\n}\n\n/** The error name a failure message opens with, e.g. `AssertionError: expected …` → `AssertionError`. */"
+    "fragment": "interface VitestJsonAssertion {\n  fullName?: string;\n  title?: string;\n  status: string;\n  failureMessages?: string[];\n}\n\ninterface VitestJsonTestResult {\n  name: string;\n  status: string;\n  message?: string;\n  assertionResults: VitestJsonAssertion[];\n}\n\ninterface VitestJsonReport {\n  testResults: VitestJsonTestResult[];\n}\n\n/** The error name a failure message opens with, e.g. `AssertionError: expected \u2026` \u2192 `AssertionError`. */"
   },
   {
     "hash": "274f17c2171b3f38",
@@ -253,6 +253,17 @@
     "fragment": ");\n    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });\n    writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));\n\n    return root;\n  }\n\n  function runPush(root: string): { status: number | null; stdout: string } {\n    const run = spawnSync(join(root, \"bin/gauntlet\"), [\"push\"], {\n      encoding: \"utf8\",\n      cwd: root,\n      env: process.env,\n    });\n    return { status: run.status, stdout: run.stdout };\n  }\n\n  it(\"exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again\""
   },
   {
+    "hash": "57969ce8e8bd14b9",
+    "format": "yaml",
+    "lines": 18,
+    "tokens": 115,
+    "where": [
+      ".github/workflows/lost-dispatch-counter.yml:64",
+      ".github/workflows/missing-trailer-counter.yml:54"
+    ],
+    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no"
+  },
+  {
     "hash": "5adfe619a007c02c",
     "format": "typescript",
     "lines": 6,
@@ -283,7 +294,7 @@
       ".Workflow/agent-workflows/to-tickets/audit/prompt.md:3",
       ".Workflow/agent-workflows/to-tickets/slice/prompt.md:3"
     ],
-    "fragment": "turning a spec into tickets. Scope: this prompt, the vocabulary below, the codebase checkout, and the references below.\n\n## The vocabulary you work in\n\nEvery term this lane uses, inlined here. Use them strictly as defined, and prefer them over the\nnear-synonyms each entry rejects. There is no glossary elsewhere to go and read — this is all of it.\n\n{{VOCABULARY}}\n\n## Rules you grade against"
+    "fragment": "turning a spec into tickets. Scope: this prompt, the vocabulary below, the codebase checkout, and the references below.\n\n## The vocabulary you work in\n\nEvery term this lane uses, inlined here. Use them strictly as defined, and prefer them over the\nnear-synonyms each entry rejects. There is no glossary elsewhere to go and read \u2014 this is all of it.\n\n{{VOCABULARY}}\n\n## Rules you grade against"
   },
   {
     "hash": "5ffefb28b38bfc2e",
@@ -393,7 +404,7 @@
       ".Workflow/agent-workflows/shared/generate-contract.test.ts:168",
       ".Workflow/agent-workflows/shared/scrub-corpus-history.test.ts:102"
     ],
-    "fragment": ", () => {\n  const dirs: string[] = [];\n  afterEach(() => {\n    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });\n  });\n\n  /**\n   * A throwaway tree the real `bin/gauntlet` is run *as*, rather than *in*.\n   *\n   * #133: this used to spawn a real push against **this** repo, twice. This repo's `test` slot is\n   * `npm test` — the whole suite — so proving `regenerate && diff` cost two entire suites, 149s\n   * each on a GitHub runner against a 120s budget, and the test had never once passed in CI. The\n   * assertion was never the expensive part; the root it pointed at was.\n   *\n   * `bin/gauntlet` takes its repo root from its own location (`$here/..`), so the way to aim a real\n   * push at a cheap tree is to give that tree a `bin/`, not to give the gauntlet a flag. Everything\n   * under test is the genuine article — the same gauntlet, the same probe, the same generator, a\n   * real contract at the real default path, real exit codes. Only the three commands the contract\n   * names are the fixture's own, and they do nothing, because what this test is about is the\n   * contract check and not what `test` happens to run underneath it.\n   *\n   * Built here rather than committed under `check-contract.fixtures/`: it needs links back into\n   * this repo, and a committed tree carrying those would be a second copy of the repo that `tsc`,\n   * `eslint` and `vitest` all walk into.\n   *\n   * `bin` and `node_modules` are symlinked; the modules are **copied**, because Node resolves a\n   * symlinked entry point to its real path — `generate-contract.ts`'s `import.meta.url === argv[1]`\n   * main-guard would then silently never fire, and the contract check would pass by not running.\n   *\n   * Carries a real, matching corpus fixture (#140's corpus check also runs on `push`) so this\n   * describe block's assertions stay about the contract check alone — the corpus check is a\n   * silent pass here, not a second thing this test has to account for.\n   */"
+    "fragment": ", () => {\n  const dirs: string[] = [];\n  afterEach(() => {\n    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });\n  });\n\n  /**\n   * A throwaway tree the real `bin/gauntlet` is run *as*, rather than *in*.\n   *\n   * #133: this used to spawn a real push against **this** repo, twice. This repo's `test` slot is\n   * `npm test` \u2014 the whole suite \u2014 so proving `regenerate && diff` cost two entire suites, 149s\n   * each on a GitHub runner against a 120s budget, and the test had never once passed in CI. The\n   * assertion was never the expensive part; the root it pointed at was.\n   *\n   * `bin/gauntlet` takes its repo root from its own location (`$here/..`), so the way to aim a real\n   * push at a cheap tree is to give that tree a `bin/`, not to give the gauntlet a flag. Everything\n   * under test is the genuine article \u2014 the same gauntlet, the same probe, the same generator, a\n   * real contract at the real default path, real exit codes. Only the three commands the contract\n   * names are the fixture's own, and they do nothing, because what this test is about is the\n   * contract check and not what `test` happens to run underneath it.\n   *\n   * Built here rather than committed under `check-contract.fixtures/`: it needs links back into\n   * this repo, and a committed tree carrying those would be a second copy of the repo that `tsc`,\n   * `eslint` and `vitest` all walk into.\n   *\n   * `bin` and `node_modules` are symlinked; the modules are **copied**, because Node resolves a\n   * symlinked entry point to its real path \u2014 `generate-contract.ts`'s `import.meta.url === argv[1]`\n   * main-guard would then silently never fire, and the contract check would pass by not running.\n   *\n   * Carries a real, matching corpus fixture (#140's corpus check also runs on `push`) so this\n   * describe block's assertions stay about the contract check alone \u2014 the corpus check is a\n   * silent pass here, not a second thing this test has to account for.\n   */"
   },
   {
     "hash": "8b1a3520db0cdd03",
@@ -503,7 +514,7 @@
       ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.test.ts:49",
       ".claude/hooks/session-capture.test.ts:247"
     ],
-    "fragment": "});\n  const sha = execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  execFileSync(\"git\", [\"push\", \"-q\", \"origin\", \"HEAD:refs/heads/main\"], { cwd: dir });\n  return sha;\n}\n\n/**\n * Reads back the `SessionRecord` a fresh clone of `bareDir` sees on `refs/notes/sessions` for\n * `sha` — `notes-store.ts`'s `writeNoteArray` wire format is a one-element JSON array (the same\n * shape `readSessionRecord` itself unwraps), so this unwraps it too rather than handing back the\n * array.\n */"
+    "fragment": "});\n  const sha = execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  execFileSync(\"git\", [\"push\", \"-q\", \"origin\", \"HEAD:refs/heads/main\"], { cwd: dir });\n  return sha;\n}\n\n/**\n * Reads back the `SessionRecord` a fresh clone of `bareDir` sees on `refs/notes/sessions` for\n * `sha` \u2014 `notes-store.ts`'s `writeNoteArray` wire format is a one-element JSON array (the same\n * shape `readSessionRecord` itself unwraps), so this unwraps it too rather than handing back the\n * array.\n */"
   },
   {
     "hash": "a53a565bc8aac7ce",
@@ -580,7 +591,7 @@
       "tests/acceptance/241-tracer-rule-and-check-sentence-in-prompts.test.ts:120",
       "tests/acceptance/241-tracer-rule-and-check-sentence-in-prompts.test.ts:131"
     ],
-    "fragment": ", () => {\n      const nonNegotiables = section(read(AUTHOR_PROMPT), /non-negotiable/i);\n      expect(nonNegotiables, \"the spec author's prompt has no non-negotiables section\").not.toBeNull();\n      const thirdRule = (nonNegotiables as string).slice(\n        (nonNegotiables as string).search(/I['’]ll know it works when I can/),\n      );\n      expect(thirdRule).toMatch(/open question/i"
+    "fragment": ", () => {\n      const nonNegotiables = section(read(AUTHOR_PROMPT), /non-negotiable/i);\n      expect(nonNegotiables, \"the spec author's prompt has no non-negotiables section\").not.toBeNull();\n      const thirdRule = (nonNegotiables as string).slice(\n        (nonNegotiables as string).search(/I['\u2019]ll know it works when I can/),\n      );\n      expect(thirdRule).toMatch(/open question/i"
   },
   {
     "hash": "b806307aea088d45",
@@ -745,7 +756,7 @@
       ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:24",
       ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:14"
     ],
-    "fragment": "function sheet(over: Partial<Sheet> = {}): Sheet {\n  return {\n    restatement: \"the idea as work\",\n    priorArt: [],\n    decisions: [{ question: \"q\", recommendation: \"r\", rejected: \"x\", mark: \"\", adrTitle: \"\" }],\n    survivors: [],\n    route: \"short\",\n    routeReason: \"Short — one file.\",\n    newTerms: [],\n    round: 0,\n    ...over,\n  };\n}\n\nfunction"
+    "fragment": "function sheet(over: Partial<Sheet> = {}): Sheet {\n  return {\n    restatement: \"the idea as work\",\n    priorArt: [],\n    decisions: [{ question: \"q\", recommendation: \"r\", rejected: \"x\", mark: \"\", adrTitle: \"\" }],\n    survivors: [],\n    route: \"short\",\n    routeReason: \"Short \u2014 one file.\",\n    newTerms: [],\n    round: 0,\n    ...over,\n  };\n}\n\nfunction"
   },
   {
     "hash": "f63a1bea7f6d15d5",

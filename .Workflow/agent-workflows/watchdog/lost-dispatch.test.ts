@@ -177,7 +177,7 @@ describe("lost-dispatch-counter.yml agrees with the module it runs", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const source = readFileSync(join(here, "../../../.github/workflows/lost-dispatch-counter.yml"), "utf8");
   const workflow = parse(source) as {
-    on: { issues?: { types?: string[] } };
+    on: { workflow_call?: null };
     jobs: { count: { if?: string } };
   };
 
@@ -185,12 +185,12 @@ describe("lost-dispatch-counter.yml agrees with the module it runs", () => {
     expect(source).toContain("npx tsx .Workflow/agent-workflows/watchdog/lost-dispatch-counter.ts");
   });
 
-  it("fires on an issue being labelled", () => {
-    expect(workflow.on.issues?.types).toEqual(["labeled"]);
+  it("is reusable — a caller supplies the trigger (ADR-0055, ADR-0132)", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
   });
 
-  it("scopes to the sliceable label, matching the module's own constant — no compiler sees across this boundary", () => {
-    expect(workflow.jobs.count.if).toBe(`github.event.label.name == '${SLICEABLE_LABEL}'`);
+  it("carries no label-scoping if of its own — the caller stub gates before calling in", () => {
+    expect(workflow.jobs.count.if).toBeUndefined();
   });
 
   it("rides the label event rather than a clock, per ADR-0004 — no schedule: trigger", () => {
@@ -205,5 +205,26 @@ describe("lost-dispatch-counter.yml agrees with the module it runs", () => {
     expect(source).toMatch(/^ {2}contents: read$/m);
     expect(source).toMatch(/^ {2}actions: read$/m);
     expect(source).toMatch(/^ {2}issues: write$/m);
+  });
+});
+
+describe("lost-dispatch-counter-caller.yml gates the reusable workflow", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, "../../../.github/workflows/lost-dispatch-counter-caller.yml"), "utf8");
+  const workflow = parse(source) as {
+    on: { issues?: { types?: string[] } };
+    jobs: { count: { if?: string; uses?: string } };
+  };
+
+  it("fires on an issue being labelled", () => {
+    expect(workflow.on.issues?.types).toEqual(["labeled"]);
+  });
+
+  it("scopes to the sliceable label, matching the module's own constant — no compiler sees across this boundary", () => {
+    expect(workflow.jobs.count.if).toBe(`github.event.label.name == '${SLICEABLE_LABEL}'`);
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(workflow.jobs.count.uses).toBe("collod873/claude-workflow/.github/workflows/lost-dispatch-counter.yml@main");
   });
 });
