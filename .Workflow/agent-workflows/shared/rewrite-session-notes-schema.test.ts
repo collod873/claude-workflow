@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SessionRecord } from "../observations/session-record-schema";
+import { SessionRecord } from "./session-record-schema";
 import { execGit } from "./git";
 import { legacySessionRecord, rewriteSessionNotesSchema } from "./rewrite-session-notes-schema";
 

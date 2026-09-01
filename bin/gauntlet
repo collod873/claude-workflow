@@ -203,7 +203,13 @@ done
 # workflow file is the one defect CI structurally cannot report (ADR-0105). `workflow-lint.ts`'s
 # docstring is the home for why, and for why needing Docker is not the ritual objection it looks
 # like: the check costs nothing on a push that leaves `.github/workflows/` alone.
-[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows trailers adrs"
+#
+# `boundaries` is #305's prevent-side of module boundaries: `.dependency-cruiser.cjs` answers "may
+# this import that?", `boundaries-baseline.ts` is the same baseline-the-delta shape `wiring` uses
+# for knip, and `generate-boundaries-doc.ts`'s `diff` mode is the same `regenerate && diff` shape
+# `contract`/`corpus` use — folded into this one check because all three read the same rules and a
+# reader chasing a red `boundaries` has one place to look, not three.
+[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows trailers adrs boundaries"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -260,6 +266,12 @@ if [ "$venue" = "push" ]; then
 
   run_check workflows node \
     "$repo_root/.Workflow/agent-workflows/shared/workflow-lint.ts" "$repo_root" &
+  pids+=($!)
+
+  run_check boundaries bash -c \
+    'node "$1/.Workflow/agent-workflows/shared/boundaries-baseline.ts" check "$1" \
+      && node "$1/.Workflow/agent-workflows/shared/generate-boundaries-doc.ts" diff "$1" "$1/docs/agents/module-boundaries.md"' \
+    _ "$repo_root" &
   pids+=($!)
 
   # An `Amends` trailer that names an ADR without the colon is invisible to both readers of the
@@ -358,7 +370,7 @@ fi
 # errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
 # turn every type error in this repo into "the gauntlet is broken", which is the one report
 # ADR-0063 tells the bypass counter to ignore.
-own_protocol=" contract corpus clones wiring workflows trailers adrs "
+own_protocol=" contract corpus clones wiring workflows trailers adrs boundaries "
 for name in $checks; do
   [ -f "$tmp/$name.exit" ] || continue
   code="$(cat "$tmp/$name.exit")"

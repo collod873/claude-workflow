@@ -20,6 +20,7 @@
     "@jscpd/core": "^4.2.5",
     "@jscpd/tokenizer": "^4.2.6",
     "@types/node": "^26.2.0",
+    "dependency-cruiser": "^18.2.0",
     "eslint": "^10.9.0",
     "eslint-plugin-sonarjs": "^4.2.0",
     "husky": "^9.1.7",

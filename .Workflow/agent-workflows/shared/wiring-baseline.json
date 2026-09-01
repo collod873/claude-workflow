@@ -1,7 +1,7 @@
 {
-  "generated": "2026-08-30",
+  "generated": "2026-09-01",
   "why": "Standing wiring debt at the day this gate landed (#183). The gate fails on anything added to this set, never on the set itself; entries leave as each is wired to a caller or deleted.",
-  "findings": [
+  "items": [
     {
       "kind": "exports",
       "file": ".Workflow/agent-workflows/implement/out-of-brief.ts",
