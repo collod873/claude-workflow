@@ -16,7 +16,9 @@ describe("readWorkflow", () => {
 
   it("parses the YAML into the workflow's own structure", () => {
     const { workflow } = readWorkflow<{ name: string; jobs: Record<string, unknown> }>("verify.yml");
-    expect(workflow.name).toBe("Verify");
+    // "Verify (reusable)" since ADR-0055/ADR-0132: `verify.yml` itself is the reusable workflow,
+    // called through `verify-caller.yml`, whose own name is `Verify` — see that file for why.
+    expect(workflow.name).toBe("Verify (reusable)");
     expect(workflow.jobs).toHaveProperty("verify");
   });
 

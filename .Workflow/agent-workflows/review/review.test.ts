@@ -528,16 +528,21 @@ describe("review.yml's trigger", () => {
   });
 
   it("is equivalent to naming the dispatch, because Verify has exactly two doors", () => {
-    // The premise "not push" relies on: `verify.yml` fires on a push to main and on the
-    // implementer's dispatch, and on nothing else. `immutable-set.test.ts` asserts the same list
-    // for its own reasons; it is re-asserted here because *this* file's `if:` is unsound the
-    // moment a third trigger is added there, and the failure would otherwise land on a lane that
-    // never mentions Verify's triggers at all.
-    const verify = parse(
-      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/verify.yml"), "utf8"),
+    // The premise "not push" relies on: `Verify` fires on a push to main and on the implementer's
+    // dispatch, and on nothing else. Since ADR-0055/ADR-0132 split `verify.yml` into a reusable
+    // workflow plus `verify-caller.yml`, it is the caller stub that actually starts the run this
+    // job reacts to — `verify.yml` itself carries only `workflow_call` now. `immutable-set.test.ts`
+    // asserts the same list on the caller stub for its own reasons; it is re-asserted here because
+    // *this* file's `if:` is unsound the moment a third trigger is added there, and the failure
+    // would otherwise land on a lane that never mentions Verify's triggers at all.
+    const verifyCaller = parse(
+      readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/verify-caller.yml"),
+        "utf8",
+      ),
     ) as { on: Record<string, unknown> };
 
-    expect(Object.keys(verify.on).sort()).toEqual(["push", "repository_dispatch"]);
+    expect(Object.keys(verifyCaller.on).sort()).toEqual(["push", "repository_dispatch"]);
   });
 
   it("sets the assignee review.ts refuses to run without", () => {

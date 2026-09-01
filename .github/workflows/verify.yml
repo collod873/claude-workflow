@@ -1,4 +1,4 @@
-name: Verify
+name: Verify (reusable)
 
 # The Actions venue of the gauntlet (ADR-0010). It refuses nothing — it runs after the
 # push has landed on the ref, and this repo has no branch protection — so it remains telemetry:
@@ -8,42 +8,62 @@ name: Verify
 # What it covers changed when the free venues landed. In-turn, turn-end and pre-push now run the
 # same three checks before a commit exists, so this venue's job narrowed to the one thing they
 # cannot see: a push that skipped them — `--no-verify`, a clone where `npm ci` never ran, or a
-# commit made outside a Claude Code session. Its triggers are narrowed to match.
+# commit made outside a Claude Code session. Its triggers are narrowed to match — spelled on the
+# caller stub now (below), never here.
 #
-# `paths-ignore` is the other half. The four commits before this one were pure Markdown and each
-# spent ~23s of a 2,000-minute monthly cap that the estate is already over. Nothing in a `.md` file
-# can fail typecheck, lint or the suite, so nothing in one is worth a runner.
+# `paths-ignore`, on the caller's `push` trigger: the four commits before this one were pure
+# Markdown and each spent ~23s of a 2,000-minute monthly cap that the estate is already over.
+# Nothing in a `.md` file can fail typecheck, lint or the suite, so nothing in one is worth a runner.
 #
-# `push` is `main` only, and there is **no `pull_request` trigger at all** — ADR-0054's consequence
-# in its own words: "`verify.yml` keeps its `push: main` trigger and loses `pull_request`." It was
-# still here until #145's seam audit, and it was not cosmetic. On a `pull_request` event GitHub runs
-# the workflow file *from the pull request*, so an implementer that deleted the two dispatch-gated
-# jobs below from its own branch still got a green `verify` job out of its own copy of this file —
-# the exact hole ADR-0054 exists to close, left open by the trigger the ADR told it to drop.
+# The caller's `push` is `main` only, and there is **no `pull_request` trigger at all** —
+# ADR-0054's consequence in its own words: "`verify.yml` keeps its `push: main` trigger and loses
+# `pull_request`." It was still here until #145's seam audit, and it was not cosmetic. On a
+# `pull_request` event GitHub runs the workflow file *from the pull request*, so an implementer
+# that deleted the two dispatch-gated jobs below from its own branch still got a green `verify`
+# job out of its own copy of this file — the exact hole ADR-0054 exists to close, left open by the
+# trigger the ADR told it to drop. A reusable workflow cannot be reached by `pull_request` at all
+# (`workflow_call` has no such door), so this hole stays closed by construction now rather than by
+# omission — every caller stub, this repo's own included, still has to leave `pull_request` off its
+# own trigger, the same discipline an absent `pull_request` on a caller's triggers always meant.
 #
 # Node arrives through `.github/actions/node`, the one place the 24 pin is written — so this job
 # cannot drift onto a different runtime than the lanes it judges. `npm ci` there also runs
 # `prepare`, which installs the husky hooks on the runner, so an agent committing here meets the
 # same pre-push gate the owner does.
 #
-# `repository_dispatch` is what an implementation PR is judged on: lane 05's `openPrAndDispatch`
-# sends it, and a dispatch-fired run always executes trunk's copy of this file, which ADR-0053 and
-# ADR-0054 both require. `types:` names that one action, for the reason `audit.yml` gives and
-# ADR-0090 rules: unfiltered, this lane woke on every `session-captured` a session end sent and ran
-# its `verify` job against trunk's tip for no reason — which is also what handed `review.yml` a
-# stream of Verify runs with an empty range to review. The job-level `if:` below is still the scope
-# rule, and it names the one constant the sender reads (`IMPLEMENTATION_PR_DISPATCH_ACTION`,
-# `.Workflow/agent-workflows/shared/immutable-set.ts`).
+# `repository_dispatch` (on the caller stub) is what an implementation PR is judged on: lane 05's
+# `openPrAndDispatch` sends it, and a dispatch-fired run always executes trunk's copy of this file
+# through `@main`, which ADR-0053 and ADR-0054 both require. `types:` names that one action, for
+# the reason `audit.yml` gives and ADR-0090 rules: unfiltered, this lane woke on every
+# `session-captured` a session end sent and ran its `verify` job against trunk's tip for no reason
+# — which is also what handed `review.yml` a stream of Verify runs with an empty range to review.
+# The job-level `if:` below is still the scope rule, and it names the one constant the sender reads
+# (`IMPLEMENTATION_PR_DISPATCH_ACTION`, `.Workflow/agent-workflows/shared/immutable-set.ts`).
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a
+# caller repository carries only `verify-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. The caller stub's own `name:` stays
+# `Verify` — unchanged from what this workflow was called before the split — because `fixer.yml`,
+# `review.yml`, `bypass-counter.yml` and `recover.yml` each key a `workflow_run` trigger on that
+# display name, and `workflow_run` only ever fires off a workflow a push or a dispatch started
+# directly, never one reached through `uses:`. Two checkouts throughout — the machine
+# (`collod873/claude-workflow`, for `.Workflow/agent-workflows/shared/affected-tests.ts`, the one
+# script this lane runs) and the target's own tree (`bin/gauntlet`, `.claude/contract.json`, the
+# workflow files `actionlint` reads, the pull request under judgment, and the `tests/acceptance/`
+# and `main` history the acceptance job restores from and reasons about) — never one copy standing
+# in for the other. The machine checkout carries no credential input of its own: ADR-0132 made this
+# repository public, so `actions/checkout` reads it anonymously and no PAT is added here that would
+# have to be rotated in every enrolled repository. Only `restore-and-run-acceptance` below runs a
+# machine script (the affected-tests lookup), so it alone carries both checkouts, machine at the
+# workspace root and target at `target/`, with every step that touches the target's own tree or
+# history running `working-directory: target`. `verify` runs no machine code at all — `bin/gauntlet`,
+# `npm run clone:check` and `actionlint` are all the target's own tooling — so it checks out the
+# target alone, plain, at the workspace root, exactly the single checkout this job had before the
+# split.
 
 "on":
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
-  repository_dispatch:
-    types: [implementation-opened]
+  workflow_call:
 
 permissions:
   contents: read
@@ -63,7 +83,9 @@ jobs:
   # the changed-files list the dispatch already carries, and a refusal (CONTEXT.md) is supposed to
   # be cheap. `IMMUTABLE_SET` below is spelled identically to the array of the same name in
   # `.Workflow/agent-workflows/shared/immutable-set.ts` — `immutable-set.test.ts` asserts the two
-  # never drift apart.
+  # never drift apart. `gh pr view "$PR"` below needs no checkout and no explicit repository either
+  # — `$PR` is a full pull request URL (`implement.ts`'s `openPrAndDispatch`), which `gh` resolves
+  # on its own regardless of which repository, if any, the runner's cwd sits in.
   immutability:
     name: Immutability
     if: github.event.action == 'implementation-opened'
@@ -130,22 +152,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # `fetch-depth: 0` for the same reason the `verify` job below carries it — that job's
-      # comment is the home for why; this job runs `tests/acceptance/` too.
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      # `fetch-depth: 0` for the same reason the `verify` job below carries it on its own target
+      # checkout — that job's comment is the home for why; this job runs `tests/acceptance/` too.
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           fetch-depth: 0
 
       # Without this the job judges trunk and calls it a verdict on the pull request (ADR-0104).
-      # `actions/checkout` above has no ref to take from a `repository_dispatch` — the event names
-      # no branch — so it lands on the default branch, and every step after it, the restore
+      # The target checkout above has no ref to take from a `repository_dispatch` — the event
+      # names no branch — so it lands on the default branch, and every step after it, the restore
       # included, then describes `main`. The tests ran green against a `main` that did not carry
       # the implementation and the job reported a failure that was true of trunk and meaningless
       # about the diff; the same reading would have passed any pull request whose ticket was
       # already built. The head branch is resolved from the payload's PR URL rather than added to
       # the dispatch, so no sender changes and an older dispatch still works.
       - name: Check out the pull request under test
+        working-directory: target
         env:
           PR: ${{ github.event.client_payload.pr }}
           GH_TOKEN: ${{ github.token }}
@@ -167,6 +196,7 @@ jobs:
       # acceptance test names a criterion this dispatch carries"). A missing directory and a missing
       # `main` are different facts and only one of them is this step's to report.
       - name: Restore tests/acceptance from trunk's tip
+        working-directory: target
         run: |
           set -euo pipefail
           if git cat-file -e main:tests/acceptance 2>/dev/null; then
@@ -177,6 +207,13 @@ jobs:
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
+
+      # The acceptance suite runs against the target's own `vitest.config.ts` and its own installed
+      # dependencies, never the machine's — the same reason `acceptance.yml`'s `land` job installs
+      # separately before its own `bin/gauntlet push` spawn.
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
 
       # Scopes the run to this slice: only the tests naming a criterion this dispatch carries
       # (ADR-0033's grep, `shared/affected-tests.ts`), so a parallel pull request for a different
@@ -200,28 +237,34 @@ jobs:
           # arguments or as an expanded pattern. The command substitution above stays, because it
           # is what lets `set -e` see a failing `tsx` — a `mapfile < <(...)` would swallow it.
           readarray -t FILE_LIST <<< "$FILES"
-          npx vitest run "${FILE_LIST[@]}"
+          # `cd` rather than a second `working-directory:` step: the file list above was resolved
+          # against the machine's own `./.Workflow/...` import, and the paths in it are target-tree
+          # relative either way, so only the `vitest` invocation itself needs to run from `target`.
+          (cd target && npx vitest run "${FILE_LIST[@]}")
 
   verify:
     needs: [immutability]
-    # `immutability` only runs on the dispatch it gates on (above); on `push` and `pull_request` it
-    # is skipped, and a skipped dependency is not a success, so this job would otherwise skip with
-    # it. `always()` overrides that; `!= 'failure'` still blocks this job when the immutable set
-    # was actually crossed.
+    # `immutability` only runs on the dispatch it gates on (above); on the caller's `push` trigger
+    # it is skipped, and a skipped dependency is not a success, so this job would otherwise skip
+    # with it. `always()` overrides that; `!= 'failure'` still blocks this job when the immutable
+    # set was actually crossed.
     if: always() && needs.immutability.result != 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # `fetch-depth: 0`, not the default 1. The gauntlet's `test` slot runs `tests/acceptance/`,
-      # and an acceptance test is written against a criterion — some criteria are facts about
-      # history, not about the working tree. `201-tests-acceptance-on-main.test.ts` asks whether a
-      # commit under `tests/acceptance/` was authored by the Actions bot, which is exactly the
-      # evidence lane 04 has run at all; at depth 1 that `git log` returns one commit, the test
-      # reddened every push from 9e85526 on, and since #197 made lane 08 read lane 06's verdict,
-      # nothing could merge behind it. A shallow clone is an artefact of the venue, so a check that
-      # asks a true question must not fail on it (the #223 class). 380 commits and 19M of history
-      # is not a cost worth a broken venue, and five other workflows here already fetch in full.
-      - name: Checkout
+      # Plain, at the workspace root — this job runs no machine script, only the target's own
+      # `bin/gauntlet`, `npm run clone:check` and `.github/workflows/`, so there is no second
+      # checkout to keep separate from it. `fetch-depth: 0`, not the default 1. The gauntlet's
+      # `test` slot runs `tests/acceptance/`, and an acceptance test is written against a
+      # criterion — some criteria are facts about history, not about the working tree.
+      # `201-tests-acceptance-on-main.test.ts` asks whether a commit under `tests/acceptance/` was
+      # authored by the Actions bot, which is exactly the evidence lane 04 has run at all; at depth
+      # 1 that `git log` returns one commit, the test reddened every push from 9e85526 on, and
+      # since #197 made lane 08 read lane 06's verdict, nothing could merge behind it. A shallow
+      # clone is an artefact of the venue, so a check that asks a true question must not fail on it
+      # (the #223 class). 380 commits and 19M of history is not a cost worth a broken venue, and
+      # five other workflows here already fetch in full.
+      - name: Checkout target
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -304,6 +347,10 @@ jobs:
   # left in mixed states — and once `always()` is in, `cancelled` has to be excluded by name. It is:
   # a cancelled run's conclusion is not `failure`, so the `workflow_run` door would not open for it
   # either, and two doors onto one lane have to agree about what counts as red.
+  #
+  # No checkout: the dispatch below is the whole of what this job does, and `{owner}/{repo}` in the
+  # API path resolves against the run's own repository — the target's, since a called workflow's
+  # `github` context is the calling run's — with no checkout needed to establish that.
   signal-fixer:
     name: Signal the fixer
     needs: [immutability, restore-and-run-acceptance, verify]
