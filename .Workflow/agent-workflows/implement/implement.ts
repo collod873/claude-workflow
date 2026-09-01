@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
@@ -8,7 +8,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractCriteria,
@@ -573,7 +573,11 @@ export interface ImplementDeps {
    * `.claude/contract.json` from whatever tree the suite happens to be running against.
    */
   runGenerator?: GeneratorExec;
-  /** The repo root the generators are pointed at. Defaults to this process's cwd, which is the checkout. */
+  /**
+   * The repo root the generators are pointed at — the *target* checkout under the reusable
+   * workflow (ADR-0055), which is not this process's cwd there. Defaults to cwd, which is the
+   * right answer for a workstation run and for every caller that has only one checkout.
+   */
   repoRoot?: string;
 }
 
@@ -769,11 +773,18 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
  * reports. Real production behaviour for `main()`; `runImplement` above
  * never calls this itself, so a test exercising the brief-assembly or
  * PR-and-dispatch criteria never has to run a real suite.
+ *
+ * `repoDir` is the tree the suite runs in and the paths are relative to —
+ * the target checkout under the reusable workflow (ADR-0055), cwd anywhere
+ * else. The paths that come back stay repo-relative either way: they are
+ * what the brief names and what a criterion is matched against, so they
+ * cannot carry a runner's absolute workspace into either.
  */
 export function findFailingTestFiles(
   dir: string,
   readFile: (path: string) => string,
-  runTests: () => TestRunResult = () => runVitestJson(dir),
+  repoDir: string = process.cwd(),
+  runTests: () => TestRunResult = () => runVitestJson(dir, repoDir),
 ): FailingTestFile[] {
   const result = runTests();
   if (!result.collected) {
@@ -781,7 +792,7 @@ export function findFailingTestFiles(
   }
   const paths = [...new Set(result.failures.map((failure) => failure.name.split(" > ")[0]))];
   return paths
-    .filter((path) => existsSync(path))
+    .filter((path) => existsSync(resolve(repoDir, path)))
     .map((path) => ({ path, content: readFile(path) }));
 }
 
@@ -793,17 +804,41 @@ async function main(): Promise<void> {
     return;
   }
   const issueNumber = Number(issueArg);
+
+  // Which checkout is the repository being built. `TARGET_WORKSPACE` is set only by the reusable
+  // workflow (ADR-0055, amended by ADR-0132): there, this process runs from the *machine* checkout
+  // — that is where this file, the implementer's prompt and the generators live — while everything
+  // a ticket names is a path in the target's tree. A workstation run has one of each, so cwd is the
+  // right answer and this is absent.
+  //
+  // Every seam below that could mean either repository is bound to the target here, in one place,
+  // rather than left to whichever function happened to reach the filesystem first:
+  //
+  // - `exec` — the implementer holds Edit, Write and Bash and *builds with them*, so its own
+  //   working directory has to be the target or a run would edit the pipeline instead of the
+  //   repository it was dispatched for. This is the seam no other lane needs.
+  // - `git` — `-C` bound once, the same shape `integrate.ts`'s `main` uses, so the claim's
+  //   `rev-parse`, the branch, the commit and the push all describe the target.
+  // - `readFile`/`fileExists`/`writeFile` — every path in play is repo-relative (the ticket's
+  //   `CONTEXT.md`, the answer's own files), and `resolve` leaves the one absolute path that
+  //   reaches `writeFile` — the answer receipt in the runner's temp directory — untouched.
+  // - `failingTests` and `repoRoot` — the target's acceptance suite is what the brief is built
+  //   from, and the target's generated artifacts are what a commit can make stale.
+  const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+  const inRepo = (path: string) => resolve(repoDir, path);
+
   try {
     const result = await runImplement({
       gh: execGh,
-      exec: execClaude,
-      git: execGit,
-      readFile: (path) => readFileSync(path, "utf8"),
-      fileExists: (path) => existsSync(path),
-      writeFile: fsWriteFile,
+      exec: execClaudeIn(repoDir),
+      git: (args) => execGit(["-C", repoDir, ...args]),
+      readFile: (path) => readFileSync(inRepo(path), "utf8"),
+      fileExists: (path) => existsSync(inRepo(path)),
+      writeFile: (path, content) => fsWriteFile(inRepo(path), content),
       issueNumber,
-      failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(path, "utf8")),
+      failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(inRepo(path), "utf8"), repoDir),
       runGenerator: execGenerator,
+      repoRoot: repoDir,
     });
     if (result.outcome === "already-claimed") {
       // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the

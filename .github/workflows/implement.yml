@@ -1,4 +1,4 @@
-name: Implement
+name: Implement (reusable)
 
 # PRD #145 move 6 (#167): the connector for one implementer per ready slice. Fires on the
 # `repository_dispatch` `to-tickets.yml`'s publish step sends for every slice with zero unresolved
@@ -24,10 +24,27 @@ name: Implement
 # this one's claimed files (#167's "Files claimed" names only `.Workflow/agent-workflows/implement/`
 # and this file). This file exists to get the receiving side right and provable, the same way
 # `spec.yml` shipped its owner-gated trigger ahead of a runnable stage dispatch.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `implement-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for `implement.ts`, the implementer's own prompt, and
+# the generators `regenerate-artifacts.ts` runs) and the calling repository's own tree (the target,
+# where the ticket is actually built) — never one copy standing in for the other. Of every lane in
+# this pipeline this is the one where that distinction bites hardest: the implementer holds Edit,
+# Write and Bash and *builds with them*, so the model's own working directory has to be the target
+# and not the machine, or a run would edit the pipeline instead of the repository it was dispatched
+# for. `TARGET_WORKSPACE` on the `Implement the ticket` step below is what says which is which —
+# `implement.ts`'s `main()` threads it through the model's cwd, every `git -C`, every file the
+# answer is written to, the acceptance run that assembles the brief, and the generators — the same
+# variable and the same reading `integrate.yml` and `shape.yml` already use. The machine checkout
+# carries no credential input of its own: ADR-0132 made this repository public, so
+# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
+# every enrolled repository.
 
 "on":
-  repository_dispatch:
-    types: [ticket-ready]
+  workflow_call:
 
 # `issues: write`, not `read`: `implement.ts` reaches `implement/out-of-brief.ts`, which files and
 # comments on the out-of-brief tracker with `gh issue create` / `gh issue comment`. Under `read`
@@ -68,8 +85,15 @@ jobs:
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       # Same shape as `to-tickets.yml`'s own preflight: fail closed on an empty secret before Node
       # is even set up, rather than let a stage spawn `claude` with nothing to authenticate it.
@@ -84,6 +108,16 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
+      # The target's own `node_modules`, separate from the machine's install above: the brief this
+      # lane assembles is built from the target's *failing* acceptance tests, which means running
+      # the target's vitest against the target's tree, and the implementer then runs the target's
+      # own checks with Bash while it builds. The machine's install is what puts `tsx` itself on
+      # PATH, resolved from the nearest ancestor `node_modules` since `target/` sits directly under
+      # the machine checkout that already has one — the same arrangement `integrate.yml` uses.
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
+
       # Same pin as `to-tickets.yml`/`audit.yml` (ADR-0002): a run comes from the checkout alone, so
       # a floating install would let a release published next month change what a rerun does.
       - name: Install Claude Code
@@ -91,7 +125,9 @@ jobs:
 
       # A runner has no git identity, and the branch this pushes is committed here, not by a human
       # workstation that already has one configured — same fix `audit.yml` needed for its own note.
+      # Scoped to the target checkout: it is the only one this job ever commits into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -112,6 +148,11 @@ jobs:
         # outside the checkout, where it can never be staged into the branch it describes.
         env:
           IMPLEMENT_ANSWER_PATH: ${{ runner.temp }}/implementer-answer.json
+          # Which checkout is the repository being built (ADR-0055) — see this file's header for
+          # why this lane cares more than any other. Absolute, so `implement.ts` can resolve every
+          # repo-relative path in the ticket against it while the answer receipt above, already an
+          # absolute path of its own, is left alone.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: |
           # The one place this run's own ticket number is written down for a reader with only the
           # run log — the same shape verify.yml's `judging $PR on $BRANCH` line and ADR-0104 use.

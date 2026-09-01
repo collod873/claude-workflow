@@ -869,9 +869,54 @@ describe("implement.yml", () => {
     expect(jobIf).not.toContain("author_association");
   });
 
-  it("is triggered by repository_dispatch", () => {
+  it("is a reusable workflow, triggered by implement-caller.yml's own trigger", () => {
+    // ADR-0055 (amended by ADR-0132): the trigger lives in the stub now, and this file carries only
+    // `workflow_call`. Both halves are asserted, because a stub that lost its trigger and a
+    // reusable workflow that kept one are the same green suite and a lane that never fires.
     const { workflow } = readWorkflow<{ on: Record<string, unknown> }>("implement.yml");
-    expect(workflow.on).toHaveProperty("repository_dispatch");
+    expect(workflow.on).toHaveProperty("workflow_call");
+    expect(workflow.on).not.toHaveProperty("repository_dispatch");
+
+    const { workflow: caller } = readWorkflow<{
+      on: { repository_dispatch?: { types?: string[] } };
+    }>("implement-caller.yml");
+    expect(caller.on.repository_dispatch?.types).toEqual([IMPLEMENT_DISPATCH_EVENT_TYPE]);
+  });
+
+  it("keeps the display name Recover's workflow_run trigger names", () => {
+    // `recover-caller.yml` listens on `workflow_run: workflows: ["Implement"]`, and `workflow_run`
+    // only ever fires off a workflow a push or a dispatch started directly — never one reached
+    // through `uses:`. So the *stub* is what Recover can see, and renaming it would silently end
+    // the recovery path for every dead lane 05 run.
+    const { workflow } = readWorkflow<{ name: string }>("implement-caller.yml");
+    expect(workflow.name).toBe("Implement");
+
+    const { workflow: recoverCaller } = readWorkflow<{
+      on: { workflow_run?: { workflows?: string[] } };
+    }>("recover-caller.yml");
+    expect(recoverCaller.on.workflow_run?.workflows).toContain(workflow.name);
+  });
+
+  it("checks out the machine and the target separately, and tells implement.ts which is which", () => {
+    // ADR-0055's whole point: a target repository never carries a copy of the machine. This lane is
+    // the one where conflating them is worst — the implementer holds Edit, Write and Bash, so a run
+    // pointed at the wrong tree edits the pipeline instead of the repository it was dispatched for.
+    const { workflow } = readWorkflow<{
+      jobs: Record<string, { steps: Array<{ name: string; with?: Record<string, string>; env?: Record<string, string> }> }>;
+    }>("implement.yml");
+    const steps = workflow.jobs.implement.steps;
+
+    const machine = steps.find((step) => step.name === "Checkout machine");
+    expect(machine?.with?.repository).toBe("collod873/claude-workflow");
+    // No credential on the machine checkout (ADR-0132): this repository is public, so a caller
+    // reads it anonymously rather than holding a PAT that would have to be rotated everywhere.
+    expect(machine?.with?.token).toBeUndefined();
+
+    const target = steps.find((step) => step.name === "Checkout target");
+    expect(target?.with?.path).toBe("target");
+
+    const build = steps.find((step) => step.name === "Implement the ticket");
+    expect(build?.env?.TARGET_WORKSPACE).toBe("${{ github.workspace }}/target");
   });
 
   it("times its job out at exactly the age CLAIM_TIMEOUT_MINUTES calls a claim dead", () => {

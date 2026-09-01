@@ -99,13 +99,25 @@ function stageEnv(): NodeJS.ProcessEnv {
  * `maxBuffer` ceiling that used to turn a long session into an ENOBUFS
  * crash that discarded the response along with it: only the final text is
  * held, not the transcript.
+ *
+ * **`cwd` is which repository the model is looking at**, and it is a
+ * parameter rather than an assumption because the two stopped being the same
+ * directory under ADR-0055: a reusable lane runs from the machine checkout
+ * and builds the *target* one, and a stage that holds Edit, Write and Bash —
+ * lane 05's implementer is the one that does — would otherwise read and edit
+ * the pipeline it is running rather than the repository it was dispatched
+ * for. Omitted means "this process's own cwd", which is what every lane
+ * running against its own checkout wants and what `execClaude` below is.
  */
-export const execClaude: StageExec = (argv, stdin) =>
+export const execClaudeIn =
+  (cwd?: string): StageExec =>
+  (argv, stdin) =>
   new Promise((resolve, reject) => {
     const parser = createStreamJsonParser((line) => process.stderr.write(`${line}\n`));
     const child = spawn("claude", [...withoutOutputFormat(argv), ...STREAM_FLAGS], {
       stdio: ["pipe", "pipe", "pipe"],
       env: stageEnv(),
+      cwd,
     });
 
     // A child that is already gone has no read end on this pipe, and the write
@@ -171,6 +183,14 @@ export const execClaude: StageExec = (argv, stdin) =>
       resolve(text);
     });
   });
+
+/**
+ * The real `StageExec` for a lane whose model works in this process's own
+ * checkout — every lane but 05, and lane 05 itself on a workstation. See
+ * `execClaudeIn` above for everything else about it, including why the
+ * working directory became a question worth asking.
+ */
+export const execClaude: StageExec = execClaudeIn();
 
 /**
  * Drops a caller-supplied `--output-format <value>` pair, so `STREAM_FLAGS`

@@ -395,6 +395,17 @@
     ],
     "fragment": ", () => {\n    const fake = createFake({\n      open: [{ number: 20, title: \"Second wave\", blockedBy: [10] }],\n      closed: [{ number: 10, stateReason: \"completed\", merged: true }],\n    });\n\n    const"
   },
+{
+  "hash": "7b8e056a564a208e",
+  "format": "yaml",
+  "lines": 16,
+  "tokens": 103,
+  "where": [
+    ".github/workflows/implement.yml:83",
+    ".github/workflows/ratify.yml:73"
+  ],
+  "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      # Same shape as `to-tickets.yml`'s own preflight: fail closed on an empty secret before Node"
+},
   {
     "hash": "871ca70f587ce00f",
     "format": "yaml",
