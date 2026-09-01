@@ -82,13 +82,8 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # `review.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
       # a GitHub-hosted runner has none — so every non-skipped run of this lane died `spawn claude

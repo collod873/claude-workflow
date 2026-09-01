@@ -86,13 +86,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # `recover.ts` reuses `implement.ts`'s own tail (`landAnswer`), which pushes onto the branch
       # it just claimed. That push meets the same `.husky/pre-push` gauntlet the owner's own

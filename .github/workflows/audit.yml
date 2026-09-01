@@ -105,13 +105,8 @@ jobs:
           ssh-key: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
           path: knowledge-base
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # Same pin as `to-tickets.yml`, for the same reason (ADR-0002): a run comes
       # from the checkout alone, and a floating install would let a release published next month

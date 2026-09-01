@@ -12,7 +12,9 @@ name: Missing-trailer counter
 # `.Workflow/agent-workflows/watchdog/missing-trailer.ts` is the judgement half — a pure function,
 # tested against `adr-corpus.evidence.json`, a captured snapshot of this repo's own corpus.
 # `missing-trailer-counter.ts` is the IO half this job runs: it reads the tree fresh every time and
-# recomputes the finding set, so nothing here is stored and nothing here can go stale.
+# recomputes the finding set, so nothing here is stored and nothing here can go stale. It files its
+# own standing issue through the `gh` seam in `shared/gh.ts`, which is why the job below ends at the
+# step that runs it and has no reporting step of its own.
 
 "on":
   push:
@@ -46,15 +48,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
-      - name: Install dependencies
-        run: npm ci
-
-      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate
-      # reporting step here.
       - name: Count missing trailers
         run: npx tsx .Workflow/agent-workflows/watchdog/missing-trailer-counter.ts

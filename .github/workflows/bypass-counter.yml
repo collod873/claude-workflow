@@ -12,6 +12,9 @@ name: Bypass counter
 # `workflow_run` is safe to key on `verify.yml`'s own declared name here, unlike `run-watchdog.yml`:
 # the failure that trigger is blind to is a workflow GitHub could not parse at all, and `verify.yml`
 # parses fine — it is the run *inside* it that fails.
+#
+# `bypass-counter.ts` files its own standing issue through the `gh` seam in `shared/gh.ts`, which is
+# why the job below ends at the step that runs it and has no reporting step of its own.
 
 "on":
   workflow_run:
@@ -48,15 +51,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
-      - name: Install dependencies
-        run: npm ci
-
-      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate
-      # reporting step here.
       - name: Count bypasses of the free gates
         run: npx tsx .Workflow/agent-workflows/watchdog/bypass-counter.ts

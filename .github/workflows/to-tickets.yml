@@ -29,8 +29,8 @@ name: To-Tickets
 # never two. The `CLAUDE_CODE_OAUTH_TOKEN` preflight below writes its reason the same way, so a
 # missing secret is reported by name through this same surface rather than a bespoke comment.
 #
-# Node arrives on the runner immediately before the first TypeScript step needs it — pinned to
-# Node 24, with `npm ci` installing exactly what's in `package-lock.json`, never a fresh resolve.
+# Node arrives on the runner immediately before the first TypeScript step needs it, through
+# `.github/actions/node` — the one place the 24 pin and the `npm ci` are written.
 #
 # Three stages run in sequence: seam sweep / slice / audit-and-publish. Slice reads the seam
 # manifest seam sweep just wrote by reading the same handoff path seam sweep wrote to —
@@ -170,13 +170,8 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # `stage.ts` resolves the CLI from PATH (`spawn("claude", ...)`) and a GitHub-hosted
       # runner has none. `npm ci` cannot supply it either: Claude Code is not a dependency of this

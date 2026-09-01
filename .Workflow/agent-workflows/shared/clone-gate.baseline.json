@@ -121,17 +121,6 @@
     "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"./git\";\n\n/**\n * A throwaway repo with one commit, distinguishable from whatever repo an\n * inherited `GIT_DIR` might point at — `execGit`'s job under test is\n * reporting on *this* repo regardless of what the ambient environment\n * claims the repo is.\n */"
   },
   {
-    "hash": "21225e28550ccee0",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 114,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:635",
-      ".claude/hooks/session-capture.test.ts:749"
-    ],
-    "fragment": ", transcript_path: transcript, cwd: sessionRepo, hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    const log = waitForLogToContain(result.logPath, \"skipped publish-push-failed\""
-  },
-  {
     "hash": "22dc7a008887e661",
     "format": "typescript",
     "lines": 8,
@@ -141,17 +130,6 @@
       ".Workflow/agent-workflows/acceptance/acceptance.test.ts:94"
     ],
     "fragment": ", content: \"x\" }]));\n    const written = new Map<string, string>();\n\n    await expect(\n      authorAcceptanceTests({\n        exec: stage.exec,\n        writeFile: (path, content) => written.set(path, content),\n        issueNumber: 162"
-  },
-  {
-    "hash": "234207fc3e10f39d",
-    "format": "typescript",
-    "lines": 14,
-    "tokens": 119,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:1016",
-      ".claude/hooks/session-capture.test.ts:808"
-    ],
-    "fragment": ", transcript_path: transcript, cwd: sessionRepo, hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      {\n        SESSION_CAPTURE_REPO_DIR: repoDir,\n        SESSION_CAPTURE_KB_DIR: kbCloneDir,\n        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,\n        PATH: `${ghBinDir}:${process.env.PATH}`,\n      },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    // Waits for `published`, not merely `skipped push-` — see the \"missing checkout\" test above."
   },
   {
     "hash": "239a297e6a6a399e",
@@ -220,39 +198,6 @@
     "fragment": "],\n    });\n\n    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: \"collod873\", now: NOW });\n\n    expect(outcome.grow).toMatchObject({ code: \"declined-for-good\""
   },
   {
-    "hash": "312b9c843c058136",
-    "format": "yaml",
-    "lines": 18,
-    "tokens": 119,
-    "where": [
-      ".github/workflows/missing-trailer-counter.yml:42",
-      ".github/workflows/run-watchdog.yml:60"
-    ],
-    "fragment": "SIGNAL_ASSIGNEE: ${{ github.repository_owner }}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate\n      # reporting step here.\n      - name: Count"
-  },
-  {
-    "hash": "33282df5dc36c427",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 73,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:687",
-      ".claude/hooks/session-capture.test.ts:716"
-    ],
-    "fragment": "${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    const log = waitForLogToContain(result.logPath, \"published\""
-  },
-  {
-    "hash": "338a904fb53b796d",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 89,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:1008",
-      ".claude/hooks/session-capture.test.ts:741"
-    ],
-    "fragment": ", { recursive: true, force: true });\n\n    const ghLogPath = join(tmpDir(\"session-capture-gh-log-\"), \"gh.log\");\n    const ghBinDir = fakeGhBinDir(ghLogPath);\n\n    const transcript = writeTranscript(publishTranscript(\"2026-08-10T12:00:00Z\", sessionRepo));\n\n    const result = runHook(\n      { session_id: \"session-kb-unreachable\""
-  },
-  {
     "hash": "33e4f4192746aa51",
     "format": "typescript",
     "lines": 20,
@@ -273,17 +218,6 @@
       ".Workflow/agent-workflows/shared/git.test.ts:15"
     ],
     "fragment": "));\n  execFileSync(\"git\", [\"init\", \"-q\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, commit };\n}\n\ndescribe(\"runObservations\""
-  },
-  {
-    "hash": "484ac24e9134db6a",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 102,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:623",
-      ".claude/hooks/session-capture.test.ts:762"
-    ],
-    "fragment": ", () => {\n    const bareDir = makeBareRemote();\n    const repoDir = cloneRepo(bareDir);\n    const head = commitAndPush(repoDir, \"a.ts\", \"export const a = 1;\\n\", \"work\", \"2026-08-10T12:00:00Z\");\n    const sessionRepo = cloneRepo(bareDir);\n\n    const ghLogPath = join(tmpDir(\"session-capture-gh-log-\"), \"gh.log\");\n    const ghBinDir = fakeGhBinDir(ghLogPath,"
   },
   {
     "hash": "4d04f866965a3ddb",
@@ -341,17 +275,6 @@
     "fragment": "function issueBody(gh: GhExec, issueNumber: number): string {\n  const raw = gh([\"issue\", \"view\", String(issueNumber), \"--json\", \"body\"]);\n  return (JSON.parse(raw) as { body?: string }).body ?? \"\";\n}\n\ninterface"
   },
   {
-    "hash": "5b367a7dd8d3462a",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 77,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:528",
-      ".claude/hooks/session-capture.test.ts:547"
-    ],
-    "fragment": ");\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n\n    const log = waitForLogLine(result.logPath);\n    expect(log.trim().split(\"\\n\")).toHaveLength(1);\n    expect(log).toContain(\"skipped no-node\""
-  },
-  {
     "hash": "5c602db7ed108fdd",
     "format": "typescript",
     "lines": 9,
@@ -361,17 +284,6 @@
       ".Workflow/agent-workflows/observations/run-audit.test.ts:287"
     ],
     "fragment": ");\n\n    const base = repo.commit(\"a.ts\", \"export const a = 1;\\n\", \"seed\");\n    const head = repo.commit(\"a.ts\", \"export const a = 2;\\n\", \"the session's own commit\");\n    const record = sessionRecord({ head, base, touchedPaths: [\"a.ts\"] });\n    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });\n    writeCorpusFile(repo.dir, record.corpusPath, \"---\\nsession_id: session-123\\n---\\n\\n## User Prompts\\n- do the thing\\n\");\n\n    const stubDir"
-  },
-  {
-    "hash": "5f76e458f2613bef",
-    "format": "yaml",
-    "lines": 18,
-    "tokens": 121,
-    "where": [
-      ".github/workflows/bypass-counter.yml:44",
-      ".github/workflows/run-watchdog.yml:60"
-    ],
-    "fragment": "SIGNAL_ASSIGNEE: ${{ github.repository_owner }}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate\n      # reporting step here.\n      - name: Count bypasses"
   },
   {
     "hash": "5feb5bd89e6272e0",
@@ -394,28 +306,6 @@
       ".Workflow/agent-workflows/observations/run-audit.test.ts:186"
     ],
     "fragment": ", async () => {\n    const repo = makeRepo();\n    dirs.push(repo.dir, repo.origin);\n\n    const base = repo.commit(\"a.ts\", \"export const a = 1;\\n\", \"seed\");\n    const head = repo.commit(\"a.ts\", \"export const a = 2;\\n\", \"the session's own commit\");\n    const"
-  },
-  {
-    "hash": "6079e33ce00332cd",
-    "format": "typescript",
-    "lines": 12,
-    "tokens": 100,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:1021",
-      ".claude/hooks/session-capture.test.ts:976"
-    ],
-    "fragment": "${ghBinDir}:${process.env.PATH}`,\n      },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    // Waits for `published`, not merely `skipped push-` — see the \"missing checkout\" test above.\n    const log = waitForLogToContain(result.logPath, \"published\");\n    expect(log).toContain(\"skipped push-\");\n    expect(log).not"
-  },
-  {
-    "hash": "61892db0a345939c",
-    "format": "typescript",
-    "lines": 14,
-    "tokens": 107,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:855",
-      ".claude/hooks/session-capture.test.ts:896"
-    ],
-    "fragment": ", transcript_path: transcript, cwd: otherRepo, hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      {\n        SESSION_CAPTURE_REPO_DIR: repoDir,\n        SESSION_CAPTURE_KB_DIR: kbCloneDir,\n        SESSION_CAPTURE_KB_STAMP_PATH: kbStampPath,\n        SESSION_CAPTURE_OUTPUT_DIR: kbOutputDir,\n      },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    // Waits for the publish half's own terminal line, not `flushed 1` — the latter is written"
   },
   {
     "hash": "69f0599b2177820d",
@@ -539,28 +429,6 @@
     "fragment": "const isMain =\n  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;\n\nif (isMain) {\n  const args = process.argv.slice(2);\n  if (args[0] === \"diff\") {\n    const [, root, committedPath] = args;\n    if (!root || !committedPath) {\n      console.error(\"usage: generate-contract.ts diff <root> <contractPath>\""
   },
   {
-    "hash": "8e0ea85e4afaac5b",
-    "format": "yaml",
-    "lines": 16,
-    "tokens": 99,
-    "where": [
-      ".github/workflows/lost-dispatch-counter.yml:42",
-      ".github/workflows/run-watchdog.yml:60"
-    ],
-    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no"
-  },
-  {
-    "hash": "913c03a36ca58871",
-    "format": "yaml",
-    "lines": 16,
-    "tokens": 99,
-    "where": [
-      ".github/workflows/dispatch-reconcile.yml:68",
-      ".github/workflows/run-watchdog.yml:60"
-    ],
-    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: \"24\"\n\n      - name: Install dependencies\n        run: npm ci\n\n      # No Claude Code install and no model secret: this spends nothing. It reads the tracker and"
-  },
-  {
     "hash": "9391b879f283089f",
     "format": "typescript",
     "lines": 6,
@@ -616,17 +484,6 @@
     "fragment": "],\n      }),\n    ];\n    const fake = createFakeGh();\n\n    sliceAndPublish(plan, PRD_NUMBER, fake.gh);\n\n    const createCall = fake.calls.find((args) => args[0] === \"issue\" && args[1] === \"create\");\n    const body = createCall![createCall!.indexOf(\"--body\") + 1];\n\n    expect(body).toContain(seamLine"
   },
   {
-    "hash": "9e6a23dd43add4c3",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 140,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:539",
-      ".claude/hooks/session-capture.test.ts:562"
-    ],
-    "fragment": ", () => {\n    const transcript = writeTranscript([\n      { type: \"user\", uuid: \"u1\", origin: { kind: \"human\" }, promptSource: \"typed\", message: { content: \"hi\" } },\n    ]);\n\n    const result = runHook(\n      { session_id: \"x\", transcript_path: transcript, cwd: \"y\", hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      { PATH: \"/nonexistent\", HOME: \"/nonexistent\", NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(true"
-  },
-  {
     "hash": "a1ed681a30ef8b2e",
     "format": "typescript",
     "lines": 7,
@@ -669,17 +526,6 @@
       ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
     ],
     "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"../shared/git\";\nimport { deriveRange"
-  },
-  {
-    "hash": "a60e93d4ae4e8065",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 72,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:716",
-      ".claude/hooks/session-capture.test.ts:814"
-    ],
-    "fragment": "},\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    const log = waitForLogToContain(result.logPath, \"published\");\n    expect(log).toContain(`published session-flush "
   },
   {
     "hash": "aa0e2cc7e6f2c0c1",
@@ -748,17 +594,6 @@
     "fragment": ", () => {\n      const nonNegotiables = section(read(AUTHOR_PROMPT), /non-negotiable/i);\n      expect(nonNegotiables, \"the spec author's prompt has no non-negotiables section\").not.toBeNull();\n      const thirdRule = (nonNegotiables as string).slice(\n        (nonNegotiables as string).search(/I['’]ll know it works when I can/),\n      );\n      expect(thirdRule).toMatch(/open question/i"
   },
   {
-    "hash": "b7b5ff5923562957",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 74,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:687",
-      ".claude/hooks/session-capture.test.ts:861"
-    ],
-    "fragment": "},\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    const log = waitForLogToContain(result.logPath, \"skipped publish-out-of-scope\");\n    expect(log).not.toContain(\"flushed\""
-  },
-  {
     "hash": "b806307aea088d45",
     "format": "typescript",
     "lines": 7,
@@ -792,28 +627,6 @@
     "fragment": "const stage = createFakeStage(\"\");\n\n    const outcome = await runAudit({\n      git: execGit,\n      gh: fakeGh().gh,\n      exec: stage.exec,\n      repoDir: repo.dir,\n      head,\n      standards: \"\",\n      eventAction: AUDIT_DISPATCH_ACTION,\n      log: () => {},\n    });\n\n    expect(outcome).toEqual({ action: \"skipped\", code: \"corpus-missing\""
   },
   {
-    "hash": "bdefcd5371cbad2d",
-    "format": "typescript",
-    "lines": 12,
-    "tokens": 135,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:835",
-      ".claude/hooks/session-capture.test.ts:876"
-    ],
-    "fragment": ", () => {\n    const bareDir = makeBareRemote();\n    const repoDir = cloneRepo(bareDir);\n    commitAndPush(repoDir, \"a.ts\", \"export const a = 1;\\n\", \"work\", \"2026-08-10T12:00:00Z\");\n\n    const otherBareDir = makeBareRemote();\n    const otherRepo = cloneRepo(otherBareDir);\n\n    const kbBareDir = makeBareRemote();\n    const kbCloneDir = cloneRepo(kbBareDir);\n    const kbOutputDir = join(kbCloneDir, \"raw\", \"sessions\");\n    const kbStampPath = join(tmpDir(\"session-capture-kb-stamp-stale-\""
-  },
-  {
-    "hash": "be95eb21397781df",
-    "format": "typescript",
-    "lines": 7,
-    "tokens": 79,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:635",
-      ".claude/hooks/session-capture.test.ts:686"
-    ],
-    "fragment": ", hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile"
-  },
-  {
     "hash": "c22c0db18b4eb9c4",
     "format": "typescript",
     "lines": 6,
@@ -834,28 +647,6 @@
       ".claude/hooks/session-capture.test.ts:233"
     ],
     "fragment": ");\n  execFileSync(\"git\", [\"clone\", \"-q\", bareDir, \".\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n  return dir;\n}\n\n/** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */"
-  },
-  {
-    "hash": "cc6f46674f5ec466",
-    "format": "typescript",
-    "lines": 11,
-    "tokens": 119,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:792",
-      ".claude/hooks/session-capture.test.ts:996"
-    ],
-    "fragment": ", () => {\n    const bareDir = makeBareRemote();\n    const repoDir = cloneRepo(bareDir);\n    const head = commitAndPush(repoDir, \"a.ts\", \"export const a = 1;\\n\", \"work\", \"2026-08-10T12:00:00Z\");\n    const sessionRepo = cloneRepo(bareDir);\n\n    const kbBareDir = makeBareRemote();\n    const kbCloneDir = cloneRepo(kbBareDir);\n    const kbOutputDir = join(kbCloneDir, \"raw\", \"sessions\");\n\n    // Breaks connectivity without touching the clone's own git config — `origin` still reads back"
-  },
-  {
-    "hash": "cccffb6e7770ffc7",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 94,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:848",
-      ".claude/hooks/session-capture.test.ts:889"
-    ],
-    "fragment": "= readFileSync(kbStampPath, \"utf8\");\n\n    const transcript = writeTranscript([\n      { type: \"user\", uuid: \"u1\", origin: { kind: \"human\" }, promptSource: \"typed\", message: { content: \"hi\" } },\n    ]);\n\n    const result = runHook(\n      { session_id: \"session-elsewhere-stale\""
   },
   {
     "hash": "ce4f8a8083eff39e",
@@ -902,17 +693,6 @@
     "fragment": "const wireCalls = fake.calls.filter(\n      (args) =>\n        args[0] === \"api\" &&\n        typeof args[1] === \"string\" &&\n        args[1].endsWith(\"/dependencies/blocked_by\") &&\n        args.includes(\"-F\"),\n    );\n    expect(wireCalls).toHaveLength(1"
   },
   {
-    "hash": "d954dfb5c053f60d",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 120,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:792",
-      ".claude/hooks/session-capture.test.ts:953"
-    ],
-    "fragment": ", () => {\n    const bareDir = makeBareRemote();\n    const repoDir = cloneRepo(bareDir);\n    const head = commitAndPush(repoDir, \"a.ts\", \"export const a = 1;\\n\", \"work\", \"2026-08-10T12:00:00Z\");\n    const sessionRepo = cloneRepo(bareDir);\n\n    const kbBareDir = makeBareRemote();\n    const kbCloneDir = cloneRepo(kbBareDir);\n    const kbOutputDir = join(kbCloneDir, \"raw\", \"sessions\");\n    const racerRepo"
-  },
-  {
     "hash": "deed80fb94256748",
     "format": "typescript",
     "lines": 14,
@@ -933,17 +713,6 @@
       ".Workflow/agent-workflows/observations/session-notes.test.ts:180"
     ],
     "fragment": ", head: \"def\" });\n\n    expect(fake.calls).toHaveLength(1);\n    const [argv] = fake.calls;\n    expect(argv[0]).toBe(\"-C\");\n    expect(argv[1]).toBe(\"/some/repo\");\n    expect(argv[2]).toBe(\"log\");\n    expect(argv[3]).toBe(\"abc..def\""
-  },
-  {
-    "hash": "e2f95838d058d37e",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 66,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:687",
-      ".claude/hooks/session-capture.test.ts:936"
-    ],
-    "fragment": ", PATH: `${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    // Waits for `published`, not merely `skipped push-`: the latter appears well before `main()`"
   },
   {
     "hash": "e79be67923271fcc",
@@ -977,17 +746,6 @@
       ".Workflow/agent-workflows/observations/notes.test.ts:188"
     ],
     "fragment": ", () => {\n    const repo = makeRepo();\n    dir = repo.dir;\n\n    const base = repo.commit(\"a.ts\", \"export const a = 1;\\n\", \"seed\");\n    const head = repo.commit(\"a.ts\", \"export const a = 2;\\n\", \"the session's own commit\");\n    writeObservationNote({\n      git: execGit,\n      repoDir: dir,\n      commit: head,\n      observations: [observation({ finding: \"survives anyway\""
-  },
-  {
-    "hash": "f222767a9f7c8cff",
-    "format": "typescript",
-    "lines": 9,
-    "tokens": 114,
-    "where": [
-      ".claude/hooks/session-capture.test.ts:635",
-      ".claude/hooks/session-capture.test.ts:774"
-    ],
-    "fragment": ", transcript_path: transcript, cwd: sessionRepo, hook_event_name: \"SessionEnd\", reason: \"clear\" },\n      { SESSION_CAPTURE_REPO_DIR: repoDir, PATH: `${ghBinDir}:${process.env.PATH}` },\n    );\n\n    expect(result.status).toBe(0);\n    expect(result.stdout).toBe(\"\");\n    waitForCaptureFile(result.outputDir);\n\n    const log = waitForLogToContain(result.logPath, \"skipped publish-dispatch-failed\""
   },
   {
     "hash": "f574945a7f70c7b0",

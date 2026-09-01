@@ -147,13 +147,8 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # `stage.ts` resolves the CLI from PATH and a hosted runner has none. Pinned, because ADR-0002
       # says a run comes from the checkout alone and a floating install would let a release published

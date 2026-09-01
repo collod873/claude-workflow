@@ -21,10 +21,10 @@ name: Verify
 # jobs below from its own branch still got a green `verify` job out of its own copy of this file —
 # the exact hole ADR-0054 exists to close, left open by the trigger the ADR told it to drop.
 #
-# Node arrives pinned to 24, with `npm ci` installing exactly what's in `package-lock.json`,
-# matching the block already in `.github/workflows/to-tickets.yml`. `npm ci` also runs `prepare`,
-# which installs the husky hooks on the runner, so an agent committing here meets the same pre-push
-# gate the owner does.
+# Node arrives through `.github/actions/node`, the one place the 24 pin is written — so this job
+# cannot drift onto a different runtime than the lanes it judges. `npm ci` there also runs
+# `prepare`, which installs the husky hooks on the runner, so an agent committing here meets the
+# same pre-push gate the owner does.
 #
 # `repository_dispatch` is what an implementation PR is judged on: lane 05's `openPrAndDispatch`
 # sends it, and a dispatch-fired run always executes trunk's copy of this file, which ADR-0053 and
@@ -175,13 +175,8 @@ jobs:
             echo "trunk carries no tests/acceptance/ yet; nothing to restore"
           fi
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # Scopes the run to this slice: only the tests naming a criterion this dispatch carries
       # (ADR-0033's grep, `shared/affected-tests.ts`), so a parallel pull request for a different
@@ -244,13 +239,8 @@ jobs:
         with:
           args: -color
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # The same three checks the free venues run, through the same entry point, so a check cannot
       # drift between venues by being spelled differently in two files.

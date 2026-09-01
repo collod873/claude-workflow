@@ -97,13 +97,8 @@ jobs:
       - name: Note the commit this run starts from
         run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # Same pin as `to-tickets.yml`'s "Install Claude Code" step, for the same reason: the
       # binary comes from PATH, `npm ci` cannot supply it, and floating would let a release
@@ -162,13 +157,8 @@ jobs:
       - name: Note the commit this run starts from
         run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
@@ -234,13 +224,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # Into `runner.temp`, never the checkout: a patch file sitting in the working tree is a file
       # `git am` would then be replaying on top of.

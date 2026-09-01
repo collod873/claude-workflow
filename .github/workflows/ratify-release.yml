@@ -71,13 +71,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # The connector's own write — at most one `git notes add` plus the push `syncNotesRef` makes
       # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate

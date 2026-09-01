@@ -75,13 +75,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # No Claude Code install and no model secret: this spends nothing. It reads the tracker and
       # the refs API, sends dispatches, and files at most one comment — every write through the `gh`

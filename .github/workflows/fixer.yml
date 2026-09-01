@@ -308,15 +308,9 @@ jobs:
 
       # Both paths run `fixer.ts` through `npx tsx`, which needs `node_modules` — the escalate path
       # only reaches `escalateToOwner`, but it is the same entrypoint file.
-      - name: Set up Node
+      - name: Set up Node and install dependencies
         if: steps.target.outputs.mode != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        if: steps.target.outputs.mode != ''
-        run: npm ci
+        uses: ./.github/actions/node
 
       # `fixer.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
       # a GitHub-hosted runner has none. Same step, same pin, same reasoning as `review.yml`,

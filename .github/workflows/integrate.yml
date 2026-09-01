@@ -75,13 +75,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
       # against the rebased tree, read lane 06's verdict on this same head commit, merge only on a

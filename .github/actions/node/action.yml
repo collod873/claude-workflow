@@ -1,0 +1,42 @@
+name: Set up Node and install dependencies
+description: >
+  The runtime every lane runs its entrypoints on: Node pinned to 24, then `npm ci` installing
+  exactly what `package-lock.json` names — never a fresh resolve. `npm ci` also runs `prepare`,
+  which is what puts this repo's husky hooks in place on a runner.
+#
+# Pulled out for the reason `.github/actions/acceptance-bundle/action.yml` was: the same block was
+# written out 24 times across 22 workflow files, and the clone gate treats that as the duplication
+# it is. But the version pin is the sharper reason. `node-version: "24"` spelled 24 times is a bump
+# that takes 24 edits, and a bump that lands in 23 of them fails nowhere: every workflow still
+# parses, still passes `actionlint`, and still runs — one of them just quietly runs a different
+# runtime than its siblings, which is the shape of defect nobody finds by reading a green run.
+#
+# **It deliberately does not check out.** Two reasons, and both would be lost by folding the
+# checkout in here:
+#
+# 1. `workflow-permissions.test.ts`'s first guard reads `uses: actions/checkout@` out of a
+#    workflow's own source to decide the job must grant itself `contents:`. That guard exists
+#    because `run-watchdog.yml` died on its first real run with a token that could not clone
+#    (#41). A checkout hidden behind a composite action is a checkout that guard cannot see, and a
+#    guard that cannot see is a guard that passes — which is worse than not having one.
+# 2. The gap between the checkout and this step is load-bearing in seven lanes. Every
+#    model-spending workflow puts its `CLAUDE_CODE_OAUTH_TOKEN` preflight there on purpose, so an
+#    empty secret costs a checkout and nothing else; `audit.yml` puts a second repository's
+#    checkout there; `verify.yml` puts the pull request it is actually judging there (ADR-0104).
+#    A composite action spanning both ends would have to be declined by every one of them.
+#
+# So the seam is where the workflows already agree and nowhere wider. Nothing here is conditional:
+# a caller that runs this only on some paths puts the `if:` on its own `uses:` step, which is what
+# `fixer.yml` does.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "24"
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci

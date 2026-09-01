@@ -57,13 +57,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       # The connector's own write — one `repository_dispatch` — goes through the `gh` seam in
       # `shared/gh.ts`, so there is no separate reporting step here.
