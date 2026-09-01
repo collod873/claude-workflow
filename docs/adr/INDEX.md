@@ -63,9 +63,9 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0052 | [A comment clears a stage-1 refusal, because the change-request verb already exists](0052-a-comment-clears-a-stage-1-refusal-because-the-change-reques.md) | note |
 | 0053 | [The acceptance lane pushes to main, so the immutability rule has no exemption and needs no second identity](0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md) | constraint |
 | 0054 | [An implementation PR's checks fire by repository_dispatch, so the workflow that judges it is always trunk's](0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md) | constraint |
-| 0055 | [A lane ships as a reusable workflow and a second repo carries a stub that tracks main](0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md) | constraint |
+| 0055 | [A lane ships as a reusable workflow and a second repo carries a stub that tracks main](0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md) | superseded |
 | 0056 | [bin/gauntlet runs the check contract instead of three hardcoded tools, and the contract is generated rather than written](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) | superseded |
-| 0057 | [The installer derives every list it acts on and overwrites only what it generated](0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) | constraint |
+| 0057 | [The installer derives every list it acts on and overwrites only what it generated](0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) | superseded |
 | 0058 | [Lane 02 is one prompt with a collector per trigger, and a payload is assembled rather than re-derived from a rendering](0058-lane-02-is-one-prompt-with-a-collector-per-trigger-and-a-pay.md) | superseded |
 | 0059 | [A closed map reaches lane 02 by its to-spec label, never by being closed](0059-a-closed-map-reaches-lane-02-by-its-to-spec-label-never-by-b.md) | note |
 | 0060 | [The spec author reads the repo through an allow list and cannot reach a second source of intent](0060-the-spec-author-reads-the-repo-through-an-allow-list-and-can.md) | constraint |
@@ -143,4 +143,4 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | constraint |
 | 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) | constraint |
 
-134 ADRs · 59 constraint · 44 note · 31 superseded · 12,245 words total.
+134 ADRs · 57 constraint · 44 note · 33 superseded · 12,245 words total.
