@@ -17,12 +17,14 @@ import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type V
  * (`verifyWorkflow`).** ADR-0055 split every lane in two, and a run reached
  * through `uses:` is recorded against the *caller's* file, never the
  * reusable one: after that split this counted `verify.yml`, whose run
- * history stopped the day the trigger moved to `verify-caller.yml`. A
- * frozen history reads as "nothing is bypassing the gates", which is the
- * one answer this counter must never give wrongly — so the name is a
- * required input with no default, for the reason `fixer.ts`'s `test_dir`
- * is: a default that names a workflow the caller does not have fails
- * silently, and silence here is indistinguishable from an all-clear.
+ * history stopped the day the trigger moved to `verify-caller.yml`. It did
+ * not read as zero — run 33569601476 reported 6, the pre-split count, and
+ * would have reported 6 forever. A count frozen at a plausible number is
+ * worse than one frozen at zero: nothing about it looks wrong, and the
+ * measurement ADR-0071 said would reverse its ruling can no longer move.
+ * So the name is a required input with no default, for the reason
+ * `fixer.ts`'s `test_dir` is: a default naming a workflow the caller does
+ * not have fails silently, and every silent failure here reads as a record.
  *
  * **Recomputes, stores nothing.** No cursor, no ledger. The count is read
  * fresh off that workflow's own run history every time this fires, the same
