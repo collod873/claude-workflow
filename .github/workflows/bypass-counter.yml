@@ -19,11 +19,32 @@ name: Bypass counter (reusable)
 # ADR-0055 (amended by ADR-0132): `workflow_run` cannot be parameterized through `workflow_call`, so
 # `bypass-counter-caller.yml` is what actually carries that trigger and the "only a run on main"
 # scope check now — `bypass-counter.ts` recomputes the count from `gh` directly rather than reading
-# anything off the triggering event, so no field of it needs to cross the boundary at all; this
-# workflow takes no input.
+# anything off the triggering event, so no field of *the event* crosses the boundary.
+#
+# One fact about the calling repository does have to, though, and it is the fix for the defect this
+# lane shipped with: which workflow file's runs to count. A run reached through `uses:` is recorded
+# against the **caller's** file, so the moment this split landed, `verify.yml`'s run history stopped
+# growing and everything real moved to `verify-caller.yml` — a counter still asking about
+# `verify.yml` reads a frozen page and reports zero bypasses forever. `verify_workflow` is required
+# and has no default for the same reason `fixer.yml`'s `test_dir` is: a name the caller does not
+# have returns an empty list, and an empty list is indistinguishable from a clean record.
+#
+# The single plain `actions/checkout` this shipped with was the caller's repository, not the
+# machine's — so `npx tsx .Workflow/...` below only resolved because this repository happens to be
+# both. It now names the machine explicitly, and unlike every other lane there is no second
+# checkout: this counter reads the target through the `gh` API alone (`GH_REPO` below is the
+# caller) and opens no file of the target's, so a target working tree would be a checkout nothing
+# reads. The machine checkout carries no credential — ADR-0132 made this repository public.
 
 "on":
   workflow_call:
+    inputs:
+      # The workflow **file** in the calling repository whose runs carry the `Gauntlet` step —
+      # `verify-caller.yml` here. Not the display name: this is a path segment of
+      # `actions/workflows/<file>/runs`, which takes the file or the numeric id and nothing else.
+      verify_workflow:
+        type: string
+        required: true
 
 permissions:
   # read: the checkout.
@@ -49,9 +70,13 @@ jobs:
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      # Which workflow's runs to count — see this file's header for why it crosses the boundary.
+      VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node

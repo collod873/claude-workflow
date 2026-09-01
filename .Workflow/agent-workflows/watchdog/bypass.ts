@@ -81,15 +81,21 @@ export function markedCount(body: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-/** The signal's title. Stable across sweeps so a reader recognises a repeat. */
-export const ISSUE_TITLE = "verify.yml has bypassed the free gates — bring move 10 forward";
+/**
+ * The signal's title. Stable across sweeps so a reader recognises a repeat —
+ * and it names the lane rather than a workflow file, because the file
+ * differs per repository (`verify-caller.yml` here, whatever the caller
+ * calls it elsewhere) while the lane does not. Dedup is by `countMarker`,
+ * never by this string.
+ */
+export const ISSUE_TITLE = "The verification lane has bypassed the free gates — bring move 10 forward";
 
 export function issueBody(runs: VerifyRun[]): string {
   const bypasses = bypassRuns(runs);
   const count = bypasses.length;
   const newest = bypasses[0];
   return [
-    `\`verify.yml\` has failed at the \`${BYPASS_STEP}\` step **${count}** time${count === 1 ? "" : "s"} on \`main\` —`,
+    `The verification lane has failed at the \`${BYPASS_STEP}\` step **${count}** time${count === 1 ? "" : "s"} on \`main\` —`,
     "a red tree that reached trunk despite the free venues (in-turn, turn-end, pre-push) that should",
     "have refused it first. That only happens when one of them was skipped: `--no-verify`, a clone",
     "where `npm ci` never ran, or a commit made outside a session that installs the hooks at all.",

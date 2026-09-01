@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -217,6 +217,13 @@ function fakeGh(options: {
   return { gh, calls };
 }
 
+/**
+ * The workflow file this repository's own Verify runs are recorded against, and what the caller
+ * stub passes. Held as a constant so the assertions below read against one name rather than ten
+ * literals that could drift apart.
+ */
+const VERIFY_WORKFLOW = "verify-caller.yml";
+
 function gauntletFailures(count: number): FakeRun[] {
   return Array.from({ length: count }, (_, index) => ({ id: 100 + index, conclusion: "failure", failedStep: BYPASS_STEP }));
 }
@@ -225,7 +232,7 @@ describe("runBypassCounter", () => {
   it("opens no issue below a count of 3", () => {
     const fake = fakeGh({ runs: gauntletFailures(2) });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "below-threshold", count: 2 });
     expect(fake.calls.some((argv) => argv[0] === "issue")).toBe(false);
@@ -234,7 +241,7 @@ describe("runBypassCounter", () => {
   it("opens one at a count of 3, assigned so it arrives rather than waits", () => {
     const fake = fakeGh({ runs: gauntletFailures(3) });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "proposed", count: 3, issue: 42, wrote: "opened" });
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create")!;
@@ -249,7 +256,7 @@ describe("runBypassCounter", () => {
       issues: [{ number: 7, body: `earlier\n${countMarker(3)}`, state: "OPEN" }],
     });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "already-proposed", count: 4 });
     expect(fake.calls.some((argv) => argv[1] === "create")).toBe(false);
@@ -261,7 +268,7 @@ describe("runBypassCounter", () => {
       issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED" }],
     });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "declined-and-not-grown", count: 3 });
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] !== "list")).toBe(false);
@@ -273,7 +280,7 @@ describe("runBypassCounter", () => {
       issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED", stateReason: "COMPLETED" }],
     });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "proposed", count: 4, issue: 42, wrote: "opened" });
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create")!;
@@ -292,7 +299,7 @@ describe("runBypassCounter", () => {
       issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
     });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "declined-for-good", count: 40 });
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create")).toBe(false);
@@ -304,13 +311,13 @@ describe("runBypassCounter", () => {
       issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
     });
 
-    expect(runBypassCounter({ gh: fake.gh, assignee: "collod873" }).count).toBe(9);
+    expect(runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW }).count).toBe(9);
   });
 
   it("does not count a Gauntlet failure off main", () => {
     const fake = fakeGh({ runs: gauntletFailures(3).map((each) => ({ ...each, headBranch: "some-pr-branch" })) });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "below-threshold", count: 0 });
   });
@@ -324,9 +331,26 @@ describe("runBypassCounter", () => {
       ],
     });
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873" });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
     expect(outcome).toMatchObject({ code: "below-threshold", count: 2 });
+  });
+
+  /**
+   * The defect this lane shipped with. `readRuns` hardcoded `verify.yml`, which after ADR-0055's
+   * split is a file that is only ever reached through a `uses:` and so has had no run recorded
+   * against it since — every real Verify run lands on `verify-caller.yml`. The counter was reading
+   * a frozen page and would have settled at zero bypasses forever, in this repository and in every
+   * enrolled one. Zero is also what a healthy repository looks like, which is why nothing noticed.
+   */
+  it("asks for the workflow file it was handed rather than one of its own choosing", () => {
+    const fake = fakeGh({ runs: gauntletFailures(1) });
+
+    runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: "some-other-caller.yml" });
+
+    const runsRead = fake.calls.find((argv) => argv[0] === "api" && workflowRunsPathMatcher.test((argv[1] ?? "").split("?")[0]))!;
+    expect(runsRead[1]).toContain("some-other-caller.yml");
+    expect(runsRead[1]).not.toContain("verify.yml");
   });
 
   it("caps how many job reads one sweep spends, and says how many it held back", () => {
@@ -334,7 +358,7 @@ describe("runBypassCounter", () => {
     const fake = fakeGh({ runs });
     const lines: string[] = [];
 
-    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", log: (line) => lines.push(line) });
+    const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW, log: (line) => lines.push(line) });
 
     expect(outcome.count).toBe(MAX_JOB_READS);
     expect(lines.some((line) => line.includes("went unread"))).toBe(true);
@@ -359,6 +383,19 @@ describe("bypass-counter-caller.yml rides Verify completing rather than a clock"
 
   it("scopes the job to main, where a bypass reaching trunk actually means something", () => {
     expect(caller).toContain("github.event.workflow_run.head_branch == 'main'");
+  });
+
+  /**
+   * The name is a path segment sent to GitHub, so a file that does not exist is not an error —
+   * it is an empty run list, and an empty run list counts zero. Checking the name against the
+   * workflow directory is the only place that mistake can be caught without a live API call.
+   */
+  it("hands the counter a workflow file this repository actually has", () => {
+    const named = caller.match(/verify_workflow:\s*(\S+)/)?.[1];
+
+    expect(named, "bypass-counter-caller.yml passes no verify_workflow").toBeDefined();
+    expect(named).toBe(VERIFY_WORKFLOW);
+    expect(existsSync(join(here, "../../../.github/workflows", named!))).toBe(true);
   });
 });
 

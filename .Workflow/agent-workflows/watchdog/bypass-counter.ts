@@ -7,14 +7,25 @@ import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type V
 
 /**
  * The bypass counter's entrypoint (PRD #117, move 8d,
- * `.github/workflows/bypass-counter.yml`): recomputes how many times
- * `verify.yml` has failed at its `Gauntlet` step on `main` — a red tree
- * reaching trunk despite the free venues — and, once that count reaches
- * `BYPASS_THRESHOLD`, files an issue proposing move 10 (branch protection)
- * be brought forward.
+ * `.github/workflows/bypass-counter.yml`): recomputes how many times the
+ * calling repository's verification lane has failed at its `Gauntlet` step
+ * on `main` — a red tree reaching trunk despite the free venues — and, once
+ * that count reaches `BYPASS_THRESHOLD`, files an issue proposing move 10
+ * (branch protection) be brought forward.
+ *
+ * **Which workflow's runs it counts is the caller's to say
+ * (`verifyWorkflow`).** ADR-0055 split every lane in two, and a run reached
+ * through `uses:` is recorded against the *caller's* file, never the
+ * reusable one: after that split this counted `verify.yml`, whose run
+ * history stopped the day the trigger moved to `verify-caller.yml`. A
+ * frozen history reads as "nothing is bypassing the gates", which is the
+ * one answer this counter must never give wrongly — so the name is a
+ * required input with no default, for the reason `fixer.ts`'s `test_dir`
+ * is: a default that names a workflow the caller does not have fails
+ * silently, and silence here is indistinguishable from an all-clear.
  *
  * **Recomputes, stores nothing.** No cursor, no ledger. The count is read
- * fresh off `verify.yml`'s own run history every time this fires, the same
+ * fresh off that workflow's own run history every time this fires, the same
  * shape `run-watchdog.ts` already has for dead lanes.
  *
  * **One-sided, with no delete trigger.** Its firing condition is a build
@@ -31,10 +42,10 @@ import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type V
  * logged, because the measurement is the thing that would change the ruling
  * — but it is read by whoever goes looking, never filed at anyone.
  *
- * **Rides `workflow_run` on `verify.yml` completing, not a clock.** ADR-0004
- * forbids a cadence; `verify.yml` completing on `main` is the event this
- * counts, so it is also the event that re-evaluates the count. The job-level
- * `if` in `bypass-counter.yml` scopes this to `main`, and `isBypass` in
+ * **Rides `workflow_run` on verification completing, not a clock.** ADR-0004
+ * forbids a cadence; the verification lane completing on `main` is the event
+ * this counts, so it is also the event that re-evaluates the count. The
+ * job-level `if` in `bypass-counter-caller.yml` scopes this to `main`, and `isBypass` in
  * `./bypass.ts` checks the same fact independently off the fetched run data
  * — so a workflow-level mis-scope cannot make this over-count.
  */
@@ -68,7 +79,7 @@ const SignalIssue = z.object({
   stateReason: z.string().nullable().optional(),
 });
 
-/** One page of `verify.yml`'s own runs. A hundred reaches back through this repo's entire history to date many times over. */
+/** One page of the verification lane's own runs. A hundred reaches back through this repo's entire history to date many times over. */
 export const RUN_PAGE_SIZE = 100;
 
 /**
@@ -80,9 +91,9 @@ export const RUN_PAGE_SIZE = 100;
  */
 export const MAX_JOB_READS = 60;
 
-function readRuns(gh: GhExec): Array<{ id: number; conclusion: string; htmlUrl: string; headBranch: string; createdAt: string }> {
+function readRuns(gh: GhExec, verifyWorkflow: string): Array<{ id: number; conclusion: string; htmlUrl: string; headBranch: string; createdAt: string }> {
   const projection = "[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at}]";
-  const raw = gh(["api", workflowRunsPath("verify.yml", RUN_PAGE_SIZE), "--jq", projection]);
+  const raw = gh(["api", workflowRunsPath(verifyWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
   return ApiRun.array()
     .parse(JSON.parse(raw))
     .map((run) => ({
@@ -132,6 +143,13 @@ export interface BypassCounterOptions {
   gh: GhExec;
   /** Who the signal is assigned to, so it notifies rather than sits in a list. */
   assignee: string;
+  /**
+   * The workflow **file** in the calling repository whose runs carry the
+   * `Gauntlet` step — `verify-caller.yml` here, since ADR-0055 records a
+   * `uses:` run against the caller's file and not the reusable one. No
+   * default: see this module's header for why a wrong one is silent.
+   */
+  verifyWorkflow: string;
   log?: (line: string) => void;
 }
 
@@ -149,10 +167,10 @@ export interface BypassCounterOutcome {
 }
 
 export function runBypassCounter(options: BypassCounterOptions): BypassCounterOutcome {
-  const { gh, assignee } = options;
+  const { gh, assignee, verifyWorkflow } = options;
   const log = options.log ?? ((line: string) => console.log(line));
 
-  const runs = readRuns(gh);
+  const runs = readRuns(gh, verifyWorkflow);
   const failed = runs.filter((run) => run.conclusion === "failure");
 
   const read = failed.slice(0, MAX_JOB_READS);
@@ -223,7 +241,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
     assignee,
   ]).trim();
   const opened = Number(url.split("/").pop());
-  log(`opened #${opened}: ${count} verify.yml bypasses of the free gates on main`);
+  log(`opened #${opened}: ${count} ${verifyWorkflow} bypasses of the free gates on main`);
   return { code: "proposed", count, issue: opened, wrote: "opened" };
 }
 
@@ -232,7 +250,15 @@ async function main(): Promise<void> {
     const assignee = process.env.SIGNAL_ASSIGNEE;
     if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned issue notifies nobody");
 
-    const outcome = runBypassCounter({ gh: execGh, assignee });
+    // Refused rather than defaulted: a workflow file the calling repository does not have returns
+    // an empty run list, and an empty run list is a count of zero — which reads as "the gates are
+    // holding". This lane fails loudly or not at all.
+    const verifyWorkflow = process.env.VERIFY_WORKFLOW;
+    if (!verifyWorkflow) {
+      throw new Error("VERIFY_WORKFLOW must be set — counting a workflow that does not exist reads as zero bypasses");
+    }
+
+    const outcome = runBypassCounter({ gh: execGh, assignee, verifyWorkflow });
     console.log(`${outcome.code}: count ${outcome.count}${outcome.issue ? `, opened #${outcome.issue}` : ""}`);
   } catch (err) {
     console.error(`bypass-counter failed: ${reason(err)}`);
