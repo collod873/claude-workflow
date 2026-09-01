@@ -142,5 +142,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0132 | [A caller checks out the machine with no credential at all, because the repository is public](0132-a-caller-checks-out-the-machine-with-no-credential-at-all-be.md) | constraint |
 | 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | constraint |
 | 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) | constraint |
+| 0135 | [A red run in a caller is routed by its failing path: the machine checkout files a ticket here, the caller's own tree keeps it](0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) | constraint |
 
-134 ADRs · 57 constraint · 44 note · 33 superseded · 12,245 words total.
+135 ADRs · 58 constraint · 44 note · 33 superseded · 12,394 words total.
