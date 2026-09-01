@@ -163,7 +163,11 @@ export function countMissingTrailers(options: CounterOptions): CounterOutcome {
 
 async function main(): Promise<void> {
   try {
-    const repoRoot = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (#311, ADR-0055): the machine
+    // checkout this script runs from is a different directory than the tree it reads once a
+    // caller's own checkout is a separate step. `GITHUB_WORKSPACE` still covers the pre-#311
+    // shape, where the one checkout was both.
+    const repoRoot = process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd();
     const outcome = countMissingTrailers({
       gh: execGh,
       adrDir: join(repoRoot, "docs/adr"),

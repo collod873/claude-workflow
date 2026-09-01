@@ -15,16 +15,22 @@ name: Missing-trailer counter
 # recomputes the finding set, so nothing here is stored and nothing here can go stale. It files its
 # own standing issue through the `gh` seam in `shared/gh.ts`, which is why the job below ends at the
 # step that runs it and has no reporting step of its own.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `missing-trailer-counter-caller.yml`, a trigger and a `uses:`, never a
+# copy of the machine. This repository is its own first caller: the caller stub lives next to this
+# file, at the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target, for the docs the script reads) — never one copy standing in for the other. The
+# machine checkout carries no `token:`/`ssh-key:` input: ADR-0132 made this repository public, so
+# `actions/checkout` reads it anonymously and no credential is added here for a PAT that would
+# have to be rotated in every enrolled repository.
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - "docs/adr/**"
-      - "docs/research/**"
+  workflow_call:
 
 permissions:
-  # read: the checkout.
+  # read: both checkouts.
   contents: read
   # write: the signal itself — an issue is the delivery because it is the one artifact here that
   # arrives instead of waiting.
@@ -45,11 +51,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
       - name: Count missing trailers
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/watchdog/missing-trailer-counter.ts

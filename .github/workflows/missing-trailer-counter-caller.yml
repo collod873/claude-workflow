@@ -1,0 +1,12 @@
+name: Missing-trailer counter (caller)
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "docs/adr/**"
+      - "docs/research/**"
+
+jobs:
+  count:
+    uses: collod873/claude-workflow/.github/workflows/missing-trailer-counter.yml@main
