@@ -336,13 +336,7 @@ describe("runBypassCounter", () => {
     expect(outcome).toMatchObject({ code: "below-threshold", count: 2 });
   });
 
-  /**
-   * The defect this lane shipped with. `readRuns` hardcoded `verify.yml`, which after ADR-0055's
-   * split is a file that is only ever reached through a `uses:` and so has had no run recorded
-   * against it since — every real Verify run lands on `verify-caller.yml`. The counter was reading
-   * a frozen page: run 33569601476 reported 6, the count as of the split, and no bypass after it
-   * could ever raise that number. A plausible frozen count is why nothing noticed.
-   */
+  /** Why `verifyWorkflow` is the caller's to name: `bypass-counter.ts`'s module docstring, ADR-0055. */
   it("asks for the workflow file it was handed rather than one of its own choosing", () => {
     const fake = fakeGh({ runs: gauntletFailures(1) });
 
