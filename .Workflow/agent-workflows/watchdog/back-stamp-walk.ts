@@ -118,9 +118,7 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   deps.regenerateCorpus();
   paths.push(CORPUS_RELATIVE_PATH);
 
-  // `-C repoRoot` on every call: `GitExec` never carries a working directory of its own
-  // (`shared/git.ts`), so a script that operates on a checkout other than its own `cwd` — the
-  // target checkout, once this lane is reusable — has to name it on every invocation.
+  // `-C repoRoot` on every call — see `WalkDeps.repoRoot`.
   deps.git(["-C", repoRoot, "add", ...paths]);
   deps.git(["-C", repoRoot, "commit", "-m", commitMessage(writes)]);
   deps.git(["-C", repoRoot, "fetch", "origin", "main"]);
