@@ -77,9 +77,14 @@ async function main(): Promise<void> {
     const head = process.env.GITHUB_SHA;
     if (!head) throw new Error("GITHUB_SHA must be set");
 
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (ADR-0055): the machine checkout
+    // this script runs from is a different directory than the checkout carrying the standards,
+    // the eslint config and the notes ref once a caller's own checkout is a separate step — the
+    // same seam `missing-trailer-counter.ts` reads for the same reason. `GITHUB_WORKSPACE` still
+    // covers the pre-reusable shape, where the one checkout was both.
     const outcome = await runRevertDetector({
       git: execGit,
-      repoDir: process.env.GITHUB_WORKSPACE || process.cwd(),
+      repoDir: process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd(),
       head,
     });
     console.log(`declined ${outcome.declinedCount}`);

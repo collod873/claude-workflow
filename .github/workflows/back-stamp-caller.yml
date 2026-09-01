@@ -1,0 +1,12 @@
+name: Back-stamp (caller)
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "docs/adr/**"
+      - "docs/research/**"
+
+jobs:
+  stamp:
+    uses: collod873/claude-workflow/.github/workflows/back-stamp.yml@main

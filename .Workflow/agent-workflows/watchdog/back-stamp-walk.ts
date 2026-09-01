@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGit, type GitExec } from "../shared/git";
@@ -31,6 +32,14 @@ import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stam
 const ADR_DIR = "docs/adr";
 
 export interface WalkDeps {
+  /**
+   * The checkout this walk reads, writes and commits into — `-C repoRoot` on every `git` call
+   * below, and the prefix every `readDir`/`readFile`/`writeFile` path is joined onto. A caller
+   * repository's own tree once this workflow is reusable (`back-stamp.yml`'s two checkouts): the
+   * machine checkout that runs this script and the target checkout that owns `docs/adr/` are no
+   * longer the same directory, so nothing here may assume the process's own `cwd` is the repo.
+   */
+  repoRoot: string;
   /** Repo-relative directory → the `.md` basenames in it. Throwing (a missing directory) is caught and treated as empty. */
   readDir: (dir: string) => string[];
   readFile: (path: string) => string;
@@ -62,10 +71,10 @@ export interface WalkOutcome {
 }
 
 /** The `docs/adr/` corpus, as `back-stamp.ts` needs it. Only ADRs can ever be a predecessor here, so this is the whole input the judgement needs — see `back-stamp.ts`'s header. */
-function readCorpus(deps: Pick<WalkDeps, "readDir" | "readFile">): DocFile[] {
+function readCorpus(deps: Pick<WalkDeps, "repoRoot" | "readDir" | "readFile">): DocFile[] {
   let names: string[];
   try {
-    names = deps.readDir(ADR_DIR);
+    names = deps.readDir(join(deps.repoRoot, ADR_DIR));
   } catch {
     return []; // No docs/adr/ at all — a fixture tree, most likely. Nothing to stamp.
   }
@@ -73,7 +82,7 @@ function readCorpus(deps: Pick<WalkDeps, "readDir" | "readFile">): DocFile[] {
   return names
     .filter((name) => name.endsWith(".md"))
     .map((name) => `${ADR_DIR}/${name}`)
-    .map((path) => ({ path, content: deps.readFile(path) }));
+    .map((path) => ({ path, content: deps.readFile(join(deps.repoRoot, path)) }));
 }
 
 export function backStampWalk(deps: WalkDeps): WalkOutcome {
@@ -85,7 +94,7 @@ export function backStampWalk(deps: WalkDeps): WalkOutcome {
     return { action: "clean", stamped: [] };
   }
 
-  for (const write of writes) deps.writeFile(write.path, write.content);
+  for (const write of writes) deps.writeFile(join(deps.repoRoot, write.path), write.content);
   commitAndPush(deps, writes);
 
   const stamped = writes.map((write) => write.path);
@@ -100,6 +109,7 @@ export function backStampWalk(deps: WalkDeps): WalkOutcome {
  * must be retried onto rather than silently overwritten.
  */
 function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
+  const { repoRoot } = deps;
   const paths = writes.map((write) => write.path);
 
   // The fixture moves in the same commit as the stamps, because it is a snapshot of the bodies
@@ -108,11 +118,14 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   deps.regenerateCorpus();
   paths.push(CORPUS_RELATIVE_PATH);
 
-  deps.git(["add", ...paths]);
-  deps.git(["commit", "-m", commitMessage(writes)]);
-  deps.git(["fetch", "origin", "main"]);
-  deps.git(["rebase", "origin/main"]);
-  deps.git(["push", "origin", "HEAD:main"]);
+  // `-C repoRoot` on every call: `GitExec` never carries a working directory of its own
+  // (`shared/git.ts`), so a script that operates on a checkout other than its own `cwd` — the
+  // target checkout, once this lane is reusable — has to name it on every invocation.
+  deps.git(["-C", repoRoot, "add", ...paths]);
+  deps.git(["-C", repoRoot, "commit", "-m", commitMessage(writes)]);
+  deps.git(["-C", repoRoot, "fetch", "origin", "main"]);
+  deps.git(["-C", repoRoot, "rebase", "origin/main"]);
+  deps.git(["-C", repoRoot, "push", "origin", "HEAD:main"]);
 }
 
 /** CLAUDE.md: commit messages explain **why**, not what. */
@@ -127,11 +140,18 @@ its successor already wrote, so nobody has to remember: ${names}.`;
 
 async function main(): Promise<void> {
   try {
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (ADR-0055): the machine checkout
+    // this script runs from is a different directory than the checkout it reads, writes and
+    // pushes into once a caller's own checkout is a separate step — the same seam
+    // `missing-trailer-counter.ts` reads for the same reason. `GITHUB_WORKSPACE` still covers the
+    // pre-reusable shape, where the one checkout was both.
+    const repoRoot = process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd();
     const outcome = backStampWalk({
+      repoRoot,
       readDir: (dir) => readdirSync(dir),
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => writeFileSync(path, content),
-      regenerateCorpus: () => writeCorpusFixture(process.cwd()),
+      regenerateCorpus: () => writeCorpusFixture(repoRoot),
       git: execGit,
     });
     console.log(`${outcome.action}: ${outcome.stamped.length} stamped`);

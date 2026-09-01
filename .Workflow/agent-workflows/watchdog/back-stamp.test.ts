@@ -215,6 +215,7 @@ function fakeDeps(files: Record<string, string>): WalkDeps & { writes: Record<st
   const { git, calls } = createFakeGit(() => "");
 
   return {
+    repoRoot: ".",
     readDir: (dir) => {
       if (dir !== "docs/adr") throw new Error(`fake readDir: unexpected dir ${dir}`);
       return Object.keys(files).map((path) => path.split("/").pop()!);
@@ -238,6 +239,16 @@ function fakeDeps(files: Record<string, string>): WalkDeps & { writes: Record<st
   };
 }
 
+/**
+ * Every `git` call `commitAndPush` makes carries `-C repoRoot` ahead of its verb — the target
+ * checkout is not necessarily `cwd` once this lane is reusable, so nothing here may omit it
+ * (`back-stamp-walk.ts`'s `commitAndPush`). `fakeDeps`'s own `regenerate-corpus` marker is not a
+ * `git` call at all, so it carries no such prefix — hence the fallback to `argv[0]`.
+ */
+function verb(argv: string[]): string {
+  return argv[0] === "-C" ? argv[2] : argv[0];
+}
+
 describe("backStampWalk", () => {
   it("writes the derived back-stamps and commits them add-commit-fetch-rebase-push to main", () => {
     const deps = fakeDeps(CORPUS);
@@ -250,17 +261,10 @@ describe("backStampWalk", () => {
     );
     expect(deps.writes[PREDECESSOR_32.path]).toContain("superseded_by: ADR-0053, ADR-0054");
 
-    expect(deps.calls.map((argv) => argv[0])).toEqual([
-      "regenerate-corpus",
-      "add",
-      "commit",
-      "fetch",
-      "rebase",
-      "push",
-    ]);
-    const add = deps.calls.find((argv) => argv[0] === "add")!;
-    expect(add.slice(1).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH].sort());
-    expect(deps.calls.find((argv) => argv[0] === "push")).toEqual(["push", "origin", "HEAD:main"]);
+    expect(deps.calls.map(verb)).toEqual(["regenerate-corpus", "add", "commit", "fetch", "rebase", "push"]);
+    const add = deps.calls.find((argv) => verb(argv) === "add")!;
+    expect(add.slice(3).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH].sort());
+    expect(deps.calls.find((argv) => verb(argv) === "push")).toEqual(["-C", deps.repoRoot, "push", "origin", "HEAD:main"]);
   });
 
   // The regression this file did not have on the day it was needed. `main` went red on
@@ -275,9 +279,9 @@ describe("backStampWalk", () => {
 
     backStampWalk(deps);
 
-    const order = deps.calls.map((argv) => argv[0]);
+    const order = deps.calls.map(verb);
     expect(order.indexOf("regenerate-corpus")).toBeLessThan(order.indexOf("add"));
-    expect(deps.calls.find((argv) => argv[0] === "add")).toContain(CORPUS_RELATIVE_PATH);
+    expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(CORPUS_RELATIVE_PATH);
   });
 
   it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", () => {
@@ -296,7 +300,7 @@ describe("backStampWalk", () => {
     const second = fakeDeps(stamped);
 
     expect(backStampWalk(second)).toEqual({ action: "clean", stamped: [] });
-    expect(second.calls.filter((argv) => argv[0] === "commit")).toEqual([]);
+    expect(second.calls.filter((argv) => verb(argv) === "commit")).toEqual([]);
     expect(second.calls).toEqual([]); // nothing at all — not even a read-only git call
   });
 
@@ -309,6 +313,7 @@ describe("backStampWalk", () => {
 
   it("treats a docs/adr/ that cannot be read as an empty corpus rather than throwing", () => {
     const deps: WalkDeps = {
+      repoRoot: ".",
       readDir: () => {
         throw new Error("ENOENT");
       },
@@ -335,21 +340,15 @@ describe("back-stamp.yml agrees with the module it runs", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const source = readFileSync(join(here, "../../../.github/workflows/back-stamp.yml"), "utf8");
   const workflow = parse(source) as {
-    on: { push?: { branches?: string[]; paths?: string[] } };
+    on: { workflow_call?: null };
   };
 
   it("runs this module", () => {
     expect(source).toContain("npx tsx .Workflow/agent-workflows/watchdog/back-stamp-walk.ts");
   });
 
-  it("fires on a commit touching docs/adr/ or docs/research/, and nowhere else", () => {
-    expect(workflow.on.push?.paths?.slice().sort()).toEqual(["docs/adr/**", "docs/research/**"].sort());
-  });
-
-  it("does not fire on a commit touching neither path — no unfiltered push, no catch-all glob", () => {
-    const paths = workflow.on.push?.paths ?? [];
-    expect(paths.length).toBeGreaterThan(0);
-    expect(paths).not.toContain("**");
+  it("is reusable — a caller supplies the trigger (ADR-0055, ADR-0132)", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
   });
 
   it("rides push rather than a clock or the shared session-end dispatch, per ADR-0046", () => {
@@ -363,5 +362,32 @@ describe("back-stamp.yml agrees with the module it runs", () => {
 
   it("configures a committer before it commits, since a runner has no git identity (#109)", () => {
     expect(source).toMatch(/git config (--\S+ )?user\.email/);
+  });
+
+  it("hands the module the target checkout, not its own cwd", () => {
+    expect(source).toContain("TARGET_WORKSPACE");
+  });
+});
+
+describe("back-stamp-caller.yml gates the reusable workflow", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, "../../../.github/workflows/back-stamp-caller.yml"), "utf8");
+  const workflow = parse(source) as {
+    on: { push?: { branches?: string[]; paths?: string[] } };
+    jobs: { stamp: { uses?: string } };
+  };
+
+  it("fires on a commit touching docs/adr/ or docs/research/, and nowhere else", () => {
+    expect(workflow.on.push?.paths?.slice().sort()).toEqual(["docs/adr/**", "docs/research/**"].sort());
+  });
+
+  it("does not fire on a commit touching neither path — no unfiltered push, no catch-all glob", () => {
+    const paths = workflow.on.push?.paths ?? [];
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths).not.toContain("**");
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(workflow.jobs.stamp.uses).toBe("collod873/claude-workflow/.github/workflows/back-stamp.yml@main");
   });
 });

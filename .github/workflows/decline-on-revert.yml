@@ -15,20 +15,28 @@ name: Decline on revert
 # run, which makes this a back-stamp rather than a counter (ADR-0044/0046): no reader, no DESIGN.md
 # §6 row, no ADR-0064 counter admission.
 #
-# **This cannot loop itself.** Lane 08 merges a ratifier pull request with the built-in
-# `GITHUB_TOKEN`, whose pushes start no workflow runs (ADR-0054) — the same property `back-stamp.yml`
-# and `shape-accept.yml` already rely on. So the ratifier's own landings never fire this, and a
-# human's push does, which is exactly the event it exists for.
+# **This cannot loop itself.** Lane 08 merges a ratifier pull request with the runner's own
+# built-in per-job credential, whose pushes start no workflow runs (ADR-0054) — the same property
+# `back-stamp.yml` and `shape-accept.yml` already rely on. So the ratifier's own landings never fire
+# this, and a human's push does, which is exactly the event it exists for.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `decline-on-revert-caller.yml`, a trigger and a `uses:`, never a copy of
+# the machine. This repository is its own first caller: the caller stub lives next to this file, at
+# the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target, for the standards, the eslint config and the `refs/notes/ratifications` this reads
+# and writes) — never one copy standing in for the other. The machine checkout carries no
+# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
+# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
+# The target checkout carries the ambient per-job credential `actions/checkout` binds by default,
+# which is what lets the notes push below land.
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - "CODING_STANDARDS.md"
-      - "eslint.config.js"
+  workflow_call:
 
 permissions:
-  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to origin.
+  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to the target's origin.
   contents: write
 
 concurrency:
@@ -39,13 +47,16 @@ jobs:
   decline:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           # `readRatificationRecords` walks the commit range this push landed on, which a shallow
           # checkout does not carry.
           fetch-depth: 0
@@ -54,12 +65,15 @@ jobs:
       # before its first ratification has none, the same absence `syncNotesRef`'s own `ls-remote`
       # check already tolerates.
       - name: Fetch the ratifications ref
+        working-directory: target
         run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
 
       # A runner has no git identity, and `git notes add` writes an object with a committer on it
       # (#107, #109). The bot is the honest author: this note records what the run derived from the
-      # tree, not a person's own commit.
+      # tree, not a person's own commit. Scoped to the target checkout — the only one this job ever
+      # writes into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -71,4 +85,6 @@ jobs:
       # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
       # reporting step here.
       - name: Write declined memory for anything the owner took back out
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/ratify/run-revert-detector.ts

@@ -1,0 +1,12 @@
+name: Decline on revert (caller)
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "CODING_STANDARDS.md"
+      - "eslint.config.js"
+
+jobs:
+  decline:
+    uses: collod873/claude-workflow/.github/workflows/decline-on-revert.yml@main
