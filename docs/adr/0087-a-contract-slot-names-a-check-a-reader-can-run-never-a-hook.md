@@ -9,7 +9,7 @@ reported `clean` in a median of 0.020s each, against 6.070s before the switch. A
 check it runs, by a `# check-command:` line in the hook file, and a hook that will not say publishes
 `null`.
 
-Amends [ADR-0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md).
+Amends: [ADR-0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md).
 
 ## Consequences
 

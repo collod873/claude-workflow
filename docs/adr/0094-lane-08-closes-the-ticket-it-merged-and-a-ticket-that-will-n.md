@@ -2,6 +2,8 @@
 
 Recorded 2026-08-28.
 
+Status: superseded by ADR-0115
+
 Lane 08 shells to this repository's own `bin/close-ticket` after the merge, for the ticket the pull
 request body names. A nonzero exit from that command leaves the ticket open with a comment saying
 why, and leaves the lane green: the merge is already on trunk, and no verdict about a criterion can

@@ -184,6 +184,7 @@ const GAUNTLET_MODULES = [
   ".Workflow/agent-workflows/shared/generate-corpus-fixture.ts",
   ".Workflow/agent-workflows/shared/wiring-baseline.ts",
   ".Workflow/agent-workflows/shared/workflow-lint.ts",
+  ".Workflow/agent-workflows/shared/trailer-form.ts",
   ".Workflow/agent-workflows/shared/reason.ts",
 ];
 

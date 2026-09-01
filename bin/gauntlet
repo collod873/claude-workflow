@@ -203,7 +203,7 @@ done
 # workflow file is the one defect CI structurally cannot report (ADR-0105). `workflow-lint.ts`'s
 # docstring is the home for why, and for why needing Docker is not the ritual objection it looks
 # like: the check costs nothing on a push that leaves `.github/workflows/` alone.
-[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows"
+[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows trailers"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -260,6 +260,15 @@ if [ "$venue" = "push" ]; then
 
   run_check workflows node \
     "$repo_root/.Workflow/agent-workflows/shared/workflow-lint.ts" "$repo_root" &
+  pids+=($!)
+
+  # An `Amends` trailer that names an ADR without the colon is invisible to both readers of the
+  # amendment graph, so the successor reads as amended to a human and unamended to every machine.
+  # Three shipped that way and their predecessors sat unstamped from August. The missing-trailer
+  # counter flagged one and nothing happened, which is the difference this venue makes: a
+  # malformed field is exact, so it refuses here rather than filing an issue nobody clears.
+  run_check trailers node \
+    "$repo_root/.Workflow/agent-workflows/shared/trailer-form.ts" "$repo_root" &
   pids+=($!)
 fi
 
@@ -336,7 +345,7 @@ fi
 # errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
 # turn every type error in this repo into "the gauntlet is broken", which is the one report
 # ADR-0063 tells the bypass counter to ignore.
-own_protocol=" contract corpus clones wiring workflows "
+own_protocol=" contract corpus clones wiring workflows trailers "
 for name in $checks; do
   [ -f "$tmp/$name.exit" ] || continue
   code="$(cat "$tmp/$name.exit")"

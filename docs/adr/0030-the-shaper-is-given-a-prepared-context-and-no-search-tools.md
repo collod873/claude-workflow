@@ -2,6 +2,8 @@
 
 Recorded 2026-08-26.
 
+Status: superseded by ADR-0098
+
 The shaper runs with no read, grep, glob or issue-search tool. Its entire context is the idea
 verbatim, `CONTEXT.md`, `CODING_STANDARDS.md`, and the sweep's reading list — where every item
 carries a one-line reason naming which part of the idea it bears on, and an item with no reason is

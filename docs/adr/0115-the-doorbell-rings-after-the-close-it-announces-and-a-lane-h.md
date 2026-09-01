@@ -2,7 +2,7 @@
 
 Recorded 2026-08-30.
 
-Amends [ADR-0094](0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md), whose
+Amends: [ADR-0094](0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md), whose
 "Considered options" rejected closing before the doorbell so successors would not queue behind the
 ticket author's own `check:` commands. The latency argument was real; what it bought was worse:
 readiness is *defined* as every blocker closed (`shared/ready-set.ts`), so ringing before the close

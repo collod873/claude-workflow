@@ -7,7 +7,7 @@ inlined into the prompt. It still has no toolbelt. "From the spec alone" continu
 the test *asserts*; it no longer governs whether the author may know the *form* of the file it
 asserts about.
 
-Amends [ADR-0030](0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md) for lane 04
+Amends: [ADR-0030](0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md) for lane 04
 only — the shaper's ruling is unchanged.
 
 ## What asked for it
