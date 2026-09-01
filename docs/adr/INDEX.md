@@ -141,5 +141,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) | constraint |
 | 0132 | [A caller checks out the machine with no credential at all, because the repository is public](0132-a-caller-checks-out-the-machine-with-no-credential-at-all-be.md) | constraint |
 | 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | constraint |
+| 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) | constraint |
 
-133 ADRs · 58 constraint · 44 note · 31 superseded · 12,110 words total.
+134 ADRs · 59 constraint · 44 note · 31 superseded · 12,245 words total.

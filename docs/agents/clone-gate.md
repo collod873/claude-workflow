@@ -67,11 +67,21 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    states what it is not looking at. Every entry removed is permanent, and the gate is not done
    until the file is gone.
 
-   One growth is permitted, and only for a clone whose every location sits in the repo's
-   **immutable set** — files a lane is forbidden to edit. No lane may ever dedupe them, and a
-   ratchet nobody can turn is not a ratchet: it is a red `main` that whichever lane pushed last
-   gets blamed for. In `collod873/claude-workflow` that set is `tests/acceptance/`, and the growth
-   is permitted only to the acceptance lane at its push to `main` (ADR-0114, recorded there).
+   Two growths are permitted, no others.
+
+   The first is a clone whose every location sits in the repo's **immutable set** — files a lane
+   is forbidden to edit. No lane may ever dedupe them, and a ratchet nobody can turn is not a
+   ratchet: it is a red `main` that whichever lane pushed last gets blamed for. In
+   `collod873/claude-workflow` that set is `tests/acceptance/`, and the growth is permitted only to
+   the acceptance lane at its push to `main` (ADR-0114, recorded there).
+
+   The second is a clone whose every location is inside `.github/workflows/` and whose duplicated
+   span is the machine-and-target checkout pair a reusable-workflow lane conversion introduces
+   under ADR-0055/ADR-0132 — GitHub Actions has no mechanism to share those steps (a composite
+   action's `uses: ./...` cannot perform the first checkout, since it only resolves once something
+   is already checked out). No standing lane repairs this the way the acceptance lane's own push
+   does, so the entry is written by hand, in the ticket that introduces it, reviewed in that diff —
+   never wider than that one step pair (ADR-0134).
 
    **A ratchet also needs a door for an entry that moved.** An entry is a fingerprint of the
    duplicated text, and that text is not the same thing as the clone: a detector reports a span of
