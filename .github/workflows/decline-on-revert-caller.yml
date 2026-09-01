@@ -9,4 +9,6 @@ name: Decline on revert (caller)
 
 jobs:
   decline:
+    permissions:
+      contents: write
     uses: collod873/claude-workflow/.github/workflows/decline-on-revert.yml@main

@@ -9,4 +9,7 @@ name: Missing-trailer counter (caller)
 
 jobs:
   count:
+    permissions:
+      contents: read
+      issues: write
     uses: collod873/claude-workflow/.github/workflows/missing-trailer-counter.yml@main

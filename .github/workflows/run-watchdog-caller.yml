@@ -6,4 +6,8 @@ name: Run watchdog (caller)
 
 jobs:
   watch:
+    permissions:
+      contents: read
+      actions: read
+      issues: write
     uses: collod873/claude-workflow/.github/workflows/run-watchdog.yml@main

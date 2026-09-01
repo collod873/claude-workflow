@@ -8,6 +8,9 @@ name: Acceptance (caller)
 
 jobs:
   acceptance:
+    permissions:
+      contents: write
+      issues: write
     uses: collod873/claude-workflow/.github/workflows/acceptance.yml@main
     # A `uses:` job passes no secret to the reusable workflow unless told to — `acceptance.yml`
     # spends `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.

@@ -9,4 +9,6 @@ name: Back-stamp (caller)
 
 jobs:
   stamp:
+    permissions:
+      contents: write
     uses: collod873/claude-workflow/.github/workflows/back-stamp.yml@main

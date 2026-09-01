@@ -30,6 +30,11 @@ name: Fixer
 
 jobs:
   fixer:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
     # The same union `fixer.yml`'s job `if:` carried before the split. `event != 'push'` is not
     # cosmetic: `verify-caller.yml` fires on `push: main` as well as on the implementer's dispatch,
     # and a red push run is trunk being broken — there is no pull request to fix, no branch to push
