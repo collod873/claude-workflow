@@ -358,9 +358,10 @@ describe("run-watchdog.yml agrees with the module it runs", () => {
     expect(workflow).toMatch(/^ {2}issues: write$/m);
   });
 
-  it("rides an event rather than a clock, per ADR-0004", () => {
-    expect(workflow).toContain("repository_dispatch:");
-    expect(workflow).not.toContain("schedule:");
+  // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
+  // workflow's own `on:` is `workflow_call` — see the block below.
+  it("is reusable — a caller supplies the trigger", () => {
+    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
   });
 
   it("sets every variable the entrypoint reads", () => {
@@ -371,5 +372,19 @@ describe("run-watchdog.yml agrees with the module it runs", () => {
     for (const name of new Set(read)) {
       expect(workflow, `run-watchdog.yml never sets ${name}`).toMatch(new RegExp(`^ +${name}:`, "m"));
     }
+  });
+});
+
+describe("run-watchdog-caller.yml gates the reusable workflow", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, "../../../.github/workflows/run-watchdog-caller.yml"), "utf8");
+
+  it("rides an event rather than a clock, per ADR-0004", () => {
+    expect(source).toContain("repository_dispatch:");
+    expect(source).not.toContain("schedule:");
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(source).toContain("collod873/claude-workflow/.github/workflows/run-watchdog.yml@main");
   });
 });

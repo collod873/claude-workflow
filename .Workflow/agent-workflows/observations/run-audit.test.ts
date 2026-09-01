@@ -231,8 +231,10 @@ describe("audit.yml agrees with the scope rule it is a copy of", () => {
     "utf8",
   );
 
-  it("triggers on repository_dispatch", () => {
-    expect(workflow).toMatch(/repository_dispatch/);
+  // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
+  // workflow's own `on:` is `workflow_call` — see the block below.
+  it("is reusable — a caller supplies the trigger", () => {
+    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
   });
 
   it("gates the job on the same dispatch action the entrypoint checks", () => {
@@ -240,12 +242,31 @@ describe("audit.yml agrees with the scope rule it is a copy of", () => {
   });
 
   // Spec #134 §"The runner reads the corpus over a deploy key": the checkout that lands
-  // Knowledge-Base on the runner has to name the same repository the corpus lives in and land it
-  // at the same directory `readSessionRecord` reads via `KNOWLEDGE_BASE_CHECKOUT_DIR` — no
-  // compiler sees across the YAML/TypeScript boundary, so this test does.
+  // Knowledge-Base on the runner has to land it at the same directory `readSessionRecord` reads
+  // via `KNOWLEDGE_BASE_CHECKOUT_DIR`, joined onto whichever checkout `TARGET_WORKSPACE` names
+  // (#314) — no compiler sees across the YAML/TypeScript boundary, so this test does.
   it("checks out Knowledge-Base at the directory the entrypoint reads it from", () => {
     expect(workflow).toContain("repository: collod873/Knowledge-Base");
-    expect(workflow).toContain(`path: ${KNOWLEDGE_BASE_CHECKOUT_DIR}`);
+    expect(workflow).toContain(`path: target/${KNOWLEDGE_BASE_CHECKOUT_DIR}`);
+  });
+});
+
+describe("audit-caller.yml gates the reusable workflow", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../../../.github/workflows/audit-caller.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("triggers on repository_dispatch", () => {
+    expect(source).toMatch(/repository_dispatch/);
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(source).toContain("collod873/claude-workflow/.github/workflows/audit.yml@main");
+  });
+
+  it("inherits secrets, since audit.yml spends CLAUDE_CODE_OAUTH_TOKEN and KNOWLEDGE_BASE_DEPLOY_KEY", () => {
+    expect(source).toMatch(/secrets:\s*inherit/);
   });
 });
 

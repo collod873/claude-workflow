@@ -19,10 +19,23 @@ name: Ratify on PRD close
 # branch's own tip, which is exactly the range the scope walk should read. The connector makes no
 # model call and no checkout-dependent read, so there is no `CLAUDE_CODE_OAUTH_TOKEN` preflight
 # here and no `fetch-depth: 0`.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `ratify-on-prd-close-caller.yml`, a trigger and a `uses:`, never a copy of
+# the machine. This repository is its own first caller: the caller stub lives next to this file, at
+# the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target) — never one copy standing in for the other, even though this connector reads neither
+# tree: `GITHUB_SHA` and the issue fields above all arrive off the event, not off disk, the same way
+# every other reusable lane's `github.event.*` still does once a caller's own event is what fires
+# it. The machine checkout carries no credential input of its own: ADR-0132 made this repository
+# public, so `actions/checkout` reads it anonymously and no PAT is added here that would have to be
+# rotated in every enrolled repository. Neither checkout persists credentials — this connector's one
+# write is the `repository_dispatch` `prd-close.ts` sends over `gh`, never a git push, so there is
+# no local git config either checkout has any business leaving behind.
 
 "on":
-  issues:
-    types: [closed]
+  workflow_call:
 
 permissions:
   # write: the `repository_dispatch` this connector sends is a write on the contents scope.
@@ -50,11 +63,18 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      # This connector performs no git write — its one action is a `gh api` dispatch — so the
-      # checkout has no business leaving a push credential in the local git config.
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+          persist-credentials: false
+
+      # This connector performs no git write — its one action is a `gh api` dispatch — so the
+      # checkout has no business leaving a push credential in the local git config.
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           persist-credentials: false
 
       - name: Set up Node and install dependencies

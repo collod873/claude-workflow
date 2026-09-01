@@ -819,8 +819,10 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
     jobs: Record<string, { if?: string }>;
   }>("dispatch-reconcile.yml");
 
-  it("triggers on repository_dispatch", () => {
-    expect(workflow.on).toHaveProperty("repository_dispatch");
+  // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
+  // workflow's own `on:` is `workflow_call` — see the block below.
+  it("is reusable — a caller supplies the trigger", () => {
+    expect(workflow.on).toHaveProperty("workflow_call");
   });
 
   it("gates the job on both actions the entrypoint answers, and no others", () => {
@@ -856,6 +858,30 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
     expect(workflow.concurrency?.group).toBeTruthy();
     expect(workflow.concurrency?.group).not.toMatch(/\$\{\{/);
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
+});
+
+describe("dispatch-reconcile-caller.yml gates the reusable workflow", () => {
+  const { workflow, source } = readWorkflow<{
+    on: { repository_dispatch?: { types?: string[] }; workflow_dispatch?: unknown };
+    jobs: { reconcile: { uses?: string } };
+  }>("dispatch-reconcile-caller.yml");
+
+  it("fires on both dispatch actions and a manual run", () => {
+    expect(workflow.on.repository_dispatch?.types?.slice().sort()).toEqual(
+      [...RECONCILE_DISPATCH_ACTIONS].sort(),
+    );
+    expect(workflow.on).toHaveProperty("workflow_dispatch");
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(workflow.jobs.reconcile.uses).toBe(
+      "collod873/claude-workflow/.github/workflows/dispatch-reconcile.yml@main",
+    );
+  });
+
+  it("carries no secret — this reconciler spends nothing", () => {
+    expect(source).not.toMatch(/secrets:/);
   });
 });
 

@@ -28,10 +28,20 @@ name: Run watchdog
 # own `WATCHDOG_DISPATCH_ACTION`; no compiler sees across that boundary, so `run-watchdog.test.ts`
 # asserts the two still agree and `capture/dispatch-action.test.ts` holds both to the name the hook
 # actually sends (#107).
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `run-watchdog-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target) — never one copy standing in for the other, even though this sweep reads neither
+# tree directly: `run-watchdog.ts` reads the target's run history and files its signal over `gh`,
+# scoped by `GH_REPO` rather than by cwd. The machine checkout carries no credential input of its
+# own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously and no PAT
+# is added here that would have to be rotated in every enrolled repository.
 
 "on":
-  repository_dispatch:
-    types: [session-captured]
+  workflow_call:
 
 permissions:
   # read: the checkout. Declaring a `permissions:` block sets every scope not listed in it to none,
@@ -64,8 +74,15 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node

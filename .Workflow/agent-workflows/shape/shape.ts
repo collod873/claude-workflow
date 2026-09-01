@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
 import { handoffPath } from "../shared/handoff-path";
@@ -157,8 +157,14 @@ function readIdea(gh: GhExec, issueNumber: number): string {
   return `**${parsed.title ?? ""}**\n\n${parsed.body ?? ""}`;
 }
 
-/** The real `Fetch`: a repo-relative path off disk, or an issue through `gh`. */
-export function fetchRef(gh: GhExec): Fetch {
+/**
+ * The real `Fetch`: a repo-relative path off disk, or an issue through `gh`. `repoDir` is the
+ * target's own checkout (#314, ADR-0055) — a prior-art reference names a path in the calling
+ * repository's tree, not the machine's, and once the two are separate checkouts a bare relative
+ * read resolves against whichever one happens to be this process's cwd rather than the one the
+ * reference actually names.
+ */
+export function fetchRef(gh: GhExec, repoDir: string): Fetch {
   return (ref) => {
     try {
       if (/^#\d+$/.test(ref)) {
@@ -166,7 +172,7 @@ export function fetchRef(gh: GhExec): Fetch {
         const parsed = JSON.parse(raw) as { title?: string; body?: string };
         return `**${parsed.title ?? ""}**\n\n${parsed.body ?? ""}`;
       }
-      return readFileSync(ref, "utf8");
+      return readFileSync(resolve(repoDir, ref), "utf8");
     } catch {
       return undefined;
     }
@@ -395,7 +401,9 @@ async function main(): Promise<void> {
     usage();
   }
 
-  const deps: ChainDeps = { exec: execClaude, gh: execGh, fetch: fetchRef(execGh) };
+  // `TARGET_WORKSPACE` is set only by the reusable workflow (#314, ADR-0055) — see `fetchRef`.
+  const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
+  const deps: ChainDeps = { exec: execClaude, gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
 
   try {
     const outcome = await runChain(deps, issueNumber, process.env.CHANGE_REQUEST ?? "");

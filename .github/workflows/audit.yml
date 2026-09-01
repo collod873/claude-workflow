@@ -38,10 +38,23 @@ name: Audit
 # — no credential is referenced by a job a pull request can trigger. `on:` above
 # is the whole reason it holds here too: `repository_dispatch` is not an event GitHub will ever
 # fire from a pull request, so a job started by one — this job included — never sees the secret.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `audit-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
+# This repository is its own first caller: the caller stub lives next to this file, at the same
+# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
+# (the machine, for the two lenses) and the calling repository's own tree (the target, for the
+# `CODING_STANDARDS.md` the audit reads and the `refs/notes/sessions`/`refs/notes/observations` it
+# reads and writes) — never one copy standing in for the other. The machine checkout carries no
+# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
+# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
+# The Knowledge-Base checkout below now lands inside the target checkout, at the path
+# `run-audit.ts` joins onto whichever checkout `TARGET_WORKSPACE` names — the corpus a session's
+# audit hydrates from belongs to the run reading it, not to the machine supplying the code that
+# reads it.
 
 "on":
-  repository_dispatch:
-    types: [session-captured]
+  workflow_call:
 
 permissions:
   contents: write
@@ -64,17 +77,24 @@ jobs:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       KNOWLEDGE_BASE_DEPLOY_KEY: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           fetch-depth: 0
 
       # A runner has no git identity, and `git notes add` writes an object with a committer on it —
       # so the first run that ever got as far as recording a finding died on `empty ident name`
       # *after* spending both lens passes (#107). The workstation supplies its own identity, which
       # is why nothing local ever needed this. The bot is the honest author: this note is the run's,
-      # not a person's.
+      # not a person's. Scoped to the target checkout — the only one this job ever writes into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -92,18 +112,20 @@ jobs:
           fi
 
       # Spec #134 §"The runner reads the corpus over a deploy key": a second checkout, read-only,
-      # of the private `collod873/Knowledge-Base` alongside this repo's own — the corpus
+      # of the private `collod873/Knowledge-Base` alongside the target's own — the corpus
       # `readSessionRecord` hydrates a session's spine from (`run-audit.ts`). `path:` here is
-      # `run-audit.ts`'s own `KNOWLEDGE_BASE_CHECKOUT_DIR`, spelled again rather than read across
-      # the language boundary a compiler cannot see across — the same duplication this file already
-      # carries for `AUDIT_DISPATCH_ACTION`, and `run-audit.test.ts` pins the two spellings the same
-      # way.
+      # `target/` plus `run-audit.ts`'s own `KNOWLEDGE_BASE_CHECKOUT_DIR`, spelled again rather than
+      # read across the language boundary a compiler cannot see across — the same duplication this
+      # file already carries for `AUDIT_DISPATCH_ACTION`, and `run-audit.test.ts` pins the two
+      # spellings the same way. Landing it under `target/` rather than at the workspace root is what
+      # keeps `join(repoDir, KNOWLEDGE_BASE_CHECKOUT_DIR)` finding it once `repoDir` is
+      # `TARGET_WORKSPACE` instead of the machine's own root.
       - name: Checkout Knowledge-Base
         uses: actions/checkout@v4
         with:
           repository: collod873/Knowledge-Base
           ssh-key: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
-          path: knowledge-base
+          path: target/knowledge-base
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
@@ -117,4 +139,6 @@ jobs:
       # Both lenses' notes read/write and the release's own ref live on the injected `git`/`gh`
       # seams in `shared/git.ts`/`shared/gh.ts`, so there is no separate publish step here.
       - name: Run the audit
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/observations/run-audit.ts

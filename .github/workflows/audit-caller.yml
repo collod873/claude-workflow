@@ -1,0 +1,13 @@
+name: Audit (caller)
+
+"on":
+  repository_dispatch:
+    types: [session-captured]
+
+jobs:
+  audit:
+    uses: collod873/claude-workflow/.github/workflows/audit.yml@main
+    # A `uses:` job passes no secret to the reusable workflow unless told to — `audit.yml` spends
+    # `CLAUDE_CODE_OAUTH_TOKEN` and `KNOWLEDGE_BASE_DEPLOY_KEY`, so without this both preflights
+    # fail closed on every run.
+    secrets: inherit

@@ -203,11 +203,16 @@ async function main(): Promise<void> {
     if (!head) {
       throw new Error("HEAD_SHA must be set");
     }
-    // `GITHUB_WORKSPACE` is the checkout's own path, set by every Actions runner without this
-    // workflow needing to name it in `env:` — falling back to `process.cwd()` is what lets a local
-    // run (or a test driving this file as a real subprocess against a throwaway fixture repo) hand
-    // in a different one without `tsx`'s own resolution needing to run from inside it too.
-    const repoDir = process.env.GITHUB_WORKSPACE || process.cwd();
+    // `TARGET_WORKSPACE` is set only by the reusable workflow (#314, ADR-0055): the machine
+    // checkout this script runs from is a different directory than the checkout whose notes,
+    // standards and Knowledge-Base corpus it reads once a caller's own checkout is a separate
+    // step — the same seam `back-stamp-walk.ts` and `missing-trailer-counter.ts` read for the same
+    // reason. `GITHUB_WORKSPACE` is the checkout's own path, set by every Actions runner without
+    // this workflow needing to name it in `env:`, and still covers the pre-reusable shape where the
+    // one checkout was both; falling back further to `process.cwd()` is what lets a local run (or a
+    // test driving this file as a real subprocess against a throwaway fixture repo) hand in a
+    // different one without `tsx`'s own resolution needing to run from inside it too.
+    const repoDir = process.env.TARGET_WORKSPACE || process.env.GITHUB_WORKSPACE || process.cwd();
     const standards = readFileSync(join(repoDir, "CODING_STANDARDS.md"), "utf8");
 
     const outcome = await runAudit({

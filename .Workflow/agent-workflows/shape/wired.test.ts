@@ -14,9 +14,13 @@ import { LABELS_APPLIED } from "./shape";
 
 const SHAPE_WORKFLOW = ".github/workflows/shape.yml";
 const ACCEPT_WORKFLOW = ".github/workflows/shape-accept.yml";
+const SHAPE_CALLER_WORKFLOW = ".github/workflows/shape-caller.yml";
+const ACCEPT_CALLER_WORKFLOW = ".github/workflows/shape-accept-caller.yml";
 
 const shape = readFileSync(SHAPE_WORKFLOW, "utf8");
 const acceptWorkflow = readFileSync(ACCEPT_WORKFLOW, "utf8");
+const shapeCaller = readFileSync(SHAPE_CALLER_WORKFLOW, "utf8");
+const acceptCaller = readFileSync(ACCEPT_CALLER_WORKFLOW, "utf8");
 
 /** Every TypeScript entrypoint a workflow hands to `npx tsx`. */
 function entrypointsOf(source: string): string[] {
@@ -29,7 +33,7 @@ describe("the chain's trigger", () => {
   });
 
   it("also fires on a comment, which is §01's fourth owner verb", () => {
-    expect(shape).toMatch(/issue_comment:/);
+    expect(shapeCaller).toMatch(/issue_comment:/);
     expect(shape).toMatch(/contains\(github\.event\.issue\.labels\.\*\.name, 'idea'\)/);
   });
 
@@ -76,6 +80,37 @@ describe("the accept's trigger", () => {
   it("does not fire on the route overrides, which modify an accept rather than being one", () => {
     expect(acceptWorkflow).not.toContain("'go-long'");
     expect(acceptWorkflow).not.toContain("'go-short'");
+  });
+});
+
+// #314, ADR-0055 (amended by ADR-0132): both lanes are reusable workflows now — a caller
+// repository carries the trigger, `shape.yml`/`shape-accept.yml` carry only `workflow_call`, and
+// each entrypoint reads the target checkout `TARGET_WORKSPACE` names rather than its own cwd.
+describe("both lanes are reusable, with a caller stub carrying the trigger", () => {
+  it.each([
+    [SHAPE_WORKFLOW, shape],
+    [ACCEPT_WORKFLOW, acceptWorkflow],
+  ])("%s triggers on workflow_call", (_name, source) => {
+    expect(source).toMatch(/^"on":\s*\n\s*workflow_call:/m);
+  });
+
+  it("shape-caller.yml fires on the label and the comment, and calls shape.yml at @main", () => {
+    expect(shapeCaller).toMatch(/issues:\s*\n\s*types:\s*\[labeled\]/);
+    expect(shapeCaller).toMatch(/issue_comment:\s*\n\s*types:\s*\[created\]/);
+    expect(shapeCaller).toContain("collod873/claude-workflow/.github/workflows/shape.yml@main");
+    expect(shapeCaller).toMatch(/secrets:\s*inherit/);
+  });
+
+  it("shape-accept-caller.yml fires on the label, and calls shape-accept.yml at @main", () => {
+    expect(acceptCaller).toMatch(/issues:\s*\n\s*types:\s*\[labeled\]/);
+    expect(acceptCaller).toContain("collod873/claude-workflow/.github/workflows/shape-accept.yml@main");
+  });
+
+  it.each([
+    [SHAPE_WORKFLOW, shape],
+    [ACCEPT_WORKFLOW, acceptWorkflow],
+  ])("%s hands its entrypoint the target checkout, not its own cwd", (_name, source) => {
+    expect(source).toContain("TARGET_WORKSPACE");
   });
 });
 
