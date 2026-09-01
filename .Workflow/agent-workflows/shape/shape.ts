@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
 import { handoffPath } from "../shared/handoff-path";
 import { reason } from "../shared/reason";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { REFUSAL_MARKER } from "./marker";
 import {
   renderChangeRequest,
@@ -403,7 +403,7 @@ async function main(): Promise<void> {
 
   // `TARGET_WORKSPACE` is set only by the reusable workflow (#314, ADR-0055) — see `fetchRef`.
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
-  const deps: ChainDeps = { exec: execClaude, gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
+  const deps: ChainDeps = { exec: execClaudeIn(targetWorkspace), gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
 
   try {
     const outcome = await runChain(deps, issueNumber, process.env.CHANGE_REQUEST ?? "");

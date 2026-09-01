@@ -107,7 +107,8 @@ function stageEnv(): NodeJS.ProcessEnv {
  * lane 05's implementer is the one that does — would otherwise read and edit
  * the pipeline it is running rather than the repository it was dispatched
  * for. Omitted means "this process's own cwd", which is what every lane
- * running against its own checkout wants and what `execClaude` below is.
+ * running against its own checkout wants — a workstation run, and every
+ * test that drives the real executor.
  */
 export const execClaudeIn =
   (cwd?: string): StageExec =>
@@ -183,14 +184,6 @@ export const execClaudeIn =
       resolve(text);
     });
   });
-
-/**
- * The real `StageExec` for a lane whose model works in this process's own
- * checkout — every lane but 05, and lane 05 itself on a workstation. See
- * `execClaudeIn` above for everything else about it, including why the
- * working directory became a question worth asking.
- */
-export const execClaude: StageExec = execClaudeIn();
 
 /**
  * Drops a caller-supplied `--output-format <value>` pair, so `STREAM_FLAGS`

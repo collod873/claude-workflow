@@ -12,7 +12,7 @@ import {
 } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
-import { checkpointPath, execClaude, rawResponsePath, runStage, type StageExec } from "../shared/stage";
+import { checkpointPath, execClaudeIn, rawResponsePath, runStage, type StageExec } from "../shared/stage";
 import type { StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
 import { sliceAndPublish } from "./slice-and-publish";
@@ -474,7 +474,11 @@ async function main(): Promise<void> {
     // `to-tickets.yml`'s reporter would comment "unknown stage" on every
     // real failure.
     try {
-      await runNamedStage(stageName, issueNumber, execClaude, execGh);
+      // Which checkout the seam sweep, the slicer and the auditor read the codebase in.
+      // `TARGET_WORKSPACE` is set only by the reusable workflow (ADR-0055): there this process runs
+      // from the machine checkout, and tickets sliced against the machine's own code would be
+      // tickets for the wrong repository.
+      await runNamedStage(stageName, issueNumber, execClaudeIn(process.env.TARGET_WORKSPACE || process.cwd()), execGh);
     } catch (err) {
       const detail = reason(err);
       console.error(`${stageName} failed: ${detail}`);

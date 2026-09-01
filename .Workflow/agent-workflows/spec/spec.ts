@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { readSheetMarker } from "../shape/marker";
 import { runSpecCritic, type Resolution } from "./critic";
@@ -495,12 +495,17 @@ export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
 }
 
 async function main(): Promise<void> {
+  // Which checkout the author and the critic read the codebase in. `TARGET_WORKSPACE` is set only
+  // by the reusable workflow (ADR-0055): there this process runs from the machine checkout, and a
+  // spec written about the machine's own code is a spec about the wrong repository.
+  const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+
   try {
     const invocation = invocationFromEnv(process.env);
     const plan = planSpecRun(execGh, invocation);
 
     if (plan.path === "critique") {
-      const result = await runSpecCritique(execClaude, execGh, plan.issueNumber);
+      const result = await runSpecCritique(execClaudeIn(repoDir), execGh, plan.issueNumber);
       console.log(
         `critiqued #${result.issueNumber}: ${result.outcome}` +
           `${result.rewritten ? ", body re-authored from the critic's resolutions" : ""}`,
@@ -508,7 +513,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    const result = await runSpecPublication(execClaude, execGh, plan.target, plan.input);
+    const result = await runSpecPublication(execClaudeIn(repoDir), execGh, plan.target, plan.input);
 
     console.log(
       `published #${result.issueNumber}: ${result.gateCount} open question(s) left, ${result.outcome}`,

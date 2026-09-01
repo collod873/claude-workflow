@@ -2,7 +2,10 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { execClaude } from "./stage";
+import { execClaudeIn } from "./stage";
+
+/** The real executor, in this process's own cwd — what every lane's workstation run gets. */
+const execClaude = execClaudeIn();
 
 /**
  * The real `execClaude`, driven against a stub `claude` on `PATH` — the half

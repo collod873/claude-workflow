@@ -5,7 +5,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { syncNotesRef } from "../shared/notes-sync";
-import { execClaude, type StageExec } from "../shared/stage";
+import { execClaudeIn, type StageExec } from "../shared/stage";
 import { repoScoped } from "../capture/touched-paths";
 import { dispatchRatificationDue } from "../ratify/dispatch";
 import { computeRatificationScope } from "../ratify/scope";
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     const outcome = await runAudit({
       git: execGit,
       gh: execGh,
-      exec: execClaude,
+      exec: execClaudeIn(repoDir),
       repoDir,
       head,
       standards,

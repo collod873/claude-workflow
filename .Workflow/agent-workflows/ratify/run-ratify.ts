@@ -5,7 +5,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { reason } from "../shared/reason";
-import { execClaude, type StageExec } from "../shared/stage";
+import { execClaudeIn, type StageExec } from "../shared/stage";
 import { readObservations } from "../observations/notes";
 import type { Observation } from "../observations/observation-schema";
 import { filterByRatificationMemory, readRatificationRecords, writeRatificationNote } from "../observations/ratification";
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
     const outcome = await runRatify({
       git: execGit,
       gh: execGh,
-      exec: execClaude,
+      exec: execClaudeIn(repoDir),
       repoDir,
       head,
       prdClosed: process.env.PRD_CLOSED === "true",

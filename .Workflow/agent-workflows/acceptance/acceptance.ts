@@ -7,7 +7,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
-import { execClaude, runStage, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   CRITERIA_HEADING_RE,
@@ -421,7 +421,7 @@ function fsWriteFile(path: string, content: string): void {
 async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
   const outcome = await runAcceptanceAuthor({
     gh: execGh,
-    exec: execClaude,
+    exec: execClaudeIn(REPO_DIR),
     writeFile: fsWriteFile,
     issueNumber: sliceNumber,
     landing: landingFromEnv(),
@@ -467,7 +467,7 @@ async function main(): Promise<void> {
     const landing = landingFromEnv();
     const outcome = await runAcceptanceAuthor({
       gh: execGh,
-      exec: execClaude,
+      exec: execClaudeIn(REPO_DIR),
       writeFile: fsWriteFile,
       issueNumber: Number(issueArg),
       landing,
