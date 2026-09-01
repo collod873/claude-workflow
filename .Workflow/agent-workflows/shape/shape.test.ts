@@ -166,10 +166,7 @@ describe("the shaper's toolbelt", () => {
 
 describe("the sweep's toolbelt", () => {
   it("keeps what it searches with and loses every reach past this repo", async () => {
-    // The prompt's scope line was a sentence until this list existed: the
-    // stage ran on the CLI default belt under `--dangerously-skip-permissions`
-    // with the web and the subagent spawner live. Asserted on the argv for the
-    // same reason the shaper's is.
+    // Why this list holds what it holds: `SWEEP_DENIED_TOOLS` (ADR-0050).
     const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
