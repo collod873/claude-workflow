@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-29
+superseded_by: ADR-0128
 amends: ADR-0030
 reversal: Reversing means removing the file-rendering step from lane 04's prompt assembly and either blinding the author again — which produced two wrong tests out of four on the lane's only production run, permanently red on trunk and unfixable by implementers under ADR-0032 — or granting it a read tool, which re-opens ADR-0030's no-toolbelt boundary.
 ---

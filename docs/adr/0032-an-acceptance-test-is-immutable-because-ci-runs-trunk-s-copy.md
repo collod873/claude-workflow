@@ -2,7 +2,7 @@
 status: superseded
 date: 2026-08-26
 amends: ADR-0011
-superseded_by: ADR-0053
+superseded_by: ADR-0053, ADR-0054, ADR-0102
 reversal: Running the PR's own copy again would give up the trunk-tip restore, the closed immutable set that includes vitest.config.ts, the no-outside-imports rule the acceptance tree is written under, and the separate lane credential the exemption rides on; ADR-0053, ADR-0054 and ADR-0102 already carry the successor.
 ---
 

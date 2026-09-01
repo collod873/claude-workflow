@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-08-26
-superseded_by: ADR-0083
+superseded_by: ADR-0083, ADR-0085
 reversal: Superseded by ADR-0083 and ADR-0085, which move lane 02's trigger and its entry point; the per-trigger collectors and the accept marker's payload it specified stay live in `spec/collectors/` and `shape/marker.ts`.
 ---
 

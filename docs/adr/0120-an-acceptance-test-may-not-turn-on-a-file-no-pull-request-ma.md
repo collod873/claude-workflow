@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-31
+superseded_by: ADR-0127
 reversal: Removing the refusal is an edit to `acceptance/push-gate.ts` and its prompt rule, but what it readmits cannot be retracted: an acceptance test asserting on `vitest.config.ts` or anything under `.github/` lands on `main` as the permanent contract for its criterion, unsatisfiable by every diff the Immutability job allows and repairable only by the owner's hand.
 ---
 

@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-08-26
-superseded_by: ADR-0053
+superseded_by: ADR-0053, ADR-0079
 reversal: Dropping the verbatim-criterion grep leaves a spec edit with no mechanical re-acceptance trigger and strands the verbatim-naming rule the acceptance authors write to; ADR-0053 and ADR-0079 already carry the successor.
 ---
 
