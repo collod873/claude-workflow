@@ -179,9 +179,7 @@ describe("the sweep's toolbelt", () => {
   });
 
   it("is handed the idea rather than sent to fetch it", async () => {
-    // `readIdea` already read it for the shaper. A sweep running `gh issue
-    // view` for itself spends a tool call on a string this process is holding,
-    // and a `gh` that fails there kills the stage having never read the idea.
+    // Why the idea is substituted rather than fetched: `runSweep`.
     const model = healthyModel();
     const tracker = createFakeTracker({ title: "Idea: cap the corpus", body: "it is 52k words" });
 
