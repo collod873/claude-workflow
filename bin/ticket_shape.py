@@ -28,18 +28,19 @@ plain prose. "The working tree" means the **caller's**:
 for every repo on this machine, not just this one (#149). Outside any repository that root is
 `cwd` itself.
 
-A `spec` is refused on a fifth ground no `ticket` shares: its one criterion's `check:` command is
-actually *run*, in the caller's tree, at filing time (#306, ADR-0130). A command that already
-exits 0 before any work exists — a criterion true by accident of the tracker's current state,
-#236's own shape — refuses the filing outright, never a warning: a criterion that cannot turn red
-proves nothing when it turns green later. A command that cannot be run to a verdict at all (no
-such binary, or it outran the 30s budget) is not evidence either way and only warns.
-
 This module also holds the `## Files claimed` parsing `file-issue ticketify` (#79) needs to
 detect an already-written `## Acceptance criteria` section, substitute one cleanly, and intersect
 one issue's claim against another's for ADR-0007's blocking-edge collision check — kept here
 rather than in `bin/file-issue` because it is the same shape knowledge `validate`'s `ticket`
 branch already holds, not a second copy of it.
+
+A `spec` is refused on a fifth ground no `ticket` shares: its one criterion's `check:` command is
+actually *run*, in the caller's tree, at filing time (#306, claude-workflow/ADR-0130). A command
+that already exits 0 before any work exists — a criterion true by accident of the tracker's
+current state, #236's own shape — refuses the filing outright, never a warning: a criterion that
+cannot turn red proves nothing when it turns green later. A command that cannot be run to a
+verdict at all (no such binary, or it outran the 30s budget) is not evidence either way and only
+warns.
 """
 import fnmatch
 import re
@@ -136,16 +137,16 @@ SPEC_CRITERION_UNRUNNABLE = (
     "the spec with no definition of done: {criterion}"
 )
 
-# Red-at-publish (#306, ADR-0130): a spec's one criterion is run at filing time, not just parsed.
-# 30s — filing is interactive, and unbounded would hang `file-issue` on a slow `vitest run`
-# (ADR-0130).
+# Red-at-publish (#306, claude-workflow/ADR-0130): a spec's one criterion is run at filing time,
+# not just parsed. 30s — filing is interactive, and unbounded would hang `file-issue` on a slow
+# `vitest run` (claude-workflow/ADR-0130).
 RED_AT_PUBLISH_TIMEOUT_SECONDS = 30
 
 SPEC_CRITERION_GREEN_AT_PUBLISH = (
     "a spec's one acceptance criterion is already true before any work exists: `{command}` "
     "exited 0 against this tree right now. A criterion that never turns red proves nothing when "
     "it turns green later — rewrite it to name something only the finished spec makes true "
-    "(ADR-0130)"
+    "(claude-workflow/ADR-0130)"
 )
 
 # The vocabulary that marks work done *to* existing state rather than work that adds a new
@@ -227,12 +228,12 @@ def parse_check_marker(criterion: str) -> str | None:
 def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | None]:
     """Runs `command` now, in `repo_root`, the way `bin/close-ticket`'s `run_check` runs it at
     close time — same shell, same cwd, no sandbox beyond what the filer's own process already is
-    (ADR-0130). Returns `(green, warning)`: `green` is True only when the command ran and exited
-    0 — the red-at-publish shape #306 exists to catch. `warning` carries a message when the
-    command could not be run to a verdict at all (missing binary, timed out); that is not
-    evidence of anything, so it is surfaced as a warning rather than folded into `green`, and
-    `green` is False in that case too — a check that cannot run must never refuse a filing the
-    way a green one does."""
+    (claude-workflow/ADR-0130). Returns `(green, warning)`: `green` is True only when the
+    command ran and exited 0 — the red-at-publish shape #306 exists to catch. `warning` carries
+    a message when the command could not be run to a verdict at all (missing binary, timed
+    out); that is not evidence of anything, so it is surfaced as a warning rather than folded
+    into `green`, and `green` is False in that case too — a check that cannot run must never
+    refuse a filing the way a green one does."""
     try:
         result = subprocess.run(
             command, shell=True, cwd=repo_root, capture_output=True, text=True,
@@ -242,12 +243,12 @@ def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | Non
         return False, (
             f"acceptance criterion's check: `{command}` did not finish within "
             f"{RED_AT_PUBLISH_TIMEOUT_SECONDS}s — red-at-publish could not be checked "
-            "(ADR-0130)"
+            "(claude-workflow/ADR-0130)"
         )
     except OSError as e:
         return False, (
             f"acceptance criterion's check: `{command}` could not be run: {e} — red-at-publish "
-            "could not be checked (ADR-0130)"
+            "could not be checked (claude-workflow/ADR-0130)"
         )
     return result.returncode == 0, None
 
@@ -344,9 +345,10 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     command = parse_check_marker(blocks[0])
     if command is None:
         raise ValidationError(SPEC_CRITERION_UNRUNNABLE.format(criterion=blocks[0]))
-    # Red-at-publish (#306, ADR-0130): the one place `validate` runs a criterion's check rather
-    # than only reading it. Scoped to `spec` — a ticket's criterion gets no such run yet; nothing
-    # marks a ticket wave 0, so `validate` has no signal to single one out (ADR-0130).
+    # Red-at-publish (#306, claude-workflow/ADR-0130): the one place `validate` runs a
+    # criterion's check rather than only reading it. Scoped to `spec` — a ticket's criterion
+    # gets no such run yet; nothing marks a ticket wave 0, so `validate` has no signal to
+    # single one out (claude-workflow/ADR-0130).
     root = repo_root or caller_repo_root()
     green, warning = _check_already_green(command, root)
     if green:
