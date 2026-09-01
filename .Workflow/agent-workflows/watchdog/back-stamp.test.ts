@@ -28,7 +28,7 @@ function adr(number: number, title: string, body: string, amends?: string): DocF
   const trailer = amends ? `\n\n${amends}` : "";
   return {
     path: `docs/adr/${padded}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.md`,
-    content: `# ${title}\n\nRecorded 2026-08-26.${trailer}\n\n${body}\n`,
+    content: `---\nstatus: constraint\ndate: 2026-08-26${trailer}\nreversal: stated in the fixture\n---\n\n# ${title}\n\n${body}\n`,
   };
 }
 
@@ -41,19 +41,19 @@ const SUCCESSOR_53 = adr(
   53,
   "The acceptance lane pushes to main",
   "Lane 04 commits its tests directly to main.",
-  "Amends: [ADR-0032](0032-an-acceptance-test-is-immutable.md),\n[ADR-0033](0033-a-spec-edit-re-fires-acceptance.md).",
+  "\namends: ADR-0032, ADR-0033",
 );
 const SUCCESSOR_54 = adr(
   54,
   "An implementation PR's checks fire by dispatch",
   "Lane 05's implementer opens its pull request.",
-  "Amends: [ADR-0032](0032-an-acceptance-test-is-immutable.md).",
+  "\namends: ADR-0032",
 );
 const SUCCESSOR_66 = adr(
   66,
   "A number lives in an ADR or a counter row",
   "Every number this design carries is a counter or a sizing measurement.",
-  "Amends: [ADR-0026](0026-the-build-order-lives-as-issues.md), which moved\nthe build order out of DESIGN.md.",
+  "\namends: ADR-0026",
 );
 
 const FIXTURE: DocFile[] = [
@@ -67,7 +67,7 @@ const FIXTURE: DocFile[] = [
 ];
 
 describe("the judgement, run over a fixture trailer graph", () => {
-  it("derives one back-stamp write per predecessor an Amends: trailer names, and nothing else", () => {
+  it("derives one back-stamp write per predecessor an amends: declaration names, and nothing else", () => {
     const writes = deriveBackStamps(FIXTURE);
 
     expect(writes.map((write) => write.path).sort()).toEqual([PREDECESSOR_26.path, PREDECESSOR_32.path, PREDECESSOR_33.path].sort());
@@ -77,17 +77,17 @@ describe("the judgement, run over a fixture trailer graph", () => {
     const writes = deriveBackStamps(FIXTURE);
     const stamp32 = writes.find((write) => write.path === PREDECESSOR_32.path);
 
-    expect(stamp32?.content).toContain("Status: superseded by ADR-0053, ADR-0054");
+    expect(stamp32?.content).toContain("superseded_by: ADR-0053, ADR-0054");
   });
 
   it("stamps a predecessor with a single successor", () => {
     const writes = deriveBackStamps(FIXTURE);
 
     expect(writes.find((write) => write.path === PREDECESSOR_33.path)?.content).toContain(
-      "Status: superseded by ADR-0053",
+      "superseded_by: ADR-0053",
     );
     expect(writes.find((write) => write.path === PREDECESSOR_26.path)?.content).toContain(
-      "Status: superseded by ADR-0066",
+      "superseded_by: ADR-0066",
     );
   });
 
@@ -133,7 +133,7 @@ describe("adrNumber", () => {
 
 describe("amendedAdrNumbers", () => {
   it("reads bin/new-adr --amends's plain trailer form", () => {
-    expect(amendedAdrNumbers("# Title\n\nRecorded 2026-08-26.\n\nAmends: ADR-0008\n\nBody.\n")).toEqual([8]);
+    expect(amendedAdrNumbers("---\nstatus: note\ndate: 2026-08-26\namends: ADR-0008\nreversal: x\n---\n\n# Title\n\nBody.\n")).toEqual([8]);
   });
 
   it("reads a hand-written markdown-link trailer, including a second target wrapped onto the next line", () => {
@@ -144,45 +144,45 @@ describe("amendedAdrNumbers", () => {
     expect(amendedAdrNumbers(SUCCESSOR_66.content)).toEqual([26]);
   });
 
-  it("is empty when the file carries no Amends: trailer at all", () => {
+  it("is empty when the file carries no amends: declaration at all", () => {
     expect(amendedAdrNumbers(PREDECESSOR_32.content)).toEqual([]);
   });
 
   it("stops at the trailer's own paragraph, so an unrelated ADR-NNNN mentioned later in the body is not read as amended", () => {
-    const content = "# Title\n\nRecorded 2026-08-26.\n\nAmends: ADR-0008\n\nSee also ADR-0099 for context.\n";
+    const content = "---\nstatus: note\ndate: 2026-08-26\namends: ADR-0008\nreversal: x\n---\n\n# Title\n\nSee also ADR-0099 for context.\n";
     expect(amendedAdrNumbers(content)).toEqual([8]);
   });
 });
 
 describe("trailerGraph", () => {
   it("ignores a trailer naming its own file, since an ADR cannot supersede itself", () => {
-    const selfReferencing = adr(9, "Self-referencing", "body", "Amends: ADR-0009");
+    const selfReferencing = adr(9, "Self-referencing", "body", "\namends: ADR-0009");
     expect(trailerGraph([selfReferencing]).get(9)).toBeUndefined();
   });
 
-  it("is empty over a corpus with no Amends: trailer anywhere", () => {
+  it("is empty over a corpus with no amends: declaration anywhere", () => {
     expect(trailerGraph([PREDECESSOR_32, PREDECESSOR_33, UNRELATED]).size).toBe(0);
   });
 });
 
 describe("statusLine", () => {
   it("names one successor", () => {
-    expect(statusLine([53])).toBe("Status: superseded by ADR-0053");
+    expect(statusLine([53])).toBe("superseded_by: ADR-0053");
   });
 
   it("names several successors, comma-separated", () => {
-    expect(statusLine([53, 54])).toBe("Status: superseded by ADR-0053, ADR-0054");
+    expect(statusLine([53, 54])).toBe("superseded_by: ADR-0053, ADR-0054");
   });
 });
 
 describe("withStatusLine", () => {
-  const CONTENT = "# A title\n\nRecorded 2026-08-26.\n\nThe body starts here.\n";
+  const CONTENT = "---\nstatus: constraint\ndate: 2026-08-26\nreversal: x\n---\n\n# A title\n\nThe body starts here.\n";
 
-  it("inserts the trailer right after the Recorded line, as its own paragraph", () => {
+  it("writes superseded_by into the frontmatter, right after date", () => {
     const updated = withStatusLine(CONTENT, [53]);
 
     expect(updated).toBe(
-      "# A title\n\nRecorded 2026-08-26.\n\nStatus: superseded by ADR-0053\n\nThe body starts here.\n",
+      "---\nstatus: superseded\ndate: 2026-08-26\nsuperseded_by: ADR-0053\nreversal: x\n---\n\n# A title\n\nThe body starts here.\n",
     );
   });
 
@@ -195,8 +195,8 @@ describe("withStatusLine", () => {
     const stamped = withStatusLine(CONTENT, [53]);
     const widened = withStatusLine(stamped, [53, 54]);
 
-    expect(widened).toContain("Status: superseded by ADR-0053, ADR-0054");
-    expect(widened.match(/^Status: superseded by/gm)).toHaveLength(1);
+    expect(widened).toContain("superseded_by: ADR-0053, ADR-0054");
+    expect(widened.match(/^superseded_by: /gm)).toHaveLength(1);
   });
 });
 
@@ -248,7 +248,7 @@ describe("backStampWalk", () => {
     expect(outcome.stamped.sort()).toEqual(
       [PREDECESSOR_26.path, PREDECESSOR_32.path, PREDECESSOR_33.path].sort(),
     );
-    expect(deps.writes[PREDECESSOR_32.path]).toContain("Status: superseded by ADR-0053, ADR-0054");
+    expect(deps.writes[PREDECESSOR_32.path]).toContain("superseded_by: ADR-0053, ADR-0054");
 
     expect(deps.calls.map((argv) => argv[0])).toEqual([
       "regenerate-corpus",
@@ -300,7 +300,7 @@ describe("backStampWalk", () => {
     expect(second.calls).toEqual([]); // nothing at all — not even a read-only git call
   });
 
-  it("commits nothing over a corpus with no Amends: trailer anywhere", () => {
+  it("commits nothing over a corpus with no amends: declaration anywhere", () => {
     const deps = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
 
     expect(backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });

@@ -86,8 +86,13 @@ export function lowerNumberedAdrLinks(body: string, number: number): number[] {
   return [...found].sort((a, b) => a - b);
 }
 
-/** The trailer `docs/adr/README.md` names: `Amends:` at the start of a line. */
-const AMENDS_TRAILER_RE = /^Amends:/m;
+/**
+ * The declared amendment edge: an `amends:` key in the ADR's frontmatter. It moved there from a
+ * prose `Amends:` trailer when the corpus was re-admitted — three prose trailers had shipped
+ * without the colon this regex required, so their predecessors went unstamped for months while
+ * reading as amended to any human. A key `new-adr` writes cannot lose its own punctuation.
+ */
+const AMENDS_TRAILER_RE = /^amends:\s*ADR-\d{4}/m;
 
 export function hasAmendsTrailer(body: string): boolean {
   return AMENDS_TRAILER_RE.test(body);

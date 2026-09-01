@@ -308,17 +308,6 @@
     "fragment": "], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, origin"
   },
   {
-    "hash": "51c998fa962aed59",
-    "format": "typescript",
-    "lines": 13,
-    "tokens": 104,
-    "where": [
-      ".Workflow/agent-workflows/shared/generate-contract.test.ts:230",
-      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:244"
-    ],
-    "fragment": ");\n\n    mkdirSync(join(root, \"docs/adr\"), { recursive: true });\n    mkdirSync(join(root, \"docs/research\"), { recursive: true });\n    writeFileSync(\n      join(root, \"docs/adr/0001-a-decision.md\"),\n      \"# A decision\\n\\nRecorded 2026-08-20.\\n\",\n    );\n    writeFileSync(\n      join(root, \"docs/research/topic-2026-08.md\"),\n      \"**Resolves:** [x](https://example/1)\\n\\n## Section\\n\\nBody.\\n\",\n    );\n    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH"
-  },
-  {
     "hash": "556a67e96eb33c0d",
     "format": "typescript",
     "lines": 13,
@@ -335,8 +324,8 @@
     "lines": 17,
     "tokens": 175,
     "where": [
-      ".Workflow/agent-workflows/shared/generate-contract.test.ts:241",
-      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:258"
+      ".Workflow/agent-workflows/shared/generate-contract.test.ts:259",
+      ".Workflow/agent-workflows/shared/generate-corpus-fixture.test.ts:255"
     ],
     "fragment": ");\n    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });\n    writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));\n\n    return root;\n  }\n\n  function runPush(root: string): { status: number | null; stdout: string } {\n    const run = spawnSync(join(root, \"bin/gauntlet\"), [\"push\"], {\n      encoding: \"utf8\",\n      cwd: root,\n      env: process.env,\n    });\n    return { status: run.status, stdout: run.stdout };\n  }\n\n  it(\"exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again\""
   },
@@ -966,17 +955,6 @@
       ".Workflow/agent-workflows/shared/notes-sync.test.ts:1"
     ],
     "fragment": "import { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, rmSync, writeFileSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nimport { afterEach, describe, expect, it } from \"vitest\";\nimport { execGit } from \"../shared/git\""
-  },
-  {
-    "hash": "e8a170d71c5ead19",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 103,
-    "where": [
-      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:106",
-      ".Workflow/agent-workflows/watchdog/run-watchdog.test.ts:63"
-    ],
-    "fragment": "if (args[0] === \"issue\" && args[1] === \"create\") return \"https://github.com/owner/repo/issues/42\\n\";\n    if (args[0] === \"issue\" && args[1] === \"comment\") return \"\";\n\n    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);\n  };\n\n  return { gh, calls };\n}\n\ndescribe(\"countLostDispatch\""
   },
   {
     "hash": "ecbf7f9705dfb8e8",

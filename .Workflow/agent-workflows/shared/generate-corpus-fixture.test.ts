@@ -1,3 +1,4 @@
+import { seedCorpus } from "./push-fixture.ts";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -77,12 +78,12 @@ describe("the trim: notes to their preamble, ADRs whole", () => {
    */
   it("excludes an unlanded draft from both corpora, so an in-progress document does not stale the fixture", () => {
     const landedOnly = generate(
-      { "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" },
+      { "0001-a-decision.md": "---\nstatus: constraint\ndate: 2026-08-20\nreversal: the fixture exists so the corpus check has something real to generate from\n---\n\n# A decision that binds later work\n\nWhy it binds.\n" },
       { "topic-2026-08.md": "**Resolves:** [x](https://example/1)\n" },
     );
     const withDrafts = generate(
       {
-        "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n",
+        "0001-a-decision.md": "---\nstatus: constraint\ndate: 2026-08-20\nreversal: the fixture exists so the corpus check has something real to generate from\n---\n\n# A decision that binds later work\n\nWhy it binds.\n",
         "draft-a-half-written-ruling.md": "# A half-written ruling\n\nRecorded 2026-08-27.\n",
       },
       {
@@ -96,7 +97,7 @@ describe("the trim: notes to their preamble, ADRs whole", () => {
 
   it("truncates a research note's body at its first ## section", () => {
     const fixture = generate(
-      { "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" },
+      { "0001-a-decision.md": "---\nstatus: constraint\ndate: 2026-08-20\nreversal: the fixture exists so the corpus check has something real to generate from\n---\n\n# A decision that binds later work\n\nWhy it binds.\n" },
       {
         "topic-2026-08.md":
           "**Resolves:** [x](https://example/1)\n\n## Section one\n\nBody the counter never reads.\n",
@@ -248,19 +249,11 @@ describe("bin/gauntlet push's regenerate && diff for the corpus fixture", () => 
       )}\n`,
     );
 
-    mkdirSync(join(root, "docs/adr"), { recursive: true });
-    mkdirSync(join(root, "docs/research"), { recursive: true });
-    writeFileSync(
-      join(root, "docs/adr/0001-a-decision.md"),
-      "# A decision\n\nRecorded 2026-08-20.\n",
-    );
-    writeFileSync(
-      join(root, "docs/research/topic-2026-08.md"),
-      "**Resolves:** [x](https://example/1)\n\n## Section\n\nBody.\n",
-    );
+    seedCorpus(root);
 
     mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
     writeFileSync(join(root, CONTRACT_RELATIVE_PATH), generateContract(root));
+
 
     mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });
     writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));

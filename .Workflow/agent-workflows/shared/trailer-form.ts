@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Refuses an `Amends` trailer that names an ADR but omits the colon.
+ * Refuses an ADR body still written in the retired prose grammar.
  *
- * The trailer is the only declared edge in the amendment graph: `missing-trailer.ts` reads
- * `/^Amends:/m` and `back-stamp.ts` slices from the line that `startsWith("Amends:")`. A trailer
- * written `Amends [ADR-0056](…)` is therefore invisible to both — the successor looks amended to a
- * human and unamended to every machine, and the predecessor never gets its `Status: superseded by`.
+ * The amendment edge is the only declared edge in the graph, and it now lives in frontmatter:
+ * `missing-trailer.ts` reads `amends:` and `back-stamp.ts` writes `superseded_by:` beside it. It
+ * used to be a prose trailer, and that is exactly why it moved — a hand-written line loses its own
+ * punctuation. A trailer written `Amends [ADR-0056](…)` was invisible to both readers, so the
+ * successor looked amended to a human and unamended to every machine.
  *
  * That is not hypothetical. ADR-0087 → ADR-0056, ADR-0098 → ADR-0030 and ADR-0115 → ADR-0094 all
  * shipped in this form, and all three predecessors sat unstamped from August until this check was
@@ -41,6 +42,19 @@ const LANDED = /^\d{4}-.+\.md$/;
  */
 const MALFORMED = /^Amends[^:\n]*ADR-\d{4}/;
 
+/**
+ * The retired prose grammar, now that the corpus declares its metadata in frontmatter. Each of
+ * these once lived in the body: `Recorded YYYY-MM-DD.` is `date:`, `Status: …` is `status:` and
+ * `superseded_by:`, and `Amends:` is `amends:`. A file still carrying one was not migrated, and
+ * both graph readers will silently disagree with it — which is the whole class of defect this
+ * check exists for. Frontmatter keys are lowercase, so nothing here can match inside the block.
+ */
+const RETIRED: [RegExp, string][] = [
+  [/^Recorded \d{4}-\d{2}-\d{2}/, "the date belongs in frontmatter as `date:`"],
+  [/^Status:/, "the status belongs in frontmatter as `status:` (and `superseded_by:` when stamped)"],
+  [/^Amends:/, "the amendment edge belongs in frontmatter as `amends: ADR-NNNN`"],
+];
+
 export function malformedTrailers(files: { path: string; content: string }[]): string[] {
   const findings: string[] = [];
   for (const { path, content } of files) {
@@ -48,8 +62,15 @@ export function malformedTrailers(files: { path: string; content: string }[]): s
       if (MALFORMED.test(line)) {
         findings.push(
           `${path}:${i + 1}: \`Amends\` names an ADR without the colon, so the amendment ` +
-            `graph cannot see it. Write \`Amends: ${line.slice(7).trim()}\`.`,
+            `graph cannot see it. Declare it in frontmatter as \`amends: ADR-NNNN\`.`,
         );
+        return;
+      }
+      for (const [pattern, repair] of RETIRED) {
+        if (pattern.test(line)) {
+          findings.push(`${path}:${i + 1}: retired prose grammar — ${repair}.`);
+          return;
+        }
       }
     });
   }

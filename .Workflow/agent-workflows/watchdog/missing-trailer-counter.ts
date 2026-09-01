@@ -94,12 +94,24 @@ export interface CounterOptions {
   log?: (line: string) => void;
 }
 
-export type CounterAction = "clean" | "opened" | "commented";
+export type CounterAction = "clean" | "opened" | "commented" | "silent" | "closed";
 
 export interface CounterOutcome {
   action: CounterAction;
   findings: TrailerFinding[];
   issue?: number;
+}
+
+/**
+ * Every finding filename this counter has already put on the standing issue — its body plus every
+ * comment. ADR-0117: a standing report speaks only on evidence it has not already cited. Reading
+ * the body alone would re-say, on every qualifying push, everything said in a comment yesterday,
+ * which is how #252 came to carry two identical `Still dead` reports fifteen minutes apart.
+ */
+function saidOn(gh: GhExec, issue: number): string {
+  const raw = gh(["issue", "view", String(issue), "--json", "body,comments"]);
+  const parsed = JSON.parse(raw) as { body?: string; comments?: { body?: string }[] };
+  return [parsed.body ?? "", ...(parsed.comments ?? []).map((c) => c.body ?? "")].join("\n");
 }
 
 export function countMissingTrailers(options: CounterOptions): CounterOutcome {
@@ -109,17 +121,36 @@ export function countMissingTrailers(options: CounterOptions): CounterOutcome {
   const adrs = readAdrCorpus(adrDir);
   const notes = readResearchCorpus(researchDir);
   const findings = findMissingTrailers(adrs, notes);
+  const standing = readStandingIssue(gh);
 
   if (findings.length === 0) {
+    // ADR-0099: a *recomputing* counter closes its standing issue when the count reaches zero.
+    // This one recomputes the whole corpus every run, so a zero is a real recovery and the issue
+    // has nothing left to say. It only logged "clean" before, which left the issue open forever
+    // and made its presence mean nothing.
+    if (standing) {
+      gh(["issue", "comment", String(standing.number),
+          "--body", "Recovered: every supersession carries an `amends:` declaration and every " +
+                    "research note carries a pointer. Closing — this counter recomputes the whole " +
+                    "corpus each run, so it will reopen if the count returns."]);
+      gh(["issue", "close", String(standing.number)]);
+      log(`closed #${standing.number}: the count reached zero`);
+      return { action: "closed", findings: [], issue: standing.number };
+    }
     log("clean: every supersession is trailered and every research note is pointered");
     return { action: "clean", findings: [] };
   }
 
-  const standing = readStandingIssue(gh);
   if (standing) {
-    gh(["issue", "comment", String(standing.number), "--body", signalBody(findings)]);
-    log(`commented on #${standing.number}: ${findings.length} finding(s)`);
-    return { action: "commented", findings, issue: standing.number };
+    const said = saidOn(gh, standing.number);
+    const fresh = findings.filter((finding) => !said.includes(finding.filename));
+    if (fresh.length === 0) {
+      log(`silent on #${standing.number}: all ${findings.length} finding(s) already named`);
+      return { action: "silent", findings, issue: standing.number };
+    }
+    gh(["issue", "comment", String(standing.number), "--body", signalBody(fresh)]);
+    log(`commented on #${standing.number}: ${fresh.length} new finding(s)`);
+    return { action: "commented", findings: fresh, issue: standing.number };
   }
 
   const createArgs = ["issue", "create", "--title", signalTitle(findings), "--body", signalBody(findings)];

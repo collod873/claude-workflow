@@ -26,12 +26,23 @@ describe("malformedTrailers", () => {
 
   it("names the repair, not just the fault", () => {
     const [finding] = malformedTrailers([{ path: "a.md", content: REAL_MALFORMED }]);
-    expect(finding).toContain("Write `Amends: [ADR-0056]");
+    expect(finding).toContain("amends: ADR-NNNN");
   });
 
-  it("passes the canonical form both graph readers accept", () => {
-    expect(malformedTrailers([{ path: "a.md", content: REAL_CANONICAL }])).toEqual([]);
-    expect(malformedTrailers([{ path: "a.md", content: "Amends: ADR-0008" }])).toEqual([]);
+  it("flags the once-canonical prose trailer too, now that the edge lives in frontmatter", () => {
+    expect(malformedTrailers([{ path: "a.md", content: REAL_CANONICAL }])).toHaveLength(1);
+    expect(malformedTrailers([{ path: "a.md", content: "Amends: ADR-0008" }])).toHaveLength(1);
+  });
+
+  it("flags the other two retired keys, which also moved into frontmatter", () => {
+    expect(malformedTrailers([{ path: "a.md", content: "Recorded 2026-08-26." }])[0]).toContain("date:");
+    expect(malformedTrailers([{ path: "a.md", content: "Status: superseded by ADR-0072" }])[0])
+      .toContain("status:");
+  });
+
+  it("passes a body carrying none of the retired keys", () => {
+    const clean = "---\nstatus: note\ndate: 2026-08-26\namends: ADR-0008\nreversal: x\n---\n\n# A title\n\nBody.\n";
+    expect(malformedTrailers([{ path: "a.md", content: clean }])).toEqual([]);
   });
 
   it("leaves an amendment to a spec alone — ADR-0113 carries one, correctly", () => {
@@ -81,7 +92,7 @@ describe("the check is wired to the venue that runs it", () => {
   const gauntlet = readFileSync(join(REPO_ROOT, "bin/gauntlet"), "utf8");
 
   it("is named in the push venue's check list, so a failure is reported under a name", () => {
-    expect(gauntlet).toMatch(/checks="\$checks contract corpus clones wiring workflows trailers"/);
+    expect(gauntlet).toMatch(/checks="\$checks[^"]*\btrailers\b[^"]*"/);
   });
 
   it("is spawned by bin/gauntlet, not merely importable from a test", () => {
@@ -89,6 +100,6 @@ describe("the check is wired to the venue that runs it", () => {
   });
 
   it("has its exit 2 read as a gauntlet that could not run, not as a finding", () => {
-    expect(gauntlet).toMatch(/own_protocol=" contract corpus clones wiring workflows trailers "/);
+    expect(gauntlet).toMatch(/own_protocol="[^"]*\btrailers\b[^"]*"/);
   });
 });

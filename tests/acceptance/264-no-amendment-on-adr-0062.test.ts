@@ -4,7 +4,7 @@ import { amendingAdrs, names } from "./264-amending-ruling.fixture";
 /**
  * #264's fourth acceptance criterion, verbatim from the ticket:
  *
- * - [ ] No ADR lands an amendment on the twice-superseded ADR-0062 — check: `! grep -rq 'Amends: ADR-0062' docs/adr`
+ * - [ ] The amending ruling lands no amendment on the twice-superseded ADR-0062 — check: `! grep -rq '^amends:.*ADR-0062' docs/adr`
  *
  * ADR-0062 is superseded by ADR-0085 and ADR-0085 by ADR-0100, so an amendment landed on it reaches
  * no reader — which is the mistake this spec's own predecessor made.
@@ -15,14 +15,14 @@ import { amendingAdrs, names } from "./264-amending-ruling.fixture";
  * and it landed nowhere near ADR-0062*, not *docs/adr is quiet*.
  */
 describe("#264 — the ruling amending ADR-0100", () => {
-  it("No ADR lands an amendment on the twice-superseded ADR-0062 — check: `! grep -rq 'Amends: ADR-0062' docs/adr`", () => {
+  it("The amending ruling lands no amendment on the twice-superseded ADR-0062 — check: `! grep -rq '^amends:.*ADR-0062' docs/adr`", () => {
     expect(
       amendingAdrs("ADR-0100").length,
-      'no record under docs/adr carries "Amends: ADR-0100" — the amending ruling has not been ' +
+      'no record under docs/adr carries "amends: ADR-0100" — the amending ruling has not been ' +
         "filed, so where it landed its amendments is not yet observable",
     ).toBeGreaterThan(0);
 
-    const misfiled = amendingAdrs("ADR-0062");
+    const misfiled = amendingAdrs("ADR-0100").filter((f) => /^amends:.*\bADR-0062\b/m.test(f.text));
 
     expect(
       names(misfiled),

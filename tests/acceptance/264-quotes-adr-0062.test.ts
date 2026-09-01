@@ -4,7 +4,7 @@ import { amendingAdrs, listed } from "./264-amending-ruling.fixture";
 /**
  * #264's third acceptance criterion, verbatim from the ticket:
  *
- * - [ ] That same ADR quotes the expired assumption from ADR-0062 — check: `grep -rlZ 'Amends: ADR-0100' docs/adr | xargs -r0 grep -lq 'ADR-0062'`
+ * - [ ] That same ADR quotes the expired assumption from ADR-0062 — check: `grep -rlZ '^amends:.*ADR-0100' docs/adr | xargs -r0 grep -lq 'ADR-0062'`
  *
  * ADR-0062 is where the uncapped-rounds assumption was written down — that the machine asked and the
  * owner is answering — and this ruling quotes it from there rather than amending it. So the record
@@ -13,12 +13,12 @@ import { amendingAdrs, listed } from "./264-amending-ruling.fixture";
  * answers", which is what the two word checks below stand for.
  */
 describe("#264 — the ruling amending ADR-0100", () => {
-  it("That same ADR quotes the expired assumption from ADR-0062 — check: `grep -rlZ 'Amends: ADR-0100' docs/adr | xargs -r0 grep -lq 'ADR-0062'`", () => {
+  it("That same ADR quotes the expired assumption from ADR-0062 — check: `grep -rlZ '^amends:.*ADR-0100' docs/adr | xargs -r0 grep -lq 'ADR-0062'`", () => {
     const amending = amendingAdrs("ADR-0100");
 
     expect(
       amending.length,
-      'no record under docs/adr carries "Amends: ADR-0100", so nothing quotes ADR-0062 — the ' +
+      'no record under docs/adr carries "amends: ADR-0100", so nothing quotes ADR-0062 — the ' +
         "amending ruling has not been filed",
     ).toBeGreaterThan(0);
 

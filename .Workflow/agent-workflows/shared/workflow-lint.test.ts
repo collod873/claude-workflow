@@ -105,7 +105,7 @@ describe("the check is wired to the venue that runs it", () => {
   const gauntlet = readFileSync(join(REPO_ROOT, "bin/gauntlet"), "utf8");
 
   it("is named in the push venue's check list, so a failure is reported under a name", () => {
-    expect(gauntlet).toMatch(/checks="\$checks contract corpus clones wiring workflows trailers"/);
+    expect(gauntlet).toMatch(/checks="\$checks[^"]*\bworkflows\b[^"]*"/);
   });
 
   it("is spawned by bin/gauntlet, not merely importable from a test", () => {
@@ -113,6 +113,6 @@ describe("the check is wired to the venue that runs it", () => {
   });
 
   it("has its exit 2 read as a gauntlet that could not run, not as a finding", () => {
-    expect(gauntlet).toMatch(/own_protocol=" contract corpus clones wiring workflows trailers "/);
+    expect(gauntlet).toMatch(/own_protocol="[^"]*\bworkflows\b[^"]*"/);
   });
 });

@@ -1,3 +1,4 @@
+import { seedCorpus } from "./push-fixture.ts";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -255,16 +256,7 @@ describe("bin/gauntlet push's regenerate && diff", () => {
     );
     mkdirSync(join(root, dirname(CONTRACT_RELATIVE_PATH)), { recursive: true });
 
-    mkdirSync(join(root, "docs/adr"), { recursive: true });
-    mkdirSync(join(root, "docs/research"), { recursive: true });
-    writeFileSync(
-      join(root, "docs/adr/0001-a-decision.md"),
-      "# A decision\n\nRecorded 2026-08-20.\n",
-    );
-    writeFileSync(
-      join(root, "docs/research/topic-2026-08.md"),
-      "**Resolves:** [x](https://example/1)\n\n## Section\n\nBody.\n",
-    );
+    seedCorpus(root);
     mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });
     writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));
 

@@ -81,7 +81,11 @@ export function adrsContaining(needle: string): RecordFile[] {
  * text because that is exactly what the criteria's `grep` matches on.
  */
 export function amendingAdrs(target: string): RecordFile[] {
-  return adrsContaining(`Amends: ${target}`);
+  // The edge is a frontmatter `amends:` key, and one key may name several predecessors
+  // (`amends: ADR-0061, ADR-0100`), so the target is matched anywhere on that line rather than
+  // as a literal `amends: <target>` substring — which is what the retired prose trailer allowed.
+  const declared = new RegExp(`^amends:.*\\b${target}\\b`, "m");
+  return adrFiles().filter((file) => declared.test(file.text));
 }
 
 /** The relative paths of `files`, so a failure message names what was actually found. */

@@ -45,30 +45,28 @@ export function adrNumber(path: string): number | undefined {
 }
 
 /**
- * The `Amends:` trailer in `content`, as the whole paragraph it opens — from the line starting
- * `Amends:` up to (not including) the next blank line. A paragraph rather than one line because a
- * hand-written trailer wraps: `ADR-0053` amends two predecessors across two lines, and `ADR-0066`
- * trails prose onto a second line after its link. `undefined` when there is no such trailer.
+ * The frontmatter block of `content` — the text between the opening `---` and the next `---` —
+ * or `undefined` when there is none. The amendment edge moved here from a prose `Amends:` trailer
+ * when the corpus was re-admitted: a prose line was hand-written, and three of them shipped
+ * without the colon both readers of this graph require, leaving their predecessors unstamped from
+ * August. A frontmatter key is written by `new-adr` and parsed the same way by every reader.
  */
-function amendsParagraph(content: string): string | undefined {
-  const lines = content.split("\n");
-  const start = lines.findIndex((line) => line.startsWith("Amends:"));
-  if (start === -1) return undefined;
-
-  let end = lines.findIndex((line, index) => index > start && line.trim() === "");
-  if (end === -1) end = lines.length;
-  return lines.slice(start, end).join(" ");
+function frontmatterBlock(content: string): string | undefined {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(content);
+  return match ? match[1] : undefined;
 }
 
-/**
- * Every ADR number an `Amends:` trailer in `content` names, in the order they appear. Matches both
- * `bin/new-adr --amends`'s plain form (`Amends: ADR-0008`) and the hand-written markdown-link form
- * (`Amends: [ADR-0026](0026-slug.md)`) — both carry the literal `ADR-NNNN`, which is all this reads.
- */
+/** The `amends:` declaration line, or `undefined`. */
+function amendsDeclaration(content: string): string | undefined {
+  const block = frontmatterBlock(content);
+  if (block === undefined) return undefined;
+  return block.split("\n").find((line) => line.startsWith("amends:"));
+}
+
 export function amendedAdrNumbers(content: string): number[] {
-  const paragraph = amendsParagraph(content);
-  if (!paragraph) return [];
-  return [...paragraph.matchAll(/ADR-(\d{4})/g)].map((match) => Number(match[1]));
+  const declaration = amendsDeclaration(content);
+  if (!declaration) return [];
+  return [...declaration.matchAll(/ADR-(\d{4})/g)].map((match) => Number(match[1]));
 }
 
 /**
@@ -102,10 +100,11 @@ export function trailerGraph(files: DocFile[]): Map<number, number[]> {
 /** The status line for a predecessor superseded by `successors` (sorted ascending, at least one). */
 export function statusLine(successors: number[]): string {
   const names = successors.map((n) => `ADR-${String(n).padStart(4, "0")}`).join(", ");
-  return `Status: superseded by ${names}`;
+  return `superseded_by: ${names}`;
 }
 
-const STATUS_LINE_PREFIX = "Status: superseded by";
+const STATUS_LINE_PREFIX = "superseded_by:";
+const STATUS_PREFIX = "status:";
 
 /**
  * `content` with its `Status: superseded by …` trailer set to exactly `statusLine(successors)`:
@@ -117,22 +116,31 @@ const STATUS_LINE_PREFIX = "Status: superseded by";
  */
 export function withStatusLine(content: string, successors: number[]): string {
   const line = statusLine(successors);
-  const lines = content.split("\n");
+  const block = frontmatterBlock(content);
+  // A file with no frontmatter is malformed in a way no back-stamp should paper over: writing a
+  // derived key into a document the readers cannot parse would produce a stamp nothing can find.
+  if (block === undefined) return content;
+
+  const head = content.indexOf("---\n") + 4;
+  const tail = content.indexOf("\n---\n", head);
+  const lines = block.split("\n");
 
   const existing = lines.findIndex((each) => each.startsWith(STATUS_LINE_PREFIX));
-  if (existing !== -1) {
-    if (lines[existing] === line) return content;
-    lines[existing] = line;
-    return lines.join("\n");
+  if (existing !== -1) lines[existing] = line;
+  else {
+    // After `date:` when there is one, so the derived key sits with the other metadata rather
+    // than after the prose `reversal:` sentence, which is the field a reader scans for.
+    const date = lines.findIndex((each) => each.startsWith("date:"));
+    lines.splice(date === -1 ? 0 : date + 1, 0, line);
   }
 
-  const recorded = lines.findIndex((each) => each.startsWith("Recorded "));
-  // Every ADR carries a `Recorded YYYY-MM-DD.` line (docs/adr/README.md's format); a file that
-  // doesn't is malformed in a way no back-stamp should paper over silently, so the trailer goes
-  // right after the title instead of being dropped.
-  const anchor = recorded === -1 ? 0 : recorded + 1;
-  lines.splice(anchor, 0, "", line);
-  return lines.join("\n");
+  // The status is derived too. An ADR whose ruling has been replaced is not a live constraint,
+  // and leaving it saying `constraint` is exactly the lie the whole re-admission removed.
+  const status = lines.findIndex((each) => each.startsWith(STATUS_PREFIX));
+  if (status !== -1) lines[status] = "status: superseded";
+
+  const updated = content.slice(0, head) + lines.join("\n") + content.slice(tail);
+  return updated === content ? content : updated;
 }
 
 /**

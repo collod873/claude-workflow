@@ -57,7 +57,7 @@ describe("the rule, run over the corpus that motivated it", () => {
     expect(EVIDENCE.notes.length).toBeGreaterThan(5);
   });
 
-  it("flags every ADR that carries an Amends: trailer, and nothing else", () => {
+  it("flags every ADR that carries an amends: declaration, and nothing else", () => {
     const trailered = EVIDENCE.adrs.filter((doc) => hasAmendsTrailer(doc.body));
 
     // Two assertions where there was one roster, for the same reason the count above became a
@@ -69,7 +69,7 @@ describe("the rule, run over the corpus that motivated it", () => {
     // Together those are stricter than the equality was, not looser. The equality caught a new
     // false positive only by also failing on every true positive, which is what it did the first
     // time an ADR with an `Amends:` line arrived after it was written.
-    for (const doc of trailered) expect(doc.body).toMatch(/^Amends:/m);
+    for (const doc of trailered) expect(doc.body).toMatch(/^amends:\s*ADR-\d{4}/m);
     expect(trailered.map((doc) => doc.filename).sort()).toEqual(expect.arrayContaining([
       "0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md",
       "0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md",
@@ -94,7 +94,11 @@ describe("the rule, run over the corpus that motivated it", () => {
     // What replaces it is the three conditions the rule is actually made of, asserted over
     // whatever the corpus holds. That is stricter than the equality was: the count could be right
     // with the wrong 27 documents in it, and these cannot.
-    expect(candidates.length).toBeGreaterThan(0); // a floor, so a green sweep is not an empty one
+    // No floor on the corpus any more. The re-admission compressed every body to its ruling and
+    // moved the amendment edge into frontmatter, which took this rule's candidate list from 39 to
+    // zero — a clean corpus is the goal, so a test that required a dirty one would have to be
+    // satisfied by leaving a defect in place. Firing is proved against a synthetic document below
+    // instead, where it can be proved on purpose rather than by accident.
     for (const doc of candidates) {
       expect(hasSupersessionVerb(doc.body)).toBe(true);
       expect(lowerNumberedAdrLinks(doc.body, doc.number).length).toBeGreaterThan(0);
@@ -113,19 +117,20 @@ describe("the rule, run over the corpus that motivated it", () => {
       shouldFlag.map((doc) => doc.filename).sort(),
     );
 
-    // The roster the rule was written against, as a subset rather than an equality — these must
-    // still be found, so a regression that stops recognising a verb or a link is caught, while an
-    // ADR filed tomorrow is free to join them.
-    expect(candidates.map((doc) => doc.filename)).toEqual(
-      expect.arrayContaining([
-        "0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md",
-        "0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md",
-        "0021-one-gate-per-rule-the-workstation-close-hook-stands-down-whe.md",
-        "0026-the-build-order-and-the-filed-open-questions-live-as-issues.md",
-        "0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md",
-        "0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md",
-      ]),
-    );
+    // The rule still fires on the shape it was built for. Stated against a document written here
+    // rather than against whichever ADR happens to be malformed today: a corpus is supposed to
+    // reach zero candidates and stay there, so the corpus cannot be the thing that proves the
+    // rule works. This is the exact shape ADR-0045 named — a supersession verb, a link to a
+    // lower-numbered ADR, and no declared edge.
+    const synthetic = {
+      number: 99,
+      filename: "0099-a-synthetic-ruling.md",
+      title: "A synthetic ruling",
+      body: "This retires [ADR-0045](0045-a-superseded-adr-is-named-by-a-trailer.md) outright.\n",
+    };
+    expect(isMissingAmendsTrailer(synthetic)).toBe(true);
+    expect(isMissingAmendsTrailer({ ...synthetic, body: `---\namends: ADR-0045\n---\n${synthetic.body}` }))
+      .toBe(false);
   });
 
   it("flags no research notes as missing a Resolves: field — every note on disk now carries a pointer", () => {
@@ -189,7 +194,7 @@ describe("lowerNumberedAdrLinks", () => {
 
 describe("hasAmendsTrailer", () => {
   it("takes the trailer at the start of a line", () => {
-    expect(hasAmendsTrailer("Recorded 2026-08-26.\n\nAmends: [ADR-0004](0004-slug.md).\n")).toBe(true);
+    expect(hasAmendsTrailer("status: note\ndate: 2026-08-26\namends: ADR-0004\n")).toBe(true);
   });
 
   it("leaves the word used mid-sentence", () => {
@@ -210,7 +215,7 @@ describe("isMissingAmendsTrailer", () => {
   });
 
   it("is false once the trailer exists, even with the verb and the link present", () => {
-    const body = "Recorded 2026-08-26.\n\nAmends: [ADR-0005](0005-a-decision.md).\n\nThis retired it.\n";
+    const body = "status: note\ndate: 2026-08-26\namends: ADR-0005\n\nThis retired it.\n";
     expect(isMissingAmendsTrailer(adr({ number: 10, body }))).toBe(false);
   });
 
@@ -301,7 +306,11 @@ describe("readAdrCorpus and readResearchCorpus, against a real tree", () => {
  * model of GitHub, so a test can assert "wrote nothing else" from `calls`
  * staying exactly what it expects rather than from assuming it.
  */
-function fakeGh(options: { issues?: Array<{ number: number; body: string; state: string }> } = {}): {
+function fakeGh(options: {
+  issues?: Array<{ number: number; body: string; state: string }>;
+  /** What the standing issue has already said — body plus comments, joined. */
+  said?: string;
+} = {}): {
   gh: GhExec;
   calls: string[][];
 } {
@@ -311,6 +320,11 @@ function fakeGh(options: { issues?: Array<{ number: number; body: string; state:
     if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
     if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
     if (args[0] === "issue" && args[1] === "comment") return "";
+    if (args[0] === "issue" && args[1] === "close") return "";
+    // ADR-0117: the counter reads what it has already said before saying it again, so the fake
+    // has to answer that read. `said` is the standing issue's body plus its comments.
+    if (args[0] === "issue" && args[1] === "view")
+      return JSON.stringify({ body: options.said ?? "", comments: [] });
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
   return { gh, calls };
@@ -324,19 +338,34 @@ describe("countMissingTrailers", () => {
     return dir;
   }
 
+  /**
+   * The arrangement every standing-issue case shares: a corpus, a fake `gh` carrying an open
+   * standing issue, and the outcome of running the counter over them. Five tests spelled these
+   * three lines out before the clone gate refused the sixth.
+   */
+  function runOver(adrs: Record<string, string>, options: Parameters<typeof fakeGh>[0] = {}) {
+    const adrDir = corpusDir(adrs);
+    const researchDir = corpusDir({ "topic-2026-08.md": CLEAN_NOTE });
+    const fake = fakeGh(options);
+    const outcome = countMissingTrailers({ gh: fake.gh, adrDir, researchDir });
+    return { outcome, fake };
+  }
+
+  const STANDING = {
+    issues: [{ number: 7, body: `earlier\n${FINDING_MARKER}`, state: "OPEN" }],
+  };
+
   const CANDIDATE_ADR = "Recorded 2026-08-26.\n\nThis retired [ADR-0001](0001-a-decision.md).\n";
   const CLEAN_NOTE = "**Resolves:** [x](https://example/1)\n\n## Section\n";
   const MISSING_NOTE = "**Status:** measured\n\n## Section\n";
 
   it("writes nothing at all when the corpus carries no candidate", () => {
-    const adrDir = corpusDir({ "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" });
-    const researchDir = corpusDir({ "topic-2026-08.md": CLEAN_NOTE });
-    const fake = fakeGh();
-
-    const outcome = countMissingTrailers({ gh: fake.gh, adrDir, researchDir });
+    const { outcome, fake } = runOver({ "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" });
 
     expect(outcome).toEqual({ action: "clean", findings: [] });
-    expect(fake.calls).toEqual([]);
+    // One read — "is a standing issue open?" — and no write. The counter has to ask, because a
+    // zero count with an issue still open is the recovery ADR-0099 says it must close on.
+    expect(fake.calls.filter((argv) => argv[1] !== "list")).toEqual([]);
   });
 
   it("opens an issue naming every candidate when no standing issue exists", () => {
@@ -359,16 +388,47 @@ describe("countMissingTrailers", () => {
   });
 
   it("comments on a standing issue rather than opening a second one", () => {
-    const adrDir = corpusDir({ "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}` });
-    const researchDir = corpusDir({ "topic-2026-08.md": CLEAN_NOTE });
-    const fake = fakeGh({ issues: [{ number: 7, body: `earlier\n${FINDING_MARKER}`, state: "OPEN" }] });
-
-    const outcome = countMissingTrailers({ gh: fake.gh, adrDir, researchDir });
+    const { outcome, fake } = runOver({ "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}` }, STANDING);
 
     expect(outcome).toEqual({ action: "commented", issue: 7, findings: outcome.findings });
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create")).toBe(false);
     const comment = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "comment")!;
     expect(comment[2]).toBe("7");
+  });
+
+  it("closes the standing issue when the count reaches zero", () => {
+    const { outcome, fake } = runOver({ "0001-a-decision.md": "# A decision\n\nRecorded 2026-08-20.\n" }, STANDING);
+
+    // ADR-0099: a recomputing counter closes at zero. This one recomputes the whole corpus every
+    // run, so a zero is a real recovery — and an issue that never closes is an issue whose
+    // presence stops meaning anything.
+    expect(outcome).toEqual({ action: "closed", issue: 7, findings: [] });
+    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "close")).toBe(true);
+    const comment = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "comment")!;
+    expect(comment[comment.indexOf("--body") + 1]).toContain("Recovered");
+  });
+
+  it("says nothing when every finding is already named on the standing issue", () => {
+    const { outcome, fake } = runOver({ "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}` }, { ...STANDING, said: "0010-a-later-decision.md was already reported here" });
+
+    // ADR-0117: a standing report speaks only on evidence it has not already cited. Without this,
+    // every qualifying push re-said the whole list, and the mechanism got louder the longer a
+    // finding went unfixed.
+    expect(outcome.action).toBe("silent");
+    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "comment")).toBe(false);
+  });
+
+  it("comments on only the findings it has not already named", () => {
+    const { outcome, fake } = runOver({
+      "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}`,
+      "0011-another.md": `# Another\n\n${CANDIDATE_ADR}`,
+    }, { ...STANDING, said: "0010-a-later-decision.md was already reported here" });
+
+    expect(outcome.action).toBe("commented");
+    const comment = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "comment")!;
+    const body = comment[comment.indexOf("--body") + 1];
+    expect(body).toContain("0011-another.md");
+    expect(body).not.toContain("0010-a-later-decision.md");
   });
 
   it("makes every GitHub write through the injected gh, and only the injected gh", () => {
