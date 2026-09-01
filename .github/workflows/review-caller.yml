@@ -13,6 +13,9 @@ name: Review
 
 jobs:
   review:
+    permissions:
+      contents: read
+      issues: write
     # The same two conditions `review.yml`'s job `if:` carried before the split. `event != 'push'`
     # is not cosmetic: `verify-caller.yml` fires on `push: main` as well as on an implementer's
     # dispatch, and on the push run `workflow_run.head_sha` *is* trunk's tip — so without this,

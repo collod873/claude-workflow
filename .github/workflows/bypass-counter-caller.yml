@@ -13,6 +13,10 @@ name: Bypass counter
 
 jobs:
   count:
+    permissions:
+      contents: read
+      actions: read
+      issues: write
     # `verify.yml` runs on every PR branch as well as `main`; only a run on `main` is a tree that
     # reached trunk, which is the event this counts.
     if: github.event.workflow_run.head_branch == 'main'

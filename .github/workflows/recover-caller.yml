@@ -27,6 +27,11 @@ name: Recover
 
 jobs:
   recover:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
     # The same union `recover.yml`'s job `if:` carried before the split.
     if: >-
       github.event_name == 'workflow_dispatch' ||

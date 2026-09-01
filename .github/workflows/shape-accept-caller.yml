@@ -6,4 +6,7 @@ name: Shape — accept (caller)
 
 jobs:
   accept:
+    permissions:
+      contents: write
+      issues: write
     uses: collod873/claude-workflow/.github/workflows/shape-accept.yml@main

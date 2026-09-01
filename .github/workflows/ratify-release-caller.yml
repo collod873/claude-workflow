@@ -6,4 +6,6 @@ name: Ratify release (caller)
 
 jobs:
   ratify-release:
+    permissions:
+      contents: write
     uses: collod873/claude-workflow/.github/workflows/ratify-release.yml@main

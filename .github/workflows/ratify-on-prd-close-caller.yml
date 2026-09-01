@@ -6,4 +6,7 @@ name: Ratify on PRD close (caller)
 
 jobs:
   ratify-on-prd-close:
+    permissions:
+      contents: write
+      issues: read
     uses: collod873/claude-workflow/.github/workflows/ratify-on-prd-close.yml@main

@@ -8,6 +8,9 @@ name: Shape (caller)
 
 jobs:
   shape:
+    permissions:
+      contents: read
+      issues: write
     uses: collod873/claude-workflow/.github/workflows/shape.yml@main
     # A `uses:` job passes no secret to the reusable workflow unless told to — `shape.yml` spends
     # `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.
