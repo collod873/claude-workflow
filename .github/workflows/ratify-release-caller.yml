@@ -1,0 +1,9 @@
+name: Ratify release (caller)
+
+"on":
+  pull_request:
+    types: [closed]
+
+jobs:
+  ratify-release:
+    uses: collod873/claude-workflow/.github/workflows/ratify-release.yml@main

@@ -186,11 +186,30 @@ describe("ratify-release.yml agrees with the ratifier PR title it scopes on", ()
     "utf8",
   );
 
-  it("fires on pull_request closed and nothing else", () => {
-    expect(workflow).toMatch(/pull_request:\s*\n\s*types:\s*\[closed\]/);
+  it("is reusable — a caller supplies the trigger (ADR-0055, ADR-0132)", () => {
+    expect(workflow).toMatch(/^\s*workflow_call:\s*$/m);
   });
 
   it("gates the job on the same title the ratifier opens with, so an ordinary PR merge never starts this runner", () => {
     expect(workflow).toContain(`github.event.pull_request.title == '${RATIFIER_PR_TITLE}'`);
+  });
+
+  it("hands the module the target checkout, not its own cwd", () => {
+    expect(workflow).toContain("TARGET_WORKSPACE");
+  });
+});
+
+describe("ratify-release-caller.yml gates the reusable workflow", () => {
+  const workflow = readFileSync(
+    fileURLToPath(new URL("../../../.github/workflows/ratify-release-caller.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("fires on pull_request closed and nothing else", () => {
+    expect(workflow).toMatch(/pull_request:\s*\n\s*types:\s*\[closed\]/);
+  });
+
+  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
+    expect(workflow).toContain("collod873/claude-workflow/.github/workflows/ratify-release.yml@main");
   });
 });

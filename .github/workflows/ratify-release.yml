@@ -25,15 +25,26 @@ name: Ratify release
 #
 # `merge_commit_sha` — not `GITHUB_SHA` — is what these records key to: for a `pull_request` event
 # `GITHUB_SHA` is the PR branch's own last commit, never the commit that landed on the base branch.
-# `actions/checkout`'s `ref:` below checks that commit out explicitly so `git notes add` has an
+# The target checkout's `ref:` below checks that commit out explicitly so `git notes add` has an
 # object to attach to.
+#
+# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
+# repository carries only `ratify-release-caller.yml`, a trigger and a `uses:`, never a copy of the
+# machine. This repository is its own first caller: the caller stub lives next to this file, at the
+# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
+# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
+# (the target, checked out at the merge commit, for the `refs/notes/ratifications` this reads and
+# writes) — never one copy standing in for the other. The machine checkout carries no credential
+# input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously
+# and no PAT is added here that would have to be rotated in every enrolled repository. The target
+# checkout carries the ambient per-job credential `actions/checkout` binds by default, which is what
+# lets the notes push below land.
 
 "on":
-  pull_request:
-    types: [closed]
+  workflow_call:
 
 permissions:
-  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to origin.
+  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to the target's origin.
   contents: write
 
 jobs:
@@ -46,12 +57,16 @@ jobs:
       PR_MERGED: ${{ github.event.pull_request.merged }}
       PR_BODY: ${{ github.event.pull_request.body }}
       MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Checkout
+      - name: Checkout machine
         uses: actions/checkout@v4
         with:
+          repository: collod873/claude-workflow
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target
           # The merge commit itself when there is one, so it exists locally for `git notes add` to
           # attach to; the default ref otherwise, which a closed-without-merging run never writes to.
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
@@ -61,12 +76,15 @@ jobs:
       # compare against; a completely fresh checkout has none. Let to fail: a repo before its first
       # ratification has no such ref yet.
       - name: Fetch the ratifications ref
+        working-directory: target
         run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
 
       # A runner has no git identity, and `git notes add` writes an object with a committer on it
       # (#107, #109). The bot is the honest author: this note records what the run read off the pull
-      # request, not a person's own commit.
+      # request, not a person's own commit. Scoped to the target checkout — the only one this job
+      # ever writes into.
       - name: Identify the committer
+        working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -78,4 +96,6 @@ jobs:
       # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
       # reporting step here.
       - name: Record what this batch ratified
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/observations/run-ratification.ts
