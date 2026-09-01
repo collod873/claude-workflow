@@ -175,8 +175,6 @@ describe("the sweep's toolbelt", () => {
 
     expect(denied).toEqual(SWEEP_DENIED_TOOLS);
     expect(denied).toEqual(expect.arrayContaining(["WebFetch", "WebSearch", "Task"]));
-    // Reading is the job. A sweep denied these is a sweep that cannot do it,
-    // and `Bash` is how it reaches `gh`.
     expect(denied).not.toEqual(expect.arrayContaining(["Read", "Grep", "Glob", "Bash"]));
   });
 
