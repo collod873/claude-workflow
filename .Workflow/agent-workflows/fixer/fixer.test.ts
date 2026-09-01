@@ -484,29 +484,48 @@ interface FixerWorkflow {
   };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs: { fixer: { if?: string; steps?: Array<{ name?: string; run?: string; with?: { ref?: string } }> } };
+  jobs: {
+    fixer: {
+      if?: string;
+      with?: { run_id?: string };
+      steps?: Array<{ name?: string; run?: string; with?: { ref?: string } }>;
+    };
+  };
 }
 
 /**
  * The lane this file's code had never been part of (#169, #234) — `fixer.yml`'s own header comment
- * is the home for why it exists. These assert the listener, not the loop: the trigger, the
- * conclusion it reacts to, and the one coupling that decides whether any of it resolves a PR.
+ * is the home for why it exists. ADR-0055 (amended by ADR-0132) split it: `fixer-caller.yml` is
+ * the listener (the trigger and the conclusion it reacts to), `fixer.yml` is the reusable workflow
+ * it calls once it has decided a run is worth reacting to.
  */
-describe("fixer.yml is the listener a red Verify never had", () => {
-  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
+describe("fixer-caller.yml is the listener a red Verify never had", () => {
+  const { workflow } = readWorkflow<FixerWorkflow>("fixer-caller.yml");
 
-  it("fires on a completed workflow_run of Verify, the same trigger review.yml carries", () => {
+  it("fires on a completed workflow_run of Verify, the same trigger review-caller.yml carries", () => {
     expect(workflow.on?.workflow_run?.workflows).toEqual(["Verify"]);
     expect(workflow.on?.workflow_run?.types).toEqual(["completed"]);
     expect(workflow.on?.pull_request, "a pull_request trigger runs the PR's own copy of this file").toBeUndefined();
   });
 
-  it("reacts to the conclusion review.yml turns away, and only that one", () => {
+  it("reacts to the conclusion review-caller.yml turns away, and only that one", () => {
     expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.conclusion == 'failure'");
   });
 
   it("leaves a red push run on trunk alone, which has no pull request to fix", () => {
     expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.event != 'push'");
+  });
+});
+
+/**
+ * The loop, not the listener: what runs once `fixer-caller.yml` has already decided a run is
+ * worth reacting to and handed this workflow the run id it resolved.
+ */
+describe("fixer.yml, the reusable workflow fixer-caller.yml calls", () => {
+  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
+
+  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
   });
 
   it("grants the writes fixer.ts performs: a push to the branch, a PR comment, and needs-human plus an assignee on the ticket", () => {
@@ -553,6 +572,7 @@ describe("fixer.yml is the listener a red Verify never had", () => {
  */
 describe("the door a red Verify rings itself", () => {
   const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
+  const caller = readWorkflow<FixerWorkflow>("fixer-caller.yml");
   const verify = readWorkflow<{
     jobs: Record<string, { name?: string; if?: string; needs?: string[]; permissions?: Record<string, string>; steps?: Array<{ run?: string }> }>;
   }>("verify.yml");
@@ -560,9 +580,11 @@ describe("the door a red Verify rings itself", () => {
   const signal = Object.values(verify.workflow.jobs).find((job) => job.steps?.some((step) => step.run?.includes("event_type=fixer-needed")));
 
   it("answers the fixer-needed dispatch verify.yml sends, keyed on the failed run", () => {
-    expect(workflow.on?.repository_dispatch?.types).toEqual(["fixer-needed"]);
-    expect(workflow.jobs.fixer.if).toContain("github.event.action == 'fixer-needed'");
-    expect(source).toContain("github.event.client_payload.run_id");
+    // ADR-0055/ADR-0132: `fixer-caller.yml` carries this door and its own routing `if:` now —
+    // `fixer.yml` never reads `github.event` at all, only the `run_id` input the caller resolved.
+    expect(caller.workflow.on?.repository_dispatch?.types).toEqual(["fixer-needed"]);
+    expect(caller.workflow.jobs.fixer.if).toContain("github.event.action == 'fixer-needed'");
+    expect(caller.source).toContain("github.event.client_payload.run_id");
 
     expect(signal, "verify.yml sends no fixer-needed dispatch").toBeDefined();
     const ring = signal?.steps?.find((step) => step.run?.includes("event_type=fixer-needed"));
@@ -612,8 +634,11 @@ describe("the door a red Verify rings itself", () => {
   it("reacts once per Verify run, whichever door named it", () => {
     // Both doors ring for one failure whenever `workflow_run` does arrive, and the concurrency
     // group makes the late one queue behind the dispatch rather than race it — so without the
-    // marker every red Verify buys a second attempt loop at the same ticket.
-    expect(workflow.concurrency?.group).toContain("github.event.client_payload.run_id");
+    // marker every red Verify buys a second attempt loop at the same ticket. `fixer-caller.yml`
+    // resolves the run id off whichever door fired (the same `||` chain the concurrency group used
+    // to spell directly); `fixer.yml`'s own group keys on the `run_id` input that resolution feeds.
+    expect(caller.workflow.jobs.fixer.with?.run_id).toContain("github.event.client_payload.run_id");
+    expect(workflow.concurrency?.group).toContain("inputs.run_id");
 
     const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
     expect(resolve?.run).toContain('MARKER="<!-- fixer-run:$RUN_ID -->"');

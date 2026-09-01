@@ -1,4 +1,4 @@
-name: Recover
+name: Recover (reusable)
 
 # What runs when `Implement` (lane 05) completes red **after the model already answered** — run
 # 33316096960 is the bill for not having this: 40 minutes of Sonnet, then `git push` rejected by
@@ -7,11 +7,14 @@ name: Recover
 # recovered it by hand.
 #
 # `fixer.yml` is this file's structural twin: same `workflow_run` shape, same job-level `if:` on
-# the conclusion (`workflow_run` carries no `conclusion` filter of its own — that comment on
-# `fixer.yml` is the reason), same hand door for a run this trigger cannot reach on its own.
-# `implement.yml` carries no `push` trigger the way `verify.yml` does, so this needs none of
-# `fixer.yml`'s second condition (`event != 'push'`) — every completed `Implement` run this reacts
-# to already has a ticket behind it.
+# the conclusion that used to live here (`workflow_run` carries no `conclusion` filter of its own
+# — that comment on `fixer.yml` is the reason), same hand door for a run this trigger cannot reach
+# on its own. `implement.yml` carries no `push` trigger the way `verify-caller.yml` does, so this
+# needs none of `fixer-caller.yml`'s second condition (`event != 'push'`) — every completed
+# `Implement` run this reacts to already has a ticket behind it. ADR-0055 (amended by ADR-0132)
+# moved all three doors and that `if:` out of this file: `workflow_run` cannot be parameterized
+# through `workflow_call`, so `recover-caller.yml` is what actually carries them now, and only the
+# run id it resolves crosses the boundary, as the `run_id` input below.
 #
 # **No model is ever run here.** `recover.ts` either finishes lane 05's own tail over an answer
 # that already exists, or sends the same dispatch lane 05 itself listens for — both are argv
@@ -19,20 +22,12 @@ name: Recover
 # OAuth secret the other lanes need to spend a model.
 
 "on":
-  workflow_run:
-    workflows: ["Implement"]
-    types: [completed]
-  # The door lane 05 rings itself, from its own `if: failure()` step — see `implement.yml` for why
-  # `workflow_run` alone was not enough. `types:` names this lane's one action (ADR-0090).
-  repository_dispatch:
-    types: [implement-failed]
-  # The hand door. A `workflow_run` trigger cannot be fired by a person — no way to react to a
-  # failed run from before this file existed, no way to retry one after the cause was dealt with
-  # by hand, no way to find out whether this lane runs at all short of waiting for a real failure.
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      # The run id `recover-caller.yml` resolved from whichever of its three doors fired — see
+      # that file for the `||` chain.
       run_id:
-        description: "A completed Implement run to react to. Empty resolves no ticket and exits."
+        type: string
         required: false
         default: ""
 
@@ -55,22 +50,23 @@ concurrency:
   # already committed and pushed, or a marker comment already posted, is not undone by dropping
   # the run that made it.
   # Keyed on the *failed* run, whichever door named it, so the dispatch and the late `workflow_run`
-  # for one failure queue behind each other rather than racing for the same branch claim.
-  group: recover-${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.run_id }}
+  # for one failure queue behind each other rather than racing for the same branch claim. `||
+  # github.run_id` still covers the same gap it always did — a call this cannot resolve a run id
+  # for groups on itself rather than colliding with every other.
+  group: recover-${{ inputs.run_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   recover:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.action == 'implement-failed' ||
-      github.event.workflow_run.conclusion == 'failure'
+    # No `if:` here — `recover-caller.yml`'s own job already decided this call should happen at
+    # all (its `if:` is the union this used to be), so every call that reaches this workflow is
+    # one to act on.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      RUN_ID: ${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}
+      RUN_ID: ${{ inputs.run_id }}
     steps:
       # Plain checkout, no `ref:` — unlike `fixer.yml`, which lands on a pull request's own
       # branch, this run may need to *claim a fresh one* (`claimImplementationBranch` reads

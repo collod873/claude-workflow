@@ -1,4 +1,4 @@
-name: Bypass counter
+name: Bypass counter (reusable)
 
 # PRD #117, move 8d: a bypass becomes one countable event.
 #
@@ -15,11 +15,15 @@ name: Bypass counter
 #
 # `bypass-counter.ts` files its own standing issue through the `gh` seam in `shared/gh.ts`, which is
 # why the job below ends at the step that runs it and has no reporting step of its own.
+#
+# ADR-0055 (amended by ADR-0132): `workflow_run` cannot be parameterized through `workflow_call`, so
+# `bypass-counter-caller.yml` is what actually carries that trigger and the "only a run on main"
+# scope check now — `bypass-counter.ts` recomputes the count from `gh` directly rather than reading
+# anything off the triggering event, so no field of it needs to cross the boundary at all; this
+# workflow takes no input.
 
 "on":
-  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
+  workflow_call:
 
 permissions:
   # read: the checkout.
@@ -36,11 +40,9 @@ concurrency:
 
 jobs:
   count:
-    # `verify.yml` runs on every PR branch as well as `main` (`verify.yml`'s own `on:` block); only a
-    # run on `main` is a tree that reached trunk, which is the event this counts. `bypass.ts`'s own
-    # `isBypass` checks the same fact independently off the fetched run data, so a mis-scope here
-    # cannot make the count wrong — only redundant.
-    if: github.event.workflow_run.head_branch == 'main'
+    # No `if:` here — `bypass-counter-caller.yml`'s own job already scoped this call to a run on
+    # `main` (see that file). `bypass.ts`'s own `isBypass` checks the same fact independently off
+    # the fetched run data, so a mis-scope there cannot make the count wrong — only redundant.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

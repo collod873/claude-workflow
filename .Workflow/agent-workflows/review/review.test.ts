@@ -495,8 +495,19 @@ const REVIEW_YML_PATH = resolve(
   "../../../.github/workflows/review.yml",
 );
 
-describe("review.yml's trigger", () => {
-  const workflow = parse(readFileSync(REVIEW_YML_PATH, "utf8")) as {
+const REVIEW_CALLER_YML_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../.github/workflows/review-caller.yml",
+);
+
+/**
+ * ADR-0055 (amended by ADR-0132) split this lane: `review-caller.yml` carries the trigger and the
+ * routing decision `review.yml`'s own job `if:` used to make (`workflow_run` cannot be
+ * parameterized through `workflow_call`), and `review.yml` itself is the reusable workflow it
+ * calls, taking only the head SHA that decision turns up.
+ */
+describe("review-caller.yml's trigger", () => {
+  const workflow = parse(readFileSync(REVIEW_CALLER_YML_PATH, "utf8")) as {
     on: { workflow_run?: { workflows: string[]; types: string[] }; pull_request?: unknown };
     jobs: { review: { if?: string } };
   };
@@ -516,9 +527,9 @@ describe("review.yml's trigger", () => {
   });
 
   it("only reviews the Verify run an implementer's dispatch started", () => {
-    // `verify.yml` also fires on `push: main`, where `workflow_run.head_sha` is trunk's own tip and
-    // `origin/main..head_sha` is empty — so without this the lane spent a reviewer fleet reading
-    // nothing on every commit the owner pushed himself.
+    // `verify-caller.yml` also fires on `push: main`, where `workflow_run.head_sha` is trunk's own
+    // tip and `origin/main..head_sha` is empty — so without this the lane spent a reviewer fleet
+    // reading nothing on every commit the owner pushed himself.
     //
     // Spelled from the other side — "not the push run" — because this workflow is not itself
     // dispatch-triggered and naming that event made it read as one to ADR-0090's sweep (#188). The
@@ -544,9 +555,19 @@ describe("review.yml's trigger", () => {
 
     expect(Object.keys(verifyCaller.on).sort()).toEqual(["push", "repository_dispatch"]);
   });
+});
+
+describe("review.yml, the reusable workflow review-caller.yml calls", () => {
+  const workflow = parse(readFileSync(REVIEW_YML_PATH, "utf8")) as {
+    on: Record<string, unknown>;
+    jobs: { review: { env?: Record<string, string> } };
+  };
+
+  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
+    expect(Object.keys(workflow.on)).toEqual(["workflow_call"]);
+  });
 
   it("sets the assignee review.ts refuses to run without", () => {
-    const job = workflow.jobs.review as unknown as { env?: Record<string, string> };
-    expect(job.env?.SIGNAL_ASSIGNEE).toBeDefined();
+    expect(workflow.jobs.review.env?.SIGNAL_ASSIGNEE).toBeDefined();
   });
 });

@@ -342,11 +342,17 @@ interface RecoverWorkflow {
   on?: { workflow_run?: { workflows?: string[]; types?: string[] }; repository_dispatch?: { types?: string[] }; workflow_dispatch?: unknown };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs: { recover: { if?: string; steps?: Array<{ run?: string }> } };
+  jobs: { recover: { if?: string; with?: { run_id?: string }; steps?: Array<{ run?: string }> } };
 }
 
-describe("recover.yml is the listener a red Implement never had", () => {
-  const { workflow, source } = readWorkflow<RecoverWorkflow>("recover.yml");
+/**
+ * ADR-0055 (amended by ADR-0132) split this lane: `recover-caller.yml` carries all three doors
+ * and the routing decision `recover.yml`'s own job `if:` used to make (`workflow_run` cannot be
+ * parameterized through `workflow_call`), and `recover.yml` itself is the reusable workflow it
+ * calls, taking only the run id that decision resolved.
+ */
+describe("recover-caller.yml is the listener a red Implement never had", () => {
+  const { workflow } = readWorkflow<RecoverWorkflow>("recover-caller.yml");
 
   it("fires on a completed workflow_run of Implement, plus a hand door", () => {
     expect(workflow.on?.workflow_run?.workflows).toEqual(["Implement"]);
@@ -368,12 +374,24 @@ describe("recover.yml is the listener a red Implement never had", () => {
   it("also answers the implement-failed dispatch lane 05 sends itself, keyed on the failed run", () => {
     expect(workflow.on?.repository_dispatch?.types).toEqual(["implement-failed"]);
     expect(workflow.jobs.recover.if).toContain("github.event.action == 'implement-failed'");
-    expect(source).toContain("github.event.client_payload.run_id");
+    expect(workflow.jobs.recover.with?.run_id).toContain("github.event.client_payload.run_id");
 
     const implement = readWorkflow<{ jobs: { implement: { steps: Array<{ if?: string; run?: string }> } } }>("implement.yml");
     const ring = implement.workflow.jobs.implement.steps.find((step) => step.run?.includes("event_type=implement-failed"));
     expect(ring?.if).toBe("failure()");
     expect(ring?.run).toContain("client_payload[run_id]=$GITHUB_RUN_ID");
+  });
+});
+
+/**
+ * The loop, not the listener: what runs once `recover-caller.yml` has already decided a run is
+ * worth reacting to and handed this workflow the run id it resolved.
+ */
+describe("recover.yml, the reusable workflow recover-caller.yml calls", () => {
+  const { workflow, source } = readWorkflow<RecoverWorkflow>("recover.yml");
+
+  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
   });
 
   it("grants the writes recover.ts performs: contents, pull-requests and issues, plus actions:read to resolve a run", () => {
