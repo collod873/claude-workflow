@@ -119,10 +119,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // `TARGET_WORKSPACE` is set only by the reusable workflow (ADR-0055): the machine checkout this
-  // script runs from is a different directory than the checkout carrying
-  // `refs/notes/ratifications` once a caller's own checkout is a separate step — the same seam
-  // `missing-trailer-counter.ts` reads for the same reason.
+  // `TARGET_WORKSPACE` is the reusable workflow's target checkout (ADR-0055).
   const outcome = runRatification({
     prNumber,
     merged,

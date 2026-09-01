@@ -118,9 +118,7 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   deps.regenerateCorpus();
   paths.push(CORPUS_RELATIVE_PATH);
 
-  // `-C repoRoot` on every call: `GitExec` never carries a working directory of its own
-  // (`shared/git.ts`), so a script that operates on a checkout other than its own `cwd` — the
-  // target checkout, once this lane is reusable — has to name it on every invocation.
+  // `-C repoRoot` on every call — see `WalkDeps.repoRoot`.
   deps.git(["-C", repoRoot, "add", ...paths]);
   deps.git(["-C", repoRoot, "commit", "-m", commitMessage(writes)]);
   deps.git(["-C", repoRoot, "fetch", "origin", "main"]);
@@ -140,11 +138,8 @@ its successor already wrote, so nobody has to remember: ${names}.`;
 
 async function main(): Promise<void> {
   try {
-    // `TARGET_WORKSPACE` is set only by the reusable workflow (ADR-0055): the machine checkout
-    // this script runs from is a different directory than the checkout it reads, writes and
-    // pushes into once a caller's own checkout is a separate step — the same seam
-    // `missing-trailer-counter.ts` reads for the same reason. `GITHUB_WORKSPACE` still covers the
-    // pre-reusable shape, where the one checkout was both.
+    // `TARGET_WORKSPACE` is the reusable workflow's target checkout, `GITHUB_WORKSPACE` the
+    // pre-reusable one (ADR-0055; seam described at `missing-trailer-counter.ts`).
     const repoRoot = process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd();
     const outcome = backStampWalk({
       repoRoot,
