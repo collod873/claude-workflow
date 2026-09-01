@@ -105,7 +105,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0095 | [Lane 08 blocks on lane 06's immutability job and only warns on its acceptance job](0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md) | superseded |
 | 0096 | [A check marker is refused for reading the tracker instead of the tree, never for reaching outside the repo](0096-a-check-marker-is-refused-for-reading-the-tracker-instead-of.md) | superseded |
 | 0097 | [Machine-global agent machinery lives in the agent-skills repo, not vendored into a consumer](0097-machine-global-agent-machinery-lives-in-the-agent-skills-rep.md) | constraint |
-| 0098 | [The acceptance author is shown the files its ticket claims, rendered into its prompt rather than reached through a tool](0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md) | constraint |
+| 0098 | [The acceptance author is shown the files its ticket claims, rendered into its prompt rather than reached through a tool](0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md) | superseded |
 | 0099 | [A recomputing counter closes its standing issue when its count reaches zero](0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md) | superseded |
 | 0100 | [The critique door re-authors the spec body from the answered thread before the gate applies sliceable](0100-the-critique-door-re-authors-the-spec-body-from-the-answered.md) | superseded |
 | 0101 | [An expected-red acceptance test is not a local finding, so the gauntlet's test slot stops at the code suite](0101-an-expected-red-acceptance-test-is-not-a-local-finding-so-th.md) | note |
@@ -127,7 +127,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0117 | [A standing report speaks only on evidence it has not already cited, and retires only on evidence its subject recovered](0117-a-standing-report-speaks-only-on-evidence-it-has-not-already.md) | constraint |
 | 0118 | [A ticket roots every path it names, because lane 04 and lane 05 root a relative one separately](0118-a-ticket-roots-every-path-it-names-because-lane-04-and-lane.md) | constraint |
 | 0119 | [A fixer that stops making no progress files spec/gap rather than only calling the owner](0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md) | note |
-| 0120 | [An acceptance test may not turn on a file no pull request may change](0120-an-acceptance-test-may-not-turn-on-a-file-no-pull-request-ma.md) | constraint |
+| 0120 | [An acceptance test may not turn on a file no pull request may change](0120-an-acceptance-test-may-not-turn-on-a-file-no-pull-request-ma.md) | superseded |
 | 0121 | [The fixer's fix is the working tree it edited, not a file list in its answer](0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md) | note |
 | 0122 | [Findings land through the implementation door; the release-PR channel is deleted](0122-findings-land-through-the-implementation-door-the-release-pr.md) | constraint |
 | 0123 | [The owner signs by not reverting, and a revert writes declined memory](0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md) | constraint |
@@ -137,4 +137,4 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) | constraint |
 | 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) | constraint |
 
-128 ADRs · 55 constraint · 44 note · 29 superseded · 11,368 words total.
+128 ADRs · 53 constraint · 44 note · 31 superseded · 11,368 words total.

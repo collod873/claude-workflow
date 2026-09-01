@@ -1,7 +1,12 @@
 # The goal
 
-**Compiled:** 2026-08-21 · **Status:** the charter. Everything else in this repo is evidence for it
-or work toward it.
+**Compiled:** 2026-08-21 · **Trimmed:** 2026-09-01 · **Status:** the charter. Everything else in
+this repo is evidence for it or work toward it.
+
+Point-in-time measurements are not carried here — a number true in August reads as current state a
+month later. A blocker states what is open and what closes it; the count that sized it stays in the
+ADR or research note that measured it. §3 was removed and its number is not reused
+([ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md)).
 
 The tracker and the code say what the machine *is* — every edge, its event, its refusal. This says
 what it is all *for*. When a proposal arrives — a skill, a hook, a connector, an eighth era — it gets scored
@@ -14,8 +19,13 @@ different goal.
 
 > **Describe work once and have it ship — correctly, without starting it, watching it, or being
 > asked questions the owner can't answer — and the machine that does it costs almost nothing to
-> keep alive.** Not *work happens while I sleep*, which §3 retires: **nothing waits on the owner to
-> fire it, and he never has to check its homework.**
+> keep alive.** Not *work happens while I sleep*: **nothing waits on the owner to fire it, and he
+> never has to check its homework.**
+
+The AFK premise was bought once and returned. Across the era boundary in Lumaria — the one repo
+where both models ran on the same codebase — both eras land ~85% of commits inside waking hours.
+What changed was *where the human sits*, not what hour the work runs, which is why the end state is
+worded around who fires it.
 
 Sourced from what Collin has said repeatedly, not from what a system was designed to do:
 
@@ -123,18 +133,6 @@ rules it.
 
 ---
 
-## 3. The tension worth keeping in view
-
-**The AFK premise was already bought once and returned.** Sandcastle existed so Collin could label
-something and walk away. Measured across the era boundary in Lumaria — the one repo where both
-models ran on the same codebase — **both eras land ~85% of commits inside waking hours**, and the
-current model still commits at 02:37 via background drain workers. What actually changed was *where
-the human sits*: outside the loop applying labels, versus inside the session at 6.4 prompts per
-session. The pipeline's founding justification was never really tested by the pipeline — which is
-why §1's end state is worded around who fires the work rather than around what hour it runs.
-
----
-
 ## 4. What actually blocks it today
 
 Ordered. Nothing further up the list is optional for anything below it.
@@ -144,21 +142,16 @@ Ordered. Nothing further up the list is optional for anything below it.
    - ~~**Commit-keyword closes never reach the PreToolUse gate.**~~ Retired by `b5fd535`, which
      moved the gate to an Action on `issues.closed`. ADR-0013, ADR-0014, ADR-0021. **This repo
      only** — the era-6 estate still runs the hook and still has the hole.
-   - **Open.** **83 rows in each of two logs** are rails crashing (`SELECT_ITEMS is not defined`,
-     `HEX_COLOR_WHOLE is not defined`, `Cannot read properties of undefined (reading 'rules')`),
-     all from the one shared `mirror.mjs`, failing open and unseen. That file lives in Lumaria and
-     is untouched. *(Measured 2026-08-23.)*
+   - **Open.** The shared `mirror.mjs` rails crash and fail open, unseen. That file lives in
+     Lumaria and is untouched, so nothing here closes it.
 2. **Nothing in the system can start work.** All ten pipeline verbs are
-   `disable-model-invocation: true`; ~34 dispatches a day, almost none of it judgement a human
-   holds. This — not model capability, and not verification volume — is the ceiling.
+   `disable-model-invocation: true`, so every dispatch is a human firing it. This — not model
+   capability, and not verification volume — is the ceiling.
    *(Issue [#128](https://github.com/collod873/agent-skills/issues/128).)*
 
-   **What the close gate actually measures.** `close-gate.log` is 558 rows: **125 refusals, 22.4%**.
-   The composition is the finding — `no-closing-record` 78, `bad-evidence-shape` 15,
-   `no-range-or-no-diff` 9, `missing-acceptance-criteria` 8, `criteria-count-mismatch` 3, and
-   **`unmet-criterion` exactly once in 558.** The gate is an active *compliance* mechanism and is
-   not theatre. It is not a *correctness* one, and nothing should be built on a claim that it is.
-   *(Measured 2026-08-23.)*
+   **What the close gate actually measures.** It is an active *compliance* mechanism and is not
+   theatre; `unmet-criterion` is the rarest refusal it writes by an order of magnitude. It is not a
+   *correctness* gate, and nothing should be built on a claim that it is.
 3. **No mechanism points backwards.** Every ADR, every lint rule, every `CODING_STANDARDS.md` entry
    — and **not one has been asked whether it caught anything.** That file has exactly one exit —
    *mechanised* — which requires building another rule first, so it can only grow.
@@ -209,7 +202,7 @@ Ordered. Nothing further up the list is optional for anything below it.
    a private Free account — and that purchase is declined
    ([ADR-0071](docs/adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)).
    So this half is not "bought" but **accepted**: the bypass counter measures how often it costs
-   something (four red trees on `main` to date) and no longer proposes anything about it.
+   something and no longer proposes anything about it.
 
 ---
 
@@ -245,5 +238,6 @@ Everything above is traceable. Deepest reads, in order:
 - `General-Repo/agentic-os-design.md` — the six frictions and eight operating principles, 2026-07-06
 - `General-Repo/handoff-agentic-os-controlplane-2026-07-07-premise-locked.md` — the adoption law and
   the five locked decisions
-- `General-Repo/lumaria-shipping-model-vs-sandcastle-2026-08-21.md` — the A/B behind §3
+- `General-Repo/lumaria-shipping-model-vs-sandcastle-2026-08-21.md` — the A/B behind §1's
+  waking-hours finding
 - Local session transcripts, 2026-07-22 onward — the direct quotes in §1 and §2
