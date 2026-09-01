@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-26
+superseded_by: ADR-0132
 reversal: Reversing it means vendoring ~140 TypeScript files and a Node toolchain into every target repo and standing up a sync contract to keep each copy level with this one — the `UPSTREAM.md` obligation this design exists to delete — and any repo already calling the workflows keeps running whatever version it last resolved.
 ---
 

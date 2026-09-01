@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-26
+superseded_by: ADR-0133
 reversal: Reversing it means an installer that enumerates rather than derives — the drift obligation back in executable form, in a file nobody audits because it looks like code — plus a merge policy for owned paths, and any repo already installed under the overwrite contract may hold hand edits a merge model cannot reconstruct.
 ---
 
