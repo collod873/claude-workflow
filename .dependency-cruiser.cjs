@@ -26,6 +26,7 @@ const LANES = [
   "capture",
   "checkpoints",
   "dispatch",
+  "enrol",
   "fixer",
   "implement",
   "intake",
