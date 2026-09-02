@@ -12,8 +12,9 @@
 // turn in the repo, which is a worse outcome than the defect it was trying to catch.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -28,6 +29,23 @@ const GAUNTLET = process.env.GAUNTLET_BIN ?? resolve(REPO_ROOT, "bin/gauntlet");
 // which must never reach Claude as if it were one.
 const COULD_NOT_RUN = 2;
 
+// How much of the gauntlet's stdout the report keeps. The same number and the same shape as
+// `shared/reason.ts`'s `STDOUT_TAIL`, which caps this very stream for GitHub comments — and the
+// tail rather than the head for the same reason it gives: `bin/gauntlet` prints its verdict line
+// (`gauntlet: FAILED at …`) last, so head-first truncation drops the one line worth having.
+//
+// This channel pays for every character twice: into Claude's context, and onto the person's
+// screen, because the harness renders `reason` as the visible refusal. A whole vitest run is what
+// the `stop` venue produces uncapped.
+const STDOUT_TAIL = 4000;
+
+// The one row this hook owes an audit (`~/.agents/skills/hooks/_hook.py`'s `run_row`, in the shape
+// `hook-report` reads). Written in JS rather than through that module because this hook is the
+// estate's one non-Python hook; the field names are the contract, not the language.
+const HOOK_NAME = "gauntlet-hook";
+const LOG_DIR = process.env.STOP_GATE_LOG_DIR || join(homedir(), ".claude", "logs");
+const STARTED = Date.now();
+
 /** Reads the hook payload off stdin. A payload we cannot parse is a broken hook, not a finding. */
 function readPayload() {
   try {
@@ -37,8 +55,37 @@ function readPayload() {
   }
 }
 
+/**
+ * One JSON line per fire. Write errors are swallowed: a verdict never depends on a writable log
+ * (ADR-0005's observability rule). `verdict` is one word from this hook's own fixed vocabulary —
+ * bad-stdin, stage, out-of-scope, reported-already, could-not-run, clean, slow, failed — so a
+ * report can count without parsing prose.
+ */
+function logRow(verdict, extra = {}) {
+  const cwd = payload && typeof payload.cwd === "string" ? payload.cwd : "";
+  const row = {
+    hook: HOOK_NAME,
+    event: (payload && payload.hook_event_name) || "",
+    session_id: (payload && payload.session_id) || "",
+    project: cwd ? cwd.split(sep).filter(Boolean).pop() || "" : "",
+    verdict,
+    seconds: Math.round((Date.now() - STARTED) / 100) / 10,
+    venue: venue ?? "",
+    ...extra,
+    ts: new Date().toISOString().slice(0, 19),
+  };
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    const day = row.ts.slice(0, 10);
+    appendFileSync(join(LOG_DIR, `${HOOK_NAME}-${day}.jsonl`), JSON.stringify(row) + "\n");
+  } catch {
+    /* A log this hook cannot write is not a reason to change what it reports. */
+  }
+}
+
 /** Exits 0 with nothing to say. Every path that is not a finding ends here. */
-function silent() {
+function silent(verdict, extra) {
+  logRow(verdict, extra);
   process.exit(0);
 }
 
@@ -61,7 +108,7 @@ function runGauntlet(venue, target) {
 
 const venue = process.argv[2];
 const payload = readPayload();
-if (!payload || (venue !== "turn" && venue !== "stop")) silent();
+if (!payload || (venue !== "turn" && venue !== "stop")) silent("bad-stdin");
 
 // Neither venue exists inside a stage. `WORKFLOW_STAGE` is set by `execClaude`
 // (.Workflow/agent-workflows/shared/stage.ts), the one seam every lane spawns its
@@ -71,14 +118,18 @@ if (!payload || (venue !== "turn" && venue !== "stop")) silent();
 // its `<output>` block replying to this hook about a flaky suite it had not touched.
 // The stage's checks still run — in `verify.yml`, where a red suite fails the run
 // rather than the response.
-if (process.env.WORKFLOW_STAGE === "1") silent();
+if (process.env.WORKFLOW_STAGE === "1") silent("stage");
 
 if (venue === "turn") {
   // Only TypeScript, and only inside this repo. An edit to a Markdown file has nothing here that
   // can judge it, and running the venue anyway is how a cheap hook becomes a tax on every turn.
+  //
+  // The separator is part of the boundary: a bare prefix test puts a sibling checkout
+  // (`…/Workflow-scratch/x.ts`) inside this repo.
   const file = payload.tool_input?.file_path;
-  if (typeof file !== "string" || !/\.[cm]?ts$/.test(file)) silent();
-  if (!resolve(file).startsWith(REPO_ROOT)) silent();
+  if (typeof file !== "string" || !/\.[cm]?ts$/.test(file)) silent("out-of-scope");
+  const abs = resolve(file);
+  if (abs !== REPO_ROOT && !abs.startsWith(REPO_ROOT + sep)) silent("out-of-scope");
 }
 
 if (venue === "stop") {
@@ -86,17 +137,27 @@ if (venue === "stop") {
   // been told about is the documented Stop-hook loop, and it is also wrong on purpose: a red suite
   // mid-task is a legitimate state — a TDD red phase is exactly that shape — so the venue's job is
   // to say so once, not to hold the session hostage until it goes green.
-  if (payload.stop_hook_active === true) silent();
+  if (payload.stop_hook_active === true) silent("reported-already");
 }
 
 const run = runGauntlet(venue, venue === "turn" ? payload.tool_input.file_path : undefined);
 
-if (run.error || run.status === null || run.status === COULD_NOT_RUN) silent();
+if (run.error || run.status === null || run.status === COULD_NOT_RUN) silent("could-not-run");
 
 // bin/gauntlet writes the failing checks to stdout and its own diagnostics to stderr. Only the
-// over-budget line is worth surfacing, and it goes to the user rather than to Claude: it is a
+// over-budget lines are worth surfacing, and they go to the user rather than to Claude: it is a
 // finding about the gauntlet, not about the code being checked.
-const overBudget = (run.stderr || "").split("\n").find((line) => line.includes("against a"));
+//
+// `timing-baseline.ts` emits two of them, independently gated: the venue line (wall clock past the
+// venue budget) and the per-check line (a check past its own). Match both — the venue line alone
+// is, in `bin/gauntlet`'s own words, "a report nobody can act on until it says which check did" —
+// and prefer the per-check line when a run raised both. Matching on the article in "against a"
+// caught only the venue line, and said nothing at all on a run that raised only the other.
+const budgetLines = (run.stderr || "")
+  .split("\n")
+  .filter((line) => line.startsWith("gauntlet: ") && line.includes("budget"));
+const overBudget =
+  budgetLines.find((line) => line.includes("the slowest check over budget is")) ?? budgetLines[0];
 
 // A venue that got slower is the whole signal the timing ratchet exists to raise (#335), and until
 // this line it was raised into a stderr stream nobody reads: `bin/gauntlet` prints it, these venues
@@ -107,10 +168,41 @@ if (run.status === 0) {
   if (overBudget) {
     process.stdout.write(JSON.stringify({ systemMessage: overBudget }));
   }
+  logRow(overBudget ? "slow" : "clean");
   process.exit(0);
 }
 
+const stdout = (run.stdout || "").trim();
+
+// `bin/gauntlet` names the failing checks on its last stdout line. Saying which check failed in the
+// hook's own words costs nothing — the runner already computed it — and it is the half that
+// survives when a reader skims past the captured output below.
+const failedChecks = (stdout.match(/^gauntlet: FAILED at (.+)$/m)?.[1] ?? "")
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean)
+  .join(", ");
+
+// Fenced and labelled, because this is data. The suite asserts on built agent prompts
+// (`acceptance/author/prompt.test.ts`, `acceptance.test.ts`, `observations/auditor.test.ts`), and a
+// `toContain` failure prints the whole received string — so an unlabelled dump lands a 130-line
+// agent-facing document mid-turn, reading as if addressed to this session.
+const captured = stdout.length > STDOUT_TAIL ? `…\n${stdout.slice(-STDOUT_TAIL)}` : stdout;
+
+// The step, stated positively, and one the agent can check. At `stop` it also carries the standing
+// fact the venue was built around: this report fires once, and ending the turn is allowed.
+const next =
+  venue === "turn"
+    ? `Fix, then re-run: \`bin/gauntlet turn ${payload.tool_input.file_path}\``
+    : "Fix, then re-run: `bin/gauntlet stop`. A red suite mid-task is a legitimate state — a TDD " +
+      "red phase is exactly that shape — so this report fires once per turn cycle and ending the " +
+      "turn is allowed.";
+
+logRow("failed", { checks: failedChecks, chars: captured.length });
+
 report(
-  `The gauntlet failed at the ${venue === "turn" ? "in-turn" : "turn-end"} venue:\n\n${run.stdout}`,
+  `[gauntlet] The ${venue} venue's checks failed${failedChecks ? `: ${failedChecks}` : ""}.\n\n` +
+    `${next}\n\n` +
+    `Captured output from \`bin/gauntlet\`, quoted as data:\n\n~~~\n${captured}\n~~~`,
   overBudget,
 );
