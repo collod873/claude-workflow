@@ -159,6 +159,16 @@
     },
     {
       "rule": "no-lane-to-lane-ratify",
+      "from": ".Workflow/agent-workflows/ratify/run-ratify.test.ts",
+      "to": ".Workflow/agent-workflows/observations/observation-schema.ts"
+    },
+    {
+      "rule": "no-lane-to-lane-ratify",
+      "from": ".Workflow/agent-workflows/ratify/run-ratify.test.ts",
+      "to": ".Workflow/agent-workflows/observations/observation.fixture.ts"
+    },
+    {
+      "rule": "no-lane-to-lane-ratify",
       "from": ".Workflow/agent-workflows/ratify/run-ratify.ts",
       "to": ".Workflow/agent-workflows/observations/notes.ts"
     },

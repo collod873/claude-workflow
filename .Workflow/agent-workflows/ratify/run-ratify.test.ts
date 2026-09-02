@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
+import { observation } from "../observations/observation.fixture";
+import type { Observation } from "../observations/observation-schema";
 import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
 import { runRatify, ratifierBranchName } from "./run-ratify";
 import { ratifierVerdict } from "./verdict.fixture";
@@ -82,28 +84,10 @@ describe("runRatify — scope: which dispatches this lane runs on at all", () =>
 });
 
 /**
- * One finding as a note carries it on the wire. Spelled here rather than
- * imported from `observations/`: what these tests fabricate is git-log output,
- * the same as the commit hashes around it, and the module-boundary gate keeps
- * this lane out of that one (`docs/agents/module-boundaries.md`).
- */
-interface NotedFinding {
-  finding: string;
-  lens: string;
-  sites: string[];
-  released: boolean;
-}
-
-/** A released finding, since an unreleased one never reaches this lane at all. */
-function noted(overrides: Partial<NotedFinding> & { finding: string }): NotedFinding {
-  return { lens: "PROPOSED", sites: ["a.ts:1"], released: true, ...overrides };
-}
-
-/**
  * One `git log --notes=observations` answer, in the `%H\x1f%N\x1e` shape
  * `readObservations` parses, notes newest first as git hands them back.
  */
-function observationLog(notes: Array<{ commit: string; observations: NotedFinding[] }>): string {
+function observationLog(notes: Array<{ commit: string; observations: Observation[] }>): string {
   return notes.map((note) => `${note.commit}\x1f${JSON.stringify(note.observations)}\x1e`).join("");
 }
 
@@ -112,7 +96,7 @@ function observationLog(notes: Array<{ commit: string; observations: NotedFindin
  * and whose ratification memory is empty — so what reaches the batch is
  * decided by `releasedObservations` alone.
  */
-function repoCarrying(notes: Array<{ commit: string; observations: NotedFinding[] }>) {
+function repoCarrying(notes: Array<{ commit: string; observations: Observation[] }>) {
   return createFakeGit((args) => {
     if (args.includes("rev-parse")) return "basesha\n";
     if (args.some((arg) => arg === "--notes=observations")) return observationLog(notes);
@@ -153,8 +137,14 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
 
   it("batches a VIOLATION from every note in the range, not just the newest", async () => {
     const git = repoCarrying([
-      { commit: "newsha", observations: [noted({ finding: "restated in new.ts", lens: "VIOLATION", sites: ["new.ts:1"] })] },
-      { commit: "oldsha", observations: [noted({ finding: "restated in old.ts", lens: "VIOLATION", sites: ["old.ts:1"] })] },
+      {
+        commit: "newsha",
+        observations: [observation({ finding: "restated in new.ts", lens: "VIOLATION", sites: ["new.ts:1"], released: true })],
+      },
+      {
+        commit: "oldsha",
+        observations: [observation({ finding: "restated in old.ts", lens: "VIOLATION", sites: ["old.ts:1"], released: true })],
+      },
     ]);
     const stage = rejecting();
 
@@ -171,9 +161,9 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
 
   it("takes PROPOSED from the nearest note alone, because the two-site gate already folded it forward", async () => {
     const git = repoCarrying([
-      { commit: "newsha", observations: [noted({ finding: "a pattern", sites: ["a.ts:1", "b.ts:2"] })] },
+      { commit: "newsha", observations: [observation({ finding: "a pattern", sites: ["a.ts:1", "b.ts:2"], released: true })] },
       // The same finding as the nearest note carries, at the site list it has since superseded.
-      { commit: "oldsha", observations: [noted({ finding: "a pattern", sites: ["a.ts:1"] })] },
+      { commit: "oldsha", observations: [observation({ finding: "a pattern", sites: ["a.ts:1"], released: true })] },
     ]);
     const stage = rejecting();
 
@@ -184,7 +174,7 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
   });
 
   it("names a VIOLATION once when two notes in the range carry it at the same site", async () => {
-    const repeated = noted({ finding: "restated", lens: "VIOLATION", sites: ["a.ts:1"] });
+    const repeated = observation({ finding: "restated", lens: "VIOLATION", sites: ["a.ts:1"], released: true });
     const git = repoCarrying([
       { commit: "newsha", observations: [repeated] },
       { commit: "oldsha", observations: [repeated] },
