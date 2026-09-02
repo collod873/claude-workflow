@@ -184,8 +184,18 @@ jobs:
       # `GITHUB_TOKEN` is the wire every lane in this pipeline already chains on, and it did not
       # miss once that day. Both doors stay: Recover's marker comment makes the second arrival a
       # no-op, so the cost of two is nothing and the cost of one was a run nobody recovered.
+      # `cancelled()` alongside `failure()`, because a `timeout-minutes` kill reports **cancelled**
+      # and a timeout is exactly the death this step exists for. #342's run 33687023105 was killed
+      # at 45 minutes to the second: the upload above ran (`always()`) and found nothing, the
+      # unmark below ran and cleared `running`, and this step — the only one that tells Recover
+      # anything — skipped. Recover's no-artifact path re-dispatches the ticket, so the whole
+      # stranding (an orphaned `implement/issue-342` claim that made the ticket unbuildable,
+      # because `reconcile.ts` reads a claim ref as started and the stale-claim takeover only runs
+      # inside a dispatch that would never come) was this one condition. A human-cancelled run
+      # reaches Recover too now, which is right: it holds the same claim and wants the same
+      # cleanup.
       - name: Tell Recover this run failed
-        if: failure()
+        if: failure() || cancelled()
         run: |
           gh api "repos/{owner}/{repo}/dispatches" \
             -f event_type=implement-failed \

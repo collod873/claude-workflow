@@ -32,11 +32,14 @@ jobs:
       pull-requests: write
       issues: write
       actions: read
-    # The same union `recover.yml`'s job `if:` carried before the split.
+    # The same union `recover.yml`'s job `if:` carried before the split, plus `cancelled` — this
+    # door excluded a timed-out run for the same reason lane 05's own dispatch step did, so both
+    # halves of the pair missed the one death they most needed to catch (#342, run 33687023105).
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.action == 'implement-failed' ||
-      github.event.workflow_run.conclusion == 'failure'
+      github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled'
     uses: collod873/claude-workflow/.github/workflows/recover.yml@main
     with:
       # The same `||` chain `recover.yml`'s own `RUN_ID` used to resolve directly — whichever of
