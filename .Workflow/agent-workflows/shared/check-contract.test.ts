@@ -34,10 +34,7 @@ describe("the schema", () => {
     expect(CheckContract.safeParse(missingStop).success).toBe(false);
   });
 
-  // The live failure this answers: Lumaria's committed contract was written against the six slots
-  // and untouched since, so requiring the seventh made its gauntlet refuse to run *any* check —
-  // "could not resolve .claude/contract.json", 62 seconds in, nothing measured. A schema change
-  // here must never invalidate a file a target has already committed (ADR-0142).
+  // Why the seventh slot is optional: `CheckContract`'s docstring in check-contract.ts (ADR-0143).
   it("accepts a contract written before test_related existed, degrading it to no turn-venue test run", () => {
     const sixSlot: Record<string, unknown> = { ...checkContractFixture() };
     delete sixSlot.test_related;
