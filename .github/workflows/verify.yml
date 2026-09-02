@@ -356,9 +356,11 @@ jobs:
   # a cancelled run's conclusion is not `failure`, so the `workflow_run` door would not open for it
   # either, and two doors onto one lane have to agree about what counts as red.
   #
-  # No checkout: the dispatch below is the whole of what this job does, and `{owner}/{repo}` in the
-  # API path resolves against the run's own repository — the target's, since a called workflow's
-  # `github` context is the calling run's — with no checkout needed to establish that.
+  # No checkout: the dispatch below is the whole of what this job does. `{owner}/{repo}` in the API
+  # path is expanded by `gh` from `GH_REPO`, never from the Actions context — with neither set, and
+  # no checkout to read a remote out of, it fails with "not a git repository" and the fixer is never
+  # told. That is what left #325 sitting with a red verify and nothing coming for it. `GH_REPO` is
+  # the target's here, since a called workflow's `github` context is the calling run's.
   signal-fixer:
     name: Signal the fixer
     needs: [immutability, restore-and-run-acceptance, verify]
@@ -379,6 +381,7 @@ jobs:
       - name: Tell the Fixer this run went red
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           gh api "repos/{owner}/{repo}/dispatches" \

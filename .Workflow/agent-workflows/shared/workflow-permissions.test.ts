@@ -521,3 +521,68 @@ describe("a lane that spends or writes declares a concurrency group", () => {
     );
   });
 });
+
+/* -------------------------------------------------------------------------------------------- */
+/* Guard 5: a checkout-less job that sends to `{owner}/{repo}` sets GH_REPO.                       */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `{owner}/{repo}` is `gh`'s placeholder, not GitHub's: `gh` expands it from `GH_REPO`, and
+ * failing that from the `origin` remote of the directory it is run in. Neither exists in a job
+ * that holds a token and checks nothing out, so the call dies with
+ * `unable to expand placeholder in path: fatal: not a git repository` — a message about git, from
+ * a step doing no git, in a job that only ever runs when something else has already gone wrong.
+ *
+ * `verify.yml`'s Signal-the-fixer job shipped that way and its comment asserted the opposite, that
+ * the placeholder resolved from the Actions context. Every red verify therefore failed to ring the
+ * fixer, which is how #325 came to sit with a red run and nothing coming for it. `spec.yml`'s
+ * dispatch job had the compliant shape all along; this guard is what makes the two agree.
+ *
+ * A job that checks out is exempt because the remote is then there to read — the same reason
+ * `capture/repo-scope.ts` gives for preferring a literal path over the placeholder.
+ */
+
+/** `gh`'s own placeholder, in any path it can appear in — not just the dispatch endpoint. */
+const GH_PLACEHOLDER = "{owner}/{repo}";
+
+interface WorkflowJob {
+  env?: Record<string, unknown>;
+  steps?: Array<{ run?: string; uses?: string; env?: Record<string, unknown> }>;
+}
+
+/** Every job that shells out to `gh` with the placeholder and never clones the repo. */
+function placeholderJobsWithoutCheckout(source: string): Array<[string, WorkflowJob]> {
+  const jobs = (parse(source) as { jobs?: Record<string, WorkflowJob> } | null)?.jobs ?? {};
+
+  return Object.entries(jobs).filter(([, job]) => {
+    const steps = job.steps ?? [];
+    if (steps.some((step) => step.uses?.startsWith("actions/checkout@"))) return false;
+    return steps.some((step) => step.run?.includes(GH_PLACEHOLDER));
+  });
+}
+
+describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", () => {
+  it.each(workflows)("$name", ({ name, source }) => {
+    for (const [jobName, job] of placeholderJobsWithoutCheckout(source)) {
+      const sending = (job.steps ?? []).filter((step) => step.run?.includes(GH_PLACEHOLDER));
+
+      for (const step of sending) {
+        expect(
+          "GH_REPO" in (job.env ?? {}) || "GH_REPO" in (step.env ?? {}),
+          `${name}'s ${jobName} job runs gh against ${GH_PLACEHOLDER} with no checkout and no ` +
+            "GH_REPO — gh expands that placeholder from GH_REPO or the cwd's git remote, so with " +
+            "neither the call fails with `not a git repository` and the send is silently lost. " +
+            "Add `GH_REPO: ${{ github.repository }}` to the job's env, the shape spec.yml uses",
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("actually finds the jobs that send, so a passing suite is not an empty sweep", () => {
+    const sending = workflows.flatMap(({ name, source }) =>
+      placeholderJobsWithoutCheckout(source).map(([jobName]) => `${name}#${jobName}`),
+    );
+
+    expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));
+  });
+});
