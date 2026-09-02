@@ -15,8 +15,15 @@ import { childEnv } from "./child-env.ts";
  * `repoDir`/`root` argument a caller threads through — those name the target once the reusable
  * workflow splits the two checkouts (ADR-0055), and resolving the machine from one of them is
  * exactly the bug this file exists to close.
+ *
+ * Three levels up, not two: this file sits at `.Workflow/agent-workflows/shared/`, so two `..`
+ * lands on `.Workflow/` — a directory with no `bin/gauntlet` in it. `execFileSync` on a path that
+ * does not exist throws `ENOENT` with no `status` and no output, which `runRealGauntlet` reports
+ * as `no-run` with nothing to read, and lane 08 refused every merge that way for the rest of the
+ * afternoon it landed (#332, runs 33668167431 and 33669276843). `run-gauntlet.test.ts` holds the
+ * resolved path to a file that exists so the next move of this module fails a test, not a lane.
  */
-export const MACHINE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+export const MACHINE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** The three venues `bin/gauntlet` understands — see its own header. */
 export type GauntletVenue = "turn" | "stop" | "push";
