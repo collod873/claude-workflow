@@ -638,17 +638,6 @@
     "fragment": ");\n  execFileSync(\"git\", [\"clone\", \"-q\", bareDir, \".\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n  return dir;\n}\n\n/** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */"
   },
   {
-    "hash": "ce4f8a8083eff39e",
-    "format": "typescript",
-    "lines": 8,
-    "tokens": 81,
-    "where": [
-      ".Workflow/agent-workflows/observations/run-audit.test.ts:257",
-      ".Workflow/agent-workflows/observations/run-audit.test.ts:274"
-    ],
-    "fragment": ");\n\n    const stdout = execFileSync(\"npx\", [\"tsx\", RUN_AUDIT_PATH], {\n      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },\n      encoding: \"utf8\",\n    });\n\n    expect(stdout).toContain(\"skipped (empty-range)\""
-  },
-  {
     "hash": "d032fb10a7d06303",
     "format": "yaml",
     "lines": 18,

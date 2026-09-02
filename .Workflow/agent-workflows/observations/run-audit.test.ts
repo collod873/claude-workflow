@@ -270,6 +270,25 @@ describe("audit-caller.yml gates the reusable workflow", () => {
   });
 });
 
+/**
+ * The environment one CLI child gets. `TARGET_WORKSPACE` is cleared rather
+ * than inherited: every lane's runner exports it (ADR-0055) and `run-audit.ts`
+ * reads it *ahead* of `GITHUB_WORKSPACE`, so a child that inherited the
+ * runner's would audit the lane's own target checkout instead of the repo this
+ * test just built. That reads green on a workstation, where nothing sets it,
+ * and red on every runner — which is what left lane 08 unable to push a merge
+ * at all, for any pull request, since #327.
+ */
+function cliEnv(base: NodeJS.ProcessEnv, repoDir: string, head: string): NodeJS.ProcessEnv {
+  return {
+    ...base,
+    TARGET_WORKSPACE: "",
+    GITHUB_WORKSPACE: repoDir,
+    HEAD_SHA: head,
+    EVENT_ACTION: AUDIT_DISPATCH_ACTION,
+  };
+}
+
 describe("run-audit.ts (CLI) exit code", () => {
   it("exits 0 and reports skipped when the head has no session record", () => {
     const repo = makeRepo();
@@ -278,7 +297,7 @@ describe("run-audit.ts (CLI) exit code", () => {
     const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
 
     const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
-      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      env: cliEnv(process.env, repo.dir, head),
       encoding: "utf8",
     });
 
@@ -295,7 +314,7 @@ describe("run-audit.ts (CLI) exit code", () => {
     writeCorpusFile(repo.dir, record.corpusPath, "---\nsession spine\n");
 
     const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
-      env: { ...process.env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      env: cliEnv(process.env, repo.dir, head),
       encoding: "utf8",
     });
 
@@ -318,7 +337,7 @@ describe("run-audit.ts (CLI) exit code", () => {
     const { env } = stubClaudeCli(stubDir, "Finding: duplicated validation logic\nSite: a.ts:1\n");
 
     const stdout = execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
-      env: { ...env, GITHUB_WORKSPACE: repo.dir, HEAD_SHA: head, EVENT_ACTION: AUDIT_DISPATCH_ACTION },
+      env: cliEnv(env, repo.dir, head),
       encoding: "utf8",
     });
 

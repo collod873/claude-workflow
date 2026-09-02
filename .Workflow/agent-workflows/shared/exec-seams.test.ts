@@ -54,3 +54,66 @@ describe("every exec seam sets maxBuffer", () => {
     ).toBe(true);
   });
 });
+
+/**
+ * Every test that spawns an entrypoint with the ambient environment neutralises
+ * `TARGET_WORKSPACE`.
+ *
+ * Every lane's runner exports it (ADR-0055) and every entrypoint reads it
+ * *ahead* of `GITHUB_WORKSPACE` and `process.cwd()`. So a test that hands its
+ * child `{ ...process.env, GITHUB_WORKSPACE: <the repo it just built> }` is
+ * overridden by the runner's value and audits the lane's own target checkout
+ * instead — green on a workstation, where nothing sets it, and red on every
+ * runner. `run-audit.test.ts` shipped that way and took lane 08 with it: three
+ * failures in the pre-push gauntlet meant no pull request could be merged by
+ * the pipeline at all, for a week, while the same suite passed locally.
+ *
+ * The same "one file fixed, its sibling left to drift" shape as the guard
+ * above, so it gets the same answer.
+ */
+
+const REPO_ROOT = join(SHARED_DIR, "../..");
+
+/**
+ * Hands a child the caller's own environment *and* points it at a repo with
+ * `GITHUB_WORKSPACE` — the exact pair that goes wrong. A spawn that sets no
+ * workspace at all (`capture/`'s, which reads neither variable) is not this
+ * bug, and a guard that flagged it would be asking for a line that changes
+ * nothing.
+ */
+const INHERITS_ENV = /env:\s*(?:cliEnv\(process\.env|\{[\s\S]{0,400}?\.\.\.process\.env)/;
+const POINTS_AT_A_REPO = /GITHUB_WORKSPACE/;
+
+/**
+ * Names `TARGET_WORKSPACE` in *code* — a prose explanation of the hazard, in a
+ * comment, is what a file that has the bug and knows it would also carry.
+ */
+const NEUTRALISES = /TARGET_WORKSPACE/;
+
+function testFilesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : testFilesUnder(path);
+    return entry.name.endsWith(".test.ts") ? [path] : [];
+  });
+}
+
+const spawningTests = testFilesUnder(join(REPO_ROOT, "agent-workflows"))
+  .map((path) => ({ name: path.slice(REPO_ROOT.length + 1), source: readFileSync(path, "utf8") }))
+  .filter(({ source }) => SPAWNS.test(code(source)) && INHERITS_ENV.test(code(source)) && POINTS_AT_A_REPO.test(code(source)));
+
+describe("a test spawning an entrypoint with the ambient environment neutralises TARGET_WORKSPACE", () => {
+  it("finds the tests that spawn, so a passing suite is not an empty sweep", () => {
+    expect(spawningTests.map(({ name }) => name)).toContain("agent-workflows/observations/run-audit.test.ts");
+  });
+
+  it.each(spawningTests)("$name", ({ name, source }) => {
+    expect(
+      NEUTRALISES.test(code(source)),
+      `${name} spawns an entrypoint with the ambient environment and never mentions TARGET_WORKSPACE — ` +
+        "every runner exports it and every entrypoint reads it ahead of GITHUB_WORKSPACE, so the child " +
+        "will read the lane's target checkout rather than the repo this test built. Pass it explicitly, " +
+        'or clear it with `TARGET_WORKSPACE: ""`',
+    ).toBe(true);
+  });
+});
