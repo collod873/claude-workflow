@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SPEC_DISPATCH_EVENT_TYPE } from "../spec/open-questions";
+import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
 import { readWorkflow } from "./read-workflow";
 
 /**
@@ -69,6 +70,14 @@ describe("to-tickets.yml's existing refusal steps are structurally unchanged", (
     expect(step!.run).toContain("issue(number: $num) { parent { number } }");
     expect(step!.run).toContain("gh issue edit \"$PRD_NUMBER\" --add-label slice-failed");
     expect(step!.run).toContain('echo "refused=true" >> "$GITHUB_OUTPUT"');
+  });
+
+  it("separates the machine it runs from the target each stage reads and writes against", () => {
+    // Without TARGET_WORKSPACE on each of these three steps, to-tickets.ts (line ~481) falls back
+    // to process.cwd() and runs the model against the machine checkout instead of the target's.
+    expectMachineAndTargetCheckouts({ workflow: "to-tickets.yml", job: "to-tickets", runs: "--stage seam-sweep" });
+    expectMachineAndTargetCheckouts({ workflow: "to-tickets.yml", job: "to-tickets", runs: "--stage slice" });
+    expectMachineAndTargetCheckouts({ workflow: "to-tickets.yml", job: "to-tickets", runs: "--stage audit-and-publish" });
   });
 
   it("keeps the two refusals in their original order, before every other step", () => {

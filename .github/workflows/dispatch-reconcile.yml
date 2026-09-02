@@ -118,4 +118,9 @@ jobs:
       # the refs API, sends dispatches, and files at most one comment — every write through the `gh`
       # seam in `shared/gh.ts`. Exits nonzero only when it could not read its own inputs.
       - name: Recompute the ready set
+        env:
+          # Which checkout a spec's own `check:` command runs against, and which one
+          # `bin/close-ticket --spec` closes (ADR-0055) — without this, `reconcile.ts` falls back
+          # to `process.cwd()` and runs both against the machine checkout instead of the target's.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/dispatch/reconcile.ts

@@ -1,6 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
 import { runLandGate, type LandGateDeps } from "./land-gate";
+
+const execGitCalls: string[][] = [];
+vi.mock("../shared/git", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../shared/git")>()),
+  execGit: (args: string[]) => {
+    execGitCalls.push(args);
+    return "";
+  },
+}));
+
+// Import after the mock so `bindGitToRoot` closes over the mocked `execGit`.
+const { bindGitToRoot } = await import("./land-gate");
 
 function deps(overrides: Partial<LandGateDeps> = {}): {
   fake: ReturnType<typeof createFakeGit>;
@@ -127,5 +139,26 @@ describe("runLandGate", () => {
     expect(outcome.verdict === "refused" && outcome.reason).toContain("outside tests/acceptance/");
     expect(fake.calls).toEqual([]);
     expect(refusals).toEqual(["clone gate: 1 clone(s) not in the baseline touch a file outside tests/acceptance/"]);
+  });
+});
+
+/**
+ * `main`'s baseline commit has to land in the target the push already targeted, not wherever this
+ * process happens to run from — `execGit` carries no working directory of its own (`shared/git.ts`'s
+ * docstring), so a raw `execGit` handed to `runLandGate` would commit against `process.cwd()`, the
+ * machine checkout, instead.
+ */
+describe("bindGitToRoot", () => {
+  it("binds every call to the given root, ahead of whatever argv the caller passes", () => {
+    execGitCalls.length = 0;
+    const git = bindGitToRoot("/some/target/checkout");
+
+    git(["add", "clone-gate.baseline.json"]);
+    git(["commit", "-m", "x"]);
+
+    expect(execGitCalls).toEqual([
+      ["-C", "/some/target/checkout", "add", "clone-gate.baseline.json"],
+      ["-C", "/some/target/checkout", "commit", "-m", "x"],
+    ]);
   });
 });

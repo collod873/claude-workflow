@@ -224,6 +224,15 @@ export interface ReconcileInput {
    * restated for a second `bin/close-ticket` mode.
    */
   closeSpec?: (number: number, range: string) => CloseTicketResult;
+  /**
+   * The checkout a spec's own `check:` command runs against, and the `<checkout>` `closeSpec`'s
+   * real implementation hands `bin/close-ticket --spec` (ADR-0055). Read once at the entrypoint
+   * from `TARGET_WORKSPACE` and threaded down here, the same way `implement.ts`, `fixer.ts` and
+   * `acceptance.ts` bind `-C`/`cwd` to the target rather than the machine checkout this process
+   * itself runs from. Defaults to `process.cwd()` for a local run or a test with no target of its
+   * own to name.
+   */
+  targetWorkspace?: string;
 }
 
 export interface ReconcileOutcome {
@@ -756,9 +765,15 @@ function disagreementCommentBody(
   ].join("\n");
 }
 
-/** Runs `command` the way `bin/close-ticket`'s `run_check` already does — a shell command, this checkout as its cwd, output captured rather than left to spray the run log. */
-function runCheckCommand(command: string): { code: number; output: string } {
-  const result = spawnSync(command, { shell: true, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+/**
+ * Runs `command` the way `bin/close-ticket`'s `run_check` already does — a shell command, `cwd` as
+ * its working directory, output captured rather than left to spray the run log. `cwd` has to be the
+ * target checkout: a criterion's `check:` command reads and runs against the repository the spec
+ * describes, and an omitted `cwd` here runs it against `spawnSync`'s own default of
+ * `process.cwd()` — this process's machine checkout — instead.
+ */
+function runCheckCommand(command: string, cwd: string): { code: number; output: string } {
+  const result = spawnSync(command, { shell: true, cwd, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
   return { code: result.status ?? 1, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 
@@ -796,6 +811,7 @@ function evaluateSpecCheck(
   prd: PrdCheckCandidate,
   log: (line: string) => void,
   closeSpec: (number: number, range: string) => CloseTicketResult,
+  targetWorkspace: string,
 ): void {
   const comments = fetchComments(gh, prd.number);
   if (comments === null) {
@@ -821,7 +837,7 @@ function evaluateSpecCheck(
     return;
   }
 
-  const run = runCheckCommand(command);
+  const run = runCheckCommand(command, targetWorkspace);
   const closing = run.code === 0 ? attemptSpecClose(gh, prd.number, closeSpec, log) : undefined;
 
   if (closing?.disagreement) {
@@ -965,7 +981,8 @@ function reportUnreachable(
 export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const gh = input.gh ?? execGh;
   const log = input.log ?? ((line: string) => console.log(line));
-  const closeSpec = input.closeSpec ?? runRealSpecClose;
+  const targetWorkspace = input.targetWorkspace ?? process.cwd();
+  const closeSpec = input.closeSpec ?? ((number, range) => runRealSpecClose(number, range, targetWorkspace));
 
   const degraded = (note: string): ReconcileOutcome => ({
     action: "degraded",
@@ -1006,7 +1023,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
 
     try {
-      evaluateSpecCheck(gh, { number: issue.number, body: issue.body ?? "", labels }, log, closeSpec);
+      evaluateSpecCheck(gh, { number: issue.number, body: issue.body ?? "", labels }, log, closeSpec, targetWorkspace);
     } catch (err) {
       // One spec's check crashing must not cost every other spec its own verdict — and the next
       // recompute reads the same tracker state and tries again.
@@ -1072,8 +1089,12 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
  * `--spec` is the whole difference between this closer and lane 08's; the spawn itself is
  * `shared/close-ticket.ts`, so the two cannot drift in how they read an exit code or fold output.
  */
-export function runRealSpecClose(number: number, range: string): CloseTicketResult {
-  return closeTicketProcess(["--spec", String(number), range, "."]);
+export function runRealSpecClose(number: number, range: string, targetWorkspace: string): CloseTicketResult {
+  // The third positional is `bin/close-ticket`'s own `<checkout>` argument — the tree its check
+  // runs against. `closeTicketProcess` spawns `bin/close-ticket` with no `cwd` of its own, so a
+  // relative `"."` here resolved against this process's own `process.cwd()`: the machine checkout
+  // this script runs from, not the target the spec describes.
+  return closeTicketProcess(["--spec", String(number), range, targetWorkspace]);
 }
 
 function main(): void {
@@ -1085,7 +1106,14 @@ function main(): void {
     );
     return;
   }
-  const outcome = runReconcile({ dryRun: process.argv.includes("--dry-run") });
+  // `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine checkout
+  // this script runs from is a different directory than the target checkout a spec's own `check:`
+  // command runs against and `bin/close-ticket --spec` closes — the same seam `implement.ts`,
+  // `fixer.ts` and `acceptance.ts` read for the same reason. Falling back to `process.cwd()` is
+  // what lets a local run (or a test driving this file as a real subprocess) hand in nothing and
+  // still work, since there the checkout root and the process's own cwd are the same directory.
+  const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
+  const outcome = runReconcile({ dryRun: process.argv.includes("--dry-run"), targetWorkspace });
   console.log(`${outcome.action}: ${outcome.note}`);
   process.exit(outcome.action === "degraded" ? 1 : 0);
 }

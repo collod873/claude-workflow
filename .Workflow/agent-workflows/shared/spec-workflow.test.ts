@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
+import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
 import { readWorkflow } from "./read-workflow";
 
 /**
@@ -145,6 +146,12 @@ describe("spec.yml runs the lane rather than announcing it", () => {
   it("invokes spec.ts", () => {
     const runs = steps.map((step) => step.run ?? "").join("\n");
     expect(runs).toContain("spec.ts");
+  });
+
+  it("separates the machine it runs from the target it authors specs against", () => {
+    // Without TARGET_WORKSPACE on this step, spec.ts (line ~501) falls back to process.cwd() and
+    // runs the model against the machine checkout instead of the target's.
+    expectMachineAndTargetCheckouts({ workflow: "spec.yml", job: "spec", runs: "spec.ts" });
   });
 
   it("names no step as unwired", () => {

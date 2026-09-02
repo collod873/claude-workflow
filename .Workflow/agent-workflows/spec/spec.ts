@@ -455,7 +455,7 @@ export type SpecPlan = { path: "author"; input: SpecTrigger; target: SpecSource 
  * (`detectSourceKind`) — never the label that fired this run, since one label now starts the lane
  * for both.
  */
-export function planSpecRun(gh: GhExec, invocation: SpecInvocation): SpecPlan {
+export function planSpecRun(gh: GhExec, invocation: SpecInvocation, repoRoot?: string): SpecPlan {
   if (invocation.trigger === "critique") {
     return { path: "critique", issueNumber: invocation.issueNumber };
   }
@@ -467,7 +467,11 @@ export function planSpecRun(gh: GhExec, invocation: SpecInvocation): SpecPlan {
   const kind = detectSourceKind(gh, invocation.issueNumber);
   return {
     path: "author",
-    input: { kind, gh, issueNumber: invocation.issueNumber },
+    // `repoRoot` only means anything to the map collector (`collectMapContext`'s own default is
+    // `process.cwd()`, read at the collector rather than here) — the sheet collector reads nothing
+    // off disk, so passing it unconditionally would be a field the sheet variant carries and
+    // ignores.
+    input: kind === "map" ? { kind, gh, issueNumber: invocation.issueNumber, repoRoot } : { kind, gh, issueNumber: invocation.issueNumber },
     target: { kind, issue: invocation.issueNumber },
   };
 }
@@ -502,7 +506,7 @@ async function main(): Promise<void> {
 
   try {
     const invocation = invocationFromEnv(process.env);
-    const plan = planSpecRun(execGh, invocation);
+    const plan = planSpecRun(execGh, invocation, repoDir);
 
     if (plan.path === "critique") {
       const result = await runSpecCritique(execClaudeIn(repoDir), execGh, plan.issueNumber);

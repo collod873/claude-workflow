@@ -1,20 +1,32 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CloseTicketResult } from "../shared/close-ticket";
+import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { issueCommentPathMatcher, issueCommentsPathMatcher, matchingRefsPath, subIssuesPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../watchdog/unreachable";
-import {
+
+const closeTicketProcessCalls: (readonly string[])[] = [];
+vi.mock("../shared/close-ticket", () => ({
+  closeTicketProcess: (args: readonly string[]) => {
+    closeTicketProcessCalls.push(args);
+    return { exitCode: 0, output: "" };
+  },
+}));
+
+const {
   closedByMergedPr,
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
   runReconcile,
+  runRealSpecClose,
   SESSION_CAPTURED_DISPATCH_ACTION,
   TO_BUILD_LABEL,
-} from "./reconcile";
+} = await import("./reconcile");
 
 /** A published slice's body — `render-body.ts` writes this heading and nothing else does. */
 function sliceBody(prd = 145): string {
@@ -829,6 +841,41 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
     expect(commentsCarrying(fake, "prd-check:v1").length).toBeGreaterThan(0);
     expect(fake.labelsRemoved).toEqual([]);
   });
+
+  /**
+   * `runCheckCommand` used to spawn a criterion's `check:` command with no `cwd` at all, which
+   * defaults to `process.cwd()` — this process's own machine checkout, not the target the spec
+   * describes. `pwd` names the directory a shell command actually ran in, so a verdict comment
+   * that echoes it back is direct evidence of which checkout the check saw.
+   */
+  it("runs a spec's own check: command against targetWorkspace, not this process's own cwd", () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "reconcile-target-")));
+    const body = ["## Acceptance criteria", "", "- [ ] It works — check: `pwd`", ""].join("\n");
+    const fake = createFake({
+      open: [{ number: 350, title: "A spec", body, labels: ["prd"], children: [351] }],
+    });
+
+    runReconcile({ gh: fake.gh, log: silent, targetWorkspace });
+
+    const verdicts = commentsCarrying(fake, "prd-check:v1");
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toContain(targetWorkspace);
+  });
+});
+
+/**
+ * `runRealSpecClose`'s third positional is `bin/close-ticket`'s own `<checkout>` argument. It used
+ * to be a bare `"."`, which `closeTicketProcess` — carrying no `cwd` of its own — resolved against
+ * this process's own `process.cwd()`: the machine checkout, not the target the spec describes.
+ */
+describe("runRealSpecClose", () => {
+  it("names the target checkout as bin/close-ticket's own <checkout> argument, never a bare '.'", () => {
+    closeTicketProcessCalls.length = 0;
+
+    runRealSpecClose(500, "aaa^..bbb", "/some/target/checkout");
+
+    expect(closeTicketProcessCalls).toEqual([["--spec", "500", "aaa^..bbb", "/some/target/checkout"]]);
+  });
 });
 
 /**
@@ -1047,6 +1094,13 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
     expect(source).toContain("dispatch/reconcile.ts");
     expect(source).not.toContain("@anthropic-ai/claude-code");
     expect(source).not.toContain("CLAUDE_CODE_OAUTH_TOKEN");
+  });
+
+  it("separates the machine it runs from the target a spec's own check runs against", () => {
+    // Without TARGET_WORKSPACE on this step, reconcile.ts falls back to process.cwd() and runs a
+    // spec's check: command, and bin/close-ticket --spec's own <checkout> argument, against the
+    // machine checkout instead of the target's.
+    expectMachineAndTargetCheckouts({ workflow: "dispatch-reconcile.yml", job: "reconcile", runs: "reconcile.ts" });
   });
 
   it("serialises rather than cancels, so a recompute is never half-run", () => {

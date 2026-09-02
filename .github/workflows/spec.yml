@@ -169,6 +169,11 @@ jobs:
       # `PRD:` issue; on the critic-only door, read the spec that is already there. Both then apply
       # `sliceable` and ask for the dispatch unconditionally (#263).
       - name: Spec author
+        env:
+          # Which checkout the spec author reads and writes against (ADR-0055) — without this,
+          # `spec.ts` falls back to `process.cwd()` and runs the model in the machine checkout
+          # instead of the target's.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/spec/spec.ts
 
       # Carries what the gate asked for across the job boundary. A file in `runner.temp` dies with

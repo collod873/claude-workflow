@@ -558,6 +558,25 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
     });
   });
 
+  it("threads repoRoot into the map trigger, so collectMapContext reads the target checkout rather than its own cwd", () => {
+    const { gh } = fakeSpecGh({ comments: [] });
+
+    const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 }, "/some/target/checkout");
+
+    expect(plan).toMatchObject({
+      path: "author",
+      input: { kind: "map", issueNumber: 76, repoRoot: "/some/target/checkout" },
+    });
+  });
+
+  it("leaves the sheet trigger with no repoRoot at all — the sheet collector reads nothing off disk", () => {
+    const { gh } = fakeSpecGh({ comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)] });
+
+    const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 }, "/some/target/checkout");
+
+    expect(plan.path === "author" && plan.input).not.toHaveProperty("repoRoot");
+  });
+
   it("sends a critique trigger straight to the critic, reading nothing off the issue first", () => {
     const { gh, calls } = fakeSpecGh();
 

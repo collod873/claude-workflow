@@ -124,6 +124,17 @@ export function runLandGate(deps: LandGateDeps): LandGateOutcome {
   return repair;
 }
 
+/**
+ * `execGit` carries no working directory of its own (`shared/git.ts`'s docstring): every caller
+ * threads the repo it means through argv. `root` is the target checkout the baseline commit
+ * describes, so binding it here — rather than handing `runLandGate` a raw `execGit` — is what
+ * keeps the `add`/`commit` this lane makes from landing in the machine checkout instead. Exported
+ * so a test can assert the binding without shelling out to real git.
+ */
+export function bindGitToRoot(root: string): GitExec {
+  return (args) => execGit(["-C", root, ...args]);
+}
+
 /** The real `runGauntletPush`: shells out to the script every venue runs. */
 function runGauntletPushReal(root: string): { ok: true } | { ok: false; report: string } {
   try {
@@ -187,7 +198,7 @@ async function main(): Promise<void> {
   const outcome = runLandGate({
     runGauntletPush: () => runGauntletPushReal(root),
     repairAcceptanceBaseline: () => repairAcceptanceBaseline(root, ACCEPTANCE_TEST_DIR),
-    git: execGit,
+    git: bindGitToRoot(root),
     reportRefusal: reportToTicket(execGh, issueNumber, {
       label: "refused",
       opener: "This lane's push to `main` was refused before it happened — nothing landed.",

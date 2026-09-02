@@ -214,6 +214,11 @@ jobs:
       # seam-sweep/prompt.md and writes its validated structured output — the seam manifest — to
       # the handoff path, or a failure reason if it dies.
       - name: Seam sweep
+        env:
+          # Which checkout each stage reads and writes against (ADR-0055) — without this,
+          # `to-tickets.ts` falls back to `process.cwd()` and runs the model in the machine
+          # checkout instead of the target's.
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
 
       # The second stage. Reads the seam manifest seam sweep just wrote at $FAILURE_REASON_PATH
@@ -222,6 +227,8 @@ jobs:
       # carries the manifest between these two steps; both read and write the one path the job's
       # env already fixes.
       - name: Slice
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage slice --issue "$PRD_NUMBER"
 
       # The third and last stage. Reads the plan slice just wrote at $FAILURE_REASON_PATH the same
@@ -233,6 +240,8 @@ jobs:
       # fails graph validation here is rejected before any of that — zero `gh` writes, nonzero exit,
       # same failure surface as every other stage.
       - name: Audit and publish
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
 
       # `dispatchReadySlices` asked for one `ticket-ready` per root slice; this carries the whole

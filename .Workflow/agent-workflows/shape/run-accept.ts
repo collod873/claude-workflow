@@ -61,6 +61,32 @@ function usage(): never {
   process.exit(1);
 }
 
+/**
+ * Everything `accept` needs, bound to one checkout. Exported so a test can assert the binding
+ * itself — `execGit` carries no working directory of its own (`shared/git.ts`'s docstring): every
+ * caller threads the repo it means through argv. `accept.ts`'s `commitAndPush` adds, commits,
+ * fetches, rebases and pushes with no path of its own, so a raw `execGit` would run every one of
+ * those against `process.cwd()` — the machine checkout — instead of `targetWorkspace`, where the
+ * ADRs and CONTEXT.md it just wrote actually live.
+ */
+export function buildAcceptDeps(targetWorkspace: string): AcceptDeps {
+  // `path.resolve`, not `path.join`: `newAdr`/`landAdr` hand back an absolute path (`bin/new-adr`
+  // derives its own repo root the same way, from where it runs), while `accept.ts` also passes a
+  // bare relative one ("CONTEXT.md"). `resolve` leaves the former alone and anchors the latter to
+  // the target, which is what `join` cannot do for both in one call.
+  const resolveInTarget = (path: string) => resolvePath(targetWorkspace, path);
+
+  return {
+    gh: execGh,
+    git: (args) => execGit(["-C", targetWorkspace, ...args]),
+    newAdr: (title) => newAdr(title, targetWorkspace),
+    landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
+    regenerateCorpus: () => writeCorpusFixture(targetWorkspace),
+    readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
+    writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
+  };
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   const issueIndex = args.indexOf("--issue");
@@ -80,23 +106,8 @@ function main(): void {
   // `process.cwd()` is what lets a local run (or the owner's own shell) hand in nothing and still
   // work, since there the checkout root and the process's own cwd are the same directory.
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
-  // `path.resolve`, not `path.join`: `newAdr`/`landAdr` hand back an absolute path (`bin/new-adr`
-  // derives its own repo root the same way, from where it runs), while `accept.ts` also passes a
-  // bare relative one ("CONTEXT.md"). `resolve` leaves the former alone and anchors the latter to
-  // the target, which is what `join` cannot do for both in one call.
-  const resolveInTarget = (path: string) => resolvePath(targetWorkspace, path);
 
-  const deps: AcceptDeps = {
-    gh: execGh,
-    git: execGit,
-    newAdr: (title) => newAdr(title, targetWorkspace),
-    landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
-    regenerateCorpus: () => writeCorpusFixture(targetWorkspace),
-    readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
-    writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
-  };
-
-  console.log(`accept: ${JSON.stringify(accept(deps, issueNumber, verb))}`);
+  console.log(`accept: ${JSON.stringify(accept(buildAcceptDeps(targetWorkspace), issueNumber, verb))}`);
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
