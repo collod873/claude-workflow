@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { repoRunsPathMatcher } from "../shared/gh-paths";
+import { repoRunsPathForMatcher } from "../shared/gh-paths";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { failingPath, isCallerPath, MAX_FILED, MAX_LOG_READS, walkHome } from "./walk-home";
 
@@ -53,17 +53,21 @@ function fakeGh(options: {
       return repositories.join("\n");
     }
 
-    if (args[0] === "api" && repo && repoRunsPathMatcher.test(args[args.indexOf(repo) + 1] ?? "")) {
+    if (args[0] === "api" && args[1] && repoRunsPathForMatcher.test(args[1])) {
+      // Never `-R`: `gh api` has no such flag, so `walk-home.ts` has to spell the repository into
+      // the path itself — this is the fake's other end of that, reading it straight back out.
+      expect(args).not.toContain("-R");
+      const runsRepo = repoRunsPathForMatcher.exec(args[1])![1];
       // Already in the shape `walk-home.ts`'s own `--jq` projects to — the fake stands in for the
       // whole `gh api --jq` round trip, not just the un-projected REST response.
-      const list = runs[repo] ?? [];
+      const list = runs[runsRepo] ?? [];
       return JSON.stringify(
         list.map((run) => ({
           id: run.id,
           path: run.path,
           status: run.status ?? "completed",
           conclusion: run.conclusion === undefined ? "failure" : run.conclusion,
-          htmlUrl: `https://github.com/${repo}/actions/runs/${run.id}`,
+          htmlUrl: `https://github.com/${runsRepo}/actions/runs/${run.id}`,
           createdAt: run.created_at ?? "2026-09-02T11:00:00Z",
         })),
       );
@@ -150,6 +154,14 @@ describe("walkHome", () => {
     expect(outcome.action).toBe("swept");
     expect(outcome.filed).toEqual([{ repository: "owner/caller", runId: 555, routed: "machine", issue: 100 }]);
 
+    // `gh api` has no `-R` flag — the repository has to be spelled straight into the path.
+    expect(fake.calls).toContainEqual([
+      "api",
+      "repos/owner/caller/actions/runs?per_page=100",
+      "--jq",
+      "[.workflow_runs[] | {id, path, status, conclusion, htmlUrl: .html_url, createdAt: .created_at}]",
+    ]);
+
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;
     const body = create[create.indexOf("--body") + 1];
     expect(body).toContain(MACHINE_SHA);
@@ -210,7 +222,7 @@ describe("walkHome", () => {
     // than being handled — the shape a repository this sweep cannot read at all takes.
     const originalGh = fake.gh;
     const gh: GhExec = (args) => {
-      if (args[0] === "api" && args.includes("-R") && args[args.indexOf("-R") + 1] === "owner/broken") {
+      if (args[0] === "api" && args[1]?.startsWith("repos/owner/broken/")) {
         throw new Error("HTTP 404: Not Found");
       }
       return originalGh(args);
@@ -244,7 +256,7 @@ describe("walkHome", () => {
     const outcome = sweep(fake);
 
     expect(outcome.repositoriesSwept).toBe(1);
-    expect(fake.calls.some((argv) => argv.includes(MACHINE_REPO) && argv[0] === "api" && argv.includes("-R"))).toBe(false);
+    expect(fake.calls.some((argv) => argv[0] === "api" && argv[1]?.startsWith(`repos/${MACHINE_REPO}/`))).toBe(false);
   });
 
   it("reports an all-clear sweep when the topic enrols nobody", () => {

@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { repoRunsPath } from "../shared/gh-paths";
+import { repoRunsPathFor } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
@@ -131,9 +131,7 @@ function withinLookback(createdAt: string, now: Date): boolean {
 function failedRuns(gh: GhExec, repository: string, now: Date): RunSummary[] {
   const raw = gh([
     "api",
-    "-R",
-    repository,
-    repoRunsPath(RUN_PAGE_SIZE),
+    repoRunsPathFor(repository, RUN_PAGE_SIZE),
     "--jq",
     "[.workflow_runs[] | {id, path, status, conclusion, htmlUrl: .html_url, createdAt: .created_at}]",
   ]);

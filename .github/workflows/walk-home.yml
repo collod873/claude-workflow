@@ -57,6 +57,11 @@ jobs:
       # Not `github.token`: the built-in token cannot write into an enrolled repository's own
       # tracker, and this lane's whole reason to exist is filing there when the failure is theirs.
       GH_TOKEN: ${{ secrets.ENROL_PAT }}
+      # Every enrolled-repository call below spells the repository into the path or an explicit
+      # `-R` — never relies on this. This is here only so an unqualified call (the machine-side
+      # `gh issue create` that files here) still lands on this repository rather than wherever the
+      # runner's cwd remote happens to resolve to, matching every other lane's own convention.
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

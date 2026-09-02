@@ -206,6 +206,28 @@ export function repoRunsPath(perPage: number): string {
 }
 
 /**
+ * The same run-listing path as `repoRunsPath`, but with the repository spelled directly into the
+ * path rather than left to `gh api`'s own `{owner}/{repo}` placeholder — that placeholder is only
+ * ever resolved from `-R` or the caller's own git remote, and `gh api` (unlike `gh run view` or
+ * `gh issue list`) has no `-R` flag at all. `watchdog/walk-home.ts` sweeps repositories it never
+ * checks out, so it cannot lean on either resolution and has to address each one by name, the same
+ * way `enrol/enrol.ts` addresses every repository other than its own — by interpolating it directly
+ * into the path.
+ */
+export function repoRunsPathFor(repository: string, perPage: number): string {
+  return `repos/${repository}/actions/runs?per_page=${perPage}`;
+}
+
+/**
+ * Matches a `repoRunsPathFor` path, capturing the repository and the page size.
+ *
+ * @fixture — no lane reads this; it exists so `watchdog/walk-home.test.ts`'s fake `gh` recognises
+ * the path `repoRunsPathFor` sends, by the same segments, rather than restating the shape in a way
+ * that could silently drift from what production actually calls.
+ */
+export const repoRunsPathForMatcher: RegExp = /^repos\/([^/?]+\/[^/?]+)\/actions\/runs\?per_page=(\d+)$/;
+
+/**
  * Every ref under one prefix, in one call — `implement/` finds every claim the fleet holds, which
  * is the `started` term of the ready set (`shared/ready-set.ts`) read without a per-slice lookup.
  */
