@@ -2,14 +2,17 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPathFor } from "../shared/gh-paths";
+import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
 /**
- * The walk-home sweep (ADR-0135, ADR-0136, #326, #330): a red run in an enrolled repository is
- * routed by its failing path — a machine-side failure files a ticket-shaped issue **here**, on
- * `to-build`, so lane 06 starts on it without the spec chain; a caller-side failure files into that
- * repository's own tracker. Either way the routing costs one string comparison and no model.
+ * The walk-home sweep (ADR-0135 as amended by ADR-0141, ADR-0136, #326, #330): a red run in an
+ * enrolled repository is routed by its failing path — a machine-side failure files a ticket-shaped
+ * issue **here**, on `to-build`, so lane 06 starts on it without the spec chain; a caller-side
+ * failure files into that repository's own tracker. Either way the routing costs one set lookup and
+ * no model. `routeFor` is the rule and carries the reasoning; only a run of a `*-caller.yml` stub
+ * is considered at all, because nothing else checked the machine out.
  *
  * Sibling of `./run-watchdog.ts`, and built to read like one:
  *
@@ -81,6 +84,9 @@ export interface WalkHomeOptions {
   machineRepository: string;
   /** The machine commit a filed machine-side ticket names as the revision to fix at or after. */
   machineSha: string;
+  /** Every file the machine checkout tracks — what `routeFor` proves a machine-side failure
+   * against. Injected so a test can pin it. */
+  machineFiles: ReadonlySet<string>;
   /** The moment the sweep's lookback window is measured back from. Injected so a test can pin it. */
   now?: Date;
   log?: (line: string) => void;
@@ -162,14 +168,44 @@ export function failingPath(logTail: string): string | undefined {
 }
 
 /**
- * Whether `path` sits inside the caller's own tree rather than the machine checkout — the whole
- * routing rule (ADR-0135), and the one place it is spelled: every reusable lane here checks the
- * machine out at the workspace root and the calling repository at `target/`
- * (`shared/checkout-pair.fixture.ts`), so a failing path with that prefix is the caller's, and
- * anything else is this repository's own.
+ * Where a failing path's defect belongs — the whole routing rule (ADR-0135 as amended by ADR-0141),
+ * and the one place it is spelled.
+ *
+ * Every reusable lane checks the machine out at the workspace root and the calling repository at
+ * `target/` (`shared/checkout-pair.fixture.ts`), so that prefix settles it when it is printed. It
+ * usually is not: vitest and eslint name paths relative to the target's own cwd, so the first path
+ * in a failing log is ordinarily bare. Reading a bare path as the machine's is what put five of an
+ * enrolled repository's own test failures on `to-build`, so the machine is **proven, not assumed** —
+ * a bare path is the machine's only if it is a file this checkout actually tracks, and anything
+ * else is the caller's.
+ *
+ * `machineFiles` is that tracked set, injected rather than read here so a test can pin it. The
+ * sweep runs inside the machine checkout, so the tree is the list and there is no prefix roster to
+ * maintain (ADR-0057).
  */
-export function isCallerPath(path: string): boolean {
-  return path === "target" || path.startsWith("target/");
+export function routeFor(path: string, machineFiles: ReadonlySet<string>): "machine" | "caller" {
+  if (path === "target" || path.startsWith("target/")) return "caller";
+  return machineFiles.has(path) ? "machine" : "caller";
+}
+
+/** Every file the machine checkout tracks, as `routeFor` reads it. */
+export function machineFilesFrom(git: GitExec): ReadonlySet<string> {
+  return new Set(
+    git(["ls-files"])
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== ""),
+  );
+}
+
+/**
+ * Whether a run of `workflowPath` could carry a machine defect at all. Only a caller stub reaches
+ * `uses:` into this repository, and the stub set is globbed as `*-caller.yml` (`enrol/enrol.ts`),
+ * so a run of any other workflow — the caller's own CI, its licence gate — never checked the
+ * machine out and has no machine side to route to.
+ */
+export function ranMachineLane(workflowPath: string): boolean {
+  return workflowPath.endsWith("-caller.yml");
 }
 
 /** `owner/name:runId` — what one walked-home run is keyed on, wherever its marker is read. */
@@ -269,8 +305,9 @@ function file(
   machineSha: string,
   path: string,
   logTail: string,
+  machineFiles: ReadonlySet<string>,
 ): FiledTicket {
-  if (isCallerPath(path)) {
+  if (routeFor(path, machineFiles) === "caller") {
     const url = gh([
       "issue",
       "create",
@@ -306,9 +343,10 @@ function walkOneRepository(
   now: Date,
   hereMarkers: Set<string>,
   budget: { logReads: number; filed: number },
+  machineFiles: ReadonlySet<string>,
   log: (line: string) => void,
 ): FiledTicket[] {
-  const runs = failedRuns(gh, repository, now);
+  const runs = failedRuns(gh, repository, now).filter((run) => ranMachineLane(run.path));
   if (runs.length === 0) return [];
 
   let callerMarkers: Set<string> | undefined;
@@ -335,12 +373,12 @@ function walkOneRepository(
       continue;
     }
 
-    if (isCallerPath(path)) {
+    if (routeFor(path, machineFiles) === "caller") {
       callerMarkers ??= readWalkedHome(gh, repository);
       if (callerMarkers.has(key)) continue;
     }
 
-    const ticket = file(gh, repository, run, machineSha, path, logTail);
+    const ticket = file(gh, repository, run, machineSha, path, logTail, machineFiles);
     budget.filed -= 1;
     log(`${repository} run ${run.id}: filed ${ticket.routed === "machine" ? "here" : "there"} as #${ticket.issue} (${path})`);
     filed.push(ticket);
@@ -350,7 +388,7 @@ function walkOneRepository(
 }
 
 export function walkHome(options: WalkHomeOptions): WalkHomeOutcome {
-  const { gh, eventAction, machineRepository, machineSha } = options;
+  const { gh, eventAction, machineRepository, machineSha, machineFiles } = options;
 
   // The refusal comes before the defaults rather than after: a sweep that is not going to run has
   // no clock and no logger to take. `run-watchdog.ts` reads the same guard the other way round,
@@ -375,7 +413,7 @@ export function walkHome(options: WalkHomeOptions): WalkHomeOutcome {
 
   for (const repository of repositories) {
     try {
-      filed.push(...walkOneRepository(gh, repository, machineSha, now, hereMarkers, budget, log));
+      filed.push(...walkOneRepository(gh, repository, machineSha, now, hereMarkers, budget, machineFiles, log));
     } catch (err) {
       const message = `${repository}: ${reason(err)}`;
       log(`FAILED: ${message}`);
@@ -404,6 +442,7 @@ async function main(): Promise<void> {
       eventAction: process.env.EVENT_ACTION,
       machineRepository,
       machineSha,
+      machineFiles: machineFilesFrom(execGit),
     });
     console.log(`${outcome.action} (${outcome.code}): ${outcome.filed.length} run(s) walked home across ${outcome.repositoriesSwept} repositor${outcome.repositoriesSwept === 1 ? "y" : "ies"}`);
 

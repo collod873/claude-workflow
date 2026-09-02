@@ -5,11 +5,27 @@ import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathForMatcher } from "../shared/gh-paths";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
-import { failingPath, isCallerPath, MAX_FILED, MAX_LOG_READS, walkHome } from "./walk-home";
+import {
+  failingPath,
+  machineFilesFrom,
+  MAX_FILED,
+  MAX_LOG_READS,
+  ranMachineLane,
+  routeFor,
+  walkHome,
+} from "./walk-home";
 
 const NOW = new Date("2026-09-02T12:00:00Z");
 const MACHINE_REPO = "collod873/claude-workflow";
 const MACHINE_SHA = "abc1234";
+
+/** Stands in for `git ls-files` over the machine checkout — the tree `routeFor` proves against. */
+const MACHINE_FILES: ReadonlySet<string> = new Set([
+  ".Workflow/agent-workflows/watchdog/walk-home.ts",
+  ".Workflow/agent-workflows/watchdog/walk-home.test.ts",
+  "bin/clone-gate",
+  "docs/adr/0135-a-red-run.md",
+]);
 
 interface FakeRun {
   id: number;
@@ -102,6 +118,7 @@ function sweep(fake: { gh: GhExec }, overrides: Partial<Parameters<typeof walkHo
     eventAction: WATCHDOG_DISPATCH_ACTION,
     machineRepository: MACHINE_REPO,
     machineSha: MACHINE_SHA,
+    machineFiles: MACHINE_FILES,
     now: NOW,
     log: () => {},
     ...overrides,
@@ -133,11 +150,49 @@ describe("failingPath", () => {
   });
 });
 
-describe("isCallerPath", () => {
-  it("is true only for a path inside target/, where every reusable lane checks the caller out", () => {
-    expect(isCallerPath("target/tests/acceptance/999-example.test.ts")).toBe(true);
-    expect(isCallerPath(".Workflow/agent-workflows/watchdog/walk-home.ts")).toBe(false);
-    expect(isCallerPath("docs/adr/0135-a-red-run.md")).toBe(false);
+describe("routeFor", () => {
+  it("routes a path inside target/ to the caller, where every reusable lane checks the caller out", () => {
+    expect(routeFor("target/tests/acceptance/999-example.test.ts", MACHINE_FILES)).toBe("caller");
+  });
+
+  it("routes to the machine only for a path the machine checkout actually tracks", () => {
+    expect(routeFor(".Workflow/agent-workflows/watchdog/walk-home.ts", MACHINE_FILES)).toBe("machine");
+    expect(routeFor("docs/adr/0135-a-red-run.md", MACHINE_FILES)).toBe("machine");
+  });
+
+  it("routes an unrecognised bare path to the caller, not the machine (ADR-0141)", () => {
+    // The live regression: vitest and eslint print paths relative to the target's own cwd, so the
+    // `target/` prefix never appears and the machine was reached by fallback. These two are the
+    // exact strings that put five of Lumaria's own failures on this repository's `to-build`.
+    expect(routeFor("scripts/clone-gate.mjs", MACHINE_FILES)).toBe("caller");
+    expect(routeFor("src/features/field-service/server/reactions/appointments.test.ts", MACHINE_FILES)).toBe("caller");
+  });
+
+  it("does not mistake a caller file for the machine's on a shared basename", () => {
+    // `bin/clone-gate` is the machine's; `scripts/clone-gate.mjs` is the caller's. Membership is
+    // the whole path, never a suffix or a stem.
+    expect(routeFor("bin/clone-gate", MACHINE_FILES)).toBe("machine");
+    expect(routeFor("scripts/bin/clone-gate", MACHINE_FILES)).toBe("caller");
+  });
+});
+
+describe("machineFilesFrom", () => {
+  it("reads the checkout's tracked set out of git, dropping the blank trailing line", () => {
+    const files = machineFilesFrom(() => "bin/gauntlet\n.Workflow/agent-workflows/watchdog/walk-home.ts\n");
+
+    expect(files.has("bin/gauntlet")).toBe(true);
+    expect(files.has(".Workflow/agent-workflows/watchdog/walk-home.ts")).toBe(true);
+    expect(files.has("")).toBe(false);
+  });
+});
+
+describe("ranMachineLane", () => {
+  it("is true only for a caller stub, the one shape that reaches uses: into the machine", () => {
+    expect(ranMachineLane(".github/workflows/verify-caller.yml")).toBe(true);
+    expect(ranMachineLane(".github/workflows/ratify-on-prd-close-caller.yml")).toBe(true);
+    // The caller's own workflows never check the machine out, so they have no machine side at all.
+    expect(ranMachineLane(".github/workflows/ci.yml")).toBe(false);
+    expect(ranMachineLane(".github/workflows/license-gate.yml")).toBe(false);
   });
 });
 
@@ -145,7 +200,7 @@ describe("walkHome", () => {
   it("files a ticket-shaped issue here, carrying the machine SHA, the run URL and the log tail, for a failing path inside the machine checkout", () => {
     const fake = fakeGh({
       repositories: ["owner/caller"],
-      runs: { "owner/caller": [{ id: 555, path: ".github/workflows/verify.yml" }] },
+      runs: { "owner/caller": [{ id: 555, path: ".github/workflows/verify-caller.yml" }] },
       logs: { 555: MACHINE_SIDE_LOG },
     });
 
@@ -178,7 +233,7 @@ describe("walkHome", () => {
   it("files into the caller's own tracker, and never here, for a failing path inside its own tree", () => {
     const fake = fakeGh({
       repositories: ["owner/caller"],
-      runs: { "owner/caller": [{ id: 556, path: ".github/workflows/acceptance.yml" }] },
+      runs: { "owner/caller": [{ id: 556, path: ".github/workflows/acceptance-caller.yml" }] },
       logs: { 556: CALLER_SIDE_LOG },
     });
 
@@ -201,7 +256,7 @@ describe("walkHome", () => {
   it("writes nothing on a second sweep over the same unchanged run — no cursor, no ledger", () => {
     const fake = fakeGh({
       repositories: ["owner/caller"],
-      runs: { "owner/caller": [{ id: 557, path: ".github/workflows/verify.yml" }] },
+      runs: { "owner/caller": [{ id: 557, path: ".github/workflows/verify-caller.yml" }] },
       logs: { 557: MACHINE_SIDE_LOG },
     });
 
@@ -215,7 +270,7 @@ describe("walkHome", () => {
   it("continues the sweep over the rest of the topic when one repository fails, and still exits non-zero", () => {
     const fake = fakeGh({
       repositories: ["owner/broken", "owner/caller"],
-      runs: { "owner/caller": [{ id: 558, path: ".github/workflows/verify.yml" }] },
+      runs: { "owner/caller": [{ id: 558, path: ".github/workflows/verify-caller.yml" }] },
       logs: { 558: MACHINE_SIDE_LOG },
     });
     // `owner/broken` names no `runs` entry, so its run-page read throws inside `fakeGh` rather
@@ -236,13 +291,29 @@ describe("walkHome", () => {
     expect(outcome.code).toBe("repository-failed");
   });
 
+  it("reads no log at all for a red run of a workflow the caller owns (ADR-0141)", () => {
+    // Lumaria's own `ci.yml` goes red on its own suite constantly. It never checked the machine
+    // out, so there is no machine side to route to and no reason to spend a log read finding out.
+    const fake = fakeGh({
+      repositories: ["owner/caller"],
+      runs: { "owner/caller": [{ id: 559, path: ".github/workflows/ci.yml" }] },
+      logs: { 559: MACHINE_SIDE_LOG },
+    });
+
+    const outcome = sweep(fake);
+
+    expect(outcome.filed).toEqual([]);
+    expect(fake.calls.some((argv) => argv[0] === "run" && argv[1] === "view")).toBe(false);
+    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create")).toBe(false);
+  });
+
   it("names no repository literal in its own source (the topic is the whole enumeration)", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "walk-home.ts"), "utf8");
     expect(source).not.toMatch(/collod873\/[a-z-]+["'`]/);
   });
 
   it("spends nothing at all on a dispatch that is not session end", () => {
-    const fake = fakeGh({ repositories: ["owner/caller"], runs: { "owner/caller": [{ id: 1, path: "x.yml" }] } });
+    const fake = fakeGh({ repositories: ["owner/caller"], runs: { "owner/caller": [{ id: 1, path: ".github/workflows/verify-caller.yml" }] } });
 
     const outcome = sweep(fake, { eventAction: "something-else" });
 
@@ -274,7 +345,7 @@ describe("walkHome", () => {
     const runs: Record<string, FakeRun[]> = {};
     const logs: Record<number, string> = {};
     repos.forEach((repo, index) => {
-      runs[repo] = [{ id: 700 + index, path: "x.yml" }];
+      runs[repo] = [{ id: 700 + index, path: ".github/workflows/verify-caller.yml" }];
       logs[700 + index] = "exit code 1 — no path named anywhere in this log";
     });
     const fake = fakeGh({ repositories: repos, runs, logs });
@@ -291,7 +362,7 @@ describe("walkHome", () => {
     const runs: Record<string, FakeRun[]> = {};
     const logs: Record<number, string> = {};
     repos.forEach((repo, index) => {
-      runs[repo] = [{ id: 800 + index, path: "x.yml" }];
+      runs[repo] = [{ id: 800 + index, path: ".github/workflows/verify-caller.yml" }];
       logs[800 + index] = MACHINE_SIDE_LOG;
     });
     const fake = fakeGh({ repositories: repos, runs, logs });
