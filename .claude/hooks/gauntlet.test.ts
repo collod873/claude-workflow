@@ -317,8 +317,9 @@ describe("scheduling the test slot against the cores it has", () => {
    * `contract` check passes against a fresh probe of it rather than reporting the fixture. The
    * typecheck script is the slow one and leaves a marker; the test script asserts the marker is
    * already there, which is true exactly when the test slot started after typecheck finished.
+   * `scripts` overrides that default for a test asking a different question of the same fixture.
    */
-  function scratchTarget(): string {
+  function scratchTarget(scripts?: (root: string) => Record<string, string>): string {
     const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
     stubDirs.push(root);
     const marker = join(root, "typecheck-finished");
@@ -327,7 +328,7 @@ describe("scheduling the test slot against the cores it has", () => {
       JSON.stringify({
         name: "scratch",
         private: true,
-        scripts: {
+        scripts: scripts?.(root) ?? {
           typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
           lint: "true",
           test: `test -f ${JSON.stringify(marker)}`,
@@ -372,6 +373,25 @@ describe("scheduling the test slot against the cores it has", () => {
 
       expect(run.status).toBe(1);
       expect(run.stdout).toContain("--- test ---");
+    },
+    REAL_TOOLCHAIN,
+  );
+
+  it(
+    "tells every slot the count it scheduled by, so a target's runner can size itself from the box it is on",
+    () => {
+      // A slot is a command the contract names, never a tool the gauntlet knows, so the width a
+      // target's own CI declares never reaches it (#343). The count is the one thing the gauntlet
+      // can say generically; the seam value stands in for `nproc` here.
+      const check = 'test "$GAUNTLET_CORES" = 7';
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: scratchTarget(() => ({ typecheck: check, lint: check, test: check })),
+        GAUNTLET_CORES: "7",
+        GAUNTLET_CONTRACT: undefined,
+      });
+
+      expect(run.stdout).toBe("");
+      expect(run.status).toBe(0);
     },
     REAL_TOOLCHAIN,
   );
