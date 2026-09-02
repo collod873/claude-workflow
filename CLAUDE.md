@@ -26,4 +26,5 @@ A Claude Code + GitHub workflow system.
 ## Agent skills
 
 Issue tracker, ticket format, pipeline labels, domain layout → `docs/agents/`.
-Check commands → `.claude/contract.json`.
+Check commands → `.claude/contract.json`. What each venue runs, and why its budget is a measured
+baseline rather than a number → [`docs/agents/venues.md`](docs/agents/venues.md).

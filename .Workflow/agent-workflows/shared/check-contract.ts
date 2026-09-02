@@ -12,9 +12,24 @@ import { z } from "zod";
  * The six slots — `stop`, `test`, `test_one`, `typecheck`, `lint`, `all` — are era 6's, unchanged
  * (`agent-skills` ADR-0006/ADR-0022; see `docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md`
  * and CONTEXT.md's "Check contract" entry). Nothing here renames, renumbers, or removes a slot.
+ *
+ * `test_related` is a seventh, added by #335 — the turn venue ran no tests at all, and the runner
+ * this repo installs has a form (`vitest related`) that runs only the test files importing the
+ * file just edited: one to three files, sub-second, at the venue where a repair is cheapest. It is
+ * an addition and not a rename, so a contract written against the six still parses every slot it
+ * names; a target that has no such form carries it as the sanctioned `cmd: null` and its turn
+ * venue runs no tests, exactly as before.
  */
 
-export const SLOT_NAMES = ["stop", "test", "test_one", "typecheck", "lint", "all"] as const;
+export const SLOT_NAMES = [
+  "stop",
+  "test",
+  "test_one",
+  "test_related",
+  "typecheck",
+  "lint",
+  "all",
+] as const;
 export type SlotName = (typeof SLOT_NAMES)[number];
 
 /**
@@ -38,6 +53,7 @@ export const CheckContract = z
     stop: Slot,
     test: Slot,
     test_one: Slot,
+    test_related: Slot,
     typecheck: Slot,
     lint: Slot,
     all: Slot,
@@ -311,12 +327,41 @@ function testOneSlot(root: string, pkg: PackageJson, pm: PackageManager): Slot {
   return { cmd: null, why: "no known single-file form for the installed test runner" };
 }
 
-function probeTest(root: string, pkg: PackageJson, pm: PackageManager): { test: Slot; test_one: Slot } {
+/**
+ * The turn venue's test form: only the test files that import the file just edited (#335).
+ *
+ * `vitest related` is the one runner form this probe knows that answers that question; a repo
+ * whose runner has no equivalent gets the sanctioned `cmd: null`, and its turn venue runs no tests.
+ * Never the broader `test` slot as a fallback — the whole suite at a PostToolUse hook is a tax on
+ * every turn, which is the opposite of what putting a check at the earliest venue buys (ADR-0010).
+ *
+ * No exclusion for `tests/acceptance/`, unlike `timing-baseline.ts`'s own measuring run, and the
+ * reason is a property of the tests rather than an oversight: an acceptance test reads the tree
+ * through the filesystem and imports nothing but its own fixture, so no edit to a source file is
+ * *related* to one. An acceptance test that started importing its subject would surface here as a
+ * red turn — which is a fair report on a test that had stopped being written from the ticket alone.
+ */
+function testRelatedSlot(root: string, pkg: PackageJson, pm: PackageManager): Slot {
+  if (hasDependency(pkg, "vitest") && binInstalled(root, "vitest")) {
+    return {
+      cmd: execBin(pm, "vitest related --run <file>"),
+      why: "vitest's related-tests form; no package.json script for it",
+    };
+  }
+  return { cmd: null, why: "no known related-tests form for the installed test runner" };
+}
+
+function probeTest(
+  root: string,
+  pkg: PackageJson,
+  pm: PackageManager,
+): { test: Slot; test_one: Slot; test_related: Slot } {
   const script = pkg.scripts?.test;
   if (script) {
     return {
       test: { cmd: testCommand(pm), why: `package.json#scripts.test (${script})` },
       test_one: testOneSlot(root, pkg, pm),
+      test_related: testRelatedSlot(root, pkg, pm),
     };
   }
   if (hasDependency(pkg, "vitest") && binInstalled(root, "vitest") && hasTestFile(root)) {
@@ -326,6 +371,7 @@ function probeTest(root: string, pkg: PackageJson, pm: PackageManager): { test: 
         why: "vitest installed and test file(s) found; no package.json#scripts.test declared",
       },
       test_one: testOneSlot(root, pkg, pm),
+      test_related: testRelatedSlot(root, pkg, pm),
     };
   }
   return {
@@ -334,6 +380,7 @@ function probeTest(root: string, pkg: PackageJson, pm: PackageManager): { test: 
       why: "no package.json#scripts.test, and no installed test runner corroborated by a test file",
     },
     test_one: { cmd: null, why: "no test slot to narrow — see `test`" },
+    test_related: { cmd: null, why: "no test slot to narrow — see `test`" },
   };
 }
 
@@ -539,6 +586,7 @@ export function probe(root: string): CheckContract {
       stop: empty,
       test: empty,
       test_one: empty,
+      test_related: empty,
       typecheck: empty,
       lint: empty,
       all: empty,
@@ -546,11 +594,12 @@ export function probe(root: string): CheckContract {
   }
 
   const pm = detectPackageManager(root, pkg);
-  const { test, test_one } = probeTest(root, pkg, pm);
+  const { test, test_one, test_related } = probeTest(root, pkg, pm);
   return CheckContract.parse({
     stop: probeStop(root),
     test,
     test_one,
+    test_related,
     typecheck: probeTypecheck(root, pkg, pm),
     lint: probeLint(root, pkg, pm),
     all: probeAll(pkg, pm),

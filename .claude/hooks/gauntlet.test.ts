@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -305,6 +305,77 @@ function runGauntlet(
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
+
+// #335: on a box with fewer cores than the venue has checks, the test slot ran beside typecheck,
+// lint and eight more — and vitest's own worker pool is sized from the same cores. That contention
+// is what printed a 483620ms Verify and manufactured two failures out of nothing on a two-core
+// runner (#333). The fix is ordering, not skipping, so the claim under test is *when* the test slot
+// starts rather than whether it ran.
+describe("scheduling the test slot against the cores it has", () => {
+  /**
+   * A scratch target whose own `package.json` declares the three checks, so the push venue's
+   * `contract` check passes against a fresh probe of it rather than reporting the fixture. The
+   * typecheck script is the slow one and leaves a marker; the test script asserts the marker is
+   * already there, which is true exactly when the test slot started after typecheck finished.
+   */
+  function scratchTarget(): string {
+    const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
+    stubDirs.push(root);
+    const marker = join(root, "typecheck-finished");
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "scratch",
+        private: true,
+        scripts: {
+          typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
+          lint: "true",
+          test: `test -f ${JSON.stringify(marker)}`,
+        },
+      }),
+    );
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    const generate = spawnSync(
+      process.execPath,
+      [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+      { encoding: "utf8" },
+    );
+    expect(generate.status).toBe(0);
+    return root;
+  }
+
+  it(
+    "starts it after the cheap checks when there are fewer cores than checks",
+    () => {
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: scratchTarget(),
+        GAUNTLET_CORES: "1",
+        GAUNTLET_CONTRACT: undefined,
+      });
+
+      expect(run.stdout).toBe("");
+      expect(run.status).toBe(0);
+    },
+    REAL_TOOLCHAIN,
+  );
+
+  it(
+    "starts it beside them when the cores are there, which is what the deferral gives up",
+    () => {
+      // The same tree and the same checks: only the core count differs, so a green run here would
+      // mean the case above proved nothing about ordering.
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: scratchTarget(),
+        GAUNTLET_CORES: "64",
+        GAUNTLET_CONTRACT: undefined,
+      });
+
+      expect(run.status).toBe(1);
+      expect(run.stdout).toContain("--- test ---");
+    },
+    REAL_TOOLCHAIN,
+  );
+});
 
 describe("resolving the check contract", () => {
   it("exits 2, not 1, when a slot names a command that cannot run", () => {

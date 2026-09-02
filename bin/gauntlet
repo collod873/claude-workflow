@@ -4,18 +4,25 @@
 # Absolute interpreter, not `/usr/bin/env bash`: git hooks and Claude Code hooks both run this in a
 # shell nobody logged into, and `env` resolves `bash` through the PATH those shells may not have.
 #
-#   bin/gauntlet turn <file>   PostToolUse   budget <1s    typecheck + lint that file
-#   bin/gauntlet stop          Stop          budget <10s   typecheck + lint + unit suite
-#   bin/gauntlet push          pre-push      budget <60s   typecheck + lint + unit suite
+#   bin/gauntlet turn <file>   PostToolUse   typecheck + lint + the tests related to that file
+#   bin/gauntlet stop          Stop          typecheck + lint + the test files that fit here
+#   bin/gauntlet push          pre-push      typecheck + lint + the whole suite + the eight below
 #
 # A check sits at the earliest venue whose budget it fits (ADR-0010), because what
 # earliest buys is the cost of the *repair*, not the cost of the check: a type error caught in the
 # turn that caused it is fixed with the context still hot, and the same error caught in Actions
 # costs a cold run reconstructing what the author already knew.
 #
-# Today every check fits every venue here — the suite is ~1.7s and typecheck ~0.7s — so `stop` and
-# `push` run the same set. They stay separate names because the venues are different: `push` is the
-# one an agent has to route around deliberately, and it is the one that fails closed.
+# **No budget is written here.** A venue's budget is its own last green time plus a margin, read
+# from `.Workflow/agent-workflows/shared/timing-baseline.json` — the same baseline-the-delta family
+# as the wiring, clone and boundaries gates, and #333's ruling that an enrolled repository inherits
+# its own history rather than this repo's guess about someone else's suite. The numbers that used
+# to live in this header were a comment about a budget, and the comment was wrong: it claimed a
+# suite an order of magnitude faster than the one that runs. `timing-baseline.ts` carries the rest
+# of the argument, and `docs/agents/venues.md` is the reader's version of it.
+#
+# Which venue a test file runs at follows from the same baseline, so a file that outgrows the stop
+# venue moves to push on the next measurement rather than when somebody notices.
 #
 # What runs is whatever `.claude/contract.json` names (ADR-0056), not a hardcoded `tsc`/`eslint`/
 # `vitest` — this repo isn't special-cased over any other repo the contract might describe. The
@@ -58,15 +65,14 @@ case "$venue" in
     ;;
 esac
 
-# The budget each venue is held to, in milliseconds, per the header above. Nothing enforces them — an
-# over-budget venue reports itself and keeps running, because a gauntlet that refuses to run when
-# it gets slow is a gauntlet that stops catching things exactly when the codebase got big enough
-# to need it. The report is the signal to move a check down a venue.
-case "$venue" in
-  turn) budget_ms=1000 ;;
-  stop) budget_ms=10000 ;;
-  push) budget_ms=60000 ;;
-esac
+# How many checks may run at once. `nproc` rather than a tuned constant: this script runs on a
+# 32-core workstation, a 4-core hosted runner and a 2-core private one, and the contention that
+# manufactured two failures out of nothing in #333 was eleven concurrent checks on two cores. With
+# fewer cores than checks the test slot waits for the cheap ones instead of racing them — a
+# scheduling decision, not a check.
+#
+# `GAUNTLET_CORES` is the seam the tests drive that decision through; nothing in production sets it.
+cores="${GAUNTLET_CORES:-$( (nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4) )}"
 
 if ! node_on_path; then
   echo "gauntlet: no node on PATH — checks not run" >&2
@@ -128,11 +134,18 @@ const requests =
     ? [
         ["TYPECHECK", "typecheck"],
         ["LINT", "lint_one"],
+        // A slot, not a `_one` narrowing: a target with no related-tests form runs no tests at
+        // this venue, and must never degrade to the whole suite on a PostToolUse hook (#335).
+        ["TEST_RELATED", "test_related"],
       ]
     : [
         ["TYPECHECK", "typecheck"],
         ["LINT", "lint"],
         ["TEST", "test"],
+        // The stop venue runs the subset of test files the timing baseline admits, through the
+        // same single-file form `test_one` already names. A target without one runs the whole
+        // `test` slot, which is what every venue did before #335.
+        ["TEST_ONE", "test_one"],
       ];
 
 function shQuote(value) {
@@ -167,6 +180,11 @@ eval "$resolved"
 
 checks="typecheck lint"
 [ "$venue" != "turn" ] && checks="typecheck lint test"
+
+# The two optional slots, which are `null` in a target that has no form for them. A `null` here is
+# a check that does not run, never a broken gauntlet — unlike the required slots below, whose
+# empty command means the contract names something this venue cannot run at all.
+[ "$venue" = "turn" ] && [ -n "$TEST_RELATED_CMD" ] && [ -n "$target" ] && checks="$checks test_related"
 
 # A slot resolved to a broader form than what this venue asked for is a real cost — the turn venue
 # now lints the whole repo, not just the file that changed — and it is reported rather than run
@@ -226,8 +244,19 @@ done
 run_check() {
   local name="$1"
   shift
+  local check_started_ms
+  check_started_ms=$(($(date +%s%N) / 1000000))
   "$@" >"$tmp/$name.out" 2>&1
   echo "$?" >"$tmp/$name.exit"
+  # Per check, not just per venue: a venue that got slower is a report nobody can act on until it
+  # says which check did. The file is read once the run is green, below.
+  echo "$(( $(date +%s%N) / 1000000 - check_started_ms ))" >"$tmp/$name.ms"
+}
+
+# A value as one shell word, for the commands below that interpolate a path into a `bash -c`
+# string. This estate's own checkout has a space in its path.
+shquote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
 }
 
 # A contract slot runs at `target_root` with this gauntlet's own configuration unset. Whatever
@@ -247,6 +276,17 @@ pids+=($!)
 
 run_check lint "${slot_env[@]}" bash -c "cd \"$target_root\" && $LINT_CMD" &
 pids+=($!)
+
+# The turn venue's tests: only the files that import the one just edited (#335). Before this the
+# venue ran none at all, which made the cheapest place to repair a broken test the one place the
+# suite never ran. `<file>` is the same placeholder `test_one` uses, substituted here as a single
+# quoted word.
+if [ "$venue" = "turn" ] && [ -n "$TEST_RELATED_CMD" ] && [ -n "$target" ]; then
+  run_check test_related "${slot_env[@]}" \
+    GAUNTLET_VENUE="$venue" \
+    bash -c "cd \"$target_root\" && ${TEST_RELATED_CMD//<file>/$(shquote "$target")}" &
+  pids+=($!)
+fi
 
 if [ "$venue" = "push" ]; then
   # Every check below is machine code — `node "$repo_root/.Workflow/..."` — run against
@@ -349,8 +389,44 @@ if [ "$venue" = "push" ]; then
   pids+=($!)
 fi
 
+# What the test slot actually runs here.
+#
+# `push` runs the whole `test` slot — it is the venue that owns the whole suite, and the venue a
+# file lands at when it outgrows the one above it. `stop` asks the timing baseline which files fit
+# here and runs those through the `test_one` form, so the three files that spawn real processes on
+# purpose run at push without anyone keeping a list of them, and a file that grows past the stop
+# venue's share of the suite follows them on the next measurement (#335).
+#
+# Either precondition missing — no measurement yet, or a target whose runner has no single-file
+# form — and stop runs the whole slot, which is what every venue did before this.
+test_cmd="${TEST_CMD:-}"
+if [ "$venue" = "stop" ] && [ -n "$TEST_ONE_CMD" ]; then
+  if selected="$(node "$repo_root/.Workflow/agent-workflows/shared/timing-baseline.ts" \
+    files "$target_root" stop 2>/dev/null)" && [ -n "$selected" ]; then
+    selected_args=""
+    while IFS= read -r selected_file; do
+      [ -n "$selected_file" ] && selected_args="$selected_args $(shquote "$selected_file")"
+    done <<<"$selected"
+    test_cmd="${TEST_ONE_CMD//<file>/${selected_args# }}"
+  fi
+fi
+
+# With fewer cores than checks, the test slot waits for the cheap ones instead of racing them.
+# `maxWorkers` derived from cores (vitest.config.ts) means the suite alone will claim every core it
+# is given, and on a two-core runner it was claiming them beside typecheck, lint and eight more —
+# the contention that manufactured two failures out of nothing in #333. Ordering, not skipping:
+# every check still runs, and the venue's wall clock is the same work in a different arrangement.
+check_count="$(set -- $checks; echo $#)"
+defer_test=0
+[ "$cores" -lt "$check_count" ] && defer_test=1
+
 sandbox=""
 if [ "$venue" != "turn" ]; then
+  if [ "$defer_test" = "1" ]; then
+    for pid in "${pids[@]}"; do wait "$pid"; done
+    pids=()
+  fi
+
   # The suite runs against a decoy repository, named by the same three variables that let #86
   # happen: `GIT_DIR` beats a `cwd` and an argv `-C`, so a fixture that shells out to `git` writes
   # wherever they point. Twice in one hour they pointed here, and 74 fixture commits walked `main`
@@ -393,13 +469,13 @@ if [ "$venue" != "turn" ]; then
       GIT_DIR="$sandbox/.git" \
       GIT_WORK_TREE="$sandbox" \
       GIT_INDEX_FILE="$sandbox/.git/index" \
-      bash -c "cd \"$target_root\" && $TEST_CMD" &
+      bash -c "cd \"$target_root\" && $test_cmd" &
     pids+=($!)
   else
     echo "gauntlet: $target_root carries no scrub-git-env.setup.ts — the git sandbox did not run; a fixture there that shells out to git runs with whatever GIT_DIR the caller's environment already carries" >&2
     run_check test "${slot_env[@]}" -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
       GAUNTLET_VENUE="$venue" \
-      bash -c "cd \"$target_root\" && $TEST_CMD" &
+      bash -c "cd \"$target_root\" && $test_cmd" &
     pids+=($!)
   fi
 fi
@@ -462,8 +538,43 @@ for name in $checks; do
   cat "$tmp/$name.out"
 done
 
-if [ "$elapsed_ms" -gt "$budget_ms" ]; then
-  echo "gauntlet: $venue took ${elapsed_ms}ms against a ${budget_ms}ms budget" >&2
+# The timing ratchet (#335). Only a green run is recorded: a failed check exits early, so its wall
+# time measures the failure rather than the work, and a baseline that learned from red runs would
+# ratchet itself down to the cost of failing.
+#
+# Skipped when `GAUNTLET_CONTRACT` is set, because that seam's contracts name stub commands — a
+# `true` that returns in 4ms is not this target's history, and recording it would set a bar no real
+# check could clear. `GAUNTLET_TIMING=off` is the same escape for a caller that means it.
+#
+# Skipped inside a vitest worker (`VITEST`) for the mirror-image reason: half a dozen tests spawn a
+# real `bin/gauntlet` from inside the suite, where every check runs against a box already running
+# the whole suite. Those numbers are contention, not history, and a suite that could write the
+# baseline it is judged against would be measuring itself.
+#
+# What an over-budget run costs differs by venue, and that difference is the point. `push` refuses:
+# it is the venue that already fails closed, and the one an agent has to route around deliberately.
+# `turn` and `stop` fire inside a session, where blocking on a timing regression that might just be
+# a busy machine is precisely how a repo learns to ignore its gates (ADR-0015) — so they report,
+# and `gauntlet-hook.mjs` shows the line to the person rather than to Claude.
+if [ "$failed" = "0" ] && [ "$could_not_run" = "0" ] &&
+  [ -z "${GAUNTLET_CONTRACT:-}" ] && [ -z "${VITEST:-}" ] &&
+  [ "${GAUNTLET_TIMING:-on}" != "off" ]; then
+  timing_args=()
+  for name in $checks; do
+    [ -f "$tmp/$name.ms" ] && timing_args+=("$name=$(cat "$tmp/$name.ms")")
+  done
+  if [ "${#timing_args[@]}" -gt 0 ]; then
+    node "$repo_root/.Workflow/agent-workflows/shared/timing-baseline.ts" \
+      record "$target_root" "$venue" "--wall=$elapsed_ms" "${timing_args[@]}" 2>"$tmp/timing.err"
+    timing_status=$?
+    cat "$tmp/timing.err" >&2
+    # Exit 2 is the baseline itself being unreadable or unwritable — a broken measure, never a
+    # finding about the code, and never a reason to refuse a push whose checks all passed.
+    if [ "$timing_status" = "1" ] && [ "$venue" = "push" ]; then
+      failed=1
+      failed_names="$failed_names timing"
+    fi
+  fi
 fi
 
 # The verdict goes last, and on stdout, because that is the half a reader actually gets. A hook

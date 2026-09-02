@@ -11,6 +11,10 @@
     "cmd": "npx vitest run <file>",
     "why": "vitest's single-file form; no package.json script for it"
   },
+  "test_related": {
+    "cmd": "npx vitest related --run <file>",
+    "why": "vitest's related-tests form; no package.json script for it"
+  },
   "typecheck": {
     "cmd": "npm run typecheck",
     "why": "package.json#scripts.typecheck (tsc --noEmit)"

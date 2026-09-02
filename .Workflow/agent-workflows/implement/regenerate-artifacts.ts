@@ -28,6 +28,14 @@ import { childEnv } from "../shared/child-env.ts";
  * second cannot admit a duplicate — `--prune-baseline` has no way to add — it only stops the push
  * gate refusing a run for having *paid off* a clone, which is how run 33324207385 lost #273 at its
  * push. `prune-clone-baseline.ts` carries the rest of the argument.
+ *
+ * The timing baseline is here for the same reason and one more: this step is the **only** writer of
+ * it (#335). A gauntlet run on a hosted runner judges against that file and never writes it,
+ * because a hosted checkout is discarded — so without a step that owns the commit, the runner's
+ * numbers would be measured on every run and kept from none of them. It cannot raise a budget by
+ * running slowly: the generator ratchets one way, and the run that refuses an over-budget push is
+ * `bin/gauntlet`'s. What it costs is one suite run, on the runner, per implementation — the price
+ * of the venue budgets being measurements instead of the comment they replaced.
  */
 export interface GeneratedArtifact {
   /** Repo-relative path of the committed file, for the `git add` that follows. */
@@ -48,6 +56,10 @@ export const GENERATED_ARTIFACTS: readonly GeneratedArtifact[] = [
   {
     path: ".Workflow/agent-workflows/shared/clone-gate.baseline.json",
     generator: ".Workflow/agent-workflows/shared/prune-clone-baseline.ts",
+  },
+  {
+    path: ".Workflow/agent-workflows/shared/timing-baseline.json",
+    generator: ".Workflow/agent-workflows/shared/timing-baseline.ts",
   },
 ];
 

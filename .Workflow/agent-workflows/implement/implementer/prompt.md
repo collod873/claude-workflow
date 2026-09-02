@@ -69,13 +69,14 @@ not inside it. Whatever you produce lands through your structured answer alone.
    thought to run, and every one of them is cheap to fix while you still have
    the files open and unfixable once you have answered.
 
-   Three of its checks cover files that are **regenerated for you** after your
+   Four of its checks cover files that are **regenerated for you** after your
    answer. Leave them out of your files entirely and ignore them when they go
    red here:
 
    - `.claude/contract.json`
    - `.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json`
    - `.Workflow/agent-workflows/shared/clone-gate.baseline.json`
+   - `.Workflow/agent-workflows/shared/timing-baseline.json`
 
 5. **Write the summary.** One paragraph, in your own words, of what you built
    and why it satisfies the ticket's acceptance criteria, naming every file you

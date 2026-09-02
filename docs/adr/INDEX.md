@@ -147,5 +147,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0137 | [Intent to build is asserted by a label, never inferred from a ticket's shape](0137-intent-to-build-is-asserted-by-a-label-never-inferred-from-a.md) | constraint |
 | 0138 | [A lane's branch carries trunk's immutable set at push time, because a GITHUB_TOKEN push is refused when it does not](0138-a-lane-s-branch-carries-trunk-s-immutable-set-at-push-time-b.md) | constraint |
 | 0139 | [An enrolled repository is checked by the machine's gauntlet running from the machine checkout, never by a copy of it](0139-an-enrolled-repository-is-checked-by-the-machine-s-gauntlet.md) | constraint |
+| 0140 | [A venue's budget is its own last green time plus a margin, never a number declared for it](0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md) | constraint |
 
-139 ADRs · 62 constraint · 44 note · 33 superseded · 12,979 words total.
+140 ADRs · 63 constraint · 44 note · 33 superseded · 13,129 words total.

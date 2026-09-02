@@ -1,9 +1,18 @@
+import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 
 // Runner boxes here are shared with sibling worktrees during a drain batch —
 // an unbounded worker pool starves them (see the runner-load finding cited in
 // docs/adr/0002-work-executes-on-github-hosted-runners-never-on-the-workstat.md).
 // Capping the pool keeps one `vitest run` from claiming every core.
+// The cap is *half the cores this box actually has*, not the 4 it was tuned to on the workstation.
+// Four is more workers than a two-core private runner has cores, so the suite there ran two deep
+// on every core while typecheck, lint and eight more push checks ran beside it — the contention
+// that manufactured Lumaria's `booking-embed-panel` and `eslint-boundaries` failures out of
+// nothing and printed a 483620ms Verify (#333, #335). Half rather than all, because the sibling
+// worktrees are the other half of the argument above, and `bin/gauntlet` is what keeps the
+// gauntlet's own checks from being that sibling: with fewer cores than checks it starts the test
+// slot after the cheap ones instead of beside them.
 // Ten of this repo's test files drive their subject as a real process — a hook, a CLI, a `git`
 // invocation — because that is the only honest way to test a thing whose contract IS its exit
 // code and its log file. Process spawns are where a shared runner is slowest: `backfill.test.ts`
@@ -42,7 +51,7 @@ export default defineConfig({
       ".Workflow/agent-workflows/shared/scrub-git-env.setup.ts",
       ".Workflow/agent-workflows/shared/isolate-checkpoints.setup.ts",
     ],
-    maxWorkers: 4,
+    maxWorkers: Math.max(1, Math.floor(availableParallelism() / 2)),
     testTimeout: 30_000,
   },
 });

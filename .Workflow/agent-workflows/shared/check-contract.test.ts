@@ -12,7 +12,7 @@ import {
 const FIXTURES = resolve(import.meta.dirname, "check-contract.fixtures");
 
 describe("the schema", () => {
-  it("accepts the six slots, a real cmd and the null opt-out both", () => {
+  it("accepts every slot, a real cmd and the null opt-out both", () => {
     const contract = checkContractFixture({
       test: { cmd: "npm test", why: "package.json#scripts.test" },
     });
@@ -27,7 +27,7 @@ describe("the schema", () => {
     expect(CheckContract.safeParse(withInventedSlot).success).toBe(false);
   });
 
-  it("rejects a contract missing one of the six slots", () => {
+  it("rejects a contract missing one of its slots", () => {
     const missingStop: Record<string, unknown> = { ...checkContractFixture() };
     delete missingStop.stop;
 
@@ -47,7 +47,7 @@ describe("resolveSlot", () => {
   });
 
   it("degrades a form the schema has no slot for to the broader slot, reporting the substitution", () => {
-    // The turn venue's actual gap (ADR-0056): it lints one file, and the six-slot schema has no
+    // The turn venue's actual gap (ADR-0056): it lints one file, and the schema has no
     // `lint_one`. No slot is invented — resolution runs `lint` instead and says so.
     const contract = checkContractFixture({ lint: { cmd: "npm run lint", why: "declared" } });
 
@@ -56,6 +56,19 @@ describe("resolveSlot", () => {
       cmd: "npm run lint",
       substituted: true,
       requested: "lint_one",
+    });
+  });
+
+  it("resolves the turn venue's test form directly, never degrading it to the whole suite", () => {
+    // #335: `test_related` is a slot rather than a `_one`-style narrowing precisely so that a
+    // target without one runs *no* tests at the turn venue. Degrading it the way `lint_one`
+    // degrades would put the whole suite on every PostToolUse hook.
+    const contract = checkContractFixture({ test: { cmd: "npm test", why: "declared" } });
+
+    expect(resolveSlot(contract, "test_related")).toEqual({
+      slot: "test_related",
+      cmd: null,
+      substituted: false,
     });
   });
 
@@ -75,6 +88,12 @@ describe("probe", () => {
       expect(contract.test.cmd).toBe("npx vitest run");
     },
   );
+
+  it("names the runner's related-tests form for the turn venue where the runner has one", () => {
+    const contract = probe(join(FIXTURES, "stale-null-real-suite"));
+
+    expect(contract.test_related.cmd).toBe("npx vitest related --run <file>");
+  });
 
   it("resolves lint to the biome invocation when the tree's linter is biome, not eslint", () => {
     const contract = probe(join(FIXTURES, "biome-linter"));

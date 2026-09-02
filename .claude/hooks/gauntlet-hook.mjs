@@ -92,12 +92,23 @@ if (venue === "stop") {
 const run = runGauntlet(venue, venue === "turn" ? payload.tool_input.file_path : undefined);
 
 if (run.error || run.status === null || run.status === COULD_NOT_RUN) silent();
-if (run.status === 0) silent();
 
 // bin/gauntlet writes the failing checks to stdout and its own diagnostics to stderr. Only the
 // over-budget line is worth surfacing, and it goes to the user rather than to Claude: it is a
 // finding about the gauntlet, not about the code being checked.
 const overBudget = (run.stderr || "").split("\n").find((line) => line.includes("against a"));
+
+// A venue that got slower is the whole signal the timing ratchet exists to raise (#335), and until
+// this line it was raised into a stderr stream nobody reads: `bin/gauntlet` prints it, these venues
+// exit 0 on it deliberately — a timing regression may not block an agent's turn — and the hook then
+// dropped it on the floor because the checks passed. `systemMessage` with no `decision` is the one
+// channel that reaches the person without asking Claude for another turn.
+if (run.status === 0) {
+  if (overBudget) {
+    process.stdout.write(JSON.stringify({ systemMessage: overBudget }));
+  }
+  process.exit(0);
+}
 
 report(
   `The gauntlet failed at the ${venue === "turn" ? "in-turn" : "turn-end"} venue:\n\n${run.stdout}`,
