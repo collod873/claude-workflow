@@ -191,26 +191,23 @@ const CHECK_OVER_BUDGET =
   "its own last green time plus 25%";
 
 describe("the timing ratchet's report", () => {
-  it("prefers the line that names the check, which is the only one a reader can act on", () => {
-    const gauntlet = stubGauntlet(0, "", `${VENUE_OVER_BUDGET}\n${CHECK_OVER_BUDGET}\n`);
-
+  /** What the stop venue tells the person when a green gauntlet printed `stderr`. */
+  function reportedFor(stderr: string): string | undefined {
+    const gauntlet = stubGauntlet(0, "", stderr);
     const result = runHook("stop", JSON.stringify({ hook_event_name: "Stop" }), {
       GAUNTLET_BIN: gauntlet,
     });
+    return JSON.parse(result.stdout).systemMessage;
+  }
 
-    expect(JSON.parse(result.stdout).systemMessage).toBe(CHECK_OVER_BUDGET);
+  it("prefers the line that names the check, which is the only one a reader can act on", () => {
+    expect(reportedFor(`${VENUE_OVER_BUDGET}\n${CHECK_OVER_BUDGET}\n`)).toBe(CHECK_OVER_BUDGET);
   });
 
   it("still reports when only the per-check line fired, which the article-matching filter missed", () => {
     // The two lines are gated independently: a check can exceed its own budget while the venue's
     // wall clock stays inside the venue budget. That run used to surface nothing at all.
-    const gauntlet = stubGauntlet(0, "", `${CHECK_OVER_BUDGET}\n`);
-
-    const result = runHook("stop", JSON.stringify({ hook_event_name: "Stop" }), {
-      GAUNTLET_BIN: gauntlet,
-    });
-
-    expect(JSON.parse(result.stdout).systemMessage).toBe(CHECK_OVER_BUDGET);
+    expect(reportedFor(`${CHECK_OVER_BUDGET}\n`)).toBe(CHECK_OVER_BUDGET);
   });
 
   it("says nothing on a green run inside its budget", () => {
