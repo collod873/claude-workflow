@@ -32,6 +32,13 @@ name: Enrol
 # race on the same ref, and the loser fails on a stale parent rather than doing anything dangerous
 # — but a pass cancelled mid-estate leaves some repositories on the new stub set and some on the
 # old, which is the half-enrolled state `enrol.ts` is otherwise built to avoid.
+#
+# **The secrets this job hands to `enrol.ts` (#327).** `enrol.ts` derives *which* secrets to
+# propagate by scanning `.github/workflows/*.yml` for `secrets.<NAME>` references — but GitHub
+# Actions has no API letting a job read the value of a secret it was not itself handed by name, so
+# each derived name still has to be named once here to reach the process's environment at all. This
+# is the one place that naming happens; `enrol.ts` never hard-codes the set, and a lane that starts
+# spending a third secret needs one line added here to reach the process, nothing in `enrol.ts`.
 
 "on":
   push:
@@ -71,3 +78,8 @@ jobs:
           # commit message) are read straight from the ambient Actions environment. Not restated
           # here: the `GITHUB_` prefix is GitHub's, and a hand-set copy of a variable the runner
           # already sets is a second source of truth for the same fact.
+          #
+          # Every name `enrol.ts`'s own scan of `.github/workflows/*.yml` derives, named here so
+          # this job's environment actually carries a value for it (see the note above `on:`).
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KNOWLEDGE_BASE_DEPLOY_KEY: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
