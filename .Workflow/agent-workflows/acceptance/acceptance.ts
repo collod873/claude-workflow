@@ -403,9 +403,19 @@ ${paths.map((path) => `- ${path}`).join("\n")}
 Part of #162`;
 }
 
+/**
+ * Resolved against `REPO_DIR`, like every other read/spawn in this file (`readIfPresent`,
+ * `runEslint`, `runVitestJson`, the git calls) — a bare relative `writeFileSync` lands in whatever
+ * directory the process happens to have as its cwd, which under the reusable workflow (#315) is
+ * the machine checkout, not `target/`. The write would silently succeed there while every reader
+ * that does resolve against `REPO_DIR` (eslint, vitest, `git add`) looks in `target/` and finds
+ * nothing — the failure this shipped without a caller ever exercising a first-time authoring run
+ * against a real `TARGET_WORKSPACE` (#327's dispatch was the first).
+ */
 function fsWriteFile(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content, "utf8");
+  const resolved = join(REPO_DIR, path);
+  mkdirSync(dirname(resolved), { recursive: true });
+  writeFileSync(resolved, content, "utf8");
 }
 
 /**
