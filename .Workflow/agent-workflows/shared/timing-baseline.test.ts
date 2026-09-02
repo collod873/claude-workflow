@@ -266,9 +266,7 @@ describe("where a run's numbers are kept", () => {
     expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
   });
 
-  // What an over-budget run costs depends on which baseline judged it (ADR-0142). `bin/gauntlet`
-  // refuses a push on exit 1 alone, so this split is what keeps a workstation's own contention from
-  // blocking a push while a real regression on a runner still does.
+  // The split these cases pin is `runRecord`'s, and `REPORT_ONLY_EXIT` carries its why (ADR-0142).
   describe("what going over budget costs", () => {
     function recordOverBudget(env: NodeJS.ProcessEnv): number | null {
       const root = scratchRoot();
