@@ -441,11 +441,8 @@ describe("resolving the check contract", () => {
   });
 
   it("runs every contract slot with its own TARGET_WORKSPACE and GAUNTLET_CONTRACT unset", () => {
-    // Two of this repo's tests spawn a scratch tree's `bin/gauntlet push` with the environment
-    // they inherited. With `TARGET_WORKSPACE` leaked through, that scratch gauntlet checks the
-    // real target — the whole suite, those two tests included — instead of the scratch tree, and
-    // the recursion only stops when the runner kills the job. The slot's environment is the
-    // target's own, so a slot that can see either variable is the defect.
+    // Why a slot runs with both unset is on `slot_env` in `bin/gauntlet` (ADR-0139); a slot that
+    // can see either variable is the defect.
     const sees = (name: string) => `test -z "\${${name}:-}"`;
     const contract = checkContractFixture({
       typecheck: { cmd: sees("TARGET_WORKSPACE") },
