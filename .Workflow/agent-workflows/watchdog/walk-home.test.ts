@@ -161,9 +161,8 @@ describe("routeFor", () => {
   });
 
   it("routes an unrecognised bare path to the caller, not the machine (ADR-0141)", () => {
-    // The live regression: vitest and eslint print paths relative to the target's own cwd, so the
-    // `target/` prefix never appears and the machine was reached by fallback. These two are the
-    // exact strings that put five of Lumaria's own failures on this repository's `to-build`.
+    // The bare paths the live regression misrouted, kept as evidence; `routeFor` carries why
+    // (ADR-0141).
     expect(routeFor("scripts/clone-gate.mjs", MACHINE_FILES)).toBe("caller");
     expect(routeFor("src/features/field-service/server/reactions/appointments.test.ts", MACHINE_FILES)).toBe("caller");
   });
