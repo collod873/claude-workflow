@@ -191,15 +191,20 @@ jobs:
 
           JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs')
 
-          ACCEPTANCE_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance")][0].databaseId // empty')
-          ACCEPTANCE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance")][0].conclusion // empty')
+          # `RUN_ID` names a run reached through `verify-caller.yml`'s `uses:` (ADR-0055, amended
+          # by ADR-0132), so every job here comes back as `verify / <job name>` rather than the
+          # bare name `verify.yml` itself declares — confirmed on run 33649164483. Each `select`
+          # below matches either spelling, the same rule `shared/job-match.ts`'s `findJobByName`
+          # applies for the TypeScript readers of these same two jobs.
+          ACCEPTANCE_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance" or (.name | endswith(" / Restore and run acceptance")))][0].databaseId // empty')
+          ACCEPTANCE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance" or (.name | endswith(" / Restore and run acceptance")))][0].conclusion // empty')
 
           MODE="model"
           if [ -n "$ACCEPTANCE_ID" ] && [ "$ACCEPTANCE_CONCLUSION" = "failure" ]; then
             RESOLVE_JOB_ID="$ACCEPTANCE_ID"
           else
             MODE="escalate"
-            RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability")][0].databaseId // empty')
+            RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability" or (.name | endswith(" / Immutability")))][0].databaseId // empty')
             if [ -z "$RESOLVE_JOB_ID" ]; then
               echo "run $RUN_ID has neither a failed acceptance job nor an Immutability job; nothing to fix"
               exit 0

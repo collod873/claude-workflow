@@ -231,17 +231,6 @@
     "fragment": ");\n    mkdirSync(join(root, dirname(CORPUS_RELATIVE_PATH)), { recursive: true });\n    writeFileSync(join(root, CORPUS_RELATIVE_PATH), generateCorpusFixture(root));\n\n    return root;\n  }\n\n  function runPush(root: string): { status: number | null; stdout: string } {\n    const run = spawnSync(join(root, \"bin/gauntlet\"), [\"push\"], {\n      encoding: \"utf8\",\n      cwd: root,\n      env: process.env,\n    });\n    return { status: run.status, stdout: run.stdout };\n  }\n\n  it(\"exits 1 against a contract that disagrees with a fresh probe, then 0 once it matches again\""
   },
   {
-    "hash": "57969ce8e8bd14b9",
-    "format": "yaml",
-    "lines": 18,
-    "tokens": 115,
-    "where": [
-      ".github/workflows/lost-dispatch-counter.yml:64",
-      ".github/workflows/missing-trailer-counter.yml:54"
-    ],
-    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no"
-  },
-  {
     "hash": "5adfe619a007c02c",
     "format": "typescript",
     "lines": 6,
@@ -339,17 +328,6 @@
       ".Workflow/agent-workflows/shared/rewrite-session-notes-schema.test.ts:38"
     ],
     "fragment": ");\n  execFileSync(\"git\", [\"clone\", \"-q\", bareDir, \".\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n  return dir;\n}\n\n/** Reads back the note a fresh clone of `bareDir` sees for `sha` on `ref`. */"
-  },
-  {
-    "hash": "7a00a9a6fce52f5c",
-    "format": "typescript",
-    "lines": 6,
-    "tokens": 78,
-    "where": [
-      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:124",
-      ".Workflow/agent-workflows/watchdog/lost-dispatch.test.ts:134"
-    ],
-    "fragment": "});\n    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });\n    expect(outcome).toEqual({ action: \"clean\" });\n  });\n\n  it(\"opens the standing issue when none exists yet\""
   },
   {
     "hash": "7a17459c05f40b50",
@@ -636,17 +614,6 @@
       ".claude/hooks/session-capture.test.ts:233"
     ],
     "fragment": ");\n  execFileSync(\"git\", [\"clone\", \"-q\", bareDir, \".\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n  return dir;\n}\n\n/** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */"
-  },
-  {
-    "hash": "d032fb10a7d06303",
-    "format": "yaml",
-    "lines": 18,
-    "tokens": 115,
-    "where": [
-      ".github/workflows/dispatch-reconcile.yml:80",
-      ".github/workflows/run-watchdog.yml:73"
-    ],
-    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      # No Claude Code install and no model secret: this spends nothing. It reads the tracker and"
   },
   {
     "hash": "d37f6e6d7242b02b",

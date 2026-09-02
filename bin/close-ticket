@@ -105,6 +105,7 @@ every `gh`-calling tool in this repo shares (#102, #109); there is no second cop
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -269,9 +270,49 @@ def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | N
 # readers, none of them the source of truth for it.
 JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
 
-VERIFY_WORKFLOW_FILE = "verify.yml"
 IMMUTABILITY_JOB = "Immutability"
 ACCEPTANCE_JOB = "Restore and run acceptance"
+
+
+def job_matches_name(name: str | None, wanted: str) -> bool:
+    """Whether one Actions job's `name` is `wanted` — the bare name a reusable workflow's own
+    `jobs.<key>.name:` declares — or the `<caller job key> / <name>` form GitHub renders every job
+    as when the run was reached through `uses:` (ADR-0055, amended by ADR-0132; confirmed on run
+    33649164483: `verify / Immutability`, `verify / Restore and run acceptance`, ...). The same
+    rule `.Workflow/agent-workflows/shared/job-match.ts`'s `findJobByName` applies for the
+    TypeScript readers of these same two jobs — this is that rule's Python restatement, since a
+    workstation `bin/close-ticket` cannot import a `.ts` module."""
+    return name is not None and (name == wanted or name.endswith(f" / {wanted}"))
+
+
+def verify_workflow_file() -> str:
+    """The workflow **file** in the calling repository whose runs carry Verify's `Immutability`
+    and `Restore and run acceptance` jobs — `verify-caller.yml`, never `verify.yml`: ADR-0055
+    (amended by ADR-0132) records a `uses:`-reached run against the caller's file, and
+    `verify.yml` itself has carried no run of its own since the split.
+
+    Required from the environment on a runner, for the same reason `bypass-counter.ts`'s
+    `VERIFY_WORKFLOW` is required with no default: a wrong or absent name returns an empty run
+    list, which `fetch_verify_verdict` cannot tell apart from Verify never having run at all — and
+    every closing record would read `Verify: unjudged` forever, silently, on every enrolled
+    repository this tool ever runs against.
+
+    Defaulted at this workstation, where there is no calling repository to get wrong: every
+    invocation here runs inside a checkout of `collod873/claude-workflow` itself (this repo's own
+    `docs/agents/issue-tracker.md` — "Run `bin/close-ticket <number> <base>..<head> <checkout>`"),
+    whose own Verify runs have always been recorded against `verify-caller.yml` since the split.
+    """
+    env_value = os.environ.get("VERIFY_WORKFLOW")
+    if env_value:
+        return env_value
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        raise RuntimeError(
+            "VERIFY_WORKFLOW must be set on a runner — a default naming a workflow the calling "
+            "repository does not have would read every closing record's Verify line as "
+            "unjudged, silently, forever"
+        )
+    return "verify-caller.yml"
+
 # How far back this scan reaches. Unlike `integrate.ts`'s `readVerifyVerdict`, this has no
 # `head_sha` to filter on — `fetch_closing_pr` names a merge, never the pre-merge dispatch commit
 # both lane 06 and lane 08 shared (see that field's docstring in integrate.ts) — so this scans
@@ -293,9 +334,10 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
     same "silence is never a pass" reading ADR-0054 already applies to lane 08 itself. `"failed"`
     means either job concluded `failure`; both must conclude `success` for `"passed"`, since a
     merge in this repo's own pipeline never happens unless both did (`runIntegrate`)."""
+    workflow_file = verify_workflow_file()
     try:
         runs = json.loads(gh_support.run_gh(
-            gh, "api", f"repos/{{owner}}/{{repo}}/actions/workflows/{VERIFY_WORKFLOW_FILE}/runs",
+            gh, "api", f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow_file}/runs",
             "-f", f"per_page={VERIFY_RUN_PAGE_SIZE}", "-f", "event=repository_dispatch",
             "--jq", "[.workflow_runs[] | {id, status}]",
         ))
@@ -312,7 +354,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
             ))
         except gh_support.GhError:
             continue
-        immutability = next((j for j in jobs if j.get("name") == IMMUTABILITY_JOB), None)
+        immutability = next((j for j in jobs if job_matches_name(j.get("name"), IMMUTABILITY_JOB)), None)
         if immutability is None or immutability.get("status") != "completed":
             continue
         try:
@@ -322,7 +364,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         matches = JUDGING_LINE_RE.findall(log)
         if not matches or matches[-1] != pr_url:
             continue
-        acceptance = next((j for j in jobs if j.get("name") == ACCEPTANCE_JOB), None)
+        acceptance = next((j for j in jobs if job_matches_name(j.get("name"), ACCEPTANCE_JOB)), None)
 
         def verdict(job: dict | None) -> str:
             if job is None or job.get("status") != "completed":

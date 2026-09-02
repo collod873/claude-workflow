@@ -1,3 +1,6 @@
+import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
@@ -222,6 +225,11 @@ function integrateDeps({
       gh,
       pr: PR,
       headSha: TRUNK_SHA,
+      // `verify-caller.yml`, never `verify.yml` — the file every real Verify run is recorded
+      // against since the reusable-workflow split (ADR-0055, ADR-0132). The fake `gh` above
+      // recognises any workflow file through `workflowRunsPathMatcher`, so this is only asserted
+      // against directly in the "reads jobs whose name carries a caller prefix" case below.
+      verifyWorkflow: "verify-caller.yml",
       runGauntlet: () => {
         gauntletRuns += 1;
         return gauntlet;
@@ -294,6 +302,28 @@ describe("runIntegrate", () => {
     expect(calls.some((call) => call[0] === "pr" && call[1] === "merge")).toBe(false);
     // Distinct from the red case, not merely another way to spell "no merge".
     expect(outcome).not.toEqual({ merged: false, reason: "red" });
+  });
+
+  it("merges on a run whose jobs carry a caller-stub prefix — verify / Immutability, verify / Restore and run acceptance", () => {
+    // A run reached through `uses:` (ADR-0055, amended by ADR-0132) reports every job as
+    // `<caller job key> / <job name>` rather than the bare name `verify.yml` itself declares —
+    // confirmed on run 33649164483. A `===` match would find neither job here and read `unjudged`
+    // forever; `findJobByName` (`shared/job-match.ts`) must still find both.
+    const { deps } = integrateDeps({
+      closeTicket: CLOSED,
+      verifyRuns: [
+        {
+          jobs: [
+            { name: `verify / ${IMMUTABILITY_JOB}`, conclusion: "success" },
+            { name: `verify / ${ACCEPTANCE_JOB}`, conclusion: "success" },
+          ],
+        },
+      ],
+    });
+
+    const outcome = runIntegrate(deps);
+
+    expect(outcome).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
   });
 });
 
@@ -522,8 +552,10 @@ describe("runIntegrate reads lane 06's immutability verdict before merging", () 
     runIntegrate(deps);
 
     const runsRead = calls.find((call) => workflowRunsPathMatcher.test((call[1] ?? "").split("?")[0]));
-    expect(runsRead, "no read of verify.yml's own run history").toBeDefined();
-    expect((runsRead ?? [])[1]).toContain("verify.yml");
+    expect(runsRead, "no read of verify-caller.yml's own run history").toBeDefined();
+    // `deps.verifyWorkflow`, never a hardcoded `verify.yml` — that file has carried no run of its
+    // own since the reusable-workflow split (ADR-0055, amended by ADR-0132).
+    expect((runsRead ?? [])[1]).toContain("verify-caller.yml");
     // And the jobs of the run that matched, by id — never a guess from the runs listing alone.
     expect(calls.some((call) => runJobsPathMatcher.test(call[1] ?? ""))).toBe(true);
   });
@@ -893,7 +925,7 @@ describe("the lane 06 job names integrate.ts reads are verify.yml's own", () => 
 });
 
 interface IntegrateWorkflow {
-  on?: { repository_dispatch?: unknown };
+  on?: { repository_dispatch?: unknown; workflow_call?: { inputs?: Record<string, { type?: string; required?: boolean }> } };
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   jobs: { integrate: { if?: string; env?: Record<string, string>; steps?: Array<{ name?: string; run?: string }> } };
@@ -962,6 +994,14 @@ describe("integrate.yml wires and states lane 08's reading of lane 06", () => {
     expect(step?.run).toContain('"$HEAD_SHA"');
   });
 
+  it("declares verify_workflow as a required input — a run reached through uses: is recorded against the caller's file (ADR-0055, ADR-0132), never this reusable one, so this cannot default it", () => {
+    expect(workflow.on?.workflow_call?.inputs?.verify_workflow).toEqual({ type: "string", required: true });
+  });
+
+  it("passes the input through to integrate.ts as VERIFY_WORKFLOW", () => {
+    expect(workflow.jobs.integrate.env?.VERIFY_WORKFLOW).toBe("${{ inputs.verify_workflow }}");
+  });
+
   it("states in a comment that the acceptance job binds, and names what changed", () => {
     expect(source).toContain(ACCEPTANCE_JOB);
     expect(source).toContain("binds too");
@@ -972,5 +1012,29 @@ describe("integrate.yml wires and states lane 08's reading of lane 06", () => {
 
   it("states in the same comment that the immutability job does block", () => {
     expect(source).toContain(`\`${IMMUTABILITY_JOB}\` blocks outright`);
+  });
+});
+
+interface IntegrateCallerWorkflow {
+  jobs: { integrate: { uses?: string; with?: Record<string, string> } };
+}
+
+describe("integrate-caller.yml names the caller's own Verify file", () => {
+  const { workflow } = readWorkflow<IntegrateCallerWorkflow>("integrate-caller.yml");
+
+  it("passes verify-caller.yml, never verify.yml — the file every real Verify run is recorded against since the split", () => {
+    expect(workflow.jobs.integrate.with?.verify_workflow).toBe("verify-caller.yml");
+  });
+});
+
+describe("integrate.ts's entrypoint", () => {
+  it("refuses to start without VERIFY_WORKFLOW named — a default here would read every merge as unjudged forever", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const result = spawnSync("npx", ["tsx", join(here, "integrate.ts"), PR, TRUNK_SHA], {
+      encoding: "utf8",
+      env: { ...process.env, VERIFY_WORKFLOW: "" },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("VERIFY_WORKFLOW");
   });
 });

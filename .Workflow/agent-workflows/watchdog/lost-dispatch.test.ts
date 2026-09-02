@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import type { GhExec } from "../shared/gh";
-import { countLostDispatch, SLICEABLE_LABEL, SLICING_WORKFLOW_FILE } from "./lost-dispatch-counter";
+import { countLostDispatch, SLICEABLE_LABEL } from "./lost-dispatch-counter";
 import {
   commentBody,
   entryLine,
@@ -112,18 +112,25 @@ function fakeGh(options: {
   return { gh, calls };
 }
 
+/**
+ * `countLostDispatch` against `fake`, with the fields every case in this describe shares —
+ * `prdNumber`, `slicingWorkflow` and a silent `log` — so a scenario supplies only what it varies.
+ */
+function run(fake: ReturnType<typeof fakeGh>, labelName: string = SLICEABLE_LABEL): ReturnType<typeof countLostDispatch> {
+  return countLostDispatch({ gh: fake.gh, labelName, prdNumber: 200, slicingWorkflow: "to-tickets-caller.yml", log: () => {} });
+}
+
 describe("countLostDispatch", () => {
   it("skips, writing nothing, when the label is not sliceable", () => {
     const fake = fakeGh({});
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: "prd", prdNumber: 200, log: () => {} });
+    const outcome = run(fake, "prd");
     expect(outcome).toEqual({ action: "skipped" });
     expect(fake.calls).toEqual([]);
   });
 
   it("is clean when the PRD already has sub-issues", () => {
     const fake = fakeGh({ subIssueCount: 4 });
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });
-    expect(outcome).toEqual({ action: "clean" });
+    expect(run(fake)).toEqual({ action: "clean" });
   });
 
   it("is clean when a slicing run has completed since the PRD was opened", () => {
@@ -132,13 +139,12 @@ describe("countLostDispatch", () => {
       subIssueCount: 0,
       runs: [{ status: "completed", created_at: "2026-08-20T12:00:00Z" }],
     });
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });
-    expect(outcome).toEqual({ action: "clean" });
+    expect(run(fake)).toEqual({ action: "clean" });
   });
 
   it("opens the standing issue when none exists yet", () => {
     const fake = fakeGh({ subIssueCount: 0, runs: [], standing: [] });
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });
+    const outcome = run(fake);
     expect(outcome).toEqual({ action: "opened", issue: 42 });
 
     const createCall = fake.calls.find((call) => call[0] === "issue" && call[1] === "create");
@@ -153,7 +159,7 @@ describe("countLostDispatch", () => {
       runs: [],
       standing: [{ number: 55, state: "OPEN", body: `${FINDING_MARKER}\n- [ ] #100 — Another spec: carries \`sliceable\` with no sub-issues and no completed slicing run` }],
     });
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });
+    const outcome = run(fake);
     expect(outcome).toEqual({ action: "commented", issue: 55 });
 
     const commentCall = fake.calls.find((call) => call[0] === "issue" && call[1] === "comment");
@@ -167,7 +173,7 @@ describe("countLostDispatch", () => {
       runs: [],
       standing: [{ number: 55, state: "OPEN", body: `${FINDING_MARKER}\n${entryLine(finding(prd()))}` }],
     });
-    const outcome = countLostDispatch({ gh: fake.gh, labelName: SLICEABLE_LABEL, prdNumber: 200, log: () => {} });
+    const outcome = run(fake);
     expect(outcome).toEqual({ action: "already-named", issue: 55 });
     expect(fake.calls.some((call) => call[0] === "issue" && (call[1] === "create" || call[1] === "comment"))).toBe(false);
   });
@@ -177,8 +183,8 @@ describe("lost-dispatch-counter.yml agrees with the module it runs", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const source = readFileSync(join(here, "../../../.github/workflows/lost-dispatch-counter.yml"), "utf8");
   const workflow = parse(source) as {
-    on: { workflow_call?: null };
-    jobs: { count: { if?: string } };
+    on: { workflow_call?: { inputs?: Record<string, { type?: string; required?: boolean }> } };
+    jobs: { count: { if?: string; env?: Record<string, string> } };
   };
 
   it("runs this module", () => {
@@ -197,8 +203,12 @@ describe("lost-dispatch-counter.yml agrees with the module it runs", () => {
     expect(source).not.toContain("schedule:");
   });
 
-  it("names the slicing workflow file the module itself reads runs from", () => {
-    expect(SLICING_WORKFLOW_FILE).toBe("to-tickets.yml");
+  it("declares slicing_workflow as a required input — a run reached through uses: is recorded against the caller's file (ADR-0055, ADR-0132), never this reusable one, so this cannot default it", () => {
+    expect(workflow.on.workflow_call?.inputs?.slicing_workflow).toEqual({ type: "string", required: true });
+  });
+
+  it("passes the input through to the module as SLICING_WORKFLOW", () => {
+    expect(workflow.jobs.count.env?.SLICING_WORKFLOW).toBe("${{ inputs.slicing_workflow }}");
   });
 
   it("grants only the reads and the write this counter needs", () => {
@@ -213,7 +223,7 @@ describe("lost-dispatch-counter-caller.yml gates the reusable workflow", () => {
   const source = readFileSync(join(here, "../../../.github/workflows/lost-dispatch-counter-caller.yml"), "utf8");
   const workflow = parse(source) as {
     on: { issues?: { types?: string[] } };
-    jobs: { count: { if?: string; uses?: string } };
+    jobs: { count: { if?: string; uses?: string; with?: Record<string, string> } };
   };
 
   it("fires on an issue being labelled", () => {
@@ -226,5 +236,23 @@ describe("lost-dispatch-counter-caller.yml gates the reusable workflow", () => {
 
   it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
     expect(workflow.jobs.count.uses).toBe("collod873/claude-workflow/.github/workflows/lost-dispatch-counter.yml@main");
+  });
+
+  it("names to-tickets-caller.yml, not to-tickets.yml — the file every real To-Tickets run since the split is recorded against", () => {
+    expect(workflow.jobs.count.with?.slicing_workflow).toBe("to-tickets-caller.yml");
+  });
+});
+
+describe("countLostDispatch refuses to run without a slicing workflow named", () => {
+  it("the entrypoint throws when SLICING_WORKFLOW is unset — a default here would silently misread every PRD", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const script = join(here, "lost-dispatch-counter.ts");
+    const result = spawnSync("npx", ["tsx", script], {
+      encoding: "utf8",
+      env: { ...process.env, PRD_NUMBER: "200", SLICING_WORKFLOW: "" },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("SLICING_WORKFLOW");
   });
 });

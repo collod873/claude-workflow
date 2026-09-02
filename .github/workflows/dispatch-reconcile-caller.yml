@@ -17,3 +17,6 @@ jobs:
       contents: write
       issues: write
     uses: collod873/claude-workflow/.github/workflows/dispatch-reconcile.yml@main
+    with:
+      # This file, not `verify.yml` — see `integrate-caller.yml`'s identical `with:` for why.
+      verify_workflow: verify-caller.yml

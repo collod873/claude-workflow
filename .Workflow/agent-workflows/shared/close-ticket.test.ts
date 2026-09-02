@@ -29,8 +29,16 @@ const CLOSE_TICKET = join(REPO_ROOT, "bin/close-ticket");
 const CLOSE_GATE = join(REPO_ROOT, ".claude/hooks/close-gate.py");
 
 
-/** Loads `bin/close-ticket` as a module and runs `body` against it, JSON in, JSON out. */
-function inCloseTicket(body: string, payload: unknown): { stdout: string; stderr: string } {
+/**
+ * Loads `bin/close-ticket` as a module and runs `body` against it, JSON in, JSON out.
+ *
+ * `VERIFY_WORKFLOW` is pinned to `verify-caller.yml` here rather than left to whatever the test
+ * runner's own environment happens to carry — `verify_workflow_file()`'s workstation default and
+ * its runner refusal each get their own tests below, driven with their own explicit `env`, so
+ * every other test in this file exercises the ordinary, explicitly-configured path instead of
+ * that fallback.
+ */
+function inCloseTicket(body: string, payload: unknown, env: Record<string, string | undefined> = {}): { stdout: string; stderr: string } {
   const reader = `
 import importlib.util, json, sys
 from importlib.machinery import SourceFileLoader
@@ -46,6 +54,7 @@ ${body}
     input: JSON.stringify(payload),
     encoding: "utf8",
     cwd: REPO_ROOT,
+    env: { ...process.env, VERIFY_WORKFLOW: "verify-caller.yml", ...env },
   });
   expect(run.status, run.stderr).toBe(0);
   return { stdout: run.stdout, stderr: run.stderr };
@@ -457,7 +466,7 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
   /** The two-call sequence every scenario below shares: the run list, then that run's jobs. */
   function verifyRoutes(jobs: { name: string; status: string; conclusion: string | null }[]): { contains: string[]; respond: string }[] {
     return [
-      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      { contains: ["actions/workflows/verify-caller.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
       {
         contains: ["actions/runs/555/jobs"],
         respond: JSON.stringify(jobs.map((j, i) => ({ id: i + 1, ...j }))),
@@ -486,7 +495,7 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
 
   it("reads unjudged when no run's Immutability job log names this pull request", () => {
     const gh = routedGhStub([
-      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      { contains: ["actions/workflows/verify-caller.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
       {
         contains: ["actions/runs/555/jobs"],
         respond: JSON.stringify([{ id: 1, name: "Immutability", status: "completed", conclusion: "success" }]),
@@ -501,6 +510,60 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     const gh = routedGhStub([]); // every call falls through to "{}", which json.loads reads as {} — no "workflow_runs" key
 
     expect(fetchVerifyVerdict(gh.path)).toBe("unjudged");
+  });
+
+  it("still reads passed when both jobs carry a caller-stub prefix — verify / Immutability, verify / Restore and run acceptance", () => {
+    // A run reached through `uses:` (ADR-0055, amended by ADR-0132) reports every job as
+    // `<caller job key> / <job name>` — confirmed on run 33649164483. `job_matches_name` must
+    // still find both jobs under that spelling.
+    const gh = routedGhStub(verifyRoutes([
+      { name: "verify / Immutability", status: "completed", conclusion: "success" },
+      { name: "verify / Restore and run acceptance", status: "completed", conclusion: "success" },
+    ]));
+
+    expect(fetchVerifyVerdict(gh.path)).toBe("passed");
+  });
+});
+
+describe("verify_workflow_file", () => {
+  /** Runs `module.verify_workflow_file()` under `env`, returning its value or the exception it raised. */
+  function verifyWorkflowFile(env: Record<string, string | undefined>): { value?: string; error?: string } {
+    const reader = `
+import importlib.util, json, sys
+from importlib.machinery import SourceFileLoader
+loader = SourceFileLoader("close_ticket", ${JSON.stringify(CLOSE_TICKET)})
+module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(module)
+try:
+    print(json.dumps({"value": module.verify_workflow_file()}))
+except Exception as e:
+    print(json.dumps({"error": str(e)}))
+`;
+    const run = spawnSync("python3", ["-c", reader], {
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        VERIFY_WORKFLOW: undefined,
+        GITHUB_ACTIONS: undefined,
+        ...env,
+      },
+    });
+    expect(run.status, run.stderr).toBe(0);
+    return JSON.parse(run.stdout) as { value?: string; error?: string };
+  }
+
+  it("reads the env var when one is set", () => {
+    expect(verifyWorkflowFile({ VERIFY_WORKFLOW: "verify-caller.yml" })).toEqual({ value: "verify-caller.yml" });
+  });
+
+  it("defaults to verify-caller.yml at this workstation, where every invocation runs inside this repository's own checkout", () => {
+    expect(verifyWorkflowFile({})).toEqual({ value: "verify-caller.yml" });
+  });
+
+  it("refuses rather than defaulting on a runner — a wrong default there would misreport every enrolled repository's closing records, silently", () => {
+    const { error } = verifyWorkflowFile({ GITHUB_ACTIONS: "true" });
+    expect(error).toContain("VERIFY_WORKFLOW must be set");
   });
 });
 
@@ -536,12 +599,15 @@ function repoWithCommits(commits: number): { checkout: string; shas: string[] } 
   return { checkout, shas };
 }
 
-/** One real `bin/close-ticket` invocation against `gh`. */
-function closeTicket(args: string[], gh: string): { status: number | null; stdout: string; stderr: string } {
+/**
+ * One real `bin/close-ticket` invocation against `gh`. `VERIFY_WORKFLOW` is pinned the same way
+ * `inCloseTicket` pins it, and for the same reason.
+ */
+function closeTicket(args: string[], gh: string, env: Record<string, string | undefined> = {}): { status: number | null; stdout: string; stderr: string } {
   const run = spawnSync("python3", [CLOSE_TICKET, ...args], {
     encoding: "utf8",
     cwd: REPO_ROOT,
-    env: { ...process.env, AGENT_SKILLS_GH: gh },
+    env: { ...process.env, AGENT_SKILLS_GH: gh, VERIFY_WORKFLOW: "verify-caller.yml", ...env },
   });
   return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "" };
 }
@@ -584,7 +650,7 @@ describe("a ticket close carries its closing pull request, driven end to end", (
           },
         }),
       },
-      { contains: ["actions/workflows/verify.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
+      { contains: ["actions/workflows/verify-caller.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
       {
         contains: ["actions/runs/555/jobs"],
         respond: JSON.stringify([

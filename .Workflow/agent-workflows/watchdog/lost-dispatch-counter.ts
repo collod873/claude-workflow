@@ -37,9 +37,6 @@ import {
  * already been named is derived from the standing issue's own body and comments, not a cursor.
  */
 
-/** The workflow whose runs are the slicing lane's history — `to-tickets.yml` today (ADR-0062: the label it reads for is mid-move from `prd` to `sliceable`, but the file it runs from is unchanged). */
-export const SLICING_WORKFLOW_FILE = "to-tickets.yml";
-
 /** How many of the slicing lane's most recent runs one check reads — several times this repo's busiest day of `to-tickets` runs. */
 export const RUN_PAGE_SIZE = 30;
 
@@ -76,9 +73,9 @@ function readSubIssueCount(gh: GhExec, prdNumber: number): number {
 }
 
 /** Whether the slicing lane has produced a completed run since `prdCreatedAt` — see this module's header for the approximation this makes. */
-function hasCompletedSlicingRun(gh: GhExec, prdCreatedAt: string): boolean {
+function hasCompletedSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflow: string): boolean {
   const projection = "[.workflow_runs[] | {status, created_at}]";
-  const raw = gh(["api", workflowRunsPath(SLICING_WORKFLOW_FILE, RUN_PAGE_SIZE), "--jq", projection]);
+  const raw = gh(["api", workflowRunsPath(slicingWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
   const runs = ApiRun.array().parse(JSON.parse(raw));
   return runs.some((run) => run.status === "completed" && run.created_at >= prdCreatedAt);
 }
@@ -102,6 +99,16 @@ export interface CounterOptions {
   /** `github.event.label.name` on the `issues: labeled` event that triggered this run. */
   labelName: string | null | undefined;
   prdNumber: number;
+  /**
+   * The workflow **file** in the calling repository whose runs are the slicing lane's history —
+   * `to-tickets-caller.yml` here, never `to-tickets.yml`: ADR-0055 (amended by ADR-0132) records a
+   * `uses:`-reached run against the caller's file, and `to-tickets.yml` itself has carried no run
+   * of its own since the split. No default, for the reason `bypass-counter.ts`'s own
+   * `verifyWorkflow` has none: a wrong name reads a page frozen before the split, every entry on
+   * it older than any PRD opened since — so `hasCompletedSlicingRun` reads false for a PRD that
+   * really did slice, and every PRD since the split reads lost.
+   */
+  slicingWorkflow: string;
   log?: (line: string) => void;
 }
 
@@ -113,7 +120,7 @@ export interface CounterOutcome {
 }
 
 export function countLostDispatch(options: CounterOptions): CounterOutcome {
-  const { gh, labelName, prdNumber } = options;
+  const { gh, labelName, prdNumber, slicingWorkflow } = options;
   const log = options.log ?? ((line: string) => console.log(line));
 
   if (labelName !== SLICEABLE_LABEL) {
@@ -126,7 +133,7 @@ export function countLostDispatch(options: CounterOptions): CounterOutcome {
     title: prd.title,
     labels: prd.labels,
     subIssueCount: readSubIssueCount(gh, prdNumber),
-    hasCompletedSlicingRun: hasCompletedSlicingRun(gh, prd.createdAt),
+    hasCompletedSlicingRun: hasCompletedSlicingRun(gh, prd.createdAt, slicingWorkflow),
   };
 
   if (!isLostDispatch(candidate)) {
@@ -159,10 +166,19 @@ async function main(): Promise<void> {
     const prdNumberRaw = process.env.PRD_NUMBER;
     if (!prdNumberRaw) throw new Error("PRD_NUMBER must be set");
 
+    // Refused rather than defaulted, the same reason `bypass-counter.ts`'s `VERIFY_WORKFLOW` is:
+    // a workflow file the calling repository does not have reads a frozen page and reports every
+    // PRD since the split as lost.
+    const slicingWorkflow = process.env.SLICING_WORKFLOW;
+    if (!slicingWorkflow) {
+      throw new Error("SLICING_WORKFLOW must be set — reading a workflow that does not exist misreports every PRD");
+    }
+
     const outcome = countLostDispatch({
       gh: execGh,
       labelName: process.env.LABEL_NAME,
       prdNumber: Number(prdNumberRaw),
+      slicingWorkflow,
     });
     console.log(outcome.action);
   } catch (err) {

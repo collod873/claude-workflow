@@ -8,6 +8,7 @@ import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { findJobByName } from "../shared/job-match";
 import { escalateToOwner } from "../shared/needs-human";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
@@ -125,6 +126,16 @@ export interface IntegrateDeps {
   closeTicket: (ticket: number, range: string) => CloseTicketResult;
   /** Waits between re-reads of lane 06's verdict. Injected so a test counts reads instead of sleeping. */
   sleep?: (ms: number) => void;
+  /**
+   * The workflow **file** in the calling repository whose runs carry lane 06's `Immutability` and
+   * `Restore and run acceptance` jobs — `verify-caller.yml` here, never `verify.yml`: ADR-0055
+   * (amended by ADR-0132) records a `uses:`-reached run against the caller's file, and
+   * `verify.yml` itself has carried no run of its own since the split. No default, for the reason
+   * `bypass-counter.ts`'s own `verifyWorkflow` has none: a wrong name returns an empty candidate
+   * list, which reads as `unjudged` — indistinguishable from lane 06 never having run at all, and
+   * every merge in the fleet would silently stop rather than fail loudly.
+   */
+  verifyWorkflow: string;
 }
 
 /** What one `gh pr view` tells this lane: the branch to rebase, and the ticket the merge will finish. */
@@ -180,14 +191,12 @@ interface VerifyVerdict {
   acceptance: JobVerdict;
 }
 
-/** `verify.yml`'s file name, which is how the Actions API addresses one workflow's own runs. */
-const VERIFY_WORKFLOW_FILE = "verify.yml";
-
 /**
  * The `Immutability` job's `name:` in `verify.yml`. Spelled here as well as there — `shared/` may
  * not import a workflow file and the Actions API answers job *names* — so `integrate.test.ts`
  * parses `verify.yml` and asserts the two agree, the same split `immutable-set.ts` holds to for
- * `IMMUTABLE_SET` and the dispatch action.
+ * `IMMUTABLE_SET` and the dispatch action. Looked up through `findJobByName` (`shared/job-match.ts`)
+ * rather than `===`, since a run reached through `uses:` reports this job as `verify / Immutability`.
  */
 export const IMMUTABILITY_JOB = "Immutability";
 
@@ -248,7 +257,7 @@ const ApiJob = z.object({
  * because each of those is a job that has not said this diff is fine.
  */
 function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdict {
-  const job = jobs.find((each) => each.name === name);
+  const job = findJobByName(jobs, name);
   if (!job || job.status !== "completed") return "unjudged";
   if (job.conclusion === "success") return "passed";
   if (job.conclusion === "failure") return "failed";
@@ -310,8 +319,8 @@ function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
  * again, which costs a poll rather than a merge on a stale verdict. A run that finished without
  * ever naming anyone is genuinely not ours and is skipped.
  */
-function readVerifyVerdict(gh: GhExec, headSha: string, pr: string): VerifyVerdict {
-  const runsPath = workflowRunsPath(VERIFY_WORKFLOW_FILE, VERIFY_RUN_PAGE_SIZE);
+function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkflow: string): VerifyVerdict {
+  const runsPath = workflowRunsPath(verifyWorkflow, VERIFY_RUN_PAGE_SIZE);
   const runs = ApiRun.array().parse(
     JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event, status}]"])),
   );
@@ -320,7 +329,7 @@ function readVerifyVerdict(gh: GhExec, headSha: string, pr: string): VerifyVerdi
     .sort((a, b) => b.id - a.id);
   for (const run of candidates) {
     const jobs = readJobs(gh, run.id);
-    const immutability = jobs.find((job) => job.name === IMMUTABILITY_JOB);
+    const immutability = findJobByName(jobs, IMMUTABILITY_JOB);
     if (immutability === undefined || immutability.status !== "completed") {
       if (run.status !== "completed") return NOT_JUDGED;
       continue;
@@ -343,11 +352,17 @@ function readVerifyVerdict(gh: GhExec, headSha: string, pr: string): VerifyVerdi
  * refuses on — the direction that costs a merge that waits rather than a merge that should not
  * have happened.
  */
-function awaitVerifyVerdict(gh: GhExec, headSha: string, pr: string, sleep: (ms: number) => void): VerifyVerdict {
-  let verdict = readVerifyVerdict(gh, headSha, pr);
+function awaitVerifyVerdict(
+  gh: GhExec,
+  headSha: string,
+  pr: string,
+  verifyWorkflow: string,
+  sleep: (ms: number) => void,
+): VerifyVerdict {
+  let verdict = readVerifyVerdict(gh, headSha, pr, verifyWorkflow);
   for (let attempt = 0; verdict.acceptance === "unjudged" && attempt < ACCEPTANCE_POLL_ATTEMPTS; attempt++) {
     sleep(ACCEPTANCE_POLL_MS);
-    verdict = readVerifyVerdict(gh, headSha, pr);
+    verdict = readVerifyVerdict(gh, headSha, pr, verifyWorkflow);
   }
   return verdict;
 }
@@ -589,7 +604,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   if (result.exitCode === 1) return { merged: false, reason: "red" };
   if (result.exitCode !== 0) return { merged: false, reason: "no-run" };
 
-  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.pr, deps.sleep ?? sleepSync);
+  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.pr, deps.verifyWorkflow, deps.sleep ?? sleepSync);
   if (verdict.immutability === "failed") return { merged: false, reason: "immutable-set" };
   if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
   if (verdict.acceptance === "failed") {
@@ -687,6 +702,15 @@ async function main(): Promise<void> {
     // than teaching every git-calling function in this file its own repoDir parameter.
     const git: GitExec = (args) => execGit(["-C", repoDir, ...args]);
 
+    // Refused rather than defaulted, the same reason `bypass-counter.ts`'s `VERIFY_WORKFLOW`
+    // is: a workflow file the calling repository does not have returns an empty run list, which
+    // reads as `unjudged` forever — indistinguishable from lane 06 never having run, and every
+    // merge in the fleet would silently stop.
+    const verifyWorkflow = process.env.VERIFY_WORKFLOW;
+    if (!verifyWorkflow) {
+      throw new Error("VERIFY_WORKFLOW must be set — reading a workflow that does not exist reads as unjudged forever");
+    }
+
     const outcome = runIntegrate({
       git,
       gh: execGh,
@@ -695,6 +719,7 @@ async function main(): Promise<void> {
       runGauntlet: () => runRealGauntlet(repoDir),
       closeTicket: (ticket, range) => runRealCloseTicket(ticket, range, repoDir),
       assignee: process.env.SIGNAL_ASSIGNEE,
+      verifyWorkflow,
     });
 
     if (!outcome.merged) {

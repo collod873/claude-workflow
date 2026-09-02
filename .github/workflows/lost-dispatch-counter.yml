@@ -37,6 +37,15 @@ name: Lost-dispatch counter
 
 "on":
   workflow_call:
+    inputs:
+      # The workflow **file** in the calling repository whose runs are the slicing lane's
+      # history — `to-tickets-caller.yml` here. Not the display name: this is a path segment of
+      # `actions/workflows/<file>/runs`, which takes the file or the numeric id and nothing else.
+      # Required, no default — see `lost-dispatch-counter.ts`'s `CounterOptions.slicingWorkflow`
+      # for why a wrong one is silent.
+      slicing_workflow:
+        type: string
+        required: true
 
 permissions:
   # read: both checkouts.
@@ -60,6 +69,9 @@ jobs:
       PRD_NUMBER: ${{ github.event.issue.number }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      # Which workflow's runs are the slicing lane's history — see this file's
+      # `workflow_call.inputs` above.
+      SLICING_WORKFLOW: ${{ inputs.slicing_workflow }}
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4

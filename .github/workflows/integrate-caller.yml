@@ -12,3 +12,8 @@ jobs:
       pull-requests: write
       actions: read
     uses: collod873/claude-workflow/.github/workflows/integrate.yml@main
+    with:
+      # This file, not `verify.yml`: `verify.yml` itself is only ever reached through a `uses:`
+      # and has had no run of its own since the reusable-workflow split (ADR-0055, amended by
+      # ADR-0132) — every real Verify run since then is recorded against `verify-caller.yml`.
+      verify_workflow: verify-caller.yml

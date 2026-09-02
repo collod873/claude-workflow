@@ -36,6 +36,15 @@ name: Integrate
 
 "on":
   workflow_call:
+    inputs:
+      # The workflow **file** in the calling repository whose runs carry lane 06's `Immutability`
+      # and `Restore and run acceptance` jobs — `verify-caller.yml` here. Not the display name:
+      # this is a path segment of `actions/workflows/<file>/runs`, which takes the file or the
+      # numeric id and nothing else. Required, no default — see `integrate.ts`'s
+      # `IntegrateDeps.verifyWorkflow` for why a wrong one is silent.
+      verify_workflow:
+        type: string
+        required: true
 
 # `issues: write` is what lets this lane finish a ticket rather than only merge one (#195,
 # ADR-0094): after the merge, `integrate.ts` shells to this repository's own `bin/close-ticket`,
@@ -75,6 +84,10 @@ jobs:
       # A rebase conflict assigns the ticket so it notifies rather than sits in a list — the same
       # variable `run-watchdog.yml` and `fixer.yml` set for the same reason.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
+      # Which workflow's runs carry lane 06's verdict — see this file's `workflow_call.inputs`
+      # above. Read by `integrate.ts` directly and inherited by the `bin/close-ticket` child
+      # process it shells to, which needs the same fact to render a closing record's Verify line.
+      VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
