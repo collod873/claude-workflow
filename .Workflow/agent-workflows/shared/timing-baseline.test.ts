@@ -380,10 +380,7 @@ describe("where a run's numbers are kept", () => {
     });
 
     it("leaves the venue half alone on a runner too — a solo measurement is never a venue's budget (ADR-0142)", () => {
-      // This measures the suite alone; `bin/gauntlet` judges `test` while a dozen checks run
-      // beside it. Writing the solo number here set a bar in a quiet room that the venue then
-      // defended in a crowded one, and the push went red on contention never in the baseline.
-      // `record`, called from a venue run, is now the only writer of a `venues` entry.
+      // Why a solo measurement may not be a venue's budget: `writeSuiteTiming`'s docstring.
       vi.stubEnv("CI", "true");
 
       expect(seed().venues.push).toBeUndefined();
