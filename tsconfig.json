@@ -13,5 +13,6 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": [".Workflow/**/*.ts", ".claude/**/*.ts"]
+  "include": [".Workflow/**/*.ts", ".claude/**/*.ts"],
+  "exclude": [".claude/worktrees/**"]
 }

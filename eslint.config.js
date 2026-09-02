@@ -139,12 +139,22 @@ export default tseslint.config(
   {
     // `.clone-gate-scan/` is the clone gate's in-repo staging tree, created and torn down while a
     // push's other checks are walking the repo (`shared/clone-gate.ts`, `stageForScan`).
-    ignores: ["node_modules/**", "dist/**", "build/**", ".clone-gate-scan/**"],
+    // `.claude/worktrees/` for the reason `vitest.config.ts` gives: an agent session puts a whole
+    // second checkout under that path, and linting it from here finds a second `tsconfig.json`
+    // — which typescript-eslint refuses outright ("multiple candidate TSConfigRootDirs").
+    ignores: ["node_modules/**", "dist/**", "build/**", ".clone-gate-scan/**", ".claude/worktrees/**"],
   },
   ...tseslint.configs.recommended,
   {
     files: ["**/*.ts"],
     plugins: { sonarjs },
+    languageOptions: {
+      parserOptions: {
+        // Pinned, because a worktree nested under `.claude/worktrees/` has this repo's root as an
+        // ancestor too, so from inside one the parser sees two candidates and stops.
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       // Hits gh-paths.ts's `..._placeholder: unknown[]` rest param, a
       // deliberately-unused, underscore-prefixed capture of the tagged
