@@ -33,22 +33,60 @@ inputs:
 runs:
   using: composite
   steps:
+    # Precedence kept identical to `generate-contract.ts`'s `detectPackageManager` (its own probe
+    # runs the same call, for the same reason — the target's contract has to be run in the manager
+    # it actually uses): `package.json#packageManager` first, since a repo that declares one has said
+    # so explicitly; then the lockfile actually committed, `pnpm-lock.yaml` before `yarn.lock` before
+    # `bun.lockb`/`bun.lock`; npm (`package-lock.json`, or no lockfile at all) last, as the default a
+    # detector with no evidence either way falls back to. A probe and an installer picking different
+    # managers for the same target is a bug neither file's own tests can see, so keep the two in sync.
     - name: Detect the target's package manager and install
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        if [ -f pnpm-lock.yaml ]; then
+        declared="$(node -e '
+          try {
+            const pkg = JSON.parse(require("fs").readFileSync("package.json", "utf8"));
+            const name = (pkg.packageManager ?? "").split("@")[0].trim();
+            if (["npm", "pnpm", "yarn", "bun"].includes(name)) process.stdout.write(name);
+          } catch {}
+        ' 2>/dev/null || true)"
+
+        if [ -n "$declared" ]; then
+          pm="$declared"
+          echo "package.json#packageManager declares $pm — installing with it"
+        elif [ -f pnpm-lock.yaml ]; then
+          pm=pnpm
           echo "target carries pnpm-lock.yaml — installing with pnpm"
-          corepack enable
-          pnpm install --frozen-lockfile
-        elif [ -f package-lock.json ]; then
-          echo "target carries package-lock.json — installing with npm"
-          npm ci
         elif [ -f yarn.lock ]; then
+          pm=yarn
           echo "target carries yarn.lock — installing with yarn"
-          corepack enable
-          yarn install --frozen-lockfile
+        elif [ -f bun.lockb ] || [ -f bun.lock ]; then
+          pm=bun
+          echo "target carries bun.lockb/bun.lock — installing with bun"
+        elif [ -f package-lock.json ]; then
+          pm=npm
+          echo "target carries package-lock.json — installing with npm"
         else
-          echo "target carries no recognized lockfile (pnpm-lock.yaml, package-lock.json, yarn.lock) — nothing to install"
+          echo "target carries no recognized lockfile (pnpm-lock.yaml, yarn.lock, bun.lockb/bun.lock, package-lock.json) — nothing to install"
+          exit 0
         fi
+
+        case "$pm" in
+          pnpm)
+            corepack enable
+            pnpm install --frozen-lockfile
+            ;;
+          yarn)
+            corepack enable
+            yarn install --frozen-lockfile
+            ;;
+          bun)
+            corepack enable
+            bun install --frozen-lockfile
+            ;;
+          npm)
+            npm ci
+            ;;
+        esac

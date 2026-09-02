@@ -1,13 +1,21 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
-import { pathToFileURL } from "node:url";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { childEnv } from "../shared/child-env";
-import { writeCorpusFixture } from "../shared/generate-corpus-fixture";
+import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGh } from "../shared/gh";
 import { execGit } from "../shared/git";
 import { reason } from "../shared/reason";
 import { accept, type AcceptDeps, type Verb } from "./accept";
+
+/**
+ * The machine's own repo root, resolved from this module's location — never `targetWorkspace`,
+ * which once the reusable workflow splits the two checkouts (ADR-0055) is a different directory
+ * that carries no `bin/new-adr` of its own. Same resolution `../shared/run-gauntlet.ts` uses for
+ * the same reason.
+ */
+const MACHINE_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
  * The accept's entrypoint: one owner verb, applied to one idea.
@@ -37,23 +45,32 @@ function isVerb(value: string | undefined): value is Verb {
  * would never push. The guard is in the script rather than in this call's
  * `env`, so a caller cannot forget it.
  *
- * `cwd` is the target repo, not wherever this process itself started —
- * `bin/new-adr` reads and writes `docs/adr/` relative to the directory it
- * runs in, and once the machine and target are separate checkouts (#314,
- * ADR-0055) that is never the same directory this file was launched from.
+ * Runs the MACHINE's `bin/new-adr` (`cwd: MACHINE_ROOT`), not the target's — an enrolled
+ * repository (ADR-0139) carries no `bin/new-adr` of its own. `TARGET_WORKSPACE` is `bin/new-adr`'s
+ * own seam (see its own script) for where `docs/adr/` and the git remote a land fetches from
+ * actually live, once the machine and target are separate checkouts (#314, ADR-0055).
  */
-function newAdr(title: string, cwd: string): string {
-  return execFileSync("bin/new-adr", [title], { encoding: "utf8", env: childEnv(), cwd });
+function newAdr(title: string, targetWorkspace: string): string {
+  return execFileSync(join(MACHINE_ROOT, "bin/new-adr"), [title], {
+    encoding: "utf8",
+    env: { ...childEnv(), TARGET_WORKSPACE: targetWorkspace },
+    cwd: MACHINE_ROOT,
+  });
 }
 
 /**
  * `bin/new-adr --land`, the other half of the same tool: it fetches `origin/main`, renames the
- * draft onto the next free number and prints the landed path (ADR-0080). Same `cwd` reasoning as
+ * draft onto the next free number and prints the landed path (ADR-0080). Same reasoning as
  * `newAdr` above — the fetch, the rename and the push it makes all have to land in the target's
- * own tree and the target's own `origin`, never the machine's.
+ * own tree and the target's own `origin`, never the machine's, which is exactly what handing it
+ * `TARGET_WORKSPACE` rather than a target `cwd` now buys.
  */
-function landAdr(draftPath: string, cwd: string): string {
-  return execFileSync("bin/new-adr", ["--land", draftPath], { encoding: "utf8", env: childEnv(), cwd });
+function landAdr(draftPath: string, targetWorkspace: string): string {
+  return execFileSync(join(MACHINE_ROOT, "bin/new-adr"), ["--land", draftPath], {
+    encoding: "utf8",
+    env: { ...childEnv(), TARGET_WORKSPACE: targetWorkspace },
+    cwd: MACHINE_ROOT,
+  });
 }
 
 function usage(): never {
@@ -81,7 +98,12 @@ export function buildAcceptDeps(targetWorkspace: string): AcceptDeps {
     git: (args) => execGit(["-C", targetWorkspace, ...args]),
     newAdr: (title) => newAdr(title, targetWorkspace),
     landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
-    regenerateCorpus: () => writeCorpusFixture(targetWorkspace),
+    // Gated on the fixture already existing in the target, the same rule `bin/new-adr --land`
+    // itself now applies (ADR-0139): an enrolled repository never seeded one, and regenerating it
+    // there would create a `.Workflow/` tree that has no other reason to exist.
+    regenerateCorpus: () => {
+      if (existsSync(resolveInTarget(CORPUS_RELATIVE_PATH))) writeCorpusFixture(targetWorkspace);
+    },
     readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
     writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
   };

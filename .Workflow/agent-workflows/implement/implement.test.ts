@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
@@ -10,6 +10,7 @@ import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
 import { createFakeStage } from "../shared/stage.fake";
+import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   ANSWER_PATH_ENV,
@@ -274,6 +275,42 @@ function ordinaryRun(extra: Partial<ImplementDeps> = {}): {
   };
 }
 
+/**
+ * A real directory carrying one file at each of `paths` (empty content — `regenerateArtifacts`
+ * only asks whether the path exists, never what it holds). `regenerateArtifacts` is gated on
+ * `existsSync` (ADR-0139), so a fake `repoRoot` like `"/repo"` no longer exercises it — every
+ * artifact would read as absent regardless of intent.
+ */
+function makeRootWithArtifacts(paths: string[]): string {
+  const repo = makeTempRepo("implement-artifacts");
+  for (const path of paths) repo.write(path, "");
+  artifactRoots.push(repo.dir);
+  return repo.dir;
+}
+
+/** Every root `makeRootWithArtifacts` handed out, removed after the test that asked for it. */
+const artifactRoots: string[] = [];
+afterEach(() => {
+  while (artifactRoots.length) rmSync(artifactRoots.pop()!, { recursive: true, force: true });
+});
+
+/**
+ * An `ordinaryRun` wired with a `runGenerator` that records every `(generator, root)` it was
+ * asked to run, and `repoRoot: root` — the one difference between the two `regenerateArtifacts`
+ * cases below being which artifacts `root` already carries.
+ */
+function trackGeneratorsFrom(root: string): { run: ReturnType<typeof ordinaryRun>; regenerated: string[] } {
+  const regenerated: string[] = [];
+  const run = ordinaryRun({
+    repoRoot: root,
+    runGenerator: (generator, generatorRoot) => {
+      regenerated.push(`${generator} ${generatorRoot}`);
+      return { exitCode: 0, output: "" };
+    },
+  });
+  return { run, regenerated };
+}
+
 describe("runImplement — on fakes", () => {
   it("opens exactly one PR, then sends exactly one repository_dispatch naming that PR", async () => {
     const ticket = {
@@ -367,23 +404,38 @@ describe("runImplement — on fakes", () => {
 
   /** The other half of ADR-0107 — `regenerate-artifacts.ts`'s docstring is the home for why. */
   it("regenerates the generated artifacts and commits them alongside the implementer's files", async () => {
-    const regenerated: string[] = [];
-    const run = ordinaryRun({
-      repoRoot: "/repo",
-      runGenerator: (generator, root) => {
-        regenerated.push(`${generator} ${root}`);
-        return { exitCode: 0, output: "" };
-      },
-    });
+    const root = makeRootWithArtifacts(GENERATED_ARTIFACTS.map((artifact) => artifact.path));
 
+    const { run, regenerated } = trackGeneratorsFrom(root);
     await runImplement(run.deps);
 
-    expect(regenerated).toEqual(GENERATED_ARTIFACTS.map((artifact) => `${artifact.generator} /repo`));
+    expect(regenerated).toEqual(GENERATED_ARTIFACTS.map((artifact) => `${artifact.generator} ${root}`));
 
     const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
     expect(addCall).toContain("a/b.ts");
     for (const artifact of GENERATED_ARTIFACTS) {
       expect(addCall).toContain(artifact.path);
+    }
+  });
+
+  /**
+   * ADR-0139: an enrolled repository owes only `.claude/contract.json` — no corpus fixture, no
+   * clone baseline. Regenerating (or `git add`ing) a path that was never seeded there is exactly
+   * the pathspec failure that used to lose a run over a checkout it had never been asked to carry.
+   */
+  it("regenerates and stages only the generated artifacts already present at the root, never the ones an enrolled repository never seeded", async () => {
+    const [present, ...absent] = GENERATED_ARTIFACTS;
+    const root = makeRootWithArtifacts([present!.path]);
+
+    const { run, regenerated } = trackGeneratorsFrom(root);
+    await runImplement(run.deps);
+
+    expect(regenerated).toEqual([`${present!.generator} ${root}`]);
+
+    const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
+    expect(addCall).toContain(present!.path);
+    for (const artifact of absent) {
+      expect(addCall).not.toContain(artifact.path);
     }
   });
 

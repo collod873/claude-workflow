@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { makeTempRepo } from "./temp-repo.fixture.ts";
 import { malformedTrailers } from "./trailer-form.ts";
 
 /**
@@ -62,7 +63,15 @@ function git(cwd: string, ...args: string[]): string {
 
 /** Runs `<root>/bin/new-adr` and returns the path it printed. */
 function runNewAdrPath(root: string, args: string[]): string {
-  const env = { ...process.env };
+  return runNewAdrPathIn(root, args);
+}
+
+/**
+ * `runNewAdrPath`, with extra environment variables merged in — the seam the `TARGET_WORKSPACE`
+ * cases below need to run the script from one checkout (`root`) while pointing it at another.
+ */
+function runNewAdrPathIn(root: string, args: string[], extraEnv: Record<string, string> = {}): string {
+  const env = { ...process.env, ...extraEnv };
   delete env.EDITOR;
   delete env.VISUAL;
   return execFileSync(join(root, "bin/new-adr"), args, { cwd: root, encoding: "utf8", env }).trim();
@@ -227,5 +236,30 @@ describe("bin/new-adr, drafting and landing", () => {
 
     expect(() => runNewAdrPath(root, ["--land", landed])).toThrow();
     expect(readdirSync(join(root, "docs/adr"))).toEqual(["0001-a-ruling.md"]);
+  });
+
+  /**
+   * ADR-0139: once a caller's machine checkout and target checkout are separate directories, this
+   * script has to write `docs/adr/` into the *target* even though it runs from the machine — the
+   * same split `run-accept.ts` drives it through in production, here staged directly against the
+   * script rather than through that caller.
+   */
+  it("drafts and lands into the target checkout rather than the machine checkout it runs from, given TARGET_WORKSPACE", () => {
+    const machine = scratch(makeScratchRepo("new-adr-target-ws-machine-", NEW_ADR));
+    const target = scratch(makeTempRepo("new-adr-target-ws-target").dir);
+
+    const draft = runNewAdrPathIn(machine, ["A ruling"], { TARGET_WORKSPACE: target });
+    expect(draft).toBe(join(target, "docs/adr/draft-a-ruling.md"));
+    // Nothing leaked into the machine checkout it actually ran from.
+    expect(existsSync(join(machine, "docs/adr"))).toBe(false);
+
+    const landed = runNewAdrPathIn(machine, ["--land", draft], { TARGET_WORKSPACE: target });
+    expect(landed).toBe(join(target, "docs/adr/0001-a-ruling.md"));
+    expect(existsSync(join(machine, "docs/adr"))).toBe(false);
+
+    // The target never seeded a corpus fixture (an enrolled repository's shape, ADR-0139), so the
+    // land must not create one — `regenerate && diff` only applies where the fixture already
+    // exists, the same rule `bin/gauntlet`'s own `clones` check applies to its baseline.
+    expect(existsSync(join(target, ".Workflow"))).toBe(false);
   });
 });

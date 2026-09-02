@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { childEnv } from "../shared/child-env.ts";
 
 /**
@@ -72,12 +74,19 @@ export const execGenerator: GeneratorExec = (generator, root) => {
 };
 
 /**
- * Regenerates every artifact in `GENERATED_ARTIFACTS` and returns their paths, for the caller to
- * add alongside the implementer's own files.
+ * Regenerates every artifact in `GENERATED_ARTIFACTS` that already exists at `root`, and returns
+ * their paths, for the caller to add alongside the implementer's own files.
  *
- * Every path comes back, not only the ones that changed: the question "did this actually differ"
- * is git's to answer at `add` time, and asking it here would mean reading each file twice to learn
- * something the commit already knows. A generator that is a no-op costs a subprocess.
+ * Gated on the artifact already being present, the same rule `bin/gauntlet`'s own `clones` check
+ * applies to its baseline (ADR-0139): an enrolled repository's target checkout owes only its
+ * `.claude/contract.json`, never the corpus fixture or the clone baseline, and `git add`ing a path
+ * that was never seeded there fails on the pathspec rather than quietly doing nothing. A target
+ * that never seeded one of these has that artifact's check turned off, so there is nothing here to
+ * keep true either.
+ *
+ * Every present path comes back, not only the ones that changed: the question "did this actually
+ * differ" is git's to answer at `add` time, and asking it here would mean reading each file twice
+ * to learn something the commit already knows. A generator that is a no-op costs a subprocess.
  *
  * **A generator that fails does not fail the run.** It is refreshing something the implementer did
  * not ask about, so the worst case is the tree it was already going to have: the push gate then
@@ -89,11 +98,12 @@ export function regenerateArtifacts(
   root: string,
   log: (line: string) => void,
 ): string[] {
-  for (const artifact of GENERATED_ARTIFACTS) {
+  const present = GENERATED_ARTIFACTS.filter((artifact) => existsSync(join(root, artifact.path)));
+  for (const artifact of present) {
     const result = exec(artifact.generator, root);
     if (result.exitCode !== 0) {
       log(`could not regenerate ${artifact.path} (exit ${result.exitCode}): ${result.output.trim()}`);
     }
   }
-  return GENERATED_ARTIFACTS.map((artifact) => artifact.path);
+  return present.map((artifact) => artifact.path);
 }

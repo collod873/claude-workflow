@@ -122,6 +122,87 @@ interface PackageJson {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  packageManager?: string;
+}
+
+// --- Package manager detection ---------------------------------------------------------------
+//
+// A repo is not always npm — Lumaria's own tree has no `package-lock.json` at all, only a
+// `pnpm-lock.yaml` (ADR-0139) — so every command this probe emits has to be asked in the package
+// manager the target actually uses, not assumed to be npm. `.github/actions/target-deps/action.yml`
+// makes the identical call, in bash, for the identical reason (installing the target's own
+// dependencies rather than this machine's); keep the precedence below in sync with that file's, and
+// say so in a comment on both, because a probe and an installer that pick different managers for the
+// same repo is a bug neither file's own tests can see.
+//
+// Precedence: `package.json#packageManager` first — a repo that declares one has said so
+// explicitly, corepack-enforced — then the lockfile actually committed, in the same order
+// `target-deps/action.yml` checks: `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`/`bun.lock`, and
+// npm (`package-lock.json` or no lockfile at all) last, because npm is also what a probe with no
+// evidence either way should default to.
+
+const PACKAGE_MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const;
+export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
+
+function isPackageManager(name: string): name is PackageManager {
+  return (PACKAGE_MANAGERS as readonly string[]).includes(name);
+}
+
+/**
+ * The package manager a fresh probe of `root` would use to run everything below —
+ * `package.json#packageManager` (e.g. `"pnpm@8.15.0"`) first, then the lockfile actually
+ * committed, npm last as the default a probe with no evidence either way falls back to.
+ */
+export function detectPackageManager(root: string, pkg: PackageJson): PackageManager {
+  const declared = pkg.packageManager?.split("@")[0]?.trim();
+  if (declared && isPackageManager(declared)) return declared;
+
+  if (existsSync(join(root, "pnpm-lock.yaml"))) return "pnpm";
+  if (existsSync(join(root, "yarn.lock"))) return "yarn";
+  if (existsSync(join(root, "bun.lockb")) || existsSync(join(root, "bun.lock"))) return "bun";
+  return "npm";
+}
+
+/** The command that runs `name` as a `package.json#scripts` entry, in `pm`'s own run form. */
+function runScript(pm: PackageManager, name: string): string {
+  switch (pm) {
+    case "pnpm":
+      return `pnpm run ${name}`;
+    case "yarn":
+      return `yarn ${name}`;
+    case "bun":
+      return `bun run ${name}`;
+    case "npm":
+      return `npm run ${name}`;
+  }
+}
+
+/** The dedicated `test` command each manager publishes, for the one script npm shortens to `npm test`. */
+function testCommand(pm: PackageManager): string {
+  switch (pm) {
+    case "pnpm":
+      return "pnpm test";
+    case "yarn":
+      return "yarn test";
+    case "bun":
+      return "bun test";
+    case "npm":
+      return "npm test";
+  }
+}
+
+/** The command that runs `invocation` (e.g. `"tsc --noEmit"`) as a locally installed binary, without a declared script. */
+function execBin(pm: PackageManager, invocation: string): string {
+  switch (pm) {
+    case "pnpm":
+      return `pnpm exec ${invocation}`;
+    case "yarn":
+      return `yarn ${invocation}`;
+    case "bun":
+      return `bunx ${invocation}`;
+    case "npm":
+      return `npx ${invocation}`;
+  }
 }
 
 function readPackageJson(root: string): PackageJson | undefined {
@@ -184,12 +265,12 @@ function anyFileExists(root: string, names: readonly string[]): boolean {
   return names.some((name) => existsSync(join(root, name)));
 }
 
-function probeTypecheck(root: string, pkg: PackageJson): Slot {
+function probeTypecheck(root: string, pkg: PackageJson, pm: PackageManager): Slot {
   const script = pkg.scripts?.typecheck;
-  if (script) return { cmd: "npm run typecheck", why: `package.json#scripts.typecheck (${script})` };
+  if (script) return { cmd: runScript(pm, "typecheck"), why: `package.json#scripts.typecheck (${script})` };
   if (existsSync(join(root, "tsconfig.json")) && binInstalled(root, "tsc")) {
     return {
-      cmd: "npx tsc --noEmit",
+      cmd: execBin(pm, "tsc --noEmit"),
       why: "tsconfig.json present and tsc installed; no package.json#scripts.typecheck declared",
     };
   }
@@ -199,18 +280,18 @@ function probeTypecheck(root: string, pkg: PackageJson): Slot {
   };
 }
 
-function probeLint(root: string, pkg: PackageJson): Slot {
+function probeLint(root: string, pkg: PackageJson, pm: PackageManager): Slot {
   const script = pkg.scripts?.lint;
-  if (script) return { cmd: "npm run lint", why: `package.json#scripts.lint (${script})` };
+  if (script) return { cmd: runScript(pm, "lint"), why: `package.json#scripts.lint (${script})` };
   if (anyFileExists(root, BIOME_CONFIG_NAMES) && binInstalled(root, "biome")) {
     return {
-      cmd: "npx biome check .",
+      cmd: execBin(pm, "biome check ."),
       why: "biome.json present and biome installed; no package.json#scripts.lint declared",
     };
   }
   if (anyFileExists(root, ESLINT_CONFIG_NAMES) && binInstalled(root, "eslint")) {
     return {
-      cmd: "npx eslint .",
+      cmd: execBin(pm, "eslint ."),
       why: "eslint config present and eslint installed; no package.json#scripts.lint declared",
     };
   }
@@ -220,31 +301,31 @@ function probeLint(root: string, pkg: PackageJson): Slot {
   };
 }
 
-function testOneSlot(root: string, pkg: PackageJson): Slot {
+function testOneSlot(root: string, pkg: PackageJson, pm: PackageManager): Slot {
   if (hasDependency(pkg, "vitest") && binInstalled(root, "vitest")) {
     return {
-      cmd: "npx vitest run <file>",
+      cmd: execBin(pm, "vitest run <file>"),
       why: "vitest's single-file form; no package.json script for it",
     };
   }
   return { cmd: null, why: "no known single-file form for the installed test runner" };
 }
 
-function probeTest(root: string, pkg: PackageJson): { test: Slot; test_one: Slot } {
+function probeTest(root: string, pkg: PackageJson, pm: PackageManager): { test: Slot; test_one: Slot } {
   const script = pkg.scripts?.test;
   if (script) {
     return {
-      test: { cmd: "npm test", why: `package.json#scripts.test (${script})` },
-      test_one: testOneSlot(root, pkg),
+      test: { cmd: testCommand(pm), why: `package.json#scripts.test (${script})` },
+      test_one: testOneSlot(root, pkg, pm),
     };
   }
   if (hasDependency(pkg, "vitest") && binInstalled(root, "vitest") && hasTestFile(root)) {
     return {
       test: {
-        cmd: "npx vitest run",
+        cmd: execBin(pm, "vitest run"),
         why: "vitest installed and test file(s) found; no package.json#scripts.test declared",
       },
-      test_one: testOneSlot(root, pkg),
+      test_one: testOneSlot(root, pkg, pm),
     };
   }
   return {
@@ -432,10 +513,10 @@ function probeStop(root: string): Slot {
 
 const AGGREGATE_SCRIPT_NAMES = ["check", "verify", "ci"] as const;
 
-function probeAll(pkg: PackageJson): Slot {
+function probeAll(pkg: PackageJson, pm: PackageManager): Slot {
   for (const name of AGGREGATE_SCRIPT_NAMES) {
     const script = pkg.scripts?.[name];
-    if (script) return { cmd: `npm run ${name}`, why: `package.json#scripts.${name} (${script})` };
+    if (script) return { cmd: runScript(pm, name), why: `package.json#scripts.${name} (${script})` };
   }
   return {
     cmd: null,
@@ -464,13 +545,14 @@ export function probe(root: string): CheckContract {
     });
   }
 
-  const { test, test_one } = probeTest(root, pkg);
+  const pm = detectPackageManager(root, pkg);
+  const { test, test_one } = probeTest(root, pkg, pm);
   return CheckContract.parse({
     stop: probeStop(root),
     test,
     test_one,
-    typecheck: probeTypecheck(root, pkg),
-    lint: probeLint(root, pkg),
-    all: probeAll(pkg),
+    typecheck: probeTypecheck(root, pkg, pm),
+    lint: probeLint(root, pkg, pm),
+    all: probeAll(pkg, pm),
   });
 }

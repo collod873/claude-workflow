@@ -340,6 +340,7 @@ if [ "$venue" = "push" ]; then
   pids+=($!)
 fi
 
+sandbox=""
 if [ "$venue" != "turn" ]; then
   # The suite runs against a decoy repository, named by the same three variables that let #86
   # happen: `GIT_DIR` beats a `cwd` and an argv `-C`, so a fixture that shells out to `git` writes
@@ -352,28 +353,46 @@ if [ "$venue" != "turn" ]; then
   # gate stops trusting the assertion and reads the decoy afterwards: an empty repository is the
   # whole suite demonstrating, at every venue that runs it, that it wrote to no repository but its
   # own fixtures. A future test author does not have to know this exists for it to hold.
-  sandbox="$tmp/git-sandbox"
-  if ! (
-    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
-    git -c init.defaultBranch=main init -q "$sandbox"
-  ) 2>"$tmp/sandbox-init.out"; then
-    echo "gauntlet: could not create the git sandbox — checks not run" >&2
-    cat "$tmp/sandbox-init.out" >&2
-    exit 2
-  fi
+  #
+  # That assertion is `target_root`'s own — this repo's `vitest.config.ts` wires
+  # `scrub-git-env.setup.ts` into every worker, but ADR-0139's target owes only its
+  # `.claude/contract.json`, `docs/adr/` and `CODING_STANDARDS.md`, and a target that never took on
+  # the scrub has every fixture that shells out to `git init && git commit` inherit this decoy
+  # instead of dodging it — not a target defect the sandbox exists to catch, but the sandbox itself
+  # breaking a suite that never opted in. So the decoy is gated on the same precondition-file shape
+  # `corpus`/`clones`/`wiring`/`boundaries` already use: armed only where `target_root` carries the
+  # scrub, unset entirely otherwise, with one line on stderr saying why.
+  scrub_setup="$target_root/.Workflow/agent-workflows/shared/scrub-git-env.setup.ts"
+  if [ -f "$scrub_setup" ]; then
+    sandbox="$tmp/git-sandbox"
+    if ! (
+      unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
+      git -c init.defaultBranch=main init -q "$sandbox"
+    ) 2>"$tmp/sandbox-init.out"; then
+      echo "gauntlet: could not create the git sandbox — checks not run" >&2
+      cat "$tmp/sandbox-init.out" >&2
+      exit 2
+    fi
 
-  # `GAUNTLET_VENUE` names the venue to whatever the test slot runs. The one reader today is the
-  # clone gate: the `test` slot runs it (docs/agents/clone-gate.md rule 6 puts it there), and this
-  # venue's `stop` form runs the `test` slot at every turn-end — so without a way to tell the two
-  # apart, wiring the gate in would have put a two-second scan on every turn. The gauntlet does not
-  # schedule the clone gate at any venue; `npm run check` and CI each run it once, deliberately.
-  run_check test env \
-    GAUNTLET_VENUE="$venue" \
-    GIT_DIR="$sandbox/.git" \
-    GIT_WORK_TREE="$sandbox" \
-    GIT_INDEX_FILE="$sandbox/.git/index" \
-    bash -c "cd \"$target_root\" && $TEST_CMD" &
-  pids+=($!)
+    # `GAUNTLET_VENUE` names the venue to whatever the test slot runs. The one reader today is the
+    # clone gate: the `test` slot runs it (docs/agents/clone-gate.md rule 6 puts it there), and this
+    # venue's `stop` form runs the `test` slot at every turn-end — so without a way to tell the two
+    # apart, wiring the gate in would have put a two-second scan on every turn. The gauntlet does not
+    # schedule the clone gate at any venue; `npm run check` and CI each run it once, deliberately.
+    run_check test env \
+      GAUNTLET_VENUE="$venue" \
+      GIT_DIR="$sandbox/.git" \
+      GIT_WORK_TREE="$sandbox" \
+      GIT_INDEX_FILE="$sandbox/.git/index" \
+      bash -c "cd \"$target_root\" && $TEST_CMD" &
+    pids+=($!)
+  else
+    echo "gauntlet: $target_root carries no scrub-git-env.setup.ts — the git sandbox did not run; a fixture there that shells out to git runs with whatever GIT_DIR the caller's environment already carries" >&2
+    run_check test env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      GAUNTLET_VENUE="$venue" \
+      bash -c "cd \"$target_root\" && $TEST_CMD" &
+    pids+=($!)
+  fi
 fi
 
 for pid in "${pids[@]}"; do wait "$pid"; done
@@ -385,8 +404,9 @@ could_not_run=0
 
 # Read the decoy. This is a finding about the suite, not about the code under test, so it is
 # reported separately from `test` — a green suite that wrote into the sandbox is a worse result
-# than a red one, and naming it `test` would bury that.
-if [ "$venue" != "turn" ]; then
+# than a red one, and naming it `test` would bury that. Only when the sandbox actually ran: a
+# target with no scrub never had one armed above, and there is nothing here to read.
+if [ -n "$sandbox" ]; then
   sandbox_refs="$(
     unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
     git --git-dir="$sandbox/.git" for-each-ref

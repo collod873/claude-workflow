@@ -1,8 +1,6 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { childEnv } from "../shared/child-env";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { execGh, type GhExec } from "../shared/gh";
@@ -12,6 +10,7 @@ import { findJobByName } from "../shared/job-match";
 import { escalateToOwner } from "../shared/needs-human";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
+import { runGauntlet } from "../shared/run-gauntlet";
 
 export { VERIFY_DISPATCH_EVENT_TYPE, GRAPH_CHANGED_DISPATCH_ACTION };
 
@@ -626,19 +625,19 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
 }
 
 /**
- * The real `runGauntlet`: shells to `<repoDir>/bin/gauntlet push` against the rebased checkout
- * `rebaseOntoTrunk` just produced, and classifies its exit code. Never reads stdout/stderr for a
- * verdict — the exit code is the whole contract `bin/gauntlet`'s own header states, the same
- * contract `verify.yml`'s "Run gauntlet" step reads.
+ * The real `runGauntlet`: shells to the MACHINE's `bin/gauntlet push`, judging `repoDir` — the
+ * rebased checkout `rebaseOntoTrunk` just produced — and classifies the exit code. Never reads
+ * stdout/stderr for a verdict — the exit code is the whole contract `bin/gauntlet`'s own header
+ * states, the same contract `verify.yml`'s "Run gauntlet" step reads.
  *
- * `repoDir` is absolute, not `"bin/gauntlet"` relative to `cwd` — `execFileSync` resolves a path
- * containing a `/` against the calling process's own working directory, not the `cwd` option, on a
- * relative spelling. Defaults to `process.cwd()` for the pre-#315 shape, where the one checkout
- * this process ran from was the target too.
+ * The spawn itself lives in `../shared/run-gauntlet.ts` (ADR-0139): an enrolled target repository
+ * carries no `bin/gauntlet` of its own to shell out to, so this always runs the machine's copy,
+ * with `repoDir` handed through as `TARGET_WORKSPACE`. Defaults to `process.cwd()` for the
+ * pre-#315 shape, where the one checkout this process ran from was the target too.
  */
 export function runRealGauntlet(repoDir: string = process.cwd()): GauntletResult {
   try {
-    execFileSync(join(repoDir, "bin/gauntlet"), ["push"], { cwd: repoDir, encoding: "utf8", env: childEnv() });
+    runGauntlet("push", repoDir);
     return { exitCode: 0 };
   } catch (err) {
     // The exit code is still the whole verdict. The output is forwarded because a refusal that says

@@ -1,11 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { childEnv } from "../shared/child-env";
 import { BASELINE_RELATIVE_PATH, repairAcceptanceBaseline, type AcceptanceRepairOutcome } from "../shared/clone-gate";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
+import { runGauntlet } from "../shared/run-gauntlet";
 import { ACCEPTANCE_TEST_DIR } from "./acceptance";
 
 /**
@@ -135,18 +133,14 @@ export function bindGitToRoot(root: string): GitExec {
   return (args) => execGit(["-C", root, ...args]);
 }
 
-/** The real `runGauntletPush`: shells out to the script every venue runs. */
+/**
+ * The real `runGauntletPush`: shells out to the MACHINE's `bin/gauntlet push`, judging `root` —
+ * the spawn itself lives in `../shared/run-gauntlet.ts` (ADR-0139), because an enrolled target
+ * repository carries no `bin/gauntlet` of its own to shell out to.
+ */
 function runGauntletPushReal(root: string): { ok: true } | { ok: false; report: string } {
   try {
-    // Absolute, not `"bin/gauntlet"` relative to `cwd` — `execFileSync` resolves a path containing a
-    // `/` against the calling process's own working directory, not the `cwd` option, on a relative
-    // spelling.
-    execFileSync(join(root, "bin/gauntlet"), ["push"], {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      env: childEnv(),
-    });
+    runGauntlet("push", root);
     return { ok: true };
   } catch (err) {
     return { ok: false, report: reason(err) };
