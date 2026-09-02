@@ -6,6 +6,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { branchCreationPath, comparePath, GIT_REFS_PATH } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
+import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
@@ -381,19 +382,72 @@ export function claimImplementationBranch(
   return { claimed: true, tookOverStaleClaim: true };
 }
 
+/** The remote and trunk name this lane's push rebases onto — the same `origin main` `fixer.yml`'s
+ * own "Rebase onto trunk" step fetches, restated here because `implement.yml` is immutable and
+ * carries no equivalent step of its own. */
+const TRUNK_REMOTE = "origin";
+const TRUNK_BRANCH = "main";
+
 /**
- * Commits the stage's written files to the branch this run claimed and pushes it — the
- * same add-commit-push shape `push-gate.ts`'s `commitAndPush` uses, minus
- * the rebase-onto-main step: this lands on its own branch for a PR to
- * review, never straight onto `main`.
+ * Raised when the branch just committed conflicts rebasing onto trunk — the escalation
+ * `commitAndPushBranch` throws instead of pushing. `paths` names every file the rebase could not
+ * replay, read from `git diff --diff-filter=U` before the rebase is aborted.
+ */
+export class RebaseConflictError extends Error {
+  constructor(public readonly paths: string[]) {
+    super(`conflicted rebasing onto ${TRUNK_REMOTE}/${TRUNK_BRANCH}: ${paths.join(", ")}`);
+    this.name = "RebaseConflictError";
+  }
+}
+
+/**
+ * Fetches trunk and rebases the checked-out branch onto it, right before the push — the window
+ * Class 3 of the research note calls "exposed, worst case": job start checks the branch out, a
+ * 45-minute model run follows, and until this existed nothing fetched or rebased between that
+ * checkout and the push at the end. `fixer.yml`'s "Rebase onto trunk" step is the shape copied —
+ * fetch, attempt the rebase, and on conflict abort and name the paths — but as git commands here
+ * rather than a workflow step, because `implement.yml` is immutable and fixer's own step runs
+ * before its model where this lane's model has already run by the time a push is possible.
+ *
+ * A conflict is **escalated, not resolved**: automatically merging it would be a second, unaudited
+ * decision spent guessing at a diff, the same reason fixer's own step escalates before ever calling
+ * its model rather than after. Throwing `RebaseConflictError` here is what keeps this lane from
+ * spending one.
+ */
+function rebaseOntoTrunk(git: GitExec): void {
+  git(["fetch", TRUNK_REMOTE, TRUNK_BRANCH]);
+  try {
+    git(["rebase", `${TRUNK_REMOTE}/${TRUNK_BRANCH}`]);
+  } catch (err) {
+    const paths = git(["diff", "--name-only", "--diff-filter=U"])
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    git(["rebase", "--abort"]);
+    throw new RebaseConflictError(paths.length > 0 ? paths : [reason(err)]);
+  }
+}
+
+/**
+ * Commits the stage's written files to the branch this run claimed, optionally rebases it onto
+ * trunk, and pushes it — the same add-commit-push shape `push-gate.ts`'s `commitAndPush` uses,
+ * minus the rebase-onto-main step's *destination*: this lands on its own branch for a PR to
+ * review, never straight onto `main`, so a rebase realigns rather than lands.
+ *
+ * `rebaseFirst` is lane 05's own call, made once per caller rather than inferred here: `landAnswer`
+ * is shared with `recover/recover.ts`, whose own push realignment is a separate concern this ticket
+ * (#334) does not touch, so a recovered run keeps the exact commit-then-push shape it always has
+ * unless it explicitly opts in.
  *
  * The remote ref already exists, at the same commit this checkout is on (`claimImplementationBranch`
- * created it there), so the push is a fast-forward onto the claim rather than the creation of it.
+ * created it there), so the push is ordinarily a fast-forward onto the claim — true again once a
+ * requested rebase has replayed this run's commit onto trunk's current tip.
  */
-function commitAndPushBranch(git: GitExec, branch: string, paths: string[], commitMessage: string): void {
+function commitAndPushBranch(git: GitExec, branch: string, paths: string[], commitMessage: string, rebaseFirst: boolean): void {
   git(["checkout", "-b", branch]);
   git(["add", ...paths]);
   git(["commit", "-m", commitMessage]);
+  if (rebaseFirst) rebaseOntoTrunk(git);
   git(["push", "origin", `HEAD:${branch}`]);
 }
 
@@ -450,6 +504,17 @@ export function staleClaimTakeoverNote(branch: string): string {
     `The branch was already there when this run started, with no pull request, no commits, and older`,
     `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout — a claim left behind by a run that`,
     "died rather than one a run is still holding. This run took it over and is building the ticket now.",
+  ].join("\n");
+}
+
+/** What lane 05 says on the ticket when its push conflicted rebasing onto trunk (`RebaseConflictError`). */
+export function rebaseConflictNote(paths: string[]): string {
+  return [
+    `Could not rebase this run's branch onto trunk before pushing — conflicted in: ${paths.join(", ")}.`,
+    "",
+    "This is escalated rather than resolved automatically, the same reason `fixer.yml`'s own rebase",
+    "step stops instead of guessing at a merge. The claim has been released; whoever resolves the",
+    "conflict by hand can re-dispatch this ticket afterwards.",
   ].join("\n");
 }
 
@@ -594,7 +659,9 @@ export type ImplementOutcome =
   /** The ticket was already true: the implementer's files matched trunk, so there was nothing to commit. */
   | { outcome: "nothing-to-build" }
   /** The dispatch named a ticket that is already closed — a stale doorbell read (#279). Nothing was spent and the claim is released. */
-  | { outcome: "ticket-closed" };
+  | { outcome: "ticket-closed" }
+  /** The push conflicted rebasing onto trunk. Escalated to `needs-human` rather than resolved; the claim is released. */
+  | { outcome: "rebase-conflict"; paths: string[] };
 
 /**
  * Releases the claim a failed run is holding, unless a pull request now exists on it.
@@ -670,6 +737,10 @@ type LandDeps = Pick<ImplementDeps, "gh" | "git" | "writeFile" | "runGenerator" 
  * run left behind — without either caller re-deriving what happens after an answer exists. Only
  * the commit message differs between the two, so it is the one thing this takes as a parameter
  * rather than building itself.
+ *
+ * `options.rebaseOntoTrunk` defaults to `false` so `recover/recover.ts`'s existing call — which
+ * passes none — keeps its exact commit-then-push shape; `buildAndOpen` below is the one caller
+ * that opts in, for the reason `commitAndPushBranch` gives.
  */
 export async function landAnswer(
   deps: LandDeps,
@@ -679,6 +750,7 @@ export async function landAnswer(
   answer: ImplementerAnswer,
   commitMessage: string,
   log: (line: string) => void,
+  options: { rebaseOntoTrunk?: boolean } = {},
 ): Promise<ImplementOutcome> {
   for (const file of answer.files) {
     deps.writeFile(file.path, file.content);
@@ -701,7 +773,16 @@ export async function landAnswer(
     ...answer.files.map((file) => file.path),
     ...(deps.runGenerator ? regenerateArtifacts(deps.runGenerator, deps.repoRoot ?? process.cwd(), log) : []),
   ];
-  commitAndPushBranch(deps.git, branch, paths, commitMessage);
+
+  try {
+    commitAndPushBranch(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false);
+  } catch (err) {
+    if (!(err instanceof RebaseConflictError)) throw err;
+    releaseClaim(deps.gh, branch, log);
+    escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+    sayOnTicket(deps.gh, issueNumber, rebaseConflictNote(err.paths), log);
+    return { outcome: "rebase-conflict", paths: err.paths };
+  }
 
   const pr = openPrAndDispatch(deps.gh, {
     branch,
@@ -763,6 +844,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     answer,
     `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
     log,
+    { rebaseOntoTrunk: true },
   );
 }
 
@@ -856,6 +938,12 @@ async function main(): Promise<void> {
       // Also not a failure, and the distinction the run that died on `nothing to commit` could not
       // make (#196): the ticket was already true, the claim is back, and the ticket says so.
       console.log(`#${issueNumber} needed no changes — nothing to build.`);
+      return;
+    }
+    if (result.outcome === "rebase-conflict") {
+      // Escalated, not failed: the ticket carries `needs-human` and names what did not replay, and
+      // this run spent nothing further trying to resolve it itself.
+      console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")} — escalated.`);
       return;
     }
     console.log(`opened ${result.pr}`);

@@ -185,6 +185,9 @@ function fakeGh(
     }
     if (args[0] === "issue" && args[1] === "view") return JSON.stringify(ticket);
     if (args[0] === "issue" && args[1] === "comment") return "";
+    // `escalateToOwner` (`shared/needs-human.ts`) — the rebase-conflict escalation's own two writes.
+    if (args[0] === "label" && args[1] === "create") return "";
+    if (args[0] === "issue" && args[1] === "edit") return "";
     if (args[0] === "pr" && args[1] === "create") {
       if (options.prCreateFails) throw new Error("GraphQL: GitHub Actions is not permitted to create pull requests");
       return "https://github.com/owner/repo/pull/42\n";
@@ -522,6 +525,64 @@ describe("runImplement — on fakes", () => {
     for (const entry of IMMUTABLE_SET) {
       expect(prompt, `the prompt does not name ${entry}`).toContain(entry);
     }
+  });
+});
+
+/**
+ * #334: the window Class 3 of the research note calls "exposed, worst case" — job-start checkout,
+ * a 45-minute model run, then a push with no fetch or rebase between them. `fakeGit`'s default
+ * answers every unknown argv with `""`, so `fetch` and `rebase` succeed trivially unless a case
+ * below scripts otherwise — these two cases are what actually exercises the two branches.
+ */
+describe("runImplement rebases onto trunk before it pushes (#334)", () => {
+  it("fetches trunk and rebases onto it before the push, after the commit", async () => {
+    const run = ordinaryRun();
+
+    await runImplement(run.deps);
+
+    const order = run.gitCalls.map((call) => call[0]);
+    const commitIndex = order.indexOf("commit");
+    const fetchIndex = order.indexOf("fetch");
+    const rebaseIndex = order.indexOf("rebase");
+    const pushIndex = order.indexOf("push");
+
+    expect(commitIndex).toBeGreaterThanOrEqual(0);
+    expect(fetchIndex).toBeGreaterThan(commitIndex);
+    expect(rebaseIndex).toBeGreaterThan(fetchIndex);
+    expect(pushIndex).toBeGreaterThan(rebaseIndex);
+    expect(run.gitCalls[fetchIndex]).toEqual(["fetch", "origin", "main"]);
+    expect(run.gitCalls[rebaseIndex]).toEqual(["rebase", "origin/main"]);
+  });
+
+  /**
+   * A conflict is escalated, never resolved automatically — the same reason `fixer.yml`'s own
+   * rebase step stops rather than guessing at a merge. This lane spends no further model turn on
+   * it: the claim is released, `needs-human` is applied, and the ticket names what did not replay.
+   */
+  it("escalates a rebase conflict instead of pushing, releasing the claim and naming the paths", async () => {
+    const logged: string[] = [];
+    const git: GitExec = (args) => {
+      if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
+      if (args[0] === "status") return " M a/b.ts";
+      if (args[0] === "rebase" && args[1] !== "--abort") throw new Error("CONFLICT (content): Merge conflict in a/b.ts");
+      if (args[0] === "diff") return "a/b.ts\n";
+      return "";
+    };
+    const run = ordinaryRun({ git, log: (line) => logged.push(line) });
+
+    const result = await runImplement(run.deps);
+
+    expect(result).toEqual({ outcome: "rebase-conflict", paths: ["a/b.ts"] });
+    expect(logged.some((line) => line.includes("released the claim"))).toBe(true);
+
+    const create = run.ghCalls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-label"));
+    expect(create).toContain("needs-human");
+
+    const comments = ticketCommentsIn(run.ghCalls);
+    expect(comments.some((body) => body.includes("a/b.ts"))).toBe(true);
+
+    // Never pushed a conflicted branch.
+    expect(run.gitCalls.some((call) => call[0] === "push")).toBe(false);
   });
 });
 

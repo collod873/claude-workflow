@@ -604,6 +604,63 @@ describe("the to-build door into lane 06 (#184)", () => {
     expect(fake.commentEdits).toEqual([]);
   });
 
+  /**
+   * The dispatch-side half of the claims gate (#334, Class 3 of the research note): the shape
+   * check above catches a missing heading, not a body that claims a path no pull request may ever
+   * touch. Without this, the ticket behind 7e64031 — a `.github/workflows/*.yml` claim — reached an
+   * implementer unchecked and was refused only at the push, after the run was spent.
+   */
+  it("refuses a labelled ticket whose ## Files claimed touches the immutable set, dispatching nothing and naming the path", () => {
+    const body = [
+      "## What to build",
+      "",
+      "Something that cannot pass its own verification.",
+      "",
+      "## Acceptance criteria",
+      "",
+      "- [ ] It works — check: `true`",
+      "",
+      "## Files claimed",
+      "",
+      "- .github/workflows/integrate.yml",
+      "",
+    ].join("\n");
+    const fake = createFake({ open: [labelled(680, body)] });
+
+    const outcome = runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.dispatches).toEqual([]);
+    expect(outcome.action).toBe("clear");
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.comments[0].issue).toBe(680);
+    expect(fake.comments[0].body).toContain(".github/workflows/integrate.yml");
+    expect(fake.comments[0].body).toContain("to-build-refused:v1");
+  });
+
+  it("admits a labelled ticket whose ## Files claimed touches only mutable paths", () => {
+    const body = [
+      "## What to build",
+      "",
+      "Something the owner could already write in full.",
+      "",
+      "## Acceptance criteria",
+      "",
+      "- [ ] It works — check: `true`",
+      "",
+      "## Files claimed",
+      "",
+      "- src/router/index.ts",
+      "",
+    ].join("\n");
+    const fake = createFake({ open: [labelled(681, body)] });
+
+    const outcome = runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.dispatches).toEqual([681]);
+    expect(outcome.action).toBe("dispatched");
+    expect(fake.comments).toEqual([]);
+  });
+
   it("refuses and comments on nothing in a dry run", () => {
     const fake = createFake({
       open: [labelled(670, "## Acceptance criteria\n\n- [ ] It works — check: `true`\n")],

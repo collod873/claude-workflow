@@ -10,6 +10,7 @@ import {
   matchingRefsPath,
   subIssuesPath,
 } from "../shared/gh-paths";
+import { touchesImmutableSet } from "../shared/immutable-set";
 import {
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
@@ -24,6 +25,7 @@ import { reason } from "../shared/reason";
 import {
   countCriteria,
   extractCriteria,
+  extractFilesClaimed,
   isRunnableSpec,
   parseCheckMarker,
   TicketShapeError,
@@ -444,15 +446,28 @@ function startableNumbers(issues: OpenIssue[], admitted: Set<number>): Set<numbe
  * exists to prevent. Its warnings are dropped on purpose — this door refuses or admits, it does not
  * advise, and the tree its `## Files claimed` bullets would resolve against is the machine's
  * checkout rather than the target's anyway.
+ *
+ * A second refusal sits beside the shape one: a claim `touchesImmutableSet` — the same predicate
+ * `render-body.ts`'s `validateClaimsAreMutable` reads for a slice `/to-tickets` publishes — because
+ * this door is the only enforcement point for a ticket `/to-tickets` never saw, an owner's own
+ * `to-build` or one `watchdog/walk-home.ts` files. Read from the research note's Class 3 finding:
+ * the claims gate existed at filing and was absent at dispatch, so a body claiming
+ * `.github/workflows/integrate.yml` reached an implementer unchecked and the refusal arrived only at
+ * the push, after the run was spent.
  */
 function toBuildRefusal(body: string): string | undefined {
   try {
     validateTicket(body);
-    return undefined;
   } catch (err) {
     if (err instanceof TicketShapeError) return err.message;
     throw err;
   }
+
+  const claimed = extractFilesClaimed(body).filter((path) => touchesImmutableSet([path]));
+  if (claimed.length > 0) {
+    return `its \`## Files claimed\` touches paths no pull request may edit: ${claimed.join(", ")}`;
+  }
+  return undefined;
 }
 
 function toBuildRefusalBody(refusal: string): string {
