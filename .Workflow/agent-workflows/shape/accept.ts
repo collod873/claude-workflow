@@ -1,3 +1,4 @@
+import { withReversal } from "../shared/adr-frontmatter";
 import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
 import { dispatchSpecAuthor } from "../spec/publish";
 import type { GhExec } from "../shared/gh";
@@ -187,25 +188,36 @@ function routeFor(gh: GhExec, issueNumber: number, sheet: Sheet): "short" | "lon
 /**
  * Writes an ADR for every decision that passes the bar, and returns the paths.
  *
- * **The bar is checked here, mechanically, and it is a mark plus a title.**
- * ADR-0028 makes the mark the first of `docs/adr/README.md`'s three tests
- * (*hard to reverse*), and the shaper writes a title only where it judges all
- * three met. A title without a mark is a shaper claiming a bar it did not
- * show its work for, so it files nothing — which keeps the mark load-bearing
- * rather than decorative, and keeps the gate free of any judgement at the
- * moment it runs.
+ * **The bar is checked here, mechanically, and it is a mark, a title and a
+ * reversal sentence.** ADR-0028 makes the mark the first of
+ * `docs/adr/README.md`'s three tests (*hard to reverse*), and the shaper
+ * writes a title only where it judges all three met. A title without a mark is
+ * a shaper claiming a bar it did not show its work for, so it files nothing —
+ * which keeps the mark load-bearing rather than decorative, and keeps the gate
+ * free of any judgement at the moment it runs.
+ *
+ * The reversal sentence joined that list because `adr_shape.validate` refuses
+ * an ADR whose `reversal:` is empty, and this lane cannot type one at the
+ * push it fails. Filing without it produced a file the push venue rejects —
+ * which is not a stricter bar, just a later one, paid by whoever next ran
+ * `bin/gauntlet push` on a corpus they had not written.
  */
 function fileAdrs(deps: AcceptDeps, sheet: Sheet, issueNumber: number): string[] {
   const written: string[] = [];
   for (const decision of sheet.decisions) {
-    if (decision.adrTitle === "" || decision.mark === "") continue;
+    if (decision.adrTitle === "" || decision.mark === "" || decision.adrReversal === "") continue;
 
     // Draft, fill, then land. The body is appended to the draft rather than to the landed file so
     // that the number is claimed against the freshest `origin/main` this lane can see — after all
     // the writing is done, immediately before `commitAndPush` (ADR-0080). Everything downstream
     // reads the landed path, so the two-step stops here.
+    //
+    // `reversal:` is written into the frontmatter rather than appended with the body: it is a
+    // declared key the corpus is read by, not prose, and `bin/new-adr` leaves it empty precisely
+    // so that whoever fills it has to mean it.
     const draft = deps.newAdr(decision.adrTitle).trim();
-    deps.writeFile(draft, `${deps.readFile(draft).trimEnd()}\n\n${adrBody(decision, issueNumber)}`);
+    const drafted = withReversal(deps.readFile(draft), decision.adrReversal);
+    deps.writeFile(draft, `${drafted.trimEnd()}\n\n${adrBody(decision, issueNumber)}`);
     written.push(deps.landAdr(draft).trim());
   }
   return written;

@@ -239,6 +239,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     rejected: "the transport",
     mark: "shared/gh.ts",
     adrTitle: "",
+    adrReversal: "",
   };
 
   it("folds a load-bearing mark the draft never asked about into the body, via the reconciler", async () => {
@@ -283,7 +284,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     // The gate is not simply "a sheet with decisions dispatches": a decision carrying an ADR title
     // was ruled on, and a mark some question names was surfaced. Neither is a silent guess, so
     // neither reaches the reconciler.
-    const filed = { ...UNFILED, mark: "shape/accept.ts", adrTitle: "The accept files its rulings" };
+    const filed = { ...UNFILED, mark: "shape/accept.ts", adrTitle: "The accept files its rulings", adrReversal: "Undoing it means the owner filing every ruling by hand" };
     const { result, calls } = await runSheetDoor([], [filed]);
 
     expect(result).toMatchObject({ gateCount: 0, outcome: "dispatched" });

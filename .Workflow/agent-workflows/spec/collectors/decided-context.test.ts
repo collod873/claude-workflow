@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shape/marker";
-import type { Sheet } from "../../shape/sheet-schema";
 import type { GhExec } from "../../shared/gh";
 import { collectMapContext } from "./map";
+import { fakeSheetGh, sheet } from "./sheet.fixture";
 import { collectSheetContext } from "./sheet";
 
 /**
@@ -20,29 +20,6 @@ import { collectSheetContext } from "./sheet";
  */
 
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
-
-function sheet(over: Partial<Sheet> = {}): Sheet {
-  return {
-    restatement: "the idea as work",
-    priorArt: [],
-    decisions: [{ question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "" }],
-    survivors: [],
-    route: "short",
-    routeReason: "Short — one file.",
-    newTerms: [],
-    round: 0,
-    ...over,
-  };
-}
-
-function fakeSheetGh(body: string, comments: string[]): GhExec {
-  return (args) => {
-    const fields = args[args.indexOf("--json") + 1] ?? "";
-    if (fields === "body") return JSON.stringify({ body });
-    if (fields === "comments") return JSON.stringify({ comments: comments.map((b) => ({ body: b })) });
-    throw new Error(`fake gh: unhandled fields: ${fields}`);
-  };
-}
 
 function fakeMapGh(mapBody: string, ticketComments: Record<number, string[]>): GhExec {
   return (args) => {

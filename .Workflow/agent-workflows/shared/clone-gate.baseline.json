@@ -22,17 +22,6 @@
     "fragment": ", () => {\n  const dirs: string[] = [];\n  afterEach(() => {\n    while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });\n  });\n\n  function writeCopy"
   },
   {
-    "hash": "0945b5ac284f5c72",
-    "format": "typescript",
-    "lines": 10,
-    "tokens": 153,
-    "where": [
-      ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:38",
-      ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:29"
-    ],
-    "fragment": "(body: string, comments: string[]): GhExec {\n  return (args) => {\n    const fields = args[args.indexOf(\"--json\") + 1] ?? \"\";\n    if (fields === \"body\") return JSON.stringify({ body });\n    if (fields === \"comments\") return JSON.stringify({ comments: comments.map((b) => ({ body: b })) });\n    throw new Error(`fake gh: unhandled fields: ${fields}`);\n  };\n}\n\nfunction"
-  },
-  {
     "hash": "0a5d2f733844aaa0",
     "format": "typescript",
     "lines": 12,
@@ -768,17 +757,6 @@
       ".Workflow/agent-workflows/observations/notes.test.ts:188"
     ],
     "fragment": ", () => {\n    const repo = makeRepo();\n    dir = repo.dir;\n\n    const base = repo.commit(\"a.ts\", \"export const a = 1;\\n\", \"seed\");\n    const head = repo.commit(\"a.ts\", \"export const a = 2;\\n\", \"the session's own commit\");\n    writeObservationNote({\n      git: execGit,\n      repoDir: dir,\n      commit: head,\n      observations: [observation({ finding: \"survives anyway\""
-  },
-  {
-    "hash": "f574945a7f70c7b0",
-    "format": "typescript",
-    "lines": 15,
-    "tokens": 132,
-    "where": [
-      ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts:24",
-      ".Workflow/agent-workflows/spec/collectors/sheet.test.ts:14"
-    ],
-    "fragment": "function sheet(over: Partial<Sheet> = {}): Sheet {\n  return {\n    restatement: \"the idea as work\",\n    priorArt: [],\n    decisions: [{ question: \"q\", recommendation: \"r\", rejected: \"x\", mark: \"\", adrTitle: \"\" }],\n    survivors: [],\n    route: \"short\",\n    routeReason: \"Short — one file.\",\n    newTerms: [],\n    round: 0,\n    ...over,\n  };\n}\n\nfunction"
   },
   {
     "hash": "f63a1bea7f6d15d5",

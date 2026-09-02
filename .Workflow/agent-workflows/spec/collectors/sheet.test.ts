@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../../shared/gh";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shape/marker";
-import type { Sheet } from "../../shape/sheet-schema";
 import { collectSheetContext } from "./sheet";
+import { fakeSheetGh as fakeGh, sheet } from "./sheet.fixture";
 
 /**
  * The sheet collector is the accepted-sheet trigger's half of ADR-0058: it
@@ -10,30 +9,6 @@ import { collectSheetContext } from "./sheet";
  * `acceptComment` produces — parsing that prose is the exact failure the
  * payload exists to prevent.
  */
-
-function sheet(over: Partial<Sheet> = {}): Sheet {
-  return {
-    restatement: "the idea as work",
-    priorArt: [],
-    decisions: [{ question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "" }],
-    survivors: [],
-    route: "short",
-    routeReason: "Short — one file.",
-    newTerms: [],
-    round: 0,
-    ...over,
-  };
-}
-
-/** A fake `gh` answering only `issue view --json body` and `issue view --json comments`. */
-function fakeGh(body: string, comments: string[]): GhExec {
-  return (args) => {
-    const fields = args[args.indexOf("--json") + 1] ?? "";
-    if (fields === "body") return JSON.stringify({ body });
-    if (fields === "comments") return JSON.stringify({ comments: comments.map((b) => ({ body: b })) });
-    throw new Error(`fake gh: unhandled fields: ${fields}`);
-  };
-}
 
 describe("collectSheetContext", () => {
   it("reads adrPaths, coinedTerms and route from the accept's marker payload", () => {
@@ -63,8 +38,8 @@ describe("collectSheetContext", () => {
     // the context side is asserted whole so a field added or reworded here
     // fails rather than passing silently.
     const decisions = [
-      { question: "q1", recommendation: "r1", rejected: "x1", mark: "ADR-0028", adrTitle: "" },
-      { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling" },
+      { question: "q1", recommendation: "r1", rejected: "x1", mark: "ADR-0028", adrTitle: "", adrReversal: "" },
+      { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling", adrReversal: "Undoing it costs a re-route" },
     ];
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
     const gh = fakeGh("the owner's words", [

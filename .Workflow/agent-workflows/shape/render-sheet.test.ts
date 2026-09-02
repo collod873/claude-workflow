@@ -14,7 +14,7 @@ function sheet(over: Partial<Sheet> = {}): Sheet {
     restatement: "the idea as work",
     priorArt: [],
     decisions: [
-      { question: "Where does it fire?", recommendation: "On push", rejected: "In Actions — the repair is cheaper earlier", mark: "", adrTitle: "" },
+      { question: "Where does it fire?", recommendation: "On push", rejected: "In Actions — the repair is cheaper earlier", mark: "", adrTitle: "", adrReversal: "" },
     ],
     survivors: [],
     route: "short",
@@ -69,7 +69,7 @@ describe("the assumption mark", () => {
     const rendered = renderSheet(
       sheet({
         decisions: [
-          { question: "q", recommendation: "r", rejected: "x", mark: "ADR-0007's routing rule", adrTitle: "" },
+          { question: "q", recommendation: "r", rejected: "x", mark: "ADR-0007's routing rule", adrTitle: "", adrReversal: "" },
         ],
       }),
     );

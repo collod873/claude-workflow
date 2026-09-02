@@ -28,6 +28,8 @@ You do not need to count your own marks. If more than half your decisions carry 
 
 Only a decision that also carries a mark can carry a title. The mark is the first of the three tests.
 
+**A reversal sentence, wherever you wrote a title.** `adrReversal` is `docs/adr/README.md`'s `reversal:` field: **what undoing this ruling would cost**, in one sentence. That file calls it the admission test rather than a field — *if the answer is one edit, this is an implementation note* — so write the cost, not the ruling again: "Reversing it means re-minting the token and rotating it in every enrolled repository", never "this would be hard to undo". It is not the mark restated: a mark names *what moves*, and a pointer is not a cost. A title with no reversal sentence files nothing, the same way a title with no mark does.
+
 **Any term you had to coin.** If you found yourself needing a word `CONTEXT.md` does not have, draft the entry — the term, its definition, the near-synonyms to avoid, and which of that file's four groupings it belongs under (`The record`, `The charter`, `Mechanisms`, `The pipeline`). Same rule: drafted here, filed at accept.
 
 ## The two caps
@@ -77,7 +79,7 @@ you say before it can corrupt it.
 Either a sheet:
 
 ```structured-output
-{"answer":{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence"}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[{"term":"Checkpoint","definition":"A stage's saved output, kept so a later run can skip the stage that produced it.","avoid":["cache","savepoint"],"section":"Mechanisms"}]}}
+{"answer":{"kind":"sheet","restatement":"…","priorArt":[{"ref":"#42","url":"…","bearing":"…","verdict":"related"}],"decisions":[{"question":"…","recommendation":"…","rejected":"…","mark":"ADR-0007's routing rule","adrTitle":"The ruling as a sentence","adrReversal":"Reversing it means re-routing every item by hand and re-deciding the short path per defect."}],"route":"short","routeReason":"Short — one file, no seam, and the gauntlet still runs on it.","newTerms":[{"term":"Checkpoint","definition":"A stage's saved output, kept so a later run can skip the stage that produced it.","avoid":["cache","savepoint"],"section":"Mechanisms"}]}}
 ```
 
 Or one re-sweep request:
@@ -86,4 +88,4 @@ Or one re-sweep request:
 {"answer":{"kind":"re-sweep","needs":"the close gate's refusal list","why":"decision 2 recommends a new refusal and I cannot tell whether one already exists"}}
 ```
 
-`priorArt` carries forward the sweep's entries you judged worth the owner's three funded lines — at most three, ordered by what would most change his mind. `mark` and `adrTitle` are empty strings where they do not apply.
+`priorArt` carries forward the sweep's entries you judged worth the owner's three funded lines — at most three, ordered by what would most change his mind. `mark`, `adrTitle` and `adrReversal` are empty strings where they do not apply, and the last two are empty together — a title without a reversal sentence is never filed.

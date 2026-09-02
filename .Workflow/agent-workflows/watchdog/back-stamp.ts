@@ -26,6 +26,8 @@
  * table).
  */
 
+import { frontmatterBlock } from "../shared/adr-frontmatter";
+
 /** One document as this module needs it: a repo-relative path and its full text. */
 export interface DocFile {
   path: string;
@@ -42,18 +44,6 @@ export interface BackStampWrite {
 export function adrNumber(path: string): number | undefined {
   const match = /docs\/adr\/(\d{4})-/.exec(path);
   return match ? Number(match[1]) : undefined;
-}
-
-/**
- * The frontmatter block of `content` — the text between the opening `---` and the next `---` —
- * or `undefined` when there is none. The amendment edge moved here from a prose `Amends:` trailer
- * when the corpus was re-admitted: a prose line was hand-written, and three of them shipped
- * without the colon both readers of this graph require, leaving their predecessors unstamped from
- * August. A frontmatter key is written by `new-adr` and parsed the same way by every reader.
- */
-function frontmatterBlock(content: string): string | undefined {
-  const match = /^---\n([\s\S]*?)\n---\n/.exec(content);
-  return match ? match[1] : undefined;
 }
 
 /** The `amends:` declaration line, or `undefined`. */

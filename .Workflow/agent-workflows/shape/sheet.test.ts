@@ -11,7 +11,7 @@ import type { PriorArt } from "./sweep-schema";
  */
 
 function decision(over: Partial<Decision> = {}): Decision {
-  return { question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", ...over };
+  return { question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", adrReversal: "", ...over };
 }
 
 function shaped(over: Partial<ShaperSheet> = {}): ShaperSheet {

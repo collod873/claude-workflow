@@ -24,7 +24,7 @@ const sheet: Sheet = {
   restatement: "the idea as work",
   priorArt: [{ ref: "#42", url: "https://example.test/42", bearing: "…", verdict: "related" }],
   decisions: [
-    { question: "q", recommendation: "r", rejected: "x", mark: "ADR-0007", adrTitle: "A ruling" },
+    { question: "q", recommendation: "r", rejected: "x", mark: "ADR-0007", adrTitle: "A ruling", adrReversal: "Undoing it costs a re-route" },
   ],
   survivors: [],
   route: "short",

@@ -55,6 +55,23 @@ export const Decision = z.object({
    * is a shaper claiming a bar it did not show its work for.
    */
   adrTitle: z.string().default(""),
+  /**
+   * What undoing this ruling would cost, in a sentence — `docs/adr/README.md`'s
+   * `reversal:`, which that file calls the admission test rather than a field:
+   * *if the answer is one edit, this is an implementation note*. Empty
+   * wherever `adrTitle` is.
+   *
+   * Asked of the shaper rather than derived at accept for the same reason a
+   * `Term`'s section is: the accept files, it does not judge, and the cost of
+   * undoing a ruling is a reading of the ruling that only the stage holding
+   * the idea can make. Nothing on this sheet stands in for it — `mark` names
+   * *what moves*, which is a pointer, and a pointer is not a cost.
+   *
+   * `accept.ts` files only a decision carrying a title, a mark **and** this,
+   * because `adr_shape.validate` refuses an ADR whose `reversal:` is empty:
+   * without it the lane's own output is a file the push venue rejects.
+   */
+  adrReversal: z.string().default(""),
 });
 
 export type Decision = z.infer<typeof Decision>;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { frontmatterBlock } from "../shared/adr-frontmatter";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
 import { accept, insertTerm, type AcceptDeps } from "./accept";
 import { sheetMarker } from "./marker";
@@ -12,8 +13,18 @@ import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.f
  * is a label.
  */
 
+/** The landed file's frontmatter block, so an assertion about a key cannot be met by the body. */
+function frontmatterOf(content: string): string {
+  const block = frontmatterBlock(content);
+  if (block === undefined) throw new Error(`no frontmatter block in:\n${content}`);
+  return block;
+}
+
+/** A reversal sentence in the shape `adr_shape.validate` accepts: a cost, not a restated ruling. */
+const REVERSAL = "Undoing it means re-routing every item by hand, in every lane that reads the route.";
+
 function decision(over: Partial<Decision> = {}): Decision {
-  return { question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", ...over };
+  return { question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", adrReversal: "", ...over };
 }
 
 function sheet(over: Partial<Sheet> = {}): Sheet {
@@ -92,6 +103,11 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
   return { deps, tracker, files, git, adrTitles };
 }
 
+/** The harness for a sheet whose one decision is `over` — the shape most of these cases need. */
+function harnessFor(over: Partial<Decision>): Harness {
+  return harness({ sheet: sheet({ decisions: [decision(over)] }) });
+}
+
 const CONTEXT_FIXTURE = `# Workflow
 
 ## Language
@@ -145,7 +161,7 @@ describe("approved", () => {
   it("files an ADR for a decision carrying both a mark and a title", () => {
     const { deps, adrTitles, files } = harness({
       sheet: sheet({
-        decisions: [decision({ mark: "ADR-0007's routing rule", adrTitle: "The ruling as a sentence" })],
+        decisions: [decision({ mark: "ADR-0007's routing rule", adrTitle: "The ruling as a sentence", adrReversal: REVERSAL })],
       }),
     });
 
@@ -163,21 +179,48 @@ describe("approved", () => {
     // ADR-0028 makes the mark the first of README's three tests. A title
     // without one is a shaper claiming a bar it did not show its work for,
     // and honouring it would make the mark decorative.
-    const { deps, adrTitles } = harness({
-      sheet: sheet({ decisions: [decision({ adrTitle: "A ruling" })] }),
-    });
+    const { deps, adrTitles } = harnessFor({ adrTitle: "A ruling" });
 
     expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
     expect(adrTitles).toEqual([]);
   });
 
   it("files nothing for a mark with no title", () => {
-    const { deps, adrTitles } = harness({
-      sheet: sheet({ decisions: [decision({ mark: "a file" })] }),
-    });
+    const { deps, adrTitles } = harnessFor({ mark: "a file" });
 
     accept(deps, 1, "approved");
     expect(adrTitles).toEqual([]);
+  });
+
+  it("files nothing for a title and mark with no reversal sentence", () => {
+    // `adr_shape.validate` refuses an ADR whose `reversal:` is empty, and this lane is not there
+    // when that refusal fires. Filing anyway moved the failure to whoever next pushed.
+    const { deps, adrTitles } = harnessFor({ mark: "a file", adrTitle: "A ruling" });
+
+    expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
+    expect(adrTitles).toEqual([]);
+  });
+
+  it("writes the reversal sentence into the landed ADR's frontmatter, not its body", () => {
+    const { deps, files } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
+
+    accept(deps, 1, "approved");
+
+    const landed = files.get("docs/adr/0051-slug.md")!;
+    expect(frontmatterOf(landed)).toContain(`reversal: ${REVERSAL}`);
+    expect(landed.slice(landed.indexOf("\n---\n", 4))).not.toContain(REVERSAL);
+  });
+
+  it("flattens a multi-line reversal sentence, which would otherwise end the key mid-value", () => {
+    const { deps, files } = harness({
+      sheet: sheet({
+        decisions: [decision({ mark: "a file", adrTitle: "A ruling", adrReversal: "Undoing it costs\na second pass." })],
+      }),
+    });
+
+    accept(deps, 1, "approved");
+
+    expect(frontmatterOf(files.get("docs/adr/0051-slug.md")!)).toContain("reversal: Undoing it costs a second pass.");
   });
 
   it("coins a term into its own section of CONTEXT.md", () => {
@@ -199,9 +242,7 @@ describe("approved", () => {
   it("commits and pushes what it wrote, straight to main", () => {
     // Ruled with the move: a PR here would add a second owner touch to a lane
     // §01 budgets at two owner minutes. Move 10 flips it.
-    const { deps, git } = harness({
-      sheet: sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling" })] }),
-    });
+    const { deps, git } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
 
     accept(deps, 1, "approved");
 
@@ -222,9 +263,7 @@ describe("approved", () => {
     // regenerated snapshot is refused by this repo's own `pre-push` hook — which is exactly what
     // happened to the first accept ever to reach a push. The ordering is the assertion: regenerate
     // first, or `add` stages a fixture still describing the corpus as it was a moment ago.
-    const { deps, git } = harness({
-      sheet: sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling" })] }),
-    });
+    const { deps, git } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
 
     accept(deps, 1, "approved");
 
@@ -372,7 +411,7 @@ describe("re-applying a verb", () => {
     // `issues.labeled` event. Without the accept's own trailer to read back,
     // the second one files every ruling again under new numbers and pushes
     // them to `main`.
-    const shaped = sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling" })] });
+    const shaped = sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL })] });
     const { deps, adrTitles, git } = harness({ sheet: shaped });
 
     accept(deps, 1, "approved");
@@ -405,7 +444,7 @@ describe("re-applying a verb", () => {
     const term: Term = { term: "X", definition: "d", avoid: [], section: "Mechanisms" };
     const { deps, tracker } = harness({
       sheet: sheet({
-        decisions: [decision({ mark: "a mark", adrTitle: "A ruling" })],
+        decisions: [decision({ mark: "a mark", adrTitle: "A ruling", adrReversal: REVERSAL })],
         newTerms: [term],
       }),
     });

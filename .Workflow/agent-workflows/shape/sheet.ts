@@ -87,6 +87,7 @@ export function applyGrammar(shaped: ShaperSheet, refuted: Refutations, round: n
     ...decision,
     mark: decision.mark.trim(),
     adrTitle: decision.adrTitle.trim(),
+    adrReversal: decision.adrReversal.trim(),
   }));
 
   const forcedLong = marksForceLong(decisions);
