@@ -19,3 +19,13 @@ export const Observation = z.object({
 });
 
 export type Observation = z.infer<typeof Observation>;
+
+/**
+ * The two lenses that write into a note, named here because `lens` is this
+ * schema's own field and three modules read it for different reasons:
+ * `run-observations.ts` writes both, `ratify/ratifier.ts` reads VIOLATION to
+ * enforce the one verdict that lens may answer with, and `ratify/run-ratify.ts`
+ * reads both because only one of them is folded forward between notes.
+ */
+export const PROPOSED_LENS = "PROPOSED";
+export const VIOLATION_LENS = "VIOLATION";

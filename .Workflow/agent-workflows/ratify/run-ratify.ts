@@ -7,7 +7,7 @@ import { syncNotesRef } from "../shared/notes-sync";
 import { reason } from "../shared/reason";
 import { execClaudeIn, type StageExec } from "../shared/stage";
 import { readObservations } from "../observations/notes";
-import type { Observation } from "../observations/observation-schema";
+import { PROPOSED_LENS, type Observation } from "../observations/observation-schema";
 import { filterByRatificationMemory, readRatificationRecords, writeRatificationNote } from "../observations/ratification";
 import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
 import {
@@ -163,10 +163,27 @@ export async function runRatify(options: RunRatifyOptions): Promise<RatifyOutcom
 /**
  * The observations in scope that cleared the two-site gate.
  *
- * Reads only the nearest note in the range, not every note flattened: each
- * note the audit lane writes is already the full cumulative state at that
- * commit (prior findings folded in), so a later note in the same range
- * already contains everything an earlier one does.
+ * The two lenses are read differently because only one of them is folded
+ * forward. `run-observations.ts`'s `loadPriorFindings` carries every PROPOSED
+ * finding from the nearest earlier note into the note it writes, so the
+ * nearest note is already the two-site gate's full state — a union across the
+ * range would only re-add site lists that note has already superseded.
+ * Nothing folds VIOLATION forward: each audit run parses violations out of
+ * its own session's diff alone, so the nearest note holds the newest window's
+ * and no other's, and the union across the range is the whole of what is in
+ * scope. Any lens added later reads as VIOLATION does, because losing a
+ * finding is the worse of the two failures.
+ *
+ * Reading the nearest note for both lenses was the defect behind #324. The
+ * trigger that fires this run counts released findings across *every* note in
+ * the range (`scope.ts`'s `computeRatificationScope`), the batch then saw one
+ * note's, and `advanceRatifierRef` moved the bookmark past the rest — so the
+ * ten "Cite, don't restate" violations noted at 6c1c979 were gone for good
+ * once the run that would have batched them died at its push. The gate and
+ * the batch now read the same set.
+ *
+ * A finding decided in an earlier window cannot resurface here: this range
+ * starts at the bookmark, which is the previous run's own head.
  */
 function releasedObservations(options: {
   git: GitExec;
@@ -174,8 +191,24 @@ function releasedObservations(options: {
   base?: string;
   head: string;
 }): Observation[] {
-  const [nearest] = readObservations(options);
-  return (nearest?.observations ?? []).filter((observation) => observation.released);
+  const notes = readObservations(options);
+  const released = (note: { observations: Observation[] }) => note.observations.filter((entry) => entry.released);
+
+  const [nearest] = notes;
+  const proposed = nearest ? released(nearest).filter((entry) => entry.lens === PROPOSED_LENS) : [];
+
+  // `readObservations` hands notes back newest first, so the first sighting of a finding-and-sites
+  // pair is the newest note's — the one whose `released` flag the trigger counted.
+  const unfolded = new Map<string, Observation>();
+  for (const note of notes) {
+    for (const entry of released(note)) {
+      if (entry.lens === PROPOSED_LENS) continue;
+      const key = JSON.stringify([entry.finding, [...entry.sites].sort()]);
+      if (!unfolded.has(key)) unfolded.set(key, entry);
+    }
+  }
+
+  return [...proposed, ...unfolded.values()];
 }
 
 async function main(): Promise<void> {

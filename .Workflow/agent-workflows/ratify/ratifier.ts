@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import type { GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { runStage, type StageExec } from "../shared/stage";
-import type { Observation } from "../observations/observation-schema";
+import { VIOLATION_LENS, type Observation } from "../observations/observation-schema";
 import type { RatificationRecord } from "../observations/ratification-schema";
 import { appendStandardEntry } from "./standards";
 import { commitWorkingTree, restoreWorkingTree, type LandedFinding } from "./land";
@@ -32,9 +32,6 @@ const RATIFIER_PROMPT_PATH = fileURLToPath(new URL("./prompt.md", import.meta.ur
  * model's failures cost a whole batch rather than a retry.
  */
 const RATIFIER_MODEL = "opus";
-
-/** The lens whose findings are defects with a deterministic fix rather than decisions. */
-const VIOLATION_LENS = "VIOLATION";
 
 /** Runs the decision stage for one finding and returns its verdict, unapplied. */
 export function runRatifierStage(exec: StageExec, vars: Record<string, string>): Promise<RatifierVerdict> {
