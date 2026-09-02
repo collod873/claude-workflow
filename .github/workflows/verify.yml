@@ -223,9 +223,14 @@ jobs:
           SLICE_CRITERIA: ${{ toJson(github.event.client_payload.criteria) }}
         run: |
           set -euo pipefail
+          echo "DEBUG pwd=$(pwd)"
+          echo "DEBUG tests/acceptance/327*:"
+          ls tests/acceptance/327* 2>&1 || echo "DEBUG none found"
           FILES=$(npx tsx -e "
-            import { testsForCriteria } from './.Workflow/agent-workflows/shared/affected-tests.ts';
+            import { testsForCriteria, ACCEPTANCE_DIR } from './.Workflow/agent-workflows/shared/affected-tests.ts';
+            console.error('DEBUG ACCEPTANCE_DIR=' + ACCEPTANCE_DIR);
             const criteria = JSON.parse(process.env.SLICE_CRITERIA || '[]');
+            console.error('DEBUG criteria count=' + criteria.length);
             console.log(testsForCriteria(criteria).join('\n'));
           ")
           if [ -z "$FILES" ]; then
