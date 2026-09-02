@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shape/marker";
+import { sheet } from "../../shape/sheet.fixture";
 import type { GhExec } from "../../shared/gh";
 import { collectMapContext } from "./map";
-import { fakeSheetGh, sheet } from "./sheet.fixture";
+import { fakeSheetGh } from "./sheet-gh.fixture";
 import { collectSheetContext } from "./sheet";
 
 /**
