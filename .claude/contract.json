@@ -8,12 +8,12 @@
     "why": "package.json#scripts.test (vitest run .Workflow .claude && npm run clone:check)"
   },
   "test_one": {
-    "cmd": null,
-    "why": "no known single-file form for the installed test runner"
+    "cmd": "npx vitest run <file>",
+    "why": "vitest's single-file form; no package.json script for it"
   },
   "test_related": {
-    "cmd": null,
-    "why": "no known related-tests form for the installed test runner"
+    "cmd": "npx vitest related --run <file>",
+    "why": "vitest's related-tests form; no package.json script for it"
   },
   "typecheck": {
     "cmd": "npm run typecheck",
