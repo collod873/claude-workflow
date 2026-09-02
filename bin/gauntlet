@@ -337,6 +337,7 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 elapsed_ms=$((($(date +%s%N) / 1000000) - started_ms))
 
 failed=0
+failed_names=""
 could_not_run=0
 
 # Read the decoy. This is a finding about the suite, not about the code under test, so it is
@@ -384,12 +385,22 @@ for name in $checks; do
     continue
   fi
   failed=1
+  failed_names="$failed_names $name"
   echo "--- $name ---"
   cat "$tmp/$name.out"
 done
 
 if [ "$elapsed_ms" -gt "$budget_ms" ]; then
   echo "gauntlet: $venue took ${elapsed_ms}ms against a ${budget_ms}ms budget" >&2
+fi
+
+# The verdict goes last, and on stdout, because that is the half a reader actually gets. A hook
+# refusing a push makes git say only `error: failed to push some refs`, and `shared/reason.ts`
+# recovers the diagnosis by keeping the **tail** of this output — which, until this line existed,
+# was a vitest summary table naming no check. Now the tail opens with the answer, in every place
+# that report is read: a lane's log, an issue comment, a walked-home ticket.
+if [ "$failed" = "1" ]; then
+  echo "gauntlet: FAILED at$failed_names"
 fi
 
 if [ "$could_not_run" = "1" ]; then
