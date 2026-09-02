@@ -475,6 +475,27 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     ];
   }
 
+  /**
+   * The run list has to be a GET, and the only way to keep it one through `gh api` is to carry the
+   * query in the path: a single `-f` field switches `gh` to POST, and `POST` on this endpoint is a
+   * 404 that `fetch_verify_verdict`'s `except` reads as "no run found". That is not hypothetical —
+   * it is what every closing record this tool wrote said, `Verify: unjudged`, silently, until
+   * 2026-09-02. The routed stub answers on substring and cannot tell a POST from a GET, which is
+   * exactly why the fake never caught it and why the shape is asserted here instead.
+   */
+  it("asks for the run list as a GET, with the query in the path", () => {
+    const gh = routedGhStub(verifyRoutes([
+      { name: "Immutability", status: "completed", conclusion: "success" },
+      { name: "Restore and run acceptance", status: "completed", conclusion: "success" },
+    ]));
+    fetchVerifyVerdict(gh.path);
+
+    const listCall = gh.calls().find((call) => call.some((arg) => arg.includes("/runs")));
+    expect(listCall, "no call asked for the workflow's runs").toBeDefined();
+    expect(listCall).not.toContain("-f");
+    expect(listCall?.some((arg) => arg.includes("per_page=") && arg.includes("event=repository_dispatch"))).toBe(true);
+  });
+
   it("reads passed when both jobs concluded success", () => {
     const gh = routedGhStub(verifyRoutes([
       { name: "Immutability", status: "completed", conclusion: "success" },

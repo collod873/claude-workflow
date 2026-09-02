@@ -336,9 +336,17 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
     merge in this repo's own pipeline never happens unless both did (`runIntegrate`)."""
     workflow_file = verify_workflow_file()
     try:
+        # Query in the path, never as `-f` fields: `gh api` switches to POST the moment a field is
+        # present, and `POST .../actions/workflows/<file>/runs` is not an endpoint — it 404s, the
+        # 404 raises `GhError`, and the `except` below reads that as "no run found" and returns
+        # `unjudged`. Which is what happened to every closing record this tool has ever written:
+        # the silent-forever failure `verify_workflow_file`'s docstring warns about, arriving
+        # through the shape of the call rather than through a wrong workflow name. `integrate.ts`
+        # builds the same query into the path (`repoRunsPath`) and was never affected.
         runs = json.loads(gh_support.run_gh(
-            gh, "api", f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow_file}/runs",
-            "-f", f"per_page={VERIFY_RUN_PAGE_SIZE}", "-f", "event=repository_dispatch",
+            gh, "api",
+            f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow_file}/runs"
+            f"?per_page={VERIFY_RUN_PAGE_SIZE}&event=repository_dispatch",
             "--jq", "[.workflow_runs[] | {id, status}]",
         ))
     except gh_support.GhError:
