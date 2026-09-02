@@ -4,6 +4,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPath, runJobsPath } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
 import {
+  callerHalf,
   citedRuns,
   deadLanes,
   inWindow,
@@ -286,6 +287,12 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
  * **A failed close costs the sweep nothing.** Logged and dropped, the rule `reconcile.ts`'s
  * `retireStanding` already follows: the next sweep finds the same live lane and the same open
  * issue, so the close is late, never lost.
+ *
+ * **A marker spelled `<lane>.yml` is migrated, not stuck.** Post-split every live run's `path` is
+ * a caller stub (`dead-lanes.ts`'s header), so a marker naming the reusable half a stub delegates
+ * to — or one left standing from before the split, the same spelling either way — would otherwise
+ * wait forever for a run it can no longer see. `callerHalf` (`./dead-lanes.ts`) computes the
+ * caller spelling of such a marker, and the live-run search checks both.
  */
 function retireRecovered(options: {
   gh: GhExec;
@@ -304,7 +311,10 @@ function retireRecovered(options: {
     const path = markedLane(issue.body ?? "");
     if (!path || dead.has(path)) continue;
 
-    const live = runs.find((run) => run.path === path && run.status === "completed" && inWindow(run, now));
+    const candidate = callerHalf(path);
+    const live = runs.find(
+      (run) => (run.path === path || run.path === candidate) && run.status === "completed" && inWindow(run, now),
+    );
     if (!live) {
       log(`left #${issue.number} open: ${path} has not run inside the window, so nothing says it recovered`);
       continue;

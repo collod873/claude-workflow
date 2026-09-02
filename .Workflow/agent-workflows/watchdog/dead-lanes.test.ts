@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  callerHalf,
   citedRuns,
   deadLanes,
   executedNothing,
@@ -10,6 +11,7 @@ import {
   LOOKBACK_DAYS,
   markedLane,
   retirementBody,
+  reusableHalf,
   signalBody,
   signalMarker,
   signalTitle,
@@ -194,7 +196,32 @@ describe("deadLanes", () => {
   });
 });
 
-describe("the signal", () => {
+describe("reusableHalf", () => {
+  it("strips the caller suffix, per enrol/stub-set.ts's STUB_SUFFIX convention", () => {
+    expect(reusableHalf(".github/workflows/verify-caller.yml")).toBe(".github/workflows/verify.yml");
+  });
+
+  it("returns an un-split lane's path unchanged, since it has no second file to name", () => {
+    expect(reusableHalf(".github/workflows/enrol.yml")).toBe(".github/workflows/enrol.yml");
+  });
+});
+
+describe("callerHalf", () => {
+  it("adds the caller suffix to a bare lane path", () => {
+    expect(callerHalf(".github/workflows/verify.yml")).toBe(".github/workflows/verify-caller.yml");
+  });
+
+  it("returns a caller stub unchanged", () => {
+    expect(callerHalf(".github/workflows/verify-caller.yml")).toBe(".github/workflows/verify-caller.yml");
+  });
+
+  it("is reusableHalf's inverse for a caller stub", () => {
+    const stub = ".github/workflows/verify-caller.yml";
+    expect(callerHalf(reusableHalf(stub))).toBe(stub);
+  });
+});
+
+describe("the signal, for a lane that predates the split (or never split)", () => {
   const lane = deadLanes([
     run({
       id: 32676497304,
@@ -212,7 +239,13 @@ describe("the signal", () => {
   });
 
   it("says why a run named after its own file is the tell", () => {
+    // The lane's own path has no `-caller.yml` suffix, so it is the file GitHub could not parse a
+    // `name:` out of — the branch this pins still fires for exactly this shape of lane.
     expect(signalBody(lane)).toContain("could not parse");
+  });
+
+  it("names no second file, since a lane keyed on its own path is not a caller stub", () => {
+    expect(signalBody(lane).match(/actionlint /g)).toHaveLength(1);
   });
 
   it("carries a marker keyed on the lane, so a second dead run finds this issue", () => {
@@ -224,6 +257,43 @@ describe("the signal", () => {
   it("reads its own marker back, which is how retirement finds a lane this sweep said nothing about", () => {
     expect(markedLane(signalBody(lane))).toBe(lane.path);
     expect(markedLane("no marker here")).toBeUndefined();
+  });
+});
+
+describe("the signal, for a post-split caller stub", () => {
+  const lane = deadLanes([
+    run({
+      id: 32676497400,
+      name: "To tickets (caller)",
+      path: ".github/workflows/to-tickets-caller.yml",
+      htmlUrl: "https://github.com/collod873/claude-workflow/actions/runs/32676497400",
+      jobCount: 0,
+    }),
+  ])[0];
+
+  it("names both the stub and the reusable machinery it delegates to", () => {
+    expect(signalTitle(lane)).toContain(".github/workflows/to-tickets-caller.yml");
+    expect(signalTitle(lane)).toContain(".github/workflows/to-tickets.yml");
+    expect(signalBody(lane)).toContain(".github/workflows/to-tickets-caller.yml");
+    expect(signalBody(lane)).toContain(".github/workflows/to-tickets.yml");
+  });
+
+  it("actionlints the reusable file alongside the stub, since that is almost always where the break is", () => {
+    const body = signalBody(lane);
+    expect(body).toContain("actionlint .github/workflows/to-tickets-caller.yml");
+    expect(body).toContain("actionlint .github/workflows/to-tickets.yml");
+  });
+
+  it("is silent about an unparseable name, since a six-line stub almost always parses", () => {
+    // The caller carries its own declared name here, not `lane.path` — the post-split norm. The
+    // branch that explains an unparseable name has nothing to say about a stub that parsed fine,
+    // and the actual break is in the machinery named above instead (#331 instance 4).
+    expect(signalBody(lane)).not.toContain("could not parse");
+  });
+
+  it("still keys its marker on the stub, so the lane's identity does not move", () => {
+    expect(signalMarker(lane.path)).toBe(signalMarker(".github/workflows/to-tickets-caller.yml"));
+    expect(markedLane(signalBody(lane))).toBe(".github/workflows/to-tickets-caller.yml");
   });
 });
 

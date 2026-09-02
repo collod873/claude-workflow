@@ -18,7 +18,22 @@
  * job-level `if` skipped does not qualify — GitHub lists a skipped job, so
  * the count is one, and that is exactly the line between "the lane declined
  * this event" and "the lane could not start".
+ *
+ * Since the reusable-workflow split (ADR-0055, amended by ADR-0132), the `path` this module keys
+ * on is always a `-caller.yml` stub: GitHub attributes a run reached through `uses:` to the
+ * *caller's* file, never the reusable workflow it delegates to — the caller is six lines of
+ * trigger and `uses:`, and the machinery that can actually break is one hop away. `reusableHalf`
+ * below names that hop for the signal, rather than leaving the reader to rediscover the
+ * `-caller.yml` convention from a bare stub path.
  */
+
+/**
+ * The suffix that makes a workflow file a caller stub — the same convention `enrol/stub-set.ts`'s
+ * `STUB_SUFFIX` encodes on the other side of the same wire. Spelled again here rather than
+ * imported: a lane may not deep-import another lane (`docs/agents/module-boundaries.md`), and this
+ * convention is small and stable enough that a second copy costs less than a shared/ seam would.
+ */
+const STUB_SUFFIX = "-caller.yml";
 
 /** One completed run, as the Actions runs list carries it plus the count that list omits. */
 export interface RunSummary {
@@ -184,18 +199,57 @@ export function unreportedRuns(lane: DeadLane, cited: Set<number>): RunSummary[]
   return lane.runs.filter((run) => !cited.has(run.id));
 }
 
+/**
+ * The reusable workflow a caller stub delegates to: `enrol/stub-set.ts`'s `STUB_SUFFIX`
+ * convention read backwards, `<lane>-caller.yml` → `<lane>.yml`. `signalMarker` never keys on
+ * this — the lane's identity stays the stub — but the signal is more useful naming the machinery
+ * a stub delegates to, since that is almost always where a dead run's actual break lives.
+ *
+ * A path that is not a caller stub is returned unchanged: an un-split lane, or a marker predating
+ * the split, has no second file to name.
+ */
+export function reusableHalf(path: string): string {
+  return path.endsWith(STUB_SUFFIX) ? `${path.slice(0, -STUB_SUFFIX.length)}.yml` : path;
+}
+
+/**
+ * The other direction: the caller stub a bare `<lane>.yml` marker would now show up as a run
+ * under, since post-split every run is attributed to the caller rather than the reusable half it
+ * delegates to. Used by `retireRecovered` (`./run-watchdog.ts`) so a marker spelled that way —
+ * the reusable half's own path, or a marker left from before the split, the same string either
+ * way — still finds the live run that proves its lane recovered.
+ *
+ * A path that already is a caller stub is returned unchanged.
+ */
+export function callerHalf(path: string): string {
+  return path.endsWith(STUB_SUFFIX) ? path : path.replace(/\.yml$/, STUB_SUFFIX);
+}
+
 /** The signal's title. Stable across sweeps so a reader recognises a repeat. */
 export function signalTitle(lane: DeadLane): string {
-  return `${lane.path} is dead: its runs execute zero jobs`;
+  const reusable = reusableHalf(lane.path);
+  const machinery = reusable === lane.path ? "" : ` (its machinery: ${reusable})`;
+  return `${lane.path} is dead: its runs execute zero jobs${machinery}`;
 }
 
 export function signalBody(lane: DeadLane): string {
   const newest = lane.runs[0];
   const count = lane.runs.length;
+  const reusable = reusableHalf(lane.path);
+  const isStub = reusable !== lane.path;
   return [
     `\`${lane.path}\` has produced ${count} run${count === 1 ? "" : "s"} in the last ${LOOKBACK_DAYS} days that`,
     "completed having executed **zero jobs**.",
     "",
+    ...(isStub
+      ? [
+          `\`${lane.path}\` is a caller stub — a trigger and \`uses:\`, six lines — that delegates to`,
+          `\`${reusable}\`. That is almost always where a break like this actually lives: GitHub`,
+          "attributes every run reached through `uses:` to the caller's file, never the reusable",
+          "workflow underneath it.",
+          "",
+        ]
+      : []),
     `Most recent: [run ${newest.id}](${newest.htmlUrl}) on \`${newest.headBranch}\`, ${newest.createdAt}.`,
     "",
     ...lane.runs.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}) — \`${run.headBranch}\`, ${run.createdAt}`),
@@ -215,6 +269,7 @@ export function signalBody(lane: DeadLane): string {
     "```",
     `gh run view ${newest.id} --log`,
     `actionlint ${lane.path}`,
+    ...(isStub ? [`actionlint ${reusable}`] : []),
     "```",
     "",
     ...(newest.name === lane.path
