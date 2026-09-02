@@ -230,13 +230,22 @@ run_check() {
   echo "$?" >"$tmp/$name.exit"
 }
 
+# A contract slot runs at `target_root` with this gauntlet's own configuration unset. Whatever
+# `TARGET_WORKSPACE` and `GAUNTLET_CONTRACT` mean to *this* run, they mean nothing to the target's
+# `npm test` — and they are actively dangerous there: two of this repo's own tests spawn a scratch
+# tree's `bin/gauntlet push` with the environment they inherited, and a `TARGET_WORKSPACE` leaked
+# through that spawn pointed the scratch gauntlet at the real target, whose whole suite ran those
+# two tests again, and so on until the runner killed the job (exit 143 after eight minutes, on the
+# first push Verify after ADR-0139). A slot's environment is the target's, never the gauntlet's.
+slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT)
+
 started_ms=$(($(date +%s%N) / 1000000))
 pids=()
 
-run_check typecheck bash -c "cd \"$target_root\" && $TYPECHECK_CMD" &
+run_check typecheck "${slot_env[@]}" bash -c "cd \"$target_root\" && $TYPECHECK_CMD" &
 pids+=($!)
 
-run_check lint bash -c "cd \"$target_root\" && $LINT_CMD" &
+run_check lint "${slot_env[@]}" bash -c "cd \"$target_root\" && $LINT_CMD" &
 pids+=($!)
 
 if [ "$venue" = "push" ]; then
@@ -379,7 +388,7 @@ if [ "$venue" != "turn" ]; then
     # venue's `stop` form runs the `test` slot at every turn-end — so without a way to tell the two
     # apart, wiring the gate in would have put a two-second scan on every turn. The gauntlet does not
     # schedule the clone gate at any venue; `npm run check` and CI each run it once, deliberately.
-    run_check test env \
+    run_check test "${slot_env[@]}" \
       GAUNTLET_VENUE="$venue" \
       GIT_DIR="$sandbox/.git" \
       GIT_WORK_TREE="$sandbox" \
@@ -388,7 +397,7 @@ if [ "$venue" != "turn" ]; then
     pids+=($!)
   else
     echo "gauntlet: $target_root carries no scrub-git-env.setup.ts — the git sandbox did not run; a fixture there that shells out to git runs with whatever GIT_DIR the caller's environment already carries" >&2
-    run_check test env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    run_check test "${slot_env[@]}" -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
       GAUNTLET_VENUE="$venue" \
       bash -c "cd \"$target_root\" && $TEST_CMD" &
     pids+=($!)

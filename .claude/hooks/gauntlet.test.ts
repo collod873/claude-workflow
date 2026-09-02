@@ -368,4 +368,26 @@ describe("resolving the check contract", () => {
     const invocations = readFileSync(counterFile, "utf8").split("\n").filter(Boolean);
     expect(invocations).toHaveLength(1);
   });
+
+  it("runs every contract slot with its own TARGET_WORKSPACE and GAUNTLET_CONTRACT unset", () => {
+    // Two of this repo's tests spawn a scratch tree's `bin/gauntlet push` with the environment
+    // they inherited. With `TARGET_WORKSPACE` leaked through, that scratch gauntlet checks the
+    // real target — the whole suite, those two tests included — instead of the scratch tree, and
+    // the recursion only stops when the runner kills the job. The slot's environment is the
+    // target's own, so a slot that can see either variable is the defect.
+    const sees = (name: string) => `test -z "\${${name}:-}"`;
+    const contract = checkContractFixture({
+      typecheck: { cmd: sees("TARGET_WORKSPACE") },
+      lint: { cmd: sees("GAUNTLET_CONTRACT") },
+      test: { cmd: `${sees("TARGET_WORKSPACE")} && ${sees("GAUNTLET_CONTRACT")}` },
+    });
+
+    const run = runGauntlet(["stop"], {
+      GAUNTLET_CONTRACT: writeContract(contract),
+      TARGET_WORKSPACE: REPO_ROOT,
+    });
+
+    expect(run.stdout).toBe("");
+    expect(run.status).toBe(0);
+  });
 });
