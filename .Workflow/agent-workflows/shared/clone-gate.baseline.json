@@ -187,17 +187,6 @@
     "fragment": ");\n\n    const [argv] = fakeStage.calls;\n    expect(argv[0]).toBe(\"-p\");\n    expect(argv.slice(1)).toEqual([\n      \"--model\",\n      \"sonnet\",\n      \"--output-format\",\n      \"text\",\n      \"--no-session-persistence\",\n      \"--tools\",\n      \"\",\n      \"--strict-mcp-config\",\n      \"--disable-slash-commands\",\n      \"--setting-sources\",\n      \"\",\n    ]);\n  });\n\n  it(\"embeds the scoped diff, the spine, and the standards in the prompt\""
   },
   {
-    "hash": "3ac8ba3e73988f3d",
-    "format": "typescript",
-    "lines": 16,
-    "tokens": 248,
-    "where": [
-      ".Workflow/agent-workflows/observations/run-observations.test.ts:13",
-      ".Workflow/agent-workflows/shared/git.test.ts:15"
-    ],
-    "fragment": "));\n  execFileSync(\"git\", [\"init\", \"-q\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, commit };\n}\n\ndescribe(\"runObservations\""
-  },
-  {
     "hash": "4d04f866965a3ddb",
     "format": "typescript",
     "lines": 9,

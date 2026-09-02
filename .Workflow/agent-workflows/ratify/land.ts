@@ -1,6 +1,6 @@
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
-import { touchesImmutableSet } from "../shared/immutable-set";
+import { IMMUTABLE_SET, touchesImmutableSet } from "../shared/immutable-set";
 import { dispatchVerify } from "../implement/implement";
 import type { Observation } from "../observations/observation-schema";
 import { encodeFindingMarker } from "./finding-marker";
@@ -195,6 +195,64 @@ export interface OpenRatifierPrOptions {
 }
 
 /**
+ * The refusal that keeps this lane's door honest (#294's lesson), named so it
+ * can run at both venues that need it: here, at the door, and in
+ * `run-ratify.ts` before the push. A batch caught only at the door has
+ * already put its commits on a remote branch nothing will ever open.
+ */
+export function refuseImmutableSetBatch(changedFiles: string[]): void {
+  if (!touchesImmutableSet(changedFiles)) return;
+  throw new Error(
+    `this batch touches the immutable set — ${changedFiles.join(", ")}. ` +
+      "A ratifier pull request may never edit tests/acceptance/, vitest.config.ts or .github/",
+  );
+}
+
+/**
+ * Rewrites the batch's tip so the immutable set is trunk's copy rather than
+ * the stale checkout's, and hands back the commit to push.
+ *
+ * Why a stale branch cannot be pushed at all, and why taking trunk's copy is
+ * safe rather than a merge: [ADR-0138](../../../docs/adr/0138-a-lane-s-branch-carries-trunk-s-immutable-set-at-push-time-b.md), #324.
+ *
+ * `git rm` before the checkout is what makes a file trunk *deleted* leave too;
+ * a checkout alone only overwrites what both sides still have, and a workflow
+ * file left behind is one GitHub reads as created.
+ *
+ * Returns `tip` unchanged when trunk's copy is already the branch's, which is
+ * every run outside the window.
+ */
+export function alignImmutableSetWithTrunk(options: {
+  git: GitExec;
+  repoDir: string;
+  /** The batch's own last commit — the parent of whatever this returns. */
+  tip: string;
+  remote: string;
+  /** The branch the pull request merges into, fetched fresh so the comparison is against now. */
+  trunk: string;
+}): string {
+  const { git, repoDir, tip, remote, trunk } = options;
+  const paths = [...IMMUTABLE_SET];
+
+  git(["-C", repoDir, "fetch", remote, trunk]);
+  git(["-C", repoDir, "rm", "-r", "-q", "-f", "--ignore-unmatch", "--", ...paths]);
+
+  for (const path of paths) {
+    try {
+      git(["-C", repoDir, "checkout", "FETCH_HEAD", "--", path]);
+    } catch {
+      // Trunk carries no such path — a caller repo with no `tests/acceptance/` yet, say. The `git
+      // rm` above has already made the branch agree with that, so there is nothing to restore.
+    }
+  }
+
+  return commitWorkingTree(git, repoDir, tip, TRUNK_IMMUTABLE_SET_SUBJECT) ?? tip;
+}
+
+/** What the alignment commit says it is, when there is one to make. */
+const TRUNK_IMMUTABLE_SET_SUBJECT = "Carry trunk's immutable set, which this batch may not edit";
+
+/**
  * Opens the batch's one pull request and rings the door every implementation
  * pull request already uses (`dispatchVerify`, ADR-0054).
  *
@@ -206,7 +264,10 @@ export interface OpenRatifierPrOptions {
  * cheap and because a half-opened batch is worse than an unopened one:
  * an empty batch, a `head` that is not distinct from `base`, and — the line
  * that keeps this lane's door honest (#294's lesson) — any changed file that
- * prefix-matches the immutable set.
+ * prefix-matches the immutable set. `run-ratify.ts` makes that last refusal
+ * again before it pushes, which is the earlier and cheaper of the two venues;
+ * it stays here as well because this is the door, and a door that trusts its
+ * caller to have checked is not a door.
  */
 export function openRatifierPr(options: OpenRatifierPrOptions): string {
   const { gh, head, base, landed, changedFiles } = options;
@@ -220,12 +281,7 @@ export function openRatifierPr(options: OpenRatifierPrOptions): string {
   if (changedFiles.length === 0) {
     throw new Error("openRatifierPr: the batch changed no files, so lane 06 would have nothing to judge");
   }
-  if (touchesImmutableSet(changedFiles)) {
-    throw new Error(
-      `openRatifierPr: this batch touches the immutable set — ${changedFiles.join(", ")}. ` +
-        "A ratifier pull request may never edit tests/acceptance/, vitest.config.ts or .github/",
-    );
-  }
+  refuseImmutableSetBatch(changedFiles);
 
   const prUrl = gh([
     "pr",

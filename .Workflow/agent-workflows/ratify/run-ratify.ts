@@ -12,9 +12,11 @@ import { filterByRatificationMemory, readRatificationRecords, writeRatificationN
 import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
 import {
   advanceRatifierRef,
+  alignImmutableSetWithTrunk,
   changedFilesBetween,
   openRatifierPr,
   readRatifierBase,
+  refuseImmutableSetBatch,
 } from "./land";
 import { ratifyBatch } from "./ratifier";
 import { computeRatificationScope } from "./scope";
@@ -135,14 +137,16 @@ export async function runRatify(options: RunRatifyOptions): Promise<RatifyOutcom
   let prUrl: string | undefined;
   if (batch.landed.length > 0) {
     const branch = ratifierBranchName(head);
-    git(["-C", repoDir, "push", remote, `${batch.tip}:refs/heads/${branch}`]);
-    prUrl = openRatifierPr({
-      gh,
-      head: branch,
-      base: prBase,
-      landed: batch.landed,
-      changedFiles: changedFilesBetween(git, repoDir, head, batch.tip),
-    });
+
+    // Read before the alignment below and reused after it, so what the pull request claims to
+    // change — and what lane 06 is dispatched to judge — stays the batch's own work rather than
+    // growing whatever trunk moved underneath it.
+    const changedFiles = changedFilesBetween(git, repoDir, head, batch.tip);
+    refuseImmutableSetBatch(changedFiles);
+
+    const tip = alignImmutableSetWithTrunk({ git, repoDir, tip: batch.tip, remote, trunk: prBase });
+    git(["-C", repoDir, "push", remote, `${tip}:refs/heads/${branch}`]);
+    prUrl = openRatifierPr({ gh, head: branch, base: prBase, landed: batch.landed, changedFiles });
   }
 
   // Advance on every completed run, not only on a pull request opening — see `LAST_RATIFIER_REF`.

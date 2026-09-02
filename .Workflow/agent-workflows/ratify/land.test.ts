@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { execGit } from "../shared/git";
+import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { createFakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
@@ -6,6 +11,7 @@ import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immu
 import { observation } from "../observations/observation.fixture";
 import { parseFindingMarker } from "./finding-marker";
 import {
+  alignImmutableSetWithTrunk,
   changedFilesBetween,
   commitWorkingTree,
   LAST_RATIFIER_REF,
@@ -14,6 +20,7 @@ import {
   RATIFIER_CRITERION,
   RATIFIER_PR_TITLE,
   readRatifierBase,
+  refuseImmutableSetBatch,
   renderRatifierBody,
   restoreWorkingTree,
   type LandedFinding,
@@ -224,5 +231,83 @@ describe("openRatifierPr — the door it rings", () => {
     const dispatch = gh.calls.find((argv) => argv[0] === "api")!;
     const criteria = dispatch.filter((arg) => arg.startsWith("client_payload[criteria][]="));
     expect(criteria).toEqual([`client_payload[criteria][]=${RATIFIER_CRITERION}`]);
+  });
+});
+
+const showFile = (dir: string, ref: string, path: string) =>
+  execFileSync("git", ["show", `${ref}:${path}`], { cwd: dir, encoding: "utf8" });
+
+const listPaths = (dir: string, ref: string) =>
+  execFileSync("git", ["ls-tree", "-r", "--name-only", ref], { cwd: dir, encoding: "utf8" }).trim().split("\n");
+
+describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse (#324)", () => {
+  let dir: string | undefined;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it("carries trunk's workflow files onto the batch's tip, keeping the batch's own work", () => {
+    const repo = makeTempRepo("align-immutable");
+    dir = repo.dir;
+
+    repo.write(".github/workflows/lane.yml", "v1\n");
+    repo.write(".github/workflows/gone.yml", "retired later\n");
+    repo.write("src/a.ts", "export const a = 1;\n");
+    const branchPoint = repo.commit("the commit this lane was dispatched for");
+
+    // Trunk moves while the lane is mid-run: one workflow edited, one added, one deleted.
+    repo.write(".github/workflows/lane.yml", "v2\n");
+    repo.write(".github/workflows/added.yml", "new caller\n");
+    rmSync(join(repo.dir, ".github/workflows/gone.yml"));
+    repo.commit("trunk moves under the run");
+
+    // Back to the stale checkout the lane is actually working in, and the batch's one commit.
+    execFileSync("git", ["checkout", "-q", branchPoint], { cwd: repo.dir });
+    repo.write("src/a.ts", "export const a = 2;\n");
+    const tip = commitWorkingTree(execGit, repo.dir, branchPoint, "Ratify: something");
+    expect(tip).not.toBeNull();
+
+    const pushed = alignImmutableSetWithTrunk({
+      git: execGit,
+      repoDir: repo.dir,
+      tip: tip!,
+      remote: ".",
+      trunk: "main",
+    });
+
+    expect(pushed).not.toBe(tip);
+    expect(showFile(repo.dir, pushed, ".github/workflows/lane.yml")).toBe("v2\n");
+    expect(showFile(repo.dir, pushed, ".github/workflows/added.yml")).toBe("new caller\n");
+    expect(listPaths(repo.dir, pushed)).not.toContain(".github/workflows/gone.yml");
+    // The batch's own work is untouched: the alignment is only ever about the immutable set.
+    expect(showFile(repo.dir, pushed, "src/a.ts")).toBe("export const a = 2;\n");
+  });
+
+  it("makes no commit at all when trunk has not moved, which is every run outside the window", () => {
+    const repo = makeTempRepo("align-immutable");
+    dir = repo.dir;
+
+    repo.write(".github/workflows/lane.yml", "v1\n");
+    repo.write("src/a.ts", "export const a = 1;\n");
+    const branchPoint = repo.commit("seed");
+
+    execFileSync("git", ["checkout", "-q", branchPoint], { cwd: repo.dir });
+    repo.write("src/a.ts", "export const a = 2;\n");
+    const tip = commitWorkingTree(execGit, repo.dir, branchPoint, "Ratify: something")!;
+
+    expect(
+      alignImmutableSetWithTrunk({ git: execGit, repoDir: repo.dir, tip, remote: ".", trunk: "main" }),
+    ).toBe(tip);
+  });
+});
+
+describe("refuseImmutableSetBatch", () => {
+  it.each(IMMUTABLE_SET)("refuses before the push, not only at the door (%s)", (entry) => {
+    expect(() => refuseImmutableSetBatch([`${entry}whatever.ts`])).toThrow(/immutable set/);
+  });
+
+  it("passes a batch that changed nothing in the set", () => {
+    expect(() => refuseImmutableSetBatch(["src/a.ts", "docs/adr/0001-x.md"])).not.toThrow();
   });
 });

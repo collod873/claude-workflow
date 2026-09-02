@@ -5,32 +5,9 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
+import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { readSessionRecord, writeSessionRecord } from "./session-notes";
 import { sessionRecord } from "./session-record.fixture";
-
-/**
- * A throwaway git repo for one test — trimmed from `notes.test.ts`'s
- * `makeRepo` to what this file needs (no `remove`, since a session record
- * carries no staleness self-drop).
- */
-function makeRepo(): {
-  dir: string;
-  commit: (path: string, contents: string, message: string) => string;
-} {
-  const dir = mkdtempSync(join(tmpdir(), "session-notes-"));
-  execFileSync("git", ["init", "-q"], { cwd: dir });
-  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
-
-  function commit(path: string, contents: string, message: string): string {
-    writeFileSync(join(dir, path), contents, "utf8");
-    execFileSync("git", ["add", "."], { cwd: dir });
-    execFileSync("git", ["commit", "-q", "-m", message], { cwd: dir });
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-  }
-
-  return { dir, commit };
-}
 
 describe("writeSessionRecord / readSessionRecord against a real repo", () => {
   let dir: string | undefined;
@@ -41,11 +18,13 @@ describe("writeSessionRecord / readSessionRecord against a real repo", () => {
   });
 
   it("reads a written record back byte-for-byte equal, and `git notes --ref=sessions list` shows the note", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
 
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    repo.write("a.ts", "export const a = 1;\n");
+    const base = repo.commit("seed");
+    repo.write("a.ts", "export const a = 2;\n");
+    const head = repo.commit("the session's own commit");
     const record = sessionRecord({ head, base, sessionId: "session-abc", touchedPaths: ["a.ts"] });
 
     writeSessionRecord({ git: execGit, repoDir: dir, record });
@@ -59,10 +38,11 @@ describe("writeSessionRecord / readSessionRecord against a real repo", () => {
   });
 
   it("overwrites, rather than appends to, a note already on that commit", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
 
-    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const head = repo.commit("seed");
 
     writeSessionRecord({ git: execGit, repoDir: dir, record: sessionRecord({ head, sessionId: "first-pass" }) });
     writeSessionRecord({ git: execGit, repoDir: dir, record: sessionRecord({ head, sessionId: "second-pass" }) });
@@ -73,10 +53,11 @@ describe("writeSessionRecord / readSessionRecord against a real repo", () => {
   });
 
   it("returns undefined for a commit with no session record", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
 
-    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const head = repo.commit("seed");
 
     const result = readSessionRecord({ git: execGit, repoDir: dir, head });
 
@@ -84,16 +65,18 @@ describe("writeSessionRecord / readSessionRecord against a real repo", () => {
   });
 
   it("keys a read to the exact commit, not to any note reachable in its ancestry", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
 
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const base = repo.commit("seed");
     writeSessionRecord({
       git: execGit,
       repoDir: dir,
       record: sessionRecord({ head: base, sessionId: "earlier-session" }),
     });
-    const head = repo.commit("a.ts", "export const a = 2;\n", "a later commit with no record of its own");
+    repo.write("a.ts", "export const a = 2;\n");
+    const head = repo.commit("a later commit with no record of its own");
 
     const result = readSessionRecord({ git: execGit, repoDir: dir, head });
 
@@ -113,11 +96,12 @@ describe("readSessionRecord's corpus hydration", () => {
   });
 
   it("hydrates spine from the file corpusPath names, when the corpus directory holds it", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
     corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
 
-    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const head = repo.commit("seed");
     const record = sessionRecord({ head, corpusPath: "raw/sessions/2026-08-26-session-abc.md" });
     writeSessionRecord({ git: execGit, repoDir: dir, record });
 
@@ -131,10 +115,11 @@ describe("readSessionRecord's corpus hydration", () => {
   });
 
   it("returns the record with no spine property when the corpus-directory option is omitted", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
 
-    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const head = repo.commit("seed");
     const record = sessionRecord({ head });
     writeSessionRecord({ git: execGit, repoDir: dir, record });
 
@@ -145,13 +130,14 @@ describe("readSessionRecord's corpus hydration", () => {
   });
 
   it("throws when corpusPath names a file absent from the supplied corpus directory", () => {
-    const repo = makeRepo();
+    const repo = makeTempRepo("session-notes");
     dir = repo.dir;
     corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
     const repoDir = dir;
     const corpus = corpusDir;
 
-    const head = repo.commit("a.ts", "export const a = 1;\n", "seed");
+    repo.write("a.ts", "export const a = 1;\n");
+    const head = repo.commit("seed");
     const record = sessionRecord({ head, corpusPath: "raw/sessions/does-not-exist.md" });
     writeSessionRecord({ git: execGit, repoDir, record });
 
