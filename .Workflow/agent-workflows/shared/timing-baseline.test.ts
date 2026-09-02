@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MACHINE_ROOT } from "./run-gauntlet.ts";
 import {
   BASELINE_RELATIVE_PATH,
   DEFAULT_MARGIN_PCT,
@@ -27,6 +28,14 @@ import {
 // case below is a claim about *when* it moves, because a baseline that churned on every run would
 // be regenerated reflexively rather than read — the same argument `wiring-baseline.ts` makes about
 // its own line numbers.
+
+/**
+ * The one case below that spawns a real `bin/gauntlet push` rather than judging in-process. It
+ * runs a scratch target's three checks and this repo's eight push-only ones, and a cold hosted
+ * runner takes rather longer over that than the workstation that wrote the number — a 5s default
+ * would turn that difference into an environment flake in the gate's own suite.
+ */
+const REAL_PUSH_RUN = 60_000;
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -282,12 +291,63 @@ describe("where a run's numbers are kept", () => {
       expect(recordOverBudget({})).toBe(REPORT_ONLY_EXIT);
     });
 
-    it("is a code bin/gauntlet does not refuse on, and not the broken-measure code either", () => {
-      expect(REPORT_ONLY_EXIT).not.toBe(1);
-      expect(REPORT_ONLY_EXIT).not.toBe(2);
-      const gauntlet = readFileSync(resolve(import.meta.dirname, "../../../bin/gauntlet"), "utf8");
-      expect(gauntlet).toContain('[ "$timing_status" = "1" ]');
-    });
+    /**
+     * The same over-budget run, driven through the venue that pays for it: a scratch target whose
+     * typecheck takes a second against a baseline seeded at 1ms, checked by the machine's real
+     * `bin/gauntlet push`. `env` decides which baseline judges it, exactly as `activeBaselinePath`
+     * reads it, so the two runs differ only in where the number came from.
+     */
+    function pushOverBudget(env: NodeJS.ProcessEnv): number | null {
+      const root = scratchRoot();
+      mkdirSync(join(root, ".claude"), { recursive: true });
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({
+          name: "scratch",
+          private: true,
+          scripts: { typecheck: "sleep 1", lint: "true", test: "true" },
+        }),
+      );
+      const generate = spawnSync(
+        process.execPath,
+        [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+        { encoding: "utf8" },
+      );
+      expect(generate.status).toBe(0);
+
+      const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
+      mkdirSync(join(root, dirname(relative)), { recursive: true });
+      writeBaseline(join(root, relative), baselineWith({ push: { typecheck: 1 } }));
+
+      // `VITEST` is what the suite this test runs in leaks into the child, and the timing block
+      // skips itself when it sees one — a run under it would prove nothing about either code.
+      return spawnSync(join(MACHINE_ROOT, "bin/gauntlet"), ["push"], {
+        encoding: "utf8",
+        cwd: MACHINE_ROOT,
+        env: {
+          ...process.env,
+          CI: "",
+          GITHUB_ACTIONS: "",
+          ...env,
+          TARGET_WORKSPACE: root,
+          VITEST: "",
+          GAUNTLET_TIMING: "on",
+        },
+      }).status;
+    }
+
+    it(
+      "is a code the push venue does not refuse on, unlike the 1 above",
+      () => {
+        // What an exit code costs is the caller's decision, and the caller is shell, so the claim
+        // is what a real push does with each code rather than which line of `bin/gauntlet` reads
+        // it. 2 is the third code in play — a broken measure, which a report-only run is not.
+        expect(REPORT_ONLY_EXIT).not.toBe(2);
+        expect(pushOverBudget({ CI: "true" })).toBe(1);
+        expect(pushOverBudget({ CI: "" })).toBe(0);
+      },
+      REAL_PUSH_RUN,
+    );
   });
 
   // The two halves of the committed file are true in different places. A file's share of the
