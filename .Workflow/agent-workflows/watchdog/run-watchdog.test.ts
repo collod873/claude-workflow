@@ -215,6 +215,25 @@ describe("runWatchdog", () => {
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "close")).toBe(true);
   });
 
+  it("retires a marker spelled as the reusable half (or left from before the split) once its lane's caller stub runs again", () => {
+    // Post-split, every live run is attributed to the caller (`dead-lanes.ts`'s header), so a
+    // marker spelled `<lane>.yml` — the reusable half's own path, and the same spelling a
+    // pre-split signal already used — can never see a live run at that literal path again.
+    // `callerHalf` is what lets retirement still find the evidence.
+    const preSplitPath = ".github/workflows/implement.yml";
+    const fake = fakeGh({
+      runs: [
+        { id: 33300000005, name: "Implement (caller)", path: ".github/workflows/implement-caller.yml", conclusion: "success", jobs: 2 },
+      ],
+      issues: [{ number: 8, body: `\n${signalMarker(preSplitPath)}`, state: "OPEN", closedAt: null }],
+    });
+
+    const outcome = sweep(fake);
+
+    expect(outcome.signals).toEqual([{ lane: preSplitPath, issue: 8, wrote: "retired" }]);
+    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "close")).toBe(true);
+  });
+
   it("leaves a standing signal open when its lane has not run inside the window", () => {
     // No dead runs is not recovery. A lane nobody has triggered in a week is just as unable to
     // start as it was, and closing on its silence would be an all-clear nothing checked.
