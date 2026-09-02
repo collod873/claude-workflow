@@ -218,19 +218,25 @@ jobs:
       # Scopes the run to this slice: only the tests naming a criterion this dispatch carries
       # (ADR-0033's grep, `shared/affected-tests.ts`), so a parallel pull request for a different
       # slice is never reddened by tests nobody has built yet.
+      # `working-directory: target`, unlike every comment near this job used to claim: `affected-
+      # tests.ts`'s `ACCEPTANCE_DIR` is not cwd-relative, it is built from that *module's own*
+      # `import.meta.url` (`resolve(dirname(fileURLToPath(import.meta.url)), "../../..")`), so the
+      # absolute paths `testsForCriteria` returns describe whichever checkout the imported copy of
+      # the module physically sits in. Importing the machine's copy (no `working-directory:`) made
+      # every path machine-tree-absolute, and hand off to `vitest run <those paths>` from inside
+      # `target/` — a filter naming files that exist in a different directory tree than the one
+      # vitest resolves them against, so `git checkout main -- tests/acceptance/` had already
+      # restored the very files vitest then reported as not found. Nothing had exercised this job
+      # to a real pass since the machine/target split (#315) until #327's dispatch.
       - name: Run this slice's acceptance tests
+        working-directory: target
         env:
           SLICE_CRITERIA: ${{ toJson(github.event.client_payload.criteria) }}
         run: |
           set -euo pipefail
-          echo "DEBUG pwd=$(pwd)"
-          echo "DEBUG tests/acceptance/327*:"
-          ls tests/acceptance/327* 2>&1 || echo "DEBUG none found"
           FILES=$(npx tsx -e "
-            import { testsForCriteria, ACCEPTANCE_DIR } from './.Workflow/agent-workflows/shared/affected-tests.ts';
-            console.error('DEBUG ACCEPTANCE_DIR=' + ACCEPTANCE_DIR);
+            import { testsForCriteria } from './.Workflow/agent-workflows/shared/affected-tests.ts';
             const criteria = JSON.parse(process.env.SLICE_CRITERIA || '[]');
-            console.error('DEBUG criteria count=' + criteria.length);
             console.log(testsForCriteria(criteria).join('\n'));
           ")
           if [ -z "$FILES" ]; then
@@ -242,10 +248,7 @@ jobs:
           # arguments or as an expanded pattern. The command substitution above stays, because it
           # is what lets `set -e` see a failing `tsx` — a `mapfile < <(...)` would swallow it.
           readarray -t FILE_LIST <<< "$FILES"
-          # `cd` rather than a second `working-directory:` step: the file list above was resolved
-          # against the machine's own `./.Workflow/...` import, and the paths in it are target-tree
-          # relative either way, so only the `vitest` invocation itself needs to run from `target`.
-          (cd target && npx vitest run "${FILE_LIST[@]}")
+          npx vitest run "${FILE_LIST[@]}"
 
   verify:
     needs: [immutability]
