@@ -51,6 +51,21 @@ state rather than enumerated anywhere:
    cannot be read back once written, so this write is unconditional: it lands on every pass, and the
    report says written, never changed.
 
+## What an enrolled repository owes its own test runner
+
+Nothing from the target's own CI reaches a contract slot. The machine's Verify runs
+`.claude/contract.json`'s `test` command from `bin/gauntlet`, not from the target's `ci.yml`, so an
+`env:` declared there — a worker width, say — is absent on every run the machine makes. A test
+runner sized by a constant in its config runs that wide on a two-core runner; Lumaria's ran twelve
+workers there and manufactured two timeouts out of contention (#333, #343).
+
+What the gauntlet does say is the box: every slot runs with `GAUNTLET_CORES` set to the core
+count the gauntlet itself scheduled by ([ADR-0140](../adr/0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md)).
+A target maps that to its runner's width in its own config — as a fallback before any constant,
+after any override its own CI sets — and the number is then true wherever the suite runs. The
+machine never sets a tool's own variable: a slot is a command the contract names, never a tool the
+machine knows ([ADR-0056](../adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
+
 ## Failure isolation
 
 Each of the four writes is attempted independently, per repository. A repository whose label sync

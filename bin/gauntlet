@@ -266,6 +266,17 @@ shquote() {
 # through that spawn pointed the scratch gauntlet at the real target, whose whole suite ran those
 # two tests again, and so on until the runner killed the job (exit 143 after eight minutes, on the
 # first push Verify after ADR-0139). A slot's environment is the target's, never the gauntlet's.
+#
+# One thing does cross: the core count. A slot is a command the contract names, never a tool this
+# script knows (ADR-0056), so it cannot be told how wide to run — but a target's test runner sizes
+# itself from whatever its own config assumes, and Lumaria's assumed twelve workers on a two-core
+# runner because the width its own CI declares never reaches a slot the machine runs (#343). So
+# the gauntlet says the one thing it does know, generically: `GAUNTLET_CORES` is the count this
+# run scheduled by, and a target maps it to its runner's width in its own config. A scratch
+# gauntlet spawned inside a slot inherits the same count, which is the real one in production and
+# the deliberate one in a test. Exported rather than passed to `env`: a `NAME=value` there ends
+# the option list, and the test slot appends `-u` flags of its own after this array.
+export GAUNTLET_CORES="$cores"
 slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT)
 
 started_ms=$(($(date +%s%N) / 1000000))
