@@ -13,6 +13,24 @@ issue tracker.
 
 When a skill mentions one of these roles, use the corresponding label string from this table.
 
+## Hand-offs
+
+Two more labels are **imperatives**, not positions: each one hands work to a named lane, and only
+the repository owner's own hand applies either. They are not readiness verdicts, so the rule above
+is intact — `to-spec` says *spec this*, `to-build` says *build this now*.
+
+| Label      | Applied by                 | Read by                                                       | Means                                                                 |
+| ---------- | -------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `to-spec`  | the owner, by hand         | `.github/workflows/spec-caller.yml` → lane 02                  | Spec this accepted idea or closed Wayfinder Map (ADR-0059)             |
+| `to-build` | the owner, by hand         | `.github/workflows/dispatch-reconcile-caller.yml` → lane 09's recompute → lane 06 | Build this hand-written ticket now, without the spec chain (#184) |
+
+`to-build` is the one term nothing can infer from a body: **intent to build now**. Ticket *shape* is
+not it — plenty of ticket-shaped issues are not wanted built — so the reconciler admits an issue
+either because lane 03 published it (`## Parent PRD`) or because this label is on it, and refuses,
+in one comment, a labelled issue missing `## Acceptance criteria` or `## Files claimed`. Nothing
+removes the label: the `implement/issue-N` branch is already the started-ness claim, so a labelled
+ticket that is running will not start twice.
+
 **Absence of any of the above — and no `## Acceptance criteria` in the body — means
 *not yet judged*, never a fifth role.** Nothing sweeps that state automatically: there is no
 unattended on-ramp, so an unjudged issue waits for whichever session picks it up to run

@@ -57,6 +57,16 @@ in `docs/agents/pipeline-labels.md`. They assert only where work sits, never a r
 their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
 means not yet judged.
 
+The two hand-off labels are there too — `to-spec` and `to-build`, each applied only by the owner's
+own hand and each naming the lane it hands work to. `to-build` is the one worth knowing from here:
+put it on a ticket you wrote in a session (`~/bin/file-issue ticket`, then
+`gh issue edit <n> --add-label to-build`) and lane 09's next recompute starts an implementer against
+it — no spec, no slicer, and every gate downstream unchanged. It is read by
+`.Workflow/agent-workflows/dispatch/reconcile.ts`, which refuses a labelled issue missing
+`## Acceptance criteria` or `## Files claimed` in one comment rather than spending a run on it.
+Blockers must be native `dependencies/blocked_by` edges — the reconciler never reads a
+`## Blocked by` section, so prose alone will start the ticket immediately.
+
 This repo's own pipeline writes five more, which are state rather than position and which no
 pipeline step reads as a position:
 

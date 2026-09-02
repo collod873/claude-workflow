@@ -35,6 +35,20 @@ name: Dispatch reconcile
 # go look" and nothing else, and the only reader is this — so ADR-0069 is applied, not amended, and
 # there is no second writer.
 #
+# The third trigger, `issues: labeled` on the caller, is lane 06's second door (#184): the owner
+# labelling an already-written ticket `to-build`, so small work skips the spec chain without
+# skipping any gate. It **enters the recompute** rather than firing its own dispatch, which is the
+# whole reason it rides this workflow instead of a new one — a labelled ticket with open blockers is
+# simply not in the ready set, and the next `session-captured` finds it. A one-shot dispatch at
+# label time would start a blocked ticket immediately, or never start it once its blockers cleared,
+# which is #179 rebuilt inside the new door.
+#
+# It is gated on the sender being the repository owner for the reason `spec.yml` and `shape.yml`
+# carry the identical gate: this repository is public, so a label can arrive from anyone, where a
+# `repository_dispatch` can only be sent by something already holding a token here. The label
+# string is spelled here and in `reconcile.ts`'s `TO_BUILD_LABEL`, and `reconcile.test.ts` holds
+# the two together.
+#
 # ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
 # repository carries only `dispatch-reconcile-caller.yml`, a trigger and a `uses:`, never a copy of
 # the machine. This repository is its own first caller: the caller stub lives next to this file, at
@@ -70,14 +84,20 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.action == 'session-captured' ||
-      github.event.action == 'graph-changed'
+      github.event.action == 'graph-changed' ||
+      (github.event_name == 'issues' &&
+       github.event.label.name == 'to-build' &&
+       github.event.sender.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # A manual run is a person asking, which is as much an event as a dispatch is — it carries no
-      # `github.event.action`, so it declares the floor rather than teaching the entrypoint a second
-      # way to be allowed to run.
-      EVENT_ACTION: ${{ github.event_name == 'workflow_dispatch' && 'session-captured' || github.event.action }}
+      # A `repository_dispatch` names its own action; nothing else here has one to name. A manual
+      # run is a person asking and a `to-build` label is the owner asserting intent to build, both
+      # of which are as much an event as a dispatch is — so each declares the floor rather than
+      # teaching the entrypoint a second way to be allowed to run. `github.event.action` on the
+      # label event is `labeled`, which `RECONCILE_DISPATCH_ACTIONS` does not carry and `main()`
+      # would refuse; the point of the fallback is that it never reaches the entrypoint.
+      EVENT_ACTION: ${{ (github.event_name == 'repository_dispatch' && github.event.action) || 'session-captured' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:

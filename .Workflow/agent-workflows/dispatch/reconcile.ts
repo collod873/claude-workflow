@@ -21,7 +21,14 @@ import {
   type SliceState,
 } from "../shared/ready-set";
 import { reason } from "../shared/reason";
-import { countCriteria, extractCriteria, isRunnableSpec, parseCheckMarker } from "../shared/ticket-shape";
+import {
+  countCriteria,
+  extractCriteria,
+  isRunnableSpec,
+  parseCheckMarker,
+  TicketShapeError,
+  validateTicket,
+} from "../shared/ticket-shape";
 import {
   alreadyNamed,
   commentBody,
@@ -114,14 +121,62 @@ const MAX_UNREACHABLE_REPORTED = 10;
  * The trace that says lane 03 published this issue as a slice: `shared/render-body.ts` writes the
  * `## Parent PRD` heading onto every ticket it renders and onto nothing else.
  *
- * **This is the scope rule, and it is a safety rule.** Being in the graph is what makes an issue
- * *ready*; being a published slice is what makes it something an implementer may be started
- * against. Without this, a hand-written issue that happens to carry a blocked-by edge — or any
- * unblocked issue at all — would have a Sonnet implementer pointed at it and a pull request opened.
- * The graph is read wide, so transitive unreachability is computed correctly across every open
- * issue; only what lane 03 published is ever acted on.
+ * **This is half the scope rule, and it is a safety rule.** Being in the graph is what makes an
+ * issue *ready*; being something the owner meant to be built is what makes it something an
+ * implementer may be started against. Without a rule of that shape, a hand-written issue that
+ * happens to carry a blocked-by edge — or any unblocked issue at all — would have a Sonnet
+ * implementer pointed at it and a pull request opened. The graph is read wide, so transitive
+ * unreachability is computed correctly across every open issue; only what this rule admits is ever
+ * acted on.
+ *
+ * The other half is `TO_BUILD_LABEL`.
  */
 const PARENT_PRD_HEADING = /^##[ \t]+Parent PRD[ \t]*$/m;
+
+/**
+ * The second door into lane 06 (#184): the owner's own hand, on an issue written in full already.
+ *
+ * **The heading above is a proxy, and this is the term it was standing in for.** Nothing downstream
+ * reads `## Parent PRD` — `implement.ts` exports `parentPrdNumber` and never calls it, and
+ * `acceptance.ts` treats it as optional context — so it never bought the pipeline anything
+ * operationally. It bought exactly one thing: *an agent wrote this deliberately as a slice*. That is
+ * a constant folded into a predicate, the same shape of defect #179 unfolded, and the cost of
+ * leaving it folded is that the smallest unit of work pays for the largest door — shaper, spec
+ * author, critic and slicer, four model stages, to produce a ticket the owner could already write
+ * in full.
+ *
+ * **Shape alone could not be the missing term.** #182, #181, #179 and #150 are all ticket-shaped —
+ * criteria and a file claim — and none of them wanted an implementer at filing time. What is
+ * absent is *intent to build now*, which nothing can infer from a body: it has to be asserted. So
+ * it is a label, applied by hand, and `dispatch-reconcile.yml` gates the event it fires on the
+ * sender being the repository owner for the reason `spec.yml` and `shape.yml` do — a label is
+ * human-forgeable on a public repository where a `repository_dispatch` is not.
+ *
+ * **The saving is entirely on the authoring side and none of it on the checking side.** Everything
+ * downstream is unchanged: the same branch claim, the same Immutability check against
+ * `## Files claimed`, the same acceptance run, the same review and the same close gate. A door that
+ * trimmed the tail would be a bypass rather than a small door.
+ *
+ * **Nothing removes the label and nothing needs to.** The `implement/issue-N` ref is already the
+ * started-ness claim, so a labelled ticket that is running will not re-dispatch. The label stays as
+ * the record of the decision, with no second piece of state to keep in sync.
+ *
+ * Spelled here and in `dispatch-reconcile.yml`'s job-level `if` — no compiler sees across that
+ * boundary, so `reconcile.test.ts` asserts the two still agree, exactly as it does for
+ * `RECONCILE_DISPATCH_ACTIONS`.
+ */
+export const TO_BUILD_LABEL = "to-build";
+
+/**
+ * Stands on the one comment this door wrote refusing a `to-build` issue's shape.
+ *
+ * The reconciler re-runs on every session end, so a refusal that filed per run would be the
+ * unbounded touch ADR-0064 rules against; keyed on this marker it is one comment that gets
+ * rewritten when the reason changes and left alone when it has not. Cleared without the marker
+ * (see `toBuildClearedBody`), so a body that validates again stops this door writing to the issue
+ * at all rather than rewriting the same bytes forever.
+ */
+const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
 
 /** The `state_reason` GitHub reports for a delivery claim, as the REST dependencies API spells it. */
 const COMPLETED = "completed";
@@ -177,7 +232,7 @@ export interface ReconcileOutcome {
    * fails silently is the second sender nobody watches, which is the defect it exists to repair.
    */
   action: "clear" | "dispatched" | "degraded";
-  /** Published slices considered. */
+  /** Issues an implementer may be started against — see `startableNumbers`. */
   checked: number;
   dispatched: number[];
   unreachable: number[];
@@ -349,11 +404,136 @@ function buildGraph(
   return [...states.values()];
 }
 
-/** The published slices among `issues` — see `PARENT_PRD_HEADING` for why this is a safety rule. */
-function publishedSliceNumbers(issues: OpenIssue[]): Set<number> {
+/**
+ * Every open issue an implementer may be started against: a slice lane 03 published, **or** one the
+ * owner labelled `to-build` whose body this door did not refuse.
+ *
+ * One function, because this is the only enforcement point — `buildGraph` already reads every open
+ * issue, so transitive unreachability is computed correctly across the whole tracker and only this
+ * filter decides what may start an implementer. See `PARENT_PRD_HEADING` for why that is a safety
+ * rule and `TO_BUILD_LABEL` for what the second door adds to it.
+ */
+function startableNumbers(issues: OpenIssue[], admitted: Set<number>): Set<number> {
   return new Set(
-    issues.filter((issue) => PARENT_PRD_HEADING.test(issue.body ?? "")).map((issue) => issue.number),
+    issues
+      .filter((issue) => PARENT_PRD_HEADING.test(issue.body ?? "") || admitted.has(issue.number))
+      .map((issue) => issue.number),
   );
+}
+
+/**
+ * Why lane 06 cannot be started against `body`, in `validateTicket`'s own words — or `undefined`
+ * when it can.
+ *
+ * **One refusal, at the door.** Verify's Immutability job refuses an empty `## Files claimed`, so a
+ * `to-build` label on a malformed issue would otherwise spend an implementer and a pull request to
+ * fail downstream. Refusing here is W1 — refuse at the moment of the act — and it costs one comment.
+ *
+ * Asked of `validateTicket` rather than of a second reading of the same two headings: that function
+ * *is* this repository's ticket grammar, ported from `bin/ticket_shape.py` and held to it by
+ * `ticket-shape.test.ts`, so a door that spelled the check itself would be the drift that module
+ * exists to prevent. Its warnings are dropped on purpose — this door refuses or admits, it does not
+ * advise, and the tree its `## Files claimed` bullets would resolve against is the machine's
+ * checkout rather than the target's anyway.
+ */
+function toBuildRefusal(body: string): string | undefined {
+  try {
+    validateTicket(body);
+    return undefined;
+  } catch (err) {
+    if (err instanceof TicketShapeError) return err.message;
+    throw err;
+  }
+}
+
+function toBuildRefusalBody(refusal: string): string {
+  return [
+    `This is labelled \`${TO_BUILD_LABEL}\` and lane 06 will not start against it: ${refusal}.`,
+    "",
+    "Refused here rather than three stages later — verify's Immutability job reads the same",
+    "`## Files claimed` section, so a run started against this body would spend an implementer and a",
+    "pull request to arrive at the same answer.",
+    "",
+    `Add what is missing and the next session end starts it. The \`${TO_BUILD_LABEL}\` label stays`,
+    "where it is; nothing here has to be re-applied.",
+    "",
+    TO_BUILD_REFUSED_MARKER,
+  ].join("\n");
+}
+
+/**
+ * What the refusal above is rewritten to once the body validates.
+ *
+ * Carries no marker, deliberately: the next run finds nothing of this door's standing on the issue,
+ * so it stops writing rather than rewriting identical bytes on every session end forever. A body
+ * that breaks again earns a fresh refusal rather than a resurrected edit, which is the more honest
+ * record of what actually happened.
+ */
+const TO_BUILD_CLEARED_BODY = [
+  "This ticket's shape is no longer refused — it carries both headings lane 06 needs, so the",
+  "recompute that read this will start it as soon as every blocker has delivered.",
+].join("\n");
+
+/** Records this door's verdict on one `to-build` issue as at most one comment. See `TO_BUILD_REFUSED_MARKER`. */
+function recordToBuildShape(
+  gh: GhExec,
+  number: number,
+  refusal: string | undefined,
+  log: (line: string) => void,
+): void {
+  const comments = fetchComments(gh, number);
+  if (comments === null) {
+    log(`could not read #${number}'s comments — leaving whatever this door said last run standing.`);
+    return;
+  }
+  const standing = markedComment(comments, TO_BUILD_REFUSED_MARKER);
+
+  if (refusal === undefined) {
+    if (standing === undefined) return;
+    rewriteComment(gh, standing.id, TO_BUILD_CLEARED_BODY);
+    log(`#${number}: its shape is no longer refused at the ${TO_BUILD_LABEL} door.`);
+    return;
+  }
+
+  const body = toBuildRefusalBody(refusal);
+  if (standing?.body === body) return;
+  if (standing) rewriteComment(gh, standing.id, body);
+  else gh(["issue", "comment", String(number), "--body", body]);
+  log(`#${number}: refused at the ${TO_BUILD_LABEL} door — ${refusal}.`);
+}
+
+/**
+ * The `to-build` door: every open issue carrying the label, minus the ones refused on shape.
+ *
+ * A refused issue is simply not in the returned set, so it is not in the ready set either and
+ * nothing is dispatched against it — the same fail-closed direction every other read here takes. A
+ * comment write that will not go through costs the run nothing but that comment: the issue stays
+ * unadmitted, and the next recompute reads the same tracker and tries again.
+ */
+function admitToBuild(
+  gh: GhExec,
+  issues: OpenIssue[],
+  log: (line: string) => void,
+  dryRun: boolean,
+): Set<number> {
+  const admitted = new Set<number>();
+  for (const issue of issues) {
+    if (!(issue.labels ?? []).some((label) => label.name === TO_BUILD_LABEL)) continue;
+
+    const refusal = toBuildRefusal(issue.body ?? "");
+    if (refusal === undefined) admitted.add(issue.number);
+
+    if (dryRun) {
+      if (refusal !== undefined) log(`would refuse #${issue.number} at the ${TO_BUILD_LABEL} door: ${refusal}.`);
+      continue;
+    }
+    try {
+      recordToBuildShape(gh, issue.number, refusal, log);
+    } catch (err) {
+      log(`could not record #${issue.number}'s shape verdict: ${reason(err)}`);
+    }
+  }
+  return admitted;
 }
 
 /**
@@ -380,9 +560,9 @@ const PRD_CHECK_MARKER = "<!-- prd-check:v1 -->";
 /** Stands on the one comment recording that this pass could not run the spec's check at all. Mutually exclusive with `PRD_CHECK_MARKER` on any one spec. */
 const PRD_UNRUNNABLE_MARKER = "<!-- prd-unrunnable:v1 -->";
 
-const PrdComment = z.object({ id: z.number(), body: z.string() });
-type PrdComment = z.infer<typeof PrdComment>;
-const PrdComments = z.array(PrdComment);
+const IssueComment = z.object({ id: z.number(), body: z.string() });
+type IssueComment = z.infer<typeof IssueComment>;
+const IssueComments = z.array(IssueComment);
 
 const SubIssueList = z.array(z.object({ number: z.number() }));
 
@@ -391,15 +571,24 @@ function rewriteComment(gh: GhExec, id: number, body: string): void {
   gh(["api", issueCommentPath(id), "-X", "PATCH", "-f", `body=${body}`]);
 }
 
-/** A spec's comments, read fresh every run — this pass keeps no cursor and no ledger of what it said last time. */
-function fetchPrdComments(gh: GhExec, number: number): PrdComment[] | null {
+/**
+ * An issue's comments, read fresh every run — neither pass that reads them keeps a cursor or a
+ * ledger of what it said last time, so "have I said this already?" is answered from what is
+ * actually standing on the issue.
+ */
+function fetchComments(gh: GhExec, number: number): IssueComment[] | null {
   try {
     const raw = gh(["api", issueCommentsPath(number)]);
-    const parsed = PrdComments.safeParse(JSON.parse(raw));
+    const parsed = IssueComments.safeParse(JSON.parse(raw));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
+}
+
+/** The one comment carrying any of `markers` — how both passes here find what they said last run. */
+function markedComment(comments: IssueComment[], ...markers: string[]): IssueComment | undefined {
+  return comments.find((comment) => markers.some((marker) => comment.body.includes(marker)));
 }
 
 /** How many sub-issues `number` has grown — the term that puts a `prd` issue in this pass's scope at all. */
@@ -579,10 +768,8 @@ function runCheckCommand(command: string): { code: number; output: string } {
  * refusal write and the needs-human-clearing write's own comment rewrite — never three ways to say
  * "this is the current answer".
  */
-function upsertPrdComment(gh: GhExec, number: number, comments: PrdComment[], body: string): void {
-  const existing = comments.find(
-    (comment) => comment.body.includes(PRD_CHECK_MARKER) || comment.body.includes(PRD_UNRUNNABLE_MARKER),
-  );
+function upsertPrdComment(gh: GhExec, number: number, comments: IssueComment[], body: string): void {
+  const existing = markedComment(comments, PRD_CHECK_MARKER, PRD_UNRUNNABLE_MARKER);
   if (existing) {
     rewriteComment(gh, existing.id, body);
   } else {
@@ -610,13 +797,13 @@ function evaluateSpecCheck(
   log: (line: string) => void,
   closeSpec: (number: number, range: string) => CloseTicketResult,
 ): void {
-  const comments = fetchPrdComments(gh, prd.number);
+  const comments = fetchComments(gh, prd.number);
   if (comments === null) {
     log(`could not read #${prd.number}'s comments — skipping its spec check this run.`);
     return;
   }
 
-  const hasOwnRefusal = comments.some((comment) => comment.body.includes(PRD_UNRUNNABLE_MARKER));
+  const hasOwnRefusal = markedComment(comments, PRD_UNRUNNABLE_MARKER) !== undefined;
   const hasNeedsHuman = prd.labels.includes(NEEDS_HUMAN_LABEL);
 
   if (!isRunnableSpec(prd.body)) {
@@ -765,9 +952,9 @@ function reportUnreachable(
 }
 
 /**
- * The reconciler. Reads the tracker, recomputes the ready set, dispatches `ticket-ready` for every
- * published slice in it that has not been started, and files what is unreachable as one counter
- * finding.
+ * The reconciler. Reads the tracker, recomputes the ready set, dispatches `ticket-ready` for
+ * everything in it that `startableNumbers` admits and that has not been started, and files what is
+ * unreachable as one counter finding.
  *
  * Dispatch is **at-least-once** and deliberately dumb about what it has already sent: the
  * implementer's branch ref is the claim that makes a duplicate free
@@ -827,13 +1014,13 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
   }
 
-  const slices = publishedSliceNumbers(issues);
+  const startable = startableNumbers(issues, admitToBuild(gh, issues, log, input.dryRun ?? false));
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
 
-  const ready = readySlices(graph).filter((state) => slices.has(state.number));
-  const unreachable = unreachableSlices(graph).filter((state) => slices.has(state.number));
+  const ready = readySlices(graph).filter((state) => startable.has(state.number));
+  const unreachable = unreachableSlices(graph).filter((state) => startable.has(state.number));
 
-  log(`${slices.size} published slice(s) open; ${ready.length} ready, ${unreachable.length} unreachable.`);
+  log(`${startable.size} startable issue(s) open; ${ready.length} ready, ${unreachable.length} unreachable.`);
 
   const dispatched: number[] = [];
   for (const state of ready) {
@@ -862,15 +1049,15 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   if (dispatched.length === 0) {
     return {
       action: "clear",
-      checked: slices.size,
+      checked: startable.size,
       dispatched,
       unreachable: filed,
-      note: `nothing became ready: ${slices.size} published slice(s) open, none of them ready and unstarted.`,
+      note: `nothing became ready: ${startable.size} startable issue(s) open, none of them ready and unstarted.`,
     };
   }
   return {
     action: "dispatched",
-    checked: slices.size,
+    checked: startable.size,
     dispatched,
     unreachable: filed,
     note: `dispatched ticket-ready for #${dispatched.join(", #")}.`,

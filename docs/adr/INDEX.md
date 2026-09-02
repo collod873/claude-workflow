@@ -144,5 +144,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) | constraint |
 | 0135 | [A red run in a caller is routed by its failing path: the machine checkout files a ticket here, the caller's own tree keeps it](0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) | constraint |
 | 0136 | [A caller's red run is swept from here under ENROL_PAT, never filed home by the caller](0136-a-caller-s-red-run-is-swept-from-here-under-enrol-pat-never.md) | constraint |
+| 0137 | [Intent to build is asserted by a label, never inferred from a ticket's shape](0137-intent-to-build-is-asserted-by-a-label-never-inferred-from-a.md) | constraint |
 
-136 ADRs · 59 constraint · 44 note · 33 superseded · 12,535 words total.
+137 ADRs · 60 constraint · 44 note · 33 superseded · 12,683 words total.

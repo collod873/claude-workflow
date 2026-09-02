@@ -13,12 +13,32 @@ import {
   RECONCILE_DISPATCH_ACTIONS,
   runReconcile,
   SESSION_CAPTURED_DISPATCH_ACTION,
+  TO_BUILD_LABEL,
 } from "./reconcile";
 
 /** A published slice's body — `render-body.ts` writes this heading and nothing else does. */
 function sliceBody(prd = 145): string {
   return `## Parent PRD\n#${prd}\n\n## What to build\nSomething.\n`;
 }
+
+/**
+ * A ticket the owner wrote in a session: both headings lane 06 needs and no `## Parent PRD`
+ * anywhere on it, which is the whole point — the second door admits work no slicer ever produced.
+ */
+const HAND_WRITTEN_TICKET = [
+  "## What to build",
+  "",
+  "Something the owner could already write in full.",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] `bin/gauntlet push` exits 0 — check: `bin/gauntlet push`",
+  "",
+  "## Files claimed",
+  "",
+  "- None — no files.",
+  "",
+].join("\n");
 
 interface FakeIssue {
   number: number;
@@ -389,15 +409,25 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
   });
 
   /**
-   * The scope rule, and it is a safety rule. Being in the graph is what makes an issue ready; being
-   * a slice lane 03 published is what makes it something an implementer may be pointed at. Without
-   * this, every unblocked issue on the tracker — this ticket included — would get a Sonnet run and
-   * a pull request.
+   * The scope rule, and it is a safety rule. Being in the graph is what makes an issue ready;
+   * being something the owner meant to be built is what makes it something an implementer may be
+   * pointed at. Without this, every unblocked issue on the tracker — this ticket included — would
+   * get a Sonnet run and a pull request.
+   *
+   * #184 widened the rule to a second door and did not weaken it: an issue carrying neither the
+   * `## Parent PRD` heading nor `to-build` is still refused however ready it looks, which is what
+   * this pins.
    */
-  it("never dispatches an issue lane 03 did not publish, however ready it looks", () => {
+  it("never dispatches an issue that is neither a published slice nor labelled to-build", () => {
     const fake = createFake({
       open: [
-        { number: 30, title: "A hand-written idea", body: "## What to build\nSomething I typed." },
+        {
+          number: 30,
+          title: "A hand-written idea",
+          // Ticket-shaped, and still not dispatched: shape was never the missing term.
+          body: HAND_WRITTEN_TICKET,
+          labels: [],
+        },
         { number: 31, title: "A published slice" },
       ],
     });
@@ -430,6 +460,146 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     const outcome = runReconcile({ gh: fake.gh, log: silent, dryRun: true });
 
     expect(outcome.dispatched).toEqual([20]);
+    expect(fake.dispatches).toEqual([]);
+  });
+});
+
+/**
+ * Lane 06's second door (#184). Everything downstream of the dispatch is unchanged, so what is
+ * worth pinning here is the door itself: what it admits, what it still refuses, and that it enters
+ * the recompute rather than firing once at label time.
+ */
+describe("the to-build door into lane 06 (#184)", () => {
+  /** The issue the owner labelled, with whatever body and blockers the case is about. */
+  const labelled = (number: number, body = HAND_WRITTEN_TICKET, blockedBy?: number[]): FakeIssue => ({
+    number,
+    title: "A ticket the owner wrote in full",
+    body,
+    labels: [TO_BUILD_LABEL],
+    blockedBy,
+  });
+
+  it("dispatches a labelled ticket carrying no ## Parent PRD heading at all", () => {
+    const fake = createFake({ open: [labelled(600)] });
+
+    const outcome = runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.dispatches).toEqual([600]);
+    expect(outcome.action).toBe("dispatched");
+  });
+
+  /**
+   * The reason this rides the reconciler rather than dispatching at label time. A one-shot send
+   * would start a blocked ticket immediately, or never start it once its blockers cleared — #179
+   * rebuilt inside the new door. Both halves are one case because the second is only meaningful as
+   * the sequel to the first.
+   */
+  it("holds a labelled ticket behind an open blocker, and starts it on the recompute after that blocker delivers", () => {
+    const blocked = createFake({
+      open: [{ number: 11, title: "Still building" }, labelled(610, HAND_WRITTEN_TICKET, [11])],
+    });
+    runReconcile({ gh: blocked.gh, log: silent });
+    expect(blocked.dispatches).not.toContain(610);
+
+    const cleared = createFake({
+      open: [labelled(610, HAND_WRITTEN_TICKET, [11])],
+      closed: [{ number: 11, stateReason: "completed", merged: true }],
+    });
+    runReconcile({ gh: cleared.gh, log: silent });
+
+    expect(cleared.dispatches).toEqual([610]);
+  });
+
+  it("does not dispatch a labelled ticket twice — the implement/issue-<n> ref is still the claim", () => {
+    const fake = createFake({ open: [labelled(620)], claimed: ["implement/issue-620"] });
+
+    const outcome = runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.dispatches).toEqual([]);
+    expect(outcome.action).toBe("clear");
+  });
+
+  /**
+   * W1, refuse at the moment of the act. Verify's Immutability job reads the same `## Files
+   * claimed` section, so without this a label on a malformed body spends an implementer and a pull
+   * request to reach the same verdict.
+   */
+  it.each([
+    {
+      what: "no ## Acceptance criteria heading",
+      body: "## What to build\n\nSomething.\n\n## Files claimed\n\n- None — no files.\n",
+      names: "Acceptance criteria",
+    },
+    {
+      what: "no ## Files claimed heading",
+      body: "## Acceptance criteria\n\n- [ ] It works — check: `true`\n",
+      names: "Files claimed",
+    },
+  ])("refuses a labelled ticket with $what, dispatching nothing and saying what is missing", ({ body, names }) => {
+    const fake = createFake({ open: [labelled(630, body)] });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.dispatches).toEqual([]);
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.comments[0].issue).toBe(630);
+    expect(fake.comments[0].body).toContain(names);
+    expect(fake.comments[0].body).toContain("to-build-refused:v1");
+  });
+
+  /**
+   * The reconciler re-runs on every session end and the label is never removed, so a refusal that
+   * filed per run would be the unbounded touch ADR-0064 rules against. The second pass here is
+   * given the comment the first one actually wrote, rather than a hand-typed guess at it.
+   */
+  it("says it once — a second recompute over the same state writes nothing further", () => {
+    const malformed = "## Acceptance criteria\n\n- [ ] It works — check: `true`\n";
+    const first = createFake({ open: [labelled(640, malformed)] });
+    runReconcile({ gh: first.gh, log: silent });
+
+    const second = createFake({
+      open: [{ ...labelled(640, malformed), comments: [first.comments[0].body] }],
+    });
+    runReconcile({ gh: second.gh, log: silent });
+
+    expect(second.comments).toEqual([]);
+    expect(second.commentEdits).toEqual([]);
+  });
+
+  it("rewrites its standing refusal, and drops the marker, once the body validates and the ticket starts", () => {
+    const stale = createFake({
+      open: [
+        {
+          ...labelled(650),
+          comments: ["Missing something.\n\n<!-- to-build-refused:v1 -->"],
+        },
+      ],
+    });
+
+    runReconcile({ gh: stale.gh, log: silent });
+
+    expect(stale.dispatches).toEqual([650]);
+    expect(stale.commentEdits).toHaveLength(1);
+    expect(stale.commentEdits[0].body).not.toContain("to-build-refused:v1");
+  });
+
+  it("writes nothing at all to an issue it neither refuses nor has anything standing on", () => {
+    const fake = createFake({ open: [labelled(660)] });
+
+    runReconcile({ gh: fake.gh, log: silent });
+
+    expect(fake.comments).toEqual([]);
+    expect(fake.commentEdits).toEqual([]);
+  });
+
+  it("refuses and comments on nothing in a dry run", () => {
+    const fake = createFake({
+      open: [labelled(670, "## Acceptance criteria\n\n- [ ] It works — check: `true`\n")],
+    });
+
+    runReconcile({ gh: fake.gh, log: silent, dryRun: true });
+
+    expect(fake.comments).toEqual([]);
     expect(fake.dispatches).toEqual([]);
   });
 });
@@ -816,7 +986,7 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
   const { workflow, source } = readWorkflow<{
     on: Record<string, unknown>;
     concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-    jobs: Record<string, { if?: string }>;
+    jobs: Record<string, { if?: string; env?: Record<string, string> }>;
   }>("dispatch-reconcile.yml");
 
   // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
@@ -838,6 +1008,31 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
     // Two dispatch conditions and the manual one, so a third action cannot be added to the workflow
     // without the entrypoint learning about it.
     expect(jobIf.match(/github\.event\.action ==/g)).toHaveLength(RECONCILE_DISPATCH_ACTIONS.length);
+  });
+
+  it("admits the labelled event only for to-build, and only from the repository owner", () => {
+    const jobIf = workflow.jobs.reconcile.if ?? "";
+
+    expect(jobIf).toContain("github.event_name == 'issues'");
+    expect(jobIf).toContain(`github.event.label.name == '${TO_BUILD_LABEL}'`);
+    // The same sender gate `spec.yml` and `shape.yml` carry: this repository is public, so a label
+    // can arrive from anyone where a `repository_dispatch` cannot.
+    expect(jobIf).toContain("github.event.sender.login == github.repository_owner");
+  });
+
+  /**
+   * `main()` refuses any `EVENT_ACTION` outside `RECONCILE_DISPATCH_ACTIONS`, and the label event's
+   * own `github.event.action` is `labeled` — so the run would die at the entrypoint on the very
+   * trigger #184 added. The env is a GitHub expression, so this is as close as a test gets to
+   * evaluating it: the only branch that forwards an event's own action is guarded on
+   * `repository_dispatch`, and everything else falls through to a literal the entrypoint answers.
+   */
+  it("hands the entrypoint an action it answers on a trigger that carries none of its own", () => {
+    const expression = workflow.jobs.reconcile.env?.EVENT_ACTION ?? "";
+
+    expect(expression).toMatch(/github\.event_name == 'repository_dispatch' && github\.event\.action/);
+    const fallback = /\|\|\s*'([^']+)'/.exec(expression)?.[1];
+    expect(RECONCILE_DISPATCH_ACTIONS).toContain(fallback);
   });
 
   it("can send a repository_dispatch, which needs contents: write and not merely read", () => {
@@ -863,7 +1058,11 @@ describe("dispatch-reconcile.yml agrees with the entrypoint it runs", () => {
 
 describe("dispatch-reconcile-caller.yml gates the reusable workflow", () => {
   const { workflow, source } = readWorkflow<{
-    on: { repository_dispatch?: { types?: string[] }; workflow_dispatch?: unknown };
+    on: {
+      repository_dispatch?: { types?: string[] };
+      issues?: { types?: string[] };
+      workflow_dispatch?: unknown;
+    };
     jobs: { reconcile: { uses?: string } };
   }>("dispatch-reconcile-caller.yml");
 
@@ -872,6 +1071,16 @@ describe("dispatch-reconcile-caller.yml gates the reusable workflow", () => {
       [...RECONCILE_DISPATCH_ACTIONS].sort(),
     );
     expect(workflow.on).toHaveProperty("workflow_dispatch");
+  });
+
+  /**
+   * #184's door. The trigger lives on the stub rather than beside the job it starts because a
+   * reusable workflow's own `on:` is `workflow_call` and nothing else (ADR-0055, amended by
+   * ADR-0132); `dispatch-reconcile.yml`'s job `if` is where the `to-build` and sender conditions
+   * are, reading this caller's event.
+   */
+  it("fires on a label, so the to-build door reaches the recompute", () => {
+    expect(workflow.on.issues?.types).toEqual(["labeled"]);
   });
 
   it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
