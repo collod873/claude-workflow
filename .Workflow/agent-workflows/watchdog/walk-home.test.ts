@@ -161,9 +161,8 @@ describe("routeFor", () => {
   });
 
   it("routes an unrecognised bare path to the caller, not the machine (ADR-0141)", () => {
-    // The live regression: vitest and eslint print paths relative to the target's own cwd, so the
-    // `target/` prefix never appears and the machine was reached by fallback. These two are the
-    // exact strings that put five of Lumaria's own failures on this repository's `to-build`.
+    // The bare paths the live regression misrouted, kept as evidence; `routeFor` carries why
+    // (ADR-0141).
     expect(routeFor("scripts/clone-gate.mjs", MACHINE_FILES)).toBe("caller");
     expect(routeFor("src/features/field-service/server/reactions/appointments.test.ts", MACHINE_FILES)).toBe("caller");
   });
@@ -410,5 +409,34 @@ describe("walk-home.yml", () => {
       if (ambient.has(name)) continue;
       expect(workflow, `walk-home.yml never sets ${name}`).toMatch(new RegExp(`^ +${name}:`, "m"));
     }
+  });
+});
+
+/**
+ * CODING_STANDARDS.md, "Pin a mandated copy to its source". This lane restates `ENROLMENT_TOPIC`
+ * rather than importing it, for the reason `walk-home.ts`'s module doc gives; no compiler looks
+ * across that lane boundary, so this test is what reads both texts and holds the two strings equal.
+ */
+describe("the enrolment topic agrees with the enrol/enrol.ts constant it is a copy of", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  /** The `ENROLMENT_TOPIC = "…"` literal in a file's own source text, read rather than imported. */
+  function topicIn(path: string): string {
+    const source = readFileSync(join(here, path), "utf8");
+    const declaration = /ENROLMENT_TOPIC\s*=\s*"([^"]*)"/.exec(source);
+    if (declaration === null) throw new Error(`${path} declares no ENROLMENT_TOPIC`);
+    return declaration[1];
+  }
+
+  it("restates exactly the topic enrol/enrol.ts searches on", () => {
+    expect(topicIn("walk-home.ts")).toBe(topicIn("../enrol/enrol.ts"));
+  });
+
+  it("spends that same topic on the search this sweep actually makes", () => {
+    const fake = fakeGh({ repositories: [] });
+
+    sweep(fake);
+
+    expect(fake.calls.some((argv) => argv.some((word) => word.includes(`topic:${topicIn("../enrol/enrol.ts")}`)))).toBe(true);
   });
 });
