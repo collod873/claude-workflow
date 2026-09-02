@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ import {
   MIN_SLACK_MS,
   STOP_FILE_SHARE,
   activeBaselinePath,
+  discoverTestFiles,
   emptyBaseline,
   judge,
   readBaseline,
@@ -152,19 +153,20 @@ describe("which files a venue runs", () => {
     },
   };
   const baseline = baselineWith({}, suite);
+  const inTree = Object.keys(suite.files);
 
   it("keeps the stop venue to files inside its share of the suite", () => {
-    expect(selectFiles(baseline, "stop")).toEqual(["quick.test.ts", "slowish.test.ts"]);
+    expect(selectFiles(baseline, "stop", inTree)).toEqual(["quick.test.ts", "slowish.test.ts"]);
     expect(2_500).toBeLessThanOrEqual(suite.wallMs * STOP_FILE_SHARE);
   });
 
   it("runs everything at push, which is where a file lands when it outgrows stop", () => {
-    expect(selectFiles(baseline, "push")).toHaveLength(5);
+    expect(selectFiles(baseline, "push", inTree)).toHaveLength(5);
   });
 
   it("answers nothing at all until a measurement exists, so the caller runs its whole test slot", () => {
-    expect(selectFiles(baselineWith({}), "stop")).toBeUndefined();
-    expect(selectFiles(undefined, "stop")).toBeUndefined();
+    expect(selectFiles(baselineWith({}), "stop", inTree)).toBeUndefined();
+    expect(selectFiles(undefined, "stop", inTree)).toBeUndefined();
   });
 
   it("moves a file to push the moment it outgrows the share, with no list to edit", () => {
@@ -173,7 +175,38 @@ describe("which files a venue runs", () => {
       files: { ...suite.files, "slowish.test.ts": 9_000 },
     });
 
-    expect(selectFiles(grown, "stop")).toEqual(["quick.test.ts"]);
+    expect(selectFiles(grown, "stop", inTree)).toEqual(["quick.test.ts"]);
+  });
+
+  // The universe is the tree's, not the baseline's. A file written since the last measurement has
+  // no entry, and a selection drawn from the measured set would silently never run it — a gate
+  // that goes quieter exactly as a repo gets busier.
+  it("runs a file the measurement has never seen rather than dropping it", () => {
+    expect(selectFiles(baseline, "stop", [...inTree, "brand-new.test.ts"])).toContain(
+      "brand-new.test.ts",
+    );
+  });
+
+  it("drops a file that has left the tree, whatever the baseline still says about it", () => {
+    expect(selectFiles(baseline, "stop", ["quick.test.ts"])).toEqual(["quick.test.ts"]);
+  });
+});
+
+describe("finding the test files a venue could run", () => {
+  it("reads them off the tree, skipping acceptance tests and nested worktrees", () => {
+    const root = scratchRoot();
+    for (const rel of [
+      "src/a.test.ts",
+      "src/plain.ts",
+      "tests/acceptance/301-something.test.ts",
+      ".claude/worktrees/other/src/b.test.ts",
+      "node_modules/dep/c.test.ts",
+    ]) {
+      mkdirSync(join(root, dirname(rel)), { recursive: true });
+      writeFileSync(join(root, rel), "");
+    }
+
+    expect(discoverTestFiles(root)).toEqual(["src/a.test.ts"]);
   });
 });
 

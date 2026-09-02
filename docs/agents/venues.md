@@ -53,10 +53,14 @@ It moves itself. A test file may run at `stop` when it costs **at most a fifth o
 wall clock**; anything more runs at `push`. That share is read from the timing baseline's `suite`
 half, so the day a file grows past it, the next `measure` puts it at push — nobody keeps a list.
 
-Today that leaves three files at push: `.claude/hooks/gauntlet.test.ts`,
-`.Workflow/agent-workflows/shared/clone-gate.test.ts` and `.claude/hooks/session-capture.test.ts`.
-All three spawn real processes on purpose, which is the honest way to test a thing whose contract
-*is* its exit code — and it is also why they belong at the venue that can afford them.
+The candidates are read off the tree on every run, not out of the baseline, so **a test file with
+no measurement yet runs** — the same "record rather than judge" rule the ratchet applies to a check
+it has never seen. A selection drawn from the measured set would silently skip every test written
+since the last measurement, which is a gate that goes quieter exactly as a repo gets busier.
+
+What sits at push today is the handful of files that drive their subject as a real process — a
+hook, a CLI, a `git` invocation. That is the honest way to test a thing whose contract *is* its
+exit code, and it is also why they belong at the venue that can afford them.
 
 To re-measure by hand:
 

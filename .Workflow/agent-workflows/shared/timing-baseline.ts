@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { isMainModule } from "./baseline-gate.ts";
@@ -93,6 +101,9 @@ export const STOP_FILE_SHARE = 0.2;
  * `acceptance/push-gate.ts`, not a venue of the gauntlet.
  */
 const ACCEPTANCE_PREFIX = "tests/acceptance/";
+
+/** Agent worktrees: whole second checkouts under this tree, whose test files are never its own. */
+const WORKTREES_DIR = ".claude/worktrees";
 
 /** Where a venue's numbers came from, recorded so a runner-class change shows up in a diff. */
 export interface MachineFacts {
@@ -284,29 +295,76 @@ export function venueBudgetMs(
 }
 
 /**
- * The test files a venue may run, or `undefined` when the baseline cannot answer — no `measure`
- * has run, so nothing here knows what any file costs and the caller runs its whole test slot
+ * The test files a venue may run, chosen from `discovered` — what is in the tree *now* — or
+ * `undefined` when the baseline cannot answer, in which case the caller runs its whole test slot
  * rather than guessing at a subset.
  *
  * `push` gets everything by definition: it is the venue that runs the whole suite, and it is where
  * a file lands when it outgrows the one above it. `stop` gets every file costing at most
  * `STOP_FILE_SHARE` of the suite's own wall clock.
  *
- * This is the half of #335 that makes venue assignment automatic. The three process-spawning files
- * that carry 44% of this suite's clock move to push on the next `measure`, and any file that grows
- * past the share follows them without anyone noticing first.
+ * The universe is the tree's, never the baseline's, and a file with no measurement runs — the same
+ * "record rather than judge" rule the ratchet applies to a check it has never seen. Selecting out
+ * of the measured set instead would mean every test file written since the last measurement
+ * silently never ran at stop, which is a gate that goes quieter exactly as a repo gets busier. Four
+ * landed in this repo between one measurement and the next push. A file deleted since leaves the
+ * same way: it is not in the tree.
+ *
+ * This is the half of #335 that makes venue assignment automatic. The files that spawn real
+ * processes and carry most of the suite's clock move to push on the next `measure`, and any file
+ * that grows past the share follows them without anyone noticing first.
  */
 export function selectFiles(
   baseline: TimingBaseline | undefined,
   venue: string,
+  discovered: readonly string[],
 ): string[] | undefined {
   const suite = baseline?.suite;
   if (!suite || suite.wallMs <= 0) return undefined;
-  const all = Object.keys(suite.files).sort();
+  const all = [...discovered].sort();
   if (venue === "push") return all;
   if (venue !== "stop") return undefined;
   const limitMs = suite.wallMs * STOP_FILE_SHARE;
-  return all.filter((file) => suite.files[file] <= limitMs);
+  return all.filter((file) => (suite.files[file] ?? 0) <= limitMs);
+}
+
+const TEST_FILE_NAME = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const SKIP_DIRS = new Set(["node_modules", ".git"]);
+
+/**
+ * Every test file under `root`, repo-relative — the universe `selectFiles` chooses from.
+ *
+ * Read off the filesystem on every run rather than kept in the baseline, because the baseline is
+ * only as fresh as the last measurement and the tree is not.
+ *
+ * Two directories are dropped, for the reasons `vitest.config.ts` gives for dropping them:
+ * acceptance tests are expected-red until their ticket is built and belong to
+ * `acceptance/push-gate.ts`, and `.claude/worktrees/` holds whole second checkouts whose test
+ * files were never this tree's.
+ */
+export function discoverTestFiles(root: string): string[] {
+  const found: string[] = [];
+  const stack: string[] = [""];
+  while (stack.length > 0) {
+    const relDir = stack.pop();
+    if (relDir === undefined) break;
+    let entries;
+    try {
+      entries = readdirSync(join(root, relDir), { withFileTypes: true });
+    } catch {
+      // A directory that vanished between the walk and the read is not a finding about anything.
+      continue;
+    }
+    for (const entry of entries) {
+      const rel = relDir === "" ? entry.name : `${relDir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name) && rel !== WORKTREES_DIR) stack.push(rel);
+      } else if (TEST_FILE_NAME.test(entry.name) && !rel.startsWith(ACCEPTANCE_PREFIX)) {
+        found.push(rel);
+      }
+    }
+  }
+  return found.sort();
 }
 
 // --- Measuring the suite ----------------------------------------------------------------------
@@ -525,8 +583,10 @@ function runFiles(args: string[]): never {
     console.error("usage: timing-baseline.ts files <root> <venue>");
     process.exit(2);
   }
-  const selected = selectFiles(readBaseline(activeBaselinePath(root)), venue) ??
-    selectFiles(readBaseline(join(root, BASELINE_RELATIVE_PATH)), venue);
+  const discovered = discoverTestFiles(root);
+  const selected =
+    selectFiles(readBaseline(activeBaselinePath(root)), venue, discovered) ??
+    selectFiles(readBaseline(join(root, BASELINE_RELATIVE_PATH)), venue, discovered);
   if (!selected) process.exit(1);
   process.stdout.write(`${selected.join("\n")}\n`);
   process.exit(0);
