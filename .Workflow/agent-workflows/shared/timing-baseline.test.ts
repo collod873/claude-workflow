@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import {
   DEFAULT_MARGIN_PCT,
   LOCAL_BASELINE_RELATIVE_PATH,
   MIN_SLACK_MS,
+  REPORT_ONLY_EXIT,
   STOP_FILE_SHARE,
   activeBaselinePath,
   discoverTestFiles,
@@ -256,10 +257,44 @@ describe("where a run's numbers are kept", () => {
     expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
   });
 
+  // What an over-budget run costs depends on which baseline judged it (ADR-0142). `bin/gauntlet`
+  // refuses a push on exit 1 alone, so this split is what keeps a workstation's own contention from
+  // blocking a push while a real regression on a runner still does.
+  describe("what going over budget costs", () => {
+    function recordOverBudget(env: NodeJS.ProcessEnv): number | null {
+      const root = scratchRoot();
+      const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
+      mkdirSync(join(root, dirname(relative)), { recursive: true });
+      writeBaseline(join(root, relative), baselineWith({ push: { boundaries: 900 } }));
+
+      return spawnSync(
+        process.execPath,
+        [resolve(import.meta.dirname, "timing-baseline.ts"), "record", root, "push", "boundaries=5000"],
+        { encoding: "utf8", env: { ...process.env, CI: "", GITHUB_ACTIONS: "", ...env } },
+      ).status;
+    }
+
+    it("exits 1 against the committed baseline, so the push venue refuses", () => {
+      expect(recordOverBudget({ CI: "true" })).toBe(1);
+    });
+
+    it("exits REPORT_ONLY_EXIT against a workstation's own, so the push venue reports instead", () => {
+      expect(recordOverBudget({})).toBe(REPORT_ONLY_EXIT);
+    });
+
+    it("is a code bin/gauntlet does not refuse on, and not the broken-measure code either", () => {
+      expect(REPORT_ONLY_EXIT).not.toBe(1);
+      expect(REPORT_ONLY_EXIT).not.toBe(2);
+      const gauntlet = readFileSync(resolve(import.meta.dirname, "../../../bin/gauntlet"), "utf8");
+      expect(gauntlet).toContain('[ "$timing_status" = "1" ]');
+    });
+  });
+
   // The two halves of the committed file are true in different places. A file's share of the
   // suite survives the trip from a 32-core workstation to a 2-core runner; the absolute
   // milliseconds behind it do not, and a workstation's 14s suite written there as the push venue's
-  // budget is a bar no hosted runner could clear.
+  // budget is a bar no hosted runner could clear. A `venues` entry is also only true when it was
+  // measured *in* the venue — see the runner case below.
   describe("seeding the committed file", () => {
     const measured: SuiteTiming = {
       wallMs: 14_000,
@@ -286,10 +321,14 @@ describe("where a run's numbers are kept", () => {
       expect(seed().venues.push).toBeUndefined();
     });
 
-    it("ratchets the push venue's test budget from the same run on a runner", () => {
+    it("leaves the venue half alone on a runner too — a solo measurement is never a venue's budget (ADR-0142)", () => {
+      // This measures the suite alone; `bin/gauntlet` judges `test` while a dozen checks run
+      // beside it. Writing the solo number here set a bar in a quiet room that the venue then
+      // defended in a crowded one, and the push went red on contention never in the baseline.
+      // `record`, called from a venue run, is now the only writer of a `venues` entry.
       vi.stubEnv("CI", "true");
 
-      expect(seed().venues.push.test).toBe(14_000);
+      expect(seed().venues.push).toBeUndefined();
     });
   });
 

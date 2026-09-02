@@ -454,21 +454,18 @@ function sortedByKey(times: Record<string, number>): Record<string, number> {
  * Refreshes the **committed** baseline from a fresh measurement of `root`: the `suite` half
  * outright, and the push venue's `test` entry through the same ratchet a gauntlet run goes through.
  *
- * The two halves answer different questions. `suite.files` decides which venue a file runs at, and
- * it is read only as a share of the same run's wall clock — a ratio, true wherever it was
- * measured. The push venue's `test` entry is an absolute millisecond count, so the ratchet applies:
- * a faster measurement tightens it, a slower one leaves it alone, and the run that refuses a push
- * over budget is `bin/gauntlet`'s, not this one's. A generator that could *raise* a budget by
- * running slowly would be a gate that unlocks itself.
+ * **It writes `suite` and never `venues`** (ADR-0142). `suite.files` is read only as a share of the
+ * same run's wall clock — a ratio, true wherever it was measured, and true whether the suite ran
+ * alone or in company. A `venues` entry is not: it is an absolute millisecond count that
+ * `bin/gauntlet` judges a check by *while a dozen other checks run beside it*. This measures the
+ * suite alone, so a `test` entry written here is a number no venue run can reproduce — the bar was
+ * set in a quiet room and defended in a crowded one, and the venue went red on contention that was
+ * never in the baseline.
  *
- * The push venue's other checks are not measured here. They are each a fraction of the suite's
- * cost, and `venueBudgetMs` takes the slowest check rather than the sum — so the number this
- * writes is the number the venue is actually held to.
- *
- * Run off a runner — seeding the file by hand, or a developer curious about the numbers — and the
- * `venues` half is left alone entirely. The whole point of the committed file is that it holds
- * times measured where the judging happens, and a workstation's 14s suite written there is a
- * budget no hosted runner can clear.
+ * So a `venues` entry may only be written by a venue run, which is `record`'s job and only
+ * `record`'s. That is a rule about where a number comes from, not advice about how to measure: the
+ * one path that could write a solo number is this one, and it no longer can. The push venue's
+ * `test` entry is recorded by an actual push, like every other check in the venue.
  */
 export function writeSuiteTiming(
   root: string,
@@ -477,11 +474,8 @@ export function writeSuiteTiming(
   const path = join(root, BASELINE_RELATIVE_PATH);
   const existing = readBaseline(path) ?? emptyBaseline();
   const suite = measure(root);
-  const ratcheted = isRunner()
-    ? (judge(existing, "push", [{ check: "test", ms: suite.wallMs }]).next ?? existing)
-    : existing;
   writeBaseline(path, {
-    ...ratcheted,
+    ...existing,
     generated: new Date().toISOString().slice(0, 10),
     suite,
   });
@@ -520,6 +514,14 @@ function parseMeasurements(args: string[]): Measurement[] {
 }
 
 const WALL_FLAG = "--wall=";
+
+/**
+ * `record`'s exit code for an over-budget run that must not cost anything — the judgement was made
+ * against a workstation's own gitignored baseline (ADR-0142). Distinct from 1, which a venue may
+ * refuse on, and from 2, which is a broken measure. `bin/gauntlet` refuses on 1 alone, so the
+ * definition of "runner" stays in one place instead of being restated in shell.
+ */
+export const REPORT_ONLY_EXIT = 3;
 
 function runRecord(args: string[]): never {
   const [root, venue, ...rest] = args;
@@ -572,7 +574,13 @@ function runRecord(args: string[]): never {
       `gauntlet: the slowest check over budget is ${check} — ${Math.round(ms)}ms against ` +
         `${Math.round(budgetMs)}ms, its own last green time plus ${marginPct}%`,
     );
-    process.exit(1);
+    // Which baseline judged this decides what it may cost (ADR-0142). The committed one holds a
+    // runner's numbers, measured where every other run is measured, so being over it is a fact
+    // about the code and exit 1 lets `bin/gauntlet` refuse the push. The gitignored one holds a
+    // workstation's, where the same venue's contention swings well past the margin between one
+    // run and the next — going red there is a fact about the machine, and a gate that goes red for
+    // environment reasons is how a repo learns to ignore its gates (ADR-0015). So it reports.
+    process.exit(isRunner() ? 1 : REPORT_ONLY_EXIT);
   }
   process.exit(0);
 }
