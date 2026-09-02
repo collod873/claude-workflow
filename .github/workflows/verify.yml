@@ -40,27 +40,25 @@ name: Verify (reusable)
 # The job-level `if:` below is still the scope rule, and it names the one constant the sender reads
 # (`IMPLEMENTATION_PR_DISPATCH_ACTION`, `.Workflow/agent-workflows/shared/immutable-set.ts`).
 #
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a
-# caller repository carries only `verify-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. The caller stub's own `name:` stays
-# `Verify` — unchanged from what this workflow was called before the split — because `fixer.yml`,
-# `review.yml`, `bypass-counter.yml` and `recover.yml` each key a `workflow_run` trigger on that
-# display name, and `workflow_run` only ever fires off a workflow a push or a dispatch started
-# directly, never one reached through `uses:`. Two checkouts throughout — the machine
-# (`collod873/claude-workflow`, for `.Workflow/agent-workflows/shared/affected-tests.ts`, the one
-# script this lane runs) and the target's own tree (`bin/gauntlet`, `.claude/contract.json`, the
-# workflow files `actionlint` reads, the pull request under judgment, and the `tests/acceptance/`
-# and `main` history the acceptance job restores from and reasons about) — never one copy standing
-# in for the other. The machine checkout carries no credential input of its own: ADR-0132 made this
-# repository public, so `actions/checkout` reads it anonymously and no PAT is added here that would
-# have to be rotated in every enrolled repository. Only `restore-and-run-acceptance` below runs a
-# machine script (the affected-tests lookup), so it alone carries both checkouts, machine at the
-# workspace root and target at `target/`, with every step that touches the target's own tree or
-# history running `working-directory: target`. `verify` runs no machine code at all — `bin/gauntlet`,
-# `npm run clone:check` and `actionlint` are all the target's own tooling — so it checks out the
-# target alone, plain, at the workspace root, exactly the single checkout this job had before the
-# split.
+# ADR-0055 (amended by ADR-0132, and by ADR-0139): this is a *reusable* workflow — `on:
+# workflow_call` — so a caller repository carries only `verify-caller.yml`, a trigger and a
+# `uses:`, never a copy of the machine. This repository is its own first caller: the caller stub
+# lives next to this file, at the same commit, so the bytes shipped are the bytes that run. The
+# caller stub's own `name:` stays `Verify` — unchanged from what this workflow was called before
+# the split — because `fixer.yml`, `review.yml`, `bypass-counter.yml` and `recover.yml` each key a
+# `workflow_run` trigger on that display name, and `workflow_run` only ever fires off a workflow a
+# push or a dispatch started directly, never one reached through `uses:`.
+#
+# Both jobs below carry two checkouts throughout, never one copy standing in for the other: the
+# machine (`collod873/claude-workflow`, where `bin/gauntlet`'s own checks and
+# `.Workflow/agent-workflows/shared/affected-tests.ts` live) at the workspace root, and the target's
+# own tree (`.claude/contract.json`, the workflow files `actionlint` reads, the pull request under
+# judgment, and the `tests/acceptance/` and `main` history the acceptance job restores from and
+# reasons about) at `target/`. The machine checkout carries no credential input of its own:
+# ADR-0132 made this repository public, so `actions/checkout` reads it anonymously and no PAT is
+# added here that would have to be rotated in every enrolled repository. `verify` runs
+# `bin/gauntlet` — itself machine code, given `TARGET_WORKSPACE` so its checks read the target
+# (ADR-0139) — so it is no longer the one-checkout job it used to be either.
 
 "on":
   workflow_call:
@@ -210,43 +208,62 @@ jobs:
 
       # The acceptance suite runs against the target's own `vitest.config.ts` and its own installed
       # dependencies, never the machine's — the same reason `acceptance.yml`'s `land` job installs
-      # separately before its own `bin/gauntlet push` spawn.
+      # separately before its own `bin/gauntlet push` spawn. Package-manager detection (ADR-0139):
+      # this repository enrols itself, but the composite is the same one an enrolled target with a
+      # `pnpm-lock.yaml` and no `package-lock.json` at all goes through.
       - name: Install target dependencies
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       # Scopes the run to this slice: only the tests naming a criterion this dispatch carries
       # (ADR-0033's grep, `shared/affected-tests.ts`), so a parallel pull request for a different
       # slice is never reddened by tests nobody has built yet.
-      # `working-directory: target`, unlike every comment near this job used to claim: `affected-
-      # tests.ts`'s `ACCEPTANCE_DIR` is not cwd-relative, it is built from that *module's own*
-      # `import.meta.url` (`resolve(dirname(fileURLToPath(import.meta.url)), "../../..")`), so the
-      # absolute paths `testsForCriteria` returns describe whichever checkout the imported copy of
-      # the module physically sits in. Importing the machine's copy (no `working-directory:`) made
-      # every path machine-tree-absolute, and hand off to `vitest run <those paths>` from inside
-      # `target/` — a filter naming files that exist in a different directory tree than the one
-      # vitest resolves them against, so `git checkout main -- tests/acceptance/` had already
-      # restored the very files vitest then reported as not found. Nothing had exercised this job
-      # to a real pass since the machine/target split (#315) until #327's dispatch.
-      - name: Run this slice's acceptance tests
-        working-directory: target
+      #
+      # Imports the MACHINE's copy of `affected-tests.ts` (no `working-directory:` — the default is
+      # the workspace root, where the machine sits) rather than the target's: an enrolled target may
+      # carry no `.Workflow/` of its own to import at all (ADR-0139). `testsForCriteria`'s own
+      # default (`ACCEPTANCE_DIR`) is module-rooted, which would resolve to the *machine's*
+      # `tests/acceptance` once the import moved — so this step hands it the target's acceptance
+      # directory explicitly rather than relying on the default, and only returns the file list;
+      # `vitest` itself still runs from inside `target/` in the next step, against the target's own
+      # config and installed dependencies. Two steps, not one, because `npx tsx` needs the machine's
+      # `node_modules` (installed by "Set up Node and install dependencies" above) and `npx vitest`
+      # needs the target's (installed by "Install target dependencies" above) — one `working-
+      # directory:` cannot serve both.
+      - name: Select this slice's acceptance tests
+        id: select-tests
         env:
           SLICE_CRITERIA: ${{ toJson(github.event.client_payload.criteria) }}
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: |
           set -euo pipefail
           FILES=$(npx tsx -e "
+            import { join } from 'node:path';
             import { testsForCriteria } from './.Workflow/agent-workflows/shared/affected-tests.ts';
             const criteria = JSON.parse(process.env.SLICE_CRITERIA || '[]');
-            console.log(testsForCriteria(criteria).join('\n'));
+            const dir = join(process.env.TARGET_WORKSPACE, 'tests/acceptance');
+            console.log(testsForCriteria(criteria, dir).join('\n'));
           ")
           if [ -z "$FILES" ]; then
             echo "::error::no acceptance test names a criterion this dispatch carries"
             exit 1
           fi
+          {
+            echo "files<<GAUNTLET_FILES_EOF"
+            echo "$FILES"
+            echo "GAUNTLET_FILES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run this slice's acceptance tests
+        working-directory: target
+        env:
+          FILES: ${{ steps.select-tests.outputs.files }}
+        run: |
+          set -euo pipefail
           # Split on newlines into an array rather than letting an unquoted `$FILES` word-split:
           # a path carrying a space or a glob character would otherwise reach vitest as two
-          # arguments or as an expanded pattern. The command substitution above stays, because it
-          # is what lets `set -e` see a failing `tsx` — a `mapfile < <(...)` would swallow it.
+          # arguments or as an expanded pattern.
           readarray -t FILE_LIST <<< "$FILES"
           npx vitest run "${FILE_LIST[@]}"
 
@@ -260,31 +277,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # Plain, at the workspace root — this job runs no machine script, only the target's own
-      # `bin/gauntlet`, `npm run clone:check` and `.github/workflows/`, so there is no second
-      # checkout to keep separate from it. `fetch-depth: 0`, not the default 1. The gauntlet's
-      # `test` slot runs `tests/acceptance/`, and an acceptance test is written against a
-      # criterion — some criteria are facts about history, not about the working tree.
-      # `201-tests-acceptance-on-main.test.ts` asks whether a commit under `tests/acceptance/` was
-      # authored by the Actions bot, which is exactly the evidence lane 04 has run at all; at depth
-      # 1 that `git log` returns one commit, the test reddened every push from 9e85526 on, and
-      # since #197 made lane 08 read lane 06's verdict, nothing could merge behind it. A shallow
-      # clone is an artefact of the venue, so a check that asks a true question must not fail on it
-      # (the #223 class). 380 commits and 19M of history is not a cost worth a broken venue, and
-      # five other workflows here already fetch in full.
+      # The machine — `bin/gauntlet` itself is machine code now (ADR-0139), as is
+      # `.github/actions/target-deps` reached below. No credential: ADR-0132 made this repository
+      # public, so `actions/checkout` reads it anonymously.
+      - name: Checkout machine
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+
+      # `fetch-depth: 0`, not the default 1. The gauntlet's `test` slot runs `tests/acceptance/`,
+      # and an acceptance test is written against a criterion — some criteria are facts about
+      # history, not about the working tree. `201-tests-acceptance-on-main.test.ts` asks whether a
+      # commit under `tests/acceptance/` was authored by the Actions bot, which is exactly the
+      # evidence lane 04 has run at all; at depth 1 that `git log` returns one commit, the test
+      # reddened every push from 9e85526 on, and since #197 made lane 08 read lane 06's verdict,
+      # nothing could merge behind it. A shallow clone is an artefact of the venue, so a check that
+      # asks a true question must not fail on it (the #223 class). 380 commits and 19M of history
+      # is not a cost worth a broken venue, and five other workflows here already fetch in full.
       - name: Checkout target
         uses: actions/checkout@v4
         with:
+          path: target
           fetch-depth: 0
 
       # The check that catches a workflow file GitHub itself will refuse to parse — the defect
       # `workflow-lint.ts`'s docstring explains in full (#40, ADR-0105). Runs before Node so an
-      # unparseable workflow costs nothing else.
+      # unparseable workflow costs nothing else. Scans the **machine's** own tree — `uses:` steps
+      # take no `working-directory:` (actionlint's own schema check refuses one), and there is a
+      # sharper reason to leave it that way: a failing step here names a path with no `target/`
+      # prefix, which is exactly the machine-side half of ADR-0135's routing — the machine's own
+      # broken workflow file reddens every enrolled repository's Verify alike, and none of them
+      # should have it filed against their own tracker. The target's own `.github/workflows/` is
+      # linted below regardless: `bin/gauntlet push`'s `workflows` check runs `workflow-lint.ts`
+      # against `$target_root` (ADR-0139), reading this same pin.
       #
-      # This step stays even though `bin/gauntlet push` runs it too as of ADR-0105. It is the venue
-      # that answers for what actually reached `main`, and the only one that still runs when a push
-      # arrives with `--no-verify`. The pin below is the single pin: `workflow-lint.ts` reads the
-      # image off this line rather than spelling its own.
+      # This step stays even though `bin/gauntlet push` runs its own copy too, as of ADR-0105. It
+      # is the venue that answers for what actually reached the machine's `main`, and the only one
+      # that still runs when a push arrives with `--no-verify`.
       - name: Lint workflow files
         uses: docker://rhysd/actionlint:1.7.7
         with:
@@ -293,16 +322,30 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
+      # The target's own dependencies, package-manager detected (ADR-0139) — `bin/gauntlet`'s
+      # typecheck/lint/test slots and the clone gate below both run inside `target/`, against
+      # whatever it installed here, never the machine's `node_modules`.
+      - name: Install target dependencies
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
+
       # The same three checks the free venues run, through the same entry point, so a check cannot
-      # drift between venues by being spelled differently in two files.
+      # drift between venues by being spelled differently in two files. `TARGET_WORKSPACE` is what
+      # points every check `bin/gauntlet push` runs at `target/` instead of this checkout
+      # (ADR-0139) — this step itself still runs from the machine root, where `bin/gauntlet` lives.
       #
       # `bin/gauntlet push` exits 1 for a real finding and 2 for a gauntlet that could not run at
       # all (bin/gauntlet:20-23) — a distinction a single failing step throws away, leaving a reader
       # to open the log to tell "a check failed" from "the checks are broken". `set +e` keeps this
       # step itself green so the code reaches $GITHUB_OUTPUT; the two steps below fail the run, each
-      # under the name that matches what happened.
+      # under the name that matches what happened. Any other nonzero code — 127 for a `bin/gauntlet`
+      # that is not even there, or anything else a shell can produce — is read the same way exit 2
+      # is: the gauntlet could not run, never silently green.
       - name: Run gauntlet
         id: run-gauntlet
+        env:
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: |
           set +e
           bin/gauntlet push
@@ -313,18 +356,47 @@ jobs:
         run: exit 1
 
       - name: Gauntlet could not run
-        if: steps.run-gauntlet.outputs.exit_code == '2'
-        run: exit 1
+        if: steps.run-gauntlet.outputs.exit_code != '0' && steps.run-gauntlet.outputs.exit_code != '1'
+        run: |
+          echo "::error::bin/gauntlet push exited ${{ steps.run-gauntlet.outputs.exit_code }} — could not run"
+          exit 1
 
       # The clone gate (docs/agents/clone-gate.md), beside the gauntlet rather than inside it. Its
       # two-second token scan does not fit the turn-end venue, and `bin/gauntlet` runs the same
       # `test` slot at `stop` and `push` — so the gate declines whenever the gauntlet is its caller
-      # and is scheduled here instead, through the same `npm run clone:check` the `all` slot and
-      # `.husky/pre-push` reach it by. `if: always()` so a red gauntlet does not hide a new clone;
-      # a run that is going to fail may as well report everything it found.
+      # and is scheduled here instead, through the target's own `clone:check` script — read off its
+      # `package.json` rather than assumed, because an enrolled target may declare no such script at
+      # all (ADR-0139). `if: always()` so a red gauntlet does not hide a new clone; a run that is
+      # going to fail may as well report everything it found.
       - name: Clone gate
         if: always()
-        run: npm run clone:check
+        working-directory: target
+        run: |
+          set -euo pipefail
+          HAS_SCRIPT=$(node -e "
+            try {
+              const fs = require('node:fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              console.log(pkg.scripts && pkg.scripts['clone:check'] ? 'yes' : 'no');
+            } catch {
+              console.log('no');
+            }
+          ")
+          if [ "$HAS_SCRIPT" != "yes" ]; then
+            echo "target's package.json declares no clone:check script — skipping"
+            exit 0
+          fi
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable
+            pnpm run clone:check
+          elif [ -f package-lock.json ]; then
+            npm run clone:check
+          elif [ -f yarn.lock ]; then
+            corepack enable
+            yarn run clone:check
+          else
+            echo "target carries no recognized lockfile — cannot tell how to run clone:check; skipping"
+          fi
 
   # ## The door a red Verify rings itself
   #

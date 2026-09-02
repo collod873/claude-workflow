@@ -152,9 +152,14 @@ export function lintChangedWorkflows(root: string, run: Run, readPin: () => stri
 
 // --- CLI -------------------------------------------------------------------------------------
 //
-// `node workflow-lint.ts <root>`   0 clean or nothing to check, 1 findings, 2 could not check.
-//                                  The three codes `bin/gauntlet` already distinguishes, and the
-//                                  mode `bin/gauntlet push` runs.
+// `node workflow-lint.ts <root> [pinRoot]`   0 clean or nothing to check, 1 findings, 2 could not
+//                                            check. The three codes `bin/gauntlet` already
+//                                            distinguishes, and the mode `bin/gauntlet push` runs.
+//
+// `pinRoot` (ADR-0139) is where `PIN_SOURCE` — `verify.yml`'s own `uses:` line — is read from,
+// kept separate from `root` (what gets linted) because an enrolled target may carry no
+// `verify.yml` of its own, only a caller stub. Defaulting `pinRoot` to `root` is what keeps this
+// repo's own single-root invocation unchanged: here the two are the same tree.
 //
 // Guarded with `pathToFileURL(process.argv[1])`, never a hand-built `file://${argv[1]}` — the same
 // defect #139 names, which loses percent-encoding on a path with a space and would make this guard
@@ -163,7 +168,8 @@ const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileUR
 
 if (isMain) {
   const root = process.argv[2] ?? process.cwd();
-  const result = lintChangedWorkflows(root, runCommand, () => readFileSync(join(root, PIN_SOURCE), "utf8"));
+  const pinRoot = process.argv[3] ?? root;
+  const result = lintChangedWorkflows(root, runCommand, () => readFileSync(join(pinRoot, PIN_SOURCE), "utf8"));
   if (result.verdict === "findings") {
     console.log(result.report);
     process.exit(1);

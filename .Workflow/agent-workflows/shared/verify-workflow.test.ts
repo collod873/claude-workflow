@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { readWorkflow } from "./read-workflow";
 
 /**
  * `verify.yml`'s Gauntlet step must fail through two distinctly named steps rather than one,
- * because `bin/gauntlet push` exits 1 for a real finding and 2 for a gauntlet that could not run
- * at all (bin/gauntlet:20-23) — a distinction a single failing step throws away, leaving a reader
- * to open the log to tell "a check failed" from "the checks are broken" apart. This test reads the
- * workflow's own YAML rather than grepping for strings, so a reformatting that preserves meaning
- * does not fail it, and a reformatting that loses meaning does.
+ * because `bin/gauntlet push` exits 1 for a real finding and non-1-non-0 for a gauntlet that could
+ * not run at all (bin/gauntlet:20-29) — a distinction a single failing step throws away, leaving a
+ * reader to open the log to tell "a check failed" from "the checks are broken" apart. "Could not
+ * run" is every code but 0 and 1, not only 2 (ADR-0139): a missing `bin/gauntlet` exits 127, and a
+ * gauntlet reading a code the runner itself never assigned is not a green run either. This test
+ * reads the workflow's own YAML rather than grepping for strings, so a reformatting that preserves
+ * meaning does not fail it, and a reformatting that loses meaning does.
  */
 
 const { workflow } = readWorkflow<{
@@ -35,12 +38,14 @@ describe("verify.yml's Gauntlet step, split by exit code", () => {
     expect(gauntletStep?.if).toBe(`steps.${capturingId}.outputs.exit_code == '1'`);
   });
 
-  it("has a step named 'Gauntlet could not run' conditioned on the captured exit code equalling 2", () => {
+  it("has a step named 'Gauntlet could not run' conditioned on any exit code other than 0 or 1", () => {
     const capturingId = capturingStepId();
     const brokenStep = steps.find((step) => step.name === "Gauntlet could not run");
 
     expect(brokenStep, "no step named 'Gauntlet could not run'").toBeDefined();
-    expect(brokenStep?.if).toBe(`steps.${capturingId}.outputs.exit_code == '2'`);
+    expect(brokenStep?.if).toBe(
+      `steps.${capturingId}.outputs.exit_code != '0' && steps.${capturingId}.outputs.exit_code != '1'`,
+    );
   });
 
   it("captures bin/gauntlet push's exit code under the id the two steps above condition on, without letting the step itself fail the job", () => {
@@ -60,6 +65,26 @@ describe("verify.yml's Gauntlet step, split by exit code", () => {
     expect(lintStep).toBeDefined();
     expect(lintStep?.uses).toBe("docker://rhysd/actionlint:1.7.7");
     expect(lintStep?.with).toEqual({ args: "-color" });
+  });
+});
+
+describe("verify.yml separates the machine it runs from the target it acts on (ADR-0139)", () => {
+  it("the verify job checks out the machine at the root and the target at target/", () => {
+    expectMachineAndTargetCheckouts({
+      workflow: "verify.yml",
+      job: "verify",
+      runs: "bin/gauntlet push",
+      fetchDepth: 0,
+    });
+  });
+
+  it("the restore-and-run-acceptance job checks out the machine at the root and the target at target/", () => {
+    expectMachineAndTargetCheckouts({
+      workflow: "verify.yml",
+      job: "restore-and-run-acceptance",
+      runs: "join(process.env.TARGET_WORKSPACE",
+      fetchDepth: 0,
+    });
   });
 });
 

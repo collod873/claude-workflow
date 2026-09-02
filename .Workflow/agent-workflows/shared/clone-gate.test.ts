@@ -27,9 +27,11 @@ afterEach(() => {
 
 /**
  * A repository the gate can actually scan: one TypeScript file long enough to be worth reading, and
- * this repo's own `node_modules` linked in, because `scan()` runs `<root>/node_modules/.bin/jscpd`
- * and a scratch tree has no dependency tree of its own. `node_modules` is gitignored so the link
- * never enters the file set, and `.gitignore` buckets as an already-declared extension.
+ * this repo's own `node_modules` linked in — `.gitignore` buckets it as an already-declared
+ * extension, which is what this fixture is really exercising; jscpd itself is resolved against the
+ * machine's own `node_modules` now (ADR-0139: the scanned tree may be an enrolled target with none
+ * of its own), so the link is no longer why the scan can run, only why the ignore bucket has
+ * something in it to bucket.
  */
 function makeScratchRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), "clone-gate-"));

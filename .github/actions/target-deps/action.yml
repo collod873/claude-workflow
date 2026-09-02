@@ -1,0 +1,54 @@
+name: Install the target's dependencies
+description: >
+  Installs whatever `target/` names as its own dependencies, using whichever package manager its
+  own lockfile names — never assumed to be npm, and never this machine's `npm ci`
+  (`.github/actions/node`), because the target is a separate repository with its own toolchain
+  (ADR-0139: an enrolled repository owes only its `.claude/contract.json`, `docs/adr/` and a
+  `CODING_STANDARDS.md` — Lumaria's own tree has no `package-lock.json` at all, only a
+  `pnpm-lock.yaml`).
+#
+# Pulled out of `acceptance.yml`'s `land` job and `verify.yml`'s `restore-and-run-acceptance` job
+# — both ran `npm ci` in `target/` on the unstated assumption that every target is an npm repo, the
+# assumption ADR-0139 broke. One composite action rather than two copies of the same detect-and-run
+# block, for the same reason `.github/actions/node` gives for staying out of the checkout business:
+# a second copy is a second place the detection logic can drift.
+#
+# **It deliberately does not check out** — same two reasons `.github/actions/node`'s header gives:
+# `workflow-permissions.test.ts` reads `uses: actions/checkout@` straight out of a job's steps to
+# decide it needs `contents:`, and a checkout hidden behind this action would be invisible to that
+# guard; and the gap between the target checkout and this step is where a caller puts whatever else
+# it needs first (`verify.yml` checks out the pull request under test there). So this action starts
+# from an already-checked-out `working-directory`, exactly as `.github/actions/node` starts from an
+# already-checked-out workspace root.
+#
+# No lockfile at all is not a failure: a target this young, or one whose dependencies are pure
+# devDependencies of a language this machine's checks never touch, has nothing to install and
+# nothing to fail on absent it — the same "did not run, not a finding" shape `bin/gauntlet` uses
+# throughout for a target that does not carry a given check's precondition.
+inputs:
+  working-directory:
+    description: The target's checkout, e.g. "target".
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Detect the target's package manager and install
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ -f pnpm-lock.yaml ]; then
+          echo "target carries pnpm-lock.yaml — installing with pnpm"
+          corepack enable
+          pnpm install --frozen-lockfile
+        elif [ -f package-lock.json ]; then
+          echo "target carries package-lock.json — installing with npm"
+          npm ci
+        elif [ -f yarn.lock ]; then
+          echo "target carries yarn.lock — installing with yarn"
+          corepack enable
+          yarn install --frozen-lockfile
+        else
+          echo "target carries no recognized lockfile (pnpm-lock.yaml, package-lock.json, yarn.lock) — nothing to install"
+        fi

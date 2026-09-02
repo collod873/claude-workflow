@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { weak } from "@jscpd/core";
 import { FORMATS, tokenize } from "@jscpd/tokenizer";
 import { childEnv } from "./child-env.ts";
@@ -579,13 +579,23 @@ function fingerprint(format: string, fragment: string): string {
   return createHash("sha256").update(`${format}\0${fragment}`).digest("hex").slice(0, 16);
 }
 
+// jscpd is a MACHINE devDependency (ADR-0139: an enrolled target owes only `.claude/contract.json`
+// and carries no `node_modules/.bin/jscpd` of its own), so it is resolved relative to this
+// module's own location rather than to `root` — the tree being scanned may be a target this
+// machine's `node_modules` was never installed into.
+const MACHINE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+function jscpdBin(): string {
+  return join(MACHINE_ROOT, "node_modules", ".bin", "jscpd");
+}
+
 /** Runs jscpd over exactly the scoped files and reads its JSON report back. */
 function scan(root: string, files: ScopedFile[]): ScanResult {
   const { dir, scanPath } = stageForScan(root, files);
   const output = join(dir, "report");
   try {
     execFileSync(
-      join(root, "node_modules", ".bin", "jscpd"),
+      jscpdBin(),
       [
         ...scanPath.keys(),
         "--format",
