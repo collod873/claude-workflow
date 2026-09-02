@@ -1,7 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { runTsDriver, subjectPath } from "./ts-driver.fixture";
 import { repoRoot } from "./workflow-shape.fixture";
 
 /**
@@ -169,57 +167,16 @@ export function closedIssues(result: PassResult): number[] {
 
 /** Runs lane 09's reconciler against `scenario` and returns what it did. */
 export function runSpecPass(scenario: Scenario): PassResult {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "acceptance-238-"));
-  const driver = path.join(dir, "driver.mts");
-  writeFileSync(driver, DRIVER_SOURCE, "utf8");
-
-  const subject = path.join(repoRoot, ".Workflow", "agent-workflows", "dispatch", "reconcile.ts");
-  const env = {
-    ...process.env,
-    ACCEPTANCE_SCENARIO: JSON.stringify(scenario),
-    ACCEPTANCE_SUBJECT: subject,
-  };
-
-  // Whichever of these this checkout can run a TypeScript entrypoint with; the first that reports a
-  // clean run wins, and the diagnostics of the others are kept for the failure message.
-  const attempts: Array<[string, string[]]> = [
-    ["npx", ["--no-install", "tsx", driver]],
-    ["node", ["--import", "tsx", driver]],
-    ["node", [driver]],
-  ];
-
-  const diagnostics: string[] = [];
-  for (const [command, args] of attempts) {
-    let stdout = "";
-    let stderr = "";
-    try {
-      stdout = execFileSync(command, args, {
-        cwd: repoRoot,
-        encoding: "utf8",
-        env,
-        timeout: 120_000,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (err) {
-      const failure = err as { stdout?: string; stderr?: string; message?: string };
-      stdout = failure.stdout ?? "";
-      stderr = failure.stderr ?? failure.message ?? "";
-    }
-
-    const line = stdout.split("\n").find((candidate) => candidate.startsWith(SENTINEL));
-    if (line === undefined) {
-      diagnostics.push(command + " " + args.join(" ") + "\n" + stderr);
-      continue;
-    }
-    const parsed = JSON.parse(line.slice(SENTINEL.length)) as PassResult;
-    if (parsed.error) {
-      diagnostics.push(command + " " + args.join(" ") + "\n" + parsed.error);
-      continue;
-    }
-    return parsed;
-  }
-
-  throw new Error("could not run the reconciler out of process:\n" + diagnostics.join("\n---\n"));
+  return runTsDriver<PassResult>({
+    source: DRIVER_SOURCE,
+    sentinel: SENTINEL,
+    prefix: "acceptance-238-",
+    env: {
+      ACCEPTANCE_SCENARIO: JSON.stringify(scenario),
+      ACCEPTANCE_SUBJECT: subjectPath(".Workflow", "agent-workflows", "dispatch", "reconcile.ts"),
+    },
+    failure: "could not run the reconciler out of process",
+  });
 }
 
 /**
