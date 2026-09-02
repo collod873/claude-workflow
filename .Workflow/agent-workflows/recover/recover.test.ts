@@ -390,6 +390,30 @@ describe("recover-caller.yml is the listener a red Implement never had", () => {
   });
 
   /**
+   * Every lane that writes into a target checkout has to install that target's dependencies
+   * first, because `landAnswer` regenerates the target's artifacts before it commits and
+   * `check-contract.ts`'s probe reads `<target>/node_modules/.bin` to decide what the target's
+   * test runner is. A lane that skips the install regenerates a contract claiming the target has
+   * no single-file test form — which is what PR #348 carried out of a Recover run, red through
+   * Verify, Integrate and the fixer until it was fixed by hand.
+   *
+   * Asserted across all three rather than on `recover.yml` alone: the defect was parity drift, so
+   * the test that catches the next one has to be the comparison.
+   */
+  it("installs the target's own dependencies, the way every lane that writes a target does", () => {
+    for (const file of ["recover.yml", "implement.yml", "fixer.yml"]) {
+      const { workflow } = readWorkflow<{
+        jobs: Record<string, { steps?: Array<{ name?: string; run?: string; "working-directory"?: string }> }>;
+      }>(file);
+      const steps = Object.values(workflow.jobs).flatMap((job) => job.steps ?? []);
+      const install = steps.find(
+        (step) => step["working-directory"] === "target" && (step.run ?? "").includes("npm ci"),
+      );
+      expect(install, `${file} writes into the target checkout but never installs its dependencies`).toBeDefined();
+    }
+  });
+
+  /**
    * The second door. `workflow_run` arrived minutes late for two Verify runs and not at all for
    * Implement run 33326295612 on 2026-08-30; the dispatch lane 05 sends from its own
    * `if: failure()` step is the wire the rest of the pipeline chains on and did not miss once.

@@ -102,6 +102,19 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
+      # The target's own dependencies, exactly as `implement.yml` and `fixer.yml` install them —
+      # this lane finishes lane 05's tail (`landAnswer`), and that tail regenerates the target's
+      # artifacts before it commits. `check-contract.ts`'s probe asks `binInstalled(target, …)`,
+      # which reads `<target>/node_modules/.bin`, so a target with no install answers "no test
+      # runner here" and the regenerated `.claude/contract.json` comes out with `test_one` and
+      # `test_related` as null. That is what PR #348 carried: a contract the committed one
+      # disagreed with, which turned Verify, Integrate and the fixer red in turn until it was
+      # fixed by hand. Lane 05 has installed the target since ADR-0139; this lane never did, and
+      # nothing noticed while recovery was rare.
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
+
       # `recover.ts` reuses `implement.ts`'s own tail (`landAnswer`), which pushes onto the branch
       # it just claimed. That push meets the same `.husky/pre-push` gauntlet the owner's own
       # pushes do — `npm ci` above installs the hook — and it is a gauntlet a **recovered** push
