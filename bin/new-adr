@@ -8,7 +8,7 @@
 # against a freshly fetched `origin/main`, is claimed against the record both authors share.
 #
 #   bin/new-adr "the ruling as a sentence"        → docs/adr/draft-<slug>.md
-#   bin/new-adr --amends NNNN "the ruling"        → the same, carrying the Amends: trailer
+#   bin/new-adr --amends NNNN "the ruling"        → the same, carrying the `amends:` key
 #   bin/new-adr --land docs/adr/draft-<slug>.md   → docs/adr/NNNN-<slug>.md, number claimed here
 #
 # A draft carries no number, so it is invisible to everything that reads the corpus by filename
@@ -145,21 +145,39 @@ mkdir -p "$adr_dir"
 file="$adr_dir/draft-$(slugify "$title").md"
 [ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
 
+# The draft opens in the grammar the corpus is actually read in — frontmatter, not the prose the
+# body used to carry. `Recorded YYYY-MM-DD.`, `Status:` and `Amends:` are all retired, and
+# `shared/trailer-form.ts` refuses a landed ADR still written that way, so a template emitting them
+# handed every author a file its own push venue would reject. The three keys `adr_shape.py`
+# requires are the three written here.
+#
+# `reversal:` is deliberately left empty. `docs/adr/README.md` says to write it first — it is the
+# admission test, not a field — and `adr_shape.validate` refuses an empty one. A draft is invisible
+# to both (they read `NNNN-*.md` only), so the refusal arrives at the land, which is the moment the
+# ruling either binds or does not. Seeding a plausible sentence here would answer the one question
+# the author is supposed to answer.
 if [ -n "$amends" ]; then
   amends_num=$(printf '%04d' "$((10#$amends))")
   cat > "$file" <<EOF
+---
+status: constraint
+date: $(date +%Y-%m-%d)
+amends: ADR-$amends_num
+reversal:
+---
+
 # $title
-
-Recorded $(date +%Y-%m-%d).
-
-Amends: ADR-$amends_num
 
 EOF
 else
   cat > "$file" <<EOF
-# $title
+---
+status: constraint
+date: $(date +%Y-%m-%d)
+reversal:
+---
 
-Recorded $(date +%Y-%m-%d).
+# $title
 
 EOF
 fi

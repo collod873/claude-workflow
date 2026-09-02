@@ -66,7 +66,10 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
     newAdr: (title) => {
       adrTitles.push(title);
       const path = `docs/adr/draft-slug-${adrTitles.length}.md`;
-      files.set(path, `# ${title}\n\nRecorded 2026-08-26.\n`);
+      // The template `bin/new-adr` actually writes: frontmatter, then the title. A stub still
+      // emitting the retired prose grammar would let this lane pass while producing ADRs the push
+      // venue refuses.
+      files.set(path, `---\nstatus: constraint\ndate: 2026-08-26\nreversal:\n---\n\n# ${title}\n`);
       return `${path}\n`;
     },
     landAdr: (draftPath) => {

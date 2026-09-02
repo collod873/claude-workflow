@@ -107,10 +107,10 @@ const STATUS_LINE_PREFIX = "superseded_by:";
 const STATUS_PREFIX = "status:";
 
 /**
- * `content` with its `Status: superseded by …` trailer set to exactly `statusLine(successors)`:
- * replaced in place if one is already there (a later successor can widen an existing stamp),
- * inserted as a new trailer paragraph right after the `Recorded YYYY-MM-DD.` line otherwise — the
- * same position `bin/new-adr --amends` writes its own `Amends:` trailer into. Returns `content`
+ * `content` with its `superseded_by:` key set to exactly `statusLine(successors)`: replaced in
+ * place if one is already there (a later successor can widen an existing stamp), inserted into the
+ * frontmatter block right after `date:` otherwise — beside the `amends:` key `bin/new-adr
+ * --amends` writes, which is the edge this one is derived from. Returns `content`
  * unchanged, the same reference, when the file already carries exactly this line — which is what
  * makes a second run over an already-stamped tree a no-op its caller can detect by `===`.
  */

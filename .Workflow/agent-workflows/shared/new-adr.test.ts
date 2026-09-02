@@ -5,12 +5,21 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { malformedTrailers } from "./trailer-form.ts";
+
 /**
- * ADR-0045: `bin/new-adr --amends NNNN` writes the machine-readable `Amends:`
- * trailer the back-stamp and missing-trailer counter both read. Its one
- * requirement beyond that is silence: invoking the tool with no flag must
- * stay byte-for-byte what it already was, because every existing call site
- * (and every existing ADR) depends on that shape not moving.
+ * ADR-0045: `bin/new-adr --amends NNNN` writes the machine-readable amendment
+ * edge the back-stamp and missing-trailer counter both read. That edge, and
+ * the rest of an ADR's metadata, live in frontmatter — so what these assert is
+ * that the draft opens in the grammar the corpus is read in.
+ *
+ * It did not, for a while. The template emitted `Recorded YYYY-MM-DD.` and an
+ * `Amends:` prose trailer, which is exactly what `shared/trailer-form.ts`
+ * refuses in a landed ADR and what `adr_shape.py` reports as three missing
+ * keys — so the tool that exists to author ADRs handed every author a file its
+ * own push venue rejects, and every author silently retyped the frontmatter.
+ * The guard that closed it is the round-trip below: draft, land, and run the
+ * real refusal over the result.
  *
  * `bin/new-adr` derives its `docs/adr` location from its own script path
  * (`dirname "${BASH_SOURCE[0]}"/..`), not from `cwd` — so a scratch run needs
@@ -21,8 +30,12 @@ import { afterEach, describe, expect, it } from "vitest";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const NEW_ADR = join(REPO_ROOT, "bin/new-adr");
 
-/** Captured from `bin/new-adr` before this ticket's change (`git show <pre-amends>:bin/new-adr`). */
-const PRE_AMENDS_FIXTURE = join(REPO_ROOT, ".Workflow/agent-workflows/shared/new-adr-pre-amends.fixture.sh");
+/** The frontmatter block alone, so an assertion about a key cannot be satisfied by the body. */
+function frontmatterOf(content: string): string {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(content);
+  if (match === null) throw new Error(`no frontmatter block in:\n${content}`);
+  return match[1];
+}
 
 /** A repo-shaped scratch dir: `<root>/bin/new-adr` copied from `scriptPath`, so the script's own
  * `dirname/..` resolution lands `docs/adr` inside `<root>`, never in the real repo.
@@ -103,29 +116,37 @@ describe("bin/new-adr", () => {
     scratch = undefined;
   });
 
-  it("--amends 8 writes an Amends: ADR-0008 trailer into the created file", () => {
+  it("--amends 8 writes the amends: ADR-0008 key into the created file's frontmatter", () => {
     scratch = makeScratchRepo("new-adr-amends-", NEW_ADR);
 
     const created = runNewAdr(scratch, ["--amends", "8", "a title"]);
 
-    expect(created).toContain("Amends: ADR-0008");
+    expect(frontmatterOf(created)).toContain("amends: ADR-0008");
   });
 
-  // The no-flag path must not move. Rather than pin a dated string that goes stale the day after
-  // it's captured, this runs the pre-change script and today's script side by side, same title, same
-  // day, and asserts their outputs are byte-identical — which is what "unchanged" means for a file
-  // whose contents include today's date.
-  it("with no flag produces byte-identical output to the pre-change fixture", () => {
-    const before = makeScratchRepo("new-adr-before-", PRE_AMENDS_FIXTURE);
-    const after = makeScratchRepo("new-adr-after-", NEW_ADR);
+  it("opens with the three keys adr_shape.py requires, and a reversal the author has to write", () => {
+    scratch = makeScratchRepo("new-adr-frontmatter-", NEW_ADR);
 
-    const beforeOutput = runNewAdr(before, ["a title"]);
-    const afterOutput = runNewAdr(after, ["a title"]);
+    const frontmatter = frontmatterOf(runNewAdr(scratch, ["a title"]));
 
-    rmSync(before, { recursive: true, force: true });
-    scratch = after;
+    expect(frontmatter).toMatch(/^status: constraint$/m);
+    expect(frontmatter).toMatch(/^date: \d{4}-\d{2}-\d{2}$/m);
+    // Empty on purpose: `docs/adr/README.md` makes `reversal:` the admission test rather than a
+    // field, and `adr_shape.validate` refuses an empty one at the land. Seeding a sentence here
+    // would answer the one question drafting exists to ask.
+    expect(frontmatter).toMatch(/^reversal:\s*$/m);
+  });
 
-    expect(afterOutput).toBe(beforeOutput);
+  // The round-trip, against the real refusal rather than a restatement of it: whatever the template
+  // emits has to survive the check the push venue runs over `docs/adr/`. A template that drifts back
+  // into the prose grammar fails here rather than at someone's push.
+  it("drafts a file the retired-grammar gate accepts once landed", () => {
+    scratch = makeScratchRepo("new-adr-grammar-", NEW_ADR);
+    mkdirSync(join(scratch, "docs/adr"), { recursive: true });
+
+    const landed = runNewAdrPath(scratch, ["--land", runNewAdrPath(scratch, ["--amends", "8", "A ruling"])]);
+
+    expect(malformedTrailers([{ path: landed, content: readFileSync(landed, "utf8") }])).toEqual([]);
   });
 });
 
@@ -190,13 +211,13 @@ describe("bin/new-adr, drafting and landing", () => {
     expect(basename(landed)).toBe("0005-a-ruling.md");
   });
 
-  it("carries the Amends: trailer written at draft time through the land", () => {
+  it("carries the amends: key written at draft time through the land", () => {
     const root = scratch(makeScratchRepo("new-adr-amends-land-", NEW_ADR));
     mkdirSync(join(root, "docs/adr"), { recursive: true });
 
     const landed = runNewAdrPath(root, ["--land", runNewAdrPath(root, ["--amends", "8", "A ruling"])]);
 
-    expect(readFileSync(landed, "utf8")).toContain("Amends: ADR-0008");
+    expect(frontmatterOf(readFileSync(landed, "utf8"))).toContain("amends: ADR-0008");
   });
 
   it("refuses a path that is not a draft, so a landed ADR cannot be renumbered by a second land", () => {
