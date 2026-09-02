@@ -18,7 +18,8 @@ import { z } from "zod";
  * file just edited: one to three files, sub-second, at the venue where a repair is cheapest. It is
  * an addition and not a rename, so a contract written against the six still parses every slot it
  * names; a target that has no such form carries it as the sanctioned `cmd: null` and its turn
- * venue runs no tests, exactly as before.
+ * venue runs no tests, exactly as before. That is why it is the one optional slot — see
+ * `CheckContract` below, and ADR-0143 for what requiring it cost.
  */
 
 export const SLOT_NAMES = [
@@ -44,16 +45,32 @@ export const Slot = z.object({
 export type Slot = z.infer<typeof Slot>;
 
 /**
- * The six-slot schema. `.strict()` is load-bearing: it is what makes a typo'd or invented slot
+ * The sanctioned opt-out a contract written before `test_related` existed parses to — the same
+ * `cmd: null` a target with no narrow test form carries explicitly (ADR-0143).
+ */
+const ABSENT_TEST_RELATED: Slot = {
+  cmd: null,
+  why: "absent from this contract — the turn venue runs no tests, as it did before #335",
+};
+
+/**
+ * The seven-slot schema. `.strict()` is load-bearing: it is what makes a typo'd or invented slot
  * name a validation failure instead of a silently-ignored extra key — the reader this file gives
  * the contract, the same way a dead command is `exit 2` rather than a quiet no-op.
+ *
+ * `test_related` is the one **optional** slot, and it has to be. #335 added it on the criterion
+ * that a contract omitting it degrades to no test run at the turn venue; requiring it made that
+ * criterion unreachable, and an enrolled repository's committed contract — written against the six
+ * and untouched since — stopped parsing, so its gauntlet refused to run *any* check. A schema
+ * change here must never invalidate a file a target has already committed (ADR-0143). The default
+ * fills the slot at parse time, so every reader downstream still sees seven.
  */
 export const CheckContract = z
   .object({
     stop: Slot,
     test: Slot,
     test_one: Slot,
-    test_related: Slot,
+    test_related: Slot.default(ABSENT_TEST_RELATED),
     typecheck: Slot,
     lint: Slot,
     all: Slot,

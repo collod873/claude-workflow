@@ -33,6 +33,29 @@ describe("the schema", () => {
 
     expect(CheckContract.safeParse(missingStop).success).toBe(false);
   });
+
+  // The live failure this answers: Lumaria's committed contract was written against the six slots
+  // and untouched since, so requiring the seventh made its gauntlet refuse to run *any* check —
+  // "could not resolve .claude/contract.json", 62 seconds in, nothing measured. A schema change
+  // here must never invalidate a file a target has already committed (ADR-0142).
+  it("accepts a contract written before test_related existed, degrading it to no turn-venue test run", () => {
+    const sixSlot: Record<string, unknown> = { ...checkContractFixture() };
+    delete sixSlot.test_related;
+
+    const parsed = CheckContract.parse(sixSlot);
+
+    expect(parsed.test_related.cmd).toBeNull();
+    expect(parsed.test_related.why).toContain("absent from this contract");
+  });
+
+  it("keeps test_related the only optional slot — every other absence is still a failure", () => {
+    for (const name of SLOT_NAMES.filter((slot) => slot !== "test_related")) {
+      const missing: Record<string, unknown> = { ...checkContractFixture() };
+      delete missing[name];
+
+      expect(CheckContract.safeParse(missing).success).toBe(false);
+    }
+  });
 });
 
 describe("resolveSlot", () => {
