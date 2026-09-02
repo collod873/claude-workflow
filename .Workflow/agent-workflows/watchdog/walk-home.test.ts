@@ -411,3 +411,32 @@ describe("walk-home.yml", () => {
     }
   });
 });
+
+/**
+ * CODING_STANDARDS.md, "Pin a mandated copy to its source". This lane restates `ENROLMENT_TOPIC`
+ * rather than importing it, for the reason `walk-home.ts`'s module doc gives; no compiler looks
+ * across that lane boundary, so this test is what reads both texts and holds the two strings equal.
+ */
+describe("the enrolment topic agrees with the enrol/enrol.ts constant it is a copy of", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  /** The `ENROLMENT_TOPIC = "…"` literal in a file's own source text, read rather than imported. */
+  function topicIn(path: string): string {
+    const source = readFileSync(join(here, path), "utf8");
+    const declaration = /ENROLMENT_TOPIC\s*=\s*"([^"]*)"/.exec(source);
+    if (declaration === null) throw new Error(`${path} declares no ENROLMENT_TOPIC`);
+    return declaration[1];
+  }
+
+  it("restates exactly the topic enrol/enrol.ts searches on", () => {
+    expect(topicIn("walk-home.ts")).toBe(topicIn("../enrol/enrol.ts"));
+  });
+
+  it("spends that same topic on the search this sweep actually makes", () => {
+    const fake = fakeGh({ repositories: [] });
+
+    sweep(fake);
+
+    expect(fake.calls.some((argv) => argv.some((word) => word.includes(`topic:${topicIn("../enrol/enrol.ts")}`)))).toBe(true);
+  });
+});
