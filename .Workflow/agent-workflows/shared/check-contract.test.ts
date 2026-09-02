@@ -89,6 +89,17 @@ describe("probe", () => {
       expect(contract[name].cmd).toBeNull();
     }
   });
+
+  it("asks in the target's own package manager, not npm, when its lockfile is pnpm's", () => {
+    // Lumaria's tree carries `pnpm-lock.yaml` and no `package-lock.json` (ADR-0139): a probe that
+    // wrote `npm run …` there published a contract its own `regenerate && diff` could never match.
+    const contract = probe(join(FIXTURES, "pnpm-scripts"));
+
+    expect(contract.typecheck.cmd).toBe("pnpm run typecheck");
+    expect(contract.lint.cmd).toBe("pnpm run lint");
+    expect(contract.test.cmd).toBe("pnpm test");
+    expect(contract.all.cmd).toBe("pnpm run check");
+  });
 });
 
 /**
