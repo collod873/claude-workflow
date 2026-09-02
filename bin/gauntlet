@@ -557,12 +557,9 @@ done
 # a busy machine is precisely how a repo learns to ignore its gates (ADR-0015) — so they report,
 # and `gauntlet-hook.mjs` shows the line to the person rather than to Claude.
 #
-# It also differs by *which baseline judged it* (ADR-0142), and that half is decided in
-# `timing-baseline.ts` rather than here: exit 1 is over budget against the committed baseline —
-# a runner's numbers, measured where the judging happens — and exit 3 is over budget against a
-# workstation's gitignored one, where the same venue's own contention swings past the margin
-# between one run and the next. Only 1 refuses. The condition below reads `= 1` for exactly that
-# reason, so "runner" keeps one definition (`isRunner`) instead of a second one in shell.
+# It also differs by *which baseline judged it*, and that half is decided by `runRecord` in
+# `shared/timing-baseline.ts` (ADR-0142) rather than here. Only its exit 1 refuses, which is why
+# the condition below reads `= 1` instead of asking a second time whether this is a runner.
 if [ "$failed" = "0" ] && [ "$could_not_run" = "0" ] &&
   [ -z "${GAUNTLET_CONTRACT:-}" ] && [ -z "${VITEST:-}" ] &&
   [ "${GAUNTLET_TIMING:-on}" != "off" ]; then
