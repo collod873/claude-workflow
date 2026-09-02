@@ -234,13 +234,18 @@
     },
     {
       "rule": "no-lane-to-lane-spec",
-      "from": ".Workflow/agent-workflows/spec/collectors/sheet.fixture.ts",
-      "to": ".Workflow/agent-workflows/shape/sheet-schema.ts"
+      "from": ".Workflow/agent-workflows/spec/collectors/decided-context.test.ts",
+      "to": ".Workflow/agent-workflows/shape/sheet.fixture.ts"
     },
     {
       "rule": "no-lane-to-lane-spec",
       "from": ".Workflow/agent-workflows/spec/collectors/sheet.test.ts",
       "to": ".Workflow/agent-workflows/shape/marker.ts"
+    },
+    {
+      "rule": "no-lane-to-lane-spec",
+      "from": ".Workflow/agent-workflows/spec/collectors/sheet.test.ts",
+      "to": ".Workflow/agent-workflows/shape/sheet.fixture.ts"
     },
     {
       "rule": "no-lane-to-lane-spec",

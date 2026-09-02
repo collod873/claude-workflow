@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shape/marker";
+import { sheet } from "../../shape/sheet.fixture";
 import { collectSheetContext } from "./sheet";
-import { fakeSheetGh as fakeGh, sheet } from "./sheet.fixture";
+import { fakeSheetGh as fakeGh } from "./sheet-gh.fixture";
 
 /**
  * The sheet collector is the accepted-sheet trigger's half of ADR-0058: it
