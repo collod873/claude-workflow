@@ -64,3 +64,28 @@ describe("enrol.yml's trigger surface", () => {
     expect(source).toContain("secrets.ENROL_PAT");
   });
 });
+
+/**
+ * `walk-home.yml`'s trigger surface (ADR-0136, #326, #330) — the second and only other reference
+ * to `ENROL_PAT`, so ADR-0053's guarantee holds for it exactly as it holds for `enrol.yml` above:
+ * no pull request may ever start a job that can see the credential that writes into an enrolled
+ * repository's own tracker.
+ */
+const { workflow: walkHome, source: walkHomeSource } = readWorkflow<{
+  on: { repository_dispatch?: { types?: string[] }; schedule?: unknown; workflow_dispatch?: unknown; push?: unknown };
+}>("walk-home.yml");
+
+describe("walk-home.yml's trigger surface", () => {
+  it("fires on exactly the session-captured dispatch — neither a pull request nor a clock can fire it (ADR-0053, ADR-0004)", () => {
+    expect(Object.keys(walkHome.on)).toEqual(["repository_dispatch"]);
+    expect(walkHome.on.repository_dispatch?.types).toEqual(["session-captured"]);
+  });
+
+  it("spends ENROL_PAT rather than the built-in token, which cannot write into an enrolled repository's tracker", () => {
+    expect(walkHomeSource).toContain("secrets.ENROL_PAT");
+  });
+
+  it("is not in the stub set — no enrolled repository sweeps the estate on this repository's behalf", () => {
+    expect(readdirSync(WORKFLOWS_DIR)).not.toContain("walk-home-caller.yml");
+  });
+});

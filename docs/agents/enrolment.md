@@ -65,3 +65,31 @@ the run's own conclusion is the only thing that can say so.
 `gh repo edit <owner>/<repo> --add-topic claude-workflow-enrolled`, then dispatch `enrol.yml` by hand
 for that first pass — adding the topic is an event on the target repository, which this machine has
 no way to see, so the very first enrolment of a newly-topicked repository is not automatic.
+
+## A red run in an enrolled repository
+
+An enrolled repository runs lanes it does not own and may not edit in place
+([ADR-0009](../adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md)), so a red
+run there has two possible authors and only the run itself can tell them apart.
+[ADR-0135](../adr/0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) makes the
+failing path the answer: every reusable lane here checks the machine out at the workspace root and
+the calling repository's own tree at `target/`
+([`shared/checkout-pair.fixture.ts`](../../.Workflow/agent-workflows/shared/checkout-pair.fixture.ts)),
+so a failing step whose log names a path inside the machine checkout is this repository's own
+defect, and a failing path inside `target/` is the caller's.
+
+`.github/workflows/walk-home.yml` is what acts on that routing. Like `enrol.yml`, it is the other
+lane with no caller stub — it runs only here, walking every repository the enrolment topic
+enumerates on the `session-captured` dispatch, reading each failed run's failing step and routing by
+path: a machine-side failure files a ticket-shaped issue **here**, labelled `to-build` so lane 09's
+next recompute starts an implementer against it without the spec chain, carrying the machine SHA,
+the run URL and the log tail; a caller-side failure files into that repository's own tracker
+instead. [ADR-0136](../adr/0136-a-caller-s-red-run-is-swept-from-here-under-enrol-pat-never.md)
+settles who does the filing — this lane runs here, under `ENROL_PAT`, the same credential `enrol.yml`
+already sends to every enrolled repository, rather than shipping a second outward-reaching secret
+that would let a compromised caller file against the machine every other one runs.
+
+The sweep stores no cursor and no ledger: whether a run has already been walked home is derived from
+the marker on its own filed issue, so a second sweep over unchanged state writes nothing. A failure
+against one enrolled repository is reported and the sweep continues over the rest, but the run still
+exits non-zero.
