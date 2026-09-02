@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathForMatcher } from "../shared/gh-paths";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import {
   failingPath,
@@ -25,6 +26,7 @@ const MACHINE_FILES: ReadonlySet<string> = new Set([
   ".Workflow/agent-workflows/watchdog/walk-home.test.ts",
   "bin/clone-gate",
   "docs/adr/0135-a-red-run.md",
+  "tests/acceptance/999-example.test.ts",
 ]);
 
 interface FakeRun {
@@ -139,6 +141,14 @@ const CALLER_SIDE_LOG = [
   " ❯ target/tests/acceptance/999-example.test.ts:10:5",
 ].join("\n");
 
+/** A machine-side failure whose path falls inside the machine's own immutable set. */
+const MACHINE_IMMUTABLE_LOG = [
+  "Run npx vitest run tests/acceptance",
+  "FAIL tests/acceptance/999-example.test.ts > example",
+  "AssertionError: expected 1 to be 2",
+  " ❯ tests/acceptance/999-example.test.ts:10:5",
+].join("\n");
+
 describe("failingPath", () => {
   it("names the first repo-relative path a failing step's log carries", () => {
     expect(failingPath(MACHINE_SIDE_LOG)).toBe(".Workflow/agent-workflows/watchdog/walk-home.test.ts");
@@ -227,6 +237,31 @@ describe("walkHome", () => {
 
     // Never filed at the caller.
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes("-R"))).toBe(false);
+  });
+
+  /**
+   * The immutable-set half of the door (#334): a failing path this sweep would otherwise route
+   * `to-build` cannot become a ticket any implementer could ever build (ADR-0053), so it is filed
+   * `needs-human` instead — the same shape the ticket behind 7e64031 shows the cost of skipping.
+   */
+  it("files needs-human, not to-build, for a failing path inside the machine's own immutable set", () => {
+    const fake = fakeGh({
+      repositories: ["owner/caller"],
+      runs: { "owner/caller": [{ id: 560, path: ".github/workflows/verify-caller.yml" }] },
+      logs: { 560: MACHINE_IMMUTABLE_LOG },
+    });
+
+    const outcome = sweep(fake);
+
+    expect(outcome.filed).toEqual([{ repository: "owner/caller", runId: 560, routed: "needs-human", issue: 100 }]);
+
+    const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;
+    expect(create[create.indexOf("--label") + 1]).toBe(NEEDS_HUMAN_LABEL);
+    const body = create[create.indexOf("--body") + 1];
+    expect(body).toContain("tests/acceptance/999-example.test.ts");
+    // Never the shape lane 06 would refuse anyway — no `## Files claimed` for an implementer to read.
+    expect(body).not.toContain("## Acceptance criteria");
+    expect(body).not.toContain("## Files claimed");
   });
 
   it("files into the caller's own tracker, and never here, for a failing path inside its own tree", () => {

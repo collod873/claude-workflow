@@ -3,6 +3,8 @@ import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPathFor } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { touchesImmutableSet } from "../shared/immutable-set";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
@@ -97,7 +99,9 @@ export type WalkHomeAction = "skipped" | "swept";
 export interface FiledTicket {
   repository: string;
   runId: number;
-  routed: "machine" | "caller";
+  /** `"needs-human"` is still filed here, on this repository's own tracker — it differs from
+   * `"machine"` only in which label it carries and what it asks of a reader (see `file`, below). */
+  routed: "machine" | "caller" | "needs-human";
   issue: number;
 }
 
@@ -272,6 +276,40 @@ function machineTicketBody(repository: string, run: RunSummary, machineSha: stri
   ].join("\n");
 }
 
+/**
+ * The title and body a failing path inside the machine's own **immutable set**
+ * (`tests/acceptance/`, `vitest.config.ts`, `.github/`) gets instead of `machineTicketTitle`/
+ * `machineTicketBody` — `needs-human` rather than `to-build`, because no pull request may edit
+ * that path (ADR-0053), so no implementer could ever build a ticket claiming it. Filing it
+ * `to-build` anyway is the ticket behind 7e64031 (research note, Class 3): a `to-build` issue
+ * lane 06 starts, spends an implementer, and is refused only at the push.
+ */
+function machineImmutableTicketTitle(repository: string, path: string): string {
+  return `${repository}: ${path} failed inside the machine's own immutable set`;
+}
+
+function machineImmutableTicketBody(repository: string, run: RunSummary, machineSha: string, path: string, logTail: string): string {
+  return [
+    `A run of \`${run.path}\` in \`${repository}\` — an enrolled repository (docs/agents/enrolment.md)`,
+    `— failed with its failing step naming \`${path}\`, a path inside the machine checkout's own`,
+    "immutable set (`tests/acceptance/`, `vitest.config.ts`, `.github/`). No pull request may edit",
+    "it (ADR-0053), so no implementer could ever build a ticket claiming it — filed `needs-human`",
+    "here instead of `to-build`.",
+    "",
+    `- Run: ${run.htmlUrl}`,
+    `- Machine SHA: \`${machineSha}\``,
+    `- Failing path: \`${path}\``,
+    "",
+    "Log tail:",
+    "",
+    "```",
+    logTail,
+    "```",
+    "",
+    walkHomeMarker(repository, run.id),
+  ].join("\n");
+}
+
 function callerIssueTitle(path: string): string {
   return `${path} failed`;
 }
@@ -319,6 +357,20 @@ function file(
       callerIssueBody(repository, run, path, logTail),
     ]).trim();
     return { repository, runId: run.id, routed: "caller", issue: Number(url.split("/").pop()) };
+  }
+
+  if (touchesImmutableSet([path])) {
+    const url = gh([
+      "issue",
+      "create",
+      "--title",
+      machineImmutableTicketTitle(repository, path),
+      "--body",
+      machineImmutableTicketBody(repository, run, machineSha, path, logTail),
+      "--label",
+      NEEDS_HUMAN_LABEL,
+    ]).trim();
+    return { repository, runId: run.id, routed: "needs-human", issue: Number(url.split("/").pop()) };
   }
 
   const url = gh([
@@ -380,7 +432,7 @@ function walkOneRepository(
 
     const ticket = file(gh, repository, run, machineSha, path, logTail, machineFiles);
     budget.filed -= 1;
-    log(`${repository} run ${run.id}: filed ${ticket.routed === "machine" ? "here" : "there"} as #${ticket.issue} (${path})`);
+    log(`${repository} run ${run.id}: filed ${ticket.routed === "caller" ? "there" : "here"} as #${ticket.issue} (${path})`);
     filed.push(ticket);
   }
 
