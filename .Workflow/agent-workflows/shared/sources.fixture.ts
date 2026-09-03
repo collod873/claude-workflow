@@ -2,11 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
- * This repository's own TypeScript, read as text, for the one suite that sweeps source rather
- * than importing it: `exec-seams.test.ts` holds every spawning module to a `maxBuffer` and every
- * spawning test to a `TARGET_WORKSPACE`, and a sweep has to read the files it does not know the
- * names of yet. That read lives here so no `*.test.ts` walks the repository itself.
- *
  * @fixture Reached only from the suite, by design.
  */
 

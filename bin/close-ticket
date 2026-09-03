@@ -116,49 +116,25 @@ import gh_support  # noqa: E402
 try:
     import run_log  # noqa: E402
 except ImportError:
-    # A vendored copy whose bin/run_log.py never arrived (#183 pairs only files the target
-    # repo already carries). Losing this repo's run rows is a gap in an audit; an
-    # ImportError here would be a broken tool.
     run_log = None
 import ticket_shape  # noqa: E402
 
 NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
 
-# A criterion that mentions `check:` but yields no command. Wider than
-# `ticket_shape.CHECK_MARKER_ATTEMPT_RE` on purpose: that one requires the delimiter, and the
-# shape that actually reached the tracker carried none — so the criteria that producer wrote
-# were not *malformed* markers, they were invisible ones, and the run that closed on them
-# reported "no check" about a line whose first word is `check`. The looser question — did this
-# criterion mean to name a check — is the one worth asking, because a criterion that says
-# `check:` and does not parse is a ticket defect either way.
 UNPARSEABLE_CHECK_RE = re.compile(r"\bcheck:", re.IGNORECASE)
 
-# A `MET` bullet as this script writes one, anchored to the start of its own line. Counted off
-# the rendered record for the run row, so it must not also match the text a spec's check printed
-# — `quote_evidence` guarantees no evidence line begins with `- `, and this anchor is the other
-# half of that guarantee.
 MET_BULLET_RE = re.compile(r"^- .* — MET: ", re.MULTILINE)
 
-# How much of a spec check's stdout the record carries: enough to show what the check saw — an
-# issue number, a count, the line that matched — without pasting a build log onto the issue.
 EVIDENCE_MAX_LINES = 10
 EVIDENCE_MAX_CHARS = 800
-
 
 def fetch_body(gh, issue: str) -> str:
     out = gh_support.run_gh(gh, "issue", "view", issue, "--json", "body")
     return json.loads(out).get("body") or ""
 
-
 def fetch_state(gh, issue) -> str:
-    """The successor's open/closed state, read the one way this script ever reads a
-    successor's liveness — `gh issue view <n> --json state` through `gh_support.run_gh`
-    (#167's acceptance criteria: no second `gh` resolution path). Raises `GhError` the same
-    way `fetch_body` does when `<n>` doesn't resolve at all — that's what lets `main` tell an
-    unresolvable successor apart from one that resolves but is closed."""
     out = gh_support.run_gh(gh, "issue", "view", str(issue), "--json", "state")
     return json.loads(out).get("state") or ""
-
 
 SUB_ISSUES_QUERY = """
 query {
@@ -179,18 +155,7 @@ query {
 }
 """
 
-
 def fetch_issue_node(gh_path: str, name_with_owner: str, issue: str, query_template: str) -> dict:
-    """Runs `query_template` — one of the `%(owner)s`/`%(name)s`/`%(issue)s` GraphQL queries
-    above — and returns its `repository.issue` node. Shared by `fetch_sub_issues` and
-    `fetch_closing_pr` (#306): both ask this same node a different question, and the asking —
-    interpolate, bind, call, unwrap, refuse a `None` node — was the same four lines twice.
-
-    Bound off `gh_path` with no `-R`, unlike every other call here. `bind_gh`'s `repo` appends
-    `-R` to the argv, and `gh api graphql` takes no such flag — the repository is named inside
-    the query instead. Still the one resolution path (`gh_bin`), which is what #102 and #109
-    actually require; a second *binding* of the same resolved binary is not a second way of
-    finding `gh`."""
     owner, _, name = name_with_owner.partition("/")
     query = query_template % {"owner": owner, "name": name, "issue": issue}
     api = gh_support.bind_gh(gh_path)
@@ -200,18 +165,9 @@ def fetch_issue_node(gh_path: str, name_with_owner: str, issue: str, query_templ
         raise gh_support.GhError(f"issue #{issue} not found")
     return issue_node
 
-
 def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
-    """Every sub-issue of `issue`, with the state and the pull requests `undelivered` needs.
-
-    `includeClosedPrs: true` because the pull request this is looking for is by definition no
-    longer open — a merged one is a closed one, and the default omits it.
-
-    One GraphQL call rather than a REST child list plus a call per child: the question is about
-    every child at once, and a spec with a dozen slices should cost one round trip."""
     issue_node = fetch_issue_node(gh_path, name_with_owner, issue, SUB_ISSUES_QUERY)
     return issue_node["subIssues"]["nodes"]
-
 
 CLOSING_PR_QUERY = """
 query {
@@ -225,29 +181,10 @@ query {
 }
 """
 
-
 def fetch_repo_name(gh) -> str:
-    """`owner/repo`, the one shape `fetch_sub_issues`/`fetch_closing_pr`'s GraphQL queries take —
-    read through `run_gh` so it goes through the same failure envelope every other call here
-    does, never a second `gh repo view` spelled out at each call site."""
     return json.loads(gh_support.run_gh(gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
 
-
 def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | None:
-    """The pull request that closes `issue`, read the same way `fetch_sub_issues` reads a spec's
-    children (#306) — GitHub's own `closedByPullRequestsReferences` index of `Closes #N` in a PR
-    body, not the issue's close event. `render_record` calls this itself rather than accepting a
-    PR from its caller: a record is evidence only when it names what actually happened, not what
-    a caller *says* happened.
-
-    `None` when no merged pull request names this issue at all — a ticket closed without one (by
-    hand, or the `No diff.` path), or a spec, which is never closed by a PR of its own (a spec's
-    slices carry the PRs; `undelivered` already reads those). `includeClosedPrs: true` for the
-    same reason `fetch_sub_issues` sets it: the PR being looked for is by definition no longer
-    open once merged.
-
-    Several merged PRs naming the same issue is possible (a re-opened ticket, closed twice) —
-    the most recently merged one wins, since that is the close this invocation is for."""
     issue_node = fetch_issue_node(gh_path, name_with_owner, issue, CLOSING_PR_QUERY)
     merged = [
         pr for pr in issue_node["closedByPullRequestsReferences"]["nodes"] if pr.get("merged")
@@ -262,49 +199,15 @@ def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | N
         "merge_sha": (newest.get("mergeCommit") or {}).get("oid"),
     }
 
-
-# `judging <pr-url> on <branch>` — `verify.yml`'s own log line (ADR-0104), read here the same way
-# `fixer.yml`'s "Resolve the pull request that Verify run was judging" step already greps it, and
-# `integrate.ts`'s `jobJudged` already matches it. Not a second grammar: a reworded echo in
-# `verify.yml` would silently break all three readers alike, which is the point — one shape, three
-# readers, none of them the source of truth for it.
 JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
 
-# `verify.yml`'s own two `name:`s, copied here because a workstation cannot import a `.ts` module.
-# `lane-wiring.test.ts`'s "bin/close-ticket's job names agree with the verify.yml jobs they are
-# copies of" is what holds this copy to them.
 IMMUTABILITY_JOB = "Immutability"
 GATE_JOB = "Verify"
 
-
 def job_matches_name(name: str | None, wanted: str) -> bool:
-    """Whether one Actions job's `name` is `wanted` — the bare name a reusable workflow's own
-    `jobs.<key>.name:` declares — or the `<caller job key> / <name>` form GitHub renders every job
-    as when the run was reached through `uses:` (ADR-0055, amended by ADR-0132; confirmed on run
-    33649164483: `verify / Immutability`, `verify / Verify`, ...). The same
-    rule `.Workflow/agent-workflows/shared/job-match.ts`'s `findJobByName` applies for the
-    TypeScript readers of these same two jobs — this is that rule's Python restatement, since a
-    workstation `bin/close-ticket` cannot import a `.ts` module."""
     return name is not None and (name == wanted or name.endswith(f" / {wanted}"))
 
-
 def verify_workflow_file() -> str:
-    """The workflow **file** in the calling repository whose runs carry Verify's `Immutability`
-    and `Verify` jobs — `verify-caller.yml`, never `verify.yml`: ADR-0055
-    (amended by ADR-0132) records a `uses:`-reached run against the caller's file, and
-    `verify.yml` itself has carried no run of its own since the split.
-
-    Required from the environment on a runner, for the same reason `bypass-counter.ts`'s
-    `VERIFY_WORKFLOW` is required with no default: a wrong or absent name returns an empty run
-    list, which `fetch_verify_verdict` cannot tell apart from Verify never having run at all — and
-    every closing record would read `Verify: unjudged` forever, silently, on every enrolled
-    repository this tool ever runs against.
-
-    Defaulted at this workstation, where there is no calling repository to get wrong: every
-    invocation here runs inside a checkout of `collod873/claude-workflow` itself (this repo's own
-    `docs/agents/issue-tracker.md` — "Run `bin/close-ticket <number> <base>..<head> <checkout>`"),
-    whose own Verify runs have always been recorded against `verify-caller.yml` since the split.
-    """
     env_value = os.environ.get("VERIFY_WORKFLOW")
     if env_value:
         return env_value
@@ -316,36 +219,11 @@ def verify_workflow_file() -> str:
         )
     return "verify-caller.yml"
 
-# How far back this scan reaches. Unlike `integrate.ts`'s `readVerifyVerdict`, this has no
-# `head_sha` to filter on — `fetch_closing_pr` names a merge, never the pre-merge dispatch commit
-# both lane 06 and lane 08 shared (see that field's docstring in integrate.ts) — so this scans
-# recent runs newest-first instead and stops at the first whose `Immutability` job log names this
-# PR. One page is the whole fleet's recent history several times over (`integrate.ts`'s own
-# comment on the same number), and the newest-first order means it is also the cheapest case.
 VERIFY_RUN_PAGE_SIZE = 100
 
-
 def fetch_verify_verdict(gh, pr_url: str) -> str:
-    """`"passed"`, `"failed"`, or `"unjudged"` — Verify's conclusion on the pull request that
-    closed this ticket, read from the Actions API rather than trusted from a caller (#306): the
-    same two jobs `integrate.ts`'s `awaitVerifyVerdict` reads before it ever merges, `Immutability`
-    and `Verify`, found here by scanning `verify.yml`'s recent dispatch runs
-    for the one whose `Immutability` job log names `pr_url` (`JUDGING_LINE_RE`).
-
-    `"unjudged"` covers every way this can come back empty-handed: no run found within
-    `VERIFY_RUN_PAGE_SIZE`, a run whose job log could not be read, or a job still incomplete — the
-    same "silence is never a pass" reading ADR-0054 already applies to lane 08 itself. `"failed"`
-    means either job concluded `failure`; both must conclude `success` for `"passed"`, since a
-    merge in this repo's own pipeline never happens unless both did (`runIntegrate`)."""
     workflow_file = verify_workflow_file()
     try:
-        # Query in the path, never as `-f` fields: `gh api` switches to POST the moment a field is
-        # present, and `POST .../actions/workflows/<file>/runs` is not an endpoint — it 404s, the
-        # 404 raises `GhError`, and the `except` below reads that as "no run found" and returns
-        # `unjudged`. Which is what happened to every closing record this tool has ever written:
-        # the silent-forever failure `verify_workflow_file`'s docstring warns about, arriving
-        # through the shape of the call rather than through a wrong workflow name. `integrate.ts`
-        # builds the same query into the path (`repoRunsPath`) and was never affected.
         runs = json.loads(gh_support.run_gh(
             gh, "api",
             f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow_file}/runs"
@@ -396,26 +274,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         return "unjudged"
     return "unjudged"
 
-
 def undelivered(children: list[dict]) -> list[str]:
-    """One line per child that has not been delivered, naming the child and why — empty when
-    every child has.
-
-    Delivered is *closed by a merged pull request*, never merely closed: the distinction this
-    estate already draws for a blocker, applied to a spec's children. An issue closed by hand
-    proves someone thought it was done; a merged PR is the only closure that says code landed.
-    `not planned` is the case worth naming separately — it is a deliberate non-delivery, and a
-    spec whose slice was abandoned should be re-sliced or its criterion rewritten, not closed.
-
-    The question is asked from the *pull request's* side — `closedByPullRequestsReferences`,
-    GitHub's own index of `Closes #N` in PR bodies — and never from the child's close event
-    (#253). Lane 08 closes each slice itself, with this script, after its own gate (#195), so by
-    the time the PR merges the issue is already closed and GitHub's merge-time auto-close never
-    fires: every slice this chain delivers carries no pull request on its close event at all.
-    Reading that event called all six of #233's merged slices "closed by hand" and left the rule
-    #233 exists to introduce unable to close itself. `integrate.ts:127-145` had already ruled
-    GitHub's closing linkage untrustworthy and read `Closes #N` out of the PR body instead; this
-    asks the same question of the same index."""
     problems = []
     for child in children:
         number = child.get("number")
@@ -435,25 +294,10 @@ def undelivered(children: list[dict]) -> list[str]:
             problems.append(f"#{number}: closed by hand, not by a merged PR")
     return problems
 
-
-# An acceptance test lives beside its subject and is marked `test.fails(` until the ticket it
-# names is built (#360); the implementer turns it on by dropping `.fails`. A ticket whose number
-# still appears in such a line is a ticket somebody has not finished, whatever its criteria's own
-# `check:` commands say — so the close is refused here, before a single check runs, naming the
-# lines. Only the two source trees the suite collects are read (`vitest.config.ts`'s include).
 SUITE_ROOTS = (".Workflow", ".claude")
-# Anchored to statement start: a real `test.fails(` opens a line, while a test that *quotes* one
-# as fixture data (`'-  test.fails("#360: …'` in a diff sample) does not — and this repo's own
-# suite quoted seven of them the first time #360 tried to close. This grammar and the number
-# boundary in `surviving_fails_lines` below are the Python half of a definition `implement.ts`'s
-# `sliceMarker` also spells; `fails-marker-pin.test.ts`'s "implement.ts's test.fails( marker agrees
-# with the bin/close-ticket grammar it is a copy of" is what holds the two halves together.
 FAILS_LINE_RE = re.compile(r"^\s*(?:test|it)\.fails\(")
 
-
 def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
-    """Every `<path>:<line>` under `checkout`'s suite roots where a `test.fails(`/`it.fails(` line
-    names `#<issue>` — the tests the ticket has not yet turned green."""
     number_re = re.compile(rf"#{re.escape(issue)}\b")
     found: list[str] = []
     for root in SUITE_ROOTS:
@@ -473,17 +317,7 @@ def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
                         found.append(f"{os.path.relpath(path, checkout)}:{index}")
     return found
 
-
 def split_check_marker(criterion: str) -> tuple[str, str | None]:
-    """`(reference, command)` for one folded criterion block. `reference` has the leading
-    `- [ ]`/`- [x]` checkbox (`ticket_shape.CRITERIA_ITEM_RE`) stripped — the posted bullet
-    supplies its own leading `- `, so keeping the checkbox would double it. `command` is
-    `None` when the criterion carries no well-formed `check:` marker — plain prose and a
-    malformed marker read alike here, since `ticket_shape.validate` already warns a filer
-    about a malformed one at filing time (#166); close-ticket doesn't re-litigate that, it
-    only asks whether there is a command to run. When a marker is well-formed, `reference`
-    also has it sliced off, using the same `CHECK_MARKER_RE` `parse_check_marker` matched
-    against — so the two can never disagree about where the marker starts."""
     criterion = criterion.strip()
     box = ticket_shape.CRITERIA_ITEM_RE.match(criterion)
     if box:
@@ -494,25 +328,10 @@ def split_check_marker(criterion: str) -> tuple[str, str | None]:
     m = ticket_shape.CHECK_MARKER_RE.search(criterion)
     return criterion[: m.start()].rstrip(), command
 
-
 def run_check(command: str, checkout: str) -> subprocess.CompletedProcess:
-    """Run one criterion's marker `command` with `checkout` as its cwd — never this
-    process's own tree (module docstring)."""
     return subprocess.run(command, shell=True, cwd=checkout, capture_output=True, text=True)
 
-
 def count_commits(range_spec: str, checkout: str) -> tuple[int | None, str]:
-    """The commits `range_spec` spans, counted in `checkout` — `(count, "")`, or `(None,
-    reason)` when git could not count them.
-
-    `--` terminates the revision arguments so a range that happens to name a path in the
-    checkout is still read as a range, which is the only thing this asks. Argument list, never
-    a shell: `range_spec` is argv the caller typed, and `run_check`'s `shell=True` is a
-    deliberate exception for author-written marker commands, not a house style.
-
-    Not a `git log`, a `git diff`, or a read of the merge: counting revisions is the cheapest
-    question that distinguishes "this ticket carried nothing" from "nobody looked", and it is
-    the whole of what the `No diff.` branch needs to know."""
     result = subprocess.run(
         ["git", "rev-list", "--count", range_spec, "--"],
         cwd=checkout, capture_output=True, text=True,
@@ -524,21 +343,7 @@ def count_commits(range_spec: str, checkout: str) -> tuple[int | None, str]:
     except ValueError:
         return None, f"git printed {result.stdout.strip()!r}, which is not a count"
 
-
 def quote_evidence(output: str) -> list[str]:
-    """`output` as record lines that can never be miscounted as a criterion's bullet.
-
-    `hooks/close-gate.py`'s `BULLET_RE` is `^[ \\t]*-\\s+` run over the raw record text — it
-    counts bullets before any markdown is rendered, so indenting a fence hides nothing: a `- `
-    the check printed still starts its line, and the gate would then see more bullets than the
-    body has criteria and deny the close. Only a non-whitespace first character keeps that from
-    happening, so every line is prefixed `> `. The fence inside the quote is what keeps the
-    output monospaced and its leading whitespace intact, and it is one backtick longer than the
-    longest run in the output so a check that prints a fence of its own cannot end this one
-    early.
-
-    Trimmed to `EVIDENCE_MAX_CHARS`/`EVIDENCE_MAX_LINES`: the record is evidence that the check
-    read a real world, not a transcript of everything it read."""
     text = output.strip()
     if len(text) > EVIDENCE_MAX_CHARS:
         text = text[:EVIDENCE_MAX_CHARS].rstrip() + " […]"
@@ -549,30 +354,10 @@ def quote_evidence(output: str) -> list[str]:
     fence = "`" * max(3, longest + 1)
     return [f"> {fence}", *(f"> {line}".rstrip() for line in lines), f"> {fence}"]
 
-
 def render_record(range_spec: str, blocks: list[str] | None,
                    checkout: str, spec: bool = False,
                    closing_pr: dict | None = None, verify: str | None = None,
                    ) -> tuple[str | None, bool]:
-    """Returns `(record_text, ok)`. `ok` is False the moment a criterion's check exits
-    non-zero — `record_text` is then `None`, and the failing criterion plus the command's
-    combined output have already gone to stderr. The caller must not post or close in that
-    case (module docstring).
-
-    `spec` is the `--spec` verdict: a criterion is `MET` only when its check exits 0 *and*
-    prints something, and the `MET` bullet then carries that output. A silent exit 0 refuses
-    down the same path a non-zero exit does. Ticket mode (`spec=False`) accepts a silent exit 0,
-    which is what `grep -q` and `test -f` have always been — see the module docstring for why
-    the two modes read the same exit status differently.
-
-    `closing_pr` and `verify` are what the record's own claim rests on (#306): the closing pull
-    request (`fetch_closing_pr`'s result — `number`, `url`, `merge_sha`) and Verify's conclusion
-    on it (`fetch_verify_verdict`'s `"passed"`/`"failed"`/`"unjudged"`). Both are the *caller's*
-    job to fetch, never this function's — `render_record` stays a pure function of what it is
-    handed, the same split `run()` already keeps for `blocks`, so a test drives it without paying
-    for a `gh` round trip. `closing_pr=None` (a ticket closed with no merged PR found — by hand,
-    or a spec, which is never closed by a PR of its own) renders no extra line at all; the record
-    then reads exactly as it did before this parameter existed."""
     if blocks is None:
         count, reason = count_commits(range_spec, checkout)
         if count is None:
@@ -669,43 +454,12 @@ def render_record(range_spec: str, blocks: list[str] | None,
     body = "\n".join([*header, "", summary, "", *lines])
     return f"## Closing record\n\n{body}\n", True
 
-
 def render_closing_pr_line(closing_pr: dict, verify: str | None) -> str:
-    """The one extra line `render_record` adds when it was handed a `closing_pr` (#306): the
-    pull request that closed this ticket, its merge SHA, and Verify's conclusion on it — every
-    one of them `run()` read itself rather than accepted from a caller.
-
-    Never a bullet: `hooks/close-gate.py`'s `BULLET_RE` counts every `^[ \\t]*- ` line and
-    denies a close whose bullet count disagrees with the body's criterion count, so this starts
-    with a non-`-` character on its own line, the same discipline `quote_evidence` already keeps.
-    Never the range line either — `RANGE_LINE_RE` is anchored to a whole line reading
-    `revspec..revspec`, and a merge SHA has no `..` in it to collide with that pattern by
-    accident, but this still sits on a line of its own so nothing has to reason about it.
-
-    `verify` renders `unjudged` rather than being omitted when it is `None` or `"unjudged"` — the
-    silence itself is the fact worth recording (ADR-0054's reading, applied to this record):
-    a closing record that goes quiet about Verify reads as "nobody looked", never as "nothing to
-    say"."""
     sha = closing_pr.get("merge_sha") or "unknown"
     return f"Closed by #{closing_pr['number']} · merge `{sha}` · Verify: {verify or 'unjudged'}"
 
-
 def render_superseded_record(successor: int, blocks: list[str] | None,
                               dispositions: list[tuple[str, str]]) -> tuple[str | None, str | None]:
-    """Returns `(record_text, error)`. `error` is `None`, and `record_text` is the rendered
-    `## Closing record`, only when `dispositions` — the `--moved`/`--dropped` reasons supplied
-    at the invocation, in the order they were given — has exactly one entry per criterion in
-    `blocks`. Otherwise `record_text` is `None` and `error` names the mismatch; the caller must
-    not post or close in that case, matching `render_record`'s all-or-nothing contract.
-
-    Each bullet pairs one of `blocks` with one of `dispositions`, in order — the body's own
-    criteria order, since `--moved`/`--dropped` are meant to be typed in that same order — and
-    is rendered `- <reference> — MOVED: <where>` or `- <reference> — DROPPED: <why>`, the exact
-    slot and em dash `hooks/close-gate.py`'s (dead-pending-#168) `DISPOSITION_RE` matches. The
-    line above the bullets is `Superseded by #<successor>`, alone on its own line — the slot the
-    range line occupies elsewhere, and the shape `SUPERSEDED_LINE_RE` matches. `blocks is None`
-    (no `## Acceptance criteria` heading at all) needs zero dispositions and renders no bullets,
-    the same "declares no criteria" shape `close-gate.py`'s `evaluate_record` already excuses."""
     required = len(blocks) if blocks is not None else 0
     if len(dispositions) != required:
         return None, (
@@ -722,20 +476,11 @@ def render_superseded_record(successor: int, blocks: list[str] | None,
         lines += ["", *bullets]
     return "## Closing record\n\n" + "\n".join(lines) + "\n", None
 
-
 class DispositionAction(argparse.Action):
-    """Appends `(kind, value)` to the shared `dispositions` list, `kind` being `MOVED` or
-    `DROPPED` depending on which of the two flags fired. Both `--moved` and `--dropped` are
-    registered against this one action with the same `dest`, so whichever order they're typed
-    on the command line is the order this list ends up in — argparse invokes an action the
-    moment it consumes that flag's argument, in argv order, regardless of flag identity — which
-    is what lets `render_superseded_record` zip this list against the body's own criteria order
-    without a second, separate ordering scheme."""
 
     def __call__(self, parser, namespace, values, option_string=None):
         kind = "MOVED" if option_string == "--moved" else "DROPPED"
         getattr(namespace, self.dest).append((kind, values))
-
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="close-ticket", description=__doc__,
@@ -766,24 +511,14 @@ def parse_args(argv):
     )
     return parser.parse_args(argv)
 
-
 ROW: dict = {}
 
-
 def main(argv=None) -> int:
-    """`run()` plus its run row (#182): one per invocation, verdict `closed` or `refused`,
-    carrying the issue, the criterion count and how many of them a check actually verified.
-
-    A wrapper rather than a call at each `return 1` because there are nine of them and a
-    gate whose record depends on nobody forgetting one is the shape this ticket exists to
-    end. `ROW` is filled in as `run()` learns each field, so a refusal still records
-    everything known before it refused."""
     ROW.clear()
     code = run(argv)
     if run_log is not None:
         run_log.append_log("closed" if code == 0 else "refused", **ROW)
     return code
-
 
 def run(argv=None) -> int:
     args = parse_args(argv)
@@ -849,15 +584,8 @@ def run(argv=None) -> int:
     else:
         closing_pr = None
         verify = None
-        # Nothing below this line runs for a `No diff.` close (`blocks is None`): that record
-        # carries no extra line either way (`render_record`), so there is nothing here worth a
-        # `gh repo view` and a GraphQL round trip — the stub-driven "No diff." tests pin the exact
-        # call sequence such a close makes, and this would only add calls to it for no reason.
         if blocks is not None:
             if args.spec:
-                # Before `render_record`, which is where check commands actually run — the whole
-                # point of the precondition is that a spec whose slices have not landed never
-                # spends a run on a verdict that could not have been green.
                 try:
                     name_with_owner = fetch_repo_name(gh)
                     children = fetch_sub_issues(gh_path, name_with_owner, args.issue)
@@ -877,12 +605,6 @@ def run(argv=None) -> int:
                         print(f"  {problem}", file=sys.stderr)
                     return 1
 
-            # Read, never accepted from a caller (#306): the closing pull request, its merge SHA,
-            # and Verify's conclusion on it, all discovered from `args.issue` itself. Swallowed on
-            # failure rather than refusing the whole close — a `gh` hiccup reading the *evidence
-            # for* a close must not become a reason the close, already earned by the checks
-            # below, cannot post at all; `closing_pr=None` is exactly the "no PR known" shape
-            # `render_record` already renders nothing extra for.
             try:
                 name_with_owner = fetch_repo_name(gh)
                 closing_pr = fetch_closing_pr(gh_path, name_with_owner, args.issue)
@@ -897,11 +619,6 @@ def run(argv=None) -> int:
         if not ok:
             return 1
 
-    # Counted off the record rather than threaded out of `render_record`: the record is
-    # what actually gets posted, so counting it is counting what was claimed. Anchored to the
-    # start of a line (`MET_BULLET_RE`) rather than matched anywhere in the text, because a
-    # spec's record now also carries what its check printed, and a check is free to print
-    # anything.
     ROW["verified"] = len(MET_BULLET_RE.findall(record_text))
 
     try:
@@ -914,7 +631,6 @@ def run(argv=None) -> int:
 
     sys.stdout.write(record_text)
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

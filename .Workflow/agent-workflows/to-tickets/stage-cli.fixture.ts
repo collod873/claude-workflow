@@ -23,8 +23,6 @@ function spawnStage(stage: string, answer: StubAnswer, priorCheckpoint?: { stage
 }
 
 /**
- * Runs the stage and expects it to exit 0 — a nonzero exit throws, as `execFileSync` does.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function runStageCli(
@@ -38,9 +36,6 @@ export function runStageCli(
 }
 
 /**
- * Runs the stage, asserts it exits nonzero, and hands back the failure reason it wrote to the
- * handoff — the thing every refusal test is about.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function stageCliFailure(

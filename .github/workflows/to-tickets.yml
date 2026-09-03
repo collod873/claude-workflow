@@ -82,8 +82,6 @@ jobs:
           set -euo pipefail
           owner="${GH_REPO%%/*}"
           repo="${GH_REPO##*/}"
-          # The single quotes are the point: $owner, $repo and $num are GraphQL variables bound by
-          # the -f/-F flags below, and a shell that expanded them would send an empty query.
           # shellcheck disable=SC2016
           parent_number=$(gh api graphql -f query='
             query($owner: String!, $repo: String!, $num: Int!) {
@@ -162,9 +160,6 @@ jobs:
             reason=$(cat "$FAILURE_REASON_PATH")
           fi
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # The reason names a runner-local path, which is gone by the time anyone reads this
-          # comment. Point at the checkpoints artifact instead — uploaded with if: always() just
-          # above, so it is the one address that outlives the job on every failure.
           evidence="\n**Checkpoints:** the \`checkpoints-to-tickets-${PRD_NUMBER}\` artifact on that run.\n"
           body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$PRD_NUMBER" --body "$body"

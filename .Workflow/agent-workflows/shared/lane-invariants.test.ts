@@ -43,13 +43,6 @@ const workflows = readWorkflows<Workflow>().map(({ name, workflow, source }) => 
 const sourceFiles = () => [...laneSources(), ...binSources()];
 
 describe("a lane that writes into a target installs that target's dependencies", () => {
-  /**
-   * The ways a lane writes into a target: it regenerates the target's artifacts, lands an answer
-   * into it, or commits and pushes its own repair. The third was missing, and the fixer — which
-   * force-pushes to the target's branch — matched only because a *comment* in a module it imports
-   * happened to name `landAnswer`. Stripping that comment dropped the fixer out of this sweep
-   * silently, so the marker now names the mechanism instead of relying on prose that mentions it.
-   */
   const WRITES_TARGET = /regenerateArtifacts|landAnswer|commitAndPushAttempt/;
 
   function textOf(path: string): string | undefined {

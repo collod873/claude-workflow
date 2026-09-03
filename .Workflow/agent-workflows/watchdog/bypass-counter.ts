@@ -27,7 +27,6 @@ const JobsResponse = z.object({
   ),
 });
 
-
 export const RUN_PAGE_SIZE = 100;
 
 export const MAX_JOB_READS = 60;

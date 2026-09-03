@@ -3,18 +3,6 @@ import { createFakeGh, simulateClaimRef, type FakeDispatch } from "./gh.fake";
 import { createFakeGit, type FakeGit } from "./git.fake";
 
 /**
- * GitHub as the claim primitive sees it (`./implementation-landing.ts`, #179/#196): the set of refs
- * that exist — so `POST git/refs` 422s on one already there and succeeds once it is deleted — plus
- * what GitHub reports about a claim a run found standing: how many pull requests name it, how many
- * commits it carries, when it was created. Those three are exactly what `assessClaim` reads to tell
- * a live run from a dead one's debris, so a takeover test is only about anything if they are
- * modelled honestly.
- *
- * The ticket read, the comment, the escalation and the pull request are answered here too, because
- * every path through `runImplement`, `runRecover` and `landAnswer` makes them. Anything one case
- * models beyond that is `answer`, asked first; whatever nobody answers falls through to
- * `createFakeGh`, which records a dispatch and refuses everything else out loud.
- *
  * @fixture Reached only from the suites, by design.
  */
 export interface ExistingClaim {

@@ -167,7 +167,6 @@ const FindingIssueSchema = z.object({
   createdAt: z.string(),
 });
 
-
 function readFindingIssues(gh: GhExec): FindingIssue[] {
   const raw = gh([
     "issue",

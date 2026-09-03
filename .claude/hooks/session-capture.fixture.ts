@@ -13,17 +13,6 @@ import {
 } from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
 
 /**
- * Everything `session-capture.proc.test.ts` needs to drive `session-capture.sh` as a process: the
- * spawn, the scratch directories it is pointed at, the pollers that wait on its *detached* child,
- * and the git/gh doubles the publish and flush halves talk to.
- *
- * The one thing this file owns that the shared fixtures do not is the wait. The hook hands off to
- * a detached child that keeps writing after `spawnSync` returns, so a scratch directory removed
- * the moment a test finishes races a live writer and loses whenever the write lands inside
- * `rmSync`'s readdir-then-rmdir window — the `ENOTEMPTY` #129 reported. `runHook` therefore
- * registers a settle step with `onTestFinished`, which vitest runs in reverse registration order:
- * the settle fires before any directory created ahead of the spawn is removed.
- *
  * @fixture Reached only from the suite, by design.
  */
 

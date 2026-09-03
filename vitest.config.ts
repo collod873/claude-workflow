@@ -1,47 +1,7 @@
 import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 
-// Runner boxes here are shared with sibling worktrees during a drain batch —
-// an unbounded worker pool starves them (see the runner-load finding cited in
-// docs/adr/0002-work-executes-on-github-hosted-runners-never-on-the-workstat.md).
-// Capping the pool keeps one `vitest run` from claiming every core.
-// The cap is *half the cores this box actually has*, not the 4 it was tuned to on the workstation.
-// Four is more workers than a two-core private runner has cores, so the suite there ran two deep
-// on every core while typecheck, lint and eight more push checks ran beside it — the contention
 // that manufactured Lumaria's `booking-embed-panel` and `eslint-boundaries` failures out of
-// nothing and printed a 483620ms Verify (#333, #335). Half rather than all, because the sibling
-// worktrees are the other half of the argument above, and `bin/gauntlet` is what keeps the
-// gauntlet's own checks from being that sibling: with fewer cores than checks it starts the test
-// slot after the cheap ones instead of beside them.
-// Ten of this repo's test files drive their subject as a real process — a hook, a CLI, a `git`
-// invocation — because that is the only honest way to test a thing whose contract IS its exit
-// code and its log file. Process spawns are where a shared runner is slowest: `backfill.proc.test.ts`
-// runs in 0.8s on the workstation and 10.1s on a two-core hosted runner, and vitest's 5s default
-// made that difference the test's verdict. A timeout sized for the fastest venue is a gate that
-// goes red for environment reasons, which is how a repo learns to ignore its gates —
-// see docs/adr/0015-a-test-s-timeout-is-sized-for-the-slowest-venue-it-runs-in-n.md.
-// `setupFiles` runs inside each worker, which is the only place the scrub can go: a fixture that
-// spawns `git` with the default inherited environment reads the *worker's* `process.env`, not
-// this config's. It is listed here rather than imported per test file because the tests that need
-// it are the ones nobody has written yet — see the file's own comment and #86.
-// `isolate-checkpoints.setup.ts` is here for the second half of that argument. It was written as a
-// `setupFiles` entry, never wired into one, and was stood in for by eighteen test files each
-// importing its helper and calling it in their own `beforeEach` — until `ratify/ratifier.test.ts`
-// did not, and one of its tests read the checkpoint the next test in the file had written on the
-// previous run (#299). A convention eighteen files remember is not a mechanism; a `setupFiles`
-// entry covers the nineteenth file too. See ADR-0125 and the file's own comment.
-// `include` names exactly the two trees the suite collects, and nothing else can widen it: a
-// positional argument to the runner is a *filter over* `include`, never an addition to it, so a
-// test written anywhere else reports "no test files found" as a clean run (#188). That is why
-// `shared/affected-tests.ts`'s `SUITE_ROOTS` spells the same two trees, and why the acceptance
-// author refuses a path outside them. Since #360 an acceptance test lives *beside its subject*
-// in one of these trees, marked `test.fails` — green until the ticket it names is built, red the
-// moment it is, which is how the implementer knows to drop `.fails` — so the suite is green on
-// `main` at every commit and no directory of expected-red tests exists to be excluded or restored.
-// `.claude/worktrees/` is excluded because `.claude/**` is included: an agent session working in a
-// worktree puts a whole second checkout under that path, and the suite ran every test in it —
-// three worktrees, three extra copies of every test, and `gauntlet-test-slot.test.ts` red on
-// files that were never this tree's.
 export default defineConfig({
   test: {
     include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],

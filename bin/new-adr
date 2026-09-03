@@ -1,28 +1,7 @@
 #!/usr/bin/env bash
-# Create an ADR as an unnumbered draft, and claim its number when it lands.
-#
-# Numbering is derived, never typed — and it is derived at the **land**, not at the draft
-# (ADR-0080). Two authors write into `docs/adr/` now, the owner's checkout and a runner, and
-# neither can see the other's uncommitted work. A number claimed when the file is created is a
-# number claimed against a corpus the other author is already past; a number claimed at the land,
-# against a freshly fetched `origin/main`, is claimed against the record both authors share.
-#
-#   bin/new-adr "the ruling as a sentence"        → docs/adr/draft-<slug>.md
-#   bin/new-adr --amends NNNN "the ruling"        → the same, carrying the `amends:` key
-#   bin/new-adr --land docs/adr/draft-<slug>.md   → docs/adr/NNNN-<slug>.md, number claimed here
-#
-# A draft carries no number, so it is invisible to everything that reads the corpus by filename
-# shape (`missing-trailer-counter.ts`). That is what lets a
-# half-written ruling sit in a working tree without holding the gauntlet red — which was the
-# other half of #146, and it falls out of this rule rather than needing one of its own.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# `TARGET_WORKSPACE` is the same seam `bin/gauntlet` reads (ADR-0139): the machine checkout this
-# script's own location resolves to (`repo_root`, above) is where its tooling lives, and once a
-# caller splits the two checkouts, `docs/adr/` and the
-# git remote a land fetches from are the *target's*, never the machine's. Falling back to
-# `repo_root` is what keeps this working exactly as before wherever the two are the same checkout.
 target_root="${TARGET_WORKSPACE:-$repo_root}"
 adr_dir="$target_root/docs/adr"
 
@@ -40,17 +19,6 @@ usage() {
   echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
 }
 
-# --- land ---------------------------------------------------------------------------------------
-#
-# The number is the highest already taken on either side of the two-author split, plus one: the
-# local disk, and `origin/main`. Taking the max of both rather than `origin/main` alone is what
-# keeps a second land in the same session from reusing the number the first one just claimed —
-# that one is on disk and not yet pushed.
-#
-# A tree with no `origin` (a scratch repo, a fresh clone of nothing, the test fixtures) falls back
-# to the disk alone rather than failing. The fetch is a sharpening, not a precondition: without it
-# this is exactly the old behaviour, which is the right thing to degrade to.
-
 highest_on_disk() {
   find "$adr_dir" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null \
     | cut -c1-4 | sort -n | tail -1
@@ -59,11 +27,6 @@ highest_on_disk() {
 highest_on_origin() {
   git -C "$target_root" rev-parse --git-dir >/dev/null 2>&1 || return 0
   git -C "$target_root" fetch --quiet origin main 2>/dev/null || true
-  # `|| true`: a real repo with no `origin/main` at all (no remote, or one with no `docs/adr/`
-  # entries yet) makes `grep` find nothing and exit 1, and under `pipefail` that reddens the whole
-  # pipeline even though "nothing found" is this function's ordinary, documented degradation —
-  # a caller with no `.git` short-circuits above, but one *with* a `.git` and no matching history
-  # still has to reach here and come back empty rather than aborting the script under `set -e`.
   git -C "$target_root" ls-tree --name-only FETCH_HEAD -- docs/adr/ 2>/dev/null \
     | sed -E 's#.*/##' | grep -E '^[0-9]{4}-.*\.md$' 2>/dev/null \
     | cut -c1-4 | sort -n | tail -1 || true
@@ -94,44 +57,23 @@ land() {
   landed="$adr_dir/$next-$slug.md"
   [ -e "$landed" ] && { echo "already exists: $landed" >&2; exit 1; }
 
-  # `git mv` when the draft is already tracked, so the rename lands as a rename rather than as a
-  # delete and an add. An untracked draft — the ordinary case, since a draft is what you hold
-  # before you commit anything — is a plain `mv`.
   if git -C "$target_root" ls-files --error-unmatch "$draft" >/dev/null 2>&1; then
     git -C "$target_root" mv "$draft" "$landed"
   else
     mv "$draft" "$landed"
   fi
 
-  # `docs/adr/INDEX.md` is generated from this directory, and a land is the moment its table grew
-  # a row. Regenerating here is what stops the land from being a two-step nobody remembers the
-  # second half of (#356) — without it the author's own `npm run check` is red on a file the tool
-  # they just ran is what invalidated, which is how ADR-0147 landed. A skip rather than a failure,
-  # and the asymmetry with `bin/gauntlet` is deliberate: the gauntlet fails closed because it is a
-  # gate, and this is not one — a land that refused to rename because it could not also regenerate
-  # would leave the draft unlanded over a thing the push venue is about to catch anyway.
-  #
-  # The generator is the machine-global `~/bin/adr-check`, run rather than reimplemented: ADR-0097
-  # keeps machine-global machinery out of a consumer repository, and a second renderer here would be
-  # diffed byte-for-byte against the first by the very check it exists to satisfy. It finds its
-  # corpus from `cwd`, which is why this runs from `target_root` rather than from wherever the
-  # author invoked it.
   local adr_check="${HOME:-}/bin/adr-check"
   if [ ! -f "$adr_dir/INDEX.md" ]; then
     : # No index in the target to keep current — an enrolled repository that never adopted one.
   elif [ ! -x "$adr_check" ]; then
     echo "new-adr: no adr-check on this machine — docs/adr/INDEX.md not regenerated, and bin/gauntlet push will refuse this" >&2
   else
-    # `--fix` writes the index before it reports anything else, and what it reports — an ADR's
-    # shape, a dead citation — is the author's business at the push venue, not a reason to fail a
-    # rename that has already happened.
     ( cd "$target_root" && "$adr_check" --fix >/dev/null ) || true
   fi
 
   echo "$landed"
 }
-
-# --- argv ---------------------------------------------------------------------------------------
 
 if [ "${1:-}" = "--land" ]; then
   land "${2:-}"
@@ -159,17 +101,6 @@ mkdir -p "$adr_dir"
 file="$adr_dir/draft-$(slugify "$title").md"
 [ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
 
-# The draft opens in the grammar the corpus is actually read in — frontmatter, not the prose the
-# body used to carry. `Recorded YYYY-MM-DD.`, `Status:` and `Amends:` are all retired, and
-# `shared/trailer-form.ts` refuses a landed ADR still written that way, so a template emitting them
-# handed every author a file its own push venue would reject. The three keys `adr_shape.py`
-# requires are the three written here.
-#
-# `reversal:` is deliberately left empty. `docs/adr/README.md` says to write it first — it is the
-# admission test, not a field — and `adr_shape.validate` refuses an empty one. A draft is invisible
-# to both (they read `NNNN-*.md` only), so the refusal arrives at the land, which is the moment the
-# ruling either binds or does not. Seeding a plausible sentence here would answer the one question
-# the author is supposed to answer.
 if [ -n "$amends" ]; then
   amends_num=$(printf '%04d' "$((10#$amends))")
   cat > "$file" <<EOF
@@ -198,11 +129,4 @@ fi
 
 echo "$file"
 
-# The editor is for a human at a keyboard, so the condition is whether there is one — not whether
-# `EDITOR` happens to be set. A hosted runner sets `EDITOR=vi` in its default environment, so the
-# older `-n "$EDITOR"` form `exec`ed vi against no terminal and blocked until the job's timeout
-# killed it, which is how the accept lane spent ten minutes filing its first ADR and then died
-# cancelled rather than failed. #122 hit the same line from the test suite and was answered by
-# stripping `EDITOR`/`VISUAL` in that caller; a guard every caller has to remember is the obligation
-# this repo refuses to build, so the check lives here where one condition covers all of them.
 if [ -t 1 ] && [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi

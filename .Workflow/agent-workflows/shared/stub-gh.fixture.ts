@@ -4,15 +4,6 @@ import { join } from "node:path";
 import { onTestFinished } from "vitest";
 
 /**
- * The `gh` double this repo's two close-path suites drive their subject against.
- *
- * `.claude/hooks/close-gate.test.ts` and `shared/close-ticket.test.ts` both spawn a real process
- * — a hook, a CLI — whose only route to the tracker is `bin/gh_support.py`'s `AGENT_SKILLS_GH`
- * override. Each grew its own stub, and the clone gate found them: the same temp dir, the same
- * `printf` script, the same teardown, written twice. Two stubs are also two answers to "what does
- * `gh` do here", and the interesting half — *which calls were never made* — existed in only one
- * of them.
- *
  * @fixture Reached only from the suites, by design. `knip.config.ts` asks whether a lane reaches
  * an export, and no lane may: a stub `gh` on a lane's path would be a lane that never talked to
  * the tracker.

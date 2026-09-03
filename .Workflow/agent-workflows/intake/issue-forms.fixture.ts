@@ -4,11 +4,6 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
 /**
- * The two repo-rooted reads `intake.test.ts` makes, owned here the way `shared/read-workflow.ts`
- * owns the workflow directory's: the issue forms under `.github/ISSUE_TEMPLATE/`, and the walk over
- * every file that could plausibly hold a `gh` call or an API write. The test asserts on what comes
- * back and never touches the filesystem itself.
- *
  * @fixture Reached only from the suite, by design.
  */
 

@@ -10,16 +10,6 @@ import {
 } from "./integrate";
 
 /**
- * The world lane 08's tests run in: one pull request, one trunk tip, and lane 06's run history as
- * the Actions API reports it. `integrateHarness` builds the `IntegrateDeps` for one scripted case
- * and hands back every recording the assertions read.
- *
- * The `gh` here is a local handler for this lane's own calls — `pr view`, the run history and job
- * reads the verdict comes off, `pr merge`, the comments a refusal leaves — composed in front of
- * `createFakeGh`, which records the `graph-changed` doorbell as a `FakeDispatch` and throws on
- * anything neither side models. The Actions endpoints are recognised through `gh-paths.ts`'s own
- * matchers, so this cannot answer a path different from the one `integrate.ts` sends.
- *
  * @fixture Reached only from this lane's tests, by design.
  */
 

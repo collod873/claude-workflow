@@ -1,27 +1,5 @@
 #!/usr/bin/env node
-// Generates no-op stub workflows for `bin/canary-graph`, one per lane.
-//
-// Each stub carries the REAL `on:` trigger block (copied verbatim from this machine's own
-// `*-caller.yml` / `enrol.yml` / `walk-home.yml`) so the thing under test — repository_dispatch
-// types, workflow_run display names, paths-ignore, the trigger table — is exactly what ships.
-// The job body is replaced: log arrival, then fire the same forward action(s) the real lane's
-// own code sends (dispatch event_type / label add), read off the real .ts source, guarded
-// against the cycles the real graph actually has (Recover -> Implement -> Verify -> Fixer ->
-// Verify ...) with a `path` breadcrumb carried on repository_dispatch payloads and a marker
-// label on issue-label hops, so one pass proves the wiring without looping.
-//
-// workflow_run hops (Verify -> Review / Bypass counter / Fixer; Implement -> Recover) need no
-// stub action at all: GitHub fires them off the *name* of a completed run, whatever that run did.
-//
-// Keep this in sync by hand when a lane's `on:` block or forward action changes shape — nothing
-// generates *this* file from the source of truth, so a drifted copy here proves nothing about
-// the graph it claims to mirror. The `on:` blocks are held to their sources by
-// `.Workflow/agent-workflows/shared/canary-graph-triggers.proc.test.ts`; the forward actions below are
-// still on the reader. `bin/canary-graph` is the reason this exists at all
-// (ADR-0146 established the single-lane canary; this proves the graph those lanes form).
-//
 // @shell `bin/canary-graph` runs this as `node "$HERE/canary-graph-gen.mjs" "$OUT"`. Nothing
-// imports it, so that subprocess is the only edge reaching it and no static analysis sees it.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +8,6 @@ const outDir = process.argv[2];
 if (!outDir) { console.error("usage: canary-graph-gen.mjs <outDir>"); process.exit(2); }
 mkdirSync(join(outDir, ".github/workflows"), { recursive: true });
 
-// ---------------------------------------------------------------------- trigger blocks (verbatim)
 const triggers = {
   verify: `  push:
     branches: [main]
@@ -119,36 +96,18 @@ const triggers = {
   workflow_dispatch:`,
 };
 
-// ---------------------------------------------------------------------- forward actions
-// Each entry: shell lines run AFTER the cycle guard has computed NEW_PATH (dispatch hops) or
-// after the label-presence guard (label hops). Left empty for a lane with no forward action this
-// pass is testing (workflow_run consumers, or a lane whose own forward isn't part of the
-// dispatch/workflow_run/push backbone this run proves).
 const dispatchForward = {
-  // Verify's own redundant door to the Fixer (verify.yml's `signal-fixer` job) — the door
-  // ADR-0146's predecessor ADRs exist because `workflow_run` alone kept ghosting.
   verify: [`dispatch fixer-needed`],
-  // implement.ts's openPrAndDispatch (VERIFY_DISPATCH_EVENT_TYPE = implementation-opened).
   implement: [`dispatch implementation-opened`],
-  // fixer.ts's dispatchVerify — retries the pull request (cycle: guarded, Verify already in path).
   fixer: [`dispatch implementation-opened`],
-  // recover.ts's redispatchImplement (IMPLEMENT_DISPATCH_EVENT_TYPE = ticket-ready).
   recover: [`dispatch ticket-ready`],
-  // integrate.ts's announceGraphChanged (GRAPH_CHANGED_DISPATCH_ACTION).
   integrate: [`dispatch graph-changed`],
-  // dispatch/reconcile.ts's recompute — fires ticket-ready for whatever the ready set names.
   "dispatch-reconcile": [`dispatch ticket-ready`],
-  // spec/open-questions.ts (SPEC_DISPATCH_EVENT_TYPE = prd-sliceable), only on the `to-spec` hop.
   spec: [`dispatch prd-sliceable`],
-  // to-tickets/slice-and-publish.ts dispatches ticket-ready for every root slice at publish time.
   "to-tickets": [`dispatch ticket-ready`],
-  // ratify/land.ts's dispatchVerify, sent when a ratifier's fix lands.
   "ratify-release": [`dispatch implementation-opened`],
 };
 
-// Label hops: Shape -> Shape-accept -> Spec, off the same issue, each guarded by a marker label
-// so the ANY-label triggers (`shape-accept.yml`, `spec.yml` carry no label filter of their own —
-// each reads which label arrived from the event) fire once per hop instead of looping.
 const labelForward = {
   shape: { guard: "graph-noop:shaped", add: null },
   "shape-accept": { guard: "graph-noop:accepted", add: "to-spec" },
@@ -163,15 +122,8 @@ function jobPermissions(id) {
   return perms.map((p) => `      ${p}`).join("\n");
 }
 
-// Lanes with a `workflow_run` door alongside a dispatch-forwarding one (Fixer off "Verify",
-// Recover off "Implement"): that door carries no `client_payload` at all, so the path-based cycle
-// guard below has nothing to see through it, and every completion of the workflow it watches
-// starts the guard fresh. Real production doesn't forward off that door either — it's a passive
-// reader ("did the run I'm watching go red"), the retry is a deliberate, conditional act gated on
-// what it read. So the stub matches that shape: only the lane's own explicit dispatch door
-// forwards; the workflow_run door only logs that it fired.
 const hasWorkflowRunDoor = new Set(["fixer", "recover"]);
-const MAX_HOPS = 12; // belt-and-suspenders cap, independent of the event-name gate above.
+const MAX_HOPS = 12;
 
 function dispatchStep(id, displayName) {
   const forwards = dispatchForward[id];
@@ -249,13 +201,9 @@ ${addLines}
 `;
 }
 
-// Both lanes carry an `issues: labeled` door with no label filter of its own in the `on:` block
-// (matching production), so the job body applies the same filter production applies once it
-// reads which label actually arrived — otherwise every marker label the Shape chain adds refires
-// them for no reason.
 const issueLabelFilter = {
-  spec: "to-spec", // spec.ts: SPEC_TRIGGER must be to-spec or critique
-  "dispatch-reconcile": "to-build", // docs/agents/pipeline-labels.md: to-build -> dispatch-reconcile-caller.yml
+  spec: "to-spec",
+  "dispatch-reconcile": "to-build",
 };
 
 function specFilterGuard(id) {

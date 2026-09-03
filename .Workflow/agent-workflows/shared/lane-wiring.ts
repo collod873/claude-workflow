@@ -7,22 +7,6 @@ import { ACCEPTANCE_WANTED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION, TICKE
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 
 /**
- * How the estate is wired, as data: one row per lane, declaring what its reusable workflow and its
- * `*-caller.yml` stub say — the caller's doors, the action its job gates on, the entrypoint it
- * runs, the checkout shape, the token it holds, its `workflow_call` inputs, its concurrency group,
- * the environment it sets, and the odd clauses a lane is known for. `lane-wiring.test.ts` reads
- * every row back against the YAML.
- *
- * Until #360 these facts lived in twenty-odd files, one per lane, each spelling the same
- * assertions in its own words — and a wire name changed on one side passed both sides' tests,
- * because each read only its own (#145, #107). A table is read whole: a reader learns the estate
- * from one page, and a fact the YAML no longer supports fails against the row that claims it.
- *
- * The wire constants come from the modules that declare them, never retyped. `shared/` may not
- * import a lane (docs/agents/module-boundaries.md, rule 2), so the names a lane owns are spelled
- * once in `LANE_OWNED` below, and the test — which may cross that boundary — holds each to the
- * lane's own export.
- *
  * @fixture Reached only from the suite, by design — this is the estate's description, not code any
  * lane runs.
  */

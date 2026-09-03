@@ -1,22 +1,4 @@
 #!/bin/bash
-# The gauntlet: one runner for the three local venues (ADR-0010), reading what to run out of
-# `.claude/contract.json` (ADR-0056) and running the venue's slots concurrently. A non-zero slot is
-# red; there is no other verdict, and no venue refuses on a duration (ADR-0148).
-#
-#   bin/gauntlet turn <file>   typecheck, lint_one and test_related on that file
-#   bin/gauntlet stop          typecheck, lint_one and test_related on the files changed since HEAD
-#   bin/gauntlet push          typecheck, lint, test, clones — once each, fail closed
-#
-# Absolute interpreter, not `/usr/bin/env bash`: git hooks and Claude Code hooks run this in a shell
-# with no login PATH, and `env` resolves `bash` through the PATH those shells may not have.
-#
-# Two roots (ADR-0139): `repo_root` is this checkout, where the runner lives; `target_root` is the
-# tree being checked — this repo by default, or an enrolled repository's checkout when a reusable
-# lane sets `TARGET_WORKSPACE`. The contract is the target's, and every slot runs inside the target
-# with the gauntlet's own variables unset, so a slot that spawns another gauntlet starts clean.
-#
-# A slot the contract does not carry, or carries as `cmd: null`, is skipped: a lane may shrink the
-# gate for its own repository and never grow it (#360).
 
 set -uo pipefail
 
@@ -41,11 +23,8 @@ if ! node_on_path; then
   exit 1
 fi
 
-# `GAUNTLET_CONTRACT` points a test at a contract of stub commands; nothing in production sets it.
 contract="${GAUNTLET_CONTRACT:-$target_root/.claude/contract.json}"
 
-# The files the narrow slots take. `turn` is handed one; `stop` reads every code file git sees as
-# changed against HEAD — staged, unstaged and untracked — and skips those slots when there is none.
 files=""
 case "$venue" in
   turn) [ -n "${2:-}" ] && files="'${2//\'/\'\\\'\'}'" ;;
@@ -62,8 +41,6 @@ case "$venue" in
   push) slots="typecheck lint test clones" ;;
 esac
 
-# One `node` per run resolves every slot this venue needs: a line per slot, empty when the
-# contract has no runnable command for it. `bin/gauntlet` itself never parses JSON.
 cmds="$(node -e '
   const contract = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
   for (const name of process.argv.slice(2)) console.log((contract[name] && contract[name].cmd) || "");
@@ -93,8 +70,6 @@ for name in $slots; do
 done
 for pid in "${pids[@]}"; do wait "$pid"; done
 
-# Every failing slot's output, then the verdict last: `shared/reason.ts` keeps the tail of this
-# stream for a comment or a log, and the tail has to open with the answer.
 failed=""
 for name in $ran; do
   [ "$(cat "$tmp/$name.exit" 2>/dev/null)" = "0" ] && continue

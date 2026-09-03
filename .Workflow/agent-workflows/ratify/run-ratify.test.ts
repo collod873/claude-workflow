@@ -13,7 +13,6 @@ import { ratifierVerdict } from "./verdict.fixture";
 
 const silent = () => {};
 
-/** A ratification-due run over empty fakes — the shape every scope test varies one field of. */
 async function ratifyDue(overrides: { prdClosed: boolean }) {
   const stage = createFakeStage("");
   const git = createFakeGit(() => "");

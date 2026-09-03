@@ -4,19 +4,11 @@ description: >
   caller before its own authoring step runs) into a patch-series artifact the `land` job in
   acceptance.yml downloads and replays (ADR-0091) — neither authoring job holds a token that can
   push, so the commits it made only survive the run as this artifact.
-#
-# #201 pulled this out of acceptance.yml's `refire` job into its own composite action rather than
-# copy-pasting it into the new `author` job too: `bin/clone-gate` treats a second copy of the same
-# nine-line bundle-and-upload block as the clone it is, and a fix that lets it through would be a
-# baseline entry lying about a duplication that was never load-bearing — `refire` and `author` do
-# genuinely different authoring, but "package whatever commits authoring left behind" is the same
-# operation either way.
 inputs:
   working-directory:
     description: >
       Where the commits since $ACCEPTANCE_BASE actually are. Defaults to the job's own default
       directory — the pre-#315 shape, where the one checkout was both the machine and the target.
-      #315 (ADR-0055) splits the two: `acceptance.yml`'s authoring steps commit into `target/`, and
       this is what lets the bundle step find them there instead of the empty machine checkout.
     required: false
     default: "."

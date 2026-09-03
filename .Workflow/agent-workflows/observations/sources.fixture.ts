@@ -3,10 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The file walk `wired.test.ts`'s export sweep runs over: every `.ts` under the lanes directory,
- * read as text, so the test itself parses ASTs and never touches the filesystem. One place owns
- * the repo-rooted read, the same way `shared/read-workflow.ts` owns the workflow directory's.
- *
  * @fixture Reached only from the suite, by design.
  */
 

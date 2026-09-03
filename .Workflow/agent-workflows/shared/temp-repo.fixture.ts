@@ -7,27 +7,6 @@ import { scratchDir } from "./scratch.fixture.ts";
 const MAX_BUFFER = 10 * 1024 * 1024;
 
 /**
- * A throwaway git repo for one test — the unit every seam that reads real git
- * rather than an argv-recording fake is built from. Removed when the test
- * finishes, pass or fail, so the caller keeps no `afterEach` of its own (see
- * `./scratch.fixture.ts` for why `onTestFinished` rather than `afterEach`).
- *
- * It exists because the same twenty lines had been retyped in four test files
- * by the time the clone gate caught the fourth, each copy trimmed slightly
- * differently — and in eleven by the time the gate lost its baseline (#360).
- * `write` and `commit` are separate so a test can stage several files, a
- * deletion, or nothing at all into one commit — the shape a copy that only
- * took `(path, contents, message)` could not express.
- *
- * `git` is the one door for anything else: it runs in this repo with the
- * location variables (`GIT_DIR` and friends, see `./child-env.ts`) removed
- * from the child's environment, so the repo it touches is this one whatever
- * the worker inherited — the same guarantee `execGit` gives production, which
- * a fixture spelling `execFileSync("git", …)` itself does not get.
- *
- * `main` is named explicitly rather than left to `init.defaultBranch`, so a
- * test that fetches trunk by name does not depend on the runner's git config.
- *
  * @fixture Reached only from the suite, by design.
  */
 export interface TempRepo {
@@ -63,10 +42,6 @@ function setIdentity(dir: string): void {
 }
 
 /**
- * A `TempRepo` over a directory that is already a repository — one a fixture in this file made,
- * handed around as a path. No `git init` and no teardown of its own: those belong to whichever
- * fixture made the directory.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function repoAt(dir: string): TempRepo {
@@ -92,8 +67,6 @@ export function repoAt(dir: string): TempRepo {
 }
 
 /**
- * Creates a `TempRepo`. `prefix` names the temp directory, so a stray one says which test left it.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function makeTempRepo(prefix: string, { origin }: TempRepoOptions = {}): TempRepo {
@@ -105,10 +78,6 @@ export function makeTempRepo(prefix: string, { origin }: TempRepoOptions = {}): 
 }
 
 /**
- * A bare repository standing in for a remote — no working tree, just refs — so a test's push
- * lands somewhere it can be read back from (`noteOnRemote`, or a `cloneRepo` of it) and never
- * on the real `origin`.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function makeBareRepo(prefix: string): string {
@@ -118,10 +87,6 @@ export function makeBareRepo(prefix: string): string {
 }
 
 /**
- * Clones `bareDir` into a fresh `TempRepo` with `origin` pointing back at it, identity configured
- * so the clone can make commits of its own — one side of the two-pusher shape a
- * non-fast-forward race needs.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function cloneRepo(bareDir: string, prefix: string): TempRepo {
@@ -132,10 +97,6 @@ export function cloneRepo(bareDir: string, prefix: string): TempRepo {
 }
 
 /**
- * The note a *fresh* clone of `bareDir` sees for `sha` on `refs/notes/<ref>` — read through a new
- * clone rather than the pusher's own checkout, since what a push test asserts is what reached the
- * remote, not what the local ref says.
- *
  * @fixture Reached only from the suite, by design.
  */
 export function noteOnRemote(bareDir: string, ref: string, sha: string): string {

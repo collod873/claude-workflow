@@ -3,15 +3,6 @@ import { join, relative, resolve } from "node:path";
 import { WORKFLOWS_DIR } from "./read-workflow";
 
 /**
- * The one home for a test's read of this repository's own source files.
- *
- * Several estate-wide sweeps (`lane-invariants`, `lane-identity`, `runner-committer`,
- * `workflow-permissions`) derive their rule from what the lanes *do* — which entrypoint a workflow
- * runs, what that entrypoint reaches, which wire names a module declares — and each one used to
- * carry its own walk over `.Workflow/agent-workflows` and `bin/`. A `*.test.ts` may no longer
- * `readFileSync` a repo-rooted path itself (#360, rule 3): the walk and the read live here, once,
- * and a sweep asks for the files it wants by what they are rather than by where they sit.
- *
  * @fixture Reached only from the suites, by design — no lane reads its own source tree.
  */
 

@@ -6,9 +6,6 @@ import { createIssueGh, type FakeIssueGh } from "./gh.fake";
 import { sourceMarker, type SpecSource } from "./publish";
 
 /**
- * The trackers lane 02's doors read from, each named for the issue it models — composed over
- * `./gh.fake.ts`'s `createIssueGh`, which records every call and answers only `issue view`.
- *
  * @fixture Reached only from the suites, by design. `spec.test.ts` and `publish.test.ts` each
  * carried a hand-rolled `gh` per door, and a fake defined twice drifts (#360).
  */

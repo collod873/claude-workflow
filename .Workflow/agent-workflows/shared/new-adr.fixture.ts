@@ -4,15 +4,6 @@ import { join, resolve } from "node:path";
 import { makeBareRepo, makeTempRepo, type TempRepo } from "./temp-repo.fixture.ts";
 
 /**
- * Scratch trees for the two `bin/` authoring scripts, `bin/new-adr` and `bin/new-research`. Both
- * derive where they write from their own script path (`dirname "${BASH_SOURCE[0]}"/..`), not from
- * `cwd` — so "a scratch `docs/adr`" means a scratch *tree* carrying its own copy of the script,
- * and this file owns the read of the real `bin/` that copy is made from.
- *
- * `bin/node-on-path.sh` rides along with `new-adr` because `--land` sources it. The corpus
- * generator does not: `--land` skips the regeneration when the tree has none, which is what the
- * scratch trees exercise as much as the numbering.
- *
  * @fixture Reached only from `new-adr.proc.test.ts` and `new-research.proc.test.ts`, by design.
  */
 

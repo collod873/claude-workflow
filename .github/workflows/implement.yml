@@ -78,10 +78,6 @@ jobs:
           IMPLEMENT_ANSWER_PATH: ${{ runner.temp }}/implementer-answer.json
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: |
-          # The one place this run's own ticket number is written down for a reader with only the
-          # run log — the same shape verify.yml's `judging $PR on $BRANCH` line and ADR-0104 use.
-          # `recover.yml` reads this back when a run died before the `implementer-answer-<n>`
-          # artifact ever uploaded, which is the only other place the number is recorded.
           echo "implementing #$TICKET_NUMBER"
           npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
 

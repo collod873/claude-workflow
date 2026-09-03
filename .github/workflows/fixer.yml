@@ -50,22 +50,6 @@ jobs:
             exit 0
           fi
 
-          # ## Why a completed run has to be waited for
-          #
-          # The dispatch door is rung from *inside* the run it names: `verify.yml`'s `Signal the
-          # fixer` job is the last job of the very run this step resolves from, so when this lane
-          # starts, that run is still `in_progress`. `gh run view --log` refuses an in-progress run
-          # outright ("logs will be available when it is complete") — and the grep below is the only
-          # place the pull request under test is written down (ADR-0104). Without this wait the new
-          # door would resolve "names no implementation pull request" every single time, exit 0, and
-          # look exactly like nothing being wrong: the silence #285 exists to end, reproduced by the
-          # fix for it.
-          #
-          # The signal job sends and then ends, so the wait is seconds in practice, and it is a
-          # no-op on the `workflow_run` and hand doors, which only ever name a run already finished.
-          # Five minutes then refuses out loud rather than exiting 0, because a run this cannot read
-          # is not "nothing to work on" — it is a red Verify this lane could not reach, and a red
-          # Fixer run is the only version of that a person will see.
           STATUS=""
           for _ in $(seq 1 30); do
             STATUS=$(gh run view "$RUN_ID" --json status --jq .status)
@@ -79,11 +63,6 @@ jobs:
 
           JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs')
 
-          # `RUN_ID` names a run reached through `verify-caller.yml`'s `uses:` (ADR-0055, amended
-          # by ADR-0132), so every job here comes back as `verify / <job name>` rather than the
-          # bare name `verify.yml` itself declares — confirmed on run 33649164483. Each `select`
-          # below matches either spelling, the same rule `shared/job-match.ts`'s `findJobByName`
-          # applies for the TypeScript readers of these same two jobs.
           GATE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Verify" or (.name | endswith(" / Verify")))][0].conclusion // empty')
           RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability" or (.name | endswith(" / Immutability")))][0].databaseId // empty')
           if [ -z "$RESOLVE_JOB_ID" ]; then
@@ -96,11 +75,6 @@ jobs:
             MODE="escalate"
           fi
 
-          # `|| true` because grep exits 1 on no match, which is the ordinary case here, not a
-          # failure. The pattern requires a real URL, so the echoed command line itself — which
-          # carries the literal `$PR` — cannot match. Spelled with `[^ ]` rather than a POSIX
-          # `[[:space:]]` class so that `fixer.test.ts` can compile this exact pattern as a
-          # JavaScript `RegExp` and check it against what `verify.yml` actually prints.
           LINE=$(gh run view --job "$RESOLVE_JOB_ID" --log \
             | grep -oE 'judging https://[^ ]+/pull/[0-9]+ on implement/issue-[0-9]+' \
             | tail -1 || true)
@@ -112,8 +86,6 @@ jobs:
           URL=${LINE#judging }
           URL=${URL%% on *}
           BRANCH=${LINE##* on }
-          # `fixer.ts` takes the pull request as a number — it is what `gh pr comment` is handed and
-          # what the attempt commits' `Part of #<n>` trailer is built from.
           PR=${URL##*/}
           ISSUE=${BRANCH#implement/issue-}
 
@@ -123,20 +95,6 @@ jobs:
             exit 0
           fi
 
-          # ## One reaction per red Verify run, whichever door named it
-          #
-          # Both doors ring for the same failure whenever `workflow_run` does eventually arrive, and
-          # the concurrency group above makes the late one queue behind the dispatch rather than
-          # race it — so without a record, every red Verify would buy a *second* full attempt loop
-          # at the same ticket, at a second model's price, for a repair that already happened.
-          # `recover.yml` met the identical problem when lane 05 grew its second door and answered
-          # it with a marker comment (ADR-0114); this is that marker, on the pull request because
-          # that is where this lane's other comments already go.
-          #
-          # Written here — before the checkout, before the rebase, before a model — so that a fixer
-          # which dies mid-loop still leaves the second arrival a no-op. The crash escalation at the
-          # bottom of this file is what speaks for a run that died; a fresh loop over a branch half
-          # an earlier one already wrote is not.
           MARKER="<!-- fixer-run:$RUN_ID -->"
           COMMENTS=$(gh pr view "$PR" --json comments --jq '.comments[].body')
           case "$COMMENTS" in
@@ -173,8 +131,6 @@ jobs:
               echo "issue=$ISSUE"
               echo "failed_job=$FAILED_NAME"
             } >> "$GITHUB_OUTPUT"
-            # Multiline-safe append for the one output that can carry characters $GITHUB_OUTPUT's
-            # plain `key=value` form cannot: an `::error::` line is arbitrary log text.
             {
               echo "error_line<<FIXER_EOF"
               echo "${ERROR_LINE:-(no ::error:: line found in the $FAILED_NAME log)}"

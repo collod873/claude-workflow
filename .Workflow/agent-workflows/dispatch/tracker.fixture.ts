@@ -11,16 +11,6 @@ import { scratchDir } from "../shared/scratch.fixture";
 import { runReconcile, type ReconcileInput, type ReconcileOutcome } from "./reconcile";
 
 /**
- * The tracker lane 09 reasons over, in memory: open issues with their blocked-by edges, labels,
- * comments and sub-issues; closed issues with how they closed and what merged them; the claim refs
- * implementers hold; and the standing unreachable report, if one is up.
- *
- * `trackerWith` answers every read `reconcile.ts` makes the way GitHub answers it — the delivery
- * question in particular takes the two calls it really takes (`issue view` for the closing PR's
- * *number*, `pr view` for its state), never a state served straight off the issue (ADR-0106) —
- * and records every write. It is composed in front of `createFakeGh`, which records the
- * `repository_dispatch` sends as `FakeDispatch`es and throws on anything neither side models.
- *
  * @fixture Reached only from this lane's tests, by design.
  */
 

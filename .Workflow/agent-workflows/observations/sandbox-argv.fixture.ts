@@ -15,9 +15,6 @@ export const SANDBOXED_LENS_ARGV = [
 ];
 
 /**
- * Asserts `argv` is a bare `-p` followed by exactly `SANDBOXED_LENS_ARGV` — the whole sandbox,
- * in order, and nothing else.
- *
  * @fixture Reached only from the suites, by design.
  */
 export function expectSandboxedLensArgv(argv: string[]): void {

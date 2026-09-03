@@ -3,13 +3,6 @@ import { join, resolve } from "node:path";
 import { expect } from "vitest";
 
 /**
- * The real `bin/ticket_shape.py`, run in the real interpreter, for the three suites that hold
- * `shared/ticket-shape.ts` (and everything rendered for it) to what the Python actually decides:
- * `render-body.proc.test.ts`, `ticket-shape.proc.test.ts` and `ticket-contract-drift.proc.test.ts`.
- * A TypeScript restatement of the Python's verdict is exactly the belief #215 found wrong, so none
- * of them carries one — and none of them spawns the interpreter itself, because a `*.test.ts` may
- * not import `node:child_process`.
- *
  * @fixture Reached only from the suites, by design.
  */
 

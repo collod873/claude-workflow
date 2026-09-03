@@ -10,10 +10,6 @@ import { createFakeStage } from "../shared/stage.fake";
 import { runNamedStage, type StageName } from "./to-tickets";
 
 /**
- * The checkpoints a to-tickets stage reads before it runs, seeded directly — and one run of any
- * stage over them, for a test that is about the prompt the stage was handed rather than what it
- * did with the answer.
- *
  * @fixture Reached only from the suites, by design. `to-tickets.test.ts` carried these until
  * `vocabulary.test.ts` and `ticket-format.test.ts` needed the same seeding to render a prompt
  * through the real stage instead of reading the prompt file (#360).

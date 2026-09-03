@@ -121,9 +121,6 @@ jobs:
             reason=$(cat "$FAILURE_REASON_PATH")
           fi
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # The reason names a runner-local path, which is gone by the time anyone reads this
-          # comment. Point at the checkpoints artifact instead — uploaded with if: always() just
-          # above, so it is the one address that outlives the job on every failure.
           evidence="\n**Checkpoints:** the \`checkpoints-shape-${IDEA_NUMBER}\` artifact on that run.\n"
           body=$(printf 'Shape run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
           gh issue comment "$IDEA_NUMBER" --body "$body"

@@ -1,38 +1,4 @@
 #!/bin/bash
-# The canary loop, one iteration: push, fire, watch, summarise.
-#
-#   bin/canary prove [--lane <name>] [--no-wip] [--timeout <s>]   → 0 green · 1 red · 2 could not run
-#   bin/canary up                                                 create the target and its runner
-#   bin/canary down                                               destroy them and the branch they were named for
-#   bin/canary reset-cap                                          clear the consecutive-red counter
-#
-# A machine change is proven on a canary target before it lands (ADR-0146): a private repository
-# whose stubs pin this session's branch and whose lane runs on a self-hosted runner here. This
-# script is the one command a session runs in a loop — it never edits; the session reads the
-# summary, fixes, and runs it again. Five reds in a row and it refuses to run a sixth, because a
-# loop that is not converging is the owner's problem, not the runner's.
-#
-# Identity is the branch of the worktree this runs in: branch `x/y` → canary branch `canary/x-y`
-# → repository `<owner>/canary-x-y`. A branch already named `canary/<id>` keeps its id. It refuses
-# `main`, a detached HEAD, and the primary checkout, because two sessions in one checkout share a
-# HEAD and a working tree and the push below would carry both.
-#
-# `up` is idempotent and `prove` calls it, so a session's first loop provisions everything it
-# needs — the private target, its seed, a runner registered against it and running. There is no
-# one-time install to do by hand first: a hand step per session is exactly why one canary existed
-# on the day N sessions in parallel was the point of the design. The runner gets a `HOME` and a
-# `PATH` of its own, because one started under yours would hand every lane your `~/.claude` hooks,
-# your `~/bin` (where `adr-check` lives — ADR-0097) and your `gh` credentials. That is the floor;
-# the container image ADR-0146 defers is the ceiling.
-#
-# **A green that does not print the machine SHA against the branch head is not a green.** Run
-# 33706756013 passed with the machine checked out at `main` under the branch's YAML. So the
-# summary always reads the machine checkout's SHA out of the run log and compares it to the commit
-# just pushed; a mismatch is red whatever the run's own conclusion says, and so is a job that ran
-# anywhere but the `canary` runner.
-#
-# Absolute interpreter for the same reason `bin/gauntlet` gives: this runs from shells nobody
-# logged into.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,7 +23,6 @@ put_file() { # path message content [sha] → "<commit sha> <blob sha>"
   gh api "${args[@]}" --jq '"\(.commit.sha) \(.content.sha)"'
 }
 
-# ---------------------------------------------------------------- arguments
 cmd="${1:-}"
 case "$cmd" in prove|up|down|reset-cap) ;; *) usage ;; esac
 shift
@@ -73,9 +38,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ---------------------------------------------------------------- identity
-# In a worktree `--git-dir` is `<common>/worktrees/<name>`; in the primary checkout the two are
-# the same directory. Both resolved to physical paths, since one is absolute and one may not be.
 git_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-dir)" && pwd -P)"
 common_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 if [ "$git_dir" = "$common_dir" ]; then
@@ -100,7 +62,6 @@ fingerprint_file="$state_dir/last-fingerprint"
 # One runner per canary, named by the same id, all carrying the `canary` label: the label is what
 # the stub asks for and the registration is per repository, so N of them never contend for one
 # another's jobs. No organisation is involved — the account has none, and per-repository
-# registration is what the design assumed because of it.
 runner_root="$HOME/canary-runner"
 runner_dir="$runner_root/$id"
 runner_home="$runner_root/home"
@@ -119,7 +80,6 @@ ensure_repo() {
     log "creating $canary_repo"
     gh repo create "$canary_repo" --private --add-readme \
       --description "Canary target for $canary_branch. Created by bin/canary up; delete with bin/canary down." >/dev/null
-    # A repository the API has just made 404s for a beat, and every seed write below needs it.
     for _ in $(seq 30); do repo_exists "$canary_repo" && break; sleep 2; done
     repo_exists "$canary_repo" || die "created $canary_repo but the API still will not resolve it"
   fi
@@ -132,9 +92,6 @@ seed_file() { # path content — written only where absent
   log "seeded $1"
 }
 
-# The smallest honest target: three contract slots and one test, so the machine has something to
-# check that is provably not itself. A canary that has since drifted is the session's business —
-# `down` is how you get a clean one, not a reseed that would fight the lane it is proving.
 ensure_seed() {
   seed_file package.json '{
   "name": "canary-'"$id"'",
@@ -203,8 +160,6 @@ install_runner() {
   tarball="$runner_cache/actions-runner-linux-x64-$ver.tar.gz"
   if [ ! -s "$tarball" ]; then
     log "downloading runner $ver once into $runner_cache — every later canary extracts this copy"
-    # Downloaded to a name only this process uses, then moved into place: two sessions provisioning
-    # their first canary at the same moment would otherwise write one file and both extract it.
     curl -fsSL "https://github.com/actions/runner/releases/download/v$ver/actions-runner-linux-x64-$ver.tar.gz" \
       -o "$tarball.$$.part" || die "could not download runner $ver"
     mv "$tarball.$$.part" "$tarball"
@@ -219,26 +174,15 @@ install_runner() {
 }
 
 start_runner() {
-  # An explicit PATH, not the launching shell's: whoever runs `prove` — you, a hook, a session with
-  # a different node on it — the lane has to see the same tools. `node` and `gh` are named because
-  # a self-hosted runner has neither preinstalled the way a hosted one does, and both live under
-  # `~/.local`; `~/bin` is left off deliberately — it holds `adr-check` (ADR-0097).
   local runner_path gh_bin
   gh_bin="$(command -v gh)" || die "no gh on PATH — the lanes the runner serves cannot work without it"
   runner_path="$(dirname "$(command -v node)"):$(dirname "$gh_bin"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   log "starting runner '$id' (log: $runner_dir.log)"
-  # `setsid --fork`, not `setsid` or `nohup … &`: bare `setsid` execs in place when it is not
-  # already a group leader, so the runner stays this script's child and bash waits on it at exit —
-  # `bin/canary up` then never returns, and a loop whose one command does not return is no loop.
-  # Forking hands it to init, which is also what survives the session that started it.
   ( cd "$runner_dir" \
     && HOME="$runner_home" PATH="$runner_path" setsid --fork ./run.sh >"$runner_dir.log" 2>&1 </dev/null & )
 }
 
 ensure_runner() {
-  # Both halves, because either alone lies: the API keeps calling a runner online for a while after
-  # its process dies (a WSL reset takes every one of them at once), and a process that has just
-  # started is not online yet.
   runner_online && runner_running && return 0
   [ -f "$runner_dir/.runner" ] || install_runner
   runner_running || start_runner
@@ -300,9 +244,6 @@ fi
 
 log "id=$id  branch=$branch → $canary_branch  target=$canary_repo  lane=$lane"
 
-# ---------------------------------------------------------------- fire plan
-# `canary-fire-plan.ts` answers how `--lane $lane` wakes (ADR-0149). Asked before the push below
-# so a lane it refuses costs neither a push nor a provision.
 stub_path=".github/workflows/$lane-caller.yml"
 [ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
 plan_json="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$lane")" \
@@ -313,7 +254,6 @@ fire_event="$(jq -r '.event // empty' <<<"$plan_json")"
 fire_event_type="$(jq -r '.eventType // empty' <<<"$plan_json")"
 log "lane '$lane' wakes on $fire_kind${fire_event_type:+ ($fire_event_type)}"
 
-# ---------------------------------------------------------------- push
 if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
   if [ "$wip" = "1" ]; then
     git -C "$repo_root" add -A
@@ -324,9 +264,6 @@ if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
   fi
 fi
 head="$(git -C "$repo_root" rev-parse HEAD)"
-# `CANARY_EXPECT_HEAD`, when set, is what the summary compares the machine checkout against
-# instead of HEAD — the one seam for proving that a run whose machine SHA is not the branch head
-# comes out red whatever GitHub concluded. Never set it outside that demonstration.
 expect_head="${CANARY_EXPECT_HEAD:-$head}"
 log "pushing $head to $canary_branch (the pre-push gauntlet runs here)"
 push_log="$state_dir/push.log"
@@ -335,19 +272,8 @@ if ! git -C "$repo_root" push -q --force origin "HEAD:refs/heads/$canary_branch"
   die "the local gauntlet refused the push — fix that first; nothing was fired (full output: $push_log)"
 fi
 
-# ---------------------------------------------------------------- up (idempotent)
 canary_up
 
-# The stub the canary must carry: this machine's own stub, re-pinned to the session's branch and
-# told which runner and machine ref to use. Written only when it differs. For a push-triggered
-# lane that write is itself the fire (a second push would only queue a second run behind it); every
-# other lane wakes on a door this stub-write does not ring, so its fire happens further down,
-# always exactly once, after the stub is confirmed in place.
-# `runner`/`machine_ref` are merged into the job's own `with:` block, not appended as a second
-# one: a stub whose `uses:` already carries a `with:` (e.g. fixer-caller.yml's `run_id`/`test_dir`)
-# would otherwise get two `with:` keys in one YAML mapping — invalid, so GitHub fails the whole
-# workflow file at parse time and schedules no job at all, which reads as a false red with no
-# job ever having run. A stub with no `with:` block (verify-caller.yml) still gets one appended.
 expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@main#\1@$canary_branch#" "$repo_root/$stub_path" \
   | awk -v runner="$RUNNER_LABEL" -v ref="$canary_branch" -v usline="uses: $machine_repo/.github/workflows/$lane.yml@$canary_branch" '
     BEGIN { pending = 0; inserted = 0 }
@@ -385,9 +311,6 @@ expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@m
     }
   ')"
 remote_stub_json="$(gh api "repos/$canary_repo/contents/$stub_path?ref=$target_branch" 2>/dev/null || echo '{}')"
-# `base64 -d`, not jq's `@base64d`: the API wraps its base64 at 60 columns and jq refuses the
-# newlines, which read as "no stub there" and wrote an identical one — a commit with no diff,
-# which fires nothing under the stub's `paths-ignore` (exactly the empty-commit case).
 remote_stub="$(jq -r '.content // ""' <<<"$remote_stub_json" | base64 -d 2>/dev/null || true)"
 remote_stub_sha="$(jq -r '.sha // empty' <<<"$remote_stub_json")"
 
@@ -404,18 +327,11 @@ if [ "$remote_stub" != "$expected_stub" ]; then
   fi
 fi
 
-# ---------------------------------------------------------------- reset
 for run in $(gh run list -R "$canary_repo" --json databaseId,status --jq '.[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting") | .databaseId'); do
   gh run cancel "$run" -R "$canary_repo" >/dev/null 2>&1 || true
   log "cancelled stale run $run"
 done
 
-# ---------------------------------------------------------------- fire
-# Exactly one fire per iteration (ADR-0146's property, carried to every trigger kind, not just
-# push): a push either lands as the stub-pin commit above or as the `.canary-fire` write below,
-# never both; every other kind below is a single API call made once, right here. None of them
-# move the target repo's default branch, so `before_time` is what tells the watch step a run this
-# call caused from one already sitting in the repo's history at the same ref.
 ensure_label() { # name — idempotent; issues:labeled needs a label to exist before it can be added
   gh label create "$1" -R "$canary_repo" --color eeeeee >/dev/null 2>&1 || true
 }
@@ -470,7 +386,6 @@ case "$fire_kind" in
     ;;
 esac
 
-# ---------------------------------------------------------------- watch
 run_id=""
 deadline=$((SECONDS + 120))
 if [ "$fire_kind" = "push" ]; then
@@ -481,8 +396,6 @@ if [ "$fire_kind" = "push" ]; then
     sleep 3
   done
 else
-  # No new commit moves the ref for these kinds, so `head_sha` cannot pick the run out — filtered
-  # by the GitHub event name the fire actually was, and by having arrived no earlier than the fire.
   while [ -z "$run_id" ]; do
     run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=15" \
       | jq -r --arg t "$before_time" '[.workflow_runs[] | select(.created_at >= $t)] | sort_by(.created_at) | .[0].id // empty')"
@@ -511,8 +424,6 @@ for _ in 1 2 3 4 5; do
 done
 plain="$(cut -f3- "$log_file" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z //')"
 
-# The SHA each checkout actually landed on: `actions/checkout` logs `Syncing repository: <repo>`
-# and, after the checkout, `git log -1 --format=%H` followed by the SHA on its own line.
 sha_after_sync() {
   awk -v repo="$1" '
     $0 == "Syncing repository: " repo { armed = 1; next }

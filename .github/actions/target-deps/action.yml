@@ -6,25 +6,6 @@ description: >
   (ADR-0139: an enrolled repository owes only its `.claude/contract.json`, `docs/adr/` and a
   `CODING_STANDARDS.md` — Lumaria's own tree has no `package-lock.json` at all, only a
   `pnpm-lock.yaml`).
-#
-# Pulled out of `acceptance.yml`'s `land` job and `verify.yml`'s `restore-and-run-acceptance` job
-# — both ran `npm ci` in `target/` on the unstated assumption that every target is an npm repo, the
-# assumption ADR-0139 broke. One composite action rather than two copies of the same detect-and-run
-# block, for the same reason `.github/actions/node` gives for staying out of the checkout business:
-# a second copy is a second place the detection logic can drift.
-#
-# **It deliberately does not check out** — same two reasons `.github/actions/node`'s header gives:
-# `workflow-permissions.test.ts` reads `uses: actions/checkout@` straight out of a job's steps to
-# decide it needs `contents:`, and a checkout hidden behind this action would be invisible to that
-# guard; and the gap between the target checkout and this step is where a caller puts whatever else
-# it needs first (`verify.yml` checks out the pull request under test there). So this action starts
-# from an already-checked-out `working-directory`, exactly as `.github/actions/node` starts from an
-# already-checked-out workspace root.
-#
-# No lockfile at all is not a failure: a target this young, or one whose dependencies are pure
-# devDependencies of a language this machine's checks never touch, has nothing to install and
-# nothing to fail on absent it — the same "did not run, not a finding" shape `bin/gauntlet` uses
-# throughout for a target that does not carry a given check's precondition.
 inputs:
   working-directory:
     description: The target's checkout, e.g. "target".
@@ -33,13 +14,6 @@ inputs:
 runs:
   using: composite
   steps:
-    # Precedence kept identical to `generate-contract.ts`'s `detectPackageManager` (its own probe
-    # runs the same call, for the same reason — the target's contract has to be run in the manager
-    # it actually uses): `package.json#packageManager` first, since a repo that declares one has said
-    # so explicitly; then the lockfile actually committed, `pnpm-lock.yaml` before `yarn.lock` before
-    # `bun.lockb`/`bun.lock`; npm (`package-lock.json`, or no lockfile at all) last, as the default a
-    # detector with no evidence either way falls back to. A probe and an installer picking different
-    # managers for the same target is a bug neither file's own tests can see, so keep the two in sync.
     - name: Detect the target's package manager and install
       shell: bash
       working-directory: ${{ inputs.working-directory }}

@@ -9,16 +9,6 @@ description: >
   `upload` runs — paired with the caller's own `if: always()`, so a successful run's checkpoints are
   saved for the next run just as a failed one's are — after the lane's last stage and saves whatever
   this run wrote back under that same name.
-#
-# Restore queries `actions/artifacts` rather than using `actions/download-artifact`: that action
-# only ever looks inside the current workflow run, and the artifact this needs was written by a
-# *previous*, different run on the same issue — there may be several, and the latest one by
-# `created_at` is the one whose checkpoints are still good for this commit (`runStage`'s own key
-# re-validates that; a stale restore just misses rather than misleading anyone).
-#
-# Fails open throughout: a restore that cannot find or unpack an artifact starts the lane with an
-# empty checkpoints directory, exactly as if this action did not run at all, rather than failing the
-# job over a cache it does not need to succeed.
 
 inputs:
   phase:

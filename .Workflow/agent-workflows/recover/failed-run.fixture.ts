@@ -1,11 +1,6 @@
 import { githubHoldingClaims, type ClaimHost } from "../shared/claim-host.fixture";
 
 /**
- * A failed `Implement` run as GitHub reports it to Recover: the artifacts it uploaded, the log
- * line it echoed, and the marker comments already on its ticket — composed over the claim host
- * lane 05's own tests use (`shared/claim-host.fixture.ts`), because a recovered answer takes the
- * very same claim and lands through the very same code.
- *
  * @fixture Reached only from the suite, by design.
  */
 export interface FailedRunOptions {
