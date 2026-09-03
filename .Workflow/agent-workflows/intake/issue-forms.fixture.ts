@@ -15,28 +15,19 @@ import { parse } from "yaml";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const TEMPLATE_DIR = join(REPO_ROOT, ".github", "ISSUE_TEMPLATE");
 
-/** One issue form (or `config.yml`) by filename, parsed. `T` is the caller's to shape. */
 export function readIssueForm<T = unknown>(name: string): T {
   return parse(readFileSync(join(TEMPLATE_DIR, name), "utf8")) as T;
 }
 
-/** Every form file in the template directory — `config.yml` is the chooser's own config, not a form. */
 export function listIssueForms(): string[] {
   return readdirSync(TEMPLATE_DIR).filter((f) => f.endsWith(".yml") && f !== "config.yml");
 }
 
 export interface SourceFile {
-  /** Repo-relative, for a readable offender list. */
   path: string;
   text: string;
 }
 
-/**
- * Every file that could plausibly hold a `gh` call or an API write, read as text rather than
- * parsed, because the point is to catch the *next* writer whatever language it arrives in — a
- * workflow step, a stage, a hook — and the three languages involved share no AST. A test or a fake
- * naming the call it forbids is evidence, not a violation, so those are left out.
- */
 export function readIssueWriterCandidates(): SourceFile[] {
   const roots = [
     join(REPO_ROOT, ".github", "workflows"),

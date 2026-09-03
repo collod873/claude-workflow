@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { countCriteria, extractCriteria, isRunnableSpec, parseCheckMarker, parentPrdNumber } from "./ticket-shape";
 
-/**
- * The grammar `shared/ticket-shape.ts` reads a ticket body with, on bodies written here. What the
- * grammar has to agree with — `bin/ticket_shape.py`, the reader `bin/close-ticket` actually uses
- * — is held in `ticket-shape.proc.test.ts`, which drives both against the same bodies.
- */
-
 const heading = "## Acceptance criteria";
 
 describe("isRunnableSpec", () => {

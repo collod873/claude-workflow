@@ -2,14 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Slice } from "./plan-schema";
 import { validatePlan } from "./validate-graph";
 
-/**
- * The default criterion carries a real `check:` marker, matching
- * `plan.fixture.ts`'s own default (#304): `validatePlan` now renders each
- * slice's ticket body and validates its shape, and a criterion with no
- * marker at all is refused by `renderBody` before graph shape is ever
- * reached — a fixture without one would be describing a plan the pipeline
- * refuses regardless of what this file is testing.
- */
 function slice(title: string, dependsOn: number[] = []): Slice {
   return {
     title,
@@ -42,18 +34,12 @@ describe("validatePlan", () => {
   });
 
   it("refuses a graph with no unblocked root", () => {
-    // Every slice declares a dependsOn, so nothing can start — even though,
-    // taken alone, neither edge is out of range or self-referential.
     const plan = [slice("First", [2]), slice("Second", [1])];
 
     expect(() => validatePlan(plan)).toThrow(/no unblocked root/);
   });
 
   it("accepts a wave 0 holding several slices, since the slice stage draws one per independent start", () => {
-    // `slice/prompt.md` defines wave 0 as "every slice you draw with no
-    // `dependsOn`" — plural by construction. This used to throw, so a spec
-    // whose work starts in several independent places could only be published
-    // by inventing an edge that made the graph lie about what blocks what.
     const plan = [slice("First root"), slice("Second root"), slice("Depends on both", [1, 2])];
 
     expect(() => validatePlan(plan)).not.toThrow();
@@ -66,8 +52,6 @@ describe("validatePlan", () => {
   });
 
   it("refuses a cycle, naming both slices involved, in a graph that has an unblocked root elsewhere", () => {
-    // Slice 1 is a genuine unblocked root, so the no-root check passes and
-    // the cycle between slices 2 and 3 is what has to catch this.
     const plan = [slice("Root"), slice("Cycle A", [3]), slice("Cycle B", [2])];
 
     expect(() => validatePlan(plan)).toThrow(/dependency cycle detected/);

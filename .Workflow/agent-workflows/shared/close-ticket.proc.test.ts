@@ -16,26 +16,6 @@ import {
 } from "./close-ticket.fixture.ts";
 import { scratchDir } from "./scratch.fixture.ts";
 
-/**
- * The two halves of what `--spec` adds to a close, driven in the real interpreter against the real
- * functions: `undelivered`, the precondition it refuses on, and `render_record`, the verdict it
- * reaches. Each function's own docstring in `bin/close-ticket` is the home for why — the pull
- * request's side of the delivery question (#195, #233, #253), and evidence rather than exit status
- * (#270).
- *
- * The cases below are the payload shapes `closedByPullRequestsReferences` returns, not a second
- * copy of the parsing. Driven through Python rather than restated in TypeScript for
- * `render-body.proc.test.ts`'s reason: a TypeScript belief about what the Python decides is the
- * thing that was wrong.
- *
- * The last two blocks are the exception, and deliberately so: `No diff.` and the closing-record
- * line are claims about what a close *did to the tracker*, so they are driven through the process
- * boundary — a real `bin/close-ticket`, a real repository, a `gh` that records every call — and
- * asserted on what got posted and whether the close ran. #300's defect was invisible to every
- * function-level reading of this script, because each function did exactly what it said; the range
- * simply never reached one. The spawning itself lives in `close-ticket.fixture.ts`.
- */
-
 const CLOSE_GATE = join(REPO_ROOT, ".claude/hooks/close-gate.py");
 const PR_URL = "https://github.com/acme/widgets/pull/42";
 const PASSING_JOBS = [
@@ -43,7 +23,6 @@ const PASSING_JOBS = [
   { name: "Verify", status: "completed", conclusion: "success" },
 ];
 
-/** A `subIssues` node as the GraphQL query returns it. */
 function child(
   number: number,
   overrides: { state?: string; stateReason?: string | null; prs?: { number: number; merged: boolean }[] } = {},
@@ -56,26 +35,17 @@ function child(
   };
 }
 
-/** `undelivered(children)`, run by the real `bin/close-ticket` loaded as a module. */
 function undelivered(children: unknown[]): string[] {
   const { stdout } = inCloseTicket(`print(json.dumps(module.undelivered(payload)))`, children);
   return JSON.parse(stdout) as string[];
 }
 
-/** What one `render_record` call decided, plus the stderr it refused on. */
 interface Rendered {
   record: string | null;
   ok: boolean;
   stderr: string;
 }
 
-/**
- * `render_record` over `blocks`, in ticket mode or `--spec` mode.
- *
- * The checks are real shell commands run in a real cwd — `REPO_ROOT` — because the thing under
- * test is what `run_check` observes, and a stub that reports an exit status and an output is a
- * restatement of the belief this ticket exists to correct.
- */
 function renderRecord(
   blocks: string[],
   opts: { spec?: boolean; closingPr?: { number: number; url: string; merge_sha: string | null }; verify?: string } = {},
@@ -89,7 +59,6 @@ print(json.dumps({"record": record, "ok": ok}))`,
   return { ...(JSON.parse(stdout) as Omit<Rendered, "stderr">), stderr };
 }
 
-/** Every bullet the real close gate counts in `record` — its `BULLET_RE`, not a copy of it. */
 function gateBullets(record: string): string[] {
   const { stdout } = python(
     `${loadAsModule("close_gate", CLOSE_GATE, join(REPO_ROOT, ".claude/hooks"))}\nprint(json.dumps(module.BULLET_RE.findall(sys.stdin.read())))`,
@@ -98,7 +67,6 @@ function gateBullets(record: string): string[] {
   return (JSON.parse(stdout) as string[]).map((b) => b.trim()).filter(Boolean);
 }
 
-/** A criterion block as `ticket_shape.criteria_blocks` hands one to `render_record`. */
 function criterion(text: string, command: string): string {
   return `- [ ] ${text} — check: \`${command}\``;
 }
@@ -107,8 +75,6 @@ const CLOSING_PR = { number: 42, url: PR_URL, merge_sha: "deadbeef" };
 
 describe("undelivered", () => {
   it("delivers a child the Actions bot closed whose number a merged PR body closes", () => {
-    // #237 exactly: closed by lane 08 itself, so no `closer` on the close event, and PR #244's
-    // body ends `Closes #237`.
     expect(undelivered([child(237, { prs: [{ number: 244, merged: true }] })])).toEqual([]);
   });
 
@@ -166,8 +132,6 @@ describe("undelivered", () => {
 
 describe("render_record in --spec mode", () => {
   it("refuses a check that exits 0 having printed nothing", () => {
-    // #236's own check in a world where nothing was built: `gh issue list … | xargs -r`, whose
-    // second half runs nothing and exits 0 on empty input.
     const empty = criterion("the door fires", "printf '' | xargs -r -I{} echo {}");
 
     const { record, ok, stderr } = renderRecord([empty], { spec: true });
@@ -199,8 +163,6 @@ describe("render_record in --spec mode", () => {
   });
 
   it("quotes evidence so the close gate still counts one bullet per criterion", () => {
-    // A check whose output is itself a markdown list: the shape that would otherwise inflate
-    // `BULLET_RE`'s count past the body's criteria and get the close denied.
     const listy = criterion("the sweep ran", "printf -- '- one\\n- two\\n'");
 
     const { record, ok } = renderRecord([listy], { spec: true });
@@ -238,14 +200,6 @@ describe("render_record in ticket mode", () => {
   });
 });
 
-/**
- * The record's own claim rests on what `render_record` was handed for `closing_pr`/`verify`
- * (#306) — the closing pull request, its merge SHA, and Verify's conclusion on it, appended as
- * one line neither a bullet (`hooks/close-gate.py`'s `BULLET_RE`) nor the range line
- * (`RANGE_LINE_RE`) can mistake for something else. `fetch_closing_pr`/`fetch_verify_verdict`
- * themselves — the functions that *find* these values — are exercised separately, against a real
- * `gh` stub, below; this block is about what `render_record` does with them once found.
- */
 describe("render_record's closing-pull-request line", () => {
   const quiet = criterion("the module exists", "test -f bin/close-ticket");
 
@@ -272,12 +226,6 @@ describe("render_record's closing-pull-request line", () => {
   });
 });
 
-/**
- * `fetch_closing_pr` and `fetch_verify_verdict`, driven against a `gh` this repo controls
- * (`trackerAnswering`) rather than the real tracker — the two functions `render_record`'s caller
- * (`run()`) uses to fill in `closing_pr`/`verify` itself, never accepting either from its own
- * caller (#306).
- */
 describe("fetch_closing_pr", () => {
   function fetchClosingPr(routes: Route[]): unknown {
     const { stdout } = inCloseTicket(
@@ -315,11 +263,6 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     return { verdict: JSON.parse(stdout) as string, calls: gh.calls() };
   }
 
-  /**
-   * Why the run list must take its query in the path is written where the fix landed:
-   * `fetch_verify_verdict`'s comment in `bin/close-ticket`. Asserted on the call's shape because
-   * `trackerAnswering` answers on substring and cannot tell a POST from a GET.
-   */
   it("asks for the run list as a GET, with the query in the path", () => {
     const { calls } = fetchVerifyVerdict(verifyRoutes(PASSING_JOBS, PR_URL));
 
@@ -346,14 +289,10 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
   });
 
   it("reads unjudged rather than throwing when gh itself fails", () => {
-    // Every call falls through to "{}", which json.loads reads as {} — no "workflow_runs" key.
     expect(fetchVerifyVerdict([]).verdict).toBe("unjudged");
   });
 
   it("still reads passed when both jobs carry a caller-stub prefix — verify / Immutability, verify / Verify", () => {
-    // A run reached through `uses:` (ADR-0055, amended by ADR-0132) reports every job as
-    // `<caller job key> / <job name>` — confirmed on run 33649164483. `job_matches_name` must
-    // still find both jobs under that spelling.
     const prefixed = PASSING_JOBS.map((job) => ({ ...job, name: `verify / ${job.name}` }));
 
     expect(fetchVerifyVerdict(verifyRoutes(prefixed, PR_URL)).verdict).toBe("passed");
@@ -361,7 +300,6 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
 });
 
 describe("verify_workflow_file", () => {
-  /** Runs `module.verify_workflow_file()` under `env`, returning its value or the exception it raised. */
   function verifyWorkflowFile(env: Record<string, string | undefined>): { value?: string; error?: string } {
     const { stdout } = inCloseTicket(
       `try:
@@ -387,17 +325,12 @@ except Exception as e:
   });
 });
 
-/**
- * A checkout with `commits` commits, and a `gh` answering `issue view` with `body` (plus whatever
- * `routes` add) — the pair every end-to-end close below runs against.
- */
 function checkoutAndTracker(commits: number, body: string, routes: Route[] = []) {
   const { checkout, shas } = checkoutWithCommits(commits);
   const gh = trackerAnswering([issueViewRoute(body), ...routes]);
   return { checkout, shas, gh, range: `${shas[0]}..${shas[shas.length - 1]}` };
 }
 
-/** The `<subcommand> <verb>` of every call the tracker saw, in order. */
 const verbs = (calls: string[][]) => calls.map((call) => call.slice(0, 2));
 
 describe("a ticket close carries its closing pull request, driven end to end", () => {
@@ -423,7 +356,6 @@ describe("a ticket close carries its closing pull request, driven end to end", (
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Closed by #42 · merge `deadbeef` · Verify: passed");
     expect(result.stdout).toContain(range);
-    // Posted to the tracker, not just printed — the `--body-file -` comment is the record itself.
     expect(verbs(gh.calls())).toContainEqual(["issue", "comment"]);
   });
 });
@@ -432,11 +364,6 @@ describe("the No diff. close, driven end to end", () => {
   const NO_CRITERIA = "Just a task. No acceptance criteria in this body at all.\n";
 
   it("posts nothing and closes nothing when the range it was handed carries a commit", () => {
-    // #283 exactly: `bin/close-ticket 283 3fc1769..7f9d443 .` posted `## Closing record / No
-    // diff.` and exited 0 against a range carrying a real commit. The body has no acceptance
-    // criteria, which used to be read as "map or task ticket" — a kind — and took a branch that
-    // discarded the range unread. The record then said the ticket carried no diff; it carried
-    // one, and a human had to correct it.
     const { checkout, gh, range } = checkoutAndTracker(2, NO_CRITERIA);
 
     const result = closeTicket(["283", range, checkout], gh.path);
@@ -449,9 +376,6 @@ describe("the No diff. close, driven end to end", () => {
   });
 
   it("still closes on No diff. when the range really is empty", () => {
-    // The behaviour a map or task ticket depends on, unchanged — and the reason the guard is a
-    // count rather than a ban: a ticket that carried nothing says so by naming the empty range
-    // it carried, which is a thing the closer can check rather than take on faith.
     const { checkout, shas, gh } = checkoutAndTracker(2, NO_CRITERIA);
     const head = shas[1];
 
@@ -467,9 +391,6 @@ describe("the No diff. close, driven end to end", () => {
   });
 
   it("refuses rather than assumes zero when the range cannot be counted", () => {
-    // A checkout that is not a repository, or a range it does not resolve. Reading nothing is
-    // not reading zero — and were this the fallback instead, every case above would be one bad
-    // `<checkout>` argument away from the old behaviour.
     const notARepo = scratchDir("close-ticket-bare");
     const gh = trackerAnswering([issueViewRoute(NO_CRITERIA)]);
 

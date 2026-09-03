@@ -5,59 +5,22 @@ import ts from "typescript";
 import { readWorkflows } from "./read-workflow";
 import { readRepoText, REPO_ROOT } from "./repo-sources";
 
-/**
- * The guard #109 exists for.
- *
- * `git notes add` writes an object, an object carries a committer, and a
- * GitHub runner has no git identity — so a workflow that reaches that write
- * without configuring one dies on `empty ident name`, having already spent
- * the checkout and everything before it. `audit.yml` hit this on its very
- * first non-skipped run, after both lens passes had produced findings (#107).
- *
- * The fix there was a `git config` step in that file. It was correct and it
- * did not travel: `ratify-release.yml` reaches the same write by a different
- * entrypoint and carried the same defect, invisible because that lane has
- * never run either (#109). A test naming those two files would not have
- * travelled any further than the fix did.
- *
- * So this derives the question instead of listing the answer. It reads every
- * workflow, finds the entrypoint each one runs, walks out from that
- * entrypoint through the declarations it actually calls, and asks whether
- * any of them writes a git note. Whatever comes back yes must configure a
- * committer — including a workflow, an entrypoint, and a note writer that do
- * not exist yet.
- *
- * The walk follows *declarations*, not files. A lane can import
- * `readObservations` from the same module `writeObservationNote` lives in;
- * a file-level walk would call that lane a note writer and ask it for a step
- * it does not need. Importing a module is not calling every function
- * in it, and this guard is only worth having if it says the true thing about
- * every lane rather than the safe thing about all of them.
- */
-
-/** `git notes … add`, as all three of this repo's note writers spell it (one argv array, one line). */
 const NOTES_ADD = /"notes"[\s\S]{0,120}?"add"/;
 
-/** A `git config user.email`, however the step around it is written. */
 const CONFIGURES_COMMITTER = /git config (--\S+ )?user\.email/;
 
-/** Every TypeScript entrypoint a workflow hands to `npx tsx`, repo-relative as the workflow spells it. */
 function entrypointsOf(workflowSource: string): string[] {
   return [...workflowSource.matchAll(/npx tsx (\S+\.ts)/g)].map((match) => match[1]);
 }
 
-/** One name this module can reach in another: `readObservations` in `./notes`, as imported. */
 interface Binding {
   file: string;
   name: string;
 }
 
 interface Module {
-  /** Local identifier → where it actually comes from. Relative imports only. */
   bindings: Map<string, Binding>;
-  /** Top-level declaration name → its node, so a reachable name can be read as code. */
   declarations: Map<string, ts.Node>;
-  /** Everything not inside a declaration — a CLI's own `main()` call at the bottom of the file. */
   topLevel: ts.Node[];
 }
 
@@ -100,14 +63,13 @@ function parseModule(path: string): Module {
 
 function recordImport(fromPath: string, statement: ts.ImportDeclaration, bindings: Map<string, Binding>): void {
   const specifier = (statement.moduleSpecifier as ts.StringLiteral).text;
-  if (!specifier.startsWith(".")) return; // A package is not somewhere this repo's `git` seam is called.
+  if (!specifier.startsWith(".")) return; 
 
   const resolved = resolve(dirname(fromPath), specifier);
   const file = resolved.endsWith(".ts") ? resolved : `${resolved}.ts`;
   const clause = statement.importClause;
   if (!clause) return;
 
-  // `import type { X }` reaches nothing at runtime, and neither does a type-only specifier.
   if (clause.isTypeOnly) return;
   if (clause.name) bindings.set(clause.name.text, { file, name: "*" });
 
@@ -121,7 +83,6 @@ function recordImport(fromPath: string, statement: ts.ImportDeclaration, binding
   }
 }
 
-/** Every identifier `node` mentions — the crude form of "what this code can call". */
 function identifiersIn(node: ts.Node): string[] {
   const names: string[] = [];
   const visit = (child: ts.Node): void => {
@@ -132,11 +93,6 @@ function identifiersIn(node: ts.Node): string[] {
   return names;
 }
 
-/**
- * Whether anything the run of `entry` can call writes a git note. Starts from
- * the entrypoint's whole module — a CLI runs its top-level — and follows only
- * the names that reachable code actually mentions.
- */
 function writesAGitNote(entry: string): boolean {
   const seen = new Set<string>();
   const queue: Binding[] = [{ file: join(REPO_ROOT, entry), name: "*" }];
@@ -177,8 +133,6 @@ describe("every workflow that can reach `git notes add` configures a committer",
     const writers = entrypointsOf(source).filter(writesAGitNote);
     if (writers.length === 0) return;
 
-    // Named in the failure, so the reader learns which lane is about to die and on which write —
-    // the two things `empty ident name` on a runner does not tell you.
     expect(
       CONFIGURES_COMMITTER.test(source),
       `${name} runs ${writers.join(", ")}, which reaches \`git notes add\`, but configures no committer — ` +
@@ -189,18 +143,12 @@ describe("every workflow that can reach `git notes add` configures a committer",
   it("actually finds the note writers, so a passing suite is not an empty sweep", () => {
     const reaching = workflows.filter(({ source }) => entrypointsOf(source).some(writesAGitNote));
 
-    // The check above is vacuously true for a workflow it finds nothing in, and a broken walk finds
-    // nothing in all of them. These are the lanes that write a note today; the assertion is
-    // that the walk still sees them, not that they are the only ones it may ever see.
     expect(reaching.map(({ name }) => name).sort()).toEqual(
       expect.arrayContaining(["audit.yml", "decline-on-revert.yml", "ratify-release.yml", "ratify.yml"]),
     );
   });
 
   it("does not mistake a workflow that writes no note for one that does", () => {
-    // `ratify-on-prd-close.yml` sends one `repository_dispatch` and writes no git object at all,
-    // and neither does `dispatch-reconcile.yml`. A guard that flagged these would be asking two
-    // workflows to carry a step neither of them needs.
     const quiet = ["ratify-on-prd-close.yml", "dispatch-reconcile.yml"];
 
     for (const name of quiet) {

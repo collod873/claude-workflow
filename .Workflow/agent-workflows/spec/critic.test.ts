@@ -31,8 +31,6 @@ describe("runSpecCritic", () => {
   });
 
   it("substitutes the owner's answering comments as the prompt's third variable", async () => {
-    // The critic-only door has no author to re-draft the body, so the answers it reads are context
-    // it may use in reaching its own decision.
     const fake = createFakeStage(RESPONSE);
 
     await runSpecCritic(fake.exec, {
@@ -46,8 +44,6 @@ describe("runSpecCritic", () => {
   });
 
   it("substitutes a stated absence when no answers were passed, never an empty hole", async () => {
-    // `runStage` throws on an unsubstituted `{{VAR}}`, so the author's own call — which has no
-    // answers to pass — must still resolve the variable to something the critic can read.
     const fake = createFakeStage(RESPONSE);
 
     await runSpecCritic(fake.exec, DRAFT);
@@ -77,8 +73,6 @@ describe("runSpecCritic", () => {
   });
 
   it("refuses a resolution carrying a decision with no reason, or a reason with no decision", async () => {
-    // A reason that is a field can be checked for; one that is missing entirely is refused rather
-    // than silently accepted as an empty string riding along with a decision nobody can weigh.
     const fake = createFakeStage(
       JSON.stringify({ resolutions: [{ decision: "Pick reading A.", reason: "" }] }),
     );

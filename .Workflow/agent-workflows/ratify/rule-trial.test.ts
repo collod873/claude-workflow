@@ -5,11 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { GitExec } from "../shared/git";
 import { runRuleTrial, TRIAL_DIR, type EslintExec } from "./rule-trial";
 
-/**
- * The trial's git seam does two real things — stage a worktree and tear it down — and the whole
- * point of the module is that the second happens even when the first's contents make the lint run
- * throw. So this fake actually creates and removes the directory, and records both calls.
- */
 function fakeGit(repoDir: string): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
   const git: GitExec = (args) => {
@@ -23,7 +18,6 @@ function fakeGit(repoDir: string): { git: GitExec; calls: string[][] } {
   return { git, calls };
 }
 
-/** An eslint stand-in answering `-f json`'s report for whichever files the test says the rule flags. */
 function fakeEslint(trialDir: string, flaggedBy: Record<string, string[]>): EslintExec {
   return (args) => {
     const files = args.filter((arg) => !arg.startsWith("-") && arg !== "json");
@@ -38,7 +32,6 @@ function fakeEslint(trialDir: string, flaggedBy: Record<string, string[]>): Esli
 
 let dirs: string[] = [];
 
-/** A repo dir with the named files present at the trial's parent commit — what the worktree carries. */
 function makeRepo(files: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), "rule-trial-"));
   dirs.push(dir);
@@ -54,7 +47,6 @@ afterEach(() => {
   dirs = [];
 });
 
-/** Stages the pre-fix site files the way the real `git worktree add` would, then runs the trial. */
 function trial(options: {
   present: string[];
   sites: string[];

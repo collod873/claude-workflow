@@ -100,7 +100,6 @@ describe("the signal bodies", () => {
   });
 });
 
-/** One proposal the counter has already made, as `issue list` returns it. */
 interface Signal {
   number: number;
   body: string;
@@ -108,11 +107,6 @@ interface Signal {
   stateReason?: string;
 }
 
-/**
- * A `gh` stand-in over the tracker this counter reads — finding issues under the label, standing
- * signals without it — recording every argv verbatim, the shape `bypass-counter.test.ts`'s own
- * stand-in has. Not the shared fake in `gh.fake.ts`: that models sub-issue publishing and answers no `issue list`.
- */
 function trackerWith(options: {
   findingIssues?: Array<{ number: number; state: string; stateReason?: string; createdAt: string }>;
   signals?: Signal[];
@@ -146,20 +140,14 @@ function findings(count: number, over: Partial<{ state: string; stateReason: str
 
 const ZERO_TALLY = { reached: 0, refuted: 0 };
 
-/** One sweep of the counter over `fake`'s tracker at `tally`, as the lane runs it. */
 function sweep(fake: { gh: GhExec }, tally: { reached: number; refuted: number }) {
   return runCounter({ gh: fake.gh, tally, assignee: "collod873", now: NOW });
 }
 
-/** A grow proposal issue #7 already made at the grow threshold, in whatever state it now stands. */
 function growSignal(said: string, state: string, stateReason?: string): Signal {
   return { number: 7, body: `${said}\n${countMarker("grow", GROW_THRESHOLD)}`, state, stateReason };
 }
 
-/**
- * A sweep at a zero tally over `count` finding issues with `signal` (if any) already standing —
- * the grow direction's whole input — handing back the outcome and the tracker it wrote to.
- */
 function sweepGrow(count: number, signal?: Signal) {
   const fake = trackerWith({ findingIssues: findings(count), signals: signal ? [signal] : [] });
   return { fake, outcome: sweep(fake, ZERO_TALLY) };

@@ -2,13 +2,6 @@ import { describe, expect, it } from "vitest";
 import { renderSheet } from "./render-sheet";
 import type { Sheet } from "../shared/sheet-schema";
 
-/**
- * §01 caps the sheet at a phone screen — *five sections and no others* — and
- * two of the shapes here are load-bearing rather than cosmetic. The scarce
- * resource in this lane is the length of what the owner reads, not the money;
- * the whole chain is under a dollar per idea.
- */
-
 function sheet(over: Partial<Sheet> = {}): Sheet {
   return {
     restatement: "the idea as work",
@@ -46,17 +39,10 @@ describe("the sheet as the owner reads it", () => {
 
 describe("the two asymmetric absences", () => {
   it("says `none found` when there is no prior art", () => {
-    // Prior art earns its funded space because it is the only section that
-    // can pre-empt the whole sheet — three links saying *you already ruled
-    // this* is a kill the owner can make in ten seconds. Its absence is
-    // therefore worth a line.
     expect(renderSheet(sheet())).toContain("`none found`");
   });
 
   it("omits the refutations section entirely when the refuter is silent", () => {
-    // §01: **absent** when the refuter is silent, never `none`. Silence is the
-    // refuter's good outcome, and a section reporting that it said nothing
-    // spends the owner's screen on furniture.
     const rendered = renderSheet(sheet());
 
     expect(rendered).not.toContain("Surviving refutations");

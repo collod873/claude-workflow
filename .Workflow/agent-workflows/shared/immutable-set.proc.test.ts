@@ -2,14 +2,6 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { readWorkflow } from "./read-workflow";
 
-/**
- * The Immutability job's own script, run as the bash it is. Its contract is an exit code and an
- * `::error::` line, so the honest test hands it the environment the job would and reads both
- * back — the shape `.claude/hooks/gauntlet.proc.test.ts` sets for a thing whose contract *is* its
- * exit code. The script is read out of `verify.yml`'s parsed YAML, so a reworded step fails here
- * rather than being tested as a stale copy.
- */
-
 interface VerifyWorkflow {
   jobs: { immutability: { env: { IMMUTABLE_SET: string }; steps: Array<{ name: string; run?: string }> } };
 }

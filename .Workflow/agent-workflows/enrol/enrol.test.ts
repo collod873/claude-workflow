@@ -8,54 +8,31 @@ import { labelPlan, type Label } from "./labels.ts";
 import { OUTWARD_CREDENTIAL, derivedSecretNames } from "./secrets.ts";
 import { blobSha, planFor, readStubSet, type RemoteFile } from "./stub-set.ts";
 
-/**
- * The enrol lane, asserted against a stand-in GitHub (#326, #327). Every write this lane makes
- * lands in somebody else's repository, so "it wrote nothing" is the property that most needs
- * proving and the one a live test could never prove safely — the fake records every argv, and a
- * quiet run is a run whose recording holds no write.
- */
-
 const MACHINE_REPOSITORY = "owner/machine";
 
-/** A caller stub's bytes. The content is arbitrary; only its identity across the wire matters. */
 function stubBody(lane: string): string {
   return `name: ${lane}\n\n"on":\n  workflow_dispatch:\n`;
 }
 
-/**
- * A throwaway `.github/workflows` holding the named stubs, plus one workflow that is not a stub —
- * and, when given, one more file carrying arbitrary `secrets.<NAME>` references, standing in for
- * a reusable workflow that spends a secret.
- */
 function machineWorkflows(lanes: string[], secretRefs: string[] = []): string {
   const dir = mkdtempSync(join(tmpdir(), "enrol-machine-"));
   for (const lane of lanes) writeFileSync(join(dir, `${lane}-caller.yml`), stubBody(lane));
-  // The enrol lane itself: a workflow with no caller, which is how it stays out of its own output.
   const refs = secretRefs.map((name) => `secrets.${name}`).join("\n  ");
   writeFileSync(join(dir, "enrol.yml"), refs === "" ? "name: Enrol\n" : `name: Enrol\nenv:\n  ${refs}\n`);
   return dir;
 }
 
 interface FakeRepo {
-  /** What `.github/workflows` holds, as the contents API would list it. */
   files: RemoteFile[];
-  /** What the repository's labels are, as the labels API would list it. Defaults to none. */
   labels?: Label[];
-  /** What a read-back of the ADR-0093 setting reports. Defaults to `"true"` — already correct. */
   settingReadBack?: string;
-  /** When set, every call touching this repository throws with this message. */
   refuses?: string;
-  /** When set, only this repository's label reads/writes throw with this message. */
   refusesLabels?: string;
-  /** When set, only this repository's ADR-0093 `PUT`/read-back throws with this message. */
   refusesSetting?: string;
-  /** When set, only this repository's secret writes throw with this message. */
   refusesSecrets?: string;
-  /** When true, the repository has no commit on its default branch. */
   empty?: boolean;
 }
 
-/** One label write this fake recorded — a create (no prior label of that name) or a correction. */
 interface LabelWrite {
   kind: "create" | "update";
   name: string;
@@ -66,25 +43,18 @@ interface LabelWrite {
 interface Wire {
   gh: GhExec;
   calls: string[][];
-  /** Every git tree this fake was asked to create, by repository, already parsed. */
   trees: Map<string, Array<{ path: string; sha: string | null }>>;
-  /** Every commit message this fake was asked to write, by repository. */
   messages: Map<string, string>;
-  /** Every label create/update this fake recorded, by repository, in call order. */
   labelWrites: Map<string, LabelWrite[]>;
-  /** Every repository whose ADR-0093 setting this fake was asked to `PUT`. */
   settingPut: Set<string>;
-  /** Every secret this fake was asked to set, by repository, name to value. */
   secretsSet: Map<string, Record<string, string>>;
 }
 
-/** The `--method X` value in a `gh api` argv, or `undefined` for a plain `GET`. */
 function methodOf(args: string[]): string | undefined {
   const at = args.indexOf("--method");
   return at === -1 ? undefined : args[at + 1];
 }
 
-/** Every `-f`/`-F key=value` pair in a `gh api` argv, collapsed to a plain object. */
 function fieldsOf(args: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (let at = 0; at < args.length; at++) {
@@ -101,7 +71,6 @@ function labelLines(labels: Label[]): string {
   return labels.length === 0 ? "" : `${labels.map((label) => JSON.stringify(label)).join("\n")}\n`;
 }
 
-/** Enough of GitHub for one enrolment pass: search, contents, labels, the ADR-0093 setting, secrets, and the git data API. */
 function createWire(repos: Record<string, FakeRepo>, ownLabels: Label[] = []): Wire {
   const calls: string[][] = [];
   const trees = new Map<string, Array<{ path: string; sha: string | null }>>();
@@ -110,13 +79,11 @@ function createWire(repos: Record<string, FakeRepo>, ownLabels: Label[] = []): W
   const settingPut = new Set<string>();
   const secretsSet = new Map<string, Record<string, string>>();
 
-  /** Which repository an argv is about — every path this lane sends starts `repos/<owner>/<name>`. */
   const repoOf = (path: string): string | undefined => {
     const match = path.match(/^repos\/([^/]+\/[^/?]+)/);
     return match?.[1];
   };
 
-  /** The REST path in a `gh api` argv, past whatever leading flags it carries. */
   const pathIn = (args: string[]): string => {
     const rest = args.slice(1);
     let at = 0;
@@ -270,8 +237,6 @@ describe("the stub set is a glob, and a boundary", () => {
   });
 
   it("hashes a stub the way git does, so an unchanged file compares equal to what GitHub reports", () => {
-    // The empty blob's sha is a fixed, published constant — the one value that proves this is the
-    // git object hash and not a plain sha1 of the bytes.
     expect(blobSha("")).toBe("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
   });
 });
@@ -381,8 +346,6 @@ describe("a pass over a target that has drifted", () => {
       { path: ".github/workflows/audit-caller.yml", mode: "100644", type: "blob", sha: "newblob" },
       { path: ".github/workflows/retired-caller.yml", mode: "100644", type: "blob", sha: null },
     ]);
-    // One commit, not one per file: a push per stub would fire the target's own Verify lane once
-    // per stub, which is what the batching exists to avoid.
     expect(wire.calls.filter((argv) => argv.includes("repos/owner/drifted/git/commits"))).toHaveLength(1);
     expect(wire.messages.get("owner/drifted")).toContain("Machine-Sha: abc123");
   });
@@ -417,7 +380,6 @@ describe("labels, the ADR-0093 setting, and secrets ride every pass, independent
       { kind: "update", name: "ticket", color: "111111", description: "kind: ticket" },
       { kind: "create", name: "needs-human", color: "222222", description: "an agent stopped" },
     ]);
-    // "bug" is the target's own — never named in any label write this pass made.
     expect(wire.labelWrites.get("owner/target")?.some((write) => write.name === "bug")).toBe(false);
 
     expect(outcome.settingFailure).toBeUndefined();
@@ -426,7 +388,6 @@ describe("labels, the ADR-0093 setting, and secrets ride every pass, independent
     expect(outcome.secretsFailure).toBeUndefined();
     expect(outcome.secretsWritten).toEqual(["BAR", "FOO"]);
     expect(wire.secretsSet.get("owner/target")).toEqual({ FOO: "foo-value", BAR: "bar-value" });
-    // The outward credential is never among what a target receives, however this pass is called.
     expect(wire.secretsSet.get("owner/target")?.[OUTWARD_CREDENTIAL]).toBeUndefined();
 
     expect(exitCodeFor(outcomes)).toBe(0);
@@ -482,15 +443,12 @@ describe("a repository the token cannot write at all", () => {
     expect(forbidden.settingFailure).toContain("403");
     expect(forbidden.secretsFailure).toContain("403");
 
-    // The failure came first in the topic listing; the pass did not stop on it.
     const reachable = outcomeFor(outcomes, "owner/reachable");
     expect(reachable.code).toBe("written");
     expect(reachable.labelsFailure).toBeUndefined();
     expect(reachable.settingFailure).toBeUndefined();
     expect(reachable.secretsFailure).toBeUndefined();
 
-    // …and the run still reds, because the estate is now on two different stub sets and this run's
-    // conclusion is the only thing that can say so.
     expect(exitCodeFor(outcomes)).toBe(1);
   });
 

@@ -15,26 +15,18 @@ import { expect } from "vitest";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
-/** Python that imports `ticket_shape` off the real `bin/`. */
 const IMPORT_TICKET_SHAPE = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(join(REPO_ROOT, "bin"))})
 import ticket_shape
 `;
 
-/** Runs `script` after `IMPORT_TICKET_SHAPE`, with `input` on stdin, and returns its stdout. */
 function withTicketShape(script: string, input = ""): string {
   const run = spawnSync("python3", ["-c", `${IMPORT_TICKET_SHAPE}\n${script}`], { input, encoding: "utf8" });
   expect(run.status, run.stderr).toBe(0);
   return run.stdout;
 }
 
-/**
- * Every criterion command `bin/ticket_shape.py` recovers from `body`, in the body's own order —
- * the exact pair of calls `bin/close-ticket`'s `render_record` makes (`criteria_blocks`, then
- * `parse_check_marker` on each block with its checkbox stripped). `null` for a criterion the
- * reader cannot get a command out of.
- */
 export function commandsPythonRecovers(body: string): (string | null)[] {
   const stdout = withTicketShape(
     `body = sys.stdin.read()
@@ -49,39 +41,18 @@ print(json.dumps(out))`,
   return JSON.parse(stdout) as (string | null)[];
 }
 
-/**
- * The check-marker delimiter `bin/ticket_shape.py`'s `CHECK_MARKER_DELIM` holds, read live off the
- * module rather than copied — a copy would be exactly the drift `ticket-contract-drift.proc.test.ts`
- * exists to catch.
- */
 export function pythonCheckMarkerDelim(): string {
   return withTicketShape(`print(ticket_shape.CHECK_MARKER_DELIM)`).trim();
 }
 
-/** The command `bin/ticket_shape.py`'s `parse_check_marker` recovers from `criterion`, or `null`. */
 export function pythonParseCheckMarker(criterion: string): string | null {
   return JSON.parse(withTicketShape(`print(json.dumps(ticket_shape.parse_check_marker(sys.stdin.read())))`, criterion));
 }
 
 export type Verdict = { ok: true; warnings: string[] } | { ok: false; error: string };
 
-/**
- * Every kind `bin/ticket_shape.py`'s `KINDS` holds. `"ticket"` and `"spec"` are the two the
- * TypeScript side has anything to say about; `"question"` and `"note"` exist here because
- * `ticket-format-doc.proc.test.ts` drives the doc's variants through whichever kind each one is
- * shaped like, and two of them are questions.
- */
 export type Kind = "note" | "question" | "ticket" | "spec";
 
-/**
- * The real Python validator's verdict for `kind` — `"ticket"` (compared against `validateTicket`)
- * or `"spec"` (#306's red-at-publish branch, which has no TypeScript port to compare against, so
- * it is driven for its own sake rather than for a diff).
- *
- * `timeoutSeconds`, when given, overrides `ticket_shape.RED_AT_PUBLISH_TIMEOUT_SECONDS` before
- * `validate` runs — only `"spec"` reads it, and only the timeout-path test sets it, to keep that
- * one test fast without touching the 30s production budget (ADR-0130).
- */
 export function pythonVerdict(
   kind: Kind,
   body: string,

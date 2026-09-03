@@ -18,13 +18,6 @@ import {
   type RecoverDeps,
 } from "./recover";
 
-/**
- * What Recover does with a failed `Implement` run: which ticket it names, which door it takes
- * (recover the answer, or re-dispatch), and the cap on how often. The fake GitHub it runs against
- * is `failedRunWith` (`./failed-run.fixture.ts`); the landing it shares with lane 05 is tested in
- * `shared/implementation-landing.test.ts`, not here.
- */
-
 function baseDeps(gh: GhExec, git: GitExec, overrides: Partial<RecoverDeps> = {}): RecoverDeps {
   return {
     gh,
@@ -123,10 +116,8 @@ describe("runRecover — nothing to recover", () => {
   });
 });
 
-/** Recover's side of `releaseDeadClaim`, whose docstring in `shared/implementation-landing.ts` says why (#342). */
 describe("runRecover — the dead run's claim", () => {
   it("releases the claim before re-dispatching, so the fresh run is not refused by a dead one's ref", async () => {
-    // No artifact: the re-dispatch path, which is the one a cancelled or timed-out run takes.
     const { gh, calls } = failedRunWith({ artifacts: [], comments: [], logLine: "implementing #266" });
     const { git } = checkoutReporting();
 
@@ -194,14 +185,11 @@ describe("runRecover — recovery path", () => {
     expect(outcome).toEqual({ outcome: "opened", pr: "https://github.com/o/r/pull/42" });
     expect(writes).toEqual([{ path: "a.ts", content: "hello" }]);
 
-    // Claim, then commit sequence, then the PR — in that order.
     const claimIndex = calls.findIndex((call) => call[0] === "api" && call[1] === GIT_REFS_PATH);
     const prIndex = calls.findIndex((call) => call[0] === "pr" && call[1] === "create");
     expect(claimIndex).toBeGreaterThanOrEqual(0);
     expect(prIndex).toBeGreaterThan(claimIndex);
 
-    // `ls-files` first: the gate-growth refusal (#360) reads what the answer would create before
-    // anything is claimed or written.
     expect(gitCalls.map((call) => call[0])).toEqual(["ls-files", "rev-parse", "status", "diff", "checkout", "add", "commit", "push"]);
     const commit = gitCalls.find((call) => call[0] === "commit");
     expect(commit?.[2]).toContain(`Recover #266 from run 555`);
@@ -231,11 +219,6 @@ describe("runRecover — one failed run, two doors", () => {
 });
 
 describe("runRecover — an answer no pull request may land", () => {
-  /**
-   * Recovers #275 from `runId` over an answer that writes `forbidden` beside one ordinary lane
-   * file, and returns what the refusal did: the outcome, every path written (none), the git argv
-   * heads, and the marker comment. The two refusals below differ only in which rule names the file.
-   */
   async function refusedAnswer(runId: number, forbidden: string) {
     const { gh, calls } = failedRunWith({ artifacts: ["implementer-answer-275"] });
     const { git, calls: gitCalls } = checkoutReporting();
@@ -273,9 +256,6 @@ describe("runRecover — an answer no pull request may land", () => {
     expect(gitHeads).toEqual([]);
   });
 
-  // #360: an answer that creates a file the gate is made of — here a new bin/ script — is refused
-  // the same way, before a claim or a write. An edit to a gate file already tracked is not this
-  // rule's business; the size fence judges that.
   it("escalates without claiming a branch when the answer creates a gate file", async () => {
     const { outcome, gitHeads } = await refusedAnswer(62, "bin/new-check");
 

@@ -3,15 +3,6 @@ import { PATH_LINE_RE } from "../shared/ticket-shape";
 import type { Finding } from "./structural-refusal";
 import { isStructurallyRefused } from "./structural-refusal";
 
-/**
- * ADR-0036's two refusal conditions, each proven independently, plus the
- * ordinary case of a finding that trips neither and reaches the refuter.
- */
-
-// The gate only needs the finding's `path:line` citation to occur somewhere
-// in the diff text — it does not parse hunks — so the fixture's hunk marker
-// carries `src/widget.ts:12` the way a real diff's function-context trailer
-// carries whatever line git chose to show.
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 @@ -10,3 +10,4 @@ src/widget.ts:12
 +export function widget() {
@@ -59,9 +50,6 @@ describe("isStructurallyRefused", () => {
   });
 
   it("reuses shared/ticket-shape's PATH_LINE_RE rather than a local copy", () => {
-    // The fixture's citation has to be a shape PATH_LINE_RE itself accepts —
-    // proof this test (and the gate under test) is reading the one grammar
-    // `render-body.ts` and the close gate already share, not a reimplementation.
     expect(PATH_LINE_RE.test("src/widget.ts:12")).toBe(true);
   });
 });

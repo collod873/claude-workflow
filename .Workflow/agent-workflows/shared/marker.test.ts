@@ -13,13 +13,6 @@ import {
 import { renderSheet } from "../shape/render-sheet";
 import type { Sheet } from "./sheet-schema";
 
-/**
- * The sheet travels twice in one comment — once as prose the owner reads,
- * once as JSON nothing re-derives. Three separate readers depend on the
- * second copy surviving a round trip through a GitHub comment body: the round
- * counter, the accept, and the refuter's probation count.
- */
-
 const sheet: Sheet = {
   restatement: "the idea as work",
   priorArt: [{ ref: "#42", url: "https://example.test/42", bearing: "…", verdict: "related" }],
@@ -43,10 +36,6 @@ describe("the sheet's trailer", () => {
   });
 
   it("survives prose containing an HTML comment terminator", () => {
-    // An HTML comment ends at the first `-->`, and a shaper's prose is free to
-    // contain one. Every `>` in a JSON document is inside a string, so
-    // escaping them all cannot corrupt the document — this is the assertion
-    // that the escape is actually applied, not merely described.
     const hostile: Sheet = { ...sheet, restatement: "the arrow --> and back" };
 
     expect(readSheetMarker(sheetMarker(hostile))?.restatement).toBe("the arrow --> and back");
@@ -59,10 +48,6 @@ describe("the sheet's trailer", () => {
   });
 
   describe("an unreadable trailer is not a sheet, and is never an exception", () => {
-    // Read across every comment on an issue, most of which are prose. A single
-    // malformed trailer must not take out the round count and strand the
-    // issue; what it costs is that such a sheet stops being counted, which is
-    // visible on the issue itself.
     it.each([
       ["ordinary prose", "looks good to me"],
       ["an unterminated trailer", "<!-- decision-sheet:v1 {\"round\":0}"],
@@ -86,9 +71,6 @@ describe("the accept's trailer", () => {
   });
 
   it("survives a payload containing a `>` character, the same way sheetMarker does", () => {
-    // Mirrors marker.ts's own escaping assertion for the sheet: every `>` in
-    // the JSON document is escaped as `>`, so an ADR path or term that
-    // happens to contain one cannot terminate the HTML comment early.
     const hostile: AcceptedPayload = { ...acceptedPayload, coinedTerms: ["the arrow --> and back"] };
 
     expect(readAcceptedMarker(acceptedMarker(hostile))?.coinedTerms).toEqual([
@@ -102,10 +84,6 @@ describe("the accept's trailer", () => {
   });
 
   it("reads as absent — not as an exception — for the old bare marker", () => {
-    // A comment written before this payload existed carries the bare marker
-    // with nothing between the tags. That is unreadable, and reads the same
-    // way as a comment that isn't an accept at all: as nothing to fall back
-    // to prose for.
     expect(readAcceptedMarker(`${ACCEPTED_MARKER} -->`)).toBeUndefined();
   });
 });

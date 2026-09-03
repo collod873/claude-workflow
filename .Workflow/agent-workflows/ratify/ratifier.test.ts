@@ -10,11 +10,6 @@ const STANDARDS = ["# Coding Standards", "", "## Standards", "", "- **Existing**
   "\n",
 );
 
-/**
- * A `GitExec` that models just enough plumbing for the loop: each `write-tree` answers a fresh
- * tree (so a commit always looks like a change unless the test says otherwise), `commit-tree`
- * answers a new sha, and everything else records.
- */
 function fakeGit(options: { treeChanges?: boolean } = {}): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
   let commits = 0;
@@ -90,7 +85,6 @@ describe("ratifyBatch — a prose verdict", () => {
       { observation: found, landedAs: "Refusals are cheap", reason: "no rule can see it", verdict: "prose" },
     ]);
     expect(result.declined).toEqual([]);
-    // No trial: only a mechanise verdict has a rule to try.
     expect(git.calls.some((argv) => argv.includes("worktree"))).toBe(false);
   });
 
@@ -163,7 +157,6 @@ describe("ratifyBatch — a mechanise verdict and its rule trial", () => {
     expect(result.landed).toHaveLength(1);
     expect(result.landed[0].landedAs).toBe("Lane-local imports");
     expect(result.landed[0].verdict).toMatch(/demoted/);
-    // The rule and every fix it justified went back before the entry was appended.
     expect(git.calls.some((argv) => argv.includes("checkout-index"))).toBe(true);
     expect(written.get("CODING_STANDARDS.md")).toContain("**Lane-local imports**");
   });

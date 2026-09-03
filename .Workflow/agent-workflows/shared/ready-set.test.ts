@@ -51,7 +51,6 @@ describe("readySlices", () => {
   });
 
   it("leaves a slice blocked by an issue it was not handed, rather than treating the gap as delivery", () => {
-    // The quiet direction. A blocker past the page boundary must not read as satisfied.
     const graph = [state(2, [999])];
 
     expect(readySlices(graph)).toEqual([]);
@@ -65,15 +64,6 @@ describe("an edge is satisfied by delivery, not by closure", () => {
     expect(readySlices(graph)).toEqual([]);
   });
 
-  /**
-   * The asymmetry test, both directions through one predicate.
-   *
-   * The sandcastle prior art counts *open* blockers and skips promotion on a `not planned` close,
-   * so a blocker closed `not planned` **before** fan-out does not block at all — it is not open —
-   * while the identical close landing **after** fan-out refuses to unblock. Same fact, opposite
-   * behaviour, decided by when it happened. There is no "before" and "after" here to disagree
-   * about: the predicate reads state, and the state is the same state.
-   */
   it("gives the same answer whether the `not planned` close landed before or after the edge was drawn", () => {
     const closedBeforePublish = [state(1, [], { delivery: "undelivered" }), state(2, [1])];
     const closedAfterPublish = [state(1, [], { delivery: "undelivered" }), state(2, [1])];
@@ -84,8 +74,6 @@ describe("an edge is satisfied by delivery, not by closure", () => {
   });
 
   it("is unsatisfied when the blocker closed as completed with nothing merged", () => {
-    // `deliveryOf` in `dispatch/reconcile.ts` is what resolves that close to `undelivered`; this
-    // pins what the predicate does with it once resolved.
     const graph = [state(1, [], { delivery: "undelivered" }), state(2, [1])];
 
     expect(readySlices(graph)).toEqual([]);
@@ -123,8 +111,6 @@ describe("unreachableSlices", () => {
   });
 
   it("treats a cycle as never delivering rather than recursing forever", () => {
-    // `validatePlan` refuses a cyclic plan before publish, so this is a guard against a live tracker
-    // that has one anyway.
     const graph = [state(1, [2]), state(2, [1]), state(3, [1])];
 
     expect(() => unreachableSlices(graph)).not.toThrow();
@@ -144,20 +130,9 @@ describe("unreachableSlices", () => {
   });
 });
 
-/**
- * **The invariant, not two transitions.**
- *
- * #178 asked for two transition tests — merging one slice dispatches once each for the newly ready,
- * and a slice with two blockers merging in sequence fires exactly once. Both pass against a design
- * that is wrong under reordering, because both fix the order. The property below does not: it
- * applies **every permutation** of the same event sequence and asserts the answer is a function of
- * the final state alone. That subsumes partial unblocking, duplicate dispatch, event reordering and
- * the `not planned` asymmetry together.
- */
 describe("the ready set is a function of final state, under every event order", () => {
   type Event = { number: number; delivery: Delivery };
 
-  /** Six slices: a root, three behind it, a join, and one behind a slice that gets abandoned. */
   const graph = (): SliceState[] => [
     state(1),
     state(2, [1]),
@@ -197,7 +172,6 @@ describe("the ready set is a function of final state, under every event order", 
   });
 
   it("dispatches the same set for every permutation, equal to the set derived from final state alone", () => {
-    // Derived independently of any event replay: this is what the tracker looks like afterwards.
     const finalState = [
       state(1, [], { delivery: "delivered" }),
       state(2, [1], { delivery: "delivered" }),
@@ -226,8 +200,6 @@ describe("the ready set is a function of final state, under every event order", 
   });
 
   it("does not re-dispatch a slice a previous recompute already started", () => {
-    // What makes an intermediate reconcile free: the claim is the branch, and a claimed slice drops
-    // out of the set rather than being remembered as sent.
     const afterDispatch = apply(events).map((slice) =>
       slice.number === 4 ? { ...slice, started: true } : slice,
     );

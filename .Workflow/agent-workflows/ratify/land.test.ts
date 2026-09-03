@@ -70,8 +70,6 @@ describe("commitWorkingTree — plumbing, never a checkout", () => {
     const commit = commitWorkingTree(git.git, "/repo", "parentsha", "Ratify: X");
 
     expect(commit).toBe("newcommit");
-    // No `checkout`, no `commit`: `HEAD` never moves out from under the trial worktree or the
-    // next finding's stage.
     expect(git.calls.some((argv) => argv.includes("checkout") || argv.includes("commit"))).toBe(false);
     const commitTree = git.calls.find((argv) => argv.includes("commit-tree"))!;
     expect(commitTree).toEqual(["-C", "/repo", "commit-tree", "newtree", "-p", "parentsha", "-m", expect.any(String)]);
@@ -163,12 +161,6 @@ describe("openRatifierPr — the refusals, all of them before any gh call", () =
   });
 });
 
-/**
- * A `GhExec` that answers `pr create` with a URL and records everything else. `gh.fake.ts`'s
- * publisher fake models the publisher's endpoints rather than this one's, and `createRecordingGh`
- * answers nothing at all — which would leave the dispatch's own `pr` field empty and make the one
- * assertion that matters here vacuous.
- */
 function fakePrGh(): { gh: GhExec; calls: string[][]; url: string } {
   const url = "https://github.com/owner/repo/pull/42";
   const calls: string[][] = [];
@@ -195,8 +187,6 @@ describe("openRatifierPr — the door it rings", () => {
     expect(create).toEqual(expect.arrayContaining(["--title", RATIFIER_PR_TITLE]));
     expect(create).toEqual(expect.arrayContaining(["--head", "ratify/abc123456789"]));
     expect(create).toEqual(expect.arrayContaining(["--base", "main"]));
-    // No `Closes` line anywhere: the pull request is the record, and a ticket per machine batch is
-    // tracker pollution.
     expect(create[create.indexOf("--body") + 1]).not.toMatch(/\bCloses #/);
     expect(url).toBe(gh.url);
 
@@ -232,7 +222,6 @@ describe("openRatifierPr — the door it rings", () => {
   });
 });
 
-/** One file's contents at `ref`, trimmed the way `TempRepo.git` trims every answer. */
 const showFile = (repo: TempRepo, ref: string, path: string) => repo.git("show", `${ref}:${path}`);
 
 const listPaths = (repo: TempRepo, ref: string) => repo.git("ls-tree", "-r", "--name-only", ref).split("\n");
@@ -253,13 +242,11 @@ describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse 
     repo.write("src/a.ts", "export const a = 1;\n");
     const branchPoint = repo.commit("the commit this lane was dispatched for");
 
-    // Trunk moves while the lane is mid-run: one workflow edited, one added, one deleted.
     repo.write(".github/workflows/lane.yml", "v2\n");
     repo.write(".github/workflows/added.yml", "new caller\n");
     repo.remove(".github/workflows/gone.yml");
     repo.commit("trunk moves under the run");
 
-    // Back to the stale checkout the lane is actually working in, and the batch's one commit.
     repo.git("checkout", "-q", branchPoint);
     repo.write("src/a.ts", "export const a = 2;\n");
     const tip = commitWorkingTree(execGit, repo.dir, branchPoint, "Ratify: something");
@@ -277,7 +264,6 @@ describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse 
     expect(showFile(repo, pushed, ".github/workflows/lane.yml")).toBe("v2");
     expect(showFile(repo, pushed, ".github/workflows/added.yml")).toBe("new caller");
     expect(listPaths(repo, pushed)).not.toContain(".github/workflows/gone.yml");
-    // The batch's own work is untouched: the alignment is only ever about the immutable set.
     expect(showFile(repo, pushed, "src/a.ts")).toBe("export const a = 2;");
   });
 

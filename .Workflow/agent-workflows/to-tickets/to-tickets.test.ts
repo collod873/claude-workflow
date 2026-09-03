@@ -16,11 +16,6 @@ import { runNamedStage } from "./to-tickets";
 
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
 
-/**
- * Runs audit-and-publish over whatever slice checkpoint the caller seeded, with the auditor
- * answering `answer`, and hands back every line it logged — for the tests about what the stage
- * says, rather than what it publishes. The caller's `afterEach` restores the spy.
- */
 async function loggedByAudit(answer: { notes: string; slices: Slice[] }): Promise<unknown[]> {
   const stage = createFakeStage(JSON.stringify(answer));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -103,10 +98,6 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
 
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
     expect(stage.calls).toHaveLength(1);
-    // Not `JSON.stringify(slicedPlan)` — `readPriorHandoff` unwraps the
-    // checkpoint through `SLICE_OUTPUT.parse`, which re-serialises to zod's
-    // own field order rather than the fixture's, so the expected text has to
-    // go through the same unwrap to match.
     expect(stage.calls[0][1]).toContain(JSON.stringify(SLICE_OUTPUT.parse(sliceResponse(slicedPlan))));
     const checkpoint = JSON.parse(readFileSync(checkpointPath("audit-and-publish"), "utf8"));
     expect(JSON.parse(checkpoint.response)).toEqual({
@@ -160,26 +151,11 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
   });
 });
 
-/**
- * #151: every stage that emits a plan prints one line saying how close the
- * plan came to the `Slice` caps, so the next decision about the audit stage
- * (#148) is made on measurements across runs rather than on one run. The
- * shape is pinned exactly here, for a plan built to have a known answer:
- * the slice count, the widest `filesClaimed`, and each capped field's longest
- * value over its ceiling.
- */
 describe("a plan-emitting stage prints one measurement line against the Slice caps", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  /**
-   * A criterion of exactly `length` characters that a publisher will still
-   * accept — padding plus a real `check:` marker (`render-body.ts`). The
-   * measurement is about length, but `audit-and-publish` publishes the plan it
-   * measures, and a criterion `bin/close-ticket` could not run never gets that
-   * far (#215).
-   */
   const criterionOfLength = (length: number) => {
     const marker = " — check: `z`";
     return "z".repeat(length - marker.length) + marker;
@@ -199,8 +175,6 @@ describe("a plan-emitting stage prints one measurement line against the Slice ca
       whyNotMerged: "y".repeat(90),
       acceptanceCriteria: [criterionOfLength(55)],
       filesClaimed: ["bin/a.ts", "bin/b.ts", "bin/c.ts", "bin/d.ts"],
-      // Edged onto "Narrow" so the plan has exactly one unblocked root, which `validatePlan` now
-      // requires (#240). Nothing the measurement line reports reads `dependsOn`.
       dependsOn: [1],
     }),
   ];
@@ -243,15 +217,6 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
     withHandoffDir();
     delete process.env.FAILURE_REASON_PATH;
 
-    // DEFAULT_HANDOFF_PATH is repo-relative by design (that's the fallback
-    // under test), which means it resolves against process.cwd() — the real
-    // checkout root, shared by every worker in this suite's pool. Pinning
-    // the relative-path behaviour without colliding with a sibling worker
-    // means giving this one test a private cwd for its duration, not a
-    // private handoff path (#222): a fixed absolute path here would stop
-    // testing the fallback it exists to pin. chdir is process-wide within a
-    // vitest worker, so it must be restored before this test hands the worker
-    // back, success or failure (`scratchDir` removes the directory itself).
     const cwd = scratchDir("handoff-cwd");
     const originalCwd = process.cwd();
     process.chdir(cwd);
@@ -267,18 +232,11 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
   });
 });
 
-/**
- * The two properties the checkpoint move exists for, pinned directly rather
- * than as a side effect of some other test's assertions.
- */
 describe("stage output moved from the shared handoff to per-stage checkpoints", () => {
   it("readPriorHandoff reads the upstream stage's checkpoint file, not the shared handoff", async () => {
     const dir = withHandoffDir();
     const target = join(dir, "handoff.txt");
     process.env.FAILURE_REASON_PATH = target;
-    // Poisoned on purpose: if slice's SEAM_MANIFEST substitution ever again
-    // read the shared handoff, this text — not a seam manifest at all —
-    // would reach the model's prompt.
     writeFileSync(target, "not a seam manifest", "utf8");
     seedCheckpoint("seam-sweep", seamSweepResponse(["a real seam"]));
     const plan = [slice({ title: "One slice" })];
@@ -303,12 +261,6 @@ describe("stage output moved from the shared handoff to per-stage checkpoints", 
   });
 });
 
-/**
- * These exercise the real `--stage seam-sweep` CLI end to end, through
- * `stage-cli.fixture.ts`, with a stub `claude` executable placed first on PATH
- * standing in for the model — proving the wiring (argv, extraction, schema,
- * checkpoint write, exit code) without launching one.
- */
 describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   it("writes a schema-valid manifest to its checkpoint and exits 0", async () => {
     runStageCli("seam-sweep", { structured: { entries: ["a seam"] } });
@@ -318,41 +270,18 @@ describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the run produced no structured output", async () => {
-    // A result event carrying prose and no `structured_output` — what the
-    // CLI reports when the model never reached the tool. There is no such
-    // response in ordinary traffic, and the point is that the stage names it
-    // rather than dying on a `SyntaxError` about position 0.
     const reason = stageCliFailure("seam-sweep", "the model just talked, and never called the tool");
 
     expect(reason).toMatch(/^seam-sweep: .*not valid JSON/);
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", async () => {
-    // A manifest entry with a newline in it: the rule `SeamManifestEntry`
-    // carries as a `.refine()`, which has no JSON Schema form — so the API
-    // accepts this and zod is what refuses it. That split is the reason
-    // `parse` runs the schema over structured output at all.
     const reason = stageCliFailure("seam-sweep", { structured: { entries: ["one line\ntwo lines"] } });
 
     expect(reason).toMatch(/^seam-sweep: .*failed schema validation/);
   });
 });
 
-/**
- * #42's other half, exercised through `runNamedStage` rather than the CLI:
- * the behaviour under test is what a stage does with a response it refuses,
- * which needs no subprocess. The CLI tests above already own the
- * reason-reaches-the-handoff half, and an in-process test of an in-process
- * behaviour is the cheaper and more direct one either way. (This used to be
- * argued from the 5000ms default timeout, which every extra `npx tsx` spawn
- * ate ~5s of. That budget is gone — see ADR-0015 — but the choice stands on
- * its own.)
- *
- * Run 32677530530 spent two minutes of real model time and left one line
- * about why it died; the response itself was never written anywhere, so the
- * first thing #42 asks for — look at the actual response — could not be
- * done from the run that raised it.
- */
 describe("a refused response is kept where the next reader can find it", () => {
   const rejected = JSON.stringify({ entries: ["one line\ntwo lines"] });
 
@@ -390,17 +319,10 @@ describe("a refused response is kept where the next reader can find it", () => {
   });
 });
 
-/**
- * These exercise the real `--stage slice` CLI end to end, with a stub
- * `claude` executable standing in for the model — and, unlike seam-sweep's
- * CLI tests above, a seam manifest pre-seeded at seam-sweep's checkpoint,
- * since slice reads that as its SEAM_MANIFEST input before it runs.
- */
 describe("to-tickets.ts --stage slice (CLI)", () => {
   const validPlan = [slice({ title: "One slice" })];
   const seamSweepCheckpoint = { stage: "seam-sweep", response: seamSweepResponse(["a seam"]) };
 
-  /** Runs `--stage slice` against `plan`, asserts it fails, and hands back the reason it wrote. */
   function sliceFailure(plan: Slice[]): string {
     return stageCliFailure("slice", { structured: { slices: plan } }, seamSweepCheckpoint);
   }

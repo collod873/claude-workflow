@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { judgeFailsEdits } from "./fails-rule";
 
-/** A one-file unified diff with the given hunk lines, the way `git diff` prints one. */
 function diffOf(file: string, hunk: string[]): string {
   return [`--- a/${file}`, `+++ b/${file}`, "@@ -1,3 +1,3 @@", ...hunk].join("\n");
 }

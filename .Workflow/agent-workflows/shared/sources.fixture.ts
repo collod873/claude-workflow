@@ -14,12 +14,10 @@ const SHARED_DIR = import.meta.dirname;
 const WORKFLOW_ROOT = resolve(SHARED_DIR, "../..");
 
 export interface SourceFile {
-  /** The path, relative to `.Workflow/` for a test and bare for a shared module. */
   name: string;
   source: string;
 }
 
-/** Every module in `shared/` that is neither a test nor a fake — the seams and their fixtures. */
 export function sharedModules(): SourceFile[] {
   return readdirSync(SHARED_DIR)
     .filter((name) => name.endsWith(".ts") && !name.includes(".test.") && !name.includes(".fake."))
@@ -41,18 +39,10 @@ function sourcesUnder(suffix: string): SourceFile[] {
   }));
 }
 
-/** Every `*.test.ts` under `agent-workflows/`, named relative to `.Workflow/`. */
 export function agentWorkflowTests(): SourceFile[] {
   return sourcesUnder(".test.ts");
 }
 
-/**
- * Every `*.fixture.ts` under `agent-workflows/`, named relative to `.Workflow/`.
- *
- * Separate from `sharedModules()`, which is keyed to one directory and so both misses the fixtures
- * outside `shared/` (`to-tickets/stage-cli.fixture.ts` spawns, and lives next to its suite) and
- * sweeps up the production seams, which are not held to the same rule.
- */
 export function agentWorkflowFixtures(): SourceFile[] {
   return sourcesUnder(".fixture.ts");
 }

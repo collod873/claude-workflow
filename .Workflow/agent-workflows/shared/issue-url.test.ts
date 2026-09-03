@@ -11,7 +11,6 @@ describe("parseIssueNumber", () => {
   });
 
   it("reads the trailing segment, never digits earlier in the URL", () => {
-    // A repo or org named for a number is the case the `$` anchor exists for.
     expect(parseIssueNumber("https://github.com/123/456/issues/9")).toBe(9);
   });
 

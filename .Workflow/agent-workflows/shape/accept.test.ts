@@ -6,21 +6,12 @@ import { sheetMarker } from "../shared/marker";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 
-/**
- * The owner's four verbs. This is where ADR-0005 stops being a claim — *accepting
- * a shaped idea is what files its ADRs* — and ADR-0006's W5 becomes a thing that
- * happens rather than a maxim: agents draft, the owner signs, and the signature
- * is a label.
- */
-
-/** The landed file's frontmatter block, so an assertion about a key cannot be met by the body. */
 function frontmatterOf(content: string): string {
   const block = frontmatterBlock(content);
   if (block === undefined) throw new Error(`no frontmatter block in:\n${content}`);
   return block;
 }
 
-/** A reversal sentence in the shape `adr_shape.validate` accepts: a cost, not a restated ruling. */
 const REVERSAL = "Undoing it means re-routing every item by hand, in every lane that reads the route.";
 
 function decision(over: Partial<Decision> = {}): Decision {
@@ -66,16 +57,9 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
       git.push([...args]);
       return "";
     },
-    // Drafts are unnumbered and the number arrives at the land (ADR-0080), so the stub models
-    // both halves: `newAdr` names the file by its slug alone, and `landAdr` is the only thing
-    // here that knows a number. A stub that handed back a numbered path from `newAdr` would let
-    // an accept that never lands its drafts pass.
     newAdr: (title) => {
       adrTitles.push(title);
       const path = `docs/adr/draft-slug-${adrTitles.length}.md`;
-      // The template `bin/new-adr` actually writes: frontmatter, then the title. A stub still
-      // emitting the retired prose grammar would let this lane pass while producing ADRs the push
-      // venue refuses.
       files.set(path, `---\nstatus: constraint\ndate: 2026-08-26\nreversal:\n---\n\n# ${title}\n`);
       return `${path}\n`;
     },
@@ -99,7 +83,6 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
   return { deps, tracker, files, git, adrTitles };
 }
 
-/** The harness for a sheet whose one decision is `over` — the shape most of these cases need. */
 function harnessFor(over: Partial<Decision>): Harness {
   return harness({ sheet: sheet({ decisions: [decision(over)] }) });
 }
@@ -126,9 +109,6 @@ A named group of edges.
 
 describe("parked", () => {
   it("drops `idea` and does nothing else", () => {
-    // §01: no dispatch, and **nothing ever re-raises it** — anything that did
-    // would be a nag, and C4 says a nag dies by month three. Dropping the
-    // label is what stops the lane re-firing; there is nothing to announce.
     const { deps, tracker } = harness({ sheet: sheet() });
 
     expect(accept(deps, 1, "parked")).toEqual({ kind: "parked" });
@@ -165,16 +145,11 @@ describe("approved", () => {
 
     expect(adrTitles).toEqual(["The ruling as a sentence"]);
     expect(outcome).toMatchObject({ kind: "approved", adrs: ["docs/adr/0051-slug.md"] });
-    // The body carries the rejected alternative — ADR-0005's whole point is
-    // that a later ticket does not re-propose it in six months.
     expect(files.get("docs/adr/0051-slug.md")).toContain("x");
     expect(files.get("docs/adr/0051-slug.md")).toContain("ADR-0007's routing rule");
   });
 
   it("files nothing for a title with no mark", () => {
-    // ADR-0028 makes the mark the first of README's three tests. A title
-    // without one is a shaper claiming a bar it did not show its work for,
-    // and honouring it would make the mark decorative.
     const { deps, adrTitles } = harnessFor({ adrTitle: "A ruling" });
 
     expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
@@ -189,8 +164,6 @@ describe("approved", () => {
   });
 
   it("files nothing for a title and mark with no reversal sentence", () => {
-    // `adr_shape.validate` refuses an ADR whose `reversal:` is empty, and this lane is not there
-    // when that refusal fires. Filing anyway moved the failure to whoever next pushed.
     const { deps, adrTitles } = harnessFor({ mark: "a file", adrTitle: "A ruling" });
 
     expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
@@ -236,8 +209,6 @@ describe("approved", () => {
   });
 
   it("commits and pushes what it wrote, straight to main", () => {
-    // Ruled with the move: a PR here would add a second owner touch to a lane
-    // §01 budgets at two owner minutes. Move 10 flips it.
     const { deps, git } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
 
     accept(deps, 1, "approved");
@@ -294,8 +265,6 @@ describe("approved", () => {
   });
 
   it("dispatches lane 02, and says so on the issue", () => {
-    // ADR-0083. Lane 02 used to be unbuilt and this comment said so; it now runs on a runner, and
-    // the accept is what starts it.
     const { deps, tracker } = harness({ sheet: sheet() });
 
     accept(deps, 1, "approved");
@@ -305,9 +274,6 @@ describe("approved", () => {
   });
 
   it("sends the dispatch after the comment carrying the marker the collector reads", () => {
-    // The whole of ADR-0083: a lane 02 that fired on `approved` would race this lane's own write,
-    // and `collectSheetContext` throws when the accept payload is not there yet. Ordering is the
-    // ruling, so ordering is what this asserts — not merely that both calls happened.
     const { deps, tracker } = harness({ sheet: sheet() });
 
     accept(deps, 1, "approved");
@@ -325,10 +291,6 @@ describe("approved", () => {
   });
 
   it("swaps the spent verb for the lane that is now owed", () => {
-    // The tracker is what the owner reads, and `approved` left on the issue asserts a verdict
-    // rather than a position — `docs/agents/pipeline-labels.md` allows only the latter. The label
-    // is a record, never the trigger: a `GITHUB_TOKEN` label starts no run (ADR-0054), which is why
-    // the dispatch above exists and why this assertion does not claim to start anything.
     const { deps, tracker } = harness({ sheet: sheet() });
 
     accept(deps, 1, "approved");
@@ -354,9 +316,6 @@ describe("approved", () => {
 
 describe("coining a term", () => {
   it("leaves the file alone when the section is gone", () => {
-    // Not there means CONTEXT.md has been reorganised since the enum was
-    // written. Creating the heading would let this lane quietly invent
-    // structure in the one document the whole estate reads for its vocabulary.
     const term: Term = { term: "X", definition: "d", avoid: [], section: "The charter" };
 
     expect(insertTerm(CONTEXT_FIXTURE, term)).toBeUndefined();
@@ -381,10 +340,6 @@ describe("coining a term", () => {
 
 describe("re-applying a verb", () => {
   it("does not file a second copy of every ruling", () => {
-    // A label can be removed and re-applied, and each application is a fresh
-    // `issues.labeled` event. Without the accept's own trailer to read back,
-    // the second one files every ruling again under new numbers and pushes
-    // them to `main`.
     const shaped = sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL })] });
     const { deps, adrTitles, git } = harness({ sheet: shaped });
 
@@ -412,9 +367,6 @@ describe("re-applying a verb", () => {
   });
 
   it("carries the ADR paths, coined terms and route in the marker's payload", () => {
-    // ADR-0058: lane 02's sheet collector cites these rather than restating
-    // them, and the ADR numbers appear nowhere on the sheet itself — so the
-    // payload is what the collector reads instead of the rendered prose.
     const term: Term = { term: "X", definition: "d", avoid: [], section: "Mechanisms" };
     const { deps, tracker } = harness({
       sheet: sheet({

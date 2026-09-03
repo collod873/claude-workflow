@@ -32,22 +32,10 @@ import {
   type ImplementDeps,
 } from "./implement";
 
-/**
- * Lane 05's own half: the brief it assembles, the order it spends in (claim, then ticket, then
- * model), and what it does with the answer before handing it to `landAnswer`. The landing half —
- * how a claim is assessed and taken over, the commit-rebase-push, the no-op — is
- * `shared/implementation-landing.test.ts`, because `recover/recover.ts` runs that same code.
- */
-
 const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
 const BUILDS = { files: [{ path: "a/b.ts", content: "export const x = 1;" }], summary: "Built the thing." };
 
-/**
- * The ordinary run, on fakes: one claimed file, an implementer that writes it, a `git status` that
- * says it changed, and nothing refusing anything. `github` and `extra` are whatever the case under
- * test is actually about — every other field is scenery.
- */
 function arrange(github: ClaimHostOptions = {}, extra: Partial<ImplementDeps> = {}) {
   const host = githubHoldingClaims(github);
   const checkout = checkoutReporting();
@@ -78,9 +66,6 @@ describe("assembleBrief", () => {
       failingTests: [{ path: "foo.test.ts", content: "describe('foo', () => {});" }],
     };
 
-    // Built independently of assembleBrief's own implementation, from exactly the same four
-    // ingredients — an exact-equality check is what proves the function added nothing a fifth
-    // ingredient would have supplied.
     const expected = [
       "## Ticket",
       inputs.ticketBody,
@@ -174,16 +159,12 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(written.get("a/b.ts")).toBe("export const x = 1;");
     expect(prCreatesIn(host.calls)).toHaveLength(1);
 
-    // The other two fields trunk's `verify.yml` reads. Sending only `pr` left the Immutability
-    // job refusing every PR on an empty changed-files input and the acceptance job finding no test
-    // to run (#145's seam audit).
     expect(host.dispatches).toEqual([
       { eventType: VERIFY_DISPATCH_EVENT_TYPE, payload: { pr: PR_URL, changed_files: "a/b.ts", criteria: "The thing is done" } },
     ]);
     const dispatch = host.calls.find((call) => call[1] === "repos/{owner}/{repo}/dispatches");
     expect(dispatch).toContain("client_payload[criteria][]=The thing is done");
 
-    // The PR opens before the dispatch that names it — not merely "both happened".
     expect(host.calls.indexOf(prCreatesIn(host.calls)[0])).toBeLessThan(host.calls.indexOf(dispatch!));
   });
 
@@ -197,11 +178,6 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(stage.stdins[0]).toContain("the test.fails( assertion");
   });
 
-  /**
-   * #334: the window Class 3 of the research note calls "exposed, worst case" — job-start checkout,
-   * a 45-minute model run, then a push with no fetch or rebase between them. This lane is the one
-   * caller of `landAnswer` that opts in; what a conflict does is that module's own test.
-   */
   it("fetches trunk and rebases onto it between the commit and the push", async () => {
     const { deps, gitCalls } = arrange();
 
@@ -217,11 +193,6 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
   });
 });
 
-/**
- * The claim that makes at-least-once dispatch free (#179): the reconciler is deliberately dumb
- * about what it has already sent, which is only affordable if a duplicate costs nothing — and it
- * costs nothing only if the ref is created **before** the model runs.
- */
 describe("runImplement claims its branch before it spends anything", () => {
   it("creates the ref at HEAD as its very first call, and only then runs the model", async () => {
     const { deps, host, stage } = arrange();
@@ -232,8 +203,6 @@ describe("runImplement claims its branch before it spends anything", () => {
     expect(stage.stdins).toHaveLength(1);
   });
 
-  // ADR-0115 / #279: a dispatch can name a ticket that already merged and closed, and the model
-  // run it used to buy exited green — the stall was invisible.
   it("refuses a closed ticket before the model: no stage call, claim released, said out loud", async () => {
     const { deps, host, stage } = arrange({ ticket: { title: "already merged", body: "", state: "CLOSED" } });
 
@@ -245,12 +214,6 @@ describe("runImplement claims its branch before it spends anything", () => {
     expect(prCreatesIn(host.calls)).toEqual([]);
   });
 
-  /**
-   * The thunk is #179's guarantee pinned where it broke: `main` builds `ImplementDeps` as the
-   * *argument* to `runImplement`, so an eagerly-resolved `failingTests` ran before the claim was
-   * attempted — seventeen minutes of acceptance suite on 2026-09-02, long enough for the
-   * reconciler to read a running implementer as unstarted and dispatch a second one against #342.
-   */
   it("exits already-claimed without the model, the PR, the dispatch or the acceptance tests", async () => {
     let resolved = 0;
     const { deps, host, stage, log } = arrange(
@@ -273,34 +236,23 @@ describe("runImplement claims its branch before it spends anything", () => {
 
     await runImplement(deps);
 
-    // The question is the repair (#196). No ticket read, no comment, and the claim it hit still
-    // standing where it was.
     expect(host.calls.some((call) => call[0] === "issue")).toBe(false);
     expect(refDeletesIn(host.calls)).toEqual([]);
     expect(host.refs).toEqual(new Set([BRANCH]));
   });
 });
 
-/**
- * A claim a dead run left behind is not a claim (#196). Twice in one evening a run died after
- * claiming and before opening its pull request, and every retry read `HTTP 422`, logged "already
- * claimed" and exited 0 — the ticket was unbuildable until somebody deleted the branch by hand.
- */
 describe("a claim does not outlive the run that made it", () => {
   it("releases the claim when the run fails before opening a pull request", async () => {
     const { deps, host } = arrange({ prCreate: new Error("GraphQL: GitHub Actions is not permitted to create pull requests") });
 
     await expect(runImplement(deps)).rejects.toThrow(/not permitted to create pull requests/);
 
-    // Not "a delete happened" — the ref this run created is gone, which decides whether the next
-    // `ticket-ready` for this ticket builds or exits 0 having done nothing.
     expect(host.refs.has(BRANCH), "the claim this run made outlived it").toBe(false);
     expect(refDeletesIn(host.calls)).toHaveLength(1);
   });
 
   it("leaves the claim alone when the failure came after a pull request was already open", async () => {
-    // The dispatch is the step after `pr create`, and a branch with a PR on it is finished work —
-    // deleting it would take the run's own pull request down with it.
     const { deps, host } = arrange({
       existingClaim: { branch: BRANCH, pullRequests: 1 },
       answer: (args) => {
@@ -323,17 +275,10 @@ describe("a claim does not outlive the run that made it", () => {
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(stage.stdins, "the implementer ran this time").toHaveLength(1);
-    // A retry that succeeded and a retry that was refused both look like a green run to anybody
-    // reading the tracker. This comment is the only thing that tells them apart.
     expect(ticketCommentsIn(host.calls)).toEqual([staleClaimTakeoverNote(BRANCH)]);
   });
 });
 
-/**
- * ADR-0103. A lane 05 answer exists in the model's reply and nowhere else — the runner log elides
- * the payload, and a run that opens no pull request commits nothing — so the only copy that can
- * survive a run is one written before the run decides anything about it.
- */
 describe("the implementer's answer, kept", () => {
   const RECEIPT = "/tmp/answer.json";
 
@@ -347,8 +292,6 @@ describe("the implementer's answer, kept", () => {
 
     await runImplement(deps);
 
-    // The no-op path: nothing committed, no PR. The receipt is the only thing this run leaves
-    // behind, which is the case it exists for.
     expect(JSON.parse(written[RECEIPT])).toMatchObject(BUILDS);
   });
 
@@ -371,16 +314,9 @@ describe("the implementer's answer, kept", () => {
   });
 });
 
-/**
- * Scoped to the slice (#167) and read, never run (#360): an unscoped run handed every implementer
- * 19 failing files, 10 of them nobody's, and spent ~26 minutes of a 45-minute job doing it. A
- * slice's test now lands green, marked `test.fails(` and naming its ticket, so the brief is a grep
- * over the suite's own trees for that marker.
- */
 describe("findFailingTestFiles finds the slice's test.fails( tests without running anything", () => {
   const SLICE_TEST = ['// The gate is a constant', 'test.fails("#360: the gate is a constant", () => {', "  expect(1).toBe(2);", "});"].join("\n");
 
-  /** A checkout whose `.Workflow` tree holds the given test files, each `[relative path, source]`. */
   function checkoutWith(files: Array<[string, string]>): { root: string; readFile: (path: string) => string } {
     const root = scratchDir("implement-slice");
     for (const [path, source] of files) {
@@ -394,7 +330,6 @@ describe("findFailingTestFiles finds the slice's test.fails( tests without runni
     const { root, readFile } = checkoutWith([
       ["x/gate.test.ts", SLICE_TEST],
       ["x/other.test.ts", 'it("#360 is mentioned here, but this test is on already", () => {});'],
-      // Fixture data, not a marker: the line does not open with the call (`bin/close-ticket` reads it the same way).
       ["x/quoting.test.ts", "const sample = '-  test.fails(\"#360: quoted in a diff sample\", () => {';"],
     ]);
 

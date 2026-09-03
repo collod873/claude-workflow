@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { runEntrypoint } from "../shared/entrypoint";
 import { execGh, type GhExec } from "../shared/gh";
 import { handoffPath } from "../shared/handoff-path";
 import { reason } from "../shared/reason";
@@ -21,45 +22,12 @@ import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, typ
 import { SWEEP_OUTPUT, type Sweep } from "../shared/sweep-schema";
 import { cappedComment, roundFor } from "./rounds";
 
-/**
- * Lane 01 — Shape. Three serial model stages producing one decision sheet.
- *
- * Unlike lane 03, the whole chain runs inside **one** process rather than one
- * workflow step per stage. Lane 03's stages are independent — each reads the
- * last one's output off a file and nothing loops — so the workflow can drive
- * them. This chain has a loop in it: the shaper may spend one re-sweep
- * (ADR-0030), which re-runs stage 1 and then stage 2 again. A cap of one,
- * enforced across two workflow steps, would have to be recomputed from the
- * tracker on every entry; enforced in a single call stack it is a local
- * variable. Each `claude` spawn is still its own process with no memory of
- * the last, which is what `CONTEXT.md` means by a stage.
- *
- * The three model tiers are §3's, and they are named here because a stage
- * that does not say so silently costs whatever the CLI defaults to.
- */
-
-/** §3: high volume, zero discretion, trivially reversible. */
 const SWEEP_MODEL = "claude-haiku-4-5-20251001";
 
-/** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
 const SHAPER_MODEL = "claude-opus-5";
 
-/** §3: bounded by what is on the sheet — the ceiling is the sheet, not the model. */
 const REFUTER_MODEL = "claude-sonnet-5";
 
-/**
- * What the shaper may not do, enforced by the CLI rather than by its prompt
- * (ADR-0030). Every way this repo's stages reach the world is on this list:
- * the file readers, the searchers, `Bash` (which is how `gh` would be
- * reached), the web, and the subagent spawner that could hold any of them.
- * The write tools are here too — the shaper produces one structured-output
- * tool call and nothing else, so a shaper that edited a file would be doing
- * something no part of this design asked for.
- *
- * `shape.test.ts` asserts this list reaches the argv, because a deny list
- * that silently stopped being passed would leave a prompt-only prohibition
- * behind and nothing would look different.
- */
 export const SHAPER_DENIED_TOOLS = [
   "Read",
   "Grep",
@@ -75,22 +43,6 @@ export const SHAPER_DENIED_TOOLS = [
   "TodoWrite",
 ];
 
-/**
- * What the sweep may not do. Narrower than the shaper's list because this
- * stage's whole job is reading: it keeps the file tools and `Bash`, which is
- * how it reaches `gh`.
- *
- * What it loses is every reach *past* this repository. The prompt has always
- * said the sweep's scope is the checkout and this repo's issues, and until
- * this list existed that was a sentence rather than a fact — the stage ran on
- * whatever the CLI defaults to, under `--dangerously-skip-permissions`, with
- * the web and the subagent spawner live. ADR-0050 is the ruling that describes
- * the boundary; this is what holds it.
- *
- * `shape.test.ts` asserts the list reaches the argv, for the same reason it
- * does for `SHAPER_DENIED_TOOLS`: a deny list that silently stopped being
- * passed leaves a prompt-only prohibition behind and nothing looks different.
- */
 export const SWEEP_DENIED_TOOLS = [
   "WebFetch",
   "WebSearch",
@@ -100,18 +52,10 @@ export const SWEEP_DENIED_TOOLS = [
   "NotebookEdit",
 ];
 
-/** Applied when stage 1 refuses. The evidence is in the comment; this is what a query can see. */
 export const REFUSED_LABEL = "shape-refused";
 
-/** Applied when the tree will not close under five decisions (ADR-0029). */
 export const NEEDS_LIVE_SESSION_LABEL = "needs-human";
 
-/**
- * Every label this chain applies. `wired.test.ts` reads it and asserts the
- * workflow creates each one, because `gh issue edit --add-label` fails on a
- * label that does not exist — and it fails at the moment the lane is trying
- * to report something, which is the worst moment available.
- */
 export const LABELS_APPLIED = [REFUSED_LABEL, NEEDS_LIVE_SESSION_LABEL];
 
 const PROMPTS = {
@@ -126,17 +70,6 @@ function writeFailure(stage: string, detail: string): void {
   writeFileSync(path, `${stage}: ${detail}\n`, "utf8");
 }
 
-/**
- * The outcome of one chain run, returned rather than logged so the caller
- * decides the exit code and `shape.test.ts` can assert on it.
- *
- * **Only `failed` is a red run.** A refusal and a refuse-to-shape are this
- * lane working: §11's unfiled question 3 makes the sweep's kill rate a number
- * worth measuring, which means kills are the expected traffic, not incidents.
- * Painting the Actions tab red for the ordinary case is how a red stops
- * meaning anything — and both outcomes announce themselves where the owner
- * is actually looking, which is the issue.
- */
 export type Outcome =
   | { kind: "posted"; round: number; route: "short" | "long"; survivors: number }
   | { kind: "refused"; cause: string }
@@ -146,24 +79,15 @@ export type Outcome =
 export interface ChainDeps {
   exec: StageExec;
   gh: GhExec;
-  /** Reads a reading-list ref. Injected so a test needs neither disk nor GitHub. */
   fetch: Fetch;
 }
 
-/** The idea as the owner filed it — title and body, never edited (§00). */
 function readIdea(gh: GhExec, issueNumber: number): string {
   const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
   const parsed = JSON.parse(raw) as { title?: string; body?: string };
   return `**${parsed.title ?? ""}**\n\n${parsed.body ?? ""}`;
 }
 
-/**
- * The real `Fetch`: a repo-relative path off disk, or an issue through `gh`. `repoDir` is the
- * target's own checkout (#314, ADR-0055) — a prior-art reference names a path in the calling
- * repository's tree, not the machine's, and once the two are separate checkouts a bare relative
- * read resolves against whichever one happens to be this process's cwd rather than the one the
- * reference actually names.
- */
 export function fetchRef(gh: GhExec, repoDir: string): Fetch {
   return (ref) => {
     try {
@@ -179,14 +103,6 @@ export function fetchRef(gh: GhExec, repoDir: string): Fetch {
   };
 }
 
-/**
- * The idea is substituted rather than fetched. `readIdea` has already read it
- * for the shaper, so a sweep that ran `gh issue view` for itself spent a tool
- * call on a string this process was holding — and a `gh` that failed there
- * killed the stage having never read the thing it was sweeping for.
- *
- * It still gets `ISSUE_NUMBER`, which is the number its own search has to skip.
- */
 async function runSweep(
   deps: ChainDeps,
   issueNumber: number,
@@ -226,11 +142,6 @@ async function runShaper(
     },
     deps.exec,
     SHAPER_OUTPUT,
-    // On stdin, because this is the one prompt in the estate that inlines
-    // files: `CONTEXT.md`, `CODING_STANDARDS.md` and an uncapped reading
-    // list clear the 128 KiB argv-element limit on any idea whose sweep
-    // listed a long file. ADR-0030 rejected capping that list, so the
-    // transport has to be the thing that gives.
     { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true, stage: "shaper" },
   );
 }
@@ -248,10 +159,6 @@ async function runRefuter(deps: ChainDeps, shaped: ShaperSheet): Promise<Refutat
   );
 }
 
-/**
- * The one place this lane writes to the tracker, so a test asserting "refused
- * before any write" has a single thing to watch.
- */
 function comment(gh: GhExec, issueNumber: number, body: string): void {
   gh(["issue", "comment", String(issueNumber), "--body", body]);
 }
@@ -260,12 +167,6 @@ function label(gh: GhExec, issueNumber: number, name: string): void {
   gh(["issue", "edit", String(issueNumber), "--add-label", name]);
 }
 
-/**
- * Runs the chain end to end for one idea.
- *
- * The order is §01's, and every early return is a place the design says the
- * chain stops rather than a shortcut this implementation took.
- */
 export async function runChain(
   deps: ChainDeps,
   issueNumber: number,
@@ -292,7 +193,6 @@ export async function runChain(
 
   let shaped = await runShaper(deps, idea, sweep, changeRequest, "");
 
-  // ADR-0030's one re-sweep. The cap is this branch not being a loop.
   if (shaped.kind === "re-sweep") {
     const needs = shaped.needs;
     const second = await runSweep(deps, issueNumber, idea, reSweepFocus(shaped.needs, shaped.why));
@@ -300,9 +200,6 @@ export async function runChain(
     shaped = await runShaper(deps, idea, sweep, changeRequest, renderReSweepAnswer(needs));
 
     if (shaped.kind === "re-sweep") {
-      // The prompt's second pass says in as many words that this is the last
-      // one and to mark the gap instead. A stage that asks again has not
-      // produced an output this lane can post, and there is no repair path.
       throw new Error(
         `the shaper asked for a second re-sweep ("${shaped.needs}"), which ADR-0030 caps at one`,
       );
@@ -330,14 +227,6 @@ export async function runChain(
   };
 }
 
-/**
- * The sweep's focus paragraph on the first pass. A change request is the
- * owner saying the last run got something wrong, and the sweep is the stage
- * best placed to go and find what it missed — §01 calls a change request a
- * re-run of the shaper, and re-running the cheap stage ahead of it costs
- * cents and removes the alternative, which is carrying the last run's sweep
- * across a runner boundary in a file nothing owns.
- */
 function firstPassFocus(changeRequest: string): string {
   const trimmed = changeRequest.trim();
   if (trimmed === "") return "";
@@ -361,7 +250,6 @@ Find it, and put whatever bears on it on the reading list. If it does not exist,
 **Prior art is settled.** Job 1 ran on the first pass and its verdicts already cleared; that answer stands and anything you return for it now is discarded. Return an empty \`priorArt\` and spend this pass on the reading list.`;
 }
 
-/** Union of two sweeps, second pass last, deduplicated by ref. */
 function mergeSweeps(first: Sweep, second: Sweep): Sweep {
   const seen = new Set(first.readingList.map((item) => item.ref));
   return {
@@ -373,12 +261,6 @@ function mergeSweeps(first: Sweep, second: Sweep): Sweep {
   };
 }
 
-/**
- * §01's *"needs a live session"* — the honest refusal, and the same instinct
- * as §02's *a spec with zero open questions is suspect*, pointed the other
- * way. It costs no new number: the sheet's own five-decision cap is the
- * condition (ADR-0029).
- */
 function needsLiveSessionComment(count: number): string {
   return `**This needs a live session.** The decision tree did not close under ${DECISION_CAP} decisions — the shaper found ${count}.
 
@@ -401,7 +283,6 @@ async function main(): Promise<void> {
     usage();
   }
 
-  // `TARGET_WORKSPACE` is set only by the reusable workflow (#314, ADR-0055) — see `fetchRef`.
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
   const deps: ChainDeps = { exec: execClaudeIn(targetWorkspace), gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
 
@@ -416,15 +297,7 @@ async function main(): Promise<void> {
   }
 }
 
-// Built through pathToFileURL rather than a `file://` template because
-// import.meta.url is percent-encoded and this repo's own path has a space in
-// it — a naive comparison silently never matches and main() never runs.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  main().catch((err: unknown) => {
-    const detail = reason(err);
-    console.error(`shape failed: ${detail}`);
-    writeFailure("shape", detail);
-    process.exitCode = 1;
-  });
+  runEntrypoint("shape", main);
 }

@@ -69,12 +69,6 @@ describe("the signal", () => {
   });
 });
 
-/**
- * A `gh` stand-in that answers the calls `countLostDispatch` makes — the PRD read, the sub-issue
- * count, the slicing lane's run history, the tracker (`answerTracker`, shared with the other
- * watchdog suites) and the comment write — and records every argv, so a test can assert "wrote
- * nothing" by the recording staying empty rather than by assuming it.
- */
 function slicingHistoryWith(options: {
   prd?: { title?: string; createdAt?: string; labels?: string[] };
   subIssueCount?: number;
@@ -105,10 +99,6 @@ function slicingHistoryWith(options: {
   return { gh, calls };
 }
 
-/**
- * `countLostDispatch` against `fake`, with the fields every case in this describe shares —
- * `prdNumber`, `slicingWorkflow` and a silent `log` — so a scenario supplies only what it varies.
- */
 function run(fake: ReturnType<typeof slicingHistoryWith>, labelName: string = SLICEABLE_LABEL): ReturnType<typeof countLostDispatch> {
   return countLostDispatch({ gh: fake.gh, labelName, prdNumber: 200, slicingWorkflow: "to-tickets-caller.yml", log: () => {} });
 }

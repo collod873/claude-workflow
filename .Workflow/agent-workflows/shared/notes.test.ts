@@ -5,17 +5,11 @@ import { observation } from "./observation.fixture";
 import { readObservations, writeObservationNote } from "./notes";
 import { makeTempRepo, type TempRepo } from "./temp-repo.fixture";
 
-/** Writes `contents` to `path` and commits it — the one-file-per-commit shape every test here builds its range from. */
 function commitFile(repo: TempRepo, path: string, contents: string, message: string): string {
   repo.write(path, contents);
   return repo.commit(message);
 }
 
-/**
- * A repo with `a.ts` seeded at `base` and changed at `head` — the two-commit range every read
- * below scopes to. `withB` seeds `b.ts` between the two as well, so a later deletion of it leaves
- * `a.ts`'s finding standing and `b.ts`'s stale — the split the staleness tests draw.
- */
 function seededRepo({ withB = false } = {}): { repo: TempRepo; base: string; head: string } {
   const repo = makeTempRepo("observation-notes");
   const base = commitFile(repo, "a.ts", "export const a = 1;\n", "seed a");
@@ -24,14 +18,12 @@ function seededRepo({ withB = false } = {}): { repo: TempRepo; base: string; hea
   return { repo, base, head };
 }
 
-/** Deletes `path` in one more commit and reads `base` up to it — the read "scoped after the deletion" every staleness test makes. */
 function readAfterDeleting(repo: TempRepo, base: string, path: string): ReturnType<typeof readObservations> {
   repo.remove(path);
   const afterDeletion = repo.commit(`deletes ${path}`);
   return readObservations({ git: execGit, repoDir: repo.dir, base, head: afterDeletion });
 }
 
-/** `writeObservationNote` against `repo`, with the executor and `repoDir` every real-repo test threads the same way. */
 function writeNote(repo: TempRepo, commit: string, ...observations: ReturnType<typeof observation>[]): void {
   writeObservationNote({ git: execGit, repoDir: repo.dir, commit, observations });
 }
@@ -81,7 +73,6 @@ describe("writeObservationNote / readObservations", () => {
   it("keeps a finding whose site names a real file behind prose, as the first real audit's four do", () => {
     const { repo, base, head } = seededRepo();
 
-    // Verbatim from run 32996383308 — the shape the PROPOSED lens actually emits (#108).
     const finding = observation({
       finding: "scratch-project detection duplicated",
       sites: ["a.ts:212 (isScratchProject)", "a.ts (main(), summary console.log)"],
@@ -138,7 +129,7 @@ describe("writeObservationNote / readObservations", () => {
   it("excludes commits outside the range, same as sessionRangeDiff's own bound", () => {
     const repo = makeTempRepo("observation-notes");
     const base = commitFile(repo, "a.ts", "export const a = 1;\n", "seed");
-    writeNote(repo, base, observation({ finding: "outside the range" })); // base itself is excluded by `base..head`
+    writeNote(repo, base, observation({ finding: "outside the range" })); 
     const head = commitFile(repo, "a.ts", "export const a = 2;\n", "inside the range");
     writeNote(repo, head, observation({ finding: "inside the range" }));
 

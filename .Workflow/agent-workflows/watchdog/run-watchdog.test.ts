@@ -18,19 +18,6 @@ interface FakeRun {
   jobs: number;
 }
 
-/**
- * A `gh` stand-in that answers the five calls this module makes — the runs
- * page, one job count per candidate, the issue listing and create
- * (`answerTracker`, shared with `bypass.test.ts`), one comment read per
- * standing signal, and the writes — and records every argv, so a test can
- * assert "wrote nothing" by the recording staying empty rather than by
- * assuming it. Same shape as `shared/git.fake.ts`: a responder, not a model of
- * GitHub.
- *
- * Comments accumulate: a comment this module writes is readable by the next
- * read, because the whole question #288 turns on is whether the module reads
- * back what it already said.
- */
 function historyWith(options: {
   runs?: FakeRun[];
   issues?: Array<{ number: number; body: string; state: string; closedAt: string | null }>;
@@ -85,22 +72,18 @@ function historyWith(options: {
 
 const DEAD = { id: 32676497304, name: ".github/workflows/to-tickets.yml", path: ".github/workflows/to-tickets.yml", jobs: 0 };
 
-/** A signal standing for `DEAD`'s lane, optionally carrying more than its bare marker. */
 function standing(said = ""): Array<{ number: number; body: string; state: string; closedAt: string | null }> {
   return [{ number: 7, body: `${said}\n${signalMarker(DEAD.path)}`, state: "OPEN", closedAt: null }];
 }
 
-/** The same signal, closed at `closedAt` — a lane somebody dealt with. */
 function settled(closedAt: string): ReturnType<typeof standing> {
   return [{ number: 7, body: signalMarker(DEAD.path), state: "CLOSED", closedAt }];
 }
 
-/** How a signal cites a run: the run URL, which is the only shape `citedRuns` reads. */
 function citation(id: number): string {
   return `[run ${id}](https://github.com/owner/repo/actions/runs/${id})`;
 }
 
-/** Whether the sweep wrote anything at all to the tracker, as opposed to only reading it. */
 function wrote(calls: string[][]): string[] {
   return calls.filter((argv) => argv[0] === "issue" && ["create", "comment", "close"].includes(argv[1] ?? "")).map((argv) => argv[1]);
 }
@@ -129,7 +112,6 @@ describe("runWatchdog", () => {
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create")!;
     expect(create[create.indexOf("--title") + 1]).toContain(DEAD.path);
     expect(create[create.indexOf("--body") + 1]).toContain(`actions/runs/${DEAD.id}`);
-    // Assigned, because an unassigned issue is a row in a list rather than something that arrives.
     expect(create[create.indexOf("--assignee") + 1]).toBe("collod873");
   });
 
@@ -149,9 +131,6 @@ describe("runWatchdog", () => {
   });
 
   it("says nothing when the standing signal already cites the newest dead run", () => {
-    // #288: the standing path used to comment on every sweep whatever the issue already said, so
-    // one dead run produced one `Still dead` per session the owner ran. The sweep rides session end
-    // (ADR-0049), so that re-post rate *is* his working rate.
     const fake = historyWith({
       runs: [DEAD],
       issues: standing(`Most recent: ${citation(DEAD.id)}`),
@@ -171,8 +150,6 @@ describe("runWatchdog", () => {
     });
 
     expect(sweep(fake).signals).toEqual([{ lane: DEAD.path, issue: 7, wrote: "commented" }]);
-    // The second sweep reads back what the first one wrote. No cursor, no ledger — the comment it
-    // already made is the record that it made it.
     expect(sweep(fake).signals).toEqual([]);
     expect(fake.calls.filter((argv) => argv[0] === "issue" && argv[1] === "comment")).toHaveLength(1);
   });
@@ -191,12 +168,10 @@ describe("runWatchdog", () => {
     const body = comment[comment.indexOf("--body") + 1];
     expect(body).toContain(String(newer.id));
     expect(body).toContain(String(older.id));
-    // The one it already cited is not re-cited: `also` has to mean something.
     expect(body).not.toContain(String(DEAD.id));
   });
 
   it("retires a standing signal once its lane runs again", () => {
-    // ADR-0099. #252 sat open for two days after its lane had recovered and a human closed it.
     const fake = historyWith({
       runs: [{ ...DEAD, id: 33300000001, conclusion: "success", jobs: 3 }],
       issues: standing(),
@@ -208,17 +183,12 @@ describe("runWatchdog", () => {
     expect(outcome.signals).toEqual([{ lane: DEAD.path, issue: 7, wrote: "retired" }]);
 
     const comment = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "comment")!;
-    // A closing record in `close-gate.py`'s grammar, citing the run that proves the lane starts.
     expect(comment[comment.indexOf("--body") + 1]).toContain("## Closing record");
     expect(comment[comment.indexOf("--body") + 1]).toContain("33300000001");
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "close")).toBe(true);
   });
 
   it("retires a marker spelled as the reusable half (or left from before the split) once its lane's caller stub runs again", () => {
-    // Post-split, every live run is attributed to the caller (`dead-lanes.ts`'s header), so a
-    // marker spelled `<lane>.yml` — the reusable half's own path, and the same spelling a
-    // pre-split signal already used — can never see a live run at that literal path again.
-    // `callerHalf` is what lets retirement still find the evidence.
     const preSplitPath = ".github/workflows/implement.yml";
     const fake = historyWith({
       runs: [
@@ -234,8 +204,6 @@ describe("runWatchdog", () => {
   });
 
   it("leaves a standing signal open when its lane has not run inside the window", () => {
-    // No dead runs is not recovery. A lane nobody has triggered in a week is just as unable to
-    // start as it was, and closing on its silence would be an all-clear nothing checked.
     const fake = historyWith({
       runs: [{ ...DEAD, path: ".github/workflows/other.yml", name: "other", jobs: 2, conclusion: "success" }],
       issues: standing(),
@@ -256,8 +224,6 @@ describe("runWatchdog", () => {
   });
 
   it("retires nothing on a sweep that did not read its whole window", () => {
-    // A dead run sitting unread behind `MAX_JOB_READS` would otherwise read as recovery — this
-    // mechanism's own failure with the sign flipped.
     const noisy = Array.from({ length: MAX_JOB_READS + 1 }, (_, index) => ({
       id: 200 + index,
       name: ".github/workflows/noise.yml",
@@ -276,8 +242,6 @@ describe("runWatchdog", () => {
   });
 
   it("stays quiet about runs that predate the close of their own signal", () => {
-    // A closed signal is a lane somebody dealt with. Re-reporting the same runs would teach the
-    // reader to close this mechanism's issues unread, which is how a signal stops arriving.
     const fake = historyWith({
       runs: [{ ...DEAD, created_at: "2026-08-24T00:00:00Z" }],
       issues: settled("2026-08-25T00:00:00Z"),
@@ -305,8 +269,6 @@ describe("runWatchdog", () => {
     const outcome = sweep(fake);
 
     expect(outcome).toMatchObject({ action: "swept", code: "all-lanes-live", deadCount: 0, signals: [] });
-    // It reads the tracker even with nothing to report — ADR-0099: the one state in which a
-    // standing signal has nothing left to stand for must not be the one state nobody looks at it in.
     expect(fake.calls.filter((argv) => argv[0] === "issue").map((argv) => argv[1])).toEqual(["list"]);
   });
 
@@ -333,8 +295,6 @@ describe("runWatchdog", () => {
 
     expect(outcome.deadCount).toBe(lanes.length);
     expect(outcome.signals).toHaveLength(MAX_SIGNALS);
-    // A cap nobody is told about reads as "there was nothing else" — the exact failure this watches
-    // for, rebuilt inside the thing that watches for it.
     expect(lines.some((line) => line.includes("further dead lane"))).toBe(true);
   });
 
@@ -348,8 +308,6 @@ describe("runWatchdog", () => {
   });
 
   it("refuses a jobs read that returns no count, rather than reading it as zero", () => {
-    // A 403 for want of `actions: read` — how the close gate's reconciler spent every dispatch it
-    // got (#107) — must not read as "executed nothing" and open an issue about a healthy lane.
     const fake = historyWith({ runs: [DEAD], jobsRaw: "" });
 
     expect(() => sweep(fake)).toThrow(/returned no count/);

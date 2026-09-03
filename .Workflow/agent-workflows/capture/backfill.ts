@@ -1,42 +1,3 @@
-/**
- * backfill.ts — walks a directory of historical Claude Code transcripts and writes one capture
- * file per transcript that doesn't already have one, reusing `spine.ts`'s `extractSpine` (#45;
- * part of #36's build order step 2, "Backfill what survives in `~/.claude/projects/`"). The same
- * function `.claude/hooks/session-capture-hook.mjs` (#44) calls at `SessionEnd` — one extraction,
- * two callers, so a live capture and a backfilled one are shaped identically.
- *
- * Scratch project directories are declined — see `isScratchProject` for the rule and why (#103 §2).
- *
- * Source layout: `<sourceDir>/<project>/<sessionId>.jsonl` — the two-level layout
- * `~/.claude/projects/` itself uses (a project's encoded-cwd directory, holding one `.jsonl` per
- * session). `discoverTranscripts` reads exactly that shape; a fixture directory in tests mirrors
- * it rather than inventing a flatter one.
- *
- * Where the source directory comes from: a CLI arg (`argv[2]`), then
- * `SESSION_CAPTURE_TRANSCRIPTS_DIR`, then `~/.claude/projects` — never hard-coded, so a test can
- * always point this at a fixture directory and never at the real one. Output directory and log
- * path reuse the hook's own env vars (`SESSION_CAPTURE_OUTPUT_DIR`, `SESSION_CAPTURE_LOG_PATH`):
- * backfilled and live captures land in one store with one run log.
- *
- * Idempotency: a transcript is skipped, not re-captured, once any file in the output directory
- * already ends `-<sessionId[:8]>.md` — the same suffix both this script and the hook name their
- * output by. That is checked by suffix rather than by recomputing an exact path, so a session the
- * live hook already captured (on whatever date it actually ran) is recognised as captured here
- * too, even though this script derives its own date differently (see below).
- *
- * `date`: the hook uses "now" — the moment of capture, which for a live `SessionEnd` is also
- * approximately when the session happened. That equivalence doesn't hold for a backfill run
- * happening long after the fact, and "now" would also make the output filename (which embeds the
- * date) depend on which day the script happens to run — the opposite of idempotent. Instead this
- * derives `date` from the transcript's own last valid `timestamp` field, falling back to "now"
- * only when a transcript carries none at all.
- *
- * Not fail-open like the hook: this is an owner-run tool, not an unattended `SessionEnd` handler,
- * so a directory that can't be walked at all is a real usage error worth reporting loudly rather
- * than swallowing. A single transcript's own failure (unreadable file, extraction error, write
- * failure) is still caught and logged as `skipped <reason>` — one bad transcript must not stop the
- * rest of the run — matching the hook's per-run outcome shape exactly.
- */
 import {
   closeSync,
   existsSync,
@@ -61,8 +22,6 @@ const DEFAULT_SOURCE_DIR = join(homedir(), ".claude", "projects");
 const DEFAULT_OUTPUT_DIR = join(homedir(), "Claude Projects", "Knowledge-Base", "raw", "sessions");
 const DEFAULT_LOG_PATH = join(homedir(), ".claude", "session-capture.log");
 
-// Same lock/tmp-file/rename shape as session-capture-hook.mjs's `withLock` / `atomicWrite` (#44) —
-// copied rather than re-derived, per that ticket's own instruction to build on it.
 const LOCK_STALE_MS = 30_000;
 const LOCK_TIMEOUT_MS = 10_000;
 const LOCK_POLL_MS = 25;
@@ -71,7 +30,6 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-/** Exclusive-create lockfile beside `path`, held for the duration of `fn`. Throws on failure. */
 function withLock(path: string, fn: () => void): void {
   const lockPath = `${path}.lock`;
   const start = Date.now();
@@ -86,7 +44,6 @@ function withLock(path: string, fn: () => void): void {
       try {
         if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) unlinkSync(lockPath);
       } catch {
-        // Lost the race to reclaim it, or it's already gone — loop around and retry the acquire.
       }
       if (Date.now() - start > LOCK_TIMEOUT_MS) throw new Error("lock-timeout");
       sleepSync(LOCK_POLL_MS);
@@ -98,12 +55,10 @@ function withLock(path: string, fn: () => void): void {
     try {
       unlinkSync(lockPath);
     } catch {
-      // Already gone — nothing left to release.
     }
   }
 }
 
-/** tmp file + lock + rename — see the module header for why the lock is narrow here. */
 function atomicWrite(targetPath: string, content: string): void {
   withLock(targetPath, () => {
     const tmpPath = `${targetPath}.tmp-${process.pid}`;
@@ -112,29 +67,21 @@ function atomicWrite(targetPath: string, content: string): void {
   });
 }
 
-/** Same one-line-per-run shape as the hook's own `log` — one timeline, one format. */
 function log(logPath: string, outcome: string): void {
   try {
     mkdirSync(dirname(logPath), { recursive: true });
     const ts = new Date().toISOString().replace(/\.\d+Z$/, "Z");
     appendFileSync(logPath, `${ts}\t${outcome}\n`);
   } catch {
-    // Observability only — never let a log-write failure change what this run does.
   }
 }
 
-/** One transcript this script found under `sourceDir`, before it's read. */
 export interface TranscriptRef {
   path: string;
   project: string;
   sessionId: string;
 }
 
-/**
- * Walks the `<sourceDir>/<project>/<sessionId>.jsonl` layout — see the module header. A
- * `sourceDir` entry that isn't a directory, or a project directory holding no `.jsonl` files, is
- * skipped rather than treated as a defect. Sorted by path for a deterministic run order.
- */
 export function discoverTranscripts(sourceDir: string): TranscriptRef[] {
   const refs: TranscriptRef[] = [];
   const projectDirs = readdirSync(sourceDir, { withFileTypes: true }).filter((e) => e.isDirectory());
@@ -156,13 +103,6 @@ export function discoverTranscripts(sourceDir: string): TranscriptRef[] {
   return refs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/**
- * The last valid `timestamp` field found across a transcript's lines — the closest available
- * approximation of when the session actually ended, and (unlike "now") the same value every time
- * this transcript is read. A line that fails to parse, or carries no usable timestamp, is skipped
- * rather than treated as a defect — same tolerance `parseTranscript` (spine.ts) applies to a
- * transcript's other fields.
- */
 export function lastTimestamp(jsonl: string): string | undefined {
   let last: string | undefined;
   for (const line of jsonl.split("\n")) {
@@ -180,7 +120,6 @@ export function lastTimestamp(jsonl: string): string | undefined {
   return last;
 }
 
-/** The `-<sessionId[:8]>.md` suffix every capture file — this script's or the hook's — is named by. */
 function sessionSuffixesOf(files: string[]): Set<string> {
   const suffixes = new Set<string>();
   for (const file of files) {
@@ -198,17 +137,6 @@ function safeReaddir(dir: string): string[] {
   }
 }
 
-/**
- * True for a project directory that is a scratch tree rather than a repo — the encoded form of a
- * cwd under `/tmp`. Claude Code names a project directory after its cwd with `/` replaced by `-`,
- * so `/tmp/judge-obbwi8jl` arrives as `-tmp-judge-obbwi8jl`.
- *
- * Excluded from the backfill because a corpus is read for the owner's corrections and these hold
- * none: 35 of the 73 directories under `~/.claude/projects/` on 2026-08-26 were ablation harnesses,
- * judge runs and agent scratchpads, each one or two sessions long, none of them work anyone did.
- * Stated as a rule here rather than applied by hand at the command line, so the next run over a
- * machine with different scratch on it makes the same choice (#103 §2). Every exclusion is logged.
- */
 export function isScratchProject(project: string): boolean {
   return project.startsWith("-tmp-");
 }
@@ -224,12 +152,6 @@ export interface BackfillOutcome {
   outcome: string;
 }
 
-/**
- * Runs the backfill end to end: discover, then for each transcript either skip (already captured)
- * or extract + atomically write + log `captured <sessionId>`. A per-transcript failure is caught,
- * logged as `skipped <reason>`, and does not stop the rest of the run. Throws only if `sourceDir`
- * itself can't be walked — see the module header for why that case is not swallowed.
- */
 export function runBackfill(opts: BackfillOptions): BackfillOutcome[] {
   const { sourceDir, outputDir, logPath } = opts;
   const transcripts = discoverTranscripts(sourceDir);
@@ -320,8 +242,6 @@ function main(): void {
   const count = (prefix: string): number => outcomes.filter((o) => o.outcome.startsWith(prefix)).length;
   const capturedCount = count("captured ");
   const scratchCount = count("skipped scratch-project");
-  // The scratch count is broken out rather than folded into "skipped": a run that quietly declines
-  // half of what it was pointed at reads as full coverage in the log a year later.
   console.log(
     `backfill: ${capturedCount} captured, ${outcomes.length - capturedCount} skipped ` +
       `(${scratchCount} scratch projects, ${count("skipped already-captured")} already captured), ` +
@@ -329,11 +249,6 @@ function main(): void {
   );
 }
 
-// Only run as a CLI when invoked directly (`npx tsx backfill.ts ...`), not when this module is
-// imported for its exports (tests). Built through `pathToFileURL` rather than a hand-rolled
-// `file://${...}` template — see WORKER-PROMPT.md #139 and to-tickets.ts's own guard, which this
-// one copies: a raw template is not percent-encoded, so it silently never matches on a checkout
-// path containing spaces (this repo's own path has one), and `main()` never runs.
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   try {

@@ -13,7 +13,6 @@ import {
 const FIELD_SEP = "\x1f";
 const RECORD_SEP = "\x1e";
 
-/** One `git log --format` record in the shape `ratificationCommitRange` parses. */
 function logRecord(sha: string, subject: string, body: string): string {
   return ["", sha, `Bot <bot@example.com>`, subject, body].slice(1).join(FIELD_SEP) + RECORD_SEP;
 }

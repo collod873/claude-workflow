@@ -7,13 +7,6 @@ import { runStage, type StageExec } from "./stage";
 import { createStreamJsonParser, progressLine } from "./stream-json";
 import { structuredOutput } from "./structured-output";
 
-/**
- * Feeds `chunks` to a parser and returns both halves of what it produces —
- * the progress lines it narrated and the result it held on to. Every test
- * here drives the parser by pushing strings, which is the point of it being
- * its own module: the chunk boundary is the interesting variable, and a
- * spawned subprocess gives no way to choose one.
- */
 function parse(chunks: string[]) {
   const progress: string[] = [];
   const parser = createStreamJsonParser((line) => progress.push(line));
@@ -34,12 +27,6 @@ describe("the final response text", () => {
     expect(missingResult).toBe(false);
   });
 
-  /**
-   * The reason the result event is the source rather than the assistant
-   * turns: a stage's answer is one value, and prose concatenated onto the
-   * front of it is not a harmless prefix — it is a different string, which
-   * no schema accepts.
-   */
   it("excludes the model's earlier turns, however much they said", () => {
     const thinking = JSON.stringify({
       type: "assistant",
@@ -51,13 +38,6 @@ describe("the final response text", () => {
     expect(text).toBe("the answer");
   });
 
-  /**
-   * A run given a `--json-schema` reports the same value twice — as an object
-   * on `structured_output`, and as JSON on `result`. This one is taken,
-   * because only it distinguishes "the API validated a tool call" from "the
-   * model talked and the CLI printed what it said": a run whose model never
-   * reached the tool has a `result` too, and it is prose.
-   */
   it("prefers the result event's structured output over its result text", () => {
     const { text } = parse([
       `${resultEvent("ignored prose", { structured_output: { entries: ["a seam"] } })}\n`,
@@ -72,11 +52,6 @@ describe("the final response text", () => {
     expect(text).toBe("the model just talked");
   });
 
-  /**
-   * `JSON.stringify(null)` is the string `"null"`, which parses, satisfies no
-   * stage schema, and would report a missing answer as a schema failure
-   * rather than as an absent one.
-   */
   it("treats a null structured output as absent rather than as the value null", () => {
     const { text } = parse([`${resultEvent("the prose", { structured_output: null })}\n`]);
 
@@ -104,12 +79,6 @@ describe("the final response text", () => {
 });
 
 describe("chunk boundaries", () => {
-  /**
-   * The failure this module exists to make testable: stdout arrives in
-   * whatever sizes the OS hands over, and a parser that assumed a chunk was
-   * a whole line would drop the response of any stage whose result event
-   * happened to straddle one.
-   */
   it("reassembles an event split across two chunks", () => {
     const event = resultEvent('{"entries":[]}');
     const split = Math.floor(event.length / 2);
@@ -141,11 +110,6 @@ describe("chunk boundaries", () => {
 });
 
 describe("noise on stdout", () => {
-  /**
-   * A wrapper script's banner or an npm notice ahead of the stream is not a
-   * reason to fail a stage that then ran fine. Unparseable lines are
-   * narrated and dropped.
-   */
   it("narrates a non-JSON line instead of throwing, and still finds the result", () => {
     const { progress, text } = parse([`npm notice: a new version is available\n${resultEvent("ok")}\n`]);
 
@@ -199,10 +163,6 @@ describe("progress lines", () => {
     expect(line?.endsWith("…")).toBe(true);
   });
 
-  /**
-   * A tool result is the tool's entire output — often a whole file. Printing
-   * it would recreate the firehose this change exists to avoid.
-   */
   it("says nothing for the user event echoing a tool result", () => {
     const line = progressLine({
       type: "user",
@@ -246,18 +206,9 @@ describe("progress lines", () => {
   });
 });
 
-/**
- * The whole path a stage's answer travels, in one test: the CLI's bytes into
- * `createStreamJsonParser`, the parser's text into the stage, the stage's
- * schema over that — and a typed value out the other end. The pieces are
- * covered separately above and in `structured-output.test.ts`; what this
- * pins is that they are actually joined, with nothing in the stream a stage
- * has to dig through.
- */
 describe("a stage's answer, from the CLI's bytes to a typed value", () => {
   const OUTPUT = structuredOutput(z.object({ entries: z.array(z.string()) }));
 
-  /** A `StageExec` that runs the given stdout through the real parser, as `execClaude` does. */
   function execOverStream(chunks: string[]): StageExec {
     return async () => {
       const parser = createStreamJsonParser(() => undefined);
@@ -287,8 +238,6 @@ describe("a stage's answer, from the CLI's bytes to a typed value", () => {
       }),
     ].join("\n") + "\n";
 
-    // The tag this replaced appears nowhere in the stream, because there is
-    // nothing left to mark: the answer is a field, not a span of prose.
     expect(stream).not.toContain("<output>");
 
     await expect(

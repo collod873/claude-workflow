@@ -9,25 +9,12 @@ import { mapTrackerGh } from "./map-gh.fixture";
 import { fakeSheetGh } from "./sheet-gh.fixture";
 import { collectSheetContext } from "./sheet";
 
-/**
- * ADR-0058: one prompt, a collector per trigger, and every collector normalizes into the *same*
- * Decided-context shape — the difference between triggers belongs in the collector, never
- * downstream of it.
- *
- * Two collectors, not three. ADR-0085 removed the in-session one: a collector exists to hand a
- * package to a model that is not in the room, and the session door now writes the spec in the
- * room and enters lane 02 at the critic instead. This assertion is what the deleted file's own
- * parity test was for, kept here because the rule is about the collectors that remain.
- */
-
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
 
 describe("both collectors normalize into the same Decided-context shape", () => {
   it("produces the identical five-field shape from a sheet and from a map", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: ["Gate"], route: "short" };
     const sheetGh = fakeSheetGh("the owner's words", [sheetMarker(sheet()), acceptedMarker(payload)]);
-    // The sheet collector returns its decisions beside the context; the parity
-    // rule is about the context, which is the half every collector shares.
     const { context: sheetContext } = collectSheetContext(sheetGh, 1);
 
     const repoRoot = scratchDir("shape-parity");

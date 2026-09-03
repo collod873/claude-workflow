@@ -14,33 +14,8 @@ import {
   type PrdCandidate,
 } from "./lost-dispatch";
 
-/**
- * The lost-dispatch counter's entrypoint (#127, ADR-0062, ADR-0065,
- * `.github/workflows/lost-dispatch-counter.yml`): fires on a PRD being labelled `sliceable`,
- * reads whether it sliced, and if it didn't, comments on — or opens — the one standing issue
- * naming every PRD this counter has found lost.
- *
- * **The workflow file cannot correlate a slicing run to a PRD number precisely — this reads is an
- * approximation and says so.** GitHub's runs list carries no field naming the issue a
- * label-triggered run served, so `hasCompletedSlicingRun` below treats *any* completed run of the
- * slicing lane created no earlier than this PRD was opened as evidence the dispatch arrived. The
- * one case this exists to catch — a dispatch that never arrived, so the lane produced no run at
- * all in the whole window — is exactly where that approximation cannot go wrong; a coincidental
- * neighbour run is the only way it can occasionally clear a finding it shouldn't. That is a
- * one-sided error (fewer findings, never more), and the reader it's for can always check by hand.
- *
- * **One standing issue, not one per PRD** (`./lost-dispatch.ts`'s header) — the shape #124's
- * missing-trailer counter established for a `Count: 1` counter that files a growing list rather
- * than a fresh issue per occurrence.
- *
- * **Recomputes, stores nothing.** Every run reads this one PRD's state fresh; whether it has
- * already been named is derived from the standing issue's own body and comments, not a cursor.
- */
-
-/** How many of the slicing lane's most recent runs one check reads — several times this repo's busiest day of `to-tickets` runs. */
 export const RUN_PAGE_SIZE = 30;
 
-/** The label this counter is a durable trace of (ADR-0062). Spelled here and in `lost-dispatch-counter.yml`'s job-level `if` — no compiler sees across that boundary, so `lost-dispatch.test.ts` asserts the two still agree. */
 export const SLICEABLE_LABEL = "sliceable";
 
 const ApiRun = z.object({
@@ -72,7 +47,6 @@ function readSubIssueCount(gh: GhExec, prdNumber: number): number {
   return Number(raw.trim());
 }
 
-/** Whether the slicing lane has produced a completed run since `prdCreatedAt` — see this module's header for the approximation this makes. */
 function hasCompletedSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflow: string): boolean {
   const projection = "[.workflow_runs[] | {status, created_at}]";
   const raw = gh(["api", workflowRunsPath(slicingWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
@@ -80,14 +54,12 @@ function hasCompletedSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflo
   return runs.some((run) => run.status === "completed" && run.created_at >= prdCreatedAt);
 }
 
-/** The open issue carrying `FINDING_MARKER`, if one is already standing. */
 function readStandingIssue(gh: GhExec): z.infer<typeof StandingIssue> | undefined {
   const raw = gh(["issue", "list", "--state", "open", "--limit", "100", "--json", "number,state,body,comments"]);
   const issues = StandingIssue.array().parse(JSON.parse(raw));
   return issues.find((issue) => (issue.body ?? "").includes(FINDING_MARKER));
 }
 
-/** Whether `prdNumber` is already named on `standing` — its body (the first finding) or any comment (every later one). */
 function alreadyNamed(standing: z.infer<typeof StandingIssue>, prdNumber: number): boolean {
   const marker = `#${prdNumber} —`;
   if ((standing.body ?? "").includes(marker)) return true;
@@ -96,18 +68,8 @@ function alreadyNamed(standing: z.infer<typeof StandingIssue>, prdNumber: number
 
 export interface CounterOptions {
   gh: GhExec;
-  /** `github.event.label.name` on the `issues: labeled` event that triggered this run. */
   labelName: string | null | undefined;
   prdNumber: number;
-  /**
-   * The workflow **file** in the calling repository whose runs are the slicing lane's history —
-   * `to-tickets-caller.yml` here, never `to-tickets.yml`: ADR-0055 (amended by ADR-0132) records a
-   * `uses:`-reached run against the caller's file, and `to-tickets.yml` itself has carried no run
-   * of its own since the split. No default, for the reason `bypass-counter.ts`'s own
-   * `verifyWorkflow` has none: a wrong name reads a page frozen before the split, every entry on
-   * it older than any PRD opened since — so `hasCompletedSlicingRun` reads false for a PRD that
-   * really did slice, and every PRD since the split reads lost.
-   */
   slicingWorkflow: string;
   log?: (line: string) => void;
 }
@@ -166,9 +128,6 @@ async function main(): Promise<void> {
     const prdNumberRaw = process.env.PRD_NUMBER;
     if (!prdNumberRaw) throw new Error("PRD_NUMBER must be set");
 
-    // Refused rather than defaulted, the same reason `bypass-counter.ts`'s `VERIFY_WORKFLOW` is:
-    // a workflow file the calling repository does not have reads a frozen page and reports every
-    // PRD since the split as lost.
     const slicingWorkflow = process.env.SLICING_WORKFLOW;
     if (!slicingWorkflow) {
       throw new Error("SLICING_WORKFLOW must be set — reading a workflow that does not exist misreports every PRD");

@@ -4,19 +4,6 @@ import { runSpecReconciler } from "./reconcile";
 import { specFormat } from "./spec-format";
 import { runSpecAuthor, type DecidedContext } from "./spec";
 
-/**
- * Lane 03 takes its ticket-body contract by injection and holds it with `ticket-format.test.ts`.
- * Lane 02 took nothing — no format doc, no validator call — so a spec the cold door authored could
- * land malformed and `bin/close-ticket --spec` then had no command to close it on. This is that
- * lane's half of the same pin: `specFormat()` cuts `docs/agents/spec-format.md` to the one variant
- * this lane produces, and the prompt each of its two body-writing stages is actually handed carries
- * it — rendered through the real stage, since what a `{{SPEC_FORMAT}}` placeholder was substituted
- * with is only visible there.
- *
- * **Both stages, not just the author.** The reconciler rewrites the body wholesale, so a contract
- * the author was held to and the reconciler was not is a contract the last writer can break.
- */
-
 const CONTEXT: DecidedContext = {
   ownerWords: "the owner's words",
   decisions: "a decision, with its reason",
@@ -45,12 +32,9 @@ describe("specFormat() reads docs/agents/spec-format.md's lane variant", () => {
 
     expect(format).toContain("## Acceptance criteria");
     expect(format).toContain("### Lane spec");
-    // The rules a stage most needs are in the core, below its own `##` subheadings — a cut that
-    // stopped at the first subheading would drop every one of them.
     expect(format).toContain("exactly one");
     expect(format).toContain("check:");
     expect(format).toContain("## Assumptions");
-    // Never the session variant: there is nobody in the room on a runner.
     expect(format).not.toContain("### Session spec");
   });
 });
@@ -61,7 +45,6 @@ describe("both of lane 02's body-writing stages take the spec contract by inject
 
     await runSpecAuthor(fake.exec, CONTEXT);
 
-    // The sweep runs first, so the author's own prompt is the second one on stdin.
     const prompt = fake.stdins[1];
     expect(prompt).toContain(specFormat());
     expect(prompt).not.toContain("{{");

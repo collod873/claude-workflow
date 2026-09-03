@@ -13,6 +13,26 @@ import { ratifierVerdict } from "./verdict.fixture";
 
 const silent = () => {};
 
+/** A ratification-due run over empty fakes — the shape every scope test varies one field of. */
+async function ratifyDue(overrides: { prdClosed: boolean }) {
+  const stage = createFakeStage("");
+  const git = createFakeGit(() => "");
+
+  const outcome = await runRatify({
+    git: git.git,
+    gh: createRecordingGh().gh,
+    exec: stage.exec,
+    repoDir: "/repo",
+    head: "headsha",
+    prBase: "main",
+    eventAction: RATIFICATION_DUE_DISPATCH_ACTION,
+    log: silent,
+    ...overrides,
+  });
+
+  return { outcome, git, stage };
+}
+
 describe("runRatify — scope: which dispatches this lane runs on at all", () => {
   it("makes no git or model call when the dispatch is not a ratification-due", async () => {
     const git = createFakeGit();
@@ -36,21 +56,7 @@ describe("runRatify — scope: which dispatches this lane runs on at all", () =>
   });
 
   it("spends no model when the trigger has not fired, and leaves the bookmark where it was", async () => {
-    const stage = createFakeStage("");
-    // No bookmark, no observation notes, no PRD close — nothing has accumulated.
-    const git = createFakeGit(() => "");
-
-    const outcome = await runRatify({
-      git: git.git,
-      gh: createRecordingGh().gh,
-      exec: stage.exec,
-      repoDir: "/repo",
-      head: "headsha",
-      prdClosed: false,
-      prBase: "main",
-      eventAction: RATIFICATION_DUE_DISPATCH_ACTION,
-      log: silent,
-    });
+    const { outcome, git, stage } = await ratifyDue({ prdClosed: false });
 
     expect(outcome).toEqual({ action: "skipped", code: "not-due", releasedCount: 0 });
     expect(stage.calls).toEqual([]);
@@ -58,21 +64,7 @@ describe("runRatify — scope: which dispatches this lane runs on at all", () =>
   });
 
   it("advances the bookmark without opening anything when memory has already decided everything", async () => {
-    const stage = createFakeStage("");
-    // A PRD close fires the trigger on its own; every read answers empty, so no finding survives.
-    const git = createFakeGit(() => "");
-
-    const outcome = await runRatify({
-      git: git.git,
-      gh: createRecordingGh().gh,
-      exec: stage.exec,
-      repoDir: "/repo",
-      head: "headsha",
-      prdClosed: true,
-      prBase: "main",
-      eventAction: RATIFICATION_DUE_DISPATCH_ACTION,
-      log: silent,
-    });
+    const { outcome, git, stage } = await ratifyDue({ prdClosed: true });
 
     expect(outcome).toEqual({ action: "ran", code: "nothing-to-ratify", releasedCount: 0 });
     expect(stage.calls).toEqual([]);
@@ -82,19 +74,10 @@ describe("runRatify — scope: which dispatches this lane runs on at all", () =>
   });
 });
 
-/**
- * One `git log --notes=observations` answer, in the `%H\x1f%N\x1e` shape
- * `readObservations` parses, notes newest first as git hands them back.
- */
 function observationLog(notes: Array<{ commit: string; observations: Observation[] }>): string {
   return notes.map((note) => `${note.commit}\x1f${JSON.stringify(note.observations)}\x1e`).join("");
 }
 
-/**
- * A repo whose range carries `notes`, whose every site's file still exists,
- * and whose ratification memory is empty — so what reaches the batch is
- * decided by `releasedObservations` alone.
- */
 function repoCarrying(notes: Array<{ commit: string; observations: Observation[] }>) {
   return createFakeGit((args) => {
     if (args.includes("rev-parse")) return "basesha\n";
@@ -103,13 +86,11 @@ function repoCarrying(notes: Array<{ commit: string; observations: Observation[]
   });
 }
 
-/** A stage that rejects whatever it is handed — every finding skips, nothing lands, nothing pushes. */
 const rejecting = () =>
   createFakeStage(
     JSON.stringify(ratifierVerdict({ verdict: "reject", landedAs: undefined, fallback: undefined, reason: "no" })),
   );
 
-/** The one due-and-fired run these three tests differ only in the notes they hand it. */
 function ratifyDueRun(git: FakeGit, stage: FakeStage, repoDir: string) {
   return runRatify({
     git: git.git,
@@ -125,8 +106,6 @@ function ratifyDueRun(git: FakeGit, stage: FakeStage, repoDir: string) {
 }
 
 describe("runRatify — which notes in the range the batch actually sees (#324)", () => {
-  // `runRatify` reads `CODING_STANDARDS.md` off the real filesystem, so these need a real
-  // directory — the git seam is still the fake's, since none of this is about git plumbing.
   let repoDir: string;
   beforeEach(() => {
     repoDir = mkdtempSync(join(tmpdir(), "run-ratify-"));
@@ -149,8 +128,6 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
 
     const outcome = await ratifyDueRun(git, stage, repoDir);
 
-    // Nothing folds VIOLATION forward between notes, so reading the nearest note alone would hand
-    // the batch one of the two the trigger counted — and the bookmark advances past both either way.
     expect(outcome.releasedCount).toBe(2);
     expect(stage.calls).toHaveLength(2);
     const prompts = stage.stdins.join("\n");
@@ -161,7 +138,6 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
   it("takes PROPOSED from the nearest note alone, because the two-site gate already folded it forward", async () => {
     const git = repoCarrying([
       { commit: "newsha", observations: [observation({ finding: "a pattern", sites: ["a.ts:1", "b.ts:2"], released: true })] },
-      // The same finding as the nearest note carries, at the site list it has since superseded.
       { commit: "oldsha", observations: [observation({ finding: "a pattern", sites: ["a.ts:1"], released: true })] },
     ]);
     const stage = rejecting();

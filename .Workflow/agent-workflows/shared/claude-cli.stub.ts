@@ -2,38 +2,8 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { checkpointPath } from "./stage";
 
-/**
- * What the stub `claude` answers with.
- *
- * A string is **prose**: the run produced no structured output at all, which
- * is what a real result event looks like when the model never reached the
- * `StructuredOutput` tool. Anything else is the validated value, delivered
- * the way the real CLI delivers it — on `structured_output` as an object and
- * on `result` as the same JSON, serialised.
- */
 export type StubAnswer = string | { structured: unknown };
 
-/**
- * A stub `claude` binary, placed first on `PATH`, that delivers `answer`
- * as the model's answer — for a test that exercises a stage's real CLI end
- * to end (argv, schema, handoff write, exit code) without spawning one.
- *
- * It emits the `stream-json` events `execClaude` reads rather than printing
- * the response verbatim, because that is the wire format the real CLI is
- * now asked for (see `STREAM_FLAGS` in `./stage`). A stub that still
- * printed bare text would be testing these stages against a `claude` that
- * no longer exists — every response would reach the parser as unparseable
- * noise with no result event behind it.
- *
- * Takes `dir` rather than creating one, so its lifetime is the caller's to
- * own — typically `withHandoffDir()`. When `priorCheckpoint` is given, it is
- * seeded at that stage's checkpoint path before the stub runs, for a stage
- * (like `slice`) that reads a prior stage's checkpoint as its own input —
- * `response` is the prior stage's wire-format answer, exactly the shape its
- * own `StructuredOutput` would parse (e.g. `{"entries":["a seam"]}` for
- * seam-sweep), since that is what a real checkpoint holds and what the
- * reading stage's `output.parse` is run against.
- */
 export function stubClaudeCli(
   dir: string,
   answer: StubAnswer,

@@ -4,17 +4,6 @@ import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
 import { LABELS_APPLIED, runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 
-/**
- * The chain end to end, with every model spawn faked.
- *
- * The assertions that matter here are about **what was not spent**. §01 says
- * the stage-1 refusal *stops the chain there and never spends the shaper*,
- * and ADR-0030 caps the re-sweep at one round *so it cannot loop* — both are
- * claims about calls that did not happen, which is only checkable against a
- * recorded call list.
- */
-
-/** Which stage a spawn belongs to, read off the model tier §3 assigns it. */
 function stageOf(argv: string[]): "sweep" | "shaper" | "refuter" | "unknown" {
   const model = argv[argv.indexOf("--model") + 1] ?? "";
   if (model.includes("haiku")) return "sweep";
@@ -25,29 +14,19 @@ function stageOf(argv: string[]): "sweep" | "shaper" | "refuter" | "unknown" {
 
 interface Spawn {
   argv: string[];
-  /** The prompt, wherever it travelled — argv for a small stage, stdin for the shaper. */
   prompt: string;
 }
 
 interface FakeModel {
   exec: StageExec;
-  /** Every spawn, in order. */
   spawns: Spawn[];
 }
 
-/**
- * Answers each stage from a queue keyed by stage, so a test can give the
- * sweep two different answers across a re-sweep without caring about call
- * order between stages.
- */
 function createFakeModel(responses: Partial<Record<string, string[]>>): FakeModel {
   const queues = new Map(Object.entries(responses).map(([key, value]) => [key, [...(value ?? [])]]));
   const fake: FakeModel = {
     spawns: [],
     exec: async (argv, stdin) => {
-      // A prompt reaches the CLI one of two ways, and which one is the stage's
-      // business rather than this fake's — the shaper's is on stdin because it
-      // inlines files past the argv-element limit.
       fake.spawns.push({ argv: [...argv], prompt: stdin ?? argv[argv.indexOf("-p") + 1] });
       const stage = stageOf(argv);
       const queue = queues.get(stage);
@@ -58,22 +37,10 @@ function createFakeModel(responses: Partial<Record<string, string[]>>): FakeMode
   return fake;
 }
 
-/**
- * One canned `StageExec` response: exactly what `execClaude` resolves for a
- * run with `--json-schema` — the validated structured output, serialised, and
- * nothing else. There is no prose alongside it because there is nowhere for
- * prose to be: the stage's answer is a tool call, and the model's earlier
- * turns never reach this seam.
- */
 function block(payload: unknown): string {
   return JSON.stringify(payload);
 }
 
-/**
- * One shaper response. Its two legal shapes are a union, and a tool input
- * schema has to be object-rooted, so both ride under `answer` — see
- * `SHAPER_OUTPUT`.
- */
 function shaperAnswer(answer: unknown): string {
   return block({ answer });
 }
@@ -104,12 +71,6 @@ function spawnOf(model: FakeModel, stage: string): Spawn {
   return model.spawns.find((spawn) => stageOf(spawn.argv) === stage)!;
 }
 
-/**
- * Canned answers for a run in which every stage behaves — one sweep, one
- * five-under sheet, a refuter that survives nothing. Most tests here are about
- * something *other* than the answers, so this is the background against which
- * the one thing they vary is visible.
- */
 function healthyModel(): FakeModel {
   return createFakeModel({
     sweep: [EMPTY_SWEEP],
@@ -118,7 +79,6 @@ function healthyModel(): FakeModel {
   });
 }
 
-/** The `--disallowedTools` list a stage actually reached the CLI with. */
 function deniedIn(model: FakeModel, stage: string): string[] {
   const { argv } = spawnOf(model, stage);
   return argv[argv.indexOf("--disallowedTools") + 1].split(",");
@@ -146,11 +106,6 @@ describe("the ordinary run", () => {
   });
 
   it("hands every stage a prompt with every placeholder substituted", async () => {
-    // `runStage` throws, without spawning, on a template referencing a placeholder no var covers
-    // — so three spawns already say every declared `{{VAR}}` was supplied. This is the other
-    // half: nothing supplied was itself an unrendered placeholder. The sweep's went unchecked
-    // until it grew an `{{IDEA}}`, which is the shape of thing this catches — a placeholder added
-    // to a template without a var behind it.
     const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
@@ -162,11 +117,6 @@ describe("the ordinary run", () => {
 
 describe("the shaper's toolbelt", () => {
   it("is emptied by the CLI, not by the prompt", async () => {
-    // ADR-0030: *with no search tools, "never free-roams" is a fact about what
-    // the stage can do rather than a line it was asked to honour.* A deny list
-    // that silently stopped being passed would leave a prompt-only
-    // prohibition behind and nothing would look different, which is why this
-    // asserts on the argv rather than on the prompt.
     const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
@@ -180,7 +130,6 @@ describe("the shaper's toolbelt", () => {
 
 describe("the sweep's toolbelt", () => {
   it("keeps what it searches with and loses every reach past this repo", async () => {
-    // Why this list holds what it holds: `SWEEP_DENIED_TOOLS` (ADR-0050).
     const model = healthyModel();
 
     await runChain(depsFor(model, createFakeTracker()), 1, "");
@@ -193,7 +142,6 @@ describe("the sweep's toolbelt", () => {
   });
 
   it("is handed the idea rather than sent to fetch it", async () => {
-    // Why the idea is substituted rather than fetched: `runSweep`.
     const model = healthyModel();
     const tracker = createFakeTracker({ title: "Idea: cap the corpus", body: "it is 52k words" });
 
@@ -202,7 +150,6 @@ describe("the sweep's toolbelt", () => {
     const { prompt } = spawnOf(model, "sweep");
     expect(prompt).toContain("Idea: cap the corpus");
     expect(prompt).toContain("it is 52k words");
-    // And it still knows its own number, which is what its search has to skip.
     expect(prompt).toContain("#1");
   });
 });
@@ -231,8 +178,6 @@ describe("the stage-1 refusal", () => {
     expect(postedComments(tracker)[0]).toContain("#42");
     expect(postedComments(tracker)[0]).toContain(REFUSAL_MARKER);
     expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "shape-refused"]);
-    // `LABELS_APPLIED` is the list the wiring table checks the workflow creates labels for — a
-    // label the chain applies that is not on it is one `gh issue edit --add-label` can fail on.
     expect(LABELS_APPLIED).toContain("shape-refused");
   });
 
@@ -282,9 +227,6 @@ describe("the one re-sweep", () => {
   });
 
   it("fails rather than looping when the shaper asks twice", async () => {
-    // The cap is the branch not being a loop. A stage that asks again after
-    // being told this is the last pass has not produced an output this lane
-    // can post, and there is no repair path.
     const model = createFakeModel({
       sweep: [EMPTY_SWEEP, EMPTY_SWEEP],
       shaper: [reSweep, reSweep],
@@ -319,7 +261,6 @@ describe("the refusal to shape", () => {
     const outcome = await runChain(depsFor(model, tracker), 1, "");
 
     expect(outcome).toEqual({ kind: "needs-live-session", decisions: 7 });
-    // The refuter is never spent on a sheet that will not be posted.
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper"]);
     expect(postedComments(tracker)[0]).toContain("live session");
     expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "needs-human"]);

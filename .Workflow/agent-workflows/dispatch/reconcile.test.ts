@@ -18,28 +18,7 @@ import {
   type TrackerOptions,
 } from "./tracker.fixture";
 
-/**
- * Lane 09's recompute over the graph (#179): how a blocker's delivery is read, which slices the
- * pass starts, what it files as unreachable, when it retires that report, and when it refuses to
- * answer at all. The `to-build` door is `to-build-door.test.ts`; the spec passes are
- * `spec-pass.test.ts`. All three run against `tracker.fixture.ts`.
- */
-
-/**
- * The delivery question, replayed against payloads recorded from the live tracker rather than
- * against a shape this file made up — `gh issue view 237 --json closedByPullRequestsReferences` and
- * `gh pr view 244 --json state`, both captured on 2026-08-29.
- *
- * This is the guard the old reader never had — `closedByMergedPr`'s docstring in `reconcile.ts` is
- * the home for the defect it exists to catch (ADR-0106). A fixture cannot be talked into agreeing
- * the way the hand-written fake that missed it could.
- *
- * `applyJq` is deliberately tiny and deliberately fed the reader's *own* `--jq` string: the point is
- * that the expression the code ships is the expression the recorded data is read with, so putting
- * `.state` back reproduces the `[null]` that started this.
- */
 describe("the delivery question, against payloads GitHub actually served", () => {
-  /** `[.a[].b]` and `.a`, the only two forms the reader sends. Strings print raw, as `gh --jq` does. */
   function applyJq(expression: string, payload: unknown): string {
     const collect = /^\[\.([A-Za-z]+)\[\]\.([A-Za-z_]+)\]$/.exec(expression);
     if (collect) {
@@ -136,7 +115,6 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     const outcome = reconcileOver(tracker);
 
     expect(outcome.action).toBe("dispatched");
-    // #11 is itself a ready root, which is why the run is not `clear` — but #20 is not in it.
     expect(startedIssues(tracker)).toEqual([11]);
   });
 
@@ -153,20 +131,9 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     expect(outcome.action).toBe("clear");
   });
 
-  /**
-   * The scope rule, and it is a safety rule. Being in the graph is what makes an issue ready;
-   * being something the owner meant to be built is what makes it something an implementer may be
-   * pointed at. Without this, every unblocked issue on the tracker — this ticket included — would
-   * get a Sonnet run and a pull request.
-   *
-   * #184 widened the rule to a second door and did not weaken it: an issue carrying neither the
-   * `## Parent PRD` heading nor `to-build` is still refused however ready it looks, which is what
-   * this pins.
-   */
   it("never starts an issue that is neither a published slice nor labelled to-build", () => {
     const tracker = trackerWith({
       open: [
-        // Ticket-shaped, and still not dispatched: shape was never the missing term.
         { number: 30, title: "A hand-written idea", body: HAND_WRITTEN_TICKET, labels: [] },
         { number: 31, title: "A published slice" },
       ],
@@ -177,7 +144,6 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     expect(startedIssues(tracker)).toEqual([31]);
   });
 
-  /** One slice, ready: its only blocker closed with a merged pull request. */
   const readyBehindMerged = () =>
     trackerWith({
       open: [{ number: 20, title: "Second wave", blockedBy: [10] }],
@@ -237,7 +203,6 @@ describe("runReconcile reports what became unreachable", () => {
     expect(tracker.comments).toHaveLength(1);
     expect(tracker.comments[0].issue).toBe(400);
     expect(tracker.comments[0].body).toContain("#20 —");
-    // And leaves it open: the report is only retired at a count of zero (ADR-0099).
     expect(tracker.closedByRun).toEqual([]);
   });
 
@@ -273,7 +238,6 @@ describe("runReconcile reports what became unreachable", () => {
 });
 
 describe("runReconcile closes the standing report once nothing is unreachable", () => {
-  /** Nothing unreachable — #20 is merely waiting on an open blocker — with `standing` up. */
   const waiting = (standing?: TrackerOptions["standing"]) =>
     trackerWith({
       open: [
@@ -298,7 +262,6 @@ describe("runReconcile closes the standing report once nothing is unreachable", 
     reconcileOver(tracker);
 
     expect(tracker.comments).toEqual([{ issue: 400, body: retirementBody() }]);
-    // Ordered: the record has to exist before the close, or the gate reads a close with no record.
     const order = tracker.calls.filter((call) => call[0] === "issue").map((call) => call[1]);
     expect(order.indexOf("comment")).toBeLessThan(order.indexOf("close"));
   });
@@ -329,7 +292,6 @@ describe("runReconcile closes the standing report once nothing is unreachable", 
 describe("runReconcile refuses to answer when it cannot read its own inputs", () => {
   it.each([
     { what: "the tracker will not list open issues", options: { open: [], fail: "issues" } },
-    // Without the refs, every slice reads as unstarted — the direction that dispatches duplicates.
     { what: "the refs API will not say which slices are claimed", options: { open: [{ number: 20, title: "A slice" }], fail: "refs" } },
     { what: "the dependency graph cannot be read", options: { open: [{ number: 20, title: "A slice" }], fail: "edges" } },
   ] satisfies Array<{ what: string; options: TrackerOptions }>)("is degraded, and starts nothing, when $what", ({ options }) => {

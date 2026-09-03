@@ -4,11 +4,6 @@ import { createFakeStage } from "../shared/stage.fake";
 import { runAuditor, type AuditorOptions } from "./auditor";
 import { expectSandboxedLensArgv } from "./sandbox-argv.fixture";
 
-/**
- * Every test in this file runs the auditor through `createFakeGit` and
- * `createFakeStage` — no test here ever spawns the real `git` or `claude`
- * binaries.
- */
 function baseOptions(overrides: Partial<AuditorOptions> = {}): AuditorOptions {
   const fakeGit = createFakeGit(() => "+ a diff line");
   const fakeStage = createFakeStage("no violations found");
@@ -39,8 +34,6 @@ describe("runAuditor", () => {
     expect(argv).toContain("--strict-mcp-config");
     expect(argv).toContain("--disable-slash-commands");
     expect(argv).toContain("--setting-sources");
-    // "--tools" and "--setting-sources" are both followed by an empty
-    // string argument, so the argv carries exactly two "" entries.
     expect(argv.filter((arg) => arg === "")).toHaveLength(2);
   });
 
@@ -72,12 +65,6 @@ describe("runAuditor", () => {
     expect(prompt).toContain("entry: never do Y");
   });
 
-  // The regression guard for the E2BIG failures of 2026-08-26/27: a lens
-  // prompt inlines the spine, the diff and the standards, none of them
-  // capped, so on argv it dies past 128 KiB — and only for the sessions that
-  // happened to run long, which is why it passed here for weeks. Asserted as
-  // "no argv element carries the prompt" rather than "stdin is set", so a
-  // future edit that puts it back on argv fails even if it also passes stdin.
   it("hands the prompt to the CLI on stdin, never as an argv element", async () => {
     const fakeStage = createFakeStage("no violations found");
     const options = baseOptions({ exec: fakeStage.exec, spine: "session did X" });

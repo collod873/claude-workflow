@@ -29,21 +29,12 @@ import {
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { implementationBranch } from "./ready-set";
 
-/**
- * The landing half two lanes share (`implement/implement.ts`, `recover/recover.ts`): how a claim
- * is taken, assessed and released, and what happens between a held answer and a pull request.
- * Tested here, once, against the claim host — each lane's own test is about what it does before
- * and after this, not about this.
- */
-
 const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
 const silent = () => {};
 
-/** A claim already standing on this slice's branch, with `claim` being what GitHub says about it. */
 const standing = (claim: Omit<ExistingClaim, "branch"> = {}): ExistingClaim => ({ branch: BRANCH, ...claim });
 
-/** A GitHub that cannot say whether a pull request names the branch — the one read every inspection starts with. */
 const prListUnreachable = (args: string[]): string | undefined => {
   if (args[0] === "pr" && args[1] === "list") throw new Error("HTTP 502");
   return undefined;
@@ -63,8 +54,6 @@ describe("claimImplementationBranch", () => {
   });
 
   it("refuses a claim held by a run that is still going, so two dispatches cannot both build one ticket", () => {
-    // Young, no commits, no pull request — exactly what a healthy run looks like in its first
-    // minutes, and the case a naive "delete anything without a PR" release would trample.
     const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(5) }) });
 
     expect(claim(host)).toEqual({ claimed: false, tookOverStaleClaim: false });
@@ -72,9 +61,6 @@ describe("claimImplementationBranch", () => {
     expect(refDeletesIn(host.calls)).toEqual([]);
   });
 
-  // Every case here is a claim old enough to have expired but not clearly abandoned, and every one
-  // answers "still held". Refusing a claim that was in fact debris costs one delayed retry; taking
-  // one that was in fact held costs two implementers building the same ticket at once.
   const notClearlyDebris: Array<[string, Omit<ExistingClaim, "branch">]> = [
     ["the branch carries commits somebody may still want", { createdAt: minutesAgo(600), commitsAhead: 3 }],
     ["a pull request already stands on the branch", { createdAt: minutesAgo(600), pullRequests: 1 }],
@@ -101,8 +87,6 @@ describe("claimImplementationBranch", () => {
     expect(claim(host)).toEqual({ claimed: true, tookOverStaleClaim: true });
     expect(host.refs.has(BRANCH), "the claim is this run's now").toBe(true);
 
-    // Taken atomically, not assumed: two runs that both find the same debris still race on
-    // `POST git/refs`, and still only one wins.
     const creates = host.calls.filter((call) => call[0] === "api" && call[1] === GIT_REFS_PATH);
     expect(creates).toHaveLength(2);
     expect(host.calls.indexOf(refDeletesIn(host.calls)[0])).toBeLessThan(host.calls.indexOf(creates[1]));
@@ -112,7 +96,6 @@ describe("claimImplementationBranch", () => {
     const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(600) }) });
     const raced: GhExec = (args) => {
       const out = host.gh(args);
-      // A sibling claimed the freed ref between this run's delete and its create.
       if (args[1] === "--method" && args[2] === "DELETE") host.refs.add(BRANCH);
       return out;
     };
@@ -121,11 +104,6 @@ describe("claimImplementationBranch", () => {
   });
 });
 
-/**
- * The exception is the whole reason this asks GitHub rather than a local flag: `openPrAndDispatch`
- * opens the PR and *then* dispatches, so a failure in the send is a failure with a live PR behind
- * it, and deleting that branch would take the run's finished work with it.
- */
 describe("releaseFailedClaim", () => {
   it("deletes the ref when no pull request names the branch", () => {
     const host = githubHoldingClaims({ existingClaim: standing() });
@@ -147,10 +125,6 @@ describe("releaseFailedClaim", () => {
   });
 });
 
-/**
- * Recover's release (#342): the claimant is known dead, so the age term a rival needs is the one
- * piece of evidence this does not — a claim minutes old is let go the same as one hours old.
- */
 describe("releaseDeadClaim", () => {
   it("lets go of a young claim with no pull request and no commits", () => {
     const host = githubHoldingClaims({ existingClaim: standing({ createdAt: NOW.toISOString() }) });
@@ -174,7 +148,6 @@ describe("releaseDeadClaim", () => {
 describe("landAnswer", () => {
   const ANSWER = { files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it.", outOfBriefReads: [] };
 
-  /** A run that already holds the claim and has its answer in hand — `git` says what the write left in the tree. */
   async function land(git: FakeGit = checkoutReporting(), options: { rebaseOntoTrunk?: boolean } = {}) {
     const host = githubHoldingClaims({ existingClaim: standing() });
     const written: string[] = [];
@@ -201,11 +174,6 @@ describe("landAnswer", () => {
     expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "fetch", "rebase", "push"]);
   });
 
-  /**
-   * A conflict is escalated, never resolved automatically — the same reason `fixer.yml`'s own
-   * rebase step stops rather than guessing at a merge. The claim is released, `needs-human` is
-   * applied, and the ticket names what did not replay.
-   */
   it("escalates a rebase conflict instead of pushing, releasing the claim and naming the paths", async () => {
     const git = createFakeGit((args) => {
       if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
@@ -225,10 +193,6 @@ describe("landAnswer", () => {
     expect(gitCalls.some((call) => call[0] === "push"), "pushed a conflicted branch").toBe(false);
   });
 
-  /**
-   * A run that builds nothing is a legitimate outcome, not a crash (#196): run 33229214201 found
-   * #210 already implemented and died on `git commit` with `nothing to commit`, claim left standing.
-   */
   it("exits nothing-to-build without a commit, releases its claim, and says so on the ticket when git reports the paths clean", async () => {
     const { result, host, gitCalls } = await land(checkoutReporting(() => ""));
 
@@ -239,13 +203,6 @@ describe("landAnswer", () => {
     expect(ticketCommentsIn(host.calls)).toEqual([nothingToBuildNote(ISSUE)]);
   });
 
-  /**
-   * The regression ADR-0103 is about, and why this asks git rather than the filesystem: the
-   * implementer holds Edit, Write and Bash, so by the time it reports a file that file has been on
-   * disk for twenty minutes. Its answer matches disk byte for byte in both the no-op above and the
-   * real build here, and only `git status` tells them apart — run 33275876786 built #237, was
-   * compared against its own edits, and was discarded as "nothing to build".
-   */
   it.each([
     ["a tracked file the implementer edited in place", " M a/b.ts"],
     ["a file the implementer created, which a diff against HEAD alone would not show", "?? a/b.ts"],
@@ -262,13 +219,7 @@ describe("landAnswer", () => {
     expect(gitCalls[0]).toEqual(["status", "--porcelain", "--", "a/b.ts"]);
   });
 
-  /**
-   * The rule that replaced the immutable `tests/acceptance/` (#360): a `test.fails(` acceptance
-   * test may be turned on and nothing else. Judged on the answer's own diff before any commit, so
-   * an implementer that edited its own judgement stops here, escalated, with no pull request.
-   */
   describe("the test.fails( rule, judged on the answer's diff before the commit", () => {
-    /** A checkout at `HEAD_SHA` whose `git diff` over the answer's paths answers `diff`. */
     const checkoutDiffing = (diff: string): FakeGit =>
       createFakeGit((args) => {
         if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;

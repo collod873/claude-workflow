@@ -18,7 +18,6 @@ const NOW = new Date("2026-09-02T12:00:00Z");
 const MACHINE_REPO = "collod873/claude-workflow";
 const MACHINE_SHA = "abc1234";
 
-/** Stands in for `git ls-files` over the machine checkout — the tree `routeFor` proves against. */
 const MACHINE_FILES: ReadonlySet<string> = new Set([
   ".Workflow/agent-workflows/watchdog/walk-home.ts",
   ".Workflow/agent-workflows/watchdog/walk-home.test.ts",
@@ -35,15 +34,6 @@ interface FakeRun {
   created_at?: string;
 }
 
-/**
- * A `gh` stand-in answering every call this module makes across possibly several repositories: the
- * topic search, one runs page and one failing-step log per repository, an issue listing (here or
- * `-R <repo>`), and `issue create`. Every write is recorded, and every `issue create` is folded back
- * into the relevant repository's own issue list — the same "read back what it wrote" shape
- * `run-watchdog.test.ts`'s `historyWith` uses for comments, so calling `sweep` twice on one fake
- * exercises the no-cursor, no-ledger claim for real rather than by constructing the second state
- * by hand.
- */
 function estateWith(options: {
   repositories?: string[];
   runs?: Record<string, FakeRun[]>;
@@ -71,12 +61,8 @@ function estateWith(options: {
     }
 
     if (args[0] === "api" && args[1] && repoRunsPathForMatcher.test(args[1])) {
-      // Never `-R`: `gh api` has no such flag, so `walk-home.ts` has to spell the repository into
-      // the path itself — this is the fake's other end of that, reading it straight back out.
       expect(args).not.toContain("-R");
       const runsRepo = repoRunsPathForMatcher.exec(args[1])![1];
-      // Already in the shape `walk-home.ts`'s own `--jq` projects to — the fake stands in for the
-      // whole `gh api --jq` round trip, not just the un-projected REST response.
       const list = runs[runsRepo] ?? [];
       return JSON.stringify(
         list.map((run) => ({
@@ -140,7 +126,6 @@ const CALLER_SIDE_LOG = [
   " ❯ target/tests/999-example.test.ts:10:5",
 ].join("\n");
 
-/** A machine-side failure whose path falls inside the machine's own immutable set. */
 const MACHINE_IMMUTABLE_LOG = [
   "Run the gate",
   "FAIL .github/actions/node/action.test.ts > example",
@@ -170,15 +155,11 @@ describe("routeFor", () => {
   });
 
   it("routes an unrecognised bare path to the caller, not the machine (ADR-0141)", () => {
-    // The bare paths the live regression misrouted, kept as evidence; `routeFor` carries why
-    // (ADR-0141).
     expect(routeFor("scripts/clone-gate.mjs", MACHINE_FILES)).toBe("caller");
     expect(routeFor("src/features/field-service/server/reactions/appointments.test.ts", MACHINE_FILES)).toBe("caller");
   });
 
   it("does not mistake a caller file for the machine's on a shared basename", () => {
-    // `bin/clone-gate` is the machine's; `scripts/clone-gate.mjs` is the caller's. Membership is
-    // the whole path, never a suffix or a stem.
     expect(routeFor("bin/clone-gate", MACHINE_FILES)).toBe("machine");
     expect(routeFor("scripts/bin/clone-gate", MACHINE_FILES)).toBe("caller");
   });
@@ -198,7 +179,6 @@ describe("ranMachineLane", () => {
   it("is true only for a caller stub, the one shape that reaches uses: into the machine", () => {
     expect(ranMachineLane(".github/workflows/verify-caller.yml")).toBe(true);
     expect(ranMachineLane(".github/workflows/ratify-on-prd-close-caller.yml")).toBe(true);
-    // The caller's own workflows never check the machine out, so they have no machine side at all.
     expect(ranMachineLane(".github/workflows/ci.yml")).toBe(false);
     expect(ranMachineLane(".github/workflows/license-gate.yml")).toBe(false);
   });
@@ -217,7 +197,6 @@ describe("walkHome", () => {
     expect(outcome.action).toBe("swept");
     expect(outcome.filed).toEqual([{ repository: "owner/caller", runId: 555, routed: "machine", issue: 100 }]);
 
-    // `gh api` has no `-R` flag — the repository has to be spelled straight into the path.
     expect(fake.calls).toContainEqual([
       "api",
       "repos/owner/caller/actions/runs?per_page=100",
@@ -234,15 +213,9 @@ describe("walkHome", () => {
     expect(body).toContain("## Acceptance criteria");
     expect(body).toContain("## Files claimed");
 
-    // Never filed at the caller.
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes("-R"))).toBe(false);
   });
 
-  /**
-   * The immutable-set half of the door (#334): a failing path this sweep would otherwise route
-   * `to-build` cannot become a ticket any implementer could ever build (ADR-0053), so it is filed
-   * `needs-human` instead — the same shape the ticket behind 7e64031 shows the cost of skipping.
-   */
   it("files needs-human, not to-build, for a failing path inside the machine's own immutable set", () => {
     const fake = estateWith({
       repositories: ["owner/caller"],
@@ -258,7 +231,6 @@ describe("walkHome", () => {
     expect(create[create.indexOf("--label") + 1]).toBe(NEEDS_HUMAN_LABEL);
     const body = create[create.indexOf("--body") + 1];
     expect(body).toContain(".github/actions/node/action.test.ts");
-    // Never the shape lane 06 would refuse anyway — no `## Files claimed` for an implementer to read.
     expect(body).not.toContain("## Acceptance criteria");
     expect(body).not.toContain("## Files claimed");
   });
@@ -280,7 +252,6 @@ describe("walkHome", () => {
     const body = create[create.indexOf("--body") + 1];
     expect(body).toContain("target/tests/999-example.test.ts");
     expect(body).toContain("owner/caller/actions/runs/556");
-    // Never carries the to-build door's label — that door only opens onto this repository's own lane 06.
     expect(create.includes("--label")).toBe(false);
 
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))).toBe(false);
@@ -306,8 +277,6 @@ describe("walkHome", () => {
       runs: { "owner/caller": [{ id: 558, path: ".github/workflows/verify-caller.yml" }] },
       logs: { 558: MACHINE_SIDE_LOG },
     });
-    // `owner/broken` names no `runs` entry, so its run-page read throws inside `estateWith` rather
-    // than being handled — the shape a repository this sweep cannot read at all takes.
     const originalGh = fake.gh;
     const gh: GhExec = (args) => {
       if (args[0] === "api" && args[1]?.startsWith("repos/owner/broken/")) {
@@ -325,8 +294,6 @@ describe("walkHome", () => {
   });
 
   it("reads no log at all for a red run of a workflow the caller owns (ADR-0141)", () => {
-    // Lumaria's own `ci.yml` goes red on its own suite constantly. It never checked the machine
-    // out, so there is no machine side to route to and no reason to spend a log read finding out.
     const fake = estateWith({
       repositories: ["owner/caller"],
       runs: { "owner/caller": [{ id: 559, path: ".github/workflows/ci.yml" }] },
@@ -366,7 +333,6 @@ describe("walkHome", () => {
     expect(outcome).toMatchObject({ action: "swept", code: "no-enrolled-repositories", repositoriesSwept: 0, filed: [] });
   });
 
-  /** `count` enrolled callers, each with one red machine-lane run whose failing-step log is `log`. */
   function redEstate(count: number, log: string): ReturnType<typeof estateWith> {
     const repos = Array.from({ length: count }, (_, index) => `owner/caller-${index}`);
     const runs: Record<string, FakeRun[]> = {};
@@ -379,8 +345,6 @@ describe("walkHome", () => {
   }
 
   it("declares its ceiling on log reads rather than silently dropping the excess", () => {
-    // Every log here names no routable path, so filing is never this test's bottleneck — isolating
-    // the log-read cap from `MAX_FILED`, which is smaller and would otherwise trip first.
     const fake = redEstate(MAX_LOG_READS + 1, "exit code 1 — no path named anywhere in this log");
     const lines: string[] = [];
 
@@ -401,12 +365,6 @@ describe("walkHome", () => {
   });
 });
 
-/**
- * CODING_STANDARDS.md, "Pin a mandated copy to its source". This lane restates `ENROLMENT_TOPIC`
- * rather than importing it, for the reason `walk-home.ts`'s module doc gives; no compiler looks
- * across that lane boundary, so this test is what holds the copy to the original — by the search
- * the sweep actually sends, which is the only place the restated string reaches anything.
- */
 describe("the enrolment topic agrees with the enrol/enrol.ts constant it is a copy of", () => {
   it("spends enrol/enrol.ts's own topic on the search this sweep actually makes", () => {
     const fake = estateWith({ repositories: [] });

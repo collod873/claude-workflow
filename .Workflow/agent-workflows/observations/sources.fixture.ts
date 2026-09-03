@@ -10,10 +10,8 @@ import { fileURLToPath } from "node:url";
  * @fixture Reached only from the suite, by design.
  */
 
-/** This lane's own directory. */
 export const OBSERVATIONS_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** Every lane, because a caller of an observations export may live in any of them. */
 export const LANES_DIR = dirname(OBSERVATIONS_DIR);
 
 export interface SourceFile {
@@ -21,7 +19,6 @@ export interface SourceFile {
   text: string;
 }
 
-/** Every `.ts` file under `dir`, recursively, with its contents. */
 export function readTsSources(dir: string): SourceFile[] {
   const out: SourceFile[] = [];
   for (const entry of readdirSync(dir)) {

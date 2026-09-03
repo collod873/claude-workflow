@@ -9,7 +9,6 @@ import type { GhExec } from "../../shared/gh";
  * built by `shape/sheet.fixture.ts`, beside the schema.
  */
 
-/** A fake `gh` answering only `issue view --json body` and `issue view --json comments`. */
 export function fakeSheetGh(body: string, comments: string[]): GhExec {
   return (args) => {
     const fields = args[args.indexOf("--json") + 1] ?? "";

@@ -1,12 +1,5 @@
 import type { RatifierVerdict } from "./verdict-schema";
 
-/**
- * The one builder for a `RatifierVerdict` fixture. Everything but `verdict` is
- * derived from it, so a test names only the field it is actually about — see
- * CODING_STANDARDS.md, "Fixtures through one builder". Defaults to a
- * `mechanise`, since that is the only verdict with a rule trial and a
- * demotion behind it.
- */
 export function ratifierVerdict(overrides: Partial<RatifierVerdict> = {}): RatifierVerdict {
   return {
     verdict: "mechanise",

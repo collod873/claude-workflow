@@ -32,19 +32,6 @@ import { readWorkflow, readWorkflows, STUB_SUFFIX, WORKFLOWS_DIR, workflowNames 
 import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
-/**
- * `LANE_WIRING`, read back against `.github/workflows`. Every row is one lane's claim about its
- * reusable workflow and its caller stub, and every `it` below is that claim held to the YAML —
- * see `lane-wiring.ts` for why the facts live in one table rather than one file per lane.
- *
- * The estate-wide sweeps at the bottom are the ones no other file already carries: every file
- * parses; every caller pins its reusable half at `@main` and inherits secrets exactly when that
- * half spends one; every `npx tsx` entrypoint exists; every label a lane creates is created
- * idempotently; every variable an entrypoint reads is set by the job that runs it. The token,
- * committer, runner-input, dead-run and display-name sweeps stay where they are
- * (`workflow-permissions`, `runner-committer`, `lane-invariants`, `lane-identity`).
- */
-
 interface Step {
   name?: string;
   id?: string;
@@ -81,10 +68,6 @@ interface CallOn {
 const rows = Object.entries(LANE_WIRING).map(([lane, row]) => ({ lane, row, file: `${lane}.yml` }));
 const estate = readWorkflows<Workflow>();
 const stubOf = (lane: string) => `${lane}${STUB_SUFFIX}`;
-
-/* -------------------------------------------------------------------------------------------- */
-/* Assertion vocabulary                                                                          */
-/* -------------------------------------------------------------------------------------------- */
 
 function expectGate(condition: string, gate: Gate): void {
   if (gate.is !== undefined) expect(condition).toBe(gate.is);
@@ -144,7 +127,6 @@ function expectCheckout(file: string, jobName: string, facts: JobFacts, steps: S
   if (shape === "none") {
     expect(checkouts).toEqual([]);
   } else if (shape === "plain") {
-    // One checkout of this repository itself: a lane that only ever runs here has no target.
     expect(checkouts).toHaveLength(1);
     expect(checkouts[0].with?.repository).toBeUndefined();
   } else if (shape === "machine") {
@@ -183,10 +165,6 @@ function expectJob(file: string, jobName: string, facts: JobFacts, job: Job | un
   for (const fact of facts.steps ?? []) expectStep(steps, fact);
 }
 
-/* -------------------------------------------------------------------------------------------- */
-/* The table, row by row                                                                         */
-/* -------------------------------------------------------------------------------------------- */
-
 describe("LANE_WIRING names every workflow file in the estate", () => {
   it("has a row for every file, and a file for every row", () => {
     const claimed = rows.flatMap(({ lane, row, file }) => [file, ...(row.caller ? [stubOf(lane)] : [])]);
@@ -209,8 +187,6 @@ describe.each(rows)("$lane", ({ lane, row, file }) => {
       expect(jobs[0].permissions).toEqual(caller.permissions);
       if (caller.gate) expectGate(jobs[0].if ?? "", caller.gate);
       else expect(jobs[0].if).toBeUndefined();
-      // A subset: a caller may pass a fact of its own the machine has no row for (`fixer-caller.yml`'s
-      // `test_dir`, which is this repository's answer and not the lane's).
       if (caller.with) expect(jobs[0].with).toMatchObject(caller.with);
       else expect(jobs[0].with).toBeUndefined();
     });
@@ -249,10 +225,6 @@ describe.each(rows)("$lane", ({ lane, row, file }) => {
     for (const fragment of row.source?.lacks ?? []) expect(source).not.toContain(fragment);
   });
 });
-
-/* -------------------------------------------------------------------------------------------- */
-/* Names the table spells for a lane, held to the lane that owns them                            */
-/* -------------------------------------------------------------------------------------------- */
 
 describe("a name LANE_WIRING spells for a lane agrees with the lane's own export", () => {
   it.each([
@@ -305,15 +277,6 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
   });
 });
 
-/* -------------------------------------------------------------------------------------------- */
-/* bin/close-ticket's Python copy of the two job names                                           */
-/* -------------------------------------------------------------------------------------------- */
-
-/**
- * `bin/close-ticket` reads the same two Verify jobs from the Actions API and cannot import a `.ts`
- * module at a workstation, so it restates both names as Python literals. The block above holds
- * `LANE_OWNED` to `verify.yml`'s own `name:`; this holds the Python copy to `LANE_OWNED`.
- */
 describe("bin/close-ticket's job names agree with the verify.yml jobs they are copies of", () => {
   const source = binSources().find((file) => file.relative === "bin/close-ticket")?.source;
 
@@ -328,18 +291,6 @@ describe("bin/close-ticket's job names agree with the verify.yml jobs they are c
   });
 });
 
-/* -------------------------------------------------------------------------------------------- */
-/* fixer.yml's jq copy of the two job names                                                      */
-/* -------------------------------------------------------------------------------------------- */
-
-/**
- * `fixer.yml` reads the same two Verify jobs out of `gh run view --json jobs` in shell, where no
- * `.ts` module can be imported, so each `jq` select restates the job's name twice — once bare and
- * once as the `<caller job key> / <name>` spelling a run reached through `uses:` reports, the same
- * two spellings `shared/job-match.ts`'s `findJobByName` accepts. Three literals per job with no
- * compiler between them; this holds all of them to `LANE_OWNED`, which the row above holds to
- * `verify.yml`'s own `name:`.
- */
 describe("fixer.yml's jq job selects agree with the verify.yml jobs they are copies of", () => {
   const jobSelects = readWorkflow("fixer.yml")
     .source.split("\n")
@@ -369,10 +320,6 @@ describe("fixer.yml's jq job selects agree with the verify.yml jobs they are cop
   });
 });
 
-/* -------------------------------------------------------------------------------------------- */
-/* fixer.yml reads the pull request out of the line verify.yml echoes (ADR-0104)                 */
-/* -------------------------------------------------------------------------------------------- */
-
 describe("fixer.yml's resolve grep matches what verify.yml's Immutability job prints", () => {
   const grepped = /grep -oE '([^']+)'/.exec(readWorkflow("fixer.yml").source)?.[1];
   const pattern = new RegExp(grepped ?? "$^");
@@ -388,10 +335,6 @@ describe("fixer.yml's resolve grep matches what verify.yml's Immutability job pr
   });
 });
 
-/* -------------------------------------------------------------------------------------------- */
-/* Estate-wide                                                                                   */
-/* -------------------------------------------------------------------------------------------- */
-
 describe("every workflow file", () => {
   it("parses, and resolves under .github/workflows by name alone", () => {
     expect(estate.length).toBeGreaterThan(0);
@@ -404,12 +347,8 @@ describe("every workflow file", () => {
       const lane = name.slice(0, -STUB_SUFFIX.length);
       const [job] = Object.values(workflow.jobs ?? {});
       expect(job.uses).toBe(`${MACHINE_REPOSITORY}/.github/workflows/${lane}.yml@main`);
-      // A `uses:` job passes no secret unless told to, so a lane binding one fails closed without
-      // `inherit`; a lane binding none has nothing to inherit and says so by omission.
       const bindsSecret = /\$\{\{ secrets\./.test(readWorkflow(`${lane}.yml`).source);
       expect(job.secrets, `${name} secrets:`).toBe(bindsSecret ? "inherit" : undefined);
-      // A workflow file handed across the call is a path segment of `actions/workflows/<file>/runs`
-      // (ADR-0132): it must name a stub, the only half that carries runs.
       for (const value of Object.values(job.with ?? {}).filter((v) => v.endsWith(".yml"))) {
         expect(value.endsWith(STUB_SUFFIX), `${name} passes ${value}`).toBe(true);
         expect(workflowNames()).toContain(value);
@@ -431,7 +370,6 @@ describe("every workflow file", () => {
   });
 });
 
-/** Variables every runner carries, which a workflow is not expected to restate. */
 const AMBIENT = /^(GITHUB_|RUNNER_|HOME$|PATH$|CI$)/;
 
 describe("every variable an entrypoint reads is set by the job that runs it", () => {
@@ -451,11 +389,6 @@ describe("every variable an entrypoint reads is set by the job that runs it", ()
   });
 
   it.each(runs)("$name › $jobName sets what $entrypoint reads", ({ name, jobName, job, entrypoint }) => {
-    // Set at the job, on any step (a lane whose entrypoint has a second, narrower mode — `fixer.ts
-    // escalate` — sets the tree only on the step that reads one), or exported through
-    // `$GITHUB_ENV`, which reaches every later step as if the job's own `env:` had set it —
-    // `FAILURE_REASON_PATH`, exported because `runner.temp` is not there yet when job-level `env:`
-    // is evaluated (#40).
     const steps = job.steps ?? [];
     const exported = steps
       .filter((each) => each.run?.includes("GITHUB_ENV"))

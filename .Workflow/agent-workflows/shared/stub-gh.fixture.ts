@@ -18,24 +18,16 @@ import { onTestFinished } from "vitest";
  * the tracker.
  */
 
-/** A `{ body, comments }` payload as `gh issue view --json body[,comments]` returns it. */
 export interface IssuePayload {
   body: string;
   comments?: { body: string; createdAt: string }[];
 }
 
-/**
- * Every argv line an `argv.jsonl` call log holds, oldest first — the reading half of the stub
- * `gh`s in this file and in `close-ticket.test.ts`'s `routedGhStub`, which log a call the same
- * way this one does but answer it differently. Shared so the two stubs' *logs* can never drift
- * from what a caller reads back out of them, even though their *answers* legitimately do.
- */
 export function readArgvLog(log: string): string[][] {
   let text = "";
   try {
     text = readFileSync(log, "utf8");
   } catch {
-    // No log at all means no invocation — the shape a refusal that never reached `gh` takes.
     return [];
   }
   return text
@@ -45,29 +37,10 @@ export function readArgvLog(log: string): string[][] {
 }
 
 export interface GhStub {
-  /** Absolute path to the stub, for `AGENT_SKILLS_GH`. */
   path: string;
-  /**
-   * Every invocation's arguments, in the order they were made — `["issue", "view", "300", …]`.
-   *
-   * Read rather than pushed to, because the calls are made by a child process: a spy in this
-   * process would see nothing. This is the observable a refusal is asserted on, since "posted
-   * nothing, closed nothing" is a claim about calls that did not happen, and the only way to see
-   * one of those is to record the ones that did.
-   */
   calls: () => string[][];
 }
 
-/**
- * A `gh` that answers every call from `payload` and logs each invocation's argv.
- *
- * One canned answer for every subcommand, not a router: each suite's subject makes one *read*
- * (`issue view`) and the rest are writes whose output nobody parses, so a router would be a
- * second, more elaborate belief about a call sequence the log already reports exactly.
- *
- * Removed when the test finishes, pass or fail (`onTestFinished`) — the caller keeps no teardown
- * of its own.
- */
 export function stubGh(payload: IssuePayload | string): GhStub {
   const issue: IssuePayload = typeof payload === "string" ? { body: payload } : payload;
   const dir = mkdtempSync(join(tmpdir(), "stub-gh-"));
@@ -78,8 +51,6 @@ export function stubGh(payload: IssuePayload | string): GhStub {
   const answer = JSON.stringify(
     JSON.stringify({ body: issue.body, comments: issue.comments ?? [] }),
   );
-  // `python3` rather than `jq` to render the argv line: both suites already spawn python3 as a
-  // hard dependency, and jq is not on every runner.
   writeFileSync(
     path,
     `#!/bin/bash\npython3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}\nprintf '%s' ${answer}\n`,

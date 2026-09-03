@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { childEnv } from "./child-env.ts";
 import { scratchDir } from "./scratch.fixture.ts";
 
-/** Matches `./git.ts`'s, and for the same reason: Node's 1 MB default exits `ENOBUFS` naming neither command nor size. */
 const MAX_BUFFER = 10 * 1024 * 1024;
 
 /**
@@ -32,31 +31,19 @@ const MAX_BUFFER = 10 * 1024 * 1024;
  * @fixture Reached only from the suite, by design.
  */
 export interface TempRepo {
-  /** The repo's directory — for `-C`, `repoDir`, and whatever the subject wants to be pointed at. */
   dir: string;
-  /** Writes one file, creating parent directories. Nothing is staged until `commit`. */
   write: (path: string, contents: string) => void;
-  /** Deletes one file from the working tree. Nothing is staged until `commit`. */
   remove: (path: string) => void;
-  /** Commits everything in the tree, including deletions, and returns the new commit's SHA. */
   commit: (message: string, options?: CommitOptions) => string;
-  /** Runs `git` in this repo and returns its stdout, trimmed. */
   git: (...args: string[]) => string;
-  /** The SHA `HEAD` resolves to. */
   head: () => string;
 }
 
 export interface CommitOptions {
-  /**
-   * An ISO timestamp for both author and committer date. For a subject that reads dates back out
-   * of `git log`, which has to control them precisely rather than let them fall out of "whenever
-   * the test happened to run".
-   */
   date?: string;
 }
 
 export interface TempRepoOptions {
-  /** A repository to register as the `origin` remote, for a subject that pushes to or fetches from one. */
   origin?: string;
 }
 

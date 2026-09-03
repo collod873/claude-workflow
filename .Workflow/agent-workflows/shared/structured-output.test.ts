@@ -15,13 +15,6 @@ describe("the JSON Schema handed to the CLI", () => {
     expect(schema.type).toBe("object");
   });
 
-  /**
-   * `Plan` and `SeamManifest` are bare arrays, and an array root is refused
-   * with `tools.N.custom.input_schema.type: Input should be 'object'` — a 400
-   * that arrives only once the stage has already spawned. `wrapIn` is how a
-   * stage gets past it, and this is the check that the wrapper is real rather
-   * than described.
-   */
   it("wraps a root that is not an object, under the field the stage named", () => {
     const schema = JSON.parse(structuredOutput(z.array(z.string()), "entries").jsonSchema) as {
       type: string;
@@ -44,18 +37,7 @@ describe("the JSON Schema handed to the CLI", () => {
   });
 });
 
-/**
- * The property #147 is really about: the schema each stage sends is
- * **derived** from that stage's zod schema, not a second copy kept beside it.
- *
- * A hand-written schema is not wrong on the day it is written — it is wrong
- * on the day the zod schema gains a field and nobody remembers the other
- * copy. So the assertion is not "this schema looks right", which a stale copy
- * also passes; it is "this schema's fields are exactly the zod schema's
- * fields", which a stale copy cannot be.
- */
 describe("each stage's schema tracks its zod schema rather than a copy of it", () => {
-  /** The `properties` keys and `required` list of one derived schema. */
   function jsonFields(output: StructuredOutput<unknown>): {
     properties: string[];
     required: string[];
@@ -77,10 +59,7 @@ describe("each stage's schema tracks its zod schema rather than a copy of it", (
       }
     ).properties.slices.items;
 
-    // Every field of `Slice`, and no other — so a field added to the zod
-    // schema and forgotten here fails, which is the whole point.
     expect(Object.keys(slices.properties).sort()).toEqual(Object.keys(Plan.element.shape).sort());
-    // `dependsOn` is `.default([])`, so it is the one field the model may omit.
     expect(slices.required.sort()).toEqual(
       Object.keys(Plan.element.shape)
         .filter((key) => key !== "dependsOn")
@@ -102,7 +81,6 @@ describe("each stage's schema tracks its zod schema rather than a copy of it", (
   it("derives the audit stage's schema from AuditOutput in plan-schema.ts", () => {
     expect(jsonFields(AUDIT_OUTPUT)).toEqual({
       properties: Object.keys(AuditOutput.shape).sort(),
-      // `notes` is `.default("")`; a silent grading is a legal answer.
       required: ["slices"],
     });
   });
@@ -148,13 +126,6 @@ describe("parsing a response", () => {
     );
   });
 
-  /**
-   * A zod `.refine()` has no JSON Schema keyword behind it, so
-   * `SeamManifestEntry`'s no-newline rule is dropped by the derivation and the
-   * API accepts a manifest entry with a newline in it. zod is what refuses it
-   * on the way back — which is the reason `parse` re-validates at all rather
-   * than trusting the API's check to have been the whole one.
-   */
   it("still enforces the rules JSON Schema cannot carry", () => {
     expect(SEAM_SWEEP_OUTPUT.jsonSchema).not.toContain("newline");
     expect(() =>

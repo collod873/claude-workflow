@@ -20,13 +20,6 @@ import { MAX_JOB_READS, runBypassCounter } from "./bypass-counter";
 import { answerTrackerOrThrow } from "./signal-tracker.fixture";
 import evidence from "./verify-runs.evidence.json";
 
-/**
- * `verify.yml`'s real run history on `main`, captured with the failed step
- * name the counter reads — the shape `push-runs.evidence.json` already has
- * for the run watchdog. ADR-0064's measurement clause asked this counter be
- * measured against the history it would have read before it was built; this
- * is that measurement, as a test.
- */
 interface EvidenceRun {
   id: number;
   conclusion: string;
@@ -72,15 +65,11 @@ describe("the rule, run over verify.yml's real run history", () => {
 
     expect(bypassCount(runs)).toBe(4);
 
-    // The fixture is not a fixture with only Gauntlet failures in it — it carries real occurrences
-    // of both other step names, which is what makes the exclusion below a real assertion rather than
-    // a vacuous one.
     const couldNotRun = runs.filter((each) => each.failedStep === COULD_NOT_RUN_STEP);
     const lintWorkflow = runs.filter((each) => each.failedStep === LINT_WORKFLOW_STEP);
     expect(couldNotRun.length).toBe(0);
     expect(lintWorkflow.length).toBe(2);
 
-    // Neither category contributes to the bypass count, whatever its own size.
     expect(couldNotRun.filter(isBypass)).toEqual([]);
     expect(lintWorkflow.filter(isBypass)).toEqual([]);
   });
@@ -161,11 +150,6 @@ describe("the signal body", () => {
   });
 });
 
-/**
- * A `gh` stand-in for the IO half's three calls — the workflow's runs page, one job read per failed
- * run, and the tracker (`answerTracker`, shared with `run-watchdog.test.ts`) — recording every
- * argv verbatim.
- */
 interface FakeRun {
   id: number;
   conclusion: string;
@@ -211,10 +195,6 @@ function historyWith(options: {
   return { gh, calls };
 }
 
-/**
- * The workflow file this repository's own Verify runs are recorded against. Held as a constant so
- * the assertions below read against one name rather than ten literals that could drift apart.
- */
 const VERIFY_WORKFLOW = "verify-caller.yml";
 
 function gauntletFailures(count: number): FakeRun[] {
@@ -280,12 +260,6 @@ describe("runBypassCounter", () => {
     expect(create[create.indexOf("--body") + 1]).toContain(countMarker(4));
   });
 
-  /**
-   * ADR-0071: branch protection is declined outright, so the proposal this counter exists to make
-   * is settled rather than pending. Growth is an argument already heard and ruled on, and a
-   * counter that re-asks on it is the nagging the marker was there to prevent — one notch further
-   * out than "not at this count".
-   */
   it("never re-proposes past a proposal closed as not planned, however far the count grows", () => {
     const fake = historyWith({
       runs: gauntletFailures(40),
@@ -329,7 +303,6 @@ describe("runBypassCounter", () => {
     expect(outcome).toMatchObject({ code: "below-threshold", count: 2 });
   });
 
-  /** Why `verifyWorkflow` is the caller's to name: `bypass-counter.ts`'s module docstring, ADR-0055. */
   it("asks for the workflow file it was handed rather than one of its own choosing", () => {
     const fake = historyWith({ runs: gauntletFailures(1) });
 

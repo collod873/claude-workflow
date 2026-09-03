@@ -16,12 +16,6 @@ const BETA = ".claude/hooks/beta.test.ts";
 const GAMMA = ".Workflow/agent-workflows/deep/nested/gamma.test.ts";
 const DELTA = ".Workflow/delta.test.ts";
 
-/**
- * A throwaway checkout carrying the suite's two trees, with one file per entry. Since #360 an
- * acceptance test lives beside its subject, so the search is over `SUITE_ROOTS` under a root,
- * never over a directory of its own — and a fixture that lived under this repo's `.Workflow/`
- * would be collected by the real suite as well.
- */
 function checkoutWith(files: Record<string, string>): string {
   const root = scratchDir("affected-tests");
   for (const [path, contents] of Object.entries(files)) {
@@ -113,8 +107,6 @@ describe("testsForCriteria", () => {
   });
 
   it("matches a criterion containing regex-special characters as literal text, not a pattern", () => {
-    // `(widget)` and a trailing `*` are regex metacharacters. A search that compiled the criterion
-    // as a pattern instead of comparing it as text would either throw or match the wrong thing.
     const root = fixtureCheckout();
     expect(testsForCriteria([REGEX_LOOKING], root)).toEqual([join(root, DELTA)]);
   });
@@ -130,10 +122,6 @@ describe("affectedSlices", () => {
   const UNCHANGED_CRITERION = "make test exits 0 with a doohickey that hums in the key of D";
   const ADDED_CRITERION = "make test exits 0 with a brand-new sprocket nobody has a test for yet";
 
-  // Slice 101's test proves WIDGET, which the spec below no longer carries at all — edited to
-  // different wording (EDITED_CRITERION). Slice 102's test proves DELETED_CRITERION, which the
-  // spec below has simply dropped. Slice 103's test proves UNCHANGED_CRITERION, which the spec
-  // still carries verbatim. ADDED_CRITERION is new in the spec and no existing test names it.
   const EXISTING_TESTS: ExistingTestCriterion[] = [
     { sliceNumber: 101, criterion: WIDGET },
     { sliceNumber: 102, criterion: DELETED_CRITERION },
@@ -157,9 +145,6 @@ describe("affectedSlices", () => {
   });
 
   it("never lists a criterion added with no existing test naming it — that is a re-slice, not a re-entry", () => {
-    // ADDED_CRITERION appears nowhere in EXISTING_TESTS, so nothing in the affected set can trace
-    // to it — the only way it could appear is if this function looked at what's new in the spec
-    // rather than what existing tests already prove.
     const result = affectedSlices(EDITED_SPEC_BODY, EXISTING_TESTS);
     const onlySlices = [101, 102, 103];
     expect(result.every((slice) => onlySlices.includes(slice.sliceNumber))).toBe(true);

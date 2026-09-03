@@ -6,12 +6,6 @@ import { applyTwoSiteGate, parseProposedFindings, proposedPrompt } from "./lense
 import { violationPrompt } from "./lenses/violation";
 import { expectSandboxedLensArgv } from "./sandbox-argv.fixture";
 
-/**
- * Every test in this file runs the auditor through `createFakeGit` and
- * `createFakeStage` — no test here ever spawns the real `git` or `claude`
- * binaries. Mirrors `auditor.test.ts`'s `baseOptions`, minus `standards`
- * (PROPOSED doesn't take one — see `ProposedAuditorOptions`).
- */
 function baseOptions(overrides: Partial<ProposedAuditorOptions> = {}): ProposedAuditorOptions {
   const fakeGit = createFakeGit(() => "+ a diff line");
   const fakeStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:10\n");
@@ -190,8 +184,6 @@ describe("applyTwoSiteGate", () => {
   });
 
   it("reads a prior note's prose site and this run's bare one as the same sighting, not two", async () => {
-    // What `refs/notes/observations` actually carries from run 32996383308 (#108) — if these
-    // read as two distinct sites, a pattern seen once clears the gate.
     const prior = [{ finding: "f", sites: ["a.ts:1 (theFunction)"], released: false }];
 
     const merged = applyTwoSiteGate(prior, [{ finding: "f", site: "a.ts:1" }]);
@@ -210,7 +202,6 @@ describe("applyTwoSiteGate", () => {
 
 describe("the site contract, against the lens that writes one", () => {
   it("narrows a PROPOSED site to a path and line, whatever the model hangs off it", async () => {
-    // Verbatim from run 32996383308's own note — the shape the lens emits when told `file:line`.
     const raw = [
       "Finding: scratch-project detection duplicated",
       "Site: .Workflow/agent-workflows/capture/backfill.ts:212 (isScratchProject)",

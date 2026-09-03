@@ -4,7 +4,6 @@ import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
 import { publishFinding, publishFindings } from "./publish-findings";
 
-/** Names that would appear in a call resembling a PR comment or any other notification path. */
 const NOTIFICATION_ARGV_NEEDLES = ["pr", "comment", "notify", "slack", "webhook"];
 
 describe("publishFinding", () => {

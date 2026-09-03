@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCaptureMarkdown, extractSpine, parseTranscript, type ParsedSpine, type Turn } from "./spine";
 
-// One JSONL line per call, so a test names only the field it's actually about — mirrors the
-// `slice()` fixture builder pattern (CODING_STANDARDS.md), just untyped: transcript lines have no
-// zod schema here, they're read defensively (see spine.ts's module header).
 function userLine(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     type: "user",
@@ -24,7 +21,6 @@ function assistantLine(overrides: Record<string, unknown> = {}): string {
   });
 }
 
-/** An Esc interrupt as Claude Code writes it: user-role, no `origin`, the marker as its whole body. */
 function interruptLine(marker = "[Request interrupted by user]", overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     type: "user",
@@ -34,7 +30,6 @@ function interruptLine(marker = "[Request interrupted by user]", overrides: Reco
   });
 }
 
-/** The turns of one role, as plain strings — most filter tests care about nothing else. */
 function textsOf(parsed: ParsedSpine, role: Turn["role"]): string[] {
   return parsed.turns.filter((turn) => turn.role === role).map((turn) => turn.text);
 }
@@ -307,7 +302,6 @@ describe("buildCaptureMarkdown", () => {
   describe("nothing a turn contains can become a heading of the file", () => {
     const pasted = "Here is the ticket:\n\n## Acceptance criteria\n\n- [ ] it works";
 
-    /** Every `## ` heading at column 0 — what a reader scanning the corpus by section would find. */
     const headingsOf = (md: string): string[] => md.split("\n").filter((line) => line.startsWith("## "));
 
     it("indents a pasted prompt's continuation lines into its bullet", () => {

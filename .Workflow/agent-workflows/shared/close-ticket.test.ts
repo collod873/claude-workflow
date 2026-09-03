@@ -3,19 +3,6 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkoutWithCommits, closeTicket, issueViewRoute, trackerAnswering } from "./close-ticket.fixture.ts";
 
-/**
- * The refusal #360 added to `bin/close-ticket`: an acceptance test lives beside its subject and is
- * marked `test.fails(` until the ticket it names is built, so a ticket still named by such a line
- * is a ticket nobody has finished — whatever its criteria's own `check:` commands say. The close is
- * refused before a single check runs, naming the lines.
- *
- * Every case here is driven through the script's own command line, against a real repository and a
- * `gh` this suite records: which lines survive is only ever interesting as the answer to whether a
- * close reached the tracker, so that is what gets asserted — the message the real script printed
- * and the calls it made, not a function reached behind the CLI.
- */
-
-/** Writes `content` at `path` under `checkout`, creating the directories a suite root needs. */
 function fileIn(checkout: string, path: string, content: string): void {
   const resolved = join(checkout, path);
   mkdirSync(dirname(resolved), { recursive: true });
@@ -27,7 +14,6 @@ describe("a close refused by a surviving test.fails( line", () => {
   const THING_TEST = ".Workflow/agent-workflows/thing/thing.test.ts";
   const HOOK_TEST = ".claude/hooks/hook.test.ts";
 
-  /** Closes #999 against a checkout holding `files` (path to content), with a ticket body that has no criteria of its own. */
   function closingWith(files: Record<string, string>) {
     const { checkout, shas } = checkoutWithCommits(1);
     for (const [path, content] of Object.entries(files)) fileIn(checkout, path, content);

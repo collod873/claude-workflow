@@ -24,14 +24,6 @@ import { makeTempRepo } from "./temp-repo.fixture.ts";
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 export const CLOSE_TICKET = join(REPO_ROOT, "bin/close-ticket");
 
-/**
- * Python that loads a suffix-less script as module `name`, bound to `module`.
- *
- * Named through an explicit loader: the script has no `.py` suffix, and `spec_from_file_location`
- * alone declines to guess a loader for that. `sysPath`, when given, is prepended so a script that
- * imports a sibling off its own directory (`close-gate.py`'s `_hook`) resolves it when loaded as a
- * module rather than run.
- */
 export function loadAsModule(name: string, path: string, sysPath?: string): string {
   const pathLine = sysPath === undefined ? "" : `sys.path.insert(0, ${JSON.stringify(sysPath)})`;
   return `
@@ -44,7 +36,6 @@ loader.exec_module(module)
 `;
 }
 
-/** Runs `python -c script` with `input` on stdin and `env` over the worker's, asserting it exited 0. */
 export function python(script: string, input: string, env: Record<string, string | undefined> = {}): { stdout: string; stderr: string } {
   const run = spawnSync("python3", ["-c", script], {
     input,
@@ -56,14 +47,6 @@ export function python(script: string, input: string, env: Record<string, string
   return { stdout: run.stdout, stderr: run.stderr };
 }
 
-/**
- * Loads `bin/close-ticket` as a module and runs `body` against it, JSON in (`payload`), JSON out.
- *
- * `VERIFY_WORKFLOW` is pinned to `verify-caller.yml` here rather than left to whatever the test
- * runner's own environment happens to carry — `verify_workflow_file()`'s workstation default and
- * its runner refusal each get their own cases, driven with their own explicit `env`, so every other
- * case exercises the ordinary, explicitly-configured path instead of that fallback.
- */
 export function inCloseTicket(body: string, payload: unknown, env: Record<string, string | undefined> = {}): { stdout: string; stderr: string } {
   return python(
     `${loadAsModule("close_ticket", CLOSE_TICKET)}\npayload = json.load(sys.stdin)\n${body}\n`,
@@ -72,31 +55,16 @@ export function inCloseTicket(body: string, payload: unknown, env: Record<string
   );
 }
 
-/** One answer a `trackerAnswering` stub gives: the first route whose every `contains` substring appears in the space-joined argv wins. */
 export interface Route {
   contains: string[];
   respond: string;
 }
 
 export interface Tracker {
-  /** Absolute path to the stub, for `AGENT_SKILLS_GH`. */
   path: string;
-  /** Every invocation's argv, oldest first — read from a log, because the calls are made by a child process. */
   calls: () => string[][];
 }
 
-/**
- * A `gh` whose answer depends on *which* subcommand was called. `stub-gh.fixture.ts`'s `stubGh`
- * answers every call identically, which is enough for a single `issue view` read but not for
- * `fetch_closing_pr`/`fetch_verify_verdict` (#306), each of which makes several different calls in
- * sequence and needs a different answer to each. `routes` is tried in order; the winner's `respond`
- * is printed verbatim. A call matching nothing gets `{}`.
- *
- * Written in Python rather than bash so a body carrying backticks — every criterion does, by
- * construction — reaches the script intact: bash would run one as a command substitution, silently
- * handing close-ticket a body with the marker's quoting removed, which is the very defect
- * `render-body.proc.test.ts` exists to catch.
- */
 export function trackerAnswering(routes: Route[]): Tracker {
   const dir = scratchDir("tracker-gh");
   const path = join(dir, "gh");
@@ -119,12 +87,10 @@ print("{}")
   return { path, calls: () => readArgvLog(log) };
 }
 
-/** The `issue view --json body,comments` answer for a ticket whose body is `body` and which has no comments. */
 export function issueViewRoute(body: string): Route {
   return { contains: ["issue", "view"], respond: JSON.stringify({ body, comments: [] }) };
 }
 
-/** One `closedByPullRequestsReferences` node, in the shape `fetch_closing_pr` reads. */
 export interface PrRefNode {
   number: number;
   url: string;
@@ -133,7 +99,6 @@ export interface PrRefNode {
   mergeCommit: { oid: string } | null;
 }
 
-/** The `api graphql` answer to `fetch_closing_pr`'s query, with `nodes` as the issue's `closedByPullRequestsReferences`. */
 export function closingPrRoute(nodes: PrRefNode[]): Route {
   return {
     contains: ["api", "graphql"],
@@ -143,15 +108,10 @@ export function closingPrRoute(nodes: PrRefNode[]): Route {
   };
 }
 
-/** A pull request node that merged at `mergedAt` with merge commit `oid`. */
 export function mergedPr(number: number, oid: string, mergedAt = "2026-09-01T00:00:00Z"): PrRefNode {
   return { number, url: `https://github.com/acme/widgets/pull/${number}`, merged: true, mergedAt, mergeCommit: { oid } };
 }
 
-/**
- * The three-call sequence `fetch_verify_verdict` makes: the workflow's run list, that run's jobs,
- * and the Immutability job's log — which names `prUrl`, so the verdict applies to it.
- */
 export function verifyRoutes(jobs: { name: string; status: string; conclusion: string | null }[], prUrl: string): Route[] {
   return [
     { contains: ["actions/workflows/verify-caller.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
@@ -160,7 +120,6 @@ export function verifyRoutes(jobs: { name: string; status: string; conclusion: s
   ];
 }
 
-/** A repository at a fresh temp path with `commits` commits on it, newest SHA last. */
 export function checkoutWithCommits(commits: number): { checkout: string; shas: string[] } {
   const repo = makeTempRepo("close-ticket-repo");
   const shas: string[] = [];
@@ -177,10 +136,6 @@ export interface CloseRun {
   stderr: string;
 }
 
-/**
- * One real `bin/close-ticket` invocation against the `gh` at `ghPath`. `VERIFY_WORKFLOW` is pinned
- * the same way `inCloseTicket` pins it, and for the same reason.
- */
 export function closeTicket(args: string[], ghPath: string, env: Record<string, string | undefined> = {}): CloseRun {
   const run = spawnSync("python3", [CLOSE_TICKET, ...args], {
     encoding: "utf8",

@@ -3,14 +3,6 @@ import { execGit } from "./git";
 import { syncNotesRef } from "./notes-sync";
 import { cloneRepo, makeBareRepo, makeTempRepo, noteOnRemote } from "./temp-repo.fixture";
 
-/**
- * A bare remote plus two independent clones sharing one commit — the
- * minimum shape a real non-fast-forward rejection needs: two working
- * copies that can each write a note for the same commit and race to push
- * it. A three-repo cluster rather than one `makeTempRepo`, since this
- * module's whole reason to exist is what happens *between* two pushers,
- * not what one of them does alone.
- */
 function makeRemoteAndClones(): { bareDir: string; repoA: string; repoB: string; sha: string } {
   const bareDir = makeBareRepo("notes-sync-bare");
 
@@ -55,8 +47,6 @@ describe("syncNotesRef", () => {
       apply: () => {
         calls++;
         if (calls === 1) {
-          // Another session's push lands between our fetch and our own —
-          // the ordinary race this whole helper exists to smooth over.
           execGit(["-C", repoB, "notes", "--ref=sessions", "add", "-f", "-m", "from B", sha]);
           execGit(["-C", repoB, "push", "origin", "refs/notes/sessions:refs/notes/sessions"]);
         }
@@ -79,8 +69,6 @@ describe("syncNotesRef", () => {
         ref: "sessions",
         apply: () => {
           calls++;
-          // B wins the race on every single attempt — an unwinnable one,
-          // which is exactly the case that must stop retrying and surface.
           execGit(["-C", repoB, "notes", "--ref=sessions", "add", "-f", "-m", `from B (attempt ${calls})`, sha]);
           execGit(["-C", repoB, "push", "origin", "refs/notes/sessions:refs/notes/sessions"]);
           execGit(["-C", repoA, "notes", "--ref=sessions", "add", "-f", "-m", `from A (attempt ${calls})`, sha]);

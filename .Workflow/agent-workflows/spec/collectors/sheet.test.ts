@@ -4,13 +4,6 @@ import { sheet } from "../../shared/sheet.fixture";
 import { collectSheetContext } from "./sheet";
 import { fakeSheetGh } from "./sheet-gh.fixture";
 
-/**
- * The sheet collector is the accepted-sheet trigger's half of ADR-0058: it
- * reads the marker payload `accept.ts` writes, never the rendered comment
- * `acceptComment` produces — parsing that prose is the exact failure the
- * payload exists to prevent.
- */
-
 describe("collectSheetContext", () => {
   it("reads adrPaths, coinedTerms and route from the accept's marker payload", () => {
     const payload: AcceptedPayload = {
@@ -34,10 +27,6 @@ describe("collectSheetContext", () => {
   });
 
   it("returns the sheet's own decisions beside a context unchanged field for field", () => {
-    // ADR-0061's arithmetic needs the marks themselves, which the context's
-    // `decisions` string has already flattened into prose. Both ride out, and
-    // the context side is asserted whole so a field added or reworded here
-    // fails rather than passing silently.
     const decisions = [
       { question: "q1", recommendation: "r1", rejected: "x1", mark: "ADR-0028", adrTitle: "", adrReversal: "" },
       { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling", adrReversal: "Undoing it costs a re-route" },
@@ -70,7 +59,6 @@ describe("collectSheetContext", () => {
   });
 
   it("throws rather than falling back to prose-parsing when the payload is absent", () => {
-    // No accept comment at all — never a case this collector guesses at.
     const gh = fakeSheetGh("words", [sheetMarker(sheet())]);
 
     expect(() => collectSheetContext(gh, 1)).toThrow();

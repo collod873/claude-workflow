@@ -4,30 +4,6 @@ import { join } from "node:path";
 import type { GhExec } from "../../shared/gh";
 import type { DecidedContext } from "../author-contract";
 
-/**
- * Lane 02's collector for the closed-map trigger (ADR-0058, ADR-0059): reads
- * one *Decided context* out of a closed Wayfinder Map, the same five-field
- * shape every trigger's collector assembles for the spec author.
- *
- * **Already ruled, one level down.** `to-spec/SKILL.md` already walks a map
- * this way for a human: *"follow it one level: fetch each linked issue…
- * prefer the durable record its gist names (e.g. an ADR) over its resolution
- * comment; fall back to the resolution comment only where the gist names no
- * durable record."* This collector reproduces exactly that walk rather than
- * inventing a second one — the map's own `## Decisions so far` section is
- * the index (`wayfinder/SKILL.md`'s own words: *"the map never restates
- * [a decision], only gists it and links"*), each line
- * `- [<closed ticket title>](link): <one-line gist of the answer>`.
- *
- * **Why the durable record wins.** ADR-0058 measured this precedence
- * elsewhere and found the binding constraint is double-reading, not size:
- * once a resolution's gist names the ADR it filed, fetching the ticket's
- * resolution comment *too* is reading the same ruling twice at roughly
- * double the token cost. So a gist that names a durable record (a path
- * under `docs/adr/`) is read from that file directly; only a gist that
- * names none falls back to the linked ticket's resolution comment.
- */
-
 interface DecisionEntry {
   title: string;
   issueNumber: number;
@@ -38,17 +14,10 @@ const DURABLE_RECORD_RE = /docs\/adr\/[\w.-]+\.md/;
 const ISSUE_NUMBER_RE = /(?:\/issues\/|#)(\d+)/;
 const DECISION_LINE_RE = /^-\s*\[([^\]]+)\]\(([^)]+)\):\s*(.*)$/;
 
-
 interface RawComment {
   body?: string;
 }
 
-/**
- * The resolution comment on one closed ticket — the first comment on it,
- * per `wayfinder/SKILL.md`'s "Work through the map": the resolution comment
- * is posted before the checker's closing record, which is "a separate
- * comment... with a different author and a different job."
- */
 function resolutionComment(gh: GhExec, issueNumber: number): string {
   const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
   const parsed = JSON.parse(raw) as { comments?: RawComment[] };
@@ -56,7 +25,6 @@ function resolutionComment(gh: GhExec, issueNumber: number): string {
   return comments[0]?.body ?? "";
 }
 
-/** The body between one `## <heading>` line and the next, trimmed. Empty when the heading is absent. */
 function extractSection(body: string, heading: string): string {
   const lines = body.split("\n");
   const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
@@ -68,7 +36,6 @@ function extractSection(body: string, heading: string): string {
   return section.join("\n").trim();
 }
 
-/** Every `- [title](link): gist` line in a `## Decisions so far` section. */
 function parseDecisions(section: string): DecisionEntry[] {
   const entries: DecisionEntry[] = [];
   for (const line of section.split("\n")) {
@@ -82,7 +49,6 @@ function parseDecisions(section: string): DecisionEntry[] {
   return entries;
 }
 
-/** The rulings text for one decision: its durable record when its gist names one, else its resolution comment. */
 function rulingFor(gh: GhExec, repoRoot: string, entry: DecisionEntry): string {
   const durablePath = DURABLE_RECORD_RE.exec(entry.gist)?.[0];
   if (durablePath) {
@@ -94,16 +60,6 @@ function rulingFor(gh: GhExec, repoRoot: string, entry: DecisionEntry): string {
   return `${entry.title} — resolution comment (its gist names no durable record):\n${comment}`;
 }
 
-/**
- * Assembles the Decided context for one closed map.
- *
- * Throws when the map carries no `## Decisions so far` entries — a map with
- * nothing decided is not this trigger's job to guess at.
- *
- * `repoRoot` defaults to the working directory: the pipeline runs inside a
- * checkout of the repo whose `docs/adr/` a durable record lives under, the
- * same assumption `generate-corpus-fixture.ts`'s ADR reader makes.
- */
 export function collectMapContext(
   gh: GhExec,
   issueNumber: number,

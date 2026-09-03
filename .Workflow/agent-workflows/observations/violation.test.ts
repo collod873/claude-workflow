@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseViolationFindings, violationPrompt } from "./lenses/violation";
 
-/**
- * `parseViolationFindings` reads the same `Finding:`/`Site:` grammar
- * (`lenses/grammar.ts`) that `parseProposedFindings` (`proposed.test.ts`)
- * does — these cases mirror that file's grammar coverage, plus the two
- * malformed shapes unique to a two-line grammar: a finding with no site
- * that follows it, and a site with no finding pending above it.
- */
 describe("parseViolationFindings", () => {
   it("parses a single Finding/Site pair", () => {
     const raw = "Finding: never mutate a shared array in place\nSite: a.ts:10\n";

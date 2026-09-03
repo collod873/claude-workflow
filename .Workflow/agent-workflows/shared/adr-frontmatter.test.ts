@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { frontmatterBlock, withReversal } from "./adr-frontmatter";
 
-/** The template `bin/new-adr` writes: the three required keys, with `reversal:` left empty. */
 const DRAFT = "---\nstatus: constraint\ndate: 2026-09-02\nreversal:\n---\n\n# A ruling\n";
 
 describe("frontmatterBlock", () => {
@@ -42,8 +41,6 @@ describe("withReversal", () => {
     expect(withReversal(drafted, "A cost.")).toContain("amends: ADR-0008\nreversal: A cost.");
   });
 
-  // Both throws say the draft did not come from `bin/new-adr`. Returning the content unchanged
-  // would land an ADR the push venue refuses, on a file nobody watched the lane write.
   it("throws rather than silently writing nothing when there is no frontmatter", () => {
     expect(() => withReversal("# A ruling\n", "A cost.")).toThrow(/no frontmatter block/);
   });

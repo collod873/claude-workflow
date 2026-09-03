@@ -14,38 +14,12 @@ import {
   type TrailerFinding,
 } from "./missing-trailer";
 
-/**
- * The missing-trailer counter's entrypoint (#124, ADR-0067,
- * `.github/workflows/missing-trailer-counter.yml`): reads `docs/adr/` and
- * `docs/research/` off the working tree, runs the judgement half
- * (`./missing-trailer.ts`) over them, and files — or comments on an
- * existing standing — issue naming every current candidate.
- *
- * **Rides a push that touches either directory**, not a dispatch: unlike
- * the run watchdog (ADR-0049), there is no name-matching problem here to
- * dodge, and GitHub's own `paths:` filter on `push` says exactly "a commit
- * touching either directory" without a second mechanism to keep in sync.
- *
- * **Recomputes, stores nothing.** Every run reads the corpus fresh and
- * derives the finding set from scratch — the same property `dead-lanes.ts`
- * and `run-watchdog.ts` share, and for the same reason: nothing here can go
- * stale because nothing here is remembered.
- *
- * **One standing issue, not one per finding** (ADR-0067's `Count: 1`): a
- * missing trailer is a defect in the record, not a trend, so every current
- * candidate is named in one issue rather than one issue each. A second run
- * that still finds candidates comments on the standing issue with the
- * current list; a run with no open standing issue opens one.
- */
-
 const ADR_FILENAME_RE = /^(\d{4})-.*\.md$/;
 
-/** The ruling, as its title reads — the first line of the file, minus the leading `# `. */
 function titleOf(body: string): string {
   return (body.split("\n")[0] ?? "").replace(/^#\s*/, "").trim();
 }
 
-/** Every numbered ADR under `adrDir` — `docs/adr/README.md` and the bare template excluded by the filename shape itself. */
 export function readAdrCorpus(adrDir: string): AdrDoc[] {
   return readdirSync(adrDir)
     .filter((name) => ADR_FILENAME_RE.test(name))
@@ -56,12 +30,6 @@ export function readAdrCorpus(adrDir: string): AdrDoc[] {
     });
 }
 
-/**
- * Every research note under `researchDir` — `assets/` and any other non-Markdown entry excluded by
- * the `.md` filter, and `draft-` excluded because a draft is not yet part of the record
- * (ADR-0080). An ADR gets that exclusion for free above: a draft carries no number, and
- * `ADR_FILENAME_RE` wants four digits.
- */
 export function readResearchCorpus(researchDir: string): ResearchNote[] {
   return readdirSync(researchDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -78,7 +46,6 @@ const IssueSummary = z.object({
   state: z.string(),
 });
 
-/** The open issue carrying `FINDING_MARKER`, if one is already standing. */
 function readStandingIssue(gh: GhExec): z.infer<typeof IssueSummary> | undefined {
   const raw = gh(["issue", "list", "--state", "open", "--limit", "100", "--json", "number,body,state"]);
   const issues = IssueSummary.array().parse(JSON.parse(raw));
@@ -89,7 +56,6 @@ export interface CounterOptions {
   gh: GhExec;
   adrDir: string;
   researchDir: string;
-  /** Who a newly opened issue is assigned to, so it notifies rather than sits in a list. Unassigned when omitted. */
   assignee?: string;
   log?: (line: string) => void;
 }
@@ -102,12 +68,6 @@ export interface CounterOutcome {
   issue?: number;
 }
 
-/**
- * Every finding filename this counter has already put on the standing issue — its body plus every
- * comment. ADR-0117: a standing report speaks only on evidence it has not already cited. Reading
- * the body alone would re-say, on every qualifying push, everything said in a comment yesterday,
- * which is how #252 came to carry two identical `Still dead` reports fifteen minutes apart.
- */
 function saidOn(gh: GhExec, issue: number): string {
   const raw = gh(["issue", "view", String(issue), "--json", "body,comments"]);
   const parsed = JSON.parse(raw) as { body?: string; comments?: { body?: string }[] };
@@ -124,10 +84,6 @@ export function countMissingTrailers(options: CounterOptions): CounterOutcome {
   const standing = readStandingIssue(gh);
 
   if (findings.length === 0) {
-    // ADR-0099: a *recomputing* counter closes its standing issue when the count reaches zero.
-    // This one recomputes the whole corpus every run, so a zero is a real recovery and the issue
-    // has nothing left to say. It only logged "clean" before, which left the issue open forever
-    // and made its presence mean nothing.
     if (standing) {
       gh(["issue", "comment", String(standing.number),
           "--body", "Recovered: every supersession carries an `amends:` declaration and every " +
@@ -163,10 +119,6 @@ export function countMissingTrailers(options: CounterOptions): CounterOutcome {
 
 async function main(): Promise<void> {
   try {
-    // `TARGET_WORKSPACE` is set only by the reusable workflow (#311, ADR-0055): the machine
-    // checkout this script runs from is a different directory than the tree it reads once a
-    // caller's own checkout is a separate step. `GITHUB_WORKSPACE` still covers the pre-#311
-    // shape, where the one checkout was both.
     const repoRoot = process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd();
     const outcome = countMissingTrailers({
       gh: execGh,

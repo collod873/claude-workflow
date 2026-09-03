@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBareSite, normalizeSite, sitePath } from "./site";
 
-/**
- * The four sites the first real audit
- * ([run 32996383308](https://github.com/collod873/claude-workflow/actions/runs/32996383308))
- * actually wrote to `refs/notes/observations`, verbatim. Every one of them
- * failed the old `sitePath`, and the paths inside them are all real — the
- * parenthetical was never part of the path. Kept here rather than invented,
- * because a fixture that said `a.ts` is precisely what let #108 pass CI.
- */
 const FIRST_AUDIT_SITES = [
   ".Workflow/agent-workflows/capture/backfill.ts:212 (isScratchProject)",
   ".Workflow/agent-workflows/shared/spine.ts (module header note on assistant turns, ~line 33; buildCaptureMarkdown)",

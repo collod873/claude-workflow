@@ -48,7 +48,6 @@ describe("runSpecSweep", () => {
     const prompt = fake.stdins[0] ?? "";
     const substituted = [CONTEXT.ownerWords, CONTEXT.decisions, CONTEXT.boundaries, CONTEXT.openGuesses];
     for (const field of substituted) expect(prompt).toContain(field);
-    // The field this stage exists to replace is not itself an input to it.
     expect(prompt).not.toContain(CONTEXT.rulings);
   });
 
@@ -68,8 +67,6 @@ describe("applySweep", () => {
   });
 
   it("hands a ruling no upstream sheet or map cited to the author, as rulings", () => {
-    // Nothing in the collector's own rulings mentions the sweep's find — it is entirely the
-    // sweep's own, and the replace is the only way it reaches the author.
     expect(CONTEXT.rulings).not.toContain("no upstream sheet or map ever cited this line");
 
     const result = applySweep(CONTEXT, FOUND);

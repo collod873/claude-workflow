@@ -11,13 +11,6 @@ import {
 } from "./back-stamp";
 import { backStampWalk, INDEX_RELATIVE_PATH, type WalkDeps } from "./back-stamp-walk";
 
-/**
- * A fixture trailer graph shaped after this repo's own corpus on the day this ticket was written
- * (`docs/adr/0053-*.md` amends both 0032 and 0033 across a wrapped two-line trailer; `0054-*.md`
- * amends 0032 alone; `0066-*.md` amends 0026 with trailing prose after the link) — not invented to
- * agree with the code, but a snapshot of the two real shapes `Amends:` has actually been written in:
- * `bin/new-adr --amends`'s plain form, and the hand-written markdown-link form.
- */
 function adr(number: number, title: string, body: string, amends?: string): DocFile {
   const padded = String(number).padStart(4, "0");
   const trailer = amends ? `\n\n${amends}` : "";
@@ -195,20 +188,8 @@ describe("withStatusLine", () => {
   });
 });
 
-/** A `docs/adr/` corpus, keyed by full repo-relative path, as `WalkDeps.readFile` reads it. */
 const CORPUS: Record<string, string> = Object.fromEntries(FIXTURE.map((file) => [file.path, file.content]));
 
-/**
- * A `WalkDeps` backed by an in-memory `path → content` map: `readDir` lists its basenames,
- * `readFile` answers from it, `writeFile` records into `.writes` rather than touching a real file,
- * and `git` is `git.fake.ts`'s recorder — same shape as `run-watchdog.test.ts`'s `historyWith`,
- * answering the calls this module makes and recording every argv so a test can assert "committed
- * nothing" by the recording staying empty.
- *
- * `indexRegenerated` is what the real `regenerateIndex` answers: `true` where the target carries an
- * index and the machine carries the generator, `false` on a runner or a target that never adopted
- * one. Both are ordinary production states, so both are staged here.
- */
 function fakeDeps(
   files: Record<string, string>,
   indexRegenerated = true,
@@ -241,12 +222,6 @@ function fakeDeps(
   };
 }
 
-/**
- * Every `git` call `commitAndPush` makes carries `-C repoRoot` ahead of its verb — the target
- * checkout is not necessarily `cwd` once this lane is reusable, so nothing here may omit it
- * (`back-stamp-walk.ts`'s `commitAndPush`). `fakeDeps`'s own `regenerate-index` marker is not a
- * `git` call at all, so it carries no such prefix — hence the fallback to `argv[0]`.
- */
 function verb(argv: string[]): string {
   return argv[0] === "-C" ? argv[2] : argv[0];
 }
@@ -276,11 +251,6 @@ describe("backStampWalk", () => {
     expect(deps.calls.find((argv) => verb(argv) === "push")).toEqual(["-C", deps.repoRoot, "push", "origin", "HEAD:main"]);
   });
 
-  // #356: `docs/adr/INDEX.md`
-  // publishes each ADR's `status:`, and a back-stamp is precisely a `status:` edit — so the lane
-  // that writes the stamp is the lane that stales the index. Repaired by hand twice (9076b5e,
-  // fa0413d) because nothing watches `main` after this pushes: the staleness is discovered by
-  // whichever session pushes next, on a file that session never touched.
   it("regenerates docs/adr/INDEX.md before staging it, because a stamp rewrites the status: the index publishes", () => {
     const deps = fakeDeps(CORPUS);
 
@@ -291,10 +261,6 @@ describe("backStampWalk", () => {
     expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(INDEX_RELATIVE_PATH);
   });
 
-  // A runner has no `~/bin/adr-check`, and an enrolled repository may carry no index at all — both
-  // are "there was no index to regenerate", and neither may make `git add` fail on a pathspec that
-  // matches nothing. The stamps and the fixture still go, which is what keeps the stand-down a
-  // stand-down rather than a dropped commit.
   it("stages no index where there was none to regenerate, and still commits the stamps", () => {
     const deps = fakeDeps(CORPUS, false);
 
@@ -315,13 +281,12 @@ describe("backStampWalk", () => {
     const first = fakeDeps(CORPUS);
     expect(backStampWalk(first).action).toBe("committed");
 
-    // The tree as it now reads on `main`, after the first run's writes landed.
     const stamped = { ...CORPUS, ...first.writes };
     const second = fakeDeps(stamped);
 
     expect(backStampWalk(second)).toEqual({ action: "clean", stamped: [] });
     expect(second.calls.filter((argv) => verb(argv) === "commit")).toEqual([]);
-    expect(second.calls).toEqual([]); // nothing at all — not even a read-only git call
+    expect(second.calls).toEqual([]); 
   });
 
   it("commits nothing over a corpus with no amends: declaration anywhere", () => {

@@ -73,8 +73,6 @@ describe("retirementBody", () => {
   });
 
   it("is a declaration the gate accepts, because the body it closes carries no acceptance criteria", () => {
-    // `retirementBody`'s own docstring is the home for why `No diff.` is the declaration the gate
-    // accepts (ADR-0099); this asserts the construction the two agree by.
     expect(signalBody([finding(90, "A slice", [77])])).not.toContain("## Acceptance criteria");
   });
 

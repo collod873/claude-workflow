@@ -1,25 +1,11 @@
 import type { GhExec } from "../shared/gh";
 
-/**
- * An in-memory model of the `gh` calls lane 01 makes.
- *
- * Every call is recorded verbatim in `calls`, in order, which is what lets a
- * test assert *the shaper was never spawned* and *nothing was written* rather
- * than assume either. The fake answers the four reads this lane does —
- * `issue view --json comments`, `--json title,body`, `--json labels`, and
- * `repo view` — and records the writes without modelling their effects,
- * because no read in this lane ever depends on a write it made.
- */
 export interface FakeTracker {
   gh: GhExec;
   calls: string[][];
-  /** Comment bodies on each issue, oldest first — the lane's whole memory. */
   comments: Map<number, string[]>;
-  /** Labels on each issue, for the accept's route override read. */
   labels: Map<number, string[]>;
-  /** Issue numbers `search issues --match comments` should return. */
   searchResults: number[];
-  /** Bodies `search issues --match body` should return, for the probation's re-propose check. */
   bodySearchResults: string[];
 }
 
@@ -72,14 +58,12 @@ export function createFakeTracker(options: FakeTrackerOptions = {}): FakeTracker
       });
     }
 
-    // Every write — comment, edit, close, issue create. Recorded, not modelled.
     return "";
   }
 
   return fake;
 }
 
-/** The bodies of every `issue comment` this fake was asked to post. */
 export function postedComments(fake: FakeTracker): string[] {
   return fake.calls
     .filter((call) => call[0] === "issue" && call[1] === "comment")

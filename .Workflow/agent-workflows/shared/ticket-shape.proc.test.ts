@@ -5,17 +5,8 @@ import { scratchDir } from "./scratch.fixture";
 import { TicketShapeError, validateTicket } from "./ticket-shape";
 import { pythonVerdict, type Verdict } from "./ticket-shape.fixture";
 
-/**
- * `validateTicket` is a port of `bin/ticket_shape.py`'s `validate("ticket", body)`, not a
- * re-derivation of the same idea — so nothing here asserts against a second copy of the shape.
- * Every body below is fed to both the real `bin/ticket_shape.py`, in the real interpreter
- * (`ticket-shape.fixture.ts`), and to `validateTicket`, and the two verdicts (refuse-or-not, and
- * which warnings) are compared.
- */
-
 const heading = "## Acceptance criteria";
 
-/** A directory shaped like a repository root — a `.git/` and `existingPaths` as empty files — for the claim-resolution half of `validate`. */
 function scratchRepoRoot(existingPaths: string[]): string {
   const dir = scratchDir("ticket-shape-py");
   mkdirSync(join(dir, ".git"));
@@ -27,7 +18,6 @@ function scratchRepoRoot(existingPaths: string[]): string {
   return dir;
 }
 
-/** `validateTicket`'s own verdict, in the same shape as `pythonVerdict`'s, for a side-by-side diff. */
 function tsVerdict(body: string, repoRoot: string): Verdict {
   try {
     return { ok: true, warnings: validateTicket(body, repoRoot) };
@@ -37,7 +27,6 @@ function tsVerdict(body: string, repoRoot: string): Verdict {
   }
 }
 
-/** A body with `criteria` under the heading and `claims` under Files claimed. */
 function body(criteria: string[], claims: string[] = ["None — no files."]): string {
   return [heading, "", ...criteria, "", "## Files claimed", ...claims.map((c) => `- ${c}`), ""].join("\n");
 }
@@ -77,14 +66,6 @@ describe("validateTicket, driven against the real bin/ticket_shape.py", () => {
   });
 });
 
-/**
- * Red-at-publish (#306, ADR-0130): the one refusal `validate` reaches only for `spec`, by actually
- * running the criterion's `check:` command in `repoRoot` rather than reading it as text. There is
- * no TypeScript port of this branch to compare against — `bin/ticket_shape.py` is the only place
- * it is decided — so `pythonVerdict("spec", …)` is driven for its own sake rather than for a
- * side-by-side diff, the same reason `close-ticket.proc.test.ts` drives `undelivered` and
- * `fetch_closing_pr` through `inCloseTicket` directly.
- */
 describe("validate('spec', …), the red-at-publish branch only the Python decides", () => {
   function specBody(command: string): string {
     return [heading, "", `- [ ] I'll know it works when I can see a verdict — check: \`${command}\``, ""].join("\n");
@@ -103,8 +84,6 @@ describe("validate('spec', …), the red-at-publish branch only the Python decid
   });
 
   it("warns rather than refuses when the check cannot be run to a verdict at all", () => {
-    // The 30s production budget (ADR-0130) is overridden to keep this test fast; the shape under
-    // test is the timeout path itself, not the specific number of seconds it waits.
     const verdict = pythonVerdict("spec", specBody("sleep 3"), scratchRepoRoot([]), { timeoutSeconds: 1 });
 
     expect(verdict.ok).toBe(true);

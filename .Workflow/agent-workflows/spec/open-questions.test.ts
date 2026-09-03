@@ -15,7 +15,7 @@ describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
   it("is zero when every marked decision has a filed ADR and no open question names an unfiled mark", () => {
     const decisions: MarkedDecision[] = [
       { mark: "ADR-0060", adrTitle: "A ruling that files it" },
-      { mark: "", adrTitle: "" }, // an unmarked decision — nothing owed
+      { mark: "", adrTitle: "" }, 
     ];
 
     expect(unfiledMarkGap(decisions, [])).toBe(0);
@@ -95,9 +95,6 @@ describe("gateCount — how much a run left unresolved", () => {
 });
 
 describe("applyGate — unconditional since #263", () => {
-  // Both arms of "unconditional": no count at all, and a count saying something went unresolved.
-  // One body rather than two, because the whole claim is that the count changes nothing — two
-  // copies asserting the same calls would be two places to weaken it by halves.
   it.each([
     ["called with no count at all", undefined],
     ["the count says something was left unresolved", 3],

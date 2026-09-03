@@ -1,16 +1,5 @@
 import type { GhExec } from "../../shared/gh";
 
-/**
- * The `gh` the map collector reads: `issue view <map> --json body` for the Wayfinder Map itself,
- * and `--json comments` for each ticket its `## Decisions so far` links to.
- *
- * Strict on purpose — a body fetch for any issue but the map, or a comments fetch for a ticket the
- * test never modelled, throws rather than answering empty, because a collector fed `""` fails
- * somewhere far from the read that was wrong.
- *
- * Reached only from the suites, by design. `map.test.ts` and `decided-context.test.ts` each
- * carried a copy until the clone gate lost its baseline (#360).
- */
 export function mapTrackerGh(mapNumber: number, body: string, ticketComments: Record<number, string[]> = {}): GhExec {
   return (args) => {
     const issueNumber = Number(args[2]);

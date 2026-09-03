@@ -1,138 +1,45 @@
-/**
- * The judgement half of the run watchdog (#41), kept apart from the IO half
- * (`./run-watchdog.ts`) so it can be run over the history that motivated it —
- * `push-runs.evidence.json`, every push run this repo has, captured from the
- * API with the job count the watchdog reads.
- *
- * A workflow file GitHub cannot parse produces a run that completes having
- * executed **nothing**. No job, no check-run, no annotation:
- * `gh api .../commits/<sha>/check-runs` came back empty for all thirteen
- * consecutive ones against `main`, so the failure was absent from every
- * surface a person actually looks at. Two PRDs were labelled `prd` in that
- * window and neither sliced; #25 closed green anyway because the work was
- * done by hand and nothing asked where it came from.
- *
- * The rule is about the shape of the run and not about which workflow it
- * was: **a run that executed zero jobs is a dead lane**, whatever lane it is
- * and whether or not that lane existed when this was written. A job a
- * job-level `if` skipped does not qualify — GitHub lists a skipped job, so
- * the count is one, and that is exactly the line between "the lane declined
- * this event" and "the lane could not start".
- *
- * Since the reusable-workflow split (ADR-0055, amended by ADR-0132), the `path` this module keys
- * on is always a `-caller.yml` stub: GitHub attributes a run reached through `uses:` to the
- * *caller's* file, never the reusable workflow it delegates to — the caller is six lines of
- * trigger and `uses:`, and the machinery that can actually break is one hop away. `reusableHalf`
- * below names that hop for the signal, rather than leaving the reader to rediscover the
- * `-caller.yml` convention from a bare stub path.
- */
-
-/**
- * The suffix that makes a workflow file a caller stub — the same convention `enrol/stub-set.ts`'s
- * `STUB_SUFFIX` encodes on the other side of the same wire. Spelled again here rather than
- * imported: a lane may not deep-import another lane (`docs/agents/module-boundaries.md`), and this
- * convention is small and stable enough that a second copy costs less than a shared/ seam would.
- */
 const STUB_SUFFIX = "-caller.yml";
 
-/** One completed run, as the Actions runs list carries it plus the count that list omits. */
 export interface RunSummary {
   id: number;
-  /** The workflow's declared name — or its own file path, when GitHub could not read a `name:`. */
   name: string;
-  /** The workflow file. Stable whether or not GitHub could parse it, which is why the lane is keyed here. */
   path: string;
   status: string;
   conclusion: string;
   htmlUrl: string;
   headBranch: string;
-  /** ISO 8601, as the API returns it. */
   createdAt: string;
-  /** How many jobs the run executed, from `actions/runs/<id>/jobs`. Absent until that read happens. */
   jobCount?: number;
 }
 
-/** One workflow that has produced at least one run executing nothing, and the runs that prove it. */
 export interface DeadLane {
-  /** The workflow file — the lane's identity, and what the signal's marker is keyed on. */
   path: string;
-  /** How the newest dead run was named, for the reader. */
   name: string;
-  /** Every dead run in the window, newest first. */
   runs: RunSummary[];
 }
 
-/**
- * How far back a sweep looks. Long enough to cover a break that landed
- * before a weekend, short enough to fit in one page of runs. A dead run
- * older than this is history: opening an issue about it would be filing work
- * against a break nobody remembers making.
- *
- * Deliberately the same size as every other sweep riding the same dispatch:
- * two lookbacks that differed would be two answers to "how far back does
- * this repo remember".
- */
 export const LOOKBACK_DAYS = 7;
 
-/**
- * One page of runs. A hundred covers this repo's busiest day several times
- * over — the heaviest observed is 22 — and where it does not, the window is
- * clipped to what the page reaches and the clipping is logged rather than
- * left to look like an all-clear.
- */
 export const RUN_PAGE_SIZE = 100;
 
-/**
- * The most job-count reads one sweep will spend. Each candidate costs one
- * API call, and a repo mid-incident can fail a great many runs; a sweep that
- * spent four hundred calls would be reporting its own lack of a bound. What
- * it declines to read is logged, because a cap nobody is told about reads as
- * "there was nothing else" — the failure this whole mechanism exists for.
- */
 export const MAX_JOB_READS = 60;
 
-/**
- * The most lanes one sweep will write about. A watchdog that opened eight
- * issues at once would be the ticket's own failure with the sign flipped: a
- * signal nobody reads because there is too much of it.
- */
 export const MAX_SIGNALS = 3;
 
-/**
- * A run worth spending a job-count read on: it finished, it failed, and it
- * is inside the window. The failure filter is not the rule — the rule is the
- * job count — but a run that executed no job cannot report success, and
- * every one of the 25 in this repo's history concluded `failure`.
- */
 export function isCandidate(run: RunSummary, now: Date): boolean {
   if (run.status !== "completed" || run.conclusion !== "failure") return false;
   return inWindow(run, now);
 }
 
-/**
- * Whether `run` falls inside the lookback window at all, regardless of how it
- * concluded. `isCandidate` above is this plus "and it failed", and the two are
- * spelled apart because retirement asks the opposite question of the same
- * window: a run of a reported lane that *did* execute jobs is the evidence
- * that the lane can start again.
- */
 export function inWindow(run: RunSummary, now: Date): boolean {
   const age = now.getTime() - new Date(run.createdAt).getTime();
   return age >= 0 && age <= LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 }
 
-/** Whether `run` completed having executed nothing. The whole rule. */
 export function executedNothing(run: RunSummary): boolean {
   return run.jobCount === 0;
 }
 
-/**
- * The dead lanes among `runs`, newest run first within each, and lanes
- * ordered by their newest run. Groups on the workflow **file**, not its
- * name: a workflow GitHub could not parse has no name to group on — the run
- * is named after the file — and a break that is later fixed and re-broken
- * must land on the same lane both times.
- */
 export function deadLanes(runs: RunSummary[]): DeadLane[] {
   const byPath = new Map<string, RunSummary[]>();
   for (const run of runs.filter(executedNothing)) {
@@ -149,83 +56,30 @@ export function deadLanes(runs: RunSummary[]): DeadLane[] {
   return lanes.sort((a, b) => b.runs[0].createdAt.localeCompare(a.runs[0].createdAt));
 }
 
-/**
- * A hidden marker naming the dead lane, so a second dead run of the same
- * workflow finds the standing signal instead of opening another. Keyed on
- * the file, because the lane is what is dead — thirteen runs of one
- * unparseable file are one problem.
- */
 export function signalMarker(path: string): string {
   return `<!-- dead-lane:${path} -->`;
 }
 
-/**
- * The lane an existing signal is about, read back out of its own marker.
- *
- * The sweep already asks "is this lane's signal standing?" by building the
- * marker and searching for it. Retirement asks the question from the other
- * end — *which* lanes have a standing signal, including ones this sweep found
- * nothing about — and that direction needs the marker parsed rather than
- * matched.
- */
 export function markedLane(body: string): string | undefined {
   return /<!-- dead-lane:(.+?) -->/.exec(body)?.[1];
 }
 
-/**
- * Every run already cited in `text` — a signal's body plus every comment on
- * it — read out of the run URLs themselves rather than out of the prose
- * around them.
- *
- * The URL is the one part of a citation this module writes in exactly one
- * shape (`signalBody` and `stillDeadBody` both link `htmlUrl`), so a run id
- * matched here was named on purpose. Matching loose numbers or timestamps in
- * the text would let a human's comment mentioning a date silence the next
- * genuine report, which is a worse failure than the one this fixes.
- */
 export function citedRuns(text: string): Set<number> {
   return new Set([...text.matchAll(/\/actions\/runs\/(\d+)/g)].map((match) => Number(match[1])));
 }
 
-/**
- * Dead runs of `lane` that its standing signal has not already cited, newest
- * first. Empty means the signal already says everything this sweep knows,
- * which is the whole reason it exists: the standing path used to take
- * `lane.runs[0]` and comment on every sweep, so one dead run produced one
- * `Still dead` per session the owner ran — the word `also` asserting a novelty
- * nothing had checked (#288).
- */
 export function unreportedRuns(lane: DeadLane, cited: Set<number>): RunSummary[] {
   return lane.runs.filter((run) => !cited.has(run.id));
 }
 
-/**
- * The reusable workflow a caller stub delegates to: `enrol/stub-set.ts`'s `STUB_SUFFIX`
- * convention read backwards, `<lane>-caller.yml` → `<lane>.yml`. `signalMarker` never keys on
- * this — the lane's identity stays the stub — but the signal is more useful naming the machinery
- * a stub delegates to, since that is almost always where a dead run's actual break lives.
- *
- * A path that is not a caller stub is returned unchanged: an un-split lane, or a marker predating
- * the split, has no second file to name.
- */
 export function reusableHalf(path: string): string {
   return path.endsWith(STUB_SUFFIX) ? `${path.slice(0, -STUB_SUFFIX.length)}.yml` : path;
 }
 
-/**
- * The other direction: the caller stub a bare `<lane>.yml` marker would now show up as a run
- * under, since post-split every run is attributed to the caller rather than the reusable half it
- * delegates to. Used by `retireRecovered` (`./run-watchdog.ts`) so a marker spelled that way —
- * the reusable half's own path, or a marker left from before the split, the same string either
- * way — still finds the live run that proves its lane recovered.
- *
- * A path that already is a caller stub is returned unchanged.
- */
 export function callerHalf(path: string): string {
   return path.endsWith(STUB_SUFFIX) ? path : path.replace(/\.yml$/, STUB_SUFFIX);
 }
 
-/** The signal's title. Stable across sweeps so a reader recognises a repeat. */
 export function signalTitle(lane: DeadLane): string {
   const reusable = reusableHalf(lane.path);
   const machinery = reusable === lane.path ? "" : ` (its machinery: ${reusable})`;
@@ -283,12 +137,6 @@ export function signalBody(lane: DeadLane): string {
   ].join("\n");
 }
 
-/**
- * The comment added to a standing signal, naming the dead runs it had not
- * already cited. Called only with a non-empty `fresh`, because a comment that
- * says `also` about a run the issue already links is noise wearing evidence's
- * clothes.
- */
 export function stillDeadBody(fresh: RunSummary[]): string {
   const newest = fresh[0];
   const rest = fresh.slice(1);
@@ -306,21 +154,6 @@ export function stillDeadBody(fresh: RunSummary[]): string {
   ].join("\n");
 }
 
-/**
- * The comment that retires a standing signal once its lane runs again
- * ([ADR-0117](../../../docs/adr/0117-a-standing-report-speaks-only-on-evidence-it-has-not-already.md),
- * amending [ADR-0099](../../../docs/adr/0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md)).
- *
- * A closing record in `close-gate.py`'s own grammar, declaring `No diff.`:
- * `signalBody` writes no `## Acceptance criteria` heading, and a dead lane is
- * cleared by whatever commit fixed the workflow file rather than by a diff of
- * this issue's own.
- *
- * It cites the live run rather than asserting recovery, because "no dead runs
- * lately" and "this lane works" are different claims and only the second one
- * is worth closing an issue on — see `retireRecovered` in `./run-watchdog.ts`
- * for why the sweep will not retire on the first.
- */
 export function retirementBody(lane: string, live: RunSummary): string {
   return [
     "## Closing record",

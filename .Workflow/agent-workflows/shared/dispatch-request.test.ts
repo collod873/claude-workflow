@@ -5,12 +5,6 @@ import { describe, expect, it } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV, requestDispatch } from "./dispatch-request";
 import { createRecordingGh } from "./gh.fake";
 
-/**
- * #181's split, from the sender's side: a job that spends a model holds `contents: read` and cannot
- * `POST /dispatches` at all, so what it asks for has to survive the job boundary as data rather
- * than be attempted and 403'd. The `gh` is `createRecordingGh`: what was sent is the whole question.
- */
-
 function requestsFile(): string {
   return join(mkdtempSync(join(tmpdir(), "dispatch-request-")), "requests.jsonl");
 }
@@ -76,8 +70,6 @@ describe("requestDispatch with a handoff path — the caller is inside a model j
   });
 
   it("writes each line as the REST body itself, so the sender job needs no parser", () => {
-    // The dispatch job pipes each line straight into `gh api … --input -`. Anything this file
-    // needed reshaped on the other side would be a second place the two could disagree.
     const path = requestsFile();
     const { gh } = createRecordingGh();
 

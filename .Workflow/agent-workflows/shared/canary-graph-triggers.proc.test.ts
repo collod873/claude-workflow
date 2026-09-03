@@ -7,45 +7,23 @@ import { afterAll, describe, expect, it } from "vitest";
 import { laneIds, readWorkflow, workflowNames } from "./read-workflow";
 import { REPO_ROOT } from "./repo-sources";
 
-/**
- * CODING_STANDARDS.md, "Pin a mandated copy to its source". `bin/canary-graph-gen.mjs` writes one
- * stub workflow per lane carrying that lane's real `on:` block, because the whole point of the
- * graph-noop run is to fire the doors production ships rather than doors someone typed. The stubs
- * are pushed to a throwaway repository, so nothing in this tree compiles them against the lanes
- * they mirror and the generator's own header says what a drifted copy is worth: nothing. This test
- * is what reads both texts — it runs the generator (a real process, hence `.proc.test.ts`) and
- * holds each stub's doors equal to the real lane's.
- *
- * One normalisation, applied to every lane alike: a `workflow_dispatch` door is compared on
- * presence only. Its `inputs:` are a form a person fills in, not a condition on whether the door
- * fires, and the canary never hand-runs a lane.
- */
-
 const outDir = mkdtempSync(join(tmpdir(), "canary-graph-gen-"));
 execFileSync("node", [join(REPO_ROOT, "bin/canary-graph-gen.mjs"), outDir], { stdio: "ignore" });
 
 afterAll(() => rmSync(outDir, { recursive: true, force: true }));
 
-/** The lane ids the generator wrote a stub for, read off what it actually produced. */
 const stubs = readdirSync(join(outDir, ".github/workflows")).map((file) => ({ id: file.replace(/\.yml$/, ""), file }));
 
-/**
- * The real workflow a stub mirrors, derived the way the lane set itself is: a lane's caller stub,
- * or the lane's own file when it has no caller (`enrol.yml`, `walk-home.yml`, which say at their
- * own tops why they have none).
- */
 function sourceOf(id: string): string {
   const caller = `${id}-caller.yml`;
   return workflowNames().includes(caller) ? caller : `${id}.yml`;
 }
 
-/** Every door an `on:` block opens, keyed by event, with a hand-run door's form dropped. */
 function doorsOf(on: Record<string, unknown> | undefined, where: string): Record<string, unknown> {
   if (on === undefined) throw new Error(`${where} declares no on: block`);
   return Object.fromEntries(Object.entries(on).map(([event, condition]) => [event, event === "workflow_dispatch" ? null : condition]));
 }
 
-/** A generated stub's doors — read from the temp dir this test asked the generator to write. */
 function stubDoors(file: string): Record<string, unknown> {
   const path = join(outDir, ".github/workflows", file);
   return doorsOf((parse(readFileSync(path, "utf8")) as { on?: Record<string, unknown> }).on, path);

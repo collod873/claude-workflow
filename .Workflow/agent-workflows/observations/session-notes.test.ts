@@ -8,14 +8,12 @@ import { makeTempRepo, type TempRepo } from "../shared/temp-repo.fixture";
 import { readSessionRecord, writeSessionRecord } from "./session-notes";
 import { sessionRecord } from "./session-record.fixture";
 
-/** A repo with `a.ts` seeded at `head` — the one commit most records below are keyed to. */
 function seededRepo(): { repo: TempRepo; head: string } {
   const repo = makeTempRepo("session-notes");
   repo.write("a.ts", "export const a = 1;\n");
   return { repo, head: repo.commit("seed") };
 }
 
-/** Writes `record` to `repo`'s notes and reads it straight back at its own head — the round trip the hydration-free tests assert on. */
 function roundTrip(repo: TempRepo, record: ReturnType<typeof sessionRecord>): ReturnType<typeof readSessionRecord> {
   writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
   return readSessionRecord({ git: execGit, repoDir: repo.dir, head: record.head });

@@ -7,13 +7,6 @@ import { legacySessionRecord, rewriteSessionNotesSchema } from "./rewrite-sessio
 import { scratchDir } from "./scratch.fixture";
 import { cloneRepo, makeBareRepo, noteOnRemote, type TempRepo } from "./temp-repo.fixture";
 
-// A fixture bare repo stands in for a remote throughout this file — never the real
-// Knowledge-Base checkout or the real `origin` (spec #134 §Testing Decisions, "No test may touch
-// the real Knowledge-Base or the real origin"). `makeBareRepo`/`cloneRepo` in
-// `temp-repo.fixture.ts` are that shape; only the commit-and-push and the read-back are this
-// file's own.
-
-/** Commits one file in `repo` and pushes it to the bare remote's `main`. */
 function commitAndPush(repo: TempRepo, path: string, contents: string, message: string): string {
   repo.write(path, contents);
   const sha = repo.commit(message);
@@ -21,7 +14,6 @@ function commitAndPush(repo: TempRepo, path: string, contents: string, message: 
   return sha;
 }
 
-/** Reads back the one-element session-notes array a fresh clone of `bareDir` sees for `sha`. */
 function readNoteFromRemote(bareDir: string, sha: string): unknown[] {
   return JSON.parse(noteOnRemote(bareDir, "sessions", sha));
 }
@@ -38,8 +30,6 @@ describe("rewriteSessionNotesSchema", () => {
       const capturedHead = commitAndPush(repo, "a.ts", "export const a = 1;\n", "captured session");
       const uncapturedHead = commitAndPush(repo, "a.ts", "export const a = 2;\n", "uncaptured session");
 
-      // First 8 characters deliberately distinct — that prefix is the whole match key
-      // `findCorpusPath` uses, so two ids sharing one would make this test pass by accident.
       const capturedRecord = legacySessionRecord({
         head: capturedHead,
         sessionId: "captured-session-abc123",
@@ -51,9 +41,6 @@ describe("rewriteSessionNotesSchema", () => {
         touchedPaths: ["a.ts"],
       });
 
-      // Seed refs/notes/sessions with pre-migration records — the shape #134 is rewriting away
-      // from — and publish them to the bare remote, exactly like the 29 records this migration
-      // targets in the real repo.
       execGit([
         "-C",
         repoDir,
@@ -78,8 +65,6 @@ describe("rewriteSessionNotesSchema", () => {
       ]);
       execGit(["-C", repoDir, "push", "origin", "refs/notes/sessions:refs/notes/sessions"]);
 
-      // A fixture Knowledge-Base checkout holding the captured session's capture file — and
-      // nothing for the uncaptured one, so the corpus genuinely never saw it.
       const corpusDir = scratchDir("rewrite-session-notes-corpus");
       const sessionsDir = join(corpusDir, "raw", "sessions");
       mkdirSync(sessionsDir, { recursive: true });
@@ -96,8 +81,6 @@ describe("rewriteSessionNotesSchema", () => {
       expect(captured?.sessionId).toBe(capturedRecord.sessionId);
       expect(captured?.base).toBe(capturedRecord.base);
       expect(captured?.touchedPaths).toEqual(capturedRecord.touchedPaths);
-      // Once corpusPath is backfilled, the record is a genuine SessionRecord — the schema every
-      // other reader and writer in this tree already requires.
       expect(SessionRecord.parse(captured)).toEqual(captured);
 
       const uncaptured = rewritten.find((r) => r.commit === uncapturedHead)?.record;
@@ -107,7 +90,6 @@ describe("rewriteSessionNotesSchema", () => {
       expect(uncaptured?.head).toBe(uncapturedRecord.head);
       expect(uncaptured?.touchedPaths).toEqual(uncapturedRecord.touchedPaths);
 
-      // The rewrite reached the remote it was given, not just the local clone.
       expect(readNoteFromRemote(bareDir, capturedHead)).toEqual([captured]);
       expect(readNoteFromRemote(bareDir, uncapturedHead)).toEqual([uncaptured]);
     },

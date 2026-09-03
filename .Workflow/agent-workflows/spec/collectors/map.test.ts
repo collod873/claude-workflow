@@ -5,13 +5,6 @@ import { scratchDir } from "../../shared/scratch.fixture";
 import { collectMapContext } from "./map";
 import { mapTrackerGh } from "./map-gh.fixture";
 
-/**
- * The map collector reproduces `to-spec/SKILL.md`'s own walk of a closed
- * Wayfinder Map: read `## Decisions so far`, follow each link one level,
- * and prefer the durable record a gist names over the linked ticket's
- * resolution comment.
- */
-
 function mapBody(over: { decisions?: string; outOfScope?: string; notYetSpecified?: string } = {}): string {
   return [
     "## Destination",

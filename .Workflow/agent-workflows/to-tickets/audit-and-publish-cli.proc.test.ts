@@ -8,17 +8,6 @@ import { stubGhCli } from "./gh-cli.stub";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 
-/**
- * These exercise the real `--stage audit-and-publish` CLI end to end: a stub
- * `claude` executable standing in for the auditor model (as the seam-sweep
- * and slice CLI tests in `to-tickets.test.ts` do through
- * `stage-cli.fixture.ts`), plus a stub `gh` executable standing in for
- * GitHub — the second subprocess seam this branch, alone among the three
- * stages, also shells out to, and the reason this file spawns for itself.
- * `audit-and-publish` reads a sliced plan as its own `PLAN` input, exactly
- * like `slice` reads a seam manifest, so every test here seeds slice's
- * checkpoint via `stubClaudeCli`'s `priorCheckpoint`.
- */
 describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
   const slicedPlan = [slice({ title: "Root" })];
   const slicedCheckpoint = { stage: "slice", response: JSON.stringify({ slices: slicedPlan }) };

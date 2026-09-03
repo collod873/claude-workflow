@@ -22,19 +22,8 @@ import {
   type FixerTestResult,
 } from "./fixer";
 
-/**
- * The attempt loop and its two stops, on fakes: a `gh` that records, a `git` whose `status` is
- * where the fix comes from, and a stage that answers one canned summary per attempt. The real
- * suite runner is stubbed at `runVitestReport` — nothing here spawns vitest.
- */
 vi.mock("../shared/vitest-json", () => ({ runVitestReport: vi.fn() }));
 
-/**
- * A fake `GitExec` that records every call and answers nothing — except `status --porcelain`,
- * which is where the fix itself now comes from (#283): the stage edits the checkout and
- * `changedPaths` reads back what moved, so a git that reports a clean tree models a stage that
- * changed nothing rather than the ordinary case. `porcelain` is what it reports having changed.
- */
 function fakeGit(porcelain = " M fix.ts"): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
   const git: GitExec = (args) => {
@@ -44,7 +33,6 @@ function fakeGit(porcelain = " M fix.ts"): { git: GitExec; calls: string[][] } {
   return { git, calls };
 }
 
-/** A stage that answers `n` attempts in order, each with a summary naming itself, and throws on an `n+1`th. */
 function attempts(n: number) {
   return createFakeStages(Array.from({ length: n }, (_, index) => JSON.stringify({ summary: `attempt ${index + 1} tried something` })));
 }
@@ -54,12 +42,6 @@ const IDENTICAL_B: FailureSignature = [{ testName: "adds two numbers", errorMess
 const DIFFERENT: FailureSignature = [{ testName: "subtracts two numbers", errorMessage: "expected 1, got 0" }];
 const THIRD: FailureSignature = [{ testName: "multiplies two numbers", errorMessage: "expected 6, got 5" }];
 
-/**
- * The one assertion both stop paths share: `needs-human` is created before it is applied, applied
- * to the *ticket*, the owner is assigned, and nothing labels or edits the pull request itself — the
- * escalation moved there. Shared so `runFixer`'s two stop describes and `applyUnfixable`'s own test
- * assert the identical shape rather than three copies of it drifting apart.
- */
 function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee: string): void {
   const labelCall = calls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-label"));
   expect(labelCall).toEqual(["issue", "edit", issueNumber, "--add-label", NEEDS_HUMAN_LABEL]);
@@ -67,35 +49,21 @@ function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee
   const assignCall = calls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-assignee"));
   expect(assignCall).toEqual(["issue", "edit", issueNumber, "--add-assignee", assignee]);
 
-  // The label is created (idempotently, `--force`) before it is ever applied — `gh issue edit
-  // --add-label` fails outright on a label nobody has created yet.
   const labelCreateIndex = calls.findIndex((call) => call[0] === "label" && call[1] === "create");
   const labelApplyIndex = calls.indexOf(labelCall!);
   expect(labelCreateIndex).toBeGreaterThanOrEqual(0);
   expect(labelCreateIndex).toBeLessThan(labelApplyIndex);
 
-  // Nothing labels or edits the pull request itself — the escalation moved to the ticket.
   expect(calls.some((call) => call[0] === "pr" && call[1] === "edit")).toBe(false);
 }
 
-/** The PR comment a stop posts. */
 const prCommentIn = (calls: string[][]): string | undefined => calls.find((call) => call[0] === "pr" && call[1] === "comment")?.[4];
 
-/**
- * The ticket the fixer reads on a no-progress stop, to find the PRD a `spec/gap` is routed at
- * (ADR-0119). `parentPrd: undefined` models a hand-written ticket entering at lane 06 (#184), which
- * has no spec to amend and so has no route.
- */
 function ticketBody(parentPrd: number | undefined): string {
   const parent = parentPrd === undefined ? "" : `## Parent PRD\n#${parentPrd}\n\n`;
   return `${parent}## Acceptance criteria\n\n- [ ] It adds two numbers — check: \`make test\`\n`;
 }
 
-/**
- * `createRecordingGh` answers nothing, which is the point of it — but the no-progress stop now
- * reads the ticket and creates an issue, and both of those are parsed. This answers exactly those
- * two and records everything, so a test still asserts on `calls` rather than on a simulated GitHub.
- */
 function recordingGhWithTicket(parentPrd: number | undefined): { gh: GhExec; calls: string[][] } {
   const { gh: recording, calls } = createRecordingGh();
   const gh: GhExec = (args) => {
@@ -199,12 +167,6 @@ describe("blockedComment", () => {
   });
 });
 
-/**
- * Where the fix comes from now (#283). The stage edits the checkout and this reads back what it
- * changed, which is the whole reason the answer no longer carries the files: a model retyping every
- * file it touched is an output cost that scales with the number of files and not with the size of
- * the edits, and it killed two runs on PR #280 at ~231 KB of verbatim TypeScript in one response.
- */
 describe("changedPaths", () => {
   function gitReporting(porcelain: string) {
     return ((args) => (args[0] === "status" ? porcelain : "")) as GitExec;
@@ -228,21 +190,14 @@ describe("changedPaths", () => {
     expect(changedPaths(gitReporting("\n"))).toEqual([]);
   });
 
-  /** Only the new name is a path to add; the old one's deletion came staged with the rename. */
   it("takes the destination of a rename, not the source", () => {
     expect(changedPaths(gitReporting("R  old.ts -> new.ts"))).toEqual(["new.ts"]);
   });
 
-  /**
-   * The reason this splits on the status columns' fixed width rather than on whitespace. A path
-   * with a space in it is unquoted and runs to the end of the line; a `split(/\s+/)` would commit
-   * `docs/adr/0119-a` and leave the rest of the file uncommitted.
-   */
   it("keeps a path that contains spaces intact", () => {
     expect(changedPaths(gitReporting(" M docs/some notes.md"))).toEqual(["docs/some notes.md"]);
   });
 
-  /** `core.quotePath` wraps a path with non-ASCII characters; `git add` wants the bare path. */
   it("strips the quotes git puts around a non-ASCII path", () => {
     expect(changedPaths(gitReporting(' M "docs/caf\\303\\251.md"'))).toEqual(["docs/caf\\303\\251.md"]);
   });
@@ -282,16 +237,6 @@ describe("runFixer — no-progress stop", () => {
     expect(commentCall?.[4]).toContain("attempt 2 tried something");
   });
 
-  /**
-   * The case the old `files: […].min(1)` schema made unrepresentable and the working tree makes
-   * ordinary: a stage that answered with an account of itself and changed nothing.
-   *
-   * Nothing is committed, because there is nothing to commit — `git commit` refuses an empty one,
-   * and a `fix: attempt N` commit with no diff would be counted against the ticket's three-attempt
-   * ceiling by `priorAttempts` for a round that never spent one on a fix. The summary is still
-   * recorded and still reaches the comment, so the stop says what the model claimed it did; the
-   * identical red coming back twice is what actually stops the loop.
-   */
   it("commits nothing for an attempt that left the tree unchanged, but still records its summary", async () => {
     const { git, calls: gitCalls } = fakeGit("");
     const deps = baseDeps({
@@ -308,22 +253,11 @@ describe("runFixer — no-progress stop", () => {
   });
 });
 
-/**
- * ADR-0119. The two stops are two different events, and until now they reached one place. A test
- * that does not move under two independent attempts is not being failed by the diff — it is asking
- * for something the ticket did not decide — and #278's whole complaint is that the pipeline had no
- * way to say so: a red acceptance test means *the implementation is wrong*, whichever side is.
- */
 describe("runFixer — where a stop is routed", () => {
   function specGapCall(calls: string[][]): string[] | undefined {
     return calls.find((call) => call[0] === "issue" && call[1] === "create" && call.includes(SPEC_GAP_LABEL));
   }
 
-  /**
-   * Two attempts leaving the identical signature — the stop this whole describe is about.
-   * `null` is "the ticket names no parent PRD": passing `undefined` here would re-trigger the
-   * default rather than override it.
-   */
   async function stoppedWithNoProgress(parentPrd: number | null = 41) {
     const deps = baseDeps({
       exec: attempts(2).exec,
@@ -340,23 +274,17 @@ describe("runFixer — where a stop is routed", () => {
     const filed = specGapCall(deps.ghCalls);
     expect(filed).toBeDefined();
 
-    // Routed at the PRD the ticket names, not at the ticket — lane 02 amends a spec.
     const body = filed![filed!.indexOf("--body") + 1];
     expect(body).toContain("#41");
-    // Carries the immovable signature itself: it is both the evidence and the thing the spec
-    // author has to read a decision out of.
     expect(body).toContain("adds two numbers");
     expect(body).toContain("expected 3, got 4");
 
-    // The label is created before it is used, for `escalateToOwner`'s reason.
     const labelCreate = deps.ghCalls.findIndex((call) => call[0] === "label" && call[1] === "create" && call[2] === SPEC_GAP_LABEL);
     expect(labelCreate).toBeGreaterThanOrEqual(0);
     expect(labelCreate).toBeLessThan(deps.ghCalls.indexOf(filed!));
   });
 
   it("still labels the ticket needs-human, because a spec/gap may refuse", async () => {
-    // ADR-0079 lets the spec author refuse a gap only new scope could repair. A ticket whose label
-    // was dropped on the strength of that repair would be stalled in nobody's list.
     const { deps } = await stoppedWithNoProgress();
 
     expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
@@ -370,8 +298,6 @@ describe("runFixer — where a stop is routed", () => {
   });
 
   it("files nothing on a capped stop, where every attempt moved the failure", async () => {
-    // Three attempts that each changed the failure is evidence the diff is in play and the
-    // contract is not. Filing here would make the label mean "the fixer gave up".
     const deps = baseDeps({
       exec: attempts(3).exec,
       runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: THIRD }],
@@ -410,14 +336,8 @@ describe("runFixer — capped stop", () => {
   });
 });
 
-/**
- * #360: the gate is a constant a lane may shrink and never grow. An attempt that creates a file the
- * gate is made of is the fixer growing the judge to get green, and it is refused before the commit
- * — the ordinary edit to an existing gate file is the size fence's business, not this stop's.
- */
 describe("runFixer — gate-growth stop", () => {
   it("commits nothing and stops when an attempt creates a gate file, naming it on the PR", async () => {
-    // A new hook beside the fix; the fake's `ls-files` answers "" so neither is tracked, and only the hook is on the gate.
     const { git, calls: gitCalls } = fakeGit("?? .claude/hooks/pre-commit.sh\n M fix.ts");
     const deps = baseDeps({ exec: attempts(1).exec, git, runTestsSequence: [{ failures: [] }] });
 
@@ -435,7 +355,7 @@ describe("runFixer — gate-growth stop", () => {
     const { git, calls: gitCalls } = fakeGit(" M vitest.config.ts");
     const tracking: GitExec = (args) => (args[0] === "ls-files" ? "vitest.config.ts\n" : git(args));
     const deps = baseDeps({ exec: attempts(1).exec, git: tracking, runTestsSequence: [{ failures: [] }] });
-    const { gh: recording } = deps; // green is re-judged, so `pr view` has to answer
+    const { gh: recording } = deps; 
     deps.gh = (args) => (args[0] === "pr" && args[1] === "view" ? JSON.stringify({ url: "https://example/pull/7", files: [] }) : recording(args));
 
     expect(await runFixer(deps)).toEqual({ verdict: "green", attempts: 1 });
@@ -446,8 +366,6 @@ describe("runFixer — gate-growth stop", () => {
 describe("runFixer — goes green", () => {
   it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment, and sends the PR back to Verify", async () => {
     const stage = attempts(1);
-    // A `gh` that answers the two reads `rejudge` makes — the PR's url and whole diff, and the
-    // ticket's body — and records everything, so the dispatch can be checked field by field.
     const ghCalls: string[][] = [];
     const gh: GhExec = (args) => {
       ghCalls.push([...args]);
@@ -469,16 +387,12 @@ describe("runFixer — goes green", () => {
 
     expect(stage.calls).toHaveLength(1);
     expect(outcome).toEqual({ verdict: "green", attempts: 1 });
-    // The fix is what the stage left in the checkout, not what it dictated back (#283): the paths
-    // committed are the ones `git status --porcelain` reported, and the model's answer names none.
     expect(deps.gitCalls).toContainEqual(["add", "fix.ts"]);
     expect(deps.gitCalls.some((call) => call[0] === "push")).toBe(true);
 
-    // No escalation of any kind on a green.
     expect(ghCalls.filter((call) => call[0] === "issue" && call[1] === "edit")).toEqual([]);
     expect(ghCalls.filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([]);
 
-    // The same dispatch lane 05 sends when it opens a PR: the whole diff, the ticket's criteria.
     const dispatch = ghCalls.find((call) => call[0] === "api" && call[1] === "repos/{owner}/{repo}/dispatches");
     expect(dispatch).toContain("event_type=implementation-opened");
     expect(dispatch).toContain("client_payload[pr]=https://example/pull/7");
@@ -487,11 +401,6 @@ describe("runFixer — goes green", () => {
   });
 });
 
-/**
- * The escalate path: `fixer.yml`'s resolve step reaches `applyUnfixable` (via `fixer.ts escalate`)
- * when Verify went red without a test going red — no test signature exists for a model to work
- * from, so this is the whole write, with no attempt loop above it.
- */
 describe("applyUnfixable — the escalate path's one write", () => {
   it("creates needs-human before applying it, applies it to the ticket, assigns the owner, and comments the PR naming what failed", () => {
     const { gh, calls } = createRecordingGh();
@@ -517,12 +426,6 @@ describe("unfixableComment", () => {
   });
 });
 
-/**
- * The real `runTests`, read off a stubbed report: every failed assertion's *full* message, because
- * two attempts that both threw `AssertionError` are only the same failure when the message matches
- * too; and a file that never collected as one synthetic failure naming it, so an attempt that broke
- * an import still gets a signature rather than reading as green.
- */
 describe("runVitestJsonForFixer", () => {
   it("reports each failed assertion by full name and message, and an uncollected file as one failure", () => {
     vi.mocked(runVitestReport).mockReturnValue({
@@ -559,11 +462,6 @@ describe("runVitestJsonForFixer", () => {
   });
 });
 
-/**
- * The ceiling is per ticket, not per run: a green attempt is sent back to Verify, and a red Verify
- * starts a fresh fixer run, so without this the loop is fix → judge → fix with a model spend each
- * round and no end. The count is read off the branch's own `fix: attempt` commits.
- */
 describe("the cap across fixer runs", () => {
   it("spends no stage when three attempts already sit on the branch, and escalates instead", async () => {
     const stage = attempts(1);

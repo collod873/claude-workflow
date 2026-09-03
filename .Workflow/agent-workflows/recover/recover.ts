@@ -19,35 +19,12 @@ import { reason } from "../shared/reason";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { readTicket } from "../shared/ticket-shape";
 
-/**
- * Lane: what runs when `Implement` (lane 05) completes red *after the model already answered* —
- * a `git push` the pre-push gauntlet rejected, a `pr create` that 403'd, anything that dies once
- * `implementer-answer-<n>` is already on disk. Until this lane existed, the answer survived only
- * as an Actions artifact and a human recovered it by hand (run 33316096960: 40 minutes of Sonnet,
- * lost to a rejected push).
- *
- * Two very different repairs share this file because they share a trigger: a failed `Implement`
- * run either left an answer behind or it didn't, and which one decides everything downstream.
- * **An artifact exists** — the model did the work, so this lane finishes lane 05's own tail
- * (`landAnswer`, reused rather than restated) and hands the branch to `Verify`. **No artifact
- * exists** — the model never answered (a crash, a plan error), so there is nothing to keep, and
- * this sends the same `ticket-ready` dispatch lane 05 itself listens for.
- *
- * Never runs a model. Every write goes through `GhExec`/`GitExec` so a test can assert the
- * sequence rather than the outcome.
- */
-
-/** ADR-0041's ceiling on the fixer, reused here for the same reason: a run this cannot land in
- * a bounded number of tries needs a human, not a fourth try. */
 export const MAX_RECOVER_ATTEMPTS = 3;
 
-/** The `implementer-answer-<n>` artifact name `implement.yml` uploads, read back for its ticket number. */
 const ARTIFACT_NAME_RE = /^implementer-answer-(\d+)$/;
 
-/** The line `implement.yml`'s "Implement the ticket" step echoes before it runs anything (ADR-0104's pattern). */
 const IMPLEMENTING_LINE_RE = /implementing #(\d+)/g;
 
-/** One HTML marker this lane's own comments carry — see `attemptCommentBody` for the rest of the shape. */
 const ATTEMPT_MARKER_RE = /<!-- recover-attempt:(\d+) -->/;
 
 interface RawArtifact {
@@ -57,11 +34,6 @@ interface RawArtifactsList {
   artifacts?: RawArtifact[];
 }
 
-/**
- * The ticket number an `implementer-answer-<n>` artifact on `runId` names, or `undefined` when the
- * run carries none — the ordinary case for a run that died before the model answered, and the
- * signal this lane reads to choose recovery over re-dispatch.
- */
 export function resolveTicketFromArtifacts(gh: GhExec, runId: number): number | undefined {
   let raw: string;
   try {
@@ -77,12 +49,6 @@ export function resolveTicketFromArtifacts(gh: GhExec, runId: number): number | 
   return undefined;
 }
 
-/**
- * The ticket number read off the `implementing #<n>` line `implement.yml` echoes early in its
- * "Implement the ticket" step — the fallback source when the run died before uploading an
- * artifact at all (no upload step ever ran, or it ran and found nothing). The last match wins,
- * the same "most recent line wins" reading `fixer.yml`'s own log grep uses.
- */
 export function resolveTicketFromLog(gh: GhExec, runId: number): number | undefined {
   let raw: string;
   try {
@@ -95,18 +61,11 @@ export function resolveTicketFromLog(gh: GhExec, runId: number): number | undefi
   return last ? Number(last[1]) : undefined;
 }
 
-/** What `resolveRecoveryTarget` answers: which ticket a failed run was building, and whether its answer survived. */
 export interface RecoveryTarget {
   ticket: number;
-  /** True when an `implementer-answer-<n>` artifact exists — the recovery path, not the re-dispatch one. */
   hasArtifact: boolean;
 }
 
-/**
- * Resolves the ticket a failed `Implement` run was building, artifacts first and the log line
- * second — `undefined` when neither source names one, which is "nothing to recover" (a run this
- * lane was never meant to react to, or a run so early nothing was ever written).
- */
 export function resolveRecoveryTarget(gh: GhExec, runId: number): RecoveryTarget | undefined {
   const fromArtifact = resolveTicketFromArtifacts(gh, runId);
   if (fromArtifact !== undefined) return { ticket: fromArtifact, hasArtifact: true };
@@ -117,17 +76,10 @@ export function resolveRecoveryTarget(gh: GhExec, runId: number): RecoveryTarget
   return undefined;
 }
 
-/**
- * The comment body one reaction posts: the HTML marker naming this run, plus one human line
- * saying what happened. `priorAttemptRunIds` reads the marker back off every comment on the
- * ticket, which is what makes the attempt count durable and free — no counter file, nothing this
- * lane has to keep in sync with itself across runs.
- */
 export function attemptCommentBody(runId: number, line: string): string {
   return `<!-- recover-attempt:${runId} -->\n${line}`;
 }
 
-/** Every run id this lane has already reacted to on `issueNumber`, oldest first. */
 export function priorAttemptRunIds(gh: GhExec, issueNumber: number): number[] {
   const ids: number[] = [];
   for (const body of issueComments(gh, issueNumber)) {
@@ -137,7 +89,6 @@ export function priorAttemptRunIds(gh: GhExec, issueNumber: number): number[] {
   return ids;
 }
 
-/** The Actions run URL for `runId`, built from the same two variables every job carries by default. */
 function runUrl(runId: number): string {
   const server = process.env.GITHUB_SERVER_URL ?? "https://github.com";
   const repo = process.env.GITHUB_REPOSITORY ?? "";
@@ -148,16 +99,6 @@ function postAttemptComment(gh: GhExec, issueNumber: number, runId: number, line
   gh(["issue", "comment", String(issueNumber), "--body", attemptCommentBody(runId, line)]);
 }
 
-/**
- * Applies `needs-human`, assigns the repository owner, and posts the marker comment that stops the
- * loop — the cap's whole action, through the one escalation every stopping lane shares
- * (`shared/needs-human.ts`). `GITHUB_REPOSITORY_OWNER` is set on every runner without a workflow
- * naming it, which is why this lane needs no `SIGNAL_ASSIGNEE` of its own.
- *
- * Deliberately not wrapped in a swallowing try/catch the way `sayOnTicket` is in `implement.ts`:
- * this *is* the escalation, not a side note beside one, so a write that fails here should fail the
- * run loudly rather than leave a ticket capped at three attempts with nobody told.
- */
 function stopAndEscalate(gh: GhExec, ticket: number, runId: number, priorRuns: number[]): void {
   escalateToOwner(gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
 
@@ -170,7 +111,6 @@ function stopAndEscalate(gh: GhExec, ticket: number, runId: number, priorRuns: n
   );
 }
 
-/** Sends the same `ticket-ready` dispatch `implement.yml` itself listens for — `client_payload[issue]`, its only field. */
 export function redispatchImplement(gh: GhExec, ticket: number): void {
   gh([
     "api",
@@ -188,7 +128,6 @@ export interface RecoverDeps {
   runId: number;
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
-  /** Downloads `artifactName` from `runId` and returns the local directory holding it. */
   downloadArtifact: (runId: number, artifactName: string) => string;
   log?: (line: string) => void;
 }
@@ -199,19 +138,12 @@ export type RecoverOutcome =
   | { outcome: "already-claimed" }
   | { outcome: "already-handled" }
   | { outcome: "immutable"; files: string[] }
-  /** The answer creates a file the gate is made of (#360); nothing written, nothing claimed. */
   | { outcome: "gate-growth"; files: string[] }
   | { outcome: "redispatched"; ticket: number }
   | { outcome: "opened"; pr: string }
   | { outcome: "nothing-to-build" }
-  /** `landAnswer` refused the recovered answer for editing a `test.fails(` acceptance test (#360). */
   | { outcome: "fails-rule-refused"; reason: string };
 
-/**
- * The whole recover flow: resolve which ticket a failed `Implement` run was building, apply the
- * three-attempt cap (ADR-0041's ceiling), and either finish lane 05's own tail over the answer an
- * artifact carries, or re-dispatch the ticket when no answer survived.
- */
 export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
 
@@ -223,9 +155,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const { ticket, hasArtifact } = target;
 
   const priorRuns = priorAttemptRunIds(deps.gh, ticket);
-  // Two doors can ring for one failed run — `implement.yml`'s own `implement-failed` dispatch and
-  // the `workflow_run` event, which arrived minutes late or not at all three times on 2026-08-30 —
-  // and the marker comment is what makes the second arrival a no-op rather than a second attempt.
   if (priorRuns.includes(deps.runId)) {
     log(`run ${deps.runId} was already reacted to (see the marker comment on #${ticket}); nothing to do`);
     return { outcome: "already-handled" };
@@ -236,12 +165,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   }
 
   if (!hasArtifact) {
-    // Let go of the dead run's claim before asking for a fresh one. `implement.ts` claims the
-    // branch before it spends anything, and a run that was cancelled or timed out never reaches
-    // the release in its own `catch` — so the claim outlives it, and the dispatch below lands on a
-    // run that reads it as live and exits `already claimed`. That is what happened to #342 at
-    // 00:16 (run 33698760072), leaving the ticket unbuildable for the claim's full 45-minute
-    // timeout, which is exactly the stranding routing a timeout here was meant to end.
     releaseDeadClaim(deps.gh, implementationBranch(ticket), "main", log);
     redispatchImplement(deps.gh, ticket);
     postAttemptComment(
@@ -258,12 +181,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const raw = deps.readFile(join(artifactDir, "implementer-answer.json"));
   const answer = ImplementerAnswer.parse(JSON.parse(raw));
 
-  // An answer that writes into the immutable set cannot land by any road: lane 06 refuses the
-  // diff, and before that the push itself is refused — a `GITHUB_TOKEN` may not touch
-  // `.github/workflows/` at all, which is how run 33326295612 lost #275 (its ticket *claimed*
-  // `shape.yml` and `to-tickets.yml`). The defect is the ticket's, not the run's (#278), so
-  // re-landing the same files three times would spend three runs proving one thing. Escalate now,
-  // naming the files, and claim nothing.
   const forbidden = answer.files.map((file) => file.path).filter((path) => touchesImmutableSet([path]));
   if (forbidden.length > 0) {
     escalateToOwner(deps.gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
@@ -276,7 +193,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
     return { outcome: "immutable", files: forbidden };
   }
 
-  // The same refusal by `gateGrowth` (#360), taken here before anything is written or claimed.
   const growth = gateGrowth(
     deps.git,
     answer.files.map((file) => file.path),
@@ -293,8 +209,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   }
 
   const branch = implementationBranch(ticket);
-  // The same atomic claim `implement.ts` itself takes, so this run and a fresh dispatch (or a
-  // human who already pushed by hand) cannot both act on the same slice.
   const claim = claimImplementationBranch(deps.gh, deps.git, branch, log);
   if (!claim.claimed) {
     log(`\`${branch}\` is already claimed or recovered — a pull request may already be open; nothing to do.`);
@@ -305,9 +219,6 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const commitMessage = `Recover #${ticket} from run ${deps.runId}\n\n${answer.summary}\n\nPart of #${ticket}`;
   const result: ImplementOutcome = await landAnswer(deps, branch, ticket, ticketRead, answer, commitMessage, log);
 
-  // The ticket already carries `needs-human` and the verdict's own note (`landAnswer`); a recovered
-  // answer that edited its own acceptance test is not one to re-dispatch, so this counts the
-  // attempt and stops.
   if (result.outcome === "fails-rule-refused") {
     postAttemptComment(
       deps.gh,
@@ -332,7 +243,6 @@ function fsWriteFile(path: string, content: string): void {
   writeFileSync(path, content, "utf8");
 }
 
-/** The real `downloadArtifact`: `gh run download` into a fresh temp directory, one artifact at a time. */
 function downloadArtifactTo(runId: number, artifactName: string): string {
   const dir = mkdtempSync(join(tmpdir(), "recover-"));
   execGh(["run", "download", String(runId), "-n", artifactName, "-D", dir]);
@@ -351,10 +261,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Which checkout the recovered answer lands in. `TARGET_WORKSPACE` is set only by the reusable
-  // workflow (ADR-0055): there this process runs from the machine checkout and every path in the
-  // answer is the target's. `readFile` is deliberately not bound to it — the only thing this lane
-  // reads is the downloaded artifact, at an absolute path in the runner's temp directory.
   const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
 
   try {
@@ -367,8 +273,6 @@ async function main(): Promise<void> {
       downloadArtifact: downloadArtifactTo,
     });
     console.log(`recover: ${outcome.outcome}`);
-    // A refusal that needs a human is red here, the way `implement.ts`'s own run is: the ticket
-    // says which lines, and nothing was committed.
     if (outcome.outcome === "fails-rule-refused") process.exitCode = 1;
   } catch (err) {
     console.error(`recover failed: ${reason(err)}`);

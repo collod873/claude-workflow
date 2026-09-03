@@ -7,30 +7,6 @@ import { renderBody, validateClaimsAreMutable, validateCriteriaShape, validatePa
 import { scratchDir } from "./scratch.fixture";
 import { commandsPythonRecovers } from "./ticket-shape.fixture";
 
-/**
- * The two ends of one contract, driven against each other.
- *
- * Lane 03 writes a ticket's acceptance criteria through `renderBody`.
- * `bin/close-ticket` is the only thing that ever verifies them: it fetches the
- * body back, parses a command out of each criterion with `bin/ticket_shape.py`,
- * runs it, and closes on what passed. Until #215 neither side had ever seen the
- * other's output — the slicer emitted a bare `check: <command>`, the Python
- * reader read it as prose, and every ticket the chain sliced closed on
- * `0 of N criteria verified` against work nobody had checked (#183).
- *
- * So nothing here asserts against a second copy of the pattern. The rendered
- * body goes through the **real** `bin/ticket_shape.py`, and the refusals go
- * through the **real** `bin/close-ticket` with a `gh` this repo controls
- * (`close-ticket.fixture.ts`'s `trackerAnswering`) — because a TypeScript
- * belief about what Python parses is exactly the thing that was wrong.
- */
-
-/**
- * One real close of ticket #42 against a tracker answering `issue view` with `body`, in a
- * checkout that is not a repository — every case below is refused or closed on the body alone.
- * `calls` is what was *done*: `issue comment` and `issue close` are the two writes a refusal
- * must never reach.
- */
 function closeTicket(body: string): {
   status: number | null;
   stderr: string;
@@ -42,7 +18,6 @@ function closeTicket(body: string): {
   return { ...run, calls: gh.calls() };
 }
 
-/** Whether the tracker saw `issue <verb>`. */
 const called = (calls: string[][], verb: string) => calls.some((call) => call[0] === "issue" && call[1] === verb);
 
 describe("a published body, read by the script that closes it", () => {
@@ -167,13 +142,6 @@ describe("close-ticket, on a body it cannot verify", () => {
   });
 });
 
-/**
- * #272: the ticket that could never pass. Lane 03 published a slice claiming `vitest.config.ts`,
- * lane 04 authored an acceptance test that required the edit because the ticket claimed it, and
- * lane 06 refused the pull request that made it — a contradiction only reachable after a paid
- * implementer run, and identical on every retry. ADR-0010 puts the gate at the earliest venue that
- * can run it, which is the claim itself.
- */
 describe("validateClaimsAreMutable", () => {
   it.each([
     ["the config the acceptance allowlist lives in", "vitest.config.ts"],
@@ -209,9 +177,6 @@ describe("validateClaimsAreMutable", () => {
   });
 
   it("reads the same set the Immutability job reads, rather than a second copy", () => {
-    // The refusal quotes IMMUTABLE_SET itself. If lane 06's set and this gate's set ever drifted
-    // apart, a slice would be published that verify refuses — which is the whole failure this
-    // exists to stop, reintroduced by a copy-paste.
     for (const entry of IMMUTABLE_SET) {
       const claimed = entry.endsWith("/") ? `${entry}something.ts` : entry;
       expect(() => validateClaimsAreMutable([slice({ title: "S", filesClaimed: [claimed] })])).toThrow();
@@ -219,13 +184,6 @@ describe("validateClaimsAreMutable", () => {
   });
 });
 
-/**
- * #278: lane 03 publishes prose that lane 04 and lane 05 then read independently, and a path the
- * ticket leaves relative is a decision handed to both of them at once. The corpus below is PRD
- * #271's four tickets exactly as lane 03 published them — the only real evidence this gate has, and
- * the shape of both halves of the bet: #272 is refused on the one token that actually diverged, and
- * the three tickets that built cleanly are untouched.
- */
 const PRD_271 = {
   272: slice({
     title: "Checkpoint core in runStage, proven end-to-end through to-tickets' resume",
@@ -319,9 +277,6 @@ describe("validatePathsAreRooted, on PRD #271 as lane 03 actually published it",
   });
 
   it("refuses #272 on nothing else — every other path it names resolves from the body", () => {
-    // `shared/handoff-path.ts` and `to-tickets.ts` are abbreviations of paths the same ticket
-    // claims in full, which is the rule being satisfied rather than dodged. If this ever widened
-    // to catch them, the gate would be refusing the tickets that built cleanly.
     let refusal = "";
     try {
       validatePathsAreRooted([PRD_271[272]]);

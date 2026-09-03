@@ -22,21 +22,13 @@ vi.mock("../shared/close-ticket", () => ({
   },
 }));
 
-/**
- * Lane 09's two passes over a `prd` issue: the spec-evaluate pass (#237), which runs a runnable
- * spec's own `check:` and records the verdict as one upserted comment, and the spec-closing pass
- * (#233), which hands a green spec whose every child delivered to `bin/close-ticket --spec`.
- */
-
 const VERDICT = "prd-check:v1";
 const UNRUNNABLE = "prd-unrunnable:v1";
 
-/** A runnable spec carrying `children`, which is the only thing that differs between most cases. */
 function spec(number: number, children: number[], body: string = RUNNABLE_BODY): FakeIssue {
   return { number, title: "A spec", body, labels: ["prd"], children };
 }
 
-/** One reconcile pass over a tracker holding exactly one open issue, returning the tracker. */
 function passOver(issue: FakeIssue): Tracker {
   const tracker = trackerWith({ open: [issue] });
   reconcileOver(tracker);
@@ -96,7 +88,6 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
     const tracker = passOver({
       ...spec(340, [341]),
       labels: ["prd", "needs-human"],
-      // No prd-unrunnable:v1 anywhere on it — this needs-human isn't paired with this pass.
       comments: ["A criterion is still unmet after the fix pass.\n\n<!-- fix-pass:v1 -->"],
     });
 
@@ -104,12 +95,6 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
     expect(tracker.labelsRemoved).toEqual([]);
   });
 
-  /**
-   * `runCheckCommand` used to spawn a criterion's `check:` command with no `cwd` at all, which
-   * defaults to `process.cwd()` — this process's own machine checkout, not the target the spec
-   * describes. `pwd` names the directory a shell command actually ran in, so a verdict comment
-   * that echoes it back is direct evidence of which checkout the check saw.
-   */
   it("runs a spec's own check: command against targetWorkspace, not this process's own cwd", () => {
     const targetWorkspace = realpathSync(scratchDir("reconcile-target"));
     const body = ["## Acceptance criteria", "", "- [ ] It works — check: `pwd`", ""].join("\n");
@@ -123,11 +108,6 @@ describe("runReconcile's spec-evaluate pass (#237)", () => {
   });
 });
 
-/**
- * `runRealSpecClose`'s third positional is `bin/close-ticket`'s own `<checkout>` argument. It used
- * to be a bare `"."`, which `closeTicketProcess` — carrying no `cwd` of its own — resolved against
- * this process's own `process.cwd()`: the machine checkout, not the target the spec describes.
- */
 describe("runRealSpecClose", () => {
   it("names the target checkout as bin/close-ticket's own <checkout> argument, never a bare '.'", () => {
     closeTicketProcessCalls.length = 0;
@@ -138,23 +118,12 @@ describe("runRealSpecClose", () => {
   });
 });
 
-/**
- * Lane 09's spec-closing pass (#233): once a spec's own check reads green, its own
- * `bin/close-ticket --spec` — injected here the way lane 08's tests inject `closeTicket` — runs
- * against a range synthesized from its children's own delivering merges, and never runs at all
- * with an undelivered child.
- */
 describe("runReconcile's spec-closing pass (#233)", () => {
   interface CloseCall {
     number: number;
     range: string;
   }
 
-  /**
-   * Builds the tracker `setup` describes, runs the pass over it with a closer answering `result`,
-   * and hands back every closer invocation in call order — so each case spells out only the
-   * tracker it starts from, which is the thing it is actually about.
-   */
   function runClosingPass(setup: TrackerOptions, result: CloseTicketResult = { exitCode: 0, output: "" }): CloseCall[] {
     const calls: CloseCall[] = [];
     reconcileOver(trackerWith(setup), {
@@ -166,7 +135,6 @@ describe("runReconcile's spec-closing pass (#233)", () => {
     return calls;
   }
 
-  /** A spec whose own criterion cannot check out — `false` never exits 0. */
   const UNMET_BODY = [
     "## Acceptance criteria",
     "",
@@ -186,11 +154,6 @@ describe("runReconcile's spec-closing pass (#233)", () => {
     expect(calls).toEqual([{ number: 400, range: "aaa111^..bbb222" }]);
   });
 
-  /**
-   * Every way a spec can fail to be closeable. The act and the assertion are identical across all
-   * of them — the closer is never reached — so the tracker each starts from is the whole of the
-   * case, and a table says that more plainly than five near-identical bodies do.
-   */
   it.each([
     { why: "a child is still open", setup: { open: [spec(420, [421])] } },
     {
@@ -202,7 +165,6 @@ describe("runReconcile's spec-closing pass (#233)", () => {
       setup: { open: [spec(440, [441])], closed: [{ number: 441, stateReason: "completed" as const }] },
     },
     {
-      // #447 carries no `closed` record at all — still open.
       why: "one child among several is undelivered",
       setup: { open: [spec(445, [446, 447])], closed: [delivered(446, "2026-01-01T00:00:00Z", "x")] },
     },
@@ -214,15 +176,9 @@ describe("runReconcile's spec-closing pass (#233)", () => {
     expect(runClosingPass(setup)).toEqual([]);
   });
 
-  /**
-   * The range is `<first merge>^..<last merge>` by **branch position** — where the delivering
-   * commits sit, not what the child issues are numbered. Each row varies only the merges, which is
-   * exactly the variable the rule is about.
-   */
   it.each([
     {
       what: "orders the range by when each delivering pull request merged, not by the child issue's own number",
-      // #460 carries the higher issue number but merged first — the range must still start there.
       setup: {
         open: [spec(450, [452, 460])],
         closed: [delivered(460, "2026-01-01T00:00:00Z", "early111"), delivered(452, "2026-01-02T00:00:00Z", "late222")],

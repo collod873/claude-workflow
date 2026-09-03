@@ -3,13 +3,6 @@ import { applyGrammar, capDecisions, DECISION_CAP, marksForceLong, PRIOR_ART_CAP
 import type { Decision, Refutations, ShaperSheet } from "../shared/sheet-schema";
 import type { PriorArt } from "../shared/sweep-schema";
 
-/**
- * The three mechanical outcomes lane 01 hangs off the sheet's
- * own shape: the mark strip (ADR-0028), the route override (ADR-0029), and
- * the refusal to shape (ADR-0029 again). None of them may consult a model,
- * and this is where that is pinned.
- */
-
 function decision(over: Partial<Decision> = {}): Decision {
   return { question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", adrReversal: "", ...over };
 }
@@ -37,10 +30,6 @@ describe("the mark strip", () => {
   });
 
   it("strips a whitespace-only mark, which names nothing", () => {
-    // ADR-0028: a mark with an empty target is malformed and is stripped
-    // mechanically, so the test needs no judgement at check time. Whitespace
-    // is the interesting case — it is non-empty to a schema and empty to a
-    // reader, and only one of those is what the ADR means.
     const sheet = applyGrammar(shaped({ decisions: [decision({ mark: "   " })] }), silent, 0);
 
     expect(sheet.decisions[0].mark).toBe("");
@@ -73,8 +62,6 @@ describe("the route override", () => {
   });
 
   it("catches the short sheet a flat count of three would wave through", () => {
-    // ADR-0029's whole argument for a fraction: two decisions with both
-    // marked is plainly an idea nobody understands, and a flat 3 passes it.
     expect(marksForceLong([decision({ mark: "a" }), decision({ mark: "b" })])).toBe(true);
   });
 
@@ -83,9 +70,6 @@ describe("the route override", () => {
   });
 
   it("never demotes a long recommendation to short", () => {
-    // ADR-0007: the two misroutes are not symmetric. A wrong short route is
-    // visible because lanes 06–07 still run; a wrong long route leaves no
-    // trace anywhere. The mechanism holding that line only pushes one way.
     const sheet = applyGrammar(shaped({ decisions: [decision()], route: "long" }), silent, 0);
 
     expect(sheet.route).toBe("long");
@@ -98,10 +82,6 @@ describe("the five-decision cap", () => {
   });
 
   it("refuses rather than truncates above it", () => {
-    // The one cap that does not cut. Truncating seven decisions to five would
-    // post a sheet that looks like every other sheet and hide the only
-    // evidence that the idea does not close — which is the signal the cap
-    // exists to raise (ADR-0029).
     const overflow = capDecisions(shaped({ decisions: Array(7).fill(decision()) }));
 
     expect(overflow?.count).toBe(7);

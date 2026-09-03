@@ -21,38 +21,25 @@ export interface ExistingClaim {
   branch: string;
   pullRequests?: number;
   commitsAhead?: number;
-  /**
-   * ISO timestamp of the branch's creation, or `null` for a branch GitHub records no creation for.
-   * Defaults to `NOW` — a claim made this instant, which every reading calls live.
-   */
   createdAt?: string | null;
 }
 
 export interface ClaimHostOptions {
-  /** What `issue view` answers. `state` is read by lane 05's closed-ticket refusal (#279). */
   ticket?: { title: string; body: string; state?: string };
-  /** A claim already standing when the run starts, and what GitHub says about it. */
   existingClaim?: ExistingClaim;
-  /** What `pr create` answers — a URL, or the error GitHub raises when Actions may not open one. */
   prCreate?: string | Error;
-  /** Whatever this case models that the host does not; asked before anything else. */
   answer?: (args: string[]) => string | undefined;
 }
 
 export interface ClaimHost {
   gh: GhExec;
-  /** Every argv, in call order. */
   calls: string[][];
-  /** The refs that exist right now — a claim is held while its branch is in here. */
   refs: Set<string>;
-  /** Every `repository_dispatch` sent, as `createFakeGh` records them. */
   dispatches: FakeDispatch[];
 }
 
-/** When every run on this host starts. A claim's age is measured against it. */
 export const NOW = new Date("2026-08-28T22:00:00Z");
 
-/** `minutes` before `NOW`, as GitHub would stamp a branch creation. */
 export const minutesAgo = (minutes: number): string => new Date(NOW.getTime() - minutes * 60_000).toISOString();
 
 export const HEAD_SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -78,7 +65,6 @@ export function githubHoldingClaims(options: ClaimHostOptions = {}): ClaimHost {
       return JSON.stringify(createdAt === null ? [] : [{ timestamp: createdAt }]);
     }
     if (args[0] === "issue" && args[1] === "view") return JSON.stringify(options.ticket ?? TICKET);
-    // `issue comment`, and `escalateToOwner`'s `label create` + `issue edit` — writes nobody parses.
     if (args[0] === "issue" || args[0] === "label") return "";
     if (args[0] === "pr" && args[1] === "create") {
       const pr = options.prCreate ?? PR_URL;
@@ -95,12 +81,6 @@ export function githubHoldingClaims(options: ClaimHostOptions = {}): ClaimHost {
   return { gh, calls, refs, dispatches: fallback.dispatches };
 }
 
-/**
- * A checkout at `HEAD_SHA` whose `git status --porcelain -- <paths>` answers `status` — the
- * question the lane asks to learn whether its implementer built anything. The default says every
- * path asked about is modified, the ordinary run; every other command succeeds silently, so a case
- * about `fetch` or `rebase` has to script its own.
- */
 export function checkoutReporting(
   status: (paths: string[]) => string = (paths) => paths.map((path) => ` M ${path}`).join("\n"),
 ): FakeGit {
@@ -111,13 +91,10 @@ export function checkoutReporting(
   });
 }
 
-/** Every ref delete in a recorded call list — how a claim is released. */
 export const refDeletesIn = (calls: string[][]): string[][] =>
   calls.filter((call) => call[0] === "api" && call[1] === "--method" && call[2] === "DELETE");
 
-/** Every comment body posted on a ticket, in order. */
 export const ticketCommentsIn = (calls: string[][]): string[] =>
   calls.filter((call) => call[0] === "issue" && call[1] === "comment").map((call) => call[call.indexOf("--body") + 1]);
 
-/** Every `pr create` in a recorded call list. */
 export const prCreatesIn = (calls: string[][]): string[][] => calls.filter((call) => call[0] === "pr" && call[1] === "create");

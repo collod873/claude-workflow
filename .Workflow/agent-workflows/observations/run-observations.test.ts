@@ -12,8 +12,6 @@ describe("runObservations", () => {
     const base = repo.commit("seed");
     repo.write("a.ts", "export const a = 2;\n");
     const head = repo.commit("the session's own commit");
-    // The same fake stage backs both lenses' sandboxed calls, so this one
-    // response is parsed by both PROPOSED's and VIOLATION's parsers.
     const fakeStage = createFakeStage("Finding: duplicated validation logic\nSite: a.ts:1\n");
 
     const result = await runObservations({
@@ -52,8 +50,6 @@ describe("runObservations", () => {
       spine: "first session's spine",
       standards: "entry: never duplicate validation logic",
     });
-    // firstRun[0] is the PROPOSED entry — VIOLATION's is always released,
-    // so it's PROPOSED's gate this assertion is pinning.
     expect(firstRun[0].released).toBe(false);
 
     repo.write("b.ts", "export const b = 1;\n");

@@ -12,8 +12,6 @@ describe("toRepoRelative", () => {
   });
 
   it("drops an edit that was never in the repo", () => {
-    // The exact list that took the first unskipped audit down (#107): a global settings file and
-    // a scratchpad, neither of which this repo's history contains at any path.
     expect(
       toRepoRelative(
         [
@@ -31,8 +29,6 @@ describe("toRepoRelative", () => {
   });
 
   it("relativises against the worktree the session ran in, not this checkout", () => {
-    // The repo is worked in from more than one path on the machine (`repo-scope.ts`'s note), so
-    // the same file reaches the same pathspec from either clone.
     expect(toRepoRelative(["/home/collin/other-clone/a.ts"], "/home/collin/other-clone")).toEqual(["a.ts"]);
   });
 

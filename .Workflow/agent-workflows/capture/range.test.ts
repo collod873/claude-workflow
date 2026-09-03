@@ -3,12 +3,6 @@ import { execGit } from "../shared/git";
 import { makeTempRepo, type TempRepo } from "../shared/temp-repo.fixture";
 import { deriveRange, EMPTY_TREE_HASH } from "./range";
 
-/**
- * Commits one file at an explicit timestamp and hands back the new commit's SHA — `deriveRange`'s
- * whole job is reading commit dates back out of `git log --since/--until`, so every commit here
- * has to control its date precisely rather than let it fall out of "whenever the test happened to
- * run".
- */
 function commitAt(repo: TempRepo, path: string, contents: string, message: string, iso: string): string {
   repo.write(path, contents);
   return repo.commit(message, { date: iso });

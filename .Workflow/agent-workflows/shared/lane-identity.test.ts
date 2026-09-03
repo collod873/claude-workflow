@@ -2,36 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readWorkflows, STUB_SUFFIX } from "./read-workflow";
 import { binSources, laneSources } from "./repo-sources";
 
-/**
- * The gate for the defect class ADR-0055 (amended by ADR-0132) introduced: a workflow file whose
- * only trigger is `workflow_call` can never itself carry a run — GitHub records a run reached
- * through `uses:` against the *caller's* file (confirmed on run 33649164483: every job of
- * `verify-caller.yml`'s run comes back `verify / <job name>`, and `verify.yml` itself has carried
- * no run of its own since the split). Anything that names such a file expecting to find its own
- * run history — `actions/workflows/<file>/runs`, or a `workflow_run: workflows:` trigger — is
- * reading a page that can never grow.
- *
- * Two things follow, and this file checks both:
- *
- * 1. No non-test code names a call-only file as the workflow whose runs to read. The fix each
- *    time (`bypass-counter.ts`'s own `verifyWorkflow`, mirrored by `integrate.ts`,
- *    `lost-dispatch-counter.ts` and `bin/close-ticket`'s `verify_workflow_file()`) is a required
- *    input threaded from the caller stub, never a literal baked into the reusable file's own
- *    module — so a literal naming a call-only file appearing anywhere it could be read as "the
- *    workflow to ask the Actions API about" is exactly the mistake this gate exists to catch
- *    before a runner does.
- * 2. Every `workflow_run: workflows: [...]` entry in this repository names a file that actually
- *    can produce the run it is listening for — a caller stub, or any file with a trigger of its
- *    own.
- */
-
-/**
- * `source` with every comment-only line blanked out — the leading `//`, `/*` and continuation `*`
- * lines this codebase's JSDoc uses, plus `#` for the Python and shell files under `bin/`. A
- * backtick-quoted mention in prose (`` `verify.yml` ``'s own docstring, `bin/close-ticket`'s) is
- * documentation, not a string literal a program reads — this gate is for the latter, so a
- * straight-quoted match inside a comment must not count.
- */
 function stripCommentLines(source: string): string {
   return source
     .split("\n")
@@ -39,7 +9,6 @@ function stripCommentLines(source: string): string {
     .join("\n");
 }
 
-/** Whether `source` (comments stripped) contains `file` as an actual quoted string literal — `"file"` or `'file'`, never a backtick code-span. */
 function quotesLiteral(source: string, file: string): boolean {
   const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`["']${escaped}["']`).test(stripCommentLines(source));
@@ -52,12 +21,6 @@ interface WorkflowShape {
 
 const parsed = readWorkflows<WorkflowShape>().map(({ name, workflow }) => ({ name, displayName: workflow.name, on: workflow.on }));
 
-/**
- * Whether a workflow's own `on:` block can ever produce a run of *this* file. `workflow_call`
- * alone cannot — every other trigger (`push`, `repository_dispatch`, `workflow_run`,
- * `workflow_dispatch`, `issues`, `schedule`, …) can, including one that sits alongside
- * `workflow_call` on a file that is reusable *and* directly triggerable.
- */
 function canProduceRuns(on: WorkflowShape["on"]): boolean {
   if (on === undefined) return false;
   if (Array.isArray(on)) return on.length > 0 && !(on.length === 1 && on[0] === "workflow_call");
@@ -122,17 +85,6 @@ describe("every workflow_run trigger names a file that can actually produce the 
   });
 });
 
-/**
- * The convention, enforced rather than described. It ran in both directions at once until
- * 2026-09-03: six pairs put the suffix on the reusable half (`Verify` / `Verify (reusable)`) and
- * sixteen put it on the caller (`Audit (caller)` / `Audit`), so in sixteen of twenty-two the bare
- * name a reader — or a `workflow_run: workflows:` trigger — reaches for belonged to the file that
- * cannot produce runs. Nothing named one of the sixteen, so nothing was broken; the split was a
- * convention with no rule, which is the state the next person gets wrong.
- *
- * The caller keeps the plain name because it is the half that produces runs, the half a
- * `workflow_run` trigger must name, and the half a dead-lane signal reports. #331, #347.
- */
 describe("the caller carries the plain name and the reusable half carries the suffix", () => {
   const REUSABLE_SUFFIX = " (reusable)";
 

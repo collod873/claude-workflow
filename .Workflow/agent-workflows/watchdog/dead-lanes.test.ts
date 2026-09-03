@@ -18,13 +18,6 @@ import {
 } from "./dead-lanes";
 import history from "./push-runs.evidence.json";
 
-/**
- * Every `push` run this repo has, captured from the API with the job count
- * the watchdog reads (`push-runs.evidence.json`). #41's last acceptance
- * criterion asks for the mechanism's own logic run over the thirteen
- * historical runs, so it is run over that history here rather than over a
- * fixture written to agree with it — the mistake #107 turned on.
- */
 interface PushRun {
   id: number;
   name: string;
@@ -37,12 +30,6 @@ interface PushRun {
 
 const HISTORY: PushRun[] = history;
 
-/**
- * The captured runs as the sweep sees them. `path` is derived from `name`
- * for the dead ones because that *is* what GitHub named them — a workflow it
- * could not parse is named after its own file — and from the workflow's
- * known file otherwise, which is all these tests need it for.
- */
 function asRunSummary(run: PushRun): RunSummary {
   return {
     id: run.id,
@@ -86,9 +73,6 @@ describe("the rule, run over the history that motivated it", () => {
   });
 
   it("flags the consecutive dead runs of to-tickets.yml against main", () => {
-    // The window #41 opens on: 2026-08-22 to 2026-08-24, `to-tickets.yml` unparseable, every push
-    // to `main` spawning a run that did nothing. Two PRDs were labelled `prd` in it and neither
-    // sliced; #25 closed green anyway.
     const window = HISTORY.filter(
       (each) => each.head_branch === "main" && each.name === ".github/workflows/to-tickets.yml",
     );
@@ -103,8 +87,6 @@ describe("the rule, run over the history that motivated it", () => {
   it("does not flag a run that failed with jobs, which is an ordinary red run", () => {
     const failedWithJobs = HISTORY.filter((each) => each.conclusion === "failure" && each.job_count > 0);
 
-    // Without these, "flags every failure" would pass every test above and be the wrong mechanism:
-    // a watchdog that fires on ordinary red runs is noise, and noise is how a signal stops arriving.
     expect(failedWithJobs.length).toBeGreaterThan(0);
     const flagged = new Set(
       deadLanes(HISTORY.map(asRunSummary)).flatMap((lane) => lane.runs.map((each) => each.id)),
@@ -113,8 +95,6 @@ describe("the rule, run over the history that motivated it", () => {
   });
 
   it("collapses the whole window into two lanes, not twenty-five signals", () => {
-    // `to-tickets.yml` and the `parse-probe.yml` used to diagnose it. Twenty-five issues would be
-    // this ticket's own failure with the sign flipped.
     const lanes = deadLanes(HISTORY.map(asRunSummary));
 
     expect(lanes).toHaveLength(2);
@@ -153,8 +133,6 @@ describe("executedNothing", () => {
   });
 
   it("does not flag a lane that declined the event, which GitHub lists as one skipped job", () => {
-    // The distinction the whole ticket is about. A lane whose job-level `if` was false is listed
-    // with a job, so the count is one; zero means the run could not start at all.
     expect(executedNothing(run({ conclusion: "skipped", jobCount: 1 }))).toBe(false);
   });
 
@@ -165,8 +143,6 @@ describe("executedNothing", () => {
 
 describe("deadLanes", () => {
   it("groups on the file, not the name, so a break and its fix land on one lane", () => {
-    // A workflow GitHub could not parse is named after its file; once fixed, it is named by its
-    // `name:`. Grouping on the name would file those as two different problems.
     const lanes = deadLanes([
       run({ id: 1, name: ".github/workflows/a.yml", path: ".github/workflows/a.yml", jobCount: 0 }),
       run({ id: 2, name: "Alpha", path: ".github/workflows/a.yml", jobCount: 0 }),
@@ -235,8 +211,6 @@ describe("the signal, for a lane that predates the split (or never split)", () =
   });
 
   it("says why a run named after its own file is the tell", () => {
-    // The lane's own path has no `-caller.yml` suffix, so it is the file GitHub could not parse a
-    // `name:` out of — the branch this pins still fires for exactly this shape of lane.
     expect(signalBody(lane)).toContain("could not parse");
   });
 
@@ -281,9 +255,6 @@ describe("the signal, for a post-split caller stub", () => {
   });
 
   it("is silent about an unparseable name, since a six-line stub almost always parses", () => {
-    // The caller carries its own declared name here, not `lane.path` — the post-split norm. The
-    // branch that explains an unparseable name has nothing to say about a stub that parsed fine,
-    // and the actual break is in the machinery named above instead (#331 instance 4).
     expect(signalBody(lane)).not.toContain("could not parse");
   });
 
@@ -299,8 +270,6 @@ describe("what a signal already said", () => {
     run({ id, htmlUrl: url(id), createdAt, jobCount: 0 });
 
   it("reads cited runs off their URLs, not off numbers in the prose", () => {
-    // A human writing "this has failed 33278011242 times" is not a citation, and a date in a
-    // comment is not one either: a loose match would silence the next genuine report.
     const text = `Most recent: [run 11](${url(11)})\nSee also 12, filed 2026-08-30T01:34:24Z.`;
 
     expect(citedRuns(text)).toEqual(new Set([11]));
@@ -330,8 +299,6 @@ describe("what a signal already said", () => {
 
 describe("retirement", () => {
   it("declares `No diff.` under a closing record, which is the grammar the close gate reads", () => {
-    // `signalBody` writes no `## Acceptance criteria`, so `No diff.` is the form `close-gate.py`
-    // accepts for every issue this mechanism opens — the two agree by construction (ADR-0099).
     const body = retirementBody(".github/workflows/to-tickets.yml", run({ id: 99, jobCount: 4 }));
 
     expect(body.split("\n")[0]).toBe("## Closing record");

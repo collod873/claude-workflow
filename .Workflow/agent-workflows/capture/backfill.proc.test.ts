@@ -5,15 +5,6 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { discoverTranscripts, lastTimestamp, runBackfill } from "./backfill";
 
-// backfill.ts is driven two ways here: in-process (direct function calls) for the branch-level
-// unit tests, and as a real CLI subprocess (`npx tsx backfill.ts <fixtureDir>` — same invocation
-// shape to-tickets.test.ts / audit-and-publish-cli.test.ts use for their own `.ts` entrypoints)
-// for the two acceptance-criteria tests, which are about the CLI's own directory-selection and
-// idempotency behaviour, not just the pure function underneath it. Every test points the script at
-// a throwaway fixture directory via `SESSION_CAPTURE_TRANSCRIPTS_DIR` / a CLI arg and throwaway
-// SESSION_CAPTURE_OUTPUT_DIR / SESSION_CAPTURE_LOG_PATH — never the real `~/.claude/projects/`,
-// `~/.claude/session-capture.log`, or `Knowledge-Base/raw/sessions/`.
-
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BACKFILL_PATH = join(REPO_ROOT, ".Workflow/agent-workflows/capture/backfill.ts");
 const HOOK_PATH = join(REPO_ROOT, ".claude/hooks/session-capture-hook.mjs");
@@ -29,7 +20,6 @@ function tmpDir(prefix: string): string {
   return dir;
 }
 
-/** Writes one fixture transcript at `<sourceDir>/<project>/<sessionId>.jsonl` — the two-level layout `~/.claude/projects/` itself uses. */
 function writeTranscript(sourceDir: string, project: string, sessionId: string, lines: unknown[]): string {
   const projectDir = join(sourceDir, project);
   mkdirSync(projectDir, { recursive: true });
@@ -70,7 +60,6 @@ function mdFiles(dir: string): string[] {
     .sort();
 }
 
-/** Normalizes the one field expected to legitimately differ between the two callers' output. */
 function stripDate(markdown: string): string {
   return markdown.replace(/^date: .*$/m, "date: <normalized>");
 }
@@ -125,9 +114,6 @@ describe("runBackfill — per-transcript failure handling", () => {
     const outputDir = tmpDir("backfill-out-");
     const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
     const path = writeTranscript(sourceDir, "project-a", "11111111-aaaa-bbbb-cccc-111111111111", FIXTURE_LINES);
-    // Still present in the directory listing (so it's discovered) but unreadable once opened —
-    // unlike deleting it outright, which would also remove it from readdirSync's own listing and
-    // never exercise the read-failure branch at all.
     chmodSync(path, 0o000);
 
     const outcomes = runBackfill({ sourceDir, outputDir, logPath });
@@ -200,12 +186,6 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
     const logPath = join(tmpDir("backfill-log-"), "session-capture.log");
     const hookOutputDir = tmpDir("backfill-hook-out-");
     const hookLogPath = join(tmpDir("backfill-hook-log-"), "session-capture.log");
-    // Ticket #138's flush step reads its own checkout/stamp paths from
-    // SESSION_CAPTURE_KB_DIR/SESSION_CAPTURE_KB_STAMP_PATH, defaulting to the real Knowledge-Base
-    // checkout and the real `~/.claude/kb-flush-stamp` when unset. This call's `cwd` is the real
-    // `REPO_ROOT` and its `project` doesn't resolve to a repo, so the flush step falls to its
-    // "elsewhere" branch and would touch either real default the moment the real stamp goes stale
-    // — both are overridden here for the same reason the two lines below them already are.
     const hookKbDir = tmpDir("backfill-hook-kb-");
     const hookKbStampPath = join(tmpDir("backfill-hook-kb-stamp-"), "stamp");
 
@@ -219,9 +199,6 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
     expect(backfillFile).toBeDefined();
     const backfillContent = readFileSync(join(outputDir, backfillFile), "utf8");
 
-    // The same fixture transcript, run through slice 1's own hook module directly (synchronously,
-    // the way `main()` runs when session-capture-hook.mjs is invoked as a CLI — see that file's
-    // own entrypoint guard) with the same sessionId/project/source backfill.ts derived.
     execFileSync("node", [HOOK_PATH, transcriptPath, sessionId, project, "backfill"], {
       cwd: REPO_ROOT,
       encoding: "utf8",
@@ -239,10 +216,6 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
     expect(hookFile).toBeDefined();
     const hookContent = readFileSync(join(hookOutputDir, hookFile), "utf8");
 
-    // Identical in shape: same frontmatter keys, same section headers, same extracted content —
-    // the one field expected to differ is `date` (backfill.ts derives it from the transcript's own
-    // last timestamp; the hook derives it from wall-clock "now" — see backfill.ts's module header)
-    // and is normalized out of both sides before comparing.
     expect(stripDate(backfillContent)).toBe(stripDate(hookContent));
   });
 });
@@ -268,7 +241,6 @@ describe("backfill.ts (CLI) — a second run over the same directory is a no-op"
 
     runBackfillCli(sourceDir, outputDir, logPath);
 
-    // Same files, same mtimes, same content — nothing was rewritten.
     const filesAfterSecond = mdFiles(outputDir);
     expect(filesAfterSecond).toEqual(filesAfterFirst);
     expect(filesAfterSecond.map((f) => statSync(join(outputDir, f)).mtimeMs)).toEqual(statsAfterFirst);
@@ -276,7 +248,6 @@ describe("backfill.ts (CLI) — a second run over the same directory is a no-op"
 
     const logAfterSecond = readFileSync(logPath, "utf8");
     expect((logAfterSecond.match(/skipped already-captured/g) ?? []).length).toBe(2);
-    // The second run added no further `captured` lines beyond the first run's two.
     expect((logAfterSecond.match(/\tcaptured /g) ?? []).length).toBe(2);
   });
 });

@@ -3,30 +3,6 @@ import { describe, expect, it } from "vitest";
 import { readWorkflows } from "./read-workflow";
 import { binSources, entrypointsOf, hookSources, laneSources, readRepoText, REPO_ROOT } from "./repo-sources";
 
-/**
- * The classes, not the instances.
- *
- * On 2026-09-02 seven defects were found one runner cycle at a time — ten to forty-five minutes to
- * *discover* each, about ninety seconds to fix. Every one of them lived in the thin YAML layer or
- * the wiring between lanes rather than in the TypeScript the unit suites already cover well, and
- * four of the seven were the same three shapes repeating:
- *
- * - **Parity drift.** `recover.yml` was the one lane that writes into a target and never installed
- *   the target's dependencies, so its regenerated `.claude/contract.json` reported "no test runner
- *   here" and PR #348 was red through Verify, Integrate and the fixer.
- * - **A condition that names one death.** `implement.yml`'s Recover dispatch and
- *   `recover-caller.yml`'s door both asked for `failure`, and a `timeout-minutes` kill reports
- *   `cancelled` — so the one death they most existed for reached neither.
- * - **A call shape that changes the verb.** `gh api` becomes a POST the moment a `-f` field is
- *   present, and POST on a workflow's runs endpoint is a 404 that `bin/close-ticket` read as "no
- *   run found" — every closing record it ever wrote said `Verify: unjudged`.
- *
- * A test per instance would have caught none of them, because each instance was written by someone
- * who already believed they had got it right. These sweep the whole estate for the shape instead,
- * so the *next* lane that gets one wrong fails here in under a second rather than on a runner in
- * forty-five minutes.
- */
-
 interface Step {
   name?: string;
   run?: string;
@@ -64,17 +40,18 @@ const workflows = readWorkflows<Workflow>().map(({ name, workflow, source }) => 
   steps: Object.values(workflow.jobs ?? {}).flatMap((job) => job.steps ?? []),
 }));
 
-/** Every non-test file under the lanes, plus everything in `bin/`. */
 const sourceFiles = () => [...laneSources(), ...binSources()];
 
 describe("a lane that writes into a target installs that target's dependencies", () => {
   /**
-   * Why an uninstalled target poisons the regenerated contract: `recover.yml`'s "Install target
-   * dependencies" step comment (PR #348).
+   * The ways a lane writes into a target: it regenerates the target's artifacts, lands an answer
+   * into it, or commits and pushes its own repair. The third was missing, and the fixer — which
+   * force-pushes to the target's branch — matched only because a *comment* in a module it imports
+   * happened to name `landAnswer`. Stripping that comment dropped the fixer out of this sweep
+   * silently, so the marker now names the mechanism instead of relying on prose that mentions it.
    */
-  const WRITES_TARGET = /regenerateArtifacts|landAnswer/;
+  const WRITES_TARGET = /regenerateArtifacts|landAnswer|commitAndPushAttempt/;
 
-  /** The text of one repo-relative or absolute `.ts` path, or `undefined` for a file that is not there. */
   function textOf(path: string): string | undefined {
     try {
       return readRepoText(path);
@@ -83,7 +60,6 @@ describe("a lane that writes into a target installs that target's dependencies",
     }
   }
 
-  /** Whether `entry`, or anything it imports from its own lane, regenerates or lands into a target. */
   function writesTarget(entry: string): boolean {
     const path = join(REPO_ROOT, entry);
     const source = textOf(path);
@@ -100,6 +76,7 @@ describe("a lane that writes into a target installs that target's dependencies",
   it("finds the lanes that write into a target, so this sweep is not vacuous", () => {
     expect(writers.map((w) => w.name).sort()).toContain("implement.yml");
     expect(writers.map((w) => w.name).sort()).toContain("recover.yml");
+    expect(writers.map((w) => w.name).sort()).toContain("fixer.yml");
   });
 
   it.each(writers.map((w) => w.name))("%s installs the target's dependencies before it writes", (name) => {
@@ -118,10 +95,6 @@ describe("a lane that writes into a target installs that target's dependencies",
 });
 
 describe("a step that reports a dead run covers every way a run dies", () => {
-  /**
-   * Why `cancelled()` belongs beside `failure()` on a step that rings a recovery lane: the comment
-   * on `implement.yml`'s "Tell Recover this run failed" step (#342).
-   */
   const notifiers = workflows.flatMap((w) =>
     w.steps
       .filter((step) => /event_type=[a-z-]*failed/.test(step.run ?? ""))
@@ -141,12 +114,6 @@ describe("a step that reports a dead run covers every way a run dies", () => {
     ).toBe(true);
   });
 
-  /**
-   * The same blindness one level down. A job killed by its own `timeout-minutes` reports
-   * `cancelled` to `needs.<job>.result`, so a downstream job that fans out over `result ==
-   * 'failure'` alone cannot see it — which is how a hung Verify reached the fixer through neither
-   * of its two doors.
-   */
   it("no job reacts to a sibling's failure without also reacting to its cancellation", () => {
     const blind = workflows.flatMap((w) =>
       Object.entries(w.workflow.jobs ?? {})
@@ -175,10 +142,6 @@ describe("a step that reports a dead run covers every way a run dies", () => {
 });
 
 describe("a read of the Actions API is a GET", () => {
-  /**
-   * Why a read route must take its query in the path is written where the fix landed:
-   * `fetch_verify_verdict`'s comment in `bin/close-ticket`.
-   */
   const offenders = sourceFiles().flatMap((file) => {
     const hits = [...file.source.matchAll(/gh[_ ]?api[\s\S]{0,400}?actions\/[\s\S]{0,400}?\)/gi)];
     return hits
@@ -197,17 +160,6 @@ describe("a read of the Actions API is a GET", () => {
 });
 
 describe("every dispatch wire has a sender and a receiver", () => {
-  /**
-   * A wire name declared on one side only is unreachable code that looks wired. Both of
-   * `verify.yml`'s jobs were dead this way until #145's seam audit, because the sender and the
-   * receiver each declared their own spelling and each slice tested against its own constant.
-   *
-   * Two sources of names, so neither side can be forgotten: every `*_DISPATCH_ACTION` /
-   * `*_DISPATCH_EVENT_TYPE` a `shared/` module declares (a sender with a constant), and every
-   * `repository_dispatch: types:` entry a workflow listens on (a receiver, whoever sends —
-   * `session-captured` is the capture hook's and `fixer-needed` is a `run:` step's, and neither
-   * has a TypeScript constant to be found under).
-   */
   const declared = [
     ...new Set([
       ...laneSources()
@@ -244,7 +196,6 @@ describe("every dispatch wire has a sender and a receiver", () => {
 });
 
 describe("a reusable workflow declares runner and machine_ref and runs on the runner", () => {
-  /** Holds every reusable workflow to the `runner` and `machine_ref` inputs ADR-0146 requires. */
   const reusable = workflows.filter(
     (w) => !Array.isArray(w.workflow.on) && (w.workflow.on as Record<string, unknown> | undefined)?.workflow_call !== undefined,
   );

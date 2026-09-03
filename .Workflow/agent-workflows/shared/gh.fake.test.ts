@@ -3,32 +3,6 @@ import { blockedByPath, GIT_REFS_PATH, issuePath, subIssuesPath } from "./gh-pat
 import { createFakeGh, createRecordingGh, simulateClaimRef, type FakeGhOptions } from "./gh.fake";
 import { parseIssueNumber } from "./issue-url";
 
-/**
- * The fake `gh` stands in for the real one in every publisher test, so what it answers has to
- * parse the way the real answers parse — a fake that prints a shape production never sees is a
- * green suite over a publisher that dies on its first real call (to-tickets run 32679981039 is
- * the record of what that costs).
- *
- * The fixtures below are what the real `gh` prints, recorded as shapes rather than values. Reads
- * were recorded live; the two writes were not re-run to record them (a create files an issue, a
- * dispatch starts a lane) and are taken from what the publisher has parsed on every real run.
- * Each is pushed through the same parse production applies — `parseIssueNumber`,
- * `fetchIssueId`'s `Number(raw.trim())`, `fetchBlockedByIds`' `JSON.parse(raw.trim())` — and the
- * fake's answer has to come out the same way.
- */
-
-/**
- * Recorded against `gh version 2.96.0 (2026-07-02)` on 2026-09-03.
- *
- * - `issue create`: the new issue's URL and a newline, nothing else (`shared/issue-url.ts`).
- * - `api <issuePath> --jq .id`: the REST id as a bare integer and a newline —
- *   `gh api repos/collod873/claude-workflow/issues/360 --jq .id` printed exactly this.
- * - `api <blockedByPath> --jq [.[].id]`: the raw endpoint answers an array of issue objects; the
- *   `--jq` production always sends projects it to a JSON array of integer ids. Issue #360 has no
- *   blockers, so the live recording is the empty array; `BLOCKED_BY_TWO` is the same projection
- *   over two blockers.
- * - `api repos/{owner}/{repo}/dispatches -f event_type=…`: HTTP 204, no body — an empty stdout.
- */
 const RECORDED = {
   issueCreate: "https://github.com/collod873/claude-workflow/issues/360\n",
   issueId: "533896463\n",
@@ -37,10 +11,8 @@ const RECORDED = {
   dispatch: "",
 } as const;
 
-/** `fetchIssueId`'s parse, as `publish-sub-issues.ts` applies it. */
 const parseId = (raw: string): number => Number(raw.trim());
 
-/** `fetchBlockedByIds`' parse and its integer check, as `publish-sub-issues.ts` applies them. */
 function parseBlockedByIds(raw: string): number[] {
   const parsed: unknown = JSON.parse(raw.trim());
   if (!Array.isArray(parsed) || !parsed.every((value) => Number.isInteger(value))) {
@@ -49,7 +21,6 @@ function parseBlockedByIds(raw: string): number[] {
   return parsed as number[];
 }
 
-/** A fake that has created `count` issues from #500, so ids and numbers exist to attach and wire. */
 function fakeWithIssues(count: number, options: Omit<FakeGhOptions, "firstIssueNumber"> = {}) {
   const fake = createFakeGh({ firstIssueNumber: 500, ...options });
   const created = Array.from({ length: count }, (_, i) => {

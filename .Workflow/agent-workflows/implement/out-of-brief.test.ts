@@ -5,12 +5,6 @@ import { runImplement } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
 import { trackerWith } from "./out-of-brief-tracker.fixture";
 
-/**
- * ADR-0042: an out-of-brief read is recorded on the standing tracker issue and nothing else. The
- * tracker the scenarios run against is `trackerWith` (`./out-of-brief-tracker.fixture.ts`).
- */
-
-/** A single module's current count across the fake tracker's body and comments — test-side helper, not the module under test's own aggregation. */
 function currentCount(
   issue: { body: string; comments: string[] },
   module: string,
@@ -19,14 +13,8 @@ function currentCount(
   return values.length > 0 ? Math.max(...values) : undefined;
 }
 
-/** The ordinary checkout, where the implementer's file changed — the tracker is the subject here, not the landing. */
 const fakeGit = () => checkoutReporting().git;
 
-/**
- * The `ImplementDeps` every scenario here builds — same inert filesystem, same ticket number, and
- * `failingTests` as a thunk. One builder rather than four copies: a one-token edit made them
- * identical enough for the clone gate to refuse them, and the duplication was the real finding.
- */
 function outOfBriefDeps(gh: Parameters<typeof runImplement>[0]["gh"], git: Parameters<typeof runImplement>[0]["git"], exec: Parameters<typeof runImplement>[0]["exec"]) {
   return {
     gh,
@@ -112,19 +100,16 @@ describe("no scenario in this file ever writes the dependency graph", () => {
   it("scans every recorded call on the fake GhExec across every scenario above and finds no `dependencies/blocked_by` write", async () => {
     const allCalls: string[][] = [];
 
-    // Scenario 1: recordOutOfBrief, twice, same module.
     const s1 = trackerWith();
     recordOutOfBrief(s1.gh, "shape");
     recordOutOfBrief(s1.gh, "shape");
     allCalls.push(...s1.calls);
 
-    // Scenario 2: recordOutOfBrief across two modules.
     const s2 = trackerWith();
     recordOutOfBrief(s2.gh, "shape");
     recordOutOfBrief(s2.gh, "close-gate");
     allCalls.push(...s2.calls);
 
-    // Scenario 3: runImplement with two out-of-brief reads of the same module.
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
     const s3 = trackerWith(ticket);
     const stage = createFakeStage(
@@ -137,7 +122,6 @@ describe("no scenario in this file ever writes the dependency graph", () => {
     await runImplement(outOfBriefDeps(s3.gh, fakeGit(), stage.exec));
     allCalls.push(...s3.calls);
 
-    // Scenario 4: runImplement with no out-of-brief reads at all.
     const s4 = trackerWith(ticket);
     const stage2 = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
     await runImplement(outOfBriefDeps(s4.gh, fakeGit(), stage2.exec));

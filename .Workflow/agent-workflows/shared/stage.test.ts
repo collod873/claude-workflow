@@ -8,13 +8,10 @@ import { createFakeStage } from "./stage.fake";
 import { checkpointPath, runStage, type StageExec } from "./stage";
 import { structuredOutput } from "./structured-output";
 
-/** A stage schema small enough to read in one line, and object-rooted like every real one. */
 const GREETING = structuredOutput(z.object({ greeting: z.string().min(1) }));
 
-/** What a `claude` run with `--json-schema` puts on the wire: the validated value, as JSON. */
 const RESPONSE = JSON.stringify({ greeting: "hi" });
 
-/** The value of the `--json-schema` flag on one recorded argv, or `undefined` if it carried none. */
 function jsonSchemaFlag(argv: string[]): string | undefined {
   const index = argv.indexOf("--json-schema");
   return index === -1 ? undefined : argv[index + 1];
@@ -58,16 +55,6 @@ describe("runStage", () => {
     expect(argv).toContain("Plain prompt, no vars.");
   });
 
-  /**
-   * The property this whole seam exists for. A stage that reached the CLI
-   * without `--json-schema` would be a stage answering in prose, which is the
-   * failure #147 removed — so it is asserted on `runStage` itself rather than
-   * on each stage's call site, because no call site can opt out.
-   *
-   * The root-`object` check is not decoration either: the API refuses any
-   * other root with `tools.N.custom.input_schema.type: Input should be
-   * 'object'`, a 400 that arrives only once a stage has already spawned.
-   */
   it("carries the stage's JSON Schema on the argv, object-rooted", async () => {
     const promptPath = writePrompt("Prompt.");
     const fake = createFakeStage(RESPONSE);
@@ -137,14 +124,6 @@ describe("runStage", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  /**
-   * Linux caps a single argv element at 128 KiB, independently of the much
-   * larger total-argv limit, and a prompt passed as `-p <prompt>` is one
-   * element. Lane 01's shaper inlines `CONTEXT.md`, `CODING_STANDARDS.md` and
-   * a reading list ADR-0030 deliberately left uncapped, so this is a limit the
-   * estate can reach, and reaches only for the ideas whose reading lists
-   * happened to be long.
-   */
   describe("a prompt too large for an argv element", () => {
     const huge = "x".repeat(32 * 4096 + 1);
 
@@ -155,9 +134,6 @@ describe("runStage", () => {
       await runStage(promptPath, {}, fake.exec, GREETING, { promptViaStdin: true, stage: "test" });
 
       expect(fake.stdins[0]).toBe(huge);
-      // The schema still rides along — it is a flag, not part of the prompt,
-      // so the transport the prompt takes never decides whether a stage is
-      // schema-checked.
       expect(fake.calls[0]).toEqual([
         "-p",
         "--dangerously-skip-permissions",
@@ -167,9 +143,6 @@ describe("runStage", () => {
     });
 
     it("is refused by name when the stage did not, rather than dying on an errno", async () => {
-      // `spawn claude E2BIG` names neither the prompt nor the size, and it
-      // arrives from inside `child_process` rather than from the stage that
-      // outgrew the limit.
       const promptPath = writePrompt(huge);
       const fake = createFakeStage(RESPONSE);
 
@@ -191,15 +164,6 @@ describe("runStage", () => {
   });
 });
 
-/**
- * `StageOptions.stage` opts a call into checkpointing (and raw-response
- * preservation, covered elsewhere) — every test above leaves it unset, and
- * behaves exactly as it always has, which is the point of it being opt-in.
- * Every test here uses its own `stage` name so leftover checkpoint files
- * from one test can never be mistaken for another's — they'd only collide if
- * both the stage name *and* the substituted prompt matched, and these tests
- * mostly reuse the same prompt text.
- */
 describe("runStage checkpointing (StageOptions.stage)", () => {
   const checkpointTestDirs: string[] = [];
   afterEach(() => {
@@ -303,26 +267,10 @@ describe("runStage checkpointing (StageOptions.stage)", () => {
   });
 });
 
-/**
- * The guard on `isolate-checkpoints.setup.ts` being wired into `vitest.config.ts`'s `setupFiles`,
- * written as the thing that went wrong rather than as an assertion about the config file — which
- * is in the immutable set and so cannot be read by an acceptance test anyway (ADR-0120).
- *
- * #299: `ratify/ratifier.test.ts` had two `it` blocks whose fixtures rendered a byte-identical
- * ratifier prompt. At one commit that is one checkpoint key and one `ratifier.json`, so whichever
- * ran last wrote the file and the other read that verdict back on the next run — with its own fake
- * `StageExec` never called and every in-memory collaborator it injected looking innocent. The two
- * tests below are that pair, deliberately: same stage, same prompt, different canned answers.
- *
- * They fail if the setup file is unwired, or if its isolation is ever weakened back to once per
- * *file* — per-file is not enough, because two tests sharing a prompt is the normal case for a test
- * file that drives one lane against one set of fixtures.
- */
 describe("two tests in one file that render the same prompt for the same stage", () => {
   const SHARED_STAGE = "shared-prompt-across-tests";
   const SHARED_PROMPT = "One prompt, rendered identically by both tests below. No vars.";
 
-  /** Runs the shared stage with its own answer, and reports whether the model was spawned. */
   async function runShared(greeting: string): Promise<{ spawned: boolean; value: unknown }> {
     const dir = mkdtempSync(join(tmpdir(), "shared-prompt-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));

@@ -9,7 +9,6 @@ import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
 
-/** The blocked-by edges `calls` wired — every `-F` write to a `dependencies/blocked_by` path. */
 function blockedByWrites(calls: string[][]): string[][] {
   return calls.filter(
     (args) =>
@@ -20,7 +19,6 @@ function blockedByWrites(calls: string[][]): string[][] {
   );
 }
 
-/** The body of the first issue publishing `plan` under the PRD files — what the render tests read. */
 function publishedBody(plan: Slice[]): string {
   const fake = createFakeGh();
 
@@ -67,20 +65,6 @@ describe("sliceAndPublish", () => {
     const wireCalls = blockedByWrites(fake.calls);
     expect(wireCalls).toHaveLength(3);
 
-    // Building the path through gh-paths.ts on both sides (production and
-    // this assertion) would make a path comparison tautological — see the
-    // gh-paths.ts header. So this one assertion pins both the endpoint path
-    // and the `-F issue_id=<n>` value as hardcoded literals instead of
-    // interpolating `blockedByPath(...)` / `root.id`: with the default
-    // firstIssueNumber (100), Root is #100 with REST id 100007 and "Depends
-    // on root" is #101.
-    //
-    // The flag is `-F` and that is the whole point of pinning it. This
-    // assertion said `-f` and called it "the actual wire string GitHub's
-    // blocked_by write accepts" — it was not. `-f` sends a string, both
-    // endpoints take a JSON integer, and to-tickets run 32679981039 is
-    // where the real API said so (HTTP 422) after the fake had accepted it
-    // for every run before that.
     expect(wireCalls).toContainEqual([
       "api",
       "repos/{owner}/{repo}/issues/101/dependencies/blocked_by",
@@ -123,23 +107,14 @@ describe("sliceAndPublish", () => {
 
   it("fails read-back verification, naming the exact missing edge, when a wired edge never lands", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
-    // firstIssueNumber defaults to 100, so Root -> #100 and Depends on root -> #101 deterministically.
     const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
     expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
       /slice 2 \("Depends on root"\).*blocked by slice 1 \("Root"\)/,
     );
 
-    // The write was still attempted and recorded — only the read-back is missing the edge.
     expect(blockedByWrites(fake.calls)).toHaveLength(1);
   });
-
-  // The three cases that used to sit here — no block, a block that isn't
-  // JSON, a block the schema refuses — were about a response this module no
-  // longer sees. It is handed a `Plan`, which the API's tool-input validation
-  // and zod have both already accepted; the response-shaped refusals live in
-  // `shared/structured-output.test.ts`, at the seam that owns them. What is
-  // left below is this module's own refusal: graph shape.
 
   it("refuses an out-of-range dependsOn, naming the offending slice, with zero argv recorded", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Points past the end", dependsOn: [7] })];
@@ -235,19 +210,8 @@ describe("sliceAndPublish", () => {
   });
 });
 
-/**
- * Lane 03's hand-off to lane 04. Nothing sent this dispatch until #145's seam audit: #167 built
- * `implement.yml`'s receiving end and recorded that the send belonged to whichever ticket owned
- * this file, and no ticket ever claimed it — so 26 published tickets sat waiting for a dispatch
- * that had no sender. #201 rewires the send again: lane 03 asks lane 04 to author each slice's
- * acceptance tests, naming which slices are ready, rather than telling lane 05 directly — see
- * `dispatchReadySlices`'s header for why the order matters.
- */
 describe("sliceAndPublish asks lane 04 to author acceptance tests for every published slice", () => {
   it("sends one acceptance-wanted dispatch per published slice, naming its issue", () => {
-    // One root and two dependents: a plan `validatePlan` accepts, since it now refuses more than
-    // one unblocked root (#240). What this test is about is the dispatch per published slice, so
-    // the shape only has to be three slices and legal.
     const plan = [
       slice({ title: "Root" }),
       slice({ title: "Also depends on root", dependsOn: [1] }),
@@ -280,11 +244,6 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
     expect(fake.dispatches[1].payload).toEqual({ issue: String(published[1].number), ready: "0" });
   });
 
-  /**
-   * Ordering, not merely "both happened". A dispatch sent before the read-back would start an
-   * implementer against a graph that then failed verification — and `verifyBlockedByGraph` throws,
-   * so nothing downstream would ever learn the run it started was against a graph nobody accepted.
-   */
   it("dispatches only after the blocked-by read-back has verified the graph", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
     const fake = createFakeGh();
@@ -302,12 +261,7 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
     expect(firstDispatch).toBeGreaterThan(lastReadBack);
   });
 
-  // #179: publish-time dispatch is one *caller* of the readiness predicate rather than a second
-  // implementation of it — and behaviour alone cannot tell the two apart, since at publish time
-  // they agree by construction. This is what the agreement looks like.
   it("gives the same answer the predicate gives for the state a publish is in", () => {
-    // The mix this test needs is ready alongside not-ready, which one root and two dependents gives
-    // just as well as two roots did — and `validatePlan` now refuses the two-root version (#240).
     const plan = [
       slice({ title: "Root" }),
       slice({ title: "Blocked", dependsOn: [1] }),
@@ -317,8 +271,6 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
 
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
-    // The same graph, stated independently of the publisher, in the state a publish leaves it:
-    // every issue open, nothing merged, nothing claimed.
     const states: SliceState[] = [
       { number: published[0].number, blockedBy: [], delivery: "open", started: false },
       { number: published[1].number, blockedBy: [published[0].number], delivery: "open", started: false },

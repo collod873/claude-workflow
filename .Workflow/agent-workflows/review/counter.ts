@@ -2,100 +2,50 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
+import { SignalIssueSchema } from "../shared/signal-issue-schema";
 
-/**
- * Lane 07's counter (PRD #145, move 7a;
- * [ADR-0037](../../../docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)):
- * sizes the refuter fleet by what the owner does with a surviving finding,
- * never by the refuter's own kill rate. Two-sided, and deliberately
- * asymmetric — **grow** is cheap to be wrong about (a prompt edit), so it
- * fires on thin evidence; **delete** is expensive to be wrong about (a
- * filter quietly gone), so it needs a much larger count. Both directions
- * only ever `gh issue create` — this counter never closes, reopens, or
- * edits anything, the same shape `watchdog/bypass-counter.ts` already has
- * for a one-sided counter.
- *
- * **Grow reads the tracker directly.** A lane-07 finding always reaches the
- * owner as an issue (never a notification), so its fate — closed
- * `not_planned`, or left open past the five-day expiry — is already on the
- * record. This module reads it fresh every sweep, the same "recomputes,
- * stores nothing" shape `bypass-counter.ts` has.
- *
- * **Delete does not.** A finding the refuter refuses is killed silently by
- * design (ADR-0035) — it never becomes an issue, so nothing about it is
- * tracker evidence the way a survivor's fate is. That count lives only in
- * the memory of whatever called the refuter — `review.ts`'s chain, once
- * wired — so this module takes it as `RefuterTally` rather than inventing a
- * second, undocumented place to log it. Sizing the delete trigger is still
- * this module's job; counting up to it is the caller's, exactly as it
- * already is in memory the moment the refuter fleet finishes a run.
- */
-
-/** [ADR-0037](../../../docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md): 3 false alarms proposes a second refuter. */
 export const GROW_THRESHOLD = 3;
 
-/** ADR-0037: 20 findings reaching the refuter with zero ever refuted proposes the fleet's deletion. */
 export const DELETE_THRESHOLD = 20;
 
-/** ADR-0037 §8: "left untouched" — 2.5× the longest this repo has ever taken to close an issue. */
 export const FALSE_ALARM_EXPIRY_DAYS = 5;
 const FALSE_ALARM_EXPIRY_MS = FALSE_ALARM_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
-/** The label the code that files a lane-07 finding issue is expected to apply. */
 export const FINDING_LABEL = "lane-07-finding";
 
-/** One lane-07 finding issue, as `gh issue list --json` returns it. */
 export interface FindingIssue {
   number: number;
   state: string;
-  /** GitHub's own reason for a close — `COMPLETED`, `NOT_PLANNED`, or absent for an open issue. */
   stateReason?: string;
   createdAt: string;
 }
 
-/**
- * How many findings the refuter has read, and how many of those it ever
- * refused — the delete trigger's own count. The caller's to produce (see
- * this file's own doc comment); this module only asks whether it clears
- * the threshold.
- */
 export interface RefuterTally {
   reached: number;
   refuted: number;
 }
 
-/** `true` when `stateReason` is GitHub's spelling of "this will not be done", case-insensitively. */
 function isNotPlanned(stateReason: string | undefined): boolean {
   return (stateReason ?? "").toUpperCase() === "NOT_PLANNED";
 }
 
-/**
- * Whether `issue` is a false alarm: a surviving finding the owner closed
- * `not_planned`, or one he left open past the five-day expiry.
- * `completed` — a finding he acted on — is never a false alarm, however
- * long it took.
- */
 export function isFalseAlarm(issue: FindingIssue, now: Date): boolean {
   if (issue.state.toUpperCase() === "CLOSED") return isNotPlanned(issue.stateReason);
   return now.getTime() - new Date(issue.createdAt).getTime() >= FALSE_ALARM_EXPIRY_MS;
 }
 
-/** How many of `issues` are false alarms as of `now`. */
 export function falseAlarmCount(issues: FindingIssue[], now: Date): number {
   return issues.filter((issue) => isFalseAlarm(issue, now)).length;
 }
 
-/** Whether `count` clears the grow trigger. */
 export function shouldProposeGrow(count: number): boolean {
   return count >= GROW_THRESHOLD;
 }
 
-/** Whether `tally` clears the delete trigger — the refuter has never once refused anything. */
 export function shouldProposeDelete(tally: RefuterTally): boolean {
   return tally.reached >= DELETE_THRESHOLD && tally.refuted === 0;
 }
 
-/** One direction's signal issue, as read back off the tracker to decide whether to re-propose. */
 export interface SignalIssue {
   number: number;
   body: string | null;
@@ -103,12 +53,10 @@ export interface SignalIssue {
   stateReason?: string | null;
 }
 
-/** A hidden marker recording the count a proposal was filed at, namespaced per direction so the two never collide. */
 export function countMarker(direction: "grow" | "delete", count: number): string {
   return `<!-- lane-07-counter:${direction}:${count} -->`;
 }
 
-/** The count recorded on a `direction` marker inside `body`, or `undefined` if it carries none. */
 export function markedCount(body: string, direction: "grow" | "delete"): number | undefined {
   const match = body.match(new RegExp(`<!-- lane-07-counter:${direction}:(\\d+) -->`));
   return match ? Number(match[1]) : undefined;
@@ -150,7 +98,6 @@ export function deleteIssueBody(tally: RefuterTally): string {
   ].join("\n");
 }
 
-/** One direction's outcome — mirrors `watchdog/bypass-counter.ts`'s `Outcome.code`. */
 export type DirectionOutcome =
   | { code: "below-threshold" }
   | { code: "already-proposed"; issue: number }
@@ -165,24 +112,11 @@ export interface CounterOutcome {
   delete: DirectionOutcome;
 }
 
-/**
- * Every issue carrying a `direction` marker, whatever count it was filed at
- * — the evidence `evaluateProposal` needs to decide whether a fresh
- * proposal would repeat one the owner has already ruled on.
- */
 function carriersFor(existing: SignalIssue[], direction: "grow" | "delete"): SignalIssue[] {
   const prefix = `<!-- lane-07-counter:${direction}:`;
   return existing.filter((issue) => (issue.body ?? "").includes(prefix));
 }
 
-/**
- * Decides, and if warranted files, one direction's proposal — never closes
- * or reopens anything. Shared between `grow` and `delete` because the
- * "already open / declined for good / declined but grown / never asked"
- * shape is the same lookup either direction, just against a differently
- * namespaced marker (`watchdog/bypass-counter.ts`'s own logic, generalised
- * to two directions instead of one).
- */
 function evaluateProposal(options: {
   gh: GhExec;
   direction: "grow" | "delete";
@@ -233,12 +167,6 @@ const FindingIssueSchema = z.object({
   createdAt: z.string(),
 });
 
-const SignalIssueSchema = z.object({
-  number: z.number(),
-  body: z.string().nullable(),
-  state: z.string(),
-  stateReason: z.string().nullable().optional(),
-});
 
 function readFindingIssues(gh: GhExec): FindingIssue[] {
   const raw = gh([
@@ -258,7 +186,6 @@ function readFindingIssues(gh: GhExec): FindingIssue[] {
     .map((issue) => ({ ...issue, stateReason: issue.stateReason ?? undefined }));
 }
 
-/** Every issue this repo carries, open or closed — read once and reused for both directions' markers. */
 function readSignals(gh: GhExec): SignalIssue[] {
   const raw = gh(["issue", "list", "--state", "all", "--limit", "200", "--json", "number,body,state,stateReason"]);
   return SignalIssueSchema.array().parse(JSON.parse(raw));
@@ -266,9 +193,7 @@ function readSignals(gh: GhExec): SignalIssue[] {
 
 export interface CounterOptions {
   gh: GhExec;
-  /** How many findings the refuter has read and refused since evidence began — see `RefuterTally`'s own doc comment for why this is a parameter rather than fetched here. */
   tally: RefuterTally;
-  /** Who a filed proposal is assigned to, so it notifies rather than sits in a list. */
   assignee: string;
   now?: Date;
   log?: (line: string) => void;

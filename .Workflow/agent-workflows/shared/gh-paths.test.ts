@@ -27,19 +27,6 @@ import {
   workflowRunsPathMatcher,
 } from "./gh-paths";
 
-/**
- * `gh-paths.ts` is the module every REST path this pipeline sends goes through, and the module
- * the `repos/{owner}/{repo}` lint selector in `eslint.config.js` points at. What it promises is
- * that a builder and its matcher are two views of the same segments: the matcher captures back
- * exactly the id the builder rendered, and matches nothing built from other segments — not a
- * sibling builder's path, not the same path with one segment changed.
- *
- * The wrong paths below are derived from the builders' own output (`replace`) rather than typed
- * out, because a typed `repos/{owner}/{repo}/…` template literal is the thing the selector forbids
- * in this file too.
- */
-
-/** Every builder that takes an issue number or a REST id, paired with the matcher that reads it back. */
 const NUMBERED = [
   { name: "issuePath", build: issuePath, matcher: issuePathMatcher, segment: "issues" },
   { name: "subIssuesPath", build: subIssuesPath, matcher: subIssuesPathMatcher, segment: "sub_issues" },

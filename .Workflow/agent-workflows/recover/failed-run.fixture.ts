@@ -9,21 +9,15 @@ import { githubHoldingClaims, type ClaimHost } from "../shared/claim-host.fixtur
  * @fixture Reached only from the suite, by design.
  */
 export interface FailedRunOptions {
-  /** Artifact names on the run — `implementer-answer-<n>` is the one Recover reads a ticket off. */
   artifacts?: string[];
-  /** The run's log, for the `implementing #<n>` fallback. */
   logLine?: string;
-  /** Comment bodies already on the ticket, oldest first. */
   comments?: string[];
-  /** A branch some run already claimed. */
   existingClaimBranch?: string;
   prCreateUrl?: string;
 }
 
 export function failedRunWith(options: FailedRunOptions = {}): ClaimHost {
   return githubHoldingClaims({
-    // GitHub records no creation for the standing claim, so a claim test reads it as still held
-    // rather than ageing it against the wall clock.
     existingClaim: options.existingClaimBranch ? { branch: options.existingClaimBranch, createdAt: null } : undefined,
     prCreate: options.prCreateUrl,
     answer: (args) => {

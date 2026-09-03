@@ -3,7 +3,6 @@ import type { StageExec } from "../shared/stage";
 import { refusalNamesReason, runRefuter, survivesRefutation, type RefuterVerdict } from "./refuter";
 import type { Finding } from "./structural-refusal";
 
-
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 @@ -10,3 +10,4 @@ src/widget.ts:12
 +export function widget() {
@@ -55,7 +54,6 @@ describe("survivesRefutation", () => {
   });
 });
 
-/** A `StageExec` stand-in that answers with a canned verdict per call and records every prompt it saw. */
 function fakeExec(answers: RefuterVerdict[]): { exec: StageExec; prompts: string[] } {
   const prompts: string[] = [];
   let call = 0;
