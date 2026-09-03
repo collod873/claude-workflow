@@ -18,22 +18,22 @@ export interface RepoFile {
   source: string;
 }
 
-function skipDir(name: string): boolean {
+function skipGenerated(name: string): boolean {
   return (
-    name === "node_modules" ||
-    name === "__pycache__" ||
-    name === "worktrees" ||
-    name.endsWith(".fixtures") ||
-    name === ".git"
+    name === "node_modules" || name === "__pycache__" || name === "worktrees" || name === "_" || name === ".git"
   );
 }
 
-function walk(dir: string): string[] {
+function skipDir(name: string): boolean {
+  return skipGenerated(name) || name.endsWith(".fixtures");
+}
+
+function walk(dir: string, skip: (name: string) => boolean): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) {
-      if (!skipDir(entry)) out.push(...walk(path));
+      if (!skip(entry)) out.push(...walk(path, skip));
     } else {
       out.push(path);
     }
@@ -43,11 +43,16 @@ function walk(dir: string): string[] {
 
 const walked = new Map<string, RepoFile[]>();
 
-function filesUnder(dir: string): RepoFile[] {
-  let files = walked.get(dir);
+function filesUnder(dir: string, skip: (name: string) => boolean = skipDir): RepoFile[] {
+  const key = `${dir}\0${skip.name}`;
+  let files = walked.get(key);
   if (files === undefined) {
-    files = walk(dir).map((path) => ({ path, relative: relative(REPO_ROOT, path), source: readFileSync(path, "utf8") }));
-    walked.set(dir, files);
+    files = walk(dir, skip).map((path) => ({
+      path,
+      relative: relative(REPO_ROOT, path),
+      source: readFileSync(path, "utf8"),
+    }));
+    walked.set(key, files);
   }
   return files;
 }
@@ -66,8 +71,8 @@ export function hookSources(): RepoFile[] {
   return filesUnder(HOOKS_DIR).filter((file) => !isTest(file));
 }
 
-export function sourcesUnder(...relativeDirs: string[]): RepoFile[] {
-  return relativeDirs.flatMap((dir) => filesUnder(join(REPO_ROOT, dir)));
+export function everySourceUnder(...relativeDirs: string[]): RepoFile[] {
+  return relativeDirs.flatMap((dir) => filesUnder(join(REPO_ROOT, dir), skipGenerated));
 }
 
 export function readRepoText(path: string): string {

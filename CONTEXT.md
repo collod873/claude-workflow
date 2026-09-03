@@ -1,6 +1,6 @@
 # Workflow
 
-How Claude Code work gets specified, sliced, built, verified and closed — studied across the
+How Claude Code work gets specified, sliced, built, verified and closed, studied across the
 systems that have tried to do it, and designed toward the one that finally does. The domain here
 is *the machinery itself*, not any project it ships.
 
@@ -19,7 +19,7 @@ occurrence is an incident, not a failure.
 _Avoid_: problem, issue, bug, antipattern
 
 **Durable win**:
-A mechanism that was kept, ported, or independently re-derived across an era boundary — surviving
+A mechanism that was kept, ported, or independently re-derived across an era boundary, surviving
 the system that invented it. Numbered W1–W6.
 _Avoid_: pattern, best practice, lesson, learning
 
@@ -36,7 +36,7 @@ from what the owner does repeatedly, not from what a system was designed to do.
 _Avoid_: requirement, principle, rule, guideline
 
 **Proposal**:
-A candidate addition — a skill, a hook, a connector, an era — scored against the constraints. One
+A candidate addition (a skill, a hook, a connector, an era) scored against the constraints. One
 that fails a constraint is a different goal, not a smaller version of this one.
 _Avoid_: idea, feature, request
 
@@ -49,7 +49,7 @@ _Avoid_: upkeep, maintenance, hygiene
 A place the design requires the owner because the record shows automating it makes the result
 measurably worse. The bar is evidence, not discomfort: a judgement agents have actually been
 measured getting wrong, not one that merely feels like a human's. Named as a boundary rather than a
-gap — it is not work waiting for a mechanism. `GOAL.md` §2 holds the surviving list, and reducing
+gap; it is not work waiting for a mechanism. `GOAL.md` §2 holds the surviving list, and reducing
 their number is the whole project.
 _Avoid_: human-in-the-loop, manual step, gap, checkpoint, where the human stays
 
@@ -57,7 +57,7 @@ _Avoid_: human-in-the-loop, manual step, gap, checkpoint, where the human stays
 
 **Gate**:
 Something that refuses an action at the moment it is attempted. Distinct from anything that reports
-afterward, because a gate needs no reader — only a trigger.
+afterward, because a gate needs no reader, only a trigger.
 _Avoid_: check, validator, guardrail, lint
 
 **Fail-open**:
@@ -79,7 +79,7 @@ _Avoid_: trigger, automation, orchestrator, glue
 **Lens**:
 A standing reader that files issues about a class of evidence nobody asked it to look at. Distinct
 from a gate because it refuses nothing, and from a cadence because it fires on the event that makes
-its read non-vacuous — never on a clock.
+its read non-vacuous, never on a clock.
 _Avoid_: audit, scan, monitor, watcher
 
 **Refusal**:
@@ -88,14 +88,14 @@ free when it fires, so it can be cheap and unapologetic where a late gate cannot
 _Avoid_: precondition, guard, validation, check
 
 **Venue**:
-A place a gate can fire, defined by its latency budget and by what it can see from there — inside an
+A place a gate can fire, defined by its latency budget and by what it can see from there: inside an
 agent's turn, at turn end, on push, in Actions, overnight. Named separately from Gate because the
 same logic is a different mechanism in a different venue: what a venue costs is not the check but
 the repair it makes possible, and the earliest venue is always the cheapest repair.
 _Avoid_: layer, stage, tier, level, hook point
 
 **Binds**:
-What one lane forces on the design of another — a venue's budget, a bypassability, a cap. The
+What one lane forces on the design of another: a venue's budget, a bypassability, a cap. The
 sixth field of a shipped lane's contract, and the only one that is not about the lane's own
 behaviour. It exists because a fact can be load-bearing on a lane that does not exist yet without
 being that lane's trigger, refusal, cost or coverage, and a collapse that kept only those four
@@ -104,7 +104,7 @@ _Avoid_: constraint (reserved for C1–C7), requirement, dependency, contract
 
 **Gate bypass**:
 A commit that reached `main` carrying a tree the gauntlet refuses. Defined by where the red *landed*,
-not by how it got past — `--no-verify`, a clone that never ran `npm ci`, and a commit made outside a
+not by how it got past: `--no-verify`, a clone that never ran `npm ci`, and a commit made outside a
 session are one event, because they are indistinguishable from trunk's side and identical in
 consequence. A red tree inside a session is **not** one: mid-task red is a legitimate state, and only
 survival to trunk is harm. See
@@ -121,7 +121,7 @@ _Avoid_: backlink, cross-reference, index, tombstone
 
 **Ratifier**:
 The stage that turns a finding which cleared the two-site gate into something the repository
-enforces — a lint rule with every site it flags fixed in the same branch, a `CODING_STANDARDS.md`
+enforces: a lint rule with every site it flags fixed in the same branch, a `CODING_STANDARDS.md`
 entry, or a reasoned rejection. Named for the act rather than the artifact because the three
 outcomes are one decision made in a forced order. Its output is a pull request that lands through
 the same judged door every implementation pull request uses; **ratified means merged**, and the
@@ -139,7 +139,7 @@ _Avoid_: dry run, smoke test, rule validation, self-check
 
 **Counter**:
 A lens that spends no model. It names an event that happens on its own, a count at which it acts, the
-issue it files at that count, and the action that issue proposes — four fields, and a thing missing
+issue it files at that count, and the action that issue proposes: four fields, and a thing missing
 any of them is not one. Distinguished from Lens only by cost, and from a Sizing measurement by having
 an action at all. See
 [ADR-0064](docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md).
@@ -156,7 +156,7 @@ _Avoid_: number to watch, metric, KPI, health check
 
 **Immutable set**:
 The files a pull request may never change: the test runner's config and `.github/`. Closed rather
-than approximate — each entry is there because omitting it reopens the same hole one level up, where
+than approximate: each entry is there because omitting it reopens the same hole one level up, where
 the thing that judges becomes reachable from the thing being judged. It carries **no exemption**,
 which is what leaves nothing for an identity to authenticate. An acceptance test is not in it: since
 #360 it lives beside its subject, and what a pull request may do to one is a rule on the line
@@ -165,16 +165,16 @@ which is what leaves nothing for an identity to authenticate. An acceptance test
 _Avoid_: protected paths, frozen files, locked directory, path filter
 
 **Check contract**:
-`.claude/contract.json` — the command slots naming what green means in one repo, generated by
+`.claude/contract.json`: the command slots naming what green means in one repo, generated by
 probing it rather than written by hand, and executed by `bin/gauntlet` at every venue. Called a
 contract rather than a config because it is the input a runner runs, not prose describing one. Its
-`why` names a declaration site, never a measurement — a
+`why` names a declaration site, never a measurement: a
 measurement in it is a second, unwatched copy of a fact the runner already holds. See
 [ADR-0056](docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md).
 _Avoid_: the contract (bare), manifest, config, gate definition
 
 **Timing baseline**:
-The measured wall time a venue's budget is derived from — per check, ratcheted one way, with a 25%
+The measured wall time a venue's budget is derived from: per check, ratcheted one way, with a 25%
 deadband in both directions. Named a baseline rather than a budget because a budget is declared and
 this is not: it is what the last green run actually cost here, so an enrolled repository inherits
 its own history instead of a figure written for someone else's suite. It also decides which venue a
@@ -185,7 +185,7 @@ _Avoid_: budget, timeout, SLA, performance target
 
 **Stub**:
 The six lines a second repo carries in place of a lane: a trigger and a `uses:` pointing at the
-reusable workflow here. Defined by what it lacks — a stub has no content, which is the whole reason
+reusable workflow here. Defined by what it lacks: a stub has no content, which is the whole reason
 it cannot drift and the reason installing is a call rather than a copy. See
 [ADR-0055](docs/adr/0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md).
 _Avoid_: shim, wrapper, caller, vendored copy
@@ -197,14 +197,14 @@ _Avoid_: cache, savepoint, handoff, artifact
 ### The pipeline
 
 **Lane**:
-A named group of edges a work item passes through in order, holding one kind of judgement — shaping,
+A named group of edges a work item passes through in order, holding one kind of judgement: shaping,
 specifying, slicing, building. Numbered because the order is real: a work item cannot skip one.
 _Avoid_: stage, phase, step, pipeline segment
 
 **Idea**:
 The owner's own words about work that might be worth doing, filed as an issue and never edited
 afterward. It is the only thing in the system a human originates, and it is recorded rather than
-improved — the raw wording is what every later interpretation is checked against.
+improved: the raw wording is what every later interpretation is checked against.
 _Avoid_: request, feature, suggestion, ask
 
 **Defect**:
@@ -216,12 +216,12 @@ _Avoid_: bug, issue, problem, regression
 **Decision sheet**:
 What shaping hands the owner: the idea restated as work, the prior art found, and each decision the
 work needs with a recommended answer and the alternatives rejected. Its purpose is to be reacted to
-rather than read — approving a bare idea asks the owner to originate an opinion, and the sheet is
+rather than read: approving a bare idea asks the owner to originate an opinion, and the sheet is
 what converts that into overriding two lines. Accepting it is what files the rulings on it.
 _Avoid_: proposal, analysis, brief, summary, report
 
 **Assumption mark**:
-A flag on a decision, carrying the name of the thing that moves when the answer flips — another
+A flag on a decision, carrying the name of the thing that moves when the answer flips: another
 decision on the same sheet, or an existing artifact: an ADR, a shipped lane's contract, a file. A
 mark that names nothing is not a mark. Only load-bearing guesses are marked; a recommendation that
 can be overridden in place without disturbing anything else is not one. The mark is also the first
@@ -232,17 +232,17 @@ _Avoid_: caveat, note, uncertainty, open question
 **Decided context**:
 The normalised object every door into specifying produces: the owner's words verbatim, the decisions
 with their reasons, the rulings already filed, the boundaries, and the guesses still open. It is what
-makes three different doors one lane — they differ in where that context already lives, never in what
+makes three different doors one lane: they differ in where that context already lives, never in what
 the spec author needs, so the difference is a collector rather than a second prompt.
 _Avoid_: payload, handoff, input, brief
 
 **Spec**:
-The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue — a spec
+The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue; a spec
 that lives in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
 **Open question**:
-A numbered question in a spec, naming something specifying could not settle — intent it would
+A numbered question in a spec, naming something specifying could not settle: intent it would
 otherwise have invented, a ruling it was handed that is wrong or conflicts with another, or a guess
 the sheet marked and no ruling ever recorded. It is the only form those three take, and the count of
 unanswered ones is what holds work back: at zero the spec dispatches, and a non-zero count holds it
@@ -259,7 +259,7 @@ session. Vertical is the whole point: a horizontal cut through one layer is not 
 _Avoid_: task, chunk, story, unit
 
 **Ticket**:
-A published slice — a child issue carrying acceptance criteria, file claims and native blocked-by
+A published slice: a child issue carrying acceptance criteria, file claims and native blocked-by
 edges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.
 _Avoid_: issue, sub-issue, card, item
 

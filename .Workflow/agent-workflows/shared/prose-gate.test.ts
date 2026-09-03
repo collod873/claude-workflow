@@ -8,6 +8,17 @@ describe("code in this repo carries no prose (#360)", () => {
     expect(sources.filter((file) => file.relative.endsWith(".ts")).length).toBeGreaterThan(100);
   });
 
+  it("reaches the corners a gate scoped to extensions and lane sources would miss", () => {
+    const covered = new Set(sources.map((file) => file.relative));
+
+    expect(covered).toContain(".husky/pre-push");
+    expect([...covered].filter((path) => path.includes(".fixtures/")).length).toBeGreaterThan(0);
+  });
+
+  it("reads an extensionless husky hook as the shell it is", () => {
+    expect(proseIn({ path: "", relative: ".husky/pre-push", source: "# a sentence\nnpm run check\n" })).toHaveLength(1);
+  });
+
   it("finds a planted sentence in each language it claims to read", () => {
     expect(braceProse("planted.ts", "const x = 1; // a sentence\nexport { x };\n")).toHaveLength(1);
     expect(hashProse("planted.sh", "#!/bin/bash\n# a sentence\nrun\n")).toHaveLength(1);

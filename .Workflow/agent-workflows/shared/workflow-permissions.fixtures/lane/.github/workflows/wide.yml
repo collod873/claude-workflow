@@ -1,9 +1,5 @@
 name: Wide
 
-# The control. Same entrypoint, same derived write, `issues: write` declared — so a red result on
-# `narrow.yml` is evidence the deriver read the permission block rather than evidence it fails
-# everything it is handed. The `permissions:` here sits on the job, which is the level that counts.
-
 "on":
   workflow_dispatch:
 

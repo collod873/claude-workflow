@@ -257,11 +257,25 @@ describe("a job grants itself the writes its entrypoints perform", () => {
     ).toBe(0);
   });
 
-  it("fails on a fixture whose permissions are narrower than its entrypoints write", () => {
+  it("reds narrow.yml, the fixture lane held permanently wrong so this guard always has a defect to catch", () => {
     const shortfall = derive(FIXTURE_ROOT);
 
-    expect(shortfall.map((r) => `${r.workflow} ${r.permission}`)).toEqual(["narrow.yml issues"]);
+    expect(
+      shortfall.map((r) => `${r.workflow} ${r.permission}`),
+      "narrow.yml runs an entrypoint reaching `issue create` while declaring issues: read, the shape " +
+        "of #181's implement.yml and of the dispatch before ADR-0091. Real instances get fixed, and a " +
+        "guard whose only subject is a correct tree has never been shown to detect anything",
+    ).toEqual(["narrow.yml issues"]);
     expect(shortfall[0].evidence).toContain("file-finding.ts");
+  });
+
+  it("greens wide.yml, the control carrying the same write with issues: write on the job", () => {
+    expect(
+      derive(FIXTURE_ROOT).map((r) => r.workflow),
+      "wide.yml runs the same entrypoint and declares the permission on the job, the level that " +
+        "counts — so the red above is the deriver reading a permissions block, not the deriver " +
+        "failing everything it is handed",
+    ).not.toContain("wide.yml");
   });
 
   it("derives writes across the real lanes, so a passing suite is not an empty sweep", () => {

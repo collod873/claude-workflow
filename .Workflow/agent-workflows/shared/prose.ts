@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
-import { REPO_ROOT, type RepoFile, sourcesUnder } from "./repo-sources";
+import { everySourceUnder, REPO_ROOT, type RepoFile } from "./repo-sources";
 
 /**
  * @fixture Reached only from `prose-gate.test.ts`, by design — no lane reads its own source tree.
@@ -13,6 +13,7 @@ const KNIP_TAG_CAP = 5;
 
 const BRACE = /\.(m|c)?(t|j)s$/;
 const HASH = /\.(py|sh|ya?ml)$/;
+const HUSKY = /(^|\/)\.husky\//;
 const SHEBANG = /^#!.*\b(bash|sh|python3?)\b/;
 
 export interface Prose {
@@ -96,12 +97,14 @@ export function hashProse(path: string, source: string): Prose[] {
 
 export function proseIn(file: RepoFile): Prose[] {
   if (BRACE.test(file.relative)) return braceProse(file.relative, file.source);
-  if (HASH.test(file.relative) || SHEBANG.test(file.source)) return hashProse(file.relative, file.source);
+  if (HASH.test(file.relative) || HUSKY.test(file.relative) || SHEBANG.test(file.source)) {
+    return hashProse(file.relative, file.source);
+  }
   return [];
 }
 
 export function gatedSources(): RepoFile[] {
-  const roots = sourcesUnder(".Workflow/agent-workflows", "bin", ".claude", ".github");
+  const roots = everySourceUnder(".Workflow/agent-workflows", "bin", ".claude", ".github", ".husky");
   const loose = readdirSync(REPO_ROOT)
     .map((entry) => join(REPO_ROOT, entry))
     .filter((path) => statSync(path).isFile())
