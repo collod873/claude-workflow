@@ -1,14 +1,6 @@
 import { githubHoldingClaims, type ClaimHost } from "../shared/claim-host.fixture";
 
 /**
- * An in-memory issue tracker for `recordOutOfBrief`: `issue create`/`issue comment`/`issue list`/
- * `issue view --json comments` against one array of issues, each carrying its own comments —
- * composed over the claim host (`shared/claim-host.fixture.ts`), which answers everything
- * `runImplement`'s own flow makes (the ticket read, the claim, the pull request, the dispatch), so
- * the "no `dependencies/blocked_by` write, ever" test can scan every call any scenario made through
- * one `GhExec`. Deliberately has no `issue edit --body` branch: the module under test must never
- * call it.
- *
  * @fixture Reached only from the suite, by design.
  */
 export interface TrackedIssue {

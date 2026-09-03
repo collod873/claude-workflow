@@ -13,6 +13,11 @@ A Claude Code + GitHub workflow system.
   ([ADR-0080](docs/adr/0080-an-adr-number-is-claimed-when-the-adr-lands-not-when-it-is-d.md)). Format and
   the bar for writing one are in `docs/adr/README.md`. Never edit an old ADR to reflect a new
   decision; write a new one that says what it amends.
+- **Code carries no prose.** No comments, no docstrings, no explanatory headers — in any language,
+  tests included ([ADR-0151](docs/adr/0151-code-carries-no-prose-the-why-lives-in-docs-adr-and-context.md)).
+  The why goes in an ADR or `CONTEXT.md`; name things so the code says the rest.
+  `prose-gate.test.ts` holds it at zero and keeps only what a machine reads: knip's
+  `@shell`/`@fixture` tags (five lines max), `shellcheck` directives, eslint pragmas.
 - `.claude/contract.json` names what each venue runs
   ([ADR-0056](docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)); edit a
   slot there rather than teaching `bin/gauntlet` a command.

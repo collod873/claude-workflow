@@ -120,10 +120,8 @@ export const subIssuesPathMatcher: RegExp = subIssues.matcher;
 export const blockedByPathMatcher: RegExp = blockedBy.matcher;
 
 /**
- * @fixture — no lane reads this; it exists so a `GhExec` stand-in (`dispatch/reconcile.test.ts`'s
- * fake) answers the comments-list lookup by the same segments `issueCommentsPath` sends, rather
- * than restating the path in a way that could name a different endpoint from the one production
- * actually calls.
+ * @fixture — no lane reads this; a `GhExec` stand-in answers the comments-list lookup by the same
+ * segments `issueCommentsPath` sends, rather than restating a path that could drift from it.
  */
 export const issueCommentsPathMatcher: RegExp = issueComments.matcher;
 

@@ -1,5 +1,3 @@
-# Put node on PATH, or say so. Sourced, never executed.
-
 node_on_path() {
   local standard_dirs="/usr/local/bin:/usr/bin:/bin"
   local fallback_dirs="${HOME:-}/bin:/opt/homebrew/bin"

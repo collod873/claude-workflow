@@ -86,7 +86,7 @@ CATCH_ALL_PATTERNS = frozenset({"**", "*", "**/*", "./**", "**/**", ".", "/", ".
 DEGENERATE_CLAIM_MESSAGE = "could not name the files this touches"
 
 class ValidationError(Exception):
-    """Raised by `validate` when `body` doesn't fit `kind`'s required shape."""
+    pass
 
 def _criteria_lines(body: str) -> list[str]:
     section = section_text(body, CRITERIA_HEADING_RE)

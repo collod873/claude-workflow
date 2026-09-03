@@ -19,7 +19,13 @@ export interface RepoFile {
 }
 
 function skipDir(name: string): boolean {
-  return name === "node_modules" || name === "__pycache__" || name.endsWith(".fixtures") || name === ".git";
+  return (
+    name === "node_modules" ||
+    name === "__pycache__" ||
+    name === "worktrees" ||
+    name.endsWith(".fixtures") ||
+    name === ".git"
+  );
 }
 
 function walk(dir: string): string[] {
@@ -58,6 +64,10 @@ export function binSources(): RepoFile[] {
 
 export function hookSources(): RepoFile[] {
   return filesUnder(HOOKS_DIR).filter((file) => !isTest(file));
+}
+
+export function sourcesUnder(...relativeDirs: string[]): RepoFile[] {
+  return relativeDirs.flatMap((dir) => filesUnder(join(REPO_ROOT, dir)));
 }
 
 export function readRepoText(path: string): string {

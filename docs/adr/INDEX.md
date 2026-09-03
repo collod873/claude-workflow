@@ -158,5 +158,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0148 | [Timing is recorded, never judged](0148-timing-is-recorded-never-judged.md) | constraint |
 | 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) | constraint |
 | 0150 | [An acceptance test is colocated and marked test.fails, and the gate is fenced by size](0150-an-acceptance-test-is-colocated-and-marked-test-fails-and-th.md) | constraint |
+| 0151 | [Code carries no prose; the why lives in docs/adr and CONTEXT.md](0151-code-carries-no-prose-the-why-lives-in-docs-adr-and-context.md) | constraint |
 
-150 ADRs · 67 constraint · 44 note · 39 superseded · 14,612 words total.
+151 ADRs · 68 constraint · 44 note · 39 superseded · 14,762 words total.

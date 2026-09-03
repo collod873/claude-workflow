@@ -29,10 +29,8 @@ for (const file of venueFiles) {
 const SHELL_TAG = /@shell[ \t]+\S/;
 
 /**
- * `@shell` tag below exists to prevent: the file gets excused in a config, with the reason nowhere
- * near it, which is indistinguishable from the dead code this check is for. So a file earns its
- * entry by carrying `@shell` and its own reason, exactly as an exempted export does; one that does
- * not is reported unused, and its author has to wire it or say why.
+ * A file earns its entry by carrying `@shell` and its own reason, so the excuse sits next to the
+ * code rather than in this config, where it would be indistinguishable from dead code.
  */
 function shellLaunched(dir: string): string[] {
   return filesIn(dir)

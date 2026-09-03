@@ -58,10 +58,6 @@ mkdir -p "$state_dir"
 cap_file="$state_dir/reds"
 fingerprint_file="$state_dir/last-fingerprint"
 
-# ---------------------------------------------------------------- provisioning
-# One runner per canary, named by the same id, all carrying the `canary` label: the label is what
-# the stub asks for and the registration is per repository, so N of them never contend for one
-# another's jobs. No organisation is involved — the account has none, and per-repository
 runner_root="$HOME/canary-runner"
 runner_dir="$runner_root/$id"
 runner_home="$runner_root/home"
@@ -113,8 +109,6 @@ ensure_seed() {
     }
   }
 }'
-  # Committed, not probed: `bin/gauntlet push` regenerates the contract and fails on disagreement
-  # (ADR-0056), so the seed has to carry the answers the probe gives for this shape.
   seed_file .claude/contract.json '{
   "stop": {
     "cmd": null,
@@ -415,7 +409,6 @@ while [ "$status" != "completed" ]; do
 done
 conclusion="$(gh api "repos/$canary_repo/actions/runs/$run_id" --jq .conclusion)"
 
-# ---------------------------------------------------------------- summarise
 jobs_json="$(gh api "repos/$canary_repo/actions/runs/$run_id/jobs")"
 log_file="$state_dir/run-$run_id.log"
 for _ in 1 2 3 4 5; do

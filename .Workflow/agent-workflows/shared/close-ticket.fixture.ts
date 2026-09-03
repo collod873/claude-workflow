@@ -7,16 +7,6 @@ import { readArgvLog } from "./stub-gh.fixture.ts";
 import { makeTempRepo } from "./temp-repo.fixture.ts";
 
 /**
- * The seams `bin/close-ticket`'s two suites drive the real script through — `close-ticket.proc.test.ts`
- * (its functions, loaded as a module, and the whole close end to end) and `render-body.proc.test.ts`
- * (lane 03's rendered body, closed by the script that reads it).
- *
- * Every helper here spawns something: the Python interpreter over the real script, or the script
- * itself against a `gh` this file controls. That is the whole reason they live in a fixture rather
- * than the suites — a `*.test.ts` may not import `node:child_process`, and the two suites had each
- * grown their own copy of the module loader, the checkout builder and the `gh` stub before the
- * clone gate lost its baseline (#360).
- *
  * @fixture Reached only from the suites, by design: a lane that ran `bin/close-ticket` through a
  * stub `gh` would be a lane that never talked to the tracker.
  */

@@ -6,7 +6,7 @@ import subprocess
 DEFAULT_GH_TIMEOUT_SECONDS = 30
 
 class GhError(RuntimeError):
-    """A `gh` call timed out or exited nonzero; `str(e)` is the one message format."""
+    pass
 
 GH_SEARCH_DIRS = ("~/.local/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin")
 
