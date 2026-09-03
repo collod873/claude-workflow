@@ -11,7 +11,7 @@ import { readWorkflow } from "./read-workflow";
  * lane is acting on can never be the same one. Four lanes shipped as a single plain checkout —
  * which in a called workflow is the *caller's* repository — and read correctly only because this
  * repository happens to be both; any other caller would have died on a `.Workflow/` that is not
- * there. Written once so the next lane converted asserts the same thing rather than an
+ * there. Written once so `lane-wiring.ts`'s every `pair` row asserts the same thing rather than an
  * approximation of it, and so a change to the rule lands in one place.
  */
 export interface CheckoutPair {
@@ -19,8 +19,12 @@ export interface CheckoutPair {
   workflow: string;
   /** The job inside it that carries the pair. */
   job: string;
-  /** A substring of the `run:` of the step that must name `TARGET_WORKSPACE` in its `env:`. */
-  runs: string;
+  /**
+   * A substring of the `run:` of the step that must name `TARGET_WORKSPACE` in its `env:`. Omitted
+   * for a lane whose entrypoint reads neither tree (`run-watchdog.yml` reaches the target only over
+   * `gh`), which checks the pair out for ADR-0055's shape and has nothing to point at it.
+   */
+  runs?: string;
   /**
    * How many `Checkout target` steps to expect. More than one when a lane takes different paths
    * into the target — `fixer.yml` checks out the pull request's branch to fix, or trunk to
@@ -54,6 +58,8 @@ export function expectMachineAndTargetCheckouts(pair: CheckoutPair): void {
   for (const target of targets) expect(target.with?.path).toBe("target");
   if (pair.fetchDepth !== undefined) expect(targets[0]?.with?.["fetch-depth"]).toBe(pair.fetchDepth);
 
-  const run = steps.find((step) => step.run?.includes(pair.runs));
+  if (pair.runs === undefined) return;
+  const run = steps.find((step) => step.run?.includes(pair.runs as string));
+  expect(run, `no step in ${pair.workflow}#${pair.job} runs ${pair.runs}`).toBeDefined();
   expect(run?.env?.TARGET_WORKSPACE).toBe("${{ github.workspace }}/target");
 }

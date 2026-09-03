@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
+import { readWorkflows } from "./read-workflow";
+import { readRepoText, REPO_ROOT } from "./repo-sources";
 
 /**
  * The guard #109 exists for.
@@ -33,10 +34,6 @@ import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
  * in it, and this guard is only worth having if it says the true thing about
  * every lane rather than the safe thing about all of them.
  */
-
-// Derived from WORKFLOWS_DIR rather than resolved again here — read-workflow.ts's own
-// fileURLToPath resolution is the one place that walk happens now.
-const REPO_ROOT = resolve(WORKFLOWS_DIR, "../..");
 
 /** `git notes … add`, as all three of this repo's note writers spell it (one argv array, one line). */
 const NOTES_ADD = /"notes"[\s\S]{0,120}?"add"/;
@@ -75,7 +72,7 @@ function loadModule(path: string): Module | undefined {
 }
 
 function parseModule(path: string): Module {
-  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(path, readRepoText(path), ts.ScriptTarget.Latest, true);
   const bindings = new Map<string, Binding>();
   const declarations = new Map<string, ts.Node>();
   const topLevel: ts.Node[] = [];
@@ -173,9 +170,7 @@ function writesAGitNote(entry: string): boolean {
   return false;
 }
 
-const workflows = readdirSync(WORKFLOWS_DIR)
-  .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-  .map((name) => ({ name, source: readWorkflow(name).source }));
+const workflows = readWorkflows().map(({ name, source }) => ({ name, source }));
 
 describe("every workflow that can reach `git notes add` configures a committer", () => {
   it.each(workflows)("$name", ({ name, source }) => {

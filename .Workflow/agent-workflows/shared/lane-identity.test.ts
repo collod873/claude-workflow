@@ -1,8 +1,6 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
+import { readWorkflows, STUB_SUFFIX } from "./read-workflow";
+import { binSources, laneSources } from "./repo-sources";
 
 /**
  * The gate for the defect class ADR-0055 (amended by ADR-0132) introduced: a workflow file whose
@@ -26,31 +24,6 @@ import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
  *    can produce the run it is listening for — a caller stub, or any file with a trigger of its
  *    own.
  */
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const AGENT_WORKFLOWS_DIR = join(REPO_ROOT, ".Workflow/agent-workflows");
-const BIN_DIR = join(REPO_ROOT, "bin");
-
-/** A directory this walk skips outright — build output, dependencies, or a fixture tree carrying its own unrelated `.github/workflows`. */
-function skipDir(name: string): boolean {
-  return name === "node_modules" || name === "__pycache__" || name.endsWith(".fixtures") || name === ".git";
-}
-
-/** Every regular file under `dir`, recursively, skipping the directories `skipDir` names. */
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry);
-    const stat = statSync(path);
-    if (stat.isDirectory()) {
-      if (skipDir(entry)) continue;
-      out.push(...walk(path));
-    } else {
-      out.push(path);
-    }
-  }
-  return out;
-}
 
 /**
  * `source` with every comment-only line blanked out — the leading `//`, `/*` and continuation `*`
@@ -77,15 +50,7 @@ interface WorkflowShape {
   on?: Record<string, unknown> | string[];
 }
 
-/** The suffix that makes a workflow file a caller stub — `enrol/stub-set.ts`'s own convention. */
-const STUB_SUFFIX = "-caller.yml";
-
-const workflowFiles = readdirSync(WORKFLOWS_DIR).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
-
-const parsed = workflowFiles.map((name) => {
-  const { workflow, source } = readWorkflow<WorkflowShape>(name);
-  return { name, source, displayName: workflow.name, on: workflow.on };
-});
+const parsed = readWorkflows<WorkflowShape>().map(({ name, workflow }) => ({ name, displayName: workflow.name, on: workflow.on }));
 
 /**
  * Whether a workflow's own `on:` block can ever produce a run of *this* file. `workflow_call`
@@ -107,13 +72,13 @@ describe("a workflow file whose only trigger is workflow_call can never carry a 
     expect(callOnly.length).toBeGreaterThan(0);
   });
 
-  const tsFiles = walk(AGENT_WORKFLOWS_DIR).filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"));
-  const binFiles = walk(BIN_DIR);
+  const tsFiles = laneSources().filter((file) => file.path.endsWith(".ts"));
+  const binFiles = binSources();
 
   it.each(callOnly.map((workflow) => workflow.name))(
     "no non-test .ts file under .Workflow/agent-workflows names %s as a string literal",
     (name) => {
-      const offenders = tsFiles.filter((path) => quotesLiteral(readFileSync(path, "utf8"), name));
+      const offenders = tsFiles.filter((file) => quotesLiteral(file.source, name)).map((file) => file.relative);
       expect(
         offenders,
         `${name} can never carry a run of its own (ADR-0055, ADR-0132) — reading its history is ` +
@@ -124,7 +89,7 @@ describe("a workflow file whose only trigger is workflow_call can never carry a 
   );
 
   it.each(callOnly.map((workflow) => workflow.name))("no file under bin/ names %s as a string literal", (name) => {
-    const offenders = binFiles.filter((path) => quotesLiteral(readFileSync(path, "utf8"), name));
+    const offenders = binFiles.filter((file) => quotesLiteral(file.source, name)).map((file) => file.relative);
     expect(
       offenders,
       `${name} can never carry a run of its own (ADR-0055, ADR-0132) — reading its history is a ` +

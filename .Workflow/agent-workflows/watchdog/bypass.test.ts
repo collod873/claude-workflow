@@ -1,6 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
@@ -20,8 +17,8 @@ import {
   type VerifyRun,
 } from "./bypass";
 import { MAX_JOB_READS, runBypassCounter } from "./bypass-counter";
-import { expectWorkflowSetsEveryVariableRead } from "./env-contract.fixture";
-import { answerTracker } from "./signal-tracker.fixture";
+import { answerTrackerOrThrow } from "./signal-tracker.fixture";
+import evidence from "./verify-runs.evidence.json";
 
 /**
  * `verify.yml`'s real run history on `main`, captured with the failed step
@@ -39,9 +36,7 @@ interface EvidenceRun {
   failed_step: string | null;
 }
 
-const EVIDENCE: EvidenceRun[] = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "verify-runs.evidence.json"), "utf8"),
-);
+const EVIDENCE: EvidenceRun[] = evidence;
 
 function asVerifyRun(run: EvidenceRun): VerifyRun {
   return {
@@ -210,19 +205,15 @@ function historyWith(options: {
       });
     }
 
-    const answered = answerTracker(args, options.issues ?? []);
-    if (answered !== undefined) return answered;
-
-    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+    return answerTrackerOrThrow(args, options.issues ?? []);
   };
 
   return { gh, calls };
 }
 
 /**
- * The workflow file this repository's own Verify runs are recorded against, and what the caller
- * stub passes. Held as a constant so the assertions below read against one name rather than ten
- * literals that could drift apart.
+ * The workflow file this repository's own Verify runs are recorded against. Held as a constant so
+ * the assertions below read against one name rather than ten literals that could drift apart.
  */
 const VERIFY_WORKFLOW = "verify-caller.yml";
 
@@ -358,67 +349,6 @@ describe("runBypassCounter", () => {
 
     expect(outcome.count).toBe(MAX_JOB_READS);
     expect(lines.some((line) => line.includes("went unread"))).toBe(true);
-  });
-});
-
-/**
- * ADR-0055 (amended by ADR-0132) split this lane: `bypass-counter-caller.yml` carries the
- * `workflow_run` trigger and the "only a run on main" scope check `bypass-counter.yml`'s own job
- * `if:` used to make (`workflow_run` cannot be parameterized through `workflow_call`), and
- * `bypass-counter.yml` itself is the reusable workflow it calls.
- */
-describe("bypass-counter-caller.yml rides Verify completing rather than a clock", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const caller = readFileSync(join(here, "../../../.github/workflows/bypass-counter-caller.yml"), "utf8");
-
-  it("rides verify.yml completing rather than a clock, per ADR-0004", () => {
-    expect(caller).toContain("workflow_run:");
-    expect(caller).toMatch(/workflows:\s*\["Verify"\]/);
-    expect(caller).not.toContain("schedule:");
-  });
-
-  it("scopes the job to main, where a bypass reaching trunk actually means something", () => {
-    expect(caller).toContain("github.event.workflow_run.head_branch == 'main'");
-  });
-
-  /**
-   * The name is a path segment sent to GitHub, so a file that does not exist is not an error —
-   * it is an empty run list, and an empty run list counts zero. Checking the name against the
-   * workflow directory is the only place that mistake can be caught without a live API call.
-   */
-  it("hands the counter a workflow file this repository actually has", () => {
-    const named = caller.match(/verify_workflow:\s*(\S+)/)?.[1];
-
-    expect(named, "bypass-counter-caller.yml passes no verify_workflow").toBeDefined();
-    expect(named).toBe(VERIFY_WORKFLOW);
-    expect(existsSync(join(here, "../../../.github/workflows", named!))).toBe(true);
-  });
-});
-
-describe("bypass-counter.yml agrees with the module it runs", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const workflow = readFileSync(join(here, "../../../.github/workflows/bypass-counter.yml"), "utf8");
-
-  it("runs this module", () => {
-    expect(workflow).toContain("npx tsx .Workflow/agent-workflows/watchdog/bypass-counter.ts");
-  });
-
-  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
-    expect(workflow).toContain("workflow_call:");
-    expect(workflow).not.toContain("workflow_run:");
-  });
-
-  it("grants the reads it needs, and the write the signal is", () => {
-    expect(workflow).toMatch(/^ {2}actions: read$/m);
-    expect(workflow).toMatch(/^ {2}issues: write$/m);
-  });
-
-  it("sets every variable the entrypoint reads", () => {
-    expectWorkflowSetsEveryVariableRead({
-      workflow,
-      workflowFile: "bypass-counter.yml",
-      entrypoint: join(here, "bypass-counter.ts"),
-    });
   });
 });
 

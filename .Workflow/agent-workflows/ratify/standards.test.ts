@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { appendStandardEntry, enabledRuleIds, parseStandardEntries } from "./standards";
 
@@ -48,12 +46,6 @@ describe("parseStandardEntries", () => {
 
   it("returns nothing at all for a file with no ## Standards heading", () => {
     expect(parseStandardEntries("# Something else\n")).toEqual([]);
-  });
-
-  it("parses this repository's own CODING_STANDARDS.md, which is the file the lane actually edits", () => {
-    const real = readFileSync(fileURLToPath(new URL("../../../CODING_STANDARDS.md", import.meta.url)), "utf8");
-
-    expect(parseStandardEntries(real).length).toBeGreaterThan(0);
   });
 });
 

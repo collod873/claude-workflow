@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   callerHalf,
@@ -19,6 +16,7 @@ import {
   unreportedRuns,
   type RunSummary,
 } from "./dead-lanes";
+import history from "./push-runs.evidence.json";
 
 /**
  * Every `push` run this repo has, captured from the API with the job count
@@ -37,9 +35,7 @@ interface PushRun {
   job_count: number;
 }
 
-const HISTORY: PushRun[] = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "push-runs.evidence.json"), "utf8"),
-);
+const HISTORY: PushRun[] = history;
 
 /**
  * The captured runs as the sweep sees them. `path` is derived from `name`

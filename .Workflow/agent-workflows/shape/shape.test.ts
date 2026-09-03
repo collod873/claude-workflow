@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StageExec } from "../shared/stage";
 import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
-import { runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
+import { LABELS_APPLIED, runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 
 /**
@@ -144,6 +144,20 @@ describe("the ordinary run", () => {
 
     expect(readSheetMarker(postedComments(tracker)[0])?.route).toBe("short");
   });
+
+  it("hands every stage a prompt with every placeholder substituted", async () => {
+    // `runStage` throws, without spawning, on a template referencing a placeholder no var covers
+    // — so three spawns already say every declared `{{VAR}}` was supplied. This is the other
+    // half: nothing supplied was itself an unrendered placeholder. The sweep's went unchecked
+    // until it grew an `{{IDEA}}`, which is the shape of thing this catches — a placeholder added
+    // to a template without a var behind it.
+    const model = healthyModel();
+
+    await runChain(depsFor(model, createFakeTracker()), 1, "");
+
+    expect(stagesSpawned(model)).toEqual(["sweep", "shaper", "refuter"]);
+    for (const spawn of model.spawns) expect(spawn.prompt).not.toContain("{{");
+  });
 });
 
 describe("the shaper's toolbelt", () => {
@@ -217,6 +231,9 @@ describe("the stage-1 refusal", () => {
     expect(postedComments(tracker)[0]).toContain("#42");
     expect(postedComments(tracker)[0]).toContain(REFUSAL_MARKER);
     expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "shape-refused"]);
+    // `LABELS_APPLIED` is the list the wiring table checks the workflow creates labels for — a
+    // label the chain applies that is not on it is one `gh issue edit --add-label` can fail on.
+    expect(LABELS_APPLIED).toContain("shape-refused");
   });
 
   it("stands down on a re-run, so the owner's comment is what clears it", async () => {
@@ -306,6 +323,7 @@ describe("the refusal to shape", () => {
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper"]);
     expect(postedComments(tracker)[0]).toContain("live session");
     expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "needs-human"]);
+    expect(LABELS_APPLIED).toContain("needs-human");
   });
 });
 

@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
-import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -12,15 +11,14 @@ import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/r
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
 
-export { VERIFY_DISPATCH_EVENT_TYPE, GRAPH_CHANGED_DISPATCH_ACTION };
+export { GRAPH_CHANGED_DISPATCH_ACTION };
 
 /**
  * Lane 08 (PRD #145, move 7): the merge actor. Fires on the same
  * `repository_dispatch` an implementer's `openPrAndDispatch` sends
- * (`VERIFY_DISPATCH_EVENT_TYPE`, `shared/verify-dispatch.ts`) — re-exported
- * here rather than restated, so `integrate-workflow.test.ts` and
- * `integrate.yml`'s own `if:` both check against the one constant its
- * senders share.
+ * (`VERIFY_DISPATCH_EVENT_TYPE`, `shared/verify-dispatch.ts`); the wiring
+ * table (`shared/lane-wiring.ts`) holds `integrate.yml`'s `if:` to that one
+ * constant its senders share.
  *
  * No model runs here (DESIGN.md §10 move 7: "with no model in it") — every
  * decision below is a git rebase, a shell to `bin/gauntlet`, and a `gh pr

@@ -16,7 +16,7 @@
 // Keep this in sync by hand when a lane's `on:` block or forward action changes shape — nothing
 // generates *this* file from the source of truth, so a drifted copy here proves nothing about
 // the graph it claims to mirror. The `on:` blocks are held to their sources by
-// `.Workflow/agent-workflows/shared/canary-graph-triggers.test.ts`; the forward actions below are
+// `.Workflow/agent-workflows/shared/canary-graph-triggers.proc.test.ts`; the forward actions below are
 // still on the reader. `bin/canary-graph` is the reason this exists at all
 // (ADR-0146 established the single-lane canary; this proves the graph those lanes form).
 //

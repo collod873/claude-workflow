@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import type { GhExec } from "../../shared/gh";
+import { describe, expect, it } from "vitest";
+import { scratchDir } from "../../shared/scratch.fixture";
 import { collectMapContext } from "./map";
+import { mapTrackerGh } from "./map-gh.fixture";
 
 /**
  * The map collector reproduces `to-spec/SKILL.md`'s own walk of a closed
@@ -34,34 +34,9 @@ function mapBody(over: { decisions?: string; outOfScope?: string; notYetSpecifie
   ].join("\n");
 }
 
-/** A fake `gh` answering `issue view --json body` for the map and `--json comments` for its linked tickets. */
-function fakeGh(mapNumber: number, body: string, ticketComments: Record<number, string[]> = {}): GhExec {
-  return (args) => {
-    const issueNumber = Number(args[2]);
-    const fields = args[args.indexOf("--json") + 1] ?? "";
-    if (fields === "body") {
-      if (issueNumber !== mapNumber) throw new Error(`fake gh: unexpected body fetch for #${issueNumber}`);
-      return JSON.stringify({ body });
-    }
-    if (fields === "comments") {
-      const comments = ticketComments[issueNumber];
-      if (comments === undefined) throw new Error(`fake gh: unexpected comments fetch for #${issueNumber}`);
-      return JSON.stringify({ comments: comments.map((b) => ({ body: b })) });
-    }
-    throw new Error(`fake gh: unhandled fields: ${fields}`);
-  };
-}
-
 describe("collectMapContext", () => {
-  let repoRoot: string | undefined;
-
-  afterEach(() => {
-    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
-    repoRoot = undefined;
-  });
-
   it("prefers the gist-linked durable record over the resolution comment when both exist", () => {
-    repoRoot = mkdtempSync(join(tmpdir(), "map-collector-"));
+    const repoRoot = scratchDir("map-collector");
     mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
     writeFileSync(
       join(repoRoot, "docs/adr/0099-the-thing-is-decided.md"),
@@ -72,7 +47,7 @@ describe("collectMapContext", () => {
       decisions:
         "- [The thing ticket](https://github.com/o/r/issues/42): filed as [ADR-0099](docs/adr/0099-the-thing-is-decided.md)",
     });
-    const gh = fakeGh(1, body, {
+    const gh = mapTrackerGh(1, body, {
       42: ["A resolution comment nobody should have to read once the ADR exists."],
     });
 
@@ -86,16 +61,16 @@ describe("collectMapContext", () => {
     const body = mapBody({
       decisions: "- [Another ticket](https://github.com/o/r/issues/7): decided to do it the plain way",
     });
-    const gh = fakeGh(1, body, { 7: ["The resolution comment, since no ADR was filed."] });
+    const gh = mapTrackerGh(1, body, { 7: ["The resolution comment, since no ADR was filed."] });
 
-    const context = collectMapContext(gh, 1, repoRoot ?? "/nonexistent");
+    const context = collectMapContext(gh, 1, "/nonexistent");
 
     expect(context.rulings).toContain("The resolution comment, since no ADR was filed.");
   });
 
   it("reads the map body verbatim as ownerWords", () => {
     const body = mapBody({ decisions: "- [A ticket](https://github.com/o/r/issues/1): the gist" });
-    const gh = fakeGh(5, body, { 1: ["resolution"] });
+    const gh = mapTrackerGh(5, body, { 1: ["resolution"] });
 
     const context = collectMapContext(gh, 5, "/nonexistent");
 
@@ -108,7 +83,7 @@ describe("collectMapContext", () => {
       outOfScope: "- Billing: real work, filed elsewhere (filed)",
       notYetSpecified: "- Whether the retry policy needs a cap",
     });
-    const gh = fakeGh(5, body, { 1: ["resolution"] });
+    const gh = mapTrackerGh(5, body, { 1: ["resolution"] });
 
     const context = collectMapContext(gh, 5, "/nonexistent");
 
@@ -117,8 +92,7 @@ describe("collectMapContext", () => {
   });
 
   it("throws when the map carries no Decisions so far entries", () => {
-    const body = mapBody();
-    const gh = fakeGh(1, body, {});
+    const gh = mapTrackerGh(1, mapBody());
 
     expect(() => collectMapContext(gh, 1, "/nonexistent")).toThrow();
   });

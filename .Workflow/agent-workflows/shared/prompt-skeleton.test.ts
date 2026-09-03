@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { AUTHOR_OUTPUT } from "../acceptance/acceptance";
@@ -9,7 +7,8 @@ import { SWEEP_OUTPUT } from "./sweep-schema";
 import { SEAM_SWEEP_OUTPUT } from "../to-tickets/seam-sweep/schema";
 import { RATIFIER_OUTPUT } from "../ratify/verdict-schema";
 import { AUDIT_OUTPUT, Plan, SLICE_CAPS, SLICE_OUTPUT } from "./plan-schema";
-import { validatePathsAreRooted } from "./render-body";
+import { promptSource } from "./prompts.fixture";
+import { validateCriteriaShape, validatePathsAreRooted } from "./render-body";
 import type { StructuredOutput } from "./structured-output";
 
 /**
@@ -35,6 +34,9 @@ import type { StructuredOutput } from "./structured-output";
  * `entries`, `answer` and all — so a skeleton showing the unwrapped shape is
  * an example of something the tool will refuse, however well it matches the
  * type the stage eventually returns.
+ *
+ * The prompts are read as text through `prompts.fixture.ts`: a skeleton is a
+ * contract between a prompt and a schema no import connects.
  */
 
 /** Which structured-output contract each prompt's skeleton is checked against. */
@@ -49,10 +51,6 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "acceptance/author/prompt.md", output: AUTHOR_OUTPUT },
   { path: "implement/implementer/prompt.md", output: IMPLEMENTER_OUTPUT },
 ];
-
-function promptSource(promptPath: string): string {
-  return readFileSync(fileURLToPath(new URL(`../${promptPath}`, import.meta.url)), "utf8");
-}
 
 /** The skeletons in a prompt, in order — a prompt may show more than one legal shape. */
 function skeletons(promptPath: string): unknown[] {
@@ -186,14 +184,17 @@ describe("the Slice caps, on the wire and in both prompts", () => {
    * A skeleton is what a model copies, so a skeleton the publisher would refuse teaches the
    * refusal. Both plan prompts showed `shared/gh.ts` and `shared/publish-sub-issues.test.ts` —
    * paths that name no top-level entry of this repository and that a reader has to root by
-   * guessing, which is exactly the ambiguity #272 was published carrying (#278). This runs the
-   * real gate over the real example rather than asserting a string, so the example cannot drift
-   * away from the rule without failing here.
+   * guessing, which is exactly the ambiguity #272 was published carrying (#278). And every
+   * criterion the example shows has to carry the `check:` marker `bin/close-ticket` reads a
+   * command out of — the shape #215 found the slicer had never been shown. This runs the real
+   * gates over the real example rather than asserting a string, so the example cannot drift away
+   * from either rule without failing here.
    */
   it.each(PLAN_PROMPTS)("%s shows an example the publisher would accept", (promptPath) => {
     for (const skeleton of skeletons(promptPath)) {
       const plan = Plan.parse((skeleton as { slices: unknown }).slices);
       expect(() => validatePathsAreRooted(plan)).not.toThrow();
+      expect(() => validateCriteriaShape(plan)).not.toThrow();
     }
   });
 

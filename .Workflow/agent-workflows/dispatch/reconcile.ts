@@ -183,6 +183,13 @@ export const TO_BUILD_LABEL = "to-build";
  */
 const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
 
+/**
+ * Where, under the target checkout, `testsForCriteria` looks for the acceptance tests a slice's
+ * criteria name — the `authored` term of the door below. Exported so the door's tests write a
+ * fixture test where this pass will read it, rather than restating the path.
+ */
+export const ACCEPTANCE_TESTS_SUBDIR = "tests/acceptance";
+
 /** The `state_reason` GitHub reports for a delivery claim, as the REST dependencies API spells it. */
 const COMPLETED = "completed";
 
@@ -1077,7 +1084,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     // Asked per slice rather than assumed, because a re-dispatch after a failed implementer must
     // not re-author tests that already exist — that is a second model run for nothing, and lane
     // 04's own re-author pass owns that decision.
-    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), join(targetWorkspace, "tests/acceptance"));
+    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), join(targetWorkspace, ACCEPTANCE_TESTS_SUBDIR));
     const wants = authored.length === 0 ? "acceptance-wanted" : "ticket-ready";
 
     if (input.dryRun) {

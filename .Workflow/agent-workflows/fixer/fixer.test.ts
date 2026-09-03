@@ -1,18 +1,20 @@
-import { createRecordingGh } from "../shared/gh.fake";
-import { describe, expect, it } from "vitest";
-import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
+import { describe, expect, it, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
+import { createRecordingGh } from "../shared/gh.fake";
 import type { GitExec } from "../shared/git";
-import { readWorkflow } from "../shared/read-workflow";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { SPEC_GAP_LABEL } from "../shared/spec-gap";
-import type { StageExec } from "../shared/stage";
+import { createFakeStages } from "../shared/stage.fake";
+import { runVitestReport } from "../shared/vitest-json";
 import {
   applyUnfixable,
   assembleFixBrief,
+  blockedComment,
   changedPaths,
   MAX_ATTEMPTS,
+  priorAttempts,
   runFixer,
+  runVitestJsonForFixer,
   signaturesEqual,
   unfixableComment,
   type FailureSignature,
@@ -20,7 +22,12 @@ import {
   type FixerTestResult,
 } from "./fixer";
 
-
+/**
+ * The attempt loop and its two stops, on fakes: a `gh` that records, a `git` whose `status` is
+ * where the fix comes from, and a stage that answers one canned summary per attempt. The real
+ * suite runner is stubbed at `runVitestReport` — nothing here spawns vitest.
+ */
+vi.mock("../shared/vitest-json", () => ({ runVitestReport: vi.fn() }));
 
 /**
  * A fake `GitExec` that records every call and answers nothing — except `status --porcelain`,
@@ -37,31 +44,15 @@ function fakeGit(porcelain = " M fix.ts"): { git: GitExec; calls: string[][] } {
   return { git, calls };
 }
 
-/**
- * A fake `StageExec` that hands back one canned answer per call, in order,
- * and counts how many times it was invoked — the number a "no third stage
- * invocation" assertion reads.
- */
-function fakeStage(answers: Array<{ summary: string }>): {
-  exec: StageExec;
-  callCount: () => number;
-} {
-  let calls = 0;
-  const exec: StageExec = async () => {
-    const answer = answers[calls] ?? answers.at(-1);
-    calls += 1;
-    return JSON.stringify(answer);
-  };
-  return { exec, callCount: () => calls };
+/** A stage that answers `n` attempts in order, each with a summary naming itself, and throws on an `n+1`th. */
+function attempts(n: number) {
+  return createFakeStages(Array.from({ length: n }, (_, index) => JSON.stringify({ summary: `attempt ${index + 1} tried something` })));
 }
 
 const IDENTICAL_A: FailureSignature = [{ testName: "adds two numbers", errorMessage: "expected 3, got 4" }];
 const IDENTICAL_B: FailureSignature = [{ testName: "adds two numbers", errorMessage: "expected 3, got 4" }];
 const DIFFERENT: FailureSignature = [{ testName: "subtracts two numbers", errorMessage: "expected 1, got 0" }];
-
-function answer(n: number) {
-  return { summary: `attempt ${n} tried something` };
-}
+const THIRD: FailureSignature = [{ testName: "multiplies two numbers", errorMessage: "expected 6, got 5" }];
 
 /**
  * The one assertion both stop paths share: `needs-human` is created before it is applied, applied
@@ -86,6 +77,9 @@ function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee
   // Nothing labels or edits the pull request itself — the escalation moved to the ticket.
   expect(calls.some((call) => call[0] === "pr" && call[1] === "edit")).toBe(false);
 }
+
+/** The PR comment a stop posts. */
+const prCommentIn = (calls: string[][]): string | undefined => calls.find((call) => call[0] === "pr" && call[1] === "comment")?.[4];
 
 /**
  * The ticket the fixer reads on a no-progress stop, to find the PRD a `spec/gap` is routed at
@@ -192,6 +186,19 @@ describe("assembleFixBrief", () => {
   });
 });
 
+describe("blockedComment", () => {
+  it("says why the loop stopped, numbers what every attempt tried, and names the spec/gap when one was filed", () => {
+    const noProgress = blockedComment("no-progress", ["tried X", "tried Y"], 500);
+    expect(noProgress).toContain("identical tests failing");
+    expect(noProgress).toContain("1. tried X\n2. tried Y");
+    expect(noProgress).toContain("`spec/gap` #500");
+
+    const capped = blockedComment("capped", ["tried X"]);
+    expect(capped).toContain(`${MAX_ATTEMPTS} attempts`);
+    expect(capped).not.toContain("spec/gap");
+  });
+});
+
 /**
  * Where the fix comes from now (#283). The stage edits the checkout and this reads back what it
  * changed, which is the whole reason the answer no longer carries the files: a model retyping every
@@ -241,9 +248,22 @@ describe("changedPaths", () => {
   });
 });
 
+describe("priorAttempts", () => {
+  it("counts the `fix: attempt N` subjects on the branch ahead of trunk, and nothing else", () => {
+    const calls: string[][] = [];
+    const git: GitExec = (args) => {
+      calls.push([...args]);
+      return "fix: attempt 2 at #42\nfix up the docstring\nfix: attempt 1 at #42\nImplement #42\n";
+    };
+
+    expect(priorAttempts(git)).toBe(2);
+    expect(calls).toEqual([["log", "origin/main..HEAD", "--format=%s"]]);
+  });
+});
+
 describe("runFixer — no-progress stop", () => {
   it("stops after exactly 2 stage invocations when attempts 1 and 2 report the identical signature, and applies needs-human + a comment", async () => {
-    const stage = fakeStage([answer(1), answer(2)]);
+    const stage = attempts(2);
     const deps = baseDeps({
       exec: stage.exec,
       runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
@@ -251,15 +271,13 @@ describe("runFixer — no-progress stop", () => {
 
     const outcome = await runFixer(deps);
 
-    expect(stage.callCount()).toBe(2);
+    expect(stage.calls).toHaveLength(2);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "no-progress" });
 
     expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
 
     const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
-    expect(commentCall?.[0]).toBe("pr");
-    expect(commentCall?.[1]).toBe("comment");
-    expect(commentCall?.[2]).toBe("7");
+    expect(commentCall?.slice(0, 3)).toEqual(["pr", "comment", "7"]);
     expect(commentCall?.[4]).toContain("attempt 1 tried something");
     expect(commentCall?.[4]).toContain("attempt 2 tried something");
   });
@@ -275,10 +293,9 @@ describe("runFixer — no-progress stop", () => {
    * identical red coming back twice is what actually stops the loop.
    */
   it("commits nothing for an attempt that left the tree unchanged, but still records its summary", async () => {
-    const stage = fakeStage([answer(1), answer(2)]);
     const { git, calls: gitCalls } = fakeGit("");
     const deps = baseDeps({
-      exec: stage.exec,
+      exec: attempts(2).exec,
       git,
       runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
     });
@@ -287,9 +304,7 @@ describe("runFixer — no-progress stop", () => {
 
     expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "no-progress" });
     expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
-
-    const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
-    expect(commentCall?.[4]).toContain("attempt 1 tried something");
+    expect(prCommentIn(deps.ghCalls)).toContain("attempt 1 tried something");
   });
 });
 
@@ -310,9 +325,8 @@ describe("runFixer — where a stop is routed", () => {
    * default rather than override it.
    */
   async function stoppedWithNoProgress(parentPrd: number | null = 41) {
-    const stage = fakeStage([answer(1), answer(2)]);
     const deps = baseDeps({
-      exec: stage.exec,
+      exec: attempts(2).exec,
       runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
       parentPrd: parentPrd ?? undefined,
     });
@@ -351,19 +365,16 @@ describe("runFixer — where a stop is routed", () => {
   it("names the filed gap in the comment, so the PR says where the stop went", async () => {
     const { deps } = await stoppedWithNoProgress();
 
-    const comment = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
-    expect(comment?.[4]).toContain("#500");
-    expect(comment?.[4]).toContain("spec/gap");
+    expect(prCommentIn(deps.ghCalls)).toContain("#500");
+    expect(prCommentIn(deps.ghCalls)).toContain("spec/gap");
   });
 
   it("files nothing on a capped stop, where every attempt moved the failure", async () => {
     // Three attempts that each changed the failure is evidence the diff is in play and the
     // contract is not. Filing here would make the label mean "the fixer gave up".
-    const third: FailureSignature = [{ testName: "multiplies", errorMessage: "expected 6, got 5" }];
-    const stage = fakeStage([answer(1), answer(2), answer(3)]);
     const deps = baseDeps({
-      exec: stage.exec,
-      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: third }],
+      exec: attempts(3).exec,
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: THIRD }],
     });
 
     const outcome = await runFixer(deps);
@@ -383,28 +394,25 @@ describe("runFixer — where a stop is routed", () => {
 
 describe("runFixer — capped stop", () => {
   it("stops after exactly 3 stage invocations when every attempt reports a different signature, and applies needs-human + a comment", async () => {
-    const thirdSignature: FailureSignature = [{ testName: "multiplies two numbers", errorMessage: "expected 6, got 5" }];
-    const stage = fakeStage([answer(1), answer(2), answer(3)]);
+    const stage = attempts(3);
     const deps = baseDeps({
       exec: stage.exec,
-      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: thirdSignature }],
+      runTestsSequence: [{ failures: IDENTICAL_A }, { failures: DIFFERENT }, { failures: THIRD }],
     });
 
     const outcome = await runFixer(deps);
 
-    expect(stage.callCount()).toBe(MAX_ATTEMPTS);
+    expect(stage.calls).toHaveLength(MAX_ATTEMPTS);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 3, stopReason: "capped" });
 
     expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
-
-    const commentCall = deps.ghCalls.find((call) => call[0] === "pr" && call[1] === "comment");
-    expect(commentCall?.[4]).toContain("attempt 3 tried something");
+    expect(prCommentIn(deps.ghCalls)).toContain("attempt 3 tried something");
   });
 });
 
 describe("runFixer — goes green", () => {
   it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment, and sends the PR back to Verify", async () => {
-    const stage = fakeStage([answer(1)]);
+    const stage = attempts(1);
     // A `gh` that answers the two reads `rejudge` makes — the PR's url and whole diff, and the
     // ticket's body — and records everything, so the dispatch can be checked field by field.
     const ghCalls: string[][] = [];
@@ -426,7 +434,7 @@ describe("runFixer — goes green", () => {
 
     const outcome = await runFixer(deps);
 
-    expect(stage.callCount()).toBe(1);
+    expect(stage.calls).toHaveLength(1);
     expect(outcome).toEqual({ verdict: "green", attempts: 1 });
     // The fix is what the stage left in the checkout, not what it dictated back (#283): the paths
     // committed are the ones `git status --porcelain` reported, and the model's answer names none.
@@ -476,273 +484,45 @@ describe("unfixableComment", () => {
   });
 });
 
-interface FixerWorkflow {
-  on?: {
-    workflow_run?: { workflows?: string[]; types?: string[] };
-    repository_dispatch?: { types?: string[] };
-    workflow_dispatch?: unknown;
-    pull_request?: unknown;
-    workflow_call?: { inputs?: Record<string, { type?: string; required?: boolean; default?: string }> };
-  };
-  permissions?: Record<string, string>;
-  concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs: {
-    fixer: {
-      if?: string;
-      with?: { run_id?: string; test_dir?: string };
-      steps?: Array<{
-        name?: string;
-        run?: string;
-        env?: Record<string, string>;
-        with?: { ref?: string; path?: string; repository?: string; token?: string };
-      }>;
-    };
-  };
-}
-
 /**
- * The lane this file's code had never been part of (#169, #234) — `fixer.yml`'s own header comment
- * is the home for why it exists. ADR-0055 (amended by ADR-0132) split it: `fixer-caller.yml` is
- * the listener (the trigger and the conclusion it reacts to), `fixer.yml` is the reusable workflow
- * it calls once it has decided a run is worth reacting to.
+ * The real `runTests`, read off a stubbed report: every failed assertion's *full* message, because
+ * two attempts that both threw `AssertionError` are only the same failure when the message matches
+ * too; and a file that never collected as one synthetic failure naming it, so an attempt that broke
+ * an import still gets a signature rather than reading as green.
  */
-describe("fixer-caller.yml is the listener a red Verify never had", () => {
-  const { workflow } = readWorkflow<FixerWorkflow>("fixer-caller.yml");
+describe("runVitestJsonForFixer", () => {
+  it("reports each failed assertion by full name and message, and an uncollected file as one failure", () => {
+    vi.mocked(runVitestReport).mockReturnValue({
+      report: {
+        testResults: [
+          {
+            name: "a.test.ts",
+            status: "failed",
+            assertionResults: [
+              { fullName: "adds two numbers", status: "failed", failureMessages: ["AssertionError: expected 3, got 4"] },
+              { fullName: "passes", status: "passed" },
+            ],
+          },
+          { name: "b.test.ts", status: "failed", message: "SyntaxError: unexpected token", assertionResults: [] },
+        ],
+      },
+    });
 
-  it("fires on a completed workflow_run of Verify, the same trigger review-caller.yml carries", () => {
-    expect(workflow.on?.workflow_run?.workflows).toEqual(["Verify"]);
-    expect(workflow.on?.workflow_run?.types).toEqual(["completed"]);
-    expect(workflow.on?.pull_request, "a pull_request trigger runs the PR's own copy of this file").toBeUndefined();
+    expect(runVitestJsonForFixer([".Workflow"], "/somewhere")).toEqual({
+      failures: [
+        { testName: "adds two numbers", errorMessage: "AssertionError: expected 3, got 4" },
+        { testName: "b.test.ts", errorMessage: "SyntaxError: unexpected token" },
+      ],
+    });
+    expect(runVitestReport).toHaveBeenCalledWith([".Workflow"], "/somewhere");
   });
 
-  it("reacts to the conclusion review-caller.yml turns away, and only that one", () => {
-    expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.conclusion == 'failure'");
-  });
+  it("reads a run that produced no report as one failure naming the targets, never as green", () => {
+    vi.mocked(runVitestReport).mockReturnValue({ error: "spawn npx ENOENT" });
 
-  it("leaves a red push run on trunk alone, which has no pull request to fix", () => {
-    expect(workflow.jobs.fixer.if).toContain("github.event.workflow_run.event != 'push'");
-  });
-});
-
-/**
- * The loop, not the listener: what runs once `fixer-caller.yml` has already decided a run is
- * worth reacting to and handed this workflow the run id it resolved.
- */
-describe("fixer.yml, the reusable workflow fixer-caller.yml calls", () => {
-  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
-
-  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
-    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
-  });
-
-  it("grants the writes fixer.ts performs: a push to the branch, a PR comment, and needs-human plus an assignee on the ticket", () => {
-    // Every attempt is committed onto the pull request's own branch (`commitAndPushAttempt`), a
-    // stopped fixer always comments the PR (`applyBlocked`, `applyUnfixable`), and both stop paths
-    // apply `needs-human` plus an assignee to the *ticket* (`escalateToOwner`). A `permissions:`
-    // block replaces the default token rather than adding to it, so an omitted scope is `none`.
-    expect(workflow.permissions?.contents).toBe("write");
-    expect(workflow.permissions?.["pull-requests"]).toBe("write");
-    expect(workflow.permissions?.issues).toBe("write");
-    // The resolve step reads the failed run's jobs and one job's log.
-    expect(workflow.permissions?.actions).toBe("read");
-  });
-
-  it("never cancels a run in flight, because an attempt it already pushed is not undone", () => {
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
-  });
-
-  it("checks out the pull request's own branch, which is where every attempt is pushed", () => {
-    // Named rather than found by "has a `with.ref`" alone: the machine checkout beside it also
-    // carries one now (`ref: ${{ inputs.machine_ref }}`, ADR-0146), and `.find` would otherwise
-    // grab whichever of the two comes first in the YAML rather than the one this test means.
-    const checkout = (workflow.jobs.fixer.steps ?? []).find((step) => step.name === "Checkout target");
-    expect(checkout?.with?.ref).toContain("steps.target.outputs.branch");
-  });
-
-  it("runs fixer.ts, which is the whole of what wiring this lane means", () => {
-    expect(source).toContain(".Workflow/agent-workflows/fixer/fixer.ts");
-  });
-
-  it("separates the machine it runs from the target it fixes", () => {
-    // Two target checkouts, because this lane takes two paths into the target and only ever runs
-    // one: the pull request's own branch to fix, or trunk to escalate from.
-    expectMachineAndTargetCheckouts({ workflow: "fixer.yml", job: "fixer", runs: "fixer.ts \"$ISSUE\"", targets: 2 });
-  });
-
-  it("points the fixer at the caller's own test target, never at tests/acceptance/", () => {
-    // An acceptance test is expected red until the ticket it names is built (vitest.config.ts), so
-    // a fixer aimed there would chase other tickets' unbuilt criteria and block every pull request.
-    //
-    // Which suite that is, is the caller's fact and not the machine's, so it crosses as a required
-    // input with no default: a default would be this repository's answer imposed on every caller,
-    // and it would fail silently — a target that collects nothing reads as "nothing is failing".
-    const step = (workflow.jobs.fixer.steps ?? []).find((each) => each.run?.includes("npx tsx") && each.name === "Run the fixer");
-    expect(step?.env?.TEST_DIR).toBe("${{ inputs.test_dir }}");
-    expect(step?.run).not.toContain("tests/acceptance");
-
-    const testDir = workflow.on?.workflow_call?.inputs?.test_dir;
-    expect(testDir?.required).toBe(true);
-    expect(testDir?.default).toBeUndefined();
-
-    const { workflow: caller } = readWorkflow<FixerWorkflow>("fixer-caller.yml");
-    expect(caller.jobs.fixer.with?.test_dir).toBe(".Workflow");
-  });
-});
-
-/**
- * The second door (#285). `workflow_run` went missing three times over 2026-08-30/31 — the last of
- * them run 33346638810 on PR #284, red at 01:07:58, reaching this lane only when a person
- * dispatched it by hand — so `verify.yml` now rings `fixer-needed` from a job of its own, the same
- * shape lane 05 opened for Recover under ADR-0114. These pin both ends: neither file can rename the
- * event alone, and neither can drop the two things that make a second door safe to add — the wait
- * for the run to finish, and the marker that makes the later arrival a no-op.
- */
-describe("the door a red Verify rings itself", () => {
-  const { workflow, source } = readWorkflow<FixerWorkflow>("fixer.yml");
-  const caller = readWorkflow<FixerWorkflow>("fixer-caller.yml");
-  const verify = readWorkflow<{
-    jobs: Record<string, { name?: string; if?: string; needs?: string[]; permissions?: Record<string, string>; steps?: Array<{ run?: string }> }>;
-  }>("verify.yml");
-
-  const signal = Object.values(verify.workflow.jobs).find((job) => job.steps?.some((step) => step.run?.includes("event_type=fixer-needed")));
-
-  it("answers the fixer-needed dispatch verify.yml sends, keyed on the failed run", () => {
-    // ADR-0055/ADR-0132: `fixer-caller.yml` carries this door and its own routing `if:` now —
-    // `fixer.yml` never reads `github.event` at all, only the `run_id` input the caller resolved.
-    expect(caller.workflow.on?.repository_dispatch?.types).toEqual(["fixer-needed"]);
-    expect(caller.workflow.jobs.fixer.if).toContain("github.event.action == 'fixer-needed'");
-    expect(caller.source).toContain("github.event.client_payload.run_id");
-
-    expect(signal, "verify.yml sends no fixer-needed dispatch").toBeDefined();
-    const ring = signal?.steps?.find((step) => step.run?.includes("event_type=fixer-needed"));
-    expect(ring?.run).toContain("client_payload[run_id]=$GITHUB_RUN_ID");
-  });
-
-  it("is rung only for the dispatch Verify judges a pull request on, never for a red push to trunk", () => {
-    // The sending side of this lane's own `event != 'push'`: a red `push: main` run is trunk being
-    // broken, with no pull request to fix. Both doors have to agree on that or the new one reopens
-    // a hole the old one closes.
-    expect(signal?.if).toContain("github.event.action == 'implementation-opened'");
-  });
-
-  it("is rung on a run that died either way, because a timed-out job reports cancelled", () => {
-    // This deliberately reverses the narrower rule that stood here until 2026-09-03. That rule
-    // excluded `cancelled` by name, and its stated reason was that `workflow_run` would not open
-    // for a cancelled run either — true then, and no longer: `fixer-caller.yml`'s door now accepts
-    // `cancelled` too, because `verify.yml` caps four of its jobs with `timeout-minutes` and a
-    // timeout reports `cancelled`, so a hung Verify reached this lane through neither door and the
-    // pull request sat red with nobody fixing it. The premise moved, so both doors move together.
-    //
-    // The cost of the reversal is the one the old rule was buying: a Verify someone cancels by
-    // hand can now spend one fixer run. That is ADR-0141's accepted asymmetry pointed at this
-    // lane — a wasted model run is visible and cheap, and the person who cancelled is right there;
-    // a red pull request nobody is fixing is silent and needs a human to notice it at all.
-    expect(signal?.if).toContain("always()");
-    expect(signal?.needs).toEqual(["immutability", "verify"]);
-    for (const job of signal?.needs ?? []) {
-      expect(signal?.if, `the signal job ignores a red ${job}`).toContain(`needs.${job}.result == 'failure'`);
-      expect(signal?.if, `the signal job ignores a timed-out ${job}`).toContain(`needs.${job}.result == 'cancelled'`);
-    }
-  });
-
-  it("sends from a job holding contents: write, which verify.yml's judging jobs deliberately do not", () => {
-    // A job-level block replaces the workflow default rather than narrowing it, so the three jobs
-    // that judge a pull request keep the `contents: read` at the top of the file and only this one
-    // can write.
-    expect(signal?.permissions?.contents).toBe("write");
-    expect(verify.workflow.jobs.verify.permissions).toBeUndefined();
-  });
-
-  it("waits for the run to finish before reading its log, because this door is rung from inside it", () => {
-    // `verify.yml`'s signal job is the last job of the run this lane resolves from, so the run is
-    // still `in_progress` when the dispatch lands — and `gh run view --log` refuses an in-progress
-    // run. Without the wait the grep below resolves nothing and this lane exits 0, which is the
-    // silence #285 exists to end.
-    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
-    expect(resolve?.run).toContain('gh run view "$RUN_ID" --json status');
-    expect(resolve?.run).toContain('[ "$STATUS" = "completed" ]');
-    // And refuses out loud rather than exiting 0: a run it cannot read is a red Verify it could not
-    // reach, not "nothing to work on".
-    expect(resolve?.run).toMatch(/is still \\"\$STATUS\\" after five minutes[\s\S]*?\n\s*exit 1/);
-  });
-
-  it("reacts once per Verify run, whichever door named it", () => {
-    // Both doors ring for one failure whenever `workflow_run` does arrive, and the concurrency
-    // group makes the late one queue behind the dispatch rather than race it — so without the
-    // marker every red Verify buys a second attempt loop at the same ticket. `fixer-caller.yml`
-    // resolves the run id off whichever door fired (the same `||` chain the concurrency group used
-    // to spell directly); `fixer.yml`'s own group keys on the `run_id` input that resolution feeds.
-    expect(caller.workflow.jobs.fixer.with?.run_id).toContain("github.event.client_payload.run_id");
-    expect(workflow.concurrency?.group).toContain("inputs.run_id");
-
-    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
-    expect(resolve?.run).toContain('MARKER="<!-- fixer-run:$RUN_ID -->"');
-    expect(resolve?.run).toContain('gh pr view "$PR" --json comments');
-    expect(resolve?.run).toContain('gh pr comment "$PR" --body');
-  });
-
-  it("writes the marker before it spends anything, so a fixer that dies is not retried into", () => {
-    const resolve = (workflow.jobs.fixer.steps ?? []).find((step) => step.run?.includes("--json jobs"));
-    const steps = workflow.jobs.fixer.steps ?? [];
-    // The marker is written in the resolve step, which is the first step of the job — everything
-    // that costs money (the checkout, the rebase, the stage) comes after it.
-    expect(steps.indexOf(resolve as (typeof steps)[number])).toBe(0);
-  });
-});
-
-/**
- * The one coupling that decides whether this lane resolves anything: `fixer.yml`'s resolve step
- * reads the pull request out of the line `verify.yml`'s checkout step echoes, and that step's own
- * comment is the home for why. These tests are what keep the two spellings from drifting.
- *
- * The same split, for the same reason, as `integrate.ts`'s lane 06 job names — the Actions API
- * answers strings, and `shared/` may not import a workflow file.
- */
-describe("fixer.yml reads the pull request out of the line verify.yml actually echoes", () => {
-  const fixer = readWorkflow<FixerWorkflow>("fixer.yml");
-  const verify = readWorkflow("verify.yml");
-
-  /** The pattern `fixer.yml`'s resolve step greps the job log with, read off the workflow itself. */
-  const grepped = /grep -oE '([^']+)'/.exec(fixer.source)?.[1];
-
-  it("greps for a pattern, rather than having quietly stopped doing so", () => {
-    expect(grepped).toBeDefined();
-  });
-
-  it("matches what verify.yml would print for a real pull request on a claim branch", () => {
-    const printed = "judging https://github.com/collod873/claude-workflow/pull/250 on implement/issue-241";
-
-    expect(verify.source, "verify.yml no longer echoes the line this lane resolves from").toContain(
-      'echo "judging $PR on $BRANCH"',
-    );
-    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(true);
-  });
-
-  it("does not match the echoed command line itself, which carries the literal $PR", () => {
-    expect(new RegExp(grepped ?? "$^").test('echo "judging $PR on $BRANCH"')).toBe(false);
-  });
-
-  it("does not match a branch that is not an implementation claim", () => {
-    const printed = "judging https://github.com/collod873/claude-workflow/pull/250 on somebodys-branch";
-
-    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(false);
-  });
-
-  /**
-   * The Immutability job's own copy of the line (#272/#277: a red `Immutability` job leaves
-   * `Restore and run acceptance` skipped, so its `judging` line is never written — this one is
-   * what the escalate path resolves from instead). Same shape, same echo string, so the grep above
-   * resolves either job without a second pattern.
-   */
-  it("Immutability also echoes the line — the job that always runs, so its log is where the escalate path resolves from", () => {
-    const immutability = readWorkflow<{ jobs: { immutability: { steps: Array<{ run?: string }> } } }>("verify.yml");
-    const echoed = (immutability.workflow.jobs.immutability.steps ?? []).some((step) =>
-      step.run?.includes('echo "judging $PR on $BRANCH"'),
-    );
-    expect(echoed, "Immutability carries no judging line of its own").toBe(true);
-
-    const printed = "judging https://github.com/collod873/claude-workflow/pull/277 on implement/issue-272";
-    expect(new RegExp(grepped ?? "$^").test(printed)).toBe(true);
+    expect(runVitestJsonForFixer([".Workflow", "x-"])).toEqual({
+      failures: [{ testName: ".Workflow x-", errorMessage: "spawn npx ENOENT" }],
+    });
   });
 });
 
@@ -753,7 +533,7 @@ describe("fixer.yml reads the pull request out of the line verify.yml actually e
  */
 describe("the cap across fixer runs", () => {
   it("spends no stage when three attempts already sit on the branch, and escalates instead", async () => {
-    const stage = fakeStage([answer(1)]);
+    const stage = attempts(1);
     const deps = baseDeps({
       exec: stage.exec,
       git: (args) => (args[0] === "log" ? "fix: attempt 1 at #42\nfix: attempt 2 at #42\nfix: attempt 3 at #42\nImplement #42\n" : ""),
@@ -762,14 +542,14 @@ describe("the cap across fixer runs", () => {
 
     const outcome = await runFixer(deps);
 
-    expect(stage.callCount()).toBe(0);
+    expect(stage.calls).toHaveLength(0);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 0, stopReason: "capped" });
     expect(deps.ghCalls).toContainEqual(["issue", "edit", "42", "--add-label", NEEDS_HUMAN_LABEL]);
     expect(deps.gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
   });
 
   it("takes only the remainder when earlier runs used part of the ceiling", async () => {
-    const stage = fakeStage([answer(1), answer(2), answer(3)]);
+    const stage = attempts(3);
     const deps = baseDeps({
       exec: stage.exec,
       git: (args) => (args[0] === "log" ? "fix: attempt 1 at #42\nImplement #42\n" : ""),
@@ -778,7 +558,7 @@ describe("the cap across fixer runs", () => {
 
     const outcome = await runFixer(deps);
 
-    expect(stage.callCount()).toBe(2);
+    expect(stage.calls).toHaveLength(2);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "capped" });
   });
 });

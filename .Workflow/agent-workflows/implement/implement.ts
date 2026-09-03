@@ -34,7 +34,6 @@ import { recordOutOfBrief } from "./out-of-brief";
 export {
   CLAIM_TIMEOUT_MINUTES,
   ImplementerAnswer,
-  nothingToBuildNote,
   staleClaimTakeoverNote,
   worktreeChanges,
   type ImplementOutcome,
@@ -63,7 +62,7 @@ export const IMPLEMENTER_PROMPT_PATH = ".Workflow/agent-workflows/implement/impl
 
 /**
  * The `repository_dispatch` action `implement.yml`'s job gates on — the one authority
- * `implement.yml`'s `if:` and `implement-workflow.test.ts` both check against, since no compiler
+ * `implement.yml`'s `if:` and the wiring table (`shared/lane-wiring.ts`) both check against, since no compiler
  * sees across the JS↔YAML boundary (the same pattern `SPEC_DISPATCH_EVENT_TYPE` and
  * `AUDIT_DISPATCH_ACTION` follow).
  *

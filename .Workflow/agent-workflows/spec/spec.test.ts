@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
-import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shared/marker";
 import type { Sheet } from "../shared/sheet-schema";
-import { createIssueGh, type FakeIssueGh } from "./gh.fake";
+import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
-import { sourceMarker, type SpecSource } from "./publish";
+import { sourceMarker } from "./publish";
 import {
   invocationFromEnv,
   planSpecRun,
@@ -176,33 +174,6 @@ describe("runSpecAuthor", () => {
 describe("the sheet door — unfiled marks reach the assumptions section", () => {
   const OWNER_WORDS = "make the accept file its own rulings";
 
-  function sheet(decisions: Sheet["decisions"]): Sheet {
-    return {
-      restatement: "the idea as work",
-      priorArt: [],
-      decisions,
-      survivors: [],
-      route: "short",
-      routeReason: "Short — one file.",
-      newTerms: [],
-      round: 0,
-    };
-  }
-
-  const PAYLOAD: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
-
-  /** The accepted idea as the collector reads it: the owner's words, the sheet, the accept. */
-  function fakeGh(decisions: Sheet["decisions"]): FakeIssueGh {
-    const bodies = [sheetMarker(sheet(decisions)), acceptedMarker(PAYLOAD)];
-    return createIssueGh((fields) =>
-      fields === "body"
-        ? JSON.stringify({ body: OWNER_WORDS })
-        : fields === "comments"
-          ? JSON.stringify({ comments: bodies.map((body) => ({ body })) })
-          : undefined,
-    );
-  }
-
   /**
    * An empty sweep, the author's draft, a critic's own resolutions (or silence), and — only when
    * something needs folding in — the reconciler's rewritten body.
@@ -223,7 +194,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
     critic: string = SILENT_CRITIC,
     reconciledBody?: string,
   ): Promise<{ result: Awaited<ReturnType<typeof runSpecPublication>>; calls: string[][] }> {
-    const { gh, calls } = fakeGh(decisions);
+    const { gh, calls } = acceptedSheetGh(OWNER_WORDS, decisions);
     const result = await runSpecPublication(
       chain(openQuestions, critic, reconciledBody),
       gh,
@@ -267,7 +238,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
       SILENT_CRITIC,
       JSON.stringify({ body: reconciledBody }),
     ]);
-    const { gh } = fakeGh([UNFILED]);
+    const { gh } = acceptedSheetGh(OWNER_WORDS, [UNFILED]);
 
     await runSpecPublication(
       fake.exec,
@@ -334,14 +305,8 @@ describe("runSpecCritique — the critic-only entry", () => {
   const RECONCILED = JSON.stringify({ body: MODEL_REWRITE });
 
   /** The published spec as this door reads it: its own title and body, plus whatever comments exist. */
-  function fakeGh(comments: string[] = [], body: string = SPEC.body): FakeIssueGh {
-    return createIssueGh((fields) =>
-      fields === "title,body"
-        ? JSON.stringify({ ...SPEC, body })
-        : fields === "comments"
-          ? JSON.stringify({ comments: comments.map((commentBody) => ({ body: commentBody })) })
-          : undefined,
-    );
+  function specGh(comments: string[] = [], body: string = SPEC.body) {
+    return sessionSpecGh({ ...SPEC, body }, comments);
   }
 
   /** The `gh issue edit … --body <body>` a run made, or `undefined` when it rewrote nothing. */
@@ -354,7 +319,7 @@ describe("runSpecCritique — the critic-only entry", () => {
 
   it("reads the issue's own title and body and hands them to the critic", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh } = fakeGh();
+    const { gh } = specGh();
 
     await runSpecCritique(fake.exec, gh, 180);
 
@@ -368,7 +333,7 @@ describe("runSpecCritique — the critic-only entry", () => {
     // bound by `--allowedTools` (ADR-0060), so its absence from every argv is what says it never
     // ran — checked alongside the call count, which pins the stage that did run as the only one.
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh } = fakeGh();
+    const { gh } = specGh();
 
     await runSpecCritique(fake.exec, gh, 180);
 
@@ -383,7 +348,7 @@ describe("runSpecCritique — the critic-only entry", () => {
     // The round loop is gone (#263): every comment on the issue is the owner's own — there is no
     // marker of this lane's own writing left to filter out.
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh } = fakeGh(["what does done mean?", "done means the gauntlet exits 0"]);
+    const { gh } = specGh(["what does done mean?", "done means the gauntlet exits 0"]);
 
     await runSpecCritique(fake.exec, gh, 180);
 
@@ -394,7 +359,7 @@ describe("runSpecCritique — the critic-only entry", () => {
 
   it("adds sliceable and sends the dispatch when the critic resolved nothing", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = specGh();
 
     const result = await runSpecCritique(fake.exec, gh, 180);
 
@@ -411,7 +376,7 @@ describe("runSpecCritique — the critic-only entry", () => {
 
   it("publishes nothing — the spec is already on the tracker", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = specGh();
 
     await runSpecCritique(fake.exec, gh, 180);
 
@@ -423,7 +388,7 @@ describe("runSpecCritique — the critic-only entry", () => {
   describe("re-authoring the body from the critic's own resolutions", () => {
     it("rewrites the body from the body and the critic's resolutions when it resolved something, and still dispatches", async () => {
       const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh();
+      const { gh, calls } = specGh();
 
       const result = await runSpecCritique(fake.exec, gh, 180);
 
@@ -444,7 +409,7 @@ describe("runSpecCritique — the critic-only entry", () => {
       // The whole point of the ordering: `sliceable` is what lane 03's dispatch hangs off, and a
       // spec labelled before it was rewritten is one lane 03 may slice from the un-reconciled draft.
       const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh();
+      const { gh, calls } = specGh();
 
       await runSpecCritique(fake.exec, gh, 180);
 
@@ -461,7 +426,7 @@ describe("runSpecCritique — the critic-only entry", () => {
 
     it("rewrites nothing and spawns no second stage when the critic resolves nothing", async () => {
       const fake = createFakeStages([SILENT_CRITIC]);
-      const { gh, calls } = fakeGh();
+      const { gh, calls } = specGh();
 
       const result = await runSpecCritique(fake.exec, gh, 180);
 
@@ -475,7 +440,7 @@ describe("runSpecCritique — the critic-only entry", () => {
       // guard existed reaches it too — neither may lose its provenance.
       const marker = sourceMarker({ kind: "sheet", issue: 42 });
       const fake = createFakeStages([RESOLVED_CRITIC, RECONCILED]);
-      const { gh, calls } = fakeGh([], `${SPEC.body}\n\n${marker}`);
+      const { gh, calls } = specGh([], `${SPEC.body}\n\n${marker}`);
 
       await runSpecCritique(fake.exec, gh, 180);
 
@@ -496,46 +461,8 @@ describe("runSpecCritique — the critic-only entry", () => {
  * itself — and refuses a source whose spec already dispatched before any of that reading happens.
  */
 describe("planSpecRun — the cold door reads the issue, not the label", () => {
-  const SHEET: Sheet = {
-    restatement: "the idea as work",
-    priorArt: [],
-    decisions: [],
-    survivors: [],
-    route: "short",
-    routeReason: "Short — one file.",
-    newTerms: [],
-    round: 0,
-  };
-  const ACCEPTED: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
-
-  /** A `gh` answering `issue view --json comments` for the source, and `issue list` for the search `alreadySliced` runs. */
-  function fakeSpecGh(
-    options: { comments?: string[]; slicedSpecs?: Array<{ number: number; source: SpecSource }> } = {},
-  ): { gh: GhExec; calls: string[][] } {
-    const calls: string[][] = [];
-    const gh: GhExec = (args) => {
-      calls.push([...args]);
-      if (args[0] === "issue" && args[1] === "list") {
-        const specs = (options.slicedSpecs ?? []).map((spec) => ({
-          number: spec.number,
-          body: sourceMarker(spec.source),
-          labels: [{ name: "prd" }, { name: "sliceable" }],
-        }));
-        return JSON.stringify(specs);
-      }
-      if (args[0] === "issue" && args[1] === "view") {
-        const fields = args[args.indexOf("--json") + 1];
-        if (fields === "comments") {
-          return JSON.stringify({ comments: (options.comments ?? []).map((body) => ({ body })) });
-        }
-      }
-      return "";
-    };
-    return { gh, calls };
-  }
-
   it("picks the sheet collector when the labelled issue carries a decision sheet", () => {
-    const { gh } = fakeSpecGh({ comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)] });
+    const { gh } = coldDoorGh({ comments: acceptedSheetComments() });
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 });
 
@@ -547,7 +474,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("picks the map collector when the labelled issue carries no decision sheet", () => {
-    const { gh } = fakeSpecGh({ comments: [] });
+    const { gh } = coldDoorGh({ comments: [] });
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 });
 
@@ -559,7 +486,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("threads repoRoot into the map trigger, so collectMapContext reads the target checkout rather than its own cwd", () => {
-    const { gh } = fakeSpecGh({ comments: [] });
+    const { gh } = coldDoorGh({ comments: [] });
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 }, "/some/target/checkout");
 
@@ -570,7 +497,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("leaves the sheet trigger with no repoRoot at all — the sheet collector reads nothing off disk", () => {
-    const { gh } = fakeSpecGh({ comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)] });
+    const { gh } = coldDoorGh({ comments: acceptedSheetComments() });
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 }, "/some/target/checkout");
 
@@ -578,7 +505,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("sends a critique trigger straight to the critic, reading nothing off the issue first", () => {
-    const { gh, calls } = fakeSpecGh();
+    const { gh, calls } = coldDoorGh();
 
     expect(planSpecRun(gh, { trigger: "critique", issueNumber: 902 })).toEqual({
       path: "critique",
@@ -588,8 +515,8 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("refuses a source whose spec already carries sliceable, before reading anything else about it", () => {
-    const { gh, calls } = fakeSpecGh({
-      comments: [sheetMarker(SHEET), acceptedMarker(ACCEPTED)],
+    const { gh, calls } = coldDoorGh({
+      comments: acceptedSheetComments(),
       slicedSpecs: [{ number: 900, source: { kind: "sheet", issue: 42 } }],
     });
 
@@ -599,7 +526,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("does not refuse a source whose already-dispatched spec came from a different issue", () => {
-    const { gh } = fakeSpecGh({
+    const { gh } = coldDoorGh({
       comments: [],
       slicedSpecs: [{ number: 900, source: { kind: "map", issue: 999 } }],
     });
@@ -608,7 +535,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
   });
 
   it("does not refuse a source whose spec exists but has not dispatched yet", () => {
-    const { gh } = fakeSpecGh({ comments: [] });
+    const { gh } = coldDoorGh({ comments: [] });
 
     expect(() => planSpecRun(gh, { trigger: "to-spec", issueNumber: 76 })).not.toThrow();
   });

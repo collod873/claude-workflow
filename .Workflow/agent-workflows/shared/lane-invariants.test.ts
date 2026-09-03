@@ -1,8 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
+import { readWorkflows } from "./read-workflow";
+import { binSources, entrypointsOf, hookSources, laneSources, readRepoText, REPO_ROOT } from "./repo-sources";
 
 /**
  * The classes, not the instances.
@@ -28,9 +27,6 @@ import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow";
  * forty-five minutes.
  */
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const AGENT_WORKFLOWS = join(REPO_ROOT, ".Workflow/agent-workflows");
-
 interface Step {
   name?: string;
   run?: string;
@@ -55,32 +51,21 @@ interface Workflow {
   name?: string;
   on?: {
     workflow_call?: { inputs?: Record<string, WorkflowCallInput> };
+    repository_dispatch?: { types?: string[] };
     [key: string]: unknown;
   } | string[];
   jobs?: Record<string, Job>;
 }
 
-const workflowFiles = readdirSync(WORKFLOWS_DIR).filter((n) => n.endsWith(".yml") || n.endsWith(".yaml"));
-const workflows = workflowFiles.map((name) => {
-  const { workflow, source } = readWorkflow<Workflow>(name);
-  return { name, workflow, source, steps: Object.values(workflow.jobs ?? {}).flatMap((job) => job.steps ?? []) };
-});
+const workflows = readWorkflows<Workflow>().map(({ name, workflow, source }) => ({
+  name,
+  workflow,
+  source,
+  steps: Object.values(workflow.jobs ?? {}).flatMap((job) => job.steps ?? []),
+}));
 
-/** Every non-test TypeScript file under the lanes, plus everything in `bin/`. */
-function sourceFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir)) {
-      if (entry === "node_modules" || entry === ".git" || entry.endsWith(".fixtures")) continue;
-      const path = join(dir, entry);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (!path.endsWith(".test.ts")) out.push(path);
-    }
-  };
-  walk(AGENT_WORKFLOWS);
-  walk(join(REPO_ROOT, "bin"));
-  return out;
-}
+/** Every non-test file under the lanes, plus everything in `bin/`. */
+const sourceFiles = () => [...laneSources(), ...binSources()];
 
 describe("a lane that writes into a target installs that target's dependencies", () => {
   /**
@@ -89,32 +74,28 @@ describe("a lane that writes into a target installs that target's dependencies",
    */
   const WRITES_TARGET = /regenerateArtifacts|landAnswer/;
 
-  /** The lane entrypoints a workflow's `run:` steps invoke, as repo-relative paths. */
-  function entrypoints(source: string): string[] {
-    return [...source.matchAll(/npx tsx (\.Workflow\/[^\s"']+\.ts)/g)].map((m) => m[1]);
+  /** The text of one repo-relative or absolute `.ts` path, or `undefined` for a file that is not there. */
+  function textOf(path: string): string | undefined {
+    try {
+      return readRepoText(path);
+    } catch {
+      return undefined;
+    }
   }
 
   /** Whether `entry`, or anything it imports from its own lane, regenerates or lands into a target. */
   function writesTarget(entry: string): boolean {
     const path = join(REPO_ROOT, entry);
-    let source: string;
-    try {
-      source = readFileSync(path, "utf8");
-    } catch {
-      return false;
-    }
+    const source = textOf(path);
+    if (source === undefined) return false;
     if (WRITES_TARGET.test(source)) return true;
     return [...source.matchAll(/from "(\.[^"]+)"/g)].some((m) => {
       const imported = join(dirname(path), m[1].endsWith(".ts") ? m[1] : `${m[1]}.ts`);
-      try {
-        return WRITES_TARGET.test(readFileSync(imported, "utf8"));
-      } catch {
-        return false;
-      }
+      return WRITES_TARGET.test(textOf(imported) ?? "");
     });
   }
 
-  const writers = workflows.filter((w) => entrypoints(w.source).some(writesTarget));
+  const writers = workflows.filter((w) => entrypointsOf(w.source).some(writesTarget));
 
   it("finds the lanes that write into a target, so this sweep is not vacuous", () => {
     expect(writers.map((w) => w.name).sort()).toContain("implement.yml");
@@ -198,13 +179,12 @@ describe("a read of the Actions API is a GET", () => {
    * Why a read route must take its query in the path is written where the fix landed:
    * `fetch_verify_verdict`'s comment in `bin/close-ticket`.
    */
-  const offenders = sourceFiles().flatMap((path) => {
-    const source = readFileSync(path, "utf8");
-    const hits = [...source.matchAll(/gh[_ ]?api[\s\S]{0,400}?actions\/[\s\S]{0,400}?\)/gi)];
+  const offenders = sourceFiles().flatMap((file) => {
+    const hits = [...file.source.matchAll(/gh[_ ]?api[\s\S]{0,400}?actions\/[\s\S]{0,400}?\)/gi)];
     return hits
       .filter((hit) => /["']-f["']|\s-f\s|--field/.test(hit[0]))
       .filter((hit) => !/--method|["']-X["']|-X GET/.test(hit[0]))
-      .map(() => path.slice(REPO_ROOT.length + 1));
+      .map(() => file.relative);
   });
 
   it("no call sends fields to an Actions read route, which would make it a POST", () => {
@@ -221,19 +201,26 @@ describe("every dispatch wire has a sender and a receiver", () => {
    * A wire name declared on one side only is unreachable code that looks wired. Both of
    * `verify.yml`'s jobs were dead this way until #145's seam audit, because the sender and the
    * receiver each declared their own spelling and each slice tested against its own constant.
+   *
+   * Two sources of names, so neither side can be forgotten: every `*_DISPATCH_ACTION` /
+   * `*_DISPATCH_EVENT_TYPE` a `shared/` module declares (a sender with a constant), and every
+   * `repository_dispatch: types:` entry a workflow listens on (a receiver, whoever sends —
+   * `session-captured` is the capture hook's and `fixer-needed` is a `run:` step's, and neither
+   * has a TypeScript constant to be found under).
    */
-  const declared = [...new Set(
-    readdirSync(join(AGENT_WORKFLOWS, "shared"))
-      .filter((n) => n.endsWith(".ts") && !n.endsWith(".test.ts"))
-      .flatMap((n) => [
-        ...readFileSync(join(AGENT_WORKFLOWS, "shared", n), "utf8")
-          .matchAll(/DISPATCH_ACTION(?:_TYPE)?\s*=\s*"([a-z-]+)"/g),
-      ])
-      .map((m) => m[1]),
-  )];
+  const declared = [
+    ...new Set([
+      ...laneSources()
+        .filter((file) => /\/shared\/[^/]+\.ts$/.test(file.path))
+        .flatMap((file) => [...file.source.matchAll(/DISPATCH_ACTION(?:_TYPE)?\s*=\s*"([a-z-]+)"/g)])
+        .map((m) => m[1]),
+      ...workflows.flatMap((w) => (Array.isArray(w.workflow.on) ? [] : (w.workflow.on?.repository_dispatch?.types ?? []))),
+    ]),
+  ];
 
   it("finds the wire names, so this sweep is not vacuous", () => {
     expect(declared.length).toBeGreaterThan(0);
+    expect(declared).toEqual(expect.arrayContaining(["session-captured", "fixer-needed", "implement-failed", "ticket-ready"]));
   });
 
   it.each(declared)("some workflow listens for %s", (action) => {
@@ -246,10 +233,8 @@ describe("every dispatch wire has a sender and a receiver", () => {
   });
 
   it.each(declared)("something sends %s", (action) => {
-    const senders = sourceFiles().filter((path) => {
-      const source = readFileSync(path, "utf8");
-      return source.includes(`event_type=${action}`) || new RegExp(`"${action}"`).test(source);
-    });
+    const sources = [...sourceFiles().map((file) => file.source), ...hookSources().map((file) => file.source), ...workflows.map((w) => w.source)];
+    const senders = sources.filter((source) => source.includes(`event_type=${action}`) || new RegExp(`"${action}"`).test(source));
     expect(
       senders.length,
       `\`${action}\` has a receiver but nothing sends it — lane 03 published 26 tickets lane 05 ` +

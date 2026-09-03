@@ -1,9 +1,6 @@
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
 import type { StageExec } from "../shared/stage";
@@ -19,10 +16,11 @@ import type { Finding } from "./structural-refusal";
 
 
 /**
- * Two things this ticket adds: the filter that stands between the reviewer's raw findings and
- * anything downstream, and the workflow trigger that fires the reviewer at all. Each gets its own
- * `describe` because they are independent claims — a broken trigger with a correct filter still
- * ships a lane that never runs, and a correct trigger with a broken filter still floods the owner.
+ * Lane 07 as a chain: the filter that stands between the reviewer's raw findings and anything
+ * downstream, the conformance half that judges the diff against its spec (ADR-0038, #189), and
+ * `runReview` tying the two to the refuter and the tracker. Every stage is a `fakeExec` answering
+ * canned JSON; every `gh` is `trackerForReview`. How the lane is *fired* is a workflow-shape fact
+ * and lives in `shared/lane-wiring.test.ts`.
  */
 
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
@@ -120,8 +118,8 @@ interface ReviewTrackerOptions {
  * `runCounter`'s own proposals) get a canned, incrementing issue URL; `issue list` calls (both of
  * `runCounter`'s reads) get an empty JSON array, so the counter's below-threshold path is exercised
  * without needing a fixture tracker; and the two reads the conformance half needs — the commit's
- * pull requests, and a ticket or PRD body — are answered from `options`. Not `createFakeGh`: that
- * one refuses every call it does not model, and the conformance half's `label create` is one.
+ * pull requests, and a ticket or PRD body — are answered from `options`. Not the shared fake in
+ * `gh.fake.ts`: it refuses every call it does not model, and the conformance half's `label create` is one.
  *
  * The pulls lookup is recognised through `commitPullsPathMatcher` rather than a restated path, so
  * this fake cannot answer an endpoint different from the one `commitPullsPath` actually sends.
@@ -287,22 +285,14 @@ const CONFORMANCE_TICKETS = {
   [PRD_NUMBER]: { title: "the PRD", body: `${SPEC_MARKER}\n` },
 };
 
-/**
- * The conformance reviewer's prompt template up to its first placeholder — enough of the file to
- * identify *which* prompt a spawn carried, asserted against the real file rather than a literal
- * copied out of it.
- */
-const CONFORMANCE_PROMPT_HEAD = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "conformance-reviewer/prompt.md"),
-  "utf8",
-).split("{{")[0];
-
 const ASSIGNEE = "collod873";
 
 /**
  * One whole run of lane 07 over `DIFF`, with the stage answering `responses` in order — plus the
  * two things every assertion below is about: what the chain returned, what `gh` was asked, and
- * which of the spawned prompts (if any) was the conformance reviewer's.
+ * which of the spawned prompts (if any) was the conformance reviewer's. That one is recognised by
+ * what it was handed: the ticket's own criterion as its scope, which no other stage in the chain
+ * — the correctness reviewer sees only the diff, the refuter only a finding — ever receives.
  */
 async function reviewRun(
   responses: unknown[],
@@ -315,7 +305,7 @@ async function reviewRun(
   return {
     result,
     calls,
-    conformancePrompt: prompts.find((prompt) => prompt.includes(CONFORMANCE_PROMPT_HEAD)),
+    conformancePrompt: prompts.find((prompt) => prompt.includes(CRITERION_MARKER)),
   };
 }
 
@@ -471,103 +461,5 @@ describe("runReview's conformance half", () => {
 
     expect(conformancePrompt).toBeUndefined();
     expect(result.tally).toEqual({ reached: 0, refuted: 0 });
-  });
-});
-
-const REVIEW_YML_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../.github/workflows/review.yml",
-);
-
-const REVIEW_CALLER_YML_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../.github/workflows/review-caller.yml",
-);
-
-/**
- * ADR-0055 (amended by ADR-0132) split this lane: `review-caller.yml` carries the trigger and the
- * routing decision `review.yml`'s own job `if:` used to make (`workflow_run` cannot be
- * parameterized through `workflow_call`), and `review.yml` itself is the reusable workflow it
- * calls, taking only the head SHA that decision turns up.
- */
-describe("review-caller.yml's trigger", () => {
-  const workflow = parse(readFileSync(REVIEW_CALLER_YML_PATH, "utf8")) as {
-    on: { workflow_run?: { workflows: string[]; types: string[] }; pull_request?: unknown };
-    jobs: { review: { if?: string } };
-  };
-
-  it("fires on a completed workflow_run of Verify", () => {
-    expect(workflow.on.workflow_run).toBeDefined();
-    expect(workflow.on.workflow_run?.workflows).toEqual(["Verify"]);
-    expect(workflow.on.workflow_run?.types).toEqual(["completed"]);
-  });
-
-  it("carries no pull_request trigger", () => {
-    expect(workflow.on.pull_request).toBeUndefined();
-  });
-
-  it("only reviews a successful conclusion", () => {
-    expect(workflow.jobs.review.if).toContain("github.event.workflow_run.conclusion == 'success'");
-  });
-
-  it("only reviews the Verify run an implementer's dispatch started", () => {
-    // `verify-caller.yml` also fires on `push: main`, where `workflow_run.head_sha` is trunk's own
-    // tip and `origin/main..head_sha` is empty — so without this the lane spent a reviewer fleet
-    // reading nothing on every commit the owner pushed himself.
-    //
-    // Spelled from the other side — "not the push run" — because this workflow is not itself
-    // dispatch-triggered and naming that event made it read as one to ADR-0090's sweep (#188). The
-    // test below is what makes the two spellings the same condition rather than two conditions that
-    // agree today.
-    expect(workflow.jobs.review.if).toContain("github.event.workflow_run.event != 'push'");
-  });
-
-  it("is equivalent to naming the dispatch, because Verify has exactly two doors", () => {
-    // The premise "not push" relies on: `Verify` fires on a push to main and on the implementer's
-    // dispatch, and on nothing else. Since ADR-0055/ADR-0132 split `verify.yml` into a reusable
-    // workflow plus `verify-caller.yml`, it is the caller stub that actually starts the run this
-    // job reacts to — `verify.yml` itself carries only `workflow_call` now. `immutable-set.test.ts`
-    // asserts the same list on the caller stub for its own reasons; it is re-asserted here because
-    // *this* file's `if:` is unsound the moment a third trigger is added there, and the failure
-    // would otherwise land on a lane that never mentions Verify's triggers at all.
-    const verifyCaller = parse(
-      readFileSync(
-        resolve(dirname(fileURLToPath(import.meta.url)), "../../../.github/workflows/verify-caller.yml"),
-        "utf8",
-      ),
-    ) as { on: Record<string, unknown> };
-
-    expect(Object.keys(verifyCaller.on).sort()).toEqual(["push", "repository_dispatch"]);
-  });
-});
-
-describe("review.yml, the reusable workflow review-caller.yml calls", () => {
-  const workflow = parse(readFileSync(REVIEW_YML_PATH, "utf8")) as {
-    on: Record<string, unknown>;
-    jobs: {
-      review: {
-        env?: Record<string, string>;
-        steps?: Array<{
-          name?: string;
-          run?: string;
-          env?: Record<string, string>;
-          with?: { path?: string; repository?: string; token?: string; "fetch-depth"?: number };
-        }>;
-      };
-    };
-  };
-
-  it("takes workflow_call, never a trigger of its own — that lives on the caller", () => {
-    expect(Object.keys(workflow.on)).toEqual(["workflow_call"]);
-  });
-
-  it("sets the assignee review.ts refuses to run without", () => {
-    expect(workflow.jobs.review.env?.SIGNAL_ASSIGNEE).toBeDefined();
-  });
-
-  it("separates the machine it runs from the target it reviews", () => {
-    // `fetchDepth: 0` because the diff under review is `origin/main...<head>`, and a shallow
-    // checkout carries neither ref far enough back to compute it.
-    expectMachineAndTargetCheckouts({ workflow: "review.yml", job: "review", runs: "review.ts", fetchDepth: 0 });
   });
 });

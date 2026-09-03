@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
@@ -304,22 +302,9 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
     expect(firstDispatch).toBeGreaterThan(lastReadBack);
   });
 
-  /**
-   * #179: the folded constant is unfolded, so publish-time dispatch is one *caller* of the
-   * readiness predicate rather than a second implementation of it. Asserted against the source
-   * because behaviour alone cannot tell the two apart — at publish time they agree by construction,
-   * and that agreement is exactly what let readiness be answered once and never again.
-   */
-  it("asks readySlices rather than testing dependsOn.length itself", () => {
-    const source = readFileSync(fileURLToPath(new URL("./slice-and-publish.ts", import.meta.url)), "utf8");
-    // Comments stripped: the header still names the folded constant, because saying what was
-    // wrong is the point of the header.
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-
-    expect(code).toContain("readySlices");
-    expect(code).not.toContain("dependsOn.length");
-  });
-
+  // #179: publish-time dispatch is one *caller* of the readiness predicate rather than a second
+  // implementation of it — and behaviour alone cannot tell the two apart, since at publish time
+  // they agree by construction. This is what the agreement looks like.
   it("gives the same answer the predicate gives for the state a publish is in", () => {
     // The mix this test needs is ready alongside not-ready, which one root and two dependents gives
     // just as well as two roots did — and `validatePlan` now refuses the two-root version (#240).

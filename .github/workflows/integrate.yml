@@ -2,10 +2,9 @@ name: Integrate (reusable)
 
 # Lane 08 (PRD #145, move 7): the merge actor, with no model in it. Fires on the same
 # `repository_dispatch` an implementer's `openPrAndDispatch` sends after opening a pull request
-# (`VERIFY_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/implement/implement.ts`, spelled here
-# and re-exported from `integrate.ts` so `integrate-workflow.test.ts` checks the two against one
-# constant rather than trusting they were typed the same twice — the same split every other lane
-# in this pipeline holds to).
+# (`VERIFY_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/shared/verify-dispatch.ts`, spelled
+# here and held to that constant by the wiring table, `shared/lane-wiring.ts`, rather than trusting
+# it was typed the same twice — the same split every other lane in this pipeline holds to).
 #
 # `types:` names this lane's own action, for the reason `audit.yml` gives and ADR-0090 rules — an
 # unfiltered trigger woke this lane on every unrelated dispatch, and its four runs to date are four

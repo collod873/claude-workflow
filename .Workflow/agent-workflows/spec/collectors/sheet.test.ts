@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/marker";
 import { sheet } from "../../shared/sheet.fixture";
 import { collectSheetContext } from "./sheet";
-import { fakeSheetGh as fakeGh } from "./sheet-gh.fixture";
+import { fakeSheetGh } from "./sheet-gh.fixture";
 
 /**
  * The sheet collector is the accepted-sheet trigger's half of ADR-0058: it
@@ -18,7 +18,7 @@ describe("collectSheetContext", () => {
       coinedTerms: ["Gate", "Lane"],
       route: "long",
     };
-    const gh = fakeGh("the owner's words", [
+    const gh = fakeSheetGh("the owner's words", [
       `## Restatement\n\n…\n\n${sheetMarker(sheet({ routeReason: "Long — five decisions." }))}`,
       `## Accepted\n\n${acceptedMarker(payload)}`,
     ]);
@@ -43,7 +43,7 @@ describe("collectSheetContext", () => {
       { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling", adrReversal: "Undoing it costs a re-route" },
     ];
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
-    const gh = fakeGh("the owner's words", [
+    const gh = fakeSheetGh("the owner's words", [
       sheetMarker(sheet({ decisions, survivors: ["nobody checked the cap"] })),
       acceptedMarker(payload),
     ]);
@@ -62,7 +62,7 @@ describe("collectSheetContext", () => {
 
   it("cites the rulings by path rather than restating the decision", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
-    const gh = fakeGh("words", [sheetMarker(sheet()), acceptedMarker(payload)]);
+    const gh = fakeSheetGh("words", [sheetMarker(sheet()), acceptedMarker(payload)]);
 
     const { context } = collectSheetContext(gh, 1);
 
@@ -71,13 +71,13 @@ describe("collectSheetContext", () => {
 
   it("throws rather than falling back to prose-parsing when the payload is absent", () => {
     // No accept comment at all — never a case this collector guesses at.
-    const gh = fakeGh("words", [sheetMarker(sheet())]);
+    const gh = fakeSheetGh("words", [sheetMarker(sheet())]);
 
     expect(() => collectSheetContext(gh, 1)).toThrow();
   });
 
   it("throws on an old bare accept marker, which carries no payload to read", () => {
-    const gh = fakeGh("words", [
+    const gh = fakeSheetGh("words", [
       sheetMarker(sheet()),
       "## Accepted\n\n<!-- shape-accepted:v1 -->",
     ]);
@@ -87,7 +87,7 @@ describe("collectSheetContext", () => {
 
   it("throws when the issue carries no decision sheet", () => {
     const payload: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
-    const gh = fakeGh("words", [acceptedMarker(payload)]);
+    const gh = fakeSheetGh("words", [acceptedMarker(payload)]);
 
     expect(() => collectSheetContext(gh, 1)).toThrow();
   });
@@ -95,7 +95,7 @@ describe("collectSheetContext", () => {
   it("reads the latest sheet and the latest accept when either repeats", () => {
     const first: AcceptedPayload = { adrPaths: ["docs/adr/0001-old.md"], coinedTerms: [], route: "short" };
     const second: AcceptedPayload = { adrPaths: ["docs/adr/0002-new.md"], coinedTerms: [], route: "short" };
-    const gh = fakeGh("words", [
+    const gh = fakeSheetGh("words", [
       sheetMarker(sheet({ round: 0 })),
       sheetMarker(sheet({ round: 1 })),
       acceptedMarker(first),

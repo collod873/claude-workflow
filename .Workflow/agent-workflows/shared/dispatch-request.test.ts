@@ -3,24 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV, requestDispatch } from "./dispatch-request";
-import type { GhExec } from "./gh";
+import { createRecordingGh } from "./gh.fake";
 
 /**
  * #181's split, from the sender's side: a job that spends a model holds `contents: read` and cannot
  * `POST /dispatches` at all, so what it asks for has to survive the job boundary as data rather
- * than be attempted and 403'd.
+ * than be attempted and 403'd. The `gh` is `createRecordingGh`: what was sent is the whole question.
  */
-
-function fakeGh(): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  return {
-    calls,
-    gh: (args) => {
-      calls.push(args);
-      return "";
-    },
-  };
-}
 
 function requestsFile(): string {
   return join(mkdtempSync(join(tmpdir(), "dispatch-request-")), "requests.jsonl");
@@ -28,7 +17,7 @@ function requestsFile(): string {
 
 describe("requestDispatch with no handoff path — the caller already holds contents: write", () => {
   it("sends the dispatch through gh, in the argv every caller used to build inline", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createRecordingGh();
 
     requestDispatch(gh, { event_type: "ticket-ready", client_payload: { issue: 42 } }, {});
 
@@ -45,7 +34,7 @@ describe("requestDispatch with no handoff path — the caller already holds cont
   });
 
   it("carries every payload key, so a doorbell naming a pull request is not a special case", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createRecordingGh();
 
     requestDispatch(gh, { event_type: "graph-changed", client_payload: { pr: "17" } }, {});
 
@@ -56,7 +45,7 @@ describe("requestDispatch with no handoff path — the caller already holds cont
 describe("requestDispatch with a handoff path — the caller is inside a model job", () => {
   it("writes the request as JSON rather than attempting a call it cannot make", () => {
     const path = requestsFile();
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createRecordingGh();
 
     requestDispatch(
       gh,
@@ -73,7 +62,7 @@ describe("requestDispatch with a handoff path — the caller is inside a model j
 
   it("appends one line per request, because a publish asks for a whole wave of them", () => {
     const path = requestsFile();
-    const { gh } = fakeGh();
+    const { gh } = createRecordingGh();
     const env = { [DISPATCH_REQUESTS_PATH_ENV]: path };
 
     for (const issue of [11, 12, 13]) {
@@ -90,7 +79,7 @@ describe("requestDispatch with a handoff path — the caller is inside a model j
     // The dispatch job pipes each line straight into `gh api … --input -`. Anything this file
     // needed reshaped on the other side would be a second place the two could disagree.
     const path = requestsFile();
-    const { gh } = fakeGh();
+    const { gh } = createRecordingGh();
 
     requestDispatch(
       gh,

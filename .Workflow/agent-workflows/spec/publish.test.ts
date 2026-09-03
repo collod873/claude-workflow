@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
-import type { FakeStage } from "../shared/stage.fake";
+import { createFakeStages } from "../shared/stage.fake";
+import { publishingGh } from "./issue-doors.fixture";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import {
   PRD_LABEL,
@@ -13,31 +14,15 @@ import {
   updateSpec,
   type SpecSource,
 } from "./publish";
-import { planSpecRun, runSpecPublication, type SpecAuthorOutput } from "./spec";
+import { runSpecPublication, type SpecAuthorOutput } from "./spec";
 
 /**
- * A fake `GhExec` that answers a create with a URL and records everything else, so a test can
- * assert on the whole write sequence lane 02 makes — the create, the label, the dispatch, the
- * comment — in the order it made them.
+ * Every publish here lands on #903 — the number `./gh.fake.ts`'s `createIssueGh` answers a create
+ * with, and so the number `publishingGh` (its composition in `./issue-doors.fixture.ts`) reports.
+ * The tests assert on the whole write sequence lane 02 makes — the create, the label, the
+ * dispatch, the comment — in the order it made them.
  */
-function fakeGh(options: { issueNumber?: number; specBody?: string } = {}): {
-  gh: GhExec;
-  calls: string[][];
-} {
-  const issueNumber = options.issueNumber ?? 900;
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-    if (args[0] === "issue" && args[1] === "create") {
-      return `https://github.com/owner/repo/issues/${issueNumber}\n`;
-    }
-    if (args[0] === "issue" && args[1] === "view") {
-      return options.specBody ?? "";
-    }
-    return "";
-  };
-  return { gh, calls };
-}
+const CREATED = 903;
 
 const SHEET_SOURCE: SpecSource = { kind: "sheet", issue: 42 };
 
@@ -93,9 +78,9 @@ describe("the spec-source marker", () => {
 
 describe("publishSpec", () => {
   it("files one prd-labelled issue and answers its number", () => {
-    const { gh, calls } = fakeGh({ issueNumber: 901 });
+    const { gh, calls } = publishingGh();
 
-    expect(publishSpec(gh, DRAFT, SHEET_SOURCE)).toBe(901);
+    expect(publishSpec(gh, DRAFT, SHEET_SOURCE)).toBe(CREATED);
 
     const creates = calls.filter((args) => args[0] === "issue" && args[1] === "create");
     expect(creates).toHaveLength(1);
@@ -106,7 +91,7 @@ describe("publishSpec", () => {
   it("labels on the create itself, never as a follow-up edit", () => {
     // A spec that exists for a moment without `prd` is one `/drain` and `ratify-on-prd-close.yml`
     // both read as an ordinary issue, and this lane cannot notice it lost that race.
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = publishingGh();
 
     publishSpec(gh, DRAFT, SHEET_SOURCE);
 
@@ -114,7 +99,7 @@ describe("publishSpec", () => {
   });
 
   it("records the source on the published body", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = publishingGh();
 
     publishSpec(gh, DRAFT, SHEET_SOURCE);
 
@@ -130,7 +115,7 @@ describe("publishSpec", () => {
 
 describe("updateSpec", () => {
   it("edits the existing issue rather than filing a second one", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = publishingGh();
 
     updateSpec(gh, 901, DRAFT, SHEET_SOURCE);
 
@@ -139,30 +124,11 @@ describe("updateSpec", () => {
   });
 
   it("re-appends the source, so a re-run never loses the spec's provenance", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = publishingGh();
 
     updateSpec(gh, 901, DRAFT, SHEET_SOURCE);
 
     expect(readSourceMarker(calls[0][calls[0].indexOf("--body") + 1])).toEqual(SHEET_SOURCE);
-  });
-});
-
-/**
- * #263 moved collector selection off the trigger and onto the labelled issue's own content —
- * `spec.test.ts`'s own `planSpecRun` describe block covers that reading directly, with a `gh` fake
- * that answers both `issue view --json comments` and the `issue list` search `alreadySliced` runs.
- * These two are kept here because `fakeGh` above already answers `issue view` with `options.specBody`
- * for every field set, which is exactly what the critique door needs and nothing more.
- */
-describe("planSpecRun", () => {
-  it("sends a critique trigger straight to the critic, reading no source marker at all", () => {
-    const { gh, calls } = fakeGh();
-
-    expect(planSpecRun(gh, { trigger: "critique", issueNumber: 902 })).toEqual({
-      path: "critique",
-      issueNumber: 902,
-    });
-    expect(calls).toHaveLength(0);
   });
 });
 
@@ -172,30 +138,11 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
 
   /**
    * Three stages run in this chain and they answer different schemas — the sweep's `{rulings}`,
-   * the author's `{title, body, openQuestions}`, then the critic's `{resolutions}` — so the shared
-   * one-response fake cannot drive it. This answers each call in turn instead.
+   * the author's `{title, body, openQuestions}`, then the critic's `{resolutions}` — so each call
+   * is answered in turn.
    */
-  function chainStage(responses: string[]): FakeStage {
-    const calls: string[][] = [];
-    const stdins: Array<string | undefined> = [];
-    let next = 0;
-    return {
-      calls,
-      stdins,
-      exec: (async (argv: string[], stdin?: string) => {
-        calls.push(argv);
-        stdins.push(stdin);
-        const response = responses[next++];
-        if (response === undefined) {
-          throw new Error(`fake stage: no canned response for call ${next}`);
-        }
-        return response;
-      }) as StageExec,
-    };
-  }
-
   const chain = (openQuestions: string[]) =>
-    chainStage([
+    createFakeStages([
       SWEEP_RESPONSE,
       JSON.stringify({ title: "A thing", body: "## Problem\nIt is unbuilt.", openQuestions }),
       JSON.stringify({ resolutions: [] }),
@@ -216,14 +163,14 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
     runSpecPublication(stage.exec, gh, SHEET_SOURCE, BARE_CONTEXT);
 
   it("publishes, then applies sliceable and dispatches, when nothing was left open", async () => {
-    const { gh, calls } = fakeGh({ issueNumber: 901 });
+    const { gh, calls } = publishingGh();
     // The critic resolves nothing here, which folds to no extra questions and spends no reconciler
     // stage.
     const stage = chain([]);
 
     const result = await publishFromSheet(stage, gh);
 
-    expect(result).toMatchObject({ issueNumber: 901, gateCount: 0, outcome: "dispatched" });
+    expect(result).toMatchObject({ issueNumber: CREATED, gateCount: 0, outcome: "dispatched" });
 
     const createIndex = calls.findIndex((args) => args[0] === "issue" && args[1] === "create");
     const dispatchIndex = calls.findIndex(
@@ -235,12 +182,12 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
   });
 
   it("publishes and dispatches even when the author leaves a question unresolved (#263 — no more held spec)", async () => {
-    const { gh, calls } = fakeGh({ issueNumber: 902 });
+    const { gh, calls } = publishingGh();
     const stage = chain(["What does done mean?"]);
 
     const result = await publishFromSheet(stage, gh);
 
-    expect(result).toMatchObject({ issueNumber: 902, gateCount: 1, outcome: "dispatched" });
+    expect(result).toMatchObject({ issueNumber: CREATED, gateCount: 1, outcome: "dispatched" });
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(1);
 
     const labelWrites = calls.filter((args) => args.includes(SLICEABLE_LABEL));

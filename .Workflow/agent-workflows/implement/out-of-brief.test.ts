@@ -1,68 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
-import type { GitExec } from "../shared/git";
+import { checkoutReporting } from "../shared/claim-host.fixture";
 import { createFakeStage } from "../shared/stage.fake";
 import { runImplement } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
-
+import { trackerWith } from "./out-of-brief-tracker.fixture";
 
 /**
- * An in-memory `gh` issue tracker: `issue create`/`issue comment`/`issue
- * list`/`issue view --json comments` against one array of issues, each
- * carrying its own comments, plus `issue view` (title/body) for a fixed
- * ticket and `pr create`/`api` stubs for `runImplement`'s own flow —
- * everything the scenarios below call through one `GhExec`, so the "no
- * `dependencies/blocked_by` write, ever" test can scan every call any of
- * them made. Deliberately has no `issue edit --body` branch: the module
- * under test must never call it.
+ * ADR-0042: an out-of-brief read is recorded on the standing tracker issue and nothing else. The
+ * tracker the scenarios run against is `trackerWith` (`./out-of-brief-tracker.fixture.ts`).
  */
-function fakeGhWithTracker(ticket?: { title: string; body: string }): {
-  gh: GhExec;
-  calls: string[][];
-  issues: Array<{ number: number; title: string; body: string; state: string; comments: string[] }>;
-} {
-  const calls: string[][] = [];
-  const issues: Array<{ number: number; title: string; body: string; state: string; comments: string[] }> = [];
-  let nextNumber = 1;
-
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-
-    if (args[0] === "issue" && args[1] === "view" && args.includes("--json") && args[args.indexOf("--json") + 1] === "comments") {
-      const number = Number(args[2]);
-      const issue = issues.find((each) => each.number === number);
-      if (!issue) throw new Error(`fake gh: issue view on unknown #${number}`);
-      return JSON.stringify({ comments: issue.comments.map((body) => ({ body })) });
-    }
-    if (args[0] === "issue" && args[1] === "view") {
-      if (!ticket) throw new Error("fake gh: no ticket configured for `issue view`");
-      return JSON.stringify(ticket);
-    }
-    if (args[0] === "issue" && args[1] === "list") {
-      return JSON.stringify(issues.map(({ number, body, state }) => ({ number, body, state })));
-    }
-    if (args[0] === "issue" && args[1] === "create") {
-      const titleIdx = args.indexOf("--title");
-      const bodyIdx = args.indexOf("--body");
-      const number = nextNumber++;
-      issues.push({ number, title: args[titleIdx + 1], body: args[bodyIdx + 1], state: "OPEN", comments: [] });
-      return `https://github.com/owner/repo/issues/${number}\n`;
-    }
-    if (args[0] === "issue" && args[1] === "comment") {
-      const number = Number(args[2]);
-      const bodyIdx = args.indexOf("--body");
-      const issue = issues.find((each) => each.number === number);
-      if (!issue) throw new Error(`fake gh: issue comment on unknown #${number}`);
-      issue.comments.push(args[bodyIdx + 1]);
-      return "";
-    }
-    if (args[0] === "pr" && args[1] === "create") return "https://github.com/owner/repo/pull/42\n";
-    if (args[0] === "api") return "";
-    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
-  };
-
-  return { gh, calls, issues };
-}
 
 /** A single module's current count across the fake tracker's body and comments — test-side helper, not the module under test's own aggregation. */
 function currentCount(
@@ -73,11 +19,8 @@ function currentCount(
   return values.length > 0 ? Math.max(...values) : undefined;
 }
 
-/** A fake `GitExec` that records every call and answers nothing. */
-function fakeGit(): GitExec {
-  return () => "";
-}
-
+/** The ordinary checkout, where the implementer's file changed — the tracker is the subject here, not the landing. */
+const fakeGit = () => checkoutReporting().git;
 
 /**
  * The `ImplementDeps` every scenario here builds — same inert filesystem, same ticket number, and
@@ -99,7 +42,7 @@ function outOfBriefDeps(gh: Parameters<typeof runImplement>[0]["gh"], git: Param
 
 describe("recordOutOfBrief", () => {
   it("creates the standing tracker issue on the first call and marks the module's count at 1", () => {
-    const { gh, issues } = fakeGhWithTracker();
+    const { gh, issues } = trackerWith();
 
     const count = recordOutOfBrief(gh, "shape");
 
@@ -110,7 +53,7 @@ describe("recordOutOfBrief", () => {
   });
 
   it("two calls for the same module leave its marked count at 2, on the same tracker issue", () => {
-    const { gh, issues } = fakeGhWithTracker();
+    const { gh, issues } = trackerWith();
 
     recordOutOfBrief(gh, "shape");
     const second = recordOutOfBrief(gh, "shape");
@@ -121,7 +64,7 @@ describe("recordOutOfBrief", () => {
   });
 
   it("keeps each module's count separate on the one tracker issue", () => {
-    const { gh, issues } = fakeGhWithTracker();
+    const { gh, issues } = trackerWith();
 
     recordOutOfBrief(gh, "shape");
     recordOutOfBrief(gh, "shape");
@@ -136,7 +79,7 @@ describe("recordOutOfBrief", () => {
 describe("runImplement — out-of-brief reads", () => {
   it("an implementer trace naming two out-of-brief reads of the same module leaves the tracker issue's marked count at 2 for that module", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const { gh, issues } = fakeGhWithTracker(ticket);
+    const { gh, issues } = trackerWith(ticket);
     const git = fakeGit();
     const stage = createFakeStage(
       JSON.stringify({
@@ -155,7 +98,7 @@ describe("runImplement — out-of-brief reads", () => {
 
   it("an implementer trace naming no out-of-brief reads never creates or touches the tracker issue", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const { gh, issues } = fakeGhWithTracker(ticket);
+    const { gh, issues } = trackerWith(ticket);
     const git = fakeGit();
     const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "Built the thing." }));
 
@@ -170,20 +113,20 @@ describe("no scenario in this file ever writes the dependency graph", () => {
     const allCalls: string[][] = [];
 
     // Scenario 1: recordOutOfBrief, twice, same module.
-    const s1 = fakeGhWithTracker();
+    const s1 = trackerWith();
     recordOutOfBrief(s1.gh, "shape");
     recordOutOfBrief(s1.gh, "shape");
     allCalls.push(...s1.calls);
 
     // Scenario 2: recordOutOfBrief across two modules.
-    const s2 = fakeGhWithTracker();
+    const s2 = trackerWith();
     recordOutOfBrief(s2.gh, "shape");
     recordOutOfBrief(s2.gh, "close-gate");
     allCalls.push(...s2.calls);
 
     // Scenario 3: runImplement with two out-of-brief reads of the same module.
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const s3 = fakeGhWithTracker(ticket);
+    const s3 = trackerWith(ticket);
     const stage = createFakeStage(
       JSON.stringify({
         files: [{ path: "a/b.ts", content: "x" }],
@@ -195,7 +138,7 @@ describe("no scenario in this file ever writes the dependency graph", () => {
     allCalls.push(...s3.calls);
 
     // Scenario 4: runImplement with no out-of-brief reads at all.
-    const s4 = fakeGhWithTracker(ticket);
+    const s4 = trackerWith(ticket);
     const stage2 = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
     await runImplement(outOfBriefDeps(s4.gh, fakeGit(), stage2.exec));
     allCalls.push(...s4.calls);

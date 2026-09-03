@@ -1,7 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
@@ -190,36 +189,5 @@ describe("runRatify — which notes in the range the batch actually sees (#324)"
 describe("ratifierBranchName", () => {
   it("names the branch for the head it scoped through, so two runs never collide", () => {
     expect(ratifierBranchName("0123456789abcdef0123")).toBe("ratify/0123456789ab");
-  });
-});
-
-describe("ratify.yml agrees with the dispatch action it is a copy of", () => {
-  const workflow = readFileSync(
-    fileURLToPath(new URL("../../../.github/workflows/ratify.yml", import.meta.url)),
-    "utf8",
-  );
-  // #315 (ADR-0055): ratify.yml is a reusable workflow now — the trigger itself lives in
-  // ratify-caller.yml, and ratify.yml carries only `workflow_call`.
-  const caller = readFileSync(
-    fileURLToPath(new URL("../../../.github/workflows/ratify-caller.yml", import.meta.url)),
-    "utf8",
-  );
-
-  it("is a reusable workflow, triggered by ratify-caller.yml's own trigger", () => {
-    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
-  });
-
-  it("filters its trigger to this lane's one action (ADR-0090), not every dispatch", () => {
-    expect(caller).toMatch(
-      new RegExp(`repository_dispatch:\\s*\\n\\s*types: \\[${RATIFICATION_DUE_DISPATCH_ACTION}\\]`),
-    );
-  });
-
-  it("gates the job on the same action the entrypoint checks", () => {
-    expect(workflow).toContain(`action == '${RATIFICATION_DUE_DISPATCH_ACTION}'`);
-  });
-
-  it("names the entrypoint, which is also what makes this lane reachable to the wiring gate", () => {
-    expect(workflow).toContain("agent-workflows/ratify/run-ratify.ts");
   });
 });

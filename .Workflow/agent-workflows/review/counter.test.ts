@@ -111,7 +111,7 @@ interface Signal {
 /**
  * A `gh` stand-in over the tracker this counter reads — finding issues under the label, standing
  * signals without it — recording every argv verbatim, the shape `bypass-counter.test.ts`'s own
- * stand-in has. Not `createFakeGh`: that models sub-issue publishing and answers no `issue list`.
+ * stand-in has. Not the shared fake in `gh.fake.ts`: that models sub-issue publishing and answers no `issue list`.
  */
 function trackerWith(options: {
   findingIssues?: Array<{ number: number; state: string; stateReason?: string; createdAt: string }>;

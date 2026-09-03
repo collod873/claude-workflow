@@ -7,7 +7,7 @@ name: To-Tickets (reusable)
 # label. `types:` names that one action, for the reason `audit.yml` gives and ADR-0090 rules: an
 # unfiltered trigger woke this lane on every unrelated dispatch, so its whole run history was
 # skipped runs it had nothing to say about. The job-level `if` below is still what scopes a run,
-# checked against the same constant `to-tickets-workflow.test.ts` imports rather than a
+# checked against the same constant the wiring table (`shared/lane-wiring.ts`) imports rather than a
 # copy-pasted string.
 #
 # Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any

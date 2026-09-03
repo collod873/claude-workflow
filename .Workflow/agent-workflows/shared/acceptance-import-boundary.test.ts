@@ -7,18 +7,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 /**
  * spec #145, Lane 04: "An acceptance test may not import anything outside its own directory."
- * `tests/acceptance/**` is restored from `main`'s tip before CI runs it (ADR-0032); a helper
- * pulled in from anywhere else would silently revert to trunk's copy on every real run while the
- * test importing it did not, so the path filter that restore-from-tip relies on is complete only
- * if nothing inside it reaches outside it. `eslint.config.js`'s `acceptanceImportBoundaryRule`
- * enforces that through `bin/gauntlet lint`; this proves it against real fixtures, run through the
- * project's own `eslint.config.js` rather than a duplicate of its rule, so a future edit to the
- * config can't drift from what this test asserts.
+ * An enrolled repository's `tests/acceptance/**` is restored from `main`'s tip before CI runs it
+ * (ADR-0032); a helper pulled in from anywhere else would silently revert to trunk's copy on every
+ * real run while the test importing it did not, so the path filter that restore-from-tip relies on
+ * is complete only if nothing inside it reaches outside it. `eslint.config.js`'s
+ * `acceptanceImportBoundaryRule` enforces that through the gauntlet's lint slot; this proves it
+ * against real fixtures, run through the project's own `eslint.config.js` rather than a duplicate
+ * of its rule, so a future edit to the config can't drift from what this test asserts.
  *
- * Fixtures are linted from a temp root rather than the real `tests/acceptance/` — that directory
- * doesn't exist in every worktree this ticket runs in (it's restored by a sibling slice), and this
- * rule's whole point is to key off the file's own path segments rather than the linter's `cwd`, so
- * a temp root proves that as directly as the real directory would.
+ * Fixtures are linted from a temp root: this repository carries no `tests/acceptance/` of its own
+ * (the directory is lane 04's, in the repository it enrols), and the rule's whole point is to key
+ * off the file's own path segments rather than the linter's `cwd`, so a temp root proves that as
+ * directly as a real directory would.
  */
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");

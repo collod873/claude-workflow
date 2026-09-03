@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/marker";
+import { scratchDir } from "../../shared/scratch.fixture";
 import { sheet } from "../../shared/sheet.fixture";
-import type { GhExec } from "../../shared/gh";
 import { collectMapContext } from "./map";
+import { mapTrackerGh } from "./map-gh.fixture";
 import { fakeSheetGh } from "./sheet-gh.fixture";
 import { collectSheetContext } from "./sheet";
 
@@ -22,26 +22,7 @@ import { collectSheetContext } from "./sheet";
 
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
 
-function fakeMapGh(mapBody: string, ticketComments: Record<number, string[]>): GhExec {
-  return (args) => {
-    const issueNumber = Number(args[2]);
-    const fields = args[args.indexOf("--json") + 1] ?? "";
-    if (fields === "body") return JSON.stringify({ body: mapBody });
-    if (fields === "comments") {
-      return JSON.stringify({ comments: (ticketComments[issueNumber] ?? []).map((b) => ({ body: b })) });
-    }
-    throw new Error(`fake gh: unhandled fields: ${fields}`);
-  };
-}
-
 describe("both collectors normalize into the same Decided-context shape", () => {
-  let repoRoot: string | undefined;
-
-  afterEach(() => {
-    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
-    repoRoot = undefined;
-  });
-
   it("produces the identical five-field shape from a sheet and from a map", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: ["Gate"], route: "short" };
     const sheetGh = fakeSheetGh("the owner's words", [sheetMarker(sheet()), acceptedMarker(payload)]);
@@ -49,7 +30,7 @@ describe("both collectors normalize into the same Decided-context shape", () => 
     // rule is about the context, which is the half every collector shares.
     const { context: sheetContext } = collectSheetContext(sheetGh, 1);
 
-    repoRoot = mkdtempSync(join(tmpdir(), "shape-parity-"));
+    const repoRoot = scratchDir("shape-parity");
     mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
     writeFileSync(join(repoRoot, "docs/adr/0100-slug.md"), "# A ruling\n\nThe durable text.");
     const mapBody = [
@@ -68,7 +49,7 @@ describe("both collectors normalize into the same Decided-context shape", () => 
       "## Out of scope",
       "",
     ].join("\n");
-    const mapGh = fakeMapGh(mapBody, { 9: ["a resolution comment"] });
+    const mapGh = mapTrackerGh(1, mapBody, { 9: ["a resolution comment"] });
     const mapContext = collectMapContext(mapGh, 1, repoRoot);
 
     for (const context of [sheetContext, mapContext]) {

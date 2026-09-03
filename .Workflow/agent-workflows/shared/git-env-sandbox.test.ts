@@ -1,69 +1,37 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { GIT_LOCATION_VARS, TARGET_LOCATION_VARS, scrubGitLocationVars } from "./child-env";
+import { describe, expect, it } from "vitest";
+import { GIT_LOCATION_VARS, TARGET_LOCATION_VARS } from "./child-env";
+import { makeTempRepo, type TempRepo } from "./temp-repo.fixture.ts";
 
 /**
  * #86: with `GIT_DIR` exported, every fixture in this suite committed into the
  * repository the suite was running inside — 74 commits onto `main`, once
  * pushed to `origin`. The seam (`git.ts`, `gh.ts`) was already scrubbed; the
- * fixtures were not, because a fixture spawns `git` with the inherited
- * environment and never touches the seam.
+ * fixtures were not, because a fixture spawned `git` with the inherited
+ * environment and never touched the seam.
  *
- * These tests hold the two halves of the fix that live in code. The half that
- * cannot live in code — *no* test in the suite writes to its own repository,
- * including tests written after this one — is demonstrated rather than
- * asserted, by `bin/gauntlet` running the whole suite against a throwaway
+ * Two things hold the fix in place now. `scrub-git-env.setup.ts` removes the
+ * variables from every worker's own `process.env`, which the first block
+ * checks is wired. And every git-touching fixture is built on
+ * `temp-repo.fixture.ts`, whose `git` scrubs them again on each spawn — so a
+ * fixture-spawned `git` ignores an inherited `GIT_DIR` even when one is set
+ * *after* the setup file ran, which is what the last case stages. The half
+ * that cannot live in code — *no* test in the suite writes to its own
+ * repository, including tests written after this one — is demonstrated rather
+ * than asserted, by the gauntlet running the whole suite against a throwaway
  * repository named by `GIT_DIR` and failing if a single object appears in it.
  */
 
-/** A repo a fixture means to write to, and a repo it must not. */
-function makeRepos(): { fixture: string; victim: string } {
-  const fixture = mkdtempSync(join(tmpdir(), "git-env-fixture-"));
-  const victim = mkdtempSync(join(tmpdir(), "git-env-victim-"));
-  for (const dir of [fixture, victim]) {
-    execFileSync("git", ["init", "-q"], { cwd: dir });
-    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-    execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
-  }
-  return { fixture, victim };
-}
-
-/** The shape every git-touching fixture in this repo uses: argv, a `cwd`, an inherited env. */
-function commitLikeAFixture(dir: string, env: NodeJS.ProcessEnv): void {
-  writeFileSync(join(dir, "a.txt"), "a", "utf8");
-  execFileSync("git", ["add", "."], { cwd: dir, env });
-  execFileSync("git", ["commit", "-q", "-m", "seed"], { cwd: dir, env });
-}
-
 /**
- * Every branch tip in `dir` — empty for a repository nothing has committed to.
+ * Every branch tip in `repo` — empty for a repository nothing has committed to.
  * `for-each-ref` rather than `rev-parse HEAD` because an unborn HEAD is the
  * expected answer here, and `rev-parse` reports that by exiting non-zero.
  */
-function branchTips(dir: string): string[] {
-  return execFileSync("git", ["for-each-ref", "--format=%(objectname)", "refs/heads"], {
-    cwd: dir,
-    encoding: "utf8",
-    env: scrubGitLocationVars({ ...process.env }),
-  })
-    .split("\n")
-    .filter((line) => line !== "");
+function branchTips(repo: TempRepo): string[] {
+  return repo.git("for-each-ref", "--format=%(objectname)", "refs/heads").split("\n").filter((line) => line !== "");
 }
 
 describe("git location variables in the test environment", () => {
-  let repos: { fixture: string; victim: string } | undefined;
-
-  afterEach(() => {
-    if (repos) {
-      rmSync(repos.fixture, { recursive: true, force: true });
-      rmSync(repos.victim, { recursive: true, force: true });
-      repos = undefined;
-    }
-  });
-
   // The wiring test. If `setupFiles` is dropped from `vitest.config.ts`, or a future config
   // rewrite replaces the array instead of appending to it, this is what goes red — and it goes
   // red in every venue, not only the one that happened to have `GIT_DIR` set.
@@ -71,24 +39,23 @@ describe("git location variables in the test environment", () => {
     expect(process.env[name]).toBeUndefined();
   });
 
-  // Why the scrub has to exist at all: `cwd` is not what decides which repository a `git` child
-  // writes to. This is the defect reproduced in miniature, and it stays here so nobody
+  // Why the fixture has to scrub at all: `cwd` is not what decides which repository a `git` child
+  // writes to — an inherited `GIT_DIR` beats it every time. This stays here so nobody
   // "simplifies" the scrub away on the theory that `cwd` was already enough.
-  it("lets an inherited GIT_DIR steal a fixture's commit", () => {
-    repos = makeRepos();
-    commitLikeAFixture(repos.fixture, { ...process.env, GIT_DIR: join(repos.victim, ".git") });
+  it("keeps a fixture's commit in the fixture when the worker inherits a GIT_DIR naming another repo", () => {
+    const fixture = makeTempRepo("git-env-fixture");
+    const victim = makeTempRepo("git-env-victim");
 
-    expect(branchTips(repos.fixture)).toEqual([]);
-    expect(branchTips(repos.victim)).toHaveLength(1);
-  });
+    process.env.GIT_DIR = join(victim.dir, ".git");
+    try {
+      fixture.write("a.txt", "a");
+      fixture.commit("seed");
+    } finally {
+      delete process.env.GIT_DIR;
+    }
 
-  it("keeps the commit in the fixture once the variables are scrubbed", () => {
-    repos = makeRepos();
-    const inherited = { ...process.env, GIT_DIR: join(repos.victim, ".git") };
-    commitLikeAFixture(repos.fixture, scrubGitLocationVars(inherited));
-
-    expect(branchTips(repos.fixture)).toHaveLength(1);
-    expect(branchTips(repos.victim)).toEqual([]);
+    expect(branchTips(fixture)).toHaveLength(1);
+    expect(branchTips(victim)).toEqual([]);
   });
 });
 
@@ -96,7 +63,7 @@ describe("git location variables in the test environment", () => {
  * Why `TARGET_LOCATION_VARS` and `scrubTargetLocationVars` exist is written once, in their
  * docstrings in `child-env.ts` (run 33698888723). This file only holds the wiring in place.
  *
- * Nothing here reproduces the redirection the way the git half above does: `new-adr.test.ts`'s
+ * Nothing here reproduces the redirection the way the git half above does: `new-adr.proc.test.ts`'s
  * "drafts and lands into the target checkout … given TARGET_WORKSPACE" already drives it, on
  * purpose, from an explicit per-call value. That is the distinction this describe keeps standing —
  * set on the call it is a seam, inherited from the worker it is a leak.

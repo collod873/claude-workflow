@@ -62,13 +62,13 @@ describe("a retry after audit-and-publish alone failed", () => {
 
     const auditedPlan = [{ ...plan[0], title: "Root, re-worded by audit" }];
     const succeedingAudit = createFakeStage(JSON.stringify({ notes: "", slices: auditedPlan }));
-    const fakeGh = createFakeGh();
+    const tracker = createFakeGh();
 
     const published = (await runNamedStage(
       "audit-and-publish",
       "13",
       succeedingAudit.exec,
-      fakeGh.gh,
+      tracker.gh,
     )) as PublishedIssue[];
 
     expect(succeedingAudit.calls).toHaveLength(1);

@@ -1,10 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { GhExec } from "../shared/gh";
+import evidence from "./adr-corpus.evidence.json";
 import { countMissingTrailers, readAdrCorpus, readResearchCorpus } from "./missing-trailer-counter";
+import { answerTrackerOrThrow } from "./signal-tracker.fixture";
 import {
   findMissingTrailers,
   FINDING_MARKER,
@@ -27,9 +28,15 @@ import {
  * with it (the mistake #107 turned on, `dead-lanes.test.ts` upheld the same
  * way).
  */
-const EVIDENCE: { adrs: AdrDoc[]; notes: ResearchNote[] } = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "adr-corpus.evidence.json"), "utf8"),
-);
+const EVIDENCE: { adrs: AdrDoc[]; notes: ResearchNote[] } = evidence;
+
+/** A throwaway directory holding `files` by name — a corpus a test writes and then reads back through the counter. */
+function corpusDir(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "missing-trailer-"));
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 function adr(overrides: Partial<AdrDoc> = {}): AdrDoc {
   return { number: 10, filename: "0010-slug.md", title: "A ruling", body: "Recorded 2026-08-26.\n\nSome text.\n", ...overrides };
@@ -280,33 +287,45 @@ describe("the signal", () => {
   });
 });
 
-describe("readAdrCorpus and readResearchCorpus, against a real tree", () => {
-  const adrDir = join(dirname(fileURLToPath(import.meta.url)), "../../../docs/adr");
-  const researchDir = join(dirname(fileURLToPath(import.meta.url)), "../../../docs/research");
+describe("readAdrCorpus and readResearchCorpus, against a tree shaped like docs/", () => {
+  it("reads only numbered ADR files, excluding README.md and the bare template", () => {
+    const adrDir = corpusDir({
+      "README.md": "# About these\n",
+      "0000-template.md": "# ---\n",
+      "0001-a-decision.md": "# A decision\n\nRecorded.\n",
+      "0002-another.md": "# Another\n\nRecorded.\n",
+      "draft-not-yet-landed.md": "# A draft\n",
+    });
 
-  it("reads only numbered ADR files, excluding README.md", () => {
     const adrs = readAdrCorpus(adrDir);
-    expect(adrs.length).toBeGreaterThan(0);
-    expect(adrs.some((doc) => doc.filename === "README.md")).toBe(false);
-    for (const doc of adrs) expect(doc.filename).toMatch(/^\d{4}-.*\.md$/);
+
+    expect(adrs.map((doc) => doc.filename).sort()).toEqual(["0000-template.md", "0001-a-decision.md", "0002-another.md"]);
+    expect(adrs.find((doc) => doc.number === 1)?.title).toBe("A decision");
   });
 
-  it("reads only Markdown research notes, excluding the assets/ directory", () => {
+  it("reads only Markdown research notes, excluding the assets/ directory and drafts", () => {
+    const researchDir = corpusDir({
+      "topic-2026-08.md": "# A finding\n\n**Resolves:** [x](https://example/1)\n",
+      "draft-topic.md": "# Not yet part of the record\n",
+      "notes.txt": "not markdown",
+    });
+    mkdirSync(join(researchDir, "assets"));
+    writeFileSync(join(researchDir, "assets", "diagram.md"), "# inside assets\n");
+
     const notes = readResearchCorpus(researchDir);
-    expect(notes.length).toBeGreaterThan(0);
-    expect(notes.some((note) => note.filename === "assets")).toBe(false);
-    for (const note of notes) expect(note.filename).toMatch(/\.md$/);
+
+    expect(notes.map((note) => note.filename)).toEqual(["topic-2026-08.md"]);
+    expect(notes[0].title).toBe("A finding");
   });
 });
 
 /**
- * A `gh` stand-in that answers the three calls `countMissingTrailers` makes
- * — the open-issue listing, the write (create or comment) — recording every
- * argv, the same shape `run-watchdog.test.ts` uses: a responder, not a
- * model of GitHub, so a test can assert "wrote nothing else" from `calls`
- * staying exactly what it expects rather than from assuming it.
+ * A `gh` stand-in that answers the calls `countMissingTrailers` makes — the tracker
+ * (`answerTracker`, shared with the other watchdog suites), the comment and close writes, and the
+ * read-back of what the standing issue already says — recording every argv, so a test can assert
+ * "wrote nothing else" from `calls` staying exactly what it expects rather than from assuming it.
  */
-function fakeGh(options: {
+function standingIssueWith(options: {
   issues?: Array<{ number: number; body: string; state: string }>;
   /** What the standing issue has already said — body plus comments, joined. */
   said?: string;
@@ -317,36 +336,27 @@ function fakeGh(options: {
   const calls: string[][] = [];
   const gh: GhExec = (args) => {
     calls.push(args);
-    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
-    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
     if (args[0] === "issue" && args[1] === "comment") return "";
     if (args[0] === "issue" && args[1] === "close") return "";
     // ADR-0117: the counter reads what it has already said before saying it again, so the fake
     // has to answer that read. `said` is the standing issue's body plus its comments.
     if (args[0] === "issue" && args[1] === "view")
       return JSON.stringify({ body: options.said ?? "", comments: [] });
-    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+    return answerTrackerOrThrow(args, options.issues ?? []);
   };
   return { gh, calls };
 }
 
 describe("countMissingTrailers", () => {
-  function corpusDir(files: Record<string, string>): string {
-    const dir = mkdtempSync(join(tmpdir(), "missing-trailer-"));
-    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
-    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    return dir;
-  }
-
   /**
    * The arrangement every standing-issue case shares: a corpus, a fake `gh` carrying an open
    * standing issue, and the outcome of running the counter over them. Five tests spelled these
    * three lines out before the clone gate refused the sixth.
    */
-  function runOver(adrs: Record<string, string>, options: Parameters<typeof fakeGh>[0] = {}) {
+  function runOver(adrs: Record<string, string>, options: Parameters<typeof standingIssueWith>[0] = {}) {
     const adrDir = corpusDir(adrs);
     const researchDir = corpusDir({ "topic-2026-08.md": CLEAN_NOTE });
-    const fake = fakeGh(options);
+    const fake = standingIssueWith(options);
     const outcome = countMissingTrailers({ gh: fake.gh, adrDir, researchDir });
     return { outcome, fake };
   }
@@ -374,7 +384,7 @@ describe("countMissingTrailers", () => {
       "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}`,
     });
     const researchDir = corpusDir({ "topic-2026-08.md": MISSING_NOTE });
-    const fake = fakeGh();
+    const fake = standingIssueWith();
 
     const outcome = countMissingTrailers({ gh: fake.gh, adrDir, researchDir, assignee: "collod873" });
 
@@ -434,7 +444,7 @@ describe("countMissingTrailers", () => {
   it("makes every GitHub write through the injected gh, and only the injected gh", () => {
     const adrDir = corpusDir({ "0010-a-later-decision.md": `# A later decision\n\n${CANDIDATE_ADR}` });
     const researchDir = corpusDir({ "topic-2026-08.md": CLEAN_NOTE });
-    const fake = fakeGh();
+    const fake = standingIssueWith();
 
     countMissingTrailers({ gh: fake.gh, adrDir, researchDir });
 
@@ -443,17 +453,5 @@ describe("countMissingTrailers", () => {
     // come back from the fake's own responder.
     expect(fake.calls.length).toBeGreaterThan(0);
     expect(fake.calls.every((argv) => argv[0] === "issue")).toBe(true);
-  });
-});
-
-describe("the IO half never spawns a child process of its own", () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "missing-trailer-counter.ts"), "utf8");
-
-  it("imports execGh from the shared seam rather than shelling out itself", () => {
-    // The only approved way this pipeline touches `gh` (`shared/gh.ts`'s `execGh`) is imported once,
-    // for `main()`'s own real wiring — `countMissingTrailers` itself only ever calls the `gh`
-    // parameter it was handed, which is what lets a test stand a fake in for it.
-    expect(source).not.toMatch(/execFileSync|execSync|spawnSync|require\(["']child_process["']\)/);
-    expect(source).toContain('import { execGh, type GhExec } from "../shared/gh"');
   });
 });

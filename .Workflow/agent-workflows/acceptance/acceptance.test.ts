@@ -6,6 +6,7 @@ import { scratchDir } from "../shared/scratch.fixture";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 import {
+  ACCEPTANCE_TEST_DIR,
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
   NO_CLAIMED_FILES,
@@ -50,7 +51,7 @@ async function authorAgainst(
   listTestDir: () => string[] = () => [],
 ): Promise<FakeStage> {
   const stage = createFakeStage(
-    authorResponse([{ path: "tests/acceptance/162-x.test.ts", content: "// x\n" }]),
+    authorResponse([{ path: `${ACCEPTANCE_TEST_DIR}162-x.test.ts`, content: "// x\n" }]),
   );
   await authorAcceptanceTests({
     exec: stage.exec,
@@ -131,13 +132,13 @@ describe("authorAcceptanceTests", () => {
     const [firstCriterion] = extractCriteria(TICKET_BODY);
     const { paths, written } = await authorWriting([
       {
-        path: "tests/acceptance/162-no-push-on-collection-error.test.ts",
+        path: `${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`,
         content: `// ${firstCriterion}\nimport { describe, it, expect } from "vitest";\ndescribe("x", () => { it("y", () => { expect(true).toBe(false); }); });\n`,
       },
     ]);
 
-    expect(paths).toEqual(["tests/acceptance/162-no-push-on-collection-error.test.ts"]);
-    const content = written.get("tests/acceptance/162-no-push-on-collection-error.test.ts");
+    expect(paths).toEqual([`${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`]);
+    const content = written.get(`${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`);
     expect(content).toBeDefined();
     // The criterion string appears verbatim in the written test.
     expect(content).toContain(firstCriterion);
@@ -163,14 +164,14 @@ describe("authorAcceptanceTests", () => {
   it("shows the author the non-test files already sitting under the acceptance test dir", async () => {
     const stage = await authorAgainst(
       (path) =>
-        path === "tests/acceptance/workflow-shape.fixture.ts"
+        path === `${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`
           ? "export function topLevelBlock() {}\n"
           : undefined,
       () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
     );
 
     const prompt = stage.stdins[0];
-    expect(prompt).toContain("tests/acceptance/workflow-shape.fixture.ts");
+    expect(prompt).toContain(`${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`);
     expect(prompt, "the shared reader's own text, not just its path").toContain(
       "export function topLevelBlock()",
     );
@@ -184,7 +185,7 @@ describe("authorAcceptanceTests", () => {
       () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
     );
 
-    expect(stage.stdins[0]).not.toContain("tests/acceptance/201-one.test.ts");
+    expect(stage.stdins[0]).not.toContain(`${ACCEPTANCE_TEST_DIR}201-one.test.ts`);
   });
 
   it("puts the exact criterion strings in the prompt, not just the body they came from", async () => {
@@ -209,12 +210,12 @@ describe("authorAcceptanceTests", () => {
   // never reached if this throws first.
   it("writes a .fixture.ts the model puts beside the tests, rather than refusing it", async () => {
     const { paths, written } = await authorWriting([
-      { path: "tests/acceptance/162-one.test.ts", content: "// one\n" },
-      { path: "tests/acceptance/reads-the-workflow.fixture.ts", content: "export const x = 1;\n" },
+      { path: `${ACCEPTANCE_TEST_DIR}162-one.test.ts`, content: "// one\n" },
+      { path: `${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`, content: "export const x = 1;\n" },
     ]);
 
-    expect(paths).toContain("tests/acceptance/reads-the-workflow.fixture.ts");
-    expect(written.get("tests/acceptance/reads-the-workflow.fixture.ts")).toBe("export const x = 1;\n");
+    expect(paths).toContain(`${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`);
+    expect(written.get(`${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`)).toBe("export const x = 1;\n");
   });
 
   // The reach is what reached the prompt, not a line the model was asked to honour (ADR-0098) —
@@ -226,7 +227,7 @@ describe("authorAcceptanceTests", () => {
 
   it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
     const { attempt, written } = authoring(
-      [{ path: "tests/acceptance/x.test.ts", content: "x" }],
+      [{ path: `${ACCEPTANCE_TEST_DIR}x.test.ts`, content: "x" }],
       { title: "No criteria", body: "## What to build\nnothing declared\n" },
       999,
     );
@@ -299,7 +300,7 @@ describe("sharedTestFiles", () => {
       "workflow-shape.fixture.ts",
       "201-two.test.ts",
     ]);
-    expect(shared).toEqual(["tests/acceptance/workflow-shape.fixture.ts"]);
+    expect(shared).toEqual([`${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`]);
   });
 
   it("is empty on a checkout where no acceptance test has ever landed", () => {
@@ -339,7 +340,7 @@ describe("runAcceptanceAuthor", () => {
     const stage = createFakeStage(
       authorResponse([
         {
-          path: "tests/acceptance/162-one.test.ts",
+          path: `${ACCEPTANCE_TEST_DIR}162-one.test.ts`,
           content: `// ${firstCriterion}\n`,
         },
       ]),

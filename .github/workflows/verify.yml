@@ -145,8 +145,10 @@ jobs:
           working-directory: target
 
       # The same command a pre-push hook runs, through the same entry point, so a check cannot
-      # drift between venues by being spelled differently in two files.
-      - name: Run the gate
+      # drift between venues by being spelled differently in two files. The step name is what the
+      # bypass counter reads (`watchdog/bypass.ts`, `BYPASS_STEP`): a red run on `main` that fails
+      # here is a finding every free venue should already have refused.
+      - name: Gauntlet
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npm run check

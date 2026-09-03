@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
+import { readWorkflows } from "./read-workflow";
+import { readRepoText, REPO_ROOT } from "./repo-sources";
 
 /**
  * Four guards over `.github/workflows`, every one of them derived from what a workflow *does*
@@ -18,8 +18,6 @@ import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
  * same sentence with a different ending: the run spent the money and the answer is gone.
  */
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
 /* -------------------------------------------------------------------------------------------- */
 /* Guard 1: a workflow that checks out grants itself contents.                                    */
 /* -------------------------------------------------------------------------------------------- */
@@ -31,7 +29,10 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
  * workflow reached a line of its own code.
  */
 
-const WORKFLOWS_DIR = join(REPO_ROOT, ".github/workflows");
+interface WorkflowJob {
+  env?: Record<string, unknown>;
+  steps?: Array<{ run?: string; uses?: string; env?: Record<string, unknown> }>;
+}
 
 /** A `permissions:` block at the top level of the file, which replaces the default token entirely. */
 const DECLARES_PERMISSIONS = /^permissions:\s*$/m;
@@ -42,9 +43,7 @@ const GRANTS_CONTENTS = /^ {2}contents: (read|write)$/m;
 /** Any step that clones the repo. */
 const CHECKS_OUT = /uses: actions\/checkout@/;
 
-const workflows = readdirSync(WORKFLOWS_DIR)
-  .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-  .map((name) => ({ name, source: readFileSync(join(WORKFLOWS_DIR, name), "utf8") }));
+const workflows = readWorkflows<{ jobs?: Record<string, WorkflowJob> }>().map(({ name, source, workflow }) => ({ name, source, workflow }));
 
 describe("a workflow that checks out grants itself contents", () => {
   it.each(workflows)("$name", ({ name, source }) => {
@@ -276,7 +275,7 @@ function reachableWrites(entrypoint: string, root: string): Map<Permission, { wh
   const load = (file: string): Module | undefined => {
     if (!modules.has(file)) {
       if (!existsSync(file)) return undefined;
-      const source = readFileSync(file, "utf8");
+      const source = readRepoText(file);
       modules.set(file, { symbols: splitSymbols(source), imports: readImports(source) });
     }
     return modules.get(file);
@@ -330,15 +329,12 @@ function granted(block: unknown, permission: Permission): string {
  * anything, which is why #181 was filed twice.
  */
 function derive(root: string): Requirement[] {
-  const dir = join(root, ".github/workflows");
   const requirements: Requirement[] = [];
 
-  for (const name of readdirSync(dir).filter((file) => /\.ya?ml$/.test(file))) {
-    const workflow = parse(readFileSync(join(dir, name), "utf8")) as {
-      permissions?: unknown;
-      jobs?: Record<string, { permissions?: unknown; steps?: { run?: unknown }[] }>;
-    };
-
+  for (const { name, workflow } of readWorkflows<{
+    permissions?: unknown;
+    jobs?: Record<string, { permissions?: unknown; steps?: { run?: unknown }[] }>;
+  }>(join(root, ".github/workflows"))) {
     for (const [job, definition] of Object.entries(workflow.jobs ?? {})) {
       const block = definition.permissions ?? workflow.permissions;
       // ADR-0091's seam: a job that sets this variable does not send its own dispatches, it hands
@@ -397,10 +393,8 @@ describe("a job grants itself the writes its entrypoints perform", () => {
     // meaningless unless it found something. Re-derive with nothing granted: the same walk, minus
     // the permission check, is the census of what it actually reads out of the entrypoints.
     const census = new Map<string, Set<Permission>>();
-    const dir = join(REPO_ROOT, ".github/workflows");
 
-    for (const name of readdirSync(dir).filter((file) => /\.ya?ml$/.test(file))) {
-      const source = readFileSync(join(dir, name), "utf8");
+    for (const { source } of workflows) {
       for (const [, path] of source.matchAll(ENTRYPOINT)) {
         const writes = [...reachableWrites(join(REPO_ROOT, path), REPO_ROOT).keys()];
         if (writes.length > 0) census.set(path, new Set(writes));
@@ -549,16 +543,9 @@ describe("a lane that spends or writes declares a concurrency group", () => {
 /** `gh`'s own placeholder, in any path it can appear in — not just the dispatch endpoint. */
 const GH_PLACEHOLDER = "{owner}/{repo}";
 
-interface WorkflowJob {
-  env?: Record<string, unknown>;
-  steps?: Array<{ run?: string; uses?: string; env?: Record<string, unknown> }>;
-}
-
 /** Every job that shells out to `gh` with the placeholder and never clones the repo. */
-function placeholderJobsWithoutCheckout(source: string): Array<[string, WorkflowJob]> {
-  const jobs = (parse(source) as { jobs?: Record<string, WorkflowJob> } | null)?.jobs ?? {};
-
-  return Object.entries(jobs).filter(([, job]) => {
+function placeholderJobsWithoutCheckout(workflow: { jobs?: Record<string, WorkflowJob> } | null): Array<[string, WorkflowJob]> {
+  return Object.entries(workflow?.jobs ?? {}).filter(([, job]) => {
     const steps = job.steps ?? [];
     if (steps.some((step) => step.uses?.startsWith("actions/checkout@"))) return false;
     return steps.some((step) => step.run?.includes(GH_PLACEHOLDER));
@@ -566,8 +553,8 @@ function placeholderJobsWithoutCheckout(source: string): Array<[string, Workflow
 }
 
 describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", () => {
-  it.each(workflows)("$name", ({ name, source }) => {
-    for (const [jobName, job] of placeholderJobsWithoutCheckout(source)) {
+  it.each(workflows)("$name", ({ name, workflow }) => {
+    for (const [jobName, job] of placeholderJobsWithoutCheckout(workflow)) {
       const sending = (job.steps ?? []).filter((step) => step.run?.includes(GH_PLACEHOLDER));
 
       for (const step of sending) {
@@ -583,8 +570,8 @@ describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", (
   });
 
   it("actually finds the jobs that send, so a passing suite is not an empty sweep", () => {
-    const sending = workflows.flatMap(({ name, source }) =>
-      placeholderJobsWithoutCheckout(source).map(([jobName]) => `${name}#${jobName}`),
+    const sending = workflows.flatMap(({ name, workflow }) =>
+      placeholderJobsWithoutCheckout(workflow).map(([jobName]) => `${name}#${jobName}`),
     );
 
     expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));

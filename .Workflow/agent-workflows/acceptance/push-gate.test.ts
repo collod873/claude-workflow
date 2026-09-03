@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
+import { ACCEPTANCE_TEST_DIR } from "./acceptance";
 import { landingFromEnv, runPushGate, type TestRunResult } from "./push-gate";
 
 function pushGateDeps(result: TestRunResult, source = "") {
@@ -15,7 +16,7 @@ function pushGateDeps(result: TestRunResult, source = "") {
       // immutable-set path, so every case that is not about that check is unaffected by it.
       readSource: () => source,
       git: fake.git,
-      paths: ["tests/acceptance/foo.test.ts"],
+      paths: [`${ACCEPTANCE_TEST_DIR}foo.test.ts`],
       commitMessage: "Author an acceptance test for #162's criteria",
     },
   };
@@ -35,7 +36,7 @@ describe("runPushGate", () => {
   it("pushes nothing when a test file has a collection error", async () => {
     const { outcome, calls } = await gated({
       collected: false,
-      collectionError: "tests/acceptance/foo.test.ts: SyntaxError: Unexpected token",
+      collectionError: `${ACCEPTANCE_TEST_DIR}foo.test.ts: SyntaxError: Unexpected token`,
       failures: [],
     });
 
@@ -85,7 +86,7 @@ describe("runPushGate", () => {
 
     const outcome = await runPushGate({
       ...deps,
-      lint: () => "tests/acceptance/foo.test.ts\n  2:1  error  resolves outside tests/acceptance/",
+      lint: () => `${ACCEPTANCE_TEST_DIR}foo.test.ts\n  2:1  error  resolves outside ${ACCEPTANCE_TEST_DIR}`,
     });
 
     expect(outcome.verdict).toBe("refused");
@@ -99,14 +100,14 @@ describe("runPushGate", () => {
 
     await runPushGate({
       ...deps,
-      paths: ["tests/acceptance/240-a.test.ts", "tests/acceptance/240-b.fixture.ts"],
+      paths: [`${ACCEPTANCE_TEST_DIR}240-a.test.ts`, `${ACCEPTANCE_TEST_DIR}240-b.fixture.ts`],
       lint: (paths) => {
         linted.push(paths);
         return null;
       },
     });
 
-    expect(linted).toEqual([["tests/acceptance/240-a.test.ts", "tests/acceptance/240-b.fixture.ts"]]);
+    expect(linted).toEqual([[`${ACCEPTANCE_TEST_DIR}240-a.test.ts`, `${ACCEPTANCE_TEST_DIR}240-b.fixture.ts`]]);
   });
 
   it("commits and pushes only the paths it was given", async () => {
@@ -115,7 +116,7 @@ describe("runPushGate", () => {
     await runPushGate(deps);
 
     const add = fake.calls.find((call) => call[0] === "add");
-    expect(add).toEqual(["add", "tests/acceptance/foo.test.ts"]);
+    expect(add).toEqual(["add", `${ACCEPTANCE_TEST_DIR}foo.test.ts`]);
   });
 
   // #227's `.fixture.ts` rule, whose home is `author/prompt.md`.
@@ -129,15 +130,15 @@ describe("runPushGate", () => {
       lint: () => null,
       readSource: () => "",
       git: fake.git,
-      paths: ["tests/acceptance/227-one.test.ts", "tests/acceptance/workflow-shape.fixture.ts"],
+      paths: [`${ACCEPTANCE_TEST_DIR}227-one.test.ts`, `${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`],
       commitMessage: "Author acceptance tests for #227 from the spec alone",
     });
 
     expect(outcome.verdict).toBe("pushed");
     expect(fake.calls.find((call) => call[0] === "add")).toEqual([
       "add",
-      "tests/acceptance/227-one.test.ts",
-      "tests/acceptance/workflow-shape.fixture.ts",
+      `${ACCEPTANCE_TEST_DIR}227-one.test.ts`,
+      `${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`,
     ]);
     expect(fake.calls.filter((call) => call[0] === "push")).toHaveLength(1);
   });
@@ -163,7 +164,7 @@ describe("runPushGate with the landing delegated", () => {
   it("still refuses a broken test file, so delegating the push does not widen what may land", async () => {
     const { fake, deps } = pushGateDeps({
       collected: false,
-      collectionError: "tests/acceptance/foo.test.ts: SyntaxError: Unexpected token",
+      collectionError: `${ACCEPTANCE_TEST_DIR}foo.test.ts: SyntaxError: Unexpected token`,
       failures: [],
     });
 
@@ -237,9 +238,8 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
         "/**",
         " * A block comment naming vitest.config.ts is no more a subject than a line one is.",
         " */",
-        'import { execFileSync } from "node:child_process";',
-        'const out = execFileSync("npx", ["tsx", "-e", "console.log(1)"], { encoding: "utf8" });',
-        'expect(out).toContain("ticket-ready");',
+        'import { readySlices } from "../shared/ready-set";',
+        'expect(readySlices([]).map((s) => s.number)).toEqual([]);',
       ].join("\n"),
     );
 
@@ -260,11 +260,11 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
   });
 
   it("pushes a test that reads its own directory, which is where its fixtures live", async () => {
-    // `tests/acceptance/` is in the immutable set too, and is dropped from this check on purpose:
-    // a test is *in* that directory and imports its own `.fixture.ts` from it.
+    // The acceptance test dir is not a subject: a test is *in* that directory and imports its own
+    // `.fixture.ts` from it (and since #360 the directory is not in the immutable set at all).
     const { deps } = pushGateDeps(
       { collected: true, failures: [] },
-      'import { checkpointDirOf } from "./272-checkpoint.fixture";\nconst dir = "tests/acceptance/";',
+      `import { checkpointDirOf } from "./272-checkpoint.fixture";\nconst dir = "${ACCEPTANCE_TEST_DIR}";`,
     );
 
     expect((await runPushGate(deps)).verdict).toBe("pushed");

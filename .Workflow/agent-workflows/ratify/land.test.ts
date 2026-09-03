@@ -1,9 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit } from "../shared/git";
-import { makeTempRepo } from "../shared/temp-repo.fixture";
+import { makeTempRepo, type TempRepo } from "../shared/temp-repo.fixture";
 import { createFakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
@@ -167,7 +165,7 @@ describe("openRatifierPr — the refusals, all of them before any gh call", () =
 
 /**
  * A `GhExec` that answers `pr create` with a URL and records everything else. `gh.fake.ts`'s
- * `createFakeGh` models the publisher's endpoints rather than this one's, and `createRecordingGh`
+ * publisher fake models the publisher's endpoints rather than this one's, and `createRecordingGh`
  * answers nothing at all — which would leave the dispatch's own `pr` field empty and make the one
  * assertion that matters here vacuous.
  */
@@ -234,11 +232,10 @@ describe("openRatifierPr — the door it rings", () => {
   });
 });
 
-const showFile = (dir: string, ref: string, path: string) =>
-  execFileSync("git", ["show", `${ref}:${path}`], { cwd: dir, encoding: "utf8" });
+/** One file's contents at `ref`, trimmed the way `TempRepo.git` trims every answer. */
+const showFile = (repo: TempRepo, ref: string, path: string) => repo.git("show", `${ref}:${path}`);
 
-const listPaths = (dir: string, ref: string) =>
-  execFileSync("git", ["ls-tree", "-r", "--name-only", ref], { cwd: dir, encoding: "utf8" }).trim().split("\n");
+const listPaths = (repo: TempRepo, ref: string) => repo.git("ls-tree", "-r", "--name-only", ref).split("\n");
 
 describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse (#324)", () => {
   let dir: string | undefined;
@@ -259,11 +256,11 @@ describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse 
     // Trunk moves while the lane is mid-run: one workflow edited, one added, one deleted.
     repo.write(".github/workflows/lane.yml", "v2\n");
     repo.write(".github/workflows/added.yml", "new caller\n");
-    rmSync(join(repo.dir, ".github/workflows/gone.yml"));
+    repo.remove(".github/workflows/gone.yml");
     repo.commit("trunk moves under the run");
 
     // Back to the stale checkout the lane is actually working in, and the batch's one commit.
-    execFileSync("git", ["checkout", "-q", branchPoint], { cwd: repo.dir });
+    repo.git("checkout", "-q", branchPoint);
     repo.write("src/a.ts", "export const a = 2;\n");
     const tip = commitWorkingTree(execGit, repo.dir, branchPoint, "Ratify: something");
     expect(tip).not.toBeNull();
@@ -277,11 +274,11 @@ describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse 
     });
 
     expect(pushed).not.toBe(tip);
-    expect(showFile(repo.dir, pushed, ".github/workflows/lane.yml")).toBe("v2\n");
-    expect(showFile(repo.dir, pushed, ".github/workflows/added.yml")).toBe("new caller\n");
-    expect(listPaths(repo.dir, pushed)).not.toContain(".github/workflows/gone.yml");
+    expect(showFile(repo, pushed, ".github/workflows/lane.yml")).toBe("v2");
+    expect(showFile(repo, pushed, ".github/workflows/added.yml")).toBe("new caller");
+    expect(listPaths(repo, pushed)).not.toContain(".github/workflows/gone.yml");
     // The batch's own work is untouched: the alignment is only ever about the immutable set.
-    expect(showFile(repo.dir, pushed, "src/a.ts")).toBe("export const a = 2;\n");
+    expect(showFile(repo, pushed, "src/a.ts")).toBe("export const a = 2;");
   });
 
   it("makes no commit at all when trunk has not moved, which is every run outside the window", () => {
@@ -292,7 +289,7 @@ describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse 
     repo.write("src/a.ts", "export const a = 1;\n");
     const branchPoint = repo.commit("seed");
 
-    execFileSync("git", ["checkout", "-q", branchPoint], { cwd: repo.dir });
+    repo.git("checkout", "-q", branchPoint);
     repo.write("src/a.ts", "export const a = 2;\n");
     const tip = commitWorkingTree(execGit, repo.dir, branchPoint, "Ratify: something")!;
 

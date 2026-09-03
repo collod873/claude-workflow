@@ -1,47 +1,44 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import tsconfig from "../../../tsconfig.json";
+import vitestConfig from "../../../vitest.config.ts";
 
 /**
  * CODING_STANDARDS.md, "Pin a mandated copy to its source". `vitest.config.ts` excludes
  * `.claude/worktrees/**` and says there why; `eslint.config.js` and `tsconfig.json` each have to
  * repeat the glob, because neither a flat config nor a JSON config can import a `.ts` config, and
- * no compiler looks across those boundaries. This test is the thing that does: it reads all three
- * texts and asserts the worktree globs still agree.
+ * no compiler looks across those boundaries. This test is the thing that does: it imports all
+ * three configs as the values they evaluate to and asserts the worktree globs still agree.
+ *
+ * `eslint.config.js` is imported by a computed specifier rather than a literal one: a literal
+ * import pulls the file into `tsc`'s program under `allowJs`, where its untyped rule callbacks are
+ * implicit-`any` errors this repo has chosen not to annotate. The value is the same either way.
  */
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const worktreeGlobs = (globs: readonly string[] | undefined): string[] =>
+  (globs ?? []).filter((glob) => glob.includes("worktrees"));
 
-const read = (fileName: string): string => readFileSync(resolve(REPO_ROOT, fileName), "utf8");
+/** The exclude list `vitest.config.ts`'s `defineConfig` call evaluated to — a plain object, not a function or promise. */
+const source = worktreeGlobs((vitestConfig as { test?: { exclude?: string[] } }).test?.exclude);
 
-/** The string literals of the first `<key>: [ ... ]` array in a JS config's own source text. */
-function globsIn(fileName: string, key: string): string[] {
-  const array = new RegExp(`${key}:\\s*\\[([^\\]]*)\\]`).exec(read(fileName));
-  if (array === null) throw new Error(`${fileName} has no ${key}: [...] array`);
-  return [...array[1].matchAll(/["']([^"']*)["']/g)].map((literal) => literal[1]);
+/** Every `ignores` entry across the flat config's blocks, in order. */
+async function eslintIgnores(): Promise<string[]> {
+  const configPath = pathToFileURL(resolve(import.meta.dirname, "../../../eslint.config.js")).href;
+  const { default: blocks } = (await import(configPath)) as { default: { ignores?: string[] }[] };
+  return blocks.flatMap((block) => block.ignores ?? []);
 }
-
-/** The same, for a config that is JSON — parsed rather than scanned, since it honestly is data. */
-function jsonGlobsIn(fileName: string, key: string): string[] {
-  const value: unknown = (JSON.parse(read(fileName)) as Record<string, unknown>)[key];
-  if (!Array.isArray(value)) throw new Error(`${fileName} has no ${key} array`);
-  return value as string[];
-}
-
-const worktreeGlobs = (globs: string[]): string[] => globs.filter((glob) => glob.includes("worktrees"));
-
-const source = () => worktreeGlobs(globsIn("vitest.config.ts", "exclude"));
 
 describe("every worktree ignore agrees with the vitest exclude it is a copy of", () => {
   it("vitest.config.ts excludes a worktree glob at all — the source the copies are pinned to", () => {
-    expect(source()).not.toEqual([]);
+    expect(source).not.toEqual([]);
   });
 
-  it("eslint.config.js ignores exactly the worktree globs vitest.config.ts excludes", () => {
-    expect(worktreeGlobs(globsIn("eslint.config.js", "ignores"))).toEqual(source());
+  it("eslint.config.js ignores exactly the worktree globs vitest.config.ts excludes", async () => {
+    expect(worktreeGlobs(await eslintIgnores())).toEqual(source);
   });
 
   it("tsconfig.json excludes exactly the worktree globs vitest.config.ts excludes", () => {
-    expect(worktreeGlobs(jsonGlobsIn("tsconfig.json", "exclude"))).toEqual(source());
+    expect(worktreeGlobs(tsconfig.exclude)).toEqual(source);
   });
 });

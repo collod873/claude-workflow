@@ -5,7 +5,8 @@ name: Bypass counter (reusable)
 # `verify.yml`'s gauntlet step fails through two distinctly named steps — `Gauntlet` on exit 1, a
 # real finding that reached `main` despite the free venues (in-turn, turn-end, pre-push) that should
 # already have refused it, and `Gauntlet could not run` on exit 2, an environment problem that is
-# nobody routing around anything (`verify-workflow.test.ts`). Only the first is a bypass. This rides
+# nobody routing around anything (a step the gate had before #360, still in the history this
+# reads). Only the first is a bypass. This rides
 # `verify.yml` completing so the count this recomputes is exactly the event it counts — no cursor, no
 # stored number, nothing here that can go stale.
 #

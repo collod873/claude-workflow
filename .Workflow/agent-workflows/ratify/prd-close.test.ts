@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createRecordingGh } from "../shared/gh.fake";
 import { RATIFICATION_DUE_DISPATCH_ACTION } from "../shared/ratification-dispatch";
@@ -84,38 +82,5 @@ describe("the dispatch on the wire", () => {
         "client_payload[prd_closed]=true",
       ],
     ]);
-  });
-});
-
-describe("ratify-on-prd-close.yml agrees with the scope rule it is a copy of", () => {
-  const workflow = readFileSync(
-    fileURLToPath(new URL("../../../.github/workflows/ratify-on-prd-close.yml", import.meta.url)),
-    "utf8",
-  );
-
-  // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
-  // workflow's own `on:` is `workflow_call` — see the block below.
-  it("is reusable — a caller supplies the trigger", () => {
-    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
-  });
-
-  it("gates the job on the same two conditions the connector checks", () => {
-    expect(workflow).toContain(`state_reason == '${CLOSE_STATE_REASON}'`);
-    expect(workflow).toContain(`'${PRD_LABEL}'`);
-  });
-});
-
-describe("ratify-on-prd-close-caller.yml gates the reusable workflow", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("../../../.github/workflows/ratify-on-prd-close-caller.yml", import.meta.url)),
-    "utf8",
-  );
-
-  it("fires on an issue closing", () => {
-    expect(source).toMatch(/issues:\s*\n\s*types:\s*\[closed\]/);
-  });
-
-  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
-    expect(source).toContain("collod873/claude-workflow/.github/workflows/ratify-on-prd-close.yml@main");
   });
 });

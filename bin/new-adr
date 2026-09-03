@@ -12,15 +12,15 @@
 #   bin/new-adr --land docs/adr/draft-<slug>.md   → docs/adr/NNNN-<slug>.md, number claimed here
 #
 # A draft carries no number, so it is invisible to everything that reads the corpus by filename
-# shape (`missing-trailer-counter.ts`, `generate-corpus-fixture.ts`). That is what lets a
+# shape (`missing-trailer-counter.ts`). That is what lets a
 # half-written ruling sit in a working tree without holding the gauntlet red — which was the
 # other half of #146, and it falls out of this rule rather than needing one of its own.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # `TARGET_WORKSPACE` is the same seam `bin/gauntlet` reads (ADR-0139): the machine checkout this
-# script's own location resolves to (`repo_root`, above) is where its tooling lives — the corpus
-# generator, `node-on-path.sh` — and once a caller splits the two checkouts, `docs/adr/` and the
+# script's own location resolves to (`repo_root`, above) is where its tooling lives, and once a
+# caller splits the two checkouts, `docs/adr/` and the
 # git remote a land fetches from are the *target's*, never the machine's. Falling back to
 # `repo_root` is what keeps this working exactly as before wherever the two are the same checkout.
 target_root="${TARGET_WORKSPACE:-$repo_root}"
@@ -103,39 +103,13 @@ land() {
     mv "$draft" "$landed"
   fi
 
-  # The corpus fixture is a snapshot of this directory, and landing is the moment the directory
-  # grew. Regenerating here is what stops the land from being a two-step nobody remembers the
-  # second half of — the same obligation `shape/accept.ts` carries for its own writes, moved to
-  # the one place every author goes through. `bin/gauntlet push` is still the gate; this is what
-  # keeps the gate from being the first time you hear about it.
-  #
-  # Both conditions are skips rather than failures, and the asymmetry with `bin/gauntlet` is
-  # deliberate: the gauntlet fails closed because it is a gate, and this is not one. A land that
-  # refused to rename because it could not also regenerate would leave the draft unlanded over a
-  # thing the push venue is about to catch anyway — and it would make this tool unusable in a
-  # checkout that has no generator at all, which is every scratch tree the suite builds. An
-  # enrolled repository (ADR-0139) is the same shape: it never seeded a corpus fixture at all, so
-  # there is nothing there for `bin/gauntlet`'s `corpus` check to diff and nothing here to keep
-  # true — the generator lives in the machine (`repo_root`) either way, since that is where it
-  # ships, but it only runs when the *target*'s fixture already exists.
-  local generator="$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts"
-  local corpus_fixture="$target_root/.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json"
-  # shellcheck source=bin/node-on-path.sh
-  . "$repo_root/bin/node-on-path.sh"
-  if [ ! -f "$corpus_fixture" ]; then
-    : # No corpus fixture in the target to keep true.
-  elif [ ! -f "$generator" ]; then
-    : # No corpus fixture generator in this tree to keep true.
-  elif node_on_path; then
-    node "$generator" "$target_root"
-  else
-    echo "new-adr: no node on PATH — corpus fixture not regenerated, and bin/gauntlet push will refuse this" >&2
-  fi
-
-  # `docs/adr/INDEX.md` is the second generated file under `docs/adr/`, and a land is the moment its
-  # table grew a row — same obligation as the corpus fixture above, same skip-rather-than-fail shape
-  # and the same reason for it (#356). Without this the author's own `npm run check` is red on a
-  # file the tool they just ran is what invalidated, which is how ADR-0147 landed.
+  # `docs/adr/INDEX.md` is generated from this directory, and a land is the moment its table grew
+  # a row. Regenerating here is what stops the land from being a two-step nobody remembers the
+  # second half of (#356) — without it the author's own `npm run check` is red on a file the tool
+  # they just ran is what invalidated, which is how ADR-0147 landed. A skip rather than a failure,
+  # and the asymmetry with `bin/gauntlet` is deliberate: the gauntlet fails closed because it is a
+  # gate, and this is not one — a land that refused to rename because it could not also regenerate
+  # would leave the draft unlanded over a thing the push venue is about to catch anyway.
   #
   # The generator is the machine-global `~/bin/adr-check`, run rather than reimplemented: ADR-0097
   # keeps machine-global machinery out of a consumer repository, and a second renderer here would be

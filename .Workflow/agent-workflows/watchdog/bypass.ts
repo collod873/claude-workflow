@@ -4,13 +4,14 @@
  * `verify-runs.evidence.json` — this repo's own real `verify.yml` history on
  * `main`, captured with the failed step name the counter reads.
  *
- * `verify.yml`'s Gauntlet step now fails through two distinctly named steps
- * (`verify-workflow.test.ts`): `Gauntlet` on exit 1, a real finding that
- * reached `main` despite every free venue that should have caught it first;
- * `Gauntlet could not run` on exit 2, an environment problem that is nobody
- * routing around anything. A third named step, `Lint workflow files`, is
- * actionlint failing on the workflow YAML itself — unrelated to the
- * gauntlet's own verdict. Only the first of the three is a bypass: it is the
+ * `verify.yml`'s gate step is named `Gauntlet` (the wiring table,
+ * `shared/lane-wiring.ts`, holds it to that): a failure there is a real
+ * finding that reached `main` despite every free venue that should have
+ * caught it first. Two other step names appear in the history this reads:
+ * `Gauntlet could not run`, the exit-2 step the gate had before #360, an
+ * environment problem that is nobody routing around anything; and `Lint
+ * workflow files`, actionlint failing on the workflow YAML itself —
+ * unrelated to the gauntlet's own verdict. Only the first is a bypass: it is the
  * one case where a red tree reached trunk that the in-turn, turn-end and
  * pre-push venues would already have refused, which means one of them was
  * skipped — `--no-verify`, a clone where `npm ci` never ran, or a commit
@@ -20,7 +21,7 @@
 /** The step name a real Gauntlet finding (exit 1) fails through. Counting this step, and only this step, is the whole rule. */
 export const BYPASS_STEP = "Gauntlet";
 
-/** The step name exit 2 fails through — the checks could not run at all. An environment problem, never a bypass. */
+/** The step name the pre-#360 gate's exit 2 failed through — still in the run history, never a bypass. */
 export const COULD_NOT_RUN_STEP = "Gauntlet could not run";
 
 /** The step name actionlint fails through on the workflow files themselves — unrelated to the gauntlet's own verdict. */
@@ -108,7 +109,7 @@ export function issueBody(runs: VerifyRun[]): string {
     "structurally impossible — a bypass becomes a push branch protection refuses rather than a red",
     "tree on `main` — and once it lands, this counter's job is done.",
     "",
-    "This does not count `Gauntlet could not run` (exit 2, an environment problem) or",
+    "This does not count `Gauntlet could not run` (the old gate's environment-problem step) or",
     "`Lint workflow files` (actionlint on the workflow YAML itself) — neither is a bypass.",
     "",
     "Close this **completed** and it will not ask again until the count above has grown. Close it",

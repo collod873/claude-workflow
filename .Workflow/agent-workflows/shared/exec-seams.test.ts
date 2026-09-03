@@ -1,7 +1,5 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { agentWorkflowTests, sharedModules } from "./sources.fixture.ts";
 
 /**
  * Every seam that spawns a child process sets `maxBuffer`.
@@ -17,9 +15,10 @@ import { describe, expect, it } from "vitest";
  * sibling — after the dispatch name (#107) and the runner's git identity
  * (#109) — so it gets the same answer those did: a guard that holds every
  * seam to it, rather than a second file brought level and left to drift again.
+ *
+ * Both sweeps read source as text, through `sources.fixture.ts` — a guard over files it does not
+ * know the names of yet cannot import them.
  */
-
-const SHARED_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** A seam is a shared module that spawns a child process synchronously. */
 const SPAWNS = /execFileSync\(/;
@@ -36,9 +35,8 @@ function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
-const seams = readdirSync(SHARED_DIR)
-  .filter((name) => name.endsWith(".ts") && !name.includes(".test.") && !name.includes(".fake."))
-  .map((name) => ({ name, source: code(readFileSync(join(SHARED_DIR, name), "utf8")) }))
+const seams = sharedModules()
+  .map(({ name, source }) => ({ name, source: code(source) }))
   .filter(({ source }) => SPAWNS.test(source));
 
 describe("every exec seam sets maxBuffer", () => {
@@ -64,15 +62,14 @@ describe("every exec seam sets maxBuffer", () => {
  * child `{ ...process.env, GITHUB_WORKSPACE: <the repo it just built> }` is
  * overridden by the runner's value and audits the lane's own target checkout
  * instead — green on a workstation, where nothing sets it, and red on every
- * runner. `run-audit.test.ts` shipped that way and took lane 08 with it: three
- * failures in the pre-push gauntlet meant no pull request could be merged by
- * the pipeline at all, for a week, while the same suite passed locally.
+ * runner. `observations/run-audit`'s test shipped that way and took lane 08
+ * with it: three failures in the pre-push gauntlet meant no pull request could
+ * be merged by the pipeline at all, for a week, while the same suite passed
+ * locally.
  *
  * The same "one file fixed, its sibling left to drift" shape as the guard
  * above, so it gets the same answer.
  */
-
-const REPO_ROOT = join(SHARED_DIR, "../..");
 
 /**
  * Hands a child the caller's own environment *and* points it at a repo with
@@ -90,21 +87,17 @@ const POINTS_AT_A_REPO = /GITHUB_WORKSPACE/;
  */
 const NEUTRALISES = /TARGET_WORKSPACE/;
 
-function testFilesUnder(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : testFilesUnder(path);
-    return entry.name.endsWith(".test.ts") ? [path] : [];
-  });
-}
-
-const spawningTests = testFilesUnder(join(REPO_ROOT, "agent-workflows"))
-  .map((path) => ({ name: path.slice(REPO_ROOT.length + 1), source: readFileSync(path, "utf8") }))
-  .filter(({ source }) => SPAWNS.test(code(source)) && INHERITS_ENV.test(code(source)) && POINTS_AT_A_REPO.test(code(source)));
+const spawningTests = agentWorkflowTests().filter(
+  ({ source }) => SPAWNS.test(code(source)) && INHERITS_ENV.test(code(source)) && POINTS_AT_A_REPO.test(code(source)),
+);
 
 describe("a test spawning an entrypoint with the ambient environment neutralises TARGET_WORKSPACE", () => {
   it("finds the tests that spawn, so a passing suite is not an empty sweep", () => {
-    expect(spawningTests.map(({ name }) => name)).toContain("agent-workflows/observations/run-audit.test.ts");
+    // The run-audit suite, under either of the names it has carried — a `.proc.test.ts` still
+    // ends in `.test.ts`, and is still the sentinel this sweep has to find.
+    expect(spawningTests.map(({ name }) => name)).toContainEqual(
+      expect.stringMatching(/^agent-workflows\/observations\/run-audit(\.proc)?\.test\.ts$/),
+    );
   });
 
   it.each(spawningTests)("$name", ({ name, source }) => {

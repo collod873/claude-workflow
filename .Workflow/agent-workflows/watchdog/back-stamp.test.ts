@@ -1,7 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
 import {
@@ -205,9 +201,9 @@ const CORPUS: Record<string, string> = Object.fromEntries(FIXTURE.map((file) => 
 /**
  * A `WalkDeps` backed by an in-memory `path → content` map: `readDir` lists its basenames,
  * `readFile` answers from it, `writeFile` records into `.writes` rather than touching a real file,
- * and `git` is `git.fake.ts`'s recorder — same shape as `run-watchdog.test.ts`'s `fakeGh`, answering
- * the calls this module makes and recording every argv so a test can assert "committed nothing" by
- * the recording staying empty.
+ * and `git` is `git.fake.ts`'s recorder — same shape as `run-watchdog.test.ts`'s `historyWith`,
+ * answering the calls this module makes and recording every argv so a test can assert "committed
+ * nothing" by the recording staying empty.
  *
  * `indexRegenerated` is what the real `regenerateIndex` answers: `true` where the target carries an
  * index and the machine carries the generator, `false` on a runner or a target that never adopted
@@ -357,61 +353,5 @@ describe("backStampWalk", () => {
     };
 
     expect(backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
-  });
-});
-
-describe("back-stamp.yml agrees with the module it runs", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const source = readFileSync(join(here, "../../../.github/workflows/back-stamp.yml"), "utf8");
-  const workflow = parse(source) as {
-    on: { workflow_call?: null };
-  };
-
-  it("runs this module", () => {
-    expect(source).toContain("npx tsx .Workflow/agent-workflows/watchdog/back-stamp-walk.ts");
-  });
-
-  it("is reusable — a caller supplies the trigger (ADR-0055, ADR-0132)", () => {
-    expect(workflow.on).toHaveProperty("workflow_call");
-  });
-
-  it("rides push rather than a clock or the shared session-end dispatch, per ADR-0046", () => {
-    expect(source).not.toContain("schedule:");
-    expect(source).not.toContain("repository_dispatch:");
-  });
-
-  it("grants only the write the back-stamp needs to commit", () => {
-    expect(source).toMatch(/^ {2}contents: write$/m);
-  });
-
-  it("configures a committer before it commits, since a runner has no git identity (#109)", () => {
-    expect(source).toMatch(/git config (--\S+ )?user\.email/);
-  });
-
-  it("hands the module the target checkout, not its own cwd", () => {
-    expect(source).toContain("TARGET_WORKSPACE");
-  });
-});
-
-describe("back-stamp-caller.yml gates the reusable workflow", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const source = readFileSync(join(here, "../../../.github/workflows/back-stamp-caller.yml"), "utf8");
-  const workflow = parse(source) as {
-    on: { push?: { branches?: string[]; paths?: string[] } };
-    jobs: { stamp: { uses?: string } };
-  };
-
-  it("fires on a commit touching docs/adr/ or docs/research/, and nowhere else", () => {
-    expect(workflow.on.push?.paths?.slice().sort()).toEqual(["docs/adr/**", "docs/research/**"].sort());
-  });
-
-  it("does not fire on a commit touching neither path — no unfiltered push, no catch-all glob", () => {
-    const paths = workflow.on.push?.paths ?? [];
-    expect(paths.length).toBeGreaterThan(0);
-    expect(paths).not.toContain("**");
-  });
-
-  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
-    expect(workflow.jobs.stamp.uses).toBe("collod873/claude-workflow/.github/workflows/back-stamp.yml@main");
   });
 });

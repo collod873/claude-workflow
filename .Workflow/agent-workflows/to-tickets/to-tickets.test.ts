@@ -1,7 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { handoffPath, writeFailure } from "../shared/handoff-path";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
@@ -11,41 +10,11 @@ import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { scratchDir } from "../shared/scratch.fixture";
 import { checkpointPath } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
-import { runStageCli, stageCliFailure, TO_TICKETS_PATH } from "./stage-cli.fixture";
+import { seamSweepResponse, seedCheckpoint, sliceResponse, unreachableGh } from "./checkpoint.fixture";
+import { runStageCli, stageCliFailure } from "./stage-cli.fixture";
 import { runNamedStage } from "./to-tickets";
 
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
-
-/** A `GhExec` for a stage that must never touch GitHub — seam-sweep and
- * slice take one only because `runNamedStage`'s dispatch is uniform across
- * every stage; asserting neither calls it is worth more than a silent fake. */
-const unreachableGh: GhExec = (args) => {
-  throw new Error(`gh should not have been called: ${JSON.stringify(args)}`);
-};
-
-/**
- * Seeds `stage`'s checkpoint file directly, in the wire-format shape a real
- * `runStage` call would have written it in (see `../shared/stage.ts`'s
- * `writeCheckpoint`) — the key is a placeholder, since `readPriorHandoff`
- * (the only reader these tests exercise indirectly) never checks it; only
- * `runStage`'s own cache-hit path does, against a commit these tests don't
- * control.
- */
-function seedCheckpoint(stage: string, response: string): void {
-  const path = checkpointPath(stage);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify({ key: "test", response }), "utf8");
-}
-
-/** The wire-format text a seam-sweep checkpoint holds for the given entries. */
-function seamSweepResponse(entries: string[]): string {
-  return JSON.stringify({ entries });
-}
-
-/** The wire-format text a slice checkpoint holds for the given plan. */
-function sliceResponse(plan: Slice[]): string {
-  return JSON.stringify({ slices: plan });
-}
 
 /**
  * Runs audit-and-publish over whatever slice checkpoint the caller seeded, with the auditor
@@ -331,13 +300,6 @@ describe("stage output moved from the shared handoff to per-stage checkpoints", 
     await runNamedStage("seam-sweep", "13", fake.exec, unreachableGh);
 
     expect(existsSync(target)).toBe(false);
-  });
-
-  it("to-tickets.ts keeps no local preservingRaw or rawResponsePath copy", () => {
-    const source = readFileSync(TO_TICKETS_PATH, "utf8");
-
-    expect(source).not.toMatch(/function\s+preservingRaw/);
-    expect(source).not.toMatch(/function\s+rawResponsePath/);
   });
 });
 

@@ -1,13 +1,6 @@
-import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { planFire } from "./canary-fire-plan.ts";
-import { WORKFLOWS_DIR } from "./read-workflow.ts";
-
-function laneIds(): string[] {
-  return readdirSync(WORKFLOWS_DIR)
-    .filter((name) => name.endsWith("-caller.yml"))
-    .map((name) => name.slice(0, -"-caller.yml".length));
-}
+import { laneIds } from "./read-workflow.ts";
 
 describe("planFire", () => {
   it("chooses push for a lane whose on: block carries push, unchanged from bin/canary's old behavior", () => {

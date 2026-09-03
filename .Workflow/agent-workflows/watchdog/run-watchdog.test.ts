@@ -1,12 +1,8 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathMatcher, runJobsPathMatcher } from "../shared/gh-paths";
 import { runWatchdog, WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { MAX_JOB_READS, MAX_SIGNALS, signalMarker } from "./dead-lanes";
-import { expectWorkflowSetsEveryVariableRead } from "./env-contract.fixture";
 import { answerTracker } from "./signal-tracker.fixture";
 
 const NOW = new Date("2026-08-26T12:00:00Z");
@@ -357,54 +353,5 @@ describe("runWatchdog", () => {
     const fake = historyWith({ runs: [DEAD], jobsRaw: "" });
 
     expect(() => sweep(fake)).toThrow(/returned no count/);
-  });
-});
-
-describe("run-watchdog.yml agrees with the module it runs", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const workflow = readFileSync(join(here, "../../../.github/workflows/run-watchdog.yml"), "utf8");
-
-  it("runs this module", () => {
-    expect(workflow).toContain("npx tsx .Workflow/agent-workflows/watchdog/run-watchdog.ts");
-  });
-
-  it("scopes its job on the same dispatch action this module checks for", () => {
-    expect(workflow).toContain(`github.event.action == '${WATCHDOG_DISPATCH_ACTION}'`);
-  });
-
-  it("grants the reads it needs, and the write the signal is", () => {
-    // The #107 lesson as a test rather than a comment: the reconciler received every dispatch and
-    // exited 403 because nobody granted it `actions: read`, and a workflow that cannot read jobs is
-    // a watchdog that reports nothing while looking perfectly healthy.
-    expect(workflow).toMatch(/^ {2}actions: read$/m);
-    expect(workflow).toMatch(/^ {2}issues: write$/m);
-  });
-
-  // #314, ADR-0055 (amended by ADR-0132): the trigger moved to the caller stub, since a reusable
-  // workflow's own `on:` is `workflow_call` — see the block below.
-  it("is reusable — a caller supplies the trigger", () => {
-    expect(workflow).toMatch(/^"on":\s*\n\s*workflow_call:/m);
-  });
-
-  it("sets every variable the entrypoint reads", () => {
-    expectWorkflowSetsEveryVariableRead({
-      workflow,
-      workflowFile: "run-watchdog.yml",
-      entrypoint: join(here, "run-watchdog.ts"),
-    });
-  });
-});
-
-describe("run-watchdog-caller.yml gates the reusable workflow", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const source = readFileSync(join(here, "../../../.github/workflows/run-watchdog-caller.yml"), "utf8");
-
-  it("rides an event rather than a clock, per ADR-0004", () => {
-    expect(source).toContain("repository_dispatch:");
-    expect(source).not.toContain("schedule:");
-  });
-
-  it("calls the reusable workflow at @main, never a pinned SHA or tag", () => {
-    expect(source).toContain("collod873/claude-workflow/.github/workflows/run-watchdog.yml@main");
   });
 });
