@@ -129,10 +129,8 @@ describe("a lane that writes into a target installs that target's dependencies",
 
 describe("a step that reports a dead run covers every way a run dies", () => {
   /**
-   * `timeout-minutes` reports `cancelled`, never `failure`. A door spelled on `failure` alone
-   * therefore misses the timeout it most exists for — #342's run 33687023105 was killed at exactly
-   * 45 minutes, reached Recover through neither of its two doors, and left an orphaned claim that
-   * made the ticket unbuildable.
+   * Why `cancelled()` belongs beside `failure()` on a step that rings a recovery lane: the comment
+   * on `implement.yml`'s "Tell Recover this run failed" step (#342).
    */
   const notifiers = workflows.flatMap((w) =>
     w.steps
