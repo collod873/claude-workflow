@@ -1,5 +1,0 @@
-{
-  "generated": "2026-09-03",
-  "why": "Per-check wall times, ratcheted (#335). A venue's budget is its own last green time plus the margin below, never a figure declared for it — so an enrolled repository inherits its own history rather than this repo's guess about someone else's suite. The committed file holds the runner's numbers; a workstation writes timing-baseline.local.json instead.",
-  "venues": {}
-}
