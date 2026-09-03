@@ -66,6 +66,7 @@ function runGit(dir: string, args: string[], env: NodeJS.ProcessEnv = {}): strin
     encoding: "utf8",
     maxBuffer: MAX_BUFFER,
     env: { ...childEnv(), ...env },
+    stdio: ["pipe", "pipe", "pipe"],
   }).trim();
 }
 

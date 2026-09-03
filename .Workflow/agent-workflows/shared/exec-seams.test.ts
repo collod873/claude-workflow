@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentWorkflowTests, sharedModules } from "./sources.fixture.ts";
+import { agentWorkflowFixtures, agentWorkflowTests, sharedModules } from "./sources.fixture.ts";
 
 /**
  * Every seam that spawns a child process sets `maxBuffer`.
@@ -107,6 +107,57 @@ describe("a test spawning an entrypoint with the ambient environment neutralises
         "every runner exports it and every entrypoint reads it ahead of GITHUB_WORKSPACE, so the child " +
         "will read the lane's target checkout rather than the repo this test built. Pass it explicitly, " +
         'or clear it with `TARGET_WORKSPACE: ""`',
+    ).toBe(true);
+  });
+});
+
+/**
+ * Every test-side spawner passes `stdio`.
+ *
+ * `execFileSync` does not merely capture the child's stderr — it *also* echoes it to the parent's
+ * own fd 2. So a test that exercises a failure path on purpose prints the failure it was written
+ * to assert on, straight into the verify log, and not even through the vitest worker: the runner
+ * never sees the bytes, so it cannot label them `stderr | <test name>` the way it labels a
+ * `console.error` from inside a test. The reader gets 190 lines of what looks like a broken suite
+ * above `2203 passed`, with no test name attached to any of it.
+ *
+ * The echo is the whole of the cost. `err.stderr` is populated either way and the child's stderr
+ * is folded into the thrown `Error`'s message either way, so `["pipe", "pipe", "pipe"]` — the
+ * default in every respect except the echo — loses no diagnostic and changes no assertion.
+ *
+ * This is the same shape as the two guards above, and it arrived the same way: `rule-trial.ts` and
+ * `reason.proc.test.ts` had already been given an explicit `stdio`, and the eleven other spawners
+ * had not. So it gets the same answer — a rule over every spawner, rather than two files brought
+ * level and the rest left to drift.
+ *
+ * The sweep is over tests and fixtures only, though `git.ts` was piped for the same reason and by
+ * the same argument — it was the loudest single source left, and git reports routine progress on
+ * stderr. The remaining production seams are simply not ruled on yet, so the sweep does not hold
+ * them to something nobody has decided; it is not that they are exempt.
+ */
+const SETS_STDIO = /stdio:/;
+
+const testSideSpawners = [...agentWorkflowTests(), ...agentWorkflowFixtures()].filter(({ source }) =>
+  SPAWNS.test(code(source)),
+);
+
+describe("every test-side spawner passes stdio", () => {
+  it("finds the spawners, so a passing suite is not an empty sweep", () => {
+    expect(testSideSpawners.map(({ name }) => name).sort()).toEqual(
+      expect.arrayContaining([
+        "agent-workflows/shared/temp-repo.fixture.ts",
+        "agent-workflows/to-tickets/stage-cli.fixture.ts",
+      ]),
+    );
+  });
+
+  it.each(testSideSpawners)("$name", ({ name, source }) => {
+    expect(
+      SETS_STDIO.test(code(source)),
+      `${name} spawns a child without passing stdio — execFileSync echoes the child's stderr to this ` +
+        "process's stderr on top of capturing it, so a test exercising a failure path prints that failure " +
+        "into the verify log, unlabelled and indistinguishable from a real one. Pass " +
+        '`stdio: ["pipe", "pipe", "pipe"]`, which is the default minus the echo',
     ).toBe(true);
   });
 });

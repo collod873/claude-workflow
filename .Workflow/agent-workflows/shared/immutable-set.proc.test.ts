@@ -20,7 +20,11 @@ const script = job.steps.find((step) => step.name === "Refuse a change to the im
 
 function run(env: Record<string, string | undefined>): { status: number | null; output: string } {
   try {
-    const output = execFileSync("bash", ["-c", script ?? ""], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
+    const output = execFileSync("bash", ["-c", script ?? ""], {
+      env: { PATH: process.env.PATH, ...env },
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     return { status: 0, output };
   } catch (error) {
     const err = error as { status: number | null; stdout?: string; stderr?: string };

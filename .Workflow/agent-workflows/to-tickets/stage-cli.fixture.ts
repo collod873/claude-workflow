@@ -29,6 +29,7 @@ function spawnStage(stage: string, answer: StubAnswer, priorCheckpoint?: { stage
     execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", stage, "--issue", "13"], {
       env,
       encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
     });
   return { run, handoffFile };
 }

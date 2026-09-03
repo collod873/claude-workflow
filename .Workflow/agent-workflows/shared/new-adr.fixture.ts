@@ -72,5 +72,11 @@ export function runNewAdr(root: string, args: string[], extraEnv: Record<string,
   const env = { ...process.env, ...extraEnv };
   delete env.EDITOR;
   delete env.VISUAL;
-  return execFileSync(join(root, "bin/new-adr"), args, { cwd: root, encoding: "utf8", maxBuffer: MAX_BUFFER, env }).trim();
+  return execFileSync(join(root, "bin/new-adr"), args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: MAX_BUFFER,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+  }).trim();
 }

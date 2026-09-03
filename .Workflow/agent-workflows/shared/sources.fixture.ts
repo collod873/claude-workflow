@@ -26,18 +26,33 @@ export function sharedModules(): SourceFile[] {
     .map((name) => ({ name, source: readFileSync(join(SHARED_DIR, name), "utf8") }));
 }
 
-function testFilesUnder(dir: string): string[] {
+function filesUnder(dir: string, suffix: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : testFilesUnder(path);
-    return entry.name.endsWith(".test.ts") ? [path] : [];
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : filesUnder(path, suffix);
+    return entry.name.endsWith(suffix) ? [path] : [];
   });
+}
+
+function sourcesUnder(suffix: string): SourceFile[] {
+  return filesUnder(join(WORKFLOW_ROOT, "agent-workflows"), suffix).map((path) => ({
+    name: path.slice(WORKFLOW_ROOT.length + 1),
+    source: readFileSync(path, "utf8"),
+  }));
 }
 
 /** Every `*.test.ts` under `agent-workflows/`, named relative to `.Workflow/`. */
 export function agentWorkflowTests(): SourceFile[] {
-  return testFilesUnder(join(WORKFLOW_ROOT, "agent-workflows")).map((path) => ({
-    name: path.slice(WORKFLOW_ROOT.length + 1),
-    source: readFileSync(path, "utf8"),
-  }));
+  return sourcesUnder(".test.ts");
+}
+
+/**
+ * Every `*.fixture.ts` under `agent-workflows/`, named relative to `.Workflow/`.
+ *
+ * Separate from `sharedModules()`, which is keyed to one directory and so both misses the fixtures
+ * outside `shared/` (`to-tickets/stage-cli.fixture.ts` spawns, and lives next to its suite) and
+ * sweeps up the production seams, which are not held to the same rule.
+ */
+export function agentWorkflowFixtures(): SourceFile[] {
+  return sourcesUnder(".fixture.ts");
 }

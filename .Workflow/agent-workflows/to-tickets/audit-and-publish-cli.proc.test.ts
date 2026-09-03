@@ -36,7 +36,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     const stdout = execFileSync(
       "npx",
       ["tsx", TO_TICKETS_PATH, "--stage", "audit-and-publish", "--issue", "13"],
-      { env, encoding: "utf8" },
+      { env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
     );
 
     expect(stdout).toContain("audit-and-publish: published 1 sub-issue under #13");
@@ -55,6 +55,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "audit-and-publish", "--issue", "13"], {
         env,
         encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
       }),
     ).toThrow();
 
@@ -75,6 +76,7 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
       execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "audit-and-publish", "--issue", "13"], {
         env,
         encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (err) {
       threw = true;

@@ -265,6 +265,10 @@ function checkpointKey(prompt: string): string | undefined {
     sha = execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
+      // The "no checkout" case is this function's documented `undefined`, not an error anyone
+      // needs told about — but `execFileSync` echoes the child's stderr on top of capturing it,
+      // so without this the caller prints `fatal: not a git repository` and then handles it.
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return undefined;

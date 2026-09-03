@@ -60,6 +60,7 @@ function runBackfillCli(sourceDir: string, outputDir: string, logPath: string): 
     cwd: REPO_ROOT,
     encoding: "utf8",
     env: { ...process.env, SESSION_CAPTURE_OUTPUT_DIR: outputDir, SESSION_CAPTURE_LOG_PATH: logPath },
+    stdio: ["pipe", "pipe", "pipe"],
   });
 }
 
@@ -231,6 +232,7 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
         SESSION_CAPTURE_KB_DIR: hookKbDir,
         SESSION_CAPTURE_KB_STAMP_PATH: hookKbStampPath,
       },
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     const hookFile = mdFiles(hookOutputDir)[0];

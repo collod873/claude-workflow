@@ -24,5 +24,18 @@ export type GitExec = (args: string[]) => string;
  * a hook-spawned `git` is free to ignore in favor of whatever repo the
  * outer git process happened to be running against.
  */
+/**
+ * `stdio` is the default in every respect except that it does not echo. `execFileSync` otherwise
+ * writes the child's stderr to this process's own fd 2 on top of capturing it, and git reports
+ * routine progress there — every push ref, every "Overwriting existing notes". That is 76 lines of
+ * a green suite's log, unlabelled, because the bytes never pass through the vitest worker that
+ * would name the test they came from. The echo only ever adds output on success: a failing git
+ * still carries its stderr in the thrown `Error`'s message, which is what every caller reports.
+ */
 export const execGit: GitExec = (args) =>
-  execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
+  execFileSync("git", args, {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+    env: childEnv(),
+    stdio: ["pipe", "pipe", "pipe"],
+  });

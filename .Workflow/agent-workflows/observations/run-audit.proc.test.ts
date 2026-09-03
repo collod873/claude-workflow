@@ -196,7 +196,11 @@ function makeCliRepo(): { repo: TempRepo; seed: string } {
 
 /** Runs the real `run-audit.ts` entrypoint against `repo` at `head` and returns its stdout. */
 function runCli(repo: TempRepo, head: string, base: NodeJS.ProcessEnv = process.env): string {
-  return execFileSync("npx", ["tsx", RUN_AUDIT_PATH], { env: cliEnv(base, repo.dir, head), encoding: "utf8" });
+  return execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
+    env: cliEnv(base, repo.dir, head),
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
 }
 
 describe("run-audit.ts (CLI) exit code", () => {
@@ -227,6 +231,7 @@ describe("run-audit.ts (CLI) exit code", () => {
       execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
         env: { ...process.env, HEAD_SHA: "", EVENT_ACTION: AUDIT_DISPATCH_ACTION },
         encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
       }),
     ).toThrow();
   });
