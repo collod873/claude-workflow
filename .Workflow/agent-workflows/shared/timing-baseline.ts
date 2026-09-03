@@ -13,27 +13,17 @@ import { join, relative } from "node:path";
 import { isMainModule } from "./baseline-gate.ts";
 
 /**
- * Timing, recorded and never judged (ADR-0148, amending ADR-0147's widened deadband and ADR-0140's
- * original ratchet).
+ * Timing, recorded and never judged (ADR-0148).
  *
- * The prior shape kept a committed baseline and failed a push that missed it by more than a margin.
- * The margin was widened once already, and the next landing went red anyway: two Verify runs
- * judging the same pull request agreed with each other within 1.2% while missing the committed
- * number by 53%, each naming a different check as the slowest offender. The split was contextual —
- * one job measures the number inside its own run, the other reads it cold — and nothing in a single
- * millisecond count says which. A gate that goes red on where it ran teaches its reader to rerun
- * until green, which is a runner cycle that teaches nothing.
- *
- * So there is no more committed number and nothing here compares one run's duration against
- * another's. What every run leaves behind instead is `.gauntlet-timings.json` at the target root —
- * gitignored, overwritten each run, and read by nothing in this module or in `bin/gauntlet`. It
- * exists so a slow run is legible after the fact, not so a run can be refused.
+ * There is no committed number here and nothing compares one run's duration against another's.
+ * What every run leaves behind is `.gauntlet-timings.json` at the target root — gitignored,
+ * overwritten each run, and read by nothing in this module or in `bin/gauntlet`.
  *
  * One thing still reads a measured number: which test files the stop venue may run. That is file
  * *selection*, not judgement, and it uses only this workstation's own measurement
- * (`timing-baseline.local.json`, gitignored — a wall-clock number is only ever true on the machine
- * that measured it) admitted cheapest-first under a hard {@link STOP_WALL_MS} wall. It never fails a
- * run; it only decides which files stop gets to run before the rest fall through to push.
+ * (`timing-baseline.local.json`, gitignored) admitted cheapest-first under a hard
+ * {@link STOP_WALL_MS} wall. It never fails a run; it only decides which files stop gets to run
+ * before the rest fall through to push.
  */
 
 /** This machine's own measurement, gitignored — see the module docstring. */
