@@ -67,19 +67,10 @@ not inside it. Whatever you produce lands through your structured answer alone.
 
    It is wider than typecheck and tests, and it names each check that reddens.
    Read the name rather than assuming which one it was: several of them —
-   duplication against a clone baseline, code nothing in the estate reaches, a
-   malformed ADR trailer — are findings about work that passes every test you
-   thought to run, and every one of them is cheap to fix while you still have
-   the files open and unfixable once you have answered.
-
-   Four of its checks cover files that are **regenerated for you** after your
-   answer. Leave them out of your files entirely and ignore them when they go
-   red here:
-
-   - `.claude/contract.json`
-   - `.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json`
-   - `.Workflow/agent-workflows/shared/clone-gate.baseline.json`
-   - `.Workflow/agent-workflows/shared/timing-baseline.json`
+   duplicated code, code nothing in the estate reaches, a malformed ADR
+   trailer — are findings about work that passes every test you thought to
+   run, and every one of them is cheap to fix while you still have the files
+   open and unfixable once you have answered.
 
 5. **Write the summary.** One paragraph, in your own words, of what you built
    and why it satisfies the ticket's acceptance criteria, naming every file you

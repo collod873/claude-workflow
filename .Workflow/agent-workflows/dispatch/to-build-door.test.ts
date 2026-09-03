@@ -13,7 +13,7 @@ import {
 } from "./tracker.fixture";
 
 /**
- * Lane 06's second door (#184), and which lane it rings (ADR-0201). Everything downstream of the
+ * Lane 06's second door (#184), and which lane it rings (#201). Everything downstream of the
  * dispatch is unchanged, so what is worth pinning here is the door itself: what it admits, what it
  * still refuses, that it enters the recompute rather than firing once at label time, and that a
  * slice with no acceptance test goes to lane 04 before lane 05 ever hears of it.
@@ -38,7 +38,7 @@ function passOverLabelled(...issue: Parameters<typeof labelled>): Tracker {
 }
 
 /**
- * ADR-0201's ordering, which the `to-build` door skipped. Lane 03 never rings lane 05 itself — it
+ * #201's ordering, which the `to-build` door skipped. Lane 03 never rings lane 05 itself — it
  * asks lane 04 to author, and lane 04 rings lane 05 once the tests are on `main`. The door called
  * `dispatchTicketReady` directly, so every ticket through it reached Verify with nothing to judge
  * it: #346 opened a pull request whose acceptance job failed closed and whose fixer escalated

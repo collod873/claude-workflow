@@ -29,15 +29,15 @@ name: Implement (reusable)
 # repository carries only `implement-caller.yml`, a trigger and a `uses:`, never a copy of the
 # machine. This repository is its own first caller: the caller stub lives next to this file, at the
 # same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for `implement.ts`, the implementer's own prompt, and
-# the generators `regenerate-artifacts.ts` runs) and the calling repository's own tree (the target,
+# `collod873/claude-workflow` (the machine, for `implement.ts` and the implementer's own prompt)
+# and the calling repository's own tree (the target,
 # where the ticket is actually built) — never one copy standing in for the other. Of every lane in
 # this pipeline this is the one where that distinction bites hardest: the implementer holds Edit,
 # Write and Bash and *builds with them*, so the model's own working directory has to be the target
 # and not the machine, or a run would edit the pipeline instead of the repository it was dispatched
 # for. `TARGET_WORKSPACE` on the `Implement the ticket` step below is what says which is which —
 # `implement.ts`'s `main()` threads it through the model's cwd, every `git -C`, every file the
-# answer is written to, the acceptance run that assembles the brief, and the generators — the same
+# answer is written to, and the acceptance run that assembles the brief — the same
 # variable and the same reading `integrate.yml` and `shape.yml` already use. The machine checkout
 # carries no credential input of its own: ADR-0132 made this repository public, so
 # `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in

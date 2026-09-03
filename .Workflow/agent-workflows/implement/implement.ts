@@ -391,7 +391,7 @@ async function main(): Promise<void> {
 
   // Which checkout is the repository being built. `TARGET_WORKSPACE` is set only by the reusable
   // workflow (ADR-0055, amended by ADR-0132): there, this process runs from the *machine* checkout
-  // — that is where this file, the implementer's prompt and the generators live — while everything
+  // — that is where this file and the implementer's prompt live — while everything
   // a ticket names is a path in the target's tree. A workstation run has one of each, so cwd is the
   // right answer and this is absent.
   //

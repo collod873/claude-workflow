@@ -1065,7 +1065,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   /** Slices handed to lane 04 to author first — started, but not by this pass and not yet. */
   const authoring: number[] = [];
   for (const state of ready) {
-    // ADR-0201's ordering, which this door skipped. Lane 03 never sends `ticket-ready` itself: it
+    // #201's ordering, which this door skipped. Lane 03 never sends `ticket-ready` itself: it
     // asks lane 04 to author, and lane 04 rings lane 05 once that slice's acceptance tests are on
     // `main` — otherwise the implementer, and then Verify, judge a slice against tests that do not
     // exist. The `to-build` door called `dispatchTicketReady` directly, so every ticket through it
@@ -1120,7 +1120,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     };
   }
   if (dispatched.length === 0) {
-    // Something did become ready; it went to lane 04 rather than lane 05, which is ADR-0201's
+    // Something did become ready; it went to lane 04 rather than lane 05, which is #201's
     // order and not a quiet pass. Reporting `clear` here would say the opposite.
     return {
       action: "dispatched",

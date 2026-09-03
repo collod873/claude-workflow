@@ -161,7 +161,7 @@ export const GRAPH_CHANGED_DISPATCH_ACTION = "graph-changed";
 export const ACCEPTANCE_WANTED_DISPATCH_ACTION = "acceptance-wanted";
 
 /**
- * Asks lane 04 to author `issueNumber`'s acceptance tests. `ready` is ADR-0201's ordering: when
+ * Asks lane 04 to author `issueNumber`'s acceptance tests. `ready` is #201's ordering: when
  * true, lane 04 sends `ticket-ready` itself once those tests are on `main`, so lane 05 never
  * claims a slice whose acceptance tests do not exist yet.
  */
