@@ -1,6 +1,11 @@
-const STANDARDS_HEADING = "## Standards";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { REPO_ROOT } from "../shared/repo-sources";
 
-const ENTRY_HEAD = /^- \*\*(.+?)\*\*\s+[—-]\s+(.+)$/;
+const STANDARDS_HEADING = "## Standards";
+export const STANDARDS_FILE = "CODING_STANDARDS.md";
+
+const ENTRY_HEAD = /^- \*\*(.+?)\*\*(?::|\s+[—-])\s+(.+)$/;
 const ENTRY_WHY = /^\s+Why:\s*(.+)$/;
 const ENTRY_RED_FLAG = /^\s+Red flag:\s*(.+)$/;
 
@@ -9,6 +14,10 @@ export interface StandardEntry {
   what: string;
   why: string;
   redFlag: string;
+}
+
+export function readStandards(repoDir: string = REPO_ROOT): string {
+  return readFileSync(join(repoDir, STANDARDS_FILE), "utf8");
 }
 
 export function parseStandardEntries(markdown: string): StandardEntry[] {

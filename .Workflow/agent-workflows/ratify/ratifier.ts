@@ -4,7 +4,7 @@ import { reason } from "../shared/reason";
 import { runStage, type StageExec } from "../shared/stage";
 import { VIOLATION_LENS, type Observation } from "../shared/observation-schema";
 import type { RatificationRecord } from "../shared/ratification-schema";
-import { appendStandardEntry } from "./standards";
+import { appendStandardEntry, STANDARDS_FILE } from "./standards";
 import { commitWorkingTree, restoreWorkingTree, type LandedFinding } from "./land";
 import { runRuleTrial, type EslintExec, type RuleTrialOptions, type RuleTrialResult } from "./rule-trial";
 import { RATIFIER_OUTPUT, type RatifierVerdict } from "./verdict-schema";
@@ -57,7 +57,6 @@ export interface RatifyBatchResult {
   skipped: string[];
 }
 
-const STANDARDS_FILE = "CODING_STANDARDS.md";
 
 export async function ratifyBatch(deps: RatifyBatchDeps): Promise<RatifyBatchResult> {
   const { git, repoDir, observations } = deps;

@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { appendStandardEntry, enabledRuleIds, parseStandardEntries } from "./standards";
+import { appendStandardEntry, enabledRuleIds, parseStandardEntries, readStandards } from "./standards";
 
 const HEADER = ["# Coding Standards", "", "Some preamble prose.", "", "## Standards", ""].join("\n");
 
 const ENTRY = [
-  "- **Deep modules** — a small interface hiding substantial implementation.",
+  "- **Deep modules**: a small interface hiding substantial implementation.",
   "  Why: shallow wrappers add surface area without absorbing any complexity.",
   "  Red flag: an interface as wide as the implementation behind it.",
 ].join("\n");
 
 describe("parseStandardEntries", () => {
+  it("reads this repo's own CODING_STANDARDS.md, whatever separator its entries are written with", () => {
+    expect(parseStandardEntries(readStandards()).length).toBeGreaterThan(0);
+  });
+
+  it("reads the em dash separator earlier entries were written with", () => {
+    const legacy = `${HEADER}${ENTRY.replace("**Deep modules**:", "**Deep modules** —")}\n`;
+
+    expect(parseStandardEntries(legacy).map((entry) => entry.name)).toEqual(["Deep modules"]);
+  });
+
   it("reads an entry's three lines apart", () => {
     expect(parseStandardEntries(`${HEADER}${ENTRY}\n`)).toEqual([
       {
