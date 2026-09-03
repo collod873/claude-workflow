@@ -11,6 +11,7 @@ import {
 import { availableParallelism, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { isMainModule } from "./baseline-gate.ts";
+import { MACHINE_ROOT } from "./run-gauntlet.ts";
 
 /**
  * The timing ratchet (#335). The gauntlet had baselines for structure — wiring, clones,
@@ -30,11 +31,14 @@ import { isMainModule } from "./baseline-gate.ts";
  * is gitignored and holds whichever machine happens to be running. Nothing merges them: a run is
  * judged against the file for where it ran (`activeBaselinePath`).
  *
- * Only one thing writes the committed file — the `measure` mode below, from lane 05's
- * `regenerate-artifacts.ts` step, on the runner, before its push. A gauntlet run on a runner reads
- * it and never writes it: a hosted checkout is thrown away, so the write would only ever leave a
- * dirty tree behind for the lane that owns the commit. That is the same shape the clone and wiring
- * baselines already have — one generator, one step, one `git add`.
+ * Only one thing writes the committed file's `venues` half — the generator route below, from lane
+ * 05's `regenerate-artifacts.ts` step, on the runner, before its push. That route runs the actual
+ * push venue (`bin/gauntlet push`) against the target and sets `WRITE_VENUE_ENV`, the one seam
+ * that lets its `record` write despite running on a runner (ADR-0140, amended). Every other
+ * gauntlet run on a runner — including the Verify run that judges the same pull request — reads
+ * the committed file and never writes it: a hosted checkout is thrown away, so the write would
+ * only ever leave a dirty tree behind for a commit nobody owns. That is the same shape the clone
+ * and wiring baselines already have — one generator, one step, one `git add`.
  *
  * Keying by machine *class* (core count, say) was the alternative and it leaks — this repo's
  * public runners have 4 cores, Lumaria's private ones have 2, and the workstation has 32, so the
@@ -486,11 +490,52 @@ export function writeSuiteTiming(
   return suite;
 }
 
+/**
+ * Set only on the `bin/gauntlet push` spawned by {@link runPushVenue} below — the one seam that
+ * lets `runRecord`'s write-through happen from a runner. Nothing else may set it: a plain
+ * `bin/gauntlet push` on a runner, including the Verify run that judges the same pull request,
+ * still finds it unset and so still judges the committed baseline and discards (ADR-0142,
+ * amended).
+ */
+export const WRITE_VENUE_ENV = "GAUNTLET_TIMING_WRITE_VENUE";
+
+/**
+ * The generator's own route (`node timing-baseline.ts <root>`, no subcommand — what
+ * `regenerate-artifacts.ts` invokes). It used to be a solo `writeSuiteTiming` measurement;
+ * ADR-0142 already ruled that a solo number may never become a venue's budget, so this instead
+ * runs the actual push venue against `root`, on this machine's own `bin/gauntlet`, with
+ * {@link WRITE_VENUE_ENV} set — a number measured in the venue, in the crowded room, on the
+ * runner class that will judge it.
+ *
+ * Whatever the push venue's own checks find is real work for the real push to report later; this
+ * route only cares that the run happened and, through the seam, that its `record` call actually
+ * wrote. `result.status` is passed straight back as this process's own exit code, the same
+ * "a nonzero exit is logged, never fatal" contract every other generator gets from `execGenerator`.
+ */
+function runPushVenue(root: string): number {
+  const result = spawnSync(join(MACHINE_ROOT, "bin/gauntlet"), ["push"], {
+    cwd: MACHINE_ROOT,
+    stdio: "inherit",
+    env: { ...process.env, TARGET_WORKSPACE: root, [WRITE_VENUE_ENV]: "1" },
+  });
+  if (result.error) {
+    console.error(`timing: could not run the push venue: ${result.error.message}`);
+    return 2;
+  }
+  return result.status ?? 2;
+}
+
 // --- CLI --------------------------------------------------------------------------------------
 //
-//   node timing-baseline.ts <root>                        measure the suite, refresh `suite` in the
-//                                                         committed baseline (the generator form
+//   node timing-baseline.ts <root>                        run the push venue against <root>, on
+//                                                         this machine's own bin/gauntlet, with
+//                                                         the one seam that lets a runner's
+//                                                         record write the committed venues.push
+//                                                         (the generator form
 //                                                         `regenerate-artifacts.ts` invokes)
+//   node timing-baseline.ts measure <root>                measure the suite alone, refresh
+//                                                         `suite` in the committed baseline — the
+//                                                         manual "re-measure by hand" form
 //   node timing-baseline.ts record <root> <venue> [--wall=<ms>] <check>=<ms>…
 //                                                         ratchet one green run; exits 1 and names
 //                                                         the slowest check when it is over budget
@@ -550,8 +595,11 @@ function runRecord(args: string[]): never {
   const verdict = judge(before, venue, measurements);
   // A runner judges against the committed baseline and writes nothing: its checkout is thrown away
   // at the end of the job, so the only thing a write there could produce is a dirty tree under the
-  // lane that owns the commit. `measure` is what puts a runner's numbers in that file.
-  if (verdict.next && !isRunner()) {
+  // lane that owns the commit — unless this call is itself the one `runPushVenue` spawned, which
+  // sets WRITE_VENUE_ENV for exactly this reason (ADR-0140, amended). Nothing else may set it, so
+  // a plain `bin/gauntlet push` on a runner still finds it unset and still discards.
+  const writesFromRunner = process.env[WRITE_VENUE_ENV] === "1";
+  if (verdict.next && (!isRunner() || writesFromRunner)) {
     try {
       writeBaseline(path, verdict.next);
     } catch (err) {
@@ -608,14 +656,19 @@ if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args[0] === "record") runRecord(args.slice(1));
   if (args[0] === "files") runFiles(args.slice(1));
-  const root = args[0] ?? process.cwd();
-  try {
-    const suite = writeSuiteTiming(root);
-    console.log(
-      `timed ${Object.keys(suite.files).length} test file(s) in ${suite.wallMs}ms → ${BASELINE_RELATIVE_PATH}`,
-    );
-  } catch (err) {
-    console.error(`timing: ${(err as Error).message}`);
-    process.exit(2);
+  if (args[0] === "measure") {
+    const root = args[1] ?? process.cwd();
+    try {
+      const suite = writeSuiteTiming(root);
+      console.log(
+        `timed ${Object.keys(suite.files).length} test file(s) in ${suite.wallMs}ms → ${BASELINE_RELATIVE_PATH}`,
+      );
+    } catch (err) {
+      console.error(`timing: ${(err as Error).message}`);
+      process.exit(2);
+    }
+  } else {
+    const root = args[0] ?? process.cwd();
+    process.exit(runPushVenue(root));
   }
 }

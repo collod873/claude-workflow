@@ -267,6 +267,12 @@ shquote() {
 # two tests again, and so on until the runner killed the job (exit 143 after eight minutes, on the
 # first push Verify after ADR-0139). A slot's environment is the target's, never the gauntlet's.
 #
+# `GAUNTLET_TIMING_WRITE_VENUE` (#342's write seam) is the same shape: `runPushVenue` sets it for
+# the `bin/gauntlet push` it spawns, that push's own `test` check is `npm test`, and this repo's
+# suite is part of what `npm test` runs — so left unscrubbed, the seam meant for the one outer
+# `record` call leaks into every `record` a nested test spawns and lets it write a scratch baseline
+# it was never meant to.
+#
 # One thing does cross: the core count. A slot is a command the contract names, never a tool this
 # script knows (ADR-0056), so it cannot be told how wide to run — but a target's test runner sizes
 # itself from whatever its own config assumes, and Lumaria's assumed twelve workers on a two-core
@@ -277,7 +283,7 @@ shquote() {
 # the deliberate one in a test. Exported rather than passed to `env`: a `NAME=value` there ends
 # the option list, and the test slot appends `-u` flags of its own after this array.
 export GAUNTLET_CORES="$cores"
-slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT)
+slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT -u GAUNTLET_TIMING_WRITE_VENUE)
 
 started_ms=$(($(date +%s%N) / 1000000))
 pids=()
@@ -389,15 +395,30 @@ if [ "$venue" = "push" ]; then
   # The ADR corpus's own shape, index freshness and citation integrity, through the machine-global
   # `~/bin/adr-check` rather than a copy vendored here — which is ADR-0097's rule, and the reason
   # that tool was written to find its repo from the working directory rather than from its own
-  # location. Absent (a CI runner has no `~/bin`) it stands down at exit 0 rather than reporting
-  # exit 2: "could not run" is not free here, because it makes the whole gauntlet exit 2 and
-  # `.github/workflows/verify.yml` turns that into a red job — a machine-global tool this venue was
-  # never going to have is plumbing, not a finding, and this venue refuses only on findings. A
-  # machine that has the tool still gets the full check, against the target's own `docs/adr`.
-  run_check adrs bash -c \
-    'cd "$1" || exit 2; [ -d docs/adr ] || exit 0; [ -x "$HOME/bin/adr-check" ] || exit 0; exec "$HOME/bin/adr-check" >/dev/null' \
-    _ "$target_root" &
-  pids+=($!)
+  # location.
+  #
+  # Gated on the target's own corpus fixture existing — the same precondition `corpus` above
+  # already reads — rather than on whether `docs/adr` merely exists or the checker happens to be
+  # installed on this machine. A directory is not evidence of adoption: a target can carry
+  # `docs/adr` full of records with no frontmatter, in a shape this repo's tooling never produced,
+  # and gating on the directory alone ran this check against one and stopped the whole gauntlet on
+  # findings it never opted into. The fixture is generated only by a target that already produces
+  # this repo's ADR shape, so its absence reads as "never adopted" — the same way a missing
+  # `clone-gate.baseline.json` reads as "clone gate never turned on".
+  #
+  # A machine that lacks the binary itself is a different fact — plumbing, not a finding — so that
+  # stays a stand-down rather than a "could not run": "could not run" is not free here, because it
+  # makes the whole gauntlet exit 2 and `.github/workflows/verify.yml` turns that into a red job.
+  if [ -f "$corpus_fixture" ]; then
+    run_check adrs bash -c \
+      'cd "$1" || exit 2
+       if [ ! -x "$HOME/bin/adr-check" ]; then
+         exit 0
+       fi
+       exec "$HOME/bin/adr-check" >/dev/null' \
+      _ "$target_root" &
+    pids+=($!)
+  fi
 fi
 
 # What the test slot actually runs here.

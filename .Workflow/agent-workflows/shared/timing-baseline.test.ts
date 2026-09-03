@@ -11,6 +11,7 @@ import {
   MIN_SLACK_MS,
   REPORT_ONLY_EXIT,
   STOP_FILE_SHARE,
+  WRITE_VENUE_ENV,
   activeBaselinePath,
   discoverTestFiles,
   emptyBaseline,
@@ -46,6 +47,27 @@ function scratchRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), "timing-baseline-"));
   dirs.push(dir);
   return dir;
+}
+
+/**
+ * A scratch root carrying a `.claude/` directory and a `package.json` declaring `scripts`, with a
+ * `.claude/contract.json` generated from it — the target shape `bin/gauntlet push` needs to run
+ * against something real.
+ */
+function scratchContractTarget(scripts: Record<string, string>): string {
+  const root = scratchRoot();
+  mkdirSync(join(root, ".claude"), { recursive: true });
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "scratch", private: true, scripts }),
+  );
+  const generate = spawnSync(
+    process.execPath,
+    [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+    { encoding: "utf8" },
+  );
+  expect(generate.status).toBe(0);
+  return root;
 }
 
 /** A baseline holding one venue's checks, with everything else at its default. */
@@ -266,6 +288,56 @@ describe("where a run's numbers are kept", () => {
     expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
   });
 
+  // #342: the one seam that lets `record` write the committed file from a runner — set only by
+  // `runPushVenue`, the generator's own route below, and by nothing else. The seam unset is
+  // already the case the test above pins ("has one writer for the committed file"); this is its
+  // mirror, with the seam on.
+  it("lets record write the committed file on a runner once the generator's own seam is set", () => {
+    const root = scratchRoot();
+    mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
+    const run = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, "timing-baseline.ts"), "record", root, "push", "test=99999"],
+      { encoding: "utf8", env: { ...process.env, CI: "true", [WRITE_VENUE_ENV]: "1" } },
+    );
+
+    expect(run.status).toBe(0);
+    expect(readBaseline(join(root, BASELINE_RELATIVE_PATH))?.venues.push.test).toBe(99999);
+  });
+
+  // #342's first criterion: the generator's own route (`node timing-baseline.ts <root>`, no
+  // subcommand — what `regenerate-artifacts.ts` invokes) runs the push venue rather than a solo
+  // `writeSuiteTiming` measurement, so the committed file's `venues.push` gets written by an
+  // actual venue run instead of staying `{}` forever.
+  describe("the generator's own route", () => {
+    it(
+      "runs the push venue against root, writing venues.push rather than a solo suite measurement",
+      () => {
+        const root = scratchContractTarget({ typecheck: "true", lint: "true", test: "true" });
+
+        // This route only ever runs against a target whose timing baseline is already present —
+        // `regenerate-artifacts.ts`'s present-only gate is what decides that (#349's seeding is
+        // the absent case) — so the fixture carries the same precondition.
+        mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
+        writeBaseline(join(root, BASELINE_RELATIVE_PATH), emptyBaseline());
+
+        const run = spawnSync(process.execPath, [resolve(import.meta.dirname, "timing-baseline.ts"), root], {
+          encoding: "utf8",
+          cwd: MACHINE_ROOT,
+          env: { ...process.env, CI: "true", VITEST: "" },
+        });
+
+        const report = run.status === 0 ? "" : `${run.stdout}\n${run.stderr}`;
+        expect(report).toBe("");
+
+        const baseline = readBaseline(join(root, BASELINE_RELATIVE_PATH));
+        expect(Object.keys(baseline?.venues.push ?? {}).length).toBeGreaterThan(0);
+        expect(baseline?.suite).toBeUndefined();
+      },
+      REAL_PUSH_RUN,
+    );
+  });
+
   // The split these cases pin is `runRecord`'s, and `REPORT_ONLY_EXIT` carries its why (ADR-0142).
   describe("what going over budget costs", () => {
     function recordOverBudget(env: NodeJS.ProcessEnv): number | null {
@@ -296,22 +368,7 @@ describe("where a run's numbers are kept", () => {
      * reads it, so the two runs differ only in where the number came from.
      */
     function pushOverBudget(env: NodeJS.ProcessEnv): number | null {
-      const root = scratchRoot();
-      mkdirSync(join(root, ".claude"), { recursive: true });
-      writeFileSync(
-        join(root, "package.json"),
-        JSON.stringify({
-          name: "scratch",
-          private: true,
-          scripts: { typecheck: "sleep 1", lint: "true", test: "true" },
-        }),
-      );
-      const generate = spawnSync(
-        process.execPath,
-        [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-        { encoding: "utf8" },
-      );
-      expect(generate.status).toBe(0);
+      const root = scratchContractTarget({ typecheck: "sleep 1", lint: "true", test: "true" });
 
       const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
       mkdirSync(join(root, dirname(relative)), { recursive: true });

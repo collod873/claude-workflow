@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -44,7 +45,10 @@ function runHook(venue: string, payload: string, env: Record<string, string> = {
     input: payload,
     encoding: "utf8",
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    // WORKFLOW_STAGE defaults off rather than inherited: this suite is itself something a stage's
+    // model can run from a Bash tool, and an ambient "1" from the process running these tests would
+    // silence every case below that does not name the stage explicitly, without proving anything.
+    env: { ...process.env, WORKFLOW_STAGE: "", ...env },
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
@@ -477,45 +481,46 @@ function runGauntlet(
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
 
+/**
+ * A scratch target whose own `package.json` declares the three checks, so the push venue's
+ * `contract` check passes against a fresh probe of it rather than reporting the fixture. The
+ * default typecheck script is the slow one and leaves a marker; the default test script asserts
+ * the marker is already there, which is true exactly when the test slot started after typecheck
+ * finished. `scripts` overrides that default for a test asking a different question of the same
+ * fixture.
+ */
+function scratchTarget(scripts?: (root: string) => Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
+  stubDirs.push(root);
+  const marker = join(root, "typecheck-finished");
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({
+      name: "scratch",
+      private: true,
+      scripts: scripts?.(root) ?? {
+        typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
+        lint: "true",
+        test: `test -f ${JSON.stringify(marker)}`,
+      },
+    }),
+  );
+  mkdirSync(join(root, ".claude"), { recursive: true });
+  const generate = spawnSync(
+    process.execPath,
+    [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+    { encoding: "utf8" },
+  );
+  expect(generate.status).toBe(0);
+  return root;
+}
+
 // #335: on a box with fewer cores than the venue has checks, the test slot ran beside typecheck,
 // lint and eight more — and vitest's own worker pool is sized from the same cores. That contention
 // is what printed a 483620ms Verify and manufactured two failures out of nothing on a two-core
 // runner (#333). The fix is ordering, not skipping, so the claim under test is *when* the test slot
 // starts rather than whether it ran.
 describe("scheduling the test slot against the cores it has", () => {
-  /**
-   * A scratch target whose own `package.json` declares the three checks, so the push venue's
-   * `contract` check passes against a fresh probe of it rather than reporting the fixture. The
-   * typecheck script is the slow one and leaves a marker; the test script asserts the marker is
-   * already there, which is true exactly when the test slot started after typecheck finished.
-   * `scripts` overrides that default for a test asking a different question of the same fixture.
-   */
-  function scratchTarget(scripts?: (root: string) => Record<string, string>): string {
-    const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
-    stubDirs.push(root);
-    const marker = join(root, "typecheck-finished");
-    writeFileSync(
-      join(root, "package.json"),
-      JSON.stringify({
-        name: "scratch",
-        private: true,
-        scripts: scripts?.(root) ?? {
-          typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
-          lint: "true",
-          test: `test -f ${JSON.stringify(marker)}`,
-        },
-      }),
-    );
-    mkdirSync(join(root, ".claude"), { recursive: true });
-    const generate = spawnSync(
-      process.execPath,
-      [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-      { encoding: "utf8" },
-    );
-    expect(generate.status).toBe(0);
-    return root;
-  }
-
   it(
     "starts it after the cheap checks when there are fewer cores than checks",
     () => {
@@ -649,4 +654,30 @@ describe("resolving the check contract", () => {
     expect(run.stdout).toBe("");
     expect(run.status).toBe(0);
   });
+});
+
+// #342's second criterion: the seam that lets `record` write the committed timing baseline on a
+// runner belongs to `timing-baseline.ts`'s own generator route (`runPushVenue`) alone — a plain
+// `bin/gauntlet push` never sets it, so a runner still judges the committed baseline and discards
+// it, exactly as ADR-0142 (amended by ADR-0145) leaves it.
+describe("the committed timing baseline's write seam", () => {
+  it(
+    "is not set by a plain `bin/gauntlet push`, so a runner still writes nothing",
+    () => {
+      const root = scratchTarget(() => ({ typecheck: "true", lint: "true", test: "true" }));
+
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: root,
+        CI: "true",
+        GAUNTLET_CONTRACT: undefined,
+      });
+
+      const report = run.status === 0 ? "" : `${run.stdout}\n${run.stderr}`;
+      expect(report).toBe("");
+      expect(existsSync(join(root, ".Workflow/agent-workflows/shared/timing-baseline.json"))).toBe(
+        false,
+      );
+    },
+    REAL_TOOLCHAIN,
+  );
 });
