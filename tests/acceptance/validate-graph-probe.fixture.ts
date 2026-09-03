@@ -36,12 +36,22 @@ export interface ProbeResult {
   message: string;
 }
 
-/** A slice with the given title and dependencies, everything else filled in plausibly. */
+/**
+ * A slice with the given title and dependencies, everything else filled in plausibly.
+ *
+ * The criterion carries a well-formed `check:` marker because `validatePlan` renders every slice
+ * through `renderBody` and runs `validateTicket` over the result — a rule that landed after #240
+ * and refuses a criterion naming no marker. A fixture slice that cannot be published is a slice
+ * every plan-shaped assertion here dies on before the graph is ever judged, which would make this
+ * probe report on the ticket shape rather than on the roots and cycles it exists to ask about.
+ */
 export function slice(title: string, dependsOn: number[] = []): ProbeSlice {
   return {
     title,
     whatToBuild: `Build ${title}.`,
-    acceptanceCriteria: [`${title} works.`],
+    acceptanceCriteria: [
+      `${title} works — check: \`npx vitest run .Workflow/agent-workflows/shared/validate-graph.test.ts\``,
+    ],
     filesClaimed: [],
     seamsConsumed: [],
     whyNotMerged: `${title} is its own vertical slice.`,

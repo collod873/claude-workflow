@@ -136,8 +136,21 @@ export function declaresRequiredStage(): boolean {
  * Where a generated `runStage` call site is typechecked — under the checkout root, so the relative
  * import of `stage.ts` and `node_modules` both resolve the way they do for any file in this repo.
  * Written and removed inside one call, so nothing of it outlives the assertion.
+ *
+ * **Under `node_modules/` rather than at the checkout root**, which is where it used to be. It has
+ * to be inside the tree for module resolution, and everything inside the tree that a repo-wide
+ * check *enumerates* is a file this fixture creates and deletes underneath that check: `eslint .`
+ * lists the root, reads what it listed, and dies `ENOENT` on `probe.ts` if the two happen either
+ * side of the `rmSync` below. That is not hypothetical — it is why the three acceptance tests that
+ * spawn a nested suite (`274-existing-suite-still-passes`, `276-full-suite-passes`,
+ * `272-suite-green-with-isolated-checkpoints`) went red whenever the directory was run as a whole
+ * and green whenever they were run alone: `.claude/hooks/gauntlet.test.ts` runs `bin/gauntlet`,
+ * `bin/gauntlet` runs `eslint .`, and vitest was running that beside this. `node_modules/` is
+ * ignored by eslint's own config, by `vitest.config.ts`'s exclude, and by `.gitignore`, so a
+ * transient directory there is invisible to every check that walks this repo — which is the
+ * property this probe needs and the checkout root cannot offer.
  */
-const PROBE_DIR = path.join(repoRoot, ".acceptance-276-typecheck");
+const PROBE_DIR = path.join(repoRoot, "node_modules", ".acceptance-276-typecheck");
 
 /** A module specifier for `target` as seen from the probe directory — computed, never written out. */
 function specifierTo(target: string): string {

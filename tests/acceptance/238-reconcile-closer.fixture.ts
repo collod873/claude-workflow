@@ -64,40 +64,63 @@ export interface Merge {
 }
 
 /**
- * Real merges off this checkout's default branch, oldest first, so an implementation that orders by
- * git position rather than by the tracker gets commits that actually exist. Falls back to fixed
- * synthetic commits when the checkout is too shallow to offer `<sha>^`.
+ * `count` merges, oldest first: real commits off this checkout's default branch where they can be
+ * had — so an implementation that resolves a range in git rather than reading the tracker gets
+ * commits that actually exist — and fixed synthetic ones when the checkout is too shallow to offer
+ * `<sha>^`.
+ *
+ * **The merge times are this fixture's, never the commits' own.** They used to be `%cI` straight
+ * off `git log`, which made the criterion below a statement about whatever had last landed on this
+ * branch. Committer dates are not monotonic along `--first-parent` — a rebase, a cherry-pick or an
+ * amend rewrites them — and they are not even written in one offset: this repository's own history
+ * carries both `…-04:00` and `…Z` stamps, and `synthesizeRange` orders merges by `localeCompare`
+ * on that string, under which `T23:50:18Z` sorts after `T20:07:14-04:00` while being four hours
+ * earlier. Either of those flips the pair, and the test then reports the shape of last night's
+ * history instead of the shape of the range.
+ *
+ * So the shas come from git and the timestamps come from here: strictly ascending, one offset,
+ * oldest first. "Oldest first" is then a promise this function keeps rather than one it inherits,
+ * which is what the caller was already assuming when it named them `[early, late]`.
  */
 export function mergesOnDefaultBranch(count: number): Merge[] {
-  return realMerges(count) ?? SYNTHETIC.slice(0, count);
+  const shas = realShas(count) ?? SYNTHETIC_SHAS.slice(0, count);
+  return shas.map((sha, index) => ({ sha, mergedAt: MERGED_AT[index] }));
 }
 
-const SYNTHETIC: Merge[] = [
-  { sha: "3f9a1c7e0b5d4a2c8e6f0b1d3a5c7e9f2b4d6a80", mergedAt: "2026-08-10T09:00:00Z" },
-  { sha: "b7d2e4f6a8c0b1d3e5f7a9c1b3d5e7f9a1c3e5d7", mergedAt: "2026-08-20T09:00:00Z" },
-  { sha: "c1e3a5b7d9f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0", mergedAt: "2026-08-25T09:00:00Z" },
+/**
+ * The merge times, ascending and all in one offset. Long enough for every caller here; a caller
+ * asking for more merges than there are stamps is a fixture change, not a silent reordering.
+ */
+const MERGED_AT = [
+  "2026-08-10T09:00:00Z",
+  "2026-08-20T09:00:00Z",
+  "2026-08-25T09:00:00Z",
 ];
 
-function realMerges(count: number): Merge[] | null {
+const SYNTHETIC_SHAS = [
+  "3f9a1c7e0b5d4a2c8e6f0b1d3a5c7e9f2b4d6a80",
+  "b7d2e4f6a8c0b1d3e5f7a9c1b3d5e7f9a1c3e5d7",
+  "c1e3a5b7d9f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0",
+];
+
+function realShas(count: number): string[] | null {
+  if (count > MERGED_AT.length) return null;
   try {
-    const raw = execFileSync("git", ["log", "--first-parent", "-n", String(count), "--format=%H %cI"], {
+    const raw = execFileSync("git", ["log", "--first-parent", "-n", String(count), "--format=%H"], {
       cwd: repoRoot,
       encoding: "utf8",
     });
-    const rows = raw
+    const shas = raw
       .trim()
       .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => {
-        const [sha, mergedAt] = line.trim().split(" ");
-        return { sha, mergedAt };
-      });
-    if (rows.length < count) return null;
-    for (const row of rows) {
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (shas.length < count) return null;
+    for (const sha of shas) {
       // `<sha>^` has to resolve, or a range built from it is not a range.
-      execFileSync("git", ["rev-parse", "-q", "--verify", row.sha + "^"], { cwd: repoRoot, encoding: "utf8" });
+      execFileSync("git", ["rev-parse", "-q", "--verify", sha + "^"], { cwd: repoRoot, encoding: "utf8" });
     }
-    return rows.reverse();
+    return shas.reverse();
   } catch {
     return null;
   }

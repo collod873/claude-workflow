@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { moduleUrl, probeResult, runTsx } from "./237-spec-pass.fixture";
 import { repoRoot } from "./workflow-shape.fixture";
@@ -196,17 +198,38 @@ export function dispatches(calls: string[][]): string[][] {
  * Runs a probe and parses its result, turning a child that never reported into a value carrying the
  * failure rather than an exception — so a criterion goes red on an assertion, with the child's own
  * streams in the message, instead of blowing up the file.
+ *
+ * **Every probe gets its own checkpoint directory.** `runStage` consults a real on-disk checkpoint
+ * before it spawns (`shared/stage.ts`): `<stage>.json` under `CHECKPOINTS_DIR`, keyed on
+ * `sha256(HEAD + "\0" + the substituted prompt)`. On a key hit it returns the stored response and
+ * never calls `exec` at all — so a second probe that drives the same stage over the same prompt
+ * silently reads the *first* probe's canned answer, with the fake `StageExec` it injected sitting
+ * untouched. `isolate-checkpoints.setup.ts` gives one directory per *test*, which is the right
+ * grain for an in-process test and the wrong one here: a criterion in this directory is a pair of
+ * runs inside one `it`, each of them a whole separate lane run, and a child inherits whatever
+ * directory the test was given. #262's three criteria all read as satisfied-then-broken that way —
+ * a reasonless payload "accepted" because the well-formed one before it had been cached, a lane
+ * spending zero stages because the control run had cached them, a rewrite refused for the previous
+ * probe's short body.
+ *
+ * A caller that names `CHECKPOINTS_DIR` itself still wins: #272's probes hand their own directory
+ * in because what they are *about* is what a checkpoint does.
  */
 export function runProbe<T extends { error: string | null }>(
   script: string,
   env: Record<string, string>,
   fallback: T,
 ): T {
-  const run = runTsx(script, env);
+  const checkpoints = mkdtempSync(path.join(tmpdir(), "acceptance-checkpoints-"));
   try {
-    return probeResult<T>(run);
-  } catch (err) {
-    return { ...fallback, error: err instanceof Error ? err.message : String(err) };
+    const run = runTsx(script, { CHECKPOINTS_DIR: checkpoints, ...env });
+    try {
+      return probeResult<T>(run);
+    } catch (err) {
+      return { ...fallback, error: err instanceof Error ? err.message : String(err) };
+    }
+  } finally {
+    rmSync(checkpoints, { recursive: true, force: true });
   }
 }
 
