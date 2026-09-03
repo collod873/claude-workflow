@@ -270,9 +270,10 @@ def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | N
 # readers, none of them the source of truth for it.
 JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
 
+# `verify.yml`'s own two `name:`s, copied here because a workstation cannot import a `.ts` module.
+# `lane-wiring.test.ts`'s "bin/close-ticket's job names agree with the verify.yml jobs they are
+# copies of" is what holds this copy to them.
 IMMUTABILITY_JOB = "Immutability"
-# The gate job's `name:` in `verify.yml` — `npm run check` against the target (#360) — pinned the
-# same way `integrate.ts`'s `GATE_JOB` is.
 GATE_JOB = "Verify"
 
 

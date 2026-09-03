@@ -29,7 +29,7 @@ import {
 } from "./lane-wiring";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
 import { readWorkflow, readWorkflows, STUB_SUFFIX, WORKFLOWS_DIR, workflowNames } from "./read-workflow";
-import { entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
+import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
 /**
@@ -302,6 +302,29 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     const stubs = workflowNames().filter((name) => name.endsWith(STUB_SUFFIX));
     expect(stubs.length).toBeGreaterThan(0);
     for (const stub of stubs) expect(matchers.some((m) => m.test(`.github/workflows/${stub}`)), stub).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
+/* bin/close-ticket's Python copy of the two job names                                           */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `bin/close-ticket` reads the same two Verify jobs from the Actions API and cannot import a `.ts`
+ * module at a workstation, so it restates both names as Python literals. The block above holds
+ * `LANE_OWNED` to `verify.yml`'s own `name:`; this holds the Python copy to `LANE_OWNED`.
+ */
+describe("bin/close-ticket's job names agree with the verify.yml jobs they are copies of", () => {
+  const source = binSources().find((file) => file.relative === "bin/close-ticket")?.source;
+
+  it("finds the script, so this pin is not vacuous", () => expect(source).toBeDefined());
+
+  it.each([
+    ["IMMUTABILITY_JOB", LANE_OWNED.immutabilityJob],
+    ["GATE_JOB", LANE_OWNED.gateJob],
+  ])("%s is the name verify.yml gives that job", (constant, owned) => {
+    const spelled = new RegExp(`^${constant} = "([^"]+)"$`, "m").exec(source ?? "")?.[1];
+    expect(spelled, `bin/close-ticket's ${constant}`).toBe(owned);
   });
 });
 
