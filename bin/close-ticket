@@ -271,14 +271,16 @@ def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | N
 JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
 
 IMMUTABILITY_JOB = "Immutability"
-ACCEPTANCE_JOB = "Restore and run acceptance"
+# The gate job's `name:` in `verify.yml` — `npm run check` against the target (#360) — pinned the
+# same way `integrate.ts`'s `GATE_JOB` is.
+GATE_JOB = "Verify"
 
 
 def job_matches_name(name: str | None, wanted: str) -> bool:
     """Whether one Actions job's `name` is `wanted` — the bare name a reusable workflow's own
     `jobs.<key>.name:` declares — or the `<caller job key> / <name>` form GitHub renders every job
     as when the run was reached through `uses:` (ADR-0055, amended by ADR-0132; confirmed on run
-    33649164483: `verify / Immutability`, `verify / Restore and run acceptance`, ...). The same
+    33649164483: `verify / Immutability`, `verify / Verify`, ...). The same
     rule `.Workflow/agent-workflows/shared/job-match.ts`'s `findJobByName` applies for the
     TypeScript readers of these same two jobs — this is that rule's Python restatement, since a
     workstation `bin/close-ticket` cannot import a `.ts` module."""
@@ -287,7 +289,7 @@ def job_matches_name(name: str | None, wanted: str) -> bool:
 
 def verify_workflow_file() -> str:
     """The workflow **file** in the calling repository whose runs carry Verify's `Immutability`
-    and `Restore and run acceptance` jobs — `verify-caller.yml`, never `verify.yml`: ADR-0055
+    and `Verify` jobs — `verify-caller.yml`, never `verify.yml`: ADR-0055
     (amended by ADR-0132) records a `uses:`-reached run against the caller's file, and
     `verify.yml` itself has carried no run of its own since the split.
 
@@ -326,7 +328,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
     """`"passed"`, `"failed"`, or `"unjudged"` — Verify's conclusion on the pull request that
     closed this ticket, read from the Actions API rather than trusted from a caller (#306): the
     same two jobs `integrate.ts`'s `awaitVerifyVerdict` reads before it ever merges, `Immutability`
-    and `Restore and run acceptance`, found here by scanning `verify.yml`'s recent dispatch runs
+    and `Verify`, found here by scanning `verify.yml`'s recent dispatch runs
     for the one whose `Immutability` job log names `pr_url` (`JUDGING_LINE_RE`).
 
     `"unjudged"` covers every way this can come back empty-handed: no run found within
@@ -372,7 +374,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         matches = JUDGING_LINE_RE.findall(log)
         if not matches or matches[-1] != pr_url:
             continue
-        acceptance = next((j for j in jobs if job_matches_name(j.get("name"), ACCEPTANCE_JOB)), None)
+        gate = next((j for j in jobs if job_matches_name(j.get("name"), GATE_JOB)), None)
 
         def verdict(job: dict | None) -> str:
             if job is None or job.get("status") != "completed":
@@ -385,10 +387,10 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
             return "unjudged"
 
         immutability_verdict = verdict(immutability)
-        acceptance_verdict = verdict(acceptance)
-        if immutability_verdict == "failed" or acceptance_verdict == "failed":
+        gate_verdict = verdict(gate)
+        if immutability_verdict == "failed" or gate_verdict == "failed":
             return "failed"
-        if immutability_verdict == "passed" and acceptance_verdict == "passed":
+        if immutability_verdict == "passed" and gate_verdict == "passed":
             return "passed"
         return "unjudged"
     return "unjudged"

@@ -5,13 +5,13 @@
  * A run reached through `uses:` is recorded against the **caller's** file, and every job in it
  * comes back named `<caller job key> / <job name>` rather than the bare name the reusable
  * workflow's own `jobs.<key>.name:` declares — confirmed on run 33649164483, where every job of
- * `verify-caller.yml` reports as `verify / Immutability`, `verify / verify`,
- * `verify / Restore and run acceptance`, `verify / Signal the fixer`. Every lane in this pipeline
+ * `verify-caller.yml` reports as `verify / Immutability`, `verify / Verify`,
+ * `verify / Signal the fixer`. Every lane in this pipeline
  * now has that shape, so code that matched a job by bare `===` stopped matching the moment its
  * caller stub started carrying the trigger.
  *
  * One shared matcher, so the fix is made once rather than once per reader — `integrate.ts` and
- * `bin/close-ticket` both look up `Immutability` and `Restore and run acceptance` on the same
+ * `bin/close-ticket` both look up `Immutability` and `Verify` on the same
  * `verify.yml` jobs list, and a matcher restated at each call site could drift from the other.
  */
 export function findJobByName<T extends { name: string }>(

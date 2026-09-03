@@ -127,7 +127,7 @@ export interface IntegrateDeps {
   sleep?: (ms: number) => void;
   /**
    * The workflow **file** in the calling repository whose runs carry lane 06's `Immutability` and
-   * `Restore and run acceptance` jobs — `verify-caller.yml` here, never `verify.yml`: ADR-0055
+   * `Verify` jobs — `verify-caller.yml` here, never `verify.yml`: ADR-0055
    * (amended by ADR-0132) records a `uses:`-reached run against the caller's file, and
    * `verify.yml` itself has carried no run of its own since the split. No default, for the reason
    * `bypass-counter.ts`'s own `verifyWorkflow` has none: a wrong name returns an empty candidate
@@ -556,11 +556,11 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
  * of reading late is a gauntlet run spent on a diff the immutable-set alarm was going to refuse,
  * which is a few runner-minutes on the rarest event this pipeline has.
  *
- * **Both of lane 06's jobs now bind** (ADR-0104). `Restore and run acceptance` used to be waved
- * through — it was red for every pull request while lane 04's first-authoring was unwired (#201),
- * so binding on it would have stopped the chain rather than caught anything (ADR-0095). Lane 04
- * authors real tests now, so the job means what its name says and a red one is a slice that is not
- * built. Its verdict is *waited for* rather than merely read, because unlike `Immutability` it runs
+ * **Both of lane 06's jobs now bind** (ADR-0104). The gate job (`Restore and run acceptance` until
+ * #360 folded it into `Verify`) used to be waved through — it was red for every pull request while
+ * lane 04's first-authoring was unwired (#201), so binding on it would have stopped the chain
+ * rather than caught anything (ADR-0095). Lane 04 authors real tests now, so a red one is a slice
+ * that is not built. Its verdict is *waited for* rather than merely read, because unlike `Immutability` it runs
  * on the same order of minutes this lane does — see `ACCEPTANCE_POLL_ATTEMPTS`.
  *
  * **The close comes last, and it does not wait for lane 07** (#195,

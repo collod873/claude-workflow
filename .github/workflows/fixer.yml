@@ -54,9 +54,9 @@ name: Fixer (reusable)
         type: string
         required: false
         default: ""
-      # Where the caller's own suite lives — the first of the two vitest targets the fixer
-      # reproduces a failure from (the second, `tests/acceptance/<n>-`, is this pipeline's own
-      # convention and stays in `fixer.ts`). It is the one thing in this lane that is genuinely a
+      # Where the caller's own suite lives — the vitest target the fixer reproduces a failure
+      # from (a ticket's acceptance tests live in the same tree since #360, so there is no second
+      # target). It is the one thing in this lane that is genuinely a
       # fact about the calling repository rather than about the machine: this repository's is
       # `.Workflow`, and nothing the machine can read tells it what another repository's is.
       #
@@ -150,23 +150,22 @@ jobs:
       # own tip, which every open implementation branch descends from, so it does not narrow either.
       #
       # The one place the answer is recorded is a `judging <pr-url> on <branch>` log line
-      # (ADR-0104). `verify.yml`'s `Restore and run acceptance` job echoes it once its own checkout
-      # step resolves the branch; its `Immutability` job now echoes the same shape from a step that
-      # runs before that job can itself fail, for the reason the case below explains. That is a log
-      # line either way, so this reads it as one — the same split `integrate.ts` holds to for lane
-      # 06's job *names*, which the Actions API also answers only as strings. `fixer.test.ts`
-      # asserts `verify.yml` still echoes in exactly this shape, so a reworded step there fails a
-      # test here rather than silently making every fixer run resolve nothing.
+      # (ADR-0104), echoed by `verify.yml`'s `Immutability` job from a step that runs before that
+      # job can itself fail. `Immutability` always runs first on a dispatch (both later jobs carry
+      # `needs: [immutability]`), so its `judging` line is readable from its own log regardless of
+      # which downstream job actually reddened — the same split `integrate.ts` holds to for lane
+      # 06's job *names*, which the Actions API also answers only as strings.
+      # `lane-wiring.test.ts` asserts `verify.yml` still echoes in exactly this shape, so a
+      # reworded step there fails a test here rather than silently making every fixer run resolve
+      # nothing.
       #
       # ## Which job actually failed
       #
-      # A red `Restore and run acceptance` is the only job this lane can act on with a model: its
-      # own log is where `fixer.ts`'s vitest run reads back the signature it fixes. A red
-      # `Immutability` or plain `verify` job means Verify never got that far — there is nothing
-      # under `.Workflow` for a model to reproduce, only a job name and whatever `::error::` line it
-      # printed. That case escalates instead: `Immutability` always runs first on a dispatch (both
-      # later jobs carry `needs: [immutability]`), so its `judging` line is readable from its own
-      # log regardless of which of the two downstream jobs actually reddened.
+      # A red `Verify` job — the gauntlet, `npm run check` against the target (#360) — is the only
+      # one this lane can act on with a model: `fixer.ts` re-runs the target's suite and works from
+      # whatever it reads back. A red `Immutability` job means Verify never got that far — there is
+      # nothing under the target's suite for a model to reproduce, only a job name and whatever
+      # `::error::` line it printed. That case escalates instead.
       #
       # Exits 0 on every "nothing to work on": a run this cannot resolve, a pull request that is no
       # longer open (lane 08 may have merged it, or a person may have closed it), or a run the other
@@ -220,19 +219,16 @@ jobs:
           # bare name `verify.yml` itself declares — confirmed on run 33649164483. Each `select`
           # below matches either spelling, the same rule `shared/job-match.ts`'s `findJobByName`
           # applies for the TypeScript readers of these same two jobs.
-          ACCEPTANCE_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance" or (.name | endswith(" / Restore and run acceptance")))][0].databaseId // empty')
-          ACCEPTANCE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Restore and run acceptance" or (.name | endswith(" / Restore and run acceptance")))][0].conclusion // empty')
+          GATE_CONCLUSION=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Verify" or (.name | endswith(" / Verify")))][0].conclusion // empty')
+          RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability" or (.name | endswith(" / Immutability")))][0].databaseId // empty')
+          if [ -z "$RESOLVE_JOB_ID" ]; then
+            echo "run $RUN_ID has no Immutability job; nothing to fix"
+            exit 0
+          fi
 
           MODE="model"
-          if [ -n "$ACCEPTANCE_ID" ] && [ "$ACCEPTANCE_CONCLUSION" = "failure" ]; then
-            RESOLVE_JOB_ID="$ACCEPTANCE_ID"
-          else
+          if [ "$GATE_CONCLUSION" != "failure" ]; then
             MODE="escalate"
-            RESOLVE_JOB_ID=$(echo "$JOBS" | jq -r '[.[] | select(.name == "Immutability" or (.name | endswith(" / Immutability")))][0].databaseId // empty')
-            if [ -z "$RESOLVE_JOB_ID" ]; then
-              echo "run $RUN_ID has neither a failed acceptance job nor an Immutability job; nothing to fix"
-              exit 0
-            fi
           fi
 
           # `|| true` because grep exits 1 on no match, which is the ordinary case here, not a
@@ -305,7 +301,7 @@ jobs:
             fi
             ERROR_LINE=$(gh run view --job "$FAILED_ID" --log | grep -m1 -oE '::error::.*' || true)
 
-            echo "escalating $URL (#$ISSUE): $FAILED_NAME failed before acceptance ran"
+            echo "escalating $URL (#$ISSUE): $FAILED_NAME failed before the gate ran"
             {
               echo "mode=escalate"
               echo "pr=$PR"
@@ -420,18 +416,17 @@ jobs:
           fi
 
       # `inputs.test_dir` is the directory — the caller's own suite root, `.Workflow` when the caller
-      # is this repository — not `tests/acceptance/`, and not the repo root.
+      # is this repository — not the repo root.
       #
       # It is the bulk of what the gauntlet's own `test` slot runs (`vitest run .Workflow .claude`),
-      # which is the red this lane is usually reacting to. `tests/acceptance/` is deliberately not
-      # it: an acceptance test is *expected* red until the ticket it names is built (vitest.config.ts
-      # says so, and it is why `npm test` leaves that directory out), so a fixer pointed at it would
-      # chase other tickets' unbuilt criteria and end by labelling every pull request `needs-human`.
+      # which is the red this lane is usually reacting to. A ticket's acceptance tests live in that
+      # same tree, marked `test.fails(` until the ticket is built (#360, ADR-0150), so a fixer here
+      # never chases another ticket's unbuilt criteria.
       #
-      # A Verify that went red on something under no test at all — lint, typecheck, the clone gate —
+      # A Verify that went red on something under no test at all — lint, typecheck, clones —
       # leaves nothing failing here, and `fixer.ts` says so and stops rather than handing a model an
-      # empty brief. (An immutable-set or plain-`verify` failure never reaches this step at all —
-      # the resolve step above already routed those to "Escalate to the owner".)
+      # empty brief. (An immutable-set failure never reaches this step at all — the resolve step
+      # above already routed it to "Escalate to the owner".)
       #
       # The three resolved values arrive through `env:` rather than as `${{ }}` inside the script,
       # so a branch name is a shell *variable* and never a fragment of the command line — the same

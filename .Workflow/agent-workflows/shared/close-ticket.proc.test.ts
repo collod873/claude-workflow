@@ -40,7 +40,7 @@ const CLOSE_GATE = join(REPO_ROOT, ".claude/hooks/close-gate.py");
 const PR_URL = "https://github.com/acme/widgets/pull/42";
 const PASSING_JOBS = [
   { name: "Immutability", status: "completed", conclusion: "success" },
-  { name: "Restore and run acceptance", status: "completed", conclusion: "success" },
+  { name: "Verify", status: "completed", conclusion: "success" },
 ];
 
 /** A `subIssues` node as the GraphQL query returns it. */
@@ -350,7 +350,7 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     expect(fetchVerifyVerdict([]).verdict).toBe("unjudged");
   });
 
-  it("still reads passed when both jobs carry a caller-stub prefix — verify / Immutability, verify / Restore and run acceptance", () => {
+  it("still reads passed when both jobs carry a caller-stub prefix — verify / Immutability, verify / Verify", () => {
     // A run reached through `uses:` (ADR-0055, amended by ADR-0132) reports every job as
     // `<caller job key> / <job name>` — confirmed on run 33649164483. `job_matches_name` must
     // still find both jobs under that spelling.
