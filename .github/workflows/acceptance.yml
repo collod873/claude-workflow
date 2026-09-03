@@ -1,86 +1,21 @@
 name: Acceptance (reusable)
 
-# Lane 04's re-entry trigger (ADR-0033, PRD #145 move 5): a merged edit to a spec issue's body
-# re-fires the acceptance author for exactly the slices whose test no longer names a criterion the
-# spec still carries verbatim. `affectedSlices` in `.Workflow/agent-workflows/shared/affected-tests.ts`
-# is the whole diff — a fixed-string grep, never a judgement call — and `refireAcceptance` in
-# `.Workflow/agent-workflows/acceptance/acceptance.ts` is what this job runs: read the edited PRD
-# and every slice it was cut into, find which of each slice's own criteria an existing test
-# already proves, and re-author exactly the slices that lost one. A criterion *added* to the spec
-# with no existing test naming it is a re-slice, not a re-entry (ADR-0079) — `affectedSlices` never
-# even looks at what's new, so it produces nothing here for that case.
-#
-# Fires on `issues: edited`, the event GitHub sends for a body edit on the issue itself — not
-# `issue_comment`, since #159's spec-amendment mechanism records an amendment as a comment but the
-# criterion this ticket implements is stated in terms of the merged edit reaching the issue body.
-#
-# **Gated the same way as `spec.yml` and `shape.yml` (ADR-0073).** This lane spends
-# `CLAUDE_CODE_OAUTH_TOKEN` — the owner's own subscription, no per-repository cap — and `issues:
-# edited` fires for any editor with write access, not only the owner, so the sender gate below is
-# load-bearing rather than redundant with GitHub's own permission model. Scoped to an issue
-# carrying `prd`: an edit to any other issue is not a spec edit and must re-fire nothing.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `acceptance-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts throughout — the machine
-# (`collod873/claude-workflow`, for the script) and the target's own tree (the `.Workflow/` and
-# `.claude/` trees this lane writes tests into beside their subjects (#360) and commits, and the
-# `main` branch `land` pushes) — never one copy standing in for the other. The machine checkout
-# carries no credential input of its own: ADR-0132 made this repository public, so
-# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
-# every enrolled repository. Every raw `git`/shell step below that touches the target's own files or
-# history runs with `working-directory: target`; the steps that hand the target to `npx tsx` or to
-# the gauntlet instead pass `TARGET_WORKSPACE` in the environment and leave the step's own cwd at the
-# machine checkout — `acceptance.ts` reads that variable rather than assuming its own cwd is the
-# target, the same seam `shape.ts`, `run-audit.ts` and `run-ratify.ts` already read.
-# `working-directory` was deliberately not used on those steps: it would also change how their own
-# `npx tsx <path>` resolves, and `workflow-permissions.test.ts` derives what a job may write by
-# matching that path as a plain relative string.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
-# `contents: read`, and the push is the `land` job's — ADR-0053 rules this lane's unattended write
-# to `main` the thing to be careful about, and it was happening in the same job as the Opus author
-# on the same token. `permissions:` is per-job, so the author commits and the lander pushes
-# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
 
-# One run per issue at a time, newest wins — the same reasoning as `spec.yml`'s group: two edits
-# within seconds of each other would otherwise both read the same pre-edit test/criterion record
-# and each dispatch a redundant re-author.
-#
-# **The number has to come from whichever event carried it.** This lane has two triggers and they
-# name their subject in different places: the `issues: edited` re-fire carries a PRD number at
-# `github.event.issue.number`, and the `acceptance-wanted` dispatch carries a slice number at
-# `github.event.client_payload.issue`. A group written against only the first evaluates to the
-# bare prefix on every dispatch, so a publish of N slices puts all N runs in one group and
-# `cancel-in-progress` kills all but the last (ADR-0108, and the #233 loss recorded in ADR-0111).
-# Both are issue numbers in one repository, so the two sources share a namespace and cannot collide.
-#
-# **And the group queues rather than cancelling** (ADR-0111): the two runs that *do* legitimately
-# share a key — an `acceptance-wanted` dispatch and an `issues: edited` re-fire naming the same
-# number — would otherwise kill each other mid-model.
 concurrency:
   group: acceptance-${{ github.event.issue.number || github.event.client_payload.issue }}
   cancel-in-progress: false
@@ -93,17 +28,12 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
-      # `""` when `affectedSlices` named nobody, which is the common case — the `land` job below is
-      # skipped on it rather than started to push nothing.
       authored: ${{ steps.bundle.outputs.authored }}
     env:
       PRD_NUMBER: ${{ github.event.issue.number }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      # The gate still decides what may land; this decides who lands it (ADR-0091). The lane's own
-      # `landAuthoredBatch` gate refuses before committing; when it clears, the batch is committed
-      # and left, and `land` below pushes what it left behind.
       ACCEPTANCE_LANDING: commit
     steps:
       - name: Checkout machine
@@ -117,17 +47,12 @@ jobs:
         with:
           path: target
 
-      # A runner has no git identity and this job now makes the commits rather than only the push —
-      # same fix `implement.yml`, `integrate.yml` and `audit.yml` each needed for their own writes.
-      # Scoped to the target checkout — the only one this job ever writes into.
       - name: Identify the committer
         working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      # What the patch range is measured from. Read here rather than assumed to be `github.sha`,
-      # so the range stays right whatever ref the checkout above resolved.
       - name: Note the commit this run starts from
         working-directory: target
         run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -135,55 +60,25 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # Same pin as `to-tickets.yml`'s "Install Claude Code" step, for the same reason: the
-      # binary comes from PATH, `npm ci` cannot supply it, and floating would let a release
-      # published next month change what a rerun of this commit does.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # The whole re-entry flow: reads the edited PRD, its slices, which of each slice's criteria
-      # an existing test already proves, and re-authors exactly the slices `affectedSlices` names.
-      # One commit per slice, straight onto `main` when `land` below pushes them — no pull request,
-      # ADR-0053. A slice the gate refuses throws, and because the commits are unpushed at that
-      # point the whole re-fire lands or none of it does; before ADR-0091's split the slices ahead
-      # of the refusal had already gone to `main` one at a time.
-      #
-      # `TARGET_WORKSPACE` is what `acceptance.ts` reads instead of assuming its own cwd is the
-      # target — every read of a claimed file, every test written beside its subject, the eslint and
-      # vitest spawns, and the git add/commit all resolve against it now. Not `working-directory: target`: that would
-      # also change how the `npx tsx <path>` on this line itself resolves, and this repo's own
-      # `workflow-permissions.test.ts` derives what this job may write by matching that path as a
-      # plain relative string — a quoted `$GITHUB_WORKSPACE`-prefixed one would go invisible to it.
       - name: Re-fire acceptance for affected slices
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts --refire "$PRD_NUMBER"
 
-      # Commits do not survive a job. A patch series does, through the artifact store, and `git am`
-      # on the other side replays each commit with its own message intact — which matters, because
-      # the message names the slice each test file was authored for. Shared with `author` below
-      # through `.github/actions/acceptance-bundle` (#201) — see that action's header for why this
-      # is a composite action rather than a second copy of the same steps.
       - name: Bundle the authored commits
         id: bundle
         uses: ./.github/actions/acceptance-bundle
         with:
           working-directory: target
 
-  # The other half of #201: `refire` above only re-authors a slice whose test already exists, so
-  # nothing ever authored one the first time. Same shape as `refire` — one Opus stage
-  # (`acceptance.ts`'s single-issue mode, not `--refire`) commits and stops
-  # (`ACCEPTANCE_LANDING: commit`), and `land` below pushes what it left behind (ADR-0091) — but
-  # triggered by the dispatch above instead of a spec edit, and authoring exactly the one slice the
-  # dispatch names rather than walking a PRD's whole sub-issue list.
   author:
     if: github.event.action == 'acceptance-wanted'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
-      # Same meaning as `refire`'s own output: `""` when the author wrote nothing (it never does —
-      # `authorAcceptanceTests` throws rather than returning zero files — but the shape is shared
-      # with `refire` on purpose, not because this one can actually take the empty path).
       authored: ${{ steps.bundle.outputs.authored }}
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
@@ -225,15 +120,11 @@ jobs:
           issue: ${{ env.TICKET_NUMBER }}
           mode: "on"
 
-      # Single-issue mode: `acceptance.ts`'s `main()` takes the non-`--refire` branch when its
-      # only argument is a bare issue number, authoring exactly the slice this dispatch names.
-      # `TARGET_WORKSPACE`, not `working-directory: target` — see `refire`'s identical step above.
       - name: Author acceptance tests for the published slice
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts "$TICKET_NUMBER"
 
-      # Same composite action `refire` above uses — see `.github/actions/acceptance-bundle`.
       - name: Bundle the authored commits
         id: bundle
         uses: ./.github/actions/acceptance-bundle
@@ -247,17 +138,6 @@ jobs:
           issue: ${{ env.TICKET_NUMBER }}
           mode: "off"
 
-  # ADR-0091's other half: `contents: write`, no model, and nothing to do but replay the commits
-  # whichever author job ran already made and the gate already cleared. Rebasing onto
-  # `origin/main` happens here rather than in either job above because this is the job holding a
-  # token that can fetch and push at all — the same add-commit-fetch-rebase-push sequence, split
-  # across the boundary it needed.
-  #
-  # `needs` both author jobs because exactly one of them runs per trigger (`issues: edited` scopes
-  # `refire`, the dispatch above scopes `author`) — the other is skipped, not failed, and `always()`
-  # is what stops a skip from cascading into this job being skipped too; the explicit `result ==
-  # 'success'` checks are what keep a *failed* author job from being read as "nothing to land"
-  # and landing the other one's stale commits regardless.
   land:
     name: Land on main
     needs: [refire, author]
@@ -292,27 +172,16 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The gauntlet below runs every slot inside `target/` — the target's own tooling, not the
-      # machine's — so the target checkout needs its own `node_modules` too. The machine's own
-      # install above is what puts `tsx`, `vitest` and `eslint` themselves on PATH, which is why
-      # this doesn't replace it: Node resolves a package from the nearest ancestor `node_modules`,
-      # and `target/` sits directly under the machine checkout that already has one.
       - name: Install target dependencies
         working-directory: target
         run: npm ci
 
-      # Into `runner.temp`, never the checkout: a patch file sitting in the working tree is a file
-      # `git am` would then be replaying on top of.
       - name: Download the authored commits
         uses: actions/download-artifact@v4
         with:
           name: acceptance-commits
           path: ${{ runner.temp }}/acceptance-patches
 
-      # `--3way` so a patch that no longer applies cleanly — `main` moved while the author was
-      # running — is resolved from the blobs the patch names rather than refused outright. A
-      # genuine conflict still fails the job, which is the right outcome: nothing lands, and the
-      # edit that triggered this re-fire is still on the tracker to fire again.
       - name: Replay them onto main
         working-directory: target
         run: |
@@ -321,15 +190,6 @@ jobs:
           git fetch origin main
           git rebase origin/main
 
-      # #274's fix: re-judge the tree this is about to push by the same gate a human push gets —
-      # `npm run check`, the check contract, the step `verify.yml` runs by this same name — on the
-      # tree as it actually stands after the rebase above, not a second, looser mechanism. The
-      # author job's own `landAuthoredBatch` gate already refused anything not green under
-      # `test.fails` or not linting before it committed; this is the whole gauntlet over the whole
-      # rebased tree, because `main` moved while the author ran. A refusal here exits non-zero,
-      # which is what stops `git push` on the next line from ever running — a red run reaches this
-      # job's log; a red `main` reaches nobody. `TARGET_WORKSPACE` tells the gauntlet which tree to
-      # check (ADR-0139), the same shape as `verify.yml`'s gate step.
       - name: Gauntlet
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
@@ -339,14 +199,6 @@ jobs:
         working-directory: target
         run: git push origin HEAD:main
 
-      # #201's one design point: lane 05 learns a slice is startable from lane 04, after that
-      # slice's acceptance tests are on `main`, never from lane 03 at publish time — otherwise the
-      # implementer finds no `test.fails` for its ticket to turn on. `ready` is the flag
-      # `dispatchReadySlices` (`to-tickets/slice-and-publish.ts`) already computed and carried on
-      # the `acceptance-wanted` dispatch, so this asks nothing about the graph itself: a slice
-      # `refireAcceptance` re-authored (the `issues: edited` path, `github.event.action` unset) has
-      # no such flag and sends nothing here, because it was already started — a re-fire exists
-      # only for a slice the tracker already dispatched once.
       - name: Tell lane 05 this slice is ready
         if: github.event.action == 'acceptance-wanted' && github.event.client_payload.ready == '1'
         env:

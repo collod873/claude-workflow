@@ -1,75 +1,23 @@
 name: Bypass counter (reusable)
 
-# PRD #117, move 8d: a bypass becomes one countable event.
-#
-# `verify.yml`'s gauntlet step fails through two distinctly named steps — `Gauntlet` on exit 1, a
-# real finding that reached `main` despite the free venues (in-turn, turn-end, pre-push) that should
-# already have refused it, and `Gauntlet could not run` on exit 2, an environment problem that is
-# nobody routing around anything (a step the gate had before #360, still in the history this
-# reads). Only the first is a bypass. This rides
-# `verify.yml` completing so the count this recomputes is exactly the event it counts — no cursor, no
-# stored number, nothing here that can go stale.
-#
-# `workflow_run` is safe to key on `verify.yml`'s own declared name here, unlike `run-watchdog.yml`:
-# the failure that trigger is blind to is a workflow GitHub could not parse at all, and `verify.yml`
-# parses fine — it is the run *inside* it that fails.
-#
-# `bypass-counter.ts` files its own standing issue through the `gh` seam in `shared/gh.ts`, which is
-# why the job below ends at the step that runs it and has no reporting step of its own.
-#
-# ADR-0055 (amended by ADR-0132): `workflow_run` cannot be parameterized through `workflow_call`, so
-# `bypass-counter-caller.yml` is what actually carries that trigger and the "only a run on main"
-# scope check now — `bypass-counter.ts` recomputes the count from `gh` directly rather than reading
-# anything off the triggering event, so no field of *the event* crosses the boundary.
-#
-# One fact about the calling repository does have to, though, and it is the fix for the defect this
-# lane shipped with: which workflow file's runs to count. A run reached through `uses:` is recorded
-# against the **caller's** file, so the moment this split landed, `verify.yml`'s run history stopped
-# growing and everything real moved to `verify-caller.yml` — a counter still asking about
-# `verify.yml` reads a frozen page and reports zero bypasses forever. `verify_workflow` is required
-# and has no default for the same reason `fixer.yml`'s `test_dir` is: a name the caller does not
-# have returns an empty list, and an empty list is indistinguishable from a clean record.
-#
-# The single plain `actions/checkout` this shipped with was the caller's repository, not the
-# machine's — so `npx tsx .Workflow/...` below only resolved because this repository happens to be
-# both. It now names the machine explicitly, and unlike every other lane there is no second
-# checkout: this counter reads the target through the `gh` API alone (`GH_REPO` below is the
-# caller) and opens no file of the target's, so a target working tree would be a checkout nothing
-# reads. The machine checkout carries no credential — ADR-0132 made this repository public.
-
 "on":
   workflow_call:
     inputs:
-      # The workflow **file** in the calling repository whose runs carry the `Gauntlet` step —
-      # `verify-caller.yml` here. Not the display name: this is a path segment of
-      # `actions/workflows/<file>/runs`, which takes the file or the numeric id and nothing else.
       verify_workflow:
         type: string
         required: true
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: the checkout.
   contents: read
-  # read: `actions/workflows/verify.yml/runs`, and `actions/runs/<id>/jobs` for the failed step name
-  # neither the runs list nor the `workflow_run` payload carries.
   actions: read
-  # write: the signal itself, and the read of standing/declined proposals it checks before writing.
   issues: write
 
 concurrency:
@@ -78,16 +26,12 @@ concurrency:
 
 jobs:
   count:
-    # No `if:` here — `bypass-counter-caller.yml`'s own job already scoped this call to a run on
-    # `main` (see that file). `bypass.ts`'s own `isBypass` checks the same fact independently off
-    # the fetched run data, so a mis-scope there cannot make the count wrong — only redundant.
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      # Which workflow's runs to count — see this file's header for why it crosses the boundary.
       VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}
     steps:
       - name: Checkout machine

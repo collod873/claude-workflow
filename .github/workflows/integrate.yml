@@ -1,81 +1,20 @@
 name: Integrate (reusable)
 
-# Lane 08 (PRD #145, move 7): the merge actor, with no model in it. Fires on the same
-# `repository_dispatch` an implementer's `openPrAndDispatch` sends after opening a pull request
-# (`VERIFY_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/shared/verify-dispatch.ts`, spelled
-# here and held to that constant by the wiring table, `shared/lane-wiring.ts`, rather than trusting
-# it was typed the same twice — the same split every other lane in this pipeline holds to).
-#
-# `types:` names this lane's own action, for the reason `audit.yml` gives and ADR-0090 rules — an
-# unfiltered trigger woke this lane on every unrelated dispatch, and its four runs to date are four
-# skips that read exactly like four failures to a person scanning the history. The job-level `if:`
-# below is still the scope rule.
-#
-# `concurrency` names one fixed group, never interpolated on a PR number or a SHA — DESIGN.md
-# §10's "exactly one merge at a time" is a claim about every pull request this lane could ever
-# touch, not about one at a time *per pull request*, which is what a per-branch group (the shape
-# `review.yml` uses) would actually buy. `cancel-in-progress: false` queues a second dispatch
-# behind the first rather than dropping it — a merge attempt that never runs looks exactly like
-# one that ran and found nothing, and this lane's whole job is never reading those two as the same
-# thing (see `integrate.ts`'s `IntegrateOutcome`).
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `integrate-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script and `bin/close-ticket`) and the calling
-# repository's own tree (the target, for the branch this lane rebases and merges, and the ticket's
-# own `bin/gauntlet`) — never one copy standing in for the other. `integrate.ts` threads the target
-# checkout through every git call and through `runRealGauntlet`/`runRealCloseTicket` rather than
-# assuming its own cwd is the target, and `bin/close-ticket` is still the machine's own copy —
-# ADR-0055's whole point is that a target repository never carries one. The machine checkout
-# carries no credential input of its own: ADR-0132 made this repository public, so
-# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
-# every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # The workflow **file** in the calling repository whose runs carry lane 06's `Immutability`
-      # and `Restore and run acceptance` jobs — `verify-caller.yml` here. Not the display name:
-      # this is a path segment of `actions/workflows/<file>/runs`, which takes the file or the
-      # numeric id and nothing else. Required, no default — see `integrate.ts`'s
-      # `IntegrateDeps.verifyWorkflow` for why a wrong one is silent.
       verify_workflow:
         type: string
         required: true
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
-# `issues: write` is what lets this lane finish a ticket rather than only merge one (#195,
-# ADR-0094): after the merge, `integrate.ts` shells to this repository's own `bin/close-ticket`,
-# which comments the `## Closing record` and closes the issue the pull request named. A
-# `permissions:` block replaces the default token rather than adding to it (see
-# `shared/workflow-permissions.test.ts`), so without this scope the close would fail on a token
-# holding `issues: none` — after the merge had already landed, where nobody is watching.
-#
-# `actions: read` is what lets this lane read lane 06's verdict (#197). `verify.yml` and this file
-# fire on the same dispatch, in parallel, and nothing else connects them: a dispatch run's
-# `pull_requests` is empty and the pull request's own head commit carries no check runs, so the
-# only place lane 06's answer exists is the Actions API — `verify.yml`'s runs, narrowed to this
-# run's own `github.sha`, those runs' jobs, and the `Immutability` job's log, which is where the
-# pull request a run was judging is written down (ADR-0104). The log is read per *job* rather than
-# per run, the same way `fixer.yml` reads it: `gh run view <run> --log` refuses a run that is still
-# going, which is every re-judge lane 08 needs to recognise while it waits (#286).
 permissions:
   contents: write
   issues: write
@@ -96,12 +35,7 @@ jobs:
       HEAD_SHA: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      # A rebase conflict assigns the ticket so it notifies rather than sits in a list — the same
-      # variable `run-watchdog.yml` and `fixer.yml` set for the same reason.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
-      # Which workflow's runs carry lane 06's verdict — see this file's `workflow_call.inputs`
-      # above. Read by `integrate.ts` directly and inherited by the `bin/close-ticket` child
-      # process it shells to, which needs the same fact to render a closing record's Verify line.
       VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}
     steps:
       - name: Checkout machine
@@ -116,9 +50,6 @@ jobs:
           path: target
           fetch-depth: 0
 
-      # A runner has no git identity, and the rebase this pushes is committed here — same fix
-      # `implement.yml` and `audit.yml` needed for their own notes. Scoped to the target checkout —
-      # the only one this job ever writes into.
       - name: Identify the committer
         working-directory: target
         run: |
@@ -128,50 +59,10 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # `runRealGauntlet` re-runs the target's own `bin/gauntlet push`, which needs the target's own
-      # `node_modules` — the machine's install above is what puts `tsx` itself on PATH, resolved
-      # from the nearest ancestor `node_modules` since `target/` sits directly under the machine
-      # checkout that already has one.
       - name: Install target dependencies
         working-directory: target
         run: npm ci
 
-      # The whole flow: read the PR's branch, rebase it onto current trunk, re-run the gauntlet
-      # against the rebased tree, read lane 06's verdict on this same head commit, merge only on a
-      # completed green run that lane 06 also cleared — and then close the ticket that merge
-      # delivered, via `bin/close-ticket` against this checkout (#195). One step, not two: the
-      # close is a decision about the merge that just happened, and a separate step would have to
-      # re-derive from the outside what `integrate.ts` already knows. A ticket that will not close
-      # leaves this step green — the merge landed either way.
-      #
-      # ## Which half of lane 06 binds (#197, ADR-0095)
-      #
-      # `verify.yml` has two jobs and they do not mean the same thing, so this lane does not treat
-      # them alike.
-      #
-      # **`Immutability` blocks outright.** It is the alarm that an implementer's diff touched
-      # `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054), or rewrote a `test.fails(` acceptance
-      # test rather than only dropping its `.fails` (#360) — a diff that can
-      # silence a check has invalidated whatever this lane's own gauntlet just said about it. A
-      # failing one refuses the merge, and so does a job that is skipped, cancelled or still
-      # running: `verify.yml` skips that job on its `push: main` runs and waves the skip through in
-      # its own downstream `if:`, which is a reading this lane may not copy.
-      #
-      # **`Restore and run acceptance` binds too, as of ADR-0104.** It did not while lane 04's
-      # first-authoring was unwired (#201): no acceptance test named any criterion a dispatch
-      # carried, the job refused on the empty set, and it was red for *every* pull request, so
-      # binding on it would have stopped the whole chain rather than caught anything (ADR-0095).
-      # That ruling named its own expiry — "when #201 lands and that job starts meaning something,
-      # this ruling is the thing to revisit" — and #201 has landed. A red one is now a slice whose
-      # own acceptance tests do not pass, which is the one thing this lane exists to not merge.
-      #
-      # Unlike `Immutability`, that job takes minutes rather than seconds, so `integrate.ts` waits
-      # for its verdict instead of reading once and calling a still-running job unjudged. The wait
-      # is why this job's `timeout-minutes` is 30 rather than 15.
-      #
-      # `github.sha` is how the two runs are joined: a `repository_dispatch` run executes trunk's
-      # copy of the workflow at trunk's tip (ADR-0054), so lane 06's run for this dispatch carries
-      # the same commit as this one.
       - name: Integrate the pull request
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target

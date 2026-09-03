@@ -1,69 +1,21 @@
 name: Ratify on PRD close (reusable)
 
-# ADR-0017's second work-volume trigger, rewired (#296): a PRD closing as delivered rings the
-# ratifier lane's door. The trigger survived the overhaul verbatim; only what it fires changed —
-# the channel it used to open a release pull request through is deleted.
-#
-# This workflow decides nothing about the batch. `ratify/prd-close.ts` is a gate and a dispatch,
-# and the heavy stage runs in `ratify.yml` on that dispatch (ADR-0090's filtered `types:`), never
-# inside the run that noticed the close.
-#
-# The job-level `if` is the scope rule: only a close marked `completed` claims a PRD was delivered
-# (the same rule `.claude/hooks/close-gate.py` holds for a ticket, ADR-0013), and only an issue
-# carrying the `prd` label was a PRD at all. Both conditions are spelled here as well as in
-# `prd-close.ts`'s `CLOSE_STATE_REASON`/`PRD_LABEL` on purpose — the estate is over its 2,000-minute
-# cap, so a job that would decide "nothing to do" should never start — and `prd-close.test.ts`
-# asserts the two still agree, since no compiler sees across this language boundary.
-#
-# `GITHUB_SHA` is the head the ratifier run scopes through: for an `issues` event it is the default
-# branch's own tip, which is exactly the range the scope walk should read. The connector makes no
-# model call and no checkout-dependent read, so there is no `CLAUDE_CODE_OAUTH_TOKEN` preflight
-# here and no `fetch-depth: 0`.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `ratify-on-prd-close-caller.yml`, a trigger and a `uses:`, never a copy of
-# the machine. This repository is its own first caller: the caller stub lives next to this file, at
-# the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target) — never one copy standing in for the other, even though this connector reads neither
-# tree: `GITHUB_SHA` and the issue fields above all arrive off the event, not off disk, the same way
-# every other reusable lane's `github.event.*` still does once a caller's own event is what fires
-# it. The machine checkout carries no credential input of its own: ADR-0132 made this repository
-# public, so `actions/checkout` reads it anonymously and no PAT is added here that would have to be
-# rotated in every enrolled repository. Neither checkout persists credentials — this connector's one
-# write is the `repository_dispatch` `prd-close.ts` sends over `gh`, never a git push, so there is
-# no local git config either checkout has any business leaving behind.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # write: the `repository_dispatch` this connector sends is a write on the contents scope.
   contents: write
   issues: read
 
-# One dispatch per PRD at a time. A PRD can be closed, reopened and closed again — an ordinary
-# correction — and each close fires this connector afresh; without a group, two of them would ring
-# the door twice for one decision. Keyed per PRD rather than fixed, because two different PRDs
-# closing in the same minute are two genuinely separate events. Never cancelled: the run is a
-# single dispatch, and killing it mid-flight would lose the trigger rather than defer it.
 concurrency:
   group: ratify-on-prd-close-${{ github.event.issue.number }}
   cancel-in-progress: false
@@ -87,8 +39,6 @@ jobs:
           ref: ${{ inputs.machine_ref }}
           persist-credentials: false
 
-      # This connector performs no git write — its one action is a `gh api` dispatch — so the
-      # checkout has no business leaving a push credential in the local git config.
       - name: Checkout target
         uses: actions/checkout@v4
         with:
@@ -98,7 +48,5 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The connector's own write — one `repository_dispatch` — goes through the `gh` seam in
-      # `shared/gh.ts`, so there is no separate reporting step here.
       - name: Ring the ratifier lane
         run: npx tsx .Workflow/agent-workflows/ratify/prd-close.ts

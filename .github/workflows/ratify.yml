@@ -1,71 +1,20 @@
 name: Ratify (reusable)
 
-# The ratifier lane (#296): what a finding that cleared the audit lane's two-site gate actually
-# becomes. One full-tool stage per finding turns it into a lint rule — with every site that rule
-# flags fixed in the same branch — or a `CODING_STANDARDS.md` entry, or a reasoned rejection. The
-# batch lands as **one** pull request through the door every implementation pull request already
-# uses (`implementation-opened`, ADR-0054): judged by lane 06, merged by lane 08, reviewed after the
-# fact by lane 07.
-#
-# **There is no human step in this lane.** The release-PR channel this replaces ended in a checklist
-# only the owner could tick, and 18 of those pull requests in five days were merged at ~90-second
-# intervals — the rubber-stamp pattern GOAL.md §2 already measured. Ratified is merged; the owner's
-# only lever is to revert a standard he dislikes, which `decline-on-revert.yml` reads as a decision.
-#
-# **`types:` names this lane's one action** (ADR-0090), and the job-level `if` is still the scope
-# rule — it holds this file to `ratify/dispatch.ts`'s own `RATIFICATION_DUE_DISPATCH_ACTION`, which
-# no compiler sees across, so `run-ratify.test.ts` asserts the two still agree.
-#
-# The two senders are ADR-0017's two work-volume triggers, unchanged: the audit lane once N released
-# findings have accumulated (`observations/run-audit.ts`), and a PRD closing as delivered
-# (`ratify-on-prd-close.yml`). No clock anywhere — every firing is caused by work having happened
-# (ADR-0004).
-#
-# `concurrency` serialises rather than cancels: a run that has already opened a pull request is not
-# work a later run should discard by being cancelled out from under it, and the bookmark advance at
-# the end is what keeps two runs from scoping the same range twice.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `ratify-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
-# This repository is its own first caller: the caller stub lives next to this file, at the same
-# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
-# (the machine, for the script) and the calling repository's own tree (the target, for
-# `CODING_STANDARDS.md`, the notes refs, the ratifier bookmark and the branch this lane pushes) —
-# never one copy standing in for the other. `run-ratify.ts`'s `repoDir` now reads `TARGET_WORKSPACE`
-# instead of assuming the checkout was its own cwd, the same seam `shape.ts`, `run-audit.ts` and
-# `run-accept.ts` already read for the same reason; every raw `git` step below that is not routed
-# through that seam runs with `working-directory: target` instead. The machine checkout carries no
-# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
-# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # write: pushes the batch's branch, `refs/ratifier/last`, and `refs/notes/ratifications` (the
-  # declined records a `reject` verdict writes).
   contents: write
-  # write: `gh pr create` for the batch, and the `repository_dispatch` that rings lane 06.
   pull-requests: write
-  # write: the escalation below. This lane has no ticket to label — a ticket per machine batch is
-  # tracker pollution (#296) — so a run that died files the one issue that says so.
   issues: write
 
 concurrency:
@@ -76,17 +25,11 @@ jobs:
   ratify:
     if: github.event.action == 'ratification-due'
     runs-on: ${{ inputs.runner }}
-    # One full-tool stage per finding, each authoring a rule and refactoring every site it flags,
-    # and a batch is up to the threshold's worth of findings. Sized well above `fixer.yml`'s 30 for
-    # that reason; the step timeout below is what actually bounds the model work.
     timeout-minutes: 120
     env:
       HEAD_SHA: ${{ github.event.client_payload.head }}
       PRD_CLOSED: ${{ github.event.client_payload.prd_closed }}
       EVENT_ACTION: ${{ github.event.action }}
-      # The branch the batch merges into — passed explicitly rather than left to `gh`'s own
-      # default-branch resolution, which is this same branch by coincidence today and a silent
-      # landmine the day the default branch is renamed.
       PR_BASE: ${{ github.event.repository.default_branch }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -102,15 +45,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: target
-          # The scope walk reads the commit range, the notes refs and the bookmark, none of which a
-          # shallow, single-branch checkout carries. The rule trial also stages a detached worktree
-          # at the batch's parent commit, which needs the object to be present.
           fetch-depth: 0
 
-      # `checkout`'s default refspec is `refs/heads/*` alone, so none of the refs this lane reads
-      # directly off the local repo arrive with it. Each fetch is let fail: a repo before its first
-      # observation has neither notes ref, and a repo before its first ratifier run has neither
-      # bookmark — the same absence `syncNotesRef` checks for with `ls-remote` before it fetches.
       - name: Fetch the refs this lane reads
         working-directory: target
         run: |
@@ -119,11 +55,6 @@ jobs:
           git fetch origin '+refs/ratifier/last:refs/ratifier/last' || true
           git fetch origin '+refs/release/last:refs/release/last' || true
 
-      # A runner has no git identity, and this lane commits the stage's edits with `commit-tree` and
-      # writes `refs/notes/ratifications` with `git notes add` — both write an object carrying a
-      # committer, and both die on `fatal: empty ident name` without this (#107, #109). The bot is
-      # the honest author: these commits are the run's, not a person's. Scoped to the target
-      # checkout — the only one this job ever writes into.
       - name: Identify the committer
         working-directory: target
         run: |
@@ -141,25 +72,15 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # Same pin as every other model lane, for the same reason (ADR-0002): a run comes from the
-      # checkout alone, and a floating install would let a release published next month change what
-      # a rerun of this commit does.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # Shorter than the job's own timeout on purpose: a hung model turn that outlives the *job* is
-      # cancelled, and cancellation skips every later step — including the escalation below and the
-      # bookmark publish. A *step* timeout is a plain failure, so both still get to run.
       - name: Ratify this batch
         timeout-minutes: 110
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/ratify/run-ratify.ts
 
-      # `advanceRatifierRef` only ever runs `update-ref` on this checkout. Without this the advance
-      # a successful run makes lives only in this job's ephemeral runner and the next trigger would
-      # scope from the old bookmark again. A ref that never moved pushes as a no-op; `if: success()`
-      # is the default, so a failed run never publishes a bookmark it did not actually advance.
       - name: Publish the advanced bookmark
         working-directory: target
         run: |
@@ -168,10 +89,6 @@ jobs:
             git push origin refs/ratifier/last
           fi
 
-      # The old channel's bookmark, read once by `readRatifierBase` to seed this lane's own and then
-      # gone. Deleted only after the publish above has actually landed a replacement, so a run that
-      # failed halfway never leaves this lane with no bookmark at all. Let to fail: on every run
-      # after the first there is nothing there to delete.
       - name: Retire the release channel's bookmark
         working-directory: target
         run: |
@@ -180,14 +97,6 @@ jobs:
             git push origin --delete refs/release/last || true
           fi
 
-      # A ratifier run that died mid-batch leaves findings undecided and no record of stopping, and
-      # nothing downstream would notice: the findings simply re-batch at the next trigger, silently,
-      # forever if the cause is permanent. This is the one place that says so out loud.
-      #
-      # `needs-human` is the canonical position for "an agent tried and stopped"
-      # (`docs/agents/pipeline-labels.md`), seeded with `--force` the way `shape.yml` seeds its own
-      # so a rerun and a fresh clone both work. Assigned, because a label sits in a list while an
-      # assignment notifies (`shared/needs-human.ts`).
       - name: Escalate a ratifier that died
         if: failure()
         run: |

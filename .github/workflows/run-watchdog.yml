@@ -1,77 +1,20 @@
 name: Run watchdog (reusable)
 
-# #41: a workflow run that executes zero jobs must reach a human.
-#
-# GitHub's response to a workflow file it cannot read is to spawn a run against every push and fail
-# it immediately having executed nothing. `to-tickets.yml` did that thirteen consecutive times
-# against `main` over two days. There was no comment, no notification and no red check anyone read —
-# `gh api .../commits/<sha>/check-runs` returned an empty list for every one of them, so the failure
-# was absent from every surface a person looks at, and two PRDs labelled in that window never sliced.
-#
-# The obvious trigger is `workflow_run`, and it cannot work. Its `workflows:` filter matches on a
-# workflow's *name*, and the failure this exists for is GitHub being unable to read a name out of
-# the file — the run is named after its own path instead. A trigger keyed on names is blind to
-# exactly the runs it would be there to catch, and `actionlint` refuses the un-filtered form outright
-# ("no workflow is configured for `workflow_run` event"), so it would not pass this repo's own gate
-# either way. ADR-0049 records that.
-#
-# So this sweeps, on the dispatch the capture hook already sends at session end. ADR-0004 forbids a
-# cadence — a mechanism that can fire when nothing has happened since it last fired — and a session
-# that ended is work that happened, which dead runs only arrive during. Same reasoning and the same
-# dispatch as `dispatch-reconcile.yml` and `audit.yml`, reused rather than given one of its own: a
-# second dispatch is a second thing that can silently stop arriving.
-#
-# `types:` names this lane's own action, for the reason `audit.yml` gives at length and ADR-0090
-# rules: an unfiltered trigger wakes every dispatch-triggered workflow on every dispatch any lane
-# sends, and the skipped runs that produces are what made the six acting lanes unreadable in the run
-# history. The job-level `if` stays the scope rule, spelled here as well as in `run-watchdog.ts`'s
-# own `WATCHDOG_DISPATCH_ACTION`; no compiler sees across that boundary, so `run-watchdog.test.ts`
-# asserts the two still agree and `capture/dispatch-action.test.ts` holds both to the name the hook
-# actually sends (#107).
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `run-watchdog-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target) — never one copy standing in for the other, even though this sweep reads neither
-# tree directly: `run-watchdog.ts` reads the target's run history and files its signal over `gh`,
-# scoped by `GH_REPO` rather than by cwd. The machine checkout carries no credential input of its
-# own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously and no PAT
-# is added here that would have to be rotated in every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: the checkout. Declaring a `permissions:` block sets every scope not listed in it to none,
-  # so omitting this is not "the default" — it is a token that cannot clone a private repo, and the
-  # first run of this lane died on `fatal: repository ... not found` before reaching any of its own
-  # logic. `workflow-permissions.test.ts` is the guard.
   contents: read
-  # read: `actions/runs`, and `actions/runs/<id>/jobs` for the one number the runs list omits. The
-  # close gate's reconciler spent every dispatch it received exiting on a 403 for want of exactly
-  # this (#107), which is why it is spelled out rather than assumed.
   actions: read
-  # write: the signal itself. An issue is the delivery because it is the one artifact here that
-  # arrives instead of waiting — anything written inside Actions would be as unread as the dead runs.
   issues: write
 
 concurrency:
@@ -85,8 +28,6 @@ jobs:
     timeout-minutes: 10
     env:
       EVENT_ACTION: ${{ github.event.action }}
-      # The signal is assigned so it notifies rather than sits in a list. `github.repository_owner`
-      # rather than a spelled name: this repo has one owner, and that is who a dead lane blocks.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -105,7 +46,5 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The issue write goes through the `gh` seam in `shared/gh.ts`, so there is no separate
-      # reporting step here.
       - name: Sweep for lanes that executed nothing
         run: npx tsx .Workflow/agent-workflows/watchdog/run-watchdog.ts

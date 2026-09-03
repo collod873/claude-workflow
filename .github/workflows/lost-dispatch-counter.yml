@@ -1,75 +1,23 @@
 name: Lost-dispatch counter (reusable)
 
-# #127, ADR-0062, ADR-0065: a dispatch that never arrived produces no run at all, so
-# #41's run watchdog — which reads runs — has nothing to sweep. The only surviving trace is the
-# label itself: ADR-0062 rules `sliceable` a durable trace rather than a trigger, applied by the
-# same job that sends the dispatch, so a PRD that carries it with no sub-issues and no completed
-# slicing run is exactly the shape of a dispatch that was owed and never showed up.
-#
-# Fires on the label being added, not on a clock (ADR-0004) — the event that makes this counter
-# non-vacuous is a spec being judged ready to slice, and nothing else moves the fact this reads.
-#
-# `.Workflow/agent-workflows/watchdog/lost-dispatch.ts` is the judgement half — a pure function
-# over one PRD's already-fetched state. `lost-dispatch-counter.ts` is the IO half this job runs: it
-# reads this PRD fresh every time it fires, so nothing here is stored and nothing here can go
-# stale. One standing issue collects every PRD this counter finds lost, the shape #124's
-# missing-trailer counter established for a `Count: 1` counter.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `lost-dispatch-counter-caller.yml`, a trigger and a `uses:`, never a copy
-# of the machine. This repository is its own first caller: the caller stub lives next to this file,
-# at the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target, for the issue/label state the script reads via `gh`) — never one copy standing in
-# for the other. The machine checkout carries no `token:`/`ssh-key:` input: ADR-0132 made this
-# repository public, so `actions/checkout` reads it anonymously and no credential is added here for
-# a PAT that would have to be rotated in every enrolled repository. The `sliceable`-label gate that
-# used to live on this job's own `if:` moves to the caller stub (see
-# `lost-dispatch-counter-caller.yml`): `workflow_call` has no `on.issues.types` of its own to filter
-# by label value, and a job-level `if:` on the *calling* job decides whether this reusable workflow
-# runs at all — a different caller is free to gate on a different label without this file changing.
-#
-# These two checkout steps duplicate #311's (`missing-trailer-counter.yml`) verbatim, and the clone
-# gate says so — see the commit that lands this file for why it stays a finding rather than a
-# composite action or a baseline entry: `uses: ./...` for a local composite cannot run *as* the
-# first checkout, since the runner has nothing on disk to resolve it from until a checkout has
-# already happened.
-
 "on":
   workflow_call:
     inputs:
-      # The workflow **file** in the calling repository whose runs are the slicing lane's
-      # history — `to-tickets-caller.yml` here. Not the display name: this is a path segment of
-      # `actions/workflows/<file>/runs`, which takes the file or the numeric id and nothing else.
-      # Required, no default — see `lost-dispatch-counter.ts`'s `CounterOptions.slicingWorkflow`
-      # for why a wrong one is silent.
       slicing_workflow:
         type: string
         required: true
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: both checkouts.
   contents: read
-  # read: the slicing lane's run history (`actions/runs`), which `hasCompletedSlicingRun` reads
-  # alongside `subIssuesPath` before this counter judges a PRD lost.
   actions: read
-  # write: the signal itself, and the sub-issues/label read this counter judges against.
   issues: write
 
 concurrency:
@@ -85,8 +33,6 @@ jobs:
       PRD_NUMBER: ${{ github.event.issue.number }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      # Which workflow's runs are the slicing lane's history — see this file's
-      # `workflow_call.inputs` above.
       SLICING_WORKFLOW: ${{ inputs.slicing_workflow }}
     steps:
       - name: Checkout machine
@@ -103,7 +49,5 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no
-      # separate reporting step here.
       - name: Count a lost dispatch
         run: npx tsx .Workflow/agent-workflows/watchdog/lost-dispatch-counter.ts

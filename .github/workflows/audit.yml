@@ -1,73 +1,12 @@
 name: Audit (reusable)
 
-# Spec #63's connector (ADR-0018): the venue ADR-0002 reserves for the observations
-# pipeline. Capture's own SessionEnd hook runs globally, on the workstation, for any project — but
-# the lenses and the release run only here, so this is what actually fires them once a session's
-# range exists to read.
-#
-# **`types:` names this lane's own action, and every other dispatch-triggered workflow in this repo
-# now does the same.** This file argued the opposite for a long time and the argument was sound as
-# far as it went: the filter is per-workflow rather than per-job, so a sibling sharing this trigger
-# surface forces this list to track whatever action it adds. What that reasoning never priced is
-# what an unfiltered trigger does to the *history*. Without `types:`, every dispatch any lane sends
-# starts a run of every dispatch-triggered workflow, and all but one of them skip: one
-# `session-captured` woke Spec, To-Tickets, Implement, Integrate and Verify, each of which has no
-# opinion about it whatsoever. #183 counted 65 runs across the six acting lanes and zero successes,
-# because the run history could no longer tell a lane that has never fired from a lane that fires
-# and skips — which is the only surface anyone reads to answer that question ([ADR-0090](../../docs/adr/0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md)).
-#
-# The job-level `if` stays, and is still the scope rule: `types:` is a filter GitHub applies before
-# the run exists, and the `if` is what holds this file to `run-audit.ts`'s own
-# `AUDIT_DISPATCH_ACTION`. No compiler sees across that language boundary, so `run-audit.test.ts`
-# asserts the two still agree, mirroring `ratify-on-prd-close.yml`'s `state_reason` scope rule and
-# `ratify/prd-close.ts`'s `CLOSE_STATE_REASON`.
-#
-# That scope is spelled `session-captured` — the capture hook's own dispatch, shared with
-# `dispatch-reconcile.yml` and `run-watchdog.yml` rather than given a second one (#107). This file and `run-audit.ts`
-# once agreed on `audit`, a name nothing ever sent; both sides were pinned by a test and both
-# tests passed, because each looked only at its own side of the boundary. `dispatch-action.test.ts`
-# reads `session-capture-hook.mjs` and every consumer of it, which is the only place the
-# disagreement was ever visible.
-#
-# `concurrency` serialises runs rather than cancelling one mid-flight: an audit that raced its own
-# push would either lose findings or spend a retry it didn't need to, and a release that opened a
-# PR is not work a later run should ever discard by being cancelled out from under it.
-#
-# The `Checkout Knowledge-Base` step below carries a deploy key, stored as a repository secret,
-# that can read a private repository — a credential worth restating the standing property for
-# — no credential is referenced by a job a pull request can trigger. `on:` above
-# is the whole reason it holds here too: `repository_dispatch` is not an event GitHub will ever
-# fire from a pull request, so a job started by one — this job included — never sees the secret.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `audit-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
-# This repository is its own first caller: the caller stub lives next to this file, at the same
-# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
-# (the machine, for the two lenses) and the calling repository's own tree (the target, for the
-# `CODING_STANDARDS.md` the audit reads and the `refs/notes/sessions`/`refs/notes/observations` it
-# reads and writes) — never one copy standing in for the other. The machine checkout carries no
-# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
-# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
-# The Knowledge-Base checkout below now lands inside the target checkout, at the path
-# `run-audit.ts` joins onto whichever checkout `TARGET_WORKSPACE` names — the corpus a session's
-# audit hydrates from belongs to the run reading it, not to the machine supplying the code that
-# reads it.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
@@ -106,21 +45,12 @@ jobs:
           path: target
           fetch-depth: 0
 
-      # A runner has no git identity, and `git notes add` writes an object with a committer on it —
-      # so the first run that ever got as far as recording a finding died on `empty ident name`
-      # *after* spending both lens passes (#107). The workstation supplies its own identity, which
-      # is why nothing local ever needed this. The bot is the honest author: this note is the run's,
-      # not a person's. Scoped to the target checkout — the only one this job ever writes into.
       - name: Identify the committer
         working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      # Same shape as `to-tickets.yml`'s `CLAUDE_CODE_OAUTH_TOKEN` preflight: fail closed on an
-      # empty secret before spending anything on the run, rather than let `actions/checkout` below
-      # either fail on an obscure SSH error or (worse) silently fall back to the job's default
-      # `GITHUB_TOKEN`, which cannot read a private repository this token was never granted.
       - name: Preflight — KNOWLEDGE_BASE_DEPLOY_KEY is set
         run: |
           set -euo pipefail
@@ -129,15 +59,6 @@ jobs:
             exit 1
           fi
 
-      # Spec #134 §"The runner reads the corpus over a deploy key": a second checkout, read-only,
-      # of the private `collod873/Knowledge-Base` alongside the target's own — the corpus
-      # `readSessionRecord` hydrates a session's spine from (`run-audit.ts`). `path:` here is
-      # `target/` plus `run-audit.ts`'s own `KNOWLEDGE_BASE_CHECKOUT_DIR`, spelled again rather than
-      # read across the language boundary a compiler cannot see across — the same duplication this
-      # file already carries for `AUDIT_DISPATCH_ACTION`, and `run-audit.test.ts` pins the two
-      # spellings the same way. Landing it under `target/` rather than at the workspace root is what
-      # keeps `join(repoDir, KNOWLEDGE_BASE_CHECKOUT_DIR)` finding it once `repoDir` is
-      # `TARGET_WORKSPACE` instead of the machine's own root.
       - name: Checkout Knowledge-Base
         uses: actions/checkout@v4
         with:
@@ -148,14 +69,9 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # Same pin as `to-tickets.yml`, for the same reason (ADR-0002): a run comes
-      # from the checkout alone, and a floating install would let a release published next month
-      # change what a rerun of this commit does.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # Both lenses' notes read/write and the release's own ref live on the injected `git`/`gh`
-      # seams in `shared/git.ts`/`shared/gh.ts`, so there is no separate publish step here.
       - name: Run the audit
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target

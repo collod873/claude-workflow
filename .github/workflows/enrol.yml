@@ -1,45 +1,5 @@
 name: Enrol
 
-# ADR-0133, #326: enrolment is a repository topic, and this is the lane that acts on it. There is
-# no `bin/install` — ADR-0057 specified one, #180 closed `not planned` without building it, and a
-# command has to be remembered per repository and per lane change where a lane does not.
-#
-# **This is the one lane with no caller stub, and that is not an exception written down anywhere.**
-# Every other workflow here is `on: workflow_call` plus a `*-caller.yml` beside it, because enrolled
-# repositories run those lanes (ADR-0055, amended by ADR-0132). No enrolled repository enrols
-# anyone, so this file has no caller — and the stub set is globbed as `*-caller.yml`, so it falls
-# out of the set by derivation rather than by an exclusion list. An exclusion list is precisely the
-# enumerated manifest ADR-0057 rejected.
-#
-# **Two triggers, no schedule.** A push to `main` that changes the stub set is the unattended half:
-# add a lane here and every enrolled repository has it on the next push, with nobody remembering
-# anything. `workflow_dispatch` is the other half, and it is not the `workflow_dispatch` ADR-0133
-# rejected — that was one hand-run *per repository*, which is the drift ADR-0057 named. One
-# dispatch here fans out across the whole topic. What is left un-covered, deliberately: adding the
-# topic to a repository happens on that repository and is not an event this one can see, so the
-# very first enrolment of a newly-topicked repository is dispatched by hand. That was the owner's
-# call on #225 against a daily schedule, which would have cost a run a day to catch a gesture made
-# a few times a year.
-#
-# **The credential.** `ENROL_PAT` is a fine-grained PAT, write-scoped across the owner's
-# repositories, and it is the only credential this repository stores that reaches outward. ADR-0053
-# holds without an exemption: neither `push` to `main` nor `workflow_dispatch` is an event a pull
-# request can fire, so no pull request ever starts a job that can see it. Note what does *not*
-# travel with it — the stubs this lane writes carry no credential at all, because ADR-0132 made
-# this repository public and a caller checks the machine out anonymously.
-#
-# `concurrency` serialises rather than cancels. Two passes writing the same target's default branch
-# race on the same ref, and the loser fails on a stale parent rather than doing anything dangerous
-# — but a pass cancelled mid-estate leaves some repositories on the new stub set and some on the
-# old, which is the half-enrolled state `enrol.ts` is otherwise built to avoid.
-#
-# **The secrets this job hands to `enrol.ts` (#327).** `enrol.ts` derives *which* secrets to
-# propagate by scanning `.github/workflows/*.yml` for `secrets.<NAME>` references — but GitHub
-# Actions has no API letting a job read the value of a secret it was not itself handed by name, so
-# each derived name still has to be named once here to reach the process's environment at all. This
-# is the one place that naming happens; `enrol.ts` never hard-codes the set, and a lane that starts
-# spending a third secret needs one line added here to reach the process, nothing in `enrol.ts`.
-
 "on":
   push:
     branches: [main]
@@ -48,8 +8,6 @@ name: Enrol
   workflow_dispatch:
 
 permissions:
-  # read: the checkout. Nothing this lane does to a *target* goes through this token — that is
-  # `ENROL_PAT` below — so the built-in one is granted exactly what `actions/checkout` needs.
   contents: read
 
 concurrency:
@@ -70,16 +28,6 @@ jobs:
       - name: Write the stub set into every enrolled repository
         run: npx tsx .Workflow/agent-workflows/enrol/enrol.ts
         env:
-          # Not `github.token`: the built-in token is scoped to this repository alone and cannot
-          # write a workflow file into another one.
           GH_TOKEN: ${{ secrets.ENROL_PAT }}
-          # `GITHUB_REPOSITORY` (which repository is the machine, so a topic on this one does not
-          # enrol it into itself) and `GITHUB_SHA` (the machine commit named in every target's
-          # commit message) are read straight from the ambient Actions environment. Not restated
-          # here: the `GITHUB_` prefix is GitHub's, and a hand-set copy of a variable the runner
-          # already sets is a second source of truth for the same fact.
-          #
-          # Every name `enrol.ts`'s own scan of `.github/workflows/*.yml` derives, named here so
-          # this job's environment actually carries a value for it (see the note above `on:`).
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           KNOWLEDGE_BASE_DEPLOY_KEY: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}

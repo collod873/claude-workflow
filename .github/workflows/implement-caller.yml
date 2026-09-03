@@ -1,20 +1,5 @@
 name: Implement
 
-# A trigger, a `uses:`, and the `permissions:` GitHub requires the caller to grant before it will
-# let the call through (ADR-0055, amended by ADR-0132) — a called workflow can never hold more than
-# its caller was handed, so this stub's grant is exactly what `implement.yml`'s own job asks for.
-#
-# The name stays `Implement`, unchanged from before the split. `recover-caller.yml` keys a
-# `workflow_run` trigger on that display name, and `workflow_run` only ever fires off a workflow a
-# push or a dispatch started directly, never one reached through `uses:` — so this file, not
-# `implement.yml` itself, is what Recover listens for now. Same reason `verify-caller.yml` kept
-# `Verify` while `verify.yml` became `Verify (reusable)`.
-#
-# `repository_dispatch: [ticket-ready]` is exactly the trigger `implement.yml` carried before this
-# split, moved here unchanged: this repository is its own first caller, so a `ticket-ready` from the
-# publish step or the reconciler still fires this lane exactly as it did. The reasoning for why this
-# lane fires on a dispatch and carries no sender gate lives at `implement.yml`'s own top, not here.
-
 "on":
   repository_dispatch:
     types: [ticket-ready]
@@ -26,6 +11,4 @@ jobs:
       pull-requests: write
       issues: write
     uses: collod873/claude-workflow/.github/workflows/implement.yml@main
-    # A `uses:` job passes no secret to the reusable workflow unless told to — `implement.yml`
-    # spends `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.
     secrets: inherit

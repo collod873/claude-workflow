@@ -1,67 +1,22 @@
 name: Review (reusable)
 
-# Lane 07 — the correctness reviewer (PRD #145, move 7a). Fires on a completed "Verify" run
-# (ADR-0036): lint, typecheck, the test suite and lane 04's immutable acceptance tests have
-# already run against this diff, so the reviewer never sees a finding a green gate already
-# covers — `review.ts`'s own `keepSurvivingFindings` drops those before anything downstream
-# reads them.
-#
-# `types: [completed]`, filtered to a successful conclusion at the job level, used to be this
-# file's own trigger and its own job `if:` — `workflow_run` carries no `conclusion` filter of its
-# own. ADR-0055 (amended by ADR-0132) moved both out of this file: `workflow_run` cannot be
-# parameterized through `workflow_call`, so `review-caller.yml` is what actually holds the trigger
-# and makes the "was this a passing, non-push run" decision now, before this workflow is ever
-# called — a failed or cancelled Verify run, or the push run itself, never reaches this file at
-# all. The one fact this workflow still needs from that decision — which SHA to check out and
-# review — crosses the boundary as the `head_sha` input below.
-#
-# No `pull_request` trigger anywhere in this pair, and no sender gate — PRD #145's "Cross-cutting:
-# who may fire a lane" section rules an author gate here is a check that can never fire.
-# `verify-caller.yml` carries no `pull_request` trigger after ADR-0054, so a stranger's pull
-# request runs no verification, and with no verification there is no "Verify" run for
-# `review-caller.yml`'s own trigger to ever see. The only runs this can fire on already passed
-# through that door.
-#
-# Two checkouts, never one standing in for the other (ADR-0055): `collod873/claude-workflow` (the
-# machine, for `review.ts` and the reviewer's own prompt) and the calling repository's own tree at
-# the reviewed head SHA (the target, which is the diff under review and the code the reviewer reads
-# around it). `TARGET_WORKSPACE` on the reviewer step below is what tells `review.ts` which is
-# which — it threads it through the `git diff` that produces the diff and through the reviewer's own
-# working directory. This shipped as a single plain checkout, which in a called workflow is the
-# *caller's* repository: this repository read as both, and any other caller would have died on a
-# `.Workflow/` that does not exist there. The machine checkout carries no credential input of its
-# own — ADR-0132 made this repository public.
-
 "on":
   workflow_call:
     inputs:
-      # The head SHA of the pull request `review-caller.yml`'s `workflow_run` named — the one fact
-      # this workflow needs out of an event it can no longer read directly.
       head_sha:
         type: string
         required: true
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: the checkout, at the reviewed run's own head SHA.
   contents: read
-  # write: a surviving finding is filed as an issue against trunk (PRD #145: "its survivors reach
-  # the owner as issues, never a notification").
   issues: write
 
 concurrency:
@@ -70,18 +25,11 @@ concurrency:
 
 jobs:
   review:
-    # No `if:` here — `review-caller.yml`'s own job already decided this call should happen at
-    # all (conclusion `success`, and not the push run — see that file), so every call that reaches
-    # this workflow is one to review.
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      # `review.ts` refuses to run without it — an unassigned finding notifies nobody — and this
-      # workflow never set it, so every run of this lane died at the first line of the reviewer.
-      # Spelled the same way `run-watchdog.yml`, `bypass-counter.yml` and
-      # `missing-trailer-counter.yml` all spell it.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
@@ -91,8 +39,6 @@ jobs:
           repository: collod873/claude-workflow
           ref: ${{ inputs.machine_ref }}
 
-      # `fetch-depth: 0` because the diff under review is `origin/main...<head>`, and a shallow
-      # checkout carries neither ref far enough back to compute it.
       - name: Checkout target
         uses: actions/checkout@v4
         with:
@@ -111,12 +57,6 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # `review.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
-      # a GitHub-hosted runner has none — so every non-skipped run of this lane died `spawn claude
-      # ENOENT` before the first reviewer said anything (#188). Same step, same pin, same reasoning
-      # as `shape.yml`, `to-tickets.yml` and `implement.yml`: `npm ci` cannot supply the binary
-      # because Claude Code is not a dependency of this project, and ADR-0002 wants a run to come
-      # from the checkout alone rather than from whatever was published this month.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 

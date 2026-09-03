@@ -1,9 +1,5 @@
 name: Dispatch reconcile
 
-# `issues: labeled` is lane 06's second door (#184). The trigger lives here rather than beside the
-# job it starts because a reusable workflow's own `on:` is `workflow_call` and nothing else
-# (ADR-0055, amended by ADR-0132) — `dispatch-reconcile.yml` carries the `to-build` and sender
-# conditions in its job-level `if`, which reads the caller's event.
 "on":
   repository_dispatch:
     types: [session-captured, graph-changed]
@@ -18,5 +14,4 @@ jobs:
       issues: write
     uses: collod873/claude-workflow/.github/workflows/dispatch-reconcile.yml@main
     with:
-      # This file, not `verify.yml` — see `integrate-caller.yml`'s identical `with:` for why.
       verify_workflow: verify-caller.yml

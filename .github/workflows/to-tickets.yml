@@ -1,100 +1,21 @@
 name: To-Tickets (reusable)
 
-# The venue for PRD #13, retargeted by PRD #145 move 6 (ADR-0062): lane 02's spec author is what
-# publishes a PRD now, and `prd` stays what marks an issue as one — it stopped being this lane's
-# trigger. This job fires on the `repository_dispatch` lane 02 sends at a zero open-question count
-# (`SPEC_DISPATCH_EVENT_TYPE` in `.Workflow/agent-workflows/spec/open-questions.ts`), never on a
-# label. `types:` names that one action, for the reason `audit.yml` gives and ADR-0090 rules: an
-# unfiltered trigger woke this lane on every unrelated dispatch, so its whole run history was
-# skipped runs it had nothing to say about. The job-level `if` below is still what scopes a run,
-# checked against the same constant the wiring table (`shared/lane-wiring.ts`) imports rather than a
-# copy-pasted string.
-#
-# Two refusals (CONTEXT.md: a gate that fires before a run spends model time) run before any
-# stage: a PRD that already has sub-issues, and a PRD that is itself a sub-issue. Both fail
-# closed, remove nothing, comment their reason on the PRD, and apply `slice-failed` — created
-# idempotently below, since the label does not exist in this repo yet and a bare
-# `gh issue edit --add-label` would fail on its first run. The escape hatch for a genuine
-# re-slice is closing or detaching the existing children first, a deliberate act.
-#
-# Sandcastle's third gate — refusing a PRD with no `## Acceptance` section — is deliberately not
-# adopted: `/to-spec`'s template has no such section.
-#
-# "Report failure" is the shared failure surface: it reads the dying stage's reason from the
-# fixed handoff path (a file at `${{ runner.temp }}/failure_reason.txt`, the path
-# `to-tickets.ts`'s `handoffPath()` writes to whenever `FAILURE_REASON_PATH` is set — see
-# `.Workflow/agent-workflows/to-tickets/to-tickets.ts`), falls back to "unknown stage" when that
-# file is absent, and comments a link to the run. Each refusal above comments for itself and marks
-# its own step output `refused=true`, which this step is guarded on — one refusal is one comment,
-# never two. The `CLAUDE_CODE_OAUTH_TOKEN` preflight below writes its reason the same way, so a
-# missing secret is reported by name through this same surface rather than a bespoke comment.
-#
-# Node arrives on the runner immediately before the first TypeScript step needs it, through
-# `.github/actions/node` — the one place the 24 pin and the `npm ci` are written.
-#
-# Three stages run in sequence: seam sweep / slice / audit-and-publish. Slice reads the seam
-# manifest seam sweep just wrote by reading the same handoff path seam sweep wrote to —
-# `handoffPath()` in to-tickets.ts, fixed by `FAILURE_REASON_PATH` above, needs no separate
-# argument to carry the manifest across steps. Audit-and-publish reads the plan slice wrote the
-# same way, grades it (merging, splitting, re-edging, or re-wording as it sees fit — never asking a
-# question back), then hands its own plan straight to the deterministic publisher inside that same
-# step. There is no separate "publish" step.
-#
-# On success, no step writes to the tracker at all — the sub-issues a real run creates are the
-# only output. Anything the auditor flagged but chose not to act on prints to this step's own log,
-# never to the PRD.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `to-tickets-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the three stages and the checkpoints directory a
-# spawned `claude` reads and writes) and the calling repository's own tree (the target) — never one
-# copy standing in for the other, even though none of the three stages reads the target's tree
-# directly: seam sweep, slice and audit-and-publish all read the PRD and publish tickets entirely
-# through `gh`, scoped by `GH_REPO` rather than by cwd, the same reason `dispatch-reconcile.yml`
-# carries a checkout pair nothing in it reads. The vocabulary and ticket-format pages `to-tickets.ts`
-# reads (`VOCABULARY_PATH`, `TICKET_FORMAT_PATH`) are this lane's own documents, shipped with its
-# code — machine-relative, not the target's. The machine checkout carries no credential input of
-# its own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously and no
-# PAT is added here that would have to be rotated in every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
-# `contents: read` on the model job, and the `ticket-ready` wave sent from the `dispatch` job below
-# instead — `POST /dispatches` needs `contents: write`, so every slice this lane published was
-# dispatched with a token that 403s, and lane 05 was never told about any of them
-# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
 
-# One slicing per PRD at a time. `prd-sliceable` is a dispatch, and a dispatch can arrive twice for
-# one PRD — a re-send after a lost hand-off, a second `spec.yml` run reaching a zero open-question
-# count — with nothing to stop the two runs from publishing two full sets of sub-issues under the
-# same parent. The "PRD already has sub-issues" refusal below cannot catch it: both runs read that
-# count before either has published, so both see zero and both proceed. Keyed per PRD for
-# ADR-0108's reason — a fixed group would make one PRD's slicing wait on an unrelated one's —
-# and queued rather than cancelled, since the run in flight is holding a paid model call
-# (ADR-0111).
 concurrency:
   group: to-tickets-${{ github.event.client_payload.issue }}
   cancel-in-progress: false
@@ -105,9 +26,6 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
-      # One JSON body per line — one `ticket-ready` per slice this publish left with nothing to
-      # wait for. Empty when the plan's roots were all blocked, which cannot happen for a valid
-      # graph, or when the run refused before publishing.
       dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
       PRD_NUMBER: ${{ github.event.client_payload.issue }}
@@ -115,11 +33,6 @@ jobs:
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
-      # The handoff path is exported here rather than declared in the job `env` above, because the
-      # `runner` context does not exist when job-level `env` is evaluated. Naming it there made the
-      # file unparseable, which cost this lane every run it should have had between 2026-08-22 and
-      # 2026-08-24 (#40). `RUNNER_TEMP` is the same value, read at step runtime where it exists,
-      # and `GITHUB_ENV` carries it to every step below exactly as the job `env` block would have.
       - name: Export the handoff path
         run: |
           echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
@@ -136,10 +49,6 @@ jobs:
         with:
           path: target
 
-      # Restored before any stage: the checkpoints directory `runStage` checks
-      # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout
-      # and dies with the runner, so a retry against the same commit only finds a stage that already
-      # answered if this ran first. See `.github/actions/checkpoints/action.yml`.
       - name: Restore checkpoints
         uses: ./.github/actions/checkpoints
         with:
@@ -147,9 +56,6 @@ jobs:
           lane: to-tickets
           issue: ${{ env.PRD_NUMBER }}
 
-      # Idempotent so a repeated run (or a fresh repo, like this one today) never fails the step
-      # that is supposed to fail closed — `--force` updates rather than errors when the label
-      # already exists.
       - name: Ensure slice-failed label exists
         run: |
           gh label create slice-failed \
@@ -170,8 +76,6 @@ jobs:
           fi
           echo "refused=false" >> "$GITHUB_OUTPUT"
 
-      # Runs only when the step above passed (Actions' default `if: success()`) — sequential
-      # refusals, no explicit condition needed to keep them ordered before any stage.
       - name: Refuse — PRD is itself a sub-issue
         id: refuse-nested-prd
         run: |
@@ -196,11 +100,6 @@ jobs:
           fi
           echo "refused=false" >> "$GITHUB_OUTPUT"
 
-      # A third refusal, but reported through the shared failure surface below rather than
-      # commenting for itself: an empty secret is an operational fact about this repo, not a
-      # judgement about the PRD, so there's nothing PRD-specific to say beyond what "Report
-      # failure" already prints. Runs after both PRD refusals and before Node is even set up, so
-      # a missing secret costs nothing beyond the checkout.
       - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
@@ -212,12 +111,6 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # `stage.ts` resolves the CLI from PATH (`spawn("claude", ...)`) and a GitHub-hosted
-      # runner has none. `npm ci` cannot supply it either: Claude Code is not a dependency of this
-      # project, and adding it as one would put the binary in `node_modules/.bin`, which a `run:`
-      # step does not have on PATH. So it is installed globally here, and pinned — ADR-0002 says a
-      # run comes from the checkout alone, and a floating install would let a release published
-      # next month change what a rerun of this commit does.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
@@ -227,43 +120,21 @@ jobs:
           issue: ${{ env.PRD_NUMBER }}
           mode: "on"
 
-      # The first of three stages, each following runStage's shape (see
-      # .Workflow/agent-workflows/shared/stage.ts). Spawns one headless `claude` process against
-      # seam-sweep/prompt.md and writes its validated structured output — the seam manifest — to
-      # the handoff path, or a failure reason if it dies.
       - name: Seam sweep
         env:
-          # Which checkout each stage reads and writes against (ADR-0055) — without this,
-          # `to-tickets.ts` falls back to `process.cwd()` and runs the model in the machine
-          # checkout instead of the target's.
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage seam-sweep --issue "$PRD_NUMBER"
 
-      # The second stage. Reads the seam manifest seam sweep just wrote at $FAILURE_REASON_PATH
-      # (to-tickets.ts's shared handoff path — see the comment above) as its SEAM_MANIFEST input,
-      # then overwrites that same path with its own output, the ticket graph. No extra argument
-      # carries the manifest between these two steps; both read and write the one path the job's
-      # env already fixes.
       - name: Slice
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage slice --issue "$PRD_NUMBER"
 
-      # The third and last stage. Reads the plan slice just wrote at $FAILURE_REASON_PATH the same
-      # way slice read seam sweep's manifest, spawns the auditor against it, and prints its grading
-      # notes and any unapplied flags to this step's own log (never a PRD comment — see the header
-      # above). It then hands its own (possibly rewritten) plan straight to the deterministic
-      # publisher in this same process: one sub-issue per slice, attached under the PRD, with every
-      # `dependsOn` wired as a native blocked-by edge and read back to verify it landed. A plan that
-      # fails graph validation here is rejected before any of that — zero `gh` writes, nonzero exit,
-      # same failure surface as every other stage.
       - name: Audit and publish
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
 
-      # `dispatchReadySlices` asked for one `ticket-ready` per root slice; this carries the whole
-      # wave across the job boundary, since a file in `runner.temp` dies with this runner.
       - name: Collect the dispatches this run asked for
         id: collect-dispatch
         run: |
@@ -275,9 +146,6 @@ jobs:
             echo "DISPATCH_REQUESTS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Uploaded with if: always() rather than if: failure() — a successful run's checkpoints are
-      # exactly what the *next* run on this issue needs to restore, not only a failed one's. See
-      # `.github/actions/checkpoints/action.yml`.
       - name: Upload checkpoints
         if: always()
         uses: ./.github/actions/checkpoints
@@ -286,8 +154,6 @@ jobs:
           lane: to-tickets
           issue: ${{ env.PRD_NUMBER }}
 
-      # Guarded off whenever a refusal above already commented for itself, so an ineligible PRD
-      # gets exactly one comment rather than the refusal's plus this one.
       - name: Report failure
         if: failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'
         run: |
@@ -311,11 +177,6 @@ jobs:
           issue: ${{ env.PRD_NUMBER }}
           mode: "off"
 
-  # ADR-0091's other half: `contents: write`, no model, no checkout, and nothing to do but post the
-  # wave the job above decided on. Sub-issues already exist and are already edged by the time this
-  # runs, so a failure here loses the *start*, not the plan — `dispatch-reconcile.yml` recomputes
-  # the same ready set at the next session end and sends it again (#179), which is why this being a
-  # second job costs nothing in reliability.
   dispatch:
     name: Start lane 05
     needs: [to-tickets]

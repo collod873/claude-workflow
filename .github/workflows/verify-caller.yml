@@ -1,20 +1,5 @@
 name: Verify
 
-# A trigger, a `uses:`, and the `permissions:` GitHub requires the caller to grant before it will
-# let the call through (ADR-0055, amended by ADR-0132) — a called workflow can never hold more than
-# its caller was handed, so this stub's grant is the union of everything `verify.yml` and its own
-# `signal-fixer` job ask for. The name stays `Verify`, unchanged from before the split —
-# `fixer.yml`, `review.yml`, `bypass-counter.yml` and `recover.yml` each key a `workflow_run`
-# trigger on that display name, and `workflow_run` only ever fires off a workflow a push or a
-# dispatch started directly, never one reached through `uses:`. So this file, not `verify.yml`
-# itself, is what those four listen for now — `verify.yml`'s own reasoning for both triggers lives
-# at its own top, not repeated here.
-#
-# `push: main` / `paths-ignore` and `repository_dispatch: [implementation-opened]` are exactly the
-# two triggers `verify.yml` carried before this split, moved here unchanged: this repository is
-# its own first caller, so a push to `main` and a dispatched retry still fire this lane exactly as
-# they do today.
-
 "on":
   push:
     branches: [main]

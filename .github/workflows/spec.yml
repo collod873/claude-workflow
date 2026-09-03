@@ -1,111 +1,21 @@
 name: Spec (reusable)
 
-# Lane 02 (PRD #145, move 6; redesigned by #263). One hand label, `to-spec`, starts the lane
-# whatever the source: the owner applies it to an accepted idea carrying a decision sheet, or to a
-# closed Wayfinder Map — the same gesture ADR-0059 already established for the map alone. The lane
-# itself reads the labelled issue to pick its collector (`spec.ts`'s `planSpecRun`); this file does
-# not tell the two apart.
-#
-# **The accept's own dispatch is a third door, restored.** #263 deleted this trigger and left
-# `accept.ts:148` still sending `sheet-accepted` on every approve, so from 2026-08-27 an accepted
-# idea fired a dispatch nobody listened for and then sat there — the owner's `approved` did
-# everything except the one thing that made it a pipeline. `lost-dispatch-counter.yml` did not catch
-# it, because that counter watches `sliceable` and this dispatch is upstream of any spec existing.
-#
-# It has to be a dispatch rather than the accept applying `to-spec` itself: a label applied by the
-# built-in `GITHUB_TOKEN` starts no workflow run (ADR-0054's forcing fact, and ADR-0083's whole
-# argument). The accept applies `to-spec` anyway, for the tracker to read — but the label is the
-# *record* that this lane is owed, and this dispatch is what actually starts it. Those are two jobs
-# and it is worth not confusing them.
-#
-# No sender gate on this branch, and none is needed: a `repository_dispatch` can only be sent by
-# something already holding a token on this repository, which is the same reason `implement.yml`
-# omits one.
-#
-# A second door, `prd`, still feeds the **critic** alone: the owner's own hand putting `prd` on a
-# spec he already wrote in a live session (ADR-0085). That door arrives with the spec already
-# drafted, so it runs one Opus stage where the cold door runs several, and it publishes nothing —
-# the issue it fires on *is* the draft.
-#
-# **Both branches are gated on who caused them, because both spend model (ADR-0073).** The
-# repository is public, so a label can arrive from anyone, not only the owner — the same fact
-# `shape.yml` was rewritten against, and this is that file's exact shape, reused rather than
-# re-derived (`shared/read-workflow.ts` is what lets this workflow's tests read its own `if:` back
-# out of the YAML instead of trusting a copy-paste by eye).
-#
-# `github.event.sender` is who performed the act, not who owns the thing acted on: applying
-# `to-spec` to a closed map, or to an accepted idea, is a hand-applied label exactly like `idea` in
-# `shape.yml`, so the sender gate covers it the same way — a stranger's label is refused, the
-# owner's own hand on it is not. The `prd` clause carries the identical gate for the identical
-# reason. Remove-and-re-add of the label is the re-run gesture, as it is in lane 01.
-#
-# The `prd` clause is narrowed to a spec without `sliceable` — a spec that has already passed the
-# gate has nothing left for the critic to decide, and re-labelling one would spend an Opus stage to
-# re-derive a result that already dispatched. `to-spec` carries no equivalent narrowing here: the
-# label lands on the *source* issue, not on the spec it produces, so whether that source's spec
-# already dispatched is not a fact this file's `if:` can see. `spec.ts`'s `planSpecRun` is where
-# that refusal lives instead — it searches the tracker for a spec already recording the source as
-# its own and already carrying `sliceable`, and throws before a model ever runs (#263).
-#
-# **#263 also removes the comment-triggered re-run.** The round counter, the posted open-questions
-# comment and the owner's answer that used to recompute it are gone: every run that reaches the
-# gate now dispatches unconditionally, so there is nothing left for a comment on a `prd` issue to
-# answer. This file used to carry an `issue_comment` trigger and a third branch gated on
-# `author_association`; neither exists any more.
-#
-# `types:` names the one action lane 01's own label events fire, for the reason `audit.yml` gives
-# and ADR-0090 rules: unfiltered, this lane would wake on every label applied to any issue and skip
-# on all but two of them.
-#
-# `SPEC_TRIGGER` is decided here and read by `invocationFromEnv` rather than re-derived in
-# TypeScript from the raw event: the `if:` below has already decided which of the two fired, and a
-# second copy of that condition is a second thing that can disagree with it. Both doors are the
-# same `issues: labeled` event, so the expression tests the *label* rather than the event name.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `spec-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
-# This repository is its own first caller: the caller stub lives next to this file, at the same
-# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
-# (the machine, for the script) and the calling repository's own tree (the target) — never one copy
-# standing in for the other, even though `spec.ts` reads neither tree directly: it reads and writes
-# the target's tracker entirely through `gh`, scoped by `GH_REPO` rather than by cwd, the same
-# reason `dispatch-reconcile.yml` carries a checkout pair nothing in it reads. The machine checkout
-# carries no credential input of its own: ADR-0132 made this repository public, so
-# `actions/checkout` reads it anonymously and no PAT is added here that would have to be rotated in
-# every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
-# `contents: read` is the model job's, and it is deliberate: ADR-0053 is careful about what a job
-# that runs a model may write. `POST /dispatches` needs `contents: write`, so the dispatch this lane
-# owes lane 03 is sent by the second job below — `permissions:` is per-job, which is the whole
-# reason the split works
-# ([ADR-0091](../../docs/adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md), #181).
 permissions:
   contents: read
   issues: write
 
-# One spec run per issue at a time — the same reasoning as `shape.yml`'s group: a label and a
-# fast-follow re-label can both arrive within seconds, and two concurrent chains would each search
-# the tracker for an already-dispatched spec without seeing the other's write.
 concurrency:
   group: spec-${{ github.event.issue.number || github.event.client_payload.issue }}
   cancel-in-progress: false
@@ -124,27 +34,15 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
-      # What `applyGate` asked to be dispatched, as one JSON body per line. Empty on a run whose
-      # `planSpecRun` refused before spending anything — the `dispatch` job below is skipped on
-      # empty rather than sending nothing.
       dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
-      # A `repository_dispatch` carries no issue, so the accept names it in the payload. The `||`
-      # is GitHub's, not a default — `github.event.issue.number` is empty on the dispatch and
-      # `client_payload` is empty on both label doors, so exactly one side is ever set.
       ISSUE_NUMBER: ${{ github.event.issue.number || github.event.client_payload.issue }}
-      # The dispatch takes the `to-spec` arm: `github.event.label.name` is empty on it, so the
-      # `prd` test is false and the fallback is the cold door — which is what an accepted sheet is.
       SPEC_TRIGGER: >-
         ${{ (github.event.label.name == 'prd' && 'critique') || 'to-spec' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
-      # Exported here rather than in the job `env` above for the reason `to-tickets.yml` records at
-      # length: the `runner` context does not exist when job-level `env` is evaluated, and naming it
-      # there is what made that file unparseable for two days (#40). `RUNNER_TEMP` is the same value
-      # read where it exists.
       - name: Export the dispatch handoff path
         run: echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
 
@@ -159,9 +57,6 @@ jobs:
         with:
           path: target
 
-      # Same shape as every other model-spending lane's preflight: fail closed on an empty secret
-      # before Node is set up, rather than let the stage spawn `claude` with nothing to
-      # authenticate it.
       - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
@@ -182,20 +77,11 @@ jobs:
           issue: ${{ env.ISSUE_NUMBER }}
           mode: "on"
 
-      # The whole lane: on the cold door, read the labelled issue to pick a collector, refuse a
-      # source whose spec already dispatched, then run the author and the critic and publish the
-      # `PRD:` issue; on the critic-only door, read the spec that is already there. Both then apply
-      # `sliceable` and ask for the dispatch unconditionally (#263).
       - name: Spec author
         env:
-          # Which checkout the spec author reads and writes against (ADR-0055) — without this,
-          # `spec.ts` falls back to `process.cwd()` and runs the model in the machine checkout
-          # instead of the target's.
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/spec/spec.ts
 
-      # Carries what the gate asked for across the job boundary. A file in `runner.temp` dies with
-      # the runner, so the request has to become a job output for a second machine to read it.
       - name: Collect the dispatches this run asked for
         id: collect-dispatch
         run: |
@@ -207,14 +93,6 @@ jobs:
             echo "DISPATCH_REQUESTS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Lane 01's two workflows both post their failure onto the issue the owner is already looking
-      # at; this one did not, and that is the whole reason a `to-spec` that fired, ran and died at
-      # the collector was indistinguishable from a label that started nothing at all. A lane whose
-      # only failure channel is the Actions tab is a lane the tracker reports as idle.
-      #
-      # `!success()` rather than `failure()`, for `shape-accept.yml`'s reason: a timed-out job is
-      # cancelled, not failed, and this job's timeout is 30 minutes of model time — exactly the run
-      # most worth hearing about.
       - name: Report failure
         if: ${{ !success() }}
         run: |
@@ -230,15 +108,6 @@ jobs:
           issue: ${{ env.ISSUE_NUMBER }}
           mode: "off"
 
-  # The other half of ADR-0091's split: `contents: write`, no model, no checkout, and nothing to do
-  # but post what the job above decided. It runs only when there is something to send, so a run
-  # that refused before spending anything produces no job here at all rather than a green one that
-  # sent nothing.
-  #
-  # `sliceable` was written by the job above *before* this one runs, which is `open-questions.ts`'s
-  # ordering kept: if this job fails, the spec still carries the label with no slicing run behind
-  # it, and `lost-dispatch-counter.yml` finds it. The split moves where the send happens, not what a
-  # lost send leaves behind.
   dispatch:
     name: Start lane 03
     needs: [spec]

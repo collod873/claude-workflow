@@ -1,180 +1,45 @@
 name: Fixer (reusable)
 
-# Lane 07's other half (#169, ADR-0054, wired by #234): what runs when `Verify` comes back **red**
-# on an implementer's pull request.
-#
-# `review.yml` is this file's mirror image — same `workflow_run` on `Verify`, same
-# `types: [completed]`, and a job-level `if:` on the opposite conclusion. That symmetry is the
-# whole point of the ticket that added this: a green Verify reached lane 07 and a red one reached
-# nothing at all, so an implementer's pull request that failed its checks sat green-labelled and
-# open forever while the ticket behind it never closed. `fixer.ts` had been built for exactly this
-# — three capped attempts, `blocked` plus a comment on stopping — and had no workflow file, which
-# is why it sat in `shared/wiring-baseline.json` as known-unwired debt (#183).
-#
-# `conclusion == 'failure'` was filtered at the job level rather than in the trigger for the reason
-# `review.yml` gives: `workflow_run` carries no `conclusion` filter of its own. ADR-0055 (amended
-# by ADR-0132) moved that filtering again, out of this file entirely: `workflow_run` cannot be
-# parameterized through `workflow_call`, so `fixer-caller.yml` is what actually holds all three of
-# this lane's doors now, and its own job `if:` is where a run gets turned away before this workflow
-# is ever called — the run id it resolves to is the one thing that crosses the boundary, as the
-# `run_id` input below. This file no longer reads `github.event.workflow_run` at all.
-#
-# **`workflow_run` is no longer the only door**, because it kept not arriving — three no-shows on
-# 2026-08-30/31 alone, the last of them run 33346638810 on PR #284, red at 01:07:58 and reaching
-# this lane only when a person dispatched it by hand (#285). `verify.yml` now rings `fixer-needed`
-# from a job of its own on the red path, the same second door lane 05 opened for Recover under
-# ADR-0114. Both stay: the marker comment the resolve step writes makes whichever arrives second a
-# no-op, so the cost of two doors is one comment and the cost of one was a red pull request that sat
-# until somebody noticed. `fixer-caller.yml` is the file that actually carries both, plus the hand
-# door — see it for the routing decision this file used to make itself.
-#
-# `event != 'push'` was the same second condition on that door, and it is not cosmetic —
-# `verify-caller.yml` fires on `push: main` as well as on the implementer's dispatch, and a red push
-# run is trunk being broken: there is no pull request to fix, no branch to push attempts to, and
-# nothing this lane could do but spend a model on `main`. That check now lives on `fixer-caller.yml`
-# too, alongside the rest of the routing decision.
-#
-# Two checkouts, never one standing in for the other (ADR-0055): `collod873/claude-workflow` (the
-# machine, for `fixer.ts` and the attempt prompt) and the calling repository's own tree at the pull
-# request's branch (the target — the suite this lane reproduces a failure from, the code the model
-# edits, and the branch every attempt is committed onto). `TARGET_WORKSPACE` on the fixer step
-# below is what tells `fixer.ts` which is which. This shipped as a single plain checkout, which in
-# a called workflow is the *caller's* repository: this repository read as both, and any other
-# caller would have died on a `.Workflow/` that does not exist there. The machine checkout carries
-# no credential input of its own — ADR-0132 made this repository public.
-
 "on":
   workflow_call:
     inputs:
-      # The run id `fixer-caller.yml` resolved from whichever of its three doors fired — see that
-      # file for the `||` chain. Not required: a call this cannot resolve (an empty hand dispatch)
-      # still reaches the resolve step below, which is what actually says "nothing to resolve" and
-      # exits clean, exactly as it always has.
       run_id:
         type: string
         required: false
         default: ""
-      # Where the caller's own suite lives — the vitest target the fixer reproduces a failure
-      # from (a ticket's acceptance tests live in the same tree since #360, so there is no second
-      # target). It is the one thing in this lane that is genuinely a
-      # fact about the calling repository rather than about the machine: this repository's is
-      # `.Workflow`, and nothing the machine can read tells it what another repository's is.
-      #
-      # Required, with no default, on purpose. A default would be this repository's answer imposed
-      # on every caller, and it would fail *quietly* — a suite target that does not exist collects
-      # nothing, which reads as "no test is failing" and leaves the pull request exactly as it was
-      # found. A missing input refuses the call outright instead.
       test_dir:
         type: string
         required: true
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # write: every attempt is committed onto the pull request's own branch and pushed there
-  # (`commitAndPushAttempt`) — this lane never opens a branch or a pull request of its own.
   contents: write
-  # write: a stopped fixer always comments the PR with what happened (`applyBlocked`,
-  # `applyUnfixable`), and the resolve step below reads the PR's comments for its own per-run marker
-  # and writes one — the escalate path also needs `gh pr view` to check the PR is still open.
   pull-requests: write
-  # write: a stopped fixer applies `needs-human` and assigns the owner on the *ticket*
-  # (`escalateToOwner`) — moved here from the PR because that is where the label now lands.
   issues: write
-  # read: the resolve step below reads the failed run's jobs and one job's log — the only place the
-  # pull request that run was judging is written down (see that step).
   actions: read
 
 concurrency:
-  # Per failed run, not a single fixed group: two implementers can fail their checks at once, and
-  # each one's fixer works on its own branch, so there is nothing for them to serialise over. Never
-  # cancelled — an attempt that was already committed and pushed is not undone by dropping the run
-  # that made it, so a cancelled fixer leaves a half-finished loop with no record of stopping.
-  #
-  # Keyed on the *failed Verify run*, whichever door named it, so the dispatch and the late
-  # `workflow_run` for one failure queue behind each other rather than racing for the same branch —
-  # the same key `recover.yml` uses for the same pair of doors. Queueing is what makes the marker
-  # comment in the resolve step a reliable no-op: the second arrival reads a record the first one
-  # has already finished writing. `|| github.run_id` still covers the same gap it always did — a
-  # call this cannot resolve a run id for groups on itself rather than colliding with every other.
   group: fixer-${{ inputs.run_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   fixer:
-    # No `if:` here — `fixer-caller.yml`'s own job already decided this call should happen at all
-    # (its `if:` is the union this used to be), so every call that reaches this workflow is one to
-    # act on.
     runs-on: ${{ inputs.runner }}
-    # Three capped attempts, each a Sonnet stage plus a full vitest run over `.Workflow`. Sized off
-    # `integrate.yml`'s 30 rather than `review.yml`'s 15 for that reason — and then measured, in
-    # run 33700482337, which was killed mid-repair having just logged "All four pass now". Three
-    # attempts do not fit in thirty minutes.
-    #
-    # The suite is not what does not fit. It is ~6s wall / 35s test-CPU on a 22-core workstation,
-    # so meaningful on a two-core runner and still not the dominant cost — the model is, and no
-    # amount of scoping the tests buys an attempt back (unlike the implementer's failing-test
-    # discovery, which `f2213e5` took from 26 minutes to 13 seconds because *that* cost was not the
-    # model). So this is raised rather than made cheaper. Still under `ratify.yml`'s 120.
     timeout-minutes: 50
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RUN_ID: ${{ inputs.run_id }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      # Who a stop assigns the ticket to, on both paths below — the same pattern
-      # `run-watchdog.yml`'s `SIGNAL_ASSIGNEE` uses: assigned so the ticket notifies rather than
-      # sits in a list, and `github.repository_owner` because this repo has one owner.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
     steps:
-      # ## Which pull request that run was judging
-      #
-      # There is no field for it. A `verify.yml` run started by lane 05's dispatch carries
-      # `head_branch: main`, `head_sha` at trunk's tip, and `pull_requests: []` — a
-      # dispatch-triggered run always executes trunk's copy of the workflow at trunk's tip
-      # (ADR-0054), so nothing on the run object names the branch under test. `head_sha` is trunk's
-      # own tip, which every open implementation branch descends from, so it does not narrow either.
-      #
-      # The one place the answer is recorded is a `judging <pr-url> on <branch>` log line
-      # (ADR-0104), echoed by `verify.yml`'s `Immutability` job from a step that runs before that
-      # job can itself fail. `Immutability` always runs first on a dispatch (both later jobs carry
-      # `needs: [immutability]`), so its `judging` line is readable from its own log regardless of
-      # which downstream job actually reddened — the same split `integrate.ts` holds to for lane
-      # 06's job *names*, which the Actions API also answers only as strings.
-      # `lane-wiring.test.ts` asserts `verify.yml` still echoes in exactly this shape, so a
-      # reworded step there fails a test here rather than silently making every fixer run resolve
-      # nothing.
-      #
-      # ## Which job actually failed
-      #
-      # A red `Verify` job — the gauntlet, `npm run check` against the target (#360) — is the only
-      # one this lane can act on with a model: `fixer.ts` re-runs the target's suite and works from
-      # whatever it reads back. A red `Immutability` job means Verify never got that far — there is
-      # nothing under the target's suite for a model to reproduce, only a job name and whatever
-      # `::error::` line it printed. That case escalates instead.
-      #
-      # Exits 0 on every "nothing to work on": a run this cannot resolve, a pull request that is no
-      # longer open (lane 08 may have merged it, or a person may have closed it), or a run the other
-      # door already reacted to. None of those is a broken lane, and a red run for one would be a
-      # failure notification about a pull request that no longer needs anything.
-      #
-      # The one exit 1 is the wait below timing out, and the difference is the point: those are
-      # cases where this step *knows* there is nothing to do, and that one is the case where it
-      # could not find out.
       - name: Resolve the pull request that Verify run was judging
         id: target
         run: |
@@ -317,8 +182,6 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
-      # `fixer.ts`, its prompt, and the Node the whole job runs on. Skipped along with everything
-      # else when the resolve step found nothing to act on.
       - name: Checkout machine
         if: steps.target.outputs.mode != ''
         uses: actions/checkout@v4
@@ -326,8 +189,6 @@ jobs:
           repository: collod873/claude-workflow
           ref: ${{ inputs.machine_ref }}
 
-      # The pull request's own branch, not the head SHA `review.yml` checks out: every attempt is
-      # committed and force-free-pushed back here, so this checkout has to be the branch itself.
       - name: Checkout target
         if: steps.target.outputs.mode == 'model'
         uses: actions/checkout@v4
@@ -336,18 +197,12 @@ jobs:
           ref: ${{ steps.target.outputs.branch }}
           fetch-depth: 0
 
-      # The escalate path never commits and reads nothing out of the target's tree — it only needs
-      # `fixer.ts` itself, which is in the machine checkout above — so trunk's tip is enough and
-      # there is no branch to check out onto.
       - name: Checkout target at trunk to escalate
         if: steps.target.outputs.mode == 'escalate'
         uses: actions/checkout@v4
         with:
           path: target
 
-      # A runner has no git identity, and this lane commits — same fix `integrate.yml`,
-      # `implement.yml` and `audit.yml` all needed. Only the model path commits, and only ever into
-      # the target checkout.
       - name: Identify the committer
         if: steps.target.outputs.mode == 'model'
         working-directory: target
@@ -364,47 +219,25 @@ jobs:
             exit 1
           fi
 
-      # Both paths run `fixer.ts` through `npx tsx`, which needs `node_modules` — the escalate path
-      # only reaches `escalateToOwner`, but it is the same entrypoint file.
       - name: Set up Node and install dependencies
         if: steps.target.outputs.mode != ''
         uses: ./.github/actions/node
 
-      # The target's own `node_modules`: the model path runs the target's vitest against the target's
-      # tree, which is the failure this lane exists to reproduce. Only that path needs it — the
-      # escalate path runs no suite. The machine's install above is what puts `tsx` itself on PATH,
-      # resolved from the nearest ancestor `node_modules` since `target/` sits directly under the
-      # machine checkout that already has one.
       - name: Install target dependencies
         if: steps.target.outputs.mode == 'model'
         working-directory: target
         run: npm ci
 
-      # `fixer.ts` reaches `stage.ts`, which resolves the CLI from PATH (`spawn("claude", …)`), and
-      # a GitHub-hosted runner has none. Same step, same pin, same reasoning as `review.yml`,
-      # `implement.yml` and `shape.yml`. Only the model path spawns a stage.
       - name: Install Claude Code
         if: steps.target.outputs.mode == 'model'
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      # Onto trunk first, for one reason that is not about the merge: the `fixer.ts` this job runs
-      # is the one in its checkout, and the checkout above is the pull request's branch — so
-      # without this step the fixer that runs is whichever one the implementer branched from. Run
-      # 33327321534 ran a fixer trunk had already replaced, read the wrong suite green, and did
-      # nothing. Lane 08 rebases the same branch the same way before it merges (and force-pushes
-      # the result), so this changes nothing about what eventually lands; `commitAndPushAttempt`
-      # pushes with `--force-with-lease` for the same reason. A conflict is lane 08's finding, not
-      # this lane's: it is escalated with the paths and no model is spent on a tree that will not
-      # replay.
       - name: Rebase onto trunk so trunk's fixer runs
         id: rebase
         if: steps.target.outputs.mode == 'model'
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
-        # `git -C target` rather than `working-directory: target`, because this step is both halves
-        # at once: the rebase is the target's, and the `npx tsx` that escalates a conflict is the
-        # machine's, resolved from this job's own cwd.
         run: |
           set -euo pipefail
           git -C target fetch origin main
@@ -415,49 +248,17 @@ jobs:
             echo "conflicted=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # `inputs.test_dir` is the directory — the caller's own suite root, `.Workflow` when the caller
-      # is this repository — not the repo root.
-      #
-      # It is the bulk of what the gauntlet's own `test` slot runs (`vitest run .Workflow .claude`),
-      # which is the red this lane is usually reacting to. A ticket's acceptance tests live in that
-      # same tree, marked `test.fails(` until the ticket is built (#360, ADR-0150), so a fixer here
-      # never chases another ticket's unbuilt criteria.
-      #
-      # A Verify that went red on something under no test at all — lint, typecheck, clones —
-      # leaves nothing failing here, and `fixer.ts` says so and stops rather than handing a model an
-      # empty brief. (An immutable-set failure never reaches this step at all — the resolve step
-      # above already routed it to "Escalate to the owner".)
-      #
-      # The three resolved values arrive through `env:` rather than as `${{ }}` inside the script,
-      # so a branch name is a shell *variable* and never a fragment of the command line — the same
-      # shape `verify.yml` and `integrate.yml` use for everything they read off an event.
       - name: Run the fixer
         if: steps.target.outputs.mode == 'model' && steps.rebase.outputs.conflicted != 'true'
-        # Shorter than the job's own timeout on purpose: a hung model turn that outlives the *job*
-        # is cancelled, and cancellation skips every later step — the stop reaches nobody (run
-        # 33327720079 hung 22 minutes after its fix was written and vanished without a label). A
-        # *step* timeout is a plain failure, so the escalation below still gets to speak. The gap to
-        # the job's own cap is what the escalation is spending, so it stays ten minutes wide as both
-        # numbers move.
-        #
-        # Twenty was too tight for the three attempts this lane is capped at: run 33700482337 was
-        # killed here mid-repair, one line after "All four pass now", and #349 went `needs-human`
-        # over a repair that had already been written. See the job's own cap above for why this is
-        # raised rather than the attempt made cheaper.
         timeout-minutes: 40
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
           BRANCH: ${{ steps.target.outputs.branch }}
           TEST_DIR: ${{ inputs.test_dir }}
-          # Which checkout holds the branch being fixed (ADR-0055) — `fixer.ts` threads it through
-          # the suite it reproduces the failure from, the model's own working directory, and every
-          # `git` call the attempt loop makes.
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" "$TEST_DIR"
 
-      # A fixer that dies mid-loop is still a stop, and every stop reaches the owner: without this,
-      # a crash or timeout ends the repair line silently and the ticket just goes cold.
       - name: Escalate a fixer that died
         if: failure() && steps.target.outputs.mode == 'model'
         env:
@@ -465,8 +266,6 @@ jobs:
           PR_NUMBER: ${{ steps.target.outputs.pr }}
         run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "the fixer itself" "the attempt loop crashed or timed out before it could finish"
 
-      # The no-model path: Verify never reached the one job this lane can reproduce and fix, so
-      # instead of a brief with nothing in it, this names what actually failed.
       - name: Escalate to the owner
         if: steps.target.outputs.mode == 'escalate'
         env:

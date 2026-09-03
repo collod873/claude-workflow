@@ -1,54 +1,12 @@
 name: Shape (reusable)
 
-# Lane 01. The `idea` label is the whole trigger — lane 00's issue form applies it at
-# creation, and nothing else in the system is human-initiated.
-#
-# The second trigger is the owner's fourth verb. A comment on an idea that already carries a sheet
-# is a change request, and it re-runs the chain; `rounds.ts` caps that at 2 rounds off the issue's
-# own comment list, then the sheet stands as posted. Bot comments are excluded, which is what stops
-# the sheet this job posts from triggering the job that posted it.
-#
-# **Only a broken run is red here.** The chain has three ordinary outcomes that are not failures —
-# a stage-1 refusal (an idea that already exists or that an ADR has ruled on), a refuse-to-shape
-# (ADR-0029: the tree did not close under five decisions), and a spent change-request budget. Each
-# comments on the issue and exits 0. The sweep's kill rate is a number worth measuring, which is to
-# say kills are the expected traffic; a red run for the expected case
-# is how red stops meaning anything.
-#
-# Three model stages run inside one `npx tsx` call rather than one step apiece, unlike
-# `to-tickets.yml`. The chain loops — the shaper may spend one re-sweep (ADR-0030), which re-runs
-# stage 1 and then stage 2 — and a cap of one is a local variable in one call stack and a tracker
-# query across two steps. Each `claude` spawn is still its own process with no memory of the last.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `shape-caller.yml`, a trigger and a `uses:`, never a copy of the machine.
-# This repository is its own first caller: the caller stub lives next to this file, at the same
-# commit, so the bytes shipped are the bytes that run. Two checkouts below — `collod873/claude-workflow`
-# (the machine, for the prompts, the stages and the checkpoints directory a spawned `claude` reads
-# and writes) and the calling repository's own tree (the target, for the prior-art paths `fetchRef`
-# reads off disk) — never one copy standing in for the other. The machine checkout carries no
-# credential input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it
-# anonymously and no PAT is added here that would have to be rotated in every enrolled repository.
-# Every `gh` call below still reaches the target's own tracker regardless of which checkout is the
-# process's cwd — `GH_REPO` names it, not the working directory — so only the disk read `fetchRef`
-# makes needs telling which checkout is the one a prior-art reference actually names
-# (`TARGET_WORKSPACE`, on the `Shape` step below).
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
@@ -58,48 +16,12 @@ permissions:
   contents: read
   issues: write
 
-# One shaping per idea at a time, and the older run finishes rather than dying.
-# Both triggers can fire within seconds of each other — filing an idea and then
-# immediately adding a clarifying comment is an ordinary thing to do — and two
-# concurrent chains would each read a round count that did not include the
-# other and post two sheets. So they serialise.
-#
-# They do not cancel (ADR-0111). Queueing pays for both sheets and keeps both;
-# the second run reads a round count the first one's sheet is already part of,
-# which is the ordering the cancel was reaching for anyway.
 concurrency:
   group: shape-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   shape:
-    # **Both triggers are gated on who caused them, because both spend model.**
-    # §00's issue form carries `labels: ["idea"]`, so on a public repository the
-    # label lands from a stranger's issue exactly as it lands from the owner's —
-    # the trigger cannot tell them apart, and neither can a label the form
-    # applies on the author's behalf regardless of the author's permissions. The
-    # `idea` lane spends `CLAUDE_CODE_OAUTH_TOKEN`, which is the owner's personal
-    # subscription and has no per-repository cap, so an ungated lane is an open
-    # invitation to drain it. ADR-0073.
-    #
-    # `github.event.sender` is who performed the act, not who owns the thing
-    # acted on, which is the distinction that makes one condition cover both the
-    # form and a later hand-applied label: filing through the form makes the
-    # author the sender (a stranger is refused, the owner is not), and labelling
-    # someone else's issue afterwards makes the labeller the sender (so the
-    # owner can still pull a stranger's idea into the lane deliberately, by
-    # applying `idea` himself — remove-and-re-add, the same re-run gesture
-    # `to-tickets.yml` documents for `prd`).
-    #
-    # A comment is gated on `author_association` instead: that field exists on
-    # `issue_comment` and says the commenter's standing in this repository
-    # directly. `COLLABORATOR`/`MEMBER` ride along with `OWNER` so the gate does
-    # not have to be reopened the day a second person is added.
-    #
-    # Neither condition replaces the bot exclusion below it. A bot comment is
-    # excluded because the sheet this job posts would otherwise trigger the job
-    # that posted it; that is a loop, not a permission question, and the two
-    # conditions are refusing different things.
     if: >-
       (github.event_name == 'issues' &&
        github.event.label.name == 'idea' &&
@@ -117,14 +39,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      # Read by `shape.ts` through the environment, never interpolated into a `run:` script — a
-      # comment body is attacker-controlled text in the general case and owner-typed prose in this
-      # one, and the safe handling is the same either way.
       CHANGE_REQUEST: ${{ github.event.comment.body }}
     steps:
-      # Exported here rather than in the job `env` above because the `runner` context does not exist
-      # when job-level `env` is evaluated — naming it there is what cost `to-tickets.yml` every run
-      # it should have had between 2026-08-22 and 2026-08-24 (#40).
       - name: Export the handoff path
         run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
 
@@ -139,10 +55,6 @@ jobs:
         with:
           path: target
 
-      # Restored before the stage runs: the checkpoints directory `runStage` checks
-      # (.Workflow/agent-workflows/shared/stage.ts, CONTEXT.md's Checkpoint) lives in this checkout
-      # and dies with the runner, so a retry against the same commit only finds a stage that already
-      # answered if this ran first. See `.github/actions/checkpoints/action.yml`.
       - name: Restore checkpoints
         uses: ./.github/actions/checkpoints
         with:
@@ -150,10 +62,6 @@ jobs:
           lane: shape
           issue: ${{ env.IDEA_NUMBER }}
 
-      # Every label this lane needs, including the four the owner answers with. They are created
-      # here rather than by the accept workflow because a sheet posts before any verb is applied,
-      # and a verb the owner cannot find on his phone is a verb that does not exist. `--force`
-      # updates rather than erroring, so a rerun and a fresh clone both work.
       - name: Ensure the lane's labels exist
         run: |
           set -euo pipefail
@@ -172,9 +80,6 @@ jobs:
           gh label create go-short --color 1d76db \
             --description "ADR-0007's route override, applied alongside approved" --force
 
-      # Before Node, so a missing secret costs nothing beyond the checkout. Reported through the
-      # shared failure surface below rather than commenting for itself: an empty secret is an
-      # operational fact about this repo, not a judgement about the idea.
       - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
@@ -186,9 +91,6 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # `stage.ts` resolves the CLI from PATH and a hosted runner has none. Pinned, because ADR-0002
-      # says a run comes from the checkout alone and a floating install would let a release published
-      # next month change what a rerun of this commit does.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
@@ -203,9 +105,6 @@ jobs:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
 
-      # Uploaded with if: always() rather than if: failure() — a successful run's checkpoints are
-      # exactly what the *next* run on this issue needs to restore, not only a failed one's. See
-      # `.github/actions/checkpoints/action.yml`.
       - name: Upload checkpoints
         if: always()
         uses: ./.github/actions/checkpoints

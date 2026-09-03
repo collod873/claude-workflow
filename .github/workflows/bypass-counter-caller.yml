@@ -1,12 +1,5 @@
 name: Bypass counter
 
-# Not "six lines with nothing in them" the way `verify-caller.yml` is (ADR-0055, amended by
-# ADR-0132): `workflow_run` cannot be parameterized through `workflow_call`, so the "only a run on
-# main" scope check `bypass-counter.yml`'s own job `if:` used to make lives here now — see that
-# file's header for why. `bypass-counter.ts` recomputes its count from `gh` directly, never from
-# the triggering event, so nothing about this *run* needs to cross into the reusable workflow — but
-# one fact about this repository does: which workflow file holds the run history to count.
-
 "on":
   workflow_run:
     workflows: ["Verify"]
@@ -18,13 +11,7 @@ jobs:
       contents: read
       actions: read
       issues: write
-    # `verify.yml` runs on every PR branch as well as `main`; only a run on `main` is a tree that
-    # reached trunk, which is the event this counts.
     if: github.event.workflow_run.head_branch == 'main'
     uses: collod873/claude-workflow/.github/workflows/bypass-counter.yml@main
     with:
-      # This file, not `verify.yml`: `workflows: ["Verify"]` above names the display name of
-      # `verify-caller.yml`, and that is also the file every Verify run has been recorded against
-      # since the split — `verify.yml` itself is only ever reached through a `uses:` and has had no
-      # run of its own since.
       verify_workflow: verify-caller.yml

@@ -1,46 +1,11 @@
 name: Walk home
 
-# ADR-0135, ADR-0136, #326, #330: an enrolled repository runs lanes it does not own and may not
-# edit in place (ADR-0009), so a red run there has two possible authors and only the run itself can
-# tell them apart. The failing path is the answer — inside the machine checkout it is this
-# repository's own defect, inside the caller's own tree it is the caller's — and this lane is what
-# acts on it: it walks the enrolled topic, reads each failed run's failing step, and routes.
-#
-# **This is the one other lane with no caller stub**, alongside `enrol.yml`, and for the same
-# reason: no enrolled repository sweeps on this repository's behalf, so there is nothing for a
-# `*-caller.yml` to call. It falls out of the stub set by derivation (the set is globbed as
-# `*-caller.yml`) rather than by an exclusion list.
-#
-# **The credential is `ENROL_PAT`.** ADR-0136 weighed a third outward-reaching secret — a PAT
-# scoped to write into *this* repository's tracker, shipped to every enrolled repository — and
-# rejected it: that hands every enrolled repository a key to the machine every other one runs, and
-# rotating it becomes a pass over the whole estate. `ENROL_PAT` already reaches every enrolled
-# repository (`enrol.yml`), so the sweep runs *here* instead, over the topic, and no new outward
-# credential exists. ADR-0053 holds without an exemption: `repository_dispatch` is not an event a
-# pull request can fire, so no pull request ever sees this token.
-#
-# **No schedule.** ADR-0004 forbids a cadence — a mechanism that can fire when nothing has happened
-# since it last fired — so this rides the `session-captured` dispatch every other standing sweep
-# here rides (`run-watchdog.yml`, `audit.yml`), rather than a clock of its own. The job-level `if`
-# is the scope rule, spelled here as well as in `walk-home.ts`'s own `WATCHDOG_DISPATCH_ACTION`
-# import; no compiler sees across that boundary, so `walk-home.test.ts` asserts the two still agree.
-#
-# **One checkout.** Unlike a reusable lane, this never runs anywhere but here, so there is no
-# "target" to check out separately — every enrolled repository this sweep reads is addressed by
-# name over `gh -R`, never by a second `actions/checkout`.
-
 "on":
   repository_dispatch:
     types: [session-captured]
 
 permissions:
-  # read: this checkout.
   contents: read
-  # write: the ticket this lane files here when a failure is the machine's own. The actual write
-  # goes through `ENROL_PAT` below, never the built-in token — but `workflow-permissions.test.ts`
-  # holds every lane to declaring the writes its own entrypoint performs regardless of which
-  # credential ends up making them, so a reader never has to check which token a job reaches for
-  # before trusting what this block says the job does.
   issues: write
 
 concurrency:
@@ -54,13 +19,7 @@ jobs:
     timeout-minutes: 15
     env:
       EVENT_ACTION: ${{ github.event.action }}
-      # Not `github.token`: the built-in token cannot write into an enrolled repository's own
-      # tracker, and this lane's whole reason to exist is filing there when the failure is theirs.
       GH_TOKEN: ${{ secrets.ENROL_PAT }}
-      # Every enrolled-repository call below spells the repository into the path or an explicit
-      # `-R` — never relies on this. This is here only so an unqualified call (the machine-side
-      # `gh issue create` that files here) still lands on this repository rather than wherever the
-      # runner's cwd remote happens to resolve to, matching every other lane's own convention.
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout

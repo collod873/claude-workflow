@@ -10,6 +10,4 @@ jobs:
       contents: write
       issues: write
     uses: collod873/claude-workflow/.github/workflows/to-tickets.yml@main
-    # A `uses:` job passes no secret to the reusable workflow unless told to — `to-tickets.yml`
-    # spends `CLAUDE_CODE_OAUTH_TOKEN`, so without this its preflight fails closed on every run.
     secrets: inherit

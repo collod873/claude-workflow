@@ -1,59 +1,18 @@
 name: Back-stamp (reusable)
 
-# The back-stamp (#125, ADR-0044 through ADR-0046): a superseded ADR gains a
-# `Status: superseded by ADR-NNNN` line derived from the `Amends:` trailer its successor already
-# carries. `docs/adr/README.md` has said the record should do this all along and zero of 43 ADRs
-# ever carried the line by hand — a convention with no reader does not hold, so this is the reader.
-#
-# **The trigger is the add-event, not every push.** ADR-0046: "a commit landing a new ADR is
-# exactly the moment the answer can have changed, and it is the moment the predecessor needs its
-# stamp. No other push moves the graph, so every other push is silent by construction rather than
-# by a filter." `docs/research/` is in the `paths:` filter for the same reason even though nothing
-# under it can ever be a predecessor here (`back-stamp.ts`'s header says why) — a push that only
-# touches a research note derives nothing to write and commits nothing. The alternative considered
-# and rejected was riding the shared `session-captured` dispatch alongside the watchdog and the
-# readiness reconciler; ADR-0046 rejects it because it would make the mechanism's silence a
-# property of its output instead of its trigger.
-#
-# **This cannot loop itself.** The commit this workflow makes lands under `docs/adr/` and is pushed
-# with the runner's own built-in per-job credential, which does not trigger further workflow runs —
-# the same property `shape-accept.yml` relies on to push straight to `main` without re-firing itself.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `back-stamp-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target, for the `docs/adr/` this back-stamps and the commit it pushes) — never one copy
-# standing in for the other. The machine checkout carries no credential input of its own: ADR-0132
-# made this repository public, so `actions/checkout` reads it anonymously and no PAT is added here
-# that would have to be rotated in every enrolled repository. The target checkout carries the
-# ambient per-job credential `actions/checkout` binds by default, which is what lets the commit
-# below push back into it.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: the machine checkout.
-  # write: the target checkout, so the commit this job makes can push.
   contents: write
 
 concurrency:
@@ -76,9 +35,6 @@ jobs:
         with:
           path: target
 
-      # A commit is an object and an object carries a committer; a hosted runner has no git
-      # identity, so a commit reached without this dies on `fatal: empty ident name` (#109). Scoped
-      # to the target checkout — the only one this job ever commits into.
       - name: Configure a committer
         working-directory: target
         run: |

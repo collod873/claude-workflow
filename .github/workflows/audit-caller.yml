@@ -10,7 +10,4 @@ jobs:
       contents: write
       pull-requests: write
     uses: collod873/claude-workflow/.github/workflows/audit.yml@main
-    # A `uses:` job passes no secret to the reusable workflow unless told to — `audit.yml` spends
-    # `CLAUDE_CODE_OAUTH_TOKEN` and `KNOWLEDGE_BASE_DEPLOY_KEY`, so without this both preflights
-    # fail closed on every run.
     secrets: inherit

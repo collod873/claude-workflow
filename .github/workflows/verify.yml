@@ -1,42 +1,12 @@
 name: Verify (reusable)
 
-# The Actions venue of the gauntlet (ADR-0010). It refuses nothing — it runs after the push has
-# landed on the ref, and this repo has no branch protection (ADR-0071) — so it is telemetry: chain
-# of custody that `npm run check` actually ran, observable by a non-agent on a commit anyone can
-# point at. Its one job is the push the free venues could not see: `--no-verify`, a clone where
-# `npm ci` never ran, a commit made outside a session.
-#
-# The caller's `push` is `main` only and there is **no `pull_request` trigger** (ADR-0054): on a
-# `pull_request` event GitHub runs the workflow file *from the pull request*, which is the hole the
-# Immutability job below exists to close. A reusable workflow cannot be reached by `pull_request`
-# at all, and every caller stub, this repo's own included, leaves it off its own trigger too.
-#
-# `repository_dispatch` (on the caller stub) is what an implementation pull request is judged on:
-# lane 05's `openPrAndDispatch` sends it, and a dispatch-fired run always executes trunk's copy of
-# this file through `@main` (ADR-0053). The job-level `if:` names the one action the sender sends
-# (`IMPLEMENTATION_PR_DISPATCH_ACTION`, `.Workflow/agent-workflows/shared/immutable-set.ts`).
-#
-# This is a *reusable* workflow (ADR-0055, ADR-0139): a caller repository carries `verify-caller.yml`
-# and nothing else, and this repository is its own first caller. The caller stub's `name:` stays
-# `Verify` because `fixer.yml`, `review.yml`, `bypass-counter.yml` and `recover.yml` each key a
-# `workflow_run` trigger on that display name.
-#
-# Two checkouts throughout: the machine (`collod873/claude-workflow`, where `bin/gauntlet` lives) at
-# the workspace root, and the target's own tree at `target/`. `npm run check` is the machine's
-# `bin/gauntlet push`, pointed at the target through `TARGET_WORKSPACE`, so an enrolled repository is
-# judged by the same runner this one is, against its own `.claude/contract.json`.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets; a
-      # canary target passes its own self-hosted label (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. A called
-      # workflow cannot learn its own ref from the `github` context (canary run 33706922620).
       machine_ref:
         type: string
         required: false
@@ -44,20 +14,9 @@ name: Verify (reusable)
 
 permissions:
   contents: read
-  # The Immutability job resolves the head branch of the pull request it is judging, which a
-  # `repository_dispatch` payload names only by URL (ADR-0104).
   pull-requests: read
 
 jobs:
-  # The alarm half of ADR-0053/ADR-0054's immutable set: the paths no pull request may change,
-  # because each is a way to silence a check without anyone reading a diff that says so. Runs
-  # before `verify` via `needs:`, because a diff that crosses the set has already invalidated
-  # whatever the gauntlet would say about it.
-  #
-  # No checkout, no Node: the whole check is a string comparison against the changed-files list the
-  # dispatch carries. `IMMUTABLE_SET` is spelled identically to the array of the same name in
-  # `.Workflow/agent-workflows/shared/immutable-set.ts`, and `immutable-set.test.ts` holds the two
-  # to each other.
   immutability:
     name: Immutability
     if: github.event.action == 'implementation-opened'
@@ -69,16 +28,12 @@ jobs:
       PR: ${{ github.event.client_payload.pr }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      # `fixer.yml`'s resolve step greps this line to learn which pull request a red run was
-      # judging. This job always runs first on a dispatch and reaches this line before it can fail.
       - name: Name the pull request this run is judging
         run: |
           set -euo pipefail
           BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
           echo "judging $PR on $BRANCH"
 
-      # Refuses rather than skips when the changed-files input is missing: an implementer's
-      # dispatch that omits it is a broken guarantee, and a broken guarantee reads as red.
       - name: Refuse a change to the immutable set
         run: |
           set -euo pipefail
@@ -107,14 +62,10 @@ jobs:
   verify:
     name: Verify
     needs: [immutability]
-    # `immutability` only runs on the dispatch it gates on; on the caller's `push` trigger it is
-    # skipped, and a skipped dependency is not a success. `always()` overrides that; `!= 'failure'`
-    # still blocks this job when the immutable set was actually crossed.
     if: always() && needs.immutability.result != 'failure'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     steps:
-      # The machine. No credential: ADR-0132 made this repository public.
       - name: Checkout machine
         uses: actions/checkout@v4
         with:
@@ -126,9 +77,6 @@ jobs:
         with:
           path: target
 
-      # A workflow file GitHub itself refuses to parse is the one defect CI structurally cannot
-      # report (ADR-0105), so it is linted before anything else is installed. Scans the machine's
-      # own tree: `uses:` steps take no `working-directory:`.
       - name: Lint workflow files
         uses: docker://rhysd/actionlint:1.7.7
         with:
@@ -137,33 +85,16 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The target's own dependencies, package-manager detected (ADR-0139): every slot the gauntlet
-      # runs executes inside `target/`, against whatever the target installed here.
       - name: Install target dependencies
         uses: ./.github/actions/target-deps
         with:
           working-directory: target
 
-      # The same command a pre-push hook runs, through the same entry point, so a check cannot
-      # drift between venues by being spelled differently in two files. The step name is what the
-      # bypass counter reads (`watchdog/bypass.ts`, `BYPASS_STEP`): a red run on `main` that fails
-      # here is a finding every free venue should already have refused.
       - name: Gauntlet
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npm run check
 
-  # The door a red Verify rings itself. `fixer.yml` also reaches a red run through `workflow_run`,
-  # and `workflow_run` keeps not arriving (three no-shows on 2026-08-30/31 alone; #285), so this
-  # job sends the same `repository_dispatch` `implement.yml` already sends for Recover
-  # (ADR-0114). A marker comment on the pull request makes whichever door arrives second a no-op.
-  #
-  # `github.event.action == 'implementation-opened'` is the sending side of `fixer.yml`'s
-  # `event != 'push'`: a red `push: main` run is trunk being broken, with no pull request to fix.
-  # `cancelled` counts as red too — a job killed by its own `timeout-minutes` reports `cancelled`.
-  #
-  # No checkout: `{owner}/{repo}` in the API path is expanded by `gh` from `GH_REPO`, which is the
-  # target's here, since a called workflow's `github` context is the calling run's (#325).
   signal-fixer:
     name: Signal the fixer
     needs: [immutability, verify]
@@ -175,8 +106,6 @@ jobs:
       needs.verify.result == 'cancelled')
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
-    # This job's own block: the dispatch endpoint is a write, and the jobs that judge a pull
-    # request have no business holding a token that can perform one.
     permissions:
       contents: write
     steps:

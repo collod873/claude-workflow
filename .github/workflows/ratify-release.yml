@@ -1,67 +1,18 @@
 name: Ratify release (reusable)
 
-# **Ratified = merged** (#296). The moment a ratifier pull request (`ratify/land.ts`'s
-# `openRatifierPr`) lands, this workflow records each standard it carried as a `ratified`
-# `RatificationRecord` — each with the `landedAs` that `decline-on-revert.yml` later keys on to
-# notice the owner took it back out.
-#
-# It used to read checkboxes. There are none now: the release-PR channel and its "Needs a decision"
-# checklist are deleted, and what this parses instead are the hidden finding markers the ratifier's
-# own body carries (`ratify/finding-marker.ts`). Same trigger, same title filter, same merge-only
-# rule, new content — which is why this file was rewritten rather than replaced.
-#
-# The job-level `if` is the scope rule: `pull_request: closed` fires for every pull request this
-# repo merges, not only ratifier ones, and the estate is over its 2,000-minute monthly cap — a
-# runner that would decide "not a ratifier PR" should never start. The title is the only thing
-# distinguishing one from an ordinary implementation pull request, so it is spelled here as well as
-# in `ratify/land.ts`'s `RATIFIER_PR_TITLE`; no compiler sees across that boundary, so
-# `run-ratification.test.ts`'s "agrees with" test does.
-#
-# A closed-without-merging ratifier pull request still gets a runner (Actions' `if` cannot see
-# `pull_request.merged` any more reliably than the script can) but costs almost nothing:
-# `run-ratification.ts` reads `merged` itself and returns before any git write. That case is also
-# the owner's *other* decline: a ratifier PR closed unmerged landed nothing, so nothing is recorded
-# and the findings re-batch at the next trigger.
-#
-# `merge_commit_sha` — not `GITHUB_SHA` — is what these records key to: for a `pull_request` event
-# `GITHUB_SHA` is the PR branch's own last commit, never the commit that landed on the base branch.
-# The target checkout's `ref:` below checks that commit out explicitly so `git notes add` has an
-# object to attach to.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `ratify-release-caller.yml`, a trigger and a `uses:`, never a copy of the
-# machine. This repository is its own first caller: the caller stub lives next to this file, at the
-# same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target, checked out at the merge commit, for the `refs/notes/ratifications` this reads and
-# writes) — never one copy standing in for the other. The machine checkout carries no credential
-# input of its own: ADR-0132 made this repository public, so `actions/checkout` reads it anonymously
-# and no PAT is added here that would have to be rotated in every enrolled repository. The target
-# checkout carries the ambient per-job credential `actions/checkout` binds by default, which is what
-# lets the notes push below land.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to the target's origin.
   contents: write
 
 jobs:
@@ -85,22 +36,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: target
-          # The merge commit itself when there is one, so it exists locally for `git notes add` to
-          # attach to; the default ref otherwise, which a closed-without-merging run never writes to.
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-      # `checkout`'s default refspec (`refs/heads/*`) never carries a notes ref — `syncNotesRef`
-      # re-fetches `refs/notes/ratifications` before it writes, but only once it has a local ref to
-      # compare against; a completely fresh checkout has none. Let to fail: a repo before its first
-      # ratification has no such ref yet.
       - name: Fetch the ratifications ref
         working-directory: target
         run: git fetch origin '+refs/notes/ratifications:refs/notes/ratifications' || true
 
-      # A runner has no git identity, and `git notes add` writes an object with a committer on it
-      # (#107, #109). The bot is the honest author: this note records what the run read off the pull
-      # request, not a person's own commit. Scoped to the target checkout — the only one this job
-      # ever writes into.
       - name: Identify the committer
         working-directory: target
         run: |
@@ -110,9 +51,6 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
-      # The connector's own write — at most one `git notes add` plus the push `syncNotesRef` makes
-      # inside it — goes through the `git` seam in `shared/git.ts`, so there is no separate
-      # reporting step here.
       - name: Record what this batch ratified
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target

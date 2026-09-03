@@ -1,56 +1,19 @@
 name: Missing-trailer counter (reusable)
 
-# #124, ADR-0067: "the record cannot say its own mind changed" until the trailer that says so
-# exists to read. `docs/adr/README.md`'s back-stamp convention had zero compliance in 43 ADRs
-# because it had no reader; `Amends:` (ADR-0045) is survivable only because a missing one is
-# detected rather than remembered.
-#
-# This sweeps `docs/adr/` and `docs/research/` on the commit that touches either — GitHub's own
-# `paths:` filter says "a commit touching either directory" directly, so there is no second
-# mechanism here to keep in sync the way the run watchdog's dispatch relay is (ADR-0049).
-#
-# `.Workflow/agent-workflows/watchdog/missing-trailer.ts` is the judgement half — a pure function,
-# tested against `adr-corpus.evidence.json`, a captured snapshot of this repo's own corpus.
-# `missing-trailer-counter.ts` is the IO half this job runs: it reads the tree fresh every time and
-# recomputes the finding set, so nothing here is stored and nothing here can go stale. It files its
-# own standing issue through the `gh` seam in `shared/gh.ts`, which is why the job below ends at the
-# step that runs it and has no reporting step of its own.
-#
-# ADR-0055 (amended by ADR-0132): this is a *reusable* workflow — `on: workflow_call` — so a caller
-# repository carries only `missing-trailer-counter-caller.yml`, a trigger and a `uses:`, never a
-# copy of the machine. This repository is its own first caller: the caller stub lives next to this
-# file, at the same commit, so the bytes shipped are the bytes that run. Two checkouts below —
-# `collod873/claude-workflow` (the machine, for the script) and the calling repository's own tree
-# (the target, for the docs the script reads) — never one copy standing in for the other. The
-# machine checkout carries no `token:`/`ssh-key:` input: ADR-0132 made this repository public, so
-# `actions/checkout` reads it anonymously and no credential is added here for a PAT that would
-# have to be rotated in every enrolled repository.
-
 "on":
   workflow_call:
     inputs:
-      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
-      # a canary target passes its own self-hosted label so a machine change is proven on real
-      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
       runner:
         type: string
         required: false
         default: ubuntu-latest
-      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
-      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
-      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
-      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
-      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
       machine_ref:
         type: string
         required: false
         default: main
 
 permissions:
-  # read: both checkouts.
   contents: read
-  # write: the signal itself — an issue is the delivery because it is the one artifact here that
-  # arrives instead of waiting.
   issues: write
 
 concurrency:
@@ -62,8 +25,6 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
-      # An issue is assigned so it notifies rather than sits in a list. `github.repository_owner`
-      # rather than a spelled name: this repo has one owner, and that is who a missing trailer blocks.
       SIGNAL_ASSIGNEE: ${{ github.repository_owner }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
