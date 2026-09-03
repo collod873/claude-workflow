@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,26 +117,34 @@ function runNewAdr(root: string, args: string[]): string {
   return readFileSync(createdPath, "utf8");
 }
 
+/**
+ * Every scratch tree any case below builds, torn down after each one. One list for the whole file:
+ * a per-`describe` copy of this is the duplication the clone gate refuses, and a tree left behind
+ * is a tree the next run's `mkdtemp` cannot collide with but the disk still carries.
+ */
+const roots: string[] = [];
+afterEach(() => {
+  while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
+});
+
+function scratch(root: string): string {
+  roots.push(root);
+  return root;
+}
+
 describe("bin/new-adr", () => {
-  let scratch: string | undefined;
-
-  afterEach(() => {
-    if (scratch) rmSync(scratch, { recursive: true, force: true });
-    scratch = undefined;
-  });
-
   it("--amends 8 writes the amends: ADR-0008 key into the created file's frontmatter", () => {
-    scratch = makeScratchRepo("new-adr-amends-", NEW_ADR);
+    const root = scratch(makeScratchRepo("new-adr-amends-", NEW_ADR));
 
-    const created = runNewAdr(scratch, ["--amends", "8", "a title"]);
+    const created = runNewAdr(root, ["--amends", "8", "a title"]);
 
     expect(frontmatterOf(created)).toContain("amends: ADR-0008");
   });
 
   it("opens with the three keys adr_shape.py requires, and a reversal the author has to write", () => {
-    scratch = makeScratchRepo("new-adr-frontmatter-", NEW_ADR);
+    const root = scratch(makeScratchRepo("new-adr-frontmatter-", NEW_ADR));
 
-    const frontmatter = frontmatterOf(runNewAdr(scratch, ["a title"]));
+    const frontmatter = frontmatterOf(runNewAdr(root, ["a title"]));
 
     expect(frontmatter).toMatch(/^status: constraint$/m);
     expect(frontmatter).toMatch(/^date: \d{4}-\d{2}-\d{2}$/m);
@@ -150,10 +158,10 @@ describe("bin/new-adr", () => {
   // emits has to survive the check the push venue runs over `docs/adr/`. A template that drifts back
   // into the prose grammar fails here rather than at someone's push.
   it("drafts a file the retired-grammar gate accepts once landed", () => {
-    scratch = makeScratchRepo("new-adr-grammar-", NEW_ADR);
-    mkdirSync(join(scratch, "docs/adr"), { recursive: true });
+    const root = scratch(makeScratchRepo("new-adr-grammar-", NEW_ADR));
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
 
-    const landed = runNewAdrPath(scratch, ["--land", runNewAdrPath(scratch, ["--amends", "8", "A ruling"])]);
+    const landed = runNewAdrPath(root, ["--land", runNewAdrPath(root, ["--amends", "8", "A ruling"])]);
 
     expect(malformedTrailers([{ path: landed, content: readFileSync(landed, "utf8") }])).toEqual([]);
   });
@@ -164,16 +172,6 @@ describe("bin/new-adr", () => {
  * authors and neither sees the other's uncommitted work. #146's first two items.
  */
 describe("bin/new-adr, drafting and landing", () => {
-  const roots: string[] = [];
-  afterEach(() => {
-    while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
-  });
-
-  function scratch(root: string): string {
-    roots.push(root);
-    return root;
-  }
-
   it("drafts to an unnumbered filename, so nothing is claimed before there is a ruling to claim it for", () => {
     const root = scratch(makeScratchRepo("new-adr-draft-", NEW_ADR));
 
@@ -261,5 +259,85 @@ describe("bin/new-adr, drafting and landing", () => {
     // land must not create one — `regenerate && diff` only applies where the fixture already
     // exists, the same rule `bin/gauntlet`'s own `clones` check applies to its baseline.
     expect(existsSync(join(target, ".Workflow"))).toBe(false);
+  });
+});
+
+/**
+ * `docs/adr/INDEX.md` is the second generated file under `docs/adr/`, and a land is the moment its
+ * table grew a row — the same obligation this script already discharges for the corpus fixture, and
+ * the one it did not (#356): `npm run check` went red on ADR-0147's land, on a file the tool the
+ * author had just run was what invalidated.
+ *
+ * The generator is the machine-global `~/bin/adr-check --fix` (ADR-0097 — never vendored into a
+ * consumer), so `HOME` is the seam: pointing it at a scratch home with a recorder in `bin/` is what
+ * lets these assert the invocation without depending on the real tool being installed, the way
+ * `generate-corpus-fixture.test.ts`'s push fixtures have to.
+ */
+describe("bin/new-adr --land, and the index it invalidates", () => {
+  /** A scratch `$HOME` whose `bin/adr-check` records the cwd and argv it was called with, one line per call, instead of regenerating anything. */
+  function stubHome(): { home: string; calls: () => string[] } {
+    const home = scratch(mkdtempSync(join(tmpdir(), "new-adr-home-")));
+    const log = join(home, "adr-check.calls");
+    mkdirSync(join(home, "bin"));
+    writeFileSync(
+      join(home, "bin/adr-check"),
+      `#!/usr/bin/env bash\nprintf '%s %s\\n' "$PWD" "$*" >> ${JSON.stringify(log)}\n`,
+      { mode: 0o755 },
+    );
+    return { home, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
+  }
+
+  /** A scratch repo with a `docs/adr/` and, optionally, an index already in it. */
+  function repoWithIndex(prefix: string, index: string | undefined): string {
+    const root = scratch(makeScratchRepo(prefix, NEW_ADR));
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    if (index !== undefined) writeFileSync(join(root, "docs/adr/INDEX.md"), index);
+    return root;
+  }
+
+  /** Drafts and lands one ruling in `root`, with `home` as the `$HOME` the script resolves `adr-check` under. */
+  function landUnder(root: string, home: string): string {
+    return runNewAdrPathIn(root, ["--land", runNewAdrPathIn(root, ["A ruling"], { HOME: home })], { HOME: home });
+  }
+
+  it("regenerates the index it just invalidated, in the tree that owns it", () => {
+    const root = repoWithIndex("new-adr-index-", "stale\n");
+    const { home, calls } = stubHome();
+
+    landUnder(root, home);
+
+    expect(calls()).toHaveLength(1);
+    const [cwd, ...argv] = calls()[0].split(" ");
+    expect(realpathSync(cwd)).toBe(realpathSync(root));
+    expect(argv).toEqual(["--fix"]);
+  });
+
+  it("does not create an index in a target that never adopted one, the way it does not create a corpus fixture", () => {
+    const root = repoWithIndex("new-adr-no-index-", undefined);
+    const { home, calls } = stubHome();
+
+    landUnder(root, home);
+
+    expect(calls()).toEqual([]);
+    expect(existsSync(join(root, "docs/adr/INDEX.md"))).toBe(false);
+  });
+
+  it("lands rather than failing on a machine that carries no adr-check at all", () => {
+    const root = repoWithIndex("new-adr-no-checker-", "stale\n");
+    const bareHome = scratch(mkdtempSync(join(tmpdir(), "new-adr-bare-home-")));
+
+    expect(basename(landUnder(root, bareHome))).toBe("0001-a-ruling.md");
+  });
+
+  // The stubs above prove the invocation; this one proves the thing the invocation is for, against
+  // the real generator. Skipped where it is not installed — a runner has no `~/bin`, exactly as
+  // `bin/gauntlet`'s own `adrs` check stands down there.
+  const REAL_ADR_CHECK = join(process.env.HOME ?? "", "bin/adr-check");
+  it.skipIf(!existsSync(REAL_ADR_CHECK))("leaves the index naming the ADR the land just numbered", () => {
+    const root = repoWithIndex("new-adr-index-real-", "");
+
+    const landed = runNewAdrPath(root, ["--land", runNewAdrPath(root, ["A ruling"])]);
+
+    expect(readFileSync(join(root, "docs/adr/INDEX.md"), "utf8")).toContain(basename(landed));
   });
 });

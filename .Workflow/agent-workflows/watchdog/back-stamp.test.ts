@@ -14,7 +14,7 @@ import {
   withStatusLine,
   type DocFile,
 } from "./back-stamp";
-import { backStampWalk, type WalkDeps } from "./back-stamp-walk";
+import { backStampWalk, INDEX_RELATIVE_PATH, type WalkDeps } from "./back-stamp-walk";
 
 /**
  * A fixture trailer graph shaped after this repo's own corpus on the day this ticket was written
@@ -209,8 +209,15 @@ const CORPUS: Record<string, string> = Object.fromEntries(FIXTURE.map((file) => 
  * and `git` is `git.fake.ts`'s recorder — same shape as `run-watchdog.test.ts`'s `fakeGh`, answering
  * the calls this module makes and recording every argv so a test can assert "committed nothing" by
  * the recording staying empty.
+ *
+ * `indexRegenerated` is what the real `regenerateIndex` answers: `true` where the target carries an
+ * index and the machine carries the generator, `false` on a runner or a target that never adopted
+ * one. Both are ordinary production states, so both are staged here.
  */
-function fakeDeps(files: Record<string, string>): WalkDeps & { writes: Record<string, string>; calls: string[][] } {
+function fakeDeps(
+  files: Record<string, string>,
+  indexRegenerated = true,
+): WalkDeps & { writes: Record<string, string>; calls: string[][] } {
   const writes: Record<string, string> = {};
   const { git, calls } = createFakeGit(() => "");
 
@@ -232,6 +239,10 @@ function fakeDeps(files: Record<string, string>): WalkDeps & { writes: Record<st
     // the only thing worth asserting about it is *when* it runs relative to the `add` that stages
     // what it wrote, and an ordering reads off one list where it does not read off two.
     regenerateCorpus: () => void calls.push(["regenerate-corpus"]),
+    regenerateIndex: () => {
+      calls.push(["regenerate-index"]);
+      return indexRegenerated;
+    },
     git,
     log: () => {},
     writes,
@@ -261,9 +272,17 @@ describe("backStampWalk", () => {
     );
     expect(deps.writes[PREDECESSOR_32.path]).toContain("superseded_by: ADR-0053, ADR-0054");
 
-    expect(deps.calls.map(verb)).toEqual(["regenerate-corpus", "add", "commit", "fetch", "rebase", "push"]);
+    expect(deps.calls.map(verb)).toEqual([
+      "regenerate-corpus",
+      "regenerate-index",
+      "add",
+      "commit",
+      "fetch",
+      "rebase",
+      "push",
+    ]);
     const add = deps.calls.find((argv) => verb(argv) === "add")!;
-    expect(add.slice(3).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH].sort());
+    expect(add.slice(3).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH, INDEX_RELATIVE_PATH].sort());
     expect(deps.calls.find((argv) => verb(argv) === "push")).toEqual(["-C", deps.repoRoot, "push", "origin", "HEAD:main"]);
   });
 
@@ -282,6 +301,35 @@ describe("backStampWalk", () => {
     const order = deps.calls.map(verb);
     expect(order.indexOf("regenerate-corpus")).toBeLessThan(order.indexOf("add"));
     expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(CORPUS_RELATIVE_PATH);
+  });
+
+  // The second half of the same defect, one generated file over (#356). `docs/adr/INDEX.md`
+  // publishes each ADR's `status:`, and a back-stamp is precisely a `status:` edit — so the lane
+  // that writes the stamp is the lane that stales the index. Repaired by hand twice (9076b5e,
+  // fa0413d) because nothing watches `main` after this pushes: the staleness is discovered by
+  // whichever session pushes next, on a file that session never touched.
+  it("regenerates docs/adr/INDEX.md before staging it, because a stamp rewrites the status: the index publishes", () => {
+    const deps = fakeDeps(CORPUS);
+
+    backStampWalk(deps);
+
+    const order = deps.calls.map(verb);
+    expect(order.indexOf("regenerate-index")).toBeLessThan(order.indexOf("add"));
+    expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(INDEX_RELATIVE_PATH);
+  });
+
+  // A runner has no `~/bin/adr-check`, and an enrolled repository may carry no index at all — both
+  // are "there was no index to regenerate", and neither may make `git add` fail on a pathspec that
+  // matches nothing. The stamps and the fixture still go, which is what keeps the stand-down a
+  // stand-down rather than a dropped commit.
+  it("stages no index where there was none to regenerate, and still commits the stamps", () => {
+    const deps = fakeDeps(CORPUS, false);
+
+    expect(backStampWalk(deps).action).toBe("committed");
+
+    const add = deps.calls.find((argv) => verb(argv) === "add")!;
+    expect(add).not.toContain(INDEX_RELATIVE_PATH);
+    expect(add).toContain(CORPUS_RELATIVE_PATH);
   });
 
   it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", () => {
@@ -324,6 +372,9 @@ describe("backStampWalk", () => {
         throw new Error("should not be called");
       },
       regenerateCorpus: () => {
+        throw new Error("should not be called");
+      },
+      regenerateIndex: () => {
         throw new Error("should not be called");
       },
       git: () => {

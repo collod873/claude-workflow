@@ -132,6 +132,28 @@ land() {
     echo "new-adr: no node on PATH — corpus fixture not regenerated, and bin/gauntlet push will refuse this" >&2
   fi
 
+  # `docs/adr/INDEX.md` is the second generated file under `docs/adr/`, and a land is the moment its
+  # table grew a row — same obligation as the corpus fixture above, same skip-rather-than-fail shape
+  # and the same reason for it (#356). Without this the author's own `npm run check` is red on a
+  # file the tool they just ran is what invalidated, which is how ADR-0147 landed.
+  #
+  # The generator is the machine-global `~/bin/adr-check`, run rather than reimplemented: ADR-0097
+  # keeps machine-global machinery out of a consumer repository, and a second renderer here would be
+  # diffed byte-for-byte against the first by the very check it exists to satisfy. It finds its
+  # corpus from `cwd`, which is why this runs from `target_root` rather than from wherever the
+  # author invoked it.
+  local adr_check="${HOME:-}/bin/adr-check"
+  if [ ! -f "$adr_dir/INDEX.md" ]; then
+    : # No index in the target to keep current — an enrolled repository that never adopted one.
+  elif [ ! -x "$adr_check" ]; then
+    echo "new-adr: no adr-check on this machine — docs/adr/INDEX.md not regenerated, and bin/gauntlet push will refuse this" >&2
+  else
+    # `--fix` writes the index before it reports anything else, and what it reports — an ADR's
+    # shape, a dead citation — is the author's business at the push venue, not a reason to fail a
+    # rename that has already happened.
+    ( cd "$target_root" && "$adr_check" --fix >/dev/null ) || true
+  fi
+
   echo "$landed"
 }
 

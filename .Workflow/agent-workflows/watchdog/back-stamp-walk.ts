@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
@@ -31,6 +32,14 @@ import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stam
 
 const ADR_DIR = "docs/adr";
 
+/**
+ * The second generated file under `docs/adr/`, alongside the corpus fixture: the table `adr-check`
+ * renders from every landed ADR's title and `status:`, and `bin/gauntlet push`'s `adrs` check
+ * refuses a stale one. A back-stamp *is* a `status:` edit — `constraint` becomes `superseded` — so
+ * this lane stales it on every run that stamps anything (#356).
+ */
+export const INDEX_RELATIVE_PATH = `${ADR_DIR}/INDEX.md`;
+
 export interface WalkDeps {
   /**
    * The checkout this walk reads, writes and commits into — `-C repoRoot` on every `git` call
@@ -58,6 +67,17 @@ export interface WalkDeps {
    * never told.
    */
   regenerateCorpus: () => void;
+  /**
+   * Regenerates `docs/adr/INDEX.md` — the corpus fixture's sibling, and the other generated file
+   * this lane stales every time it stamps (see `INDEX_RELATIVE_PATH`). Returns whether the index
+   * is now a file this commit should carry: `false` where there was none to regenerate, so
+   * `commitAndPush` stages a pathspec that matches nothing rather than failing the whole run on it.
+   *
+   * Held at arm's length for the reason `regenerateCorpus` is, plus one of its own: the generator
+   * is the machine-global `~/bin/adr-check` (ADR-0097 — never vendored here), which a hosted runner
+   * does not carry, so the stand-down is an ordinary production state rather than an error path.
+   */
+  regenerateIndex: () => boolean;
   git: GitExec;
   log?: (line: string) => void;
 }
@@ -118,6 +138,10 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   deps.regenerateCorpus();
   paths.push(CORPUS_RELATIVE_PATH);
 
+  // And the index, for the same reason one file over: it publishes the `status:` this stamp just
+  // rewrote. Staged only when there was one to regenerate — see `WalkDeps.regenerateIndex`.
+  if (deps.regenerateIndex()) paths.push(INDEX_RELATIVE_PATH);
+
   // `-C repoRoot` on every call — see `WalkDeps.repoRoot`.
   deps.git(["-C", repoRoot, "add", ...paths]);
   deps.git(["-C", repoRoot, "commit", "-m", commitMessage(writes)]);
@@ -136,6 +160,36 @@ one (ADR-0044) — a convention with no reader does not hold. This derives it fr
 its successor already wrote, so nobody has to remember: ${names}.`;
 }
 
+/**
+ * `regenerateIndex`'s production half: `~/bin/adr-check --fix`, run with `repoRoot` as its working
+ * directory because that tool finds its corpus from `cwd` rather than from its own location — the
+ * same invocation `bin/gauntlet`'s `adrs` check and `bin/new-adr --land` make, and the same
+ * machine-global binary rather than a copy vendored here (ADR-0097). A second renderer in this
+ * repository would be diffed byte-for-byte against the first by the very check it exists to satisfy.
+ *
+ * Two stand-downs, both returning `false` so the caller stages nothing: a target with no index has
+ * never adopted one — the rule `bin/gauntlet` already applies to a missing corpus fixture and a
+ * missing clone baseline — and a machine with no `adr-check` is plumbing rather than a finding,
+ * which is what a hosted runner is. There the index stays as stale as it is today; the owner's next
+ * land regenerates it, and this lane no longer adds to the debt from the workstation.
+ */
+function regenerateAdrIndex(repoRoot: string): boolean {
+  if (!existsSync(join(repoRoot, INDEX_RELATIVE_PATH))) return false;
+
+  const adrCheck = join(process.env.HOME ?? "", "bin/adr-check");
+  if (!existsSync(adrCheck)) return false;
+
+  try {
+    execFileSync(adrCheck, ["--fix"], { cwd: repoRoot, stdio: "ignore" });
+  } catch {
+    // A non-zero exit is the checker reporting its own findings — an ADR's shape, a dead citation
+    // — which are the author's business at the push venue and not this lane's to answer. `--fix`
+    // writes the index before it reports any of them, so the write this call exists for has
+    // happened either way.
+  }
+  return true;
+}
+
 async function main(): Promise<void> {
   try {
     // `TARGET_WORKSPACE` is the reusable workflow's target checkout, `GITHUB_WORKSPACE` the
@@ -147,6 +201,7 @@ async function main(): Promise<void> {
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => writeFileSync(path, content),
       regenerateCorpus: () => writeCorpusFixture(repoRoot),
+      regenerateIndex: () => regenerateAdrIndex(repoRoot),
       git: execGit,
     });
     console.log(`${outcome.action}: ${outcome.stamped.length} stamped`);
