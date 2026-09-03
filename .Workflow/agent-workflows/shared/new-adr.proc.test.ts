@@ -41,11 +41,14 @@ function draftAndLand(root: string, args: string[], env: Record<string, string> 
   return runNewAdr(root, ["--land", runNewAdr(root, args, env)], env);
 }
 
+/** Where a land regenerates the index, relative to the scratch repo it lands in. */
+const INDEX = "docs/adr/INDEX.md";
+
 /** A scratch repo with a `docs/adr/` and, optionally, an index already in it. */
 function repoWithAdrDir(prefix: string, index?: string): string {
   const root = newAdrRepo(prefix).dir;
   mkdirSync(join(root, "docs/adr"), { recursive: true });
-  if (index !== undefined) writeFileSync(join(root, "docs/adr/INDEX.md"), index);
+  if (index !== undefined) writeFileSync(join(root, INDEX), index);
   return root;
 }
 
@@ -229,6 +232,6 @@ describe("bin/new-adr --land, and the index it invalidates", () => {
 
     const landed = draftAndLand(root, ["A ruling"]);
 
-    expect(readFileSync(join(root, "docs/adr/INDEX.md"), "utf8")).toContain(basename(landed));
+    expect(readFileSync(join(root, INDEX), "utf8")).toContain(basename(landed));
   });
 });

@@ -83,6 +83,69 @@ export default tseslint.config(
     },
   },
   {
+    // The three test shapes #360's audit found producing the sprawl, as lint errors rather than a
+    // review note: 104 `readFileSync` sites asserting on tracked text, 21 local fake `gh`s beside a
+    // shared one, and tests that drove tsc, eslint or the suite as a subprocess. A test that must
+    // spawn a process — a hook, a CLI, whose contract *is* its exit code — says so in its name:
+    // `*.proc.test.ts`, which is the one place `node:child_process` may be imported from a test.
+    files: ["**/*.test.ts"],
+    ignores: ["**/*.proc.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "node:child_process",
+              message:
+                "A test that drives a process is named *.proc.test.ts. Everything else imports its subject " +
+                "and calls it (#360).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        INLINE_REASON_SELECTOR,
+        ...REPO_PATH_SELECTORS,
+        {
+          // `readFileSync(join(REPO_ROOT, …))`, `readFileSync(new URL("../x.md", import.meta.url))`,
+          // and any literal naming a workflow, a doc, a prompt or a bin/ script.
+          selector:
+            "CallExpression[callee.name='readFileSync'] :matches(" +
+            "Identifier[name='REPO_ROOT'], " +
+            "MemberExpression[object.type='MetaProperty'][property.name='dirname'], " +
+            "MemberExpression[object.type='MetaProperty'][property.name='url'], " +
+            "Literal[value=/\\.github\\/|\\.md$|\\.ya?ml$|(^|\\/)bin\\//], " +
+            "TemplateElement[value.raw=/\\.github\\/|\\.md|\\.ya?ml|(^|\\/)bin\\//])",
+          message:
+            "A test may not read tracked source, YAML or Markdown as text. Import the constant the " +
+            "subject exports, or add the fact to LANE_WIRING (shared/lane-wiring.ts) (#360).",
+        },
+        {
+          selector:
+            ":matches(FunctionDeclaration, VariableDeclarator)[id.name=/^(fakeGh|createFakeGh|stubGh|makeGh)$/]",
+          message:
+            "One fake gh: import createFakeGh/createRecordingGh from shared/gh.fake.ts or stubGh from " +
+            "shared/stub-gh.fixture.ts, and do not name the result fakeGh (#360).",
+        },
+      ],
+    },
+  },
+  {
+    // The size fence itself (#360): the one test that reads gate files as text, and it reads only
+    // their length. Every other restricted shape above still applies to it.
+    files: [".claude/gate-size.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", INLINE_REASON_SELECTOR, ...REPO_PATH_SELECTORS],
+    },
+  },
+  {
     // The canonical implementation of the `instanceof Error` narrowing that
     // every other call site is pointed at — the one place it's allowed to
     // exist inline.

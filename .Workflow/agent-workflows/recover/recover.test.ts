@@ -200,7 +200,9 @@ describe("runRecover — recovery path", () => {
     expect(claimIndex).toBeGreaterThanOrEqual(0);
     expect(prIndex).toBeGreaterThan(claimIndex);
 
-    expect(gitCalls.map((call) => call[0])).toEqual(["rev-parse", "status", "diff", "checkout", "add", "commit", "push"]);
+    // `ls-files` first: the gate-growth refusal (#360) reads what the answer would create before
+    // anything is claimed or written.
+    expect(gitCalls.map((call) => call[0])).toEqual(["ls-files", "rev-parse", "status", "diff", "checkout", "add", "commit", "push"]);
     const commit = gitCalls.find((call) => call[0] === "commit");
     expect(commit?.[2]).toContain(`Recover #266 from run 555`);
     expect(commit?.[2]).toContain("recovered it");
@@ -229,19 +231,24 @@ describe("runRecover — one failed run, two doors", () => {
 });
 
 describe("runRecover — an answer no pull request may land", () => {
-  it("escalates without claiming a branch when the answer writes into the immutable set", async () => {
+  /**
+   * Recovers #275 from `runId` over an answer that writes `forbidden` beside one ordinary lane
+   * file, and returns what the refusal did: the outcome, every path written (none), the git argv
+   * heads, and the marker comment. The two refusals below differ only in which rule names the file.
+   */
+  async function refusedAnswer(runId: number, forbidden: string) {
     const { gh, calls } = failedRunWith({ artifacts: ["implementer-answer-275"] });
     const { git, calls: gitCalls } = checkoutReporting();
     const writes: string[] = [];
 
     const outcome = await runRecover(
       baseDeps(gh, git, {
-        runId: 61,
+        runId,
         writeFile: (path) => writes.push(path),
         readFile: () =>
           JSON.stringify({
             files: [
-              { path: ".github/workflows/shape.yml", content: "x" },
+              { path: forbidden, content: "x" },
               { path: ".Workflow/agent-workflows/shape/shape.ts", content: "y" },
             ],
             summary: "wired the checkpoints",
@@ -249,15 +256,31 @@ describe("runRecover — an answer no pull request may land", () => {
       }),
     );
 
-    expect(outcome).toEqual({ outcome: "immutable", files: [".github/workflows/shape.yml"] });
     expect(writes).toEqual([]);
-    expect(gitCalls).toEqual([]);
     expect(calls.some((call) => call[0] === "api" && call[1] === GIT_REFS_PATH)).toBe(false);
     expect(calls).toContainEqual(["issue", "edit", "275", "--add-label", "needs-human"]);
-    const marker = calls.find((call) => call[0] === "issue" && call[1] === "comment");
-    expect(marker?.[4]).toContain("<!-- recover-attempt:61 -->");
-    expect(marker?.[4]).toContain(".github/workflows/shape.yml");
-    expect(marker?.[4]).not.toContain("shape/shape.ts");
+    const marker = calls.find((call) => call[0] === "issue" && call[1] === "comment")?.[4];
+    expect(marker).toContain(`<!-- recover-attempt:${runId} -->`);
+    expect(marker).toContain(forbidden);
+    expect(marker).not.toContain("shape/shape.ts");
+    return { outcome, gitHeads: gitCalls.map((call) => call[0]) };
+  }
+
+  it("escalates without claiming a branch when the answer writes into the immutable set", async () => {
+    const { outcome, gitHeads } = await refusedAnswer(61, ".github/workflows/shape.yml");
+
+    expect(outcome).toEqual({ outcome: "immutable", files: [".github/workflows/shape.yml"] });
+    expect(gitHeads).toEqual([]);
+  });
+
+  // #360: an answer that creates a file the gate is made of — here a new bin/ script — is refused
+  // the same way, before a claim or a write. An edit to a gate file already tracked is not this
+  // rule's business; the size fence judges that.
+  it("escalates without claiming a branch when the answer creates a gate file", async () => {
+    const { outcome, gitHeads } = await refusedAnswer(62, "bin/new-check");
+
+    expect(outcome).toEqual({ outcome: "gate-growth", files: ["bin/new-check"] });
+    expect(gitHeads).toEqual(["ls-files"]);
   });
 });
 

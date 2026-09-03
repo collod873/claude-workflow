@@ -410,6 +410,39 @@ describe("runFixer — capped stop", () => {
   });
 });
 
+/**
+ * #360: the gate is a constant a lane may shrink and never grow. An attempt that creates a file the
+ * gate is made of is the fixer growing the judge to get green, and it is refused before the commit
+ * — the ordinary edit to an existing gate file is the size fence's business, not this stop's.
+ */
+describe("runFixer — gate-growth stop", () => {
+  it("commits nothing and stops when an attempt creates a gate file, naming it on the PR", async () => {
+    // A new hook beside the fix; the fake's `ls-files` answers "" so neither is tracked, and only the hook is on the gate.
+    const { git, calls: gitCalls } = fakeGit("?? .claude/hooks/pre-commit.sh\n M fix.ts");
+    const deps = baseDeps({ exec: attempts(1).exec, git, runTestsSequence: [{ failures: [] }] });
+
+    const outcome = await runFixer(deps);
+
+    expect(outcome).toEqual({ verdict: "blocked", attempts: 1, stopReason: "gate-growth" });
+    expect(gitCalls.some((call) => call[0] === "add" || call[0] === "commit" || call[0] === "push")).toBe(false);
+    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
+    expect(prCommentIn(deps.ghCalls)).toContain(".claude/hooks/pre-commit.sh");
+    expect(prCommentIn(deps.ghCalls)).not.toContain("fix.ts");
+    expect(prCommentIn(deps.ghCalls)).toContain("attempt 1 tried something");
+  });
+
+  it("lets an attempt that only edits an existing gate file through — the size fence judges that", async () => {
+    const { git, calls: gitCalls } = fakeGit(" M vitest.config.ts");
+    const tracking: GitExec = (args) => (args[0] === "ls-files" ? "vitest.config.ts\n" : git(args));
+    const deps = baseDeps({ exec: attempts(1).exec, git: tracking, runTestsSequence: [{ failures: [] }] });
+    const { gh: recording } = deps; // green is re-judged, so `pr view` has to answer
+    deps.gh = (args) => (args[0] === "pr" && args[1] === "view" ? JSON.stringify({ url: "https://example/pull/7", files: [] }) : recording(args));
+
+    expect(await runFixer(deps)).toEqual({ verdict: "green", attempts: 1 });
+    expect(gitCalls).toContainEqual(["add", "vitest.config.ts"]);
+  });
+});
+
 describe("runFixer — goes green", () => {
   it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment, and sends the PR back to Verify", async () => {
     const stage = attempts(1);
@@ -456,8 +489,8 @@ describe("runFixer — goes green", () => {
 
 /**
  * The escalate path: `fixer.yml`'s resolve step reaches `applyUnfixable` (via `fixer.ts escalate`)
- * when Verify's red job was not `Restore and run acceptance` — no test signature exists for a
- * model to work from, so this is the whole write, with no attempt loop above it.
+ * when Verify went red without a test going red — no test signature exists for a model to work
+ * from, so this is the whole write, with no attempt loop above it.
  */
 describe("applyUnfixable — the escalate path's one write", () => {
   it("creates needs-human before applying it, applies it to the ticket, assigns the owner, and comments the PR naming what failed", () => {
@@ -479,7 +512,7 @@ describe("unfixableComment", () => {
   it("names the failed job and carries its error line", () => {
     const comment = unfixableComment("Immutability", "::error::vitest.config.ts touches the immutable set");
     expect(comment).toContain("Immutability");
-    expect(comment).toContain("Restore and run acceptance");
+    expect(comment).toContain("without a test failing");
     expect(comment).toContain("::error::vitest.config.ts touches the immutable set");
   });
 });

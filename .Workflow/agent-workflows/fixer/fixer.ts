@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { dispatchVerify } from "../shared/verify-dispatch";
 import { execGh, type GhExec } from "../shared/gh";
+import { gateGrowth } from "../shared/gate-files";
 import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
@@ -43,13 +44,21 @@ import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-s
  * because a test no diff can satisfy is a defect in the contract rather than
  * in the diff. See `applyBlocked`.
  *
- * A run whose `Verify` went red before `Restore and run acceptance` ever
- * executed (the immutable set was crossed, or the plain `verify` job itself
- * failed) reaches `runEscalate` instead of `runFixer`: there is no test
- * signature under `.Workflow` to build a brief from, so this applies
- * `needs-human` and comments what the failed job's log actually said rather
- * than spending three Sonnet attempts on a brief with nothing in it.
+ * A run whose `Verify` went red without a test going red (the immutable set
+ * was crossed, or lint or typecheck failed) reaches `runEscalate` instead of
+ * `runFixer`: there is no test signature under `.Workflow` to build a brief
+ * from, so this applies `needs-human` and comments what the failed job's log
+ * actually said rather than spending three Sonnet attempts on a brief with
+ * nothing in it.
+ *
+ * A third stop, `gate-growth` (#360): an attempt that *creates* a file the
+ * gate is made of — a hook, a `bin/` script, a workflow — is not committed
+ * at all. The gate is the one thing a lane may shrink and never grow, and a
+ * fixer that grew it to get green would be fixing the judge.
  */
+
+/** Why a blocked fixer stopped. */
+export type StopReason = "no-progress" | "capped" | "gate-growth";
 
 /** No comparison and no cap outrun this. §3 of the ticket: "capped at three attempts". */
 export const MAX_ATTEMPTS = 3;
@@ -214,11 +223,18 @@ function commitAndPushAttempt(
 }
 
 /** The comment posted when the fixer stops, naming why and what every attempt tried. */
-export function blockedComment(stopReason: "no-progress" | "capped", attemptSummaries: string[], gapIssue?: number): string {
-  const why =
-    stopReason === "no-progress"
-      ? "Two consecutive attempts left the identical tests failing with the identical errors — nothing further will change that."
-      : `${MAX_ATTEMPTS} attempts is this lane's cap, reached without landing a green run.`;
+export function blockedComment(
+  stopReason: StopReason,
+  attemptSummaries: string[],
+  gapIssue?: number,
+  gateFiles: string[] = [],
+): string {
+  const why = {
+    "no-progress":
+      "Two consecutive attempts left the identical tests failing with the identical errors — nothing further will change that.",
+    capped: `${MAX_ATTEMPTS} attempts is this lane's cap, reached without landing a green run.`,
+    "gate-growth": `The last attempt adds a file to the gate, which a lane may shrink and never grow (#360); it was not committed.\n\n${gateFiles.map((path) => `- \`${path}\``).join("\n")}`,
+  }[stopReason];
 
   const tried = attemptSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n");
   const routed =
@@ -265,12 +281,12 @@ export function immovableGapReport(
 }
 
 /**
- * The comment posted when Verify never reached the acceptance job at all — the immutable set was
- * crossed, or the plain `verify` job (lint/typecheck/test/gauntlet) went red — so there is no
- * reproducible test signature for a model to work from.
+ * The comment posted when Verify went red without a test going red — the immutable set was
+ * crossed, or lint or typecheck failed — so there is no reproducible test signature for a model
+ * to work from.
  */
 export function unfixableComment(failedJob: string, errorLine: string): string {
-  return `**Needs a human.** \`${failedJob}\` failed before \`Restore and run acceptance\` ever ran, so there is nothing this lane can reproduce and fix.\n\n${errorLine}`;
+  return `**Needs a human.** \`${failedJob}\` failed without a test failing, so there is nothing this lane can reproduce and fix.\n\n${errorLine}`;
 }
 
 /**
@@ -303,9 +319,10 @@ function applyBlocked(
   issueNumber: number,
   prNumber: number,
   assignee: string,
-  stopReason: "no-progress" | "capped",
+  stopReason: StopReason,
   attemptSummaries: string[],
   immovable?: FailureSignature,
+  gateFiles: string[] = [],
 ): void {
   escalateToOwner(gh, issueNumber, assignee);
 
@@ -322,7 +339,7 @@ function applyBlocked(
     }
   }
 
-  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries, gapIssue)]);
+  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries, gapIssue, gateFiles)]);
 }
 
 /** Applies `needs-human` to the ticket and comments the PR naming the job Verify actually failed in — the escalate path's one write. */
@@ -375,7 +392,7 @@ function rejudge(gh: GhExec, prNumber: number, issueNumber: number): void {
 
 export type FixerOutcome =
   | { verdict: "green"; attempts: number }
-  | { verdict: "blocked"; attempts: number; stopReason: "no-progress" | "capped" };
+  | { verdict: "blocked"; attempts: number; stopReason: StopReason };
 
 /**
  * The whole fixer loop: up to `MAX_ATTEMPTS` rounds of stage → write →
@@ -423,10 +440,19 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     // recorded, so it reaches the blocked comment and says why; the loop carries on and the
     // no-progress comparison stops it a round later, when the identical red comes back twice.
     const paths = changedPaths(deps.git);
+    attemptSummaries.push(answer.summary);
+
+    // Refused before the commit, not after Verify: a new gate file is the fixer growing the judge
+    // to get green (#360), and the summary still reaches the comment so the stop says what it did.
+    const growth = gateGrowth(deps.git, paths);
+    if (growth.length > 0) {
+      applyBlocked(deps.gh, deps.issueNumber, deps.prNumber, deps.assignee, "gate-growth", attemptSummaries, undefined, growth);
+      return { verdict: "blocked", attempts: attempt, stopReason: "gate-growth" };
+    }
+
     if (paths.length > 0) {
       commitAndPushAttempt(deps.git, deps.branch, paths, attempt, answer.summary, deps.issueNumber);
     }
-    attemptSummaries.push(answer.summary);
 
     const result = await deps.runTests();
 
@@ -502,11 +528,11 @@ function readAssignee(): string {
 }
 
 /**
- * The escalate path: `fixer.yml`'s resolve step reaches this when the failed job was not
- * `Restore and run acceptance` — the immutable set was crossed, or the plain `verify` job
- * (lint/typecheck/test/gauntlet) went red. Neither leaves a test signature under `.Workflow` for
- * the model loop to work from, so this applies `needs-human` and comments what actually failed
- * instead of handing three Sonnet attempts a brief with nothing to fix.
+ * The escalate path: `fixer.yml`'s resolve step reaches this when Verify went red without a test
+ * going red — the immutable set was crossed, or lint or typecheck failed. Neither leaves a test
+ * signature under `.Workflow` for the model loop to work from, so this applies `needs-human` and
+ * comments what actually failed instead of handing three Sonnet attempts a brief with nothing to
+ * fix.
  */
 async function runEscalate(): Promise<void> {
   const [issueArg, prArg, failedJob, errorLine] = process.argv.slice(3);
@@ -518,7 +544,7 @@ async function runEscalate(): Promise<void> {
 
   try {
     applyUnfixable(execGh, Number(issueArg), Number(prArg), readAssignee(), failedJob, errorLine);
-    console.log(`escalated #${issueArg}: ${failedJob} failed before acceptance ran`);
+    console.log(`escalated #${issueArg}: ${failedJob} failed without a test failing`);
   } catch (err) {
     console.error(`fixer failed: ${reason(err)}`);
     process.exitCode = 1;

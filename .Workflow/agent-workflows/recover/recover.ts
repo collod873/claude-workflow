@@ -12,6 +12,7 @@ import {
 } from "../shared/implementation-landing";
 import { runArtifactsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { gateGrowth } from "../shared/gate-files";
 import { touchesImmutableSet } from "../shared/immutable-set";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
@@ -198,6 +199,8 @@ export type RecoverOutcome =
   | { outcome: "already-claimed" }
   | { outcome: "already-handled" }
   | { outcome: "immutable"; files: string[] }
+  /** The answer creates a file the gate is made of (#360); nothing written, nothing claimed. */
+  | { outcome: "gate-growth"; files: string[] }
   | { outcome: "redispatched"; ticket: number }
   | { outcome: "opened"; pr: string }
   | { outcome: "nothing-to-build" }
@@ -271,6 +274,25 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
       `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) writes into the immutable set, which no pull request may change — the ticket itself needs fixing.\n\n${forbidden.map((path) => `- \`${path}\``).join("\n")}`,
     );
     return { outcome: "immutable", files: forbidden };
+  }
+
+  // The same refusal for the gate (#360): an answer that *creates* a file the gate is made of — a
+  // new hook, a new bin/ script, a new workflow — is growing the one thing lanes may only shrink.
+  // The size fence (`.claude/gate-size.test.ts`) would catch the lines; this catches the path the
+  // fence has never heard of, before anything is written or claimed.
+  const growth = gateGrowth(
+    deps.git,
+    answer.files.map((file) => file.path),
+  );
+  if (growth.length > 0) {
+    escalateToOwner(deps.gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
+    postAttemptComment(
+      deps.gh,
+      ticket,
+      deps.runId,
+      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) adds a file to the gate, which a lane may shrink and never grow (#360) — the ticket itself needs fixing.\n\n${growth.map((path) => `- \`${path}\``).join("\n")}`,
+    );
+    return { outcome: "gate-growth", files: growth };
   }
 
   const branch = implementationBranch(ticket);

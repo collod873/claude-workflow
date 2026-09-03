@@ -157,5 +157,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0147 | [The timing deadband is 50%, because it spans a runner pool rather than a runner](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) | superseded |
 | 0148 | [Timing is recorded, never judged](0148-timing-is-recorded-never-judged.md) | constraint |
 | 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) | constraint |
+| 0150 | [An acceptance test is colocated and marked test.fails, and the gate is fenced by size](0150-an-acceptance-test-is-colocated-and-marked-test-fails-and-th.md) | constraint |
 
-149 ADRs · 66 constraint · 44 note · 39 superseded · 14,462 words total.
+150 ADRs · 67 constraint · 44 note · 39 superseded · 14,612 words total.
