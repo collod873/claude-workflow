@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { GIT_LOCATION_VARS, scrubGitLocationVars } from "./child-env";
+import { GIT_LOCATION_VARS, TARGET_LOCATION_VARS, scrubGitLocationVars } from "./child-env";
 
 /**
  * #86: with `GIT_DIR` exported, every fixture in this suite committed into the
@@ -89,5 +89,30 @@ describe("git location variables in the test environment", () => {
 
     expect(branchTips(repos.fixture)).toHaveLength(1);
     expect(branchTips(repos.victim)).toEqual([]);
+  });
+});
+
+/**
+ * The same argument, one variable later. `TARGET_WORKSPACE` names *which checkout* a machine script
+ * acts on, and every machine script reads it ambiently — so exported, it beats a script's own
+ * location the way `GIT_DIR` beats a `cwd`.
+ *
+ * Lane 05 and the fixer both export it for the whole step the suite runs inside. That is how
+ * `new-adr.test.ts` — which copies `bin/new-adr` into a scratch tree precisely so it cannot reach
+ * the real corpus — wrote three fixture ADRs into the repository under test instead, and the
+ * `corpus` check racing beside the suite refused the push (run 33698888723). Unset on a
+ * workstation, so it is invisible until a runner splits the machine from the target.
+ *
+ * There is no decoy here to match `bin/gauntlet`'s git sandbox, and none is owed: nothing outside
+ * this repository honours this name, so removing it from the worker removes it from every process a
+ * fixture can spawn. The redirection itself is not reproduced here either — `new-adr.test.ts`'s
+ * "drafts and lands into the target checkout … given TARGET_WORKSPACE" already drives it, on
+ * purpose, from an explicit per-call value. That is the whole distinction this holds in place: set
+ * on the call it is a seam, inherited from the worker it is a leak.
+ */
+describe("the machine's location variable in the test environment", () => {
+  // The wiring test, and the only half of this that can speak for a test nobody has written yet.
+  it.each(TARGET_LOCATION_VARS)("is not in the worker's environment: %s", (name) => {
+    expect(process.env[name]).toBeUndefined();
   });
 });
