@@ -404,12 +404,8 @@ describe("recover-caller.yml is the listener a red Implement never had", () => {
   });
 
   /**
-   * Every lane that writes into a target checkout has to install that target's dependencies
-   * first, because `landAnswer` regenerates the target's artifacts before it commits and
-   * `check-contract.ts`'s probe reads `<target>/node_modules/.bin` to decide what the target's
-   * test runner is. A lane that skips the install regenerates a contract claiming the target has
-   * no single-file test form — which is what PR #348 carried out of a Recover run, red through
-   * Verify, Integrate and the fixer until it was fixed by hand.
+   * Why a lane that writes a target installs the target's dependencies: the comment on
+   * `recover.yml`'s "Install target dependencies" step (#348).
    *
    * Asserted across all three rather than on `recover.yml` alone: the defect was parity drift, so
    * the test that catches the next one has to be the comparison.
