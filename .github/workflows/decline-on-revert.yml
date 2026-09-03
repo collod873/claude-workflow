@@ -34,6 +34,23 @@ name: Decline on revert (reusable)
 
 "on":
   workflow_call:
+    inputs:
+      # Which runner this lane's jobs run on. The default is what every enrolled repository gets;
+      # a canary target passes its own self-hosted label so a machine change is proven on real
+      # GitHub at desk speed instead of landing on `main` to find out (amends ADR-0144).
+      runner:
+        type: string
+        required: false
+        default: ubuntu-latest
+      # The ref of this machine to check out — the same ref the caller's `uses:` pins. GitHub
+      # gives a called workflow no way to learn its own ref: inside it, `github.workflow_ref` and
+      # `github.workflow_sha` name the *caller's* stub, and `job_workflow_sha` exists only as an
+      # OIDC claim (canary run 33706922620 printed the whole context to prove it). Without this,
+      # a stub pinned to any ref but `main` runs that ref's YAML around `main`'s TypeScript.
+      machine_ref:
+        type: string
+        required: false
+        default: main
 
 permissions:
   # write: `syncNotesRef`'s push of `refs/notes/ratifications` back to the target's origin.
@@ -45,13 +62,14 @@ concurrency:
 
 jobs:
   decline:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
         with:
           repository: collod873/claude-workflow
+          ref: ${{ inputs.machine_ref }}
 
       - name: Checkout target
         uses: actions/checkout@v4

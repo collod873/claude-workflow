@@ -552,7 +552,10 @@ describe("fixer.yml, the reusable workflow fixer-caller.yml calls", () => {
   });
 
   it("checks out the pull request's own branch, which is where every attempt is pushed", () => {
-    const checkout = (workflow.jobs.fixer.steps ?? []).find((step) => step.with?.ref !== undefined);
+    // Named rather than found by "has a `with.ref`" alone: the machine checkout beside it also
+    // carries one now (`ref: ${{ inputs.machine_ref }}`, ADR-0146), and `.find` would otherwise
+    // grab whichever of the two comes first in the YAML rather than the one this test means.
+    const checkout = (workflow.jobs.fixer.steps ?? []).find((step) => step.name === "Checkout target");
     expect(checkout?.with?.ref).toContain("steps.target.outputs.branch");
   });
 

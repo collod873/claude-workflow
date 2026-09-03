@@ -44,10 +44,19 @@ interface Job {
   if?: string;
   steps?: Step[];
   uses?: string;
+  "runs-on"?: string;
+}
+interface WorkflowCallInput {
+  type?: string;
+  required?: boolean;
+  default?: unknown;
 }
 interface Workflow {
   name?: string;
-  on?: Record<string, unknown> | string[];
+  on?: {
+    workflow_call?: { inputs?: Record<string, WorkflowCallInput> };
+    [key: string]: unknown;
+  } | string[];
   jobs?: Record<string, Job>;
 }
 
@@ -246,5 +255,60 @@ describe("every dispatch wire has a sender and a receiver", () => {
       `\`${action}\` has a receiver but nothing sends it — lane 03 published 26 tickets lane 05 ` +
         `could never be told about, exactly this way (#167).`,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("a reusable workflow declares runner and machine_ref and runs on the runner", () => {
+  /**
+   * ADR-0146: a canary caller states `runner` and `machine_ref` beside its `uses:`, because a
+   * called workflow has no way to learn its own ref — `github.workflow_ref` inside it is the
+   * *caller's*. Until 2026-09-03 only `verify.yml` declared the two inputs; `bin/canary` could
+   * derive a fire for 20 of the other 21 lanes (`canary-fire-plan.ts`, ADR-0149) but every one of
+   * them died at `startup_failure` the moment its caller stub's `with:` carried a `runner` the
+   * called workflow never declared. This sweep is what keeps a new lane from shipping the same gap:
+   * a reusable workflow that skips either input, or that hardcodes `runs-on: ubuntu-latest` instead
+   * of reading `inputs.runner`, fails here rather than only at the next canary fire.
+   */
+  const reusable = workflows.filter(
+    (w) => !Array.isArray(w.workflow.on) && (w.workflow.on as Record<string, unknown> | undefined)?.workflow_call !== undefined,
+  );
+
+  it("finds the reusable workflows, so this sweep is not vacuous", () => {
+    expect(reusable.map((w) => w.name)).toContain("verify.yml");
+    expect(reusable.length).toBeGreaterThan(1);
+  });
+
+  it.each(reusable.map((w) => w.name))("%s declares both runner and machine_ref inputs", (name) => {
+    const target = workflows.find((w) => w.name === name)!;
+    const on = target.workflow.on as { workflow_call?: { inputs?: Record<string, WorkflowCallInput> } };
+    const inputs = on.workflow_call?.inputs ?? {};
+    expect(
+      inputs.runner,
+      `${name} is a reusable workflow but declares no \`runner\` input — a canary caller's ` +
+        `\`with: runner: canary\` fails this workflow at startup_failure before any job runs ` +
+        `(ADR-0146).`,
+    ).toBeDefined();
+    expect(inputs.runner?.default).toBe("ubuntu-latest");
+    expect(
+      inputs.machine_ref,
+      `${name} is a reusable workflow but declares no \`machine_ref\` input — without it, a caller ` +
+        `pinned to any ref but \`main\` runs that ref's YAML around \`main\`'s TypeScript, and a ` +
+        `canary fire reads FALSE GREEN because the machine checkout never lands on the branch under ` +
+        `test (ADR-0146).`,
+    ).toBeDefined();
+    expect(inputs.machine_ref?.default).toBe("main");
+  });
+
+  it.each(reusable.map((w) => w.name))("every job in %s runs on inputs.runner", (name) => {
+    const target = workflows.find((w) => w.name === name)!;
+    const offenders = Object.entries(target.workflow.jobs ?? {})
+      .filter(([, job]) => job["runs-on"] !== undefined)
+      .filter(([, job]) => job["runs-on"] !== "${{ inputs.runner }}")
+      .map(([jobName, job]) => `${jobName}: runs-on: ${job["runs-on"]}`);
+    expect(
+      offenders,
+      `${name} has a job whose \`runs-on:\` does not read \`inputs.runner\` — a canary target's ` +
+        `self-hosted runner would never actually run that job (ADR-0146).`,
+    ).toEqual([]);
   });
 });

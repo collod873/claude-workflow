@@ -44,6 +44,17 @@
     "fragment": ";\n    }\n\n    if (args[0] === \"issue\" && args[1] === \"list\") return JSON.stringify(options.issues ?? []);\n    if (args[0] === \"issue\" && args[1] === \"create\") return \"https://github.com/owner/repo/issues/42\\n\";\n\n    throw"
   },
   {
+    "hash": "0e7580a2cd6a730b",
+    "format": "yaml",
+    "lines": 19,
+    "tokens": 137,
+    "where": [
+      ".github/workflows/missing-trailer-counter.yml:67",
+      ".github/workflows/run-watchdog.yml:90"
+    ],
+    "fragment": "SIGNAL_ASSIGNEE: ${{ github.repository_owner }}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      -"
+  },
+  {
     "hash": "0ee9d64efbef497e",
     "format": "markdown",
     "lines": 20,
@@ -75,6 +86,17 @@
       ".Workflow/agent-workflows/acceptance/push-gate.test.ts:53"
     ],
     "fragment": "],\n    });\n\n    const outcome = await runPushGate(deps);\n\n    expect(outcome.verdict).toBe(\"refused\");\n    expect(fake.calls.some((call) => call[0] === \"push\")).toBe(false);\n  }"
+  },
+  {
+    "hash": "19eca023ac84b203",
+    "format": "yaml",
+    "lines": 17,
+    "tokens": 102,
+    "where": [
+      ".github/workflows/dispatch-reconcile.yml:130",
+      ".github/workflows/run-watchdog.yml:92"
+    ],
+    "fragment": "}}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      # No Claude Code install and no model secret: this spends nothing. It reads the tracker and"
   },
   {
     "hash": "1bb3191942bb148d",
@@ -352,28 +374,6 @@
     "fragment": ", () => {\n    const fake = createFake({\n      open: [{ number: 20, title: \"Second wave\", blockedBy: [10] }],\n      closed: [{ number: 10, stateReason: \"completed\", merged: true }],\n    });\n\n    const"
   },
   {
-    "hash": "7b8e056a564a208e",
-    "format": "yaml",
-    "lines": 16,
-    "tokens": 103,
-    "where": [
-      ".github/workflows/implement.yml:83",
-      ".github/workflows/ratify.yml:73"
-    ],
-    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      # Same shape as `to-tickets.yml`'s own preflight: fail closed on an empty secret before Node"
-  },
-  {
-    "hash": "871ca70f587ce00f",
-    "format": "yaml",
-    "lines": 18,
-    "tokens": 124,
-    "where": [
-      ".github/workflows/missing-trailer-counter.yml:50",
-      ".github/workflows/run-watchdog.yml:73"
-    ],
-    "fragment": "SIGNAL_ASSIGNEE: ${{ github.repository_owner }}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      -"
-  },
-  {
     "hash": "8ae3def78772471d",
     "format": "typescript",
     "lines": 33,
@@ -394,6 +394,17 @@
       ".Workflow/agent-workflows/review/review.test.ts:193"
     ],
     "fragment": "} = fakeGh();\n\n    const result = await runConformanceReview(fake.exec, gh, {\n      specText: \"the spec\",\n      diff: CONFORMANCE_DIFF,\n      criteria: [],\n      greenGateChecks: [],\n      prdIssueNumber: 42,\n    });\n\n    expect(result.findings).toEqual([]);\n  }"
+  },
+  {
+    "hash": "8bb109e03aa4fa4c",
+    "format": "yaml",
+    "lines": 17,
+    "tokens": 102,
+    "where": [
+      ".github/workflows/lost-dispatch-counter.yml:91",
+      ".github/workflows/run-watchdog.yml:92"
+    ],
+    "fragment": "}}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      - name: Set up Node and install dependencies\n        uses: ./.github/actions/node\n\n      # The issue read and write both go through the `gh` seam in `shared/gh.ts`, so there is no"
   },
   {
     "hash": "8c36a00f44ac79ec",
@@ -616,6 +627,17 @@
     "fragment": ");\n  execFileSync(\"git\", [\"clone\", \"-q\", bareDir, \".\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n  return dir;\n}\n\n/** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */"
   },
   {
+    "hash": "d2528fe079d9d649",
+    "format": "yaml",
+    "lines": 16,
+    "tokens": 95,
+    "where": [
+      ".github/workflows/back-stamp.yml:64",
+      ".github/workflows/decline-on-revert.yml:64"
+    ],
+    "fragment": ":\n    runs-on: ${{ inputs.runner }}\n    timeout-minutes: 10\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      # A commit is an object and an object carries a committer; a hosted runner has no git"
+  },
+  {
     "hash": "d37f6e6d7242b02b",
     "format": "typescript",
     "lines": 11,
@@ -704,6 +726,17 @@
     "fragment": ");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, commit,"
   },
   {
+    "hash": "f77f28060afe8db1",
+    "format": "yaml",
+    "lines": 16,
+    "tokens": 103,
+    "where": [
+      ".github/workflows/run-watchdog.yml:90",
+      ".github/workflows/shape-accept.yml:74"
+    ],
+    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      -"
+  },
+  {
     "hash": "f894517e10479f75",
     "format": "typescript",
     "lines": 16,
@@ -713,6 +746,17 @@
       ".Workflow/agent-workflows/shared/git.test.ts:15"
     ],
     "fragment": "));\n  execFileSync(\"git\", [\"init\", \"-q\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.email\", \"test@example.com\"], { cwd: dir });\n  execFileSync(\"git\", [\"config\", \"user.name\", \"Test\"], { cwd: dir });\n\n  function commit(path: string, contents: string, message: string): string {\n    writeFileSync(join(dir, path), contents, \"utf8\");\n    execFileSync(\"git\", [\"add\", \".\"], { cwd: dir });\n    execFileSync(\"git\", [\"commit\", \"-q\", \"-m\", message], { cwd: dir });\n    return execFileSync(\"git\", [\"rev-parse\", \"HEAD\"], { cwd: dir, encoding: \"utf8\" }).trim();\n  }\n\n  return { dir, commit };\n}\n\ndescribe(\"writeRatificationNote / readRatificationRecords against a real repo\""
+  },
+  {
+    "hash": "fc40c400757344d3",
+    "format": "yaml",
+    "lines": 17,
+    "tokens": 116,
+    "where": [
+      ".github/workflows/implement.yml:100",
+      ".github/workflows/ratify.yml:90"
+    ],
+    "fragment": "}}\n      GH_TOKEN: ${{ github.token }}\n      GH_REPO: ${{ github.repository }}\n      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\n    steps:\n      - name: Checkout machine\n        uses: actions/checkout@v4\n        with:\n          repository: collod873/claude-workflow\n          ref: ${{ inputs.machine_ref }}\n\n      - name: Checkout target\n        uses: actions/checkout@v4\n        with:\n          path: target\n\n      # Same shape as `to-tickets.yml`'s own preflight: fail closed on an empty secret before Node"
   },
   {
     "hash": "fc80f172b0ddec08",
