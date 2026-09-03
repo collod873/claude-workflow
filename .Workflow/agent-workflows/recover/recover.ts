@@ -7,6 +7,7 @@ import {
   IMPLEMENT_DISPATCH_EVENT_TYPE,
   ImplementerAnswer,
   landAnswer,
+  releaseDeadClaim,
   type ImplementOutcome,
 } from "../implement/implement";
 import { execGenerator, type GeneratorExec } from "../implement/regenerate-artifacts";
@@ -234,6 +235,13 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   }
 
   if (!hasArtifact) {
+    // Let go of the dead run's claim before asking for a fresh one. `implement.ts` claims the
+    // branch before it spends anything, and a run that was cancelled or timed out never reaches
+    // the release in its own `catch` — so the claim outlives it, and the dispatch below lands on a
+    // run that reads it as live and exits `already claimed`. That is what happened to #342 at
+    // 00:16 (run 33698760072), leaving the ticket unbuildable for the claim's full 45-minute
+    // timeout, which is exactly the stranding routing a timeout here was meant to end.
+    releaseDeadClaim(deps.gh, implementationBranch(ticket), "main", log);
     redispatchImplement(deps.gh, ticket);
     postAttemptComment(
       deps.gh,

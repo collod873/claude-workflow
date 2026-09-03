@@ -180,6 +180,34 @@ describe("runRecover — nothing to recover", () => {
   });
 });
 
+/**
+ * The gap the `cancelled()` routing opened. `implement.ts` claims the branch before it spends
+ * anything, and a cancelled or timed-out run never reaches the release in its own `catch` — so the
+ * claim outlives it and the re-dispatch below bounces off it (`#342 is already claimed`, run
+ * 33698760072), leaving the ticket unbuildable for the claim's full 45-minute timeout. Recover is
+ * not a rival run guessing whether a young claim is healthy: it only runs because the claimant
+ * died, so it lets go first.
+ */
+describe("runRecover — the dead run's claim", () => {
+  it("releases the claim before re-dispatching, so the fresh run is not refused by a dead one's ref", async () => {
+    // No artifact: the re-dispatch path, which is the one a cancelled or timed-out run takes.
+    const { gh, calls } = fakeGh({ artifacts: [], comments: [], logLine: "implementing #266" });
+    const { git } = fakeGit();
+
+    const outcome = await runRecover(baseDeps(gh, git, { runId: 900 }));
+
+    expect(outcome).toMatchObject({ outcome: "redispatched" });
+
+    const released = calls.findIndex(
+      (call) => call.includes("--method") && call.includes("DELETE") && call.some((a) => a.includes("implement/issue-")),
+    );
+    const dispatched = calls.findIndex((call) => call.some((a) => a.includes("ticket-ready")));
+    expect(released, "the dead run's claim was never released").toBeGreaterThanOrEqual(0);
+    expect(dispatched, "no fresh dispatch was sent").toBeGreaterThanOrEqual(0);
+    expect(released, "released the claim after re-dispatching, which is too late to help").toBeLessThan(dispatched);
+  });
+});
+
 describe("runRecover — the cap", () => {
   it("stops on the third prior attempt, labels needs-human and assigns the owner, without touching git", async () => {
     process.env.GITHUB_REPOSITORY_OWNER = "collod873";

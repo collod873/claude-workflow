@@ -267,6 +267,36 @@ function createClaimRef(gh: GhExec, branch: string, sha: string, log: (line: str
  * to build it (#196). **Never throws**: a release that fails must not turn one failure into two,
  * and the run's own outcome is what the caller is reporting.
  */
+/**
+ * Releases a claim on `branch` that a **known-dead** run left behind, when nothing on GitHub is
+ * attached to it — no commits ahead of trunk, no pull request. Returns whether it let go.
+ *
+ * Deliberately not `assessClaim`'s test. That one is asked by a *rival* run, which cannot tell a
+ * healthy young claim from debris and so waits out `CLAIM_TIMEOUT_MINUTES` rather than trample one.
+ * `recover.ts` is not a rival: it only runs because the claimant died, so the age term is the one
+ * piece of evidence it does not need and the one that was blocking it. Without this, cancelling or
+ * timing out a run left its claim standing, the re-dispatch Recover sent bounced straight off it
+ * (`#342 is already claimed — nothing to do`, run 33698760072), and the ticket sat unbuildable for
+ * 45 minutes — the stranding the `cancelled()` routing was supposed to end.
+ */
+export function releaseDeadClaim(gh: GhExec, branch: string, base: string, log: (line: string) => void): boolean {
+  try {
+    if (hasPullRequest(gh, branch)) {
+      log(`\`${branch}\` has a pull request, so its claim is somebody's finished work — left alone.`);
+      return false;
+    }
+    if (commitsAhead(gh, branch, base) > 0) {
+      log(`\`${branch}\` carries commits, so its claim is somebody's unfinished work — left alone.`);
+      return false;
+    }
+  } catch (err) {
+    log(`could not inspect \`${branch}\`, so its claim is left alone: ${reason(err)}`);
+    return false;
+  }
+  releaseClaim(gh, branch, log);
+  return true;
+}
+
 function releaseClaim(gh: GhExec, branch: string, log: (line: string) => void): void {
   try {
     gh(["api", "--method", "DELETE", refPath(branch)]);
