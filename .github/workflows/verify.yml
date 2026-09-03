@@ -436,11 +436,18 @@ jobs:
   signal-fixer:
     name: Signal the fixer
     needs: [immutability, restore-and-run-acceptance, verify]
+    # `cancelled` counts as a death here too: a job killed by its own `timeout-minutes` reports
+    # `cancelled`, not `failure`, so a Verify that hung would ring nobody — and this lane's other
+    # door (`fixer-caller.yml`'s `workflow_run`) had the same gap, so a hung Verify reached the
+    # fixer through neither.
     if: >-
       always() && github.event.action == 'implementation-opened' &&
       (needs.immutability.result == 'failure' ||
       needs.restore-and-run-acceptance.result == 'failure' ||
-      needs.verify.result == 'failure')
+      needs.verify.result == 'failure' ||
+      needs.immutability.result == 'cancelled' ||
+      needs.restore-and-run-acceptance.result == 'cancelled' ||
+      needs.verify.result == 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # This job's own block, not the workflow's `contents: read` above: the dispatch endpoint is a

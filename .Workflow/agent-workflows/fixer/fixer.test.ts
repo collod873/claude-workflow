@@ -622,16 +622,24 @@ describe("the door a red Verify rings itself", () => {
     expect(signal?.if).toContain("github.event.action == 'implementation-opened'");
   });
 
-  it("is rung on a red run and not on a cancelled one, which the workflow_run door also ignores", () => {
-    // `always()` is what gets the signal job past three `needs:` a red run left in mixed states,
-    // and once it is in, `cancelled` has to be excluded by name. A cancelled run's conclusion is
-    // not `failure`, so `workflow_run` would not open for it either.
+  it("is rung on a run that died either way, because a timed-out job reports cancelled", () => {
+    // This deliberately reverses the narrower rule that stood here until 2026-09-03. That rule
+    // excluded `cancelled` by name, and its stated reason was that `workflow_run` would not open
+    // for a cancelled run either — true then, and no longer: `fixer-caller.yml`'s door now accepts
+    // `cancelled` too, because `verify.yml` caps four of its jobs with `timeout-minutes` and a
+    // timeout reports `cancelled`, so a hung Verify reached this lane through neither door and the
+    // pull request sat red with nobody fixing it. The premise moved, so both doors move together.
+    //
+    // The cost of the reversal is the one the old rule was buying: a Verify someone cancels by
+    // hand can now spend one fixer run. That is ADR-0141's accepted asymmetry pointed at this
+    // lane — a wasted model run is visible and cheap, and the person who cancelled is right there;
+    // a red pull request nobody is fixing is silent and needs a human to notice it at all.
     expect(signal?.if).toContain("always()");
     expect(signal?.needs).toEqual(["immutability", "restore-and-run-acceptance", "verify"]);
     for (const job of signal?.needs ?? []) {
       expect(signal?.if, `the signal job ignores a red ${job}`).toContain(`needs.${job}.result == 'failure'`);
+      expect(signal?.if, `the signal job ignores a timed-out ${job}`).toContain(`needs.${job}.result == 'cancelled'`);
     }
-    expect(signal?.if).not.toContain("cancelled");
   });
 
   it("sends from a job holding contents: write, which verify.yml's judging jobs deliberately do not", () => {

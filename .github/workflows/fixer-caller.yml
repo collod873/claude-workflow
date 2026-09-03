@@ -39,10 +39,16 @@ jobs:
     # cosmetic: `verify-caller.yml` fires on `push: main` as well as on the implementer's dispatch,
     # and a red push run is trunk being broken — there is no pull request to fix, no branch to push
     # attempts to, and nothing this lane could do but spend a model on `main`.
+    # `cancelled` alongside `failure`: verify.yml caps four of its jobs with `timeout-minutes`, and
+    # a timeout reports cancelled — so a Verify that hung reached this lane through neither door and
+    # the pull request sat red with nobody fixing it. Same shape as #342's stranding one lane
+    # earlier (implement.yml, recover-caller.yml), found by `lane-invariants.test.ts` sweeping for
+    # it rather than by another runner cycle.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.action == 'fixer-needed' ||
-      (github.event.workflow_run.conclusion == 'failure' &&
+      ((github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled') &&
       github.event.workflow_run.event != 'push')
     uses: collod873/claude-workflow/.github/workflows/fixer.yml@main
     with:
