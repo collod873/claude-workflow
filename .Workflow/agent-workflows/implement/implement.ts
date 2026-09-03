@@ -341,10 +341,12 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
  * A `test.fails(` / `it.fails(` line whose title names `#<issueNumber>` — the marker the
  * acceptance author writes a slice's test with (#360). The trailing boundary is what keeps `#36`
  * from selecting `#360`'s tests; `[^\n]*` keeps the number on the marker's own line, so a file
- * that merely mentions the ticket in a comment is not the slice's test.
+ * that merely mentions the ticket in a comment is not the slice's test. Anchored to statement
+ * start, the same way `bin/close-ticket` reads it: a test that *quotes* a `test.fails(` line as
+ * fixture data is not one, and this repo's own suite quotes several.
  */
 function sliceMarker(issueNumber: number): RegExp {
-  return new RegExp(`\\b(?:test|it)\\.fails\\([^\\n]*#${issueNumber}\\b`);
+  return new RegExp(`^\\s*(?:test|it)\\.fails\\([^\\n]*#${issueNumber}\\b`, "m");
 }
 
 /**

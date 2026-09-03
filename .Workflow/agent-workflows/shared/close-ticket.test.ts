@@ -34,9 +34,13 @@ describe("surviving_fails_lines", () => {
     ]);
   });
 
-  it("does not read #99 as #999, a turned-on test as unbuilt, or a file outside the suite's trees at all", () => {
+  it("does not read #99 as #999, a turned-on test as unbuilt, a quoted test.fails( as a test, or a file outside the suite's trees at all", () => {
     const { checkout } = checkoutWithCommits(1);
-    fileIn(checkout, ".Workflow/a.test.ts", 'test.fails("#99: a different ticket", () => {});\ntest("#999: turned on already", () => {});\n');
+    fileIn(
+      checkout,
+      ".Workflow/a.test.ts",
+      'test.fails("#99: a different ticket", () => {});\ntest("#999: turned on already", () => {});\nconst sample = \'-  test.fails("#999: quoted as fixture data", () => {\';\n',
+    );
     fileIn(checkout, ".Workflow/worktrees/other/b.test.ts", 'test.fails("#999: a sibling checkout", () => {});\n');
     fileIn(checkout, "tests/c.test.ts", 'test.fails("#999: nothing collects this", () => {});\n');
 

@@ -394,6 +394,8 @@ describe("findFailingTestFiles finds the slice's test.fails( tests without runni
     const { root, readFile } = checkoutWith([
       ["x/gate.test.ts", SLICE_TEST],
       ["x/other.test.ts", 'it("#360 is mentioned here, but this test is on already", () => {});'],
+      // Fixture data, not a marker: the line does not open with the call (`bin/close-ticket` reads it the same way).
+      ["x/quoting.test.ts", "const sample = '-  test.fails(\"#360: quoted in a diff sample\", () => {';"],
     ]);
 
     expect(findFailingTestFiles(360, readFile, root)).toEqual([{ path: ".Workflow/x/gate.test.ts", content: SLICE_TEST }]);

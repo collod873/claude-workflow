@@ -439,7 +439,10 @@ def undelivered(children: list[dict]) -> list[str]:
 # `check:` commands say — so the close is refused here, before a single check runs, naming the
 # lines. Only the two source trees the suite collects are read (`vitest.config.ts`'s include).
 SUITE_ROOTS = (".Workflow", ".claude")
-FAILS_LINE_RE = re.compile(r"\b(?:test|it)\.fails\(")
+# Anchored to statement start: a real `test.fails(` opens a line, while a test that *quotes* one
+# as fixture data (`'-  test.fails("#360: …'` in a diff sample) does not — and this repo's own
+# suite quoted seven of them the first time #360 tried to close.
+FAILS_LINE_RE = re.compile(r"^\s*(?:test|it)\.fails\(")
 
 
 def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
