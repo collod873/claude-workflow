@@ -100,10 +100,22 @@ describe("the signal bodies", () => {
   });
 });
 
-/** A `gh` stand-in recording every argv verbatim, the shape `bypass-counter.test.ts`'s `fakeGh` already has. */
-function fakeGh(options: {
+/** One proposal the counter has already made, as `issue list` returns it. */
+interface Signal {
+  number: number;
+  body: string;
+  state: string;
+  stateReason?: string;
+}
+
+/**
+ * A `gh` stand-in over the tracker this counter reads — finding issues under the label, standing
+ * signals without it — recording every argv verbatim, the shape `bypass-counter.test.ts`'s own
+ * stand-in has. Not `createFakeGh`: that models sub-issue publishing and answers no `issue list`.
+ */
+function trackerWith(options: {
   findingIssues?: Array<{ number: number; state: string; stateReason?: string; createdAt: string }>;
-  signals?: Array<{ number: number; body: string; state: string; stateReason?: string }>;
+  signals?: Signal[];
 }): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
   const gh: GhExec = (args) => {
@@ -132,21 +144,40 @@ function findings(count: number, over: Partial<{ state: string; stateReason: str
   }));
 }
 
+const ZERO_TALLY = { reached: 0, refuted: 0 };
+
+/** One sweep of the counter over `fake`'s tracker at `tally`, as the lane runs it. */
+function sweep(fake: { gh: GhExec }, tally: { reached: number; refuted: number }) {
+  return runCounter({ gh: fake.gh, tally, assignee: "collod873", now: NOW });
+}
+
+/** A grow proposal issue #7 already made at the grow threshold, in whatever state it now stands. */
+function growSignal(said: string, state: string, stateReason?: string): Signal {
+  return { number: 7, body: `${said}\n${countMarker("grow", GROW_THRESHOLD)}`, state, stateReason };
+}
+
+/**
+ * A sweep at a zero tally over `count` finding issues with `signal` (if any) already standing —
+ * the grow direction's whole input — handing back the outcome and the tracker it wrote to.
+ */
+function sweepGrow(count: number, signal?: Signal) {
+  const fake = trackerWith({ findingIssues: findings(count), signals: signal ? [signal] : [] });
+  return { fake, outcome: sweep(fake, ZERO_TALLY) };
+}
+
+const createdIssue = (calls: string[][]) => calls.some((argv) => argv[1] === "create");
+
 describe("runCounter", () => {
   it("proposes neither direction below both thresholds", () => {
-    const fake = fakeGh({ findingIssues: findings(GROW_THRESHOLD - 1) });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { fake, outcome } = sweepGrow(GROW_THRESHOLD - 1);
 
     expect(outcome.grow).toEqual({ code: "below-threshold" });
     expect(outcome.delete).toEqual({ code: "below-threshold" });
-    expect(fake.calls.some((argv) => argv[1] === "create")).toBe(false);
+    expect(createdIssue(fake.calls)).toBe(false);
   });
 
   it("proposes a second refuter at the grow threshold", () => {
-    const fake = fakeGh({ findingIssues: findings(GROW_THRESHOLD) });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { fake, outcome } = sweepGrow(GROW_THRESHOLD);
 
     expect(outcome.grow).toMatchObject({ code: "proposed", issue: 42 });
     const create = fake.calls.find(
@@ -158,14 +189,9 @@ describe("runCounter", () => {
   });
 
   it("proposes the fleet's deletion at the delete threshold with zero ever refuted", () => {
-    const fake = fakeGh({});
+    const fake = trackerWith({});
 
-    const outcome = runCounter({
-      gh: fake.gh,
-      tally: { reached: DELETE_THRESHOLD, refuted: 0 },
-      assignee: "collod873",
-      now: NOW,
-    });
+    const outcome = sweep(fake, { reached: DELETE_THRESHOLD, refuted: 0 });
 
     expect(outcome.delete).toMatchObject({ code: "proposed", issue: 42 });
     const create = fake.calls.find(
@@ -176,100 +202,59 @@ describe("runCounter", () => {
   });
 
   it("does not propose deletion one below the delete threshold", () => {
-    const fake = fakeGh({});
-
-    const outcome = runCounter({
-      gh: fake.gh,
-      tally: { reached: DELETE_THRESHOLD - 1, refuted: 0 },
-      assignee: "collod873",
-      now: NOW,
-    });
+    const outcome = sweep(trackerWith({}), { reached: DELETE_THRESHOLD - 1, refuted: 0 });
 
     expect(outcome.delete).toEqual({ code: "below-threshold" });
   });
 
   it("does not propose deletion at the threshold if anything was ever refuted", () => {
-    const fake = fakeGh({});
-
-    const outcome = runCounter({
-      gh: fake.gh,
-      tally: { reached: DELETE_THRESHOLD, refuted: 1 },
-      assignee: "collod873",
-      now: NOW,
-    });
+    const outcome = sweep(trackerWith({}), { reached: DELETE_THRESHOLD, refuted: 1 });
 
     expect(outcome.delete).toEqual({ code: "below-threshold" });
   });
 
   it("does not double-propose while a grow proposal already stands open", () => {
-    const fake = fakeGh({
-      findingIssues: findings(GROW_THRESHOLD + 1),
-      signals: [{ number: 7, body: `earlier\n${countMarker("grow", GROW_THRESHOLD)}`, state: "OPEN" }],
-    });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { fake, outcome } = sweepGrow(GROW_THRESHOLD + 1, growSignal("earlier", "OPEN"));
 
     expect(outcome.grow).toMatchObject({ code: "already-proposed", issue: 7 });
-    expect(fake.calls.some((argv) => argv[1] === "create")).toBe(false);
+    expect(createdIssue(fake.calls)).toBe(false);
   });
 
   it("never re-proposes a grow declined not planned, however far the count grows", () => {
-    const fake = fakeGh({
-      findingIssues: findings(GROW_THRESHOLD + 10),
-      signals: [
-        { number: 7, body: `refused\n${countMarker("grow", GROW_THRESHOLD)}`, state: "CLOSED", stateReason: "NOT_PLANNED" },
-      ],
-    });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { fake, outcome } = sweepGrow(GROW_THRESHOLD + 10, growSignal("refused", "CLOSED", "NOT_PLANNED"));
 
     expect(outcome.grow).toMatchObject({ code: "declined-for-good", issue: 7 });
-    expect(fake.calls.some((argv) => argv[1] === "create")).toBe(false);
+    expect(createdIssue(fake.calls)).toBe(false);
   });
 
   it("does not re-propose a declined grow at the same count it was declined at", () => {
-    const fake = fakeGh({
-      findingIssues: findings(GROW_THRESHOLD),
-      signals: [{ number: 7, body: `declined\n${countMarker("grow", GROW_THRESHOLD)}`, state: "CLOSED", stateReason: "COMPLETED" }],
-    });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { fake, outcome } = sweepGrow(GROW_THRESHOLD, growSignal("declined", "CLOSED", "COMPLETED"));
 
     expect(outcome.grow).toEqual({ code: "declined-and-not-grown", declinedAt: GROW_THRESHOLD });
-    expect(fake.calls.some((argv) => argv[1] === "create")).toBe(false);
+    expect(createdIssue(fake.calls)).toBe(false);
   });
 
   it("re-proposes a declined grow once the count has grown past what it recorded", () => {
-    const fake = fakeGh({
-      findingIssues: findings(GROW_THRESHOLD + 1),
-      signals: [{ number: 7, body: `declined\n${countMarker("grow", GROW_THRESHOLD)}`, state: "CLOSED", stateReason: "COMPLETED" }],
-    });
-
-    const outcome = runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    const { outcome } = sweepGrow(GROW_THRESHOLD + 1, growSignal("declined", "CLOSED", "COMPLETED"));
 
     expect(outcome.grow).toMatchObject({ code: "proposed", issue: 42 });
   });
 
   it("keeps the two directions' proposals independent — grow declined does not block delete", () => {
-    const fake = fakeGh({
+    const fake = trackerWith({
       findingIssues: findings(0),
-      signals: [{ number: 7, body: `refused\n${countMarker("grow", GROW_THRESHOLD)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
+      signals: [growSignal("refused", "CLOSED", "NOT_PLANNED")],
     });
 
-    const outcome = runCounter({
-      gh: fake.gh,
-      tally: { reached: DELETE_THRESHOLD, refuted: 0 },
-      assignee: "collod873",
-      now: NOW,
-    });
+    const outcome = sweep(fake, { reached: DELETE_THRESHOLD, refuted: 0 });
 
     expect(outcome.delete).toMatchObject({ code: "proposed", issue: 42 });
   });
 
   it("only ever calls gh issue create, and never close or reopen, in either direction", () => {
-    const fake = fakeGh({ findingIssues: findings(GROW_THRESHOLD + 5) });
+    const fake = trackerWith({ findingIssues: findings(GROW_THRESHOLD + 5) });
 
-    runCounter({ gh: fake.gh, tally: { reached: DELETE_THRESHOLD + 5, refuted: 0 }, assignee: "collod873", now: NOW });
+    sweep(fake, { reached: DELETE_THRESHOLD + 5, refuted: 0 });
 
     for (const argv of fake.calls) {
       if (argv[0] !== "issue") continue;
@@ -279,9 +264,9 @@ describe("runCounter", () => {
   });
 
   it("reads finding issues scoped to the finding label", () => {
-    const fake = fakeGh({ findingIssues: findings(1) });
+    const fake = trackerWith({ findingIssues: findings(1) });
 
-    runCounter({ gh: fake.gh, tally: { reached: 0, refuted: 0 }, assignee: "collod873", now: NOW });
+    sweep(fake, ZERO_TALLY);
 
     const list = fake.calls.find((argv) => argv.includes("--label"));
     expect(list).toBeDefined();

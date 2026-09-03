@@ -1,5 +1,6 @@
 import type { GitExec } from "./git";
 import { Observation } from "./observation-schema";
+import { readNoteArray } from "./notes-store";
 import { isBareSite, sitePath } from "./site";
 
 /**
@@ -8,11 +9,6 @@ import { isBareSite, sitePath } from "./site";
  * convention: threaded through argv, never baked into a closure).
  */
 const NOTES_REF = "observations";
-
-/** A record separator no JSON `Observation[]` payload can contain. */
-const RECORD_SEP = "\x1e";
-/** Separates a commit hash from its note text within one record. */
-const FIELD_SEP = "\x1f";
 
 export interface WriteObservationNoteOptions {
   git: GitExec;
@@ -86,20 +82,9 @@ export function readObservations(options: ReadObservationsOptions): CommitObserv
   const { git, repoDir, base, head } = options;
   const log = options.log ?? ((line: string) => console.log(line));
   const range = base ? `${base}..${head}` : head;
-  const format = `%H${FIELD_SEP}%N${RECORD_SEP}`;
-  const raw = git(["-C", repoDir, "log", range, `--notes=${NOTES_REF}`, `--format=${format}`]);
-
   const results: CommitObservations[] = [];
-  for (const record of raw.split(RECORD_SEP)) {
-    if (!record.trim()) continue;
-
-    const sepIndex = record.indexOf(FIELD_SEP);
-    const commit = (sepIndex === -1 ? record : record.slice(0, sepIndex)).trim();
-    const note = (sepIndex === -1 ? "" : record.slice(sepIndex + FIELD_SEP.length)).trim();
-    if (!note) continue;
-
-    const observations = Observation.array().parse(JSON.parse(note));
-    const surviving = observations.filter((entry) => hasLiveSite({ git, repoDir, ref: head, entry, log }));
+  for (const { commit, records } of readNoteArray({ git, repoDir, ref: NOTES_REF, base, head, schema: Observation })) {
+    const surviving = records.filter((entry) => hasLiveSite({ git, repoDir, ref: head, entry, log }));
     if (surviving.length > 0) results.push({ commit, observations: surviving });
   }
   return results;

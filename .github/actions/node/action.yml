@@ -36,6 +36,9 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: "24"
+        # The npm cache keyed on package-lock.json: a cold `npm ci` on a hosted runner is most of
+        # what a Verify run costs.
+        cache: npm
 
     - name: Install dependencies
       shell: bash

@@ -278,7 +278,7 @@ function machineTicketBody(repository: string, run: RunSummary, machineSha: stri
 
 /**
  * The title and body a failing path inside the machine's own **immutable set**
- * (`tests/acceptance/`, `vitest.config.ts`, `.github/`) gets instead of `machineTicketTitle`/
+ * (`vitest.config.ts`, `.github/`) gets instead of `machineTicketTitle`/
  * `machineTicketBody` — `needs-human` rather than `to-build`, because no pull request may edit
  * that path (ADR-0053), so no implementer could ever build a ticket claiming it. Filing it
  * `to-build` anyway is the ticket behind 7e64031 (research note, Class 3): a `to-build` issue
@@ -292,7 +292,7 @@ function machineImmutableTicketBody(repository: string, run: RunSummary, machine
   return [
     `A run of \`${run.path}\` in \`${repository}\` — an enrolled repository (docs/agents/enrolment.md)`,
     `— failed with its failing step naming \`${path}\`, a path inside the machine checkout's own`,
-    "immutable set (`tests/acceptance/`, `vitest.config.ts`, `.github/`). No pull request may edit",
+    "immutable set (`vitest.config.ts`, `.github/`). No pull request may edit",
     "it (ADR-0053), so no implementer could ever build a ticket claiming it — filed `needs-human`",
     "here instead of `to-build`.",
     "",

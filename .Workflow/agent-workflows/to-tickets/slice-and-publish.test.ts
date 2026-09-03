@@ -11,6 +11,27 @@ import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
 
+/** The blocked-by edges `calls` wired — every `-F` write to a `dependencies/blocked_by` path. */
+function blockedByWrites(calls: string[][]): string[][] {
+  return calls.filter(
+    (args) =>
+      args[0] === "api" &&
+      typeof args[1] === "string" &&
+      args[1].endsWith("/dependencies/blocked_by") &&
+      args.includes("-F"),
+  );
+}
+
+/** The body of the first issue publishing `plan` under the PRD files — what the render tests read. */
+function publishedBody(plan: Slice[]): string {
+  const fake = createFakeGh();
+
+  sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+  const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
+  return createCall![createCall!.indexOf("--body") + 1];
+}
+
 describe("sliceAndPublish", () => {
   it("creates an issue for every slice and attaches each under the PRD", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
@@ -45,13 +66,7 @@ describe("sliceAndPublish", () => {
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
     const [root, dependsOnRoot, dependsOnBoth] = published;
 
-    const wireCalls = fake.calls.filter(
-      (args) =>
-        args[0] === "api" &&
-        typeof args[1] === "string" &&
-        args[1].endsWith("/dependencies/blocked_by") &&
-        args.includes("-F"),
-    );
+    const wireCalls = blockedByWrites(fake.calls);
     expect(wireCalls).toHaveLength(3);
 
     // Building the path through gh-paths.ts on both sides (production and
@@ -118,14 +133,7 @@ describe("sliceAndPublish", () => {
     );
 
     // The write was still attempted and recorded — only the read-back is missing the edge.
-    const wireCalls = fake.calls.filter(
-      (args) =>
-        args[0] === "api" &&
-        typeof args[1] === "string" &&
-        args[1].endsWith("/dependencies/blocked_by") &&
-        args.includes("-F"),
-    );
-    expect(wireCalls).toHaveLength(1);
+    expect(blockedByWrites(fake.calls)).toHaveLength(1);
   });
 
   // The three cases that used to sit here — no block, a block that isn't
@@ -178,7 +186,7 @@ describe("sliceAndPublish", () => {
   });
 
   it("renders a body with all four headings in order, criteria as checkboxes, and no Closes directive", () => {
-    const plan = [
+    const body = publishedBody([
       slice({
         title: "Root",
         acceptanceCriteria: [
@@ -187,14 +195,7 @@ describe("sliceAndPublish", () => {
         ],
         filesClaimed: ["bin/b.ts", "bin/c.ts"],
       }),
-    ];
-    const fake = createFakeGh();
-
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
-    const bodyFlagIndex = createCall!.indexOf("--body");
-    const body = createCall![bodyFlagIndex + 1];
+    ]);
 
     const headingOrder = ["## Parent PRD", "## What to build", "## Acceptance criteria", "## Files claimed"];
     const positions = headingOrder.map((heading) => body.indexOf(heading));
@@ -210,32 +211,20 @@ describe("sliceAndPublish", () => {
   });
 
   it("renders an empty filesClaimed as the None sentinel", () => {
-    const plan = [slice({ title: "No files touched", filesClaimed: [] })];
-    const fake = createFakeGh();
-
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
-    const body = createCall![createCall!.indexOf("--body") + 1];
+    const body = publishedBody([slice({ title: "No files touched", filesClaimed: [] })]);
 
     expect(body).toContain("- None — no files.");
   });
 
   it("renders seamsConsumed lines in the body without ever treating them as a Files claimed bullet", () => {
     const seamLine = "`GhExec` — the injected gh argv executor — shared/gh.ts — consumed by everything.";
-    const plan = [
+    const body = publishedBody([
       slice({
         title: "Consumes a seam",
         filesClaimed: ["docs/only/this/file.ts"],
         seamsConsumed: [seamLine],
       }),
-    ];
-    const fake = createFakeGh();
-
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
-    const body = createCall![createCall!.indexOf("--body") + 1];
+    ]);
 
     expect(body).toContain(seamLine);
 

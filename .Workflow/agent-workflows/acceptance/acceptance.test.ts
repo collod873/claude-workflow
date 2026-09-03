@@ -1,8 +1,8 @@
 import { join } from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeFileSync } from "node:fs";
+import { beforeEach, describe, expect, it } from "vitest";
 import { subIssuesPath } from "../shared/gh-paths";
+import { scratchDir } from "../shared/scratch.fixture";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
 import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 import {
@@ -64,23 +64,38 @@ async function authorAgainst(
 }
 
 /**
- * `authorAgainst`'s write-side sibling: runs the author against `TICKET_BODY` with `files` as its
- * canned answer, and hands back what reached `writeFile` — for the tests about which paths the
- * author accepts and what it puts at them, rather than about the prompt it built.
+ * `authorAgainst`'s write-side sibling: starts the author against `ticket` with `files` as its
+ * canned answer, and hands back the attempt alongside what reaches `writeFile` — so a refusal
+ * test can await the rejection and then show the map stayed empty.
+ */
+function authoring(
+  files: Array<{ path: string; content: string }>,
+  ticket: { title: string; body: string },
+  issueNumber = 162,
+): { attempt: ReturnType<typeof authorAcceptanceTests>; written: Map<string, string> } {
+  const stage = createFakeStage(authorResponse(files));
+  const written = new Map<string, string>();
+  const attempt = authorAcceptanceTests({
+    exec: stage.exec,
+    writeFile: (path, content) => written.set(path, content),
+    issueNumber,
+    ticket,
+    prdBody: PRD_BODY,
+    listTestDir: () => [],
+  });
+  return { attempt, written };
+}
+
+/**
+ * Runs the author against `TICKET_BODY` with `files` as its canned answer, and hands back what
+ * reached `writeFile` — for the tests about which paths the author accepts and what it puts at
+ * them, rather than about the prompt it built.
  */
 async function authorWriting(
   files: Array<{ path: string; content: string }>,
 ): Promise<{ paths: string[]; written: Map<string, string> }> {
-  const stage = createFakeStage(authorResponse(files));
-  const written = new Map<string, string>();
-  const authored = await authorAcceptanceTests({
-    exec: stage.exec,
-    writeFile: (path, content) => written.set(path, content),
-    issueNumber: 162,
-    ticket: { title: "Author acceptance tests", body: TICKET_BODY },
-    prdBody: PRD_BODY,
-    listTestDir: () => [],
-  });
+  const { attempt, written } = authoring(files, { title: "Author acceptance tests", body: TICKET_BODY });
+  const authored = await attempt;
   return { paths: authored.map((file) => file.path), written };
 }
 
@@ -210,32 +225,20 @@ describe("authorAcceptanceTests", () => {
   });
 
   it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
-    const stage = createFakeStage(authorResponse([{ path: "tests/acceptance/x.test.ts", content: "x" }]));
-    const written = new Map<string, string>();
+    const { attempt, written } = authoring(
+      [{ path: "tests/acceptance/x.test.ts", content: "x" }],
+      { title: "No criteria", body: "## What to build\nnothing declared\n" },
+      999,
+    );
 
-    await expect(
-      authorAcceptanceTests({
-        exec: stage.exec,
-        writeFile: (path, content) => written.set(path, content),
-        issueNumber: 999,
-        ticket: { title: "No criteria", body: "## What to build\nnothing declared\n" },
-      }),
-    ).rejects.toThrow(/no acceptance criteria/);
+    await expect(attempt).rejects.toThrow(/no acceptance criteria/);
     expect(written.size).toBe(0);
   });
 
   it("throws, writing nothing, when the model names a path outside the acceptance test dir", async () => {
-    const stage = createFakeStage(authorResponse([{ path: "src/whoops.ts", content: "x" }]));
-    const written = new Map<string, string>();
+    const { attempt, written } = authoring([{ path: "src/whoops.ts", content: "x" }], { title: "t", body: TICKET_BODY });
 
-    await expect(
-      authorAcceptanceTests({
-        exec: stage.exec,
-        writeFile: (path, content) => written.set(path, content),
-        issueNumber: 162,
-        ticket: { title: "t", body: TICKET_BODY },
-      }),
-    ).rejects.toThrow(/outside/);
+    await expect(attempt).rejects.toThrow(/outside/);
     expect(written.size).toBe(0);
   });
 });
@@ -379,11 +382,7 @@ describe("refireAcceptance", () => {
   let REFIRE_TESTS_DIR: string;
 
   beforeEach(() => {
-    REFIRE_TESTS_DIR = mkdtempSync(join(tmpdir(), "refire-acceptance-"));
-  });
-
-  afterEach(() => {
-    rmSync(REFIRE_TESTS_DIR, { recursive: true, force: true });
+    REFIRE_TESTS_DIR = scratchDir("refire-acceptance");
   });
 
   const KEPT_CRITERION = "make test exits 0 with a criterion the edit leaves untouched";
@@ -418,19 +417,21 @@ ${OTHER_KEPT_CRITERION}
 `;
 
   function writeTestFor(sliceNumber: number, fileSlug: string, criterion: string): void {
-    mkdirSync(REFIRE_TESTS_DIR, { recursive: true });
     writeFileSync(join(REFIRE_TESTS_DIR, `${sliceNumber}-${fileSlug}.test.ts`), `// ${criterion}\n`, "utf8");
   }
 
-  function fakeGh(): { gh: (args: string[]) => string; calls: string[][] } {
-    const calls: string[][] = [];
-    const gh = (args: string[]): string => {
-      calls.push(args);
+  /**
+   * A `gh` answering the tracker `refireAcceptance` walks: PRD #301 with `prdBody`, and slices
+   * #201 and #202 as its sub-issues with the given bodies. Not `createFakeGh`: that one models the
+   * publishing side and answers no `issue view`.
+   */
+  function prdWithSlices(prdBody: string, slice201Body: string): (args: string[]) => string {
+    return (args) => {
       if (args[0] === "issue" && args[1] === "view" && args[2] === "301") {
-        return JSON.stringify({ title: "PRD", body: EDITED_PRD_BODY });
+        return JSON.stringify({ title: "PRD", body: prdBody });
       }
       if (args[0] === "issue" && args[1] === "view" && args[2] === "201") {
-        return JSON.stringify({ title: "Slice 201", body: SLICE_201_BODY });
+        return JSON.stringify({ title: "Slice 201", body: slice201Body });
       }
       if (args[0] === "issue" && args[1] === "view" && args[2] === "202") {
         return JSON.stringify({ title: "Slice 202", body: SLICE_202_BODY });
@@ -440,18 +441,16 @@ ${OTHER_KEPT_CRITERION}
       }
       throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
     };
-    return { gh, calls };
   }
 
   it("calls the acceptance author once for the one slice whose test's criterion the edit dropped", async () => {
     writeTestFor(201, "kept", KEPT_CRITERION);
     writeTestFor(201, "dropped", DROPPED_CRITERION);
     writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
-    const { gh } = fakeGh();
     const calledFor: number[] = [];
 
     const affected = await refireAcceptance({
-      gh,
+      gh: prdWithSlices(EDITED_PRD_BODY, SLICE_201_BODY),
       prdNumber: 301,
       authorForSlice: (sliceNumber) => {
         calledFor.push(sliceNumber);
@@ -467,28 +466,13 @@ ${OTHER_KEPT_CRITERION}
     // Both slices' tests still name criteria the (unedited) spec carries.
     writeTestFor(201, "kept", KEPT_CRITERION);
     writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
-    const unchangedGh = (args: string[]): string => {
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "301") {
-        return JSON.stringify({
-          title: "PRD",
-          body: `## What to build\n${KEPT_CRITERION}\n${OTHER_KEPT_CRITERION}\n`,
-        });
-      }
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "201") {
-        return JSON.stringify({ title: "Slice 201", body: SLICE_201_BODY.replace(`- [ ] ${DROPPED_CRITERION}\n`, "") });
-      }
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "202") {
-        return JSON.stringify({ title: "Slice 202", body: SLICE_202_BODY });
-      }
-      if (args[0] === "api" && args[1] === subIssuesPath(301)) {
-        return JSON.stringify([{ number: 201 }, { number: 202 }]);
-      }
-      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
-    };
     const calledFor: number[] = [];
 
     const affected = await refireAcceptance({
-      gh: unchangedGh,
+      gh: prdWithSlices(
+        `## What to build\n${KEPT_CRITERION}\n${OTHER_KEPT_CRITERION}\n`,
+        SLICE_201_BODY.replace(`- [ ] ${DROPPED_CRITERION}\n`, ""),
+      ),
       prdNumber: 301,
       authorForSlice: (sliceNumber) => {
         calledFor.push(sliceNumber);

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { issueBody } from "../../shared/issue-body";
 import { join } from "node:path";
 import type { GhExec } from "../../shared/gh";
 import type { DecidedContext } from "../author-contract";
@@ -37,10 +38,6 @@ const DURABLE_RECORD_RE = /docs\/adr\/[\w.-]+\.md/;
 const ISSUE_NUMBER_RE = /(?:\/issues\/|#)(\d+)/;
 const DECISION_LINE_RE = /^-\s*\[([^\]]+)\]\(([^)]+)\):\s*(.*)$/;
 
-function issueBody(gh: GhExec, issueNumber: number): string {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "body"]);
-  return (JSON.parse(raw) as { body?: string }).body ?? "";
-}
 
 interface RawComment {
   body?: string;

@@ -44,22 +44,51 @@ export interface TestRunResult {
  * `message` naming why; that shape, not the process exit code, is what
  * `collected: false` reads off.
  */
-interface VitestJsonAssertion {
+export interface VitestJsonAssertion {
   fullName?: string;
   title?: string;
   status: string;
   failureMessages?: string[];
 }
 
-interface VitestJsonTestResult {
+export interface VitestJsonTestResult {
   name: string;
   status: string;
   message?: string;
   assertionResults: VitestJsonAssertion[];
 }
 
-interface VitestJsonReport {
+export interface VitestJsonReport {
   testResults: VitestJsonTestResult[];
+}
+
+/**
+ * Shells `npx vitest run <targets> --reporter=json` in `repoDir` and hands back the parsed report,
+ * or the one-line reason there is none. A non-zero exit is not itself a failure signal — vitest
+ * exits non-zero on any red test, collected or not — and the child's stdout still carries the JSON
+ * on that path (`execFileSync` attaches it to the caught error), so the report is read the same way
+ * either way. Two callers classify it differently (`runVitestJson` here, `fixer.ts`'s signature
+ * reader), which is why the spawn and the parse live once, apart from either classification.
+ */
+export function runVitestReport(targets: string[], repoDir: string): { report: VitestJsonReport } | { error: string } {
+  let stdout: string;
+  try {
+    stdout = execFileSync("npx", ["vitest", "run", ...targets, "--reporter=json"], {
+      cwd: repoDir,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      env: childEnv(),
+    });
+  } catch (err) {
+    const output = (err as { stdout?: string }).stdout;
+    if (typeof output !== "string" || output.trim() === "") return { error: reason(err) };
+    stdout = output;
+  }
+  try {
+    return { report: JSON.parse(stdout) as VitestJsonReport };
+  } catch (err) {
+    return { error: `unparseable vitest JSON: ${reason(err)}` };
+  }
 }
 
 /** The error name a failure message opens with, e.g. `AssertionError: expected …` → `AssertionError`. */
@@ -70,38 +99,13 @@ function errorNameOf(failureMessage: string | undefined): string {
 }
 
 /**
- * The real `runTests`: shells `npx vitest run <dir> --reporter=json` and
- * classifies its report. A non-zero exit is not itself a refusal signal —
- * vitest exits non-zero on any red test, collected or not — so this always
- * reads the JSON report rather than the exit code.
+ * The real `runTests`: one `vitest run <dir>` through `runVitestReport`, classified — did every
+ * file collect, and which assertions failed with which error name.
  */
 export function runVitestJson(dir: string, repoDir: string = process.cwd()): TestRunResult {
-  let stdout: string;
-  try {
-    stdout = execFileSync("npx", ["vitest", "run", dir, "--reporter=json"], {
-      cwd: repoDir,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      env: childEnv(),
-    });
-  } catch (err) {
-    // vitest exits non-zero on a red suite, collected or not — the child's
-    // stdout still carries the JSON report on that path (execFileSync
-    // attaches it to the caught error), so this reads it the same way the
-    // success branch does rather than treating a non-zero exit as failure.
-    const output = (err as { stdout?: string }).stdout;
-    if (typeof output !== "string" || output.trim() === "") {
-      return { collected: false, collectionError: reason(err), failures: [] };
-    }
-    stdout = output;
-  }
-
-  let report: VitestJsonReport;
-  try {
-    report = JSON.parse(stdout) as VitestJsonReport;
-  } catch (err) {
-    return { collected: false, collectionError: `unparseable vitest JSON: ${reason(err)}`, failures: [] };
-  }
+  const ran = runVitestReport([dir], repoDir);
+  if ("error" in ran) return { collected: false, collectionError: ran.error, failures: [] };
+  const { report } = ran;
 
   const failures: TestFailure[] = [];
   for (const file of report.testResults) {

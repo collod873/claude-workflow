@@ -1,21 +1,19 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { handoffPath, writeFailure } from "../shared/handoff-path";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
-import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { slice } from "../shared/plan.fixture";
 import { SLICE_OUTPUT, type Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
+import { scratchDir } from "../shared/scratch.fixture";
 import { checkpointPath } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
+import { runStageCli, stageCliFailure, TO_TICKETS_PATH } from "./stage-cli.fixture";
 import { runNamedStage } from "./to-tickets";
 
-const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
 
 /** A `GhExec` for a stage that must never touch GitHub — seam-sweep and
@@ -47,6 +45,20 @@ function seamSweepResponse(entries: string[]): string {
 /** The wire-format text a slice checkpoint holds for the given plan. */
 function sliceResponse(plan: Slice[]): string {
   return JSON.stringify({ slices: plan });
+}
+
+/**
+ * Runs audit-and-publish over whatever slice checkpoint the caller seeded, with the auditor
+ * answering `answer`, and hands back every line it logged — for the tests about what the stage
+ * says, rather than what it publishes. The caller's `afterEach` restores the spy.
+ */
+async function loggedByAudit(answer: { notes: string; slices: Slice[] }): Promise<unknown[]> {
+  const stage = createFakeStage(JSON.stringify(answer));
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+  await runNamedStage("audit-and-publish", "13", stage.exec, createFakeGh().gh);
+
+  return logSpy.mock.calls.map((call) => call[0]);
 }
 
 describe("runNamedStage (seam-sweep, against the fake StageExec)", () => {
@@ -108,56 +120,46 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
   it("reads the sliced plan as PLAN, publishes the audited plan, and writes it to its own checkpoint", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
     const auditedPlan = [{ ...slicedPlan[0], title: "Root, re-worded by audit" }];
-    const fakeStage = createFakeStage(
+    const stage = createFakeStage(
       JSON.stringify({ notes: "Granularity: fine as-is.", slices: auditedPlan }),
     );
-    const fakeGh = createFakeGh();
+    const fake = createFakeGh();
 
     const published = (await runNamedStage(
       "audit-and-publish",
       "13",
-      fakeStage.exec,
-      fakeGh.gh,
+      stage.exec,
+      fake.gh,
     )) as PublishedIssue[];
 
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
-    expect(fakeStage.calls).toHaveLength(1);
+    expect(stage.calls).toHaveLength(1);
     // Not `JSON.stringify(slicedPlan)` — `readPriorHandoff` unwraps the
     // checkpoint through `SLICE_OUTPUT.parse`, which re-serialises to zod's
     // own field order rather than the fixture's, so the expected text has to
     // go through the same unwrap to match.
-    expect(fakeStage.calls[0][1]).toContain(JSON.stringify(SLICE_OUTPUT.parse(sliceResponse(slicedPlan))));
+    expect(stage.calls[0][1]).toContain(JSON.stringify(SLICE_OUTPUT.parse(sliceResponse(slicedPlan))));
     const checkpoint = JSON.parse(readFileSync(checkpointPath("audit-and-publish"), "utf8"));
     expect(JSON.parse(checkpoint.response)).toEqual({
       notes: "Granularity: fine as-is.",
       slices: auditedPlan,
     });
 
-    const createCalls = fakeGh.calls.filter((args) => args[0] === "issue" && args[1] === "create");
+    const createCalls = fake.calls.filter((args) => args[0] === "issue" && args[1] === "create");
     expect(createCalls).toHaveLength(1);
   });
 
   it("prints the auditor's grading notes and unapplied flags — the `notes` field of its answer — to stdout", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
     const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";
-    const fakeStage = createFakeStage(JSON.stringify({ notes, slices: slicedPlan }));
-    const fakeGh = createFakeGh();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
-
-    expect(logSpy.mock.calls.map((call) => call[0])).toContainEqual(notes);
+    expect(await loggedByAudit({ notes, slices: slicedPlan })).toContainEqual(notes);
   });
 
   it("logs only the measurement and success lines — no notes — when the auditor graded silently", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
-    const fakeStage = createFakeStage(JSON.stringify({ notes: "", slices: slicedPlan }));
-    const fakeGh = createFakeGh();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh);
-
-    expect(logSpy.mock.calls.map((call) => call[0])).toEqual([
+    expect(await loggedByAudit({ notes: "", slices: slicedPlan })).toEqual([
       expect.stringMatching(/^audit-and-publish: 1 slice, /),
       "audit-and-publish: published 1 sub-issue under #13",
     ]);
@@ -166,26 +168,26 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
   it("exits nonzero without publishing when the audited plan fails validate-graph.ts", async () => {
     seedSlicedPlan();
     const selfReferencingPlan = [slice({ title: "Self-referencing slice", dependsOn: [1] })];
-    const fakeStage = createFakeStage(JSON.stringify({ slices: selfReferencingPlan }));
-    const fakeGh = createFakeGh();
+    const stage = createFakeStage(JSON.stringify({ slices: selfReferencingPlan }));
+    const fake = createFakeGh();
 
-    await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
+    await expect(runNamedStage("audit-and-publish", "13", stage.exec, fake.gh)).rejects.toThrow(
       /depends on itself/,
     );
-    expect(fakeGh.calls).toHaveLength(0);
+    expect(fake.calls).toHaveLength(0);
   });
 
   it("exits nonzero without publishing when the auditor's response fails schema validation", async () => {
     seedSlicedPlan();
-    const fakeStage = createFakeStage(
+    const stage = createFakeStage(
       JSON.stringify({ slices: [{ title: "Missing everything else" }] }),
     );
-    const fakeGh = createFakeGh();
+    const fake = createFakeGh();
 
-    await expect(runNamedStage("audit-and-publish", "13", fakeStage.exec, fakeGh.gh)).rejects.toThrow(
+    await expect(runNamedStage("audit-and-publish", "13", stage.exec, fake.gh)).rejects.toThrow(
       /failed schema validation/,
     );
-    expect(fakeGh.calls).toHaveLength(0);
+    expect(fake.calls).toHaveLength(0);
   });
 });
 
@@ -250,12 +252,8 @@ describe("a plan-emitting stage prints one measurement line against the Slice ca
   it("audit-and-publish: measures the audited plan, not the one it was handed", async () => {
     withHandoffDir();
     seedCheckpoint("slice", sliceResponse([slice({ title: "Before audit" })]));
-    const fakeStage = createFakeStage(JSON.stringify({ notes: "", slices: knownPlan }));
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runNamedStage("audit-and-publish", "13", fakeStage.exec, createFakeGh().gh);
-
-    expect(logSpy.mock.calls.map((call) => call[0])).toContain(`audit-and-publish: ${expectedLine}`);
+    expect(await loggedByAudit({ notes: "", slices: knownPlan })).toContain(`audit-and-publish: ${expectedLine}`);
   });
 });
 
@@ -283,9 +281,9 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
     // means giving this one test a private cwd for its duration, not a
     // private handoff path (#222): a fixed absolute path here would stop
     // testing the fallback it exists to pin. chdir is process-wide within a
-    // vitest worker, so it must be restored — and the temp dir removed —
-    // before this test hands the worker back, success or failure.
-    const cwd = mkdtempSync(join(tmpdir(), "handoff-cwd-"));
+    // vitest worker, so it must be restored before this test hands the worker
+    // back, success or failure (`scratchDir` removes the directory itself).
+    const cwd = scratchDir("handoff-cwd");
     const originalCwd = process.cwd();
     process.chdir(cwd);
     try {
@@ -296,7 +294,6 @@ describe("handoffPath / writeFailure (FAILURE_REASON_PATH reconciliation)", () =
       expect(readFileSync(join(cwd, DEFAULT_HANDOFF_PATH), "utf8")).toBe("seam-sweep: boom\n");
     } finally {
       process.chdir(originalCwd);
-      rmSync(cwd, { recursive: true, force: true });
     }
   });
 });
@@ -345,61 +342,37 @@ describe("stage output moved from the shared handoff to per-stage checkpoints", 
 });
 
 /**
- * These exercise the real `--stage seam-sweep` CLI end to end, with a stub
- * `claude` executable placed first on PATH standing in for the model —
- * proving the wiring (argv, extraction, schema, checkpoint write, exit code)
- * without launching one.
+ * These exercise the real `--stage seam-sweep` CLI end to end, through
+ * `stage-cli.fixture.ts`, with a stub `claude` executable placed first on PATH
+ * standing in for the model — proving the wiring (argv, extraction, schema,
+ * checkpoint write, exit code) without launching one.
  */
 describe("to-tickets.ts --stage seam-sweep (CLI)", () => {
   it("writes a schema-valid manifest to its checkpoint and exits 0", async () => {
-    const dir = withHandoffDir();
-    const { env } = stubClaudeCli(dir, { structured: { entries: ["a seam"] } });
-
-    execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
-      env,
-      encoding: "utf8",
-    });
+    runStageCli("seam-sweep", { structured: { entries: ["a seam"] } });
 
     const checkpoint = JSON.parse(readFileSync(checkpointPath("seam-sweep"), "utf8"));
     expect(JSON.parse(checkpoint.response)).toEqual({ entries: ["a seam"] });
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the run produced no structured output", async () => {
-    const dir = withHandoffDir();
     // A result event carrying prose and no `structured_output` — what the
     // CLI reports when the model never reached the tool. There is no such
     // response in ordinary traffic, and the point is that the stage names it
     // rather than dying on a `SyntaxError` about position 0.
-    const { env, handoffFile } = stubClaudeCli(dir, "the model just talked, and never called the tool");
+    const reason = stageCliFailure("seam-sweep", "the model just talked, and never called the tool");
 
-    expect(() =>
-      execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
-        env,
-        encoding: "utf8",
-      }),
-    ).toThrow();
-
-    expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*not valid JSON/);
+    expect(reason).toMatch(/^seam-sweep: .*not valid JSON/);
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the manifest fails schema validation", async () => {
-    const dir = withHandoffDir();
     // A manifest entry with a newline in it: the rule `SeamManifestEntry`
     // carries as a `.refine()`, which has no JSON Schema form — so the API
     // accepts this and zod is what refuses it. That split is the reason
     // `parse` runs the schema over structured output at all.
-    const { env, handoffFile } = stubClaudeCli(dir, {
-      structured: { entries: ["one line\ntwo lines"] },
-    });
+    const reason = stageCliFailure("seam-sweep", { structured: { entries: ["one line\ntwo lines"] } });
 
-    expect(() =>
-      execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "seam-sweep", "--issue", "13"], {
-        env,
-        encoding: "utf8",
-      }),
-    ).toThrow();
-
-    expect(readFileSync(handoffFile, "utf8")).toMatch(/^seam-sweep: .*failed schema validation/);
+    expect(reason).toMatch(/^seam-sweep: .*failed schema validation/);
   });
 });
 
@@ -465,39 +438,25 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
   const validPlan = [slice({ title: "One slice" })];
   const seamSweepCheckpoint = { stage: "seam-sweep", response: seamSweepResponse(["a seam"]) };
 
-  /** Runs `--stage slice` against `plan` and asserts it fails, naming `pattern` in the handoff. */
-  function expectSliceFailure(plan: Slice[], pattern: RegExp): void {
-    const dir = withHandoffDir();
-    const { env, handoffFile } = stubClaudeCli(dir, { structured: { slices: plan } }, seamSweepCheckpoint);
-
-    expect(() =>
-      execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "slice", "--issue", "13"], {
-        env,
-        encoding: "utf8",
-      }),
-    ).toThrow();
-
-    expect(readFileSync(handoffFile, "utf8")).toMatch(pattern);
+  /** Runs `--stage slice` against `plan`, asserts it fails, and hands back the reason it wrote. */
+  function sliceFailure(plan: Slice[]): string {
+    return stageCliFailure("slice", { structured: { slices: plan } }, seamSweepCheckpoint);
   }
 
   it("writes a schema- and graph-valid plan to its checkpoint and exits 0", async () => {
-    const dir = withHandoffDir();
-    const { env } = stubClaudeCli(dir, { structured: { slices: validPlan } }, seamSweepCheckpoint);
-
-    execFileSync("npx", ["tsx", TO_TICKETS_PATH, "--stage", "slice", "--issue", "13"], {
-      env,
-      encoding: "utf8",
-    });
+    runStageCli("slice", { structured: { slices: validPlan } }, seamSweepCheckpoint);
 
     const checkpoint = JSON.parse(readFileSync(checkpointPath("slice"), "utf8"));
     expect(JSON.parse(checkpoint.response)).toEqual({ slices: validPlan });
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the plan fails schema validation", () => {
-    expectSliceFailure([slice({ title: "Untestable", acceptanceCriteria: [] })], /^slice: .*failed schema validation/);
+    expect(sliceFailure([slice({ title: "Untestable", acceptanceCriteria: [] })])).toMatch(
+      /^slice: .*failed schema validation/,
+    );
   });
 
   it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", () => {
-    expectSliceFailure([slice({ title: "A", dependsOn: [1] })], /^slice: .*depends on itself/);
+    expect(sliceFailure([slice({ title: "A", dependsOn: [1] })])).toMatch(/^slice: .*depends on itself/);
   });
 });

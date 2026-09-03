@@ -4,6 +4,7 @@ import { createFakeStage } from "../shared/stage.fake";
 import { runProposedAuditor, type ProposedAuditorOptions } from "./auditor";
 import { applyTwoSiteGate, parseProposedFindings, proposedPrompt } from "./lenses/proposed";
 import { violationPrompt } from "./lenses/violation";
+import { expectSandboxedLensArgv } from "./sandbox-argv.fixture";
 
 /**
  * Every test in this file runs the auditor through `createFakeGit` and
@@ -89,21 +90,7 @@ describe("runProposedAuditor / the two-site gate", () => {
     expect(fakeGit.calls[0]).toEqual(["-C", "/some/repo", "diff", "--no-color", "abc", "def", "--", "x.ts"]);
 
     expect(fakeStage.calls).toHaveLength(1);
-    const [argv] = fakeStage.calls;
-    expect(argv[0]).toBe("-p");
-    expect(argv.slice(1)).toEqual([
-      "--model",
-      "sonnet",
-      "--output-format",
-      "text",
-      "--no-session-persistence",
-      "--tools",
-      "",
-      "--strict-mcp-config",
-      "--disable-slash-commands",
-      "--setting-sources",
-      "",
-    ]);
+    expectSandboxedLensArgv(fakeStage.calls[0]);
   });
 
   it("returns no findings when the raw text carries no Finding/Site pair, an empty pass", async () => {

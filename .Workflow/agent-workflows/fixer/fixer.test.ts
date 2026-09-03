@@ -638,7 +638,7 @@ describe("the door a red Verify rings itself", () => {
     // lane — a wasted model run is visible and cheap, and the person who cancelled is right there;
     // a red pull request nobody is fixing is silent and needs a human to notice it at all.
     expect(signal?.if).toContain("always()");
-    expect(signal?.needs).toEqual(["immutability", "restore-and-run-acceptance", "verify"]);
+    expect(signal?.needs).toEqual(["immutability", "verify"]);
     for (const job of signal?.needs ?? []) {
       expect(signal?.if, `the signal job ignores a red ${job}`).toContain(`needs.${job}.result == 'failure'`);
       expect(signal?.if, `the signal job ignores a timed-out ${job}`).toContain(`needs.${job}.result == 'cancelled'`);

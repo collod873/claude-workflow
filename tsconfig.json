@@ -4,15 +4,25 @@
     "module": "ES2022",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "strict": true,
     "noImplicitReturns": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "allowJs": true
   },
-  "include": [".Workflow/**/*.ts", ".claude/**/*.ts"],
-  "exclude": [".claude/worktrees/**"]
+  "include": [
+    ".Workflow/**/*.ts",
+    ".claude/**/*.ts"
+  ],
+  "exclude": [
+    ".claude/worktrees/**"
+  ]
 }

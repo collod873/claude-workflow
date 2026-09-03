@@ -84,14 +84,14 @@ export type IntegrateOutcome =
    */
   | { merged: false; reason: "unjudged" }
   /**
-   * Lane 06's `Restore and run acceptance` job failed for this head commit: the slice's own
-   * acceptance tests, restored from trunk, do not pass against this diff. The ticket is not built.
+   * Lane 06's `Verify` job failed for this head commit: `npm run check` — the slice's own
+   * acceptance tests beside their subjects included — does not pass against this diff.
    *
    * This bound nothing until now, and ADR-0095 said why — the job was red for every pull request
    * while lane 04's first-authoring was unwired, so binding on it would have stopped the chain
    * rather than caught anything. That is no longer true (ADR-0104).
    */
-  | { merged: false; reason: "acceptance" }
+  | { merged: false; reason: "gate" }
   /**
    * The rebase onto trunk stopped on a conflict, and this lane wrote the record rather than
    * throwing one (#234): the rebase is aborted, the pull request carries `blocked`, and a comment
@@ -200,8 +200,8 @@ interface VerifyVerdict {
  */
 export const IMMUTABILITY_JOB = "Immutability";
 
-/** The `Restore and run acceptance` job's `name:` in `verify.yml`, pinned the same way. */
-export const ACCEPTANCE_JOB = "Restore and run acceptance";
+/** The gate job's `name:` in `verify.yml` — `npm run check` against the target — pinned the same way. */
+export const GATE_JOB = "Verify";
 
 /** The `event` an Actions run carries when lane 05's `openPrAndDispatch` started it. */
 const DISPATCH_EVENT = "repository_dispatch";
@@ -337,7 +337,7 @@ function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkfl
     if (!jobJudged(gh, immutability.id, pr)) continue;
     return {
       immutability: jobVerdict(jobs, IMMUTABILITY_JOB),
-      acceptance: jobVerdict(jobs, ACCEPTANCE_JOB),
+      acceptance: jobVerdict(jobs, GATE_JOB),
     };
   }
   return NOT_JUDGED;
@@ -377,10 +377,10 @@ function awaitVerifyVerdict(
  */
 function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict): void {
   const body = [
-    `Lane 06's \`${ACCEPTANCE_JOB}\` job is **${verdict}** for this head commit, so lane 08 did not merge.`,
+    `Lane 06's \`${GATE_JOB}\` job is **${verdict}** for this head commit, so lane 08 did not merge.`,
     "",
     verdict === "failed"
-      ? "The slice's own acceptance tests, restored from trunk, do not pass against this diff — the ticket is not built."
+      ? "`npm run check` is red against this diff — the ticket's own acceptance tests, or another check, do not pass. The ticket is not built."
       : "The job never reached a verdict within the window this lane waits, and an absent verdict is a refusal, never a pass (ADR-0054).",
     "",
     "Re-dispatch the pull request once the cause is dealt with; nothing retries this on its own.",
@@ -609,7 +609,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
   if (verdict.acceptance === "failed") {
     noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);
-    return { merged: false, reason: "acceptance" };
+    return { merged: false, reason: "gate" };
   }
   if (verdict.acceptance !== "passed") {
     noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);

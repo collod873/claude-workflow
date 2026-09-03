@@ -1,25 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
+import { createFakeGh } from "../shared/gh.fake";
 import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
 import { publishFinding, publishFindings } from "./publish-findings";
-
-/** A `GhExec` stand-in that records every call it received and answers with a canned issue URL. */
-function fakeGh(nextIssueNumber = 501): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push(args);
-    return `https://github.com/example/repo/issues/${nextIssueNumber}`;
-  };
-  return { gh, calls };
-}
 
 /** Names that would appear in a call resembling a PR comment or any other notification path. */
 const NOTIFICATION_ARGV_NEEDLES = ["pr", "comment", "notify", "slack", "webhook"];
 
 describe("publishFinding", () => {
   it("makes exactly one gh call: issue create, carrying the finding label and the assignee", () => {
-    const { gh, calls } = fakeGh(900);
+    const { gh, calls } = createFakeGh({ firstIssueNumber: 900 });
     const finding: Finding = { message: "src/widget.ts:12 returns undefined on the empty-cart path" };
 
     const issue = publishFinding(gh, finding, "collod873");
@@ -35,7 +25,7 @@ describe("publishFinding", () => {
   });
 
   it("carries the finding's full message as the issue body", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createFakeGh();
     const finding: Finding = { message: "src/widget.ts:12 returns undefined on the empty-cart path" };
 
     publishFinding(gh, finding, "collod873");
@@ -45,7 +35,7 @@ describe("publishFinding", () => {
   });
 
   it("makes no call that resembles a PR comment or any other notification", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createFakeGh();
     const finding: Finding = { message: "src/widget.ts:12 returns undefined on the empty-cart path" };
 
     publishFinding(gh, finding, "collod873");
@@ -59,13 +49,7 @@ describe("publishFinding", () => {
 
 describe("publishFindings", () => {
   it("files one issue per finding, in order, and returns their numbers in the same order", () => {
-    let nextNumber = 100;
-    const calls: string[][] = [];
-    const gh: GhExec = (args) => {
-      calls.push(args);
-      nextNumber += 1;
-      return `https://github.com/example/repo/issues/${nextNumber}`;
-    };
+    const { gh, calls } = createFakeGh({ firstIssueNumber: 101 });
 
     const findings: Finding[] = [
       { message: "src/a.ts:1 first finding" },
@@ -84,14 +68,14 @@ describe("publishFindings", () => {
   });
 
   it("makes no gh calls at all for an empty survivor list", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createFakeGh();
 
     expect(publishFindings(gh, [], "collod873")).toEqual([]);
     expect(calls.length).toBe(0);
   });
 
   it("makes only issue-create calls for a batch of survivors — never a PR comment or other notification", () => {
-    const { gh, calls } = fakeGh();
+    const { gh, calls } = createFakeGh();
     const findings: Finding[] = [
       { message: "src/a.ts:1 first finding" },
       { message: "src/b.ts:2 second finding" },

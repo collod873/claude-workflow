@@ -1,147 +1,108 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { execGit } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
-import { makeTempRepo } from "../shared/temp-repo.fixture";
+import { scratchDir } from "../shared/scratch.fixture";
+import { makeTempRepo, type TempRepo } from "../shared/temp-repo.fixture";
 import { readSessionRecord, writeSessionRecord } from "./session-notes";
 import { sessionRecord } from "./session-record.fixture";
 
+/** A repo with `a.ts` seeded at `head` — the one commit most records below are keyed to. */
+function seededRepo(): { repo: TempRepo; head: string } {
+  const repo = makeTempRepo("session-notes");
+  repo.write("a.ts", "export const a = 1;\n");
+  return { repo, head: repo.commit("seed") };
+}
+
+/** Writes `record` to `repo`'s notes and reads it straight back at its own head — the round trip the hydration-free tests assert on. */
+function roundTrip(repo: TempRepo, record: ReturnType<typeof sessionRecord>): ReturnType<typeof readSessionRecord> {
+  writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
+  return readSessionRecord({ git: execGit, repoDir: repo.dir, head: record.head });
+}
+
 describe("writeSessionRecord / readSessionRecord against a real repo", () => {
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
   it("reads a written record back byte-for-byte equal, and `git notes --ref=sessions list` shows the note", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
-
-    repo.write("a.ts", "export const a = 1;\n");
-    const base = repo.commit("seed");
+    const { repo, head: base } = seededRepo();
     repo.write("a.ts", "export const a = 2;\n");
     const head = repo.commit("the session's own commit");
     const record = sessionRecord({ head, base, sessionId: "session-abc", touchedPaths: ["a.ts"] });
 
-    writeSessionRecord({ git: execGit, repoDir: dir, record });
+    expect(roundTrip(repo, record)).toEqual(record);
 
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
-    expect(result).toEqual(record);
-
-    const listed = execFileSync("git", ["notes", "--ref=sessions", "list"], { cwd: dir, encoding: "utf8" });
-    expect(listed.trim()).not.toBe("");
+    const listed = repo.git("notes", "--ref=sessions", "list");
+    expect(listed).not.toBe("");
     expect(listed).toContain(head);
   });
 
   it("overwrites, rather than appends to, a note already on that commit", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
+    const { repo, head } = seededRepo();
 
-    repo.write("a.ts", "export const a = 1;\n");
-    const head = repo.commit("seed");
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record: sessionRecord({ head, sessionId: "first-pass" }) });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record: sessionRecord({ head, sessionId: "second-pass" }) });
 
-    writeSessionRecord({ git: execGit, repoDir: dir, record: sessionRecord({ head, sessionId: "first-pass" }) });
-    writeSessionRecord({ git: execGit, repoDir: dir, record: sessionRecord({ head, sessionId: "second-pass" }) });
-
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
+    const result = readSessionRecord({ git: execGit, repoDir: repo.dir, head });
 
     expect(result).toEqual(sessionRecord({ head, sessionId: "second-pass" }));
   });
 
   it("returns undefined for a commit with no session record", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
+    const { repo, head } = seededRepo();
 
-    repo.write("a.ts", "export const a = 1;\n");
-    const head = repo.commit("seed");
-
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
+    const result = readSessionRecord({ git: execGit, repoDir: repo.dir, head });
 
     expect(result).toBeUndefined();
   });
 
   it("keys a read to the exact commit, not to any note reachable in its ancestry", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
-
-    repo.write("a.ts", "export const a = 1;\n");
-    const base = repo.commit("seed");
+    const { repo, head: base } = seededRepo();
     writeSessionRecord({
       git: execGit,
-      repoDir: dir,
+      repoDir: repo.dir,
       record: sessionRecord({ head: base, sessionId: "earlier-session" }),
     });
     repo.write("a.ts", "export const a = 2;\n");
     const head = repo.commit("a later commit with no record of its own");
 
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
+    const result = readSessionRecord({ git: execGit, repoDir: repo.dir, head });
 
     expect(result).toBeUndefined();
   });
 });
 
 describe("readSessionRecord's corpus hydration", () => {
-  let dir: string | undefined;
-  let corpusDir: string | undefined;
-
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    if (corpusDir) rmSync(corpusDir, { recursive: true, force: true });
-    dir = undefined;
-    corpusDir = undefined;
-  });
-
   it("hydrates spine from the file corpusPath names, when the corpus directory holds it", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
-    corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
-
-    repo.write("a.ts", "export const a = 1;\n");
-    const head = repo.commit("seed");
+    const { repo, head } = seededRepo();
+    const corpusDir = scratchDir("session-notes-corpus");
     const record = sessionRecord({ head, corpusPath: "raw/sessions/2026-08-26-session-abc.md" });
-    writeSessionRecord({ git: execGit, repoDir: dir, record });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
 
     const spineContents = "---\nsession_id: session-abc\n---\n\n## User Prompts\n- do the thing\n";
     mkdirSync(dirname(join(corpusDir, record.corpusPath)), { recursive: true });
     writeFileSync(join(corpusDir, record.corpusPath), spineContents, "utf8");
 
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head, corpusDir });
+    const result = readSessionRecord({ git: execGit, repoDir: repo.dir, head, corpusDir });
 
     expect(result).toEqual({ ...record, spine: spineContents });
   });
 
   it("returns the record with no spine property when the corpus-directory option is omitted", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
-
-    repo.write("a.ts", "export const a = 1;\n");
-    const head = repo.commit("seed");
+    const { repo, head } = seededRepo();
     const record = sessionRecord({ head });
-    writeSessionRecord({ git: execGit, repoDir: dir, record });
 
-    const result = readSessionRecord({ git: execGit, repoDir: dir, head });
+    const result = roundTrip(repo, record);
 
     expect(result).toEqual(record);
     expect(result).not.toHaveProperty("spine");
   });
 
   it("throws when corpusPath names a file absent from the supplied corpus directory", () => {
-    const repo = makeTempRepo("session-notes");
-    dir = repo.dir;
-    corpusDir = mkdtempSync(join(tmpdir(), "session-notes-corpus-"));
-    const repoDir = dir;
-    const corpus = corpusDir;
-
-    repo.write("a.ts", "export const a = 1;\n");
-    const head = repo.commit("seed");
+    const { repo, head } = seededRepo();
+    const corpusDir = scratchDir("session-notes-corpus");
     const record = sessionRecord({ head, corpusPath: "raw/sessions/does-not-exist.md" });
-    writeSessionRecord({ git: execGit, repoDir, record });
+    writeSessionRecord({ git: execGit, repoDir: repo.dir, record });
 
-    expect(() => readSessionRecord({ git: execGit, repoDir, head, corpusDir: corpus })).toThrow();
+    expect(() => readSessionRecord({ git: execGit, repoDir: repo.dir, head, corpusDir })).toThrow();
   });
 });
 
@@ -154,8 +115,7 @@ describe("writeSessionRecord / readSessionRecord argv shape", () => {
 
     expect(fake.calls).toHaveLength(1);
     const [argv] = fake.calls;
-    expect(argv.slice(0, 6)).toEqual(["-C", "/some/repo", "notes", "--ref=sessions", "add", "-f"]);
-    expect(argv[6]).toBe("-m");
+    expect(argv.slice(0, 7)).toEqual(["-C", "/some/repo", "notes", "--ref=sessions", "add", "-f", "-m"]);
     expect(JSON.parse(argv[7])).toEqual([record]);
     expect(argv[8]).toBe("abc123");
   });
@@ -166,11 +126,6 @@ describe("writeSessionRecord / readSessionRecord argv shape", () => {
     readSessionRecord({ git: fake.git, repoDir: "/some/repo", head: "def" });
 
     expect(fake.calls).toHaveLength(1);
-    const [argv] = fake.calls;
-    expect(argv[0]).toBe("-C");
-    expect(argv[1]).toBe("/some/repo");
-    expect(argv[2]).toBe("log");
-    expect(argv[3]).toBe("def");
-    expect(argv[4]).toBe("--notes=sessions");
+    expect(fake.calls[0].slice(0, 5)).toEqual(["-C", "/some/repo", "log", "def", "--notes=sessions"]);
   });
 });

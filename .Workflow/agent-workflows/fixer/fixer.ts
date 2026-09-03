@@ -1,8 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { dispatchVerify } from "../shared/verify-dispatch";
-import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
@@ -10,6 +8,7 @@ import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
 import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { runVitestReport } from "../shared/vitest-json";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 
 /**
@@ -461,66 +460,24 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
   throw new Error("runFixer: exited its loop without a verdict");
 }
 
-/** The error name a failure message opens with, mirroring `acceptance/push-gate.ts`'s `errorNameOf` shape. */
-interface VitestJsonAssertion {
-  fullName?: string;
-  title?: string;
-  status: string;
-  failureMessages?: string[];
-}
-
-interface VitestJsonTestResult {
-  name: string;
-  status: string;
-  message?: string;
-  assertionResults: VitestJsonAssertion[];
-}
-
-interface VitestJsonReport {
-  testResults: VitestJsonTestResult[];
-}
-
 /**
- * The real `runTests`: shells `npx vitest run <dir> --reporter=json` and
- * reads back every failed assertion's full message — not just the error's
- * class name, the way `push-gate.ts`'s classifier does, because two
- * attempts that both threw `AssertionError` are only the *same* failure
- * when the message matches too. A collection failure (a syntax error, a
- * broken import) is reported as a single synthetic failure naming the file,
- * so a fixer attempt that cannot even be collected still gets a signature
- * to compare against rather than being read as silently green.
+ * The real `runTests`: one `vitest run <targets>` (`shared/vitest-json.ts`'s `runVitestReport`)
+ * read back as every failed assertion's full message — not just the error's class name, the way
+ * `push-gate.ts`'s classifier does, because two attempts that both threw `AssertionError` are only
+ * the *same* failure when the message matches too. A collection failure (a syntax error, a broken
+ * import) is reported as a single synthetic failure naming the file, so a fixer attempt that cannot
+ * even be collected still gets a signature to compare against rather than being read as silently
+ * green.
  *
- * `repoDir` is the tree the suite runs in — the target checkout under the
- * reusable workflow (ADR-0055), where the branch being fixed actually is,
- * and cwd anywhere else.
+ * `repoDir` is the tree the suite runs in — the target checkout under the reusable workflow
+ * (ADR-0055), where the branch being fixed actually is, and cwd anywhere else.
  */
 export function runVitestJsonForFixer(targets: string[], repoDir: string = process.cwd()): FixerTestResult {
-  const dir = targets.join(" ");
-  let stdout: string;
-  try {
-    stdout = execFileSync("npx", ["vitest", "run", ...targets, "--reporter=json"], {
-      cwd: repoDir,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      env: childEnv(),
-    });
-  } catch (err) {
-    const output = (err as { stdout?: string }).stdout;
-    if (typeof output !== "string" || output.trim() === "") {
-      return { failures: [{ testName: dir, errorMessage: reason(err) }] };
-    }
-    stdout = output;
-  }
-
-  let report: VitestJsonReport;
-  try {
-    report = JSON.parse(stdout) as VitestJsonReport;
-  } catch (err) {
-    return { failures: [{ testName: dir, errorMessage: `unparseable vitest JSON: ${reason(err)}` }] };
-  }
+  const ran = runVitestReport(targets, repoDir);
+  if ("error" in ran) return { failures: [{ testName: targets.join(" "), errorMessage: ran.error }] };
 
   const failures: FixerFailure[] = [];
-  for (const file of report.testResults) {
+  for (const file of ran.report.testResults) {
     if (file.assertionResults.length === 0 && file.status === "failed") {
       failures.push({ testName: file.name, errorMessage: file.message ?? "failed to collect" });
       continue;

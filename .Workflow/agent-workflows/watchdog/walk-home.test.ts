@@ -26,7 +26,7 @@ const MACHINE_FILES: ReadonlySet<string> = new Set([
   ".Workflow/agent-workflows/watchdog/walk-home.test.ts",
   "bin/clone-gate",
   "docs/adr/0135-a-red-run.md",
-  "tests/acceptance/999-example.test.ts",
+  ".github/actions/node/action.test.ts",
 ]);
 
 interface FakeRun {
@@ -143,10 +143,10 @@ const CALLER_SIDE_LOG = [
 
 /** A machine-side failure whose path falls inside the machine's own immutable set. */
 const MACHINE_IMMUTABLE_LOG = [
-  "Run npx vitest --run tests/acceptance",
-  "FAIL tests/acceptance/999-example.test.ts > example",
+  "Run the gate",
+  "FAIL .github/actions/node/action.test.ts > example",
   "AssertionError: expected 1 to be 2",
-  " ❯ tests/acceptance/999-example.test.ts:10:5",
+  " ❯ .github/actions/node/action.test.ts:10:5",
 ].join("\n");
 
 describe("failingPath", () => {
@@ -162,7 +162,7 @@ describe("failingPath", () => {
 
 describe("routeFor", () => {
   it("routes a path inside target/ to the caller, where every reusable lane checks the caller out", () => {
-    expect(routeFor("target/tests/acceptance/999-example.test.ts", MACHINE_FILES)).toBe("caller");
+    expect(routeFor("target/.github/actions/node/action.test.ts", MACHINE_FILES)).toBe("caller");
   });
 
   it("routes to the machine only for a path the machine checkout actually tracks", () => {
@@ -258,7 +258,7 @@ describe("walkHome", () => {
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;
     expect(create[create.indexOf("--label") + 1]).toBe(NEEDS_HUMAN_LABEL);
     const body = create[create.indexOf("--body") + 1];
-    expect(body).toContain("tests/acceptance/999-example.test.ts");
+    expect(body).toContain(".github/actions/node/action.test.ts");
     // Never the shape lane 06 would refuse anyway — no `## Files claimed` for an implementer to read.
     expect(body).not.toContain("## Acceptance criteria");
     expect(body).not.toContain("## Files claimed");

@@ -1,129 +1,85 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { execGit } from "./git";
 import { createFakeGit } from "./git.fake";
 import { observation } from "./observation.fixture";
 import { readObservations, writeObservationNote } from "./notes";
+import { makeTempRepo, type TempRepo } from "./temp-repo.fixture";
+
+/** Writes `contents` to `path` and commits it — the one-file-per-commit shape every test here builds its range from. */
+function commitFile(repo: TempRepo, path: string, contents: string, message: string): string {
+  repo.write(path, contents);
+  return repo.commit(message);
+}
 
 /**
- * A throwaway git repo for one test, with helpers to commit and delete a
- * file and hand back the new commit's SHA — mirrors `diff.test.ts`'s
- * `makeRepo`, extended with `remove` since the staleness self-drop needs a
- * commit that deletes a file.
+ * A repo with `a.ts` seeded at `base` and changed at `head` — the two-commit range every read
+ * below scopes to. `withB` seeds `b.ts` between the two as well, so a later deletion of it leaves
+ * `a.ts`'s finding standing and `b.ts`'s stale — the split the staleness tests draw.
  */
-function makeRepo(): {
-  dir: string;
-  commit: (path: string, contents: string, message: string) => string;
-  remove: (path: string, message: string) => string;
-} {
-  const dir = mkdtempSync(join(tmpdir(), "observation-notes-"));
-  execFileSync("git", ["init", "-q"], { cwd: dir });
-  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+function seededRepo({ withB = false } = {}): { repo: TempRepo; base: string; head: string } {
+  const repo = makeTempRepo("observation-notes");
+  const base = commitFile(repo, "a.ts", "export const a = 1;\n", "seed a");
+  if (withB) commitFile(repo, "b.ts", "export const b = 1;\n", "seed b");
+  const head = commitFile(repo, "a.ts", "export const a = 2;\n", "the session's own commit");
+  return { repo, base, head };
+}
 
-  function commit(path: string, contents: string, message: string): string {
-    writeFileSync(join(dir, path), contents, "utf8");
-    execFileSync("git", ["add", "."], { cwd: dir });
-    execFileSync("git", ["commit", "-q", "-m", message], { cwd: dir });
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-  }
+/** Deletes `path` in one more commit and reads `base` up to it — the read "scoped after the deletion" every staleness test makes. */
+function readAfterDeleting(repo: TempRepo, base: string, path: string): ReturnType<typeof readObservations> {
+  repo.remove(path);
+  const afterDeletion = repo.commit(`deletes ${path}`);
+  return readObservations({ git: execGit, repoDir: repo.dir, base, head: afterDeletion });
+}
 
-  function remove(path: string, message: string): string {
-    unlinkSync(join(dir, path));
-    execFileSync("git", ["add", "."], { cwd: dir });
-    execFileSync("git", ["commit", "-q", "-m", message], { cwd: dir });
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-  }
-
-  return { dir, commit, remove };
+/** `writeObservationNote` against `repo`, with the executor and `repoDir` every real-repo test threads the same way. */
+function writeNote(repo: TempRepo, commit: string, ...observations: ReturnType<typeof observation>[]): void {
+  writeObservationNote({ git: execGit, repoDir: repo.dir, commit, observations });
 }
 
 describe("writeObservationNote / readObservations", () => {
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
   it("reads a written note back keyed to the exact commit the finding is about", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    const { repo, base, head } = seededRepo();
 
     const finding = observation({ finding: "duplicated validation logic", sites: ["a.ts:1"] });
-    writeObservationNote({ git: execGit, repoDir: dir, commit: head, observations: [finding] });
+    writeNote(repo, head, finding);
 
-    const result = readObservations({ git: execGit, repoDir: dir, base, head });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, base, head });
 
     expect(result).toEqual([{ commit: head, observations: [finding] }]);
   });
 
   it("drops a finding about a file the repo later deletes from a read scoped after the deletion", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
+    const { repo, base, head: withFinding } = seededRepo();
+    writeNote(repo, withFinding, observation({ finding: "duplicated validation logic", sites: ["a.ts:1"] }));
 
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const withFinding = repo.commit("a.ts", "export const a = 2;\n", "the finding's commit");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: withFinding,
-      observations: [observation({ finding: "duplicated validation logic", sites: ["a.ts:1"] })],
-    });
-    const afterDeletion = repo.remove("a.ts", "deletes a.ts");
-
-    const result = readObservations({ git: execGit, repoDir: dir, base, head: afterDeletion });
+    const result = readAfterDeleting(repo, base, "a.ts");
 
     expect(result).toEqual([]);
   });
 
   it("keeps a finding whose file survives, dropping only the one whose file is gone, on the same commit", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed a");
-    repo.commit("b.ts", "export const b = 1;\n", "seed b");
-    const withFindings = repo.commit("a.ts", "export const a = 2;\n", "touches a again");
+    const { repo, base, head: withFindings } = seededRepo({ withB: true });
     const surviving = observation({ finding: "still here", sites: ["a.ts:1"] });
     const stale = observation({ finding: "about to go stale", sites: ["b.ts:1"] });
-    writeObservationNote({ git: execGit, repoDir: dir, commit: withFindings, observations: [surviving, stale] });
+    writeNote(repo, withFindings, surviving, stale);
 
-    const afterDeletingB = repo.remove("b.ts", "deletes b.ts");
-
-    const result = readObservations({ git: execGit, repoDir: dir, base, head: afterDeletingB });
+    const result = readAfterDeleting(repo, base, "b.ts");
 
     expect(result).toEqual([{ commit: withFindings, observations: [surviving] }]);
   });
 
   it("keeps a finding alive when at least one of its several sites still exists", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed a");
-    repo.commit("b.ts", "export const b = 1;\n", "seed b");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "touches a again");
+    const { repo, base, head } = seededRepo({ withB: true });
     const finding = observation({ finding: "seen twice", sites: ["a.ts:1", "b.ts:1"], released: true });
-    writeObservationNote({ git: execGit, repoDir: dir, commit: head, observations: [finding] });
+    writeNote(repo, head, finding);
 
-    const afterDeletingB = repo.remove("b.ts", "deletes b.ts");
-
-    const result = readObservations({ git: execGit, repoDir: dir, base, head: afterDeletingB });
+    const result = readAfterDeleting(repo, base, "b.ts");
 
     expect(result).toEqual([{ commit: head, observations: [finding] }]);
   });
 
   it("keeps a finding whose site names a real file behind prose, as the first real audit's four do", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    const { repo, base, head } = seededRepo();
 
     // Verbatim from run 32996383308 — the shape the PROPOSED lens actually emits (#108).
     const finding = observation({
@@ -131,30 +87,21 @@ describe("writeObservationNote / readObservations", () => {
       sites: ["a.ts:212 (isScratchProject)", "a.ts (main(), summary console.log)"],
       released: true,
     });
-    writeObservationNote({ git: execGit, repoDir: dir, commit: head, observations: [finding] });
+    writeNote(repo, head, finding);
 
-    const result = readObservations({ git: execGit, repoDir: dir, base, head, log: () => {} });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, base, head, log: () => {} });
 
     expect(result).toEqual([{ commit: head, observations: [finding] }]);
   });
 
   it("names the finding and the file when it drops one whose file is gone", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed a");
-    repo.commit("b.ts", "export const b = 1;\n", "seed b");
-    const withFinding = repo.commit("a.ts", "export const a = 2;\n", "touches a again");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: withFinding,
-      observations: [observation({ finding: "about to go stale", sites: ["b.ts:1"] })],
-    });
-    const afterDeletion = repo.remove("b.ts", "deletes b.ts");
+    const { repo, base, head: withFinding } = seededRepo({ withB: true });
+    writeNote(repo, withFinding, observation({ finding: "about to go stale", sites: ["b.ts:1"] }));
+    repo.remove("b.ts");
+    const afterDeletion = repo.commit("deletes b.ts");
 
     const lines: string[] = [];
-    readObservations({ git: execGit, repoDir: dir, base, head: afterDeletion, log: (line) => lines.push(line) });
+    readObservations({ git: execGit, repoDir: repo.dir, base, head: afterDeletion, log: (line) => lines.push(line) });
 
     const dropped = lines.filter((line) => line.startsWith("dropped "));
     expect(dropped).toHaveLength(1);
@@ -164,20 +111,11 @@ describe("writeObservationNote / readObservations", () => {
   });
 
   it("distinguishes a site that was never a path from one whose file is gone", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: head,
-      observations: [observation({ finding: "site is prose", sites: ["gone.ts (some function)"] })],
-    });
+    const { repo, base, head } = seededRepo();
+    writeNote(repo, head, observation({ finding: "site is prose", sites: ["gone.ts (some function)"] }));
 
     const lines: string[] = [];
-    readObservations({ git: execGit, repoDir: dir, base, head, log: (line) => lines.push(line) });
+    readObservations({ git: execGit, repoDir: repo.dir, base, head, log: (line) => lines.push(line) });
 
     expect(lines.some((line) => line.startsWith("note:") && line.includes("is not a path"))).toBe(true);
     const dropped = lines.find((line) => line.startsWith("dropped "));
@@ -186,20 +124,11 @@ describe("writeObservationNote / readObservations", () => {
   });
 
   it("says a surviving finding's site is not a path, since nothing else would ever report it", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
-
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: head,
-      observations: [observation({ finding: "survives anyway", sites: ["a.ts:1 (theFunction)"] })],
-    });
+    const { repo, base, head } = seededRepo();
+    writeNote(repo, head, observation({ finding: "survives anyway", sites: ["a.ts:1 (theFunction)"] }));
 
     const lines: string[] = [];
-    const result = readObservations({ git: execGit, repoDir: dir, base, head, log: (line) => lines.push(line) });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, base, head, log: (line) => lines.push(line) });
 
     expect(result).toHaveLength(1);
     expect(lines.some((line) => line.startsWith("note:") && line.includes("survives anyway"))).toBe(true);
@@ -207,67 +136,34 @@ describe("writeObservationNote / readObservations", () => {
   });
 
   it("excludes commits outside the range, same as sessionRangeDiff's own bound", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
+    const repo = makeTempRepo("observation-notes");
+    const base = commitFile(repo, "a.ts", "export const a = 1;\n", "seed");
+    writeNote(repo, base, observation({ finding: "outside the range" })); // base itself is excluded by `base..head`
+    const head = commitFile(repo, "a.ts", "export const a = 2;\n", "inside the range");
+    writeNote(repo, head, observation({ finding: "inside the range" }));
 
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: base, // base itself is excluded by `base..head`
-      observations: [observation({ finding: "outside the range" })],
-    });
-    const head = repo.commit("a.ts", "export const a = 2;\n", "inside the range");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: head,
-      observations: [observation({ finding: "inside the range" })],
-    });
-
-    const result = readObservations({ git: execGit, repoDir: dir, base, head });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, base, head });
 
     expect(result).toEqual([{ commit: head, observations: [observation({ finding: "inside the range" })] }]);
   });
 
   it("reads from the repo's root when base is omitted", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
+    const repo = makeTempRepo("observation-notes");
+    const root = commitFile(repo, "a.ts", "export const a = 1;\n", "seed");
+    writeNote(repo, root, observation({ finding: "from the root" }));
 
-    const root = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: root,
-      observations: [observation({ finding: "from the root" })],
-    });
-
-    const result = readObservations({ git: execGit, repoDir: dir, head: root });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, head: root });
 
     expect(result).toEqual([{ commit: root, observations: [observation({ finding: "from the root" })] }]);
   });
 
   it("overwrites, rather than appends to, a note already on that commit", () => {
-    const repo = makeRepo();
-    dir = repo.dir;
+    const { repo, base, head } = seededRepo();
 
-    const base = repo.commit("a.ts", "export const a = 1;\n", "seed");
-    const head = repo.commit("a.ts", "export const a = 2;\n", "the session's own commit");
+    writeNote(repo, head, observation({ finding: "first pass" }));
+    writeNote(repo, head, observation({ finding: "merged, second pass" }));
 
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: head,
-      observations: [observation({ finding: "first pass" })],
-    });
-    writeObservationNote({
-      git: execGit,
-      repoDir: dir,
-      commit: head,
-      observations: [observation({ finding: "merged, second pass" })],
-    });
-
-    const result = readObservations({ git: execGit, repoDir: dir, base, head });
+    const result = readObservations({ git: execGit, repoDir: repo.dir, base, head });
 
     expect(result).toEqual([{ commit: head, observations: [observation({ finding: "merged, second pass" })] }]);
   });
@@ -286,8 +182,7 @@ describe("writeObservationNote argv shape", () => {
 
     expect(fake.calls).toHaveLength(1);
     const [argv] = fake.calls;
-    expect(argv.slice(0, 6)).toEqual(["-C", "/some/repo", "notes", "--ref=observations", "add", "-f"]);
-    expect(argv[6]).toBe("-m");
+    expect(argv.slice(0, 7)).toEqual(["-C", "/some/repo", "notes", "--ref=observations", "add", "-f", "-m"]);
     expect(JSON.parse(argv[7])).toEqual([observation({ finding: "f" })]);
     expect(argv[8]).toBe("abc123");
   });
@@ -300,12 +195,7 @@ describe("readObservations argv shape", () => {
     readObservations({ git: fake.git, repoDir: "/some/repo", base: "abc", head: "def" });
 
     expect(fake.calls).toHaveLength(1);
-    const [argv] = fake.calls;
-    expect(argv[0]).toBe("-C");
-    expect(argv[1]).toBe("/some/repo");
-    expect(argv[2]).toBe("log");
-    expect(argv[3]).toBe("abc..def");
-    expect(argv[4]).toBe("--notes=observations");
+    expect(fake.calls[0].slice(0, 5)).toEqual(["-C", "/some/repo", "log", "abc..def", "--notes=observations"]);
   });
 
   it("reads the unbounded ref alone, not a range, when base is omitted", () => {

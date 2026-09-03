@@ -9,7 +9,7 @@
     "gauntlet": "bin/gauntlet",
     "check": "bin/gauntlet push",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows"
+    "lint": "eslint . && knip && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows"
   },
   "dependencies": {
     "zod": "^3.23.8",

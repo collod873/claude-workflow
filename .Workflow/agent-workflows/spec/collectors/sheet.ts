@@ -1,4 +1,5 @@
 import { issueComments, type GhExec } from "../../shared/gh";
+import { issueBody } from "../../shared/issue-body";
 import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shared/marker";
 import type { Decision, Sheet } from "../../shared/sheet-schema";
 import type { MarkedDecision } from "../open-questions";
@@ -21,10 +22,6 @@ import type { DecidedContext } from "../author-contract";
  * this payload existed — is a collector failure, not a fallback.
  */
 
-function issueBody(gh: GhExec, issueNumber: number): string {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "body"]);
-  return (JSON.parse(raw) as { body?: string }).body ?? "";
-}
 
 /**
  * Assembles the Decided context for one accepted idea, and hands back the

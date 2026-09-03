@@ -97,126 +97,6 @@ function fakeExec(...responses: unknown[]): { exec: StageExec; prompts: string[]
   return { exec, prompts };
 }
 
-/** A `GhExec` stand-in that records every call it received and answers with a canned issue URL. */
-function fakeGh(nextIssueNumber = 501): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push(args);
-    return `https://github.com/example/repo/issues/${nextIssueNumber}`;
-  };
-  return { gh, calls };
-}
-
-const CONFORMANCE_DIFF = `diff --git a/src/widget.ts b/src/widget.ts
-@@ -10,3 +10,4 @@ src/widget.ts:12
-+export function widget() {
-+  return undefined;
-+}
-`;
-
-describe("runConformanceReview", () => {
-  it("hands the model a prompt with the spec text before the diff text", async () => {
-    const fake = fakeExec({ items: [] });
-    const { gh } = fakeGh();
-
-    await runConformanceReview(fake.exec, gh, {
-      specText: "SPEC-MARKER-9f2",
-      diff: "DIFF-MARKER-9f2",
-      criteria: [],
-      greenGateChecks: [],
-      prdIssueNumber: 1,
-    });
-
-    const prompt = fake.prompts[0];
-    expect(prompt).toContain("SPEC-MARKER-9f2");
-    expect(prompt).toContain("DIFF-MARKER-9f2");
-    expect(prompt.indexOf("SPEC-MARKER-9f2")).toBeLessThan(prompt.indexOf("DIFF-MARKER-9f2"));
-  });
-
-  it("scopes the reviewer to every criterion testsForCriteria did not find a test naming", async () => {
-    const fake = fakeExec({ items: [] });
-    const { gh } = fakeGh();
-
-    await runConformanceReview(fake.exec, gh, {
-      specText: "the spec",
-      diff: CONFORMANCE_DIFF,
-      criteria: [COVERED_CRITERION, UNTESTED_CRITERION],
-      greenGateChecks: [],
-      prdIssueNumber: 1,
-      acceptanceDir: FIXTURES_DIR,
-    });
-
-    const prompt = fake.prompts[0];
-    expect(prompt).toContain(UNTESTED_CRITERION);
-    expect(prompt).not.toContain(COVERED_CRITERION);
-  });
-
-  it("a spec-silent classification produces exactly one spec/gap issue and zero ordinary findings", async () => {
-    const fake = fakeExec({
-      items: [{ classification: "gap", message: "The spec never says what happens on an empty cart." }],
-    });
-    const { gh, calls } = fakeGh(777);
-
-    const result = await runConformanceReview(fake.exec, gh, {
-      specText: "the spec",
-      diff: CONFORMANCE_DIFF,
-      criteria: [],
-      greenGateChecks: [],
-      prdIssueNumber: 42,
-    });
-
-    expect(result.findings).toEqual([]);
-    expect(result.gapIssues).toEqual([777]);
-
-    // Two calls, in this order: the label is seeded `--force` before it is used, because
-    // `gh issue create --label` fails outright on a label nobody has created yet
-    // (`shared/spec-gap.ts`, shared with the fixer since ADR-0119).
-    expect(calls.map((call) => `${call[0]} ${call[1]}`)).toEqual(["label create", "issue create"]);
-    const created = calls[1];
-    expect(created).toContain("--label");
-    expect(created).toContain(SPEC_GAP_LABEL);
-    expect(created.join(" ")).toContain("42");
-  });
-
-  it("a clear-spec-divergence classification produces the reverse", async () => {
-    const fake = fakeExec({
-      items: [{ classification: "divergence", message: "src/widget.ts:12 returns undefined instead of the cart total" }],
-    });
-    const { gh, calls } = fakeGh();
-
-    const result = await runConformanceReview(fake.exec, gh, {
-      specText: "the spec",
-      diff: CONFORMANCE_DIFF,
-      criteria: [],
-      greenGateChecks: [],
-      prdIssueNumber: 42,
-    });
-
-    expect(result.findings).toEqual([
-      { message: "src/widget.ts:12 returns undefined instead of the cart total" },
-    ]);
-    expect(result.gapIssues).toEqual([]);
-    expect(calls.length).toBe(0);
-  });
-
-  it("still filters a divergence item through the structural refusal", async () => {
-    const fake = fakeExec({
-      items: [{ classification: "divergence", message: "this diverges from the spec somewhere" }],
-    });
-    const { gh } = fakeGh();
-
-    const result = await runConformanceReview(fake.exec, gh, {
-      specText: "the spec",
-      diff: CONFORMANCE_DIFF,
-      criteria: [],
-      greenGateChecks: [],
-      prdIssueNumber: 42,
-    });
-
-    expect(result.findings).toEqual([]);
-  });
-});
-
 /** One pull request as `commits/{head}/pulls` returns it, in the shape `runReview` reads. */
 interface FakePull {
   headSha: string;
@@ -226,26 +106,29 @@ interface FakePull {
   merged_at?: string | null;
 }
 
-interface FakeReviewGhOptions {
+interface ReviewTrackerOptions {
   /** What `commits/<sha>/pulls` answers, keyed by the commit asked about. Absent means `[]`. */
   pullsByCommit?: Record<string, FakePull[]>;
   /** What `issue view <n>` answers, keyed by issue number. An unlisted number is a read failure. */
   tickets?: Record<number, { title: string; body: string }>;
+  /** The number the first issue filed gets; each one after it counts up from there. */
+  firstIssueNumber?: number;
 }
 
 /**
- * A `GhExec` stand-in wired for `runReview`'s own chain: `issue create` calls (findings, and
+ * A `GhExec` stand-in wired for lane 07's own chain: `issue create` calls (findings, spec gaps, and
  * `runCounter`'s own proposals) get a canned, incrementing issue URL; `issue list` calls (both of
  * `runCounter`'s reads) get an empty JSON array, so the counter's below-threshold path is exercised
  * without needing a fixture tracker; and the two reads the conformance half needs — the commit's
- * pull requests, and a ticket or PRD body — are answered from `options`.
+ * pull requests, and a ticket or PRD body — are answered from `options`. Not `createFakeGh`: that
+ * one refuses every call it does not model, and the conformance half's `label create` is one.
  *
  * The pulls lookup is recognised through `commitPullsPathMatcher` rather than a restated path, so
  * this fake cannot answer an endpoint different from the one `commitPullsPath` actually sends.
  */
-function fakeReviewGh(options: FakeReviewGhOptions = {}): { gh: GhExec; calls: string[][] } {
+function trackerForReview(options: ReviewTrackerOptions = {}): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
-  let nextIssueNumber = 600;
+  let nextIssueNumber = (options.firstIssueNumber ?? 601) - 1;
   const gh: GhExec = (args) => {
     calls.push(args);
     if (args[0] === "issue" && args[1] === "list") return "[]";
@@ -270,11 +153,111 @@ function fakeReviewGh(options: FakeReviewGhOptions = {}): { gh: GhExec; calls: s
       return JSON.stringify(ticket);
     }
 
-    nextIssueNumber += 1;
-    return `https://github.com/example/repo/issues/${nextIssueNumber}`;
+    if (args[0] === "issue" && args[1] === "create") {
+      nextIssueNumber += 1;
+      return `https://github.com/example/repo/issues/${nextIssueNumber}`;
+    }
+
+    // Anything else — the spec-gap `label create` — is a write whose answer nobody reads.
+    return "";
   };
   return { gh, calls };
 }
+
+/**
+ * One conformance review of `DIFF` against PRD #42, with no criteria to scope and the reviewer
+ * answering `items` — plus what it returned and what `gh` was asked, which is what the
+ * classification tests are about.
+ */
+async function classified(items: unknown[], firstIssueNumber?: number) {
+  const fake = fakeExec({ items });
+  const { gh, calls } = trackerForReview({ firstIssueNumber });
+  const result = await runConformanceReview(fake.exec, gh, {
+    specText: "the spec",
+    diff: DIFF,
+    criteria: [],
+    greenGateChecks: [],
+    prdIssueNumber: 42,
+  });
+  return { result, calls };
+}
+
+describe("runConformanceReview", () => {
+  it("hands the model a prompt with the spec text before the diff text", async () => {
+    const fake = fakeExec({ items: [] });
+    const { gh } = trackerForReview();
+
+    await runConformanceReview(fake.exec, gh, {
+      specText: "SPEC-MARKER-9f2",
+      diff: "DIFF-MARKER-9f2",
+      criteria: [],
+      greenGateChecks: [],
+      prdIssueNumber: 1,
+    });
+
+    const prompt = fake.prompts[0];
+    expect(prompt).toContain("SPEC-MARKER-9f2");
+    expect(prompt).toContain("DIFF-MARKER-9f2");
+    expect(prompt.indexOf("SPEC-MARKER-9f2")).toBeLessThan(prompt.indexOf("DIFF-MARKER-9f2"));
+  });
+
+  it("scopes the reviewer to every criterion testsForCriteria did not find a test naming", async () => {
+    const fake = fakeExec({ items: [] });
+    const { gh } = trackerForReview();
+
+    await runConformanceReview(fake.exec, gh, {
+      specText: "the spec",
+      diff: DIFF,
+      criteria: [COVERED_CRITERION, UNTESTED_CRITERION],
+      greenGateChecks: [],
+      prdIssueNumber: 1,
+      acceptanceDir: FIXTURES_DIR,
+    });
+
+    const prompt = fake.prompts[0];
+    expect(prompt).toContain(UNTESTED_CRITERION);
+    expect(prompt).not.toContain(COVERED_CRITERION);
+  });
+
+  it("a spec-silent classification produces exactly one spec/gap issue and zero ordinary findings", async () => {
+    const { result, calls } = await classified(
+      [{ classification: "gap", message: "The spec never says what happens on an empty cart." }],
+      777,
+    );
+
+    expect(result.findings).toEqual([]);
+    expect(result.gapIssues).toEqual([777]);
+
+    // Two calls, in this order: the label is seeded `--force` before it is used, because
+    // `gh issue create --label` fails outright on a label nobody has created yet
+    // (`shared/spec-gap.ts`, shared with the fixer since ADR-0119).
+    expect(calls.map((call) => `${call[0]} ${call[1]}`)).toEqual(["label create", "issue create"]);
+    const created = calls[1];
+    expect(created).toContain("--label");
+    expect(created).toContain(SPEC_GAP_LABEL);
+    expect(created.join(" ")).toContain("42");
+  });
+
+  it("a clear-spec-divergence classification produces the reverse", async () => {
+    const { result, calls } = await classified([
+      { classification: "divergence", message: "src/widget.ts:12 returns undefined instead of the cart total" },
+    ]);
+
+    expect(result.findings).toEqual([
+      { message: "src/widget.ts:12 returns undefined instead of the cart total" },
+    ]);
+    expect(result.gapIssues).toEqual([]);
+    expect(calls.length).toBe(0);
+  });
+
+  it("still filters a divergence item through the structural refusal", async () => {
+    const { result } = await classified([
+      { classification: "divergence", message: "this diverges from the spec somewhere" },
+    ]);
+
+    expect(result.findings).toEqual([]);
+  });
+});
 
 /**
  * The commit under review in the tests below, and the claim branch whose name is the only thing
@@ -323,11 +306,11 @@ const ASSIGNEE = "collod873";
  */
 async function reviewRun(
   responses: unknown[],
-  options: FakeReviewGhOptions = {},
+  options: ReviewTrackerOptions = {},
   greenGateChecks: string[] = [],
 ) {
   const { exec, prompts } = fakeExec(...responses);
-  const { gh, calls } = fakeReviewGh(options);
+  const { gh, calls } = trackerForReview(options);
   const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks, assignee: ASSIGNEE, head: HEAD_SHA });
   return {
     result,
@@ -467,7 +450,7 @@ describe("runReview's conformance half", () => {
   });
 
   /** Every other way the resolution can fail is the same one branch: skip, correctness only, no throw. */
-  const unresolvable: Array<[string, FakeReviewGhOptions]> = [
+  const unresolvable: Array<[string, ReviewTrackerOptions]> = [
     ["the commit has no pull request at all", { tickets: CONFORMANCE_TICKETS }],
     [
       "the head branch is not an implementation claim",

@@ -3,6 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  cloneRepo as cloneTempRepo,
+  makeBareRepo,
+  repoAt,
+} from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
 
 // The hook is a pure function of stdin to (exit code, log file, capture directory), so it's
 // driven end to end rather than read — same approach gauntlet.test.ts takes with gauntlet.sh.
@@ -218,35 +223,25 @@ function waitForLogToContain(logPath: string, substring: string, timeoutMs = POL
 }
 
 // --- Fixtures for the publish half: a bare "origin" plus clones, the shape every publish test
-// needs (mirrors notes-sync.test.ts's own makeRemoteAndClones/cloneFrom, extended with a commit
-// helper since these tests need real, dated commits for `deriveRange` to find).
+// needs (`temp-repo.fixture.ts`'s `makeBareRepo`/`cloneRepo`, handed around as paths here, plus a
+// commit helper since these tests need real, dated commits for `deriveRange` to find).
 
 /** A bare git repo standing in for "origin" — no working tree, just refs. */
 function makeBareRemote(): string {
-  const dir = tmpDir("session-capture-bare-");
-  execFileSync("git", ["init", "-q", "--bare", dir]);
-  return dir;
+  return makeBareRepo("session-capture-bare");
 }
 
 /** Clones `bareDir`, with a committer identity configured so the clone can make its own commits. */
 function cloneRepo(bareDir: string): string {
-  const dir = tmpDir("session-capture-clone-");
-  execFileSync("git", ["clone", "-q", bareDir, "."], { cwd: dir });
-  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
-  return dir;
+  return cloneTempRepo(bareDir, "session-capture-clone").dir;
 }
 
 /** Commits one file in `dir` at an explicit timestamp and pushes it to the bare remote's `main`. */
 function commitAndPush(dir: string, path: string, contents: string, message: string, iso: string): string {
-  writeFileSync(join(dir, path), contents, "utf8");
-  execFileSync("git", ["add", "."], { cwd: dir });
-  execFileSync("git", ["commit", "-q", "-m", message], {
-    cwd: dir,
-    env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
-  });
-  const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
-  execFileSync("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: dir });
+  const repo = repoAt(dir);
+  repo.write(path, contents);
+  const sha = repo.commit(message, { date: iso });
+  repo.git("push", "-q", "origin", "HEAD:refs/heads/main");
   return sha;
 }
 

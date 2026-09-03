@@ -6,7 +6,7 @@ import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths"
 import { readWorkflow } from "../shared/read-workflow";
 import { createFakeGit } from "../shared/git.fake";
 import {
-  ACCEPTANCE_JOB,
+  GATE_JOB,
   GRAPH_CHANGED_DISPATCH_ACTION,
   IMMUTABILITY_JOB,
   runIntegrate,
@@ -60,19 +60,19 @@ interface VerifyRunFixture {
 /** Lane 06's two jobs, both cleared — the only reading that lets a merge through. */
 const BOTH_JOBS_GREEN: VerifyJobFixture[] = [
   { name: IMMUTABILITY_JOB, conclusion: "success" },
-  { name: ACCEPTANCE_JOB, conclusion: "success" },
+  { name: GATE_JOB, conclusion: "success" },
 ];
 
 /** The immutable set cleared and the slice's own acceptance tests red — the verdict a fixer reacts to. */
-const ACCEPTANCE_JOB_RED: VerifyJobFixture[] = [
+const GATE_JOB_RED: VerifyJobFixture[] = [
   { name: IMMUTABILITY_JOB, conclusion: "success" },
-  { name: ACCEPTANCE_JOB, conclusion: "failure" },
+  { name: GATE_JOB, conclusion: "failure" },
 ];
 
 /** Lane 06 mid-verdict: the immutable set cleared, the acceptance job still running. */
-const ACCEPTANCE_JOB_RUNNING: VerifyJobFixture[] = [
+const GATE_JOB_RUNNING: VerifyJobFixture[] = [
   { name: IMMUTABILITY_JOB, conclusion: "success" },
-  { name: ACCEPTANCE_JOB, status: "in_progress", conclusion: null },
+  { name: GATE_JOB, status: "in_progress", conclusion: null },
 ];
 
 /** Lane 06 having judged this head commit and cleared both jobs. */
@@ -315,7 +315,7 @@ describe("runIntegrate", () => {
         {
           jobs: [
             { name: `verify / ${IMMUTABILITY_JOB}`, conclusion: "success" },
-            { name: `verify / ${ACCEPTANCE_JOB}`, conclusion: "success" },
+            { name: `verify / ${GATE_JOB}`, conclusion: "success" },
           ],
         },
       ],
@@ -633,7 +633,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     const { deps } = integrateDeps({
       closeTicket: CLOSED,
       verifyRuns: [
-        { id: 901, jobs: ACCEPTANCE_JOB_RED },
+        { id: 901, jobs: GATE_JOB_RED },
         { id: 902, jobs: BOTH_JOBS_GREEN },
       ],
     });
@@ -665,8 +665,8 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
       verifyRuns: () => {
         reads += 1;
         return [
-          { id: 901, jobs: ACCEPTANCE_JOB_RED },
-          { id: 902, jobs: reads < 4 ? ACCEPTANCE_JOB_RUNNING : BOTH_JOBS_GREEN },
+          { id: 901, jobs: GATE_JOB_RED },
+          { id: 902, jobs: reads < 4 ? GATE_JOB_RUNNING : BOTH_JOBS_GREEN },
         ];
       },
     });
@@ -741,14 +741,14 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
  * pass against the diff, which is the one thing this lane exists not to merge.
  */
 describe("runIntegrate's ruling when only lane 06's acceptance job is red", () => {
-  const ACCEPTANCE_RED: VerifyRunFixture[] = [{ jobs: ACCEPTANCE_JOB_RED }];
+  const ACCEPTANCE_RED: VerifyRunFixture[] = [{ jobs: GATE_JOB_RED }];
 
   it("refuses the merge", () => {
     const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED });
 
     const outcome = runIntegrate(deps);
 
-    expect(outcome).toEqual({ merged: false, reason: "acceptance" });
+    expect(outcome).toEqual({ merged: false, reason: "gate" });
     expect(mergeCalls(calls)).toEqual([]);
   });
 
@@ -760,7 +760,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
     const comments = calls.filter((call) => call[0] === "pr" && call[1] === "comment");
     expect(comments).toHaveLength(1);
     expect(comments[0].slice(0, 4)).toEqual(["pr", "comment", PR, "--body"]);
-    expect(comments[0][4]).toContain(ACCEPTANCE_JOB);
+    expect(comments[0][4]).toContain(GATE_JOB);
     // Says what to do about it — a refusal nothing retries has to name its own next step.
     expect(comments[0][4]).toContain("Re-dispatch");
   });
@@ -776,7 +776,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
   it("still refuses when the explanatory comment itself fails to post", () => {
     const { calls, deps } = integrateDeps({ verifyRuns: ACCEPTANCE_RED, prCommentThrows: true });
 
-    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "acceptance" });
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "gate" });
     expect(mergeCalls(calls)).toEqual([]);
   });
 
@@ -795,7 +795,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
       // re-evaluated on each.
       verifyRuns: () => {
         reads += 1;
-        return [{ jobs: reads < 4 ? ACCEPTANCE_JOB_RUNNING : BOTH_JOBS_GREEN }];
+        return [{ jobs: reads < 4 ? GATE_JOB_RUNNING : BOTH_JOBS_GREEN }];
       },
     });
 
@@ -806,7 +806,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
 
   it("gives up rather than waiting forever, and a merge is never what giving up produces", () => {
     const { calls, deps, sleeps } = integrateDeps({
-      verifyRuns: [{ jobs: ACCEPTANCE_JOB_RUNNING }],
+      verifyRuns: [{ jobs: GATE_JOB_RUNNING }],
     });
 
     expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
@@ -820,7 +820,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
         {
           jobs: [
             { name: IMMUTABILITY_JOB, conclusion: "failure" },
-            { name: ACCEPTANCE_JOB, conclusion: "failure" },
+            { name: GATE_JOB, conclusion: "failure" },
           ],
         },
       ],
@@ -919,8 +919,8 @@ describe("the lane 06 job names integrate.ts reads are verify.yml's own", () => 
     expect(names).toContain(IMMUTABILITY_JOB);
   });
 
-  it("names the acceptance job exactly as verify.yml does", () => {
-    expect(names).toContain(ACCEPTANCE_JOB);
+  it("names the gate job exactly as verify.yml does", () => {
+    expect(names).toContain(GATE_JOB);
   });
 });
 
@@ -1003,7 +1003,7 @@ describe("integrate.yml wires and states lane 08's reading of lane 06", () => {
   });
 
   it("states in a comment that the acceptance job binds, and names what changed", () => {
-    expect(source).toContain(ACCEPTANCE_JOB);
+    expect(source).toContain(GATE_JOB);
     expect(source).toContain("binds too");
     // The ruling it replaces and the fact that retired it, so a reader can follow the change.
     expect(source).toContain("ADR-0095");

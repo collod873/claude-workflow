@@ -5,7 +5,7 @@
   },
   "test": {
     "cmd": "npm test",
-    "why": "package.json#scripts.test (vitest run .Workflow .claude && npm run clone:check)"
+    "why": "package.json#scripts.test (vitest run .Workflow .claude)"
   },
   "test_one": {
     "cmd": "npx vitest run <file>",
@@ -17,14 +17,22 @@
   },
   "typecheck": {
     "cmd": "npm run typecheck",
-    "why": "package.json#scripts.typecheck (tsc --noEmit)"
+    "why": "package.json#scripts.typecheck (tsc --noEmit, incremental per tsconfig.json)"
   },
   "lint": {
     "cmd": "npm run lint",
-    "why": "package.json#scripts.lint (eslint .)"
+    "why": "package.json#scripts.lint (eslint, knip, dependency-cruiser)"
+  },
+  "lint_one": {
+    "cmd": "npx eslint <file>",
+    "why": "eslint's per-file form; no package.json script for it"
+  },
+  "clones": {
+    "cmd": "npm run clones",
+    "why": "package.json#scripts.clones (jscpd, configured under package.json#jscpd)"
   },
   "all": {
     "cmd": "npm run check",
-    "why": "package.json#scripts.check (bin/gauntlet push && npm run clone:check)"
+    "why": "package.json#scripts.check (bin/gauntlet push)"
   }
 }

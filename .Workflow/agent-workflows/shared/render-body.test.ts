@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { IMMUTABLE_SET } from "./immutable-set";
 import { slice } from "./plan.fixture";
 import { reason } from "./reason";
+import { scratchDir } from "./scratch.fixture";
 import { renderBody, validateClaimsAreMutable, validateCriteriaShape, validatePathsAreRooted } from "./render-body";
 
 /**
@@ -30,16 +30,6 @@ import { renderBody, validateClaimsAreMutable, validateCriteriaShape, validatePa
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CLOSE_TICKET = join(REPO_ROOT, "bin/close-ticket");
 
-const scratch: string[] = [];
-afterEach(() => {
-  while (scratch.length) rmSync(scratch.pop()!, { recursive: true, force: true });
-});
-
-function scratchDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  scratch.push(dir);
-  return dir;
-}
 
 /**
  * Every criterion command `bin/ticket_shape.py` recovers from `body`, in the
@@ -74,7 +64,7 @@ print(json.dumps(out))
  * so nothing here touches the real tracker.
  */
 function stubGh(body: string): { path: string; calls: () => string[] } {
-  const dir = scratchDir("close-ticket-gh-");
+  const dir = scratchDir("close-ticket-gh");
   const path = join(dir, "gh");
   const log = join(dir, "calls");
   // The payload is a file the stub `cat`s, never a string interpolated into the
@@ -107,7 +97,7 @@ function closeTicket(body: string): {
   calls: string[];
 } {
   const gh = stubGh(body);
-  const checkout = scratchDir("close-ticket-checkout-");
+  const checkout = scratchDir("close-ticket-checkout");
   const run = spawnSync("python3", [CLOSE_TICKET, "42", "aaaa..bbbb", checkout], {
     encoding: "utf8",
     env: { ...process.env, AGENT_SKILLS_GH: gh.path },
@@ -265,7 +255,6 @@ describe("close-ticket, on a body it cannot verify", () => {
 describe("validateClaimsAreMutable", () => {
   it.each([
     ["the config the acceptance allowlist lives in", "vitest.config.ts"],
-    ["an acceptance test", "tests/acceptance/272-checkpoint.fixture.ts"],
     ["a workflow the implementation would run under", ".github/workflows/verify.yml"],
   ])("refuses a slice claiming %s", (_label, path) => {
     const plan = [slice({ title: "Checkpoint core", filesClaimed: [path] })];

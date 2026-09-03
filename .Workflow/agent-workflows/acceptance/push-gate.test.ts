@@ -21,19 +21,27 @@ function pushGateDeps(result: TestRunResult, source = "") {
   };
 }
 
+/**
+ * One run of the gate over `result` (and the authored source, where the case is about that), with
+ * the verdict it reached and every git call it made — what every refusal case asserts on.
+ */
+async function gated(result: TestRunResult, source = "") {
+  const { fake, deps } = pushGateDeps(result, source);
+  const outcome = await runPushGate(deps);
+  return { outcome, calls: fake.calls };
+}
+
 describe("runPushGate", () => {
   it("pushes nothing when a test file has a collection error", async () => {
-    const { fake, deps } = pushGateDeps({
+    const { outcome, calls } = await gated({
       collected: false,
       collectionError: "tests/acceptance/foo.test.ts: SyntaxError: Unexpected token",
       failures: [],
     });
 
-    const outcome = await runPushGate(deps);
-
     expect(outcome.verdict).toBe("refused");
-    expect(fake.calls.some((call) => call[0] === "push")).toBe(false);
-    expect(fake.calls).toEqual([]); // refused before any git call at all
+    expect(calls.some((call) => call[0] === "push")).toBe(false);
+    expect(calls).toEqual([]); // refused before any git call at all
   });
 
   it("pushes exactly once when everything collects and every failure is an AssertionError", async () => {
@@ -54,15 +62,13 @@ describe("runPushGate", () => {
   });
 
   it("refuses, without pushing, when a collected test fails on something other than AssertionError", async () => {
-    const { fake, deps } = pushGateDeps({
+    const { outcome, calls } = await gated({
       collected: true,
       failures: [{ name: "reaches into an undefined helper", errorName: "TypeError" }],
     });
 
-    const outcome = await runPushGate(deps);
-
     expect(outcome.verdict).toBe("refused");
-    expect(fake.calls.some((call) => call[0] === "push")).toBe(false);
+    expect(calls.some((call) => call[0] === "push")).toBe(false);
   });
 
   /**
@@ -196,27 +202,23 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
   ].join("\n");
 
   it("refuses a batch asserting on vitest.config.ts, however honestly it fails", async () => {
-    const { fake, deps } = pushGateDeps(
+    const { outcome, calls } = await gated(
       // Collected, and every failure an AssertionError — the two conditions that used to be the
       // whole bar, and both of which #272's unsatisfiable test met.
       { collected: true, failures: [{ name: "proves the criterion", errorName: "AssertionError" }] },
       READS_VITEST_CONFIG,
     );
 
-    const outcome = await runPushGate(deps);
-
     expect(outcome.verdict).toBe("refused");
     expect(outcome.verdict === "refused" && outcome.reason).toContain("vitest.config.ts");
-    expect(fake.calls).toEqual([]); // refused before any git call, like every other refusal here
+    expect(calls).toEqual([]); // refused before any git call, like every other refusal here
   });
 
   it("refuses a batch asserting on a workflow file, which no pull request may edit either", async () => {
-    const { deps } = pushGateDeps(
+    const { outcome } = await gated(
       { collected: true, failures: [] },
       'const yml = readFileSync(".github/workflows/verify.yml", "utf8");',
     );
-
-    const outcome = await runPushGate(deps);
 
     expect(outcome.verdict).toBe("refused");
     expect(outcome.verdict === "refused" && outcome.reason).toContain(".github/");
@@ -245,15 +247,13 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
   });
 
   it("still refuses when the path is in code, however much comment surrounds it", async () => {
-    const { deps } = pushGateDeps(
+    const { outcome } = await gated(
       { collected: true, failures: [] },
       [
         "// - [ ] the runner config carries a setup file — check: `make test`",
         'const yml = readFileSync(".github/workflows/verify.yml", "utf8");',
       ].join("\n"),
     );
-
-    const outcome = await runPushGate(deps);
 
     expect(outcome.verdict).toBe("refused");
     expect(outcome.verdict === "refused" && outcome.reason).toContain(".github/");

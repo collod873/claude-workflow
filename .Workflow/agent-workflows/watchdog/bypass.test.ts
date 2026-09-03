@@ -20,6 +20,8 @@ import {
   type VerifyRun,
 } from "./bypass";
 import { MAX_JOB_READS, runBypassCounter } from "./bypass-counter";
+import { expectWorkflowSetsEveryVariableRead } from "./env-contract.fixture";
+import { answerTracker } from "./signal-tracker.fixture";
 
 /**
  * `verify.yml`'s real run history on `main`, captured with the failed step
@@ -166,8 +168,8 @@ describe("the signal body", () => {
 
 /**
  * A `gh` stand-in for the IO half's three calls — the workflow's runs page, one job read per failed
- * run, and the issue listing/write — recording every argv verbatim, the same shape
- * `run-watchdog.test.ts`'s own `fakeGh` has.
+ * run, and the tracker (`answerTracker`, shared with `run-watchdog.test.ts`) — recording every
+ * argv verbatim.
  */
 interface FakeRun {
   id: number;
@@ -177,7 +179,7 @@ interface FakeRun {
   failedStep?: string;
 }
 
-function fakeGh(options: {
+function historyWith(options: {
   runs?: FakeRun[];
   issues?: Array<{ number: number; body: string; state: string; stateReason?: string }>;
 }): { gh: GhExec; calls: string[][] } {
@@ -208,8 +210,8 @@ function fakeGh(options: {
       });
     }
 
-    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
-    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
+    const answered = answerTracker(args, options.issues ?? []);
+    if (answered !== undefined) return answered;
 
     throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
@@ -230,7 +232,7 @@ function gauntletFailures(count: number): FakeRun[] {
 
 describe("runBypassCounter", () => {
   it("opens no issue below a count of 3", () => {
-    const fake = fakeGh({ runs: gauntletFailures(2) });
+    const fake = historyWith({ runs: gauntletFailures(2) });
 
     const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
@@ -239,7 +241,7 @@ describe("runBypassCounter", () => {
   });
 
   it("opens one at a count of 3, assigned so it arrives rather than waits", () => {
-    const fake = fakeGh({ runs: gauntletFailures(3) });
+    const fake = historyWith({ runs: gauntletFailures(3) });
 
     const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
@@ -251,7 +253,7 @@ describe("runBypassCounter", () => {
   });
 
   it("does not double-propose while a proposal already stands open", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: gauntletFailures(4),
       issues: [{ number: 7, body: `earlier\n${countMarker(3)}`, state: "OPEN" }],
     });
@@ -263,7 +265,7 @@ describe("runBypassCounter", () => {
   });
 
   it("does not re-propose a declined proposal at the same count it was declined at", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: gauntletFailures(3),
       issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED" }],
     });
@@ -275,7 +277,7 @@ describe("runBypassCounter", () => {
   });
 
   it("re-proposes a declined proposal once the count has grown past what it recorded", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: gauntletFailures(4),
       issues: [{ number: 7, body: `declined\n${countMarker(3)}`, state: "CLOSED", stateReason: "COMPLETED" }],
     });
@@ -294,7 +296,7 @@ describe("runBypassCounter", () => {
    * out than "not at this count".
    */
   it("never re-proposes past a proposal closed as not planned, however far the count grows", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: gauntletFailures(40),
       issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
     });
@@ -306,7 +308,7 @@ describe("runBypassCounter", () => {
   });
 
   it("still counts while refused, so the measurement that would change the ruling survives", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [...gauntletFailures(9), { id: 900, conclusion: "failure", failedStep: COULD_NOT_RUN_STEP }],
       issues: [{ number: 131, body: `refused\n${countMarker(4)}`, state: "CLOSED", stateReason: "NOT_PLANNED" }],
     });
@@ -315,7 +317,7 @@ describe("runBypassCounter", () => {
   });
 
   it("does not count a Gauntlet failure off main", () => {
-    const fake = fakeGh({ runs: gauntletFailures(3).map((each) => ({ ...each, headBranch: "some-pr-branch" })) });
+    const fake = historyWith({ runs: gauntletFailures(3).map((each) => ({ ...each, headBranch: "some-pr-branch" })) });
 
     const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
@@ -323,7 +325,7 @@ describe("runBypassCounter", () => {
   });
 
   it("does not count Gauntlet could not run or Lint workflow files toward the threshold", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [
         ...gauntletFailures(2),
         { id: 200, conclusion: "failure", failedStep: COULD_NOT_RUN_STEP },
@@ -338,7 +340,7 @@ describe("runBypassCounter", () => {
 
   /** Why `verifyWorkflow` is the caller's to name: `bypass-counter.ts`'s module docstring, ADR-0055. */
   it("asks for the workflow file it was handed rather than one of its own choosing", () => {
-    const fake = fakeGh({ runs: gauntletFailures(1) });
+    const fake = historyWith({ runs: gauntletFailures(1) });
 
     runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: "some-other-caller.yml" });
 
@@ -349,7 +351,7 @@ describe("runBypassCounter", () => {
 
   it("caps how many job reads one sweep spends, and says how many it held back", () => {
     const runs = gauntletFailures(MAX_JOB_READS + 5);
-    const fake = fakeGh({ runs });
+    const fake = historyWith({ runs });
     const lines: string[] = [];
 
     const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW, log: (line) => lines.push(line) });
@@ -412,13 +414,11 @@ describe("bypass-counter.yml agrees with the module it runs", () => {
   });
 
   it("sets every variable the entrypoint reads", () => {
-    const source = readFileSync(join(here, "bypass-counter.ts"), "utf8");
-    const read = [...source.matchAll(/process\.env\.([A-Z_]+)/g)].map((match) => match[1]);
-
-    expect(read.length).toBeGreaterThan(0);
-    for (const name of new Set(read)) {
-      expect(workflow, `bypass-counter.yml never sets ${name}`).toMatch(new RegExp(`^ +${name}:`, "m"));
-    }
+    expectWorkflowSetsEveryVariableRead({
+      workflow,
+      workflowFile: "bypass-counter.yml",
+      entrypoint: join(here, "bypass-counter.ts"),
+    });
   });
 });
 

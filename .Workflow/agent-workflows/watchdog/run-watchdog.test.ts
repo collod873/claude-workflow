@@ -6,6 +6,8 @@ import type { GhExec } from "../shared/gh";
 import { repoRunsPathMatcher, runJobsPathMatcher } from "../shared/gh-paths";
 import { runWatchdog, WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { MAX_JOB_READS, MAX_SIGNALS, signalMarker } from "./dead-lanes";
+import { expectWorkflowSetsEveryVariableRead } from "./env-contract.fixture";
+import { answerTracker } from "./signal-tracker.fixture";
 
 const NOW = new Date("2026-08-26T12:00:00Z");
 
@@ -22,7 +24,8 @@ interface FakeRun {
 
 /**
  * A `gh` stand-in that answers the five calls this module makes — the runs
- * page, one job count per candidate, the issue listing, one comment read per
+ * page, one job count per candidate, the issue listing and create
+ * (`answerTracker`, shared with `bypass.test.ts`), one comment read per
  * standing signal, and the writes — and records every argv, so a test can
  * assert "wrote nothing" by the recording staying empty rather than by
  * assuming it. Same shape as `shared/git.fake.ts`: a responder, not a model of
@@ -32,7 +35,7 @@ interface FakeRun {
  * read, because the whole question #288 turns on is whether the module reads
  * back what it already said.
  */
-function fakeGh(options: {
+function historyWith(options: {
   runs?: FakeRun[];
   issues?: Array<{ number: number; body: string; state: string; closedAt: string | null }>;
   comments?: Record<number, string[]>;
@@ -66,8 +69,8 @@ function fakeGh(options: {
       return `${runs.find((run) => run.id === Number(jobs[1]))?.jobs ?? 1}\n`;
     }
 
-    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
-    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
+    const answered = answerTracker(args, options.issues ?? []);
+    if (answered !== undefined) return answered;
     if (args[0] === "issue" && args[1] === "view") {
       return JSON.stringify({ comments: (comments[Number(args[2])] ?? []).map((body) => ({ body })) });
     }
@@ -119,7 +122,7 @@ function sweep(fake: { gh: GhExec }, overrides: Partial<Parameters<typeof runWat
 
 describe("runWatchdog", () => {
   it("opens an assigned issue naming the lane and linking the run", () => {
-    const fake = fakeGh({ runs: [DEAD] });
+    const fake = historyWith({ runs: [DEAD] });
 
     const outcome = sweep(fake);
 
@@ -135,7 +138,7 @@ describe("runWatchdog", () => {
   });
 
   it("comments on the standing signal rather than opening a second issue for the same lane", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [DEAD],
       issues: standing("earlier"),
     });
@@ -153,7 +156,7 @@ describe("runWatchdog", () => {
     // #288: the standing path used to comment on every sweep whatever the issue already said, so
     // one dead run produced one `Still dead` per session the owner ran. The sweep rides session end
     // (ADR-0049), so that re-post rate *is* his working rate.
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [DEAD],
       issues: standing(`Most recent: ${citation(DEAD.id)}`),
     });
@@ -166,7 +169,7 @@ describe("runWatchdog", () => {
   });
 
   it("goes quiet on the sweep after the one it commented on", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [DEAD],
       issues: standing(),
     });
@@ -181,7 +184,7 @@ describe("runWatchdog", () => {
   it("names every dead run the standing signal has not already cited", () => {
     const older = { ...DEAD, id: 32676497300, created_at: "2026-08-26T09:00:00Z" };
     const newer = { ...DEAD, id: 32676497399, created_at: "2026-08-26T11:30:00Z" };
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [newer, older],
       issues: standing(citation(DEAD.id)),
     });
@@ -198,7 +201,7 @@ describe("runWatchdog", () => {
 
   it("retires a standing signal once its lane runs again", () => {
     // ADR-0099. #252 sat open for two days after its lane had recovered and a human closed it.
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [{ ...DEAD, id: 33300000001, conclusion: "success", jobs: 3 }],
       issues: standing(),
     });
@@ -221,7 +224,7 @@ describe("runWatchdog", () => {
     // pre-split signal already used — can never see a live run at that literal path again.
     // `callerHalf` is what lets retirement still find the evidence.
     const preSplitPath = ".github/workflows/implement.yml";
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [
         { id: 33300000005, name: "Implement (caller)", path: ".github/workflows/implement-caller.yml", conclusion: "success", jobs: 2 },
       ],
@@ -237,7 +240,7 @@ describe("runWatchdog", () => {
   it("leaves a standing signal open when its lane has not run inside the window", () => {
     // No dead runs is not recovery. A lane nobody has triggered in a week is just as unable to
     // start as it was, and closing on its silence would be an all-clear nothing checked.
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [{ ...DEAD, path: ".github/workflows/other.yml", name: "other", jobs: 2, conclusion: "success" }],
       issues: standing(),
     });
@@ -247,7 +250,7 @@ describe("runWatchdog", () => {
   });
 
   it("does not retire a signal for a lane that is still dead", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [DEAD, { ...DEAD, id: 33300000002, conclusion: "success", jobs: 3 }],
       issues: standing(),
     });
@@ -265,7 +268,7 @@ describe("runWatchdog", () => {
       path: ".github/workflows/noise.yml",
       jobs: 1,
     }));
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: noisy,
       issues: standing(),
     });
@@ -279,7 +282,7 @@ describe("runWatchdog", () => {
   it("stays quiet about runs that predate the close of their own signal", () => {
     // A closed signal is a lane somebody dealt with. Re-reporting the same runs would teach the
     // reader to close this mechanism's issues unread, which is how a signal stops arriving.
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [{ ...DEAD, created_at: "2026-08-24T00:00:00Z" }],
       issues: settled("2026-08-25T00:00:00Z"),
     });
@@ -292,7 +295,7 @@ describe("runWatchdog", () => {
   });
 
   it("reports a lane that died again after its signal was closed", () => {
-    const fake = fakeGh({
+    const fake = historyWith({
       runs: [{ ...DEAD, created_at: "2026-08-26T00:00:00Z" }],
       issues: settled("2026-08-25T00:00:00Z"),
     });
@@ -301,7 +304,7 @@ describe("runWatchdog", () => {
   });
 
   it("writes nothing when every lane executed something", () => {
-    const fake = fakeGh({ runs: [{ ...DEAD, jobs: 1 }] });
+    const fake = historyWith({ runs: [{ ...DEAD, jobs: 1 }] });
 
     const outcome = sweep(fake);
 
@@ -312,7 +315,7 @@ describe("runWatchdog", () => {
   });
 
   it("spends nothing at all on a dispatch that is not session end", () => {
-    const fake = fakeGh({ runs: [DEAD] });
+    const fake = historyWith({ runs: [DEAD] });
 
     const outcome = sweep(fake, { eventAction: "something-else" });
 
@@ -327,7 +330,7 @@ describe("runWatchdog", () => {
       path: `.github/workflows/dead-${index}.yml`,
       jobs: 0,
     }));
-    const fake = fakeGh({ runs: lanes });
+    const fake = historyWith({ runs: lanes });
     const lines: string[] = [];
 
     const outcome = sweep(fake, { log: (line) => lines.push(line) });
@@ -340,7 +343,7 @@ describe("runWatchdog", () => {
   });
 
   it("does not spend a job read on a run outside the window", () => {
-    const fake = fakeGh({ runs: [{ ...DEAD, created_at: "2026-01-01T00:00:00Z" }] });
+    const fake = historyWith({ runs: [{ ...DEAD, created_at: "2026-01-01T00:00:00Z" }] });
 
     const outcome = sweep(fake);
 
@@ -351,7 +354,7 @@ describe("runWatchdog", () => {
   it("refuses a jobs read that returns no count, rather than reading it as zero", () => {
     // A 403 for want of `actions: read` — how the close gate's reconciler spent every dispatch it
     // got (#107) — must not read as "executed nothing" and open an issue about a healthy lane.
-    const fake = fakeGh({ runs: [DEAD], jobsRaw: "" });
+    const fake = historyWith({ runs: [DEAD], jobsRaw: "" });
 
     expect(() => sweep(fake)).toThrow(/returned no count/);
   });
@@ -384,13 +387,11 @@ describe("run-watchdog.yml agrees with the module it runs", () => {
   });
 
   it("sets every variable the entrypoint reads", () => {
-    const source = readFileSync(join(here, "run-watchdog.ts"), "utf8");
-    const read = [...source.matchAll(/process\.env\.([A-Z_]+)/g)].map((match) => match[1]);
-
-    expect(read.length).toBeGreaterThan(0);
-    for (const name of new Set(read)) {
-      expect(workflow, `run-watchdog.yml never sets ${name}`).toMatch(new RegExp(`^ +${name}:`, "m"));
-    }
+    expectWorkflowSetsEveryVariableRead({
+      workflow,
+      workflowFile: "run-watchdog.yml",
+      entrypoint: join(here, "run-watchdog.ts"),
+    });
   });
 });
 

@@ -5,10 +5,6 @@ import { IMPLEMENTATION_PR_DISPATCH_ACTION, IMMUTABLE_SET, touchesImmutableSet }
 import { readWorkflow } from "./read-workflow";
 
 describe("touchesImmutableSet", () => {
-  it("flags a path under tests/acceptance/", () => {
-    expect(touchesImmutableSet(["tests/acceptance/lane-04.test.ts"])).toBe(true);
-  });
-
   it("flags vitest.config.ts itself", () => {
     expect(touchesImmutableSet(["vitest.config.ts"])).toBe(true);
   });
@@ -139,7 +135,6 @@ describe("every reader of ADR-0054's dispatch gates on the one action the sender
 
   const readers: Array<{ file: string; job: string }> = [
     { file: "verify.yml", job: "immutability" },
-    { file: "verify.yml", job: "restore-and-run-acceptance" },
     { file: "integrate.yml", job: "integrate" },
   ];
 

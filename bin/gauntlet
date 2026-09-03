@@ -1,54 +1,25 @@
 #!/bin/bash
-# The gauntlet. One check runner, called by every venue that can afford it.
+# The gauntlet: one runner for the three local venues (ADR-0010), reading what to run out of
+# `.claude/contract.json` (ADR-0056) and running the venue's slots concurrently. A non-zero slot is
+# red; there is no other verdict, and no venue refuses on a duration (ADR-0148).
 #
-# Absolute interpreter, not `/usr/bin/env bash`: git hooks and Claude Code hooks both run this in a
-# shell nobody logged into, and `env` resolves `bash` through the PATH those shells may not have.
+#   bin/gauntlet turn <file>   typecheck, lint_one and test_related on that file
+#   bin/gauntlet stop          typecheck, lint_one and test_related on the files changed since HEAD
+#   bin/gauntlet push          typecheck, lint, test, clones — once each, fail closed
 #
-#   bin/gauntlet turn <file>   PostToolUse   typecheck + lint + the tests related to that file
-#   bin/gauntlet stop          Stop          typecheck + lint + the test files that fit here
-#   bin/gauntlet push          pre-push      typecheck + lint + the whole suite + the eight below
+# Absolute interpreter, not `/usr/bin/env bash`: git hooks and Claude Code hooks run this in a shell
+# with no login PATH, and `env` resolves `bash` through the PATH those shells may not have.
 #
-# A check sits at the earliest venue whose budget it fits (ADR-0010), because what
-# earliest buys is the cost of the *repair*, not the cost of the check: a type error caught in the
-# turn that caused it is fixed with the context still hot, and the same error caught in Actions
-# costs a cold run reconstructing what the author already knew.
+# Two roots (ADR-0139): `repo_root` is this checkout, where the runner lives; `target_root` is the
+# tree being checked — this repo by default, or an enrolled repository's checkout when a reusable
+# lane sets `TARGET_WORKSPACE`. The contract is the target's, and every slot runs inside the target
+# with the gauntlet's own variables unset, so a slot that spawns another gauntlet starts clean.
 #
-# **Timing is recorded, never judged (ADR-0148).** Every run writes what it measured to
-# `.gauntlet-timings.json` at the target root — gitignored, overwritten each run, and nothing here
-# compares it against a number measured somewhere else. That used to not be true, and the reversal
-# is the record of why: two Verify runs judging the same pull request agreed with each other within
-# 1.2% while missing a committed number by 53%, each naming a different check as the offender. A
-# gate that goes red on where it ran teaches its reader to rerun until green.
-#
-# One thing still uses a measured number: which test files the stop venue may run. It reads this
-# workstation's own file costs (`timing-baseline.ts`'s local half) and admits the cheapest ones
-# until the next would cross a hard 5000 ms wall — a selection, never a verdict, and it fails
-# nothing. `timing-baseline.ts` carries the rest of the argument, and `docs/agents/venues.md` is the
-# reader's version of it.
-#
-# What runs is whatever `.claude/contract.json` names (ADR-0056), not a hardcoded `tsc`/`eslint`/
-# `vitest` — this repo isn't special-cased over any other repo the contract might describe. The
-# contract is read once per run, through one `node` invocation that resolves every slot this venue
-# needs, because a lookup that cost one process per check is the thing #117 asked this rewrite to
-# stop doing.
-#
-# Exit codes are three, not two, and the third is the point:
-#   0  clean
-#   1  a check failed        — a real finding
-#   2  the checks could not run — a broken gauntlet, never reported as a finding
-#
-# Two roots (ADR-0139), not one. `repo_root` is the MACHINE — this checkout, where every check's
-# own code lives, `.Workflow/agent-workflows/shared/*.ts` included. `target_root` is what gets
-# checked: this repo's own tree by default, or an enrolled repository's checkout under
-# `TARGET_WORKSPACE` when a caller sets it (every reusable lane runs with the machine at the
-# workspace root and the target at `$TARGET_WORKSPACE`). Everything "about the repository being
-# checked" — the contract, `docs/adr`, `.github/workflows`, every baseline file — reads and writes
-# under `target_root`; everything "how to check it" runs as machine code, `node
-# "$repo_root/.Workflow/..."`, given `target_root` as its argument.
+# A slot the contract does not carry, or carries as `cmd: null`, is skipped: a lane may shrink the
+# gate for its own repository and never grow it (#360).
 
 set -uo pipefail
 
-# Builtins only — `dirname` is a PATH lookup, and PATH is the thing we do not have yet.
 here="${BASH_SOURCE[0]%/*}"
 [ "$here" = "${BASH_SOURCE[0]}" ] && here="."
 repo_root="$(cd "$here/.." && pwd)"
@@ -57,400 +28,82 @@ target_root="${TARGET_WORKSPACE:-$repo_root}"
 . "$repo_root/bin/node-on-path.sh"
 
 venue="${1:-}"
-target="${2:-}"
-
 case "$venue" in
   turn | stop | push) ;;
   *)
     echo "usage: bin/gauntlet <turn|stop|push> [file]" >&2
-    exit 2
+    exit 1
     ;;
 esac
 
-# How many checks may run at once. `nproc` rather than a tuned constant: this script runs on a
-# 32-core workstation, a 4-core hosted runner and a 2-core private one, and the contention that
-# manufactured two failures out of nothing in #333 was eleven concurrent checks on two cores. With
-# fewer cores than checks the test slot waits for the cheap ones instead of racing them — a
-# scheduling decision, not a check.
-#
-# `GAUNTLET_CORES` is the seam the tests drive that decision through; nothing in production sets it.
-cores="${GAUNTLET_CORES:-$( (nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4) )}"
-
 if ! node_on_path; then
-  echo "gauntlet: no node on PATH — checks not run" >&2
-  exit 2
+  echo "gauntlet: no node on PATH" >&2
+  exit 1
 fi
 
-if [ "$venue" = "turn" ] && [ -n "$target" ] && [ ! -f "$target" ]; then
-  # A target that is not there is a usage problem, not a finding. Running the resolved lint
-  # command anyway would report a moved or deleted file as a code defect.
-  echo "gauntlet: $target does not exist — checks not run" >&2
-  exit 2
-fi
+# `GAUNTLET_CONTRACT` points a test at a contract of stub commands; nothing in production sets it.
+contract="${GAUNTLET_CONTRACT:-$target_root/.claude/contract.json}"
 
-# `GAUNTLET_CONTRACT` overrides which contract this run reads — the seam a test uses to exercise a
-# contract shape (a dead command, a slot that forces the broader-slot degradation) without editing
-# this repo's own `.claude/contract.json`. Nothing in production sets it.
-contract_path="${GAUNTLET_CONTRACT:-$target_root/.claude/contract.json}"
+# The files the narrow slots take. `turn` is handed one; `stop` reads every code file git sees as
+# changed against HEAD — staged, unstaged and untracked — and skips those slots when there is none.
+files=""
+case "$venue" in
+  turn) [ -n "${2:-}" ] && files="'${2//\'/\'\\\'\'}'" ;;
+  stop)
+    files="$(cd "$target_root" && git status --porcelain --untracked-files=all 2>/dev/null |
+      cut -c4- | sed 's/.* -> //' | grep -E '\.([cm]?[jt]s)$' | while IFS= read -r f; do
+        [ -f "$f" ] && printf "'%s' " "${f//\'/\'\\\'\'}"
+      done)"
+    ;;
+esac
+
+case "$venue" in
+  turn | stop) slots="typecheck lint_one test_related" ;;
+  push) slots="typecheck lint test clones" ;;
+esac
+
+# One `node` per run resolves every slot this venue needs: a line per slot, empty when the
+# contract has no runnable command for it. `bin/gauntlet` itself never parses JSON.
+cmds="$(node -e '
+  const contract = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  for (const name of process.argv.slice(2)) console.log((contract[name] && contract[name].cmd) || "");
+' "$contract" $slots)" || exit 1
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-
-# The one Node invocation this run makes. It imports the check-contract module — the shared reader
-# #119 landed — reads and validates the contract, and resolves every slot this venue needs in a
-# single process, then prints the results as `NAME_FIELD=value` shell assignments for the `eval`
-# below to load. `turn` has no `lint_one` slot to ask for; requesting it is what makes the module
-# degrade to the broader `lint` slot and report the substitution (ADR-0056).
-read_slots() {
-  local venue="$1" contract_path="$2" repo_root="$3"
-  node --input-type=module - "$venue" "$contract_path" "$repo_root" <<'NODE_EOF'
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
-const [, , venue, contractPath, repoRoot] = process.argv;
-
-const moduleUrl = pathToFileURL(
-  join(repoRoot, ".Workflow/agent-workflows/shared/check-contract.ts"),
-).href;
-const { CheckContract, resolveSlot } = await import(moduleUrl);
-
-let raw;
-try {
-  raw = readFileSync(contractPath, "utf8");
-} catch (err) {
-  console.error(`gauntlet: cannot read ${contractPath}: ${err.message}`);
-  process.exit(1);
-}
-
-let contract;
-try {
-  contract = CheckContract.parse(JSON.parse(raw));
-} catch (err) {
-  console.error(`gauntlet: ${contractPath} is not a valid check contract: ${err.message}`);
-  process.exit(1);
-}
-
-const requests =
-  venue === "turn"
-    ? [
-        ["TYPECHECK", "typecheck"],
-        ["LINT", "lint_one"],
-        // A slot, not a `_one` narrowing: a target with no related-tests form runs no tests at
-        // this venue, and must never degrade to the whole suite on a PostToolUse hook (#335).
-        ["TEST_RELATED", "test_related"],
-      ]
-    : [
-        ["TYPECHECK", "typecheck"],
-        ["LINT", "lint"],
-        ["TEST", "test"],
-        // The stop venue runs the subset of test files the timing baseline admits, through the
-        // same single-file form `test_one` already names. A target without one runs the whole
-        // `test` slot, which is what every venue did before #335.
-        ["TEST_ONE", "test_one"],
-      ];
-
-function shQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
-}
-
-const lines = [];
-for (const [name, requested] of requests) {
-  let resolution;
-  try {
-    resolution = resolveSlot(contract, requested);
-  } catch (err) {
-    console.error(`gauntlet: ${err.message}`);
-    process.exit(1);
-  }
-  lines.push(`${name}_CMD=${resolution.cmd === null ? "''" : shQuote(resolution.cmd)}`);
-  lines.push(`${name}_SLOT=${shQuote(resolution.slot)}`);
-  lines.push(`${name}_SUBSTITUTED=${resolution.substituted ? 1 : 0}`);
-  lines.push(`${name}_REQUESTED=${shQuote(resolution.requested ?? requested)}`);
-}
-
-process.stdout.write(lines.join("\n") + "\n");
-NODE_EOF
-}
-
-if ! resolved="$(read_slots "$venue" "$contract_path" "$repo_root")" 2>"$tmp/resolve.err"; then
-  echo "gauntlet: could not resolve $contract_path — checks not run" >&2
-  cat "$tmp/resolve.err" >&2
-  exit 2
-fi
-eval "$resolved"
-
-checks="typecheck lint"
-[ "$venue" != "turn" ] && checks="typecheck lint test"
-
-# The two optional slots, which are `null` in a target that has no form for them. A `null` here is
-# a check that does not run, never a broken gauntlet — unlike the required slots below, whose
-# empty command means the contract names something this venue cannot run at all.
-[ "$venue" = "turn" ] && [ -n "$TEST_RELATED_CMD" ] && [ -n "$target" ] && checks="$checks test_related"
-
-# A slot resolved to a broader form than what this venue asked for is a real cost — the turn venue
-# now lints the whole repo, not just the file that changed — and it is reported rather than run
-# silently.
-#
-# `resolved_checks` is only the slots read above — `contract`, added to `checks` below, has no
-# `_CMD`/`_SUBSTITUTED` shell variable to read, because it never goes through `resolveSlot`.
-resolved_checks="$checks"
-for name in $resolved_checks; do
-  var_name="$(echo "$name" | tr '[:lower:]' '[:upper:]')"
-  substituted_var="${var_name}_SUBSTITUTED"
-  if [ "${!substituted_var}" = "1" ]; then
-    requested_var="${var_name}_REQUESTED"
-    slot_var="${var_name}_SLOT"
-    echo "gauntlet: no ${!requested_var} slot in $contract_path — running the broader ${!slot_var} slot instead" >&2
-  fi
-  cmd_var="${var_name}_CMD"
-  if [ -z "${!cmd_var}" ]; then
-    slot_var="${var_name}_SLOT"
-    echo "gauntlet: the ${!slot_var} slot in $contract_path names no command — checks not run" >&2
-    exit 2
-  fi
-done
-
-# `regenerate && diff` (ADR-0056) — push only. It is the standing check that replaces `CLAUDE.md`'s
-# retired same-commit rule: a fresh probe of this tree is compared byte-for-byte against
-# `$contract_path`, so a repo that grew a check since its contract was last generated goes red here
-# instead of the contract quietly lying about itself. It reads `$contract_path`, the same file
-# `GAUNTLET_CONTRACT` can redirect above, so a test exercises it without touching this repo's own
-# `.claude/contract.json`.
-#
-# `corpus` is the same pattern reused for `adr-corpus.evidence.json` (spec #134, ticket #140): a
-# fresh generation from `docs/adr/` and `docs/research/` compared byte-for-byte against the
-# committed fixture, so a corpus that grew or shrank since the fixture was last generated goes red
-# here instead of `missing-trailer.test.ts` quietly running against a stale snapshot.
-#
-# `wiring` is the third of the same family, and the one #183 asked for: knip, pointed at the lanes
-# rather than at the test suite, answering whether anything this repo can actually *run* reaches a
-# given file or export. It gates on the delta against a committed baseline, not on the whole
-# answer, because it landed against 31 standing findings that are product decisions rather than
-# lint fixes. New code wired to nothing fails the push that introduced it.
-#
-# `workflows` is actionlint, and it is here rather than only in `verify.yml` because a broken
-# workflow file is the one defect CI structurally cannot report (ADR-0105). `workflow-lint.ts`'s
-# docstring is the home for why, and for why needing Docker is not the ritual objection it looks
-# like: the check costs nothing on a push that leaves `.github/workflows/` alone.
-#
-# `boundaries` is #305's prevent-side of module boundaries: `.dependency-cruiser.cjs` answers "may
-# this import that?", `boundaries-baseline.ts` is the same baseline-the-delta shape `wiring` uses
-# for knip, and `generate-boundaries-doc.ts`'s `diff` mode is the same `regenerate && diff` shape
-# `contract`/`corpus` use — folded into this one check because all three read the same rules and a
-# reader chasing a red `boundaries` has one place to look, not three.
-
-# Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
-# them. That is what keeps the whole set inside the in-turn budget.
-run_check() {
-  local name="$1"
-  shift
-  local check_started_ms
-  check_started_ms=$(($(date +%s%N) / 1000000))
-  "$@" >"$tmp/$name.out" 2>&1
-  echo "$?" >"$tmp/$name.exit"
-  # Per check, not just per venue: a venue that got slower is a report nobody can act on until it
-  # says which check did. The file is read once the run is green, below.
-  echo "$(( $(date +%s%N) / 1000000 - check_started_ms ))" >"$tmp/$name.ms"
-}
-
-# A value as one shell word, for the commands below that interpolate a path into a `bash -c`
-# string. This estate's own checkout has a space in its path.
-shquote() {
-  printf "'%s'" "${1//\'/\'\\\'\'}"
-}
-
-# A contract slot runs at `target_root` with this gauntlet's own configuration unset. Whatever
-# `TARGET_WORKSPACE` and `GAUNTLET_CONTRACT` mean to *this* run, they mean nothing to the target's
-# `npm test` — and they are actively dangerous there: two of this repo's own tests spawn a scratch
-# tree's `bin/gauntlet push` with the environment they inherited, and a `TARGET_WORKSPACE` leaked
-# through that spawn pointed the scratch gauntlet at the real target, whose whole suite ran those
-# two tests again, and so on until the runner killed the job (exit 143 after eight minutes, on the
-# first push Verify after ADR-0139). A slot's environment is the target's, never the gauntlet's.
-#
-# One thing does cross: the core count. A slot is a command the contract names, never a tool this
-# script knows (ADR-0056), so it cannot be told how wide to run — but a target's test runner sizes
-# itself from whatever its own config assumes, and Lumaria's assumed twelve workers on a two-core
-# runner because the width its own CI declares never reaches a slot the machine runs (#343). So
-# the gauntlet says the one thing it does know, generically: `GAUNTLET_CORES` is the count this
-# run scheduled by, and a target maps it to its runner's width in its own config. A scratch
-# gauntlet spawned inside a slot inherits the same count, which is the real one in production and
-# the deliberate one in a test. Exported rather than passed to `env`: a `NAME=value` there ends
-# the option list, and the test slot appends `-u` flags of its own after this array.
-export GAUNTLET_CORES="$cores"
-slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT)
-
-started_ms=$(($(date +%s%N) / 1000000))
 pids=()
-
-run_check typecheck "${slot_env[@]}" bash -c "cd \"$target_root\" && $TYPECHECK_CMD" &
-pids+=($!)
-
-run_check lint "${slot_env[@]}" bash -c "cd \"$target_root\" && $LINT_CMD" &
-pids+=($!)
-
-# The turn venue's tests: only the files that import the one just edited (#335). Before this the
-# venue ran none at all, which made the cheapest place to repair a broken test the one place the
-# suite never ran. `<file>` is the same placeholder `test_one` uses, substituted here as a single
-# quoted word.
-if [ "$venue" = "turn" ] && [ -n "$TEST_RELATED_CMD" ] && [ -n "$target" ]; then
-  run_check test_related "${slot_env[@]}" \
-    GAUNTLET_VENUE="$venue" \
-    bash -c "cd \"$target_root\" && ${TEST_RELATED_CMD//<file>/$(shquote "$target")}" &
+ran=""
+i=0
+for name in $slots; do
+  i=$((i + 1))
+  cmd="$(printf '%s\n' "$cmds" | sed -n "${i}p")"
+  [ -n "$cmd" ] || continue
+  case "$name" in
+    lint_one | test_related)
+      [ -n "$files" ] || continue
+      cmd="${cmd//<file>/$files}"
+      ;;
+  esac
+  ran="$ran $name"
+  (
+    cd "$target_root" && env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT bash -c "$cmd" >"$tmp/$name.out" 2>&1
+    echo "$?" >"$tmp/$name.exit"
+  ) &
   pids+=($!)
-fi
-
-# What the test slot actually runs here.
-#
-# `push` runs the whole `test` slot — it is the venue that owns the whole suite, and the venue a
-# file lands at when it outgrows the one above it. `stop` asks the timing baseline which files this
-# workstation can run under its hard 5000 ms wall and runs those through the `test_one` form, so the
-# three files that spawn real processes on purpose run at push without anyone keeping a list of
-# them, and a file that grows past the wall follows them on the next measurement (#335, revised by
-# #357/ADR-0148).
-#
-# Either precondition missing — no measurement yet, or a target whose runner has no single-file
-# form — and stop runs the whole slot, which is what every venue did before this.
-test_cmd="${TEST_CMD:-}"
-
-# With fewer cores than checks, the test slot waits for the cheap ones instead of racing them.
-# `maxWorkers` derived from cores (vitest.config.ts) means the suite alone will claim every core it
-# is given, and on a two-core runner it was claiming them beside typecheck, lint and eight more —
-# the contention that manufactured two failures out of nothing in #333. Ordering, not skipping:
-# every check still runs, and the venue's wall clock is the same work in a different arrangement.
-check_count="$(set -- $checks; echo $#)"
-defer_test=0
-[ "$cores" -lt "$check_count" ] && defer_test=1
-
-sandbox=""
-if [ "$venue" != "turn" ]; then
-  if [ "$defer_test" = "1" ]; then
-    for pid in "${pids[@]}"; do wait "$pid"; done
-    pids=()
-  fi
-
-  # The suite runs against a decoy repository, named by the same three variables that let #86
-  # happen: `GIT_DIR` beats a `cwd` and an argv `-C`, so a fixture that shells out to `git` writes
-  # wherever they point. Twice in one hour they pointed here, and 74 fixture commits walked `main`
-  # onto a chain of `seed` / `the release commit`; the second time it reached `origin`.
-  #
-  # `vitest.config.ts` scrubs them from every worker, and `git-env-sandbox.test.ts` asserts the
-  # scrub is wired. Neither can speak for a test nobody has written yet, which is the half that
-  # actually failed last time — the seam was already fixed, and the fixtures still wrote. So the
-  # gate stops trusting the assertion and reads the decoy afterwards: an empty repository is the
-  # whole suite demonstrating, at every venue that runs it, that it wrote to no repository but its
-  # own fixtures. A future test author does not have to know this exists for it to hold.
-  #
-  # That assertion is `target_root`'s own — this repo's `vitest.config.ts` wires
-  # `scrub-git-env.setup.ts` into every worker, but ADR-0139's target owes only its
-  # `.claude/contract.json`, `docs/adr/` and `CODING_STANDARDS.md`, and a target that never took on
-  # the scrub has every fixture that shells out to `git init && git commit` inherit this decoy
-  # instead of dodging it — not a target defect the sandbox exists to catch, but the sandbox itself
-  # breaking a suite that never opted in. So the decoy is gated on the same precondition-file shape
-  # `corpus`/`clones`/`wiring`/`boundaries` already use: armed only where `target_root` carries the
-  # scrub, unset entirely otherwise, with one line on stderr saying why.
-  scrub_setup="$target_root/.Workflow/agent-workflows/shared/scrub-git-env.setup.ts"
-  if [ -f "$scrub_setup" ]; then
-    sandbox="$tmp/git-sandbox"
-    if ! (
-      unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
-      git -c init.defaultBranch=main init -q "$sandbox"
-    ) 2>"$tmp/sandbox-init.out"; then
-      echo "gauntlet: could not create the git sandbox — checks not run" >&2
-      cat "$tmp/sandbox-init.out" >&2
-      exit 2
-    fi
-
-    # `GAUNTLET_VENUE` names the venue to whatever the test slot runs. The one reader today is the
-    # clone gate: the `test` slot runs it (docs/agents/clone-gate.md rule 6 puts it there), and this
-    # venue's `stop` form runs the `test` slot at every turn-end — so without a way to tell the two
-    # apart, wiring the gate in would have put a two-second scan on every turn. The gauntlet does not
-    # schedule the clone gate at any venue; `npm run check` and CI each run it once, deliberately.
-    run_check test "${slot_env[@]}" \
-      GAUNTLET_VENUE="$venue" \
-      GIT_DIR="$sandbox/.git" \
-      GIT_WORK_TREE="$sandbox" \
-      GIT_INDEX_FILE="$sandbox/.git/index" \
-      bash -c "cd \"$target_root\" && $test_cmd" &
-    pids+=($!)
-  else
-    echo "gauntlet: $target_root carries no scrub-git-env.setup.ts — the git sandbox did not run; a fixture there that shells out to git runs with whatever GIT_DIR the caller's environment already carries" >&2
-    run_check test "${slot_env[@]}" -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
-      GAUNTLET_VENUE="$venue" \
-      bash -c "cd \"$target_root\" && $test_cmd" &
-    pids+=($!)
-  fi
-fi
-
+done
 for pid in "${pids[@]}"; do wait "$pid"; done
-elapsed_ms=$((($(date +%s%N) / 1000000) - started_ms))
 
-failed=0
-failed_names=""
-could_not_run=0
-
-# Read the decoy. This is a finding about the suite, not about the code under test, so it is
-# reported separately from `test` — a green suite that wrote into the sandbox is a worse result
-# than a red one, and naming it `test` would bury that. Only when the sandbox actually ran: a
-# target with no scrub never had one armed above, and there is nothing here to read.
-if [ -n "$sandbox" ]; then
-  sandbox_refs="$(
-    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
-    git --git-dir="$sandbox/.git" for-each-ref
-  )"
-  sandbox_objects="$(
-    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE
-    git --git-dir="$sandbox/.git" count-objects | cut -d' ' -f1
-  )"
-  if [ -n "$sandbox_refs" ] || [ "$sandbox_objects" != "0" ]; then
-    failed=1
-    echo "--- git-sandbox ---"
-    echo "A test wrote into the repository named by GIT_DIR — with that variable set in a real"
-    echo "session, this is a write to your checkout (#86). $sandbox_objects loose object(s):"
-    echo "$sandbox_refs"
-  fi
-fi
-
-# A command a slot names that no longer runs — renamed, uninstalled, a typo in the contract — is
-# the shell's own "command not found", exit 127. That is kept distinct from a check that ran and
-# found something: the former is a broken gauntlet (exit 2), the latter is a real finding (exit 1).
-#
-# The checks below that this repo writes itself speak the same three codes back, so their own exit 2
-# means "could not run" too — `workflow-lint` reporting that no Docker daemon answered is the case
-# in hand. That reading is per-check and never global, because `tsc --noEmit` exits **2** for type
-# errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
-# turn every type error in this repo into "the gauntlet is broken", which is the one report
-# ADR-0063 tells the bypass counter to ignore.
-own_protocol=" "
-for name in $checks; do
-  [ -f "$tmp/$name.exit" ] || continue
-  code="$(cat "$tmp/$name.exit")"
-  [ "$code" = "0" ] && continue
-  speaks_protocol=0
-  case "$own_protocol" in *" $name "*) speaks_protocol=1 ;; esac
-  if [ "$code" = "127" ] || { [ "$code" = "2" ] && [ "$speaks_protocol" = "1" ]; }; then
-    could_not_run=1
-    echo "gauntlet: $name could not run" >&2
-    cat "$tmp/$name.out" >&2
-    continue
-  fi
-  failed=1
-  failed_names="$failed_names $name"
+# Every failing slot's output, then the verdict last: `shared/reason.ts` keeps the tail of this
+# stream for a comment or a log, and the tail has to open with the answer.
+failed=""
+for name in $ran; do
+  [ "$(cat "$tmp/$name.exit" 2>/dev/null)" = "0" ] && continue
+  failed="$failed $name"
   echo "--- $name ---"
   cat "$tmp/$name.out"
 done
-
-# The verdict goes last, and on stdout, because that is the half a reader actually gets. A hook
-# refusing a push makes git say only `error: failed to push some refs`, and `shared/reason.ts`
-# recovers the diagnosis by keeping the **tail** of this output — which, until this line existed,
-# was a vitest summary table naming no check. Now the tail opens with the answer, in every place
-# that report is read: a lane's log, an issue comment, a walked-home ticket.
-if [ "$failed" = "1" ]; then
-  echo "gauntlet: FAILED at$failed_names"
+if [ -n "$failed" ]; then
+  echo "gauntlet: FAILED at$failed"
+  exit 1
 fi
-
-if [ "$could_not_run" = "1" ]; then
-  exit 2
-fi
-
-exit "$failed"
+exit 0

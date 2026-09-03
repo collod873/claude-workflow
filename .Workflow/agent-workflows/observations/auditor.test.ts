@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createFakeGit } from "../shared/git.fake";
 import { createFakeStage } from "../shared/stage.fake";
 import { runAuditor, type AuditorOptions } from "./auditor";
+import { expectSandboxedLensArgv } from "./sandbox-argv.fixture";
 
 /**
  * Every test in this file runs the auditor through `createFakeGit` and
@@ -50,20 +51,7 @@ describe("runAuditor", () => {
     await runAuditor(options);
 
     const [argv] = fakeStage.calls;
-    expect(argv[0]).toBe("-p");
-    expect(argv.slice(1)).toEqual([
-      "--model",
-      "sonnet",
-      "--output-format",
-      "text",
-      "--no-session-persistence",
-      "--tools",
-      "",
-      "--strict-mcp-config",
-      "--disable-slash-commands",
-      "--setting-sources",
-      "",
-    ]);
+    expectSandboxedLensArgv(argv);
   });
 
   it("embeds the scoped diff, the spine, and the standards in the prompt", async () => {
