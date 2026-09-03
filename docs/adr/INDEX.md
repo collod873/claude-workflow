@@ -156,5 +156,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | constraint |
 | 0147 | [The timing deadband is 50%, because it spans a runner pool rather than a runner](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) | superseded |
 | 0148 | [Timing is recorded, never judged](0148-timing-is-recorded-never-judged.md) | constraint |
+| 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) | constraint |
 
-148 ADRs · 66 constraint · 44 note · 38 superseded · 14,315 words total.
+149 ADRs · 67 constraint · 44 note · 38 superseded · 14,462 words total.

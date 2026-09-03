@@ -300,6 +300,23 @@ fi
 
 log "id=$id  branch=$branch → $canary_branch  target=$canary_repo  lane=$lane"
 
+# ---------------------------------------------------------------- fire plan
+# How `--lane $lane` wakes, derived from that lane's own caller YAML rather than a hand-written
+# lane→fire table — `canary-fire-plan.ts` reads `$stub_path`'s `on:` block with the one YAML
+# reader this repo already has (`read-workflow.ts`) and answers with the fire this script should
+# perform. Computed before the push below so a lane bin/canary cannot fire — a workflow_run-only
+# lane (ADR-0149), or a trigger shape it does not know — refuses fast, before spending a push and
+# a provision on a canary that could never have run.
+stub_path=".github/workflows/$lane-caller.yml"
+[ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
+plan_json="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$lane")" \
+  || die "could not derive a fire for lane '$lane' — see above"
+fire_kind="$(jq -r .kind <<<"$plan_json")"
+[ "$fire_kind" != "refuse" ] || die "$(jq -r .reason <<<"$plan_json")"
+fire_event="$(jq -r '.event // empty' <<<"$plan_json")"
+fire_event_type="$(jq -r '.eventType // empty' <<<"$plan_json")"
+log "lane '$lane' wakes on $fire_kind${fire_event_type:+ ($fire_event_type)}"
+
 # ---------------------------------------------------------------- push
 if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
   if [ "$wip" = "1" ]; then
@@ -326,10 +343,10 @@ fi
 canary_up
 
 # The stub the canary must carry: this machine's own stub, re-pinned to the session's branch and
-# told which runner and machine ref to use. Written only when it differs, and when it is written
-# that commit is the fire — a second push would only queue a second run behind it.
-stub_path=".github/workflows/$lane-caller.yml"
-[ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
+# told which runner and machine ref to use. Written only when it differs. For a push-triggered
+# lane that write is itself the fire (a second push would only queue a second run behind it); every
+# other lane wakes on a door this stub-write does not ring, so its fire happens further down,
+# always exactly once, after the stub is confirmed in place.
 # `runner`/`machine_ref` are merged into the job's own `with:` block, not appended as a second
 # one: a stub whose `uses:` already carries a `with:` (e.g. fixer-caller.yml's `run_id`/`test_dir`)
 # would otherwise get two `with:` keys in one YAML mapping — invalid, so GitHub fails the whole
@@ -381,11 +398,13 @@ remote_stub_sha="$(jq -r '.sha // empty' <<<"$remote_stub_json")"
 fire_sha=""
 if [ "$remote_stub" != "$expected_stub" ]; then
   read -r stub_commit stub_blob <<<"$(put_file "$stub_path" "canary: pin $lane to $canary_branch on the $RUNNER_LABEL runner" "$expected_stub" "$remote_stub_sha")"
-  if [ "$stub_blob" != "$remote_stub_sha" ]; then
+  if [ "$fire_kind" = "push" ] && [ "$stub_blob" != "$remote_stub_sha" ]; then
     fire_sha="$stub_commit"
     log "stub written on $canary_repo ($fire_sha) — that commit is the fire"
-  else
+  elif [ "$fire_kind" = "push" ]; then
     log "stub PUT changed nothing (blob $stub_blob unchanged) — firing separately"
+  else
+    log "stub written on $canary_repo ($stub_commit) — pin only; $lane wakes on $fire_kind, not push"
   fi
 fi
 
@@ -396,21 +415,86 @@ for run in $(gh run list -R "$canary_repo" --json databaseId,status --jq '.[] | 
 done
 
 # ---------------------------------------------------------------- fire
-if [ -z "$fire_sha" ]; then
-  fire_json="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$target_branch" 2>/dev/null || echo '{}')"
-  read -r fire_sha _ <<<"$(put_file ".canary-fire" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
-fi
-log "fired: $canary_repo@$fire_sha"
+# Exactly one fire per iteration (ADR-0146's property, carried to every trigger kind, not just
+# push): a push either lands as the stub-pin commit above or as the `.canary-fire` write below,
+# never both; every other kind below is a single API call made once, right here. None of them
+# move the target repo's default branch, so `before_time` is what tells the watch step a run this
+# call caused from one already sitting in the repo's history at the same ref.
+ensure_label() { # name — idempotent; issues:labeled needs a label to exist before it can be added
+  gh label create "$1" -R "$canary_repo" --color eeeeee >/dev/null 2>&1 || true
+}
+seed_issue() { # why → issue number, on stdout
+  local url
+  url="$(gh issue create -R "$canary_repo" --title "canary: fire $lane ($1)" \
+    --body "Seed issue created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
+  echo "${url##*/}"
+}
+
+before_time="$(date -u +%FT%TZ)"
+case "$fire_kind" in
+  push)
+    if [ -z "$fire_sha" ]; then
+      fire_json="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$target_branch" 2>/dev/null || echo '{}')"
+      read -r fire_sha _ <<<"$(put_file ".canary-fire" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
+    fi
+    log "fired: $canary_repo@$fire_sha (push)"
+    ;;
+  workflow_dispatch)
+    gh api -X POST "repos/$canary_repo/actions/workflows/$(basename "$stub_path")/dispatches" -f "ref=$target_branch" >/dev/null
+    log "fired: $canary_repo workflow_dispatch on $stub_path@$target_branch"
+    ;;
+  repository_dispatch)
+    gh api -X POST "repos/$canary_repo/dispatches" -f "event_type=$fire_event_type" -f "client_payload[canary]=$id" >/dev/null
+    log "fired: $canary_repo repository_dispatch event_type=$fire_event_type"
+    ;;
+  issues_labeled)
+    ensure_label "canary-fire"
+    issue_num="$(seed_issue "issues:labeled")"
+    gh issue edit "$issue_num" -R "$canary_repo" --add-label "canary-fire" >/dev/null
+    log "fired: $canary_repo issue #$issue_num labeled canary-fire"
+    ;;
+  issues_closed)
+    issue_num="$(seed_issue "issues:closed")"
+    gh issue close "$issue_num" -R "$canary_repo" >/dev/null
+    log "fired: $canary_repo issue #$issue_num closed"
+    ;;
+  pull_request_closed)
+    pr_branch="canary-fire-$(date -u +%s)"
+    base_sha="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)"
+    gh api "repos/$canary_repo/git/refs" -f "ref=refs/heads/$pr_branch" -f "sha=$base_sha" >/dev/null
+    gh api -X PUT "repos/$canary_repo/contents/.canary-fire" \
+      -f "message=canary: fire $lane" -f "content=$(printf '%s\n' "fired at $before_time" | base64 -w0)" -f "branch=$pr_branch" >/dev/null
+    pr_url="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$pr_branch" \
+      --title "canary: fire $lane" --body "Seed pull request created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
+    gh pr close "$pr_url" -R "$canary_repo" >/dev/null
+    log "fired: $canary_repo PR ${pr_url##*/} closed"
+    ;;
+  *)
+    die "internal error: canary-fire-plan.ts returned an unhandled kind '$fire_kind'"
+    ;;
+esac
 
 # ---------------------------------------------------------------- watch
 run_id=""
 deadline=$((SECONDS + 120))
-while [ -z "$run_id" ]; do
-  run_id="$(gh api "repos/$canary_repo/actions/runs?head_sha=$fire_sha" --jq '.workflow_runs[0].id // empty')"
-  [ -n "$run_id" ] && break
-  [ $SECONDS -lt $deadline ] || die "the push fired nothing in 120 s — does $stub_path trigger on push to $target_branch, and did the change touch a path outside paths-ignore?"
-  sleep 3
-done
+if [ "$fire_kind" = "push" ]; then
+  while [ -z "$run_id" ]; do
+    run_id="$(gh api "repos/$canary_repo/actions/runs?head_sha=$fire_sha" --jq '.workflow_runs[0].id // empty')"
+    [ -n "$run_id" ] && break
+    [ $SECONDS -lt $deadline ] || die "the push fired nothing in 120 s — does $stub_path trigger on push to $target_branch, and did the change touch a path outside paths-ignore?"
+    sleep 3
+  done
+else
+  # No new commit moves the ref for these kinds, so `head_sha` cannot pick the run out — filtered
+  # by the GitHub event name the fire actually was, and by having arrived no earlier than the fire.
+  while [ -z "$run_id" ]; do
+    run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=15" \
+      --jq --arg t "$before_time" '[.workflow_runs[] | select(.created_at >= $t)] | sort_by(.created_at) | .[0].id // empty')"
+    [ -n "$run_id" ] && break
+    [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing in 120 s — does $stub_path actually declare that trigger on $canary_repo's default branch?"
+    sleep 3
+  done
+fi
 log "run $run_id — https://github.com/$canary_repo/actions/runs/$run_id"
 deadline=$((SECONDS + timeout_s))
 status=""
