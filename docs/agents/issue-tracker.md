@@ -28,6 +28,24 @@ Issues and specs for this repo live as GitHub issues on `collod873/claude-workfl
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Routing a defect: the project under work, or the machinery
+
+Spot a defect outside your task? File the ticket yourself, right then. But a defect in **the agent
+machinery** (skill markdown, or a hook itself) never goes to the tracker you are standing in. That
+tracker belongs to **the code under work**, and the machinery's fix would not land there either.
+Route by what broke, not by which repo the session happens to be in:
+
+- A defect in the code under work goes to that project's tracker, by the conventions above.
+- A defect in the machinery goes to `collod873/agent-skills`, named explicitly:
+  `~/bin/file-issue ticket -R collod873/agent-skills --title "..." --body-file <path>`. Omitting
+  `-R` here is the same failure the bullet above warns about, one layer down: the issue silently
+  lands in whichever tracker the session is standing in, never the machinery's.
+
+The distinction bites hardest from inside this repo, because this repo is *both*. Its lanes, hooks
+and `bin/` verbs are the code under work and belong here. The skills those lanes invoke are seeded
+from `collod873/agent-skills` and belong there, so a fix filed here is a fix the next `bin/re-seed`
+overwrites.
+
 ## Numbers vs IDs
 
 Two different identifiers, and using the wrong one is a silent no-op rather than an error.
