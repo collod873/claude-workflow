@@ -276,10 +276,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
     return { outcome: "immutable", files: forbidden };
   }
 
-  // The same refusal for the gate (#360): an answer that *creates* a file the gate is made of — a
-  // new hook, a new bin/ script, a new workflow — is growing the one thing lanes may only shrink.
-  // The size fence (`.claude/gate-size.test.ts`) would catch the lines; this catches the path the
-  // fence has never heard of, before anything is written or claimed.
+  // The same refusal by `gateGrowth` (#360), taken here before anything is written or claimed.
   const growth = gateGrowth(
     deps.git,
     answer.files.map((file) => file.path),
