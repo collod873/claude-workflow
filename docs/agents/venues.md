@@ -39,8 +39,14 @@ Two files, because a millisecond is only true where it was measured:
 
 | File                                                          | Holds                    | Written by                                    |
 | ------------------------------------------------------------- | ------------------------ | --------------------------------------------- |
-| `.Workflow/agent-workflows/shared/timing-baseline.json`        | the runner's numbers     | lane 05's `regenerate-artifacts.ts`, on the runner |
+| `.Workflow/agent-workflows/shared/timing-baseline.json`        | the runner's numbers     | lane 05's regenerate step, which runs the **push venue** against the target on the runner and commits what it measured ([ADR-0145](../adr/0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md)) |
 | `.Workflow/agent-workflows/shared/timing-baseline.local.json`  | this machine's numbers   | every `bin/gauntlet` run off CI (gitignored)  |
+
+The push venue is the only caller that may write the committed file: it runs under a seam that
+lets its own `record` call write despite being on a runner, set nowhere else. A plain
+`bin/gauntlet push` on a runner — including the Verify run that judges the same pull request —
+still judges the committed file and discards, because a Verify checkout is thrown away and a
+write there would only leave a dirty tree under a commit nobody owns.
 
 A run is judged against the file for where it ran. Nothing merges them, and nothing keys them by
 core count — this repo's public runners have 4 cores, Lumaria's private ones 2, and the workstation
@@ -62,10 +68,10 @@ What sits at push today is the handful of files that drive their subject as a re
 hook, a CLI, a `git` invocation. That is the honest way to test a thing whose contract *is* its
 exit code, and it is also why they belong at the venue that can afford them.
 
-To re-measure by hand:
+To refresh the suite's file-share ratios by hand:
 
 ```
-node .Workflow/agent-workflows/shared/timing-baseline.ts .
+node .Workflow/agent-workflows/shared/timing-baseline.ts measure .
 ```
 
 ## Concurrency
