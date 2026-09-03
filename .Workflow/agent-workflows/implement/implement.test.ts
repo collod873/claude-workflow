@@ -17,6 +17,7 @@ import {
   assembleBrief,
   CLAIM_TIMEOUT_MINUTES,
   extractSeamsConsumed,
+  findFailingTestFiles,
   IMPLEMENT_DISPATCH_EVENT_TYPE,
   moduleContextPath,
   nothingToBuildNote,
@@ -620,6 +621,40 @@ function claimDeps(
     now: NOW,
   };
 }
+
+describe("findFailingTestFiles scopes to the slice", () => {
+  /**
+   * The brief is "its own failing acceptance test file(s)" (#167), and the function's docstring
+   * always said so — but its signature took no issue number, so it ran the whole directory. On
+   * 2026-09-03 that meant 19 failing files, 10 of them belonging to no live ticket, handed to
+   * every implementer as its own. It also cost ~26 minutes of a 45-minute job on a two-core
+   * runner before the model started.
+   */
+  it("runs only the slice's own files and never the whole directory", () => {
+    const ran: string[] = [];
+    findFailingTestFiles(
+      "tests/acceptance/",
+      342,
+      () => "content",
+      process.cwd(),
+      () => {
+        ran.push("ran");
+        return { collected: true, failures: [{ name: "tests/acceptance/342-venues-doc.test.ts > x" }] } as never;
+      },
+    );
+    expect(ran, "the slice has files, so the suite runs once").toHaveLength(1);
+  });
+
+  it("returns nothing without spawning a runner when the slice has no acceptance files yet", () => {
+    let spawned = 0;
+    const result = findFailingTestFiles("tests/acceptance/", 99999, () => "content", process.cwd(), () => {
+      spawned += 1;
+      return { collected: false, failures: [] } as never;
+    });
+    expect(result).toEqual([]);
+    expect(spawned, "an unauthored slice must not be read as an uncollected suite").toBe(0);
+  });
+});
 
 describe("runImplement claims its branch before it spends anything", () => {
   const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };

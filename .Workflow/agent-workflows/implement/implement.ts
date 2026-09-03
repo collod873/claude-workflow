@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -860,7 +860,30 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
 }
 
 /**
- * Every failing acceptance test file for `issueNumber`, read from disk —
+ * The acceptance files belonging to one slice: `tests/acceptance/<issue>-*`, the naming lane 04
+ * authors by (`acceptance.ts`) and `testsForCriteria` matches against.
+ *
+ * This scoping is the difference between a brief and a repository read. `findFailingTestFiles`
+ * used to run the *whole* acceptance directory and hand back every failure in it: on 2026-09-03
+ * that was 19 files, of which 10 belonged to no live ticket at all, and each implementer was
+ * handed all of them as "its own failing acceptance test(s)". Its own docstring already promised
+ * per-issue scoping that its signature could not deliver — it never took an issue number.
+ *
+ * The cost was not only wrong content. The unscoped run took 257 seconds of test CPU, which is
+ * roughly 26 minutes on the two-core runner this lane gets — measured on runs 33696576981 and
+ * 33697122706, both of which spent more than half of `implement.yml`'s 45-minute cap here before
+ * their model started. One slice's files are ~13 seconds of the same measure.
+ */
+export function sliceTestFiles(dir: string, issueNumber: number, repoDir: string): string[] {
+  const root = resolve(repoDir, dir);
+  if (!existsSync(root)) return [];
+  return readdirSync(root)
+    .filter((name) => name.startsWith(`${issueNumber}-`) && /\.(test|spec)\.[cm]?[jt]sx?$/.test(name))
+    .map((name) => `${dir}${name}`);
+}
+
+/**
+ * Every failing acceptance test file **for `issueNumber` alone**, read from disk —
  * `push-gate.ts`'s own `TestRunResult` shape, reused rather than
  * re-classified, since "which test failed" is exactly what it already
  * reports. Real production behaviour for `main()`; `runImplement` above
@@ -875,10 +898,17 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
  */
 export function findFailingTestFiles(
   dir: string,
+  issueNumber: number,
   readFile: (path: string) => string,
   repoDir: string = process.cwd(),
-  runTests: () => TestRunResult = () => runVitestJson(dir, repoDir),
+  runTests: () => TestRunResult = () => runVitestJson(`${dir}${issueNumber}-`, repoDir),
 ): FailingTestFile[] {
+  // Nothing to run, and nothing to say: a slice whose acceptance tests lane 04 has not authored
+  // yet has no failing test of its own, which is not the same as a red suite. Asked before the
+  // runner is spawned, because vitest given a filter that matches no file reports an uncollected
+  // suite, and this function reads that as an error.
+  if (sliceTestFiles(dir, issueNumber, repoDir).length === 0) return [];
+
   const result = runTests();
   if (!result.collected) {
     throw new Error(`acceptance suite under ${dir} did not collect: ${result.collectionError ?? "no detail reported"}`);
@@ -929,7 +959,8 @@ async function main(): Promise<void> {
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
       issueNumber,
-      failingTests: () => findFailingTestFiles("tests/acceptance/", (path) => readFileSync(inRepo(path), "utf8"), repoDir),
+      failingTests: () =>
+        findFailingTestFiles("tests/acceptance/", issueNumber, (path) => readFileSync(inRepo(path), "utf8"), repoDir),
       runGenerator: execGenerator,
       repoRoot: repoDir,
     });
