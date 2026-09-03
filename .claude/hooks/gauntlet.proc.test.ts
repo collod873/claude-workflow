@@ -178,7 +178,7 @@ describe("the runner", () => {
     expect(readFileSync(log, "utf8").trim().split("\n").sort()).toEqual(["lint_one a b.ts", "test_related a b.ts"]);
   });
 
-  it("skips a slot carried as cmd: null — a lane may shrink the gate, never grow it", () => {
+  it("skips a slot carried as cmd: null, since a lane may shrink the gate, never grow it", () => {
     const run = runGauntlet(["push"], { GAUNTLET_CONTRACT: contractOf({ typecheck: "true", lint: null, test: "true", clones: null }) });
 
     expect(run.status).toBe(0);

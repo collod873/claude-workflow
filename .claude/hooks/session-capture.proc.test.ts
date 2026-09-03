@@ -71,7 +71,7 @@ function inScopeSession(sessionId: string, env: Record<string, string> = {}, tra
   return { ...repo, session, tracker, result };
 }
 
-describe("session-capture.sh — the fixture transcript", () => {
+describe("session-capture.sh: the fixture transcript", () => {
   it.each(["clear", "logout", "other"])("captures exactly one file for matcher reason %s", (reason) => {
     const result = fixtureSession(reason);
 
@@ -112,7 +112,7 @@ describe("session-capture.sh — the fixture transcript", () => {
   });
 });
 
-describe("session-capture.sh — failing open", () => {
+describe("session-capture.sh: failing open", () => {
   it("exits 0, writes no capture file, and logs skipped no-transcript-path when the payload has no transcript_path", () => {
     const log = expectFailedOpen(runHook({ session_id: "x", cwd: "y", hook_event_name: "SessionEnd", reason: "clear" }));
 
@@ -127,7 +127,7 @@ describe("session-capture.sh — failing open", () => {
     expect(log).toContain("skipped no-node");
   });
 
-  it("still captures when PATH is scrubbed but node is findable — the payload survives the repair", () => {
+  it("still captures when PATH is scrubbed but node is findable, so the payload survives the repair", () => {
     const result = runWithScrubbedPath(true);
 
     expectCaptured(result);
@@ -146,7 +146,7 @@ describe("session-capture.sh — failing open", () => {
   });
 });
 
-describe("session-capture.sh — publishing the session record and dispatching the audit", () => {
+describe("session-capture.sh: publishing the session record and dispatching the audit", () => {
   it("publishes a session record and dispatches the audit when the session ran in this repo", () => {
     const { bareDir, head, tracker, result } = inScopeSession("session-in-scope");
 
@@ -226,7 +226,7 @@ describe("session-capture.sh — publishing the session record and dispatching t
   });
 });
 
-describe("session-capture.sh — flushing the Knowledge-Base checkout", () => {
+describe("session-capture.sh: flushing the Knowledge-Base checkout", () => {
   it("flushes before the dispatch fires, for a session that ran in this repo", () => {
     const { kbBareDir, kbCloneDir, kbOutputDir } = makeKbCheckout();
     const { head, result } = inScopeSession("session-flush", {

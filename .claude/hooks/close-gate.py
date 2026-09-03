@@ -167,7 +167,7 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
             "deny",
             "missing-acceptance-criteria",
             "the issue body's `## Acceptance criteria` heading has no `- [ ]` items. Plain "
-            "`- ` bullets don't count — only `- [ ]` checkbox items do. Neither `No diff.` "
+            "`- ` bullets don't count; only `- [ ]` checkbox items do. Neither `No diff.` "
             "nor `Superseded by #<n>` stands in for criteria that were never written: "
             f"{write_criteria_hint()}, then run "
             f"`{close_ticket_stub_text}` to close it.",
@@ -178,9 +178,9 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
             "deny",
             "criteria-count-mismatch",
             f"{criteria_count} acceptance criteria in the body but {len(bullets)} "
-            "bullets in the closing record — one bullet per criterion, in the body's "
+            "bullets in the closing record: one bullet per criterion, in the body's "
             f"own order. Run `{close_ticket_stub_text}` instead of writing the record by "
-            "hand — it generates exactly one bullet per criterion.",
+            "hand; it generates exactly one bullet per criterion.",
         ), []
     return None, bullets
 
@@ -208,7 +208,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
                 "deny",
                 "missing-acceptance-criteria",
                 "the issue body's `## Acceptance criteria` heading has no `- [ ]` items. "
-                "Plain `- ` bullets don't count — only `- [ ]` checkbox items do. Neither "
+                "Plain `- ` bullets don't count; only `- [ ]` checkbox items do. Neither "
                 "`No diff.` nor `Superseded by #<n>` stands in for criteria that were never "
                 f"written: {write_criteria_hint()}.",
             )
@@ -216,7 +216,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "deny",
             "no-diff-with-criteria",
             "the closing record declares `No diff.` but the issue body carries a `## "
-            "Acceptance criteria` heading — `No diff.` stands only for a ticket that never "
+            "Acceptance criteria` heading; `No diff.` stands only for a ticket that never "
             "carried criteria. Run `close-ticket` to verify and record them.",
         )
 
@@ -225,7 +225,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "deny",
             "no-range-or-no-diff",
             "the closing record declares neither `No diff.`, a `base..head` range "
-            "standing alone on its own line, nor `Superseded by #<n>` — a range written "
+            "standing alone on its own line, nor `Superseded by #<n>`; a range written "
             f"as a bullet doesn't count. Run `{close_ticket_stub_text}` instead of "
             "writing the record by hand.",
         )
@@ -381,22 +381,22 @@ def main() -> None:
 
     if resolved_gh is None:
         deny(payload, repo, issue_number, "gh-not-found", "",
-             "gh is not resolvable on this machine — cannot verify, so the close is refused.",
+             "gh is not resolvable on this machine, so the close is refused.",
              verdict="degraded")
         return
 
     body, comments, fetch_err = fetch_issue(resolved_gh, gh_cwd, issue_number, repo_flag)
     if fetch_err:
         deny(payload, repo, issue_number, fetch_err, resolved_gh,
-             f"could not verify against GitHub ({fetch_err}) — failing closed.",
+             f"could not verify against GitHub ({fetch_err}): failing closed.",
              verdict="degraded")
         return
 
     record_text = inline_record if inline_record is not None else most_recent_record(comments)
     if record_text is None:
         deny(payload, repo, issue_number, "no-closing-record", resolved_gh,
-             "no `## Closing record` found — neither on the close command's own "
-             "--comment nor as an issue comment. Run close-ticket instead — it verifies "
+             "no `## Closing record` found, neither on the close command's own "
+             "--comment nor as an issue comment. Run close-ticket instead; it verifies "
              f"the criteria, posts the record, and closes in one step:\n\n    {stub_text}"
              "\n\nOr if this ticket truly carries no commit, post a `## Closing record` "
              "comment declaring `No diff.`")
