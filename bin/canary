@@ -22,8 +22,8 @@
 # one-time install to do by hand first: a hand step per session is exactly why one canary existed
 # on the day N sessions in parallel was the point of the design. The runner gets a `HOME` and a
 # `PATH` of its own, because one started under yours would hand every lane your `~/.claude` hooks,
-# your `~/bin` (where `adr-check` would change what Verify checks) and your `gh` credentials. That
-# is the floor; the container image ADR-0146 defers is the ceiling.
+# your `~/bin` (where `adr-check` lives — ADR-0097) and your `gh` credentials. That is the floor;
+# the container image ADR-0146 defers is the ceiling.
 #
 # **A green that does not print the machine SHA against the branch head is not a green.** Run
 # 33706756013 passed with the machine checked out at `main` under the branch's YAML. So the
@@ -222,8 +222,7 @@ start_runner() {
   # An explicit PATH, not the launching shell's: whoever runs `prove` — you, a hook, a session with
   # a different node on it — the lane has to see the same tools. `node` and `gh` are named because
   # a self-hosted runner has neither preinstalled the way a hosted one does, and both live under
-  # `~/.local`; `~/bin` is left off deliberately, since `adr-check` there would change what Verify
-  # checks (ADR-0097).
+  # `~/.local`; `~/bin` is left off deliberately — it holds `adr-check` (ADR-0097).
   local runner_path gh_bin
   gh_bin="$(command -v gh)" || die "no gh on PATH — the lanes the runner serves cannot work without it"
   runner_path="$(dirname "$(command -v node)"):$(dirname "$gh_bin"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

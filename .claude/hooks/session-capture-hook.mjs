@@ -7,6 +7,9 @@
  * `node`, an empty transcript path and a healthy quiet session must never produce the same
  * evidence — an empty output).
  *
+ * @shell session-capture.sh spawns this by path as a detached child; nothing imports it, so that
+ * spawn is the only edge reaching it and no static analysis sees it.
+ *
  * Argv: `<transcriptPath> <sessionId> <project> <source>` — session-capture.sh has already
  * confirmed `transcriptPath` is non-empty and exists before spawning this. `project` is
  * session-capture.sh's own name for the hook payload's `cwd` field (see that script's own

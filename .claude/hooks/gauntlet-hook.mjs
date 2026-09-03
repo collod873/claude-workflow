@@ -1,5 +1,8 @@
 // The two in-session venues of the gauntlet: in-turn (PostToolUse) and turn end (Stop).
 //
+// @shell Claude Code launches this by path through `gauntlet.sh` on a hook event. Nothing
+// imports it, so that launch is the only edge reaching it and no static analysis sees it.
+//
 // Neither refuses, and neither can. PostToolUse fires after the edit has already landed, and Stop
 // only asks Claude to keep working. That is the accepted shape, not a shortfall: every venue below
 // Actions is bypassable, and with branch protection declined (ADR-0071) there is no venue an agent
