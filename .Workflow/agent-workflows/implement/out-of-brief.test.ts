@@ -64,7 +64,7 @@ describe("recordOutOfBrief", () => {
   });
 });
 
-describe("runImplement — out-of-brief reads", () => {
+describe("runImplement: out-of-brief reads", () => {
   it("an implementer trace naming two out-of-brief reads of the same module leaves the tracker issue's marked count at 2 for that module", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
     const { gh, issues } = trackerWith(ticket);

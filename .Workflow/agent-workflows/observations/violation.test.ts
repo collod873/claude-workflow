@@ -31,7 +31,7 @@ describe("parseViolationFindings", () => {
     expect(parseViolationFindings(raw)).toEqual([]);
   });
 
-  it("drops a Finding line with no Site line following it — a pending finding never consumed", () => {
+  it("drops a Finding line with no Site line following it, a pending finding never consumed", () => {
     const raw = ["Finding: never mutate a shared array in place", "", "Some closing prose."].join("\n");
 
     expect(parseViolationFindings(raw)).toEqual([]);

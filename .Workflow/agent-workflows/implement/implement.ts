@@ -171,7 +171,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     state?: string;
   };
   if (stateRead.state === "CLOSED") {
-    log(`refusing #${deps.issueNumber}: the ticket is already closed — a stale dispatch builds nothing`);
+    log(`refusing #${deps.issueNumber}: the ticket is already closed; a stale dispatch builds nothing`);
     releaseFailedClaim(deps.gh, branch, log);
     return { outcome: "ticket-closed" };
   }
@@ -252,19 +252,19 @@ async function main(): Promise<void> {
       failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
     });
     if (result.outcome === "already-claimed") {
-      console.log(`#${issueNumber} is already claimed — nothing to do.`);
+      console.log(`#${issueNumber} is already claimed; nothing to do.`);
       return;
     }
     if (result.outcome === "ticket-closed") {
-      console.log(`#${issueNumber} is already closed — refused the stale dispatch.`);
+      console.log(`#${issueNumber} is already closed; refused the stale dispatch.`);
       return;
     }
     if (result.outcome === "nothing-to-build") {
-      console.log(`#${issueNumber} needed no changes — nothing to build.`);
+      console.log(`#${issueNumber} needed no changes; nothing to build.`);
       return;
     }
     if (result.outcome === "rebase-conflict") {
-      console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")} — escalated.`);
+      console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")}; escalated.`);
       return;
     }
     if (result.outcome === "fails-rule-refused") {

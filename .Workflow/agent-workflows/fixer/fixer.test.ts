@@ -185,7 +185,7 @@ describe("changedPaths", () => {
     expect(changedPaths(gitReporting(" M a.ts\n?? b.ts\n D c.ts"))).toEqual(["a.ts", "b.ts", "c.ts"]);
   });
 
-  it("is empty for a clean tree — a stage that answered without changing anything", () => {
+  it("is empty for a clean tree, a stage that answered without changing anything", () => {
     expect(changedPaths(gitReporting(""))).toEqual([]);
     expect(changedPaths(gitReporting("\n"))).toEqual([]);
   });
@@ -216,7 +216,7 @@ describe("priorAttempts", () => {
   });
 });
 
-describe("runFixer — no-progress stop", () => {
+describe("runFixer: no-progress stop", () => {
   it("stops after exactly 2 stage invocations when attempts 1 and 2 report the identical signature, and applies needs-human + a comment", async () => {
     const stage = attempts(2);
     const deps = baseDeps({
@@ -253,7 +253,7 @@ describe("runFixer — no-progress stop", () => {
   });
 });
 
-describe("runFixer — where a stop is routed", () => {
+describe("runFixer: where a stop is routed", () => {
   function specGapCall(calls: string[][]): string[] | undefined {
     return calls.find((call) => call[0] === "issue" && call[1] === "create" && call.includes(SPEC_GAP_LABEL));
   }
@@ -318,7 +318,7 @@ describe("runFixer — where a stop is routed", () => {
   });
 });
 
-describe("runFixer — capped stop", () => {
+describe("runFixer: capped stop", () => {
   it("stops after exactly 3 stage invocations when every attempt reports a different signature, and applies needs-human + a comment", async () => {
     const stage = attempts(3);
     const deps = baseDeps({
@@ -336,7 +336,7 @@ describe("runFixer — capped stop", () => {
   });
 });
 
-describe("runFixer — gate-growth stop", () => {
+describe("runFixer: gate-growth stop", () => {
   it("commits nothing and stops when an attempt creates a gate file, naming it on the PR", async () => {
     const { git, calls: gitCalls } = fakeGit("?? .claude/hooks/pre-commit.sh\n M fix.ts");
     const deps = baseDeps({ exec: attempts(1).exec, git, runTestsSequence: [{ failures: [] }] });
@@ -351,7 +351,7 @@ describe("runFixer — gate-growth stop", () => {
     expect(prCommentIn(deps.ghCalls)).toContain("attempt 1 tried something");
   });
 
-  it("lets an attempt that only edits an existing gate file through — the size fence judges that", async () => {
+  it("lets an attempt that only edits an existing gate file through, since the size fence judges that", async () => {
     const { git, calls: gitCalls } = fakeGit(" M vitest.config.ts");
     const tracking: GitExec = (args) => (args[0] === "ls-files" ? "vitest.config.ts\n" : git(args));
     const deps = baseDeps({ exec: attempts(1).exec, git: tracking, runTestsSequence: [{ failures: [] }] });
@@ -363,7 +363,7 @@ describe("runFixer — gate-growth stop", () => {
   });
 });
 
-describe("runFixer — goes green", () => {
+describe("runFixer: goes green", () => {
   it("stops as soon as an attempt leaves nothing failing, applying neither needs-human nor a comment, and sends the PR back to Verify", async () => {
     const stage = attempts(1);
     const ghCalls: string[][] = [];
@@ -401,7 +401,7 @@ describe("runFixer — goes green", () => {
   });
 });
 
-describe("applyUnfixable — the escalate path's one write", () => {
+describe("applyUnfixable: the escalate path's one write", () => {
   it("creates needs-human before applying it, applies it to the ticket, assigns the owner, and comments the PR naming what failed", () => {
     const { gh, calls } = createRecordingGh();
 

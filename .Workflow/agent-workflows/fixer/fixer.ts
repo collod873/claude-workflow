@@ -57,7 +57,7 @@ export function assembleFixBrief(signature: FailureSignature, attempt: number, p
   const tried =
     priorSummaries.length > 0
       ? priorSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n")
-      : "(none — this is the first attempt)";
+      : "(none: this is the first attempt)";
 
   return [
     `## Attempt ${attempt} of ${MAX_ATTEMPTS}`,
@@ -110,7 +110,7 @@ export function blockedComment(
 ): string {
   const why = {
     "no-progress":
-      "Two consecutive attempts left the identical tests failing with the identical errors — nothing further will change that.",
+      "Two consecutive attempts left the identical tests failing with the identical errors, and nothing further will change that.",
     capped: `${MAX_ATTEMPTS} attempts is this lane's cap, reached without landing a green run.`,
     "gate-growth": `The last attempt adds a file to the gate, which a lane may shrink and never grow (#360); it was not committed.\n\n${gateFiles.map((path) => `- \`${path}\``).join("\n")}`,
   }[stopReason];
@@ -136,7 +136,7 @@ export function immovableGapReport(
     `The fixer made ${MAX_ATTEMPTS === attemptSummaries.length ? "every" : `${attemptSummaries.length}`} attempt(s) at #${ticketNumber} and two consecutive ones left the identical tests failing with the identical errors.`,
     "",
     "An acceptance test that does not move under two independent attempts is not being failed by the",
-    "diff — it is asking for something the ticket did not decide, and ADR-0034 rules that the spec,",
+    "diff: it is asking for something the ticket did not decide, and ADR-0034 rules that the spec,",
     "not the test, is what settles that. The reading the test encodes is below; the criterion it was",
     "authored from is the one to clarify.",
     "",
@@ -304,7 +304,7 @@ export function runVitestJsonForFixer(targets: string[], repoDir: string = proce
 
 function readAssignee(): string {
   const assignee = process.env.SIGNAL_ASSIGNEE;
-  if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned ticket notifies nobody");
+  if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set: an unassigned ticket notifies nobody");
   return assignee;
 }
 

@@ -62,7 +62,7 @@ function audit(
   return { outcome, stage };
 }
 
-describe("runAudit — scope: which dispatches are judged at all", () => {
+describe("runAudit: scope: which dispatches are judged at all", () => {
   it("makes no git or exec call when the dispatch action isn't an audit", async () => {
     const git = createFakeGit();
     const stage = createFakeStage("");
@@ -84,7 +84,7 @@ describe("runAudit — scope: which dispatches are judged at all", () => {
   });
 });
 
-describe("runAudit — a session with nothing to read spends no model", () => {
+describe("runAudit: a session with nothing to read spends no model", () => {
   it("skips with no exec call when there is no session record at head", async () => {
     const { repo } = makeRepo();
     const head = commitA(repo, 1, "seed");
@@ -107,7 +107,7 @@ describe("runAudit — a session with nothing to read spends no model", () => {
   });
 });
 
-describe("runAudit — a session record whose corpus file is missing", () => {
+describe("runAudit: a session record whose corpus file is missing", () => {
   it("skips with corpus-missing and makes no exec call, before any model call", async () => {
     const { repo } = makeRepo();
     const base = commitA(repo, 1, "seed");
@@ -121,7 +121,7 @@ describe("runAudit — a session record whose corpus file is missing", () => {
   });
 });
 
-describe("runAudit — an ordinary session", () => {
+describe("runAudit: an ordinary session", () => {
   it("runs both lenses, pushes one merged note, evaluates ratification scope with prdClosed false, and reports the released count", async () => {
     const { repo, origin } = makeRepo();
     const base = commitA(repo, 1, "seed");
@@ -192,7 +192,7 @@ describe("run-audit.ts (CLI) exit code", () => {
     expect(runCli(repo, head, env)).toContain("ran (audited): released 1");
   });
 
-  it("exits nonzero only when a step throws — a missing HEAD_SHA", () => {
+  it("exits nonzero only when a step throws, as with a missing HEAD_SHA", () => {
     expect(() =>
       execFileSync("npx", ["tsx", RUN_AUDIT_PATH], {
         env: { ...process.env, HEAD_SHA: "", EVENT_ACTION: AUDIT_DISPATCH_ACTION },

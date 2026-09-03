@@ -18,7 +18,7 @@ function fakeGit(): { git: GitExec; calls: string[][] } {
 
 const silent = () => {};
 
-describe("runRatification — scope: merged vs. merely closed", () => {
+describe("runRatification: scope: merged vs. merely closed", () => {
   it("writes nothing to refs/notes/ratifications when the PR closed without merging", () => {
     const { git, calls } = fakeGit();
 
@@ -36,7 +36,7 @@ describe("runRatification — scope: merged vs. merely closed", () => {
   });
 });
 
-describe("runRatification — a merged ratifier PR's landed standards", () => {
+describe("runRatification: a merged ratifier PR's landed standards", () => {
   it("writes one ratified record per section, each carrying the landedAs the revert detector keys on", () => {
     const { git, calls } = fakeGit();
     const body = [
@@ -130,7 +130,7 @@ describe("runRatification — a merged ratifier PR's landed standards", () => {
   });
 });
 
-describe("runRatification — push retry", () => {
+describe("runRatification: push retry", () => {
   it("retries the push once against a fake git that first rejects non-fast-forward, then succeeds", () => {
     const calls: string[][] = [];
     let pushAttempts = 0;

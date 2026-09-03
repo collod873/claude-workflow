@@ -12,7 +12,7 @@ export function proposedPrompt(input: ProposedLensInput): string {
 
 ## Session spine
 
-The session's own words — what it was trying to do. Context for the diff, not something to grade on
+The session's own words, what it was trying to do. Context for the diff, not something to grade on
 its own.
 
 ${spine}
@@ -27,7 +27,7 @@ ${diff}
 ## What to do
 
 Look for a judgement call in the diff that a linter cannot express, made in a way that reads as a
-rule rather than a one-off choice — the same bar \`/standards-pass\` uses. You are not checking the
+rule rather than a one-off choice: the same bar \`/standards-pass\` uses. You are not checking the
 diff against \`CODING_STANDARDS.md\`; that is a different lens's job, and repeating an entry a
 linter already enforces is not yours to do either.
 
@@ -35,15 +35,15 @@ linter already enforces is not yours to do either.
 
 One block per candidate pattern, in exactly this form, repeated for each:
 
-Finding: <a one-line description of the pattern, stable across sites — this is its identity, so
+Finding: <a one-line description of the pattern, stable across sites; this is its identity, so
 phrase it the same way you would on a second sighting of it>
-Site: <file:line where this run observed it — a path and a line number, nothing else. No function
+Site: <file:line where this run observed it: a path and a line number, nothing else. No function
 name, no parenthetical, no "~line". A reader resolves this as a path, so anything past it is lost.>
 
-Output only these two labels, once per candidate pattern, and nothing else — no drafted rule text,
+Output only these two labels, once per candidate pattern, and nothing else: no drafted rule text,
 no rationale, no other labeled field. Writing the entry's wording is not this lens's call to make;
 only \`Finding:\` and \`Site:\` are read from what you write. If the diff shows no pattern worth
-proposing, say so plainly and stop — an empty pass is a valid pass.
+proposing, say so plainly and stop; an empty pass is a valid pass.
 `;
 }
 

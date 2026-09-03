@@ -109,7 +109,7 @@ export async function runAudit(options: RunAuditOptions): Promise<AuditOutcome> 
 
   if (scope.shouldRatify) dispatchRatificationDue(gh, { head: record.head, prdClosed: false });
 
-  log(`audited: released ${scope.releasedCount}${scope.shouldRatify ? " — ratification is due" : ""}`);
+  log(`audited: released ${scope.releasedCount}${scope.shouldRatify ? " (ratification is due)" : ""}`);
   return {
     action: "ran",
     code: "audited",

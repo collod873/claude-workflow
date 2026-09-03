@@ -26,7 +26,7 @@ describe("sessionRangeDiff", () => {
     expect(diff).not.toContain("mine = 2;"); 
   });
 
-  it("leaves the diff unrestricted when the transcript named no paths — show more, not less", () => {
+  it("leaves the diff unrestricted when the transcript named no paths: show more, not less", () => {
     const repo = makeTempRepo("session-range-diff");
 
     const base = commitFile(repo, "mine.ts", "export const mine = 0;\n", "seed");
@@ -37,7 +37,7 @@ describe("sessionRangeDiff", () => {
     expect(diff).toContain("+export const theirs = 1;");
   });
 
-  it("never diffs the working tree — an uncommitted change past head is invisible", () => {
+  it("never diffs the working tree, so an uncommitted change past head is invisible", () => {
     const repo = makeTempRepo("session-range-diff");
 
     const base = commitFile(repo, "mine.ts", "export const mine = 0;\n", "seed");

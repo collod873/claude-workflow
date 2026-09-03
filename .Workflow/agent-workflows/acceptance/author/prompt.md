@@ -1,24 +1,24 @@
 # Author acceptance tests
 
-Issue #{{ISSUE_NUMBER}} — "{{ISSUE_TITLE}}" — is not implemented yet. Your job is to write a
+Issue #{{ISSUE_NUMBER}}, "{{ISSUE_TITLE}}", is not implemented yet. Your job is to write a
 test for **each** of its {{CRITERIA_COUNT}} acceptance criteria, from the spec below and nothing
 else, and to mark every one of them `test.fails`. You are not implementing the ticket, and you are
-not checking whether it is already done — it isn't.
+not checking whether it is already done; it isn't.
 
 ## Scope
 
-This prompt and the text below it — the ticket, its parent PRD, and the current contents of every
+This prompt and the text below it: the ticket, its parent PRD, and the current contents of every
 file the ticket claims. Do not explore the codebase beyond what is shown here, and do not run
 anything. You have no tools but the one you answer through.
 
-The claimed files are here so you can match the **shape** of what you assert against — an export's
+The claimed files are here so you can match the **shape** of what you assert against: an export's
 real name and signature, a config key that is quoted, a function's real arguments. They are the
 *before* state: never weaken an assertion to fit what you see, and never conclude a criterion is
 already satisfied because a file looks close.
 
 ## The criteria, as the checker will look for them
 
-Each block below is one criterion, exactly as it will be searched for. Copy from here — never
+Each block below is one criterion, exactly as it will be searched for. Copy from here, never
 retype from the ticket body, and never re-wrap, re-punctuate or trim what you copy. A criterion's
 trailing `— check: ...` marker, where it has one, is part of the string.
 
@@ -27,7 +27,7 @@ trailing `— check: ...` marker, where it has one, is part of the string.
 ## Where a test lives
 
 **Beside its subject.** A criterion about `.Workflow/agent-workflows/shared/foo.ts` is proved by
-`.Workflow/agent-workflows/shared/foo.test.ts` — the same directory, the subject's name, the
+`.Workflow/agent-workflows/shared/foo.test.ts`: the same directory, the subject's name, the
 `.test.ts` suffix. If that test file already exists (it is shown below when the ticket claims it),
 return the **whole file** with your tests added; never a fragment. A criterion about a `bin/`
 script or a hook is proved from the nearest `.test.ts` under `.Workflow/` or `.claude/` that
@@ -43,7 +43,7 @@ For each criterion:
    test.** This is how the criterion is found: `shared/affected-tests.ts` greps test source for
    that exact string, and a test naming none is invisible to the run that is supposed to prove it.
 2. **Name the test after the ticket**: `test.fails("#{{ISSUE_NUMBER}}: <what the criterion
-   claims>", …)`. The `#{{ISSUE_NUMBER}}` is load-bearing — `bin/close-ticket` refuses to close a
+   claims>", …)`. The `#{{ISSUE_NUMBER}}` is load-bearing, and `bin/close-ticket` refuses to close a
    ticket while a `test.fails(` line still names it, and the implementer turns the test on by
    dropping `.fails` from exactly this line and nothing else.
 3. **Import the subject and call it.** Reach the real module the ticket claims, exercise the real
@@ -53,8 +53,8 @@ For each criterion:
    `*.proc.test.ts`, and it may not `readFileSync` a workflow, a Markdown file or anything under
    `bin/`.
 4. **Give a subject that does not exist yet a stub entry point.** When the ticket claims a file that
-   does not exist, also return that file with the exports your test imports — each one throwing
-   `new Error("#{{ISSUE_NUMBER}}: not built")` — so the test collects, runs, and fails honestly on
+   does not exist, also return that file with the exports your test imports, each one throwing
+   `new Error("#{{ISSUE_NUMBER}}: not built")`, so the test collects, runs, and fails honestly on
    the assertion rather than on the import. The implementer replaces the body; you fix the name.
 5. **Expect it to fail, and say so with `test.fails`.** Under `test.fails`, a test whose body
    throws or whose assertion does not hold is *green*, and one that passes is *red*. That is the
@@ -72,14 +72,14 @@ for a model stage, `shared/temp-repo.fixture.ts` for a real throwaway git repo,
 
 ## Two things the linter does
 
-No hand-written `repos/{owner}/{repo}/...` REST paths, as a template literal or as a regex — build
-them through `shared/gh-paths.ts`. No inline `err instanceof Error ? err.message : String(err)` —
+No hand-written `repos/{owner}/{repo}/...` REST paths, as a template literal or as a regex: build
+them through `shared/gh-paths.ts`. No inline `err instanceof Error ? err.message : String(err)`:
 use `reason(err)` from `shared/reason.ts`.
 
 ## The failure that looks honest
 
-A test that can pass **before** #{{ISSUE_NUMBER}} is implemented — an assertion so loose it is
-vacuous, or a mock standing in for the real subject — is refused, because under `test.fails` it
+A test that can pass **before** #{{ISSUE_NUMBER}} is implemented (an assertion so loose it is
+vacuous, or a mock standing in for the real subject) is refused, because under `test.fails` it
 reads as red. Its mirror image is worse, because it looks like rigour: a test **no implementation
 could pass**, which stays red after the ticket is built and fires the repair loop against an
 implementer who is not wrong. Where the ticket does not say a path's root, a name, an order, assert
@@ -105,10 +105,10 @@ Every number has a `test.fails`, or you are not done.
 ## Output
 
 Return your answer by calling the `StructuredOutput` tool. Its one key, `files`, is an array of
-`{"path": "...", "content": "..."}` — `path` repo-relative under `.Workflow/` or `.claude/`,
+`{"path": "...", "content": "..."}`, where `path` is repo-relative under `.Workflow/` or `.claude/`,
 `content` the complete file.
 
-Write whatever reasoning you need first — only the tool call is read as your answer.
+Write whatever reasoning you need first; only the tool call is read as your answer.
 
 Example, for a criterion whose block reads ``The gate is at most 120 lines — check: `wc -l bin/gauntlet` ``
 against a claimed `.Workflow/agent-workflows/shared/gate-size.ts` that does not exist yet:

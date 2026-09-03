@@ -219,7 +219,7 @@ describe("landAuthoredBatch", () => {
     expect(git.calls).toEqual([]);
   });
 
-  it("refuses, naming the tests, a batch red under test.fails — those already pass", () => {
+  it("refuses, naming the tests, a batch red under test.fails, since those already pass", () => {
     const { deps, git } = landing({
       runTests: () => ({
         collected: true,
@@ -271,7 +271,7 @@ describe("landAuthoredBatch", () => {
     ]);
   });
 
-  it("commits and stops when landing is commit — the contents: write job pushes (ADR-0091)", () => {
+  it("commits and stops when landing is commit, since the contents: write job pushes (ADR-0091)", () => {
     const { deps, git } = landing({ landing: "commit" });
     expect(landAuthoredBatch(deps)).toEqual({ verdict: "pushed" });
     expect(git.calls).toEqual([
@@ -342,7 +342,7 @@ describe("runAcceptanceAuthor", () => {
       ["issue", "view", String(ISSUE), "--json", "title,body"],
       ["issue", "view", String(PRD), "--json", "title,body"],
     ]);
-    expect(tracker.fake.calls, "no write reached gh — this lane never opens a pull request").toEqual([]);
+    expect(tracker.fake.calls, "no write reached gh; this lane never opens a pull request").toEqual([]);
     expect(stage.stdins[0]).toContain(PRD_BODY);
   });
 
@@ -441,7 +441,7 @@ describe("refireAcceptance", () => {
     expect(calledFor).toEqual([]);
   });
 
-  it("ignores a slice criterion no existing test names — that is a re-slice, not a re-entry (ADR-0079)", async () => {
+  it("ignores a slice criterion no existing test names, since that is a re-slice, not a re-entry (ADR-0079)", async () => {
     const root = checkoutWith({ ".Workflow/x.test.ts": KEPT });
     const { affected } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);

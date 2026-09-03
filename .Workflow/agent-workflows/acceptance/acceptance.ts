@@ -51,7 +51,7 @@ export interface AuthorDeps {
   readFile?: (path: string) => string | undefined;
 }
 
-export const CLAIMED_FILE_ABSENT = "(does not exist yet — this ticket creates it)";
+export const CLAIMED_FILE_ABSENT = "(does not exist yet; this ticket creates it)";
 
 export const NO_CLAIMED_FILES = "(this ticket claims no files)";
 
@@ -157,7 +157,7 @@ export function landAuthoredBatch(deps: LandDeps): LandOutcome {
     return {
       verdict: "refused",
       reason:
-        `${result.failures.length} test(s) are red under test.fails, which means they already pass — ` +
+        `${result.failures.length} test(s) are red under test.fails, which means they already pass: ` +
         `a vacuous test or one about work already done: ${names}`,
     };
   }
@@ -255,7 +255,7 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
 function authorCommitMessage(issueNumber: number, paths: string[]): string {
   return `Author acceptance tests for #${issueNumber} from the spec alone
 
-Nobody has implemented #${issueNumber} yet, so every test here is test.fails — green until the
+Nobody has implemented #${issueNumber} yet, so every test here is test.fails, green until the
 work lands, and the implementer turns each on by dropping .fails from its line (#360).
 ${paths.map((path) => `- ${path}`).join("\n")}
 

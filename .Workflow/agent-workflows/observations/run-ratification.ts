@@ -46,7 +46,7 @@ export function runRatification(input: EntrypointInput): EntrypointOutcome {
   const { merged, commit, repoDir, prNumber } = input;
 
   if (!merged) {
-    log(`#${prNumber ?? "?"} closed without merging — nothing was ratified.`);
+    log(`#${prNumber ?? "?"} closed without merging; nothing was ratified.`);
     return { ran: false };
   }
 
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   });
 
   console.log(
-    outcome.ran ? `ran (records=${outcome.recordCount ?? 0})` : "PR closed without merging — nothing ratified",
+    outcome.ran ? `ran (records=${outcome.recordCount ?? 0})` : "PR closed without merging; nothing ratified",
   );
 }
 

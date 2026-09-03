@@ -35,7 +35,7 @@ function initialBody(module: string): string {
   return [
     TRACKER_MARKER,
     "",
-    "Modules an implementer read outside its brief — [ADR-0042](../../../docs/adr/0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md)'s",
+    "Modules an implementer read outside its brief: [ADR-0042](../../../docs/adr/0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md)'s",
     "non-blocking count, never a block. A rising count on one module is evidence the seam manifest is",
     "systematically wrong for it, not that any one implementer coupled badly. Each further read lands",
     "as a comment on this issue rather than an edit to this body.",
