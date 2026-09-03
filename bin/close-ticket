@@ -444,7 +444,10 @@ def undelivered(children: list[dict]) -> list[str]:
 SUITE_ROOTS = (".Workflow", ".claude")
 # Anchored to statement start: a real `test.fails(` opens a line, while a test that *quotes* one
 # as fixture data (`'-  test.fails("#360: …'` in a diff sample) does not — and this repo's own
-# suite quoted seven of them the first time #360 tried to close.
+# suite quoted seven of them the first time #360 tried to close. This grammar and the number
+# boundary in `surviving_fails_lines` below are the Python half of a definition `implement.ts`'s
+# `sliceMarker` also spells; `fails-marker-pin.test.ts`'s "implement.ts's test.fails( marker agrees
+# with the bin/close-ticket grammar it is a copy of" is what holds the two halves together.
 FAILS_LINE_RE = re.compile(r"^\s*(?:test|it)\.fails\(")
 
 
