@@ -28,6 +28,8 @@ import {
   type SpecSource,
 } from "./publish";
 import { runSpecReconciler } from "./reconcile";
+import { specFormat } from "./spec-format";
+import { validateSpecBody, type SpecBodyValidator } from "./validate-spec";
 import { applySweep, runSpecSweep } from "./sweep";
 
 /**
@@ -148,6 +150,7 @@ export async function runSpecAuthor(
       RULINGS: context.rulings,
       BOUNDARIES: context.boundaries,
       OPEN_GUESSES: context.openGuesses,
+      SPEC_FORMAT: specFormat(),
     },
     exec,
     SPEC_AUTHOR_OUTPUT,
@@ -202,16 +205,21 @@ export interface SpecPublicationResult extends SpecAuthorOutput {
  * Takes the same `DecidedContext | SpecTrigger` union `runSpecAuthor` does, plus the `gh` every
  * write needs and the `target` recording where this spec came from, kept separate from the
  * trigger's own so a caller holding an already-assembled `DecidedContext` can still be published.
+ *
+ * `validate` is carried through to `publishSpec` rather than resolved there, for the reason that
+ * function's own header gives: the real validator spawns an interpreter and runs the drafted
+ * criterion's check command, which a test driving this whole chain has no business doing.
  */
 export async function runSpecPublication(
   exec: StageExec,
   gh: GhExec,
   target: SpecSource,
   input: DecidedContext | SpecTrigger,
+  validate: SpecBodyValidator = validateSpecBody,
 ): Promise<SpecPublicationResult> {
   const draft = await runSpecAuthor(exec, input);
 
-  const issueNumber = publishSpec(gh, draft, target);
+  const issueNumber = publishSpec(gh, draft, target, validate);
   const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
 
   return { ...draft, issueNumber, gateCount: count, outcome };

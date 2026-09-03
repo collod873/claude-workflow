@@ -15,6 +15,7 @@ import {
   type SpecSource,
 } from "./publish";
 import { runSpecPublication, type SpecAuthorOutput } from "./spec";
+import { NO_VALIDATION } from "./validate-spec.fixture";
 
 /**
  * Every publish here lands on #903 — the number `./gh.fake.ts`'s `createIssueGh` answers a create
@@ -57,9 +58,11 @@ describe("the spec-source marker", () => {
 
   it("survives a body whose prose contains a > character", () => {
     // `shape/marker.ts`'s escaping, for the reason its header gives: an unescaped `-->` inside the
-    // JSON would close the HTML comment early and strand everything after it.
+    // JSON would close the HTML comment early and strand everything after it. Asserted as "exactly
+    // one `-->` in the whole body" — the marker's own close and no other — rather than on where it
+    // sits, since the marker leads the body rather than trailing it.
     const body = specBody("a quote:\n> like this", SHEET_SOURCE);
-    expect(body).not.toContain("-->\n");
+    expect(body.split("-->")).toHaveLength(2);
     expect(readSourceMarker(body)).toEqual(SHEET_SOURCE);
   });
 
@@ -80,7 +83,7 @@ describe("publishSpec", () => {
   it("files one prd-labelled issue and answers its number", () => {
     const { gh, calls } = publishingGh();
 
-    expect(publishSpec(gh, DRAFT, SHEET_SOURCE)).toBe(CREATED);
+    expect(publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION)).toBe(CREATED);
 
     const creates = calls.filter((args) => args[0] === "issue" && args[1] === "create");
     expect(creates).toHaveLength(1);
@@ -93,7 +96,7 @@ describe("publishSpec", () => {
     // both read as an ordinary issue, and this lane cannot notice it lost that race.
     const { gh, calls } = publishingGh();
 
-    publishSpec(gh, DRAFT, SHEET_SOURCE);
+    publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION);
 
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "edit")).toHaveLength(0);
   });
@@ -101,7 +104,7 @@ describe("publishSpec", () => {
   it("records the source on the published body", () => {
     const { gh, calls } = publishingGh();
 
-    publishSpec(gh, DRAFT, SHEET_SOURCE);
+    publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION);
 
     const body = calls[0][calls[0].indexOf("--body") + 1];
     expect(readSourceMarker(body)).toEqual(SHEET_SOURCE);
@@ -109,7 +112,7 @@ describe("publishSpec", () => {
 
   it("throws rather than returning NaN when the create prints no issue URL", () => {
     const gh: GhExec = () => "something went wrong";
-    expect(() => publishSpec(gh, DRAFT, SHEET_SOURCE)).toThrow(/could not parse an issue number/);
+    expect(() => publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION)).toThrow(/could not parse an issue number/);
   });
 });
 
@@ -160,7 +163,7 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
   /** The sheet door, run over `chain`'s stage responses. Written once: the two tests below differ
    * only in what the author left open, and a copied five-line call is a copy to get subtly wrong. */
   const publishFromSheet = (stage: { exec: StageExec }, gh: GhExec) =>
-    runSpecPublication(stage.exec, gh, SHEET_SOURCE, BARE_CONTEXT);
+    runSpecPublication(stage.exec, gh, SHEET_SOURCE, BARE_CONTEXT, NO_VALIDATION);
 
   it("publishes, then applies sliceable and dispatches, when nothing was left open", async () => {
     const { gh, calls } = publishingGh();

@@ -35,6 +35,16 @@ whole of what you may act on.
 Return the whole body, from its first line to its last — not a diff, not a fragment, and not a
 summary of your edits.
 
+## The shape the body must still take
+
+You are rewriting the body, so the contract below is yours to keep as much as it was the author's.
+A rewrite that breaks it is refused at publication by `bin/ticket_shape.py`'s
+`validate("spec", …)` and the run fails. In particular: the one acceptance criterion stays exactly
+one, keeps the owner's words, and keeps a well-formed trailing check marker — sharpening a
+criterion never means dropping its marker or splitting it in two.
+
+{{SPEC_FORMAT}}
+
 ---
 
 ## The spec's title

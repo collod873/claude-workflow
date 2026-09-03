@@ -66,6 +66,14 @@ export function pythonParseCheckMarker(criterion: string): string | null {
 export type Verdict = { ok: true; warnings: string[] } | { ok: false; error: string };
 
 /**
+ * Every kind `bin/ticket_shape.py`'s `KINDS` holds. `"ticket"` and `"spec"` are the two the
+ * TypeScript side has anything to say about; `"question"` and `"note"` exist here because
+ * `ticket-format-doc.proc.test.ts` drives the doc's variants through whichever kind each one is
+ * shaped like, and two of them are questions.
+ */
+export type Kind = "note" | "question" | "ticket" | "spec";
+
+/**
  * The real Python validator's verdict for `kind` — `"ticket"` (compared against `validateTicket`)
  * or `"spec"` (#306's red-at-publish branch, which has no TypeScript port to compare against, so
  * it is driven for its own sake rather than for a diff).
@@ -75,7 +83,7 @@ export type Verdict = { ok: true; warnings: string[] } | { ok: false; error: str
  * one test fast without touching the 30s production budget (ADR-0130).
  */
 export function pythonVerdict(
-  kind: "ticket" | "spec",
+  kind: Kind,
   body: string,
   repoRoot: string,
   opts: { timeoutSeconds?: number } = {},

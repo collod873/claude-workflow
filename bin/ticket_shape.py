@@ -10,7 +10,9 @@ silently. Kind -> required shape:
   note      none
   question  `## Question` heading
   ticket    `## Acceptance criteria` with >=1 `- [ ]` item, and `## Files claimed`
-  spec      none (title/label handling is the caller's job, not the body's)
+  spec      `## Acceptance criteria` with exactly one `- [ ]` item, carrying a well-formed
+            trailing `— check: ` marker whose command is run and must not already be green
+            (title/label handling is the caller's job, not the body's)
 
 A refusal raises `ValidationError` naming the missing heading. A `ticket` whose criteria carry
 no verifiable evidence — a `path:line`, a backtick-quoted command, or a file/artifact reference

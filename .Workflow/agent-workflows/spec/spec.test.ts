@@ -5,6 +5,7 @@ import type { Sheet } from "../shared/sheet-schema";
 import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import { sourceMarker } from "./publish";
+import { NO_VALIDATION } from "./validate-spec.fixture";
 import {
   invocationFromEnv,
   planSpecRun,
@@ -200,6 +201,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
       gh,
       { kind: "sheet", issue: 42 },
       { kind: "sheet", gh, issueNumber: 42 },
+      NO_VALIDATION,
     );
     return { result, calls };
   }
@@ -245,6 +247,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
       gh,
       { kind: "sheet", issue: 42 },
       { kind: "sheet", gh, issueNumber: 42 },
+      NO_VALIDATION,
     );
 
     const reconcilerPrompt = fake.stdins[3] ?? "";
@@ -446,7 +449,10 @@ describe("runSpecCritique — the critic-only entry", () => {
 
       const edit = calls.find((args) => args[1] === "edit" && args.includes("--body")) ?? [];
       expect(edit[edit.indexOf("--title") + 1]).toBe(SPEC.title);
-      expect(bodyWrite(calls)).toBe(`${REWRITTEN}\n\n${marker}`);
+      // Read off a body carrying the old trailing layout and written back leading — `specBody`'s
+      // header says why the marker may not sit under `## Acceptance criteria`, and a rewrite is
+      // where an already-published spec gets moved to the layout that parses.
+      expect(bodyWrite(calls)).toBe(`${marker}\n\n${REWRITTEN}`);
 
       // Stripped before the model sees it and re-appended by the write, so the trailer is never
       // something a model could duplicate or drop.

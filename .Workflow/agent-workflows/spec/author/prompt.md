@@ -42,6 +42,15 @@ in the owner's own words wherever he supplied them.
 cite, each one naming what it needs and why the Decided context did not
 settle it. Empty if nothing needed guessing.
 
+## The shape the body must take
+
+This is the contract, not a suggestion. A body that breaks it is refused at
+publication by `bin/ticket_shape.py`'s `validate("spec", …)` and the run
+fails — nothing downstream can close a spec whose one criterion cannot be
+run.
+
+{{SPEC_FORMAT}}
+
 ---
 
 ## The owner's words, verbatim

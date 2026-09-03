@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
 import type { SpecAuthorOutput } from "./author-contract";
+import { validateSpecBody, type SpecBodyValidator } from "./validate-spec";
 
 /**
  * Lane 02's publication step — ADR-0062's step 1, "the author publishes; the spec carries `prd`".
@@ -105,7 +106,9 @@ export function withoutSourceMarker(body: string): string {
   const at = locateSourceMarker(body);
   if (at === undefined) return body;
 
-  return `${body.slice(0, at.open)}${body.slice(at.close + SOURCE_CLOSE.length)}`.trimEnd();
+  // `trim`, not `trimEnd`: the marker leads the body now, so cutting it out leaves the blank line
+  // that separated it at the front rather than at the back.
+  return `${body.slice(0, at.open)}${body.slice(at.close + SOURCE_CLOSE.length)}`.trim();
 }
 
 /**
@@ -119,9 +122,22 @@ export function specTitle(title: string): string {
   return /^PRD:/i.test(trimmed) ? trimmed : `PRD: ${trimmed}`;
 }
 
-/** The spec body as it lands: the author's own body, with the source trailer appended. */
+/**
+ * The spec body as it lands: the author's own body, with the source marker on the line above it.
+ *
+ * **Above, not below, and that is load-bearing.** `## Acceptance criteria` is the last section a
+ * spec body carries, by contract, and `ticket_shape.py`'s `criteria_blocks` folds every non-blank
+ * line after a `- [ ]` item into that criterion as a wrapped continuation of it — a blank line does
+ * not stop the fold. A marker appended below therefore became part of the one criterion, which made
+ * its `check:` marker unparseable: `validate("spec", …)` refuses the body, and `bin/close-ticket
+ * --spec` recovers no command to close the spec on. Every spec lane 02 published carried that, and
+ * `publishSpec`'s validator call is what surfaced it.
+ *
+ * `readSourceMarker` and `withoutSourceMarker` both locate the marker by search rather than by
+ * position, so a spec published under the old layout still reads and still round-trips.
+ */
 export function specBody(body: string, source: SpecSource | undefined): string {
-  return source === undefined ? body : `${body}\n\n${sourceMarker(source)}`;
+  return source === undefined ? body : `${sourceMarker(source)}\n\n${body}`;
 }
 
 /**
@@ -130,20 +146,39 @@ export function specBody(body: string, source: SpecSource | undefined): string {
  * One `gh issue create`, and the label rides on that same call rather than a follow-up `issue edit`
  * — a spec that exists for a moment without `prd` is a spec `/drain` and `ratify-on-prd-close.yml`
  * would both read as an ordinary issue, and this lane has no way to notice it lost the race.
+ *
+ * **The body is validated before the create, never after.** `~/bin/file-issue spec` — the session
+ * door — has always called `ticket_shape.validate("spec", …)` before invoking `gh`; this lane
+ * called nothing, so the same contract bound one door and not the other. A refusal throws and
+ * fails the run, which is the only useful moment: a malformed spec already on the tracker is one
+ * `bin/close-ticket --spec` can never close. Warnings are printed and the publish proceeds, the
+ * way `file-issue` treats them.
+ *
+ * `validate` is a parameter so a test can hand it a stub — the real one spawns an interpreter and
+ * runs the criterion's own check command. `validate-spec.proc.test.ts` drives the default.
  */
-export function publishSpec(gh: GhExec, draft: SpecAuthorOutput, source: SpecSource | undefined): number {
+export function publishSpec(
+  gh: GhExec,
+  draft: SpecAuthorOutput,
+  source: SpecSource | undefined,
+  validate: SpecBodyValidator = validateSpecBody,
+): number {
   const title = specTitle(draft.title);
-  const created = gh([
-    "issue",
-    "create",
-    "--title",
-    title,
-    "--body",
-    specBody(draft.body, source),
-    "--label",
-    PRD_LABEL,
-  ]);
+  const body = specBody(draft.body, source);
+  warnAbout(validate(body));
+  const created = gh(["issue", "create", "--title", title, "--body", body, "--label", PRD_LABEL]);
   return parseIssueNumber(created, title);
+}
+
+/**
+ * Prints the validator's warnings to the run log and returns.
+ *
+ * A warning is a shape the validator will not refuse over — `file-issue` prints them to stderr and
+ * files anyway, and a lane that swallowed them instead would make the same body noisier by hand and
+ * quieter by robot.
+ */
+function warnAbout(warnings: string[]): void {
+  for (const warning of warnings) console.error(`spec body warning: ${warning}`);
 }
 
 /**

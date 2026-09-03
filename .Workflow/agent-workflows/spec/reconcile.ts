@@ -4,6 +4,7 @@ import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import type { Resolution } from "./critic";
 import { SPEC_AUTHOR_ALLOWED_TOOLS } from "./author-contract";
+import { specFormat } from "./spec-format";
 
 /**
  * Lane 02's reconciler ([ADR-0100](../../../docs/adr/0100-the-critique-door-re-authors-the-spec-body-from-the-answered.md),
@@ -155,6 +156,7 @@ export async function runSpecReconciler(
       TITLE: input.title,
       BODY: input.body,
       RESOLUTIONS: input.resolutions.map(formatResolution).join("\n\n---\n\n"),
+      SPEC_FORMAT: specFormat(),
     },
     exec,
     SPEC_RECONCILE_OUTPUT,
