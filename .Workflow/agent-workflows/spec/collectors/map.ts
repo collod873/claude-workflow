@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { GhExec } from "../../shared/gh";
-import type { DecidedContext } from "../spec";
+import type { DecidedContext } from "../author-contract";
 
 /**
  * Lane 02's collector for the closed-map trigger (ADR-0058, ADR-0059): reads

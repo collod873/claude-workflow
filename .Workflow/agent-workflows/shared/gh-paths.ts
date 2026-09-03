@@ -286,9 +286,6 @@ export const runJobsPathMatcher: RegExp = runJobs.matcher;
 /** Matches a `repoRunsPath`, capturing the page size. */
 export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
 
-/** Matches a `matchingRefsPath`, capturing the ref prefix. */
-export const matchingRefsPathMatcher: RegExp = matchingRefs.matcher;
-
 /**
  * Matches a `commitPullsPath`, capturing the commit.
  *

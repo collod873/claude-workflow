@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { childEnv } from "../shared/child-env";
-import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGh } from "../shared/gh";
 import { execGit } from "../shared/git";
 import { reason } from "../shared/reason";
@@ -98,12 +97,6 @@ export function buildAcceptDeps(targetWorkspace: string): AcceptDeps {
     git: (args) => execGit(["-C", targetWorkspace, ...args]),
     newAdr: (title) => newAdr(title, targetWorkspace),
     landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
-    // Gated on the fixture already existing in the target, the same rule `bin/new-adr --land`
-    // itself now applies (ADR-0139): an enrolled repository never seeded one, and regenerating it
-    // there would create a `.Workflow/` tree that has no other reason to exist.
-    regenerateCorpus: () => {
-      if (existsSync(resolveInTarget(CORPUS_RELATIVE_PATH))) writeCorpusFixture(targetWorkspace);
-    },
     readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
     writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
   };

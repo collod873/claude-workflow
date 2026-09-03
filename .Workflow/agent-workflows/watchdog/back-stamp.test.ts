@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
 import { createFakeGit } from "../shared/git.fake";
 import {
   adrNumber,
@@ -235,10 +234,6 @@ function fakeDeps(
     writeFile: (path, content) => {
       writes[path] = content;
     },
-    // Logged into the same `calls` list `git` records into, the way `accept.test.ts` logs its own:
-    // the only thing worth asserting about it is *when* it runs relative to the `add` that stages
-    // what it wrote, and an ordering reads off one list where it does not read off two.
-    regenerateCorpus: () => void calls.push(["regenerate-corpus"]),
     regenerateIndex: () => {
       calls.push(["regenerate-index"]);
       return indexRegenerated;
@@ -253,7 +248,7 @@ function fakeDeps(
 /**
  * Every `git` call `commitAndPush` makes carries `-C repoRoot` ahead of its verb — the target
  * checkout is not necessarily `cwd` once this lane is reusable, so nothing here may omit it
- * (`back-stamp-walk.ts`'s `commitAndPush`). `fakeDeps`'s own `regenerate-corpus` marker is not a
+ * (`back-stamp-walk.ts`'s `commitAndPush`). `fakeDeps`'s own `regenerate-index` marker is not a
  * `git` call at all, so it carries no such prefix — hence the fallback to `argv[0]`.
  */
 function verb(argv: string[]): string {
@@ -273,7 +268,6 @@ describe("backStampWalk", () => {
     expect(deps.writes[PREDECESSOR_32.path]).toContain("superseded_by: ADR-0053, ADR-0054");
 
     expect(deps.calls.map(verb)).toEqual([
-      "regenerate-corpus",
       "regenerate-index",
       "add",
       "commit",
@@ -282,28 +276,11 @@ describe("backStampWalk", () => {
       "push",
     ]);
     const add = deps.calls.find((argv) => verb(argv) === "add")!;
-    expect(add.slice(3).sort()).toEqual([...outcome.stamped, CORPUS_RELATIVE_PATH, INDEX_RELATIVE_PATH].sort());
+    expect(add.slice(3).sort()).toEqual([...outcome.stamped, INDEX_RELATIVE_PATH].sort());
     expect(deps.calls.find((argv) => verb(argv) === "push")).toEqual(["-C", deps.repoRoot, "push", "origin", "HEAD:main"]);
   });
 
-  // The regression this file did not have on the day it was needed. `main` went red on
-  // 2026-08-27 because this lane stamped ADR-0033, committed the ADR alone, and had its push
-  // refused by `bin/gauntlet push`'s `regenerate && diff` for a fixture it had just staled — the
-  // same failure `6d72c1b` had already fixed one lane over, in `shape/accept.ts`. What makes it a
-  // regression test rather than a restatement of the ordering above is the *pairing*: the fixture
-  // has to be regenerated before the `add`, and the `add` has to name it. Either half alone still
-  // pushes a tree that describes a corpus it no longer has.
-  it("regenerates the corpus fixture before staging it, because a stamp rewrites the bodies the fixture snapshots", () => {
-    const deps = fakeDeps(CORPUS);
-
-    backStampWalk(deps);
-
-    const order = deps.calls.map(verb);
-    expect(order.indexOf("regenerate-corpus")).toBeLessThan(order.indexOf("add"));
-    expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(CORPUS_RELATIVE_PATH);
-  });
-
-  // The second half of the same defect, one generated file over (#356). `docs/adr/INDEX.md`
+  // #356: `docs/adr/INDEX.md`
   // publishes each ADR's `status:`, and a back-stamp is precisely a `status:` edit — so the lane
   // that writes the stamp is the lane that stales the index. Repaired by hand twice (9076b5e,
   // fa0413d) because nothing watches `main` after this pushes: the staleness is discovered by
@@ -329,7 +306,6 @@ describe("backStampWalk", () => {
 
     const add = deps.calls.find((argv) => verb(argv) === "add")!;
     expect(add).not.toContain(INDEX_RELATIVE_PATH);
-    expect(add).toContain(CORPUS_RELATIVE_PATH);
   });
 
   it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", () => {
@@ -369,9 +345,6 @@ describe("backStampWalk", () => {
         throw new Error("should not be called");
       },
       writeFile: () => {
-        throw new Error("should not be called");
-      },
-      regenerateCorpus: () => {
         throw new Error("should not be called");
       },
       regenerateIndex: () => {

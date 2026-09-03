@@ -1,3 +1,0 @@
-#!/bin/bash
-# The check the hook declares, present so the probe can find it executable in this tree.
-exit 0

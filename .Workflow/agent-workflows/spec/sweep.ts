@@ -1,8 +1,8 @@
 import { z } from "zod";
-import type { PriorArt } from "../shape/sweep-schema";
+import type { PriorArt } from "../shared/sweep-schema";
 import { runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext } from "./spec";
+import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext } from "./author-contract";
 
 /**
  * Lane 02's sweep — the stage this file puts ahead of the spec author: a cheap read of the

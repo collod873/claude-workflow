@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { dispatchVerify } from "../implement/implement";
+import { dispatchVerify } from "../shared/verify-dispatch";
 import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";

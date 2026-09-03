@@ -1,6 +1,6 @@
 import { issueComments, type GhExec } from "../shared/gh";
-import { isAccepted, isRefusal, readSheetMarker } from "./marker";
-import type { Sheet } from "./sheet-schema";
+import { isAccepted, isRefusal, readSheetMarker } from "../shared/marker";
+import type { Sheet } from "../shared/sheet-schema";
 import { CHANGE_REQUEST_CAP } from "./sheet";
 
 /**

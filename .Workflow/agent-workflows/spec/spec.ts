@@ -4,7 +4,8 @@ import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { readSheetMarker } from "../shape/marker";
+import { readSheetMarker } from "../shared/marker";
+import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext, type SpecAuthorOutput } from "./author-contract";
 import { runSpecCritic, type Resolution } from "./critic";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
@@ -28,13 +29,6 @@ import {
 } from "./publish";
 import { runSpecReconciler } from "./reconcile";
 import { applySweep, runSpecSweep } from "./sweep";
-
-// Re-exported rather than wired into this file's own chain: ADR-0079's
-// amendment path fires on `spec/gap`, an existing PRD's re-entry, never on
-// the fresh-draft trigger this file's `SpecTrigger` union enumerates. Kept
-// reachable from here anyway, since this is the module a caller already
-// imports for lane 02.
-export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "./amend";
 
 /**
  * Lane 02 — Spec, redesigned by #263. One hand label, `to-spec`, starts the lane whatever the
@@ -62,59 +56,12 @@ export { runSpecAmendment, type SpecAmendmentResult, type SpecGapReport } from "
 /** §3: being subtly wrong is expensive and invisible. Low volume, high consequence. */
 const SPEC_AUTHOR_MODEL = "claude-opus-5";
 
-/**
- * The only three tools the spec author may reach, enforced by the CLI
- * (ADR-0060): it may read the repository without limit, but must reach no
- * second source of intent — no `Bash`, no web, no subagent spawner, nothing
- * that could see an issue tracker, a transcript, or someone else's spec but
- * the Decided context its collector assembled. `spec.test.ts` asserts this
- * list reaches the argv as `--allowedTools`, because a prompt-only
- * prohibition would leave nothing that looked different.
- */
-export const SPEC_AUTHOR_ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
+// The author's contract lives in `./author-contract.ts` — a leaf, so that `sweep.ts`,
+// `reconcile.ts`, `publish.ts` and the collectors can read it without importing this file back.
+// Re-exported here so this stays the module a caller imports for lane 02.
+export { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext, type SpecAuthorOutput } from "./author-contract";
 
 const PROMPT_PATH = ".Workflow/agent-workflows/spec/author/prompt.md";
-
-/**
- * `CONTEXT.md`'s **Decided context**: the owner's words verbatim, the
- * decisions with their reasons, the rulings already filed, the boundaries,
- * and the guesses still open. One shape, however a trigger's collector
- * assembled it — the difference between triggers belongs in the collector,
- * never in the author (ADR-0058).
- */
-export interface DecidedContext {
-  /** The owner's own words, never paraphrased. */
-  ownerWords: string;
-  /** The decisions on record, each with its reason. */
-  decisions: string;
-  /** The rulings already filed — ADR paths and what they settled. */
-  rulings: string;
-  /** The boundaries already drawn for this idea. */
-  boundaries: string;
-  /** What is still open — guesses nobody has confirmed. */
-  openGuesses: string;
-}
-
-/**
- * What the spec author hands back: a `PRD:` issue ready to post, plus what
- * it had to ask rather than invent. `openQuestions` is empty when nothing
- * needed guessing — `CONTEXT.md`'s **Open question**, numbered by position
- * when this is rendered.
- *
- * `decisions` is the *collector's*, not the model's: the sheet's own marked
- * decisions, riding out on the author's return value so that `runSpecAuthor`
- * can find its own unfiled marks — ADR-0061's arithmetic — without reading
- * the source issue a second time (a second read is a second chance for the
- * two to disagree). It is `[]` for every door that carries no marks — the
- * map collector, and a `DecidedContext` handed to `runSpecAuthor` already
- * assembled.
- */
-export interface SpecAuthorOutput {
-  title: string;
-  body: string;
-  openQuestions: string[];
-  decisions: MarkedDecision[];
-}
 
 export const SPEC_AUTHOR_OUTPUT = structuredOutput(
   z.object({

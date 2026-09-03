@@ -197,7 +197,11 @@ function splitSymbols(source: string): Map<string, string> {
   const append = (line: string) => symbols.set(current, `${symbols.get(current) ?? ""}\n${line}`);
 
   for (const line of source.split("\n")) {
-    if (line === "" || /^\s/.test(line)) {
+    // A closer — `): Promise<T> {` ending a multi-line signature, or the `}` that ends the body —
+    // still belongs to the declaration it closes. Reading the first as a module-body line handed
+    // the rest of every such function to `#module`, which is swept for the entrypoint but never
+    // for a module reached by name, so `landAnswer`'s writes vanished the day it moved to shared/.
+    if (line === "" || /^[\s)}\]]/.test(line)) {
       append(line);
       continue;
     }

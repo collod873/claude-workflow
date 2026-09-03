@@ -1,4 +1,4 @@
-import { normalizeSite } from "../site";
+import { normalizeSite } from "../../shared/site";
 
 /**
  * The `Finding:`/`Site:` grammar both PROPOSED (`./proposed.ts`) and

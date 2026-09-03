@@ -1,7 +1,0 @@
-{
-  "name": "biome-linter-fixture",
-  "private": true,
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.8"
-  }
-}

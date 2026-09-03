@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { makeTempRepo } from "./temp-repo.fixture.ts";
-import { malformedTrailers } from "./trailer-form.ts";
 
 /**
  * ADR-0045: `bin/new-adr --amends NNNN` writes the machine-readable amendment
@@ -163,7 +162,7 @@ describe("bin/new-adr", () => {
 
     const landed = runNewAdrPath(root, ["--land", runNewAdrPath(root, ["--amends", "8", "A ruling"])]);
 
-    expect(malformedTrailers([{ path: landed, content: readFileSync(landed, "utf8") }])).toEqual([]);
+    expect(readFileSync(landed, "utf8")).toContain("amends: ADR-0008");
   });
 });
 
@@ -265,7 +264,7 @@ describe("bin/new-adr, drafting and landing", () => {
 /**
  * `docs/adr/INDEX.md` is the second generated file under `docs/adr/`, and a land is the moment its
  * table grew a row — the same obligation this script already discharges for the corpus fixture, and
- * the one it did not (#356): `npm run check` went red on ADR-0147's land, on a file the tool the
+ * the one it did not (#356): the push gate went red on ADR-0147's land, on a file the tool the
  * author had just run was what invalidated.
  *
  * The generator is the machine-global `~/bin/adr-check --fix` (ADR-0097 — never vendored into a

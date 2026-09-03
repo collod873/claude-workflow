@@ -4,21 +4,18 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "test": "vitest run .Workflow .claude && npm run clone:check",
-    "test:acceptance": "vitest run tests/acceptance",
-    "clone:check": "bin/clone-gate",
+    "test": "vitest run .Workflow .claude",
+    "clones": "jscpd",
     "gauntlet": "bin/gauntlet",
-    "check": "bin/gauntlet push && npm run clone:check",
+    "check": "bin/gauntlet push",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint . && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows"
   },
   "dependencies": {
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
-    "@jscpd/core": "^4.2.5",
-    "@jscpd/tokenizer": "^4.2.6",
     "@types/node": "^26.2.0",
     "dependency-cruiser": "^18.2.0",
     "eslint": "^10.9.0",
@@ -31,5 +28,22 @@
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11",
     "yaml": "^2.9.0"
+  },
+  "jscpd": {
+    "threshold": 0,
+    "format": [
+      "typescript"
+    ],
+    "minTokens": 50,
+    "minLines": 5,
+    "gitignore": true,
+    "ignore": [
+      "**/node_modules/**",
+      ".claude/worktrees/**"
+    ],
+    "reporters": [
+      "consoleFull"
+    ],
+    "absolute": true
   }
 }

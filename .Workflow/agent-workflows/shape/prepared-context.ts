@@ -1,4 +1,4 @@
-import type { ReadingListItem, PriorArt } from "./sweep-schema";
+import type { ReadingListItem, PriorArt } from "../shared/sweep-schema";
 
 /**
  * The shaper's whole world, rendered.

@@ -1,5 +1,5 @@
 import type { GhExec } from "../shared/gh";
-import { readSheetMarker } from "./marker";
+import { readSheetMarker } from "../shared/marker";
 
 /**
  * The refuter's probation, as a count.

@@ -2,22 +2,20 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { execGh, issueComments, type GhExec } from "../shared/gh";
 import {
   claimImplementationBranch,
-  IMPLEMENT_DISPATCH_EVENT_TYPE,
   ImplementerAnswer,
   landAnswer,
   releaseDeadClaim,
   type ImplementOutcome,
-} from "../implement/implement";
-import { execGenerator, type GeneratorExec } from "../implement/regenerate-artifacts";
-import { execGh, issueComments, type GhExec } from "../shared/gh";
+} from "../shared/implementation-landing";
 import { runArtifactsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { touchesImmutableSet } from "../shared/immutable-set";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
-import { implementationBranch } from "../shared/ready-set";
+import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { readTicket } from "../shared/ticket-shape";
 
 /**
@@ -177,7 +175,7 @@ export function redispatchImplement(gh: GhExec, ticket: number): void {
     "api",
     "repos/{owner}/{repo}/dispatches",
     "-f",
-    `event_type=${IMPLEMENT_DISPATCH_EVENT_TYPE}`,
+    `event_type=${TICKET_READY_DISPATCH_ACTION}`,
     "-f",
     `client_payload[issue]=${ticket}`,
   ]);
@@ -192,8 +190,6 @@ export interface RecoverDeps {
   /** Downloads `artifactName` from `runId` and returns the local directory holding it. */
   downloadArtifact: (runId: number, artifactName: string) => string;
   log?: (line: string) => void;
-  runGenerator?: GeneratorExec;
-  repoRoot?: string;
 }
 
 export type RecoverOutcome =
@@ -335,8 +331,6 @@ async function main(): Promise<void> {
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => fsWriteFile(resolve(repoDir, path), content),
       downloadArtifact: downloadArtifactTo,
-      runGenerator: execGenerator,
-      repoRoot: repoDir,
     });
     console.log(`recover: ${outcome.outcome}`);
   } catch (err) {

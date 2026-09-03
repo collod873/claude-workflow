@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
-import { dispatchRatificationDue, type RatificationDueDispatch } from "./dispatch";
+import { dispatchRatificationDue, type RatificationDueDispatch } from "../shared/ratification-dispatch";
 
 /**
  * The PRD-close sender: the moment a PRD issue closes as delivered, it rings

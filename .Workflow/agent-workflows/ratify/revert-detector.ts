@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import type { RatificationRecord } from "../observations/ratification-schema";
+import type { RatificationRecord } from "../shared/ratification-schema";
 import { enabledRuleIds, parseStandardEntries } from "./standards";
 
 /**

@@ -10,11 +10,11 @@ const BETA = join(FIXTURES_DIR, "beta.accept.ts");
 const GAMMA = join(FIXTURES_DIR, "nested", "gamma.accept.ts");
 const DELTA = join(FIXTURES_DIR, "delta.accept.ts");
 
-const WIDGET = "npm test exits 0 with a widget that spins clockwise";
-const GADGET = "npm test exits 0 with a gadget that beeps twice on startup";
-const DOOHICKEY = "npm test exits 0 with a doohickey that hums in the key of D";
-const REGEX_LOOKING = "npm test exits 0 with a (widget) that spins clockwise*";
-const NO_SUCH_CRITERION = "npm test exits 0 with a criterion no fixture names";
+const WIDGET = "make test exits 0 with a widget that spins clockwise";
+const GADGET = "make test exits 0 with a gadget that beeps twice on startup";
+const DOOHICKEY = "make test exits 0 with a doohickey that hums in the key of D";
+const REGEX_LOOKING = "make test exits 0 with a (widget) that spins clockwise*";
+const NO_SUCH_CRITERION = "make test exits 0 with a criterion no fixture names";
 
 describe("testsForCriteria", () => {
   it("returns only the file whose recorded criterion matches a single-criterion list", () => {
@@ -60,10 +60,10 @@ describe("testsForCriteria", () => {
 });
 
 describe("affectedSlices", () => {
-  const EDITED_CRITERION = "npm test exits 0 when the widget spins counterclockwise";
-  const DELETED_CRITERION = "npm test exits 0 with a gadget that beeps twice on startup";
-  const UNCHANGED_CRITERION = "npm test exits 0 with a doohickey that hums in the key of D";
-  const ADDED_CRITERION = "npm test exits 0 with a brand-new sprocket nobody has a test for yet";
+  const EDITED_CRITERION = "make test exits 0 when the widget spins counterclockwise";
+  const DELETED_CRITERION = "make test exits 0 with a gadget that beeps twice on startup";
+  const UNCHANGED_CRITERION = "make test exits 0 with a doohickey that hums in the key of D";
+  const ADDED_CRITERION = "make test exits 0 with a brand-new sprocket nobody has a test for yet";
 
   // Slice 101's test proves WIDGET, which the spec below no longer carries at all — edited to
   // different wording (EDITED_CRITERION). Slice 102's test proves DELETED_CRITERION, which the

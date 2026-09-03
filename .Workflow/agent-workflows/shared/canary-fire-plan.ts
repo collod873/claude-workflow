@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { isMainModule } from "./baseline-gate.ts";
+import { pathToFileURL } from "node:url";
 import { reason } from "./reason.ts";
 import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow.ts";
 
@@ -105,7 +105,7 @@ export function planFire(lane: string): FirePlan {
   };
 }
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const lane = process.argv[2];
   if (!lane) {
     console.error("usage: canary-fire-plan.ts <lane>");

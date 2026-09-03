@@ -3,7 +3,7 @@ import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
-import { sitePath } from "../observations/site";
+import { sitePath } from "../shared/site";
 
 /**
  * **The rule trial.** A `mechanise` verdict is ratified only by reproducing

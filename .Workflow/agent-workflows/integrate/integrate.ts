@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
-import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
+import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
 import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -17,9 +17,10 @@ export { VERIFY_DISPATCH_EVENT_TYPE, GRAPH_CHANGED_DISPATCH_ACTION };
 /**
  * Lane 08 (PRD #145, move 7): the merge actor. Fires on the same
  * `repository_dispatch` an implementer's `openPrAndDispatch` sends
- * (`VERIFY_DISPATCH_EVENT_TYPE`, `implement.ts`) — re-exported here rather
- * than restated, so `integrate-workflow.test.ts` and `integrate.yml`'s own
- * `if:` both check against the one constant `implement.ts` owns.
+ * (`VERIFY_DISPATCH_EVENT_TYPE`, `shared/verify-dispatch.ts`) — re-exported
+ * here rather than restated, so `integrate-workflow.test.ts` and
+ * `integrate.yml`'s own `if:` both check against the one constant its
+ * senders share.
  *
  * No model runs here (DESIGN.md §10 move 7: "with no model in it") — every
  * decision below is a git rebase, a shell to `bin/gauntlet`, and a `gh pr

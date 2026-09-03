@@ -128,14 +128,14 @@ function sweep(fake: { gh: GhExec }, overrides: Partial<Parameters<typeof walkHo
 }
 
 const MACHINE_SIDE_LOG = [
-  "Run npx vitest run .Workflow .claude",
+  "Run npx vitest --run .Workflow .claude",
   "FAIL .Workflow/agent-workflows/watchdog/walk-home.test.ts > routes a machine-side failure",
   "AssertionError: expected undefined to be 'machine'",
   " ❯ .Workflow/agent-workflows/watchdog/walk-home.test.ts:42:10",
 ].join("\n");
 
 const CALLER_SIDE_LOG = [
-  "Run npx vitest run tests/acceptance",
+  "Run npx vitest --run tests/acceptance",
   "FAIL target/tests/acceptance/999-example.test.ts > example",
   "AssertionError: expected 1 to be 2",
   " ❯ target/tests/acceptance/999-example.test.ts:10:5",
@@ -143,7 +143,7 @@ const CALLER_SIDE_LOG = [
 
 /** A machine-side failure whose path falls inside the machine's own immutable set. */
 const MACHINE_IMMUTABLE_LOG = [
-  "Run npx vitest run tests/acceptance",
+  "Run npx vitest --run tests/acceptance",
   "FAIL tests/acceptance/999-example.test.ts > example",
   "AssertionError: expected 1 to be 2",
   " ❯ tests/acceptance/999-example.test.ts:10:5",

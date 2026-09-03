@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StageExec } from "../shared/stage";
-import { REFUSAL_MARKER, readSheetMarker } from "./marker";
+import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
 import { runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 

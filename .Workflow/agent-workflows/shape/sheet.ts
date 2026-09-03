@@ -1,4 +1,4 @@
-import type { Refutations, Sheet, ShaperSheet } from "./sheet-schema";
+import type { Refutations, Sheet, ShaperSheet } from "../shared/sheet-schema";
 
 /**
  * The sheet's grammar: the caps, the mark strip, and the route override.

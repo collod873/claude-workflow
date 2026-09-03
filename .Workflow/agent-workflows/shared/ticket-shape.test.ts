@@ -91,7 +91,7 @@ describe("ticket-shape's existing grammar primitives, exercised so this file is 
   it("parseCheckMarker answers undefined for prose and for a malformed marker alike", () => {
     expect(parseCheckMarker("do the thing")).toBeUndefined();
     expect(parseCheckMarker("do the thing — check: nope")).toBeUndefined();
-    expect(parseCheckMarker("do the thing — check: `npm test`")).toBe("npm test");
+    expect(parseCheckMarker("do the thing — check: `make test`")).toBe("make test");
   });
 
   it("parentPrdNumber reads the heading render-body.ts writes on every slice", () => {
@@ -174,7 +174,7 @@ except ticket_shape.ValidationError as e:
   const VALID_BODY = [
     "## Acceptance criteria",
     "",
-    "- [ ] `render` is exported from src/render.ts — check: `npm test`",
+    "- [ ] `render` is exported from src/render.ts — check: `make test`",
     "",
     "## Files claimed",
     "- src/render.ts",
@@ -193,7 +193,7 @@ except ticket_shape.ValidationError as e:
     },
     {
       label: "missing the Files claimed heading",
-      body: ["## Acceptance criteria", "", "- [ ] It works — check: `npm test`", ""].join("\n"),
+      body: ["## Acceptance criteria", "", "- [ ] It works — check: `make test`", ""].join("\n"),
     },
     {
       label: "no criterion carries evidence",
@@ -204,7 +204,7 @@ except ticket_shape.ValidationError as e:
       body: [
         "## Acceptance criteria",
         "",
-        "- [ ] It works — check: `npm test` and `npm run lint`",
+        "- [ ] It works — check: `make test` and `npm run lint`",
         "",
         "## Files claimed",
         "- None — no files.",
@@ -213,14 +213,14 @@ except ticket_shape.ValidationError as e:
     },
     {
       label: "a claimed path that doesn't resolve",
-      body: ["## Acceptance criteria", "", "- [ ] It works — check: `npm test`", "", "## Files claimed", "- src/ghost.ts", ""].join("\n"),
+      body: ["## Acceptance criteria", "", "- [ ] It works — check: `make test`", "", "## Files claimed", "- src/ghost.ts", ""].join("\n"),
     },
     {
       label: "a migration-shaped body whose criteria are satisfied only by their own artifact",
       body: [
         "## Acceptance criteria",
         "",
-        "- [ ] The scrub script exists at scripts/scrub.ts — check: `npx vitest run scripts/scrub.test.ts`",
+        "- [ ] The scrub script exists at scripts/scrub.ts — check: `npx vitest --run scripts/scrub.test.ts`",
         "",
         "## Files claimed",
         "- scripts/scrub.ts",

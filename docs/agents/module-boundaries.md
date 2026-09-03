@@ -1,36 +1,21 @@
 # Module boundaries
 
-Generated from `.dependency-cruiser.cjs` and `.Workflow/agent-workflows/shared/boundaries-baseline.json` by
-`shared/generate-boundaries-doc.ts` — edit those, not this file. `bin/gauntlet push` fails if
-this file disagrees with a fresh regeneration.
+Three rules over `.Workflow/agent-workflows` — the only tree with lanes to keep apart. They live
+in `.dependency-cruiser.cjs`; this page says what they mean.
 
-Three rules, scoped to `.Workflow/agent-workflows` — the only tree with lanes to keep apart:
+1. **no-lane-to-lane** — a lane may not deep-import another lane. `shared/` is every lane's only
+   legal crossing. Two lanes needing one fact means the fact moves into `shared/`, or rides an
+   event or a published seam; it never means one lane reaching into the other.
+2. **shared-no-lane** — `shared/` may never import a lane. A door does not reach back through the
+   rooms it serves.
+3. **no-circular** — no import cycles, anywhere in the tree.
 
-  1. no-lane-to-lane   — a lane may not deep-import another lane. `shared/` is every lane's
-     only legal crossing, and today `shared/` is itself the door (95 files, no subdirectory
-     doors yet — #226 says that split comes after this gate has run for a week, not before).
-  2. shared-no-lane    — `shared/` may never import a lane. The one edge that ran backwards
-     (`shared/rewrite-session-notes-schema.ts` → `observations/`) is fixed in this same
-     ticket by moving the type it needed into `shared/`, not by baselining it.
-  3. no-circular       — dependency-cruiser's own built-in cycle rule.
+Rules 1 and 2 read only production modules: a `*.test.ts` file may import another lane's subject
+or fixture to exercise it, since the boundary is about what ships coupled, not what a test
+reaches. Rule 3 applies to every file — a cycle through a test is still a cycle.
 
-## Baseline
+## How it runs
 
-68 standing violation(s) as of 2026-09-03, excused by the
-baseline so the gate fires on a new violation only, never on this debt:
-
-Standing module-boundary debt at the day this gate landed (#305). The gate fails on anything added to this set, never on the set itself; entries leave as each edge is routed through shared/ or a published seam instead.
-
-A ticket that pays down part of the baseline drops those entries with:
-
-```
-node .Workflow/agent-workflows/shared/boundaries-baseline.ts update <root>
-```
-
-## What this is not
-
-Not a per-edge grant manifest. Every lane gets the same three rules — none gets a different
-allowance than another (a repo-wide scan for lane-to-lane deep imports outside `shared/` and
-against these rules found no edge treated differently by design, only by debt) — and `shared/`
-has no subdirectory doors yet to enumerate grants against. That door split is #226's, filed once
-this gate has run long enough to show what the doors should be.
+`npx depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows`, from `npm run lint`
+(the `lint` script's wiring is a separate change). Every rule is an error, so one violation fails
+the run. There is no baseline and nothing to regenerate: a violation is fixed at its source.

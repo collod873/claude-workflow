@@ -1,5 +1,5 @@
 import { parseGrammarFindings } from "./grammar";
-import { normalizeSite } from "../site";
+import { normalizeSite } from "../../shared/site";
 
 /**
  * Everything the PROPOSED lens's prompt is built from. Like VIOLATION

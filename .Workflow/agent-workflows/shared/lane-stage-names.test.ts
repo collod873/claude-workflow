@@ -24,7 +24,6 @@ const CLAIMED = [
   ".Workflow/agent-workflows/spec/sweep.ts 1",
   ".Workflow/agent-workflows/spec/critic.ts 1",
   ".Workflow/agent-workflows/spec/reconcile.ts 1",
-  ".Workflow/agent-workflows/spec/amend.ts 1",
   ".Workflow/agent-workflows/review/review.ts 2",
   ".Workflow/agent-workflows/review/refuter.ts 1",
   ".Workflow/agent-workflows/implement/implement.ts 1",

@@ -248,7 +248,7 @@ describe("runPushGate, on a test whose verdict no diff can move", () => {
     const { deps } = pushGateDeps(
       { collected: true, failures: [] },
       [
-        "// - [ ] the runner config carries a setup file — check: `npm test`",
+        "// - [ ] the runner config carries a setup file — check: `make test`",
         'const yml = readFileSync(".github/workflows/verify.yml", "utf8");',
       ].join("\n"),
     );

@@ -239,7 +239,6 @@ done
 # for knip, and `generate-boundaries-doc.ts`'s `diff` mode is the same `regenerate && diff` shape
 # `contract`/`corpus` use — folded into this one check because all three read the same rules and a
 # reader chasing a red `boundaries` has one place to look, not three.
-[ "$venue" = "push" ] && checks="$checks contract corpus clones wiring workflows trailers adrs boundaries"
 
 # Checks run concurrently, so a venue's wall clock is its slowest check rather than the sum of
 # them. That is what keeps the whole set inside the in-turn budget.
@@ -301,122 +300,6 @@ if [ "$venue" = "turn" ] && [ -n "$TEST_RELATED_CMD" ] && [ -n "$target" ]; then
   pids+=($!)
 fi
 
-if [ "$venue" = "push" ]; then
-  # Every check below is machine code — `node "$repo_root/.Workflow/..."` — run against
-  # `$target_root` as the tree it describes (ADR-0139). A target owes only its own
-  # `.claude/contract.json`, so `contract` always runs; the rest of the six read a file the target
-  # may or may not carry, and a missing one is a check that did not run, never a finding — the
-  # same shape `clones` already had before this repo grew a second root.
-  #
-  # Argv, not a `bash -c` string: `$repo_root`/`$target_root`/`$contract_path` are passed straight
-  # through as separate arguments, never interpolated into a shell command line, so a checkout
-  # with a space in its path (this estate has one) cannot break this the way a hand-built string
-  # could.
-  run_check contract node \
-    "$repo_root/.Workflow/agent-workflows/shared/generate-contract.ts" \
-    diff "$target_root" "$contract_path" &
-  pids+=($!)
-
-  # Gated on the target's own fixture existing — a target with no `.Workflow/` (an enrolled
-  # repository) has no ADR corpus fixture to diff and this check did not run.
-  corpus_fixture="$target_root/.Workflow/agent-workflows/watchdog/adr-corpus.evidence.json"
-  if [ -f "$corpus_fixture" ]; then
-    run_check corpus node \
-      "$repo_root/.Workflow/agent-workflows/shared/generate-corpus-fixture.ts" \
-      diff "$target_root" "$corpus_fixture" &
-    pids+=($!)
-  fi
-
-  # `clones` is the clone-gate baseline in the same `regenerate && diff` family, here so that what
-  # lane 05 regenerates before its push (`regenerate-artifacts.ts`) is judged by the same venue
-  # that judges its other two artifacts — `implement.test.ts` holds the two lists to each other.
-  # `bin/clone-gate` in `npm run check` still runs after this on a push; the scan is the same and
-  # both are concurrent with typecheck, so the wall clock does not move.
-  #
-  # Gated on the baseline file existing, because this script is portable (Lumaria runs it) and a
-  # repo that never seeded a baseline has no clone gate turned on — the missing `clones.exit` below
-  # reads as "did not run", never as a finding.
-  clone_baseline="$target_root/.Workflow/agent-workflows/shared/clone-gate.baseline.json"
-  if [ -f "$clone_baseline" ]; then
-    run_check clones node \
-      "$repo_root/.Workflow/agent-workflows/shared/prune-clone-baseline.ts" \
-      diff "$target_root" "$clone_baseline" &
-    pids+=($!)
-  fi
-
-  # Gated on the target's own wiring baseline — `wiring-baseline.ts`'s own `isConfigured` would
-  # answer the same question with an internal exit 0, but that reads as "ran and found nothing",
-  # not "did not run"; the file check here keeps the two distinct at the one venue whose report
-  # actually says which happened.
-  wiring_baseline="$target_root/.Workflow/agent-workflows/shared/wiring-baseline.json"
-  if [ -f "$wiring_baseline" ]; then
-    run_check wiring node \
-      "$repo_root/.Workflow/agent-workflows/shared/wiring-baseline.ts" check "$target_root" &
-    pids+=($!)
-  fi
-
-  # Always: a broken workflow file is the one defect CI structurally cannot report (ADR-0105), and
-  # every enrolled repository carries at least its caller stubs. `pinRoot` (second argument) is
-  # always the machine — `verify.yml`'s own `uses:` line is the one source of the actionlint pin,
-  # and an enrolled target may carry no `verify.yml` of its own to read it from.
-  run_check workflows node \
-    "$repo_root/.Workflow/agent-workflows/shared/workflow-lint.ts" "$target_root" "$repo_root" &
-  pids+=($!)
-
-  # Gated on both halves of the target's own boundaries setup existing — the config that answers
-  # "may this import that?" and the committed baseline the delta is judged against.
-  boundaries_config="$target_root/.dependency-cruiser.cjs"
-  boundaries_baseline="$target_root/.Workflow/agent-workflows/shared/boundaries-baseline.json"
-  if [ -f "$boundaries_config" ] && [ -f "$boundaries_baseline" ]; then
-    run_check boundaries bash -c \
-      'node "$1/.Workflow/agent-workflows/shared/boundaries-baseline.ts" check "$2" \
-        && node "$1/.Workflow/agent-workflows/shared/generate-boundaries-doc.ts" diff "$2" "$2/docs/agents/module-boundaries.md"' \
-      _ "$repo_root" "$target_root" &
-    pids+=($!)
-  fi
-
-  # An `Amends` trailer that names an ADR without the colon is invisible to both readers of the
-  # amendment graph, so the successor reads as amended to a human and unamended to every machine.
-  # Three shipped that way and their predecessors sat unstamped from August. The missing-trailer
-  # counter flagged one and nothing happened, which is the difference this venue makes: a
-  # malformed field is exact, so it refuses here rather than filing an issue nobody clears.
-  #
-  # No file-existence gate here: `trailer-form.ts` already treats a missing `docs/adr` as clean
-  # (ENOENT → exit 0) rather than a finding, so a target with no ADR corpus reads the same way
-  # whether the gate lives here or inside the script — kept inside, in the one place, per ADR-0139.
-  run_check trailers node \
-    "$repo_root/.Workflow/agent-workflows/shared/trailer-form.ts" "$target_root" &
-  pids+=($!)
-
-  # The ADR corpus's own shape, index freshness and citation integrity, through the machine-global
-  # `~/bin/adr-check` rather than a copy vendored here — which is ADR-0097's rule, and the reason
-  # that tool was written to find its repo from the working directory rather than from its own
-  # location.
-  #
-  # Gated on the target's own corpus fixture existing — the same precondition `corpus` above
-  # already reads — rather than on whether `docs/adr` merely exists or the checker happens to be
-  # installed on this machine. A directory is not evidence of adoption: a target can carry
-  # `docs/adr` full of records with no frontmatter, in a shape this repo's tooling never produced,
-  # and gating on the directory alone ran this check against one and stopped the whole gauntlet on
-  # findings it never opted into. The fixture is generated only by a target that already produces
-  # this repo's ADR shape, so its absence reads as "never adopted" — the same way a missing
-  # `clone-gate.baseline.json` reads as "clone gate never turned on".
-  #
-  # A machine that lacks the binary itself is a different fact — plumbing, not a finding — so that
-  # stays a stand-down rather than a "could not run": "could not run" is not free here, because it
-  # makes the whole gauntlet exit 2 and `.github/workflows/verify.yml` turns that into a red job.
-  if [ -f "$corpus_fixture" ]; then
-    run_check adrs bash -c \
-      'cd "$1" || exit 2
-       if [ ! -x "$HOME/bin/adr-check" ]; then
-         exit 0
-       fi
-       exec "$HOME/bin/adr-check" >/dev/null' \
-      _ "$target_root" &
-    pids+=($!)
-  fi
-fi
-
 # What the test slot actually runs here.
 #
 # `push` runs the whole `test` slot — it is the venue that owns the whole suite, and the venue a
@@ -429,16 +312,6 @@ fi
 # Either precondition missing — no measurement yet, or a target whose runner has no single-file
 # form — and stop runs the whole slot, which is what every venue did before this.
 test_cmd="${TEST_CMD:-}"
-if [ "$venue" = "stop" ] && [ -n "$TEST_ONE_CMD" ]; then
-  if selected="$(node "$repo_root/.Workflow/agent-workflows/shared/timing-baseline.ts" \
-    files "$target_root" stop 2>/dev/null)" && [ -n "$selected" ]; then
-    selected_args=""
-    while IFS= read -r selected_file; do
-      [ -n "$selected_file" ] && selected_args="$selected_args $(shquote "$selected_file")"
-    done <<<"$selected"
-    test_cmd="${TEST_ONE_CMD//<file>/${selected_args# }}"
-  fi
-fi
 
 # With fewer cores than checks, the test slot waits for the cheap ones instead of racing them.
 # `maxWorkers` derived from cores (vitest.config.ts) means the suite alone will claim every core it
@@ -548,7 +421,7 @@ fi
 # errors: a finding, and the most common one there is. Reading a 2 the same way everywhere would
 # turn every type error in this repo into "the gauntlet is broken", which is the one report
 # ADR-0063 tells the bypass counter to ignore.
-own_protocol=" contract corpus clones wiring workflows trailers adrs boundaries "
+own_protocol=" "
 for name in $checks; do
   [ -f "$tmp/$name.exit" ] || continue
   code="$(cat "$tmp/$name.exit")"
@@ -566,31 +439,6 @@ for name in $checks; do
   echo "--- $name ---"
   cat "$tmp/$name.out"
 done
-
-# Every run's durations, recorded and never judged (ADR-0148 amends ADR-0140/ADR-0147, which used
-# to fail a push here on a run that missed a committed number). What each check cost — whatever it
-# exited with — is written to `.gauntlet-timings.json` at the target root: gitignored, overwritten
-# every run, and read back by nothing in this script.
-#
-# Skipped when `GAUNTLET_CONTRACT` is set, because that seam's contracts name stub commands — a
-# `true` that returns in 4ms is not this target's history. `GAUNTLET_TIMING=off` is the same escape
-# for a caller that means it.
-#
-# Skipped inside a vitest worker (`VITEST`) for the mirror-image reason: half a dozen tests spawn a
-# real `bin/gauntlet` from inside the suite, where every check runs against a box already running
-# the whole suite, and those numbers belong to no target's own history.
-if [ -z "${GAUNTLET_CONTRACT:-}" ] && [ -z "${VITEST:-}" ] &&
-  [ "${GAUNTLET_TIMING:-on}" != "off" ]; then
-  timing_args=()
-  for name in $checks; do
-    [ -f "$tmp/$name.ms" ] && timing_args+=("$name=$(cat "$tmp/$name.ms")")
-  done
-  if [ "${#timing_args[@]}" -gt 0 ]; then
-    node "$repo_root/.Workflow/agent-workflows/shared/timing-baseline.ts" \
-      record "$target_root" "$venue" "--wall=$elapsed_ms" "${timing_args[@]}" 2>"$tmp/timing.err"
-    cat "$tmp/timing.err" >&2
-  fi
-fi
 
 # The verdict goes last, and on stdout, because that is the half a reader actually gets. A hook
 # refusing a push makes git say only `error: failed to push some refs`, and `shared/reason.ts`

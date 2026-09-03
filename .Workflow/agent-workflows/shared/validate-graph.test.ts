@@ -14,7 +14,7 @@ function slice(title: string, dependsOn: number[] = []): Slice {
   return {
     title,
     whatToBuild: `Build ${title}.`,
-    acceptanceCriteria: [`${title} works — check: \`npm test\``],
+    acceptanceCriteria: [`${title} works — check: \`make test\``],
     filesClaimed: [],
     seamsConsumed: [],
     whyNotMerged: `${title} is its own vertical slice.`,

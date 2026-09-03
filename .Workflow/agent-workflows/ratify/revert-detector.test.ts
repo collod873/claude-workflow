@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ratificationRecord } from "../observations/ratification.fixture";
+import { ratificationRecord } from "../shared/ratification.fixture";
 import { scanForReverts } from "./revert-detector";
 
 const STANDARDS = [

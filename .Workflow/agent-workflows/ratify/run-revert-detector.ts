@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { reason } from "../shared/reason";
-import { readRatificationRecords, writeRatificationNote } from "../observations/ratification";
+import { readRatificationRecords, writeRatificationNote } from "../shared/ratification";
 import { loadEnabledRuleIds, scanForReverts } from "./revert-detector";
 import { ESLINT_CONFIG } from "./rule-trial";
 

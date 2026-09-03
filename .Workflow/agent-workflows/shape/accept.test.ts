@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { frontmatterBlock } from "../shared/adr-frontmatter";
-import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch";
 import { accept, insertTerm, type AcceptDeps } from "./accept";
-import { sheetMarker } from "./marker";
-import type { Decision, Sheet, Term } from "./sheet-schema";
+import { sheetMarker } from "../shared/marker";
+import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
 
 /**
@@ -66,10 +66,6 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
       git.push([...args]);
       return "";
     },
-    // Logged into `git` rather than counted separately, because the only thing worth asserting
-    // about it is *when* it runs relative to the `add` that stages what it wrote — and an ordering
-    // reads off one list where it does not read off two.
-    regenerateCorpus: () => void git.push(["regenerate-corpus"]),
     // Drafts are unnumbered and the number arrives at the land (ADR-0080), so the stub models
     // both halves: `newAdr` names the file by its slug alone, and `landAdr` is the only thing
     // here that knows a number. A stub that handed back a numbered path from `newAdr` would let
@@ -247,7 +243,6 @@ describe("approved", () => {
     accept(deps, 1, "approved");
 
     expect(git.map((call) => call[0])).toEqual([
-      "regenerate-corpus",
       "add",
       "commit",
       "fetch",
@@ -257,27 +252,7 @@ describe("approved", () => {
     expect(git.at(-1)).toEqual(["push", "origin", "HEAD:main"]);
   });
 
-  it("carries the corpus fixture in the same commit as the ADR that staled it", () => {
-    // `adr-corpus.evidence.json` is a snapshot of `docs/adr`, and `bin/gauntlet push` compares a
-    // fresh generation against it byte-for-byte. So an accept that commits an ADR without the
-    // regenerated snapshot is refused by this repo's own `pre-push` hook — which is exactly what
-    // happened to the first accept ever to reach a push. The ordering is the assertion: regenerate
-    // first, or `add` stages a fixture still describing the corpus as it was a moment ago.
-    const { deps, git } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
-
-    accept(deps, 1, "approved");
-
-    const add = git.find((call) => call[0] === "add")!;
-    expect(add).toContain(".Workflow/agent-workflows/watchdog/adr-corpus.evidence.json");
-    expect(git.indexOf(git.find((call) => call[0] === "regenerate-corpus")!)).toBeLessThan(
-      git.indexOf(add),
-    );
-  });
-
-  it("leaves the corpus fixture alone when the sheet coined a term but filed no ADR", () => {
-    // The fixture reads `docs/adr` and `docs/research`, neither of which a term touches — it goes
-    // into `CONTEXT.md`. Regenerating anyway would put an unchanged file in every vocabulary
-    // commit, which is noise in the one history this estate reads to reconstruct a decision.
+  it("stages only CONTEXT.md when the sheet coined a term but filed no ADR", () => {
     const term: Term = {
       term: "Sheet round",
       section: "The pipeline",
@@ -288,7 +263,6 @@ describe("approved", () => {
 
     accept(deps, 1, "approved");
 
-    expect(git.map((call) => call[0])).not.toContain("regenerate-corpus");
     expect(git.find((call) => call[0] === "add")).toEqual(["add", "CONTEXT.md"]);
   });
 

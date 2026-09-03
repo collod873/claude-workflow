@@ -135,7 +135,7 @@ describe("the checked-in close gate", () => {
   });
 
   it("stays silent on a command that is not a close", () => {
-    const result = runHook("npm test");
+    const result = runHook("make test");
 
     expect(result.stdout).toBe("");
     expect(result.status).toBe(0);

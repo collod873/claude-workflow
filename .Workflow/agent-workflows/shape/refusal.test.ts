@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { refusalComment, refusalFor } from "./refusal";
-import type { PriorArt, Sweep } from "./sweep-schema";
+import type { PriorArt, Sweep } from "../shared/sweep-schema";
 
 /**
  * ADR-0014's seam, in the one place lane 01 has it: *a model may translate

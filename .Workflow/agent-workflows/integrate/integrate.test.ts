@@ -218,7 +218,7 @@ function integrateDeps({
     calls,
     closeCalls,
     sleeps,
-    /** How many times this lane spent a `bin/gauntlet push` — the cost a refusal upstream of it saves. */
+    /** How many times this lane spent a push-venue run — the cost a refusal upstream of it saves. */
     gauntletRuns: () => gauntletRuns,
     deps: {
       git: fakeGit.git,
@@ -782,7 +782,7 @@ describe("runIntegrate's ruling when only lane 06's acceptance job is red", () =
 
   /**
    * The race ADR-0104's wait exists for. `Restore and run acceptance` is a checkout, an `npm ci`
-   * and a vitest run — the same order of minutes this lane spends on its own rebase and gauntlet —
+   * and a suite run — the same order of minutes this lane spends on its own rebase and gauntlet —
    * so a single read can easily catch it mid-run. Reading that as "unjudged" would refuse a pull
    * request for being slow rather than for being wrong.
    */

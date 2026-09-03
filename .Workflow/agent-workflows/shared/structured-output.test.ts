@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "../shape/sheet-schema";
-import { SWEEP_OUTPUT, Sweep } from "../shape/sweep-schema";
+import { REFUTER_OUTPUT, SHAPER_OUTPUT } from "./sheet-schema";
+import { SWEEP_OUTPUT, Sweep } from "./sweep-schema";
 import { SEAM_SWEEP_OUTPUT, SeamManifest } from "../to-tickets/seam-sweep/schema";
 import { AUDIT_OUTPUT, AuditOutput, Plan, SLICE_OUTPUT } from "./plan-schema";
 import { rejectedResponse, structuredOutput, type StructuredOutput } from "./structured-output";

@@ -6,10 +6,10 @@ import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { reason } from "../shared/reason";
 import { execClaudeIn, type StageExec } from "../shared/stage";
-import { readObservations } from "../observations/notes";
-import { PROPOSED_LENS, type Observation } from "../observations/observation-schema";
-import { filterByRatificationMemory, readRatificationRecords, writeRatificationNote } from "../observations/ratification";
-import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
+import { readObservations } from "../shared/notes";
+import { PROPOSED_LENS, type Observation } from "../shared/observation-schema";
+import { filterByRatificationMemory, readRatificationRecords, writeRatificationNote } from "../shared/ratification";
+import { RATIFICATION_DUE_DISPATCH_ACTION } from "../shared/ratification-dispatch";
 import {
   advanceRatifierRef,
   alignImmutableSetWithTrunk,
@@ -19,7 +19,7 @@ import {
   refuseImmutableSetBatch,
 } from "./land";
 import { ratifyBatch } from "./ratifier";
-import { computeRatificationScope } from "./scope";
+import { computeRatificationScope } from "../shared/ratification-scope";
 import type { EslintExec } from "./rule-trial";
 
 /**

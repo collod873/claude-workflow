@@ -1,4 +1,4 @@
-import type { PriorArt, Sweep } from "./sweep-schema";
+import type { PriorArt, Sweep } from "../shared/sweep-schema";
 
 /**
  * Lane 01's stage-1 refusal, as a rule rather than a judgement.

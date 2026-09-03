@@ -217,7 +217,7 @@ describe("parseTranscript — assistant blocks", () => {
           { type: "tool_use", name: "Edit", input: { file_path: "b.ts" } },
           { type: "tool_use", name: "MultiEdit", input: { file_path: "c.ts" } },
           { type: "tool_use", name: "Write", input: { file_path: "d.ts" } },
-          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
+          { type: "tool_use", name: "Bash", input: { command: "make test" } },
         ],
       },
     });
@@ -225,7 +225,7 @@ describe("parseTranscript — assistant blocks", () => {
     expect(parsed.filesRead).toEqual(["a.ts"]);
     expect(parsed.filesEdited).toEqual(["b.ts", "c.ts"]);
     expect(parsed.filesWritten).toEqual(["d.ts"]);
-    expect(parsed.commands).toEqual(["npm test"]);
+    expect(parsed.commands).toEqual(["make test"]);
   });
 });
 
@@ -260,13 +260,13 @@ describe("buildCaptureMarkdown", () => {
       filesRead: ["a.ts"],
       filesEdited: ["b.ts"],
       filesWritten: ["c.ts"],
-      commands: ["npm test"],
+      commands: ["make test"],
     });
     expect(md).toContain("- ship it");
     expect(md).toContain("- Read: a.ts");
     expect(md).toContain("- Edited: b.ts");
     expect(md).toContain("- Written: c.ts");
-    expect(md).toContain("- `npm test`");
+    expect(md).toContain("- `make test`");
     expect(md).toContain("> good idea");
   });
 
@@ -324,8 +324,8 @@ describe("buildCaptureMarkdown", () => {
     });
 
     it("keeps the inline-code wrap for a single-line command", () => {
-      const md = buildCaptureMarkdown(META, { ...EMPTY, commands: ["npm test"] });
-      expect(md).toContain("- `npm test`");
+      const md = buildCaptureMarkdown(META, { ...EMPTY, commands: ["make test"] });
+      expect(md).toContain("- `make test`");
     });
 
     it("quotes a pasted assistant turn's headings", () => {

@@ -131,16 +131,16 @@ describe("a published body, read by the script that closes it", () => {
       slice({
         title: "Thread the sheet's decisions through gateSpec",
         acceptanceCriteria: [
-          "`gateSpec` passes the sheet's decisions to `gateCount` — check: `npx vitest run spec/spec.test.ts`",
-          "A held round names every unfiled mark — check: `npx vitest run spec/render.test.ts`",
+          "`gateSpec` passes the sheet's decisions to `gateCount` — check: `npx vitest --run spec/spec.test.ts`",
+          "A held round names every unfiled mark — check: `npx vitest --run spec/render.test.ts`",
         ],
       }),
       189,
     );
 
     expect(commandsPythonRecovers(body)).toEqual([
-      "npx vitest run spec/spec.test.ts",
-      "npx vitest run spec/render.test.ts",
+      "npx vitest --run spec/spec.test.ts",
+      "npx vitest --run spec/render.test.ts",
     ]);
   });
 
@@ -167,10 +167,10 @@ describe("a published body, read by the script that closes it", () => {
 
   it.each([
     ["an unquoted command", "readTicket is exported — check: grep -q readTicket shared/x.ts"],
-    ["two backtick spans after the label", "It works — check: `npm test` and `npm run lint`"],
-    ["prose after the command", "It works — check: `npm test` in the checkout"],
+    ["two backtick spans after the label", "It works — check: `make test` and `npm run lint`"],
+    ["prose after the command", "It works — check: `make test` in the checkout"],
     ["no marker at all", "readTicket is exported from shared/ticket-shape.ts"],
-    ["a wrapped criterion", "readTicket is exported —\ncheck: `npm test`"],
+    ["a wrapped criterion", "readTicket is exported —\ncheck: `make test`"],
   ])("refuses %s", (_label, criterion) => {
     expect(() => renderBody(slice({ title: "A slice", acceptanceCriteria: [criterion] }), 1))
       .toThrow(/acceptance criterion/);
@@ -200,8 +200,8 @@ describe("a published body, read by the script that closes it", () => {
   it("names every offending slice in one refusal, not just the first", () => {
     const plan = [
       slice({ title: "First", acceptanceCriteria: ["It works."] }),
-      slice({ title: "Second", acceptanceCriteria: ["It works — check: `npm test`"] }),
-      slice({ title: "Third", acceptanceCriteria: ["check: npm test"] }),
+      slice({ title: "Second", acceptanceCriteria: ["It works — check: `make test`"] }),
+      slice({ title: "Third", acceptanceCriteria: ["check: make test"] }),
     ];
 
     expect(() => validateCriteriaShape(plan)).toThrow(/First[\s\S]*Third/);
@@ -211,9 +211,9 @@ describe("a published body, read by the script that closes it", () => {
 describe("close-ticket, on a body it cannot verify", () => {
   it("reports an unparseable check as a failure, not as an absent one", () => {
     const body = renderBody(
-      slice({ title: "Published before #215", acceptanceCriteria: ["It works — check: `npm test`"] }),
+      slice({ title: "Published before #215", acceptanceCriteria: ["It works — check: `make test`"] }),
       1,
-    ).replace("— check: `npm test`", "check: grep -q parentPrdNumber shared/ticket-shape.ts");
+    ).replace("— check: `make test`", "check: grep -q parentPrdNumber shared/ticket-shape.ts");
 
     const run = closeTicket(body);
 
@@ -324,11 +324,11 @@ const PRD_271 = {
       "revalidation, fail-open) to `runStage`, relocating `preservingRaw`/`rawResponsePath` there; " +
       "wire to-tickets.ts's 3 stages onto it; isolate checkpoint writes per test file.",
     acceptanceCriteria: [
-      "A retry after audit-and-publish failed spawns a model only for it — check: `npx vitest run .Workflow/agent-workflows/to-tickets/resume.test.ts`",
-      "A stage with a key-matching checkpoint calls no StageExec and returns it re-validated through the stage's output.parse — check: `npx vitest run .Workflow/agent-workflows/shared/stage.test.ts`",
-      "readPriorHandoff reads the upstream stage's checkpoint file, not the shared handoff — check: `npx vitest run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
-      "A successful stage no longer writes its output to handoffPath() — check: `npx vitest run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
-      "The full pre-existing suite passes with checkpoint writes isolated per test file — check: `npx vitest run .Workflow .claude`",
+      "A retry after audit-and-publish failed spawns a model only for it — check: `npx vitest --run .Workflow/agent-workflows/to-tickets/resume.test.ts`",
+      "A stage with a key-matching checkpoint calls no StageExec and returns it re-validated through the stage's output.parse — check: `npx vitest --run .Workflow/agent-workflows/shared/stage.test.ts`",
+      "readPriorHandoff reads the upstream stage's checkpoint file, not the shared handoff — check: `npx vitest --run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
+      "A successful stage no longer writes its output to handoffPath() — check: `npx vitest --run .Workflow/agent-workflows/to-tickets/to-tickets.test.ts`",
+      "The full pre-existing suite passes with checkpoint writes isolated per test file — check: `npx vitest --run .Workflow .claude`",
     ],
     filesClaimed: [
       ".Workflow/agent-workflows/shared/handoff-path.ts",
@@ -348,8 +348,8 @@ const PRD_271 = {
       "sweep.ts, critic.ts, reconcile.ts, amend.ts, review.ts (both calls), refuter.ts, implement.ts, " +
       "fixer.ts, acceptance.ts. No other change — each stays exactly what it does today.",
     acceptanceCriteria: [
-      "Every one of the ten call sites' StageOptions literal includes a stage key — check: `npx vitest run .Workflow/agent-workflows/shared/lane-stage-names.test.ts`",
-      "The full existing suite still passes — check: `npx vitest run .Workflow .claude`",
+      "Every one of the ten call sites' StageOptions literal includes a stage key — check: `npx vitest --run .Workflow/agent-workflows/shared/lane-stage-names.test.ts`",
+      "The full existing suite still passes — check: `npx vitest --run .Workflow .claude`",
     ],
     filesClaimed: [
       ".Workflow/agent-workflows/spec/spec.ts",
@@ -373,9 +373,9 @@ const PRD_271 = {
       "it restored). Wire restore and `if: always()` upload steps into to-tickets.yml and shape.yml; " +
       "delete the raw-response upload steps; repoint failure comments at the artifact.",
     acceptanceCriteria: [
-      "Both workflows restore before their first stage step and upload with if: always() after their last — check: `npx vitest run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
+      "Both workflows restore before their first stage step and upload with if: always() after their last — check: `npx vitest --run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
       "The restore phase queries actions/artifacts rather than a plain download-artifact — check: `grep -q 'actions/artifacts' .github/actions/checkpoints/action.yml`",
-      "Both 'Upload the refused raw response' if: failure() steps are removed from to-tickets.yml and shape.yml — check: `npx vitest run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
+      "Both 'Upload the refused raw response' if: failure() steps are removed from to-tickets.yml and shape.yml — check: `npx vitest --run .Workflow/agent-workflows/shared/checkpoint-wiring.test.ts`",
     ],
     filesClaimed: [
       ".github/actions/checkpoints/action.yml",
@@ -391,9 +391,9 @@ const PRD_271 = {
       "shared/stage.ts, making it required, and remove any code path that tolerated a missing name. " +
       "No caller changes: every real one already passes it.",
     acceptanceCriteria: [
-      "The whole repo still typechecks once every call site is required to name its stage — check: `npx tsc --noEmit`",
+      "The whole repo still typechecks once every call site is required to name its stage — check: `npx tsc --pretty false`",
       "stage is declared non-optional on StageOptions — check: `grep -q 'stage: string;' .Workflow/agent-workflows/shared/stage.ts`",
-      "The full suite still passes — check: `npx vitest run .Workflow .claude`",
+      "The full suite still passes — check: `npx vitest --run .Workflow .claude`",
     ],
     filesClaimed: [
       ".Workflow/agent-workflows/shared/stage.ts",
@@ -449,7 +449,7 @@ describe("validatePathsAreRooted", () => {
     ["a documented decision", "See docs/adr/0010-every-gate.md for why."],
     ["a bare filename that is a top-level entry", "Edit vitest.config.ts and package.json."],
     ["a property access that looks like an extension", "Revalidate through the stage's output.parse."],
-    ["a command flag", "It typechecks — check: `npx tsc --noEmit`"],
+    ["a command flag", "It typechecks — check: `npx tsc --pretty false`"],
     ["a label with a slash in it", "The reviewer files spec/gap rather than a finding."],
     ["a markdown link to an unrooted target", "See [ADR-0010](0010-every-gate-fires-at-the-earliest.md)."],
     ["a URL", "Recorded at https://github.com/collod873/claude-workflow/blob/main/x.md today."],

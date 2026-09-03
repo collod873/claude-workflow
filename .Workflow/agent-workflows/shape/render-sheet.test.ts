@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderSheet } from "./render-sheet";
-import type { Sheet } from "./sheet-schema";
+import type { Sheet } from "../shared/sheet-schema";
 
 /**
  * §01 caps the sheet at a phone screen — *five sections and no others* — and

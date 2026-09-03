@@ -137,12 +137,10 @@ export const acceptanceImportBoundaryRule = {
 
 export default tseslint.config(
   {
-    // `.clone-gate-scan/` is the clone gate's in-repo staging tree, created and torn down while a
-    // push's other checks are walking the repo (`shared/clone-gate.ts`, `stageForScan`).
     // `.claude/worktrees/` for the reason `vitest.config.ts` gives: an agent session puts a whole
     // second checkout under that path, and linting it from here finds a second `tsconfig.json`
     // — which typescript-eslint refuses outright ("multiple candidate TSConfigRootDirs").
-    ignores: ["node_modules/**", "dist/**", "build/**", ".clone-gate-scan/**", ".claude/worktrees/**"],
+    ignores: ["node_modules/**", "dist/**", "build/**", ".claude/worktrees/**"],
   },
   ...tseslint.configs.recommended,
   {

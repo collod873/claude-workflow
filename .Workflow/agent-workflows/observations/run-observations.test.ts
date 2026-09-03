@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit } from "../shared/git";
 import { createFakeStage } from "../shared/stage.fake";
-import { readObservations } from "./notes";
+import { readObservations } from "../shared/notes";
 import { runObservations } from "./run-observations";
 
 /** Mirrors `notes.test.ts`'s `makeRepo` — a throwaway git repo for one test. */

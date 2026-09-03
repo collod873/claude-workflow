@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { sheetMarker } from "./marker";
+import { sheetMarker } from "../shared/marker";
 import { checkProbation, countSilentSheets, SILENT_SHEET_THRESHOLD } from "./probation";
-import type { Sheet } from "./sheet-schema";
+import type { Sheet } from "../shared/sheet-schema";
 import { createFakeTracker } from "./tracker.fake";
 
 /**

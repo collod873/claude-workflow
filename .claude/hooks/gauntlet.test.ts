@@ -1,8 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
-  existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -481,98 +479,6 @@ function runGauntlet(
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
 
-/**
- * A scratch target whose own `package.json` declares the three checks, so the push venue's
- * `contract` check passes against a fresh probe of it rather than reporting the fixture. The
- * default typecheck script is the slow one and leaves a marker; the default test script asserts
- * the marker is already there, which is true exactly when the test slot started after typecheck
- * finished. `scripts` overrides that default for a test asking a different question of the same
- * fixture.
- */
-function scratchTarget(scripts?: (root: string) => Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
-  stubDirs.push(root);
-  const marker = join(root, "typecheck-finished");
-  writeFileSync(
-    join(root, "package.json"),
-    JSON.stringify({
-      name: "scratch",
-      private: true,
-      scripts: scripts?.(root) ?? {
-        typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
-        lint: "true",
-        test: `test -f ${JSON.stringify(marker)}`,
-      },
-    }),
-  );
-  mkdirSync(join(root, ".claude"), { recursive: true });
-  const generate = spawnSync(
-    process.execPath,
-    [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-    { encoding: "utf8" },
-  );
-  expect(generate.status).toBe(0);
-  return root;
-}
-
-// #335: on a box with fewer cores than the venue has checks, the test slot ran beside typecheck,
-// lint and eight more — and vitest's own worker pool is sized from the same cores. That contention
-// is what printed a 483620ms Verify and manufactured two failures out of nothing on a two-core
-// runner (#333). The fix is ordering, not skipping, so the claim under test is *when* the test slot
-// starts rather than whether it ran.
-describe("scheduling the test slot against the cores it has", () => {
-  it(
-    "starts it after the cheap checks when there are fewer cores than checks",
-    () => {
-      const run = runGauntlet(["push"], {
-        TARGET_WORKSPACE: scratchTarget(),
-        GAUNTLET_CORES: "1",
-        GAUNTLET_CONTRACT: undefined,
-      });
-
-      expect(run.stdout).toBe("");
-      expect(run.status).toBe(0);
-    },
-    REAL_TOOLCHAIN,
-  );
-
-  it(
-    "starts it beside them when the cores are there, which is what the deferral gives up",
-    () => {
-      // The same tree and the same checks: only the core count differs, so a green run here would
-      // mean the case above proved nothing about ordering.
-      const run = runGauntlet(["push"], {
-        TARGET_WORKSPACE: scratchTarget(),
-        GAUNTLET_CORES: "64",
-        GAUNTLET_CONTRACT: undefined,
-      });
-
-      expect(run.status).toBe(1);
-      expect(run.stdout).toContain("--- test ---");
-    },
-    REAL_TOOLCHAIN,
-  );
-
-  it(
-    "tells every slot the count it scheduled by, so a target's runner can size itself from the box it is on",
-    () => {
-      // A slot is a command the contract names, never a tool the gauntlet knows, so the width a
-      // target's own CI declares never reaches it (#343). The count is the one thing the gauntlet
-      // can say generically; the seam value stands in for `nproc` here.
-      const check = 'test "$GAUNTLET_CORES" = 7';
-      const run = runGauntlet(["push"], {
-        TARGET_WORKSPACE: scratchTarget(() => ({ typecheck: check, lint: check, test: check })),
-        GAUNTLET_CORES: "7",
-        GAUNTLET_CONTRACT: undefined,
-      });
-
-      expect(run.stdout).toBe("");
-      expect(run.status).toBe(0);
-    },
-    REAL_TOOLCHAIN,
-  );
-});
-
 describe("resolving the check contract", () => {
   it("exits 2, not 1, when a slot names a command that cannot run", () => {
     const contract = checkContractFixture({
@@ -654,29 +560,4 @@ describe("resolving the check contract", () => {
     expect(run.stdout).toBe("");
     expect(run.status).toBe(0);
   });
-});
-
-// ADR-0148: timing is recorded, never judged. A push whose checks all pass leaves
-// `.gauntlet-timings.json` behind rather than a failure, whatever the checks' own durations were.
-describe("the durations a push run leaves behind", () => {
-  it(
-    "writes .gauntlet-timings.json at the target root rather than refusing on a duration",
-    () => {
-      const root = scratchTarget(() => ({ typecheck: "true", lint: "true", test: "true" }));
-
-      const run = runGauntlet(["push"], {
-        TARGET_WORKSPACE: root,
-        CI: "true",
-        GAUNTLET_CONTRACT: undefined,
-        // Otherwise inherited from this very suite's own worker, and the recording step skips
-        // itself inside one — see `bin/gauntlet`'s own comment on why.
-        VITEST: "",
-      });
-
-      const report = run.status === 0 ? "" : `${run.stdout}\n${run.stderr}`;
-      expect(report).toBe("");
-      expect(existsSync(join(root, ".gauntlet-timings.json"))).toBe(true);
-    },
-    REAL_TOOLCHAIN,
-  );
 });

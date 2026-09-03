@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../spec/publish";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
 import { readWorkflow } from "./read-workflow";
 

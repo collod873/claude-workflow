@@ -1,8 +1,8 @@
 import { issueComments, type GhExec } from "../../shared/gh";
-import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shape/marker";
-import type { Decision, Sheet } from "../../shape/sheet-schema";
+import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shared/marker";
+import type { Decision, Sheet } from "../../shared/sheet-schema";
 import type { MarkedDecision } from "../open-questions";
-import type { DecidedContext } from "../spec";
+import type { DecidedContext } from "../author-contract";
 
 /**
  * Lane 02's collector for the accepted-sheet trigger (ADR-0058): reads one

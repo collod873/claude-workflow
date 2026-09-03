@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyGrammar, capDecisions, DECISION_CAP, marksForceLong, PRIOR_ART_CAP, SURVIVOR_CAP } from "./sheet";
-import type { Decision, Refutations, ShaperSheet } from "./sheet-schema";
-import type { PriorArt } from "./sweep-schema";
+import type { Decision, Refutations, ShaperSheet } from "../shared/sheet-schema";
+import type { PriorArt } from "../shared/sweep-schema";
 
 /**
  * The three mechanical outcomes lane 01 hangs off the sheet's

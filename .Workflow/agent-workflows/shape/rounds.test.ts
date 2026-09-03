@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { sheetMarker, REFUSAL_MARKER } from "./marker";
+import { sheetMarker, REFUSAL_MARKER } from "../shared/marker";
 import { roundFor } from "./rounds";
-import type { Sheet } from "./sheet-schema";
+import type { Sheet } from "../shared/sheet-schema";
 import { createFakeTracker } from "./tracker.fake";
 
 /**

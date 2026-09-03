@@ -24,7 +24,7 @@ const RESOLUTIONS = [
 
 /** The prose the model hands back — carrying a partial assumptions section of its own. */
 const REWRITTEN =
-  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`\n- [ ] The check is the gauntlet, not a unit test — check: `bin/gauntlet push`\n\n## Assumptions\n\n- **Repoint every consumer and delete every duplicate.** The restatement already rules out keeping a compatibility shim.";
+  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `make gate`\n- [ ] The check is the gauntlet, not a unit test — check: `make gate`\n\n## Assumptions\n\n- **Repoint every consumer and delete every duplicate.** The restatement already rules out keeping a compatibility shim.";
 
 /**
  * What the stage resolves to: the model's prose, with the assumptions section rewritten from the
@@ -32,7 +32,7 @@ const REWRITTEN =
  * fail-open the section is written in code to close.
  */
 const RECONCILED =
-  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`\n- [ ] The check is the gauntlet, not a unit test — check: `bin/gauntlet push`\n\n## Assumptions\n\n" +
+  "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `make gate`\n- [ ] The check is the gauntlet, not a unit test — check: `make gate`\n\n## Assumptions\n\n" +
   "- **Repoint every consumer and delete every duplicate — a re-export would leave it in place.** The restatement already rules out keeping a compatibility shim.\n" +
   "- **The check is the gauntlet, not the unit test.** Only the gauntlet observes the whole tree the criterion is actually about.";
 
@@ -94,7 +94,7 @@ describe("runSpecReconciler", () => {
   describe("the never-drop bound", () => {
     it("refuses a rewrite that comes back with fewer checkbox lines than it was given", async () => {
       const shorter =
-        "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed — check: `bin/gauntlet push`";
+        "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed — check: `make gate`";
       const fake = createFakeStage(reconciled(shorter));
 
       // Handed two criteria, the fake stage answers with one — the arithmetic bound (`countCriteria`
@@ -110,8 +110,8 @@ describe("runSpecReconciler", () => {
       const body = await runSpecReconciler(fake.exec, { ...SPEC, resolutions: RESOLUTIONS });
 
       expect(extractCriteria(body)).toEqual([
-        "Every consumer is repointed and every duplicate deleted — check: `bin/gauntlet push`",
-        "The check is the gauntlet, not a unit test — check: `bin/gauntlet push`",
+        "Every consumer is repointed and every duplicate deleted — check: `make gate`",
+        "The check is the gauntlet, not a unit test — check: `make gate`",
       ]);
     });
   });

@@ -182,7 +182,7 @@ describe("sliceAndPublish", () => {
       slice({
         title: "Root",
         acceptanceCriteria: [
-          "First thing is true — check: `npm test`",
+          "First thing is true — check: `make test`",
           "Second thing is true — check: `npm run lint`",
         ],
         filesClaimed: ["bin/b.ts", "bin/c.ts"],
@@ -202,7 +202,7 @@ describe("sliceAndPublish", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
 
     expect(body).toContain(`#${PRD_NUMBER}`);
-    expect(body).toContain("- [ ] First thing is true — check: `npm test`");
+    expect(body).toContain("- [ ] First thing is true — check: `make test`");
     expect(body).toContain("- [ ] Second thing is true — check: `npm run lint`");
     expect(body).toContain("- bin/b.ts");
     expect(body).toContain("- bin/c.ts");

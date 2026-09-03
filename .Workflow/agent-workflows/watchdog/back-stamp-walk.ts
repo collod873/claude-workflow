@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORPUS_RELATIVE_PATH, writeCorpusFixture } from "../shared/generate-corpus-fixture";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stamp";
@@ -54,26 +53,12 @@ export interface WalkDeps {
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
   /**
-   * Regenerates `adr-corpus.evidence.json` from `docs/adr` and `docs/research` — the same dep
-   * `shape/accept.ts` holds for the same reason, held at arm's length here so a test can watch
-   * *when* it runs relative to the `add` that stages it.
-   *
-   * A back-stamp edits an ADR body, and the fixture is a captured snapshot of those bodies. A
-   * lane that writes the ADR and not the snapshot leaves the repository describing a corpus it no
-   * longer has — which `bin/gauntlet push` refuses, and the `pre-push` hook installs itself on a
-   * runner as readily as on the owner's machine. That refusal is correct and stays; what was
-   * wrong is that this lane did not know it had grown the corpus. `6d72c1b` taught the accept
-   * exactly this; the back-stamp is the second author that writes into `docs/adr/` and it was
-   * never told.
-   */
-  regenerateCorpus: () => void;
-  /**
    * Regenerates `docs/adr/INDEX.md` — the corpus fixture's sibling, and the other generated file
    * this lane stales every time it stamps (see `INDEX_RELATIVE_PATH`). Returns whether the index
    * is now a file this commit should carry: `false` where there was none to regenerate, so
    * `commitAndPush` stages a pathspec that matches nothing rather than failing the whole run on it.
    *
-   * Held at arm's length for the reason `regenerateCorpus` is, plus one of its own: the generator
+   * Held at arm's length because the generator
    * is the machine-global `~/bin/adr-check` (ADR-0097 — never vendored here), which a hosted runner
    * does not carry, so the stand-down is an ordinary production state rather than an error path.
    */
@@ -132,13 +117,7 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
   const { repoRoot } = deps;
   const paths = writes.map((write) => write.path);
 
-  // The fixture moves in the same commit as the stamps, because it is a snapshot of the bodies
-  // those stamps just rewrote — see `regenerateCorpus`'s note on `WalkDeps` for why this lane
-  // owns that and what it cost to learn.
-  deps.regenerateCorpus();
-  paths.push(CORPUS_RELATIVE_PATH);
-
-  // And the index, for the same reason one file over: it publishes the `status:` this stamp just
+  // The index publishes the `status:` this stamp just
   // rewrote. Staged only when there was one to regenerate — see `WalkDeps.regenerateIndex`.
   if (deps.regenerateIndex()) paths.push(INDEX_RELATIVE_PATH);
 
@@ -200,7 +179,6 @@ async function main(): Promise<void> {
       readDir: (dir) => readdirSync(dir),
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => writeFileSync(path, content),
-      regenerateCorpus: () => writeCorpusFixture(repoRoot),
       regenerateIndex: () => regenerateAdrIndex(repoRoot),
       git: execGit,
     });

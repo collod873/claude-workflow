@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shape/marker";
-import { sheet } from "../../shape/sheet.fixture";
+import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/marker";
+import { sheet } from "../../shared/sheet.fixture";
 import { collectSheetContext } from "./sheet";
 import { fakeSheetGh as fakeGh } from "./sheet-gh.fixture";
 

@@ -1,6 +1,9 @@
-import { readFileSync, rmSync } from "node:fs";
+import contract from "../../../.claude/contract.json";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
@@ -10,7 +13,6 @@ import type { GitExec } from "../shared/git";
 import { readWorkflow } from "../shared/read-workflow";
 import { implementationBranch } from "../shared/ready-set";
 import { createFakeStage } from "../shared/stage.fake";
-import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   ANSWER_PATH_ENV,
@@ -27,7 +29,6 @@ import {
   type BriefInputs,
   type ImplementDeps,
 } from "./implement";
-import { GENERATED_ARTIFACTS } from "./regenerate-artifacts";
 
 
 describe("assembleBrief", () => {
@@ -279,42 +280,6 @@ function ordinaryRun(extra: Partial<ImplementDeps> = {}): {
   };
 }
 
-/**
- * A real directory carrying one file at each of `paths` (empty content — `regenerateArtifacts`
- * only asks whether the path exists, never what it holds). `regenerateArtifacts` is gated on
- * `existsSync` (ADR-0139), so a fake `repoRoot` like `"/repo"` no longer exercises it — every
- * artifact would read as absent regardless of intent.
- */
-function makeRootWithArtifacts(paths: string[]): string {
-  const repo = makeTempRepo("implement-artifacts");
-  for (const path of paths) repo.write(path, "");
-  artifactRoots.push(repo.dir);
-  return repo.dir;
-}
-
-/** Every root `makeRootWithArtifacts` handed out, removed after the test that asked for it. */
-const artifactRoots: string[] = [];
-afterEach(() => {
-  while (artifactRoots.length) rmSync(artifactRoots.pop()!, { recursive: true, force: true });
-});
-
-/**
- * An `ordinaryRun` wired with a `runGenerator` that records every `(generator, root)` it was
- * asked to run, and `repoRoot: root` — the one difference between the two `regenerateArtifacts`
- * cases below being which artifacts `root` already carries.
- */
-function trackGeneratorsFrom(root: string): { run: ReturnType<typeof ordinaryRun>; regenerated: string[] } {
-  const regenerated: string[] = [];
-  const run = ordinaryRun({
-    repoRoot: root,
-    runGenerator: (generator, generatorRoot) => {
-      regenerated.push(`${generator} ${generatorRoot}`);
-      return { exitCode: 0, output: "" };
-    },
-  });
-  return { run, regenerated };
-}
-
 describe("runImplement — on fakes", () => {
   it("opens exactly one PR, then sends exactly one repository_dispatch naming that PR", async () => {
     const ticket = {
@@ -403,92 +368,11 @@ describe("runImplement — on fakes", () => {
     );
 
     expect(npmScripts.scripts).toHaveProperty("check");
-    expect(prompt).toContain("npm run check");
-  });
-
-  /** The other half of ADR-0107 — `regenerate-artifacts.ts`'s docstring is the home for why. */
-  it("regenerates the generated artifacts and commits them alongside the implementer's files", async () => {
-    const root = makeRootWithArtifacts(GENERATED_ARTIFACTS.map((artifact) => artifact.path));
-
-    const { run, regenerated } = trackGeneratorsFrom(root);
-    await runImplement(run.deps);
-
-    expect(regenerated).toEqual(GENERATED_ARTIFACTS.map((artifact) => `${artifact.generator} ${root}`));
-
-    const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
-    expect(addCall).toContain("a/b.ts");
-    for (const artifact of GENERATED_ARTIFACTS) {
-      expect(addCall).toContain(artifact.path);
-    }
+    expect(prompt).toContain(contract.all.cmd);
   });
 
   /**
-   * ADR-0139: an enrolled repository owes only `.claude/contract.json` — no corpus fixture, no
-   * clone baseline. Regenerating (or `git add`ing) a path that was never seeded there is exactly
-   * the pathspec failure that used to lose a run over a checkout it had never been asked to carry.
-   */
-  it("regenerates and stages only the generated artifacts already present at the root, never the ones an enrolled repository never seeded", async () => {
-    // The corpus fixture, not GENERATED_ARTIFACTS[0] (the contract): a present contract also seeds
-    // the timing baseline (#349), which would land in `absent` below and break this test's own
-    // present-only assertion. The corpus fixture carries no such side effect.
-    const present = GENERATED_ARTIFACTS[1]!;
-    const absent = GENERATED_ARTIFACTS.filter((artifact) => artifact.path !== present.path);
-    const root = makeRootWithArtifacts([present.path]);
-
-    const { run, regenerated } = trackGeneratorsFrom(root);
-    await runImplement(run.deps);
-
-    expect(regenerated).toEqual([`${present.generator} ${root}`]);
-
-    const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
-    expect(addCall).toContain(present.path);
-    for (const artifact of absent) {
-      expect(addCall).not.toContain(artifact.path);
-    }
-  });
-
-  it("still opens its PR when a generator fails, because a stale artifact is the push gate's to name", async () => {
-    const logged: string[] = [];
-    const run = ordinaryRun({
-      log: (line) => logged.push(line),
-      runGenerator: () => ({ exitCode: 1, output: "generator exploded" }),
-    });
-
-    const result = await runImplement(run.deps);
-
-    expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
-    expect(logged.join("\n")).toContain("generator exploded");
-  });
-
-  /**
-   * The generators and the push-venue checks that diff them are spelled in two languages, and no
-   * compiler sees across that boundary. A generator renamed in `bin/gauntlet` and not here leaves
-   * lane 05 refreshing a file nothing checks, which reads exactly like working.
-   */
-  it("regenerates exactly what bin/gauntlet's push venue diffs", () => {
-    const gauntlet = readFileSync(fileURLToPath(new URL("../../../bin/gauntlet", import.meta.url)), "utf8");
-
-    for (const artifact of GENERATED_ARTIFACTS) {
-      expect(gauntlet, `bin/gauntlet does not diff ${artifact.path}`).toContain(artifact.path);
-      expect(gauntlet, `bin/gauntlet does not run ${artifact.generator}`).toContain(artifact.generator);
-    }
-  });
-
-  /**
-   * The wiring baseline is the one `regenerate && diff` artifact lane 05 must never refresh: it
-   * grandfathers standing debt and only ever shrinks, so regenerating it would swallow exactly the
-   * finding the gate exists to raise (ADR-0086, and `CLAUDE.md`'s own instruction to drop entries
-   * rather than add them).
-   */
-  it("leaves the wiring baseline alone", () => {
-    expect(GENERATED_ARTIFACTS.map((artifact) => artifact.path)).not.toContain(
-      ".Workflow/agent-workflows/shared/wiring-baseline.json",
-    );
-  });
-
-  /**
-   * The second legal widening (the first being the generated files above, which the implementer is
-   * told not to touch at all): a test its own change turned red. Both limits on it are load-bearing
+   * The one legal widening: a test its own change turned red. Both limits on it are load-bearing
    * — an implementer that edits the acceptance tests is editing the spec it is being judged against.
    */
   it("tells the implementer it may fix a test its change broke, but never the acceptance tests", () => {
@@ -500,26 +384,12 @@ describe("runImplement — on fakes", () => {
   });
 
   /**
-   * Two lists in the prompt are copies of constants held in TypeScript, and a prompt is a language
-   * no compiler reads — CODING_STANDARDS.md's *pin a mandated copy to its source*.
+   * The immutable set in the prompt is a copy of a constant held in TypeScript, and a prompt is a
+   * language no compiler reads — CODING_STANDARDS.md's *pin a mandated copy to its source*. A copy
+   * rather than a pointer on purpose: the implementer is a headless stage reading one string, so a
+   * prompt that cited the constant by name would cost it a file read mid-run.
    *
-   * They are copies rather than pointers on purpose: the implementer is a headless stage reading
-   * one string, so a prompt that cited `GENERATED_ARTIFACTS` by name would cost it a file read
-   * mid-run to learn which reds to ignore. The prompt paid that cost in staleness instead until
-   * this test existed — it named two of the three artifacts, missing the clone baseline that had
-   * been added to the list underneath it, and one of the two by a description
-   * (*"the ADR corpus fixture"*) that resolves to no path at all.
-   */
-  it("names every generated artifact the implementer is told to leave alone", () => {
-    const prompt = readFileSync(fileURLToPath(new URL("./implementer/prompt.md", import.meta.url)), "utf8");
-
-    for (const artifact of GENERATED_ARTIFACTS) {
-      expect(prompt, `the prompt does not name ${artifact.path}`).toContain(artifact.path);
-    }
-  });
-
-  /**
-   * The same pin on the other list. Every entry is refused by `verify.yml`'s Immutability job
+   * Every entry is refused by `verify.yml`'s Immutability job
    * *after* the run has been paid for, so an entry the prompt omits is a whole implementer run
    * spent on a pull request that was never going to be judged. The prompt named `tests/acceptance/`
    * alone while the set has carried three since ADR-0053.
@@ -635,12 +505,15 @@ describe("findFailingTestFiles scopes to the slice", () => {
    * runner before the model started.
    */
   it("runs only the slice's own files and never the whole directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "implement-slice-"));
+    mkdirSync(join(root, "tests/acceptance"), { recursive: true });
+    writeFileSync(join(root, "tests/acceptance/342-venues-doc.test.ts"), "");
     const ran: string[] = [];
     findFailingTestFiles(
       "tests/acceptance/",
       342,
       () => "content",
-      process.cwd(),
+      root,
       () => {
         ran.push("ran");
         return { collected: true, failures: [{ name: "tests/acceptance/342-venues-doc.test.ts > x" }] } as never;
@@ -789,7 +662,7 @@ describe("a claim does not outlive the run that made it", () => {
   /**
    * #179's guarantee, pinned where it actually broke. The claim is documented as happening before
    * anything expensive, but `main` builds `ImplementDeps` as the *argument* to `runImplement`, so
-   * an eagerly-resolved `failingTests` ran a full `vitest run tests/acceptance/` before the claim
+   * an eagerly-resolved `failingTests` ran the whole acceptance suite before the claim
    * was ever attempted. On 2026-09-02 that window was seventeen minutes on two live runs, and it
    * is what let the reconciler read a running implementer as unstarted and dispatch a second one
    * against #342. A thunk that a refused claim never calls is the shape that cannot regress.

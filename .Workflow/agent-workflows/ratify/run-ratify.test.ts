@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
-import { observation } from "../observations/observation.fixture";
-import type { Observation } from "../observations/observation-schema";
-import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
+import { observation } from "../shared/observation.fixture";
+import type { Observation } from "../shared/observation-schema";
+import { RATIFICATION_DUE_DISPATCH_ACTION } from "../shared/ratification-dispatch";
 import { runRatify, ratifierBranchName } from "./run-ratify";
 import { ratifierVerdict } from "./verdict.fixture";
 

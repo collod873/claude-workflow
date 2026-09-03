@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createRecordingGh } from "../shared/gh.fake";
-import { RATIFICATION_DUE_DISPATCH_ACTION } from "./dispatch";
+import { RATIFICATION_DUE_DISPATCH_ACTION } from "../shared/ratification-dispatch";
 import { CLOSE_STATE_REASON, PRD_LABEL, ratifyOnPrdClose } from "./prd-close";
 
 const silent = () => {};

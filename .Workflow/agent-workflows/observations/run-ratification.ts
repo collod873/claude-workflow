@@ -2,9 +2,9 @@ import { pathToFileURL } from "node:url";
 import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { normalizeNewlines } from "../shared/ticket-shape";
-import { parseFindingMarker } from "../ratify/finding-marker";
-import type { RatificationRecord } from "./ratification-schema";
-import { writeRatificationNote } from "./ratification";
+import { parseFindingMarker } from "../shared/finding-marker";
+import type { RatificationRecord } from "../shared/ratification-schema";
+import { writeRatificationNote } from "../shared/ratification";
 
 /**
  * **Ratified = merged.** This is where that becomes memory: the moment a

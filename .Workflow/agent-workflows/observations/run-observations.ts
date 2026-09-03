@@ -3,8 +3,8 @@ import type { StageExec } from "../shared/stage";
 import { runAuditor, runProposedAuditor } from "./auditor";
 import { parseViolationFindings } from "./lenses/violation";
 import type { GatedProposedFinding } from "./lenses/proposed";
-import { PROPOSED_LENS, VIOLATION_LENS, type Observation } from "./observation-schema";
-import { readObservations, writeObservationNote } from "./notes";
+import { PROPOSED_LENS, VIOLATION_LENS, type Observation } from "../shared/observation-schema";
+import { readObservations, writeObservationNote } from "../shared/notes";
 
 export interface RunObservationsOptions {
   /** The injected git executor, threaded to the auditor and to this module's own notes read/write. */

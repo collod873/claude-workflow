@@ -67,8 +67,8 @@ describe("keepSurvivingFindings", () => {
  * it is untested.
  */
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../shared/affected-tests.fixtures");
-const COVERED_CRITERION = "npm test exits 0 with a widget that spins clockwise";
-const UNTESTED_CRITERION = "npm test exits 0 with a criterion no fixture names";
+const COVERED_CRITERION = "make test exits 0 with a widget that spins clockwise";
+const UNTESTED_CRITERION = "make test exits 0 with a criterion no fixture names";
 
 describe("untestedCriteria", () => {
   it("drops a criterion testsForCriteria already found a test naming", () => {
@@ -289,7 +289,7 @@ const claimedPulls = (overrides: Partial<FakePull> = {}) => ({
 });
 
 const SPEC_MARKER = "SPEC-MARKER-4c1";
-const CRITERION_MARKER = "npm test exits 0 with a criterion no fixture names at all";
+const CRITERION_MARKER = "make test exits 0 with a criterion no fixture names at all";
 
 const ticketBody = (parent = true) =>
   [

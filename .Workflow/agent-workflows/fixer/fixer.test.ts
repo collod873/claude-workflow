@@ -94,7 +94,7 @@ function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee
  */
 function ticketBody(parentPrd: number | undefined): string {
   const parent = parentPrd === undefined ? "" : `## Parent PRD\n#${parentPrd}\n\n`;
-  return `${parent}## Acceptance criteria\n\n- [ ] It adds two numbers — check: \`npm test\`\n`;
+  return `${parent}## Acceptance criteria\n\n- [ ] It adds two numbers — check: \`make test\`\n`;
 }
 
 /**

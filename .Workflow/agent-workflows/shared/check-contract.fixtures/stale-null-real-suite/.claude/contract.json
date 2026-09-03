@@ -1,8 +1,0 @@
-{
-  "stop": { "cmd": null, "why": "hand-written, predates this fixture's real suite" },
-  "test": { "cmd": null, "why": "No repo-level test suite — hand-written and stale; the probe must not trust this file" },
-  "test_one": { "cmd": null, "why": "hand-written, predates this fixture's real suite" },
-  "typecheck": { "cmd": null, "why": "hand-written, predates this fixture's real suite" },
-  "lint": { "cmd": null, "why": "hand-written, predates this fixture's real suite" },
-  "all": { "cmd": null, "why": "hand-written, predates this fixture's real suite" }
-}

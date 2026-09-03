@@ -1,5 +1,5 @@
-import { sheetMarker } from "./marker";
-import type { Sheet } from "./sheet-schema";
+import { sheetMarker } from "../shared/marker";
+import type { Sheet } from "../shared/sheet-schema";
 
 /**
  * The decision sheet as the owner reads it: five sections, in §01's order,

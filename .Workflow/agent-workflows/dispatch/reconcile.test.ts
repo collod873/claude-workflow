@@ -8,7 +8,7 @@ import type { GhExec } from "../shared/gh";
 import { issueCommentPathMatcher, issueCommentsPathMatcher, matchingRefsPath, subIssuesPathMatcher } from "../shared/gh-paths";
 import { readWorkflow } from "../shared/read-workflow";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
-import { FINDING_MARKER, retirementBody } from "../watchdog/unreachable";
+import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 
 const closeTicketProcessCalls: (readonly string[])[] = [];
 vi.mock("../shared/close-ticket", () => ({
@@ -44,7 +44,7 @@ const HAND_WRITTEN_TICKET = [
   "",
   "## Acceptance criteria",
   "",
-  "- [ ] `bin/gauntlet push` exits 0 — check: `bin/gauntlet push`",
+  "- [ ] `make gate` exits 0 — check: `make gate`",
   "",
   "## Files claimed",
   "",

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { VERIFY_DISPATCH_EVENT_TYPE } from "../implement/implement";
+import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION, IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
 import { readWorkflow } from "./read-workflow";
 

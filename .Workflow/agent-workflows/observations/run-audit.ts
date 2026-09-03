@@ -6,11 +6,11 @@ import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { syncNotesRef } from "../shared/notes-sync";
 import { execClaudeIn, type StageExec } from "../shared/stage";
-import { repoScoped } from "../capture/touched-paths";
-import { dispatchRatificationDue } from "../ratify/dispatch";
-import { computeRatificationScope } from "../ratify/scope";
-import { readRatifierBase } from "../ratify/land";
-import { writeObservationNote } from "./notes";
+import { repoScoped } from "../shared/repo-scoped";
+import { dispatchRatificationDue } from "../shared/ratification-dispatch";
+import { computeRatificationScope } from "../shared/ratification-scope";
+import { readRatifierBase } from "../shared/ratifier-base";
+import { writeObservationNote } from "../shared/notes";
 import { runObservations } from "./run-observations";
 import { readSessionRecord, type HydratedSessionRecord } from "./session-notes";
 

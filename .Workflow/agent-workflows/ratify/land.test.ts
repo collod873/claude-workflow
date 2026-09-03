@@ -8,8 +8,8 @@ import { createFakeGit } from "../shared/git.fake";
 import { createRecordingGh } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
 import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
-import { observation } from "../observations/observation.fixture";
-import { parseFindingMarker } from "./finding-marker";
+import { observation } from "../shared/observation.fixture";
+import { parseFindingMarker } from "../shared/finding-marker";
 import {
   alignImmutableSetWithTrunk,
   changedFilesBetween,

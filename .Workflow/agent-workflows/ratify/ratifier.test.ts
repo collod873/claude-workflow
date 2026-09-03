@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GitExec } from "../shared/git";
 import { createFakeStages } from "../shared/stage.fake";
-import { observation } from "../observations/observation.fixture";
+import { observation } from "../shared/observation.fixture";
 import { ratifyBatch, type RatifyBatchDeps } from "./ratifier";
 import { ratifierVerdict } from "./verdict.fixture";
 import type { RatifierVerdict } from "./verdict-schema";

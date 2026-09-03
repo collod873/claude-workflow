@@ -1,10 +1,9 @@
 import { withReversal } from "../shared/adr-frontmatter";
-import { CORPUS_RELATIVE_PATH } from "../shared/generate-corpus-fixture";
-import { dispatchSpecAuthor } from "../spec/publish";
+import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
-import { acceptedMarker } from "./marker";
-import type { Decision, Sheet, Term } from "./sheet-schema";
+import { acceptedMarker } from "../shared/marker";
+import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { roundFor } from "./rounds";
 
 /**
@@ -57,17 +56,6 @@ export interface AcceptDeps {
    * the commit that pushes it.
    */
   landAdr: (draftPath: string) => string;
-  /**
-   * Regenerates `adr-corpus.evidence.json` from `docs/adr` and `docs/research`
-   * — `writeCorpusFixture`, held at arm's length the way `newAdr` is so a test
-   * can watch when it runs without a corpus on disk to run it against.
-   *
-   * It is here because an accept is one of the few things in this estate that
-   * *grows the corpus*. The fixture is a captured snapshot of the directory
-   * this lane files into, so a lane that writes an ADR and not the snapshot
-   * leaves the repository describing a corpus it no longer has.
-   */
-  regenerateCorpus: () => void;
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
 }
@@ -311,20 +299,6 @@ export function insertTerm(contents: string, term: Term): string | undefined {
  */
 function commitAndPush(deps: AcceptDeps, issueNumber: number, adrs: string[], terms: Term[]): void {
   const paths = [...adrs, ...(terms.length > 0 ? ["CONTEXT.md"] : [])];
-
-  // The corpus fixture moves in the same commit as the ADRs, because it is a snapshot of the
-  // directory those ADRs just landed in — `missing-trailer.test.ts` reads the snapshot rather
-  // than the corpus, and a snapshot one ADR behind is a test quietly running against a record
-  // that no longer exists. `bin/gauntlet push` gates on exactly that (`regenerate && diff`), and
-  // the `pre-push` hook installs itself on a runner as readily as on the owner's machine, so the
-  // first accept ever to reach a push had its push refused by this repo's own gate for the ADR it
-  // had just written. The fix is not to let the lane past the gate: it is that a lane which grows
-  // the corpus owns keeping the snapshot true, the same way the owner's own hand-made ADR commits
-  // always have.
-  if (adrs.length > 0) {
-    deps.regenerateCorpus();
-    paths.push(CORPUS_RELATIVE_PATH);
-  }
 
   deps.git(["add", ...paths]);
   deps.git(["commit", "-m", commitMessage(issueNumber, adrs, terms)]);

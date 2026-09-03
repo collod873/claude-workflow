@@ -422,8 +422,6 @@ export const STAGES = {
 
 export type StageName = keyof typeof STAGES;
 
-export const STAGE_NAMES = Object.keys(STAGES) as StageName[];
-
 function isStageName(value: string | undefined): value is StageName {
   return value !== undefined && Object.prototype.hasOwnProperty.call(STAGES, value);
 }

@@ -5,7 +5,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { handoffPath } from "../shared/handoff-path";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
-import { REFUSAL_MARKER } from "./marker";
+import { REFUSAL_MARKER } from "../shared/marker";
 import {
   renderChangeRequest,
   renderPriorArt,
@@ -17,8 +17,8 @@ import { checkProbation } from "./probation";
 import { refusalComment, refusalFor } from "./refusal";
 import { renderSheet } from "./render-sheet";
 import { applyGrammar, capDecisions, DECISION_CAP } from "./sheet";
-import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, type ShaperSheet } from "./sheet-schema";
-import { SWEEP_OUTPUT, type Sweep } from "./sweep-schema";
+import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, type ShaperSheet } from "../shared/sheet-schema";
+import { SWEEP_OUTPUT, type Sweep } from "../shared/sweep-schema";
 import { cappedComment, roundFor } from "./rounds";
 
 /**

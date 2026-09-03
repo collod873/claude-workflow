@@ -63,15 +63,9 @@ export function toRepoRelative(paths: readonly string[], root: string): string[]
   return out;
 }
 
-/**
- * The subset of `paths` a `git diff` in any checkout can be handed: relative, and not escaping
- * the repo root via `..`. Absolute paths are dropped, not repaired — see the module header on why
- * the consumer has no way to repair them. Order and duplicates are preserved as given, since a
- * pathspec's own shape is not this function's concern.
- */
-export function repoScoped(paths: readonly string[]): string[] {
-  return paths.filter((path) => !isAbsolute(path) && !path.split(/[\\/]/).includes(".."));
-}
+// The consumer-side filter lives in `shared/` — `observations/run-audit.ts` reads the list this
+// module writes — and is re-exported here so this module's own test and the hook keep one door.
+export { repoScoped } from "../shared/repo-scoped.ts";
 
 /** `path` relative to `root` with `/` separators, or `undefined` when it is not under `root`. */
 function insideRoot(path: string, root: string): string | undefined {

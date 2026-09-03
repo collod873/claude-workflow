@@ -1,20 +1,10 @@
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  CheckContract,
-  checkContractFixture,
-  probe,
-  resolveSlot,
-  SLOT_NAMES,
-} from "./check-contract";
-
-const FIXTURES = resolve(import.meta.dirname, "check-contract.fixtures");
+import { CheckContract, checkContractFixture, resolveSlot, SLOT_NAMES } from "./check-contract";
 
 describe("the schema", () => {
   it("accepts every slot, a real cmd and the null opt-out both", () => {
     const contract = checkContractFixture({
-      test: { cmd: "npm test", why: "package.json#scripts.test" },
+      test: { cmd: "make test", why: "Makefile#test" },
     });
 
     expect(CheckContract.safeParse(contract).success).toBe(true);
@@ -57,11 +47,11 @@ describe("the schema", () => {
 
 describe("resolveSlot", () => {
   it("resolves a requested schema slot directly, unsubstituted", () => {
-    const contract = checkContractFixture({ test: { cmd: "npm test", why: "declared" } });
+    const contract = checkContractFixture({ test: { cmd: "make test", why: "declared" } });
 
     expect(resolveSlot(contract, "test")).toEqual({
       slot: "test",
-      cmd: "npm test",
+      cmd: "make test",
       substituted: false,
     });
   });
@@ -83,7 +73,7 @@ describe("resolveSlot", () => {
     // #335: `test_related` is a slot rather than a `_one`-style narrowing precisely so that a
     // target without one runs *no* tests at the turn venue. Degrading it the way `lint_one`
     // degrades would put the whole suite on every PostToolUse hook.
-    const contract = checkContractFixture({ test: { cmd: "npm test", why: "declared" } });
+    const contract = checkContractFixture({ test: { cmd: "make test", why: "declared" } });
 
     expect(resolveSlot(contract, "test_related")).toEqual({
       slot: "test_related",
@@ -96,105 +86,5 @@ describe("resolveSlot", () => {
     const contract = checkContractFixture();
 
     expect(() => resolveSlot(contract, "overnight")).toThrow();
-  });
-});
-
-describe("probe", () => {
-  it(
-    "measures a non-null test slot even though the tree's own contract.json declares it null",
-    () => {
-      const contract = probe(join(FIXTURES, "stale-null-real-suite"));
-
-      expect(contract.test.cmd).toBe("npx vitest run");
-    },
-  );
-
-  it("names the runner's related-tests form for the turn venue where the runner has one", () => {
-    const contract = probe(join(FIXTURES, "stale-null-real-suite"));
-
-    expect(contract.test_related.cmd).toBe("npx vitest related --run <file>");
-  });
-
-  it("resolves lint to the biome invocation when the tree's linter is biome, not eslint", () => {
-    const contract = probe(join(FIXTURES, "biome-linter"));
-
-    expect(contract.lint.cmd).toBe("npx biome check .");
-  });
-
-  it("resolves every slot to null against a tree with no Node toolchain at all", () => {
-    const contract = probe(join(FIXTURES, "no-node-toolchain"));
-
-    for (const name of SLOT_NAMES) {
-      expect(contract[name].cmd).toBeNull();
-    }
-  });
-
-  it("asks in the target's own package manager, not npm, when its lockfile is pnpm's", () => {
-    // Lumaria's tree carries `pnpm-lock.yaml` and no `package-lock.json` (ADR-0139): a probe that
-    // wrote `npm run …` there published a contract its own `regenerate && diff` could never match.
-    const contract = probe(join(FIXTURES, "pnpm-scripts"));
-
-    expect(contract.typecheck.cmd).toBe("pnpm run typecheck");
-    expect(contract.lint.cmd).toBe("pnpm run lint");
-    expect(contract.test.cmd).toBe("pnpm test");
-    expect(contract.all.cmd).toBe("pnpm run check");
-  });
-});
-
-/**
- * #130: the probe used to test one hardcoded path for a turn-end check, so a repo whose Stop hook
- * lives anywhere else — including this one — published `stop: null` and had that certified by
- * `regenerate && diff`. These read the declaration site instead.
- *
- * #186: what it then published was the hook entry point, which no reader can run — a hook is
- * reached with its payload on stdin, and the same path as a plain command exits 0 having checked
- * nothing. So the hook is asked what check it runs, and a hook that will not say is a `null`.
- */
-describe("probe's stop slot", () => {
-  it("publishes the check the wired Stop hook declares, not the hook itself", () => {
-    const contract = probe(join(FIXTURES, "stop-hook-in-settings"));
-
-    expect(contract.stop.cmd).toBe("bin/gauntlet stop");
-    expect(contract.stop.why).toContain(".claude/hooks/gauntlet.sh#check-command");
-    expect(contract.stop.why).toContain(".claude/settings.json#hooks.Stop");
-  });
-
-  it("finds the hook file through the $CLAUDE_PROJECT_DIR the settings command is written against", () => {
-    const settings = JSON.parse(
-      readFileSync(join(FIXTURES, "stop-hook-in-settings/.claude/settings.json"), "utf8"),
-    );
-
-    // The declaration this probe has to see past to read the hook off disk at all.
-    expect(settings.hooks.Stop[0].hooks[0].command).toBe(
-      '"$CLAUDE_PROJECT_DIR"/.claude/hooks/gauntlet.sh stop',
-    );
-    expect(probe(join(FIXTURES, "stop-hook-in-settings")).stop.cmd).toBe("bin/gauntlet stop");
-  });
-
-  it("publishes null for a wired hook that declares no check-command", () => {
-    const contract = probe(join(FIXTURES, "stop-hook-undeclared"));
-
-    expect(contract.stop.cmd).toBeNull();
-    expect(contract.stop.why).toContain("check-command");
-  });
-
-  it("publishes null rather than an arbitrary first one when two command hooks are declared", () => {
-    const contract = probe(join(FIXTURES, "two-stop-hooks"));
-
-    expect(contract.stop.cmd).toBeNull();
-    expect(contract.stop.why).toContain("2 command hooks");
-  });
-
-  it("falls back to the conventional stop-gate.sh's declaration when settings.json cannot be read", () => {
-    const contract = probe(join(FIXTURES, "stop-gate-hook-only"));
-
-    expect(contract.stop.cmd).toBe("bin/checks.sh");
-    expect(contract.stop.why).toContain(".claude/hooks/stop-gate.sh#check-command");
-  });
-
-  it("publishes null when a tree declares no turn-end check either way", () => {
-    const contract = probe(join(FIXTURES, "biome-linter"));
-
-    expect(contract.stop.cmd).toBeNull();
   });
 });

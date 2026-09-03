@@ -43,7 +43,7 @@ import {
   signalBody,
   signalTitle,
   type UnreachableFinding,
-} from "../watchdog/unreachable";
+} from "../shared/unreachable";
 
 /**
  * Lane 09: the readiness reconciler (#179).

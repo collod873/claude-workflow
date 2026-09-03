@@ -25,8 +25,8 @@ const TICKET_BODY = `## Parent PRD
 Do the thing.
 
 ## Acceptance criteria
-- [ ] \`npm test\` exits 0 with a test asserting a fake \`GitExec\` receives no push
-- [ ] \`npm test\` exits 0 with a test asserting exactly one push
+- [ ] \`make test\` exits 0 with a test asserting a fake \`GitExec\` receives no push
+- [ ] \`make test\` exits 0 with a test asserting exactly one push
 
 ## Files claimed
 - .Workflow/agent-workflows/acceptance/acceptance.ts
@@ -88,8 +88,8 @@ describe("extractCriteria", () => {
   it("reads criteria matched via CRITERIA_ITEM_RE, verbatim, in order", () => {
     const criteria = extractCriteria(TICKET_BODY);
     expect(criteria).toEqual([
-      "`npm test` exits 0 with a test asserting a fake `GitExec` receives no push",
-      "`npm test` exits 0 with a test asserting exactly one push",
+      "`make test` exits 0 with a test asserting a fake `GitExec` receives no push",
+      "`make test` exits 0 with a test asserting exactly one push",
     ]);
     // Every line this reads must actually match the shared grammar — proves this
     // isn't a second, independently-spelled parser.
@@ -256,9 +256,9 @@ describe("renderCriteria", () => {
   it("fences with tildes, so a criterion carrying backticks survives the render", () => {
     // Every criterion in TICKET_BODY carries backticks, and a criterion with a `check:` marker
     // carries a fenced command inside itself — a backtick fence here would end at the wrong place.
-    const rendered = renderCriteria(["`npm test` exits 0 — check: `npm test`"]);
+    const rendered = renderCriteria(["`make test` exits 0 — check: `make test`"]);
 
-    expect(rendered).toContain("~~~\n`npm test` exits 0 — check: `npm test`\n~~~");
+    expect(rendered).toContain("~~~\n`make test` exits 0 — check: `make test`\n~~~");
   });
 });
 
@@ -386,9 +386,9 @@ describe("refireAcceptance", () => {
     rmSync(REFIRE_TESTS_DIR, { recursive: true, force: true });
   });
 
-  const KEPT_CRITERION = "npm test exits 0 with a criterion the edit leaves untouched";
-  const DROPPED_CRITERION = "npm test exits 0 with a criterion the edit removes";
-  const OTHER_KEPT_CRITERION = "npm test exits 0 with a second criterion the edit leaves untouched";
+  const KEPT_CRITERION = "make test exits 0 with a criterion the edit leaves untouched";
+  const DROPPED_CRITERION = "make test exits 0 with a criterion the edit removes";
+  const OTHER_KEPT_CRITERION = "make test exits 0 with a second criterion the edit leaves untouched";
 
   const SLICE_201_BODY = `## Parent PRD
 #301

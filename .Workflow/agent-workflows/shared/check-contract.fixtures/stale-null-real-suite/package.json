@@ -1,7 +1,0 @@
-{
-  "name": "stale-null-real-suite-fixture",
-  "private": true,
-  "devDependencies": {
-    "vitest": "^4.1.11"
-  }
-}

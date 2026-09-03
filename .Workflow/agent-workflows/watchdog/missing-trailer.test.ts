@@ -51,8 +51,8 @@ describe("the rule, run over the corpus that motivated it", () => {
     // `pre-push` gate, so the lane's push was refused by a count of how big the corpus used to be.
     //
     // Loosening it gives nothing up. Whether the fixture still *matches* the corpus is not this
-    // test's job — `bin/gauntlet push` regenerates and compares byte-for-byte, and names the
-    // document that moved when it doesn't.
+    // test's job — the fixture is a frozen snapshot, and the counter itself
+    // walks the live corpus at runtime.
     expect(EVIDENCE.adrs.length).toBeGreaterThan(50);
     expect(EVIDENCE.notes.length).toBeGreaterThan(5);
   });
