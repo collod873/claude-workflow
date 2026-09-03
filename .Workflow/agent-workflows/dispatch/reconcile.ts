@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
@@ -182,13 +181,6 @@ export const TO_BUILD_LABEL = "to-build";
  * at all rather than rewriting the same bytes forever.
  */
 const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
-
-/**
- * Where, under the target checkout, `testsForCriteria` looks for the acceptance tests a slice's
- * criteria name — the `authored` term of the door below. Exported so the door's tests write a
- * fixture test where this pass will read it, rather than restating the path.
- */
-export const ACCEPTANCE_TESTS_SUBDIR = "tests/acceptance";
 
 /** The `state_reason` GitHub reports for a delivery claim, as the REST dependencies API spells it. */
 const COMPLETED = "completed";
@@ -1075,16 +1067,17 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   for (const state of ready) {
     // ADR-0201's ordering, which this door skipped. Lane 03 never sends `ticket-ready` itself: it
     // asks lane 04 to author, and lane 04 rings lane 05 once that slice's acceptance tests are on
-    // `main` — otherwise the implementer's push gate, and then Verify's acceptance job, judge a
-    // slice against tests that do not exist. The `to-build` door called `dispatchTicketReady`
-    // directly, so every ticket through it reached Verify with nothing to judge it: #346 opened a
-    // pull request the acceptance job failed closed on, the fixer escalated `needs-human`, and it
-    // only closed after a session dispatched `acceptance-wanted` by hand.
+    // `main` — otherwise the implementer, and then Verify, judge a slice against tests that do not
+    // exist. The `to-build` door called `dispatchTicketReady` directly, so every ticket through it
+    // reached Verify with nothing to judge it: #346 opened a pull request the acceptance job
+    // failed closed on, the fixer escalated `needs-human`, and it only closed after a session
+    // dispatched `acceptance-wanted` by hand.
     //
     // Asked per slice rather than assumed, because a re-dispatch after a failed implementer must
     // not re-author tests that already exist — that is a second model run for nothing, and lane
-    // 04's own re-author pass owns that decision.
-    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), join(targetWorkspace, ACCEPTANCE_TESTS_SUBDIR));
+    // 04's own re-author pass owns that decision. An acceptance test lives beside its subject
+    // (#360), so the search runs over the target checkout's own suite roots.
+    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), targetWorkspace);
     const wants = authored.length === 0 ? "acceptance-wanted" : "ticket-ready";
 
     if (input.dryRun) {

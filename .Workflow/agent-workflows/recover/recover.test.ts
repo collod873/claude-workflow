@@ -200,7 +200,7 @@ describe("runRecover — recovery path", () => {
     expect(claimIndex).toBeGreaterThanOrEqual(0);
     expect(prIndex).toBeGreaterThan(claimIndex);
 
-    expect(gitCalls.map((call) => call[0])).toEqual(["rev-parse", "status", "checkout", "add", "commit", "push"]);
+    expect(gitCalls.map((call) => call[0])).toEqual(["rev-parse", "status", "diff", "checkout", "add", "commit", "push"]);
     const commit = gitCalls.find((call) => call[0] === "commit");
     expect(commit?.[2]).toContain(`Recover #266 from run 555`);
     expect(commit?.[2]).toContain("recovered it");

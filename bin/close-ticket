@@ -433,6 +433,38 @@ def undelivered(children: list[dict]) -> list[str]:
     return problems
 
 
+# An acceptance test lives beside its subject and is marked `test.fails(` until the ticket it
+# names is built (#360); the implementer turns it on by dropping `.fails`. A ticket whose number
+# still appears in such a line is a ticket somebody has not finished, whatever its criteria's own
+# `check:` commands say — so the close is refused here, before a single check runs, naming the
+# lines. Only the two source trees the suite collects are read (`vitest.config.ts`'s include).
+SUITE_ROOTS = (".Workflow", ".claude")
+FAILS_LINE_RE = re.compile(r"\b(?:test|it)\.fails\(")
+
+
+def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
+    """Every `<path>:<line>` under `checkout`'s suite roots where a `test.fails(`/`it.fails(` line
+    names `#<issue>` — the tests the ticket has not yet turned green."""
+    number_re = re.compile(rf"#{re.escape(issue)}\b")
+    found: list[str] = []
+    for root in SUITE_ROOTS:
+        base = os.path.join(checkout, root)
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d not in ("node_modules", "worktrees")]
+            for name in filenames:
+                if not name.endswith(".test.ts"):
+                    continue
+                path = os.path.join(dirpath, name)
+                try:
+                    lines = open(path, encoding="utf-8").read().split("\n")
+                except OSError:
+                    continue
+                for index, line in enumerate(lines, start=1):
+                    if FAILS_LINE_RE.search(line) and number_re.search(line):
+                        found.append(f"{os.path.relpath(path, checkout)}:{index}")
+    return found
+
+
 def split_check_marker(criterion: str) -> tuple[str, str | None]:
     """`(reference, command)` for one folded criterion block. `reference` has the leading
     `- [ ]`/`- [x]` checkbox (`ticket_shape.CRITERIA_ITEM_RE`) stripped — the posted bullet
@@ -770,6 +802,18 @@ def run(argv=None) -> int:
 
     blocks = ticket_shape.criteria_blocks(body)
     ROW["criteria"] = 0 if blocks is None else len(blocks)
+
+    unbuilt = surviving_fails_lines(args.checkout, args.issue)
+    if unbuilt:
+        print(
+            f"error: #{args.issue} is still named by {len(unbuilt)} test.fails( line(s) — an "
+            "acceptance test nobody has turned green means the ticket is not built, whatever its "
+            "criteria say. Drop `.fails` where the work is done, or fix the work:",
+            file=sys.stderr,
+        )
+        for where in unbuilt:
+            print(f"  {where}", file=sys.stderr)
+        return 1
 
     if args.superseded_by is not None:
         try:

@@ -1,8 +1,9 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
+import { scratchDir } from "../shared/scratch.fixture";
 import type { StageExec } from "../shared/stage";
 import { SPEC_GAP_LABEL } from "../shared/spec-gap";
 import {
@@ -60,23 +61,28 @@ describe("keepSurvivingFindings", () => {
 });
 
 /**
- * `testsForCriteria`'s own fixtures, reused rather than re-forked: `WIDGET` is matched verbatim by
- * `alpha.accept.ts`, so it is covered; `NO_SUCH_CRITERION` matches nothing under this directory, so
- * it is untested.
+ * A checkout whose suite carries one acceptance test, beside its subject under a suite root
+ * (#360), naming `COVERED_CRITERION` verbatim; `UNTESTED_CRITERION` matches nothing under it.
  */
-const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../shared/affected-tests.fixtures");
 const COVERED_CRITERION = "make test exits 0 with a widget that spins clockwise";
 const UNTESTED_CRITERION = "make test exits 0 with a criterion no fixture names";
 
+function checkoutCoveringWidget(): string {
+  const root = scratchDir("review-root");
+  mkdirSync(join(root, ".Workflow", "widget"), { recursive: true });
+  writeFileSync(join(root, ".Workflow", "widget", "widget.test.ts"), `// ${COVERED_CRITERION}\nit.fails("#1: spins", () => {});\n`);
+  return root;
+}
+
 describe("untestedCriteria", () => {
   it("drops a criterion testsForCriteria already found a test naming", () => {
-    expect(untestedCriteria([COVERED_CRITERION, UNTESTED_CRITERION], FIXTURES_DIR)).toEqual([
+    expect(untestedCriteria([COVERED_CRITERION, UNTESTED_CRITERION], checkoutCoveringWidget())).toEqual([
       UNTESTED_CRITERION,
     ]);
   });
 
-  it("keeps every criterion no test under dir names", () => {
-    expect(untestedCriteria([UNTESTED_CRITERION], FIXTURES_DIR)).toEqual([UNTESTED_CRITERION]);
+  it("keeps every criterion no test under root names", () => {
+    expect(untestedCriteria([UNTESTED_CRITERION], checkoutCoveringWidget())).toEqual([UNTESTED_CRITERION]);
   });
 });
 
@@ -209,7 +215,7 @@ describe("runConformanceReview", () => {
       criteria: [COVERED_CRITERION, UNTESTED_CRITERION],
       greenGateChecks: [],
       prdIssueNumber: 1,
-      acceptanceDir: FIXTURES_DIR,
+      root: checkoutCoveringWidget(),
     });
 
     const prompt = fake.prompts[0];
@@ -301,7 +307,10 @@ async function reviewRun(
 ) {
   const { exec, prompts } = fakeExec(...responses);
   const { gh, calls } = trackerForReview(options);
-  const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks, assignee: ASSIGNEE, head: HEAD_SHA });
+  // An empty checkout, not this repository: this file quotes `CRITERION_MARKER` verbatim, so a
+  // default-rooted `testsForCriteria` would read it as the acceptance test covering it (#360).
+  const root = scratchDir("review-run");
+  const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks, assignee: ASSIGNEE, head: HEAD_SHA, root });
   return {
     result,
     calls,

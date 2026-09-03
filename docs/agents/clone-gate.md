@@ -72,8 +72,9 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    The first is a clone whose every location sits in the repo's **immutable set** — files a lane
    is forbidden to edit. No lane may ever dedupe them, and a ratchet nobody can turn is not a
    ratchet: it is a red `main` that whichever lane pushed last gets blamed for. In
-   `collod873/claude-workflow` that set is `tests/acceptance/`, and the growth is permitted only to
-   the acceptance lane at its push to `main` (ADR-0114, recorded there).
+   `collod873/claude-workflow` that set is `vitest.config.ts` and `.github/` (`shared/immutable-set.ts`),
+   and the growth is permitted only to the acceptance lane at its push to `main` (ADR-0114,
+   recorded there).
 
    The second is a clone whose every location is inside `.github/workflows/` and whose duplicated
    span is the machine-and-target checkout pair a reusable-workflow lane conversion introduces

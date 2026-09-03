@@ -1,5 +1,4 @@
 // @ts-check
-import path from "node:path";
 import tseslint from "typescript-eslint";
 import sonarjs from "eslint-plugin-sonarjs";
 
@@ -15,9 +14,8 @@ const repoPathSelectorMessage =
 
 /**
  * The inline `err instanceof Error ? err.message : String(err)` narrowing, pointed at the one
- * canonical implementation. Named rather than inlined because `tests/acceptance/**` has to re-declare
- * `no-restricted-syntax` *without* it — that directory may not import the implementation this
- * message names, so the rule cannot apply there (ADR-0102) — while keeping the rest.
+ * canonical implementation in `shared/reason.ts`. Named so the rule reads as a list of the things
+ * it forbids, each with the reason it does.
  */
 const INLINE_REASON_SELECTOR = {
   selector:
@@ -29,9 +27,8 @@ const INLINE_REASON_SELECTOR = {
 };
 
 /**
- * Hand-written GitHub REST paths, in the two forms they can take. Named for the same reason as
- * `INLINE_REASON_SELECTOR`: these still hold inside `tests/acceptance/**`, so the re-declaration
- * there spreads them back in rather than dropping them along with the one that cannot.
+ * Hand-written GitHub REST paths, in the two forms they can take — a template literal and a regex
+ * literal — both pointed at `shared/gh-paths.ts`.
  */
 const REPO_PATH_SELECTORS = [
   {
@@ -52,88 +49,6 @@ const REPO_PATH_SELECTORS = [
     message: repoPathSelectorMessage,
   },
 ];
-
-/**
- * The directory an acceptance test may not import outside of, found by walking `filename`'s own
- * path segments rather than trusting the linter's `cwd` — `acceptance-import-boundary.test.ts`
- * lints fixtures from a temp root, and this way it proves the rule without having to fake the
- * repo's cwd to do it. `null` for a file this override's `files:` glob didn't actually match
- * (defensive only; every real call site is already scoped to `tests/acceptance/**`).
- */
-function acceptanceBoundaryFor(filename) {
-  const parts = filename.split(path.sep);
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (parts[i] === "tests" && parts[i + 1] === "acceptance") {
-      return parts.slice(0, i + 2).join(path.sep);
-    }
-  }
-  return null;
-}
-
-/**
- * spec #145's Lane 04 section: "An acceptance test may not import anything outside its own
- * directory" (ADR-0032). `tests/acceptance/**` is restored from `main`'s tip before CI runs it
- * (ADR-0032), so a helper it imported from anywhere else silently reverts to trunk's copy while
- * the test importing it does not — a path filter that is complete only if nothing in the tree it
- * covers reaches outside that tree. The fix this rule enforces is duplication inside
- * `tests/acceptance/`, not a shared helper elsewhere.
- *
- * Only relative specifiers (`.`/`..`) are resolved and checked — a bare specifier is an npm
- * package, which restore-from-tip already covers via `package-lock.json`, not a directory escape.
- */
-export const acceptanceImportBoundaryRule = {
-  meta: {
-    type: "problem",
-    docs: {
-      description: "An acceptance test may not import anything outside tests/acceptance/ (spec #145, ADR-0032).",
-    },
-    schema: [],
-    messages: {
-      outsideBoundary:
-        "'{{source}}' resolves outside tests/acceptance/. Restore-from-tip only restores that " +
-        "directory, so an acceptance test may not import anything outside it — duplicate the " +
-        "helper inside tests/acceptance/ instead (spec #145).",
-    },
-  },
-  create(context) {
-    const boundary = acceptanceBoundaryFor(context.filename);
-    if (boundary === null) return {};
-
-    function checkSource(node, source) {
-      if (typeof source !== "string" || !source.startsWith(".")) return;
-      const resolved = path.resolve(path.dirname(context.filename), source);
-      const rel = path.relative(boundary, resolved);
-      if (rel === ".." || rel.startsWith(`..${path.sep}`)) {
-        context.report({ node, messageId: "outsideBoundary", data: { source } });
-      }
-    }
-
-    return {
-      ImportDeclaration(node) {
-        checkSource(node, node.source.value);
-      },
-      ImportExpression(node) {
-        if (node.source.type === "Literal") checkSource(node, node.source.value);
-      },
-      ExportNamedDeclaration(node) {
-        if (node.source) checkSource(node, node.source.value);
-      },
-      ExportAllDeclaration(node) {
-        checkSource(node, node.source.value);
-      },
-      CallExpression(node) {
-        if (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "require" &&
-          node.arguments.length === 1 &&
-          node.arguments[0].type === "Literal"
-        ) {
-          checkSource(node, node.arguments[0].value);
-        }
-      },
-    };
-  },
-};
 
 export default tseslint.config(
   {
@@ -183,28 +98,6 @@ export default tseslint.config(
     files: [".Workflow/agent-workflows/shared/gh-paths.ts"],
     rules: {
       "no-restricted-syntax": "off",
-    },
-  },
-  {
-    // spec #145, Lane 04: an acceptance test may not import anything outside its own directory.
-    files: ["tests/acceptance/**/*.ts"],
-    plugins: {
-      "acceptance-boundary": { rules: { "no-outside-import": acceptanceImportBoundaryRule } },
-    },
-    rules: {
-      "acceptance-boundary/no-outside-import": "error",
-
-      // The `reason(err)` selector above points every call site at one canonical implementation,
-      // in `.Workflow/agent-workflows/shared/reason.ts`. This directory is forbidden from
-      // importing it — that is the rule immediately above, and it is the stronger of the two, so
-      // the pair as written was unsatisfiable: an acceptance test that reports an unknown error
-      // had to either import across the boundary or narrow inline, and both were errors. Lane 04
-      // authored #240 into exactly that corner and landed a batch nothing could lint
-      // ([ADR-0102](docs/adr/0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md)).
-      //
-      // Every other selector still holds here, so this re-declares the rule without the one that
-      // cannot rather than switching it off.
-      "no-restricted-syntax": ["error", ...REPO_PATH_SELECTORS],
     },
   },
 );

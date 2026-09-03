@@ -409,7 +409,8 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   },
 
   // Lane 04: authors a slice's acceptance tests — first time on lane 03's `acceptance-wanted`,
-  // again on a spec edit — and a third job lands them on main and tells lane 05 (ADR-0091, #201).
+  // again on a spec edit — and a third job re-judges the rebased tree by the same gate a human
+  // push gets, lands it on main and tells lane 05 (ADR-0091, #201, #274).
   acceptance: {
     caller: {
       name: "Acceptance",
@@ -439,11 +440,12 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       land: {
         needs: ["refire", "author"],
         gate: { has: ["needs.refire.outputs.authored == 'true'", "needs.author.outputs.authored == 'true'"] },
-        permissions: { contents: "write", issues: "write" },
-        runs: tsx("acceptance/land-gate.ts"),
+        permissions: { contents: "write" },
+        runs: "npm run check",
         checkout: { pair: true, fetchDepth: 0 },
         steps: [
           INSTALLS_TARGET,
+          { name: LANE_OWNED.gateStep, run: ["npm run check"] },
           {
             name: "Tell lane 05 this slice is ready",
             if: `${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && github.event.client_payload.ready == '1'`,

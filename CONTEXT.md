@@ -155,10 +155,12 @@ numbers nobody will query is C5 asserted rather than scored. See
 _Avoid_: number to watch, metric, KPI, health check
 
 **Immutable set**:
-The files a pull request may never change: `tests/acceptance/`, the test runner's config, and
-`.github/`. Closed rather than approximate — each entry is there because omitting it reopens the same
-hole one level up, where the thing that judges becomes reachable from the thing being judged. It
-carries **no exemption**, which is what leaves nothing for an identity to authenticate. See
+The files a pull request may never change: the test runner's config and `.github/`. Closed rather
+than approximate — each entry is there because omitting it reopens the same hole one level up, where
+the thing that judges becomes reachable from the thing being judged. It carries **no exemption**,
+which is what leaves nothing for an identity to authenticate. An acceptance test is not in it: since
+#360 it lives beside its subject, and what a pull request may do to one is a rule on the line
+(`test.fails(` may lose its `.fails`, nothing else) rather than a path. See
 [ADR-0053](docs/adr/0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md).
 _Avoid_: protected paths, frozen files, locked directory, path filter
 

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -70,7 +70,7 @@ function arrange(github: ClaimHostOptions = {}, extra: Partial<ImplementDeps> = 
 }
 
 describe("assembleBrief", () => {
-  it("contains only the ticket body, seam manifest lines, module CONTEXT.md, and failing test file(s), and nothing else", () => {
+  it("contains only the ticket body, seam manifest lines, module CONTEXT.md, and acceptance test file(s), and nothing else", () => {
     const inputs: BriefInputs = {
       ticketBody: "## What to build\nDo the thing.",
       seamManifestLines: ["Line one seam.", "Line two seam."],
@@ -88,14 +88,14 @@ describe("assembleBrief", () => {
       "Line one seam.\nLine two seam.",
       "## Module CONTEXT.md",
       inputs.moduleContext,
-      "## Failing acceptance test(s)",
+      "## Acceptance test(s) to turn on",
       "### foo.test.ts\n\ndescribe('foo', () => {});",
     ].join("\n\n");
 
     expect(assembleBrief(inputs)).toBe(expected);
   });
 
-  it("carries every failing test file, not only the first", () => {
+  it("carries every acceptance test file, not only the first", () => {
     const brief = assembleBrief({
       ticketBody: "body",
       seamManifestLines: [],
@@ -114,7 +114,7 @@ describe("assembleBrief", () => {
     const brief = assembleBrief({ ticketBody: "body", seamManifestLines: [], moduleContext: "ctx", failingTests: [] });
 
     expect(brief).toBe(
-      ["## Ticket", "body", "## Seam manifest lines consumed", "(none)", "## Module CONTEXT.md", "ctx", "## Failing acceptance test(s)", "(none)"].join(
+      ["## Ticket", "body", "## Seam manifest lines consumed", "(none)", "## Module CONTEXT.md", "ctx", "## Acceptance test(s) to turn on", "(none)"].join(
         "\n\n",
       ),
     );
@@ -187,14 +187,14 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(host.calls.indexOf(prCreatesIn(host.calls)[0])).toBeLessThan(host.calls.indexOf(dispatch!));
   });
 
-  it("hands the implementer stage a brief carrying the ticket body and the failing test content", async () => {
+  it("hands the implementer stage a brief carrying the ticket body and the acceptance test content", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const { deps, stage } = arrange({ ticket }, { failingTests: () => [{ path: "foo.test.ts", content: "the failing assertion" }] });
+    const { deps, stage } = arrange({ ticket }, { failingTests: () => [{ path: "foo.test.ts", content: "the test.fails( assertion" }] });
 
     await runImplement(deps);
 
     expect(stage.stdins[0]).toContain(ticket.body);
-    expect(stage.stdins[0]).toContain("the failing assertion");
+    expect(stage.stdins[0]).toContain("the test.fails( assertion");
   });
 
   /**
@@ -247,11 +247,11 @@ describe("runImplement claims its branch before it spends anything", () => {
 
   /**
    * The thunk is #179's guarantee pinned where it broke: `main` builds `ImplementDeps` as the
-   * *argument* to `runImplement`, so an eagerly-resolved `failingTests` ran a whole acceptance
-   * suite before the claim was attempted — seventeen minutes on 2026-09-02, long enough for the
+   * *argument* to `runImplement`, so an eagerly-resolved `failingTests` ran before the claim was
+   * attempted — seventeen minutes of acceptance suite on 2026-09-02, long enough for the
    * reconciler to read a running implementer as unstarted and dispatch a second one against #342.
    */
-  it("exits already-claimed without the model, the PR, the dispatch or the acceptance suite", async () => {
+  it("exits already-claimed without the model, the PR, the dispatch or the acceptance tests", async () => {
     let resolved = 0;
     const { deps, host, stage, log } = arrange(
       { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } },
@@ -264,7 +264,7 @@ describe("runImplement claims its branch before it spends anything", () => {
     expect(stage.stdins).toHaveLength(0);
     expect(prCreatesIn(host.calls)).toEqual([]);
     expect(host.dispatches).toEqual([]);
-    expect(resolved, "the acceptance suite ran for a run that had nothing to do").toBe(0);
+    expect(resolved, "the acceptance tests were read for a run that had nothing to do").toBe(0);
     expect(log.join("\n")).toContain(BRANCH);
   });
 
@@ -372,27 +372,44 @@ describe("the implementer's answer, kept", () => {
 });
 
 /**
- * Scoped to the slice (#167): an unscoped run handed every implementer 19 failing files, 10 of
- * them nobody's, and spent ~26 minutes of a 45-minute job doing it. Being redesigned in stage 4
- * of #360, so this pins only the scoping, on a scratch tree.
+ * Scoped to the slice (#167) and read, never run (#360): an unscoped run handed every implementer
+ * 19 failing files, 10 of them nobody's, and spent ~26 minutes of a 45-minute job doing it. A
+ * slice's test now lands green, marked `test.fails(` and naming its ticket, so the brief is a grep
+ * over the suite's own trees for that marker.
  */
-describe("findFailingTestFiles scopes to the slice", () => {
-  const DIR = "slice-tests/";
+describe("findFailingTestFiles finds the slice's test.fails( tests without running anything", () => {
+  const SLICE_TEST = ['// The gate is a constant', 'test.fails("#360: the gate is a constant", () => {', "  expect(1).toBe(2);", "});"].join("\n");
 
-  it("runs the suite once when the slice has files, and never when it has none", () => {
+  /** A checkout whose `.Workflow` tree holds the given test files, each `[relative path, source]`. */
+  function checkoutWith(files: Array<[string, string]>): { root: string; readFile: (path: string) => string } {
     const root = scratchDir("implement-slice");
-    mkdirSync(join(root, DIR), { recursive: true });
-    writeFileSync(join(root, `${DIR}342-venues-doc.test.ts`), "");
-    let ran = 0;
-    const runner = () => {
-      ran += 1;
-      return { collected: true, failures: [{ name: `${DIR}342-venues-doc.test.ts > x`, errorName: "AssertionError" }] };
-    };
+    for (const [path, source] of files) {
+      mkdirSync(join(root, ".Workflow", "x"), { recursive: true });
+      writeFileSync(join(root, ".Workflow", path), source);
+    }
+    return { root, readFile: (path) => readFileSync(join(root, path), "utf8") };
+  }
 
-    expect(findFailingTestFiles(DIR, 342, () => "content", root, runner)).toEqual([{ path: `${DIR}342-venues-doc.test.ts`, content: "content" }]);
-    expect(ran).toBe(1);
+  it("returns the file carrying a test.fails( line naming the ticket, repo-relative with its content, and skips files without one", () => {
+    const { root, readFile } = checkoutWith([
+      ["x/gate.test.ts", SLICE_TEST],
+      ["x/other.test.ts", 'it("#360 is mentioned here, but this test is on already", () => {});'],
+    ]);
 
-    expect(findFailingTestFiles(DIR, 99999, () => "content", root, runner), "an unauthored slice is not an uncollected suite").toEqual([]);
-    expect(ran).toBe(1);
+    expect(findFailingTestFiles(360, readFile, root)).toEqual([{ path: ".Workflow/x/gate.test.ts", content: SLICE_TEST }]);
+  });
+
+  it("matches the ticket number on a word boundary, so #36 does not select #360's test", () => {
+    const { root, readFile } = checkoutWith([["x/gate.test.ts", SLICE_TEST]]);
+
+    expect(findFailingTestFiles(36, readFile, root)).toEqual([]);
+    expect(findFailingTestFiles(3600, readFile, root)).toEqual([]);
+  });
+
+  it("accepts it.fails( as the same marker, and a checkout with no suite tree as no tests", () => {
+    const { root, readFile } = checkoutWith([["x/gate.test.ts", 'it.fails("#42: the other marker", () => {});']]);
+
+    expect(findFailingTestFiles(42, readFile, root)).toHaveLength(1);
+    expect(findFailingTestFiles(42, readFile, scratchDir("implement-empty")), "an unauthored slice is not an error").toEqual([]);
   });
 });

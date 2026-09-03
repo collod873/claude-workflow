@@ -15,7 +15,7 @@ import { defineConfig } from "vitest/config";
 // slot after the cheap ones instead of beside them.
 // Ten of this repo's test files drive their subject as a real process — a hook, a CLI, a `git`
 // invocation — because that is the only honest way to test a thing whose contract IS its exit
-// code and its log file. Process spawns are where a shared runner is slowest: `backfill.test.ts`
+// code and its log file. Process spawns are where a shared runner is slowest: `backfill.proc.test.ts`
 // runs in 0.8s on the workstation and 10.1s on a two-core hosted runner, and vitest's 5s default
 // made that difference the test's verdict. A timeout sized for the fastest venue is a gate that
 // goes red for environment reasons, which is how a repo learns to ignore its gates —
@@ -30,22 +30,21 @@ import { defineConfig } from "vitest/config";
 // did not, and one of its tests read the checkpoint the next test in the file had written on the
 // previous run (#299). A convention eighteen files remember is not a mechanism; a `setupFiles`
 // entry covers the nineteenth file too. See ADR-0125 and the file's own comment.
-// `tests/acceptance/` is in `include` because nothing else can put it there. A positional argument
-// to `vitest run` is a *filter over* `include`, never an addition to it — so `push-gate.ts`'s
-// `npx vitest run tests/acceptance/` and `verify.yml`'s per-slice `npx vitest run <file...>` both
-// selected from a set that never contained an acceptance test, and each reported "no test files
-// found" as a clean run. Lane 04 could author a test, land it on `main` and have the gate that is
-// supposed to judge it see nothing (#188). An acceptance test is *expected* to be red until the
-// ticket it names is built, which is what makes it an acceptance test rather than a report on
-// working code — so a red `npm test` here is the suite doing its job, and the venue that decides
-// whether one may land is `acceptance/push-gate.ts`, not this list.
+// `include` names exactly the two trees the suite collects, and nothing else can widen it: a
+// positional argument to the runner is a *filter over* `include`, never an addition to it, so a
+// test written anywhere else reports "no test files found" as a clean run (#188). That is why
+// `shared/affected-tests.ts`'s `SUITE_ROOTS` spells the same two trees, and why the acceptance
+// author refuses a path outside them. Since #360 an acceptance test lives *beside its subject*
+// in one of these trees, marked `test.fails` — green until the ticket it names is built, red the
+// moment it is, which is how the implementer knows to drop `.fails` — so the suite is green on
+// `main` at every commit and no directory of expected-red tests exists to be excluded or restored.
 // `.claude/worktrees/` is excluded because `.claude/**` is included: an agent session working in a
 // worktree puts a whole second checkout under that path, and the suite ran every test in it —
-// three worktrees, three extra copies of `tests/acceptance/`, and `gauntlet-test-slot.test.ts`
-// red on files that were never this tree's.
+// three worktrees, three extra copies of every test, and `gauntlet-test-slot.test.ts` red on
+// files that were never this tree's.
 export default defineConfig({
   test: {
-    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "tests/acceptance/**/*.test.ts"],
+    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".claude/worktrees/**"],
     setupFiles: [
       ".Workflow/agent-workflows/shared/scrub-git-env.setup.ts",

@@ -46,9 +46,8 @@ const execReal: GauntletExec = (command, args, options) => execFileSync(command,
 /**
  * Shells to the MACHINE's `bin/gauntlet <venue>`, judging `targetRoot` — the one spawn every
  * caller of `bin/gauntlet push` against a target needs, so it lives here once rather than once per
- * lane (`integrate/integrate.ts`'s merge gate and `acceptance/land-gate.ts`'s land gate both call
- * this rather than shelling out themselves, which is also what keeps the clone gate from refusing
- * them as copies of each other).
+ * lane (`integrate/integrate.ts`'s merge gate calls this rather than shelling out itself; lane 04's
+ * `land` job runs the same gate as a workflow step, `npm run check`, since #360).
  *
  * `cwd: MACHINE_ROOT`, not `targetRoot`: `bin/gauntlet` derives its own repo root the same way
  * `bin/new-adr` does, from `dirname "${BASH_SOURCE[0]}"` resolved against its *own* working

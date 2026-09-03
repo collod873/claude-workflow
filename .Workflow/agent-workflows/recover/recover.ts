@@ -200,7 +200,9 @@ export type RecoverOutcome =
   | { outcome: "immutable"; files: string[] }
   | { outcome: "redispatched"; ticket: number }
   | { outcome: "opened"; pr: string }
-  | { outcome: "nothing-to-build" };
+  | { outcome: "nothing-to-build" }
+  /** `landAnswer` refused the recovered answer for editing a `test.fails(` acceptance test (#360). */
+  | { outcome: "fails-rule-refused"; reason: string };
 
 /**
  * The whole recover flow: resolve which ticket a failed `Implement` run was building, apply the
@@ -284,6 +286,19 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const commitMessage = `Recover #${ticket} from run ${deps.runId}\n\n${answer.summary}\n\nPart of #${ticket}`;
   const result: ImplementOutcome = await landAnswer(deps, branch, ticket, ticketRead, answer, commitMessage, log);
 
+  // The ticket already carries `needs-human` and the verdict's own note (`landAnswer`); a recovered
+  // answer that edited its own acceptance test is not one to re-dispatch, so this counts the
+  // attempt and stops.
+  if (result.outcome === "fails-rule-refused") {
+    postAttemptComment(
+      deps.gh,
+      ticket,
+      deps.runId,
+      `Recovered #${ticket} from run ${runUrl(deps.runId)}: refused — the answer edited a test.fails( acceptance test beyond turning it on.`,
+    );
+    return result;
+  }
+
   const summaryLine =
     result.outcome === "opened"
       ? `Recovered #${ticket} from run ${runUrl(deps.runId)}: opened ${result.pr}.`
@@ -333,6 +348,9 @@ async function main(): Promise<void> {
       downloadArtifact: downloadArtifactTo,
     });
     console.log(`recover: ${outcome.outcome}`);
+    // A refusal that needs a human is red here, the way `implement.ts`'s own run is: the ticket
+    // says which lines, and nothing was committed.
+    if (outcome.outcome === "fails-rule-refused") process.exitCode = 1;
   } catch (err) {
     console.error(`recover failed: ${reason(err)}`);
     process.exitCode = 1;

@@ -4,8 +4,10 @@ import { reason } from "./reason";
 
 /**
  * One `vitest run` shelled out and read back as a classified report — the runner two lanes share.
- * `acceptance/push-gate.ts` grades a freshly authored acceptance test with it (did the file even
- * collect?), and `implement/implement.ts` finds the failing test files for a ticket's brief with it.
+ * `acceptance/acceptance.ts`'s `landAuthoredBatch` grades a freshly authored acceptance test with
+ * it (did the file even collect? is it green under `test.fails`?), and `fixer/fixer.ts` reproduces
+ * a pull request's red from `runVitestReport` below. (`implement/implement.ts` no longer runs a
+ * suite for its brief — since #360 it greps for the slice's `test.fails(` marker instead.)
  * Both need the same distinction, so it lives here rather than one lane importing the other's.
  */
 

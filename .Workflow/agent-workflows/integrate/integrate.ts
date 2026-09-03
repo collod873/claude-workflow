@@ -68,7 +68,8 @@ export type IntegrateOutcome =
   | { merged: false; reason: "no-run" }
   /**
    * Lane 06's `Immutability` job failed for this dispatch's head commit: an implementer's diff
-   * crossed `tests/acceptance/`, `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054). The one
+   * crossed `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054), or edited a `test.fails(`
+   * acceptance test beyond dropping `.fails` (`shared/fails-rule.ts`, #360). The one
    * alarm this lane never merges over — a diff that can silence a check has invalidated whatever
    * this lane's own gauntlet just said about it.
    */

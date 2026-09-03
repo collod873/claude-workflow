@@ -124,8 +124,8 @@ export interface ConformanceReviewInput {
   greenGateChecks: GreenGateCheck[];
   /** The PRD issue number a filed `spec/gap` is routed at. */
   prdIssueNumber: number;
-  /** Where `testsForCriteria` looks for acceptance tests. Omit for `ACCEPTANCE_DIR`; set only from a test double. */
-  acceptanceDir?: string;
+  /** The checkout root `testsForCriteria` searches under. Omit for this repository; set only from a test double. */
+  root?: string;
 }
 
 export interface ConformanceReviewResult {
@@ -138,11 +138,11 @@ export interface ConformanceReviewResult {
 /**
  * `criteria`, minus every one `testsForCriteria` already found a test naming — the untested
  * residue of the spec ADR-0038 scopes the conformance reviewer to. A criterion this keeps has no
- * acceptance test anywhere under `dir` that names it verbatim; a criterion this drops already has
- * a machine verdict on the record and is not the reviewer's to re-answer.
+ * acceptance test anywhere under `root`'s suite roots that names it verbatim; a criterion this
+ * drops already has a machine verdict on the record and is not the reviewer's to re-answer.
  */
-export function untestedCriteria(criteria: string[], dir?: string): string[] {
-  return criteria.filter((criterion) => testsForCriteria([criterion], dir).length === 0);
+export function untestedCriteria(criteria: string[], root?: string): string[] {
+  return criteria.filter((criterion) => testsForCriteria([criterion], root).length === 0);
 }
 
 /**
@@ -173,7 +173,7 @@ export async function runConformanceReview(
   gh: GhExec,
   input: ConformanceReviewInput,
 ): Promise<ConformanceReviewResult> {
-  const scope = untestedCriteria(input.criteria, input.acceptanceDir);
+  const scope = untestedCriteria(input.criteria, input.root);
 
   const raw = await runStage(
     CONFORMANCE_REVIEWER_PROMPT_PATH,
@@ -214,6 +214,8 @@ export interface RunReviewInput {
    * it here (#189), so `main()` does no lookup of its own and `review.yml` needs no edit.
    */
   head: string;
+  /** The checkout root `testsForCriteria` searches under. Omit for this repository; set only from a test double. */
+  root?: string;
 }
 
 /**
@@ -332,6 +334,7 @@ async function reviewConformance(exec: StageExec, gh: GhExec, input: RunReviewIn
     criteria: spec.criteria,
     greenGateChecks: input.greenGateChecks,
     prdIssueNumber: spec.prdIssueNumber,
+    root: input.root,
   });
   return result.findings;
 }

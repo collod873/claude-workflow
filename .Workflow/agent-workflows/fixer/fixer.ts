@@ -463,7 +463,7 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
 /**
  * The real `runTests`: one `vitest run <targets>` (`shared/vitest-json.ts`'s `runVitestReport`)
  * read back as every failed assertion's full message — not just the error's class name, the way
- * `push-gate.ts`'s classifier does, because two attempts that both threw `AssertionError` are only
+ * `shared/vitest-json.ts`'s classifier does, because two attempts that both threw `AssertionError` are only
  * the *same* failure when the message matches too. A collection failure (a syntax error, a broken
  * import) is reported as a single synthetic failure naming the file, so a fixer attempt that cannot
  * even be collected still gets a signature to compare against rather than being read as silently
@@ -528,7 +528,7 @@ async function runEscalate(): Promise<void> {
 async function runFix(): Promise<void> {
   const [issueArg, prArg, branch, dir] = process.argv.slice(2);
   if (!issueArg || !prArg || !branch || !dir) {
-    console.error("usage: fixer.ts <issue-number> <pr-number> <branch> <acceptance-tests-dir>");
+    console.error("usage: fixer.ts <issue-number> <pr-number> <branch> <test-dir>");
     process.exitCode = 1;
     return;
   }
@@ -542,14 +542,11 @@ async function runFix(): Promise<void> {
     // attempts go to a model with nothing to fix — which then edits something, pushes it, and
     // ends by labelling a pull request `blocked` over a failure it was never shown. Declining is
     // the honest answer: this lane fixes what it can reproduce, and the run log says which.
-    // `dir` plus this ticket's own acceptance tests, `tests/acceptance/<n>-*.test.ts` — a vitest
-    // positional is a substring filter over `include`, and that directory is in it. Without the
-    // second target this lane judged itself by a suite Verify does not judge by: run 33326974110
-    // read the `.Workflow` suite green while #274's acceptance test was the red that had summoned
-    // it, said "nothing to fix", and left PR #280 exactly as it found it. What is red here is
-    // what Verify refused, so the brief names the failure that actually matters and the loop's
-    // "green" means the same thing lane 06's does.
-    const targets = [dir, `tests/acceptance/${issueArg}-`];
+    //
+    // `dir` alone — the caller's suite root, `fixer.yml`'s `test_dir`. This ticket's acceptance
+    // tests live in the same tree as everything else (#360), so `dir` is the suite Verify judges
+    // by, and what is red here is what Verify refused.
+    const targets = [dir];
 
     // Which checkout holds the branch being fixed. `TARGET_WORKSPACE` is set only by the reusable
     // workflow (ADR-0055): there this process runs from the machine checkout, and the suite, the

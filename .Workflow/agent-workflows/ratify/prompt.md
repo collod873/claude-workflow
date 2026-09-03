@@ -109,9 +109,11 @@ reads back whatever you changed, commits exactly those paths, and puts them on
 the batch's branch. Do not commit, do not push, and do not describe the edit
 instead of making it.
 
-Never touch `tests/acceptance/`, `vitest.config.ts` or `.github/`. Those are
-the immutable set; a batch that changes any of them is refused outright before
-a pull request is opened, and your whole decision is lost with it.
+Never touch `vitest.config.ts` or `.github/`. Those are the immutable set; a
+batch that changes either is refused outright before a pull request is opened,
+and your whole decision is lost with it. An acceptance test marked
+`test.fails(` is not yours either: it may be turned on by deleting `.fails`
+from that line only when it genuinely passes, and never rewritten or deleted.
 
 Leave nothing behind that is not part of the standard — a scratch file you
 write into the checkout gets committed along with it.

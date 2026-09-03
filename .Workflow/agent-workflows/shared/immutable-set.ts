@@ -1,12 +1,13 @@
 /**
  * The things a pull request may never touch — [ADR-0053](../../../docs/adr/0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md)
  * and [ADR-0054](../../../docs/adr/0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md)
- * name exactly these three, for the same reason each time: a hole one level up from the obvious
- * boundary.
+ * named these, for the same reason each time: a hole one level up from the obvious boundary.
  *
- * `tests/acceptance/**` is not a boundary on its own — `vitest.config.ts` carries an explicit
+ * An acceptance test is not a boundary on its own — `vitest.config.ts` carries an explicit
  * `include` allowlist, so an implementer can leave every acceptance test byte-identical and
- * delete one line there to stop them running. `.github/` closes the same hole one level higher:
+ * delete one line there to stop them running. (The tests themselves live beside their subjects
+ * since #360, guarded by `./fails-rule.ts` — a `test.fails(` line may lose its `.fails`
+ * and nothing else.) `.github/` closes the same hole one level higher:
  * on a `pull_request` event GitHub runs the workflow file *from the pull request*, so an
  * implementer that never touches a test at all can delete the job that would have caught it.
  * `repository_dispatch` (ADR-0054) is the guarantee that closes that hole; this module, and the

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { judgeFailsEdits } from "./fails-rule";
 import type { GhExec } from "./gh";
 import { branchCreationPath, comparePath, GIT_REFS_PATH } from "./gh-paths";
 import type { GitExec } from "./git";
@@ -269,9 +270,8 @@ function rebaseOntoTrunk(git: GitExec): void {
 
 /**
  * Commits the stage's written files to the branch this run claimed, optionally rebases it onto
- * trunk, and pushes it — the same add-commit-push shape `push-gate.ts`'s `commitAndPush` uses,
- * minus the rebase-onto-main step's *destination*: this lands on its own branch for a PR to
- * review, never straight onto `main`, so a rebase realigns rather than lands.
+ * trunk, and pushes it — add, commit, push. This lands on its own branch for a PR to review,
+ * never straight onto `main`, so a rebase realigns rather than lands.
  *
  * `rebaseFirst` is lane 05's own call, made once per caller rather than inferred here: `landAnswer`
  * is shared with `recover/recover.ts`, whose own push realignment is a separate concern this ticket
@@ -357,6 +357,22 @@ export function rebaseConflictNote(paths: string[]): string {
   ].join("\n");
 }
 
+/**
+ * What lane 05 says on the ticket when the answer edited a `test.fails(` acceptance test beyond
+ * turning it on (`judgeFailsEdits`, #360). `reason` is the verdict's own, naming each line.
+ */
+export function failsRuleNote(reason: string): string {
+  return [
+    "Refused to push this run's answer: it changed an acceptance test it is judged by.",
+    "",
+    reason,
+    "",
+    "An implementer may turn a `test.fails(` test on by deleting `.fails` from that line, and may",
+    "not otherwise touch it. Nothing was committed. The claim has been released; whoever reads the",
+    "answer can re-dispatch this ticket afterwards.",
+  ].join("\n");
+}
+
 /** What lane 05 says on the ticket when the implementer's files match what is already on disk. */
 export function nothingToBuildNote(issueNumber: number): string {
   return [
@@ -382,9 +398,10 @@ export interface PrDispatch {
   changedFiles: string[];
   /**
    * This slice's acceptance criteria, verbatim, as `extractCriteria` lifts
-   * them from the ticket body. The Restore-and-run-acceptance job greps
-   * trunk's `tests/acceptance/` for these (ADR-0033's verbatim match,
-   * `shared/affected-tests.ts`) to scope its run to this slice alone.
+   * them from the ticket body. Kept for the dispatch's shape: `verify.yml`
+   * reads `pr` and `changed_files` today, and the job that grepped a restored
+   * `tests/acceptance/` for these left with #360 — an acceptance test now
+   * lives beside its subject and runs with the suite.
    */
   criteria: string[];
 }
@@ -396,19 +413,17 @@ export interface PrDispatch {
  * label-then-dispatch write, so a dispatch that never sends still leaves the
  * PR as a durable trace rather than a silent stop.
  *
- * The payload carries three fields because trunk's `verify.yml` reads three:
- * `pr` for lane 08 to merge, `changed_files` for the Immutability job, and
- * `criteria` for the Restore-and-run-acceptance job. It carried only `pr`
- * until #145's seam audit, which meant that even once the action names were
- * reconciled, Immutability would have refused every PR on a missing file list
- * and the acceptance job would have found no test to run. A dispatch that
+ * The payload carries `pr` for lane 08 to merge and `changed_files` for the
+ * Immutability job — the two fields trunk's `verify.yml` reads — plus
+ * `criteria`, see `PrDispatch`. It carried only `pr` until #145's seam audit,
+ * which meant that even once the action names were reconciled, Immutability
+ * would have refused every PR on a missing file list. A dispatch that
  * satisfies its receivers is the whole point of sending one.
  *
  * `changed_files` is comma-joined rather than sent as an array because the
  * Immutability job is deliberately a shell string-compare with no checkout and
  * no Node (`verify.yml`), and it splits on `,`. `criteria` is sent as a real
- * array — `gh api`'s `key[]=` repetition — because that job reads it through
- * `toJson()` and parses it as JSON.
+ * array — `gh api`'s `key[]=` repetition.
  */
 export function openPrAndDispatch(gh: GhExec, dispatch: PrDispatch): string {
   const prUrl = gh([
@@ -426,9 +441,9 @@ export function openPrAndDispatch(gh: GhExec, dispatch: PrDispatch): string {
   return prUrl;
 }
 /**
- * How one lane 05 run ended. Three outcomes, because two of them are green and only one of those
- * opens a pull request — collapsing either into "no PR" is what made a dead run's leftover claim
- * indistinguishable from a healthy duplicate dispatch (#196).
+ * How one lane 05 run ended. Named outcomes rather than "PR or no PR", because several of them
+ * are green and only one opens a pull request — collapsing the rest into "no PR" is what made a
+ * dead run's leftover claim indistinguishable from a healthy duplicate dispatch (#196).
  */
 export type ImplementOutcome =
   /** A pull request was opened and the verification lane told about it. */
@@ -440,7 +455,9 @@ export type ImplementOutcome =
   /** The dispatch named a ticket that is already closed — a stale doorbell read (#279). Nothing was spent and the claim is released. */
   | { outcome: "ticket-closed" }
   /** The push conflicted rebasing onto trunk. Escalated to `needs-human` rather than resolved; the claim is released. */
-  | { outcome: "rebase-conflict"; paths: string[] };
+  | { outcome: "rebase-conflict"; paths: string[] }
+  /** The answer edited a `test.fails(` acceptance test beyond turning it on (#360). Nothing committed; escalated to `needs-human`; the claim is released. */
+  | { outcome: "fails-rule-refused"; reason: string };
 
 /**
  * Releases the claim a failed run is holding, unless a pull request now exists on it.
@@ -512,6 +529,20 @@ export async function landAnswer(
   }
 
   const paths = answer.files.map((file) => file.path);
+
+  // Before anything is committed: the one rule that replaced the immutable `tests/acceptance/`
+  // (#360) — a `test.fails(` acceptance test may be turned on, never rewritten or deleted. Judged
+  // on the unstaged diff of the answer's paths against HEAD, which is enough: a file the answer
+  // created is untracked and absent from it, and an added file cannot remove a standing
+  // `test.fails(` line. Refused here rather than by Verify, so the run that edited its own
+  // judgement stops before a pull request exists and the ticket says why.
+  const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]));
+  if (!verdict.ok) {
+    releaseClaim(deps.gh, branch, log);
+    escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+    sayOnTicket(deps.gh, issueNumber, failsRuleNote(verdict.reason), log);
+    return { outcome: "fails-rule-refused", reason: verdict.reason };
+  }
 
   try {
     commitAndPushBranch(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false);

@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { suiteTestFiles } from "../shared/affected-tests";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
@@ -25,7 +26,6 @@ import {
   type ImplementOutcome,
 } from "../shared/implementation-landing";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
-import { runVitestJson, type TestRunResult } from "../shared/vitest-json";
 import { recordOutOfBrief } from "./out-of-brief";
 
 // The landing half of this lane — claim, write, commit, push, PR, dispatch — lives in
@@ -42,8 +42,8 @@ export {
 /**
  * Lane: build one ticket from exactly the brief this file assembles — the
  * ticket body, the seam manifest lines it consumes, its target module's
- * `CONTEXT.md`, and its own failing acceptance test file(s) — never a
- * broader repository read (PRD #145 move 6, #167).
+ * `CONTEXT.md`, and its own acceptance test file(s) — never a broader
+ * repository read (PRD #145 move 6, #167).
  *
  * A Sonnet stage (build/execution work, not the judgement-under-uncertainty
  * every Opus stage in this pipeline is priced for) writes the files the
@@ -126,7 +126,12 @@ export function moduleContextPath(filesClaimed: string[], fileExists: (path: str
   return ROOT_CONTEXT;
 }
 
-/** One failing acceptance test file the brief inlines — its repo-relative path and its full content. */
+/**
+ * One acceptance test file the brief inlines — its repo-relative path and its full content. Not
+ * red: since #360 a slice's acceptance test lands on `main` marked `test.fails(`, green until the
+ * implementer turns it on by dropping `.fails`. The name is older than that and kept because it is
+ * this lane's API.
+ */
 export interface FailingTestFile {
   path: string;
   content: string;
@@ -137,13 +142,14 @@ export interface BriefInputs {
   ticketBody: string;
   seamManifestLines: string[];
   moduleContext: string;
+  /** The slice's `test.fails(` acceptance tests — see `FailingTestFile`. */
   failingTests: FailingTestFile[];
 }
 
 /**
  * Assembles the implementer's whole prompt input from exactly four
  * ingredients: the ticket body, the seam manifest lines it consumes, the
- * target module's `CONTEXT.md`, and its failing acceptance test file(s).
+ * target module's `CONTEXT.md`, and its `test.fails(` acceptance test file(s).
  * Deterministic — the same inputs always render the same string — which is
  * what lets `implement.test.ts` assert the result contains only these four
  * and nothing else by building the same template independently rather than
@@ -163,7 +169,7 @@ export function assembleBrief(inputs: BriefInputs): string {
     seams,
     "## Module CONTEXT.md",
     inputs.moduleContext,
-    "## Failing acceptance test(s)",
+    "## Acceptance test(s) to turn on",
     tests,
   ].join("\n\n");
 }
@@ -230,21 +236,10 @@ export interface ImplementDeps {
   writeFile: (path: string, content: string) => void;
   issueNumber: number;
   /**
-   * The failing acceptance test file(s) for this slice — a **thunk**, deliberately, not a resolved
-   * array.
-   *
-   * It was resolved eagerly, and that quietly broke #179's guarantee. `main` builds this object as
-   * the argument to `runImplement`, so an eagerly-resolved `failingTests` ran
-   * `findFailingTestFiles` — a full `vitest run tests/acceptance/` — *before* `runImplement` was
-   * entered, and therefore before `claimImplementationBranch`. The claim was documented as
-   * happening "before the ticket read and long before the model"; in practice a whole acceptance
-   * suite ran first. On 2026-09-02 that window was seventeen minutes and counting on two runs, and
-   * it is what let the reconciler read a live implementer as unstarted and dispatch a second one
-   * against #342.
-   *
-   * Called from `buildAndOpen`, after the claim is held. Two things follow: the window is the
-   * claim's own API call again rather than a test suite, and a run that exits `already-claimed`
-   * no longer pays for an acceptance suite it will never use.
+   * This slice's `test.fails(` acceptance test file(s) — a **thunk**, deliberately, not a resolved
+   * array. `main` builds this object as the argument to `runImplement`, so anything resolved here
+   * eagerly runs *before* `claimImplementationBranch`; it is called from `buildAndOpen`, after the
+   * claim is held, so the claim stays the first thing a run does (#179).
    */
   failingTests: () => FailingTestFile[];
   /** Where a refused claim is reported. Injected so a test reads it rather than the run log. */
@@ -343,63 +338,44 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
 }
 
 /**
- * The acceptance files belonging to one slice: `tests/acceptance/<issue>-*`, the naming lane 04
- * authors by (`acceptance.ts`) and `testsForCriteria` matches against.
- *
- * This scoping is the difference between a brief and a repository read. `findFailingTestFiles`
- * used to run the *whole* acceptance directory and hand back every failure in it: on 2026-09-03
- * that was 19 files, of which 10 belonged to no live ticket at all, and each implementer was
- * handed all of them as "its own failing acceptance test(s)". Its own docstring already promised
- * per-issue scoping that its signature could not deliver — it never took an issue number.
- *
- * The cost was not only wrong content. The unscoped run took 257 seconds of test CPU, which is
- * roughly 26 minutes on the two-core runner this lane gets — measured on runs 33696576981 and
- * 33697122706, both of which spent more than half of `implement.yml`'s 45-minute cap here before
- * their model started. One slice's files are ~13 seconds of the same measure.
+ * A `test.fails(` / `it.fails(` line whose title names `#<issueNumber>` — the marker the
+ * acceptance author writes a slice's test with (#360). The trailing boundary is what keeps `#36`
+ * from selecting `#360`'s tests; `[^\n]*` keeps the number on the marker's own line, so a file
+ * that merely mentions the ticket in a comment is not the slice's test.
  */
-export function sliceTestFiles(dir: string, issueNumber: number, repoDir: string): string[] {
-  const root = resolve(repoDir, dir);
-  if (!existsSync(root)) return [];
-  return readdirSync(root)
-    .filter((name) => name.startsWith(`${issueNumber}-`) && /\.(test|spec)\.[cm]?[jt]sx?$/.test(name))
-    .map((name) => `${dir}${name}`);
+function sliceMarker(issueNumber: number): RegExp {
+  return new RegExp(`\\b(?:test|it)\\.fails\\([^\\n]*#${issueNumber}\\b`);
 }
 
 /**
- * Every failing acceptance test file **for `issueNumber` alone**, read from disk —
- * `push-gate.ts`'s own `TestRunResult` shape, reused rather than
- * re-classified, since "which test failed" is exactly what it already
- * reports. Real production behaviour for `main()`; `runImplement` above
- * never calls this itself, so a test exercising the brief-assembly or
- * PR-and-dispatch criteria never has to run a real suite.
+ * Every acceptance test file **for `issueNumber` alone**, read from disk **without running
+ * anything**: the `*.test.ts` files under `repoDir`'s suite roots (`suiteTestFiles`) that carry a
+ * `test.fails(` line naming the ticket. A slice's test is green until the ticket is built, so a
+ * vitest run could not find it — and this used to run one anyway, the whole acceptance directory,
+ * for ~26 minutes of a 45-minute job (runs 33696576981 and 33697122706) before the model started.
  *
- * `repoDir` is the tree the suite runs in and the paths are relative to —
- * the target checkout under the reusable workflow (ADR-0055), cwd anywhere
- * else. The paths that come back stay repo-relative either way: they are
- * what the brief names and what a criterion is matched against, so they
- * cannot carry a runner's absolute workspace into either.
+ * This scoping is the difference between a brief and a repository read: the implementer is
+ * handed its own slice's tests, never another ticket's. Real production behaviour for `main()`;
+ * `runImplement` above never calls this itself, so a test of the brief assembly reads no disk.
+ *
+ * `repoDir` is the tree the paths are relative to — the target checkout under the reusable
+ * workflow (ADR-0055), cwd anywhere else. The paths that come back stay repo-relative, forward
+ * slashes, either way: they are what the brief names, so they cannot carry a runner's absolute
+ * workspace into it.
  */
 export function findFailingTestFiles(
-  dir: string,
   issueNumber: number,
   readFile: (path: string) => string,
   repoDir: string = process.cwd(),
-  runTests: () => TestRunResult = () => runVitestJson(`${dir}${issueNumber}-`, repoDir),
 ): FailingTestFile[] {
-  // Nothing to run, and nothing to say: a slice whose acceptance tests lane 04 has not authored
-  // yet has no failing test of its own, which is not the same as a red suite. Asked before the
-  // runner is spawned, because vitest given a filter that matches no file reports an uncollected
-  // suite, and this function reads that as an error.
-  if (sliceTestFiles(dir, issueNumber, repoDir).length === 0) return [];
-
-  const result = runTests();
-  if (!result.collected) {
-    throw new Error(`acceptance suite under ${dir} did not collect: ${result.collectionError ?? "no detail reported"}`);
+  const marker = sliceMarker(issueNumber);
+  const files: FailingTestFile[] = [];
+  for (const absolute of suiteTestFiles(repoDir)) {
+    const path = relative(repoDir, absolute).split(sep).join("/");
+    const content = readFile(path);
+    if (marker.test(content)) files.push({ path, content });
   }
-  const paths = [...new Set(result.failures.map((failure) => failure.name.split(" > ")[0]))];
-  return paths
-    .filter((path) => existsSync(resolve(repoDir, path)))
-    .map((path) => ({ path, content: readFile(path) }));
+  return files;
 }
 
 async function main(): Promise<void> {
@@ -428,21 +404,21 @@ async function main(): Promise<void> {
   // - `readFile`/`fileExists`/`writeFile` — every path in play is repo-relative (the ticket's
   //   `CONTEXT.md`, the answer's own files), and `resolve` leaves the one absolute path that
   //   reaches `writeFile` — the answer receipt in the runner's temp directory — untouched.
-  // - `failingTests` — the target's acceptance suite is what the brief is built from.
+  // - `failingTests` — the target's own tree is where its acceptance tests live (#360).
   const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
   const inRepo = (path: string) => resolve(repoDir, path);
+  const readInRepo = (path: string) => readFileSync(inRepo(path), "utf8");
 
   try {
     const result = await runImplement({
       gh: execGh,
       exec: execClaudeIn(repoDir),
       git: (args) => execGit(["-C", repoDir, ...args]),
-      readFile: (path) => readFileSync(inRepo(path), "utf8"),
+      readFile: readInRepo,
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
       issueNumber,
-      failingTests: () =>
-        findFailingTestFiles("tests/acceptance/", issueNumber, (path) => readFileSync(inRepo(path), "utf8"), repoDir),
+      failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
     });
     if (result.outcome === "already-claimed") {
       // Not a failure. A duplicate `ticket-ready` is the price of at-least-once dispatch, and the
@@ -466,6 +442,13 @@ async function main(): Promise<void> {
       // Escalated, not failed: the ticket carries `needs-human` and names what did not replay, and
       // this run spent nothing further trying to resolve it itself.
       console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")} — escalated.`);
+      return;
+    }
+    if (result.outcome === "fails-rule-refused") {
+      // Red, and escalated: the implementer edited the acceptance test it is judged by, which no
+      // pull request may carry (#360). The ticket wears `needs-human` and says which lines.
+      console.error(`#${issueNumber} was refused before its push: ${result.reason}`);
+      process.exitCode = 1;
       return;
     }
     console.log(`opened ${result.pr}`);

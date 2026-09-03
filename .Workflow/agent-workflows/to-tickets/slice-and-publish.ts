@@ -15,9 +15,9 @@ import { validatePlan } from "../shared/validate-graph";
  * The `repository_dispatch` action lane 04 (`acceptance.yml`) is told by, once per published
  * slice — the first-authoring request lane 04 never had a sender for (#201). Before this, lane 04
  * had only its `issues: edited` re-fire (`refireAcceptance` in `acceptance.ts`), which re-authors a
- * slice's test after a spec edit but never authors it the first time, so `tests/acceptance/` had
- * never existed on `main` and lane 06/08's immutability check ran against a directory that had
- * never been written (#193 merged that way).
+ * slice's test after a spec edit but never authors it the first time, so no acceptance test had
+ * ever existed on `main` and lane 06/08's checks ran against a set nothing had ever written to
+ * (#193 merged that way).
  *
  * `client_payload.ready` rides along rather than being recomputed by lane 04: it is exactly the
  * fact `readySlices` establishes right here (below), and a second read of the same graph downstream
@@ -34,7 +34,7 @@ import { validatePlan } from "../shared/validate-graph";
  * published 26 tickets that lane 05 could never be told about. #201 rewires the send again: lane 03
  * no longer tells lane 05 directly. **Order matters, and it is the one design point #201 names**:
  * lane 03 has to land a slice's tests on `main` *before* lane 05 claims the slice, or the
- * implementer's first push-gate run sees no tests for its ticket. The cheapest true ordering is for
+ * implementer finds no `test.fails` for its ticket to turn on. The cheapest true ordering is for
  * lane 04 to be the one that tells lane 05, after that slice's tests are on `main` — so this
  * function no longer calls `dispatchTicketReady` (`shared/ready-set.ts`) itself; it asks for
  * acceptance authoring instead, and `acceptance.yml`'s `land` job sends `ticket-ready` once that

@@ -6,11 +6,13 @@ outside what the brief already names.
 
 ## The two non-negotiables
 
-**Never touch the immutable set.** `tests/acceptance/`, `vitest.config.ts`
-and `.github/` are never yours to edit, no matter how tempting a failing
-test looks. Those tests are the spec; a red one is telling you the code is
-still wrong, not that the test is. Weakening, skipping, or rewriting one to
-make it pass is the one move this stage may never make.
+**Never touch the immutable set.** `vitest.config.ts` and `.github/` are
+never yours to edit, no matter how tempting a failing test looks. An
+acceptance test marked `test.fails(` is the spec: it may be turned on by
+deleting `.fails` from that line, and only when its body genuinely passes —
+never rewritten, moved or deleted. A red one is telling you the code is still
+wrong, not that the test is. Weakening, skipping, or rewriting one to make it
+pass is the one move this stage may never make.
 
 **Read what prior attempts already tried before you repeat one.** The brief
 lists every earlier attempt's own account of itself. A fix that already ran

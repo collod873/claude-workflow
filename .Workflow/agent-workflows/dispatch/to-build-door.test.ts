@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
-import { ACCEPTANCE_TESTS_SUBDIR, TO_BUILD_LABEL } from "./reconcile";
+import { TO_BUILD_LABEL } from "./reconcile";
 import {
   type FakeIssue,
   HAND_WRITTEN_TICKET,
@@ -48,12 +48,15 @@ describe("the to-build door goes through lane 04, not straight to lane 05", () =
   const CRITERION = "The door asks lane 04 first";
   const body = `## Acceptance criteria\n\n- [ ] ${CRITERION}\n\n## Files claimed\n\n- src/a.ts\n`;
 
-  /** A target checkout, with or without an acceptance test naming the criterion. */
+  /**
+   * A target checkout, with or without an acceptance test naming the criterion — beside its
+   * subject under a suite root, where `testsForCriteria` looks since #360.
+   */
   function target(withTest: boolean): string {
     const dir = scratchDir("reconcile-door");
-    const tests = join(dir, ACCEPTANCE_TESTS_SUBDIR);
+    const tests = join(dir, ".Workflow", "door");
     mkdirSync(tests, { recursive: true });
-    if (withTest) writeFileSync(join(tests, "77-door.test.ts"), `// ${CRITERION}\nit("x", () => {});\n`);
+    if (withTest) writeFileSync(join(tests, "door.test.ts"), `// ${CRITERION}\nit.fails("#77: x", () => {});\n`);
     return dir;
   }
 

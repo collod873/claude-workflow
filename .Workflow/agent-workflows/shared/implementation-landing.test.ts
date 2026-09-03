@@ -19,6 +19,7 @@ import { createFakeGit, type FakeGit } from "./git.fake";
 import {
   claimImplementationBranch,
   CLAIM_TIMEOUT_MINUTES,
+  failsRuleNote,
   landAnswer,
   nothingToBuildNote,
   rebaseConflictNote,
@@ -188,7 +189,7 @@ describe("landAnswer", () => {
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(written).toEqual(["a/b.ts"]);
-    expect(gitCalls.map((call) => call[0])).toEqual(["status", "checkout", "add", "commit", "push"]);
+    expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
     expect(gitCalls).toContainEqual(["push", "origin", `HEAD:${BRANCH}`]);
     expect(prCreatesIn(host.calls)).toHaveLength(1);
     expect(host.dispatches.map((dispatch) => dispatch.payload.pr)).toEqual([PR_URL]);
@@ -197,7 +198,7 @@ describe("landAnswer", () => {
   it("rebases onto trunk between the commit and the push only when the caller opts in", async () => {
     const { gitCalls } = await land(checkoutReporting(), { rebaseOntoTrunk: true });
 
-    expect(gitCalls.map((call) => call[0])).toEqual(["status", "checkout", "add", "commit", "fetch", "rebase", "push"]);
+    expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "fetch", "rebase", "push"]);
   });
 
   /**
@@ -259,5 +260,48 @@ describe("landAnswer", () => {
     const { gitCalls } = await land();
 
     expect(gitCalls[0]).toEqual(["status", "--porcelain", "--", "a/b.ts"]);
+  });
+
+  /**
+   * The rule that replaced the immutable `tests/acceptance/` (#360): a `test.fails(` acceptance
+   * test may be turned on and nothing else. Judged on the answer's own diff before any commit, so
+   * an implementer that edited its own judgement stops here, escalated, with no pull request.
+   */
+  describe("the test.fails( rule, judged on the answer's diff before the commit", () => {
+    /** A checkout at `HEAD_SHA` whose `git diff` over the answer's paths answers `diff`. */
+    const checkoutDiffing = (diff: string): FakeGit =>
+      createFakeGit((args) => {
+        if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
+        if (args[0] === "status") return " M a/b.ts";
+        if (args[0] === "diff") return diff;
+        return "";
+      });
+
+    const hunk = (lines: string[]) => ["--- a/a/b.ts", "+++ b/a/b.ts", "@@ -1,2 +1,2 @@", ...lines].join("\n");
+
+    it("refuses a rewritten test.fails( line: claim released, needs-human, the ticket says why, nothing committed or pushed", async () => {
+      const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
+
+      const { result, host, gitCalls } = await land(checkoutDiffing(rewritten));
+
+      expect(result).toMatchObject({ outcome: "fails-rule-refused" });
+      if (result.outcome !== "fails-rule-refused") throw new Error("unreachable");
+      expect(result.reason).toContain("a/b.ts");
+      expect(host.refs.has(BRANCH), "a refusal must not keep the ticket claimed").toBe(false);
+      expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
+      expect(ticketCommentsIn(host.calls)).toEqual([failsRuleNote(result.reason)]);
+      expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push"), "committed a refused answer").toBe(false);
+      expect(prCreatesIn(host.calls)).toEqual([]);
+    });
+
+    it("proceeds to the commit when the diff only drops .fails — the one edit an implementer may make", async () => {
+      const turnedOn = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is a constant", () => {']);
+
+      const { result, gitCalls } = await land(checkoutDiffing(turnedOn));
+
+      expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+      expect(gitCalls).toContainEqual(["diff", "--", "a/b.ts"]);
+      expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
+    });
   });
 });

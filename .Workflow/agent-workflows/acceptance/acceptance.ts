@@ -1,8 +1,10 @@
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { affectedSlices, testsForCriteria, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
+import { affectedSlices, SUITE_ROOTS, testsForCriteria, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
+import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -17,31 +19,24 @@ import {
   readTicket,
   type TicketRead,
 } from "../shared/ticket-shape";
-import {
-  landingFromEnv,
-  runEslint,
-  runPushGate,
-  runVitestJson,
-  type Landing,
-  type PushGateOutcome,
-  type TestRunResult,
-} from "./push-gate";
+import { runVitestJson, type TestRunResult } from "../shared/vitest-json";
 
 /**
  * Lane: author acceptance tests from the spec alone.
  *
- * One Opus stage (§3: being subtly wrong here is expensive and invisible —
- * a criterion the author silently drops is a hole in coverage nobody sees
- * until the ticket that was supposed to close it turns out not to) reads a
- * ticket's `## Acceptance criteria` and its parent PRD, and writes one test
- * file per criterion under `tests/acceptance/`. `push-gate.ts` is the other
- * half: it decides whether what the author wrote is trustworthy enough to
- * land unattended.
+ * One Opus stage (§3: being subtly wrong here is expensive and invisible — a criterion the author
+ * silently drops is a hole nobody sees until the ticket that was supposed to close it turns out
+ * not to) reads a ticket's `## Acceptance criteria` and its parent PRD, and writes one
+ * `test.fails(` per criterion **beside the subject it exercises**, plus a stub entry point when
+ * the subject does not exist yet (#360). The batch lands on `main` green: under `test.fails` a
+ * test whose assertion does not hold is green, and one that already passes is red — which is the
+ * whole gate. The implementer turns a test on by dropping `.fails` from its line and nothing
+ * else (`fails-rule.ts`), and `bin/close-ticket` refuses a ticket a surviving `test.fails(` still
+ * names.
  *
- * The author never opens a pull request — `authorAcceptanceTests` touches
- * only `StageExec` and the filesystem, and the one `GhExec` call this lane
- * makes is a read (`issue view`), never a write. Landing is `push-gate.ts`'s
- * job, straight onto `main`.
+ * The author never opens a pull request — `authorAcceptanceTests` touches only `StageExec` and
+ * the filesystem, and the one `GhExec` call this lane makes is a read (`issue view`). Landing is
+ * `landAuthoredBatch`'s job, straight onto `main`.
  */
 
 /** §3: authoring a test from the spec alone is exactly the low-volume, high-consequence case. */
@@ -49,21 +44,19 @@ export const AUTHOR_MODEL = "claude-opus-5";
 
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
 
-/** Every acceptance test this lane writes lives under here. `push-gate.ts` refuses anything outside it. */
-export const ACCEPTANCE_TEST_DIR = "tests/acceptance/";
+/** A `test.fails(` / `it.fails(` opener — the marker every authored test must carry. */
+const FAILS_CALL = /\b(?:test|it)\.fails\(/;
 
 /**
  * `TARGET_WORKSPACE` is set only by the reusable workflow (#315, ADR-0055): the machine checkout
- * this script runs from is a different directory than the target checkout its
- * `tests/acceptance/` reads and writes, its eslint/vitest spawns judge, and its git commit lands
- * in — the same seam `shape.ts`, `run-audit.ts` and `run-ratify.ts` already read for the same
- * reason. Falling back to `process.cwd()` is what lets a local run (or a test driving this file as
- * a real subprocess) hand in a different one without needing to run from inside it too.
+ * this script runs from is a different directory than the target checkout its tests are written
+ * into, its eslint/vitest spawns judge, and its git commit lands in. Falling back to `process.cwd()`
+ * is what lets a local run hand in a different one without needing to run from inside it too.
  */
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
 
 const AuthoredFile = z.object({
-  /** Repo-relative, always under `ACCEPTANCE_TEST_DIR`. */
+  /** Repo-relative, under one of `SUITE_ROOTS`. */
   path: z.string().min(1),
   content: z.string().min(1),
 });
@@ -86,16 +79,10 @@ export interface AuthorDeps {
   /** The parent PRD's body, when the ticket names one — the other half of "from the spec alone". */
   prdBody?: string;
   /**
-   * Reads one repo-relative file, `undefined` when it does not exist yet — the ordinary
-   * case for a slice whose whole job is to create the file it claims. Defaults to a real
-   * filesystem read.
+   * Reads one repo-relative file, `undefined` when it does not exist yet — the ordinary case for a
+   * slice whose whole job is to create the file it claims. Defaults to a real filesystem read.
    */
   readFile?: (path: string) => string | undefined;
-  /**
-   * Lists the file names directly under `ACCEPTANCE_TEST_DIR`. Defaults to a real directory read,
-   * and is empty on a checkout where no acceptance test has landed yet.
-   */
-  listTestDir?: () => string[];
 }
 
 /** What a file that does not exist yet is shown as. */
@@ -104,70 +91,13 @@ export const CLAIMED_FILE_ABSENT = "(does not exist yet — this ticket creates 
 /** Shown in place of the section when the ticket claims no files at all. */
 export const NO_CLAIMED_FILES = "(this ticket claims no files)";
 
-/** Shown in place of the section when nothing shared has been factored out yet. */
-export const NO_SHARED_FILES = "(nothing shared lives there yet — you would be writing the first)";
-
-/**
- * The suffix that makes a file under `ACCEPTANCE_TEST_DIR` a suite rather than something a suite
- * imports — `vitest.config.ts`'s include glob, spelled once here.
- */
-const TEST_SUFFIX = ".test.ts";
-
-/**
- * Everything under `ACCEPTANCE_TEST_DIR` that is not itself a suite: the readers already factored
- * out of tests this lane wrote on an earlier run, which a test it writes now may import instead of
- * restating.
- *
- * The author needs these for the same reason ADR-0098 gave it its claimed files, one level along.
- * It writes one file per criterion in a single answer, so several criteria about one workflow used
- * to mean several copies of one reader — three copies with three different bugs, on #201, two of
- * which are what made the landed tests wrong.
- *
- * Nothing downstream will stop it, which is why this is a prompt input rather than a gate. eslint
- * is per-file, so `push-gate.ts`'s lint pass cannot see a reader copied across two files;
- * `bin/clone-gate` can, but `land-gate.ts` hands a clone whose every location is under
- * `ACCEPTANCE_TEST_DIR` to `repairAcceptanceBaseline`, which baselines it and lets the push
- * through. That absorption is right — nobody but this lane may ever edit that directory, so nobody
- * else could dedupe it — and it is also the whole cost: each run hashes differently, so the
- * baseline grows on every authoring run and measures this directory a little less each time
- * (ADR-0056). Showing the author what it may import is what keeps that from being the normal case.
- *
- * The other tests are deliberately not shown. What the author needs is what it may *reuse*; a
- * sibling suite is neither reusable nor a shape it has to match, and showing every test this lane
- * has ever written would grow the prompt without bound.
- */
-export function sharedTestFiles(listDir: () => string[] = listTestDirIfPresent): string[] {
-  return listDir()
-    .filter((name) => !name.endsWith(TEST_SUFFIX))
-    .sort()
-    .map((name) => `${ACCEPTANCE_TEST_DIR}${name}`);
-}
-
 /**
  * A set of files rendered as the files themselves rather than as a list of paths
- * ([ADR-0098](../../../docs/adr/0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md)).
- *
- * One rendering serves both sections the author is shown — its ticket's `## Files claimed`, and the
- * shared readers under `ACCEPTANCE_TEST_DIR` — because they are the same act: put the file's real
- * text in front of the model instead of its name. `whenEmpty` is the only thing that differs, and
- * it has to: *this ticket claims no files* and *nothing shared exists yet* are different facts, and
- * an empty fenced block would read as a third one.
- *
- * Lane 04's first production run is what asked for this: authoring #201's four tests blind, the
- * model wrote a YAML mini-parser matching `^on\s*:` against a file that writes `"on":` — quoted,
- * because YAML 1.1 reads a bare `on` as `true` — and a second test asserting the word `acceptance`
- * appears in a workflow job that by construction never names an event type. Two of four tests were
- * wrong, and both were wrong about a file's concrete shape rather than about the criterion.
- *
- * **Inlined, not handed over as a tool.** The stage keeps no toolbelt at all, so "reads its claimed
- * files and nothing else" stays a fact about what reached the prompt rather than a line the model
- * was asked to honour — the same reasoning
- * [ADR-0030](../../../docs/adr/0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md)
- * applies to lane 01's shaper. An allow list of `Read` would have given it the whole repository.
- *
- * Uncapped, deliberately: a truncated file is the half-seen state this exists to remove, and a
- * model shown two thirds of a workflow guesses about the last third exactly as it did about all of
- * it. The bound is the slice's own claim, which lane 03 already sizes to one session.
+ * ([ADR-0098](../../../docs/adr/0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md)):
+ * put the file's real text in front of the model instead of its name, so it matches the shape of
+ * what it asserts against — an export's real signature, a config key that is quoted. Uncapped,
+ * deliberately: a truncated file is the half-seen state this exists to remove, and the bound is
+ * the slice's own claim, which lane 03 already sizes to one session.
  */
 export function renderFiles(
   paths: string[],
@@ -186,26 +116,11 @@ export function renderFiles(
 
 /**
  * The ticket's criteria as the author is shown them: numbered, one per tilde-fenced block, each
- * the exact string `extractCriteria` lifted.
- *
- * **Why the author is handed these rather than asked to find them.** ADR-0098 gave lane 04 its
- * claimed files because a model that cannot see a file guesses about its shape; this is the same
- * move on the ticket's own text. The criterion string is not prose the author paraphrases — it is
- * an identifier. `implement.ts` sends `extractCriteria(ticket.body)` on the verify dispatch, and
- * `verify.yml` selects this slice's tests with `testsForCriteria`, a literal `String.includes` over
- * test source. A test whose copy of the criterion differs by one character selects nothing, and
- * the job fails on the *implementer's* pull request with "no acceptance test names a criterion this
- * dispatch carries" — a defect in the test, charged to somebody who did not write it (ADR-0034).
- *
- * So the exact string the grep will look for is rendered into the prompt, from the same function
- * that produces the one on the wire. Asking the model to re-derive it from `{{ISSUE_BODY}}` by eye
- * was asking it to reimplement `extractCriteria` — including the part where the trailing `check:`
- * marker stays in the string (`docs/agents/ticket-format.md`), which is the character-for-character
- * detail an author reading for meaning drops first.
- *
- * Tilde fences rather than backticks: a criterion may carry backticks of its own, and often does.
- * [ADR-0128](../../../docs/adr/0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md)
- * is the ruling.
+ * the exact string `extractCriteria` lifted. The criterion string is not prose the author
+ * paraphrases — it is an identifier: `testsForCriteria` is a literal `String.includes` over test
+ * source, and a test whose copy differs by one character selects nothing
+ * ([ADR-0128](../../../docs/adr/0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md)).
+ * Tilde fences rather than backticks: a criterion may carry backticks of its own.
  */
 export function renderCriteria(criteria: string[]): string {
   return criteria
@@ -222,25 +137,18 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
-/** `listTestDir`'s default: the names under `ACCEPTANCE_TEST_DIR`, empty when it does not exist. */
-function listTestDirIfPresent(): string[] {
-  try {
-    return readdirSync(join(REPO_DIR, ACCEPTANCE_TEST_DIR));
-  } catch {
-    return [];
-  }
+/** Whether `path` sits inside one of the trees the suite collects. */
+function underSuiteRoot(path: string): boolean {
+  return SUITE_ROOTS.some((root) => path.startsWith(`${root}/`));
 }
 
 /**
- * Runs the author stage and writes what it returns under
- * `ACCEPTANCE_TEST_DIR`, returning the paths written (in the order the
- * model listed them).
- *
- * Throws — without writing anything — when the ticket declares no
- * acceptance criteria, or when the model names a path outside
- * `ACCEPTANCE_TEST_DIR`: a test written wherever the model felt like isn't
- * this lane's to place, and `push-gate.ts` never gets a chance to refuse it
- * either, since nothing here has committed it yet.
+ * Runs the author stage and writes what it returns, returning the files (in the order the model
+ * listed them). Throws — without writing anything — when the ticket declares no acceptance
+ * criteria, when the model names a path outside the suite's trees (a test written wherever the
+ * model felt like never runs), or when a test file it wrote carries no `test.fails(` naming this
+ * ticket (a test with no marker is one the implementer cannot turn on and `bin/close-ticket`
+ * cannot see).
  */
 export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredFile[]> {
   const criteria = extractCriteria(deps.ticket.body);
@@ -257,36 +165,112 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
       ISSUE_TITLE: deps.ticket.title,
       ISSUE_BODY: deps.ticket.body,
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
-      TEST_DIR: ACCEPTANCE_TEST_DIR,
       CRITERIA: renderCriteria(criteria),
       CRITERIA_COUNT: String(criteria.length),
-      CLAIMED_FILES: renderFiles(
-        extractFilesClaimed(deps.ticket.body),
-        deps.readFile ?? readIfPresent,
-        NO_CLAIMED_FILES,
-      ),
-      SHARED_FILES: renderFiles(
-        sharedTestFiles(deps.listTestDir ?? listTestDirIfPresent),
-        deps.readFile ?? readIfPresent,
-        NO_SHARED_FILES,
-      ),
+      CLAIMED_FILES: renderFiles(extractFilesClaimed(deps.ticket.body), deps.readFile ?? readIfPresent, NO_CLAIMED_FILES),
     },
     deps.exec,
     AUTHOR_OUTPUT,
     { model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
   );
 
+  const marker = new RegExp(`${FAILS_CALL.source}[^\\n]*#${deps.issueNumber}\\b`);
   for (const file of answer.files) {
-    if (!file.path.startsWith(ACCEPTANCE_TEST_DIR)) {
-      throw new Error(`author wrote outside ${ACCEPTANCE_TEST_DIR}: ${file.path}`);
+    if (!underSuiteRoot(file.path)) {
+      throw new Error(`author wrote outside ${SUITE_ROOTS.join("/, ")}/: ${file.path}`);
+    }
+    if (file.path.endsWith(".test.ts") && !marker.test(file.content)) {
+      throw new Error(`author wrote a test with no test.fails( naming #${deps.issueNumber}: ${file.path}`);
     }
   }
-
-  for (const file of answer.files) {
-    deps.writeFile(file.path, file.content);
+  if (!answer.files.some((file) => file.path.endsWith(".test.ts"))) {
+    throw new Error(`author wrote no test file for #${deps.issueNumber}`);
   }
 
+  for (const file of answer.files) deps.writeFile(file.path, file.content);
   return answer.files;
+}
+
+export interface LandDeps {
+  /** Runs the authored test files and classifies the result. Defaults to a real vitest run over them. */
+  runTests: (paths: string[]) => TestRunResult;
+  /** Lints the authored paths, returning the report when it found something and `null` when clean. */
+  lint: (paths: string[]) => string | null;
+  git: GitExec;
+  /** Every file this run is landing, repo-relative — tests and stub entry points alike. */
+  paths: string[];
+  /** CLAUDE.md: explains why, not what — the caller's to write. */
+  commitMessage: string;
+  /** `"commit"` when a `contents: write` job does the push (ADR-0091); `"push"` otherwise. */
+  landing: Landing;
+}
+
+export type LandOutcome = { verdict: "pushed" } | { verdict: "refused"; reason: string };
+
+/**
+ * Where a commit this gate clears actually lands. ADR-0091: a job that spends a model holds
+ * `contents: read`, so it cannot push; `acceptance.yml`'s model job commits and its `land` job
+ * pushes. `ACCEPTANCE_LANDING=commit` selects that split; `"push"` is the workstation default.
+ */
+export type Landing = "push" | "commit";
+
+export function landingFromEnv(env: NodeJS.ProcessEnv = process.env): Landing {
+  return env.ACCEPTANCE_LANDING === "commit" ? "commit" : "push";
+}
+
+/**
+ * The gate a freshly authored batch has to clear before it is trusted with a commit on `main` —
+ * no PR, no review, because a model wrote it from the spec alone. Two questions, both answered by
+ * running the batch: did every file collect (a typo'd import proves nothing about the subject),
+ * and is every test green under its `test.fails` (a red one is a test that already passes, which
+ * is vacuous or about work already done). Then lint, because lane 04 lands with no review and this
+ * is the only venue that can refuse a file the repo cannot accept ([ADR-0102](../../../docs/adr/0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md)).
+ * Refuses before any git call, so a refused run leaves `main` untouched.
+ */
+export function landAuthoredBatch(deps: LandDeps): LandOutcome {
+  const tests = deps.paths.filter((path) => path.endsWith(".test.ts"));
+  const result = deps.runTests(tests);
+  if (!result.collected) {
+    return { verdict: "refused", reason: `a test file failed to collect: ${result.collectionError ?? "no detail reported"}` };
+  }
+  if (result.failures.length > 0) {
+    const names = result.failures.map((failure) => failure.name).join(", ");
+    return {
+      verdict: "refused",
+      reason:
+        `${result.failures.length} test(s) are red under test.fails, which means they already pass — ` +
+        `a vacuous test or one about work already done: ${names}`,
+    };
+  }
+  const lintReport = deps.lint(deps.paths);
+  if (lintReport !== null) {
+    return { verdict: "refused", reason: `the authored files do not lint:\n${lintReport}` };
+  }
+
+  deps.git(["add", ...deps.paths]);
+  deps.git(["commit", "-m", deps.commitMessage]);
+  if (deps.landing === "push") {
+    deps.git(["fetch", "origin", "main"]);
+    deps.git(["rebase", "origin/main"]);
+    deps.git(["push", "origin", "HEAD:main"]);
+  }
+  return { verdict: "pushed" };
+}
+
+/**
+ * The real `lint`: the repo's own eslint over exactly the paths being landed — this gate answers
+ * "may *these* files land", and a pre-existing finding elsewhere is not this batch's to be refused
+ * for. eslint exits non-zero on any finding, so the report is read off the caught error.
+ */
+export function runEslint(paths: string[], repoDir: string = process.cwd()): string | null {
+  if (paths.length === 0) return null;
+  try {
+    execFileSync("npx", ["eslint", ...paths], { cwd: repoDir, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
+    return null;
+  } catch (err) {
+    const output = (err as { stdout?: string }).stdout;
+    return typeof output === "string" && output.trim() !== "" ? output.trim() : reason(err);
+  }
 }
 
 export interface RunAcceptanceDeps {
@@ -294,22 +278,18 @@ export interface RunAcceptanceDeps {
   exec: StageExec;
   writeFile: (path: string, content: string) => void;
   issueNumber: number;
-  /** Runs the freshly written suite for `push-gate.ts` to classify. Defaults to a real vitest run over `ACCEPTANCE_TEST_DIR`. */
-  runTests?: () => TestRunResult | Promise<TestRunResult>;
-  /** Lints the freshly written files for the gate to refuse on (ADR-0102). Defaults to a real eslint run over them. */
+  runTests?: (paths: string[]) => TestRunResult;
   lint?: (paths: string[]) => string | null;
   git?: GitExec;
-  /** Passed through to the gate. `"commit"` when a `contents: write` job does the push (ADR-0091). */
   landing?: Landing;
 }
 
 /**
- * The whole authoring flow, end to end: read the ticket (and its parent PRD,
- * when it names one), author the tests, and hand what was written to
- * `push-gate.ts`. Never opens a PR — `readTicket` is the only `GhExec` call
- * anywhere in this function, and it is a read.
+ * The whole authoring flow, end to end: read the ticket (and its parent PRD, when it names one),
+ * author the tests, and hand what was written to the gate. Never opens a PR — `readTicket` is the
+ * only `GhExec` call anywhere in this function, and it is a read.
  */
-export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<PushGateOutcome> {
+export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<LandOutcome> {
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);
@@ -323,27 +303,17 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Push
   });
   const paths = files.map((file) => file.path);
 
-  return runPushGate({
-    runTests: deps.runTests ?? (() => runVitestJson(ACCEPTANCE_TEST_DIR, REPO_DIR)),
+  return landAuthoredBatch({
+    runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
     lint: deps.lint ?? ((lintPaths) => runEslint(lintPaths, REPO_DIR)),
-    // The gate reads what the author actually returned rather than re-opening the files it just
-    // wrote: same bytes, one fewer thing that can be true of the disk and false of the answer.
-    readSource: (path) => files.find((file) => file.path === path)?.content ?? "",
-    // `execGit` carries no working directory of its own (`shared/git.ts`'s own docstring): every
-    // caller threads the repo it means through argv, so this binds `-C REPO_DIR` in once here
-    // rather than teaching `push-gate.ts`'s `commitAndPush` its own repoDir parameter.
     git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
     paths,
     commitMessage: authorCommitMessage(deps.issueNumber, paths),
-    landing: deps.landing,
+    landing: deps.landing ?? "push",
   });
 }
 
-/**
- * Every sub-issue number attached under `prdNumber` — a slice this spec was cut into. Reads the
- * same `subIssuesPath` `publish-sub-issues.ts` writes and `lost-dispatch-counter.ts` counts, so a
- * fourth spelling of that path never has to exist.
- */
+/** Every sub-issue number attached under `prdNumber` — a slice this spec was cut into. */
 function readSliceNumbers(gh: GhExec, prdNumber: number): number[] {
   const raw = gh(["api", subIssuesPath(prdNumber)]);
   const issues = JSON.parse(raw) as Array<{ number: number }>;
@@ -356,20 +326,14 @@ export interface RefireDeps {
   prdNumber: number;
   /** Called once per affected slice, in ascending slice-number order — the re-fire itself. */
   authorForSlice: (sliceNumber: number) => void | Promise<void>;
-  /** Where existing acceptance tests live. Defaults to `ACCEPTANCE_DIR`. */
-  testsDir?: string;
+  /** The checkout whose suite is searched for existing tests. Defaults to this repository. */
+  root?: string;
 }
 
 /**
  * ADR-0033's re-entry trigger, end to end: read the edited spec and every slice it was cut into,
- * find which of each slice's own criteria an existing test in `testsDir` already proves
- * (`testsForCriteria`, one slice's criteria at a time — so a criterion no slice's test has ever
- * proved contributes nothing to the diff), hand that record to `affectedSlices`, and call
- * `deps.authorForSlice` once per slice it names.
- *
- * Nothing here re-authors a slice whose criteria are all still present, and nothing here reacts
- * to a criterion newly added to the spec with no existing test — both are exactly what
- * `affectedSlices` refuses to do, on the record this function builds for it.
+ * find which of each slice's own criteria an existing test already proves, hand that record to
+ * `affectedSlices`, and call `deps.authorForSlice` once per slice it names.
  */
 export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
   const prd = readTicket(deps.gh, deps.prdNumber);
@@ -379,16 +343,12 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
   for (const sliceNumber of sliceNumbers) {
     const slice = readTicket(deps.gh, sliceNumber);
     for (const criterion of extractCriteria(slice.body)) {
-      if (testsForCriteria([criterion], deps.testsDir).length > 0) {
-        existingTests.push({ sliceNumber, criterion });
-      }
+      if (testsForCriteria([criterion], deps.root).length > 0) existingTests.push({ sliceNumber, criterion });
     }
   }
 
   const affected = affectedSlices(prd.body, existingTests);
-  for (const { sliceNumber } of affected) {
-    await deps.authorForSlice(sliceNumber);
-  }
+  for (const { sliceNumber } of affected) await deps.authorForSlice(sliceNumber);
   return affected;
 }
 
@@ -396,38 +356,20 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
 function authorCommitMessage(issueNumber: number, paths: string[]): string {
   return `Author acceptance tests for #${issueNumber} from the spec alone
 
-Nobody has implemented #${issueNumber} yet, so these are expected to fail —
-that's what makes them acceptance tests rather than a report on working code.
+Nobody has implemented #${issueNumber} yet, so every test here is test.fails — green until the
+work lands, and the implementer turns each on by dropping .fails from its line (#360).
 ${paths.map((path) => `- ${path}`).join("\n")}
 
 Part of #162`;
 }
 
-/**
- * Resolved against `REPO_DIR`, like every other read/spawn in this file (`readIfPresent`,
- * `runEslint`, `runVitestJson`, the git calls) — a bare relative `writeFileSync` lands in whatever
- * directory the process happens to have as its cwd, which under the reusable workflow (#315) is
- * the machine checkout, not `target/`. The write would silently succeed there while every reader
- * that does resolve against `REPO_DIR` (eslint, vitest, `git add`) looks in `target/` and finds
- * nothing — the failure this shipped without a caller ever exercising a first-time authoring run
- * against a real `TARGET_WORKSPACE` (#327's dispatch was the first).
- */
+/** Resolved against `REPO_DIR`, like every other read/spawn in this file. */
 function fsWriteFile(path: string, content: string): void {
   const resolved = join(REPO_DIR, path);
   mkdirSync(dirname(resolved), { recursive: true });
   writeFileSync(resolved, content, "utf8");
 }
 
-/**
- * `--refire`'s per-slice call: re-runs the same authoring flow `main()`'s single-issue mode does,
- * against the affected slice, and throws when it refuses — a re-fire that silently drops a
- * refused slice would look identical to one that succeeded.
- *
- * Under `ACCEPTANCE_LANDING=commit` (ADR-0091's split, which is how `acceptance.yml` runs it) the
- * throw is also what makes a multi-slice re-fire all-or-nothing: the commits sit unpushed in the
- * model job's working tree, and the job that pushes them never starts. Under the old arrangement
- * the slices before the refusal had already landed on `main` individually.
- */
 async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
   const outcome = await runAcceptanceAuthor({
     gh: execGh,
@@ -436,9 +378,7 @@ async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
     issueNumber: sliceNumber,
     landing: landingFromEnv(),
   });
-  if (outcome.verdict === "refused") {
-    throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
-  }
+  if (outcome.verdict === "refused") throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
 }
 
 async function main(): Promise<void> {
@@ -450,11 +390,7 @@ async function main(): Promise<void> {
       return;
     }
     try {
-      const affected = await refireAcceptance({
-        gh: execGh,
-        prdNumber: Number(prdArg),
-        authorForSlice: authorForSliceInProcess,
-      });
+      const affected = await refireAcceptance({ gh: execGh, prdNumber: Number(prdArg), authorForSlice: authorForSliceInProcess, root: REPO_DIR });
       console.log(
         affected.length === 0
           ? "no slice's test lost its criterion; nothing re-fired"

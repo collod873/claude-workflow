@@ -150,7 +150,8 @@ jobs:
       # them alike.
       #
       # **`Immutability` blocks outright.** It is the alarm that an implementer's diff touched
-      # `tests/acceptance/`, `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054) — a diff that can
+      # `vitest.config.ts` or `.github/` (ADR-0053/ADR-0054), or rewrote a `test.fails(` acceptance
+      # test rather than only dropping its `.fails` (#360) — a diff that can
       # silence a check has invalidated whatever this lane's own gauntlet just said about it. A
       # failing one refuses the merge, and so does a job that is skipped, cancelled or still
       # running: `verify.yml` skips that job on its `push: main` runs and waves the skip through in

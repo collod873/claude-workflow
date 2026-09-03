@@ -97,7 +97,7 @@ describe("a workflow that checks out grants itself contents", () => {
  *    permissions nobody needs — which is how a guard trains its readers to widen tokens. So this
  *    walks a symbol-level call graph from the entrypoint's module body outwards.
  *
- * **Conditional writes are over-approximated, deliberately.** `acceptance/push-gate.ts` skips its
+ * **Conditional writes are over-approximated, deliberately.** `acceptance/acceptance.ts` skips its
  * push under `ACCEPTANCE_LANDING=commit`; a write that some runs skip is still a write the token
  * has to be able to perform on the runs that don't, and a deriver that tried to evaluate runtime
  * gates would be a partial interpreter. The single exception is the ADR-0091 seam itself, below:

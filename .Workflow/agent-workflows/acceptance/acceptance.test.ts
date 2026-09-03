@@ -1,26 +1,44 @@
-import { join } from "node:path";
-import { writeFileSync } from "node:fs";
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { SUITE_ROOTS } from "../shared/affected-tests";
+import type { GhExec } from "../shared/gh";
+import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
+import { createFakeGit } from "../shared/git.fake";
 import { scratchDir } from "../shared/scratch.fixture";
 import { createFakeStage, type FakeStage } from "../shared/stage.fake";
-import { CRITERIA_ITEM_RE, extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
+import { extractCriteria, type TicketRead } from "../shared/ticket-shape";
+import type { TestRunResult } from "../shared/vitest-json";
 import {
-  ACCEPTANCE_TEST_DIR,
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
+  landAuthoredBatch,
+  landingFromEnv,
   NO_CLAIMED_FILES,
-  NO_SHARED_FILES,
   refireAcceptance,
   renderCriteria,
   renderFiles,
   runAcceptanceAuthor,
-  sharedTestFiles,
+  type AuthoredFile,
+  type LandDeps,
 } from "./acceptance";
 
+/**
+ * Lane 04 after #360: the author writes `test.fails` tests beside their subjects, the gate refuses
+ * a batch that is not green-under-fails or does not lint, and the whole flow never opens a pull
+ * request. The model is `createFakeStage`, the tracker is `createFakeGh` with the two reads this
+ * lane makes answered in front of it, and git is `createFakeGit` — so every assertion here is on
+ * what was sent, never on what a model would say.
+ */
+
+const ISSUE = 162;
+const PRD = 145;
+const SUBJECT = ".Workflow/agent-workflows/shared/widget.ts";
+const TEST_PATH = ".Workflow/agent-workflows/shared/widget.test.ts";
 
 const TICKET_BODY = `## Parent PRD
-#145
+#${PRD}
 
 ## What to build
 Do the thing.
@@ -30,458 +48,433 @@ Do the thing.
 - [ ] \`make test\` exits 0 with a test asserting exactly one push
 
 ## Files claimed
-- .Workflow/agent-workflows/acceptance/acceptance.ts
+- ${SUBJECT}
 `;
 
 const PRD_BODY = `## What to build
-The larger feature #162 is one slice of.
+The larger feature #${ISSUE} is one slice of.
 `;
 
-function authorResponse(files: Array<{ path: string; content: string }>): string {
-  return JSON.stringify({ files });
+const TICKET: TicketRead = { title: "Author acceptance tests", body: TICKET_BODY };
+
+/** A test file carrying the one marker the author must leave: `test.fails(` naming the ticket. */
+function failsTest(issue: number = ISSUE): string {
+  const [criterion] = extractCriteria(TICKET_BODY);
+  return `import { expect, test } from "vitest";\n// ${criterion}\ntest.fails("#${issue}: no push", () => {\n  expect(1).toBe(2);\n});\n`;
+}
+
+function answer(files: AuthoredFile[]): FakeStage {
+  return createFakeStage(JSON.stringify({ files }));
 }
 
 /**
- * Runs the author against `TICKET_BODY` with `readFile` standing in for the checkout, and hands
- * back the fake stage — so a test can read the prompt that was actually built (ADR-0098) rather
- * than restate the wiring that builds it.
- */
-async function authorAgainst(
-  readFile: (path: string) => string | undefined,
-  listTestDir: () => string[] = () => [],
-): Promise<FakeStage> {
-  const stage = createFakeStage(
-    authorResponse([{ path: `${ACCEPTANCE_TEST_DIR}162-x.test.ts`, content: "// x\n" }]),
-  );
-  await authorAcceptanceTests({
-    exec: stage.exec,
-    writeFile: () => {},
-    issueNumber: 162,
-    ticket: { title: "t", body: TICKET_BODY },
-    readFile,
-    listTestDir,
-  });
-  return stage;
-}
-
-/**
- * `authorAgainst`'s write-side sibling: starts the author against `ticket` with `files` as its
- * canned answer, and hands back the attempt alongside what reaches `writeFile` — so a refusal
- * test can await the rejection and then show the map stayed empty.
+ * Starts the author with `files` as the model's answer and hands back the attempt beside what
+ * reached `writeFile` — so a refusal test can await the rejection and then show nothing was written.
  */
 function authoring(
-  files: Array<{ path: string; content: string }>,
-  ticket: { title: string; body: string },
-  issueNumber = 162,
-): { attempt: ReturnType<typeof authorAcceptanceTests>; written: Map<string, string> } {
-  const stage = createFakeStage(authorResponse(files));
-  const written = new Map<string, string>();
+  files: AuthoredFile[],
+  options: { ticket?: TicketRead; readFile?: (path: string) => string | undefined; prdBody?: string } = {},
+): { attempt: Promise<AuthoredFile[]>; written: string[]; stage: FakeStage } {
+  const stage = answer(files);
+  const written: string[] = [];
   const attempt = authorAcceptanceTests({
     exec: stage.exec,
-    writeFile: (path, content) => written.set(path, content),
-    issueNumber,
-    ticket,
-    prdBody: PRD_BODY,
-    listTestDir: () => [],
+    writeFile: (path) => written.push(path),
+    issueNumber: ISSUE,
+    ticket: options.ticket ?? TICKET,
+    prdBody: options.prdBody,
+    readFile: options.readFile ?? (() => undefined),
   });
-  return { attempt, written };
+  return { attempt, written, stage };
 }
 
-/**
- * Runs the author against `TICKET_BODY` with `files` as its canned answer, and hands back what
- * reached `writeFile` — for the tests about which paths the author accepts and what it puts at
- * them, rather than about the prompt it built.
- */
-async function authorWriting(
-  files: Array<{ path: string; content: string }>,
-): Promise<{ paths: string[]; written: Map<string, string> }> {
-  const { attempt, written } = authoring(files, { title: "Author acceptance tests", body: TICKET_BODY });
-  const authored = await attempt;
-  return { paths: authored.map((file) => file.path), written };
+/** The prompt the author was actually handed — over stdin, since it inlines whole files. */
+async function promptFor(options: Parameters<typeof authoring>[1] = {}): Promise<string> {
+  const { attempt, stage } = authoring([{ path: TEST_PATH, content: failsTest() }], options);
+  await attempt;
+  expect(stage.stdins[0], "the author's prompt goes over stdin").toBeDefined();
+  return stage.stdins[0] as string;
 }
-
-describe("extractCriteria", () => {
-  it("reads criteria matched via CRITERIA_ITEM_RE, verbatim, in order", () => {
-    const criteria = extractCriteria(TICKET_BODY);
-    expect(criteria).toEqual([
-      "`make test` exits 0 with a test asserting a fake `GitExec` receives no push",
-      "`make test` exits 0 with a test asserting exactly one push",
-    ]);
-    // Every line this reads must actually match the shared grammar — proves this
-    // isn't a second, independently-spelled parser.
-    for (const line of TICKET_BODY.split("\n")) {
-      if (line.includes("no push") || line.includes("exactly one push")) {
-        expect(CRITERIA_ITEM_RE.test(line)).toBe(true);
-      }
-    }
-  });
-});
-
-describe("parentPrdNumber", () => {
-  it("reads the ## Parent PRD heading render-body.ts writes", () => {
-    expect(parentPrdNumber(TICKET_BODY)).toBe(145);
-  });
-
-  it("is undefined when the body carries no such heading", () => {
-    expect(parentPrdNumber("## What to build\nsomething\n")).toBeUndefined();
-  });
-});
 
 describe("authorAcceptanceTests", () => {
-  it("writes the model's files, each carrying its criterion's text verbatim", async () => {
-    const [firstCriterion] = extractCriteria(TICKET_BODY);
-    const { paths, written } = await authorWriting([
-      {
-        path: `${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`,
-        content: `// ${firstCriterion}\nimport { describe, it, expect } from "vitest";\ndescribe("x", () => { it("y", () => { expect(true).toBe(false); }); });\n`,
-      },
-    ]);
-
-    expect(paths).toEqual([`${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`]);
-    const content = written.get(`${ACCEPTANCE_TEST_DIR}162-no-push-on-collection-error.test.ts`);
-    expect(content).toBeDefined();
-    // The criterion string appears verbatim in the written test.
-    expect(content).toContain(firstCriterion);
+  it("hands the author each criterion verbatim, fenced, with the count", async () => {
+    // ADR-0128: the criterion string is an identifier `testsForCriteria` greps for, so what the
+    // author copies from has to be byte-identical to what the grep looks for.
+    const prompt = await promptFor();
+    for (const criterion of extractCriteria(TICKET_BODY)) expect(prompt).toContain(`~~~\n${criterion}\n~~~`);
+    expect(prompt).toContain("2 acceptance criteria");
   });
 
-  // ADR-0098. Lane 04's first production run wrote two tests that were wrong about the *shape* of
-  // a file the criterion named — a quoted YAML key read as bare, a job asserted to contain a
-  // string it structurally cannot. The fix is that the file reaches the prompt, so both of these
-  // assert on the prompt rather than on anything a model would say with it.
-  it("shows the author the current contents of every file the ticket claims", async () => {
-    const stage = await authorAgainst((path) =>
-      path === ".Workflow/agent-workflows/acceptance/acceptance.ts" ? '"on": quoted\n' : undefined,
-    );
-
-    const prompt = stage.stdins[0];
-    expect(prompt, "the author's prompt goes over stdin").toBeDefined();
-    expect(prompt).toContain(".Workflow/agent-workflows/acceptance/acceptance.ts");
-    expect(prompt, "the claimed file's own text, not just its path").toContain('"on": quoted');
+  it("shows the author the text of every file the ticket claims, not just its path", async () => {
+    // ADR-0098: the first production run asserted a quoted YAML key was bare. The file itself
+    // reaches the prompt so the author matches the shape of what it asserts against.
+    const prompt = await promptFor({ readFile: (path) => (path === SUBJECT ? '"on": quoted\n' : undefined) });
+    expect(prompt).toContain(SUBJECT);
+    expect(prompt).toContain('"on": quoted');
   });
 
-  // #227: `sharedTestFiles` reaches the author the same way its claimed files do, through the
-  // same renderer. Its docstring in `acceptance.ts` is the home for why.
-  it("shows the author the non-test files already sitting under the acceptance test dir", async () => {
-    const stage = await authorAgainst(
-      (path) =>
-        path === `${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`
-          ? "export function topLevelBlock() {}\n"
-          : undefined,
-      () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
-    );
-
-    const prompt = stage.stdins[0];
-    expect(prompt).toContain(`${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`);
-    expect(prompt, "the shared reader's own text, not just its path").toContain(
-      "export function topLevelBlock()",
-    );
+  it("says a claimed file does not exist yet rather than showing it empty", async () => {
+    expect(await promptFor()).toContain(CLAIMED_FILE_ABSENT);
   });
 
-  // Not the sibling tests, though: what the author needs is what it may reuse, and every test this
-  // lane has ever written would grow the prompt on every run without giving it anything to import.
-  it("does not paste the acceptance tests themselves into the prompt", async () => {
-    const stage = await authorAgainst(
-      () => "// contents of whatever was asked for\n",
-      () => ["201-one.test.ts", "workflow-shape.fixture.ts"],
-    );
-
-    expect(stage.stdins[0]).not.toContain(`${ACCEPTANCE_TEST_DIR}201-one.test.ts`);
+  it("hands the author the parent PRD, and says when there is none", async () => {
+    expect(await promptFor({ prdBody: PRD_BODY })).toContain(PRD_BODY);
+    expect(await promptFor()).toContain("(no parent PRD)");
   });
 
-  it("puts the exact criterion strings in the prompt, not just the body they came from", async () => {
-    // ADR-0128. Without this the author re-derives them by eye from {{ISSUE_BODY}}, and a copy that
-    // differs by one character selects no test in verify.yml's grep — failing the *implementer's*
-    // pull request for a test the implementer did not write (ADR-0034).
-    const stage = await authorAgainst(() => undefined);
-    const prompt = stage.stdins[0] as string;
-
-    for (const criterion of extractCriteria(TICKET_BODY)) {
-      expect(prompt).toContain(`~~~\n${criterion}\n~~~`);
-    }
-    expect(prompt, "the count, so the author can check its own coverage").toContain("2 acceptance criteria");
-  });
-
-  it("says nothing shared exists yet rather than showing an empty section", async () => {
-    const stage = await authorAgainst(() => undefined, () => []);
-    expect(stage.stdins[0]).toContain(NO_SHARED_FILES);
-  });
-
-  // A reader more than one of the run's files needs belongs beside them, and `push-gate.ts` is
-  // never reached if this throws first.
-  it("writes a .fixture.ts the model puts beside the tests, rather than refusing it", async () => {
-    const { paths, written } = await authorWriting([
-      { path: `${ACCEPTANCE_TEST_DIR}162-one.test.ts`, content: "// one\n" },
-      { path: `${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`, content: "export const x = 1;\n" },
-    ]);
-
-    expect(paths).toContain(`${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`);
-    expect(written.get(`${ACCEPTANCE_TEST_DIR}reads-the-workflow.fixture.ts`)).toBe("export const x = 1;\n");
-  });
-
-  // The reach is what reached the prompt, not a line the model was asked to honour (ADR-0098) —
-  // so the stage keeps no toolbelt, and an allow list would have granted the whole checkout.
   it("gives the author no tools to read anything else with", async () => {
-    const stage = await authorAgainst(() => undefined);
+    const { attempt, stage } = authoring([{ path: TEST_PATH, content: failsTest() }]);
+    await attempt;
     expect(stage.calls[0]).not.toContain("--allowedTools");
   });
 
-  it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
-    const { attempt, written } = authoring(
-      [{ path: `${ACCEPTANCE_TEST_DIR}x.test.ts`, content: "x" }],
-      { title: "No criteria", body: "## What to build\nnothing declared\n" },
-      999,
-    );
-
-    await expect(attempt).rejects.toThrow(/no acceptance criteria/);
-    expect(written.size).toBe(0);
+  it("writes every file the model returned, in the model's order, stubs included", async () => {
+    const stub = { path: SUBJECT, content: `export function widget(): never {\n  throw new Error("#${ISSUE}: not built");\n}\n` };
+    const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, stub]);
+    const files = await attempt;
+    expect(files.map((file) => file.path)).toEqual([TEST_PATH, SUBJECT]);
+    expect(written).toEqual([TEST_PATH, SUBJECT]);
   });
 
-  it("throws, writing nothing, when the model names a path outside the acceptance test dir", async () => {
-    const { attempt, written } = authoring([{ path: "src/whoops.ts", content: "x" }], { title: "t", body: TICKET_BODY });
+  it("accepts it.fails( as the marker too", async () => {
+    const content = failsTest().replace("test.fails(", "it.fails(");
+    const { attempt, written } = authoring([{ path: TEST_PATH, content }]);
+    await attempt;
+    expect(written).toEqual([TEST_PATH]);
+  });
 
-    await expect(attempt).rejects.toThrow(/outside/);
-    expect(written.size).toBe(0);
+  it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
+    const ticket = { title: "No criteria", body: "## What to build\nnothing declared\n" };
+    const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }], { ticket });
+    await expect(attempt).rejects.toThrow(/no acceptance criteria/);
+    expect(written).toEqual([]);
+  });
+
+  it.each(["tests/acceptance/162-x.test.ts", "src/widget.test.ts", ".Workflowish/x.test.ts"])(
+    "throws, writing nothing, when a path is outside the suite's trees (%s)",
+    async (path) => {
+      // A test written wherever the model felt like never runs: the suite collects only SUITE_ROOTS.
+      const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, { path, content: failsTest() }]);
+      await expect(attempt).rejects.toThrow(new RegExp(`outside ${SUITE_ROOTS.join("/, ")}/`));
+      expect(written).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["a plain test(", failsTest().replace("test.fails(", "test(")],
+    ["a test.fails( naming another ticket", failsTest(999)],
+    ["no test at all", "export const nothing = 1;\n"],
+  ])("throws, writing nothing, when a test file carries %s", async (_shape, content) => {
+    // A test with no marker is one the implementer cannot turn on and close-ticket cannot see.
+    const { attempt, written } = authoring([{ path: TEST_PATH, content }]);
+    await expect(attempt).rejects.toThrow(new RegExp(`no test.fails\\( naming #${ISSUE}`));
+    expect(written).toEqual([]);
+  });
+
+  it("throws, writing nothing, when the model returned only stubs and no test", async () => {
+    const { attempt, written } = authoring([{ path: SUBJECT, content: "export const widget = 1;\n" }]);
+    await expect(attempt).rejects.toThrow(/no test file/);
+    expect(written).toEqual([]);
   });
 });
 
 describe("renderCriteria", () => {
-  // ADR-0128: the criterion string is an identifier, matched by `String.includes` on the far side
-  // of a dispatch, so what the author is shown has to be byte-identical to what the grep looks for.
-  it("shows each criterion exactly as extractCriteria lifted it, numbered and fenced", () => {
+  it("numbers each criterion and shows it exactly as extracted, tilde-fenced", () => {
     const rendered = renderCriteria(extractCriteria(TICKET_BODY));
-
     expect(rendered).toContain("### Criterion 1");
     expect(rendered).toContain("### Criterion 2");
-    for (const criterion of extractCriteria(TICKET_BODY)) {
-      expect(rendered).toContain(`~~~\n${criterion}\n~~~`);
-    }
+    for (const criterion of extractCriteria(TICKET_BODY)) expect(rendered).toContain(`~~~\n${criterion}\n~~~`);
   });
 
   it("fences with tildes, so a criterion carrying backticks survives the render", () => {
-    // Every criterion in TICKET_BODY carries backticks, and a criterion with a `check:` marker
-    // carries a fenced command inside itself — a backtick fence here would end at the wrong place.
-    const rendered = renderCriteria(["`make test` exits 0 — check: `make test`"]);
-
-    expect(rendered).toContain("~~~\n`make test` exits 0 — check: `make test`\n~~~");
+    expect(renderCriteria(["`make test` exits 0 — check: `make test`"])).toContain(
+      "~~~\n`make test` exits 0 — check: `make test`\n~~~",
+    );
   });
 });
 
 describe("renderFiles", () => {
-  it("renders each file's contents under its own path, in the order it was given", () => {
-    const rendered = renderFiles(
-      ["a/one.ts", "b/two.ts"],
-      (path: string) => `contents of ${path}`,
-      NO_CLAIMED_FILES,
-    );
+  it("renders each file's contents under its own path, in the order given", () => {
+    const rendered = renderFiles(["a/one.ts", "b/two.ts"], (path) => `contents of ${path}`, NO_CLAIMED_FILES);
     expect(rendered.indexOf("a/one.ts")).toBeLessThan(rendered.indexOf("b/two.ts"));
-    expect(rendered).toContain("contents of a/one.ts");
-    expect(rendered).toContain("contents of b/two.ts");
+    expect(rendered).toContain("```\ncontents of a/one.ts\n```");
   });
 
-  // The ordinary case for a slice whose whole job is to create the file. Saying so beats an empty
-  // fenced block, which reads as "this file exists and is empty" — a different fact entirely.
-  it("says so, rather than showing an empty block, when a claimed file does not exist yet", () => {
-    expect(renderFiles(["not/created/yet.ts"], () => undefined, NO_CLAIMED_FILES)).toContain(
-      CLAIMED_FILE_ABSENT,
-    );
+  it("says a file is absent rather than showing an empty block", () => {
+    expect(renderFiles(["not/yet.ts"], () => undefined, NO_CLAIMED_FILES)).toContain(CLAIMED_FILE_ABSENT);
   });
 
-  // `renderFiles`'s `whenEmpty` — the one thing the two sections cannot share; see its docstring.
   it("stands the caller's own sentence in for an empty list", () => {
     expect(renderFiles([], () => "unused", NO_CLAIMED_FILES)).toBe(NO_CLAIMED_FILES);
-    expect(renderFiles([], () => "unused", NO_SHARED_FILES)).toBe(NO_SHARED_FILES);
   });
 });
 
-describe("sharedTestFiles", () => {
-  it("names the non-test files under the acceptance dir, and none of the tests beside them", () => {
-    const shared = sharedTestFiles(() => [
-      "201-one.test.ts",
-      "workflow-shape.fixture.ts",
-      "201-two.test.ts",
-    ]);
-    expect(shared).toEqual([`${ACCEPTANCE_TEST_DIR}workflow-shape.fixture.ts`]);
+const GREEN: TestRunResult = { collected: true, failures: [] };
+
+/** Everything the gate needs to say yes, with a recording git; a test overrides one thing. */
+function landing(overrides: Partial<LandDeps> = {}): { deps: LandDeps; git: ReturnType<typeof createFakeGit> } {
+  const git = createFakeGit(() => "");
+  const deps: LandDeps = {
+    runTests: () => GREEN,
+    lint: () => null,
+    git: git.git,
+    paths: [TEST_PATH, SUBJECT],
+    commitMessage: "Author acceptance tests for #162 from the spec alone",
+    landing: "push",
+    ...overrides,
+  };
+  return { deps, git };
+}
+
+function refusal(outcome: ReturnType<typeof landAuthoredBatch>): string {
+  expect(outcome.verdict).toBe("refused");
+  return outcome.verdict === "refused" ? outcome.reason : "";
+}
+
+describe("landAuthoredBatch", () => {
+  it("refuses, before any git call, a batch whose test file did not collect", () => {
+    const { deps, git } = landing({
+      runTests: () => ({ collected: false, collectionError: "widget.test.ts: Cannot find module './widget'", failures: [] }),
+    });
+    expect(refusal(landAuthoredBatch(deps))).toContain("Cannot find module './widget'");
+    expect(git.calls).toEqual([]);
   });
 
-  it("is empty on a checkout where no acceptance test has ever landed", () => {
-    expect(sharedTestFiles(() => [])).toEqual([]);
+  it("refuses, naming the tests, a batch red under test.fails — those already pass", () => {
+    const { deps, git } = landing({
+      runTests: () => ({
+        collected: true,
+        failures: [
+          { name: "#162: no push", errorName: "Error" },
+          { name: "#162: exactly one push", errorName: "Error" },
+        ],
+      }),
+    });
+    const reason = refusal(landAuthoredBatch(deps));
+    expect(reason).toContain("2 test(s) are red under test.fails");
+    expect(reason).toContain("#162: no push, #162: exactly one push");
+    expect(git.calls).toEqual([]);
   });
-});
 
-describe("readTicket", () => {
-  it("reads a ticket through gh issue view --json title,body", () => {
-    const calls: string[][] = [];
-    const gh = (args: string[]) => {
-      calls.push(args);
-      return JSON.stringify({ title: "T", body: TICKET_BODY });
-    };
-
-    const ticket = readTicket(gh, 162);
-    expect(ticket.body).toBe(TICKET_BODY);
-    expect(calls[0]).toEqual(["issue", "view", "162", "--json", "title,body"]);
+  it("refuses, before any git call, a batch the linter has findings on", () => {
+    // ADR-0102: no review stands between this batch and main, so this is the one venue that can
+    // refuse a file the repo cannot accept.
+    const { deps, git } = landing({ lint: () => `${TEST_PATH}\n  3:1  error  no-restricted-syntax` });
+    expect(refusal(landAuthoredBatch(deps))).toContain("3:1  error  no-restricted-syntax");
+    expect(git.calls).toEqual([]);
   });
-});
 
-describe("runAcceptanceAuthor", () => {
-  it("never opens a PR across the whole authoring flow", async () => {
-    const ghCallLog: string[][] = [];
-    const gh = ((args: string[]) => {
-      ghCallLog.push(args);
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "162") {
-        return JSON.stringify({ title: "Ticket", body: TICKET_BODY });
-      }
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "145") {
-        return JSON.stringify({ title: "PRD", body: PRD_BODY });
-      }
-      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
-    }) as (args: string[]) => string;
-
-    const [firstCriterion] = extractCriteria(TICKET_BODY);
-    const stage = createFakeStage(
-      authorResponse([
-        {
-          path: `${ACCEPTANCE_TEST_DIR}162-one.test.ts`,
-          content: `// ${firstCriterion}\n`,
-        },
-      ]),
-    );
-    const written = new Map<string, string>();
-    const gitCalls: string[][] = [];
-
-    const outcome = await runAcceptanceAuthor({
-      gh,
-      exec: stage.exec,
-      writeFile: (path, content) => written.set(path, content),
-      issueNumber: 162,
-      runTests: () => ({ collected: true, failures: [] }),
-      lint: () => null,
-      git: (args: string[]) => {
-        gitCalls.push(args);
-        return "";
+  it("runs only the test files, and lints every file, of the batch", () => {
+    const ran: string[][] = [];
+    const linted: string[][] = [];
+    const { deps } = landing({
+      runTests: (paths) => {
+        ran.push(paths);
+        return GREEN;
+      },
+      lint: (paths) => {
+        linted.push(paths);
+        return null;
       },
     });
+    landAuthoredBatch(deps);
+    expect(ran).toEqual([[TEST_PATH]]);
+    expect(linted).toEqual([[TEST_PATH, SUBJECT]]);
+  });
 
-    expect(outcome.verdict).toBe("pushed");
-    expect(ghCallLog.some((call) => call.includes("create") && call.some((a) => a === "pr"))).toBe(false);
-    expect(ghCallLog.filter((call) => call[0] === "pr")).toEqual([]);
-    expect(gitCalls.filter((call) => call[0] === "push")).toHaveLength(1);
+  it("adds, commits, rebases onto origin/main and pushes HEAD:main when landing is push", () => {
+    const { deps, git } = landing();
+    expect(landAuthoredBatch(deps)).toEqual({ verdict: "pushed" });
+    expect(git.calls).toEqual([
+      ["add", TEST_PATH, SUBJECT],
+      ["commit", "-m", deps.commitMessage],
+      ["fetch", "origin", "main"],
+      ["rebase", "origin/main"],
+      ["push", "origin", "HEAD:main"],
+    ]);
+  });
+
+  it("commits and stops when landing is commit — the contents: write job pushes (ADR-0091)", () => {
+    const { deps, git } = landing({ landing: "commit" });
+    expect(landAuthoredBatch(deps)).toEqual({ verdict: "pushed" });
+    expect(git.calls).toEqual([
+      ["add", TEST_PATH, SUBJECT],
+      ["commit", "-m", deps.commitMessage],
+    ]);
+  });
+});
+
+describe("landingFromEnv", () => {
+  it("is commit only when ACCEPTANCE_LANDING says so, and push otherwise", () => {
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "commit" })).toBe("commit");
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "push" })).toBe("push");
+    expect(landingFromEnv({ ACCEPTANCE_LANDING: "" })).toBe("push");
+    expect(landingFromEnv({})).toBe("push");
+  });
+});
+
+/**
+ * The tracker as this lane reads it: `issue view` for the bodies given and the sub-issue list
+ * under a PRD, answered here; anything else falls through to `createFakeGh`, which models the
+ * publishing writes and throws on the rest — so `fake.calls` staying empty is the proof that the
+ * lane sent nothing but reads.
+ */
+function trackerWith(
+  issues: Record<number, TicketRead>,
+  subIssues: Record<number, number[]> = {},
+): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
+  const fake = createFakeGh();
+  const reads: string[][] = [];
+  const gh: GhExec = (args) => {
+    if (args[0] === "issue" && args[1] === "view") {
+      reads.push(args);
+      const issue = issues[Number(args[2])];
+      if (!issue) throw new Error(`no issue #${args[2]} in this test's tracker`);
+      return JSON.stringify(issue);
+    }
+    for (const [parent, numbers] of Object.entries(subIssues)) {
+      if (args[0] === "api" && args[1] === subIssuesPath(Number(parent)) && !args.includes("-F")) {
+        reads.push(args);
+        return JSON.stringify(numbers.map((number) => ({ number })));
+      }
+    }
+    return fake.gh(args);
+  };
+  return { gh, reads, fake };
+}
+
+describe("runAcceptanceAuthor", () => {
+  const TRACKER = { [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } };
+
+  function run(landingMode: "push" | "commit" = "push") {
+    const tracker = trackerWith(TRACKER);
+    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const git = createFakeGit(() => "");
+    const written: string[] = [];
+    const outcome = runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: (path) => written.push(path),
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      lint: () => null,
+      git: git.git,
+      landing: landingMode,
+    });
+    return { outcome, tracker, stage, git, written };
+  }
+
+  it("reads the ticket and its parent PRD, and sends the tracker nothing else", async () => {
+    const { outcome, tracker, stage } = run();
+    expect(await outcome).toEqual({ verdict: "pushed" });
+    expect(tracker.reads).toEqual([
+      ["issue", "view", String(ISSUE), "--json", "title,body"],
+      ["issue", "view", String(PRD), "--json", "title,body"],
+    ]);
+    expect(tracker.fake.calls, "no write reached gh — this lane never opens a pull request").toEqual([]);
+    expect(stage.stdins[0]).toContain(PRD_BODY);
+  });
+
+  it("lands what it wrote with a commit message naming the ticket, and pushes", async () => {
+    const { outcome, git, written } = run();
+    await outcome;
+    expect(written).toEqual([TEST_PATH]);
+    const commit = git.calls.find((call) => call[0] === "commit");
+    expect(commit?.[2]).toContain(`#${ISSUE}`);
+    expect(commit?.[2]).toContain(TEST_PATH);
+    expect(git.calls.filter((call) => call[0] === "push")).toEqual([["push", "origin", "HEAD:main"]]);
+  });
+
+  it("passes the landing mode through: commit means no push", async () => {
+    const { outcome, git } = run("commit");
+    await outcome;
+    expect(git.calls.map((call) => call[0])).toEqual(["add", "commit"]);
+  });
+
+  it("reads only the ticket when it names no parent PRD", async () => {
+    const tracker = trackerWith({ [ISSUE]: { title: "t", body: TICKET_BODY.replace(`## Parent PRD\n#${PRD}\n\n`, "") } });
+    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    await runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      lint: () => null,
+      git: createFakeGit(() => "").git,
+    });
+    expect(tracker.reads).toHaveLength(1);
+    expect(stage.stdins[0]).toContain("(no parent PRD)");
   });
 });
 
 describe("refireAcceptance", () => {
-  /**
-   * A private directory per test, under the OS temp dir rather than beside this file.
-   *
-   * The fixtures below are named `*.test.ts`, because that is the shape `affectedSlices` greps
-   * for. Written under `.Workflow/` they were also the shape *vitest's own `include` glob* greps
-   * for, so the collector could be reading the directory at the moment `afterEach` removed it —
-   * one `ENOTEMPTY` in a green suite, rare enough to read as noise and frequent enough to red the
-   * pre-push hook and take a lane down with it. `testsDir` is injectable precisely so these never
-   * had to live in the scanned tree; and one directory shared by every test in the describe was
-   * the second half of the same bug.
-   */
-  let REFIRE_TESTS_DIR: string;
+  const PRD_NUMBER = 301;
+  const KEPT = "make test exits 0 with a criterion the edit leaves untouched";
+  const DROPPED = "make test exits 0 with a criterion the edit removes";
+  const OTHER_DROPPED = "make test exits 0 with a second criterion the edit removes";
 
-  beforeEach(() => {
-    REFIRE_TESTS_DIR = scratchDir("refire-acceptance");
-  });
-
-  const KEPT_CRITERION = "make test exits 0 with a criterion the edit leaves untouched";
-  const DROPPED_CRITERION = "make test exits 0 with a criterion the edit removes";
-  const OTHER_KEPT_CRITERION = "make test exits 0 with a second criterion the edit leaves untouched";
-
-  const SLICE_201_BODY = `## Parent PRD
-#301
-
-## Acceptance criteria
-- [ ] ${KEPT_CRITERION}
-- [ ] ${DROPPED_CRITERION}
-
-## Files claimed
-- none
-`;
-
-  const SLICE_202_BODY = `## Parent PRD
-#301
-
-## Acceptance criteria
-- [ ] ${OTHER_KEPT_CRITERION}
-
-## Files claimed
-- none
-`;
-
-  /** The edited spec: still carries both slices' kept criteria, but not #201's dropped one. */
-  const EDITED_PRD_BODY = `## What to build
-${KEPT_CRITERION}
-${OTHER_KEPT_CRITERION}
-`;
-
-  function writeTestFor(sliceNumber: number, fileSlug: string, criterion: string): void {
-    writeFileSync(join(REFIRE_TESTS_DIR, `${sliceNumber}-${fileSlug}.test.ts`), `// ${criterion}\n`, "utf8");
-  }
-
-  /**
-   * A `gh` answering the tracker `refireAcceptance` walks: PRD #301 with `prdBody`, and slices
-   * #201 and #202 as its sub-issues with the given bodies. Not `createFakeGh`: that one models the
-   * publishing side and answers no `issue view`.
-   */
-  function prdWithSlices(prdBody: string, slice201Body: string): (args: string[]) => string {
-    return (args) => {
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "301") {
-        return JSON.stringify({ title: "PRD", body: prdBody });
-      }
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "201") {
-        return JSON.stringify({ title: "Slice 201", body: slice201Body });
-      }
-      if (args[0] === "issue" && args[1] === "view" && args[2] === "202") {
-        return JSON.stringify({ title: "Slice 202", body: SLICE_202_BODY });
-      }
-      if (args[0] === "api" && args[1] === subIssuesPath(301)) {
-        return JSON.stringify([{ number: 201 }, { number: 202 }]);
-      }
-      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+  function slice(criteria: string[]): TicketRead {
+    return {
+      title: "slice",
+      body: `## Parent PRD\n#${PRD_NUMBER}\n\n## Acceptance criteria\n${criteria.map((c) => `- [ ] ${c}`).join("\n")}\n\n## Files claimed\n- none\n`,
     };
   }
 
-  it("calls the acceptance author once for the one slice whose test's criterion the edit dropped", async () => {
-    writeTestFor(201, "kept", KEPT_CRITERION);
-    writeTestFor(201, "dropped", DROPPED_CRITERION);
-    writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
-    const calledFor: number[] = [];
+  /** A checkout whose suite carries one test per (path, criterion) — beside its subject, under `.Workflow/` or `.claude/`. */
+  function checkoutWith(tests: Record<string, string>): string {
+    const root = scratchDir("refire-acceptance");
+    for (const [path, criterion] of Object.entries(tests)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), `// ${criterion}\ntest.fails("#201: x", () => {});\n`, "utf8");
+    }
+    return root;
+  }
 
+  async function refire(prdBody: string, slices: Record<number, TicketRead>, root: string) {
+    const calledFor: number[] = [];
+    const tracker = trackerWith(
+      { [PRD_NUMBER]: { title: "PRD", body: prdBody }, ...slices },
+      { [PRD_NUMBER]: Object.keys(slices).map(Number).reverse() },
+    );
     const affected = await refireAcceptance({
-      gh: prdWithSlices(EDITED_PRD_BODY, SLICE_201_BODY),
-      prdNumber: 301,
+      gh: tracker.gh,
+      prdNumber: PRD_NUMBER,
       authorForSlice: (sliceNumber) => {
         calledFor.push(sliceNumber);
       },
-      testsDir: REFIRE_TESTS_DIR,
+      root,
     });
+    return { affected, calledFor, tracker };
+  }
 
-    expect(affected).toEqual([{ sliceNumber: 201 }]);
-    expect(calledFor).toEqual([201]);
+  it("re-authors exactly the slices whose existing test lost its criterion, in ascending order", async () => {
+    const root = checkoutWith({
+      ".Workflow/x.test.ts": DROPPED,
+      ".claude/hooks/y.test.ts": OTHER_DROPPED,
+      ".Workflow/kept.test.ts": KEPT,
+    });
+    const { affected, calledFor, tracker } = await refire(
+      `## What to build\n${KEPT}\n`,
+      { 202: slice([OTHER_DROPPED]), 201: slice([KEPT, DROPPED]), 203: slice([KEPT]) },
+      root,
+    );
+    expect(affected).toEqual([{ sliceNumber: 201 }, { sliceNumber: 202 }]);
+    expect(calledFor).toEqual([201, 202]);
+    expect(tracker.fake.calls, "reads only").toEqual([]);
   });
 
-  it("calls the acceptance author zero times when nothing changed", async () => {
-    // Both slices' tests still name criteria the (unedited) spec carries.
-    writeTestFor(201, "kept", KEPT_CRITERION);
-    writeTestFor(202, "kept", OTHER_KEPT_CRITERION);
-    const calledFor: number[] = [];
-
-    const affected = await refireAcceptance({
-      gh: prdWithSlices(
-        `## What to build\n${KEPT_CRITERION}\n${OTHER_KEPT_CRITERION}\n`,
-        SLICE_201_BODY.replace(`- [ ] ${DROPPED_CRITERION}\n`, ""),
-      ),
-      prdNumber: 301,
-      authorForSlice: (sliceNumber) => {
-        calledFor.push(sliceNumber);
-      },
-      testsDir: REFIRE_TESTS_DIR,
-    });
-
+  it("re-authors nothing when every existing test's criterion is still in the spec", async () => {
+    const root = checkoutWith({ ".Workflow/x.test.ts": KEPT });
+    const { affected, calledFor } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);
     expect(calledFor).toEqual([]);
+  });
+
+  it("ignores a slice criterion no existing test names — that is a re-slice, not a re-entry (ADR-0079)", async () => {
+    // #201's DROPPED is gone from the spec, but no test ever proved it, so there is nothing to re-author.
+    const root = checkoutWith({ ".Workflow/x.test.ts": KEPT });
+    const { affected } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
+    expect(affected).toEqual([]);
   });
 });

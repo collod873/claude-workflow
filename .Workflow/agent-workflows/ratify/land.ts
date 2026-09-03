@@ -23,8 +23,8 @@ export const RATIFIER_PR_TITLE = "Ratified: standards from this batch";
 /**
  * The one criterion string every ratifier dispatch sends, verbatim.
  *
- * Lane 06 selects the acceptance tests to run by fixed-string search over
- * `tests/acceptance/` (`shared/affected-tests.ts`, `testsForCriteria`), and an
+ * Lane 06 selects the acceptance tests to run by fixed-string search over the
+ * suite's trees (`shared/affected-tests.ts`, `testsForCriteria`), and an
  * empty selection is a hard failure (`verify.yml`). A ratifier pull request
  * carries no ticket and therefore no ticket's criteria, so one standing
  * acceptance test carries this exact sentence and is what every ratifier
@@ -168,7 +168,7 @@ export function refuseImmutableSetBatch(changedFiles: string[]): void {
   if (!touchesImmutableSet(changedFiles)) return;
   throw new Error(
     `this batch touches the immutable set — ${changedFiles.join(", ")}. ` +
-      "A ratifier pull request may never edit tests/acceptance/, vitest.config.ts or .github/",
+      "A ratifier pull request may never edit vitest.config.ts or .github/",
   );
 }
 
@@ -205,8 +205,8 @@ export function alignImmutableSetWithTrunk(options: {
     try {
       git(["-C", repoDir, "checkout", "FETCH_HEAD", "--", path]);
     } catch {
-      // Trunk carries no such path — a caller repo with no `tests/acceptance/` yet, say. The `git
-      // rm` above has already made the branch agree with that, so there is nothing to restore.
+      // Trunk carries no such path — a caller repo with no `vitest.config.ts`, say. The `git rm`
+      // above has already made the branch agree with that, so there is nothing to restore.
     }
   }
 

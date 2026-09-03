@@ -6,9 +6,9 @@
  * and the revert detector (`./revert-detector.ts`) asks "is what this record
  * says landed still in the tree?" — which is the entry names present and the
  * lint rule ids turned on, and nothing else. The standing acceptance test
- * (`tests/acceptance/`) asks the same two questions of the same two files,
- * from its own copy: ADR-0032 forbids it importing this module, so it
- * duplicates the parse rather than reaching across the boundary.
+ * for `RATIFIER_CRITERION` (`./land.ts`) asks the same two questions of the
+ * same two files; since #360 it lives beside its subject like any other test,
+ * so it may import this module rather than carry its own copy of the parse.
  */
 
 /** The heading the entries live under — nothing above it is a standard. */

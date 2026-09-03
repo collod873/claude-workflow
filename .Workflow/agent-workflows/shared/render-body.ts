@@ -21,8 +21,8 @@ const CRITERION_SHAPE =
  * these answers from GitHub's remote state (or some other remote entirely),
  * never from the working directory `bin/close-ticket` hands the command, so
  * it returns the same verdict before the ticket's diff exists and after it
- * merges. #201's fourth criterion — `gh api
- * repos/…/contents/tests/acceptance` — is the case this caught: three of
+ * merges. #201's fourth criterion — a `gh api repos/…/contents/<dir>` read of
+ * the then-acceptance directory — is the case this caught: three of
  * four criteria passed against the merge, and this one could not have passed
  * against any diff, because it was never reading the diff.
  *
