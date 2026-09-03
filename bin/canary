@@ -2,6 +2,8 @@
 # The canary loop, one iteration: push, fire, watch, summarise.
 #
 #   bin/canary prove [--lane <name>] [--no-wip] [--timeout <s>]   → 0 green · 1 red · 2 could not run
+#   bin/canary up                                                 create the target and its runner
+#   bin/canary down                                               destroy them and the branch they were named for
 #   bin/canary reset-cap                                          clear the consecutive-red counter
 #
 # A machine change is proven on a canary target before it lands (ADR-0146): a private repository
@@ -14,6 +16,14 @@
 # → repository `<owner>/canary-x-y`. A branch already named `canary/<id>` keeps its id. It refuses
 # `main`, a detached HEAD, and the primary checkout, because two sessions in one checkout share a
 # HEAD and a working tree and the push below would carry both.
+#
+# `up` is idempotent and `prove` calls it, so a session's first loop provisions everything it
+# needs — the private target, its seed, a runner registered against it and running. There is no
+# one-time install to do by hand first: a hand step per session is exactly why one canary existed
+# on the day N sessions in parallel was the point of the design. The runner gets a `HOME` and a
+# `PATH` of its own, because one started under yours would hand every lane your `~/.claude` hooks,
+# your `~/bin` (where `adr-check` would change what Verify checks) and your `gh` credentials. That
+# is the floor; the container image ADR-0146 defers is the ceiling.
 #
 # **A green that does not print the machine SHA against the branch head is not a green.** Run
 # 33706756013 passed with the machine checked out at `main` under the branch's YAML. So the
@@ -34,16 +44,22 @@ RUNNER_LABEL="canary"
 CAP=5
 
 usage() {
-  sed -n '2,6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
 log() { printf 'canary: %s\n' "$*" >&2; }
 die() { log "$*"; exit 2; }
 
+put_file() { # path message content [sha] → "<commit sha> <blob sha>"
+  local args=(-X PUT "repos/$canary_repo/contents/$1" -f "message=$2" -f "content=$(printf '%s\n' "$3" | base64 -w0)" -f "branch=$target_branch")
+  [ -n "${4:-}" ] && args+=(-f "sha=$4")
+  gh api "${args[@]}" --jq '"\(.commit.sha) \(.content.sha)"'
+}
+
 # ---------------------------------------------------------------- arguments
 cmd="${1:-}"
-case "$cmd" in prove|reset-cap) ;; *) usage ;; esac
+case "$cmd" in prove|up|down|reset-cap) ;; *) usage ;; esac
 shift
 lane="verify"
 wip=1
@@ -80,6 +96,193 @@ mkdir -p "$state_dir"
 cap_file="$state_dir/reds"
 fingerprint_file="$state_dir/last-fingerprint"
 
+# ---------------------------------------------------------------- provisioning
+# One runner per canary, named by the same id, all carrying the `canary` label: the label is what
+# the stub asks for and the registration is per repository, so N of them never contend for one
+# another's jobs. No organisation is involved — the account has none, and per-repository
+# registration is what the design assumed because of it.
+runner_root="$HOME/canary-runner"
+runner_dir="$runner_root/$id"
+runner_home="$runner_root/home"
+runner_cache="$runner_root/cache"
+target_branch=""
+
+repo_exists() { gh api "repos/$1" --jq .name >/dev/null 2>&1; }
+runner_online() {
+  [ "$(gh api "repos/$canary_repo/actions/runners" \
+    --jq "[.runners[] | select(.status==\"online\") | select(any(.labels[]; .name==\"$RUNNER_LABEL\"))] | length")" -gt 0 ]
+}
+runner_running() { pgrep -f "$runner_dir/bin/Runner.Listener" >/dev/null 2>&1; }
+
+ensure_repo() {
+  if ! repo_exists "$canary_repo"; then
+    log "creating $canary_repo"
+    gh repo create "$canary_repo" --private --add-readme \
+      --description "Canary target for $canary_branch. Created by bin/canary up; delete with bin/canary down." >/dev/null
+    # A repository the API has just made 404s for a beat, and every seed write below needs it.
+    for _ in $(seq 30); do repo_exists "$canary_repo" && break; sleep 2; done
+    repo_exists "$canary_repo" || die "created $canary_repo but the API still will not resolve it"
+  fi
+  target_branch="$(gh api "repos/$canary_repo" --jq .default_branch)"
+}
+
+seed_file() { # path content — written only where absent
+  gh api "repos/$canary_repo/contents/$1?ref=$target_branch" --jq .sha >/dev/null 2>&1 && return 0
+  put_file "$1" "canary: seed $1" "$2" >/dev/null
+  log "seeded $1"
+}
+
+# The smallest honest target: three contract slots and one test, so the machine has something to
+# check that is provably not itself. A canary that has since drifted is the session's business —
+# `down` is how you get a clean one, not a reseed that would fight the lane it is proving.
+ensure_seed() {
+  seed_file package.json '{
+  "name": "canary-'"$id"'",
+  "private": true,
+  "description": "The smallest honest target: three contract slots and one test, so the machine has something to check that is provably not itself.",
+  "scripts": {
+    "typecheck": "true",
+    "lint": "true",
+    "test": "node --test"
+  }
+}'
+  seed_file package-lock.json '{
+  "name": "canary-'"$id"'",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "canary-'"$id"'"
+    }
+  }
+}'
+  # Committed, not probed: `bin/gauntlet push` regenerates the contract and fails on disagreement
+  # (ADR-0056), so the seed has to carry the answers the probe gives for this shape.
+  seed_file .claude/contract.json '{
+  "stop": {
+    "cmd": null,
+    "why": "no Stop hook in .claude/settings.json, and no turn-end check at .claude/hooks/stop-gate.sh"
+  },
+  "test": {
+    "cmd": "npm test",
+    "why": "package.json#scripts.test (node --test)"
+  },
+  "test_one": {
+    "cmd": null,
+    "why": "no known single-file form for the installed test runner"
+  },
+  "test_related": {
+    "cmd": null,
+    "why": "no known related-tests form for the installed test runner"
+  },
+  "typecheck": {
+    "cmd": "npm run typecheck",
+    "why": "package.json#scripts.typecheck (true)"
+  },
+  "lint": {
+    "cmd": "npm run lint",
+    "why": "package.json#scripts.lint (true)"
+  },
+  "all": {
+    "cmd": null,
+    "why": "no aggregate script found among package.json#scripts.{check,verify,ci}"
+  }
+}'
+  seed_file tests/smoke.test.mjs 'import test from "node:test";
+import assert from "node:assert/strict";
+
+test("the seed has a test the machine can run", () => {
+  assert.equal(1 + 1, 2);
+});'
+}
+
+install_runner() {
+  mkdir -p "$runner_home" "$runner_cache" "$runner_dir"
+  local ver tarball
+  ver="$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')"
+  tarball="$runner_cache/actions-runner-linux-x64-$ver.tar.gz"
+  if [ ! -s "$tarball" ]; then
+    log "downloading runner $ver once into $runner_cache — every later canary extracts this copy"
+    curl -fsSL "https://github.com/actions/runner/releases/download/v$ver/actions-runner-linux-x64-$ver.tar.gz" \
+      -o "$tarball.part" || die "could not download runner $ver"
+    mv "$tarball.part" "$tarball"
+  fi
+  tar -xzf "$tarball" -C "$runner_dir"
+  log "registering runner '$id' on $canary_repo"
+  ( cd "$runner_dir" && HOME="$runner_home" ./config.sh --unattended --replace \
+      --url "https://github.com/$canary_repo" \
+      --token "$(gh api -X POST "repos/$canary_repo/actions/runners/registration-token" --jq .token)" \
+      --name "$id" --labels "$RUNNER_LABEL" --work _work >/dev/null ) \
+    || die "config.sh refused the registration — see $runner_dir"
+}
+
+start_runner() {
+  # An explicit PATH, not the launching shell's: whoever runs `prove` — you, a hook, a session with
+  # a different node on it — the lane has to see the same tools, and never `~/bin`.
+  local runner_path
+  runner_path="$(dirname "$(command -v node)"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  log "starting runner '$id' (log: $runner_dir.log)"
+  # `setsid --fork`, not `setsid` or `nohup … &`: bare `setsid` execs in place when it is not
+  # already a group leader, so the runner stays this script's child and bash waits on it at exit —
+  # `bin/canary up` then never returns, and a loop whose one command does not return is no loop.
+  # Forking hands it to init, which is also what survives the session that started it.
+  ( cd "$runner_dir" \
+    && HOME="$runner_home" PATH="$runner_path" setsid --fork ./run.sh >"$runner_dir.log" 2>&1 </dev/null & )
+}
+
+ensure_runner() {
+  # Both halves, because either alone lies: the API keeps calling a runner online for a while after
+  # its process dies (a WSL reset takes every one of them at once), and a process that has just
+  # started is not online yet.
+  runner_online && runner_running && return 0
+  [ -f "$runner_dir/.runner" ] || install_runner
+  runner_running || start_runner
+  for _ in $(seq 30); do
+    sleep 2
+    runner_online && { log "runner '$id' online"; return 0; }
+  done
+  die "runner '$id' did not come online in 60 s — tail $runner_dir.log"
+}
+
+canary_up() {
+  ensure_repo
+  ensure_seed
+  ensure_runner
+}
+
+canary_down() {
+  if [ -f "$runner_dir/.runner" ]; then
+    pkill -f "$runner_dir/run.sh" >/dev/null 2>&1 || true
+    pkill -f "$runner_dir/bin/Runner.Listener" >/dev/null 2>&1 || true
+    sleep 1
+    local token
+    token="$(gh api -X POST "repos/$canary_repo/actions/runners/remove-token" --jq .token 2>/dev/null || true)"
+    if [ -n "$token" ]; then
+      ( cd "$runner_dir" && HOME="$runner_home" ./config.sh remove --token "$token" >/dev/null 2>&1 ) \
+        || log "the runner would not deregister itself — removing its directory anyway"
+    fi
+    log "removed runner '$id'"
+  fi
+  rm -rf "$runner_dir" "$runner_dir.log"
+  if repo_exists "$canary_repo"; then
+    gh repo delete "$canary_repo" --yes && log "deleted $canary_repo"
+  fi
+  git -C "$repo_root" push -q origin --delete "$canary_branch" >/dev/null 2>&1 \
+    && log "deleted $canary_branch on $machine_repo" || true
+  rm -rf "$state_dir"
+  log "down: nothing named $id is left but this worktree and its branch"
+}
+
+if [ "$cmd" = "up" ]; then
+  canary_up
+  log "up: $canary_repo seeded, runner '$id' online"
+  exit 0
+fi
+if [ "$cmd" = "down" ]; then
+  canary_down
+  exit 0
+fi
+
 if [ "$cmd" = "reset-cap" ]; then
   rm -f "$cap_file" "$fingerprint_file"
   log "cap reset for $id"
@@ -115,13 +318,7 @@ if ! git -C "$repo_root" push -q --force origin "HEAD:refs/heads/$canary_branch"
 fi
 
 # ---------------------------------------------------------------- up (idempotent)
-gh api "repos/$canary_repo" --jq .default_branch >/dev/null 2>&1 \
-  || die "$canary_repo does not exist — seed it first (this bullet proves against an existing seed)"
-target_branch="$(gh api "repos/$canary_repo" --jq .default_branch)"
-
-online="$(gh api "repos/$canary_repo/actions/runners" \
-  --jq "[.runners[] | select(.status==\"online\") | select(any(.labels[]; .name==\"$RUNNER_LABEL\"))] | length")"
-[ "$online" -gt 0 ] || die "no online runner labelled '$RUNNER_LABEL' on $canary_repo — start one: HOME=~/canary-runner/home ~/canary-runner/<name>/run.sh"
+canary_up
 
 # The stub the canary must carry: this machine's own stub, re-pinned to the session's branch and
 # told which runner and machine ref to use. Written only when it differs, and when it is written
@@ -136,12 +333,6 @@ remote_stub_json="$(gh api "repos/$canary_repo/contents/$stub_path?ref=$target_b
 # which fires nothing under the stub's `paths-ignore` (exactly the empty-commit case).
 remote_stub="$(jq -r '.content // ""' <<<"$remote_stub_json" | base64 -d 2>/dev/null || true)"
 remote_stub_sha="$(jq -r '.sha // empty' <<<"$remote_stub_json")"
-
-put_file() { # path message content [sha] → "<commit sha> <blob sha>"
-  local args=(-X PUT "repos/$canary_repo/contents/$1" -f "message=$2" -f "content=$(printf '%s\n' "$3" | base64 -w0)" -f "branch=$target_branch")
-  [ -n "${4:-}" ] && args+=(-f "sha=$4")
-  gh api "${args[@]}" --jq '"\(.commit.sha) \(.content.sha)"'
-}
 
 fire_sha=""
 if [ "$remote_stub" != "$expected_stub" ]; then
