@@ -62,14 +62,14 @@ export function markedCount(body: string, direction: "grow" | "delete"): number 
   return match ? Number(match[1]) : undefined;
 }
 
-export const GROW_ISSUE_TITLE = "Lane 07's findings are keeping false alarms — propose a second refuter";
+export const GROW_ISSUE_TITLE = "Lane 07's findings are keeping false alarms, so propose a second refuter";
 export const DELETE_ISSUE_TITLE =
-  "Lane 07's refuter has refused nothing in 20 findings — propose deleting the fleet";
+  "Lane 07's refuter has refused nothing in 20 findings, so propose deleting the fleet";
 
 export function growIssueBody(count: number): string {
   return [
     `**${count}** surviving lane-07 finding${count === 1 ? "" : "s"} closed \`not planned\`, or left`,
-    `untouched past the ${FALSE_ALARM_EXPIRY_DAYS}-day expiry — that many false alarms reached the`,
+    `untouched past the ${FALSE_ALARM_EXPIRY_DAYS}-day expiry, and that many false alarms reached the`,
     "owner's queue.",
     "",
     "**Proposal:** add a second refuter ([ADR-0035](../../../docs/adr/0035-lane-07-ships-with-one-refuter-and-a-refusal-that-names-no-r.md)).",
@@ -86,7 +86,7 @@ export function deleteIssueBody(tally: RefuterTally): string {
   return [
     `The refuter has read **${tally.reached}** findings and refused **${tally.refuted}** of them.`,
     "",
-    "**Proposal:** delete the refuter fleet ([ADR-0037](../../../docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)) —",
+    "**Proposal:** delete the refuter fleet ([ADR-0037](../../../docs/adr/0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md)):",
     "a filter that has never once refused anything across this many findings is not filtering,",
     "whatever the survivors' fate. Being wrong here is expensive and silent, so this fires only",
     "at a large count.",
@@ -217,7 +217,7 @@ export function runCounter(options: CounterOptions): CounterOutcome {
         existing: signals,
         log,
       })
-    : (log(`grow: ${alarmCount} false alarm(s) — below the threshold of ${GROW_THRESHOLD}`), { code: "below-threshold" });
+    : (log(`grow: ${alarmCount} false alarm(s), below the threshold of ${GROW_THRESHOLD}`), { code: "below-threshold" });
 
   const del: DirectionOutcome = shouldProposeDelete(tally)
     ? evaluateProposal({
@@ -230,7 +230,7 @@ export function runCounter(options: CounterOptions): CounterOutcome {
         existing: signals,
         log,
       })
-    : (log(`delete: ${tally.reached} reached, ${tally.refuted} refused — below the trigger`), {
+    : (log(`delete: ${tally.reached} reached, ${tally.refuted} refused, below the trigger`), {
         code: "below-threshold",
       });
 
@@ -240,7 +240,7 @@ export function runCounter(options: CounterOptions): CounterOutcome {
 async function main(): Promise<void> {
   try {
     const assignee = process.env.SIGNAL_ASSIGNEE;
-    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned issue notifies nobody");
+    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set: an unassigned issue notifies nobody");
 
     const reached = Number(process.env.REFUTER_TALLY_REACHED ?? "0");
     const refuted = Number(process.env.REFUTER_TALLY_REFUTED ?? "0");

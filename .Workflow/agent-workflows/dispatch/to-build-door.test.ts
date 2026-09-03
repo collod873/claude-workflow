@@ -88,7 +88,7 @@ describe("the to-build door into lane 06 (#184)", () => {
     expect(startedIssues(cleared)).toEqual([610]);
   });
 
-  it("does not start a labelled ticket twice — the implement/issue-<n> ref is still the claim", () => {
+  it("does not start a labelled ticket twice, since the implement/issue-<n> ref is still the claim", () => {
     const tracker = trackerWith({ open: [labelled(620)], claimed: ["implement/issue-620"] });
 
     const outcome = reconcileOver(tracker);
@@ -130,7 +130,7 @@ describe("the to-build door into lane 06 (#184)", () => {
     expect(tracker.comments).toEqual([]);
   });
 
-  it("says it once — a second recompute over the same state writes nothing further", () => {
+  it("says it once, and a second recompute over the same state writes nothing further", () => {
     const malformed = "## Acceptance criteria\n\n- [ ] It works — check: `true`\n";
     const first = passOverLabelled(640, malformed);
 

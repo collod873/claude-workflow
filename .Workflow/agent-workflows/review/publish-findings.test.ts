@@ -73,7 +73,7 @@ describe("publishFindings", () => {
     expect(calls.length).toBe(0);
   });
 
-  it("makes only issue-create calls for a batch of survivors — never a PR comment or other notification", () => {
+  it("makes only issue-create calls for a batch of survivors, never a PR comment or other notification", () => {
     const { gh, calls } = createFakeGh();
     const findings: Finding[] = [
       { message: "src/a.ts:1 first finding" },

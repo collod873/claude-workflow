@@ -228,7 +228,7 @@ describe("runCounter", () => {
     expect(outcome.grow).toMatchObject({ code: "proposed", issue: 42 });
   });
 
-  it("keeps the two directions' proposals independent — grow declined does not block delete", () => {
+  it("keeps the two directions' proposals independent, so grow declined does not block delete", () => {
     const fake = trackerWith({
       findingIssues: findings(0),
       signals: [growSignal("refused", "CLOSED", "NOT_PLANNED")],

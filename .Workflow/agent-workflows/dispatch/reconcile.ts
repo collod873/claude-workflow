@@ -117,7 +117,7 @@ function fetchOpenIssues(gh: GhExec, log: (line: string) => void): OpenIssue[] |
     if (!parsed.success) return null;
     if (parsed.data.length >= ISSUE_PAGE_SIZE) {
       log(
-        `one page of open issues is full at ${ISSUE_PAGE_SIZE} — a blocker past the page boundary ` +
+        `one page of open issues is full at ${ISSUE_PAGE_SIZE}, and a blocker past the page boundary ` +
           "reads as unseen, which leaves its dependents blocked rather than dispatched.",
       );
     }
@@ -252,7 +252,7 @@ function toBuildRefusalBody(refusal: string): string {
   return [
     `This is labelled \`${TO_BUILD_LABEL}\` and lane 06 will not start against it: ${refusal}.`,
     "",
-    "Refused here rather than three stages later — verify's Immutability job reads the same",
+    "Refused here rather than three stages later: verify's Immutability job reads the same",
     "`## Files claimed` section, so a run started against this body would spend an implementer and a",
     "pull request to arrive at the same answer.",
     "",
@@ -264,7 +264,7 @@ function toBuildRefusalBody(refusal: string): string {
 }
 
 const TO_BUILD_CLEARED_BODY = [
-  "This ticket's shape is no longer refused — it carries both headings lane 06 needs, so the",
+  "This ticket's shape is no longer refused: it carries both headings lane 06 needs, so the",
   "recompute that read this will start it as soon as every blocker has delivered.",
 ].join("\n");
 
@@ -276,7 +276,7 @@ function recordToBuildShape(
 ): void {
   const comments = fetchComments(gh, number);
   if (comments === null) {
-    log(`could not read #${number}'s comments — leaving whatever this door said last run standing.`);
+    log(`could not read #${number}'s comments, so leaving whatever this door said last run standing.`);
     return;
   }
   const standing = markedComment(comments, TO_BUILD_REFUSED_MARKER);
@@ -292,7 +292,7 @@ function recordToBuildShape(
   if (standing?.body === body) return;
   if (standing) rewriteComment(gh, standing.id, body);
   else gh(["issue", "comment", String(number), "--body", body]);
-  log(`#${number}: refused at the ${TO_BUILD_LABEL} door — ${refusal}.`);
+  log(`#${number}: refused at the ${TO_BUILD_LABEL} door: ${refusal}.`);
 }
 
 function admitToBuild(
@@ -427,7 +427,7 @@ function attemptSpecClose(
 
   const range = synthesizeRange(gh, mergedPrs);
   if (range === undefined) {
-    log(`#${prdNumber}: every child delivered but its closing range could not be synthesized — skipping the close attempt.`);
+    log(`#${prdNumber}: every child delivered but its closing range could not be synthesized, so skipping the close attempt.`);
     return undefined;
   }
 
@@ -439,7 +439,7 @@ function unrunnableReason(body: string): string {
   const count = countCriteria(body);
   if (count === null) return "its body carries no `## Acceptance criteria` heading";
   if (count === 0) return "its `## Acceptance criteria` heading has no `- [ ]` item";
-  if (count > 1) return `its body carries ${count} acceptance criteria — this pass can only run one`;
+  if (count > 1) return `its body carries ${count} acceptance criteria, and this pass can only run one`;
   return "its one acceptance criterion carries no well-formed `check:` marker";
 }
 
@@ -468,7 +468,7 @@ function disagreementCommentBody(
 ): string {
   const trimmed = closerResult.output.trim();
   return [
-    `Ran this spec's own check: \`${command}\` — exit ${run.code}.`,
+    `Ran this spec's own check: \`${command}\`, exit ${run.code}.`,
     "",
     `\`bin/close-ticket --spec\` disagreed: exit ${closerResult.exitCode}. This spec stays open.`,
     ...(trimmed.length > 0 ? ["", "```", trimmed, "```"] : []),
@@ -506,7 +506,7 @@ function evaluateSpecCheck(
 ): void {
   const comments = fetchComments(gh, prd.number);
   if (comments === null) {
-    log(`could not read #${prd.number}'s comments — skipping its spec check this run.`);
+    log(`could not read #${prd.number}'s comments, so skipping its spec check this run.`);
     return;
   }
 
@@ -516,13 +516,13 @@ function evaluateSpecCheck(
   if (!isRunnableSpec(prd.body)) {
     upsertPrdComment(gh, prd.number, comments, refusalCommentBody(prd.body));
     if (!hasNeedsHuman) gh(["issue", "edit", String(prd.number), "--add-label", NEEDS_HUMAN_LABEL]);
-    log(`#${prd.number}: refused — ${unrunnableReason(prd.body)}.`);
+    log(`#${prd.number}: refused: ${unrunnableReason(prd.body)}.`);
     return;
   }
 
   const command = parseCheckMarker(extractCriteria(prd.body)[0] ?? "");
   if (command === undefined) {
-    log(`#${prd.number}: isRunnableSpec accepted a body whose marker didn't parse — skipping.`);
+    log(`#${prd.number}: isRunnableSpec accepted a body whose marker didn't parse, so skipping.`);
     return;
   }
 
@@ -532,7 +532,7 @@ function evaluateSpecCheck(
   if (closing?.disagreement) {
     upsertPrdComment(gh, prd.number, comments, disagreementCommentBody(command, run, closing.result));
     log(
-      `#${prd.number}: pass/closer disagreement — ran \`${command}\` exit ${run.code}, ` +
+      `#${prd.number}: pass/closer disagreement: ran \`${command}\` exit ${run.code}, ` +
         `bin/close-ticket --spec exited ${closing.result.exitCode}.`,
     );
     return;
@@ -607,7 +607,7 @@ function reportUnreachable(
 
   if (fresh.length > MAX_UNREACHABLE_REPORTED) {
     log(
-      `${fresh.length} unreachable slices found and only ${MAX_UNREACHABLE_REPORTED} will be named — ` +
+      `${fresh.length} unreachable slices found and only ${MAX_UNREACHABLE_REPORTED} will be named, and ` +
         "a backlog this size is more likely this reconciler being wrong than that many blockers " +
         "having been closed without delivering. The rest are listed above and were not filed.",
     );
@@ -667,7 +667,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
     const subIssueCount = fetchSubIssueCount(gh, issue.number);
     if (subIssueCount === null) {
-      log(`could not read #${issue.number}'s sub-issues — skipping its spec check this run.`);
+      log(`could not read #${issue.number}'s sub-issues, so skipping its spec check this run.`);
       continue;
     }
     if (subIssueCount < 1) continue;
@@ -707,7 +707,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       if (wants === "acceptance-wanted") {
         dispatchAcceptanceWanted(gh, state.number, true);
         authoring.push(state.number);
-        log(`#${state.number} has no acceptance test naming its criteria — asked lane 04 to author first.`);
+        log(`#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author first.`);
         continue;
       }
       dispatchTicketReady(gh, state.number);
@@ -760,7 +760,7 @@ function main(): void {
   if (!RECONCILE_DISPATCH_ACTIONS.some((action) => action === eventAction)) {
     console.log(
       `dispatch action \`${eventAction}\` is not one of ` +
-        `${RECONCILE_DISPATCH_ACTIONS.map((action) => `\`${action}\``).join(" or ")} — nothing to do.`,
+        `${RECONCILE_DISPATCH_ACTIONS.map((action) => `\`${action}\``).join(" or ")}; nothing to do.`,
     );
     return;
   }

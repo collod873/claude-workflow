@@ -44,7 +44,7 @@ describe("survivesRefutation", () => {
     expect(survivesRefutation(refused, ["no-unused-vars"])).toBe(false);
   });
 
-  it("survives a refusal that names no gate, path, or rule — ADR-0035's mechanical strip", () => {
+  it("survives a refusal that names no gate, path, or rule: ADR-0035's mechanical strip", () => {
     const hedging = verdict({ refuted: true, reason: "I'm not confident this is worth flagging." });
     expect(survivesRefutation(hedging, ["no-unused-vars"])).toBe(true);
   });

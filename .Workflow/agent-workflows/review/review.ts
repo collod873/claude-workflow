@@ -221,7 +221,7 @@ async function main(): Promise<void> {
 
   const assignee = process.env.SIGNAL_ASSIGNEE;
   if (!assignee) {
-    console.error("SIGNAL_ASSIGNEE must be set — an unassigned finding notifies nobody");
+    console.error("SIGNAL_ASSIGNEE must be set: an unassigned finding notifies nobody");
     process.exitCode = 1;
     return;
   }
