@@ -370,6 +370,21 @@ jobs:
           bin/gauntlet push
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
+      # The durations this venue used to be judged against, kept as a record and nothing else
+      # (ADR-0148). They are uploaded rather than compared because the number is written in one
+      # context and read in another: the same unchanged venue measured 57.5s where lane 05 recorded
+      # it and 88.3s here, and a gate that fires on where it ran teaches its reader to rerun until
+      # green. `bin/gauntlet` writes the file whether or not anything collects it, and a run whose
+      # gauntlet died before writing one is not a run worth failing over a missing artifact.
+      - name: Record durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gauntlet-timings-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/.gauntlet-timings.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Gauntlet
         if: steps.run-gauntlet.outputs.exit_code == '1'
         run: exit 1

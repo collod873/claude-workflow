@@ -66,11 +66,11 @@ after any override its own CI sets — and the number is then true wherever the 
 machine never sets a tool's own variable: a slot is a command the contract names, never a tool the
 machine knows ([ADR-0056](../adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
 
-A target's first timing baseline arrives with its first lane 05 run, seeded in the "no entry yet"
-state alongside the implementer's own commit — it owes no timing baseline of its own before that.
-Unlike the corpus fixture and the clone baseline, which stay off until a target seeds one itself,
-ADR-0140's ratchet is inherited history rather than a judgement a target opts into, so a target
-that already carries `.claude/contract.json` gets one without asking.
+A target owes no timing numbers at all, before or after its first lane 05 run: durations are
+recorded and never judged
+([ADR-0148](../adr/0148-timing-is-recorded-never-judged.md)), so there is no inherited history for
+enrolment to seed. The corpus fixture and the clone baseline stay as they were — judgements a
+target opts into by seeding one itself.
 
 ## Failure isolation
 
