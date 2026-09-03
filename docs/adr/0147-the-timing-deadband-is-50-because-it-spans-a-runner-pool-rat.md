@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-03
+superseded_by: ADR-0148
 amends: ADR-0140
 reversal: Reversing it means putting the band back to 25%, and with it a committed budget only the faster half of the `ubuntu-latest` pool can clear — the state of 2026-09-03, when every Verify on `main` went red against a number a quicker runner had written four hours earlier and nothing in the system could raise.
 ---
