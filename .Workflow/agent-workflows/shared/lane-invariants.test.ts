@@ -244,16 +244,7 @@ describe("every dispatch wire has a sender and a receiver", () => {
 });
 
 describe("a reusable workflow declares runner and machine_ref and runs on the runner", () => {
-  /**
-   * ADR-0146: a canary caller states `runner` and `machine_ref` beside its `uses:`, because a
-   * called workflow has no way to learn its own ref — `github.workflow_ref` inside it is the
-   * *caller's*. Until 2026-09-03 only `verify.yml` declared the two inputs; `bin/canary` could
-   * derive a fire for 20 of the other 21 lanes (`canary-fire-plan.ts`, ADR-0149) but every one of
-   * them died at `startup_failure` the moment its caller stub's `with:` carried a `runner` the
-   * called workflow never declared. This sweep is what keeps a new lane from shipping the same gap:
-   * a reusable workflow that skips either input, or that hardcodes `runs-on: ubuntu-latest` instead
-   * of reading `inputs.runner`, fails here rather than only at the next canary fire.
-   */
+  /** Holds every reusable workflow to the `runner` and `machine_ref` inputs ADR-0146 requires. */
   const reusable = workflows.filter(
     (w) => !Array.isArray(w.workflow.on) && (w.workflow.on as Record<string, unknown> | undefined)?.workflow_call !== undefined,
   );

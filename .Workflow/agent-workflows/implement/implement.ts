@@ -343,7 +343,9 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
  * from selecting `#360`'s tests; `[^\n]*` keeps the number on the marker's own line, so a file
  * that merely mentions the ticket in a comment is not the slice's test. Anchored to statement
  * start, the same way `bin/close-ticket` reads it: a test that *quotes* a `test.fails(` line as
- * fixture data is not one, and this repo's own suite quotes several.
+ * fixture data is not one, and this repo's own suite quotes several. `shared/fails-marker-pin.test.ts`'s
+ * "implement.ts's test.fails( marker agrees with the bin/close-ticket grammar it is a copy of" is
+ * what holds the two readers to one grammar.
  */
 function sliceMarker(issueNumber: number): RegExp {
   return new RegExp(`^\\s*(?:test|it)\\.fails\\([^\\n]*#${issueNumber}\\b`, "m");

@@ -29,7 +29,7 @@ import {
 } from "./lane-wiring";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
 import { readWorkflow, readWorkflows, STUB_SUFFIX, WORKFLOWS_DIR, workflowNames } from "./read-workflow";
-import { entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
+import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
 /**
@@ -302,6 +302,70 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     const stubs = workflowNames().filter((name) => name.endsWith(STUB_SUFFIX));
     expect(stubs.length).toBeGreaterThan(0);
     for (const stub of stubs) expect(matchers.some((m) => m.test(`.github/workflows/${stub}`)), stub).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
+/* bin/close-ticket's Python copy of the two job names                                           */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `bin/close-ticket` reads the same two Verify jobs from the Actions API and cannot import a `.ts`
+ * module at a workstation, so it restates both names as Python literals. The block above holds
+ * `LANE_OWNED` to `verify.yml`'s own `name:`; this holds the Python copy to `LANE_OWNED`.
+ */
+describe("bin/close-ticket's job names agree with the verify.yml jobs they are copies of", () => {
+  const source = binSources().find((file) => file.relative === "bin/close-ticket")?.source;
+
+  it("finds the script, so this pin is not vacuous", () => expect(source).toBeDefined());
+
+  it.each([
+    ["IMMUTABILITY_JOB", LANE_OWNED.immutabilityJob],
+    ["GATE_JOB", LANE_OWNED.gateJob],
+  ])("%s is the name verify.yml gives that job", (constant, owned) => {
+    const spelled = new RegExp(`^${constant} = "([^"]+)"$`, "m").exec(source ?? "")?.[1];
+    expect(spelled, `bin/close-ticket's ${constant}`).toBe(owned);
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
+/* fixer.yml's jq copy of the two job names                                                      */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `fixer.yml` reads the same two Verify jobs out of `gh run view --json jobs` in shell, where no
+ * `.ts` module can be imported, so each `jq` select restates the job's name twice — once bare and
+ * once as the `<caller job key> / <name>` spelling a run reached through `uses:` reports, the same
+ * two spellings `shared/job-match.ts`'s `findJobByName` accepts. Three literals per job with no
+ * compiler between them; this holds all of them to `LANE_OWNED`, which the row above holds to
+ * `verify.yml`'s own `name:`.
+ */
+describe("fixer.yml's jq job selects agree with the verify.yml jobs they are copies of", () => {
+  const jobSelects = readWorkflow("fixer.yml")
+    .source.split("\n")
+    .flatMap((line) => {
+      const match = /^\s*(\w+)=.*select\(\.name == "([^"]+)" or \(\.name \| endswith\(" \/ ([^"]+)"\)\)\)/.exec(line);
+      return match ? [{ variable: match[1], bare: match[2], throughCaller: match[3] }] : [];
+    });
+
+  it("finds a select for each job the lane reads, so this pin is not vacuous", () => {
+    expect(jobSelects.map((select) => select.variable)).toEqual(expect.arrayContaining(["GATE_CONCLUSION", "RESOLVE_JOB_ID"]));
+  });
+
+  it.each([
+    ["GATE_CONCLUSION", LANE_OWNED.gateJob],
+    ["RESOLVE_JOB_ID", LANE_OWNED.immutabilityJob],
+  ])("%s selects the job verify.yml names", (variable, owned) => {
+    const select = jobSelects.find((each) => each.variable === variable);
+    expect(select?.bare, `fixer.yml's ${variable} select`).toBe(owned);
+    expect(select?.throughCaller, `fixer.yml's ${variable} select, reached through uses:`).toBe(owned);
+  });
+
+  it("restates no job name verify.yml does not own", () => {
+    for (const select of jobSelects) {
+      expect([LANE_OWNED.gateJob, LANE_OWNED.immutabilityJob], `fixer.yml selects a job named ${select.bare}`).toContain(select.bare);
+      expect(select.throughCaller, `fixer.yml's ${select.variable} select disagrees with itself`).toBe(select.bare);
+    }
   });
 });
 

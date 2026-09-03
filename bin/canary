@@ -301,12 +301,8 @@ fi
 log "id=$id  branch=$branch → $canary_branch  target=$canary_repo  lane=$lane"
 
 # ---------------------------------------------------------------- fire plan
-# How `--lane $lane` wakes, derived from that lane's own caller YAML rather than a hand-written
-# lane→fire table — `canary-fire-plan.ts` reads `$stub_path`'s `on:` block with the one YAML
-# reader this repo already has (`read-workflow.ts`) and answers with the fire this script should
-# perform. Computed before the push below so a lane bin/canary cannot fire — a workflow_run-only
-# lane (ADR-0149), or a trigger shape it does not know — refuses fast, before spending a push and
-# a provision on a canary that could never have run.
+# `canary-fire-plan.ts` answers how `--lane $lane` wakes (ADR-0149). Asked before the push below
+# so a lane it refuses costs neither a push nor a provision.
 stub_path=".github/workflows/$lane-caller.yml"
 [ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
 plan_json="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$lane")" \
