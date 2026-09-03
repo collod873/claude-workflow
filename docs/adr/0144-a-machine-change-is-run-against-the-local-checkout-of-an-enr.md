@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-02
+superseded_by: ADR-0146
 reversal: Reversing it means an enrolled repository's Verify is again the first place a machine change meets a real target, so every assumption the change breaks is found there one run at a time — the shape of 2026-09-02, when twelve hand-landed commits produced six defects of one class across eight hours of runner time and two relaying sessions.
 ---
 

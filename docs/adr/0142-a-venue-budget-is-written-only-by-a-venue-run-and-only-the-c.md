@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-02
+superseded_by: ADR-0145
 amends: ADR-0140
 reversal: The generator would again write a solo `test` measurement into the venue half, so the push venue would again defend in a crowded room a bar set in a quiet one — and a workstation's own contention would again refuse pushes whose every check passed, which is the state that made four consecutive green runs unpushable.
 ---
