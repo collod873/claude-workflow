@@ -30,15 +30,16 @@ know it works when I can ___", and it is the only thing in a spec that is not sy
 paraphrase is a claim the owner cannot check at a glance, which is the one thing the criterion
 exists to be.
 
-**The criterion carries a well-formed trailing check marker**: a dash delimiter, the label
-`check:`, and a single backtick-quoted command naming the one thing that verifies it:
+**The criterion carries a well-formed trailing check marker**: a space-delimited hyphen, the
+label `check:`, and a single backtick-quoted command naming the one thing that verifies it:
 
 ```markdown
 - [ ] I'll know it works when I can see the nightly run post its own summary - check: `gh run list --workflow=nightly.yml --json conclusion --jq '.[0].conclusion == "success"'`
 ```
 
 The delimiter is the same alternation a ticket's marker uses (`bin/ticket_shape.py`'s
-`CHECK_MARKER_DELIM`), so an author never learns two dash rules for two kinds of body. A marker
+`CHECK_MARKER_DELIM`, where an em or en dash still parses for bodies written under the older
+spelling), so an author never learns two dash rules for two kinds of body. A marker
 that is attempted but does not parse (a missing command, or prose trailing the closing backtick)
 is **refused** here, where a ticket's would only be warned about.
 
