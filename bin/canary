@@ -489,7 +489,7 @@ else
   # by the GitHub event name the fire actually was, and by having arrived no earlier than the fire.
   while [ -z "$run_id" ]; do
     run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=15" \
-      --jq --arg t "$before_time" '[.workflow_runs[] | select(.created_at >= $t)] | sort_by(.created_at) | .[0].id // empty')"
+      | jq -r --arg t "$before_time" '[.workflow_runs[] | select(.created_at >= $t)] | sort_by(.created_at) | .[0].id // empty')"
     [ -n "$run_id" ] && break
     [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing in 120 s — does $stub_path actually declare that trigger on $canary_repo's default branch?"
     sleep 3
