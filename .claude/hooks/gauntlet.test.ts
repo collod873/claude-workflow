@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -73,6 +74,28 @@ const stubDirs: string[] = [];
 afterEach(() => {
   while (stubDirs.length) rmSync(stubDirs.pop()!, { recursive: true, force: true });
 });
+
+/**
+ * A scratch target with a generated contract for whatever `scripts` builds from its own root —
+ * the setup every case below that drives the machine's real `bin/gauntlet` against a scratch
+ * target shares.
+ */
+function scratchContractTarget(prefix: string, scripts: (root: string) => Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  stubDirs.push(root);
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "scratch", private: true, scripts: scripts(root) }),
+  );
+  mkdirSync(join(root, ".claude"), { recursive: true });
+  const generate = spawnSync(
+    process.execPath,
+    [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+    { encoding: "utf8" },
+  );
+  expect(generate.status).toBe(0);
+  return root;
+}
 
 const editOf = (filePath: string) =>
   JSON.stringify({ hook_event_name: "PostToolUse", tool_input: { file_path: filePath } });
@@ -491,29 +514,15 @@ describe("scheduling the test slot against the cores it has", () => {
    * `scripts` overrides that default for a test asking a different question of the same fixture.
    */
   function scratchTarget(scripts?: (root: string) => Record<string, string>): string {
-    const root = mkdtempSync(join(tmpdir(), "gauntlet-cores-"));
-    stubDirs.push(root);
-    const marker = join(root, "typecheck-finished");
-    writeFileSync(
-      join(root, "package.json"),
-      JSON.stringify({
-        name: "scratch",
-        private: true,
-        scripts: scripts?.(root) ?? {
-          typecheck: `sleep 0.4 && touch ${JSON.stringify(marker)}`,
+    return scratchContractTarget(
+      "gauntlet-cores-",
+      (root) =>
+        scripts?.(root) ?? {
+          typecheck: `sleep 0.4 && touch ${JSON.stringify(join(root, "typecheck-finished"))}`,
           lint: "true",
-          test: `test -f ${JSON.stringify(marker)}`,
+          test: `test -f ${JSON.stringify(join(root, "typecheck-finished"))}`,
         },
-      }),
     );
-    mkdirSync(join(root, ".claude"), { recursive: true });
-    const generate = spawnSync(
-      process.execPath,
-      [join(REPO_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-      { encoding: "utf8" },
-    );
-    expect(generate.status).toBe(0);
-    return root;
   }
 
   it(
@@ -649,4 +658,71 @@ describe("resolving the check contract", () => {
     expect(run.stdout).toBe("");
     expect(run.status).toBe(0);
   });
+});
+
+// #342: ADR-0140 named lane 05's regenerate step the committed timing baseline's one writer, and
+// ADR-0142 named `record`, from a venue run, the only writer of a `venues` entry — but `record`
+// only ever persisted off a runner, so the two rules together named a writer that could never
+// fire. The seam is `TIMING_BASELINE_WRITE`, read by `shared/timing-baseline.ts`'s own
+// `mayWriteOnRunner`, and it belongs to the regenerate step's own spawn of this venue alone: a
+// plain `bin/gauntlet push` on a runner — Verify's own push, the same command, the same runner —
+// still judges the committed baseline and discards it, exactly as ADR-0142 left it.
+describe("the runner write-seam belongs to the regenerate step alone", () => {
+  const COMMITTED_RELATIVE = ".Workflow/agent-workflows/shared/timing-baseline.json";
+
+  /** A scratch target the push venue can judge for real, ready for `record` to write into. */
+  function scratchTiming(): { root: string; committed: string } {
+    const root = scratchContractTarget("gauntlet-timing-", () => ({
+      typecheck: "true",
+      lint: "true",
+      test: "true",
+    }));
+    mkdirSync(join(root, ".Workflow/agent-workflows/shared"), { recursive: true });
+    return { root, committed: join(root, COMMITTED_RELATIVE) };
+  }
+
+  it(
+    "writes nothing from a plain push on a runner, with no seam set",
+    () => {
+      const { root, committed } = scratchTiming();
+
+      // `VITEST` is what this suite's own run leaks into the child, and the timing block skips
+      // itself when it sees one — a run under it would prove nothing about either code.
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: root,
+        CI: "true",
+        VITEST: undefined,
+        GAUNTLET_TIMING: "on",
+        GAUNTLET_CONTRACT: undefined,
+      });
+
+      expect(run.status).toBe(0);
+      expect(existsSync(committed)).toBe(false);
+    },
+    REAL_TOOLCHAIN,
+  );
+
+  it(
+    "writes a real venues.push entry once the regenerate step's own seam is set",
+    () => {
+      const { root, committed } = scratchTiming();
+
+      const run = runGauntlet(["push"], {
+        TARGET_WORKSPACE: root,
+        CI: "true",
+        VITEST: undefined,
+        GAUNTLET_TIMING: "on",
+        GAUNTLET_CONTRACT: undefined,
+        TIMING_BASELINE_WRITE: "1",
+      });
+
+      expect(run.status).toBe(0);
+      expect(existsSync(committed)).toBe(true);
+      const baseline = JSON.parse(readFileSync(committed, "utf8")) as {
+        venues?: { push?: Record<string, unknown> };
+      };
+      expect(Object.keys(baseline.venues?.push ?? {}).length).toBeGreaterThan(0);
+    },
+    REAL_TOOLCHAIN,
+  );
 });

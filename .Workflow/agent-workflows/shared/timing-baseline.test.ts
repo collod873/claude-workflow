@@ -15,6 +15,7 @@ import {
   discoverTestFiles,
   emptyBaseline,
   judge,
+  mayWriteOnRunner,
   readBaseline,
   selectFiles,
   venueBudgetMs,
@@ -46,6 +47,23 @@ function scratchRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), "timing-baseline-"));
   dirs.push(dir);
   return dir;
+}
+
+/**
+ * A scratch target with a generated contract for `scripts`, ready for the machine's real
+ * `bin/gauntlet push` to judge — the setup every case below that drives a real push shares.
+ */
+function scratchContractTarget(scripts: Record<string, string>): string {
+  const root = scratchRoot();
+  mkdirSync(join(root, ".claude"), { recursive: true });
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "scratch", private: true, scripts }));
+  const generate = spawnSync(
+    process.execPath,
+    [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
+    { encoding: "utf8" },
+  );
+  expect(generate.status).toBe(0);
+  return root;
 }
 
 /** A baseline holding one venue's checks, with everything else at its default. */
@@ -245,7 +263,7 @@ describe("where a run's numbers are kept", () => {
   });
 
   it("has one writer for the committed file, so a runner's throwaway checkout leaves no dirty tree", () => {
-    // Everything a hosted job measures is discarded with the job. `measure`, from lane 05's
+    // Everything a hosted job measures is discarded with the job. `runPushVenue`, from lane 05's
     // regenerate step, is what puts a runner's numbers in the committed file — the same one
     // generator, one step, one `git add` shape the clone and wiring baselines already have.
     const root = scratchRoot();
@@ -264,6 +282,35 @@ describe("where a run's numbers are kept", () => {
     expect(run.status).toBe(0);
     expect(existsSync(join(root, BASELINE_RELATIVE_PATH))).toBe(false);
     expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
+  });
+
+  // #342: ADR-0140 named lane 05's regenerate step the committed file's one writer, and ADR-0142
+  // named `record`, from a venue run, the only writer of a `venues` entry — but `record` only ever
+  // persisted off a runner, so the two rules together named a writer that could never fire. This is
+  // the seam that reconciles them: it belongs to the regenerate step's own call and nothing else.
+  describe("the seam that lets the regenerate step's own record call persist on a runner", () => {
+    it("is off by default, so `mayWriteOnRunner` reads a runner with no seam as still discarding", () => {
+      expect(mayWriteOnRunner({})).toBe(false);
+      expect(mayWriteOnRunner({ CI: "true" })).toBe(false);
+    });
+
+    it("is on only when the seam variable is set, whatever else the environment carries", () => {
+      expect(mayWriteOnRunner({ TIMING_BASELINE_WRITE: "1" })).toBe(true);
+    });
+
+    it("lets a runner's record call write the committed file once the seam is set", () => {
+      const root = scratchRoot();
+      mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
+      const run = spawnSync(
+        process.execPath,
+        [resolve(import.meta.dirname, "timing-baseline.ts"), "record", root, "push", "test=99999"],
+        { encoding: "utf8", env: { ...process.env, CI: "true", TIMING_BASELINE_WRITE: "1" } },
+      );
+
+      expect(run.status).toBe(0);
+      expect(readBaseline(join(root, BASELINE_RELATIVE_PATH))?.venues.push.test).toBe(99999);
+      expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
+    });
   });
 
   // The split these cases pin is `runRecord`'s, and `REPORT_ONLY_EXIT` carries its why (ADR-0142).
@@ -296,22 +343,7 @@ describe("where a run's numbers are kept", () => {
      * reads it, so the two runs differ only in where the number came from.
      */
     function pushOverBudget(env: NodeJS.ProcessEnv): number | null {
-      const root = scratchRoot();
-      mkdirSync(join(root, ".claude"), { recursive: true });
-      writeFileSync(
-        join(root, "package.json"),
-        JSON.stringify({
-          name: "scratch",
-          private: true,
-          scripts: { typecheck: "sleep 1", lint: "true", test: "true" },
-        }),
-      );
-      const generate = spawnSync(
-        process.execPath,
-        [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-        { encoding: "utf8" },
-      );
-      expect(generate.status).toBe(0);
+      const root = scratchContractTarget({ typecheck: "sleep 1", lint: "true", test: "true" });
 
       const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
       mkdirSync(join(root, dirname(relative)), { recursive: true });
@@ -343,6 +375,44 @@ describe("where a run's numbers are kept", () => {
         expect(REPORT_ONLY_EXIT).not.toBe(2);
         expect(pushOverBudget({ CI: "true" })).toBe(1);
         expect(pushOverBudget({ CI: "" })).toBe(0);
+      },
+      REAL_PUSH_RUN,
+    );
+  });
+
+  // #342: the generator form `regenerate-artifacts.ts` invokes is `node timing-baseline.ts <root>`
+  // with no subcommand — the CLI's default route. It used to be `writeSuiteTiming`'s solo
+  // measurement, which since ADR-0142 could only ever touch `suite`. This is the replacement: a
+  // real push venue, so `record`'s own call inside it can write `venues.push` for real.
+  describe("the generator's own route to a venue", () => {
+    /** A scratch target the push venue can judge for real, ready for `record` to write into. */
+    function scratchVenueTarget(): string {
+      const root = scratchContractTarget({ typecheck: "true", lint: "true", test: "true" });
+      mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
+      return root;
+    }
+
+    it(
+      "runs the push venue rather than a solo suite measurement, and writes a real venues.push entry",
+      () => {
+        const root = scratchVenueTarget();
+
+        // `VITEST`/`GAUNTLET_TIMING` for the same reason `pushOverBudget` above sets them: this
+        // suite's own `VITEST` would otherwise leak into the child and skip its timing block.
+        const run = spawnSync(
+          process.execPath,
+          [resolve(import.meta.dirname, "timing-baseline.ts"), root],
+          { encoding: "utf8", env: { ...process.env, CI: "true", VITEST: "", GAUNTLET_TIMING: "on" } },
+        );
+
+        const baseline = readBaseline(join(root, BASELINE_RELATIVE_PATH));
+        expect({ status: run.status, checks: Object.keys(baseline?.venues.push ?? {}) }).toEqual({
+          status: 0,
+          checks: expect.arrayContaining(["typecheck"]),
+        });
+        // The old solo route wrote `suite` and never `venues`; this route is not that one, and
+        // writes no `suite` at all — see `writeSuiteTiming`'s and `runPushVenue`'s own docstrings.
+        expect(baseline?.suite).toBeUndefined();
       },
       REAL_PUSH_RUN,
     );

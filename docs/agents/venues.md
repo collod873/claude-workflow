@@ -39,13 +39,22 @@ Two files, because a millisecond is only true where it was measured:
 
 | File                                                          | Holds                    | Written by                                    |
 | ------------------------------------------------------------- | ------------------------ | --------------------------------------------- |
-| `.Workflow/agent-workflows/shared/timing-baseline.json`        | the runner's numbers     | lane 05's `regenerate-artifacts.ts`, on the runner |
+| `.Workflow/agent-workflows/shared/timing-baseline.json`        | the runner's numbers     | the push venue run lane 05's `regenerate-artifacts.ts` makes, on the runner |
 | `.Workflow/agent-workflows/shared/timing-baseline.local.json`  | this machine's numbers   | every `bin/gauntlet` run off CI (gitignored)  |
 
 A run is judged against the file for where it ran. Nothing merges them, and nothing keys them by
 core count — this repo's public runners have 4 cores, Lumaria's private ones 2, and the workstation
 32, and a key would have to mean the same thing in every enrolled repository. The core count is
 recorded as a *field*, so a runner-class change is visible in a diff.
+
+The committed file's `venues` half is written only from *inside* that push venue run: lane 05's
+regenerate step spawns `bin/gauntlet push` against the target, under a seam only that spawn sets,
+so the `record` call the push venue already makes at the end of a green run is allowed to keep
+what it measured instead of discarding it. A plain `bin/gauntlet push` on a runner — Verify's own
+push, the same command — never carries that seam, so it still judges the committed baseline and
+writes nothing
+([ADR-0145](../adr/0145-lane-05-s-regenerate-step-writes-the-committed-venue-baselin.md), amending
+[ADR-0142](../adr/0142-a-venue-budget-is-written-only-by-a-venue-run-and-only-the-c.md)).
 
 ## How a file moves venue
 
@@ -62,10 +71,17 @@ What sits at push today is the handful of files that drive their subject as a re
 hook, a CLI, a `git` invocation. That is the honest way to test a thing whose contract *is* its
 exit code, and it is also why they belong at the venue that can afford them.
 
-To re-measure by hand:
+To re-measure the push venue's own numbers by hand — this runs the whole push venue against the
+given root, exactly as lane 05's regenerate step does:
 
 ```
 node .Workflow/agent-workflows/shared/timing-baseline.ts .
+```
+
+To re-measure only the `suite` half — a solo pass that never touches `venues` (ADR-0142) — by hand:
+
+```
+node .Workflow/agent-workflows/shared/timing-baseline.ts measure .
 ```
 
 ## Concurrency

@@ -386,18 +386,30 @@ if [ "$venue" = "push" ]; then
     "$repo_root/.Workflow/agent-workflows/shared/trailer-form.ts" "$target_root" &
   pids+=($!)
 
+  # Gated on the target's own ADR corpus fixture — the same precondition `corpus` above already
+  # reads — rather than on whether this machine happens to carry `~/bin/adr-check`. A target that
+  # never generated that fixture never adopted this repository's ADR shape (frontmatter, the
+  # `amends:` graph), so running the checker against its `docs/adr` judges a check it never opted
+  # into: the 2026-09-02 dry run against Lumaria found 83 ADRs with no frontmatter and stopped the
+  # whole gauntlet before any other check ran. A target that carries the fixture already generated
+  # it from `docs/adr/` in this repo's own shape, which is the fact this check actually judges.
+  #
   # The ADR corpus's own shape, index freshness and citation integrity, through the machine-global
   # `~/bin/adr-check` rather than a copy vendored here — which is ADR-0097's rule, and the reason
   # that tool was written to find its repo from the working directory rather than from its own
-  # location. Absent (a CI runner has no `~/bin`) it stands down at exit 0 rather than reporting
-  # exit 2: "could not run" is not free here, because it makes the whole gauntlet exit 2 and
-  # `.github/workflows/verify.yml` turns that into a red job — a machine-global tool this venue was
-  # never going to have is plumbing, not a finding, and this venue refuses only on findings. A
-  # machine that has the tool still gets the full check, against the target's own `docs/adr`.
-  run_check adrs bash -c \
-    'cd "$1" || exit 2; [ -d docs/adr ] || exit 0; [ -x "$HOME/bin/adr-check" ] || exit 0; exec "$HOME/bin/adr-check" >/dev/null' \
-    _ "$target_root" &
-  pids+=($!)
+  # location. Absent on this machine (a CI runner has no `~/bin`), the checker still stands down
+  # rather than reporting a finding: a machine-global tool this venue was never going to have is
+  # plumbing, not a finding, and this venue refuses only on findings. A machine that has the tool
+  # still gets the full check, against the target's own `docs/adr`.
+  if [ -f "$corpus_fixture" ]; then
+    run_check adrs bash -c '
+      cd "$1" || exit 2
+      tool="$HOME/bin/adr-check"
+      [ -x "$tool" ] || exit 0
+      exec "$tool" >/dev/null
+    ' _ "$target_root" &
+    pids+=($!)
+  fi
 fi
 
 # What the test slot actually runs here.
