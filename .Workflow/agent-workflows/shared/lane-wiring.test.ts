@@ -329,6 +329,47 @@ describe("bin/close-ticket's job names agree with the verify.yml jobs they are c
 });
 
 /* -------------------------------------------------------------------------------------------- */
+/* fixer.yml's jq copy of the two job names                                                      */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * `fixer.yml` reads the same two Verify jobs out of `gh run view --json jobs` in shell, where no
+ * `.ts` module can be imported, so each `jq` select restates the job's name twice — once bare and
+ * once as the `<caller job key> / <name>` spelling a run reached through `uses:` reports, the same
+ * two spellings `shared/job-match.ts`'s `findJobByName` accepts. Three literals per job with no
+ * compiler between them; this holds all of them to `LANE_OWNED`, which the row above holds to
+ * `verify.yml`'s own `name:`.
+ */
+describe("fixer.yml's jq job selects agree with the verify.yml jobs they are copies of", () => {
+  const jobSelects = readWorkflow("fixer.yml")
+    .source.split("\n")
+    .flatMap((line) => {
+      const match = /^\s*(\w+)=.*select\(\.name == "([^"]+)" or \(\.name \| endswith\(" \/ ([^"]+)"\)\)\)/.exec(line);
+      return match ? [{ variable: match[1], bare: match[2], throughCaller: match[3] }] : [];
+    });
+
+  it("finds a select for each job the lane reads, so this pin is not vacuous", () => {
+    expect(jobSelects.map((select) => select.variable)).toEqual(expect.arrayContaining(["GATE_CONCLUSION", "RESOLVE_JOB_ID"]));
+  });
+
+  it.each([
+    ["GATE_CONCLUSION", LANE_OWNED.gateJob],
+    ["RESOLVE_JOB_ID", LANE_OWNED.immutabilityJob],
+  ])("%s selects the job verify.yml names", (variable, owned) => {
+    const select = jobSelects.find((each) => each.variable === variable);
+    expect(select?.bare, `fixer.yml's ${variable} select`).toBe(owned);
+    expect(select?.throughCaller, `fixer.yml's ${variable} select, reached through uses:`).toBe(owned);
+  });
+
+  it("restates no job name verify.yml does not own", () => {
+    for (const select of jobSelects) {
+      expect([LANE_OWNED.gateJob, LANE_OWNED.immutabilityJob], `fixer.yml selects a job named ${select.bare}`).toContain(select.bare);
+      expect(select.throughCaller, `fixer.yml's ${select.variable} select disagrees with itself`).toBe(select.bare);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------------------------- */
 /* fixer.yml reads the pull request out of the line verify.yml echoes (ADR-0104)                 */
 /* -------------------------------------------------------------------------------------------- */
 
