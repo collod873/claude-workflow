@@ -428,16 +428,20 @@ describe("runImplement — on fakes", () => {
    * the pathspec failure that used to lose a run over a checkout it had never been asked to carry.
    */
   it("regenerates and stages only the generated artifacts already present at the root, never the ones an enrolled repository never seeded", async () => {
-    const [present, ...absent] = GENERATED_ARTIFACTS;
-    const root = makeRootWithArtifacts([present!.path]);
+    // The corpus fixture, not GENERATED_ARTIFACTS[0] (the contract): a present contract also seeds
+    // the timing baseline (#349), which would land in `absent` below and break this test's own
+    // present-only assertion. The corpus fixture carries no such side effect.
+    const present = GENERATED_ARTIFACTS[1]!;
+    const absent = GENERATED_ARTIFACTS.filter((artifact) => artifact.path !== present.path);
+    const root = makeRootWithArtifacts([present.path]);
 
     const { run, regenerated } = trackGeneratorsFrom(root);
     await runImplement(run.deps);
 
-    expect(regenerated).toEqual([`${present!.generator} ${root}`]);
+    expect(regenerated).toEqual([`${present.generator} ${root}`]);
 
     const addCall = run.gitCalls.find((call) => call[0] === "add") ?? [];
-    expect(addCall).toContain(present!.path);
+    expect(addCall).toContain(present.path);
     for (const artifact of absent) {
       expect(addCall).not.toContain(artifact.path);
     }

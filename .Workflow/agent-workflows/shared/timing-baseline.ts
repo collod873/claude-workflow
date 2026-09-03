@@ -123,8 +123,13 @@ export interface SuiteTiming {
 export interface TimingBaseline {
   generated: string;
   why: string;
-  /** The deadband for this target, in percent — a repo that wants a wider one edits it here. */
-  marginPct: number;
+  /**
+   * The deadband for this target, in percent — a repo that wants a wider one edits it here.
+   * Absent until a repo edits one in: every reader falls back to `DEFAULT_MARGIN_PCT`, so a seeded
+   * baseline (#349) carries no figure here rather than writing this file's own default as if it
+   * were the target's.
+   */
+  marginPct?: number;
   /** The machine whose venue numbers these are. Absent until a run has recorded one. */
   measuredOn?: MachineFacts;
   /** venue → check name → milliseconds. */
@@ -163,7 +168,6 @@ export function emptyBaseline(): TimingBaseline {
   return {
     generated: new Date().toISOString().slice(0, 10),
     why: DEFAULT_WHY,
-    marginPct: DEFAULT_MARGIN_PCT,
     venues: {},
   };
 }
