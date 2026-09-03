@@ -1,0 +1,259 @@
+#!/bin/bash
+# The canary loop, one iteration: push, fire, watch, summarise.
+#
+#   bin/canary prove [--lane <name>] [--no-wip] [--timeout <s>]   → 0 green · 1 red · 2 could not run
+#   bin/canary reset-cap                                          clear the consecutive-red counter
+#
+# A machine change is proven on a canary target before it lands (ADR-0146): a private repository
+# whose stubs pin this session's branch and whose lane runs on a self-hosted runner here. This
+# script is the one command a session runs in a loop — it never edits; the session reads the
+# summary, fixes, and runs it again. Five reds in a row and it refuses to run a sixth, because a
+# loop that is not converging is the owner's problem, not the runner's.
+#
+# Identity is the branch of the worktree this runs in: branch `x/y` → canary branch `canary/x-y`
+# → repository `<owner>/canary-x-y`. A branch already named `canary/<id>` keeps its id. It refuses
+# `main`, a detached HEAD, and the primary checkout, because two sessions in one checkout share a
+# HEAD and a working tree and the push below would carry both.
+#
+# **A green that does not print the machine SHA against the branch head is not a green.** Run
+# 33706756013 passed with the machine checked out at `main` under the branch's YAML. So the
+# summary always reads the machine checkout's SHA out of the run log and compares it to the commit
+# just pushed; a mismatch is red whatever the run's own conclusion says, and so is a job that ran
+# anywhere but the `canary` runner.
+#
+# Absolute interpreter for the same reason `bin/gauntlet` gives: this runs from shells nobody
+# logged into.
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=bin/node-on-path.sh
+. "$repo_root/bin/node-on-path.sh"
+node_on_path || exit 2
+
+RUNNER_LABEL="canary"
+CAP=5
+
+usage() {
+  sed -n '2,6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+log() { printf 'canary: %s\n' "$*" >&2; }
+die() { log "$*"; exit 2; }
+
+# ---------------------------------------------------------------- arguments
+cmd="${1:-}"
+case "$cmd" in prove|reset-cap) ;; *) usage ;; esac
+shift
+lane="verify"
+wip=1
+timeout_s=900
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --lane) lane="$2"; shift 2 ;;
+    --no-wip) wip=0; shift ;;
+    --timeout) timeout_s="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+# ---------------------------------------------------------------- identity
+# In a worktree `--git-dir` is `<common>/worktrees/<name>`; in the primary checkout the two are
+# the same directory. Both resolved to physical paths, since one is absolute and one may not be.
+git_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-dir)" && pwd -P)"
+common_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+if [ "$git_dir" = "$common_dir" ]; then
+  die "this is the primary checkout — run the canary from a worktree (git worktree add <dir> -b <branch>) so no other session shares its HEAD"
+fi
+branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
+[ -n "$branch" ] || die "detached HEAD — a canary is named by its branch"
+[ "$branch" != "main" ] || die "on main — a canary proves a branch before it lands, never main itself"
+id="${branch#canary/}"
+id="${id//\//-}"
+canary_branch="canary/$id"
+origin_url="$(git -C "$repo_root" remote get-url origin)"
+machine_repo="$(sed -E 's#^(https://github.com/|git@github.com:)##; s#\.git$##' <<<"$origin_url")"
+owner="${machine_repo%%/*}"
+canary_repo="$owner/canary-$id"
+state_dir="$git_dir/canary"
+mkdir -p "$state_dir"
+cap_file="$state_dir/reds"
+fingerprint_file="$state_dir/last-fingerprint"
+
+if [ "$cmd" = "reset-cap" ]; then
+  rm -f "$cap_file" "$fingerprint_file"
+  log "cap reset for $id"
+  exit 0
+fi
+reds="$(cat "$cap_file" 2>/dev/null || echo 0)"
+if [ "$reds" -ge "$CAP" ]; then
+  die "$reds reds in a row on $id — the loop is not converging; stop, rethink, then bin/canary prove --reset-cap"
+fi
+
+log "id=$id  branch=$branch → $canary_branch  target=$canary_repo  lane=$lane"
+
+# ---------------------------------------------------------------- push
+if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
+  if [ "$wip" = "1" ]; then
+    git -C "$repo_root" add -A
+    git -C "$repo_root" commit -q --no-verify -m "canary: wip"
+    log "committed the working tree as wip (squash before landing)"
+  else
+    die "working tree is dirty and --no-wip was given"
+  fi
+fi
+head="$(git -C "$repo_root" rev-parse HEAD)"
+# `CANARY_EXPECT_HEAD`, when set, is what the summary compares the machine checkout against
+# instead of HEAD — the one seam for proving that a run whose machine SHA is not the branch head
+# comes out red whatever GitHub concluded. Never set it outside that demonstration.
+expect_head="${CANARY_EXPECT_HEAD:-$head}"
+log "pushing $head to $canary_branch (the pre-push gauntlet runs here)"
+push_log="$state_dir/push.log"
+if ! git -C "$repo_root" push -q --force origin "HEAD:refs/heads/$canary_branch" >"$push_log" 2>&1; then
+  grep -E "^(--- |gauntlet: |error: | FAIL |×| ❯ )" "$push_log" | tail -20 >&2
+  die "the local gauntlet refused the push — fix that first; nothing was fired (full output: $push_log)"
+fi
+
+# ---------------------------------------------------------------- up (idempotent)
+gh api "repos/$canary_repo" --jq .default_branch >/dev/null 2>&1 \
+  || die "$canary_repo does not exist — seed it first (this bullet proves against an existing seed)"
+target_branch="$(gh api "repos/$canary_repo" --jq .default_branch)"
+
+online="$(gh api "repos/$canary_repo/actions/runners" \
+  --jq "[.runners[] | select(.status==\"online\") | select(any(.labels[]; .name==\"$RUNNER_LABEL\"))] | length")"
+[ "$online" -gt 0 ] || die "no online runner labelled '$RUNNER_LABEL' on $canary_repo — start one: HOME=~/canary-runner/home ~/canary-runner/<name>/run.sh"
+
+# The stub the canary must carry: this machine's own stub, re-pinned to the session's branch and
+# told which runner and machine ref to use. Written only when it differs, and when it is written
+# that commit is the fire — a second push would only queue a second run behind it.
+stub_path=".github/workflows/$lane-caller.yml"
+[ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
+expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@main#\1@$canary_branch#" "$repo_root/$stub_path"
+  printf '    with:\n      runner: %s\n      machine_ref: %s\n' "$RUNNER_LABEL" "$canary_branch")"
+remote_stub_json="$(gh api "repos/$canary_repo/contents/$stub_path?ref=$target_branch" 2>/dev/null || echo '{}')"
+# `base64 -d`, not jq's `@base64d`: the API wraps its base64 at 60 columns and jq refuses the
+# newlines, which read as "no stub there" and wrote an identical one — a commit with no diff,
+# which fires nothing under the stub's `paths-ignore` (exactly the empty-commit case).
+remote_stub="$(jq -r '.content // ""' <<<"$remote_stub_json" | base64 -d 2>/dev/null || true)"
+remote_stub_sha="$(jq -r '.sha // empty' <<<"$remote_stub_json")"
+
+put_file() { # path message content [sha] → "<commit sha> <blob sha>"
+  local args=(-X PUT "repos/$canary_repo/contents/$1" -f "message=$2" -f "content=$(printf '%s\n' "$3" | base64 -w0)" -f "branch=$target_branch")
+  [ -n "${4:-}" ] && args+=(-f "sha=$4")
+  gh api "${args[@]}" --jq '"\(.commit.sha) \(.content.sha)"'
+}
+
+fire_sha=""
+if [ "$remote_stub" != "$expected_stub" ]; then
+  read -r stub_commit stub_blob <<<"$(put_file "$stub_path" "canary: pin $lane to $canary_branch on the $RUNNER_LABEL runner" "$expected_stub" "$remote_stub_sha")"
+  if [ "$stub_blob" != "$remote_stub_sha" ]; then
+    fire_sha="$stub_commit"
+    log "stub written on $canary_repo ($fire_sha) — that commit is the fire"
+  else
+    log "stub PUT changed nothing (blob $stub_blob unchanged) — firing separately"
+  fi
+fi
+
+# ---------------------------------------------------------------- reset
+for run in $(gh run list -R "$canary_repo" --json databaseId,status --jq '.[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting") | .databaseId'); do
+  gh run cancel "$run" -R "$canary_repo" >/dev/null 2>&1 || true
+  log "cancelled stale run $run"
+done
+
+# ---------------------------------------------------------------- fire
+if [ -z "$fire_sha" ]; then
+  fire_json="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$target_branch" 2>/dev/null || echo '{}')"
+  read -r fire_sha _ <<<"$(put_file ".canary-fire" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
+fi
+log "fired: $canary_repo@$fire_sha"
+
+# ---------------------------------------------------------------- watch
+run_id=""
+deadline=$((SECONDS + 120))
+while [ -z "$run_id" ]; do
+  run_id="$(gh api "repos/$canary_repo/actions/runs?head_sha=$fire_sha" --jq '.workflow_runs[0].id // empty')"
+  [ -n "$run_id" ] && break
+  [ $SECONDS -lt $deadline ] || die "the push fired nothing in 120 s — does $stub_path trigger on push to $target_branch, and did the change touch a path outside paths-ignore?"
+  sleep 3
+done
+log "run $run_id — https://github.com/$canary_repo/actions/runs/$run_id"
+deadline=$((SECONDS + timeout_s))
+status=""
+while [ "$status" != "completed" ]; do
+  status="$(gh api "repos/$canary_repo/actions/runs/$run_id" --jq .status)"
+  [ "$status" = "completed" ] && break
+  [ $SECONDS -lt $deadline ] || { gh run cancel "$run_id" -R "$canary_repo" >/dev/null 2>&1 || true; die "run $run_id still $status after ${timeout_s}s — cancelled"; }
+  sleep 5
+done
+conclusion="$(gh api "repos/$canary_repo/actions/runs/$run_id" --jq .conclusion)"
+
+# ---------------------------------------------------------------- summarise
+jobs_json="$(gh api "repos/$canary_repo/actions/runs/$run_id/jobs")"
+log_file="$state_dir/run-$run_id.log"
+for _ in 1 2 3 4 5; do
+  if gh run view "$run_id" -R "$canary_repo" --log >"$log_file" 2>/dev/null && [ -s "$log_file" ]; then break; fi
+  sleep 3
+done
+plain="$(cut -f3- "$log_file" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z //')"
+
+# The SHA each checkout actually landed on: `actions/checkout` logs `Syncing repository: <repo>`
+# and, after the checkout, `git log -1 --format=%H` followed by the SHA on its own line.
+sha_after_sync() {
+  awk -v repo="$1" '
+    $0 == "Syncing repository: " repo { armed = 1; next }
+    armed && /^[0-9a-f]{40}$/ { print; exit }
+  ' <<<"$plain"
+}
+machine_sha="$(sha_after_sync "$machine_repo" || true)"
+target_sha="$(sha_after_sync "$canary_repo" || true)"
+uses_line="$(grep -m1 -E "^Uses: $machine_repo/\.github/workflows/$lane\.yml@" <<<"$plain" || true)"
+
+verdict="green"
+reasons=()
+[ "$conclusion" = "success" ] || { verdict="red"; reasons+=("run concluded '$conclusion'"); }
+if [ -z "$machine_sha" ]; then
+  verdict="red"; reasons+=("could not read the machine checkout's SHA from the log — nothing proves which machine ran")
+elif [ "$machine_sha" != "$expect_head" ]; then
+  verdict="red"; reasons+=("FALSE GREEN: machine ran at ${machine_sha:0:12}, branch head is ${expect_head:0:12}")
+fi
+ran_jobs="$(jq -r '[.jobs[] | select(.conclusion != "skipped")] | length' <<<"$jobs_json")"
+[ "$ran_jobs" -gt 0 ] || { verdict="red"; reasons+=("no job ran — every job was skipped"); }
+off_runner="$(jq -r --arg l "$RUNNER_LABEL" '[.jobs[] | select(.conclusion != "skipped") | select((.labels // []) | index($l) | not) | .name] | join(", ")' <<<"$jobs_json")"
+[ -z "$off_runner" ] || { verdict="red"; reasons+=("ran off the '$RUNNER_LABEL' runner: $off_runner"); }
+
+failed_steps="$(jq -r '.jobs[] | . as $j | (.steps // [])[] | select(.conclusion=="failure") | "\($j.name) → \(.name)"' <<<"$jobs_json")"
+fingerprint="$(printf '%s\n%s\n%s' "$verdict" "${reasons[*]:-}" "$failed_steps" | sha1sum | cut -c1-12)"
+same_as_last=0
+[ "$(cat "$fingerprint_file" 2>/dev/null || true)" = "$fingerprint" ] && same_as_last=1
+printf '%s' "$fingerprint" >"$fingerprint_file"
+
+if [ "$verdict" = "green" ]; then
+  rm -f "$cap_file"
+else
+  echo $((reds + 1)) >"$cap_file"
+fi
+
+{
+  echo "================================================================ canary: $verdict"
+  echo "id            $id"
+  echo "lane          $lane"
+  echo "branch head   $head"
+  echo "machine ran   ${machine_sha:-<unknown>}   $([ "$machine_sha" = "$expect_head" ] && echo '== head ✓' || echo '!= head ✗')"
+  echo "target        $canary_repo@${target_sha:-<unknown>}"
+  echo "workflow      ${uses_line#Uses: }"
+  echo "run           https://github.com/$canary_repo/actions/runs/$run_id   $conclusion"
+  jq -r '.jobs[] | "job           \(.name): \(.conclusion)  runner=\(.runner_name // "-") labels=\((.labels // []) | join(","))  \(.started_at // "")..\(.completed_at // "")"' <<<"$jobs_json"
+  for r in "${reasons[@]:-}"; do [ -n "$r" ] && echo "why           $r"; done
+  if [ -n "$failed_steps" ]; then
+    echo "failed steps"
+    sed 's/^/              /' <<<"$failed_steps"
+    echo "--- last 40 lines of the failed step(s)"
+    gh run view "$run_id" -R "$canary_repo" --log-failed 2>/dev/null | cut -f3- | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z //' | grep -v '^\s*$' | tail -40
+  fi
+  if [ "$verdict" != "green" ]; then
+    echo "reds in a row $((reds + 1)) of $CAP$([ "$same_as_last" = "1" ] && echo '   — SAME SUMMARY AS LAST TIME: no progress')"
+  fi
+  echo "log           $log_file"
+}
+
+[ "$verdict" = "green" ] && exit 0 || exit 1

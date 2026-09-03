@@ -152,5 +152,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0142 | [A venue budget is written only by a venue run, and only the committed baseline may refuse a push](0142-a-venue-budget-is-written-only-by-a-venue-run-and-only-the-c.md) | constraint |
 | 0143 | [A machine schema change may not invalidate a file an enrolled repository has already committed](0143-a-machine-schema-change-may-not-invalidate-a-file-an-enrolle.md) | constraint |
 | 0144 | [A machine change is run against the local checkout of an enrolled repository before it lands](0144-a-machine-change-is-run-against-the-local-checkout-of-an-enr.md) | constraint |
+| 0145 | [The committed venue half is written by lane 05's push-venue run on the runner](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) | constraint |
+| 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | constraint |
 
-144 ADRs · 65 constraint · 44 note · 35 superseded · 13,717 words total.
+146 ADRs · 67 constraint · 44 note · 35 superseded · 14,028 words total.
