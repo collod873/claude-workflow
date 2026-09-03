@@ -649,17 +649,6 @@
     "fragment": "const wireCalls = fake.calls.filter(\n      (args) =>\n        args[0] === \"api\" &&\n        typeof args[1] === \"string\" &&\n        args[1].endsWith(\"/dependencies/blocked_by\") &&\n        args.includes(\"-F\"),\n    );\n    expect(wireCalls).toHaveLength(1"
   },
   {
-    "hash": "deed80fb94256748",
-    "format": "typescript",
-    "lines": 14,
-    "tokens": 87,
-    "where": [
-      ".Workflow/agent-workflows/implement/out-of-brief.test.ts:127",
-      ".Workflow/agent-workflows/implement/out-of-brief.test.ts:149"
-    ],
-    "fragment": ");\n\n    await runImplement({\n      gh,\n      exec: stage.exec,\n      git,\n      readFile: () => \"# CONTEXT\\n\",\n      fileExists: () => false,\n      writeFile: () => {},\n      issueNumber: 167,\n      failingTests: [],\n    });\n\n    expect"
-  },
-  {
     "hash": "e06f72af0e355043",
     "format": "typescript",
     "lines": 8,

@@ -78,6 +78,25 @@ function fakeGit(): GitExec {
   return () => "";
 }
 
+
+/**
+ * The `ImplementDeps` every scenario here builds — same inert filesystem, same ticket number, and
+ * `failingTests` as a thunk. One builder rather than four copies: a one-token edit made them
+ * identical enough for the clone gate to refuse them, and the duplication was the real finding.
+ */
+function outOfBriefDeps(gh: Parameters<typeof runImplement>[0]["gh"], git: Parameters<typeof runImplement>[0]["git"], exec: Parameters<typeof runImplement>[0]["exec"]) {
+  return {
+    gh,
+    exec,
+    git,
+    readFile: () => "# CONTEXT\n",
+    fileExists: () => false,
+    writeFile: () => {},
+    issueNumber: 167,
+    failingTests: () => [],
+  };
+}
+
 describe("recordOutOfBrief", () => {
   it("creates the standing tracker issue on the first call and marks the module's count at 1", () => {
     const { gh, issues } = fakeGhWithTracker();
@@ -127,16 +146,7 @@ describe("runImplement — out-of-brief reads", () => {
       }),
     );
 
-    await runImplement({
-      gh,
-      exec: stage.exec,
-      git,
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-    });
+    await runImplement(outOfBriefDeps(gh, git, stage.exec));
 
     const tracker = issues.find((issue) => issue.title === TRACKER_TITLE);
     expect(tracker).toBeDefined();
@@ -149,16 +159,7 @@ describe("runImplement — out-of-brief reads", () => {
     const git = fakeGit();
     const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "Built the thing." }));
 
-    await runImplement({
-      gh,
-      exec: stage.exec,
-      git,
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-    });
+    await runImplement(outOfBriefDeps(gh, git, stage.exec));
 
     expect(issues.find((issue) => issue.title === TRACKER_TITLE)).toBeUndefined();
   });
@@ -190,31 +191,13 @@ describe("no scenario in this file ever writes the dependency graph", () => {
         outOfBriefReads: ["shape", "shape"],
       }),
     );
-    await runImplement({
-      gh: s3.gh,
-      exec: stage.exec,
-      git: fakeGit(),
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-    });
+    await runImplement(outOfBriefDeps(s3.gh, fakeGit(), stage.exec));
     allCalls.push(...s3.calls);
 
     // Scenario 4: runImplement with no out-of-brief reads at all.
     const s4 = fakeGhWithTracker(ticket);
     const stage2 = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
-    await runImplement({
-      gh: s4.gh,
-      exec: stage2.exec,
-      git: fakeGit(),
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-    });
+    await runImplement(outOfBriefDeps(s4.gh, fakeGit(), stage2.exec));
     allCalls.push(...s4.calls);
 
     expect(allCalls.length).toBeGreaterThan(0);

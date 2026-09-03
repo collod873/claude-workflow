@@ -272,7 +272,7 @@ function ordinaryRun(extra: Partial<ImplementDeps> = {}): {
       fileExists: () => false,
       writeFile: () => {},
       issueNumber: 167,
-      failingTests: [],
+      failingTests: () => [],
       ...extra,
     },
   };
@@ -345,7 +345,7 @@ describe("runImplement — on fakes", () => {
       fileExists: () => false,
       writeFile: (path, content) => written.set(path, content),
       issueNumber: 167,
-      failingTests: [{ path: "tests/acceptance/foo.test.ts", content: "…" }],
+      failingTests: () => [{ path: "tests/acceptance/foo.test.ts", content: "…" }],
     });
 
     expect(result).toEqual({ outcome: "opened", pr: "https://github.com/owner/repo/pull/42" });
@@ -373,7 +373,7 @@ describe("runImplement — on fakes", () => {
 
   it("hands the implementer stage a brief carrying the ticket body and the failing test content", async () => {
     const run = ordinaryRun({
-      failingTests: [{ path: "tests/acceptance/foo.test.ts", content: "the failing assertion" }],
+      failingTests: () => [{ path: "tests/acceptance/foo.test.ts", content: "the failing assertion" }],
     });
 
     await runImplement(run.deps);
@@ -594,23 +594,38 @@ describe("runImplement rebases onto trunk before it pushes (#334)", () => {
  * costs nothing. It costs nothing only if the ref is created **before** the model runs — the old
  * order pushed at the end, so two implementers both did the whole job and only the push collided.
  */
+/**
+ * The `ImplementDeps` both claim-behaviour suites below build: the same fake ticket, the same
+ * inert filesystem, and `failingTests` as a thunk that must never be called before the claim is
+ * held. One helper rather than two near-identical copies — the clone gate refused the second the
+ * moment a one-token edit made them match, and two copies of a deps builder is two places to
+ * forget the thunk.
+ */
+function claimDeps(
+  gh: GhExec,
+  git: GitExec,
+  stage: ReturnType<typeof createFakeStage>,
+  log: (line: string) => void = () => {},
+) {
+  return {
+    gh,
+    exec: stage.exec,
+    git,
+    readFile: () => "# CONTEXT\n",
+    fileExists: () => false,
+    writeFile: () => {},
+    issueNumber: 167,
+    failingTests: () => [],
+    log,
+    now: NOW,
+  };
+}
+
 describe("runImplement claims its branch before it spends anything", () => {
   const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
 
-  function deps(gh: GhExec, git: GitExec, stage: ReturnType<typeof createFakeStage>, log: string[]) {
-    return {
-      gh,
-      exec: stage.exec,
-      git,
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-      log: (line: string) => log.push(line),
-      now: NOW,
-    };
-  }
+  const deps = (gh: GhExec, git: GitExec, stage: ReturnType<typeof createFakeStage>, log: string[]) =>
+    claimDeps(gh, git, stage, (line: string) => log.push(line));
 
   // ADR-0115 / #279: a dispatch can name a ticket that already merged and closed, and the model
   // run it used to buy exited green — the stall was invisible. The open path needs no twin test:
@@ -698,20 +713,7 @@ describe("a claim does not outlive the run that made it", () => {
   const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
   const branch = implementationBranch(167);
 
-  function deps(gh: GhExec, git: GitExec, stage: ReturnType<typeof createFakeStage>) {
-    return {
-      gh,
-      exec: stage.exec,
-      git,
-      readFile: () => "# CONTEXT\n",
-      fileExists: () => false,
-      writeFile: () => {},
-      issueNumber: 167,
-      failingTests: [],
-      log: () => {},
-      now: NOW,
-    };
-  }
+  const deps = (gh: GhExec, git: GitExec, stage: ReturnType<typeof createFakeStage>) => claimDeps(gh, git, stage);
 
   const builds = () => createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
 
@@ -743,6 +745,26 @@ describe("a claim does not outlive the run that made it", () => {
 
     expect(refs.has(branch)).toBe(true);
     expect(refDeletesIn(calls)).toEqual([]);
+  });
+
+  /**
+   * #179's guarantee, pinned where it actually broke. The claim is documented as happening before
+   * anything expensive, but `main` builds `ImplementDeps` as the *argument* to `runImplement`, so
+   * an eagerly-resolved `failingTests` ran a full `vitest run tests/acceptance/` before the claim
+   * was ever attempted. On 2026-09-02 that window was seventeen minutes on two live runs, and it
+   * is what let the reconciler read a running implementer as unstarted and dispatch a second one
+   * against #342. A thunk that a refused claim never calls is the shape that cannot regress.
+   */
+  it("never resolves the failing acceptance tests when the claim is refused, so a duplicate dispatch stays free", async () => {
+    const { gh } = fakeGh(ticket, { existingClaim: { createdAt: minutesAgo(5) } });
+    const { git } = fakeGit();
+    const stage = builds();
+    let resolved = 0;
+
+    const result = await runImplement({ ...deps(gh, git, stage), failingTests: () => { resolved += 1; return []; } });
+
+    expect(result).toEqual({ outcome: "already-claimed" });
+    expect(resolved, "the acceptance suite ran for a run that had nothing to do").toBe(0);
   });
 
   it("still refuses a claim held by a run that is still going, so two dispatches cannot both build one ticket", async () => {
@@ -836,7 +858,7 @@ describe("the implementer's answer, kept", () => {
       fileExists: () => false,
       writeFile,
       issueNumber: 167,
-      failingTests: [],
+      failingTests: () => [],
       log: () => {},
       now: NOW,
       env,
@@ -874,7 +896,7 @@ describe("the implementer's answer, kept", () => {
         if (path === "/tmp/answer.json") throw new Error("read-only filesystem");
       },
       issueNumber: 167,
-      failingTests: [],
+      failingTests: () => [],
       log: () => {},
       now: NOW,
       env: { [ANSWER_PATH_ENV]: "/tmp/answer.json" },
@@ -920,7 +942,7 @@ describe("a run whose implementer changes nothing", () => {
         disk[path] = content;
       },
       issueNumber: 167,
-      failingTests: [],
+      failingTests: () => [],
       log: () => {},
       now: NOW,
     });

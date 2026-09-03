@@ -619,12 +619,23 @@ export interface ImplementDeps {
   writeFile: (path: string, content: string) => void;
   issueNumber: number;
   /**
-   * The failing acceptance test file(s) for this slice, already resolved —
-   * pre-fetched the same way `acceptance.ts`'s `AuthorDeps.ticket` is,
-   * rather than this function reaching into the filesystem or a test runner
-   * itself.
+   * The failing acceptance test file(s) for this slice — a **thunk**, deliberately, not a resolved
+   * array.
+   *
+   * It was resolved eagerly, and that quietly broke #179's guarantee. `main` builds this object as
+   * the argument to `runImplement`, so an eagerly-resolved `failingTests` ran
+   * `findFailingTestFiles` — a full `vitest run tests/acceptance/` — *before* `runImplement` was
+   * entered, and therefore before `claimImplementationBranch`. The claim was documented as
+   * happening "before the ticket read and long before the model"; in practice a whole acceptance
+   * suite ran first. On 2026-09-02 that window was seventeen minutes and counting on two runs, and
+   * it is what let the reconciler read a live implementer as unstarted and dispatch a second one
+   * against #342.
+   *
+   * Called from `buildAndOpen`, after the claim is held. Two things follow: the window is the
+   * claim's own API call again rather than a test suite, and a run that exits `already-claimed`
+   * no longer pays for an acceptance suite it will never use.
    */
-  failingTests: FailingTestFile[];
+  failingTests: () => FailingTestFile[];
   /** Where a refused claim is reported. Injected so a test reads it rather than the run log. */
   log?: (line: string) => void;
   /** When this run started, for judging a claim's age. Injected so a test can age one. */
@@ -823,7 +834,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     ticketBody: ticket.body,
     seamManifestLines,
     moduleContext,
-    failingTests: deps.failingTests,
+    failingTests: deps.failingTests(),
   });
 
   const answer = await runImplementer(deps.exec, brief);
@@ -918,7 +929,7 @@ async function main(): Promise<void> {
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
       issueNumber,
-      failingTests: findFailingTestFiles("tests/acceptance/", (path) => readFileSync(inRepo(path), "utf8"), repoDir),
+      failingTests: () => findFailingTestFiles("tests/acceptance/", (path) => readFileSync(inRepo(path), "utf8"), repoDir),
       runGenerator: execGenerator,
       repoRoot: repoDir,
     });
