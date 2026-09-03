@@ -50,11 +50,18 @@ for (const file of venueFiles) {
  */
 const hookEntries = filesIn(".claude/hooks").filter((path) => path.endsWith(".mjs"));
 
+/**
+ * Same shape, one level up: a `bin/*.mjs` is launched by path — `node "$HERE/whatever.mjs"` —
+ * from another `bin/` script, not imported. That is a subprocess edge no static analysis sees,
+ * exactly why the hooks above need naming as entries instead of being found by traversal.
+ */
+const binMjsEntries = filesIn("bin").filter((path) => path.endsWith(".mjs"));
+
 /** `!` marks a pattern production-only; without it `--production` resolves to an empty project. */
 const production = (paths: string[]) => paths.map((path) => `${path}!`);
 
 export default {
-  entry: production([...hookEntries, ...[...invoked].sort()]),
+  entry: production([...hookEntries, ...binMjsEntries, ...[...invoked].sort()]),
   project: ["**/*.{js,mjs,ts}!"],
 
   /**

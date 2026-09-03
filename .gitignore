@@ -64,3 +64,6 @@ venv/
 # Every `bin/gauntlet` run's own durations (#357/ADR-0148) — venue, wall time, per-check times, core
 # count. Overwritten each run, read by nothing here, and never source.
 .gauntlet-timings.json
+
+# bin/canary-graph's last-run snapshot — regenerated every run, read only by whoever just ran it.
+.canary-graph-last-run.json
