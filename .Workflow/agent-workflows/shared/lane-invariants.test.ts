@@ -186,11 +186,8 @@ describe("a step that reports a dead run covers every way a run dies", () => {
 
 describe("a read of the Actions API is a GET", () => {
   /**
-   * `gh api` switches to POST the moment a `-f`/`--field` is present, and POST on a read-only
-   * Actions route is a 404. `bin/close-ticket` caught that 404 as "no run found" and returned
-   * `unjudged` — so every closing record it ever wrote carried `Verify: unjudged`, including on
-   * green merges, silently. The fix is the query in the path, which is what `integrate.ts` always
-   * did and why it was never affected.
+   * Why a read route must take its query in the path is written where the fix landed:
+   * `fetch_verify_verdict`'s comment in `bin/close-ticket`.
    */
   const offenders = sourceFiles().flatMap((path) => {
     const source = readFileSync(path, "utf8");
@@ -204,8 +201,8 @@ describe("a read of the Actions API is a GET", () => {
   it("no call sends fields to an Actions read route, which would make it a POST", () => {
     expect(
       [...new Set(offenders)],
-      "a `-f` field turns `gh api` into a POST; POST on an Actions read route is a 404 that reads " +
-        "as an empty answer. Put the query in the path instead (integrate.ts's `repoRunsPath`).",
+      "an Actions read route takes its query in the path, never as `-f` fields — see " +
+        "`fetch_verify_verdict` in `bin/close-ticket`, and `integrate.ts`'s `repoRunsPath`.",
     ).toEqual([]);
   });
 });
