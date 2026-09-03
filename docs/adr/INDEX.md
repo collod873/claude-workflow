@@ -155,4 +155,4 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0145 | [The committed venue half is written by lane 05's push-venue run on the runner](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) | constraint |
 | 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | constraint |
 
-146 ADRs · 67 constraint · 44 note · 35 superseded · 14,028 words total.
+146 ADRs · 67 constraint · 44 note · 35 superseded · 14,016 words total.
