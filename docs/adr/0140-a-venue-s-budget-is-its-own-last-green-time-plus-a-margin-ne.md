@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-09-02
-superseded_by: ADR-0142, ADR-0145
+superseded_by: ADR-0142, ADR-0145, ADR-0147
 reversal: Reversing it means hardcoding per-venue milliseconds in `bin/gauntlet` again, deleting `timing-baseline.ts` with its committed and gitignored baselines and lane 05's generator entry, un-deriving vitest's `maxWorkers`, and returning the stop venue to a hand-kept file list — and every enrolled repository goes back to being held to this repo's guess about someone else's suite.
 ---
 
