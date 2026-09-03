@@ -1,0 +1,1 @@
+[{"sessionId":"6c316e5d-9603-476d-97ba-79ed534aac79","base":"f584a48d4648578b9895f0827f4f62ebff554897","head":"26b4fc5658a7562da15799fdd1224fa2bee90aa9","touchedPaths":[".Workflow/agent-workflows/fixer/fixer.test.ts",".Workflow/agent-workflows/shared/lane-invariants.test.ts",".github/workflows/integrate.yml"],"corpusPath":"raw/sessions/2026-09-03-6c316e5d.md"}]
