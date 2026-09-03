@@ -331,8 +331,47 @@ canary_up
 # that commit is the fire — a second push would only queue a second run behind it.
 stub_path=".github/workflows/$lane-caller.yml"
 [ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine — lane '$lane' has no caller stub"
-expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@main#\1@$canary_branch#" "$repo_root/$stub_path"
-  printf '    with:\n      runner: %s\n      machine_ref: %s\n' "$RUNNER_LABEL" "$canary_branch")"
+# `runner`/`machine_ref` are merged into the job's own `with:` block, not appended as a second
+# one: a stub whose `uses:` already carries a `with:` (e.g. fixer-caller.yml's `run_id`/`test_dir`)
+# would otherwise get two `with:` keys in one YAML mapping — invalid, so GitHub fails the whole
+# workflow file at parse time and schedules no job at all, which reads as a false red with no
+# job ever having run. A stub with no `with:` block (verify-caller.yml) still gets one appended.
+expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@main#\1@$canary_branch#" "$repo_root/$stub_path" \
+  | awk -v runner="$RUNNER_LABEL" -v ref="$canary_branch" -v usline="uses: $machine_repo/.github/workflows/$lane.yml@$canary_branch" '
+    BEGIN { pending = 0; inserted = 0 }
+    {
+      if (pending) {
+        pending = 0
+        if ($0 ~ /^[ \t]*with:[ \t]*$/) {
+          print
+          indent = $0
+          sub(/with:.*/, "", indent)
+          print indent "  runner: " runner
+          print indent "  machine_ref: " ref
+          inserted = 1
+          next
+        } else {
+          indent = prevline
+          sub(/uses:.*/, "", indent)
+          print indent "with:"
+          print indent "  runner: " runner
+          print indent "  machine_ref: " ref
+          inserted = 1
+        }
+      }
+      print
+      if (index($0, usline) > 0) { pending = 1; prevline = $0 }
+    }
+    END {
+      if (pending && !inserted) {
+        indent = prevline
+        sub(/uses:.*/, "", indent)
+        print indent "with:"
+        print indent "  runner: " runner
+        print indent "  machine_ref: " ref
+      }
+    }
+  ')"
 remote_stub_json="$(gh api "repos/$canary_repo/contents/$stub_path?ref=$target_branch" 2>/dev/null || echo '{}')"
 # `base64 -d`, not jq's `@base64d`: the API wraps its base64 at 60 columns and jq refuses the
 # newlines, which read as "no stub there" and wrote an identical one — a commit with no diff,
