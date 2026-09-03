@@ -180,14 +180,7 @@ describe("runRecover — nothing to recover", () => {
   });
 });
 
-/**
- * The gap the `cancelled()` routing opened. `implement.ts` claims the branch before it spends
- * anything, and a cancelled or timed-out run never reaches the release in its own `catch` — so the
- * claim outlives it and the re-dispatch below bounces off it (`#342 is already claimed`, run
- * 33698760072), leaving the ticket unbuildable for the claim's full 45-minute timeout. Recover is
- * not a rival run guessing whether a young claim is healthy: it only runs because the claimant
- * died, so it lets go first.
- */
+/** Recover's side of `releaseDeadClaim`, whose docstring in `implement.ts` says why (#342). */
 describe("runRecover — the dead run's claim", () => {
   it("releases the claim before re-dispatching, so the fresh run is not refused by a dead one's ref", async () => {
     // No artifact: the re-dispatch path, which is the one a cancelled or timed-out run takes.
