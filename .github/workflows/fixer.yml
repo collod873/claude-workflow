@@ -105,8 +105,16 @@ jobs:
     # act on.
     runs-on: ubuntu-latest
     # Three capped attempts, each a Sonnet stage plus a full vitest run over `.Workflow`. Sized off
-    # `integrate.yml`'s 30 rather than `review.yml`'s 15 for that reason.
-    timeout-minutes: 30
+    # `integrate.yml`'s 30 rather than `review.yml`'s 15 for that reason — and then measured, in
+    # run 33700482337, which was killed mid-repair having just logged "All four pass now". Three
+    # attempts do not fit in thirty minutes.
+    #
+    # The suite is not what does not fit. It is ~6s wall / 35s test-CPU on a 22-core workstation,
+    # so meaningful on a two-core runner and still not the dominant cost — the model is, and no
+    # amount of scoping the tests buys an attempt back (unlike the implementer's failing-test
+    # discovery, which `f2213e5` took from 26 minutes to 13 seconds because *that* cost was not the
+    # model). So this is raised rather than made cheaper. Still under `ratify.yml`'s 120.
+    timeout-minutes: 50
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -416,8 +424,15 @@ jobs:
         # Shorter than the job's own timeout on purpose: a hung model turn that outlives the *job*
         # is cancelled, and cancellation skips every later step — the stop reaches nobody (run
         # 33327720079 hung 22 minutes after its fix was written and vanished without a label). A
-        # *step* timeout is a plain failure, so the escalation below still gets to speak.
-        timeout-minutes: 20
+        # *step* timeout is a plain failure, so the escalation below still gets to speak. The gap to
+        # the job's own cap is what the escalation is spending, so it stays ten minutes wide as both
+        # numbers move.
+        #
+        # Twenty was too tight for the three attempts this lane is capped at: run 33700482337 was
+        # killed here mid-repair, one line after "All four pass now", and #349 went `needs-human`
+        # over a repair that had already been written. See the job's own cap above for why this is
+        # raised rather than the attempt made cheaper.
+        timeout-minutes: 40
         env:
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
