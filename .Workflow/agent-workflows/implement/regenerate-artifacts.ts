@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { childEnv } from "../shared/child-env.ts";
+import { BASELINE_RELATIVE_PATH, emptyBaseline, writeBaseline } from "../shared/timing-baseline.ts";
 
 /**
  * The generated files this lane refreshes for the implementer, after its answer is on disk and
@@ -85,6 +86,9 @@ export const execGenerator: GeneratorExec = (generator, root) => {
   return { exitCode: result.status ?? 1, output };
 };
 
+/** Repo-relative path of the one artifact every target enrolled with this machine carries. */
+const CONTRACT_PATH = ".claude/contract.json";
+
 /**
  * Regenerates every artifact in `GENERATED_ARTIFACTS` that already exists at `root`, and returns
  * their paths, for the caller to add alongside the implementer's own files.
@@ -104,6 +108,8 @@ export const execGenerator: GeneratorExec = (generator, root) => {
  * not ask about, so the worst case is the tree it was already going to have: the push gate then
  * reports the stale artifact by name, which is a legible failure, and strictly better than a run
  * that dies here saying nothing about the ticket it was building.
+ *
+ * The timing baseline is the one exception to "present-only" — see `seedTimingBaseline`.
  */
 export function regenerateArtifacts(
   exec: GeneratorExec,
@@ -117,5 +123,36 @@ export function regenerateArtifacts(
       log(`could not regenerate ${artifact.path} (exit ${result.exitCode}): ${result.output.trim()}`);
     }
   }
-  return present.map((artifact) => artifact.path);
+  const seeded = seedTimingBaseline(root, present);
+  return [...present.map((artifact) => artifact.path), ...seeded];
+}
+
+/**
+ * Seeds `timing-baseline.json` when a target carries `.claude/contract.json` but has never carried
+ * a timing baseline of its own.
+ *
+ * The four artifacts ADR-0139 gates on presence are each a judgement about a target's own
+ * contents that a target opts into by seeding one — there is no "correct" corpus fixture or clone
+ * baseline for a target that never wrote one, so absence stays absence. The timing baseline is
+ * different: ADR-0140's ratchet is inherited history, not a judgement, and a target that carries
+ * the contract already has every other machine check turned on against it. Leaving the timing
+ * baseline unseeded forever does not turn a check off the way absence does for the other three —
+ * `bin/gauntlet` already runs against the contract regardless — it just leaves that one check with
+ * no history to inherit, which ADR-0140 exists to give every enrolled repository.
+ *
+ * The seed is `emptyBaseline()` — `venues: {}`, no `suite` — never a run through `exec`. The
+ * generator's own CLI form measures this suite and writes it as `suite`, which is a real
+ * measurement, but ADR-0142 already settled that a `venues` entry may only come from an actual
+ * venue run judging real contention; seeding one here from a solo measurement would be exactly the
+ * "measured in a quiet room, defended in a crowded one" bar ADR-0142 rejected, just moved earlier.
+ * So this writes the "no entry yet, recorded rather than judged" state ADR-0140's ratchet already
+ * defines, and the target's own first lane 05 run is what starts filling it in.
+ */
+function seedTimingBaseline(root: string, present: readonly GeneratedArtifact[]): string[] {
+  if (present.some((artifact) => artifact.path === BASELINE_RELATIVE_PATH)) return [];
+  if (!existsSync(join(root, CONTRACT_PATH))) return [];
+  const path = join(root, BASELINE_RELATIVE_PATH);
+  mkdirSync(dirname(path), { recursive: true });
+  writeBaseline(path, emptyBaseline());
+  return [BASELINE_RELATIVE_PATH];
 }
