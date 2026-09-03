@@ -1,7 +1,7 @@
 # Venues
 
 **A venue is a place a check can run: `turn`, `stop`, `push`, and Actions behind them. A check sits
-at the earliest venue whose budget it fits ([ADR-0010](../adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)),
+at the earliest venue that can afford it ([ADR-0010](../adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)),
 because what "earliest" buys is the cost of the *repair* — a type error caught in the turn that
 caused it is fixed with the context still hot.**
 
@@ -22,53 +22,46 @@ Only `push` fails closed. The two in-session venues cannot refuse and are not me
 fires after the edit has landed, and a venue that wedges every turn is worse than the defect it was
 catching. `.claude/hooks/gauntlet-hook.mjs` owns that half.
 
-## Budgets are baselines, not numbers
+## Timing is recorded, never judged
 
-**No venue budget is written down anywhere.** A venue's budget is *its own last green time plus a
-25% margin*, recorded per check in the **timing baseline** and ratcheted on every green run
-([ADR-0140](../adr/0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md)). It is the
-same baseline-the-delta family as the wiring, clone and boundaries gates: the file is the measure,
-and a number in a comment is not.
+**No venue refuses on a duration.** Every `bin/gauntlet` run writes what it measured — the venue,
+the wall clock, and each check's own time, alongside the core count it ran with — to
+`.gauntlet-timings.json` at the target root. The file is gitignored, overwritten on every run, and
+nothing here reads a verdict out of it: no run is compared against a number measured somewhere
+else, and no run refuses because of one.
 
-The margin cuts both ways. A run slower than baseline + 25% is over budget and names the slowest
-check; a run faster than baseline − 25% rewrites the baseline; anything between leaves the file
-alone. A check with no entry yet is recorded, never judged. Without the lower half, one lucky fast
-run would set a bar the next honest run could not clear.
+That used to not be true. A venue's number was once its own last green time plus a margin, recorded
+in a committed baseline and ratcheted on every green run, and a run past the margin refused the
+push. The reversal ([ADR-0148](../adr/0148-timing-is-recorded-never-judged.md)) is the record of
+why: two Verify runs judging the same pull request agreed with each other within 1.2% while missing
+the committed number by 53%, each naming a different check as the slowest offender. The split was
+contextual — the number was measured inside one job and read cold in another — and nothing in a
+single millisecond count said which. A gate that goes red on where it ran teaches its reader to
+rerun until green, which is a runner cycle that teaches nothing.
 
-Two files, because a millisecond is only true where it was measured:
-
-| File                                                          | Holds                    | Written by                                    |
-| ------------------------------------------------------------- | ------------------------ | --------------------------------------------- |
-| `.Workflow/agent-workflows/shared/timing-baseline.json`        | the runner's numbers     | lane 05's regenerate step, which runs the **push venue** against the target on the runner and commits what it measured ([ADR-0145](../adr/0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md)) |
-| `.Workflow/agent-workflows/shared/timing-baseline.local.json`  | this machine's numbers   | every `bin/gauntlet` run off CI (gitignored)  |
-
-The push venue is the only caller that may write the committed file: it runs under a seam that
-lets its own `record` call write despite being on a runner, set nowhere else. A plain
-`bin/gauntlet push` on a runner — including the Verify run that judges the same pull request —
-still judges the committed file and discards, because a Verify checkout is thrown away and a
-write there would only leave a dirty tree under a commit nobody owns.
-
-A run is judged against the file for where it ran. Nothing merges them, and nothing keys them by
-core count — this repo's public runners have 4 cores, Lumaria's private ones 2, and the workstation
-32, and a key would have to mean the same thing in every enrolled repository. The core count is
-recorded as a *field*, so a runner-class change is visible in a diff.
+CI uploads the artifact so a slow run is still legible after the fact; nothing in the gauntlet
+itself reads it back.
 
 ## How a file moves venue
 
-It moves itself. A test file may run at `stop` when it costs **at most a fifth of the suite's own
-wall clock**; anything more runs at `push`. That share is read from the timing baseline's `suite`
-half, so the day a file grows past it, the next `measure` puts it at push — nobody keeps a list.
+One thing still uses a measured number: which test files the stop venue may run. It admits files
+**cheapest-first** from this workstation's own measurement
+(`.Workflow/agent-workflows/shared/timing-baseline.local.json`, gitignored — a wall-clock number is
+only ever true on the machine that measured it) until the next one would cross a **hard 5000 ms
+wall**; everything past that runs at `push` instead. The wall never fails a check; it only decides
+which files `stop` gets to run.
 
-The candidates are read off the tree on every run, not out of the baseline, so **a test file with
-no measurement yet runs** — the same "record rather than judge" rule the ratchet applies to a check
-it has never seen. A selection drawn from the measured set would silently skip every test written
-since the last measurement, which is a gate that goes quieter exactly as a repo gets busier.
+The candidates are read off the tree on every run, not out of the last measurement, so **a test
+file with no measurement yet is treated as free and runs** — the same "record rather than judge"
+rule the gauntlet applies everywhere else. A selection drawn from the measured set alone would
+silently skip every file written since the last measurement, which is a gate that goes quieter
+exactly as a repo gets busier.
 
 What sits at push today is the handful of files that drive their subject as a real process — a
 hook, a CLI, a `git` invocation. That is the honest way to test a thing whose contract *is* its
-exit code, and it is also why they belong at the venue that can afford them.
+exit code, and it is also why they are too expensive for a 5000 ms wall.
 
-To refresh the suite's file-share ratios by hand:
+To refresh this workstation's own file times by hand:
 
 ```
 node .Workflow/agent-workflows/shared/timing-baseline.ts measure .
@@ -76,8 +69,8 @@ node .Workflow/agent-workflows/shared/timing-baseline.ts measure .
 
 ## Concurrency
 
-Checks inside a venue run concurrently, so a venue's wall clock is its slowest check rather than
-the sum of them — which is why the budget above is the slowest check's, not a total. With **fewer
-cores than checks**, the test slot starts *after* the cheap ones instead of beside them: vitest
-sizes its worker pool from the same cores (`vitest.config.ts`), and eleven concurrent checks on a
-two-core runner is contention that manufactures failures rather than finding them.
+Checks inside a venue run concurrently, so a venue's wall clock is its slowest check's rather than
+the sum of them. With **fewer cores than checks**, the test slot starts *after* the cheap ones
+instead of beside them: vitest sizes its worker pool from the same cores (`vitest.config.ts`), and
+eleven concurrent checks on a two-core runner is contention that manufactures failures rather than
+finding them.

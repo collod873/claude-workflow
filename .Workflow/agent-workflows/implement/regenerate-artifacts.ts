@@ -1,8 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { childEnv } from "../shared/child-env.ts";
-import { BASELINE_RELATIVE_PATH, emptyBaseline, writeBaseline } from "../shared/timing-baseline.ts";
 
 /**
  * The generated files this lane refreshes for the implementer, after its answer is on disk and
@@ -30,13 +29,10 @@ import { BASELINE_RELATIVE_PATH, emptyBaseline, writeBaseline } from "../shared/
  * gate refusing a run for having *paid off* a clone, which is how run 33324207385 lost #273 at its
  * push. `prune-clone-baseline.ts` carries the rest of the argument.
  *
- * The timing baseline is here for the same reason and one more: this step is the **only** writer of
- * it (#335). A gauntlet run on a hosted runner judges against that file and never writes it,
- * because a hosted checkout is discarded — so without a step that owns the commit, the runner's
- * numbers would be measured on every run and kept from none of them. It cannot raise a budget by
- * running slowly: the generator ratchets one way, and the run that refuses an over-budget push is
- * `bin/gauntlet`'s. What it costs is one suite run, on the runner, per implementation — the price
- * of the venue budgets being measurements instead of the comment they replaced.
+ * The timing baseline was here too, once. ADR-0148 removed the committed half of it outright —
+ * timing is recorded, never judged, so there is no runner's number left for a step here to own —
+ * and what a gauntlet run leaves behind now (`.gauntlet-timings.json`) is gitignored and written by
+ * every run, never committed by this one.
  */
 export interface GeneratedArtifact {
   /** Repo-relative path of the committed file, for the `git add` that follows. */
@@ -57,10 +53,6 @@ export const GENERATED_ARTIFACTS: readonly GeneratedArtifact[] = [
   {
     path: ".Workflow/agent-workflows/shared/clone-gate.baseline.json",
     generator: ".Workflow/agent-workflows/shared/prune-clone-baseline.ts",
-  },
-  {
-    path: ".Workflow/agent-workflows/shared/timing-baseline.json",
-    generator: ".Workflow/agent-workflows/shared/timing-baseline.ts",
   },
 ];
 
@@ -86,9 +78,6 @@ export const execGenerator: GeneratorExec = (generator, root) => {
   return { exitCode: result.status ?? 1, output };
 };
 
-/** Repo-relative path of the one artifact every target enrolled with this machine carries. */
-const CONTRACT_PATH = ".claude/contract.json";
-
 /**
  * Regenerates every artifact in `GENERATED_ARTIFACTS` that already exists at `root`, and returns
  * their paths, for the caller to add alongside the implementer's own files.
@@ -108,8 +97,6 @@ const CONTRACT_PATH = ".claude/contract.json";
  * not ask about, so the worst case is the tree it was already going to have: the push gate then
  * reports the stale artifact by name, which is a legible failure, and strictly better than a run
  * that dies here saying nothing about the ticket it was building.
- *
- * The timing baseline is the one exception to "present-only" — see `seedTimingBaseline`.
  */
 /** A root, and the seams around it, spelled however a caller happens to have them at hand. */
 export interface RegenerateArtifactsDeps {
@@ -150,8 +137,6 @@ function resolveLog(deps: RegenerateArtifactsDeps): ((line: string) => void) | u
  * not ask about, so the worst case is the tree it was already going to have: the push gate then
  * reports the stale artifact by name, which is a legible failure, and strictly better than a run
  * that dies here saying nothing about the ticket it was building.
- *
- * The timing baseline is the one exception to "present-only" — see `seedTimingBaseline`.
  *
  * Callable either the way lane 05 already does — `regenerateArtifacts(exec, root, log)`, `exec`
  * always first — or by naming just the root (`regenerateArtifacts(root)`), a root plus a bag of
@@ -194,36 +179,5 @@ function regenerateArtifactsWith(exec: GeneratorExec, root: string, log: (line: 
       log(`could not regenerate ${artifact.path} (exit ${result.exitCode}): ${result.output.trim()}`);
     }
   }
-  const seeded = seedTimingBaseline(root, present);
-  return [...present.map((artifact) => artifact.path), ...seeded];
-}
-
-/**
- * Seeds `timing-baseline.json` when a target carries `.claude/contract.json` but has never carried
- * a timing baseline of its own.
- *
- * The four artifacts ADR-0139 gates on presence are each a judgement about a target's own
- * contents that a target opts into by seeding one — there is no "correct" corpus fixture or clone
- * baseline for a target that never wrote one, so absence stays absence. The timing baseline is
- * different: ADR-0140's ratchet is inherited history, not a judgement, and a target that carries
- * the contract already has every other machine check turned on against it. Leaving the timing
- * baseline unseeded forever does not turn a check off the way absence does for the other three —
- * `bin/gauntlet` already runs against the contract regardless — it just leaves that one check with
- * no history to inherit, which ADR-0140 exists to give every enrolled repository.
- *
- * The seed is `emptyBaseline()` — `venues: {}`, no `suite` — never a run through `exec`. The
- * generator's own CLI form measures this suite and writes it as `suite`, which is a real
- * measurement, but ADR-0142 already settled that a `venues` entry may only come from an actual
- * venue run judging real contention; seeding one here from a solo measurement would be exactly the
- * "measured in a quiet room, defended in a crowded one" bar ADR-0142 rejected, just moved earlier.
- * So this writes the "no entry yet, recorded rather than judged" state ADR-0140's ratchet already
- * defines, and the target's own first lane 05 run is what starts filling it in.
- */
-function seedTimingBaseline(root: string, present: readonly GeneratedArtifact[]): string[] {
-  if (present.some((artifact) => artifact.path === BASELINE_RELATIVE_PATH)) return [];
-  if (!existsSync(join(root, CONTRACT_PATH))) return [];
-  const path = join(root, BASELINE_RELATIVE_PATH);
-  mkdirSync(dirname(path), { recursive: true });
-  writeBaseline(path, emptyBaseline());
-  return [BASELINE_RELATIVE_PATH];
+  return present.map((artifact) => artifact.path);
 }

@@ -656,13 +656,11 @@ describe("resolving the check contract", () => {
   });
 });
 
-// #342's second criterion: the seam that lets `record` write the committed timing baseline on a
-// runner belongs to `timing-baseline.ts`'s own generator route (`runPushVenue`) alone — a plain
-// `bin/gauntlet push` never sets it, so a runner still judges the committed baseline and discards
-// it, exactly as ADR-0142 (amended by ADR-0145) leaves it.
-describe("the committed timing baseline's write seam", () => {
+// ADR-0148: timing is recorded, never judged. A push whose checks all pass leaves
+// `.gauntlet-timings.json` behind rather than a failure, whatever the checks' own durations were.
+describe("the durations a push run leaves behind", () => {
   it(
-    "is not set by a plain `bin/gauntlet push`, so a runner still writes nothing",
+    "writes .gauntlet-timings.json at the target root rather than refusing on a duration",
     () => {
       const root = scratchTarget(() => ({ typecheck: "true", lint: "true", test: "true" }));
 
@@ -670,13 +668,14 @@ describe("the committed timing baseline's write seam", () => {
         TARGET_WORKSPACE: root,
         CI: "true",
         GAUNTLET_CONTRACT: undefined,
+        // Otherwise inherited from this very suite's own worker, and the recording step skips
+        // itself inside one — see `bin/gauntlet`'s own comment on why.
+        VITEST: "",
       });
 
       const report = run.status === 0 ? "" : `${run.stdout}\n${run.stderr}`;
       expect(report).toBe("");
-      expect(existsSync(join(root, ".Workflow/agent-workflows/shared/timing-baseline.json"))).toBe(
-        false,
-      );
+      expect(existsSync(join(root, ".gauntlet-timings.json"))).toBe(true);
     },
     REAL_TOOLCHAIN,
   );

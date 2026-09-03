@@ -13,16 +13,18 @@
 # turn that caused it is fixed with the context still hot, and the same error caught in Actions
 # costs a cold run reconstructing what the author already knew.
 #
-# **No budget is written here.** A venue's budget is its own last green time plus a margin, read
-# from `.Workflow/agent-workflows/shared/timing-baseline.json` — the same baseline-the-delta family
-# as the wiring, clone and boundaries gates, and #333's ruling that an enrolled repository inherits
-# its own history rather than this repo's guess about someone else's suite. The numbers that used
-# to live in this header were a comment about a budget, and the comment was wrong: it claimed a
-# suite an order of magnitude faster than the one that runs. `timing-baseline.ts` carries the rest
-# of the argument, and `docs/agents/venues.md` is the reader's version of it.
+# **Timing is recorded, never judged (ADR-0148).** Every run writes what it measured to
+# `.gauntlet-timings.json` at the target root — gitignored, overwritten each run, and nothing here
+# compares it against a number measured somewhere else. That used to not be true, and the reversal
+# is the record of why: two Verify runs judging the same pull request agreed with each other within
+# 1.2% while missing a committed number by 53%, each naming a different check as the offender. A
+# gate that goes red on where it ran teaches its reader to rerun until green.
 #
-# Which venue a test file runs at follows from the same baseline, so a file that outgrows the stop
-# venue moves to push on the next measurement rather than when somebody notices.
+# One thing still uses a measured number: which test files the stop venue may run. It reads this
+# workstation's own file costs (`timing-baseline.ts`'s local half) and admits the cheapest ones
+# until the next would cross a hard 5000 ms wall — a selection, never a verdict, and it fails
+# nothing. `timing-baseline.ts` carries the rest of the argument, and `docs/agents/venues.md` is the
+# reader's version of it.
 #
 # What runs is whatever `.claude/contract.json` names (ADR-0056), not a hardcoded `tsc`/`eslint`/
 # `vitest` — this repo isn't special-cased over any other repo the contract might describe. The
@@ -188,7 +190,7 @@ checks="typecheck lint"
 
 # A slot resolved to a broader form than what this venue asked for is a real cost — the turn venue
 # now lints the whole repo, not just the file that changed — and it is reported rather than run
-# silently, the same way an over-budget venue reports itself below.
+# silently.
 #
 # `resolved_checks` is only the slots read above — `contract`, added to `checks` below, has no
 # `_CMD`/`_SUBSTITUTED` shell variable to read, because it never goes through `resolveSlot`.
@@ -267,12 +269,6 @@ shquote() {
 # two tests again, and so on until the runner killed the job (exit 143 after eight minutes, on the
 # first push Verify after ADR-0139). A slot's environment is the target's, never the gauntlet's.
 #
-# `GAUNTLET_TIMING_WRITE_VENUE` (#342's write seam) is the same shape: `runPushVenue` sets it for
-# the `bin/gauntlet push` it spawns, that push's own `test` check is `npm test`, and this repo's
-# suite is part of what `npm test` runs — so left unscrubbed, the seam meant for the one outer
-# `record` call leaks into every `record` a nested test spawns and lets it write a scratch baseline
-# it was never meant to.
-#
 # One thing does cross: the core count. A slot is a command the contract names, never a tool this
 # script knows (ADR-0056), so it cannot be told how wide to run — but a target's test runner sizes
 # itself from whatever its own config assumes, and Lumaria's assumed twelve workers on a two-core
@@ -283,7 +279,7 @@ shquote() {
 # the deliberate one in a test. Exported rather than passed to `env`: a `NAME=value` there ends
 # the option list, and the test slot appends `-u` flags of its own after this array.
 export GAUNTLET_CORES="$cores"
-slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT -u GAUNTLET_TIMING_WRITE_VENUE)
+slot_env=(env -u TARGET_WORKSPACE -u GAUNTLET_CONTRACT)
 
 started_ms=$(($(date +%s%N) / 1000000))
 pids=()
@@ -424,10 +420,11 @@ fi
 # What the test slot actually runs here.
 #
 # `push` runs the whole `test` slot — it is the venue that owns the whole suite, and the venue a
-# file lands at when it outgrows the one above it. `stop` asks the timing baseline which files fit
-# here and runs those through the `test_one` form, so the three files that spawn real processes on
-# purpose run at push without anyone keeping a list of them, and a file that grows past the stop
-# venue's share of the suite follows them on the next measurement (#335).
+# file lands at when it outgrows the one above it. `stop` asks the timing baseline which files this
+# workstation can run under its hard 5000 ms wall and runs those through the `test_one` form, so the
+# three files that spawn real processes on purpose run at push without anyone keeping a list of
+# them, and a file that grows past the wall follows them on the next measurement (#335, revised by
+# #357/ADR-0148).
 #
 # Either precondition missing — no measurement yet, or a target whose runner has no single-file
 # form — and stop runs the whole slot, which is what every venue did before this.
@@ -570,30 +567,19 @@ for name in $checks; do
   cat "$tmp/$name.out"
 done
 
-# The timing ratchet (#335). Only a green run is recorded: a failed check exits early, so its wall
-# time measures the failure rather than the work, and a baseline that learned from red runs would
-# ratchet itself down to the cost of failing.
+# Every run's durations, recorded and never judged (ADR-0148 amends ADR-0140/ADR-0147, which used
+# to fail a push here on a run that missed a committed number). What each check cost — whatever it
+# exited with — is written to `.gauntlet-timings.json` at the target root: gitignored, overwritten
+# every run, and read back by nothing in this script.
 #
 # Skipped when `GAUNTLET_CONTRACT` is set, because that seam's contracts name stub commands — a
-# `true` that returns in 4ms is not this target's history, and recording it would set a bar no real
-# check could clear. `GAUNTLET_TIMING=off` is the same escape for a caller that means it.
+# `true` that returns in 4ms is not this target's history. `GAUNTLET_TIMING=off` is the same escape
+# for a caller that means it.
 #
 # Skipped inside a vitest worker (`VITEST`) for the mirror-image reason: half a dozen tests spawn a
 # real `bin/gauntlet` from inside the suite, where every check runs against a box already running
-# the whole suite. Those numbers are contention, not history, and a suite that could write the
-# baseline it is judged against would be measuring itself.
-#
-# What an over-budget run costs differs by venue, and that difference is the point. `push` refuses:
-# it is the venue that already fails closed, and the one an agent has to route around deliberately.
-# `turn` and `stop` fire inside a session, where blocking on a timing regression that might just be
-# a busy machine is precisely how a repo learns to ignore its gates (ADR-0015) — so they report,
-# and `gauntlet-hook.mjs` shows the line to the person rather than to Claude.
-#
-# It also differs by *which baseline judged it*, and that half is decided by `runRecord` in
-# `shared/timing-baseline.ts` (ADR-0142) rather than here. Only its exit 1 refuses, which is why
-# the condition below reads `= 1` instead of asking a second time whether this is a runner.
-if [ "$failed" = "0" ] && [ "$could_not_run" = "0" ] &&
-  [ -z "${GAUNTLET_CONTRACT:-}" ] && [ -z "${VITEST:-}" ] &&
+# the whole suite, and those numbers belong to no target's own history.
+if [ -z "${GAUNTLET_CONTRACT:-}" ] && [ -z "${VITEST:-}" ] &&
   [ "${GAUNTLET_TIMING:-on}" != "off" ]; then
   timing_args=()
   for name in $checks; do
@@ -602,14 +588,7 @@ if [ "$failed" = "0" ] && [ "$could_not_run" = "0" ] &&
   if [ "${#timing_args[@]}" -gt 0 ]; then
     node "$repo_root/.Workflow/agent-workflows/shared/timing-baseline.ts" \
       record "$target_root" "$venue" "--wall=$elapsed_ms" "${timing_args[@]}" 2>"$tmp/timing.err"
-    timing_status=$?
     cat "$tmp/timing.err" >&2
-    # Exit 2 is the baseline itself being unreadable or unwritable — a broken measure, never a
-    # finding about the code, and never a reason to refuse a push whose checks all passed.
-    if [ "$timing_status" = "1" ] && [ "$venue" = "push" ]; then
-      failed=1
-      failed_names="$failed_names timing"
-    fi
   fi
 fi
 

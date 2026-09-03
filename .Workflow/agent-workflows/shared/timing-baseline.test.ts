@@ -1,42 +1,24 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { MACHINE_ROOT } from "./run-gauntlet.ts";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  BASELINE_RELATIVE_PATH,
-  DEFAULT_MARGIN_PCT,
   LOCAL_BASELINE_RELATIVE_PATH,
-  MIN_SLACK_MS,
-  REPORT_ONLY_EXIT,
-  STOP_FILE_SHARE,
-  WRITE_VENUE_ENV,
-  activeBaselinePath,
+  STOP_WALL_MS,
+  TIMINGS_ARTIFACT_RELATIVE_PATH,
   discoverTestFiles,
-  emptyBaseline,
-  judge,
-  readBaseline,
+  machineFacts,
+  measureAndWriteLocalTiming,
+  readLocalTiming,
   selectFiles,
-  venueBudgetMs,
-  writeBaseline,
-  writeSuiteTiming,
-  type SuiteTiming,
-  type TimingBaseline,
+  writeLocalTiming,
+  writeRunTimings,
+  type LocalTiming,
 } from "./timing-baseline.ts";
 
-// The ratchet's whole value is that it moves in one direction and only outside the noise. Every
-// case below is a claim about *when* it moves, because a baseline that churned on every run would
-// be regenerated reflexively rather than read — the same argument `wiring-baseline.ts` makes about
-// its own line numbers.
-
-/**
- * The one case below that spawns a real `bin/gauntlet push` rather than judging in-process. It
- * runs a scratch target's three checks and this repo's eight push-only ones, and a cold hosted
- * runner takes rather longer over that than the workstation that wrote the number — a 5s default
- * would turn that difference into an environment flake in the gate's own suite.
- */
-const REAL_PUSH_RUN = 60_000;
+// ADR-0148: timing is recorded, never judged. Every case below is a claim about a *selection* —
+// which files stop gets to run, what a run leaves on disk — never about a run being refused.
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -49,180 +31,22 @@ function scratchRoot(): string {
   return dir;
 }
 
-/**
- * A scratch root carrying a `.claude/` directory and a `package.json` declaring `scripts`, with a
- * `.claude/contract.json` generated from it — the target shape `bin/gauntlet push` needs to run
- * against something real.
- */
-function scratchContractTarget(scripts: Record<string, string>): string {
-  const root = scratchRoot();
-  mkdirSync(join(root, ".claude"), { recursive: true });
-  writeFileSync(
-    join(root, "package.json"),
-    JSON.stringify({ name: "scratch", private: true, scripts }),
-  );
-  const generate = spawnSync(
-    process.execPath,
-    [join(MACHINE_ROOT, ".Workflow/agent-workflows/shared/generate-contract.ts"), root],
-    { encoding: "utf8" },
-  );
-  expect(generate.status).toBe(0);
-  return root;
-}
-
-/** A baseline holding one venue's checks, with everything else at its default. */
-function baselineWith(venues: TimingBaseline["venues"], suite?: TimingBaseline["suite"]): TimingBaseline {
-  return { ...emptyBaseline(), venues, suite };
-}
-
-describe("recording a check that has no history", () => {
-  it("records it rather than judging it", () => {
-    const verdict = judge(baselineWith({}), "push", [{ check: "test", ms: 13_000 }]);
-
-    expect(verdict.over).toBeUndefined();
-    expect(verdict.recorded).toEqual(["test"]);
-    expect(verdict.next?.venues.push.test).toBe(13_000);
-  });
-
-  it("judges the checks that do have history in the same run", () => {
-    const verdict = judge(baselineWith({ push: { typecheck: 2_000 } }), "push", [
-      { check: "typecheck", ms: 9_000 },
-      { check: "test", ms: 13_000 },
-    ]);
-
-    expect(verdict.recorded).toEqual(["test"]);
-    expect(verdict.over?.check).toBe("typecheck");
-  });
-});
-
-describe("the deadband", () => {
-  const baseline = baselineWith({ push: { test: 10_000 } });
-
-  it("fails a run past the baseline plus the margin, naming the check", () => {
-    const verdict = judge(baseline, "push", [{ check: "test", ms: 16_000 }]);
-
-    expect(verdict.over).toEqual({ check: "test", ms: 16_000, budgetMs: 15_000 });
-  });
-
-  it("leaves the baseline alone on a run it fails, so a slow day cannot become the new bar", () => {
-    const verdict = judge(baseline, "push", [{ check: "test", ms: 16_000 }]);
-
-    expect(verdict.next).toBeUndefined();
-  });
-
-  // The edges, not the middle: these two are a hair inside the band, so a change to the margin
-  // that this file forgot to follow shows up here rather than passing on a comfortable margin.
-  it("does nothing at all inside the band, in either direction", () => {
-    for (const ms of [5_100, 10_000, 14_900]) {
-      const verdict = judge(baseline, "push", [{ check: "test", ms }]);
-
-      expect(verdict.over).toBeUndefined();
-      expect(verdict.next).toBeUndefined();
-    }
-  });
-
-  // The half a one-directional ratchet gets wrong: one lucky fast run — a warm cache, an idle box —
-  // sets a bar the next honest run cannot clear, and the gate goes red for the machine's mood.
-  it("tightens only when a run beats the baseline by more than the margin", () => {
-    expect(judge(baseline, "push", [{ check: "test", ms: 5_100 }]).next).toBeUndefined();
-    expect(judge(baseline, "push", [{ check: "test", ms: 4_000 }]).next?.venues.push.test).toBe(4_000);
-  });
-
-  it("gives a check too small to have a budget the absolute floor instead of a percentage of noise", () => {
-    const tiny = baselineWith({ turn: { lint: 40 } });
-
-    // 50% of 40ms is 20ms — a margin that would report the scheduler as a regression.
-    expect(judge(tiny, "turn", [{ check: "lint", ms: 200 }]).over).toBeUndefined();
-    expect(judge(tiny, "turn", [{ check: "lint", ms: 40 + MIN_SLACK_MS + 1 }]).over?.check).toBe("lint");
-  });
-});
-
-describe("naming the offender", () => {
-  it("names the slowest check over budget, not the first one seen", () => {
-    const baseline = baselineWith({ push: { lint: 1_000, test: 10_000 } });
-
-    const verdict = judge(baseline, "push", [
-      { check: "lint", ms: 5_000 },
-      { check: "test", ms: 20_000 },
-    ]);
-
-    expect(verdict.over?.check).toBe("test");
-  });
-});
-
-describe("a venue's own budget", () => {
-  // The checks run concurrently, so a venue's wall clock is its slowest check rather than the sum.
-  it("is the slowest check's budget", () => {
-    const baseline = baselineWith({ push: { typecheck: 2_000, lint: 2_000, test: 10_000 } });
-
-    expect(venueBudgetMs(baseline, "push")).toBe(15_000);
-  });
-
-  it("is absent for a venue with no history, which is when nothing is judged", () => {
-    expect(venueBudgetMs(baselineWith({}), "push")).toBeUndefined();
-    expect(venueBudgetMs(undefined, "push")).toBeUndefined();
-  });
-
-  it("reads the margin the target declares rather than this file's default", () => {
-    const baseline = { ...baselineWith({ push: { test: 10_000 } }), marginPct: 100 };
-
-    expect(venueBudgetMs(baseline, "push")).toBe(20_000);
-    expect(DEFAULT_MARGIN_PCT).toBe(50);
-  });
-});
-
-describe("which files a venue runs", () => {
-  // The three files #335 names spawn real processes on purpose and carry 44% of this suite's
-  // clock. Nothing here is a hand-kept list of them: they are over the share, which is the only
-  // thing that decides it, so a file that grows past it later moves on its own.
-  const suite = {
-    wallMs: 13_000,
-    measuredOn: { cores: 4, platform: "linux" },
-    files: {
-      ".Workflow/agent-workflows/shared/clone-gate.test.ts": 4_800,
-      ".claude/hooks/gauntlet.test.ts": 5_800,
-      ".claude/hooks/session-capture.test.ts": 4_300,
-      "quick.test.ts": 120,
-      "slowish.test.ts": 2_500,
-    },
+/** A local measurement holding exactly `files`, with everything else filled in plausibly. */
+function localWith(files: Record<string, number>): LocalTiming {
+  return {
+    generated: "2026-01-01",
+    wallMs: Object.values(files).reduce((a, b) => a + b, 0),
+    measuredOn: machineFacts(),
+    files,
   };
-  const baseline = baselineWith({}, suite);
-  const inTree = Object.keys(suite.files);
+}
 
-  it("keeps the stop venue to files inside its share of the suite", () => {
-    expect(selectFiles(baseline, "stop", inTree)).toEqual(["quick.test.ts", "slowish.test.ts"]);
-    expect(2_500).toBeLessThanOrEqual(suite.wallMs * STOP_FILE_SHARE);
-  });
+describe("machineFacts", () => {
+  it("reports this process's own core count and platform", () => {
+    const facts = machineFacts();
 
-  it("runs everything at push, which is where a file lands when it outgrows stop", () => {
-    expect(selectFiles(baseline, "push", inTree)).toHaveLength(5);
-  });
-
-  it("answers nothing at all until a measurement exists, so the caller runs its whole test slot", () => {
-    expect(selectFiles(baselineWith({}), "stop", inTree)).toBeUndefined();
-    expect(selectFiles(undefined, "stop", inTree)).toBeUndefined();
-  });
-
-  it("moves a file to push the moment it outgrows the share, with no list to edit", () => {
-    const grown = baselineWith({}, {
-      ...suite,
-      files: { ...suite.files, "slowish.test.ts": 9_000 },
-    });
-
-    expect(selectFiles(grown, "stop", inTree)).toEqual(["quick.test.ts"]);
-  });
-
-  // The universe is the tree's, not the baseline's. A file written since the last measurement has
-  // no entry, and a selection drawn from the measured set would silently never run it — a gate
-  // that goes quieter exactly as a repo gets busier.
-  it("runs a file the measurement has never seen rather than dropping it", () => {
-    expect(selectFiles(baseline, "stop", [...inTree, "brand-new.test.ts"])).toContain(
-      "brand-new.test.ts",
-    );
-  });
-
-  it("drops a file that has left the tree, whatever the baseline still says about it", () => {
-    expect(selectFiles(baseline, "stop", ["quick.test.ts"])).toEqual(["quick.test.ts"]);
+    expect(facts.cores).toBeGreaterThan(0);
+    expect(facts.platform).toBe(process.platform);
   });
 });
 
@@ -244,34 +68,146 @@ describe("finding the test files a venue could run", () => {
   });
 });
 
-describe("where a run's numbers are kept", () => {
-  // Split by where it ran, never by a machine key: this repo's public runners have 4 cores,
-  // Lumaria's private ones have 2 and the workstation has 32, so a key would have to mean
-  // something in every repo the pipeline installs into. Each repo's baseline lives in its own tree
-  // and a repo runs on one runner class, so the committed file never sees two machines.
-  it("judges a runner against the committed baseline", () => {
-    expect(activeBaselinePath("/repo", { CI: "true" })).toBe(join("/repo", BASELINE_RELATIVE_PATH));
+describe("the stop venue's wall", () => {
+  it("is 5000ms", () => {
+    expect(STOP_WALL_MS).toBe(5000);
   });
 
-  it("judges a workstation against its own gitignored one", () => {
-    expect(activeBaselinePath("/repo", {})).toBe(join("/repo", LOCAL_BASELINE_RELATIVE_PATH));
+  it("returns everything at push, regardless of cost", () => {
+    const local = localWith({ "a.test.ts": 10_000, "b.test.ts": 1 });
+
+    expect(selectFiles(local, "push", ["b.test.ts", "a.test.ts"])).toEqual([
+      "a.test.ts",
+      "b.test.ts",
+    ]);
   });
 
-  it("survives a half-written file rather than reading it as no history", () => {
+  it("admits every file when their combined cost fits under the wall", () => {
+    const local = localWith({ "a.test.ts": 1_000, "b.test.ts": 2_000 });
+
+    expect(selectFiles(local, "stop", ["a.test.ts", "b.test.ts"])).toEqual([
+      "a.test.ts",
+      "b.test.ts",
+    ]);
+  });
+
+  // The criterion this ticket names: drive a file set over the wall and watch the overflow move to
+  // push, with nothing failing along the way.
+  it("admits cheapest-first and moves the overflow to push, without failing anything", () => {
+    const local = localWith({
+      "cheap.test.ts": 1_000,
+      "middle.test.ts": 2_000,
+      "expensive.test.ts": 4_000,
+    });
+
+    // cheap (1000) + middle (2000) = 3000, inside the wall; admitting expensive too would cross it.
+    const admitted = selectFiles(local, "stop", [
+      "expensive.test.ts",
+      "middle.test.ts",
+      "cheap.test.ts",
+    ]);
+
+    expect(admitted).toEqual(["cheap.test.ts", "middle.test.ts"]);
+    expect(admitted).not.toContain("expensive.test.ts");
+  });
+
+  it("admits nothing when even the cheapest file alone would cross the wall", () => {
+    const local = localWith({ "huge.test.ts": 6_000 });
+
+    expect(selectFiles(local, "stop", ["huge.test.ts"])).toEqual([]);
+  });
+
+  it("treats an unmeasured file as free, so a file written since the last measurement still runs", () => {
+    const local = localWith({ "known.test.ts": 4_999 });
+
+    expect(selectFiles(local, "stop", ["known.test.ts", "brand-new.test.ts"])).toContain(
+      "brand-new.test.ts",
+    );
+  });
+
+  it("drops a file that has left the tree, whatever the measurement still says about it", () => {
+    const local = localWith({ "gone.test.ts": 1, "here.test.ts": 1 });
+
+    expect(selectFiles(local, "stop", ["here.test.ts"])).toEqual(["here.test.ts"]);
+  });
+
+  it("answers nothing at all until a measurement exists, so the caller runs its whole test slot", () => {
+    expect(selectFiles(undefined, "stop", ["a.test.ts"])).toBeUndefined();
+  });
+});
+
+describe("this workstation's own measurement", () => {
+  it("round-trips through the gitignored local file", () => {
     const root = scratchRoot();
-    const path = join(root, "baseline.json");
+    mkdirSync(join(root, dirname(LOCAL_BASELINE_RELATIVE_PATH)), { recursive: true });
 
-    expect(readBaseline(path)).toBeUndefined();
+    expect(readLocalTiming(root)).toBeUndefined();
 
-    writeBaseline(path, baselineWith({ push: { test: 10_000 } }));
+    const local = localWith({ "a.test.ts": 42 });
+    writeLocalTiming(root, local);
 
-    expect(readBaseline(path)?.venues.push.test).toBe(10_000);
+    expect(readLocalTiming(root)).toEqual(local);
   });
 
-  it("has one writer for the committed file, so a runner's throwaway checkout leaves no dirty tree", () => {
-    // Everything a hosted job measures is discarded with the job. `measure`, from lane 05's
-    // regenerate step, is what puts a runner's numbers in the committed file — the same one
-    // generator, one step, one `git add` shape the clone and wiring baselines already have.
+  it("survives an unreadable file rather than throwing, reading it as no history yet", () => {
+    const root = scratchRoot();
+    const path = join(root, LOCAL_BASELINE_RELATIVE_PATH);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "not json");
+
+    expect(readLocalTiming(root)).toBeUndefined();
+  });
+
+  it("is what `measure` refreshes from a real suite run", () => {
+    const root = scratchRoot();
+    mkdirSync(join(root, dirname(LOCAL_BASELINE_RELATIVE_PATH)), { recursive: true });
+
+    const local = measureAndWriteLocalTiming(root, () => ({
+      wallMs: 5_000,
+      measuredOn: { cores: 8, platform: "linux" },
+      files: { "a.test.ts": 100 },
+    }));
+
+    expect(local.wallMs).toBe(5_000);
+    expect(local.files["a.test.ts"]).toBe(100);
+    expect(readLocalTiming(root)?.files["a.test.ts"]).toBe(100);
+  });
+});
+
+describe("the durations a run leaves behind", () => {
+  it("writes venue, wall time, per-check times and the core count, whatever the checks did", () => {
+    const root = scratchRoot();
+
+    writeRunTimings(root, "push", 12_345, { typecheck: 900, lint: 400 });
+
+    const payload = JSON.parse(
+      readFileSync(join(root, TIMINGS_ARTIFACT_RELATIVE_PATH), "utf8"),
+    ) as {
+      venue: string;
+      wallMs: number;
+      checks: Record<string, number>;
+      measuredOn: { cores: number };
+    };
+
+    expect(payload.venue).toBe("push");
+    expect(payload.wallMs).toBe(12_345);
+    expect(payload.checks).toEqual({ typecheck: 900, lint: 400 });
+    expect(payload.measuredOn.cores).toBeGreaterThan(0);
+  });
+
+  it("overwrites the previous run rather than accumulating history", () => {
+    const root = scratchRoot();
+    writeRunTimings(root, "stop", 1, { lint: 1 });
+    writeRunTimings(root, "push", 2, { test: 2 });
+
+    const payload = JSON.parse(
+      readFileSync(join(root, TIMINGS_ARTIFACT_RELATIVE_PATH), "utf8"),
+    ) as { venue: string };
+
+    expect(payload.venue).toBe("push");
+  });
+
+  it("via its CLI form, never exits non-zero for an unusual measurement", () => {
     const root = scratchRoot();
     const run = spawnSync(
       process.execPath,
@@ -280,176 +216,44 @@ describe("where a run's numbers are kept", () => {
         "record",
         root,
         "push",
-        "test=99999",
+        "--wall=999999",
+        "slow=999999",
       ],
-      { encoding: "utf8", env: { ...process.env, CI: "true" } },
+      { encoding: "utf8" },
     );
 
     expect(run.status).toBe(0);
-    expect(existsSync(join(root, BASELINE_RELATIVE_PATH))).toBe(false);
-    expect(existsSync(join(root, LOCAL_BASELINE_RELATIVE_PATH))).toBe(false);
+    expect(existsSync(join(root, TIMINGS_ARTIFACT_RELATIVE_PATH))).toBe(true);
   });
+});
 
-  // #342: the one seam that lets `record` write the committed file from a runner — set only by
-  // `runPushVenue`, the generator's own route below, and by nothing else. The seam unset is
-  // already the case the test above pins ("has one writer for the committed file"); this is its
-  // mirror, with the seam on.
-  it("lets record write the committed file on a runner once the generator's own seam is set", () => {
+describe("the files a venue may run, from the CLI", () => {
+  it("prints the stop selection, one file per line", () => {
     const root = scratchRoot();
-    mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
+    for (const rel of ["a.test.ts", "b.test.ts"]) writeFileSync(join(root, rel), "");
+    mkdirSync(join(root, dirname(LOCAL_BASELINE_RELATIVE_PATH)), { recursive: true });
+    writeLocalTiming(root, localWith({ "a.test.ts": 1, "b.test.ts": 2 }));
+
     const run = spawnSync(
       process.execPath,
-      [resolve(import.meta.dirname, "timing-baseline.ts"), "record", root, "push", "test=99999"],
-      { encoding: "utf8", env: { ...process.env, CI: "true", [WRITE_VENUE_ENV]: "1" } },
+      [resolve(import.meta.dirname, "timing-baseline.ts"), "files", root, "stop"],
+      { encoding: "utf8" },
     );
 
     expect(run.status).toBe(0);
-    expect(readBaseline(join(root, BASELINE_RELATIVE_PATH))?.venues.push.test).toBe(99999);
+    expect(run.stdout.trim().split("\n").sort()).toEqual(["a.test.ts", "b.test.ts"]);
   });
 
-  // #342's first criterion: the generator's own route (`node timing-baseline.ts <root>`, no
-  // subcommand — what `regenerate-artifacts.ts` invokes) runs the push venue rather than a solo
-  // `writeSuiteTiming` measurement, so the committed file's `venues.push` gets written by an
-  // actual venue run instead of staying `{}` forever.
-  describe("the generator's own route", () => {
-    it(
-      "runs the push venue against root, writing venues.push rather than a solo suite measurement",
-      () => {
-        const root = scratchContractTarget({ typecheck: "true", lint: "true", test: "true" });
+  it("exits 1 with no output when there is nothing to answer from", () => {
+    const root = scratchRoot();
 
-        // This route only ever runs against a target whose timing baseline is already present —
-        // `regenerate-artifacts.ts`'s present-only gate is what decides that (#349's seeding is
-        // the absent case) — so the fixture carries the same precondition.
-        mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
-        writeBaseline(join(root, BASELINE_RELATIVE_PATH), emptyBaseline());
-
-        const run = spawnSync(process.execPath, [resolve(import.meta.dirname, "timing-baseline.ts"), root], {
-          encoding: "utf8",
-          cwd: MACHINE_ROOT,
-          env: { ...process.env, CI: "true", VITEST: "" },
-        });
-
-        const report = run.status === 0 ? "" : `${run.stdout}\n${run.stderr}`;
-        expect(report).toBe("");
-
-        const baseline = readBaseline(join(root, BASELINE_RELATIVE_PATH));
-        expect(Object.keys(baseline?.venues.push ?? {}).length).toBeGreaterThan(0);
-        expect(baseline?.suite).toBeUndefined();
-      },
-      REAL_PUSH_RUN,
+    const run = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, "timing-baseline.ts"), "files", root, "stop"],
+      { encoding: "utf8" },
     );
-  });
 
-  // The split these cases pin is `runRecord`'s, and `REPORT_ONLY_EXIT` carries its why (ADR-0142).
-  describe("what going over budget costs", () => {
-    function recordOverBudget(env: NodeJS.ProcessEnv): number | null {
-      const root = scratchRoot();
-      const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
-      mkdirSync(join(root, dirname(relative)), { recursive: true });
-      writeBaseline(join(root, relative), baselineWith({ push: { boundaries: 900 } }));
-
-      return spawnSync(
-        process.execPath,
-        [resolve(import.meta.dirname, "timing-baseline.ts"), "record", root, "push", "boundaries=5000"],
-        { encoding: "utf8", env: { ...process.env, CI: "", GITHUB_ACTIONS: "", ...env } },
-      ).status;
-    }
-
-    it("exits 1 against the committed baseline, so the push venue refuses", () => {
-      expect(recordOverBudget({ CI: "true" })).toBe(1);
-    });
-
-    it("exits REPORT_ONLY_EXIT against a workstation's own, so the push venue reports instead", () => {
-      expect(recordOverBudget({})).toBe(REPORT_ONLY_EXIT);
-    });
-
-    /**
-     * The same over-budget run, driven through the venue that pays for it: a scratch target whose
-     * typecheck takes a second against a baseline seeded at 1ms, checked by the machine's real
-     * `bin/gauntlet push`. `env` decides which baseline judges it, exactly as `activeBaselinePath`
-     * reads it, so the two runs differ only in where the number came from.
-     */
-    function pushOverBudget(env: NodeJS.ProcessEnv): number | null {
-      const root = scratchContractTarget({ typecheck: "sleep 1", lint: "true", test: "true" });
-
-      const relative = env.CI ? BASELINE_RELATIVE_PATH : LOCAL_BASELINE_RELATIVE_PATH;
-      mkdirSync(join(root, dirname(relative)), { recursive: true });
-      writeBaseline(join(root, relative), baselineWith({ push: { typecheck: 1 } }));
-
-      // `VITEST` is what the suite this test runs in leaks into the child, and the timing block
-      // skips itself when it sees one — a run under it would prove nothing about either code.
-      return spawnSync(join(MACHINE_ROOT, "bin/gauntlet"), ["push"], {
-        encoding: "utf8",
-        cwd: MACHINE_ROOT,
-        env: {
-          ...process.env,
-          CI: "",
-          GITHUB_ACTIONS: "",
-          ...env,
-          TARGET_WORKSPACE: root,
-          VITEST: "",
-          GAUNTLET_TIMING: "on",
-        },
-      }).status;
-    }
-
-    it(
-      "is a code the push venue does not refuse on, unlike the 1 above",
-      () => {
-        // What an exit code costs is the caller's decision, and the caller is shell, so the claim
-        // is what a real push does with each code rather than which line of `bin/gauntlet` reads
-        // it. 2 is the third code in play — a broken measure, which a report-only run is not.
-        expect(REPORT_ONLY_EXIT).not.toBe(2);
-        expect(pushOverBudget({ CI: "true" })).toBe(1);
-        expect(pushOverBudget({ CI: "" })).toBe(0);
-      },
-      REAL_PUSH_RUN,
-    );
-  });
-
-  // The two halves of the committed file are true in different places. A file's share of the
-  // suite survives the trip from a 32-core workstation to a 2-core runner; the absolute
-  // milliseconds behind it do not, and a workstation's 14s suite written there as the push venue's
-  // budget is a bar no hosted runner could clear. A `venues` entry is also only true when it was
-  // measured *in* the venue — see the runner case below.
-  describe("seeding the committed file", () => {
-    const measured: SuiteTiming = {
-      wallMs: 14_000,
-      measuredOn: { cores: 32, platform: "linux" },
-      files: { "a.test.ts": 100 },
-    };
-
-    function seed(): TimingBaseline {
-      const root = scratchRoot();
-      mkdirSync(join(root, dirname(BASELINE_RELATIVE_PATH)), { recursive: true });
-      writeSuiteTiming(root, () => measured);
-      return readBaseline(join(root, BASELINE_RELATIVE_PATH))!;
-    }
-
-    it("writes the suite half wherever it is run", () => {
-      vi.stubEnv("CI", "");
-
-      expect(seed().suite?.files["a.test.ts"]).toBe(100);
-    });
-
-    it("leaves the venue half alone off a runner", () => {
-      vi.stubEnv("CI", "");
-
-      expect(seed().venues.push).toBeUndefined();
-    });
-
-    it("leaves the venue half alone on a runner too — a solo measurement is never a venue's budget (ADR-0142)", () => {
-      // Why a solo measurement may not be a venue's budget: `writeSuiteTiming`'s docstring.
-      vi.stubEnv("CI", "true");
-
-      expect(seed().venues.push).toBeUndefined();
-    });
-  });
-
-  it("records the machine a venue's numbers came from, as a field and not as a key", () => {
-    const verdict = judge(baselineWith({}), "push", [{ check: "test", ms: 13_000 }]);
-
-    expect(verdict.next?.measuredOn?.cores).toBeGreaterThan(0);
-    expect(Object.keys(verdict.next?.venues ?? {})).toEqual(["push"]);
+    expect(run.status).toBe(1);
+    expect(run.stdout).toBe("");
   });
 });

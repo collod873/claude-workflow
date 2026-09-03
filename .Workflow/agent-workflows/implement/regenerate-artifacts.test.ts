@@ -1,12 +1,7 @@
-import { readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeTempRepo } from "../shared/temp-repo.fixture.ts";
-import { emptyBaseline, serializeBaseline, type TimingBaseline } from "../shared/timing-baseline.ts";
 import { GENERATED_ARTIFACTS, regenerateArtifacts, type GeneratorExec } from "./regenerate-artifacts";
-
-const TIMING_BASELINE_PATH = ".Workflow/agent-workflows/shared/timing-baseline.json";
-const CONTRACT_PATH = ".claude/contract.json";
 
 /**
  * `regenerateArtifacts` against a real directory rather than a fake path list, so what is under
@@ -99,57 +94,5 @@ describe("regenerateArtifacts", () => {
 
     expect(result).toEqual([corpusFixture.path]);
     expect(logged.join("\n")).toContain("generator exploded");
-  });
-
-  /**
-   * The ticket this file was split for: `regenerateArtifacts.ts:113`'s present-only gate leaves
-   * `timing-baseline.json` forever absent at a target like Lumaria that carries `.claude/contract.json`
-   * but never happened to seed a timing baseline of its own — which makes ADR-0140's ratchet
-   * unreachable there by construction, not by choice. Seeding fixes that without touching the corpus
-   * fixture or clone baseline, which stay exactly as present-only as the test above shows.
-   */
-  it("seeds an absent timing baseline when the target carries the contract, leaving the corpus fixture and clone baseline present-only", () => {
-    const corpusFixture = GENERATED_ARTIFACTS[1]!;
-    const cloneBaseline = GENERATED_ARTIFACTS[2]!;
-    const root = rootWith([CONTRACT_PATH]);
-    const { exec, calls } = recordingExec();
-
-    const result = regenerateArtifacts(exec, root, () => {});
-
-    expect(result).toContain(TIMING_BASELINE_PATH);
-    expect(result).not.toContain(corpusFixture.path);
-    expect(result).not.toContain(cloneBaseline.path);
-    // Seeding writes the file directly rather than running its generator — the whole point being
-    // that no measurement happens here.
-    expect(calls.map((call) => call.generator)).not.toContain(
-      GENERATED_ARTIFACTS.find((artifact) => artifact.path === TIMING_BASELINE_PATH)!.generator,
-    );
-  });
-
-  /**
-   * The seed has to be the ratchet's own "no entry yet" shape — `venues: {}`, no `suite`, no
-   * `measuredOn` — because ADR-0142 already settled that only an actual venue run may write a
-   * `venues` figure, and a `suite` written here would be this step's own solo measurement standing
-   * in for the target's first real one.
-   */
-  it("seeds the timing baseline in the recorded-rather-than-judged state, not a measured figure", () => {
-    const root = rootWith([CONTRACT_PATH]);
-    const { exec } = recordingExec();
-
-    regenerateArtifacts(exec, root, () => {});
-
-    const written = JSON.parse(readFileSync(join(root, TIMING_BASELINE_PATH), "utf8")) as TimingBaseline;
-    const expected = emptyBaseline();
-    expect(written).toEqual(expected);
-    expect(readFileSync(join(root, TIMING_BASELINE_PATH), "utf8")).toBe(serializeBaseline(expected));
-  });
-
-  it("does not seed a timing baseline for a root with no contract, even though nothing else is present either", () => {
-    const root = rootWith([]);
-    const { exec } = recordingExec();
-
-    const result = regenerateArtifacts(exec, root, () => {});
-
-    expect(result).not.toContain(TIMING_BASELINE_PATH);
   });
 });
