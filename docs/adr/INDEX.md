@@ -153,9 +153,9 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0143 | [A machine schema change may not invalidate a file an enrolled repository has already committed](0143-a-machine-schema-change-may-not-invalidate-a-file-an-enrolle.md) | constraint |
 | 0144 | [A machine change is run against the local checkout of an enrolled repository before it lands](0144-a-machine-change-is-run-against-the-local-checkout-of-an-enr.md) | superseded |
 | 0145 | [The committed venue half is written by lane 05's push-venue run on the runner](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) | constraint |
-| 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | constraint |
+| 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | superseded |
 | 0147 | [The timing deadband is 50%, because it spans a runner pool rather than a runner](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) | superseded |
 | 0148 | [Timing is recorded, never judged](0148-timing-is-recorded-never-judged.md) | constraint |
 | 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) | constraint |
 
-149 ADRs · 67 constraint · 44 note · 38 superseded · 14,462 words total.
+149 ADRs · 66 constraint · 44 note · 39 superseded · 14,462 words total.
