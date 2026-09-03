@@ -154,5 +154,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0144 | [A machine change is run against the local checkout of an enrolled repository before it lands](0144-a-machine-change-is-run-against-the-local-checkout-of-an-enr.md) | superseded |
 | 0145 | [The committed venue half is written by lane 05's push-venue run on the runner](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) | constraint |
 | 0146 | [A machine change is proven on a canary target before it lands, and the caller names the machine ref and runner it pins](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) | constraint |
+| 0147 | [The timing deadband is 50%, because it spans a runner pool rather than a runner](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) | constraint |
 
-146 ADRs · 65 constraint · 44 note · 37 superseded · 14,016 words total.
+147 ADRs · 66 constraint · 44 note · 37 superseded · 14,166 words total.

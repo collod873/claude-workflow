@@ -99,19 +99,21 @@ describe("the deadband", () => {
   const baseline = baselineWith({ push: { test: 10_000 } });
 
   it("fails a run past the baseline plus the margin, naming the check", () => {
-    const verdict = judge(baseline, "push", [{ check: "test", ms: 14_000 }]);
+    const verdict = judge(baseline, "push", [{ check: "test", ms: 16_000 }]);
 
-    expect(verdict.over).toEqual({ check: "test", ms: 14_000, budgetMs: 12_500 });
+    expect(verdict.over).toEqual({ check: "test", ms: 16_000, budgetMs: 15_000 });
   });
 
   it("leaves the baseline alone on a run it fails, so a slow day cannot become the new bar", () => {
-    const verdict = judge(baseline, "push", [{ check: "test", ms: 14_000 }]);
+    const verdict = judge(baseline, "push", [{ check: "test", ms: 16_000 }]);
 
     expect(verdict.next).toBeUndefined();
   });
 
+  // The edges, not the middle: these two are a hair inside the band, so a change to the margin
+  // that this file forgot to follow shows up here rather than passing on a comfortable margin.
   it("does nothing at all inside the band, in either direction", () => {
-    for (const ms of [8_500, 10_000, 12_000]) {
+    for (const ms of [5_100, 10_000, 14_900]) {
       const verdict = judge(baseline, "push", [{ check: "test", ms }]);
 
       expect(verdict.over).toBeUndefined();
@@ -122,14 +124,14 @@ describe("the deadband", () => {
   // The half a one-directional ratchet gets wrong: one lucky fast run — a warm cache, an idle box —
   // sets a bar the next honest run cannot clear, and the gate goes red for the machine's mood.
   it("tightens only when a run beats the baseline by more than the margin", () => {
-    expect(judge(baseline, "push", [{ check: "test", ms: 7_600 }]).next).toBeUndefined();
-    expect(judge(baseline, "push", [{ check: "test", ms: 6_000 }]).next?.venues.push.test).toBe(6_000);
+    expect(judge(baseline, "push", [{ check: "test", ms: 5_100 }]).next).toBeUndefined();
+    expect(judge(baseline, "push", [{ check: "test", ms: 4_000 }]).next?.venues.push.test).toBe(4_000);
   });
 
   it("gives a check too small to have a budget the absolute floor instead of a percentage of noise", () => {
     const tiny = baselineWith({ turn: { lint: 40 } });
 
-    // 25% of 40ms is 10ms — a margin that would report the scheduler as a regression.
+    // 50% of 40ms is 20ms — a margin that would report the scheduler as a regression.
     expect(judge(tiny, "turn", [{ check: "lint", ms: 200 }]).over).toBeUndefined();
     expect(judge(tiny, "turn", [{ check: "lint", ms: 40 + MIN_SLACK_MS + 1 }]).over?.check).toBe("lint");
   });
@@ -153,7 +155,7 @@ describe("a venue's own budget", () => {
   it("is the slowest check's budget", () => {
     const baseline = baselineWith({ push: { typecheck: 2_000, lint: 2_000, test: 10_000 } });
 
-    expect(venueBudgetMs(baseline, "push")).toBe(12_500);
+    expect(venueBudgetMs(baseline, "push")).toBe(15_000);
   });
 
   it("is absent for a venue with no history, which is when nothing is judged", () => {
@@ -165,7 +167,7 @@ describe("a venue's own budget", () => {
     const baseline = { ...baselineWith({ push: { test: 10_000 } }), marginPct: 100 };
 
     expect(venueBudgetMs(baseline, "push")).toBe(20_000);
-    expect(DEFAULT_MARGIN_PCT).toBe(25);
+    expect(DEFAULT_MARGIN_PCT).toBe(50);
   });
 });
 

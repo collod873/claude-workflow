@@ -73,12 +73,28 @@ export const LOCAL_BASELINE_RELATIVE_PATH =
   ".Workflow/agent-workflows/shared/timing-baseline.local.json";
 
 /**
- * The deadband, as a percentage of the baseline, in both directions. 25% is where this started on
- * runners: a hosted runner's own variance run-to-run is a few percent on a check that does not
- * spawn processes and a good deal more on one that does, and 25% covers that without covering a
- * check that has genuinely doubled in cost.
+ * The deadband, as a percentage of the baseline, in both directions.
+ *
+ * 25% was the first figure, and it was sized against the wrong population: *one* hosted runner's
+ * variance run-to-run, which is a few percent on a check that does not spawn processes and a good
+ * deal more on one that does. The number is not compared within one runner, though — it is written
+ * by whichever runner lane 05 landed on and read by whichever runner Verify lands on, and
+ * `ubuntu-latest` is a pool of unlike hardware, not a machine. This suite, unchanged, measured
+ * three times on that pool in one day: 70.3s solo in the implement job, 57.5s as the push venue's
+ * `test` check in the fixer job — the sample that became the committed budget — and 74.4s at
+ * Verify, twice. A 29% spread under a 25% band, so the first Verify ever judged against a committed
+ * venue budget went red on the machine's mood and every later one would have (ADR-0147).
+ *
+ * 50% covers that spread with headroom and still refuses a check that has genuinely doubled, which
+ * is the regression this exists to catch. It is the deadband in *both* directions, so widening it
+ * also makes the downward ratchet sluggish: a suite that gets 30% faster keeps its old budget until
+ * it halves. That is the accepted cost — a budget that is too generous reports nothing, and a
+ * budget that is too tight reports everything, and only one of those gets read.
+ *
+ * A target that knows better overrides it: `marginPct` in its own baseline wins, and this
+ * repository's `timing-baseline.local.json` keeps 25 because one workstation really is one machine.
  */
-export const DEFAULT_MARGIN_PCT = 25;
+export const DEFAULT_MARGIN_PCT = 50;
 
 /**
  * The floor under the percentage, in milliseconds. A check baselined at 40ms is inside the noise
