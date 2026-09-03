@@ -180,14 +180,7 @@ describe("runRecover — nothing to recover", () => {
   });
 });
 
-/**
- * The gap the `cancelled()` routing opened. `implement.ts` claims the branch before it spends
- * anything, and a cancelled or timed-out run never reaches the release in its own `catch` — so the
- * claim outlives it and the re-dispatch below bounces off it (`#342 is already claimed`, run
- * 33698760072), leaving the ticket unbuildable for the claim's full 45-minute timeout. Recover is
- * not a rival run guessing whether a young claim is healthy: it only runs because the claimant
- * died, so it lets go first.
- */
+/** Recover's side of `releaseDeadClaim`, whose docstring in `implement.ts` says why (#342). */
 describe("runRecover — the dead run's claim", () => {
   it("releases the claim before re-dispatching, so the fresh run is not refused by a dead one's ref", async () => {
     // No artifact: the re-dispatch path, which is the one a cancelled or timed-out run takes.
@@ -405,25 +398,14 @@ describe("recover-caller.yml is the listener a red Implement never had", () => {
     expect(workflow.jobs.recover.if).toContain("workflow_dispatch");
   });
 
-  /**
-   * A `timeout-minutes` kill reports `cancelled`, not `failure`, so a door spelled on `failure`
-   * alone excludes the death it most exists for. #342's run 33687023105 was killed at 45 minutes
-   * having written no answer, reached Recover through neither door, and left an orphaned claim ref
-   * that made the ticket unbuildable — `reconcile.ts` reads a claim ref as started, and the
-   * stale-claim takeover only runs inside a dispatch that would never come. Pinned on both doors
-   * because they failed together and a fix to one alone leaves the other's gap open.
-   */
+  /** Why `cancelled` belongs on this door: the comment on `implement.yml`'s dispatch step (#342). */
   it("reacts to a cancelled run too, which is what a timeout reports", () => {
     expect(workflow.jobs.recover.if).toContain("github.event.workflow_run.conclusion == 'cancelled'");
   });
 
   /**
-   * Every lane that writes into a target checkout has to install that target's dependencies
-   * first, because `landAnswer` regenerates the target's artifacts before it commits and
-   * `check-contract.ts`'s probe reads `<target>/node_modules/.bin` to decide what the target's
-   * test runner is. A lane that skips the install regenerates a contract claiming the target has
-   * no single-file test form — which is what PR #348 carried out of a Recover run, red through
-   * Verify, Integrate and the fixer until it was fixed by hand.
+   * Why a lane that writes a target installs the target's dependencies: the comment on
+   * `recover.yml`'s "Install target dependencies" step (#348).
    *
    * Asserted across all three rather than on `recover.yml` alone: the defect was parity drift, so
    * the test that catches the next one has to be the comparison.

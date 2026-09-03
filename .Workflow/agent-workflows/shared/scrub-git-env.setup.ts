@@ -26,14 +26,7 @@ import { scrubGitLocationVars, scrubTargetLocationVars } from "./child-env.ts";
 scrubGitLocationVars(process.env);
 
 /**
- * `TARGET_WORKSPACE` is the same argument with this repository's own name on it: it says *which
- * checkout* a machine script acts on, every machine script reads it ambiently, and lane 05 and the
- * fixer both export it for the whole step the suite runs inside. A fixture that copies `bin/new-adr`
- * into a scratch tree and runs it there therefore had it write into the target checkout instead —
- * three fixture ADRs landed in the repository under test and the `corpus` check, racing beside the
- * suite, refused the push (run 33698888723). See `child-env.ts` for the full account.
- *
- * On a workstation the variable is unset, so this scrub is what makes a runner's suite behave the
- * way the suite that was written against a workstation already assumed it did.
+ * The same argument for the machine's own location variable — see
+ * `scrubTargetLocationVars` in `child-env.ts` for why (run 33698888723).
  */
 scrubTargetLocationVars(process.env);

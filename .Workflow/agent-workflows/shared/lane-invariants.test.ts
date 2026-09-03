@@ -75,11 +75,8 @@ function sourceFiles(): string[] {
 
 describe("a lane that writes into a target installs that target's dependencies", () => {
   /**
-   * The probe that decides a target's test runner reads `<target>/node_modules/.bin`
-   * (`check-contract.ts`'s `binInstalled`). A lane that regenerates the target's artifacts without
-   * installing them therefore writes a contract claiming the target has no test runner — which is
-   * a diff every downstream gate then refuses, because `bin/gauntlet push` diffs the committed
-   * contract against a fresh probe (ADR-0056).
+   * Why an uninstalled target poisons the regenerated contract: `recover.yml`'s "Install target
+   * dependencies" step comment (PR #348).
    */
   const WRITES_TARGET = /regenerateArtifacts|landAnswer/;
 
@@ -132,10 +129,8 @@ describe("a lane that writes into a target installs that target's dependencies",
 
 describe("a step that reports a dead run covers every way a run dies", () => {
   /**
-   * `timeout-minutes` reports `cancelled`, never `failure`. A door spelled on `failure` alone
-   * therefore misses the timeout it most exists for — #342's run 33687023105 was killed at exactly
-   * 45 minutes, reached Recover through neither of its two doors, and left an orphaned claim that
-   * made the ticket unbuildable.
+   * Why `cancelled()` belongs beside `failure()` on a step that rings a recovery lane: the comment
+   * on `implement.yml`'s "Tell Recover this run failed" step (#342).
    */
   const notifiers = workflows.flatMap((w) =>
     w.steps
@@ -191,11 +186,8 @@ describe("a step that reports a dead run covers every way a run dies", () => {
 
 describe("a read of the Actions API is a GET", () => {
   /**
-   * `gh api` switches to POST the moment a `-f`/`--field` is present, and POST on a read-only
-   * Actions route is a 404. `bin/close-ticket` caught that 404 as "no run found" and returned
-   * `unjudged` — so every closing record it ever wrote carried `Verify: unjudged`, including on
-   * green merges, silently. The fix is the query in the path, which is what `integrate.ts` always
-   * did and why it was never affected.
+   * Why a read route must take its query in the path is written where the fix landed:
+   * `fetch_verify_verdict`'s comment in `bin/close-ticket`.
    */
   const offenders = sourceFiles().flatMap((path) => {
     const source = readFileSync(path, "utf8");
@@ -209,8 +201,8 @@ describe("a read of the Actions API is a GET", () => {
   it("no call sends fields to an Actions read route, which would make it a POST", () => {
     expect(
       [...new Set(offenders)],
-      "a `-f` field turns `gh api` into a POST; POST on an Actions read route is a 404 that reads " +
-        "as an empty answer. Put the query in the path instead (integrate.ts's `repoRunsPath`).",
+      "an Actions read route takes its query in the path, never as `-f` fields — see " +
+        "`fetch_verify_verdict` in `bin/close-ticket`, and `integrate.ts`'s `repoRunsPath`.",
     ).toEqual([]);
   });
 });

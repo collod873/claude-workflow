@@ -93,22 +93,13 @@ describe("git location variables in the test environment", () => {
 });
 
 /**
- * The same argument, one variable later. `TARGET_WORKSPACE` names *which checkout* a machine script
- * acts on, and every machine script reads it ambiently — so exported, it beats a script's own
- * location the way `GIT_DIR` beats a `cwd`.
+ * Why `TARGET_LOCATION_VARS` and `scrubTargetLocationVars` exist is written once, in their
+ * docstrings in `child-env.ts` (run 33698888723). This file only holds the wiring in place.
  *
- * Lane 05 and the fixer both export it for the whole step the suite runs inside. That is how
- * `new-adr.test.ts` — which copies `bin/new-adr` into a scratch tree precisely so it cannot reach
- * the real corpus — wrote three fixture ADRs into the repository under test instead, and the
- * `corpus` check racing beside the suite refused the push (run 33698888723). Unset on a
- * workstation, so it is invisible until a runner splits the machine from the target.
- *
- * There is no decoy here to match `bin/gauntlet`'s git sandbox, and none is owed: nothing outside
- * this repository honours this name, so removing it from the worker removes it from every process a
- * fixture can spawn. The redirection itself is not reproduced here either — `new-adr.test.ts`'s
+ * Nothing here reproduces the redirection the way the git half above does: `new-adr.test.ts`'s
  * "drafts and lands into the target checkout … given TARGET_WORKSPACE" already drives it, on
- * purpose, from an explicit per-call value. That is the whole distinction this holds in place: set
- * on the call it is a seam, inherited from the worker it is a leak.
+ * purpose, from an explicit per-call value. That is the distinction this describe keeps standing —
+ * set on the call it is a seam, inherited from the worker it is a leak.
  */
 describe("the machine's location variable in the test environment", () => {
   // The wiring test, and the only half of this that can speak for a test nobody has written yet.

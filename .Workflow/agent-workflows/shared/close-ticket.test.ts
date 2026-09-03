@@ -476,12 +476,9 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
   }
 
   /**
-   * The run list has to be a GET, and the only way to keep it one through `gh api` is to carry the
-   * query in the path: a single `-f` field switches `gh` to POST, and `POST` on this endpoint is a
-   * 404 that `fetch_verify_verdict`'s `except` reads as "no run found". That is not hypothetical —
-   * it is what every closing record this tool wrote said, `Verify: unjudged`, silently, until
-   * 2026-09-02. The routed stub answers on substring and cannot tell a POST from a GET, which is
-   * exactly why the fake never caught it and why the shape is asserted here instead.
+   * Why the run list must take its query in the path is written where the fix landed:
+   * `fetch_verify_verdict`'s comment in `bin/close-ticket`. Asserted on the call's shape because
+   * `routedGhStub` answers on substring and cannot tell a POST from a GET.
    */
   it("asks for the run list as a GET, with the query in the path", () => {
     const gh = routedGhStub(verifyRoutes([
