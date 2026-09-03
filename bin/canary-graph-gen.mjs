@@ -19,6 +19,9 @@
 // `.Workflow/agent-workflows/shared/canary-graph-triggers.test.ts`; the forward actions below are
 // still on the reader. `bin/canary-graph` is the reason this exists at all
 // (ADR-0146 established the single-lane canary; this proves the graph those lanes form).
+//
+// @shell `bin/canary-graph` runs this as `node "$HERE/canary-graph-gen.mjs" "$OUT"`. Nothing
+// imports it, so that subprocess is the only edge reaching it and no static analysis sees it.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

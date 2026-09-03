@@ -44,24 +44,33 @@ for (const file of venueFiles) {
   for (const match of text.matchAll(INVOCATION)) invoked.add(match[0]);
 }
 
-/**
- * The hooks are `.mjs` that Claude Code launches by path through `gauntlet.sh` — no import edge
- * reaches them from anything, so they have to be named as entries or they read as dead.
- */
-const hookEntries = filesIn(".claude/hooks").filter((path) => path.endsWith(".mjs"));
+/** A `@shell` tag carrying prose after it, anywhere in a file — the same tag knip reads on exports. */
+const SHELL_TAG = /@shell[ \t]+\S/;
 
 /**
- * Same shape, one level up: a `bin/*.mjs` is launched by path — `node "$HERE/whatever.mjs"` —
- * from another `bin/` script, not imported. That is a subprocess edge no static analysis sees,
- * exactly why the hooks above need naming as entries instead of being found by traversal.
+ * A `.mjs` in these directories is launched by path — `node "$HERE/whatever.mjs"` from a sibling
+ * `bin/` script, or Claude Code starting a hook through `gauntlet.sh` — so no import edge reaches
+ * it and knip reads it as dead unless it is named an entry. Naming it *here* is the exemption the
+ * `@shell` tag below exists to prevent: the file gets excused in a config, with the reason nowhere
+ * near it, which is indistinguishable from the dead code this check is for. So a file earns its
+ * entry by carrying `@shell` and its own reason, exactly as an exempted export does; one that does
+ * not is reported unused, and its author has to wire it or say why.
  */
-const binMjsEntries = filesIn("bin").filter((path) => path.endsWith(".mjs"));
+function shellLaunched(dir: string): string[] {
+  return filesIn(dir)
+    .filter((path) => path.endsWith(".mjs"))
+    .filter((path) => SHELL_TAG.test(readFileSync(join(REPO_ROOT, path), "utf8")));
+}
 
 /** `!` marks a pattern production-only; without it `--production` resolves to an empty project. */
 const production = (paths: string[]) => paths.map((path) => `${path}!`);
 
 export default {
-  entry: production([...hookEntries, ...binMjsEntries, ...[...invoked].sort()]),
+  entry: production([
+    ...shellLaunched(".claude/hooks"),
+    ...shellLaunched("bin"),
+    ...[...invoked].sort(),
+  ]),
   project: ["**/*.{js,mjs,ts}!"],
 
   /**
@@ -82,6 +91,7 @@ export default {
    * silent entry in an ignore list here is indistinguishable from the dead code this check exists
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic
    * `import()` from a shell heredoc); `@fixture` is a builder the suite alone is meant to reach.
+   * `shellLaunched` above applies the first of them to whole scripts, which have no export to tag.
    */
   tags: ["-shell", "-fixture"],
 
