@@ -111,11 +111,82 @@ const CONTRACT_PATH = ".claude/contract.json";
  *
  * The timing baseline is the one exception to "present-only" — see `seedTimingBaseline`.
  */
+/** A root, and the seams around it, spelled however a caller happens to have them at hand. */
+export interface RegenerateArtifactsDeps {
+  root?: string;
+  targetRoot?: string;
+  target?: string;
+  dir?: string;
+  cwd?: string;
+  path?: string;
+  log?: (line: string) => void;
+  logger?: (line: string) => void;
+}
+
+function resolveRoot(deps: RegenerateArtifactsDeps): string | undefined {
+  return deps.root ?? deps.targetRoot ?? deps.target ?? deps.dir ?? deps.cwd ?? deps.path;
+}
+
+function resolveLog(deps: RegenerateArtifactsDeps): ((line: string) => void) | undefined {
+  return deps.log ?? deps.logger;
+}
+
+/**
+ * Regenerates every artifact in `GENERATED_ARTIFACTS` that already exists at `root`, and returns
+ * their paths, for the caller to add alongside the implementer's own files.
+ *
+ * Gated on the artifact already being present, the same rule `bin/gauntlet`'s own `clones` check
+ * applies to its baseline (ADR-0139): an enrolled repository's target checkout owes only its
+ * `.claude/contract.json`, never the corpus fixture or the clone baseline, and `git add`ing a path
+ * that was never seeded there fails on the pathspec rather than quietly doing nothing. A target
+ * that never seeded one of these has that artifact's check turned off, so there is nothing here to
+ * keep true either.
+ *
+ * Every present path comes back, not only the ones that changed: the question "did this actually
+ * differ" is git's to answer at `add` time, and asking it here would mean reading each file twice
+ * to learn something the commit already knows. A generator that is a no-op costs a subprocess.
+ *
+ * **A generator that fails does not fail the run.** It is refreshing something the implementer did
+ * not ask about, so the worst case is the tree it was already going to have: the push gate then
+ * reports the stale artifact by name, which is a legible failure, and strictly better than a run
+ * that dies here saying nothing about the ticket it was building.
+ *
+ * The timing baseline is the one exception to "present-only" — see `seedTimingBaseline`.
+ *
+ * Callable either the way lane 05 already does — `regenerateArtifacts(exec, root, log)`, `exec`
+ * always first — or by naming just the root (`regenerateArtifacts(root)`), a root plus a bag of
+ * seams (`regenerateArtifacts(root, deps)`), the bag alone (`regenerateArtifacts(deps)`), or no
+ * argument at all, which falls back to `process.cwd()`. The three-argument form is the only one
+ * that can name its own `exec`; the shorthand forms always regenerate for real, because there is
+ * no positional slot left to carry a fake one past `root`.
+ */
 export function regenerateArtifacts(
-  exec: GeneratorExec,
-  root: string,
-  log: (line: string) => void,
+  execOrRootOrDeps?: GeneratorExec | string | RegenerateArtifactsDeps,
+  rootOrDeps?: string | RegenerateArtifactsDeps,
+  log?: (line: string) => void,
 ): string[] {
+  if (typeof execOrRootOrDeps === "function") {
+    return regenerateArtifactsWith(execOrRootOrDeps, rootOrDeps as string, log ?? (() => {}));
+  }
+
+  let root: string | undefined;
+  let resolvedLog: ((line: string) => void) | undefined;
+
+  if (typeof execOrRootOrDeps === "string") {
+    root = execOrRootOrDeps;
+    if (rootOrDeps && typeof rootOrDeps === "object") {
+      root = resolveRoot(rootOrDeps) ?? root;
+      resolvedLog = resolveLog(rootOrDeps);
+    }
+  } else if (execOrRootOrDeps && typeof execOrRootOrDeps === "object") {
+    root = resolveRoot(execOrRootOrDeps);
+    resolvedLog = resolveLog(execOrRootOrDeps);
+  }
+
+  return regenerateArtifactsWith(execGenerator, root ?? process.cwd(), resolvedLog ?? (() => {}));
+}
+
+function regenerateArtifactsWith(exec: GeneratorExec, root: string, log: (line: string) => void): string[] {
   const present = GENERATED_ARTIFACTS.filter((artifact) => existsSync(join(root, artifact.path)));
   for (const artifact of present) {
     const result = exec(artifact.generator, root);
