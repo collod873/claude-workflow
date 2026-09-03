@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
@@ -11,7 +12,9 @@ import {
   subIssuesPath,
 } from "../shared/gh-paths";
 import { touchesImmutableSet } from "../shared/immutable-set";
+import { testsForCriteria } from "../shared/affected-tests";
 import {
+  dispatchAcceptanceWanted,
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
   implementationBranch,
@@ -982,6 +985,11 @@ function reportUnreachable(
   return naming.map((finding) => finding.number);
 }
 
+/** One issue's acceptance criteria, or none when the issue is absent from this pass's read. */
+function criteriaOf(issue: OpenIssue | undefined): string[] {
+  return issue ? extractCriteria(issue.body ?? "") : [];
+}
+
 /**
  * The reconciler. Reads the tracker, recomputes the ready set, dispatches `ticket-ready` for
  * everything in it that `startableNumbers` admits and that has not been started, and files what is
@@ -1055,13 +1063,37 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   log(`${startable.size} startable issue(s) open; ${ready.length} ready, ${unreachable.length} unreachable.`);
 
   const dispatched: number[] = [];
+  /** Slices handed to lane 04 to author first — started, but not by this pass and not yet. */
+  const authoring: number[] = [];
   for (const state of ready) {
+    // ADR-0201's ordering, which this door skipped. Lane 03 never sends `ticket-ready` itself: it
+    // asks lane 04 to author, and lane 04 rings lane 05 once that slice's acceptance tests are on
+    // `main` — otherwise the implementer's push gate, and then Verify's acceptance job, judge a
+    // slice against tests that do not exist. The `to-build` door called `dispatchTicketReady`
+    // directly, so every ticket through it reached Verify with nothing to judge it: #346 opened a
+    // pull request the acceptance job failed closed on, the fixer escalated `needs-human`, and it
+    // only closed after a session dispatched `acceptance-wanted` by hand.
+    //
+    // Asked per slice rather than assumed, because a re-dispatch after a failed implementer must
+    // not re-author tests that already exist — that is a second model run for nothing, and lane
+    // 04's own re-author pass owns that decision.
+    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), join(targetWorkspace, "tests/acceptance"));
+    const wants = authored.length === 0 ? "acceptance-wanted" : "ticket-ready";
+
     if (input.dryRun) {
-      log(`would dispatch ticket-ready for #${state.number}.`);
+      log(`would dispatch ${wants} for #${state.number}.`);
       dispatched.push(state.number);
       continue;
     }
     try {
+      if (wants === "acceptance-wanted") {
+        // Not in this pass's dispatched set on purpose: lane 04 sends `ticket-ready` when the
+        // tests land, so counting it here would report a slice as started that has not been.
+        dispatchAcceptanceWanted(gh, state.number, true);
+        authoring.push(state.number);
+        log(`#${state.number} has no acceptance test naming its criteria — asked lane 04 to author first.`);
+        continue;
+      }
       dispatchTicketReady(gh, state.number);
       dispatched.push(state.number);
     } catch (err) {
@@ -1078,13 +1110,24 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   }));
   const filed = reportUnreachable(gh, findings, log, input.dryRun ?? false);
 
-  if (dispatched.length === 0) {
+  if (dispatched.length === 0 && authoring.length === 0) {
     return {
       action: "clear",
       checked: startable.size,
       dispatched,
       unreachable: filed,
       note: `nothing became ready: ${startable.size} startable issue(s) open, none of them ready and unstarted.`,
+    };
+  }
+  if (dispatched.length === 0) {
+    // Something did become ready; it went to lane 04 rather than lane 05, which is ADR-0201's
+    // order and not a quiet pass. Reporting `clear` here would say the opposite.
+    return {
+      action: "dispatched",
+      checked: startable.size,
+      dispatched,
+      unreachable: filed,
+      note: `asked lane 04 to author acceptance for #${authoring.join(", #")}.`,
     };
   }
   return {

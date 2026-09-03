@@ -1,7 +1,7 @@
 import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
 import type { Plan } from "../shared/plan-schema";
-import { readySlices, type SliceState } from "../shared/ready-set";
+import { dispatchAcceptanceWanted, readySlices, type SliceState } from "../shared/ready-set";
 import {
   publishSubIssues,
   verifyBlockedByGraph,
@@ -24,15 +24,6 @@ import { validatePlan } from "../shared/validate-graph";
  * would answer a question this dispatch has already settled. It is `1`/`0`, never a boolean —
  * `shared/dispatch-request.ts`'s `client_payload` is `string | number`.
  */
-export const ACCEPTANCE_WANTED_DISPATCH_ACTION = "acceptance-wanted";
-
-function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready: boolean): void {
-  requestDispatch(gh, {
-    event_type: ACCEPTANCE_WANTED_DISPATCH_ACTION,
-    client_payload: { issue: issueNumber, ready: ready ? 1 : 0 },
-  });
-}
-
 /**
  * Sends one `acceptance-wanted` dispatch per slice this publish creates, naming which of them are
  * ready — the send `acceptance.yml`'s new `author` job fires on.

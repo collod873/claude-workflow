@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-02",
+  "generated": "2026-09-03",
   "why": "Standing module-boundary debt at the day this gate landed (#305). The gate fails on anything added to this set, never on the set itself; entries leave as each edge is routed through shared/ or a published seam instead.",
   "items": [
     {
@@ -26,11 +26,6 @@
       "rule": "no-circular",
       "from": ".Workflow/agent-workflows/spec/spec.ts",
       "to": ".Workflow/agent-workflows/spec/sweep.ts"
-    },
-    {
-      "rule": "no-lane-to-lane-acceptance",
-      "from": ".Workflow/agent-workflows/acceptance/acceptance-workflow.test.ts",
-      "to": ".Workflow/agent-workflows/to-tickets/slice-and-publish.ts"
     },
     {
       "rule": "no-lane-to-lane-capture",

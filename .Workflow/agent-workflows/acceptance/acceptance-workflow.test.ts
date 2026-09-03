@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readWorkflow } from "../shared/read-workflow";
 import { TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
-import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../to-tickets/slice-and-publish";
+import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../shared/ready-set";
 
 /**
  * #201: lane 04 had only its `issues: edited` re-fire, so `tests/acceptance/` had never existed

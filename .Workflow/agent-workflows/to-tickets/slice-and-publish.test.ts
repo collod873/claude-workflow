@@ -6,7 +6,8 @@ import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
 import { readySlices, type SliceState } from "../shared/ready-set";
-import { ACCEPTANCE_WANTED_DISPATCH_ACTION, sliceAndPublish } from "./slice-and-publish";
+import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../shared/ready-set";
+import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
 

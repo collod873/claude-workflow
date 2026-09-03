@@ -149,6 +149,29 @@ export const GRAPH_CHANGED_DISPATCH_ACTION = "graph-changed";
  * where the call 403s and the whole published wave is never told to start. Neither caller decides
  * which happens; the workflow it runs in does.
  */
+/**
+ * The action lane 04 fires on, asking it to author one slice's acceptance tests.
+ *
+ * It lives here rather than in `to-tickets/slice-and-publish.ts`, where it was declared, for the
+ * reason `TICKET_READY_DISPATCH_ACTION` does: it now has **two senders** — lane 03's publish and
+ * lane 09's `to-build` door — and `shared/` is the only place both can reach without a lane
+ * importing a lane (`docs/agents/module-boundaries.md`). Declaring a wire name twice is what left
+ * both of `verify.yml`'s jobs unreachable until #145's seam audit.
+ */
+export const ACCEPTANCE_WANTED_DISPATCH_ACTION = "acceptance-wanted";
+
+/**
+ * Asks lane 04 to author `issueNumber`'s acceptance tests. `ready` is ADR-0201's ordering: when
+ * true, lane 04 sends `ticket-ready` itself once those tests are on `main`, so lane 05 never
+ * claims a slice whose acceptance tests do not exist yet.
+ */
+export function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready: boolean): void {
+  requestDispatch(gh, {
+    event_type: ACCEPTANCE_WANTED_DISPATCH_ACTION,
+    client_payload: { issue: issueNumber, ready: ready ? 1 : 0 },
+  });
+}
+
 export function dispatchTicketReady(gh: GhExec, issueNumber: number): void {
   requestDispatch(gh, {
     event_type: TICKET_READY_DISPATCH_ACTION,

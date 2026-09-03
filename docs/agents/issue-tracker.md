@@ -60,8 +60,13 @@ means not yet judged.
 The two hand-off labels are there too — `to-spec` and `to-build`, each applied only by the owner's
 own hand and each naming the lane it hands work to. `to-build` is the one worth knowing from here:
 put it on a ticket you wrote in a session (`~/bin/file-issue ticket`, then
-`gh issue edit <n> --add-label to-build`) and lane 09's next recompute starts an implementer against
-it — no spec, no slicer, and every gate downstream unchanged. It is read by
+`gh issue edit <n> --add-label to-build`) and lane 09's next recompute starts it — no spec, no
+slicer, and every gate downstream unchanged. **It starts lane 04, not lane 06.** A ticket whose
+criteria no acceptance test names yet is handed to the acceptance author first, and lane 04
+rings lane 05 once those tests are on `main` (ADR-0201) — otherwise the implementer's push gate
+and Verify's acceptance job both judge a slice against tests that do not exist, which is how
+#346 reached a pull request the acceptance job failed closed on. A ticket that already has one
+goes straight to lane 06, so a retry after a failed implementer re-authors nothing. It is read by
 `.Workflow/agent-workflows/dispatch/reconcile.ts`, which refuses a labelled issue missing
 `## Acceptance criteria` or `## Files claimed` in one comment rather than spending a run on it.
 Blockers must be native `dependencies/blocked_by` edges — the reconciler never reads a

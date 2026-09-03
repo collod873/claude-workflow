@@ -16,7 +16,7 @@ Three rules, scoped to `.Workflow/agent-workflows` — the only tree with lanes 
 
 ## Baseline
 
-69 standing violation(s) as of 2026-09-02, excused by the
+68 standing violation(s) as of 2026-09-03, excused by the
 baseline so the gate fires on a new violation only, never on this debt:
 
 Standing module-boundary debt at the day this gate landed (#305). The gate fails on anything added to this set, never on the set itself; entries leave as each edge is routed through shared/ or a published seam instead.

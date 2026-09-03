@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { CloseTicketResult } from "../shared/close-ticket";
 import { expectMachineAndTargetCheckouts } from "../shared/checkout-pair.fixture";
 import type { GhExec } from "../shared/gh";
@@ -371,6 +371,53 @@ describe("deliveryOf", () => {
 
     expect(delivery).toBe("undelivered");
     expect(asked, "a `not planned` close is undelivered whatever merged").toBe(false);
+  });
+});
+
+/**
+ * ADR-0201's ordering, which the `to-build` door skipped. Lane 03 never rings lane 05 itself — it
+ * asks lane 04 to author, and lane 04 rings lane 05 once the tests are on `main`. The door called
+ * `dispatchTicketReady` directly, so every ticket through it reached Verify with nothing to judge
+ * it: #346 opened a pull request whose acceptance job failed closed and whose fixer escalated
+ * `needs-human`, and it only closed after a session dispatched `acceptance-wanted` by hand.
+ */
+describe("the to-build door goes through lane 04, not straight to lane 05", () => {
+  const CRITERION = "The door asks lane 04 first";
+  const body = `## Acceptance criteria\n\n- [ ] ${CRITERION}\n\n## Files claimed\n\n- src/a.ts\n`;
+
+  function workspace(withTest: boolean): string {
+    const dir = mkdtempSync(join(tmpdir(), "reconcile-door-"));
+    mkdirSync(join(dir, "tests/acceptance"), { recursive: true });
+    if (withTest) {
+      writeFileSync(join(dir, "tests/acceptance/77-door.test.ts"), `// ${CRITERION}\nit("x", () => {});\n`);
+    }
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    return dir;
+  }
+
+  function eventsOf(calls: string[][]): string[] {
+    return calls
+      .filter((call) => call.includes("repos/{owner}/{repo}/dispatches"))
+      .map((call) => call.find((arg) => arg.startsWith("event_type="))?.slice("event_type=".length) ?? "");
+  }
+
+  it("asks lane 04 to author when no acceptance test names the ticket's criteria", () => {
+    const fake = createFake({ open: [{ number: 77, title: "Door", body, labels: ["to-build"] }] });
+
+    const outcome = runReconcile({ gh: fake.gh, log: silent, targetWorkspace: workspace(false) });
+
+    expect(eventsOf(fake.calls)).toContain("acceptance-wanted");
+    expect(eventsOf(fake.calls), "lane 05 must not be rung before the tests exist").not.toContain("ticket-ready");
+    expect(outcome.action, "handing a slice to lane 04 is not a quiet pass").toBe("dispatched");
+  });
+
+  it("rings lane 05 directly once an acceptance test names one of them, so a retry authors nothing new", () => {
+    const fake = createFake({ open: [{ number: 77, title: "Door", body, labels: ["to-build"] }] });
+
+    runReconcile({ gh: fake.gh, log: silent, targetWorkspace: workspace(true) });
+
+    expect(eventsOf(fake.calls)).toContain("ticket-ready");
+    expect(eventsOf(fake.calls), "re-authoring costs a model run for nothing").not.toContain("acceptance-wanted");
   });
 });
 
