@@ -2,7 +2,21 @@
   "generated": "2026-09-03",
   "why": "Per-check wall times, ratcheted (#335). A venue's budget is its own last green time plus the margin below, never a figure declared for it — so an enrolled repository inherits its own history rather than this repo's guess about someone else's suite. The committed file holds the runner's numbers; a workstation writes timing-baseline.local.json instead.",
   "marginPct": 25,
-  "venues": {},
+  "venues": {
+    "push": {
+      "typecheck": 7189,
+      "lint": 7106,
+      "test": 57478,
+      "contract": 284,
+      "corpus": 201,
+      "clones": 8514,
+      "wiring": 2728,
+      "workflows": 219,
+      "trailers": 272,
+      "adrs": 13,
+      "boundaries": 2654
+    }
+  },
   "suite": {
     "wallMs": 70262,
     "measuredOn": {
@@ -152,5 +166,9 @@
       ".claude/hooks/gauntlet.test.ts": 41424,
       ".claude/hooks/session-capture.test.ts": 11540
     }
+  },
+  "measuredOn": {
+    "cores": 4,
+    "platform": "linux"
   }
 }

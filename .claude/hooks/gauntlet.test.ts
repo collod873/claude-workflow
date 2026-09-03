@@ -45,7 +45,10 @@ function runHook(venue: string, payload: string, env: Record<string, string> = {
     input: payload,
     encoding: "utf8",
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    // WORKFLOW_STAGE defaults off rather than inherited: this suite is itself something a stage's
+    // model can run from a Bash tool, and an ambient "1" from the process running these tests would
+    // silence every case below that does not name the stage explicitly, without proving anything.
+    env: { ...process.env, WORKFLOW_STAGE: "", ...env },
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
