@@ -398,14 +398,7 @@ describe("recover-caller.yml is the listener a red Implement never had", () => {
     expect(workflow.jobs.recover.if).toContain("workflow_dispatch");
   });
 
-  /**
-   * A `timeout-minutes` kill reports `cancelled`, not `failure`, so a door spelled on `failure`
-   * alone excludes the death it most exists for. #342's run 33687023105 was killed at 45 minutes
-   * having written no answer, reached Recover through neither door, and left an orphaned claim ref
-   * that made the ticket unbuildable — `reconcile.ts` reads a claim ref as started, and the
-   * stale-claim takeover only runs inside a dispatch that would never come. Pinned on both doors
-   * because they failed together and a fix to one alone leaves the other's gap open.
-   */
+  /** Why `cancelled` belongs on this door: the comment on `implement.yml`'s dispatch step (#342). */
   it("reacts to a cancelled run too, which is what a timeout reports", () => {
     expect(workflow.jobs.recover.if).toContain("github.event.workflow_run.conclusion == 'cancelled'");
   });
