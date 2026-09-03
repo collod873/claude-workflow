@@ -75,11 +75,8 @@ function sourceFiles(): string[] {
 
 describe("a lane that writes into a target installs that target's dependencies", () => {
   /**
-   * The probe that decides a target's test runner reads `<target>/node_modules/.bin`
-   * (`check-contract.ts`'s `binInstalled`). A lane that regenerates the target's artifacts without
-   * installing them therefore writes a contract claiming the target has no test runner — which is
-   * a diff every downstream gate then refuses, because `bin/gauntlet push` diffs the committed
-   * contract against a fresh probe (ADR-0056).
+   * Why an uninstalled target poisons the regenerated contract: `recover.yml`'s "Install target
+   * dependencies" step comment (PR #348).
    */
   const WRITES_TARGET = /regenerateArtifacts|landAnswer/;
 
