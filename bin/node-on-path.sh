@@ -17,7 +17,7 @@
 # exists to prevent, not an instance of it.
 node_on_path() {
   local standard_dirs="/usr/local/bin:/usr/bin:/bin"
-  local fallback_dirs="$HOME/bin:/opt/homebrew/bin"
+  local fallback_dirs="${HOME:-}/bin:/opt/homebrew/bin"
   if [ -n "${NODE_ON_PATH_SEARCH_DIRS:-}" ]; then
     standard_dirs="$NODE_ON_PATH_SEARCH_DIRS"
     fallback_dirs="$NODE_ON_PATH_SEARCH_DIRS"

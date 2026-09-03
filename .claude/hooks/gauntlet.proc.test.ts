@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture.ts";
 
@@ -91,27 +91,32 @@ describe("the hook", () => {
     expect(result.stdout).toBe("");
   });
 
-  it("survives a shell with no usable PATH and no HOME, and finds node when only PATH is missing", () => {
-    // The shim's degraded case. Whether node turns up in a standard directory is a fact about the
-    // machine, so the assertion is the contract that holds either way: exit 0, and nothing that
-    // is not valid hook output. With HOME present, node is found and the report goes through.
-    const bare = spawnSync(HOOK, ["turn"], {
+  it("stays silent when node is absent, and reports when the finder turns it up", () => {
+    // The shim's degraded case, made true rather than approximated: scrubbing PATH proves nothing
+    // on a box where node lives in a standard directory (it does on a hosted runner), so both
+    // halves pin the finder's whole search list through `NODE_ON_PATH_SEARCH_DIRS` — the seam
+    // `bin/node-on-path.sh` offers for exactly this — and each assertion is exact on any machine.
+    const absent = spawnSync(HOOK, ["turn"], {
       input: editOf("a.ts"),
       encoding: "utf8",
       cwd: REPO_ROOT,
-      env: { PATH: "/nonexistent", HOME: "/nonexistent", GAUNTLET_BIN: stubGauntlet(1) },
+      env: { PATH: "/nonexistent", NODE_ON_PATH_SEARCH_DIRS: "/nonexistent", GAUNTLET_BIN: stubGauntlet(1) },
     });
-    expect(bare.status).toBe(0);
-    expect(bare.stdout).toBe("");
+    expect(absent.status).toBe(0);
+    expect(absent.stdout).toBe("");
 
-    const homed = spawnSync(HOOK, ["turn"], {
+    const found = spawnSync(HOOK, ["turn"], {
       input: editOf("a.ts"),
       encoding: "utf8",
       cwd: REPO_ROOT,
-      env: { PATH: "/nonexistent", HOME: process.env.HOME ?? "", GAUNTLET_BIN: stubGauntlet(1, "--- lint ---\nboom\n") },
+      env: {
+        PATH: "/nonexistent",
+        NODE_ON_PATH_SEARCH_DIRS: dirname(process.execPath),
+        GAUNTLET_BIN: stubGauntlet(1, "--- lint ---\nboom\n"),
+      },
     });
-    expect(homed.status).toBe(0);
-    expect(JSON.parse(homed.stdout).reason).toContain("boom");
+    expect(found.status).toBe(0);
+    expect(JSON.parse(found.stdout).reason).toContain("boom");
   });
 
   // Both events are hot — every Edit|Write, every turn end — so how often the hook fires and how
