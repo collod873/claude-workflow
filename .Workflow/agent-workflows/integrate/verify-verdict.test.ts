@@ -72,7 +72,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
       runs: [{ jobs: [{ name: IMMUTABILITY_JOB, status: "in_progress", conclusion: null }] }],
     },
     {
-      what: "the immutability job was skipped — a skip is not a pass",
+      what: "the immutability job was skipped; a skip is not a pass",
       runs: [{ jobs: [{ name: IMMUTABILITY_JOB, conclusion: "skipped" }] }],
     },
     {
@@ -112,7 +112,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(runIntegrate(deps)).toMatchObject({ merged: true });
   });
 
-  it("a newer failure also supersedes an older pass — newest is newest in both directions", () => {
+  it("a newer failure also supersedes an older pass: newest is newest in both directions", () => {
     const { deps } = integrateHarness({
       verifyRuns: [
         { id: 901, jobs: [{ name: IMMUTABILITY_JOB, conclusion: "success" }] },
@@ -152,7 +152,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(runIntegrate(deps)).toMatchObject({ merged: true });
   });
 
-  it("resolves the judging run by job, never by run — a run-addressed log read cannot see one in flight", () => {
+  it("resolves the judging run by job, never by run, since a run-addressed log read cannot see one in flight", () => {
     const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
 
     runIntegrate(deps);
@@ -242,7 +242,7 @@ describe("runIntegrate's ruling when only lane 06's gate job is red", () => {
 });
 
 describe("runIntegrate reads a run reached through a caller stub", () => {
-  it("merges on jobs named with the caller's prefix — verify / Immutability, verify / Verify", () => {
+  it("merges on jobs named with the caller's prefix: verify / Immutability, verify / Verify", () => {
     const { deps } = integrateHarness({
       closeTicket: CLOSED,
       verifyRuns: [

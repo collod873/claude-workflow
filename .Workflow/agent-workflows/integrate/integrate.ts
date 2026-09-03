@@ -165,7 +165,7 @@ function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict): voi
     `Lane 06's \`${GATE_JOB}\` job is **${verdict}** for this head commit, so lane 08 did not merge.`,
     "",
     verdict === "failed"
-      ? "`npm run check` is red against this diff — the ticket's own acceptance tests, or another check, do not pass. The ticket is not built."
+      ? "`npm run check` is red against this diff: the ticket's own acceptance tests, or another check, do not pass. The ticket is not built."
       : "The job never reached a verdict within the window this lane waits, and an absent verdict is a refusal, never a pass (ADR-0054).",
     "",
     "Re-dispatch the pull request once the cause is dealt with; nothing retries this on its own.",
@@ -209,7 +209,7 @@ function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
 
 function blockOnConflict(gh: GhExec, pr: string, paths: string[], ticket: number | undefined, assignee: string | undefined): void {
   const body = [
-    "**Blocked — rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",
+    "**Blocked: rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",
     "aborted the rebase and merged nothing. No model ran and nothing here judged the diff.",
     "",
     "Conflicting paths:",
@@ -233,7 +233,7 @@ function noteRefusal(gh: GhExec, ticket: number, pr: string, result: CloseTicket
   const body = [
     `Lane 08 merged ${pr} and could not close this ticket: \`bin/close-ticket\` exited ${result.exitCode}, so no \`## Closing record\` was posted and this stays open.`,
     "",
-    "The merge stands — a criterion that did not check out does not un-land it. Re-run the same",
+    "The merge stands; a criterion that did not check out does not un-land it. Re-run the same",
     "`bin/close-ticket` invocation once the criterion is satisfied; that is the whole recovery path.",
     "",
     "```",
@@ -323,7 +323,7 @@ async function main(): Promise<void> {
 
     const verifyWorkflow = process.env.VERIFY_WORKFLOW;
     if (!verifyWorkflow) {
-      throw new Error("VERIFY_WORKFLOW must be set — reading a workflow that does not exist reads as unjudged forever");
+      throw new Error("VERIFY_WORKFLOW must be set: reading a workflow that does not exist reads as unjudged forever");
     }
 
     const outcome = runIntegrate({
@@ -342,7 +342,7 @@ async function main(): Promise<void> {
       if (outcome.reason !== "conflict") process.exitCode = 1;
       return;
     }
-    console.log(`merged ${pr} — ${describeClosing(outcome.closing, pr)}`);
+    console.log(`merged ${pr}: ${describeClosing(outcome.closing, pr)}`);
   } catch (err) {
     console.error(`integrate failed: ${reason(err)}`);
     process.exitCode = 1;

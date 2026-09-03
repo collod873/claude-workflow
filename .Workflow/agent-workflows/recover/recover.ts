@@ -107,7 +107,7 @@ function stopAndEscalate(gh: GhExec, ticket: number, runId: number, priorRuns: n
     gh,
     ticket,
     runId,
-    `Stopped after ${MAX_RECOVER_ATTEMPTS} recovery attempts on #${ticket} — a human needs to look at it.\n\nRuns:\n${runs}`,
+    `Stopped after ${MAX_RECOVER_ATTEMPTS} recovery attempts on #${ticket}; a human needs to look at it.\n\nRuns:\n${runs}`,
   );
 }
 
@@ -149,7 +149,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
 
   const target = resolveRecoveryTarget(deps.gh, deps.runId);
   if (!target) {
-    log(`run ${deps.runId} names no ticket, by artifact or by log line — nothing to recover`);
+    log(`run ${deps.runId} names no ticket, by artifact or by log line; nothing to recover`);
     return { outcome: "nothing-to-recover" };
   }
   const { ticket, hasArtifact } = target;
@@ -188,7 +188,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
       deps.gh,
       ticket,
       deps.runId,
-      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) writes into the immutable set, which no pull request may change — the ticket itself needs fixing.\n\n${forbidden.map((path) => `- \`${path}\``).join("\n")}`,
+      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) writes into the immutable set, which no pull request may change; the ticket itself needs fixing.\n\n${forbidden.map((path) => `- \`${path}\``).join("\n")}`,
     );
     return { outcome: "immutable", files: forbidden };
   }
@@ -203,7 +203,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
       deps.gh,
       ticket,
       deps.runId,
-      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) adds a file to the gate, which a lane may shrink and never grow (#360) — the ticket itself needs fixing.\n\n${growth.map((path) => `- \`${path}\``).join("\n")}`,
+      `Not recovered: the implementer's answer for #${ticket} (run ${runUrl(deps.runId)}) adds a file to the gate, which a lane may shrink and never grow (#360); the ticket itself needs fixing.\n\n${growth.map((path) => `- \`${path}\``).join("\n")}`,
     );
     return { outcome: "gate-growth", files: growth };
   }
@@ -211,7 +211,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
   const branch = implementationBranch(ticket);
   const claim = claimImplementationBranch(deps.gh, deps.git, branch, log);
   if (!claim.claimed) {
-    log(`\`${branch}\` is already claimed or recovered — a pull request may already be open; nothing to do.`);
+    log(`\`${branch}\` is already claimed or recovered: a pull request may already be open; nothing to do.`);
     return { outcome: "already-claimed" };
   }
 
@@ -224,7 +224,7 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
       deps.gh,
       ticket,
       deps.runId,
-      `Recovered #${ticket} from run ${runUrl(deps.runId)}: refused — the answer edited a test.fails( acceptance test beyond turning it on.`,
+      `Recovered #${ticket} from run ${runUrl(deps.runId)}: refused; the answer edited a test.fails( acceptance test beyond turning it on.`,
     );
     return result;
   }

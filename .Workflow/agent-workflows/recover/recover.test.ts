@@ -105,7 +105,7 @@ describe("redispatchImplement", () => {
   });
 });
 
-describe("runRecover — nothing to recover", () => {
+describe("runRecover: nothing to recover", () => {
   it("exits without writing anything when neither source names a ticket", async () => {
     const { gh, calls } = failedRunWith({});
     const { git } = checkoutReporting();
@@ -116,7 +116,7 @@ describe("runRecover — nothing to recover", () => {
   });
 });
 
-describe("runRecover — the dead run's claim", () => {
+describe("runRecover: the dead run's claim", () => {
   it("releases the claim before re-dispatching, so the fresh run is not refused by a dead one's ref", async () => {
     const { gh, calls } = failedRunWith({ artifacts: [], comments: [], logLine: "implementing #266" });
     const { git } = checkoutReporting();
@@ -135,7 +135,7 @@ describe("runRecover — the dead run's claim", () => {
   });
 });
 
-describe("runRecover — the cap", () => {
+describe("runRecover: the cap", () => {
   it("stops on the third prior attempt, labels needs-human and assigns the owner, without touching git", async () => {
     process.env.GITHUB_REPOSITORY_OWNER = "collod873";
     const comments = [1, 2, 3].map((id) => attemptCommentBody(id, `attempt ${id}`));
@@ -168,7 +168,7 @@ describe("runRecover — the cap", () => {
   });
 });
 
-describe("runRecover — recovery path", () => {
+describe("runRecover: recovery path", () => {
   it("claims the branch, writes the answer's files, commits, pushes, and opens a PR, in order", async () => {
     const { gh, calls } = failedRunWith({ artifacts: ["implementer-answer-266"], prCreateUrl: "https://github.com/o/r/pull/42" });
     const { git, calls: gitCalls } = checkoutReporting();
@@ -202,7 +202,7 @@ describe("runRecover — recovery path", () => {
   });
 });
 
-describe("runRecover — one failed run, two doors", () => {
+describe("runRecover: one failed run, two doors", () => {
   it("does nothing the second time it is told about a run it already reacted to", async () => {
     const { gh, calls } = failedRunWith({
       artifacts: ["implementer-answer-266"],
@@ -218,7 +218,7 @@ describe("runRecover — one failed run, two doors", () => {
   });
 });
 
-describe("runRecover — an answer no pull request may land", () => {
+describe("runRecover: an answer no pull request may land", () => {
   async function refusedAnswer(runId: number, forbidden: string) {
     const { gh, calls } = failedRunWith({ artifacts: ["implementer-answer-275"] });
     const { git, calls: gitCalls } = checkoutReporting();
@@ -264,7 +264,7 @@ describe("runRecover — an answer no pull request may land", () => {
   });
 });
 
-describe("runRecover — already claimed", () => {
+describe("runRecover: already claimed", () => {
   it("exits without writing files or opening a PR when the branch is already claimed", async () => {
     const branch = implementationBranch(266);
     const { gh, calls } = failedRunWith({ artifacts: ["implementer-answer-266"], existingClaimBranch: branch });
@@ -280,7 +280,7 @@ describe("runRecover — already claimed", () => {
   });
 });
 
-describe("runRecover — re-dispatch path", () => {
+describe("runRecover: re-dispatch path", () => {
   it("sends the ticket-ready dispatch and posts a marker comment, without touching git", async () => {
     const { gh, calls } = failedRunWith({ logLine: "implementing #266\n" });
     const { git, calls: gitCalls } = checkoutReporting();

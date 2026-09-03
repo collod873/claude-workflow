@@ -256,7 +256,7 @@ function propagateSecrets(gh: GhExec, repository: string, names: string[], value
   for (const name of names) {
     const value = values[name];
     if (value === undefined) {
-      throw new Error(`${name}: this job's own environment carries no value for it — see enrol.yml's env`);
+      throw new Error(`${name}: this job's own environment carries no value for it; see enrol.yml's env`);
     }
     gh(["secret", "set", name, "-R", repository, "--body", value]);
   }
@@ -331,7 +331,7 @@ export function runEnrol(options: EnrolOptions): RepositoryOutcome[] {
   const stubs = readStubSet(options.workflowsDir);
   if (stubs.length === 0) {
     throw new Error(
-      `no *${STUB_SUFFIX} stubs found in ${options.workflowsDir} — enrolling an empty set would ` +
+      `no *${STUB_SUFFIX} stubs found in ${options.workflowsDir}: enrolling an empty set would ` +
         "delete every stub in every enrolled repository",
     );
   }
@@ -342,7 +342,7 @@ export function runEnrol(options: EnrolOptions): RepositoryOutcome[] {
   const outcomes: RepositoryOutcome[] = [];
   for (const repository of enrolledRepositories(options.gh, options.topic)) {
     if (repository === options.machineRepository) {
-      log(`${repository}: skipped — this is the machine itself`);
+      log(`${repository}: skipped: this is the machine itself`);
       outcomes.push({
         repository,
         code: "skipped",
@@ -360,7 +360,7 @@ export function runEnrol(options: EnrolOptions): RepositoryOutcome[] {
   }
 
   if (outcomes.length === 0) {
-    log(`no repository carries the topic ${options.topic} — nothing to enrol`);
+    log(`no repository carries the topic ${options.topic}; nothing to enrol`);
   }
   return outcomes;
 }
@@ -368,21 +368,21 @@ export function runEnrol(options: EnrolOptions): RepositoryOutcome[] {
 export function describeOutcome(outcome: RepositoryOutcome): string {
   const { repository, code } = outcome;
   const base = (() => {
-    if (code === "current") return `${repository}: current — ${outcome.unchanged} stub(s) already match`;
-    if (code === "skipped") return `${repository}: skipped — ${outcome.why ?? "no reason given"}`;
-    if (code === "failed") return `${repository}: FAILED — ${outcome.why ?? "no reason given"}`;
+    if (code === "current") return `${repository}: current, ${outcome.unchanged} stub(s) already match`;
+    if (code === "skipped") return `${repository}: skipped, ${outcome.why ?? "no reason given"}`;
+    if (code === "failed") return `${repository}: FAILED, ${outcome.why ?? "no reason given"}`;
     const wrote = outcome.wrote.length === 0 ? "" : ` wrote ${outcome.wrote.join(", ")};`;
     const deleted = outcome.deleted.length === 0 ? "" : ` deleted ${outcome.deleted.join(", ")};`;
-    return `${repository}: ${outcome.commit ?? "?"} —${wrote}${deleted} ${outcome.unchanged} unchanged`;
+    return `${repository}: ${outcome.commit ?? "?"},${wrote}${deleted} ${outcome.unchanged} unchanged`;
   })();
 
   const extra: string[] = [];
-  if (outcome.labelsFailure !== undefined) extra.push(`labels FAILED — ${outcome.labelsFailure}`);
+  if (outcome.labelsFailure !== undefined) extra.push(`labels FAILED, ${outcome.labelsFailure}`);
   else if (outcome.labelsWritten !== undefined && outcome.labelsWritten.length > 0) {
     extra.push(`labels: ${outcome.labelsWritten.join(", ")}`);
   }
-  if (outcome.settingFailure !== undefined) extra.push(`ADR-0093 setting FAILED — ${outcome.settingFailure}`);
-  if (outcome.secretsFailure !== undefined) extra.push(`secrets FAILED — ${outcome.secretsFailure}`);
+  if (outcome.settingFailure !== undefined) extra.push(`ADR-0093 setting FAILED, ${outcome.settingFailure}`);
+  if (outcome.secretsFailure !== undefined) extra.push(`secrets FAILED, ${outcome.secretsFailure}`);
   else if (outcome.secretsWritten !== undefined && outcome.secretsWritten.length > 0) {
     extra.push(`secrets written: ${outcome.secretsWritten.join(", ")}`);
   }
@@ -406,7 +406,7 @@ async function main(): Promise<void> {
   try {
     const machineRepository = process.env.GITHUB_REPOSITORY;
     if (!machineRepository) {
-      throw new Error("GITHUB_REPOSITORY must be set — without it this lane cannot tell itself from a target");
+      throw new Error("GITHUB_REPOSITORY must be set: without it this lane cannot tell itself from a target");
     }
     const machineSha = process.env.GITHUB_SHA ?? "unknown";
 

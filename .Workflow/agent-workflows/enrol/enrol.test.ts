@@ -352,7 +352,7 @@ describe("a pass over a target that has drifted", () => {
 });
 
 describe("labels, the ADR-0093 setting, and secrets ride every pass, independent of the stub outcome and of each other", () => {
-  it("corrects a differing label, creates a missing one, and leaves the target's own label alone — while still setting ADR-0093 and both secrets", () => {
+  it("corrects a differing label, creates a missing one, and leaves the target's own label alone, while still setting ADR-0093 and both secrets", () => {
     const dir = machineWorkflows(["verify"], ["FOO", "BAR"]);
     const own: Label[] = [
       { name: "ticket", color: "111111", description: "kind: ticket" },
@@ -452,7 +452,7 @@ describe("a repository the token cannot write at all", () => {
     expect(exitCodeFor(outcomes)).toBe(1);
   });
 
-  it("distinguishes a repository with no commit yet, which one push fixes, from one it cannot reach — and still sets ADR-0093 and secrets on it", () => {
+  it("distinguishes a repository with no commit yet, which one push fixes, from one it cannot reach, and still sets ADR-0093 and secrets on it", () => {
     const dir = machineWorkflows(["verify"], ["FOO"]);
     const wire = createWire({ "owner/blank": { files: [], empty: true } });
 
