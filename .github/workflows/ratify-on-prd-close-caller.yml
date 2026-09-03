@@ -1,4 +1,4 @@
-name: Ratify on PRD close (caller)
+name: Ratify on PRD close
 
 "on":
   issues:

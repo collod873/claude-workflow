@@ -1,4 +1,4 @@
-name: Ratify
+name: Ratify (reusable)
 
 # The ratifier lane (#296): what a finding that cleared the audit lane's two-site gate actually
 # becomes. One full-tool stage per finding turns it into a lint rule — with every site that rule

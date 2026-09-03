@@ -1,4 +1,4 @@
-name: Ratify release (caller)
+name: Ratify release
 
 "on":
   pull_request:

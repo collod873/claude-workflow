@@ -1,4 +1,4 @@
-name: Audit
+name: Audit (reusable)
 
 # Spec #63's connector (ADR-0018): the venue ADR-0002 reserves for the observations
 # pipeline. Capture's own SessionEnd hook runs globally, on the workstation, for any project — but

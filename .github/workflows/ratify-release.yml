@@ -1,4 +1,4 @@
-name: Ratify release
+name: Ratify release (reusable)
 
 # **Ratified = merged** (#296). The moment a ratifier pull request (`ratify/land.ts`'s
 # `openRatifierPr`) lands, this workflow records each standard it carried as a `ratified`

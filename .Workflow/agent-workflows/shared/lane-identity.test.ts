@@ -77,6 +77,9 @@ interface WorkflowShape {
   on?: Record<string, unknown> | string[];
 }
 
+/** The suffix that makes a workflow file a caller stub — `enrol/stub-set.ts`'s own convention. */
+const STUB_SUFFIX = "-caller.yml";
+
 const workflowFiles = readdirSync(WORKFLOWS_DIR).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
 
 const parsed = workflowFiles.map((name) => {
@@ -151,5 +154,51 @@ describe("every workflow_run trigger names a file that can actually produce the 
       `${from}'s workflow_run names "${named}" (${target?.name}), which is call-only and can ` +
         `never produce the run this trigger is listening for.`,
     ).toBe(true);
+  });
+});
+
+/**
+ * The convention, enforced rather than described. It ran in both directions at once until
+ * 2026-09-03: six pairs put the suffix on the reusable half (`Verify` / `Verify (reusable)`) and
+ * sixteen put it on the caller (`Audit (caller)` / `Audit`), so in sixteen of twenty-two the bare
+ * name a reader — or a `workflow_run: workflows:` trigger — reaches for belonged to the file that
+ * cannot produce runs. Nothing named one of the sixteen, so nothing was broken; the split was a
+ * convention with no rule, which is the state the next person gets wrong.
+ *
+ * The caller keeps the plain name because it is the half that produces runs, the half a
+ * `workflow_run` trigger must name, and the half a dead-lane signal reports. #331, #347.
+ */
+describe("the caller carries the plain name and the reusable half carries the suffix", () => {
+  const REUSABLE_SUFFIX = " (reusable)";
+
+  const laneNames = parsed
+    .filter((workflow) => workflow.name.endsWith(STUB_SUFFIX))
+    .map((stub) => ({
+      lane: stub.name.slice(0, -STUB_SUFFIX.length),
+      stub,
+      reusable: parsed.find((w) => w.name === `${stub.name.slice(0, -STUB_SUFFIX.length)}.yml`),
+    }))
+    .filter((pair) => pair.reusable !== undefined);
+
+  it("finds the split lanes, so this suite is not vacuous", () => {
+    expect(laneNames.length).toBeGreaterThan(10);
+  });
+
+  it.each(laneNames.map((p) => p.lane))("%s's caller stub carries the plain name", (lane) => {
+    const pair = laneNames.find((p) => p.lane === lane)!;
+    expect(
+      pair.stub.displayName?.endsWith(REUSABLE_SUFFIX) || pair.stub.displayName?.includes("(caller)"),
+      `${pair.stub.name} is the half that produces runs, so it owns the bare name a reader and a ` +
+        `workflow_run trigger both reach for — it must not carry a suffix.`,
+    ).toBe(false);
+  });
+
+  it.each(laneNames.map((p) => p.lane))("%s's reusable half is suffixed, so its name is never mistaken for the lane", (lane) => {
+    const pair = laneNames.find((p) => p.lane === lane)!;
+    expect(
+      pair.reusable?.displayName,
+      `${pair.reusable?.name} can never carry a run of its own, so its name must not read as the ` +
+        `lane's — a workflow_run naming it would fire never, silently.`,
+    ).toBe(`${pair.stub.displayName}${REUSABLE_SUFFIX}`);
   });
 });

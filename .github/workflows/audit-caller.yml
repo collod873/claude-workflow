@@ -1,4 +1,4 @@
-name: Audit (caller)
+name: Audit
 
 "on":
   repository_dispatch:

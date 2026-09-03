@@ -1,4 +1,4 @@
-name: Back-stamp
+name: Back-stamp (reusable)
 
 # The back-stamp (#125, ADR-0044 through ADR-0046): a superseded ADR gains a
 # `Status: superseded by ADR-NNNN` line derived from the `Amends:` trailer its successor already

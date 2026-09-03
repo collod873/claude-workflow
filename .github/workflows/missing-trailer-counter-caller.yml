@@ -1,4 +1,4 @@
-name: Missing-trailer counter (caller)
+name: Missing-trailer counter
 
 "on":
   push:

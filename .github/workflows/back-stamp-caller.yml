@@ -1,4 +1,4 @@
-name: Back-stamp (caller)
+name: Back-stamp
 
 "on":
   push:

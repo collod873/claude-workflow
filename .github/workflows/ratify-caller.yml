@@ -1,4 +1,4 @@
-name: Ratify (caller)
+name: Ratify
 
 "on":
   repository_dispatch:

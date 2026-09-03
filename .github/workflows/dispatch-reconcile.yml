@@ -1,4 +1,4 @@
-name: Dispatch reconcile
+name: Dispatch reconcile (reusable)
 
 # Lane 09: readiness is recomputed, not pushed (#179).
 #

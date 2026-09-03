@@ -1,4 +1,4 @@
-name: Ratify on PRD close
+name: Ratify on PRD close (reusable)
 
 # ADR-0017's second work-volume trigger, rewired (#296): a PRD closing as delivered rings the
 # ratifier lane's door. The trigger survived the overhaul verbatim; only what it fires changed —

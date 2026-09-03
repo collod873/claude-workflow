@@ -1,4 +1,4 @@
-name: To-Tickets (caller)
+name: To-Tickets
 
 "on":
   repository_dispatch:

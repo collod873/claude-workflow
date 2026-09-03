@@ -1,4 +1,4 @@
-name: Run watchdog (caller)
+name: Run watchdog
 
 "on":
   repository_dispatch:

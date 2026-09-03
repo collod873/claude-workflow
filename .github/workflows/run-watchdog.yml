@@ -1,4 +1,4 @@
-name: Run watchdog
+name: Run watchdog (reusable)
 
 # #41: a workflow run that executes zero jobs must reach a human.
 #

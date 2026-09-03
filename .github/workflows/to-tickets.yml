@@ -1,4 +1,4 @@
-name: To-Tickets
+name: To-Tickets (reusable)
 
 # The venue for PRD #13, retargeted by PRD #145 move 6 (ADR-0062): lane 02's spec author is what
 # publishes a PRD now, and `prd` stays what marks an issue as one — it stopped being this lane's

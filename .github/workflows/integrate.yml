@@ -1,4 +1,4 @@
-name: Integrate
+name: Integrate (reusable)
 
 # Lane 08 (PRD #145, move 7): the merge actor, with no model in it. Fires on the same
 # `repository_dispatch` an implementer's `openPrAndDispatch` sends after opening a pull request

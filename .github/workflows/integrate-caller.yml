@@ -1,4 +1,4 @@
-name: Integrate (caller)
+name: Integrate
 
 "on":
   repository_dispatch:

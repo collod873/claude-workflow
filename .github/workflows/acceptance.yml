@@ -1,4 +1,4 @@
-name: Acceptance
+name: Acceptance (reusable)
 
 # Lane 04's re-entry trigger (ADR-0033, PRD #145 move 5): a merged edit to a spec issue's body
 # re-fires the acceptance author for exactly the slices whose test no longer names a criterion the

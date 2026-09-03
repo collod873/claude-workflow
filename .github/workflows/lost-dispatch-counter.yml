@@ -1,4 +1,4 @@
-name: Lost-dispatch counter
+name: Lost-dispatch counter (reusable)
 
 # #127, ADR-0062, ADR-0065: a dispatch that never arrived produces no run at all, so
 # #41's run watchdog — which reads runs — has nothing to sweep. The only surviving trace is the

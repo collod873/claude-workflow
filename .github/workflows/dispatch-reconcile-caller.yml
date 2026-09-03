@@ -1,4 +1,4 @@
-name: Dispatch reconcile (caller)
+name: Dispatch reconcile
 
 # `issues: labeled` is lane 06's second door (#184). The trigger lives here rather than beside the
 # job it starts because a reusable workflow's own `on:` is `workflow_call` and nothing else

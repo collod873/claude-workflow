@@ -1,4 +1,4 @@
-name: Spec
+name: Spec (reusable)
 
 # Lane 02 (PRD #145, move 6; redesigned by #263). One hand label, `to-spec`, starts the lane
 # whatever the source: the owner applies it to an accepted idea carrying a decision sheet, or to a

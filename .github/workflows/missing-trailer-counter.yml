@@ -1,4 +1,4 @@
-name: Missing-trailer counter
+name: Missing-trailer counter (reusable)
 
 # #124, ADR-0067: "the record cannot say its own mind changed" until the trailer that says so
 # exists to read. `docs/adr/README.md`'s back-stamp convention had zero compliance in 43 ADRs

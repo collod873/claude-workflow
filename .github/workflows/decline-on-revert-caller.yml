@@ -1,4 +1,4 @@
-name: Decline on revert (caller)
+name: Decline on revert
 
 "on":
   push:

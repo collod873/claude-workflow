@@ -1,4 +1,4 @@
-name: Shape
+name: Shape (reusable)
 
 # Lane 01. The `idea` label is the whole trigger — lane 00's issue form applies it at
 # creation, and nothing else in the system is human-initiated.
