@@ -69,6 +69,14 @@ TEST_MENTION_RE = re.compile(r"\btests?\b|\bvitest\b|\bpytest\b|\bjest\b", re.IG
 
 BASENAME_RE = re.compile(r"\b[\w\-]+(?:\.[\w\-]+)+\b")
 
+CONFIG_MD_EXTENSIONS = (".json", ".yml", ".yaml", ".toml", ".md")
+
+CONFIG_OR_MD_EVIDENCE_WARNING = (
+    "acceptance criterion's only evidence is a config or Markdown file's content, which a "
+    "test cannot read as text and verify: add a `check:` command, or point at a fact "
+    "exported from code instead: {criterion}"
+)
+
 MIGRATION_NO_POST_STATE_WARNING = (
     "this reads like a migration, but every acceptance criterion is satisfied by the "
     "artifact existing: a test passing, or a path this ticket already claims. A migration "
@@ -165,6 +173,7 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
                 warnings.append(_malformed_check_marker_warning(block))
         warnings.extend(unresolved_claimed_paths(body, repo_root))
         warnings.extend(migration_without_post_state(body))
+        warnings.extend(config_or_md_evidence(body))
         return warnings
 
     if not CRITERIA_HEADING_RE.search(body):
@@ -272,6 +281,28 @@ def _is_claimed(token: str, claimed: list[str]) -> bool:
         if token.rsplit("/", 1)[-1] == claim.rsplit("/", 1)[-1]:
             return True
     return False
+
+def _is_config_or_md_path(token: str) -> bool:
+    stripped = token.strip("`")
+    if ".github/" in stripped or stripped.startswith("github/"):
+        return True
+    return stripped.lower().endswith(CONFIG_MD_EXTENSIONS)
+
+def config_or_md_evidence(body: str) -> list[str]:
+    warnings = []
+    for block in criteria_blocks(body) or []:
+        if CHECK_MARKER_ATTEMPT_RE.search(block):
+            continue
+        tokens = _path_evidence_tokens(block)
+        if tokens and all(_is_config_or_md_path(t) for t in tokens):
+            warnings.append(CONFIG_OR_MD_EVIDENCE_WARNING.format(criterion=block))
+    return warnings
+
+def _path_evidence_tokens(text: str) -> list[str]:
+    paths = [m.rsplit(":", 1)[0] for m in PATH_LINE_RE.findall(text)]
+    paths += FILE_PATH_RE.findall(text)
+    paths = [t for t in paths if t]
+    return paths or _evidence_tokens(text)
 
 def migration_without_post_state(body: str) -> list[str]:
     if not MIGRATION_RE.search(body):
