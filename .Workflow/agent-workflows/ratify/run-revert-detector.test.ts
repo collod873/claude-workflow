@@ -10,7 +10,7 @@ const HEAD = "5f2a1c9d3b7e4086ab19cd52f8306a4e7b1d9c02";
 
 const gitWithoutNotes = ((): string => "") as unknown as GitExec;
 
-test.fails("#366.1: run-revert-detector no longer fails on a workspace without eslint.config.js", async () => {
+test("#366.1: run-revert-detector no longer fails on a workspace without eslint.config.js", async () => {
   const workspace = mkdtempSync(join(tmpdir(), "run-revert-detector-"));
 
   let failureText = "";

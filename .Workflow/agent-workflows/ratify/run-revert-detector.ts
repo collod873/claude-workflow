@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGit, type GitExec } from "../shared/git";
@@ -6,7 +7,7 @@ import { reason } from "../shared/reason";
 import { readRatificationRecords, writeRatificationNote } from "../shared/ratification";
 import { loadEnabledRuleIds, scanForReverts } from "./revert-detector";
 import { ESLINT_CONFIG } from "./rule-trial";
-import { readStandards } from "./standards";
+import { readStandards, STANDARDS_FILE } from "./standards";
 
 export interface RunRevertDetectorOptions {
   git: GitExec;
@@ -27,10 +28,12 @@ export async function runRevertDetector(options: RunRevertDetectorOptions): Prom
   const log = options.log ?? ((line: string) => console.log(line));
 
   const records = readRatificationRecords({ git, repoDir, head });
-  const ruleIds = options.ruleIds ?? (await loadEnabledRuleIds(join(repoDir, ESLINT_CONFIG)));
+  const configPath = join(repoDir, ESLINT_CONFIG);
+  const ruleIds = options.ruleIds ?? (existsSync(configPath) ? await loadEnabledRuleIds(configPath) : new Set<string>());
+  const standards = existsSync(join(repoDir, STANDARDS_FILE)) ? readStandards(repoDir) : "";
   const scan = scanForReverts({
     records,
-    standards: readStandards(repoDir),
+    standards,
     ruleIds,
     sha: head,
   });
