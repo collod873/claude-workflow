@@ -7,12 +7,12 @@ const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const registeredHooks: Record<string, unknown> = settings.hooks;
 
 describe("one Stop hook owns turn-end in this checkout", () => {
-  it.fails("#367.1: settings.json registers no Stop hook and still runs gauntlet.sh turn on PostToolUse", () => {
+  it("#367.1: settings.json registers no Stop hook and still runs gauntlet.sh turn on PostToolUse", () => {
     expect(registeredHooks.Stop).toBeUndefined();
     expect(JSON.stringify(registeredHooks.PostToolUse)).toContain("gauntlet.sh turn");
   });
 
-  it.fails("#367.3: no report says ending the turn is allowed, because every report it hands back blocks", () => {
+  it("#367.3: no report says ending the turn is allowed, because every report it hands back blocks", () => {
     const stdout = "--- test ---\n1 failed\ngauntlet: FAILED at test\n";
 
     expect(report("stop", stdout)).not.toContain("ending the turn is allowed");
@@ -70,12 +70,5 @@ describe("the report handed back to Claude", () => {
     expect(kept.startsWith("…")).toBe(true);
     expect(kept).toContain("gauntlet: FAILED at test");
     expect(kept.length).toBeLessThanOrEqual(STDOUT_TAIL + 2);
-  });
-
-  it("says at the turn-end venue that ending the turn is allowed, so a red suite mid-task is not a coin flip", () => {
-    const reason = report("stop", "--- test ---\n1 failed\ngauntlet: FAILED at test\n");
-
-    expect(reason).toContain("ending the turn is allowed");
-    expect(reason).toContain("gauntlet stop");
   });
 });

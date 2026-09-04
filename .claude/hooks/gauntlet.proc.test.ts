@@ -46,26 +46,12 @@ describe("the hook", () => {
     expect(runHook("turn", editOf("README.md"), { GAUNTLET_BIN: stubGauntlet(1, "never") }).stdout).toBe("");
   });
 
-  it("reports a turn-end failure once, then stays quiet so a red suite mid-task cannot hold the session", () => {
-    const gauntlet = stubGauntlet(1, "--- test ---\n1 failed\n");
-
-    const first = runHook("stop", STOP, { GAUNTLET_BIN: gauntlet });
-    const again = runHook("stop", JSON.stringify({ hook_event_name: "Stop", stop_hook_active: true }), {
-      GAUNTLET_BIN: gauntlet,
-    });
-
-    expect(JSON.parse(first.stdout).reason).toContain("1 failed");
-    expect(again.status).toBe(0);
-    expect(again.stdout).toBe("");
-  });
-
-  it("says nothing inside a stage session, at either venue", () => {
+  it("says nothing inside a stage session, at the turn venue", () => {
     const gauntlet = stubGauntlet(1, "--- test ---\n1 failed\n");
     const stage = { WORKFLOW_STAGE: "1", GAUNTLET_BIN: gauntlet };
 
-    expect(runHook("stop", STOP, stage).stdout).toBe("");
     expect(runHook("turn", editOf("a.ts"), stage).stdout).toBe("");
-    expect(JSON.parse(runHook("stop", STOP, { GAUNTLET_BIN: gauntlet }).stdout).decision).toBe("block");
+    expect(JSON.parse(runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: gauntlet }).stdout).decision).toBe("block");
   });
 
   it("stays quiet on a payload it cannot parse", () => {
@@ -103,27 +89,27 @@ describe("the hook", () => {
     const dir = scratchDir("gauntlet-logs");
     const env = { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\ngauntlet: FAILED at test\n"), STOP_GATE_LOG_DIR: dir };
 
-    runHook("stop", JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: REPO_ROOT }), env);
+    runHook("turn", editOf("a.ts"), env);
     runHook("turn", editOf("README.md"), env);
 
     const rows = readdirSync(dir).flatMap((name) =>
       readFileSync(join(dir, name), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)),
     );
     expect(rows.map((row) => row.verdict)).toEqual(["failed", "out-of-scope"]);
-    expect(rows[0]).toMatchObject({ hook: "gauntlet-hook", event: "Stop", session_id: "s1", venue: "stop", checks: "test" });
+    expect(rows[0]).toMatchObject({ hook: "gauntlet-hook", event: "PostToolUse", venue: "turn", checks: "test" });
     expect(rows[0].seconds).toBeTypeOf("number");
   });
 });
 
 describe("the machine-global stop-gate.py is the one turn-end owner", () => {
-  it.fails("#367.2: a Stop payload gets nothing back from the shim, so a stray registration cannot run the suite a second time", () => {
+  it("#367.2: a Stop payload gets nothing back from the shim, so a stray registration cannot run the suite a second time", () => {
     const result = runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n") });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("");
   });
 
-  it.fails("#367.4: the run row's ts is local time at seconds precision, the shape _hook.py writes and active_sessions() reads", () => {
+  it("#367.4: the run row's ts is local time at seconds precision, the shape _hook.py writes and active_sessions() reads", () => {
     const dir = scratchDir("gauntlet-logs");
     runHook("turn", editOf(`${REPO_ROOT}/a.ts`), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir, TZ: "Asia/Tokyo" });
 
@@ -134,7 +120,7 @@ describe("the machine-global stop-gate.py is the one turn-end owner", () => {
     expect(Math.abs(Date.parse(`${row.ts}+09:00`) - Date.now())).toBeLessThan(60_000);
   });
 
-  it.fails("#367.5: docs/agents/venues.md names stop-gate.py as the stop venue's owner", () => {
+  it("#367.5: docs/agents/venues.md names stop-gate.py as the stop venue's owner", () => {
     const grep = spawnSync("grep", ["-q", "stop-gate.py", "docs/agents/venues.md"], { cwd: REPO_ROOT });
 
     expect(grep.status).toBe(0);

@@ -23,6 +23,12 @@ function readPayload() {
   }
 }
 
+function localTimestamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function logRow(verdict, extra = {}) {
   const cwd = payload && typeof payload.cwd === "string" ? payload.cwd : "";
   const row = {
@@ -34,7 +40,7 @@ function logRow(verdict, extra = {}) {
     seconds: Math.round((Date.now() - STARTED) / 100) / 10,
     venue: venue ?? "",
     ...extra,
-    ts: new Date().toISOString().slice(0, 19),
+    ts: localTimestamp(),
   };
   try {
     mkdirSync(LOG_DIR, { recursive: true });
@@ -50,16 +56,14 @@ function silent(verdict) {
 
 const venue = process.argv[2];
 const payload = readPayload();
-if (!payload || (venue !== "turn" && venue !== "stop")) silent("bad-stdin");
+if (!payload || venue !== "turn") silent("bad-stdin");
 
 if (process.env.WORKFLOW_STAGE === "1") silent("stage");
 
-const file = venue === "turn" ? payload.tool_input?.file_path : undefined;
-if (venue === "turn" && !inScope(file, REPO_ROOT)) silent("out-of-scope");
+const file = payload.tool_input?.file_path;
+if (!inScope(file, REPO_ROOT)) silent("out-of-scope");
 
-if (venue === "stop" && payload.stop_hook_active === true) silent("reported-already");
-
-const run = spawnSync(GAUNTLET, file ? [venue, file] : [venue], { cwd: REPO_ROOT, encoding: "utf8" });
+const run = spawnSync(GAUNTLET, [venue, file], { cwd: REPO_ROOT, encoding: "utf8" });
 
 if (run.error || run.status === null) silent("could-not-run");
 if (run.status === 0) silent("clean");
