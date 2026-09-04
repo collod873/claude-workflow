@@ -3,11 +3,23 @@ import { planFire } from "./canary-fire-plan.ts";
 import { laneIds } from "./read-workflow.ts";
 
 describe("planFire", () => {
-  it("chooses push for a lane whose on: block carries push, unchanged from bin/canary's old behavior", () => {
-    expect(planFire("verify")).toEqual({ kind: "push" });
-    expect(planFire("back-stamp")).toEqual({ kind: "push" });
-    expect(planFire("missing-trailer-counter")).toEqual({ kind: "push" });
-    expect(planFire("decline-on-revert")).toEqual({ kind: "push" });
+  it("chooses push for a lane whose on: block carries push", () => {
+    for (const lane of ["verify", "back-stamp", "missing-trailer-counter", "decline-on-revert"]) {
+      expect(planFire(lane).kind).toBe("push");
+    }
+  });
+
+  it("fires a push lane on a path its own paths filter accepts, or the filter never lets the fire through", () => {
+    expect(planFire("verify")).toEqual({ kind: "push", firePath: ".canary-fire-verify" });
+    expect(planFire("back-stamp")).toEqual({
+      kind: "push",
+      firePath: "docs/adr/canary-fire-back-stamp.md",
+    });
+    expect(planFire("missing-trailer-counter")).toEqual({
+      kind: "push",
+      firePath: "docs/adr/canary-fire-missing-trailer-counter.md",
+    });
+    expect(planFire("decline-on-revert")).toEqual({ kind: "push", firePath: "CODING_STANDARDS.md" });
   });
 
   it("prefers workflow_dispatch over repository_dispatch and workflow_run on the same lane", () => {

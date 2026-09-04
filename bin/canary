@@ -172,6 +172,8 @@ ensure_seed() {
     "why": "no aggregate script found among package.json#scripts.{check,verify,ci}"
   }
 }'
+  seed_file eslint.config.js 'export default [];'
+  seed_file docs/research/README.md 'Research notes live here. The counter lanes scan this directory, so it exists even while it is empty.'
   seed_file tests/smoke.test.mjs 'import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -278,6 +280,7 @@ if [ "$cmd" = "sweep" ]; then
     sweep_kind="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$sweep_lane" | jq -r .kind)"
     case "$sweep_kind" in
       issues_labeled | issues_closed) sweep_group="issues" ;;
+      push) sweep_group="push" ;;
       *) sweep_group="$sweep_lane" ;;
     esac
     sweep_door["$sweep_group"]="${sweep_door["$sweep_group"]:-} $sweep_lane"
@@ -334,6 +337,7 @@ fire_kind="$(jq -r .kind <<<"$plan_json")"
 [ "$fire_kind" != "refuse" ] || die "$(jq -r .reason <<<"$plan_json")"
 fire_event="$(jq -r '.event // empty' <<<"$plan_json")"
 fire_event_type="$(jq -r '.eventType // empty' <<<"$plan_json")"
+fire_path="$(jq -r '.firePath // empty' <<<"$plan_json")"
 demand_label="$(jq -r '.demands.label // empty' <<<"$plan_json")"
 demand_issue_labels="$(jq -r '.demands.issueLabels // [] | .[]' <<<"$plan_json")"
 demand_state_reason="$(jq -r '.demands.stateReason // empty' <<<"$plan_json")"
@@ -471,11 +475,10 @@ before_run="$(gh api "repos/$canary_repo/actions/runs?per_page=1" --jq '.workflo
 case "$fire_kind" in
   push)
     if [ -z "$fire_sha" ]; then
-      fire_path=".canary-fire-$lane"
       fire_json="$(gh api "repos/$canary_repo/contents/$fire_path?ref=$target_branch" 2>/dev/null || echo '{}')"
       read -r fire_sha _ <<<"$(put_file "$fire_path" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
     fi
-    log "fired: $canary_repo@$fire_sha (push)"
+    log "fired: $canary_repo@$fire_sha (push of $fire_path, the path $lane's filter accepts)"
     ;;
   workflow_dispatch)
     gh api -X POST "repos/$canary_repo/actions/workflows/$(basename "$stub_path")/dispatches" -f "ref=$target_branch" >/dev/null

@@ -11,7 +11,7 @@ export interface FireDemands {
 }
 
 export type FirePlan =
-  | { kind: "push" }
+  | { kind: "push"; firePath: string }
   | { kind: "workflow_dispatch"; event: "workflow_dispatch" }
   | { kind: "repository_dispatch"; event: "repository_dispatch"; eventType: string }
   | { kind: "issues_labeled"; event: "issues"; demands?: FireDemands }
@@ -19,8 +19,13 @@ export type FirePlan =
   | { kind: "pull_request_closed"; event: "pull_request"; demands?: FireDemands }
   | { kind: "refuse"; reason: string };
 
+interface PushBlock {
+  branches?: string[];
+  paths?: string[];
+}
+
 interface OnBlock {
-  push?: unknown;
+  push?: PushBlock | null;
   workflow_dispatch?: unknown;
   repository_dispatch?: { types?: string[] };
   issues?: { types?: string[] };
@@ -43,6 +48,15 @@ const LABEL_ADDED = /github\.event\.label\.name\s*==\s*'([^']*)'/;
 const ISSUE_CARRIES = /(!?)\s*contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*'([^']*)'\s*\)/g;
 const CLOSED_AS = /github\.event\.issue\.state_reason\s*==\s*'([^']*)'/;
 const PR_TITLED = /github\.event\.pull_request\.title\s*==\s*'([^']*)'/;
+
+function firePathFor(lane: string, push: PushBlock | null | undefined): string {
+  const fallback = `.canary-fire-${lane}`;
+  const first = (push?.paths ?? [])[0];
+  if (first === undefined) return fallback;
+  if (!/[*?[\]]/.test(first)) return first;
+  const base = first.replace(/\/?\*.*$/, "");
+  return base === "" ? fallback : `${base}/canary-fire-${lane}.md`;
+}
 
 function listCallerLanes(): string[] {
   return readdirSync(WORKFLOWS_DIR)
@@ -109,7 +123,7 @@ export function planFire(lane: string): FirePlan {
   const { workflow } = readWorkflow<CallerYaml>(`${lane}-caller.yml`);
   const on = workflow.on ?? {};
 
-  if (on.push !== undefined) return { kind: "push" };
+  if (on.push !== undefined) return { kind: "push", firePath: firePathFor(lane, on.push) };
   if (on.workflow_dispatch !== undefined) return { kind: "workflow_dispatch", event: "workflow_dispatch" };
   const dispatchTypes = on.repository_dispatch?.types ?? [];
   if (dispatchTypes.length > 0) {
