@@ -1,6 +1,23 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { childEnv } from "./child-env";
 import { reason } from "./reason";
+
+const CONFIG_NAMES = [
+  "vitest.config.ts",
+  "vitest.config.mts",
+  "vitest.config.js",
+  "vitest.config.mjs",
+  "vite.config.ts",
+  "vite.config.mts",
+  "vite.config.js",
+  "vite.config.mjs",
+];
+
+function targetVitestConfig(repoDir: string): string | undefined {
+  return CONFIG_NAMES.map((name) => join(repoDir, name)).find((path) => existsSync(path));
+}
 
 export interface TestFailure {
   name: string;
@@ -32,9 +49,17 @@ export interface VitestJsonReport {
 }
 
 export function runVitestReport(targets: string[], repoDir: string): { report: VitestJsonReport } | { error: string } {
+  const config = targetVitestConfig(repoDir);
+  if (!config) {
+    return {
+      error:
+        `${repoDir} has no vitest config of its own, and vitest would climb out of it and run ` +
+        `under whichever config sits above the checkout. Enrolment requires one; add it there.`,
+    };
+  }
   let stdout: string;
   try {
-    stdout = execFileSync("npx", ["vitest", "run", ...targets, "--reporter=json"], {
+    stdout = execFileSync("npx", ["vitest", "run", "--config", config, "--root", repoDir, ...targets, "--reporter=json"], {
       cwd: repoDir,
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,

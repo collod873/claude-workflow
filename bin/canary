@@ -8,6 +8,7 @@ node_on_path || exit 2
 
 CANARY_RUNNER="ubuntu-latest"
 CAP=5
+SEED_VITEST="^4.1.11"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -122,27 +123,42 @@ seed_file() { # path content, written only where absent
   log "seeded $1"
 }
 
-ensure_seed() {
-  seed_file package.json '{
+seed_node_project() { # package.json and a lockfile npm ci accepts, resolved by npm rather than hand-written
+  local tmp manifest
+  gh api "repos/$canary_repo/contents/package-lock.json?ref=$target_branch" --jq .sha >/dev/null 2>&1 && return 0
+  manifest='{
   "name": "canary-'"$id"'",
   "private": true,
   "description": "The smallest honest target: three contract slots and one test, so the machine has something to check that is provably not itself.",
   "scripts": {
     "typecheck": "true",
     "lint": "true",
-    "test": "node --test"
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "'"$SEED_VITEST"'"
   }
 }'
-  seed_file package-lock.json '{
-  "name": "canary-'"$id"'",
-  "lockfileVersion": 3,
-  "requires": true,
-  "packages": {
-    "": {
-      "name": "canary-'"$id"'"
-    }
-  }
-}'
+  tmp="$(mktemp -d)"
+  printf '%s\n' "$manifest" >"$tmp/package.json"
+  ( cd "$tmp" && npm install --package-lock-only --silent >/dev/null ) \
+    || die "npm could not resolve a lockfile for the seed; the canary target would fail its own npm ci"
+  put_file package.json "canary: seed package.json" "$manifest" >/dev/null
+  put_file package-lock.json "canary: seed package-lock.json" "$(cat "$tmp/package-lock.json")" >/dev/null
+  rm -rf "$tmp"
+  log "seeded package.json and package-lock.json"
+}
+
+ensure_seed() {
+  seed_node_project
+  seed_file vitest.config.ts 'import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
+    exclude: ["**/node_modules/**"],
+  },
+});'
   seed_file .claude/contract.json '{
   "stop": {
     "cmd": null,
@@ -150,15 +166,15 @@ ensure_seed() {
   },
   "test": {
     "cmd": "npm test",
-    "why": "package.json#scripts.test (node --test)"
+    "why": "package.json#scripts.test (vitest run)"
   },
   "test_one": {
-    "cmd": null,
-    "why": "no known single-file form for the installed test runner"
+    "cmd": "npx vitest run <file>",
+    "why": "vitest'"'"'s single-file form; no package.json script for it"
   },
   "test_related": {
-    "cmd": null,
-    "why": "no known related-tests form for the installed test runner"
+    "cmd": "npx vitest related --run <file>",
+    "why": "vitest'"'"'s related-tests form; no package.json script for it"
   },
   "typecheck": {
     "cmd": "npm run typecheck",
@@ -174,16 +190,16 @@ ensure_seed() {
   }
 }'
   seed_file eslint.config.js 'export default [];'
-  seed_file CONTEXT.md 'The seed is one package.json, one lockfile, one contract and one test: the smallest
-target the machine can check that is provably not itself. A slice here names a path
-rooted at the repository root, because the lanes that read it never share a working
-directory.'
+  seed_file CONTEXT.md 'The seed is one package.json, one lockfile, one contract, one vitest config and one
+test: the smallest target the machine can check that is provably not itself. Tests
+live under .Workflow/, because that is what the machine collects. A slice here names
+a path rooted at the repository root, because the lanes that read it never share a
+working directory.'
   seed_file docs/research/README.md 'Research notes live here. The counter lanes scan this directory, so it exists even while it is empty.'
-  seed_file tests/smoke.test.mjs 'import test from "node:test";
-import assert from "node:assert/strict";
+  seed_file .Workflow/agent-workflows/seed.test.ts 'import { expect, test } from "vitest";
 
 test("the seed has a test the machine can run", () => {
-  assert.equal(1 + 1, 2);
+  expect(1 + 1).toBe(2);
 });'
 }
 
