@@ -1,5 +1,9 @@
 import type { GitExec } from "./git";
 
+/**
+ * @fixture A `git` that records argv instead of running it, reached only from the suite.
+ */
+
 export interface FakeGit {
   git: GitExec;
   calls: string[][];

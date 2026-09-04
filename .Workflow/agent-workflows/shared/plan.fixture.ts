@@ -1,5 +1,9 @@
 import type { Slice } from "./plan-schema";
 
+/**
+ * @fixture Builds a `Slice` for the suite; a lane's slices come from the planner.
+ */
+
 export function slice(overrides: Partial<Slice> & { title: string }): Slice {
   return {
     whatToBuild: `Build ${overrides.title}.`,

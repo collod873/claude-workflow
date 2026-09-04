@@ -1,5 +1,9 @@
 import type { StageExec } from "./stage";
 
+/**
+ * @fixture A stage exec recording argv and replaying a canned response, reached only from the suite.
+ */
+
 export interface FakeStage {
   exec: StageExec;
   calls: string[][];

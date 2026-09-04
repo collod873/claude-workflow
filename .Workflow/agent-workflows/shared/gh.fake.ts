@@ -1,6 +1,11 @@
 import type { GhExec } from "./gh";
 import { blockedByPathMatcher, GIT_REFS_PATH, issuePathMatcher, subIssuesPathMatcher } from "./gh-paths";
 
+/**
+ * @fixture A `gh` answering from memory, for the suite alone: a lane reaching it is a lane that
+ * never talked to the tracker.
+ */
+
 function untypedFieldHint(args: string[]): string {
   if (!args.includes("-f")) {
     return "";

@@ -40,6 +40,10 @@ function shellLaunched(dir: string): string[] {
 
 const SPAWNED_TAG = /@shell[ \t]+spawns[ \t]+`([^`\n]+)`/g;
 
+const FIXTURE_TAG = /@fixture[ \t]+\S/;
+
+const SUITE_ONLY = /\.(fake|fixture|stub|setup)\.ts$|\.fixtures\//;
+
 function sourcesUnder(dir: string): string[] {
   let names: string[];
   try {
@@ -67,6 +71,18 @@ function spawnedNames(dirs: string[]): string[] {
   return [...named].sort();
 }
 
+/**
+ * A suite-only file earns its exemption where an export does: by carrying `@fixture` and its own
+ * reason, so the excuse cannot outlive the file and go on sitting here as a bare glob.
+ */
+function suiteOnly(dirs: string[]): string[] {
+  return dirs
+    .flatMap((dir) => sourcesUnder(dir))
+    .filter((path) => SUITE_ONLY.test(path) && /\.(m|c)?(t|j)s$/.test(path))
+    .filter((path) => FIXTURE_TAG.test(readFileSync(join(REPO_ROOT, path), "utf8")))
+    .sort();
+}
+
 const production = (paths: string[]) => paths.map((path) => `${path}!`);
 
 export default {
@@ -80,7 +96,7 @@ export default {
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
 
-  ignore: ["**/*.fake.ts", "**/*.fixture.ts", "**/*.stub.ts", "**/*.fixtures/**", "**/*.setup.ts"],
+  ignore: suiteOnly([".Workflow", "bin", ".claude"]),
 
   /**
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic

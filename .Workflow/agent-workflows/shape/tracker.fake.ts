@@ -1,5 +1,10 @@
 import type { GhExec } from "../shared/gh";
 
+/**
+ * @fixture A tracker answering from memory, for the suite alone: a lane reaching it is a lane that
+ * never talked to GitHub.
+ */
+
 export interface FakeTracker {
   gh: GhExec;
   calls: string[][];

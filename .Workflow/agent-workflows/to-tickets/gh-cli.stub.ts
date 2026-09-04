@@ -1,6 +1,10 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+/**
+ * @fixture Writes a `gh` onto a test's path; a lane on that path never talked to the tracker.
+ */
+
 export interface GhStubOptions {
   issueNumber?: number;
   fails?: string;

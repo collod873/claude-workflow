@@ -2,6 +2,10 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { checkpointPath } from "./stage";
 
+/**
+ * @fixture A `claude` on a test's path answering from a file, so a stage test spends no model call.
+ */
+
 export type StubAnswer = string | { structured: unknown };
 
 export function stubClaudeCli(
