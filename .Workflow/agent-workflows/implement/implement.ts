@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { regenerateAdrIndex } from "../shared/adr-index";
@@ -372,6 +372,14 @@ export function findFailingTestFiles(
   return files;
 }
 
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   const issueArg = process.argv[2];
   if (!issueArg) {
@@ -393,7 +401,7 @@ async function main(): Promise<void> {
       git,
       attempt: () => describeAttempt(git),
       readFile: readInRepo,
-      fileExists: (path) => existsSync(inRepo(path)),
+      fileExists: (path) => isRegularFile(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
       removeFile: (path) => rmSync(inRepo(path), { force: true }),
       regenerateIndex: () => regenerateAdrIndex(repoDir),

@@ -137,6 +137,44 @@ describe("runRecover: the dead run's claim", () => {
   });
 });
 
+describe("runRecover: a run that died the same way twice", () => {
+  const EISDIR = "EISDIR: illegal operation on a directory, read";
+
+  async function recoverDeadRun(runId: number, priorFailures: string[]) {
+    const comments = priorFailures.map((failure, index) => attemptCommentBody(index + 1, "Re-dispatched #266.", failure));
+    const { gh, calls } = failedRunWith({ artifacts: [], comments, logLine: `implementing #266\nimplement failed: ${EISDIR}\n` });
+    const outcome = await runRecover(baseDeps(gh, checkoutReporting().git, { runId }));
+    const posted = calls.find((call) => call[0] === "issue" && call[1] === "comment")?.[4] ?? "";
+    return { outcome, calls, posted };
+  }
+
+  it("stops on the second identical failure, quotes it on the ticket, and sends no fresh dispatch", async () => {
+    process.env.GITHUB_REPOSITORY_OWNER = "collod873";
+
+    const { outcome, calls, posted } = await recoverDeadRun(2, [EISDIR]);
+
+    expect(outcome).toEqual({ outcome: "stopped", attempts: 1 });
+    expect(calls.some((call) => call.some((a) => a.includes("ticket-ready")))).toBe(false);
+    const labelApply = calls.find((call) => call[0] === "issue" && call[1] === "edit" && call.includes("--add-label"));
+    expect(labelApply).toContain("needs-human");
+    expect(posted).toContain(EISDIR);
+    expect(posted).toContain("/actions/runs/1");
+  });
+
+  it("re-dispatches a first failure and records its text, so the next recovery can tell a repeat from a flake", async () => {
+    const { outcome, posted } = await recoverDeadRun(1, []);
+
+    expect(outcome).toEqual({ outcome: "redispatched", ticket: 266 });
+    expect(posted).toContain(`<!-- recover-failure:${EISDIR} -->`);
+  });
+
+  it("re-dispatches when the failure differs from the last one", async () => {
+    const { outcome } = await recoverDeadRun(2, ["ENOSPC: no space left on device"]);
+
+    expect(outcome).toEqual({ outcome: "redispatched", ticket: 266 });
+  });
+});
+
 describe("runRecover: the cap", () => {
   it("stops on the third prior attempt, labels needs-human and assigns the owner, without touching git", async () => {
     process.env.GITHUB_REPOSITORY_OWNER = "collod873";

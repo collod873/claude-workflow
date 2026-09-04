@@ -198,6 +198,44 @@ describe("assembleBrief: ticket comments, oldest first", () => {
   });
 });
 
+describe("gatherBriefContext treats prose as prose: nothing it scrapes out of a ticket can throw", () => {
+  const HOSTILE_BODY = [
+    "See `bin/` and `docs/agents/` for the rules, `src/**/*.ts` for the shape, `<path>` for the slot,",
+    "`https://example.com/x` for the source, `gone/file.ts` for what was deleted, and `#?.1` for the test.",
+    "`shared/foo.ts` is the one real file here.",
+  ].join("\n");
+  const READABLE = new Map([["shared/foo.ts", "export const foo = 1;"]]);
+  const readOrThrow = (path: string): string => {
+    const content = READABLE.get(path);
+    if (content === undefined) throw Object.assign(new Error(`EISDIR: illegal operation on a directory, read '${path}'`), { code: "EISDIR" });
+    return content;
+  };
+
+  it("inlines the readable citation and leaves every unreadable one as a bare path, instead of failing the lane", () => {
+    const { cited } = gatherBriefContext(
+      fakeDeps({ ticketBody: HOSTILE_BODY, readFile: readOrThrow, fileExists: () => true }),
+    );
+
+    expect(cited).toContainEqual({ path: "shared/foo.ts", content: "export const foo = 1;" });
+    expect(cited.filter((entry) => entry.content !== undefined)).toHaveLength(1);
+    expect(cited.map((entry) => entry.path)).toContain("bin/");
+  });
+
+  it("leaves a claimed path that cannot be read as bare, and skips it in the nearby scan", () => {
+    const { claimed, nearby } = gatherBriefContext(
+      fakeDeps({
+        filesClaimed: ["bin/", "shared/foo.ts"],
+        readFile: readOrThrow,
+        fileExists: () => true,
+        sourceFiles: () => ["docs/", "shared/foo.test.ts"],
+      }),
+    );
+
+    expect(claimed).toEqual([{ path: "bin/" }, { path: "shared/foo.ts", content: "export const foo = 1;" }]);
+    expect(nearby).toEqual([]);
+  });
+});
+
 describe("gatherBriefContext gathers what the ticket claims and cites, and what sits nearby it", () => {
   it("inlines a claimed file's content, and leaves a claimed path that does not exist without content", () => {
     const files = new Map([["a/b.ts", "export const x = 1;"]]);

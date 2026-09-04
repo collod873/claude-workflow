@@ -26,7 +26,13 @@ const ARTIFACT_NAME_RE = /^implementer-answer-(\d+)$/;
 
 const IMPLEMENTING_LINE_RE = /implementing #(\d+)/g;
 
+const IMPLEMENT_FAILED_LINE_RE = /implement failed: (.+)$/gm;
+
 const ATTEMPT_MARKER_RE = /<!-- recover-attempt:(\d+) -->/;
+
+const FAILURE_MARKER_RE = /<!-- recover-failure:(.*) -->/;
+
+const FAILURE_TEXT_CAP = 300;
 
 interface RawArtifact {
   name?: string;
@@ -50,44 +56,75 @@ export function resolveTicketFromArtifacts(gh: GhExec, runId: number): number | 
   return undefined;
 }
 
-export function resolveTicketFromLog(gh: GhExec, runId: number): number | undefined {
-  let raw: string;
+function readRunLog(gh: GhExec, runId: number): string | undefined {
   try {
-    raw = gh(["run", "view", String(runId), "--log"]);
+    return gh(["run", "view", String(runId), "--log"]);
   } catch {
     return undefined;
   }
-  const matches = [...raw.matchAll(IMPLEMENTING_LINE_RE)];
-  const last = matches.at(-1);
+}
+
+function ticketFromLog(raw: string): number | undefined {
+  const last = [...raw.matchAll(IMPLEMENTING_LINE_RE)].at(-1);
   return last ? Number(last[1]) : undefined;
+}
+
+function failureText(text: string): string {
+  return text.replace(/-->/g, "").replace(/\s+/g, " ").trim().slice(0, FAILURE_TEXT_CAP);
+}
+
+export function failureFromLog(raw: string): string | undefined {
+  const last = [...raw.matchAll(IMPLEMENT_FAILED_LINE_RE)].at(-1);
+  return last ? failureText(last[1]) : undefined;
+}
+
+export function resolveTicketFromLog(gh: GhExec, runId: number): number | undefined {
+  const raw = readRunLog(gh, runId);
+  return raw === undefined ? undefined : ticketFromLog(raw);
 }
 
 export interface RecoveryTarget {
   ticket: number;
   hasArtifact: boolean;
+  failure?: string;
 }
 
 export function resolveRecoveryTarget(gh: GhExec, runId: number): RecoveryTarget | undefined {
   const fromArtifact = resolveTicketFromArtifacts(gh, runId);
   if (fromArtifact !== undefined) return { ticket: fromArtifact, hasArtifact: true };
 
-  const fromLog = resolveTicketFromLog(gh, runId);
-  if (fromLog !== undefined) return { ticket: fromLog, hasArtifact: false };
+  const raw = readRunLog(gh, runId);
+  const fromLog = raw === undefined ? undefined : ticketFromLog(raw);
+  if (fromLog === undefined) return undefined;
 
-  return undefined;
+  const failure = failureFromLog(raw ?? "");
+  return failure === undefined ? { ticket: fromLog, hasArtifact: false } : { ticket: fromLog, hasArtifact: false, failure };
 }
 
-export function attemptCommentBody(runId: number, line: string): string {
-  return `<!-- recover-attempt:${runId} -->\n${line}`;
+export function attemptCommentBody(runId: number, line: string, failure?: string): string {
+  const markers = [`<!-- recover-attempt:${runId} -->`];
+  if (failure !== undefined) markers.push(`<!-- recover-failure:${failureText(failure)} -->`);
+  return `${markers.join("\n")}\n${line}`;
+}
+
+export interface PriorAttempt {
+  runId: number;
+  failure?: string;
+}
+
+export function priorAttempts(gh: GhExec, issueNumber: number): PriorAttempt[] {
+  const attempts: PriorAttempt[] = [];
+  for (const body of issueComments(gh, issueNumber)) {
+    const match = ATTEMPT_MARKER_RE.exec(body);
+    if (!match) continue;
+    const failure = FAILURE_MARKER_RE.exec(body)?.[1];
+    attempts.push(failure === undefined ? { runId: Number(match[1]) } : { runId: Number(match[1]), failure });
+  }
+  return attempts;
 }
 
 export function priorAttemptRunIds(gh: GhExec, issueNumber: number): number[] {
-  const ids: number[] = [];
-  for (const body of issueComments(gh, issueNumber)) {
-    const match = ATTEMPT_MARKER_RE.exec(body);
-    if (match) ids.push(Number(match[1]));
-  }
-  return ids;
+  return priorAttempts(gh, issueNumber).map((attempt) => attempt.runId);
 }
 
 function runUrl(runId: number): string {
@@ -110,6 +147,22 @@ function stopAndEscalate(gh: GhExec, ticket: number, runId: number, priorRuns: n
     runId,
     `Stopped after ${MAX_RECOVER_ATTEMPTS} recovery attempts on #${ticket}; a human needs to look at it.\n\nRuns:\n${runs}`,
   );
+}
+
+function stopOnRepeatedFailure(gh: GhExec, ticket: number, runId: number, previous: PriorAttempt, failure: string): void {
+  escalateToOwner(gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
+
+  gh([
+    "issue",
+    "comment",
+    String(ticket),
+    "--body",
+    attemptCommentBody(
+      runId,
+      `Run ${runUrl(runId)} died the same way as run ${runUrl(previous.runId)}:\n\n\`${failure}\`\n\nA second identical failure is deterministic, so this stopped instead of re-dispatching #${ticket}; a human needs to look at it.`,
+      failure,
+    ),
+  ]);
 }
 
 export function redispatchImplement(gh: GhExec, ticket: number): void {
@@ -155,9 +208,10 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
     log(`run ${deps.runId} names no ticket, by artifact or by log line; nothing to recover`);
     return { outcome: "nothing-to-recover" };
   }
-  const { ticket, hasArtifact } = target;
+  const { ticket, hasArtifact, failure } = target;
 
-  const priorRuns = priorAttemptRunIds(deps.gh, ticket);
+  const attempts = priorAttempts(deps.gh, ticket);
+  const priorRuns = attempts.map((attempt) => attempt.runId);
   if (priorRuns.includes(deps.runId)) {
     log(`run ${deps.runId} was already reacted to (see the marker comment on #${ticket}); nothing to do`);
     return { outcome: "already-handled" };
@@ -167,15 +221,28 @@ export async function runRecover(deps: RecoverDeps): Promise<RecoverOutcome> {
     return { outcome: "stopped", attempts: priorRuns.length };
   }
 
+  const previous = attempts.at(-1);
+  if (failure !== undefined && previous?.failure === failure) {
+    log(`run ${deps.runId} died the same way as run ${previous.runId}: ${failure}; stopping`);
+    stopOnRepeatedFailure(deps.gh, ticket, deps.runId, previous, failure);
+    return { outcome: "stopped", attempts: priorRuns.length };
+  }
+
   if (!hasArtifact) {
     releaseDeadClaim(deps.gh, implementationBranch(ticket), "main", log);
     redispatchImplement(deps.gh, ticket);
-    postAttemptComment(
-      deps.gh,
-      ticket,
-      deps.runId,
-      `Re-dispatched #${ticket}. Run ${runUrl(deps.runId)} ended with no implementer answer to recover, so this sent a fresh \`ticket-ready\` dispatch.`,
-    );
+    const died = failure === undefined ? "ended with no implementer answer to recover" : `died before answering (\`${failure}\`)`;
+    deps.gh([
+      "issue",
+      "comment",
+      String(ticket),
+      "--body",
+      attemptCommentBody(
+        deps.runId,
+        `Re-dispatched #${ticket}. Run ${runUrl(deps.runId)} ${died}, so this sent a fresh \`ticket-ready\` dispatch.`,
+        failure,
+      ),
+    ]);
     return { outcome: "redispatched", ticket };
   }
 

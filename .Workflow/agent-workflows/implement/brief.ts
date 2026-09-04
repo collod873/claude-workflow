@@ -150,8 +150,17 @@ function citedTextPaths(ticketBody: string, fileExists: (path: string) => boolea
   return paths;
 }
 
+function readIfReadable(path: string, readFile: (path: string) => string): string | undefined {
+  try {
+    return readFile(path);
+  } catch {
+    return undefined;
+  }
+}
+
 function snapshotWithBudget(path: string, readFile: (path: string) => string, budget: { remaining: number }): FileSnapshot {
-  const content = readFile(path);
+  const content = readIfReadable(path, readFile);
+  if (content === undefined) return { path };
   const size = Buffer.byteLength(content, "utf8");
   if (size > INLINE_FILE_CAP_BYTES || size > budget.remaining) {
     return { path, omitted: "over-budget" };
@@ -188,8 +197,8 @@ export function gatherBriefContext(deps: BriefContextDeps): Pick<BriefInputs, "c
     .filter((path) => !claimedPathSet.has(path) && !citedPathSet.has(path) && !failingTestPathSet.has(path));
 
   const matches = candidates.filter((path) => {
-    const content = deps.readFile(path);
-    return claimedBasenames.some((name) => content.includes(name));
+    const content = readIfReadable(path, deps.readFile);
+    return content !== undefined && claimedBasenames.some((name) => content.includes(name));
   });
 
   const testPaths = matches.filter((path) => path.includes(".test.")).sort();
