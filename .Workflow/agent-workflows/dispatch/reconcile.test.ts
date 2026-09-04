@@ -174,7 +174,7 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
 describe("runReconcile leaves alone a slice a merged pull request already closes", () => {
   const landedNotClosed = () => trackerWith({ open: [{ number: 20, title: "Landed, not closed", mergedCloser: true }] });
 
-  it.fails("#372.1: it does not dispatch an open, unstarted slice whose closing pull request has merged, since integrate deletes the implement branch and the slice only reads as unstarted", () => {
+  it("#372.1: it does not dispatch an open, unstarted slice whose closing pull request has merged, since integrate deletes the implement branch and the slice only reads as unstarted", () => {
     const tracker = landedNotClosed();
 
     const outcome = reconcileOver(tracker);
@@ -183,7 +183,7 @@ describe("runReconcile leaves alone a slice a merged pull request already closes
     expect(outcome.action).toBe("clear");
   });
 
-  it.fails("#372.2: it says which merged pull request stands on the slice instead of dispatching it again", () => {
+  it("#372.2: it says which merged pull request stands on the slice instead of dispatching it again", () => {
     const lines: string[] = [];
     const tracker = landedNotClosed();
 
