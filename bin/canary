@@ -54,6 +54,7 @@ read_clipboard() {
 cmd="${1:-}"
 case "$cmd" in prove|sweep|token|up|down|reset-cap) ;; *) usage ;; esac
 shift
+sweep_args=("$@")
 lane="verify"
 lanes=""
 wip=1
@@ -267,6 +268,26 @@ push_machine() {
 }
 
 if [ "$cmd" = "sweep" ]; then
+  sweep_dir="$state_dir/sweep"
+  sweep_log="$sweep_dir/sweep.log"
+  sweep_code_file="$sweep_dir/sweep.code"
+  if [ -z "${CANARY_SWEEP_DETACHED:-}" ]; then
+    command -v setsid >/dev/null 2>&1 || die "no setsid on PATH; a sweep has to outlive the terminal that starts it"
+    rm -rf "$sweep_dir"
+    mkdir -p "$sweep_dir"
+    : >"$sweep_log"
+    CANARY_SWEEP_DETACHED=1 setsid --fork "$0" sweep "${sweep_args[@]}" >"$sweep_log" 2>&1 </dev/null &
+    log "sweeping in its own session; this terminal only follows $sweep_log"
+    log "losing this terminal does not stop the sweep; tail -f that log to watch it again"
+    tail -n +1 -f "$sweep_log" &
+    sweep_tail=$!
+    while [ ! -f "$sweep_code_file" ]; do sleep 2; done
+    sleep 1
+    kill "$sweep_tail" >/dev/null 2>&1 || true
+    wait "$sweep_tail" 2>/dev/null || true
+    exit "$(cat "$sweep_code_file")"
+  fi
+  trap 'sweep_exit=$?; echo "$sweep_exit" >"$sweep_code_file"' EXIT
   if [ -z "$lanes" ] || [ "$lanes" = "all" ]; then
     mapfile -t sweep_lanes < <(cd "$repo_root/.github/workflows" && ls ./*-caller.yml | sed 's#^\./##; s/-caller\.yml$//')
   else
@@ -275,9 +296,6 @@ if [ "$cmd" = "sweep" ]; then
   commit_wip
   push_machine
   canary_up
-  sweep_dir="$state_dir/sweep"
-  rm -rf "$sweep_dir"
-  mkdir -p "$sweep_dir"
   declare -A sweep_door=()
   for sweep_lane in "${sweep_lanes[@]}"; do
     [ -n "$sweep_lane" ] || continue
