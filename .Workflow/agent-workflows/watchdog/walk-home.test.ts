@@ -3,6 +3,7 @@ import { ENROLMENT_TOPIC } from "../enrol/enrol";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathForMatcher } from "../shared/gh-paths";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { extractCriteria, parseCheckMarker } from "../shared/ticket-shape";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import {
   failingPath,
@@ -214,6 +215,20 @@ describe("walkHome", () => {
     expect(body).toContain("## Files claimed");
 
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes("-R"))).toBe(false);
+  });
+
+  it.fails("#371.3: the ticket it files carries a check on its criterion that runs the tests beside the failing path, so lane 08 can close it once lane 04 has authored one", () => {
+    const fake = estateWith({
+      repositories: ["owner/caller"],
+      runs: { "owner/caller": [{ id: 555, path: ".github/workflows/verify-caller.yml" }] },
+      logs: { 555: MACHINE_SIDE_LOG },
+    });
+
+    sweep(fake);
+
+    const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;
+    const [criterion] = extractCriteria(create[create.indexOf("--body") + 1]);
+    expect(parseCheckMarker(criterion)).toBe("npx vitest run .Workflow/agent-workflows/watchdog/walk-home");
   });
 
   it("files needs-human, not to-build, for a failing path inside the machine's own immutable set", () => {

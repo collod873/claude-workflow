@@ -169,3 +169,39 @@ describe("the to-build door into lane 06 (#184)", () => {
     expect(tracker.dispatches).toEqual([]);
   });
 });
+
+describe("the to-build door refuses what bin/close-ticket would refuse", () => {
+  const CHECKLESS = [
+    "## What to build",
+    "",
+    "A red run named this path.",
+    "",
+    "## Acceptance criteria",
+    "",
+    "- [ ] `src/a.ts` no longer fails this way, at or after machine SHA `abc1234`",
+    "",
+    "## Files claimed",
+    "",
+    "- src/a.ts",
+    "",
+  ].join("\n");
+
+  const ONE_CHECKED = CHECKLESS.replace("## Files claimed", "- [ ] It runs to the end — check: `true`\n\n## Files claimed");
+
+  it.fails("#371.1: a labelled ticket whose criteria carry no check at all is refused, and one where any criterion carries a check is admitted, the same line bin/close-ticket draws at close", () => {
+    const refused = passOverLabelled(690, CHECKLESS);
+    const admitted = passOverLabelled(691, ONE_CHECKED);
+
+    expect(refused.dispatches).toEqual([]);
+    expect(startedIssues(admitted)).toEqual([691]);
+  });
+
+  it.fails("#371.2: the refusal stands on the ticket as the door's own comment and names the check: marker it wants", () => {
+    const tracker = passOverLabelled(692, CHECKLESS);
+
+    expect(tracker.comments).toHaveLength(1);
+    expect(tracker.comments[0].issue).toBe(692);
+    expect(tracker.comments[0].body).toContain(REFUSED_MARKER);
+    expect(tracker.comments[0].body).toContain("check:");
+  });
+});
