@@ -181,11 +181,17 @@ if [ "$cmd" = "token" ]; then
   token="${token_arg:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
   if [ -z "$token" ]; then
     command -v claude >/dev/null || die "no claude on PATH, and no token given; pass one: bin/canary token <token>"
-    [ -t 0 ] || die "no terminal to mint on; run this with a leading '!' so claude can own the terminal, or pass the token: bin/canary token <token>"
+    if [ -t 0 ]; then
+      token_tty="/dev/stdin"
+    elif { : </dev/tty; } 2>/dev/null; then
+      token_tty="/dev/tty"
+    else
+      die "nothing here can prompt, and setup-token needs a browser it can own. Mint it in your own terminal window: claude setup-token — then bin/canary token <the sk-ant-... it prints>"
+    fi
     log "minting a long-lived token; claude owns the terminal until its browser step is done"
-    claude setup-token || die "claude setup-token did not finish; nothing was written"
+    claude setup-token <"$token_tty" || die "claude setup-token did not finish; nothing was written"
     printf 'canary: paste the token it printed: ' >&2
-    read -r token
+    read -r token <"$token_tty"
   fi
   case "$token" in
     sk-ant-*) ;;
