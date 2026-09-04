@@ -52,7 +52,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 # Agent worktrees are machine-local sessions, never part of the tree they branch from.
-.claude/worktrees/
+.claude/worktrees
 
 # bin/canary-graph's last-run snapshot: regenerated every run, read only by whoever just ran it.
 .canary-graph-last-run.json
