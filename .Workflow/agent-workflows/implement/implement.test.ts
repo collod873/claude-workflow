@@ -216,7 +216,7 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
       { text: JSON.stringify({ ...BUILDS, outOfBriefReads: ["shape"] }), sessionId: "sess-1" },
       JSON.stringify({ summary: "Built, then repaired the thing.", outOfBriefReads: ["shape", "close-gate"] }),
     ]);
-    const gate = gateSaying(RED, { ok: true });
+    const gate = gateSaying(RED, RED, { ok: true });
     const kept: Record<string, string> = {};
     const { deps, host } = arrange({
       github: { answer: (args) => (args[0] === "issue" && args[1] === "list" ? "[]" : undefined) },
@@ -231,7 +231,7 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     const result = await runImplement(deps);
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
-    expect(gate.runs).toEqual([RED, { ok: true }]);
+    expect(gate.runs).toEqual([RED, RED, { ok: true }]);
     expect(stage.calls[1]).toContain("--resume");
     expect(stage.calls[1][stage.calls[1].indexOf("--resume") + 1]).toBe("sess-1");
     expect(stage.stdins[1]).toContain(RED.output);
@@ -243,13 +243,13 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
 
   it("pushes anyway after a red repair round, and hands the owner the gate's output on the ticket", async () => {
     const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS)]);
-    const gate = gateSaying(RED, RED);
+    const gate = gateSaying(RED);
     const { deps, host, gitCalls } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
 
     const result = await runImplement(deps);
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
-    expect(gate.runs).toEqual([RED, RED]);
+    expect(gate.runs).toEqual([RED, RED, RED, RED]);
     expect(gitCalls.some((call) => call[0] === "push")).toBe(true);
     expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
     expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
@@ -263,8 +263,22 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(stage.calls).toHaveLength(1);
-    expect(gate.runs).toEqual([RED]);
+    expect(gate.runs).toEqual([RED, RED]);
     expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
+  });
+
+  it("re-runs a red gate once and, when the second run is green, treats the first as a flake and repairs nothing", async () => {
+    const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }]);
+    const gate = gateSaying(RED, { ok: true });
+    const { deps, host } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(gate.runs).toEqual([RED, { ok: true }]);
+    expect(stage.calls).toHaveLength(1);
+    expect(ticketCommentsIn(host.calls)).toEqual([]);
+    expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });
 
   it("denies the implementer the tools that would move the checkout or spend outside it", async () => {

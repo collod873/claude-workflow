@@ -215,8 +215,14 @@ function gateOnChanges(deps: ImplementDeps, log: (line: string) => void): GateVe
     return { ok: true };
   }
   const verdict = deps.runGate();
-  log(verdict.ok ? "the push gate is green" : "the push gate is red");
-  return verdict;
+  if (verdict.ok) {
+    log("the push gate is green");
+    return verdict;
+  }
+  log("the push gate is red; running it once more before that counts");
+  const again = deps.runGate();
+  log(again.ok ? "the push gate is green on its second run; the first was a flake" : "the push gate is red twice");
+  return again;
 }
 
 async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {

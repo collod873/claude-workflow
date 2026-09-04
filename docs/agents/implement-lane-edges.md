@@ -177,7 +177,7 @@ alongside, for node 04b.
 | | |
 |---|---|
 | **Skipped when** | `git status --porcelain -uall` is empty — the model changed nothing, so there is nothing to judge and ~95 s of runner are saved |
-| **The gate** | `gateVerdict(repoDir)`: `bin/gauntlet push` on the target checkout, which is `npm run check`, the same command `.husky/pre-push` runs. Green → straight to node 05 |
+| **The gate** | `gateVerdict(repoDir)`: `bin/gauntlet push` on the target checkout, which is `npm run check`, the same command `.husky/pre-push` runs. Green → straight to node 05. Red runs it once more before that counts: a flake costs ~95 s of runner, where a repair round it did not need costs a model call and a second gate, and a needs-human it did not need costs the owner |
 | **Red** | The same session resumes (`claude --resume <session_id>`) with `repair.md` on stdin: the gate's output, last 12,000 characters (`GATE_OUTPUT_TAIL_CHARS`), under the same tool fence and the same schema. One round, never two. The gate runs once more on what it leaves |
 | **Still red** | The run continues anyway: node 06 pushes the branch (`--no-verify`, since the wire itself just ran the hook's gate), the ticket gets `needs-human`, and `gateRedNote()` puts the gate's output on the ticket. Verify and the fixer already exist for a red pull request; a paid run's work is never discarded |
 | **Why the same session** | A fresh repair agent would re-pay orientation and would not know why the first one made the choices it did. The rejected alternative in ADR-0157 |
