@@ -38,6 +38,35 @@ function shellLaunched(dir: string): string[] {
     .filter((path) => SHELL_TAG.test(readFileSync(join(REPO_ROOT, path), "utf8")));
 }
 
+const SPAWNED_TAG = /@shell[ \t]+spawns[ \t]+`([^`\n]+)`/g;
+
+function sourcesUnder(dir: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(join(REPO_ROOT, dir));
+  } catch {
+    return [];
+  }
+  return names.flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(join(REPO_ROOT, path)).isDirectory() ? sourcesUnder(path) : [path];
+  });
+}
+
+/**
+ * A spawned argv[0] earns its exemption where an export does: at the call site, tagged `@shell`,
+ * so the excuse cannot outlive the call it names and go on sitting here as a bare string.
+ */
+function spawnedNames(dirs: string[]): string[] {
+  const named = new Set<string>();
+  for (const path of dirs.flatMap((dir) => sourcesUnder(dir))) {
+    if (!/\.(m|c)?(t|j)s$/.test(path)) continue;
+    const text = readFileSync(join(REPO_ROOT, path), "utf8");
+    for (const match of text.matchAll(SPAWNED_TAG)) named.add(match[1]);
+  }
+  return [...named].sort();
+}
+
 const production = (paths: string[]) => paths.map((path) => `${path}!`);
 
 export default {
@@ -60,5 +89,5 @@ export default {
    */
   tags: ["-shell", "-fixture"],
 
-  ignoreUnresolved: ["bin/gauntlet", "bin/new-adr", "bin/close-ticket"],
+  ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude"]),
 };
