@@ -29,8 +29,9 @@ const SANDBOX_FLAGS = [
   "",
 ];
 
-function runLens(exec: StageExec, prompt: string): Promise<string> {
-  return exec(["-p", ...SANDBOX_FLAGS], prompt);
+async function runLens(exec: StageExec, prompt: string): Promise<string> {
+  const reply = await exec(["-p", ...SANDBOX_FLAGS], prompt);
+  return typeof reply === "string" ? reply : reply.text;
 }
 
 export async function runAuditor(options: AuditorOptions): Promise<string> {

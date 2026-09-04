@@ -1,4 +1,4 @@
-import type { StageExec } from "./stage";
+import type { StageExec, StageReply } from "./stage";
 
 /**
  * @fixture A stage exec recording argv and replaying a canned response, reached only from the suite.
@@ -10,11 +10,11 @@ export interface FakeStage {
   stdins: Array<string | undefined>;
 }
 
-export function createFakeStage(response: string): FakeStage {
+export function createFakeStage(response: string | StageReply): FakeStage {
   return recordingStage(() => response);
 }
 
-export function createFakeStages(responses: string[]): FakeStage {
+export function createFakeStages(responses: Array<string | StageReply>): FakeStage {
   return recordingStage((call) => {
     const response = responses[call - 1];
     if (response === undefined) {
@@ -24,7 +24,7 @@ export function createFakeStages(responses: string[]): FakeStage {
   });
 }
 
-function recordingStage(answer: (call: number) => string): FakeStage {
+function recordingStage(answer: (call: number) => string | StageReply): FakeStage {
   const calls: string[][] = [];
   const stdins: Array<string | undefined> = [];
   const exec: StageExec = async (argv, stdin) => {

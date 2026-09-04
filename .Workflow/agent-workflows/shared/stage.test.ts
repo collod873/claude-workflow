@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { withHandoffDir } from "./handoff-dir.fixture";
 import { createFakeStage } from "./stage.fake";
-import { checkpointPath, runStage, type StageExec } from "./stage";
+import { checkpointPath, runStage, runStageSession, type StageExec } from "./stage";
 import { structuredOutput } from "./structured-output";
 
 const GREETING = structuredOutput(z.object({ greeting: z.string().min(1) }));
@@ -17,21 +17,21 @@ function jsonSchemaFlag(argv: string[]): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+let dir: string | undefined;
+
+afterEach(() => {
+  if (dir) rmSync(dir, { recursive: true, force: true });
+  dir = undefined;
+});
+
+function writePrompt(contents: string): string {
+  dir = mkdtempSync(join(tmpdir(), "stage-test-"));
+  const path = join(dir, "prompt.md");
+  writeFileSync(path, contents, "utf8");
+  return path;
+}
+
 describe("runStage", () => {
-  let dir: string | undefined;
-
-  afterEach(() => {
-    if (dir) rmSync(dir, { recursive: true, force: true });
-    dir = undefined;
-  });
-
-  function writePrompt(contents: string): string {
-    dir = mkdtempSync(join(tmpdir(), "stage-test-"));
-    const path = join(dir, "prompt.md");
-    writeFileSync(path, contents, "utf8");
-    return path;
-  }
-
   it("substitutes every {{VAR}} placeholder before spawning the stage", async () => {
     const promptPath = writePrompt("Sweep issue #{{ISSUE_NUMBER}} for seams in {{REPO}}.");
     const fake = createFakeStage(RESPONSE);
@@ -98,6 +98,34 @@ describe("runStage", () => {
     const [argv] = fake.calls;
     expect(argv[argv.indexOf("--allowedTools") + 1]).toBe("Read,Grep,Glob");
     expect(argv).not.toContain("--disallowedTools");
+  });
+
+  it("carries --resume when the stage asks to resume a session", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+
+    await runStage(promptPath, {}, fake.exec, GREETING, { resume: "sess-123", stage: "test" });
+
+    const [argv] = fake.calls;
+    expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-123");
+  });
+
+  it("carries no --resume when the stage does not ask to resume a session", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage(RESPONSE);
+
+    await runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" });
+
+    expect(fake.calls[0]).not.toContain("--resume");
+  });
+
+  it("returns the parsed value when the exec answers with a StageReply object", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage({ text: RESPONSE, sessionId: "sess-456" });
+
+    await expect(runStage(promptPath, {}, fake.exec, GREETING, { stage: "test" })).resolves.toEqual({
+      greeting: "hi",
+    });
   });
 
   it("refuses a stage that sets both allowedTools and disallowedTools", async () => {
@@ -288,5 +316,37 @@ describe("two tests in one file that render the same prompt for the same stage",
 
   it("gets its own answer, second, not the checkpoint the first one just wrote", async () => {
     expect(await runShared("second")).toEqual({ spawned: true, value: { greeting: "second" } });
+  });
+});
+
+describe("runStageSession", () => {
+  it("returns the session id the exec reported", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage({ text: RESPONSE, sessionId: "sess-789" });
+
+    await expect(
+      runStageSession(promptPath, {}, fake.exec, GREETING, { stage: "test" }),
+    ).resolves.toEqual({
+      value: { greeting: "hi" },
+      sessionId: "sess-789",
+    });
+  });
+
+  it("leaves the session id undefined on a checkpoint hit", async () => {
+    const promptPath = writePrompt("Checkpointed prompt for runStageSession.");
+    const fake = createFakeStage({ text: RESPONSE, sessionId: "sess-first" });
+
+    await runStageSession(promptPath, {}, fake.exec, GREETING, { stage: "session-checkpoint-hit" });
+
+    const unreachable: StageExec = async () => {
+      throw new Error("StageExec should not have been called for a checkpoint hit");
+    };
+
+    await expect(
+      runStageSession(promptPath, {}, unreachable, GREETING, { stage: "session-checkpoint-hit" }),
+    ).resolves.toEqual({
+      value: { greeting: "hi" },
+      sessionId: undefined,
+    });
   });
 });

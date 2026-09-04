@@ -6,6 +6,7 @@ export interface StreamResult {
   text: string;
   isError: boolean;
   missingResult: boolean;
+  sessionId?: string;
 }
 
 export interface StreamJsonParser {
@@ -18,6 +19,7 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
   let text = "";
   let isError = false;
   let sawResult = false;
+  let sessionId: string | undefined;
 
   function consume(line: string): void {
     const trimmed = line.trim();
@@ -37,6 +39,10 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
       isError = event.is_error === true || String(event.subtype ?? "").startsWith("error");
     }
 
+    if (isRecord(event) && typeof event.session_id === "string" && event.session_id !== "") {
+      sessionId = event.session_id;
+    }
+
     const line_ = progressLine(event);
     if (line_ !== null) onProgress(line_);
   }
@@ -53,7 +59,7 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
         consume(pending);
         pending = "";
       }
-      return { text, isError, missingResult: !sawResult };
+      return { text, isError, missingResult: !sawResult, sessionId };
     },
   };
 }

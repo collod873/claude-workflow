@@ -22,8 +22,8 @@ function stubClaudeOnPath(body: string): void {
   });
 }
 
-const resultEvent = (text: string) =>
-  `printf '%s\\n' ${JSON.stringify(JSON.stringify({ type: "result", subtype: "success", result: text, num_turns: 1 }))}`;
+const resultEvent = (text: string, extra: Record<string, unknown> = {}) =>
+  `printf '%s\\n' ${JSON.stringify(JSON.stringify({ type: "result", subtype: "success", result: text, num_turns: 1, ...extra }))}`;
 
 const PROMPT_PAST_THE_PIPE_BUFFER = "x".repeat(1024 * 1024);
 
@@ -31,7 +31,10 @@ describe("execClaude", () => {
   it("returns the response when the child answers and exits without reading its prompt", async () => {
     stubClaudeOnPath(resultEvent("answered anyway"));
 
-    await expect(execClaude(["-p"], PROMPT_PAST_THE_PIPE_BUFFER)).resolves.toBe("answered anyway");
+    await expect(execClaude(["-p"], PROMPT_PAST_THE_PIPE_BUFFER)).resolves.toEqual({
+      text: "answered anyway",
+      sessionId: undefined,
+    });
   });
 
   it("names the unwritten prompt when the child then produces nothing", async () => {
@@ -45,6 +48,18 @@ describe("execClaude", () => {
   it("marks the session as a stage, so this repo's own hooks stay out of it", async () => {
     stubClaudeOnPath(resultEvent("$WORKFLOW_STAGE"));
 
-    await expect(execClaude(["-p", "a prompt on argv"])).resolves.toBe("1");
+    await expect(execClaude(["-p", "a prompt on argv"])).resolves.toEqual({
+      text: "1",
+      sessionId: undefined,
+    });
+  });
+
+  it("resolves the session id the stream carried on its result event", async () => {
+    stubClaudeOnPath(resultEvent("with a session", { session_id: "sess-abc" }));
+
+    await expect(execClaude(["-p", "a prompt on argv"])).resolves.toEqual({
+      text: "with a session",
+      sessionId: "sess-abc",
+    });
   });
 });

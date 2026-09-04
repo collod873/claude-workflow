@@ -2,21 +2,25 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { STAGE_SESSION_VARS } from "./child-env";
 import { handoffPath } from "./handoff-path";
 import { reason } from "./reason";
 import { createStreamJsonParser } from "./stream-json";
 import { rejectedResponse, type StructuredOutput } from "./structured-output";
 
-export type StageExec = (argv: string[], stdin?: string) => Promise<string>;
+export interface StageReply {
+  text: string;
+  sessionId?: string;
+}
+
+export type StageExec = (argv: string[], stdin?: string) => Promise<string | StageReply>;
 
 const MAX_ARG_STRLEN = 32 * 4096;
 
 const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
 
-const STAGE_SESSION_VAR = "WORKFLOW_STAGE";
-
 function stageEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, [STAGE_SESSION_VAR]: "1" };
+  return { ...process.env, [STAGE_SESSION_VARS[0]]: "1" };
 }
 
 export const execClaudeIn =
@@ -50,7 +54,7 @@ export const execClaudeIn =
     child.on("error", (err) => reject(new Error(`could not spawn \`claude\`: ${err.message}`)));
 
     child.on("close", (code) => {
-      const { text, isError, missingResult } = parser.end();
+      const { text, isError, missingResult, sessionId } = parser.end();
       const prompt = stdinError === undefined ? "" : ` (the prompt never reached it: ${stdinError.message})`;
       if (code !== 0) {
         reject(new Error(`\`claude\` exited ${code}${prompt}${tail(stderr)}`));
@@ -64,7 +68,7 @@ export const execClaudeIn =
         reject(new Error(`\`claude\` produced no result event${prompt}${tail(stderr)}`));
         return;
       }
-      resolve(text);
+      resolve({ text, sessionId });
     });
   });
 
@@ -188,16 +192,21 @@ export interface StageOptions {
   disallowedTools?: string[];
   allowedTools?: string[];
   promptViaStdin?: boolean;
+  resume?: string;
   stage: string;
 }
 
-export async function runStage<T>(
+function toStageReply(response: string | StageReply): StageReply {
+  return typeof response === "string" ? { text: response } : response;
+}
+
+export async function runStageSession<T>(
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
   output: StructuredOutput<T>,
   options: StageOptions,
-): Promise<T> {
+): Promise<{ value: T; sessionId?: string }> {
   if (options.allowedTools?.length && options.disallowedTools?.length) {
     throw new Error(
       "StageOptions set both allowedTools and disallowedTools; pick one: allowedTools says " +
@@ -210,9 +219,10 @@ export async function runStage<T>(
 
   const stage = options.stage;
   const cached = loadCheckpoint(stage, prompt, output);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) return { value: cached };
 
   const model = options.model ? ["--model", options.model] : [];
+  const resume = options.resume !== undefined ? ["--resume", options.resume] : [];
   const denied = options.disallowedTools?.length
     ? ["--disallowedTools", options.disallowedTools.join(",")]
     : [];
@@ -221,6 +231,7 @@ export async function runStage<T>(
     : [];
   const flags = [
     "--dangerously-skip-permissions",
+    ...resume,
     "--json-schema",
     output.jsonSchema,
     ...model,
@@ -228,10 +239,10 @@ export async function runStage<T>(
     ...allowed,
   ];
 
-  const spawnAndParse = async (): Promise<T> => {
-    let responseText: string;
+  const spawnAndParse = async (): Promise<{ value: T; sessionId?: string }> => {
+    let reply: StageReply;
     if (options.promptViaStdin) {
-      responseText = await exec(["-p", ...flags], prompt);
+      reply = toStageReply(await exec(["-p", ...flags], prompt));
     } else {
       if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
         throw new Error(
@@ -239,14 +250,25 @@ export async function runStage<T>(
             "limit on a single argv element; this stage needs `promptViaStdin`",
         );
       }
-      responseText = await exec(["-p", prompt, ...flags]);
+      reply = toStageReply(await exec(["-p", prompt, ...flags]));
     }
-    const value = output.parse(responseText);
-    writeCheckpoint(stage, prompt, responseText);
-    return value;
+    const value = output.parse(reply.text);
+    writeCheckpoint(stage, prompt, reply.text);
+    return { value, sessionId: reply.sessionId };
   };
 
   return preservingRaw(stage, spawnAndParse);
+}
+
+export async function runStage<T>(
+  promptPath: string,
+  vars: Record<string, string>,
+  exec: StageExec,
+  output: StructuredOutput<T>,
+  options: StageOptions,
+): Promise<T> {
+  const { value } = await runStageSession(promptPath, vars, exec, output, options);
+  return value;
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

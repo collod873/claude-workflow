@@ -78,6 +78,28 @@ describe("the final response text", () => {
   });
 });
 
+describe("the session id", () => {
+  it("is reported from the init event", () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "sess-init" });
+
+    const { sessionId } = parse([`${init}\n${resultEvent("done")}\n`]);
+
+    expect(sessionId).toBe("sess-init");
+  });
+
+  it("is reported from the result event", () => {
+    const { sessionId } = parse([`${resultEvent("done", { session_id: "sess-result" })}\n`]);
+
+    expect(sessionId).toBe("sess-result");
+  });
+
+  it("is undefined when no event carried one", () => {
+    const { sessionId } = parse([`${resultEvent("done")}\n`]);
+
+    expect(sessionId).toBeUndefined();
+  });
+});
+
 describe("chunk boundaries", () => {
   it("reassembles an event split across two chunks", () => {
     const event = resultEvent('{"entries":[]}');
