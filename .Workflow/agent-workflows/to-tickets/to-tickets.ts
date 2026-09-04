@@ -77,7 +77,7 @@ export function vocabulary(): string {
   const [, entries] = page.split(/^---$/m);
   if (!entries?.trim()) {
     throw new Error(
-      `${VOCABULARY_PATH} has no entries below its \`---\` rule — everything above it is prose a stage must not be given`,
+      `${VOCABULARY_PATH} has no entries below its \`---\` rule; everything above it is prose a stage must not be given`,
     );
   }
   return entries.trim();
@@ -98,7 +98,7 @@ export function ticketFormat(): string {
   const specSubIssue = sections.find((section) => section.startsWith("Spec sub-issue"));
   if (!core || !specSubIssue) {
     throw new Error(
-      `${TICKET_FORMAT_PATH} has no "### Spec sub-issue" variant — the slicer's ticket contract would be empty`,
+      `${TICKET_FORMAT_PATH} has no "### Spec sub-issue" variant, so the slicer's ticket contract would be empty`,
     );
   }
   return `${core}\n\n### ${specSubIssue.trim()}\n`;
@@ -177,7 +177,7 @@ function keepingPlan<R>(plan: Plan, work: () => R): R {
     const path = rawResponsePath("audit-and-publish");
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(plan, null, 2), "utf8");
-    throw new Error(`${reason(err)} — the audited plan is saved at ${path}`);
+    throw new Error(`${reason(err)}: the audited plan is saved at ${path}`);
   }
 }
 

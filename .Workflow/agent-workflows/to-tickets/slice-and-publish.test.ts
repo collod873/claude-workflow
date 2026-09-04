@@ -190,7 +190,7 @@ describe("sliceAndPublish", () => {
   });
 
   it("renders seamsConsumed lines in the body without ever treating them as a Files claimed bullet", () => {
-    const seamLine = "`GhExec` — the injected gh argv executor — shared/gh.ts — consumed by everything.";
+    const seamLine = "`GhExec`: the injected gh argv executor, at shared/gh.ts, consumed by everything.";
     const body = publishedBody([
       slice({
         title: "Consumes a seam",

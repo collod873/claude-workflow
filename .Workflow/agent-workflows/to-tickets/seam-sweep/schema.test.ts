@@ -8,7 +8,7 @@ describe("SeamManifest", () => {
 
   it("accepts well-formed one-line entries", () => {
     const result = SeamManifest.safeParse([
-      "`GhExec` — an injected `(args: string[]) => string` executor — shared/gh.ts — consumed by the publisher.",
+      "`GhExec`: an injected `(args: string[]) => string` executor, at shared/gh.ts, consumed by the publisher.",
     ]);
 
     expect(result.success).toBe(true);

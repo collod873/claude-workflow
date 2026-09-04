@@ -1,6 +1,6 @@
 # The chain-shape ladder
 
-Apply to every pair of slices that touch the same file, in this order — evaluate each rung only after preceding rungs fail to resolve the overlap:
+Apply to every pair of slices that touch the same file, in this order, evaluating each rung only after preceding rungs fail to resolve the overlap:
 
 1. **Session size is a hard ceiling.** Every slice must fit within a single agent session. Slices outgrowing session boundaries to dodge edges must be repartitioned or split.
 2. **Remove file overlap by repartitioning.** Redraw boundaries so slices operate on disjoint file sets.

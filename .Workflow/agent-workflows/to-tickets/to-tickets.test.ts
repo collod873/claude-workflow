@@ -109,14 +109,14 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(createCalls).toHaveLength(1);
   });
 
-  it("prints the auditor's grading notes and unapplied flags — the `notes` field of its answer — to stdout", async () => {
+  it("prints the auditor's grading notes and unapplied flags, the `notes` field of its answer, to stdout", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
     const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";
 
     expect(await loggedByAudit({ notes, slices: slicedPlan })).toContainEqual(notes);
   });
 
-  it("logs only the measurement and success lines — no notes — when the auditor graded silently", async () => {
+  it("logs only the measurement and success lines, with no notes, when the auditor graded silently", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
 
     expect(await loggedByAudit({ notes: "", slices: slicedPlan })).toEqual([

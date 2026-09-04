@@ -30,7 +30,7 @@ describe("a retry after audit-and-publish alone failed", () => {
     await expect(runNamedStage("audit-and-publish", "13", failingAudit, unreachableGh)).rejects.toThrow();
 
     const unreachableExec: StageExec = async () => {
-      throw new Error("StageExec should not have been called — this stage's checkpoint should have been reused");
+      throw new Error("StageExec should not have been called; this stage's checkpoint should have been reused");
     };
 
     const retriedSeamSweepOutput = await runNamedStage("seam-sweep", "13", unreachableExec, unreachableGh);

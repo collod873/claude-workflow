@@ -108,7 +108,7 @@ describe("lastTimestamp", () => {
   });
 });
 
-describe("runBackfill — per-transcript failure handling", () => {
+describe("runBackfill: per-transcript failure handling", () => {
   it("logs skipped transcript-unreadable and keeps going for a discovered file it can't read", () => {
     const sourceDir = tmpDir("backfill-src-");
     const outputDir = tmpDir("backfill-out-");
@@ -139,7 +139,7 @@ describe("runBackfill — per-transcript failure handling", () => {
   });
 });
 
-describe("runBackfill — scratch projects (#103 §2)", () => {
+describe("runBackfill: scratch projects (#103 §2)", () => {
   it("declines a /tmp project directory and says so in the log, rather than dropping it silently", () => {
     const sourceDir = tmpDir("backfill-src-");
     const outputDir = tmpDir("backfill-out-");
@@ -179,7 +179,7 @@ describe("runBackfill — scratch projects (#103 §2)", () => {
   });
 });
 
-describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook output", () => {
+describe("backfill.ts (CLI): output shape matches slice 1's capture-hook output", () => {
   it("produces a capture file structurally identical to the hook's own output for the same fixture transcript", () => {
     const sourceDir = tmpDir("backfill-src-");
     const outputDir = tmpDir("backfill-out-");
@@ -220,7 +220,7 @@ describe("backfill.ts (CLI) — output shape matches slice 1's capture-hook outp
   });
 });
 
-describe("backfill.ts (CLI) — a second run over the same directory is a no-op", () => {
+describe("backfill.ts (CLI): a second run over the same directory is a no-op", () => {
   it("writes zero new files and logs skipped already-captured for every transcript on a second run", () => {
     const sourceDir = tmpDir("backfill-src-");
     const outputDir = tmpDir("backfill-out-");
