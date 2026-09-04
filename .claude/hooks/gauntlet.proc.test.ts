@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
@@ -211,5 +212,66 @@ describe("the runner", () => {
 
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("usage:");
+  });
+});
+
+function logDirRecordingGauntlet(record: string): string {
+  const path = join(scratchDir("gauntlet-env-stub"), "gauntlet");
+  writeFileSync(path, `#!/bin/bash\nprintf '%s' "\${STOP_GATE_LOG_DIR:-}" > ${JSON.stringify(record)}\nexit 0\n`);
+  chmodSync(path, 0o755);
+  return path;
+}
+
+function realLogPath(): string {
+  const now = new Date();
+  const stamp = [
+    String(now.getFullYear()).padStart(4, "0"),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+  return join(homedir(), ".claude", "logs", `gauntlet-hook-${stamp}.jsonl`);
+}
+
+function realLogLines(path: string): number {
+  return existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean).length : 0;
+}
+
+describe("the suite's own rows stay out of the machine's run log", () => {
+  test.fails("#373.1: runHook sets STOP_GATE_LOG_DIR to a scratch directory by default, so no case can reach the real log without deliberately overriding it", () => {
+    const record = join(scratchDir("gauntlet-env"), "log-dir");
+
+    runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: logDirRecordingGauntlet(record) });
+
+    const seen = readFileSync(record, "utf8");
+    expect(seen).not.toBe("");
+    expect(resolve(seen)).not.toBe(resolve(dirname(realLogPath())));
+    expect(statSync(seen).isDirectory()).toBe(true);
+  });
+
+  test.fails("#373.2: running the gauntlet hook suite adds zero lines to today's real log file", () => {
+    const realLog = realLogPath();
+    const before = realLogLines(realLog);
+
+    runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\ngauntlet: FAILED at test\n") });
+    runHook("turn", editOf("README.md"), { GAUNTLET_BIN: stubGauntlet(1, "never") });
+    runHook("turn", editOf(`${REPO_ROOT}/a.ts`), { GAUNTLET_BIN: stubGauntlet(0) });
+    runHook("turn", "not json at all", { GAUNTLET_BIN: stubGauntlet(1, "never") });
+
+    expect(realLogLines(realLog)).toBe(before);
+  });
+
+  test.fails("#373.3: npm test passes: every hook case keeps its verdict while leaving the real log untouched", () => {
+    const realLog = realLogPath();
+    const before = realLogLines(realLog);
+
+    const blocked = runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n") });
+    expect(blocked.status).toBe(0);
+    expect(JSON.parse(blocked.stdout).decision).toBe("block");
+    expect(JSON.parse(blocked.stdout).reason).toContain("error TS2322: nope");
+
+    expect(runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(0) }).stdout).toBe("");
+    expect(runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n") }).stdout).toBe("");
+
+    expect(realLogLines(realLog)).toBe(before);
   });
 });
