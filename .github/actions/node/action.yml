@@ -1,8 +1,13 @@
 name: Set up Node and install dependencies
 description: >
   The runtime every lane runs its entrypoints on: Node pinned to 24, then `npm ci` installing
-  exactly what `package-lock.json` names, never a fresh resolve. `npm ci` also runs `prepare`,
-  which is what puts this repo's husky hooks in place on a runner.
+  exactly what `package-lock.json` names, never a fresh resolve. The install is unpacked once per
+  lockfile into a store on the runner's own disk and hardlinked into each later workspace, because
+  on a persistent runner `npm ci` spent five minutes relinking 13,000 unchanged files that the
+  previous run had already written. A hardlink farm is the same tree at nought cost; a cold store,
+  or a runner whose store and workspace are on different devices, falls back to the copy and then
+  to `npm ci`. `npm ci` runs `prepare`, which puts this repo's husky hooks in place, so the
+  hardlink path runs `prepare` itself.
 
 runs:
   using: composite
@@ -15,4 +20,23 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: npm ci
+      run: |
+        set -euo pipefail
+        store="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/node-modules/$(sha256sum package-lock.json | cut -d' ' -f1)"
+        if [ -d "$store" ]; then
+          rm -rf node_modules
+          if cp -al "$store" node_modules 2>/dev/null || cp -a "$store" node_modules; then
+            echo "node_modules restored from $store"
+            npm run prepare --if-present
+            exit 0
+          fi
+          echo "::warning::could not restore $store; falling back to npm ci"
+          rm -rf node_modules
+        fi
+        npm ci
+        staging="$store.$$"
+        rm -rf "$staging"
+        mkdir -p "$(dirname "$store")"
+        if cp -al node_modules "$staging" 2>/dev/null || cp -a node_modules "$staging"; then
+          mv -T "$staging" "$store" 2>/dev/null || rm -rf "$staging"
+        fi
