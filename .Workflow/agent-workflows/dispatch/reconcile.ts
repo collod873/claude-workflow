@@ -690,8 +690,22 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const startable = startableNumbers(issues, admitToBuild(gh, issues, log, input.dryRun ?? false));
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
 
-  const ready = readySlices(graph).filter((state) => startable.has(state.number));
+  const readyStartable = readySlices(graph).filter((state) => startable.has(state.number));
   const unreachable = unreachableSlices(graph).filter((state) => startable.has(state.number));
+
+  const ready: SliceState[] = [];
+  for (const state of readyStartable) {
+    const landedPr = mergedCloser(gh, state.number);
+    if (landedPr === undefined) {
+      ready.push(state);
+      continue;
+    }
+    log(
+      `#${state.number}: not dispatching — its closing pull request #${landedPr} has already merged, ` +
+        "but the ticket is still open: bin/close-ticket must have refused it. A human needs to fix the " +
+        "criterion or close the ticket.",
+    );
+  }
 
   log(`${startable.size} startable issue(s) open; ${ready.length} ready, ${unreachable.length} unreachable.`);
 
