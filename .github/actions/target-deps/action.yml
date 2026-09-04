@@ -1,10 +1,10 @@
 name: Install the target's dependencies
 description: >
   Installs whatever `target/` names as its own dependencies, using whichever package manager its
-  own lockfile names — never assumed to be npm, and never this machine's `npm ci`
+  own lockfile names, never assumed to be npm, and never this machine's `npm ci`
   (`.github/actions/node`), because the target is a separate repository with its own toolchain
   (ADR-0139: an enrolled repository owes only its `.claude/contract.json`, `docs/adr/` and a
-  `CODING_STANDARDS.md` — Lumaria's own tree has no `package-lock.json` at all, only a
+  `CODING_STANDARDS.md`: Lumaria's own tree has no `package-lock.json` at all, only a
   `pnpm-lock.yaml`).
 inputs:
   working-directory:
@@ -29,21 +29,21 @@ runs:
 
         if [ -n "$declared" ]; then
           pm="$declared"
-          echo "package.json#packageManager declares $pm — installing with it"
+          echo "package.json#packageManager declares $pm; installing with it"
         elif [ -f pnpm-lock.yaml ]; then
           pm=pnpm
-          echo "target carries pnpm-lock.yaml — installing with pnpm"
+          echo "target carries pnpm-lock.yaml; installing with pnpm"
         elif [ -f yarn.lock ]; then
           pm=yarn
-          echo "target carries yarn.lock — installing with yarn"
+          echo "target carries yarn.lock; installing with yarn"
         elif [ -f bun.lockb ] || [ -f bun.lock ]; then
           pm=bun
-          echo "target carries bun.lockb/bun.lock — installing with bun"
+          echo "target carries bun.lockb/bun.lock; installing with bun"
         elif [ -f package-lock.json ]; then
           pm=npm
-          echo "target carries package-lock.json — installing with npm"
+          echo "target carries package-lock.json; installing with npm"
         else
-          echo "target carries no recognized lockfile (pnpm-lock.yaml, yarn.lock, bun.lockb/bun.lock, package-lock.json) — nothing to install"
+          echo "target carries no recognized lockfile (pnpm-lock.yaml, yarn.lock, bun.lockb/bun.lock, package-lock.json); nothing to install"
           exit 0
         fi
 

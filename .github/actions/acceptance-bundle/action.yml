@@ -2,13 +2,13 @@ name: Bundle and upload acceptance commits
 description: >
   Turns whatever commits an acceptance-authoring step just made (since $ACCEPTANCE_BASE, set by the
   caller before its own authoring step runs) into a patch-series artifact the `land` job in
-  acceptance.yml downloads and replays (ADR-0091) — neither authoring job holds a token that can
+  acceptance.yml downloads and replays (ADR-0091), since neither authoring job holds a token that can
   push, so the commits it made only survive the run as this artifact.
 inputs:
   working-directory:
     description: >
       Where the commits since $ACCEPTANCE_BASE actually are. Defaults to the job's own default
-      directory — the pre-#315 shape, where the one checkout was both the machine and the target.
+      directory: the pre-#315 shape, where the one checkout was both the machine and the target.
       this is what lets the bundle step find them there instead of the empty machine checkout.
     required: false
     default: "."

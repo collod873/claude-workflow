@@ -46,7 +46,7 @@ jobs:
           ref: ${{ inputs.head_sha }}
           fetch-depth: 0
 
-      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then

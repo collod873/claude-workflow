@@ -51,7 +51,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Preflight — KNOWLEDGE_BASE_DEPLOY_KEY is set
+      - name: Preflight, KNOWLEDGE_BASE_DEPLOY_KEY is set
         run: |
           set -euo pipefail
           if [ -z "${KNOWLEDGE_BASE_DEPLOY_KEY:-}" ]; then

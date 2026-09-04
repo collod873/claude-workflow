@@ -1,7 +1,7 @@
 name: Set up Node and install dependencies
 description: >
   The runtime every lane runs its entrypoints on: Node pinned to 24, then `npm ci` installing
-  exactly what `package-lock.json` names — never a fresh resolve. `npm ci` also runs `prepare`,
+  exactly what `package-lock.json` names, never a fresh resolve. `npm ci` also runs `prepare`,
   which is what puts this repo's husky hooks in place on a runner.
 
 runs:

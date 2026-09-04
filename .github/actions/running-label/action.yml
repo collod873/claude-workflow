@@ -3,7 +3,7 @@ description: >
   Puts `running` on the issue a lane is working, and takes it off when the lane stops. This is the
   only thing on the tracker that says a lane is *in flight*: every other label asserts a position
   the work reached and then stayed at, so without this a ticket being implemented right now and a
-  ticket nobody has touched render identically on a GitHub issue list — which is where the owner
+  ticket nobody has touched render identically on a GitHub issue list, which is where the owner
   actually looks, rather than the Actions tab.
 
 inputs:

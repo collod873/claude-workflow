@@ -66,11 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           gh label create shape-refused --color b60205 \
-            --description "Refused at lane 01 stage 1 — the idea already exists, or an ADR ruled it" --force
+            --description "Refused at lane 01 stage 1: the idea already exists, or an ADR ruled it" --force
           gh label create needs-human --color d93f0b \
             --description "Ticket stalled; a human decision or action is required" --force
           gh label create approved --color 0e8a16 \
-            --description "The owner accepted a decision sheet — files its ADRs and dispatches" --force
+            --description "The owner accepted a decision sheet; files its ADRs and dispatches" --force
           gh label create parked --color fbca04 \
             --description "Shaped and set down. No dispatch, and nothing ever re-raises it" --force
           gh label create killed --color 6a737d \
@@ -80,7 +80,7 @@ jobs:
           gh label create go-short --color 1d76db \
             --description "ADR-0007's route override, applied alongside approved" --force
 
-      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then

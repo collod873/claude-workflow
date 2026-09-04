@@ -63,7 +63,7 @@ jobs:
             --description "A to-tickets run refused or failed" \
             --force
 
-      - name: Refuse — PRD already has sub-issues
+      - name: Refuse, PRD already has sub-issues
         id: refuse-sub-issues
         run: |
           set -euo pipefail
@@ -76,7 +76,7 @@ jobs:
           fi
           echo "refused=false" >> "$GITHUB_OUTPUT"
 
-      - name: Refuse — PRD is itself a sub-issue
+      - name: Refuse, PRD is itself a sub-issue
         id: refuse-nested-prd
         run: |
           set -euo pipefail
@@ -98,7 +98,7 @@ jobs:
           fi
           echo "refused=false" >> "$GITHUB_OUTPUT"
 
-      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then

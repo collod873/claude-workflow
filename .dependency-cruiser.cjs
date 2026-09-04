@@ -28,7 +28,7 @@ const noLaneToLaneRules = LANES.map((lane) => ({
   severity: "error",
   comment:
     "A lane may not deep-import another lane's files. Route the fact through shared/, an " +
-    "event, or a published seam instead — see docs/agents/module-boundaries.md.",
+    "event, or a published seam instead; see docs/agents/module-boundaries.md.",
   from: { path: `^${ROOT}${lane}/`, pathNot: TEST_FILE },
   to: { path: `^${ROOT}(${LANE_ALTERNATION})/`, pathNot: `^${ROOT}${lane}/` },
 }));
@@ -40,7 +40,7 @@ module.exports = {
       name: "shared-no-lane",
       severity: "error",
       comment:
-        "shared/ may not import a lane. shared is every lane's door — a door does not reach " +
+        "shared/ may not import a lane. shared is every lane's door, and a door does not reach " +
         "back through the rooms it serves. Move the shared thing it needs into shared/ instead.",
       from: { path: `^${ROOT}shared/`, pathNot: TEST_FILE },
       to: { path: `^${ROOT}(${LANE_ALTERNATION})/` },

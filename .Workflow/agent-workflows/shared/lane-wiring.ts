@@ -262,7 +262,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { PRD_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
         steps: [
           {
-            name: "Refuse — PRD already has sub-issues",
+            name: "Refuse, PRD already has sub-issues",
             id: "refuse-sub-issues",
             run: [
               'sub_count=$(gh api "repos/${GH_REPO}/issues/${PRD_NUMBER}/sub_issues" --jq \'length\')',
@@ -271,9 +271,9 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             ],
           },
           {
-            name: "Refuse — PRD is itself a sub-issue",
+            name: "Refuse, PRD is itself a sub-issue",
             id: "refuse-nested-prd",
-            follows: "Refuse — PRD already has sub-issues",
+            follows: "Refuse, PRD already has sub-issues",
             run: ["issue(number: $num) { parent { number } }", 'gh issue edit "$PRD_NUMBER" --add-label slice-failed', 'echo "refused=true" >> "$GITHUB_OUTPUT"'],
           },
           ...CHECKPOINTS("to-tickets", "Seam sweep", "Audit and publish"),

@@ -6,8 +6,8 @@ description: >
   checkout and dies with the runner otherwise, so a retry against the same commit would always
   respawn the model rather than finding the answer a prior run already got. `restore` runs before a
   lane's first stage and unpacks the latest `checkpoints-<lane>-<issue>` artifact it can find;
-  `upload` runs — paired with the caller's own `if: always()`, so a successful run's checkpoints are
-  saved for the next run just as a failed one's are — after the lane's last stage and saves whatever
+  `upload` runs, paired with the caller's own `if: always()`, so a successful run's checkpoints are
+  saved for the next run just as a failed one's are, after the lane's last stage and saves whatever
   this run wrote back under that same name.
 
 inputs:
@@ -39,7 +39,7 @@ runs:
           2>/dev/null)
 
         if [ -z "${artifact_id:-}" ]; then
-          echo "checkpoints: no prior artifact named $ARTIFACT_NAME — starting clean"
+          echo "checkpoints: no prior artifact named $ARTIFACT_NAME; starting clean"
           exit 0
         fi
 
@@ -47,7 +47,7 @@ runs:
             && unzip -o -q "$RUNNER_TEMP/checkpoints.zip" -d "$CHECKPOINTS_DIR"; then
           echo "checkpoints: restored $ARTIFACT_NAME from artifact $artifact_id"
         else
-          echo "::warning::checkpoints: found artifact $artifact_id for $ARTIFACT_NAME but could not restore it — starting clean"
+          echo "::warning::checkpoints: found artifact $artifact_id for $ARTIFACT_NAME but could not restore it; starting clean"
         fi
         rm -f "$RUNNER_TEMP/checkpoints.zip"
 

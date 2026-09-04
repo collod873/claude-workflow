@@ -25,7 +25,7 @@ for (const file of venueFiles) {
   for (const match of text.matchAll(INVOCATION)) invoked.add(match[0]);
 }
 
-/** A `@shell` tag carrying prose after it, anywhere in a file — the same tag knip reads on exports. */
+/** A `@shell` tag carrying prose after it, anywhere in a file: the same tag knip reads on exports. */
 const SHELL_TAG = /@shell[ \t]+\S/;
 
 /**

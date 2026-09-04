@@ -43,7 +43,7 @@ jobs:
         with:
           path: target
 
-      - name: Preflight — CLAUDE_CODE_OAUTH_TOKEN is set
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
