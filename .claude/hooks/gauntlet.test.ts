@@ -1,8 +1,24 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import settings from "../settings.json";
 import { captured, failedChecks, inScope, report, STDOUT_TAIL } from "./gauntlet-report.mjs";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
+const registeredHooks: Record<string, unknown> = settings.hooks;
+
+describe("one Stop hook owns turn-end in this checkout", () => {
+  it.fails("#367.1: settings.json registers no Stop hook and still runs gauntlet.sh turn on PostToolUse", () => {
+    expect(registeredHooks.Stop).toBeUndefined();
+    expect(JSON.stringify(registeredHooks.PostToolUse)).toContain("gauntlet.sh turn");
+  });
+
+  it.fails("#367.3: no report says ending the turn is allowed, because every report it hands back blocks", () => {
+    const stdout = "--- test ---\n1 failed\ngauntlet: FAILED at test\n";
+
+    expect(report("stop", stdout)).not.toContain("ending the turn is allowed");
+    expect(report("turn", stdout, "a.ts")).not.toContain("ending the turn is allowed");
+  });
+});
 
 describe("what the in-turn venue has something to say about", () => {
   it("is a TypeScript file inside this repo", () => {
