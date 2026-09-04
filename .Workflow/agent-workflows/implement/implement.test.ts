@@ -241,14 +241,18 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });
 
-  it("pushes anyway after a red repair round, and hands the owner the gate's output on the ticket", async () => {
+  async function buildWithSession(...verdicts: GateVerdict[]) {
     const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS)]);
-    const gate = gateSaying(RED);
-    const { deps, host, gitCalls } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
-
-    const result = await runImplement(deps);
-
+    const gate = gateSaying(...verdicts);
+    const arranged = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const result = await runImplement(arranged.deps);
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    return { ...arranged, stage, gate };
+  }
+
+  it("pushes anyway after a red repair round, and hands the owner the gate's output on the ticket", async () => {
+    const { host, gitCalls, gate } = await buildWithSession(RED);
+
     expect(gate.runs).toEqual([RED, RED, RED, RED]);
     expect(gitCalls.some((call) => call[0] === "push")).toBe(true);
     expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
@@ -268,13 +272,8 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
   });
 
   it("re-runs a red gate once and, when the second run is green, treats the first as a flake and repairs nothing", async () => {
-    const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }]);
-    const gate = gateSaying(RED, { ok: true });
-    const { deps, host } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const { host, stage, gate } = await buildWithSession(RED, { ok: true });
 
-    const result = await runImplement(deps);
-
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(gate.runs).toEqual([RED, { ok: true }]);
     expect(stage.calls).toHaveLength(1);
     expect(ticketCommentsIn(host.calls)).toEqual([]);
