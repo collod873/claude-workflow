@@ -216,7 +216,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "deny",
             "no-diff-with-criteria",
             "the closing record declares `No diff.` but the issue body carries a `## "
-            "Acceptance criteria` heading; `No diff.` stands only for a ticket that never "
+            "Acceptance criteria` heading. `No diff.` stands only for a ticket that never "
             "carried criteria. Run `close-ticket` to verify and record them.",
         )
 
@@ -225,7 +225,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "deny",
             "no-range-or-no-diff",
             "the closing record declares neither `No diff.`, a `base..head` range "
-            "standing alone on its own line, nor `Superseded by #<n>`; a range written "
+            "standing alone on its own line, nor `Superseded by #<n>`. A range written "
             f"as a bullet doesn't count. Run `{close_ticket_stub_text}` instead of "
             "writing the record by hand.",
         )
@@ -381,14 +381,14 @@ def main() -> None:
 
     if resolved_gh is None:
         deny(payload, repo, issue_number, "gh-not-found", "",
-             "gh is not resolvable on this machine, so the close is refused.",
+             "gh is not resolvable on this machine, so it cannot verify and the close is refused.",
              verdict="degraded")
         return
 
     body, comments, fetch_err = fetch_issue(resolved_gh, gh_cwd, issue_number, repo_flag)
     if fetch_err:
         deny(payload, repo, issue_number, fetch_err, resolved_gh,
-             f"could not verify against GitHub ({fetch_err}): failing closed.",
+             f"could not verify against GitHub ({fetch_err}), so it is failing closed.",
              verdict="degraded")
         return
 

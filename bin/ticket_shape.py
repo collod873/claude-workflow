@@ -36,12 +36,12 @@ CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$"
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
 
 SPEC_NO_CRITERIA = (
-    "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item; "
+    "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item, "
     "the one behavioural claim this spec closes on, in the owner's own words, with a trailing "
     "— check: `<command>` marker naming what proves it"
 )
 SPEC_CRITERIA_COUNT = (
-    "a spec body carries exactly one '- [ ]' acceptance criterion, not {n}: three behavioural "
+    "a spec body carries exactly one '- [ ]' acceptance criterion, not {n}. Three behavioural "
     "claims are three specs, and a closer handed several has no single sentence to run"
 )
 SPEC_CRITERION_UNRUNNABLE = (
