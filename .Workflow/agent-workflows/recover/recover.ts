@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { regenerateAdrIndex } from "../shared/adr-index";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import {
   claimImplementationBranch,
@@ -128,6 +129,7 @@ export interface RecoverDeps {
   runId: number;
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
+  regenerateIndex: () => boolean;
   downloadArtifact: (runId: number, artifactName: string) => string;
   log?: (line: string) => void;
 }
@@ -270,6 +272,7 @@ async function main(): Promise<void> {
       runId,
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => fsWriteFile(resolve(repoDir, path), content),
+      regenerateIndex: () => regenerateAdrIndex(repoDir),
       downloadArtifact: downloadArtifactTo,
     });
     console.log(`recover: ${outcome.outcome}`);

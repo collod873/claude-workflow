@@ -63,13 +63,10 @@ land() {
     mv "$draft" "$landed"
   fi
 
-  local adr_check="${HOME:-}/bin/adr-check"
-  if [ ! -f "$adr_dir/INDEX.md" ]; then
-    : # No index in the target to keep current: an enrolled repository that never adopted one.
-  elif [ ! -x "$adr_check" ]; then
-    echo "new-adr: no adr-check on this machine; docs/adr/INDEX.md not regenerated, and bin/gauntlet push will refuse this" >&2
-  else
-    ( cd "$target_root" && "$adr_check" --fix >/dev/null ) || true
+  local renderer="$repo_root/.Workflow/agent-workflows/shared/adr-index.cli.ts"
+  local tsx="$repo_root/node_modules/.bin/tsx"
+  if [ -f "$renderer" ] && [ -x "$tsx" ]; then
+    ( cd "$repo_root" && "$tsx" "$renderer" --fix "$target_root" >/dev/null ) || true
   fi
 
   echo "$landed"

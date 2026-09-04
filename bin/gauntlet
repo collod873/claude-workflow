@@ -38,7 +38,7 @@ esac
 
 case "$venue" in
   turn | stop) slots="typecheck lint_one test_related" ;;
-  push) slots="typecheck lint test clones" ;;
+  push) slots="typecheck lint test clones adrs" ;;
 esac
 
 cmds="$(node -e '

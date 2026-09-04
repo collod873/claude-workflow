@@ -261,7 +261,7 @@ describe("backStampWalk", () => {
     expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(INDEX_RELATIVE_PATH);
   });
 
-  it("stages no index where there was none to regenerate, and still commits the stamps", () => {
+  it("stages no index on a target that carries none at all, which is the only case that stands down now the renderer needs nothing on $HOME", () => {
     const deps = fakeDeps(CORPUS, false);
 
     expect(backStampWalk(deps).action).toBe("committed");

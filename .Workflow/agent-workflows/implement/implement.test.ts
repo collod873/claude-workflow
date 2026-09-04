@@ -48,6 +48,7 @@ function arrange(github: ClaimHostOptions = {}, extra: Partial<ImplementDeps> = 
     readFile: () => "# CONTEXT\n",
     fileExists: () => false,
     writeFile: () => {},
+    regenerateIndex: () => false,
     issueNumber: ISSUE,
     failingTests: () => [],
     log: (line) => log.push(line),

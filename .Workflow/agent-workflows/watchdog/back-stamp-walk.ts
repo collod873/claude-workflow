@@ -1,14 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { ADR_DIR, INDEX_RELATIVE_PATH, regenerateAdrIndex } from "../shared/adr-index";
 import { execGit, type GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
 import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stamp";
 
-const ADR_DIR = "docs/adr";
-
-export const INDEX_RELATIVE_PATH = `${ADR_DIR}/INDEX.md`;
+export { INDEX_RELATIVE_PATH };
 
 export interface WalkDeps {
   repoRoot: string;
@@ -78,19 +76,6 @@ function commitMessage(writes: BackStampWrite[]): string {
 docs/adr/README.md said a superseded ADR gains a status line all along, and zero of 43 ever carried
 one (ADR-0044); a convention with no reader does not hold. This derives it from the Amends: trailer
 its successor already wrote, so nobody has to remember: ${names}.`;
-}
-
-function regenerateAdrIndex(repoRoot: string): boolean {
-  if (!existsSync(join(repoRoot, INDEX_RELATIVE_PATH))) return false;
-
-  const adrCheck = join(process.env.HOME ?? "", "bin/adr-check");
-  if (!existsSync(adrCheck)) return false;
-
-  try {
-    execFileSync(adrCheck, ["--fix"], { cwd: repoRoot, stdio: "ignore" });
-  } catch {
-  }
-  return true;
 }
 
 async function main(): Promise<void> {

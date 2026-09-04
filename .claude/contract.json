@@ -31,6 +31,10 @@
     "cmd": "npm run clones",
     "why": "package.json#scripts.clones (jscpd, configured under package.json#jscpd)"
   },
+  "adrs": {
+    "cmd": "npm run adrs",
+    "why": "package.json#scripts.adrs (tsx .Workflow/agent-workflows/shared/adr-index.cli.ts)"
+  },
   "all": {
     "cmd": "npm run check",
     "why": "package.json#scripts.check (bin/gauntlet push)"

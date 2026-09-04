@@ -25,6 +25,7 @@ function baseDeps(gh: GhExec, git: GitExec, overrides: Partial<RecoverDeps> = {}
     runId: 999,
     readFile: () => JSON.stringify({ files: [{ path: "a.ts", content: "x" }], summary: "did the thing" }),
     writeFile: () => {},
+    regenerateIndex: () => false,
     downloadArtifact: () => "/tmp/fake-artifact-dir",
     log: () => {},
     ...overrides,

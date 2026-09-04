@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { newAdrRepo, runNewAdr, twoAuthorRepo } from "./new-adr.fixture.ts";
 import { scratchDir } from "./scratch.fixture.ts";
@@ -120,52 +120,48 @@ describe("bin/new-adr, drafting and landing", () => {
 });
 
 describe("bin/new-adr --land, and the index it invalidates", () => {
-  function stubHome(): { home: string; calls: () => string[] } {
-    const home = scratchDir("new-adr-home");
-    const log = join(home, "adr-check.calls");
-    mkdirSync(join(home, "bin"));
-    writeFileSync(
-      join(home, "bin/adr-check"),
-      `#!/usr/bin/env bash\nprintf '%s %s\\n' "$PWD" "$*" >> ${JSON.stringify(log)}\n`,
-      { mode: 0o755 },
-    );
-    return { home, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
+  const MACHINE = resolve(import.meta.dirname, "../../..");
+
+  function targetWithAdrDir(prefix: string, index?: string): string {
+    const root = makeTempRepo(prefix).dir;
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    if (index !== undefined) writeFileSync(join(root, INDEX), index);
+    return root;
   }
 
-  it("regenerates the index it just invalidated, in the tree that owns it", () => {
-    const root = repoWithAdrDir("new-adr-index", "stale\n");
-    const { home, calls } = stubHome();
+  it("regenerates the index it just invalidated, in the tree that owns it and not the machine's", () => {
+    const target = targetWithAdrDir("new-adr-index", "stale\n");
+    const before = readFileSync(join(MACHINE, INDEX), "utf8");
 
-    draftAndLand(root, ["A ruling"], { HOME: home });
+    const landed = draftAndLand(MACHINE, ["A ruling"], { TARGET_WORKSPACE: target });
 
-    expect(calls()).toHaveLength(1);
-    const [cwd, ...argv] = calls()[0].split(" ");
-    expect(realpathSync(cwd)).toBe(realpathSync(root));
-    expect(argv).toEqual(["--fix"]);
+    expect(readFileSync(join(target, INDEX), "utf8")).toContain(basename(landed));
+    expect(readFileSync(join(MACHINE, INDEX), "utf8")).toBe(before);
   });
 
   it("does not create an index in a target that never adopted one, the way it does not create a corpus fixture", () => {
-    const root = repoWithAdrDir("new-adr-no-index");
-    const { home, calls } = stubHome();
+    const target = targetWithAdrDir("new-adr-no-index");
 
-    draftAndLand(root, ["A ruling"], { HOME: home });
+    draftAndLand(MACHINE, ["A ruling"], { TARGET_WORKSPACE: target });
 
-    expect(calls()).toEqual([]);
-    expect(existsSync(join(root, "docs/adr/INDEX.md"))).toBe(false);
+    expect(existsSync(join(target, INDEX))).toBe(false);
   });
 
-  it("lands rather than failing on a machine that carries no adr-check at all", () => {
-    const root = repoWithAdrDir("new-adr-no-checker", "stale\n");
+  it("needs nothing on $HOME, so a land on a hosted runner leaves the index as fresh as one here", () => {
+    const target = targetWithAdrDir("new-adr-bare-home", "stale\n");
 
-    expect(basename(draftAndLand(root, ["A ruling"], { HOME: scratchDir("new-adr-bare-home") }))).toBe("0001-a-ruling.md");
+    const landed = draftAndLand(MACHINE, ["A ruling"], {
+      TARGET_WORKSPACE: target,
+      HOME: scratchDir("new-adr-empty-home"),
+    });
+
+    expect(basename(landed)).toBe("0001-a-ruling.md");
+    expect(readFileSync(join(target, INDEX), "utf8")).toContain(basename(landed));
   });
 
-  const REAL_ADR_CHECK = join(process.env.HOME ?? "", "bin/adr-check");
-  it.skipIf(!existsSync(REAL_ADR_CHECK))("leaves the index naming the ADR the land just numbered", () => {
-    const root = repoWithAdrDir("new-adr-index-real", "");
+  it("lands rather than failing where the renderer is not reachable at all, as in a vendored checkout", () => {
+    const root = repoWithAdrDir("new-adr-no-renderer", "stale\n");
 
-    const landed = draftAndLand(root, ["A ruling"]);
-
-    expect(readFileSync(join(root, INDEX), "utf8")).toContain(basename(landed));
+    expect(basename(draftAndLand(root, ["A ruling"]))).toBe("0001-a-ruling.md");
   });
 });

@@ -140,7 +140,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) | constraint |
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) | constraint |
 | 0132 | [A caller checks out the machine with no credential at all, because the repository is public](0132-a-caller-checks-out-the-machine-with-no-credential-at-all-be.md) | constraint |
-| 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | constraint |
+| 0133 | [Enrolment is a repository topic, and an enrol lane writes stubs on every push to main](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) | superseded |
 | 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) | constraint |
 | 0135 | [A red run in a caller is routed by its failing path: the machine checkout files a ticket here, the caller's own tree keeps it](0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) | superseded |
 | 0136 | [A caller's red run is swept from here under ENROL_PAT, never filed home by the caller](0136-a-caller-s-red-run-is-swept-from-here-under-enrol-pat-never.md) | constraint |
@@ -165,4 +165,4 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0155 | [A canary that cannot tell which run its fire lit judges none of them](0155-a-canary-that-cannot-tell-which-run-its-fire-lit-judges-none.md) | constraint |
 | 0156 | [An enrolled target runs vitest under a config of its own](0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md) | constraint |
 
-156 ADRs · 72 constraint · 44 note · 40 superseded · 15,491 words total.
+156 ADRs · 71 constraint · 44 note · 41 superseded · 15,491 words total.

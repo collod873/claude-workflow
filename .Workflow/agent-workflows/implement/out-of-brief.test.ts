@@ -23,6 +23,7 @@ function outOfBriefDeps(gh: Parameters<typeof runImplement>[0]["gh"], git: Param
     readFile: () => "# CONTEXT\n",
     fileExists: () => false,
     writeFile: () => {},
+    regenerateIndex: () => false,
     issueNumber: 167,
     failingTests: () => [],
   };

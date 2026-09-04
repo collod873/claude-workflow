@@ -6,6 +6,7 @@
     "prepare": "husky",
     "test": "vitest run .Workflow .claude",
     "clones": "jscpd",
+    "adrs": "tsx .Workflow/agent-workflows/shared/adr-index.cli.ts",
     "gauntlet": "bin/gauntlet",
     "check": "bin/gauntlet push",
     "typecheck": "tsc --noEmit",

@@ -148,14 +148,31 @@ describe("releaseDeadClaim", () => {
 describe("landAnswer", () => {
   const ANSWER = { files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it.", outOfBriefReads: [] };
 
-  async function land(git: FakeGit = checkoutReporting(), options: { rebaseOntoTrunk?: boolean } = {}) {
+  async function land(
+    git: FakeGit = checkoutReporting(),
+    options: { rebaseOntoTrunk?: boolean } = {},
+    answer = ANSWER,
+    hasIndex = false,
+  ) {
     const host = githubHoldingClaims({ existingClaim: standing() });
     const written: string[] = [];
-    const deps = { gh: host.gh, git: git.git, writeFile: (path: string) => { written.push(path); } };
+    let regenerated = 0;
+    const deps = {
+      gh: host.gh,
+      git: git.git,
+      writeFile: (path: string) => { written.push(path); },
+      regenerateIndex: () => { regenerated += 1; return hasIndex; },
+    };
 
-    const result = await landAnswer(deps, BRANCH, ISSUE, TICKET, ANSWER, "Implement #167", silent, options);
-    return { result, host, written, gitCalls: git.calls };
+    const result = await landAnswer(deps, BRANCH, ISSUE, TICKET, answer, "Implement #167", silent, options);
+    return { result, host, written, gitCalls: git.calls, regenerated: () => regenerated };
   }
+
+  const ADR_ANSWER = {
+    files: [{ path: "docs/adr/0042-a-ruling.md", content: "---\nstatus: constraint\n---\n\n# A ruling\n" }],
+    summary: "Ruled it.",
+    outOfBriefReads: [],
+  };
 
   it("writes the files, commits and pushes the claimed branch, then opens the PR and dispatches Verify", async () => {
     const { result, host, written, gitCalls } = await land();
@@ -166,6 +183,29 @@ describe("landAnswer", () => {
     expect(gitCalls).toContainEqual(["push", "origin", `HEAD:${BRANCH}`]);
     expect(prCreatesIn(host.calls)).toHaveLength(1);
     expect(host.dispatches.map((dispatch) => dispatch.payload.pr)).toEqual([PR_URL]);
+  });
+
+  it("regenerates docs/adr/INDEX.md and stages it when the answer writes an ADR, so a recovered answer is not pushed with the index stale", async () => {
+    const git = checkoutReporting();
+    const { gitCalls, regenerated } = await land(git, {}, ADR_ANSWER, true);
+
+    expect(regenerated()).toBe(1);
+    const add = gitCalls.find((call) => call[0] === "add")!;
+    expect(add).toContain("docs/adr/INDEX.md");
+    expect(add).toContain("docs/adr/0042-a-ruling.md");
+  });
+
+  it("stages no index on a target that carries none, so an enrolled repository is never given one", async () => {
+    const { gitCalls, regenerated } = await land(checkoutReporting(), {}, ADR_ANSWER, false);
+
+    expect(regenerated()).toBe(1);
+    expect(gitCalls.find((call) => call[0] === "add")).not.toContain("docs/adr/INDEX.md");
+  });
+
+  it("does not reach for the index at all when the answer touches no ADR", async () => {
+    const { regenerated } = await land();
+
+    expect(regenerated()).toBe(0);
   });
 
   it("rebases onto trunk between the commit and the push only when the caller opts in", async () => {

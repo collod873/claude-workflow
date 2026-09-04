@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { regenerateAdrIndex } from "../shared/adr-index";
 import { suiteTestFiles } from "../shared/affected-tests";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
@@ -140,6 +141,7 @@ export interface ImplementDeps {
   readFile: (path: string) => string;
   fileExists: (path: string) => boolean;
   writeFile: (path: string, content: string) => void;
+  regenerateIndex: () => boolean;
   issueNumber: number;
   failingTests: () => FailingTestFile[];
   log?: (line: string) => void;
@@ -248,6 +250,7 @@ async function main(): Promise<void> {
       readFile: readInRepo,
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
+      regenerateIndex: () => regenerateAdrIndex(repoDir),
       issueNumber,
       failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
     });

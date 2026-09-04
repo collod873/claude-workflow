@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ADR_DIR, INDEX_RELATIVE_PATH } from "./adr-index";
 import { judgeFailsEdits } from "./fails-rule";
 import type { GhExec } from "./gh";
 import { branchCreationPath, comparePath, GIT_REFS_PATH } from "./gh-paths";
@@ -258,6 +259,7 @@ export interface LandDeps {
   gh: GhExec;
   git: GitExec;
   writeFile: (path: string, content: string) => void;
+  regenerateIndex: () => boolean;
 }
 
 export async function landAnswer(
@@ -283,6 +285,9 @@ export async function landAnswer(
   }
 
   const paths = answer.files.map((file) => file.path);
+  if (paths.some((path) => path.startsWith(`${ADR_DIR}/`)) && deps.regenerateIndex()) {
+    paths.push(INDEX_RELATIVE_PATH);
+  }
 
   const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]));
   if (!verdict.ok) {
