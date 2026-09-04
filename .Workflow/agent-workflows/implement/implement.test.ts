@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  checkoutReporting,
+  checkoutChanged,
   githubHoldingClaims,
   HEAD_SHA,
   minutesAgo,
@@ -14,98 +14,76 @@ import {
   type ClaimHostOptions,
 } from "../shared/claim-host.fixture";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
+import { gateRedNote } from "../shared/implementation-landing";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
+import type { GateVerdict } from "../shared/run-gauntlet";
 import { scratchDir } from "../shared/scratch.fixture";
-import { createFakeStage } from "../shared/stage.fake";
+import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   ANSWER_PATH_ENV,
-  assembleBrief,
   CLAIM_TIMEOUT_MINUTES,
   extractSeamsConsumed,
   findFailingTestFiles,
+  IMPLEMENTER_DENIED_TOOLS,
   moduleContextPath,
   runImplement,
   staleClaimTakeoverNote,
   VERIFY_DISPATCH_EVENT_TYPE,
-  type BriefInputs,
   type ImplementDeps,
 } from "./implement";
 
 const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
-const BUILDS = { files: [{ path: "a/b.ts", content: "export const x = 1;" }], summary: "Built the thing." };
+const BUILDS = { summary: "Built the thing.", outOfBriefReads: [] as string[] };
+const BUILT: Record<string, string> = { "a/b.ts": "export const x = 1;" };
 
-function arrange(github: ClaimHostOptions = {}, extra: Partial<ImplementDeps> = {}) {
+function gateSaying(...verdicts: GateVerdict[]): { runs: GateVerdict[]; runGate: () => GateVerdict } {
+  const runs: GateVerdict[] = [];
+  return {
+    runs,
+    runGate: () => {
+      const verdict = verdicts[runs.length] ?? verdicts[verdicts.length - 1] ?? { ok: true };
+      runs.push(verdict);
+      return verdict;
+    },
+  };
+}
+
+interface Arrangement {
+  github?: ClaimHostOptions;
+  deps?: Partial<ImplementDeps>;
+  built?: Record<string, string>;
+  deleted?: string[];
+}
+
+function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }: Arrangement = {}) {
   const host = githubHoldingClaims(github);
-  const checkout = checkoutReporting();
+  const checkout = checkoutChanged(Object.keys(built), deleted);
   const stage = createFakeStage(JSON.stringify(BUILDS));
+  const gate = gateSaying({ ok: true });
   const log: string[] = [];
   const deps: ImplementDeps = {
     gh: host.gh,
     exec: stage.exec,
     git: checkout.git,
-    readFile: () => "# CONTEXT\n",
-    fileExists: () => false,
+    readFile: (path) => built[path] ?? "# CONTEXT\n",
+    fileExists: (path) => path in built,
     writeFile: () => {},
+    removeFile: () => {},
     regenerateIndex: () => false,
+    runGate: gate.runGate,
+    sourceFiles: () => [],
+    adrFiles: () => [],
     issueNumber: ISSUE,
     failingTests: () => [],
     log: (line) => log.push(line),
     now: NOW,
     ...extra,
   };
-  return { deps, host, stage, log, gitCalls: checkout.calls };
+  return { deps, host, stage, log, gitCalls: checkout.calls, gateRuns: gate.runs };
 }
-
-describe("assembleBrief", () => {
-  it("contains only the ticket body, seam manifest lines, module CONTEXT.md, and acceptance test file(s), and nothing else", () => {
-    const inputs: BriefInputs = {
-      ticketBody: "## What to build\nDo the thing.",
-      seamManifestLines: ["Line one seam.", "Line two seam."],
-      moduleContext: "# Module\n\nSome vocabulary.",
-      failingTests: [{ path: "foo.test.ts", content: "describe('foo', () => {});" }],
-    };
-
-    const expected = [
-      "## Ticket",
-      inputs.ticketBody,
-      "## Seam manifest lines consumed",
-      "Line one seam.\nLine two seam.",
-      "## Module CONTEXT.md",
-      inputs.moduleContext,
-      "## Acceptance test(s) to turn on",
-      "### foo.test.ts\n\ndescribe('foo', () => {});",
-    ].join("\n\n");
-
-    expect(assembleBrief(inputs)).toBe(expected);
-  });
-
-  it("carries every acceptance test file, not only the first", () => {
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [
-        { path: "a.test.ts", content: "content A" },
-        { path: "b.test.ts", content: "content B" },
-      ],
-    });
-
-    expect(brief).toContain("content A");
-    expect(brief).toContain("content B");
-  });
-
-  it("renders a placeholder rather than fabricating a fifth ingredient when seams or tests are empty", () => {
-    const brief = assembleBrief({ ticketBody: "body", seamManifestLines: [], moduleContext: "ctx", failingTests: [] });
-
-    expect(brief).toBe(
-      ["## Ticket", "body", "## Seam manifest lines consumed", "(none)", "## Module CONTEXT.md", "ctx", "## Acceptance test(s) to turn on", "(none)"].join(
-        "\n\n",
-      ),
-    );
-  });
-});
 
 describe("what the brief is read from", () => {
   it("extractSeamsConsumed reads the lines render-body.ts writes under '## Seams consumed'", () => {
@@ -146,13 +124,13 @@ describe("what the brief is read from", () => {
 });
 
 describe("runImplement builds the ticket and hands the pull request to Verify", () => {
-  it("writes the answer, opens exactly one PR, then sends exactly one dispatch naming it, the files and the criteria", async () => {
+  it("reads the checkout as the answer, opens exactly one PR, then sends exactly one dispatch naming it, the files and the criteria", async () => {
     const ticket = {
       title: "Do the thing",
       body: ["## Acceptance criteria", "- [ ] The thing is done", "", "## Files claimed", "- a/b.ts", "", "## Seams consumed", "", "a seam"].join("\n"),
     };
     const written = new Map<string, string>();
-    const { deps, host } = arrange({ ticket }, { writeFile: (path, content) => written.set(path, content) });
+    const { deps, host } = arrange({ github: { ticket }, deps: { writeFile: (path, content) => written.set(path, content) } });
 
     const result = await runImplement(deps);
 
@@ -169,17 +147,33 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(host.calls.indexOf(prCreatesIn(host.calls)[0])).toBeLessThan(host.calls.indexOf(dispatch!));
   });
 
-  it("hands the implementer stage a brief carrying the ticket body and the acceptance test content", async () => {
+  it("hands the implementer stage a brief carrying the ticket body, the acceptance test content and the claimed file as it stands", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const { deps, stage } = arrange({ ticket }, { failingTests: () => [{ path: "foo.test.ts", content: "the test.fails( assertion" }] });
+    const { deps, stage } = arrange({
+      github: { ticket },
+      deps: { failingTests: () => [{ path: "foo.test.ts", content: "the test.fails( assertion" }] },
+    });
 
     await runImplement(deps);
 
     expect(stage.stdins[0]).toContain(ticket.body);
     expect(stage.stdins[0]).toContain("the test.fails( assertion");
+    expect(stage.stdins[0]).toContain("### a/b.ts\n\nexport const x = 1;");
   });
 
-  it("fetches trunk and rebases onto it between the commit and the push", async () => {
+  it("a file the implementer removed from the checkout lands as a deletion in the same commit", async () => {
+    const removed: string[] = [];
+    const { deps, gitCalls, host } = arrange({ deleted: ["a/old.ts"], deps: { removeFile: (path) => removed.push(path) } });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(removed).toEqual(["a/old.ts"]);
+    expect(gitCalls.find((call) => call[0] === "add")).toEqual(["add", "a/b.ts", "a/old.ts"]);
+    expect(host.dispatches[0].payload.changed_files).toBe("a/b.ts,a/old.ts");
+  });
+
+  it("fetches trunk and rebases onto it between the commit and the push, and pushes past the hook whose gate it already ran", async () => {
     const { deps, gitCalls } = arrange();
 
     await runImplement(deps);
@@ -191,6 +185,97 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(order.indexOf("push")).toBeGreaterThan(order.indexOf("rebase"));
     expect(gitCalls[order.indexOf("fetch")]).toEqual(["fetch", "origin", "main"]);
     expect(gitCalls[order.indexOf("rebase")]).toEqual(["rebase", "origin/main"]);
+    expect(gitCalls[order.indexOf("push")]).toEqual(["push", "--no-verify", "origin", `HEAD:${BRANCH}`]);
+  });
+});
+
+describe("the push gate runs in the wire, once, with one repair round", () => {
+  const RED = { ok: false, output: "--- typecheck ---\nerror TS2322: boom" } as const;
+
+  it("judges a green answer exactly once and never resumes the model", async () => {
+    const { deps, stage, gateRuns } = arrange();
+
+    await runImplement(deps);
+
+    expect(gateRuns).toEqual([{ ok: true }]);
+    expect(stage.calls).toHaveLength(1);
+  });
+
+  it("does not run the gate when the model left the checkout untouched", async () => {
+    const { deps, gateRuns } = arrange({ built: {} });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "nothing-to-build" });
+    expect(gateRuns).toEqual([]);
+  });
+
+  it("resumes the same session with the gate's output when it is red, then judges the repair once more", async () => {
+    const stage = createFakeStages([
+      { text: JSON.stringify({ ...BUILDS, outOfBriefReads: ["shape"] }), sessionId: "sess-1" },
+      JSON.stringify({ summary: "Built, then repaired the thing.", outOfBriefReads: ["shape", "close-gate"] }),
+    ]);
+    const gate = gateSaying(RED, { ok: true });
+    const kept: Record<string, string> = {};
+    const { deps, host } = arrange({
+      github: { answer: (args) => (args[0] === "issue" && args[1] === "list" ? "[]" : undefined) },
+      deps: {
+        exec: stage.exec,
+        runGate: gate.runGate,
+        env: { [ANSWER_PATH_ENV]: "/tmp/answer.json" },
+        writeFile: (path, content) => { kept[path] = content; },
+      },
+    });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(gate.runs).toEqual([RED, { ok: true }]);
+    expect(stage.calls[1]).toContain("--resume");
+    expect(stage.calls[1][stage.calls[1].indexOf("--resume") + 1]).toBe("sess-1");
+    expect(stage.stdins[1]).toContain(RED.output);
+    expect(prCreatesIn(host.calls)[0]).toContain("Built, then repaired the thing.\n\nCloses #167");
+    expect(JSON.parse(kept["/tmp/answer.json"]).outOfBriefReads).toEqual(["shape", "shape", "close-gate"]);
+    expect(ticketCommentsIn(host.calls)).toEqual([]);
+    expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
+  });
+
+  it("pushes anyway after a red repair round, and hands the owner the gate's output on the ticket", async () => {
+    const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS)]);
+    const gate = gateSaying(RED, RED);
+    const { deps, host, gitCalls } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(gate.runs).toEqual([RED, RED]);
+    expect(gitCalls.some((call) => call[0] === "push")).toBe(true);
+    expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
+    expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
+  });
+
+  it("skips the repair round when the answer came back without a session to resume", async () => {
+    const gate = gateSaying(RED);
+    const { deps, host, stage } = arrange({ deps: { runGate: gate.runGate } });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(stage.calls).toHaveLength(1);
+    expect(gate.runs).toEqual([RED]);
+    expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
+  });
+
+  it("denies the implementer the tools that would move the checkout or spend outside it", async () => {
+    const { deps, stage } = arrange();
+
+    await runImplement(deps);
+
+    const argv = stage.calls[0];
+    expect(argv[argv.indexOf("--disallowedTools") + 1]).toBe(IMPLEMENTER_DENIED_TOOLS.join(","));
+    expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(git stash:*)");
+    expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(gh:*)");
+    expect(IMPLEMENTER_DENIED_TOOLS).not.toContain("Bash(git:*)");
   });
 });
 
@@ -205,7 +290,7 @@ describe("runImplement claims its branch before it spends anything", () => {
   });
 
   it("refuses a closed ticket before the model: no stage call, claim released, said out loud", async () => {
-    const { deps, host, stage } = arrange({ ticket: { title: "already merged", body: "", state: "CLOSED" } });
+    const { deps, host, stage } = arrange({ github: { ticket: { title: "already merged", body: "", state: "CLOSED" } } });
 
     const result = await runImplement(deps);
 
@@ -217,10 +302,10 @@ describe("runImplement claims its branch before it spends anything", () => {
 
   it("exits already-claimed without the model, the PR, the dispatch or the acceptance tests", async () => {
     let resolved = 0;
-    const { deps, host, stage, log } = arrange(
-      { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } },
-      { failingTests: () => { resolved += 1; return []; } },
-    );
+    const { deps, host, stage, log } = arrange({
+      github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } },
+      deps: { failingTests: () => { resolved += 1; return []; } },
+    });
 
     const result = await runImplement(deps);
 
@@ -233,7 +318,7 @@ describe("runImplement claims its branch before it spends anything", () => {
   });
 
   it("asks GitHub only whether the refused claim is still held, and changes nothing", async () => {
-    const { deps, host } = arrange({ existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } });
+    const { deps, host } = arrange({ github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } } });
 
     await runImplement(deps);
 
@@ -245,7 +330,7 @@ describe("runImplement claims its branch before it spends anything", () => {
 
 describe("a claim does not outlive the run that made it", () => {
   it("releases the claim when the run fails before opening a pull request", async () => {
-    const { deps, host } = arrange({ prCreate: new Error("GraphQL: GitHub Actions is not permitted to create pull requests") });
+    const { deps, host } = arrange({ github: { prCreate: new Error("GraphQL: GitHub Actions is not permitted to create pull requests") } });
 
     await expect(runImplement(deps)).rejects.toThrow(/not permitted to create pull requests/);
 
@@ -255,10 +340,12 @@ describe("a claim does not outlive the run that made it", () => {
 
   it("leaves the claim alone when the failure came after a pull request was already open", async () => {
     const { deps, host } = arrange({
-      existingClaim: { branch: BRANCH, pullRequests: 1 },
-      answer: (args) => {
-        if (args[1] === "repos/{owner}/{repo}/dispatches") throw new Error("HTTP 503");
-        return undefined;
+      github: {
+        existingClaim: { branch: BRANCH, pullRequests: 1 },
+        answer: (args) => {
+          if (args[1] === "repos/{owner}/{repo}/dispatches") throw new Error("HTTP 503");
+          return undefined;
+        },
       },
     });
     host.refs.delete(BRANCH);
@@ -270,7 +357,7 @@ describe("a claim does not outlive the run that made it", () => {
   });
 
   it("takes over a stale claim, builds the ticket, and says so on the ticket", async () => {
-    const { deps, host, stage } = arrange({ existingClaim: { branch: BRANCH, createdAt: minutesAgo(CLAIM_TIMEOUT_MINUTES + 1) } });
+    const { deps, host, stage } = arrange({ github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(CLAIM_TIMEOUT_MINUTES + 1) } } });
 
     const result = await runImplement(deps);
 
@@ -283,22 +370,29 @@ describe("a claim does not outlive the run that made it", () => {
 describe("the implementer's answer, kept", () => {
   const RECEIPT = "/tmp/answer.json";
 
-  it("writes the whole answer where the workflow can upload it, even on the run that builds nothing", async () => {
+  async function keptAnswer(built: Record<string, string>): Promise<unknown> {
     const written: Record<string, string> = {};
-    const { deps } = arrange({}, {
-      git: checkoutReporting(() => "").git,
-      env: { [ANSWER_PATH_ENV]: RECEIPT },
-      writeFile: (path, content) => { written[path] = content; },
+    const { deps } = arrange({
+      built,
+      deps: { env: { [ANSWER_PATH_ENV]: RECEIPT }, writeFile: (path, content) => { written[path] = content; } },
     });
 
     await runImplement(deps);
 
-    expect(JSON.parse(written[RECEIPT])).toMatchObject(BUILDS);
+    return JSON.parse(written[RECEIPT]);
+  }
+
+  it("writes the derived answer where the workflow can upload it, even on the run that builds nothing", async () => {
+    expect(await keptAnswer({})).toEqual({ files: [], deleted: [], ...BUILDS });
+  });
+
+  it("carries the checkout's content, so a replay can land it without the model", async () => {
+    expect(await keptAnswer(BUILT)).toEqual({ files: [{ path: "a/b.ts", content: "export const x = 1;" }], deleted: [], ...BUILDS });
   });
 
   it("writes nothing extra on a workstation run, which sets no path", async () => {
     const written: string[] = [];
-    const { deps } = arrange({}, { env: {}, writeFile: (path) => written.push(path) });
+    const { deps } = arrange({ deps: { env: {}, writeFile: (path) => written.push(path) } });
 
     await runImplement(deps);
 
@@ -306,9 +400,11 @@ describe("the implementer's answer, kept", () => {
   });
 
   it("still builds the ticket when the receipt cannot be written", async () => {
-    const { deps } = arrange({}, {
-      env: { [ANSWER_PATH_ENV]: RECEIPT },
-      writeFile: (path) => { if (path === RECEIPT) throw new Error("read-only filesystem"); },
+    const { deps } = arrange({
+      deps: {
+        env: { [ANSWER_PATH_ENV]: RECEIPT },
+        writeFile: (path) => { if (path === RECEIPT) throw new Error("read-only filesystem"); },
+      },
     });
 
     expect(await runImplement(deps)).toEqual({ outcome: "opened", pr: PR_URL });

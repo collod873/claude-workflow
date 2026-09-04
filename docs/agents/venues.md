@@ -34,7 +34,10 @@ next thing downstream is `main`. The hook is one line: `npm run check`, the `all
 remembering a setup step; that is the whole reason a venue here is worth having, since it makes an
 agent's pushes meet the gate the owner's do. `--no-verify` still skips it, and that gap is accepted
 rather than open: branch protection would close it and the purchase is declined
-([ADR-0071](../adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)).
+([ADR-0071](../adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)). Lane 05
+is the one caller that uses it on purpose: its wire has already run the same gate on the same tree
+and decided to push red work anyway rather than lose it
+([ADR-0157](../adr/0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md)).
 
 The gate is a constant: `.claude/gate-size.test.ts` sums the line count of the files above and fails
 when it grows past the total recorded there (#360).

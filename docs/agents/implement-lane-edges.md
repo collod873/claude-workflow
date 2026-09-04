@@ -85,10 +85,10 @@ the owner might close #421 by hand between the dispatch firing and the runner st
 
 ## Node 03 — assemble the brief · [wire]
 
-`implement.ts` `buildAndOpen` → `assembleBrief`
+`implement.ts` `buildAndOpen` → `gatherBriefContext` → `assembleBrief` (both in `implement/brief.ts`)
 
-Four reads, joined into one document. This is the whole of what the model at node 04 is allowed to
-know.
+Seven reads, joined into one document. This is what the model at node 04 starts from; it can still
+read anything else in the checkout, and says so in `outOfBriefReads` when it does.
 
 | | |
 |---|---|
@@ -96,6 +96,14 @@ know.
 | **seam manifest** | `extractSeamsConsumed()` — the ticket's `## Seams consumed` lines |
 | **module context** | `moduleContextPath()` walks up from the first `## Files claimed` path looking for a `CONTEXT.md`, falling back to the root one |
 | **failing tests** | `findFailingTestFiles()` — every suite test file whose body matches `` /^\s*(?:test|it)\.fails\([^\n]*#421\b/m `` gets inlined whole |
+| **claimed, as they stand** | every `## Files claimed` path, inlined whole; one that does not exist yet says so |
+| **cited by the ticket** | every `ADR-NNNN` the body mentions, and every path it names on a line or in backticks that exists, inlined |
+| **nearby, by path** | up to 40 source files that mention a claimed file's basename, tests first — paths only, no content |
+
+Inlining stops at 150 KB for the brief and 40 KB for any one file (`INLINE_BUDGET_BYTES`,
+`INLINE_FILE_CAP_BYTES`); a file over either is listed under *Nearby* as `(not inlined: over
+budget)` rather than dropped silently. Wire, not model — the model at node 04 used to spend its
+first minutes rediscovering all of this with Grep.
 
 ### edge — `BriefInputs` · the assembled Markdown
 
@@ -114,6 +122,19 @@ canary — an enrolled repository that proves a machine change on real GitHub be
 ### scripts/canary-summary.test.ts
 
 test.fails("#421: writes a job summary that quotes the run's own conclusion", () => { ... });
+
+## Files claimed, as they stand
+### scripts/canary-summary.ts
+
+(does not exist yet)
+
+## Cited by the ticket
+### scripts/nightly-run.ts
+
+export function summariseRun(conclusion: string): string { ... }
+
+## Nearby, by path
+- scripts/nightly-run.test.ts
 ```
 
 `(none)` fills any section with nothing to say — the brief never omits a heading.
@@ -122,32 +143,60 @@ test.fails("#421: writes a job summary that quotes the run's own conclusion", ()
 
 ## Node 04 — the implementer · [model] [stop]
 
-`implement/implementer/prompt.md` · `implement.ts:104`
+`implement/implementer/prompt.md` · `implement.ts` `runImplementer`
 
 | | |
 |---|---|
 | **Model** | `claude-sonnet-5` |
-| **Tools** | unrestricted — `runImplementer` passes no `allowedTools`/`disallowedTools` at all, the only stage in this lane with no fence. It has to be: the prompt has it run `npx vitest run <path>` on its own acceptance tests and `npm run check` before it ever answers, so Bash is load-bearing here, not incidental |
+| **Tools** | everything but a deny list (`IMPLEMENTER_DENIED_TOOLS`): the `git` verbs that move the checkout (`stash`, `checkout`, `switch`, `restore`, `reset`, `commit`, `push`, `rebase`, `clean`, `mv`), all of `gh`, the web, subagents, and `ScheduleWakeup`. Read-only `git` (`status`, `diff`, `log`, `blame`) stays open. Bash is load-bearing: the prompt has it iterate with `bin/gauntlet stop` before it answers. `git mv` is denied because a staged rename hides the old path's deletion from node 07's replay |
 | **Non-negotiable 1** | *"The acceptance test(s) in the brief are the spec."* Turn each `test.fails(` on by deleting `.fails` from exactly that line, nothing else about it — the push after the answer diffs for any other edit to that line and refuses the whole run if it finds one |
-| **Non-negotiable 2** | *"You write files; `git` and `gh` belong to the process that called you."* Every write to version control happens after the answer, never inside it — the model's only channel out is its structured answer |
-| **Also asked** | Repair whatever its own change reddened, outside its claimed files, and name every such file in the summary — claimed files bound what it *decides*, never what it *repairs* ([ADR-0110](../adr/0110-files-claimed-bound-what-a-run-decides-not-what-it-repairs.md)) |
-| **Checkpointed** | Same machinery as lane 02: keyed on `sha256(HEAD + the rendered prompt)`, written to `.Workflow/agent-workflows/checkpoints/implementer.json`. Re-running against the same commit with the same brief replays without spending Sonnet again |
+| **Non-negotiable 2** | *"The working tree is your answer."* The model edits and deletes files in place and returns only its summary; what changed is read off `git status` afterwards, as the fixer's is ([ADR-0121](../adr/0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md), [ADR-0157](../adr/0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md)). Nothing is retyped into JSON, and a deletion is finally expressible |
+| **Also asked** | Repair whatever its own change reddened, outside its claimed files, and name every such file in the summary — claimed files bound what it *decides*, never what it *repairs* ([ADR-0110](../adr/0110-files-claimed-bound-what-a-run-decides-not-what-it-repairs.md)). Do **not** run `npm run check`: node 04b runs it once, and a verdict the model reaches on its own never counted |
+| **Environment** | `WORKFLOW_STAGE` is scrubbed from every test process the model spawns (`STAGE_SESSION_VARS` in `shared/child-env.ts`), so the target's own suite runs as it would on the workstation rather than standing down as if it were inside a lane ([ADR-0074](../adr/0074-the-in-session-gauntlet-stands-down-inside-a-stage-whose-las.md)) |
+| **Checkpointed** | Same machinery as lane 02: keyed on `sha256(HEAD + the rendered prompt)`, written to `.Workflow/agent-workflows/checkpoints/implementer.json`. Re-running against the same commit with the same brief replays without spending Sonnet again — and, because a replay has no session, without a repair round |
 
-### edge — `ImplementerAnswer` · schema-validated JSON
+### edge — `ImplementerReply` · schema-validated JSON
+
+```json
+{"summary": "Wrote the run's own step summary from its conclusion via $GITHUB_STEP_SUMMARY. Turned
+   on the ticket's acceptance test. Repaired scripts/nightly-run.test.ts, outside Files claimed:
+   its fixture still asserted the old summary-less shape this change replaced.",
+ "outOfBriefReads": ["scripts/nightly-run.ts"]}
+```
+
+A response that fails `ImplementerReply.parse()` ends the run here; the raw text is saved to
+`<handoff dir>/implementer-raw-response.txt` rather than lost. The stream's `session_id` rides
+alongside, for node 04b.
+
+---
+
+## Node 04b — the push gate, once, and one repair round · [wire] [model]
+
+`implement.ts` `gateOnChanges` → `runRepair` · `implement/implementer/repair.md`
+
+| | |
+|---|---|
+| **Skipped when** | `git status --porcelain -uall` is empty — the model changed nothing, so there is nothing to judge and ~95 s of runner are saved |
+| **The gate** | `gateVerdict(repoDir)`: `bin/gauntlet push` on the target checkout, which is `npm run check`, the same command `.husky/pre-push` runs. Green → straight to node 05 |
+| **Red** | The same session resumes (`claude --resume <session_id>`) with `repair.md` on stdin: the gate's output, last 12,000 characters (`GATE_OUTPUT_TAIL_CHARS`), under the same tool fence and the same schema. One round, never two. The gate runs once more on what it leaves |
+| **Still red** | The run continues anyway: node 06 pushes the branch (`--no-verify`, since the wire itself just ran the hook's gate), the ticket gets `needs-human`, and `gateRedNote()` puts the gate's output on the ticket. Verify and the fixer already exist for a red pull request; a paid run's work is never discarded |
+| **Why the same session** | A fresh repair agent would re-pay orientation and would not know why the first one made the choices it did. The rejected alternative in ADR-0157 |
+
+### edge — `ImplementerAnswer` · derived, kept for node 07
 
 ```json
 {"files": [
   {"path": "scripts/canary-summary.ts", "content": "..."},
   {"path": "scripts/canary-summary.test.ts", "content": "..."}
 ],
- "summary": "Wrote the run's own step summary from its conclusion via $GITHUB_STEP_SUMMARY. Turned
-   on the ticket's acceptance test. Repaired scripts/nightly-run.test.ts, outside Files claimed:
-   its fixture still asserted the old summary-less shape this change replaced.",
- "outOfBriefReads": ["scripts/nightly-run.ts"]}
+ "deleted": ["scripts/canary-summary-stub.ts"],
+ "summary": "...", "outOfBriefReads": ["scripts/nightly-run.ts"]}
 ```
 
-A response that fails `ImplementerAnswer.parse()` ends the run here; the raw text is saved to
-`<handoff dir>/implementer-raw-response.txt` rather than lost.
+`deriveAnswer()` reads every changed path off `git status` and inlines its content (or lists it
+under `deleted`), so the artifact the workflow uploads (`IMPLEMENT_ANSWER_PATH`) is still complete
+enough for node 07 to replay without the model. Out-of-brief reads from both rounds are
+concatenated — a module read twice counts twice on the tracker, as before.
 
 ---
 
@@ -177,12 +226,13 @@ The busiest node in the lane, and the one that turns an answer into a pull reque
 
 | Step | What happens |
 |---|---|
-| 1. Write | Every file in `answer.files`, in full, to the target worktree |
-| 2. Nothing changed? | `worktreeChanges()` — `git status --porcelain` on exactly the claimed paths. Empty → release the claim, comment `nothingToBuildNote()`, outcome `nothing-to-build`. An implementer that returns the ticket's files exactly as trunk already has them is a real outcome, not a bug |
+| 1. Write and remove | Every file in `answer.files`, in full, to the target worktree; every path in `answer.deleted` removed (a path already gone is not an error). On the live run this is a no-op re-write of what the model left; on node 07's replay it is the whole point |
+| 2. Nothing changed? | `worktreeChanges()` — `git status --porcelain` on exactly the answered paths. Empty → release the claim, comment `nothingToBuildNote()`, outcome `nothing-to-build`. An implementer that leaves the checkout as trunk has it is a real outcome, not a bug |
 | 3. Regenerate the ADR index | Only if a written path starts with `docs/adr/` — the regenerated index is appended as an extra path to commit |
-| 4. The fails rule | `judgeFailsEdits(git diff)` refuses if a removed `test.fails(`/`it.fails(` line's paired addition is anything other than that same line with `.fails` dropped. Refused → release the claim, `escalateToOwner()` (adds `needs-human`, assigns `$GITHUB_REPOSITORY_OWNER`), comment `failsRuleNote()`, outcome `fails-rule-refused` — the only outcome that exits the process non-zero |
-| 5. Rebase onto trunk | `git fetch origin main && git rebase origin/main`, always, for this lane. Conflict → abort the rebase, release the claim, escalate, comment `rebaseConflictNote()`, outcome `rebase-conflict` — resolved by a human, never guessed at |
-| 6. Commit, push, open | One commit, pushed to the claimed branch, then `gh pr create` and `dispatchVerify()` — the exact door lane 06 answers, [documented there](verify-lane-edges.md#node-00-the-two-doors-stop) |
+| 4. The immutable set | `touchesImmutableSet(paths)` refuses a `.github/` or `vitest.config.ts` change the model made on its own, the same rule lane 06's Immutability job would enforce a pull request later. Refused → release the claim, escalate, comment `immutableSetNote()`, outcome `immutable-refused`. Exits zero: the claim is released and the owner told, and a non-zero exit would only wake node 07 to say it again |
+| 5. The fails rule | `judgeFailsEdits(git diff)` refuses if a removed `test.fails(`/`it.fails(` line's paired addition is anything other than that same line with `.fails` dropped. Refused → release the claim, `escalateToOwner()` (adds `needs-human`, assigns `$GITHUB_REPOSITORY_OWNER`), comment `failsRuleNote()`, outcome `fails-rule-refused` — the only outcome that exits the process non-zero |
+| 6. Rebase onto trunk | `git fetch origin main && git rebase origin/main`, always, for this lane. Conflict → abort the rebase, release the claim, escalate, comment `rebaseConflictNote()`, outcome `rebase-conflict` — resolved by a human, never guessed at |
+| 7. Commit, push, open | One commit, pushed to the claimed branch with `--no-verify` (node 04b already ran the hook's gate on this tree), then `gh pr create` and `dispatchVerify()` — the exact door lane 06 answers, [documented there](verify-lane-edges.md#node-00-the-two-doors-stop). If node 04b's gate was still red, `needs-human` and `gateRedNote()` land on the ticket right after |
 
 ### edge — the commit message
 
@@ -244,10 +294,11 @@ Two independent ways this run's death gets noticed, not one.
 | setup (node 00) | — | checkout only | — | running-label on/off |
 | claim (node 01) | — | no | creates a ref | — |
 | ticket-closed check (node 02) | — | no | — | no |
-| assemble brief (node 03) | — | yes — files, `CONTEXT.md`, tests | — | no |
-| implementer (node 04) | sonnet-5 | yes, unrestricted (Read/Grep/Glob/Edit/Write/Bash) | writes only inside its own answer, never `git` | no |
+| assemble brief (node 03) | — | yes — claimed and cited files, `CONTEXT.md`, tests, the ADRs the ticket names | — | no |
+| implementer (node 04) | sonnet-5 | yes (Read/Grep/Glob/Edit/Write/Bash; read-only `git`) | edits the worktree in place; the `git` verbs that would move it are denied, so is `gh` | no |
+| push gate + repair (node 04b) | sonnet-5, resumed, at most once | runs `npm run check` on the worktree | as node 04 | no |
 | out-of-brief (node 05) | — | no | — | comments on the *tracker* issue, never the ticket |
-| land the answer (node 06) | — | writes files | commits, rebases, pushes, opens the PR | comments; `needs-human` on refusal |
+| land the answer (node 06) | — | reads the worktree; re-writes and removes the answered paths | commits, rebases, pushes (`--no-verify`), opens the PR | comments; `needs-human` on refusal or a red gate |
 | recover (node 07) | — | reads the dead run's artifact | may commit/push, replaying `landAnswer` | may re-dispatch `ticket-ready` |
 
 ---
@@ -263,10 +314,12 @@ Ordered by how much has been spent when it fires.
 | one runner, no checkout | preflight | `CLAUDE_CODE_OAUTH_TOKEN` is empty |
 | one runner, before the model | node 01 | The branch's claim is live elsewhere |
 | one runner, before the model | node 02 | The ticket closed between dispatch and run |
-| 1 Sonnet call | node 04 | `ImplementerAnswer` fails its schema — the raw response is kept, not lost |
+| 1 Sonnet call | node 04 | `ImplementerReply` fails its schema — the raw response is kept, not lost |
 | after the model, before any commit | node 06 step 2 | Nothing changed |
-| after the model, before any commit | node 06 step 4 | The fails rule — a `test.fails(` test was edited beyond turning it on |
-| after the model, before push | node 06 step 5 | Rebase conflict onto trunk |
+| after the model, before any commit | node 06 step 4 | The immutable set — the model changed `.github/` or `vitest.config.ts` |
+| after the model, before any commit | node 06 step 5 | The fails rule — a `test.fails(` test was edited beyond turning it on |
+| after the model, before push | node 06 step 6 | Rebase conflict onto trunk |
+| never | node 04b | A red gate does **not** stop the run: one repair round, then push and `needs-human` |
 | 45 min | `implement.yml` `timeout-minutes: 45` | The job is cancelled outright — see *Two things worth knowing* |
 
 ---

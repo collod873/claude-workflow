@@ -1,13 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { regenerateAdrIndex } from "../shared/adr-index";
 import { suiteTestFiles } from "../shared/affected-tests";
+import { changedPaths } from "../shared/changed-paths";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
+import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
-import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
+import { gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { execClaudeIn, runStage, runStageSession, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractFilesClaimed,
@@ -19,27 +22,54 @@ import {
 } from "../shared/ticket-shape";
 import {
   claimImplementationBranch,
-  ImplementerAnswer,
+  deriveAnswer,
+  gateRedNote,
+  ImplementerReply,
   landAnswer,
   releaseFailedClaim,
   sayOnTicket,
   staleClaimTakeoverNote,
+  type ImplementerAnswer,
   type ImplementOutcome,
 } from "../shared/implementation-landing";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
+import { assembleBrief, gatherBriefContext, listAdrFiles, walkSourceFiles, type FailingTestFile } from "./brief";
 import { recordOutOfBrief } from "./out-of-brief";
 
 export {
   CLAIM_TIMEOUT_MINUTES,
-  ImplementerAnswer,
   staleClaimTakeoverNote,
   worktreeChanges,
   type ImplementOutcome,
 } from "../shared/implementation-landing";
+export { type FailingTestFile } from "./brief";
 
 export const IMPLEMENTER_MODEL = "claude-sonnet-5";
 
 export const IMPLEMENTER_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/prompt.md";
+
+export const REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/repair.md";
+
+export const IMPLEMENTER_DENIED_TOOLS = [
+  "Bash(git stash:*)",
+  "Bash(git checkout:*)",
+  "Bash(git switch:*)",
+  "Bash(git restore:*)",
+  "Bash(git reset:*)",
+  "Bash(git commit:*)",
+  "Bash(git push:*)",
+  "Bash(git rebase:*)",
+  "Bash(git clean:*)",
+  "Bash(git mv:*)",
+  "Bash(gh:*)",
+  "WebFetch",
+  "WebSearch",
+  "Agent",
+  "Task",
+  "ScheduleWakeup",
+];
+
+export const GATE_OUTPUT_TAIL_CHARS = 12_000;
 
 export const IMPLEMENT_DISPATCH_EVENT_TYPE = TICKET_READY_DISPATCH_ACTION;
 
@@ -68,44 +98,28 @@ export function moduleContextPath(filesClaimed: string[], fileExists: (path: str
   return ROOT_CONTEXT;
 }
 
-export interface FailingTestFile {
-  path: string;
-  content: string;
-}
+export const IMPLEMENTER_OUTPUT = structuredOutput(ImplementerReply);
 
-export interface BriefInputs {
-  ticketBody: string;
-  seamManifestLines: string[];
-  moduleContext: string;
-  failingTests: FailingTestFile[];
-}
-
-export function assembleBrief(inputs: BriefInputs): string {
-  const seams = inputs.seamManifestLines.length > 0 ? inputs.seamManifestLines.join("\n") : "(none)";
-  const tests =
-    inputs.failingTests.length > 0
-      ? inputs.failingTests.map((file) => `### ${file.path}\n\n${file.content}`).join("\n\n")
-      : "(none)";
-
-  return [
-    "## Ticket",
-    inputs.ticketBody,
-    "## Seam manifest lines consumed",
-    seams,
-    "## Module CONTEXT.md",
-    inputs.moduleContext,
-    "## Acceptance test(s) to turn on",
-    tests,
-  ].join("\n\n");
-}
-
-export const IMPLEMENTER_OUTPUT = structuredOutput(ImplementerAnswer);
-
-export function runImplementer(exec: StageExec, brief: string): Promise<ImplementerAnswer> {
-  return runStage(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
+export function runImplementer(exec: StageExec, brief: string): Promise<{ value: ImplementerReply; sessionId?: string }> {
+  return runStageSession(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
+    disallowedTools: IMPLEMENTER_DENIED_TOOLS,
     stage: "implementer",
+  });
+}
+
+export function gateOutputTail(output: string): string {
+  return output.length > GATE_OUTPUT_TAIL_CHARS ? output.slice(-GATE_OUTPUT_TAIL_CHARS) : output;
+}
+
+export function runRepair(exec: StageExec, sessionId: string, gateOutput: string): Promise<ImplementerReply> {
+  return runStage(REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
+    model: IMPLEMENTER_MODEL,
+    promptViaStdin: true,
+    disallowedTools: IMPLEMENTER_DENIED_TOOLS,
+    resume: sessionId,
+    stage: "implementer-repair",
   });
 }
 
@@ -141,7 +155,11 @@ export interface ImplementDeps {
   readFile: (path: string) => string;
   fileExists: (path: string) => boolean;
   writeFile: (path: string, content: string) => void;
+  removeFile: (path: string) => void;
   regenerateIndex: () => boolean;
+  runGate: () => GateVerdict;
+  sourceFiles: () => string[];
+  adrFiles: () => string[];
   issueNumber: number;
   failingTests: () => FailingTestFile[];
   log?: (line: string) => void;
@@ -168,6 +186,16 @@ export async function runImplement(deps: ImplementDeps): Promise<ImplementOutcom
   }
 }
 
+function gateOnChanges(deps: ImplementDeps, log: (line: string) => void): GateVerdict {
+  if (changedPaths(deps.git).length === 0) {
+    log("the checkout is unchanged; the push gate has nothing to judge");
+    return { ok: true };
+  }
+  const verdict = deps.runGate();
+  log(verdict.ok ? "the push gate is green" : "the push gate is red");
+  return verdict;
+}
+
 async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {
   const stateRead = JSON.parse(deps.gh(["issue", "view", String(deps.issueNumber), "--json", "state"])) as {
     state?: string;
@@ -183,22 +211,46 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   const filesClaimed = extractFilesClaimed(ticket.body);
   const contextPath = moduleContextPath(filesClaimed, deps.fileExists);
   const moduleContext = deps.readFile(contextPath);
+  const failingTests = deps.failingTests();
 
   const brief = assembleBrief({
     ticketBody: ticket.body,
     seamManifestLines,
     moduleContext,
-    failingTests: deps.failingTests(),
+    failingTests,
+    ...gatherBriefContext({
+      ticketBody: ticket.body,
+      filesClaimed,
+      readFile: deps.readFile,
+      fileExists: deps.fileExists,
+      sourceFiles: deps.sourceFiles,
+      adrFiles: deps.adrFiles,
+      failingTestPaths: failingTests.map((file) => file.path),
+    }),
   });
 
-  const answer = await runImplementer(deps.exec, brief);
+  const first = await runImplementer(deps.exec, brief);
+  let reply: ImplementerReply = first.value;
+  let gate = gateOnChanges(deps, log);
+
+  if (!gate.ok && first.sessionId) {
+    log(`resuming session ${first.sessionId} for the one repair round`);
+    const repaired = await runRepair(deps.exec, first.sessionId, gate.output);
+    reply = {
+      summary: repaired.summary,
+      outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.outOfBriefReads],
+    };
+    gate = gateOnChanges(deps, log);
+  }
+
+  const answer = deriveAnswer(deps.git, deps.readFile, deps.fileExists, reply);
   keepAnswer(deps.writeFile, deps.env ?? process.env, answer, log);
 
   for (const module of answer.outOfBriefReads) {
     recordOutOfBrief(deps.gh, module);
   }
 
-  return landAnswer(
+  const outcome = await landAnswer(
     deps,
     branch,
     deps.issueNumber,
@@ -206,8 +258,14 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     answer,
     `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
     log,
-    { rebaseOntoTrunk: true },
+    { rebaseOntoTrunk: true, skipPushHook: true },
   );
+
+  if (!gate.ok && outcome.outcome === "opened") {
+    escalateToOwner(deps.gh, deps.issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+    sayOnTicket(deps.gh, deps.issueNumber, gateRedNote(gateOutputTail(gate.output)), log);
+  }
+  return outcome;
 }
 
 function sliceMarker(issueNumber: number): RegExp {
@@ -250,7 +308,11 @@ async function main(): Promise<void> {
       readFile: readInRepo,
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),
+      removeFile: (path) => rmSync(inRepo(path), { force: true }),
       regenerateIndex: () => regenerateAdrIndex(repoDir),
+      runGate: () => gateVerdict(repoDir),
+      sourceFiles: () => walkSourceFiles(repoDir),
+      adrFiles: () => listAdrFiles(repoDir),
       issueNumber,
       failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
     });
@@ -268,6 +330,10 @@ async function main(): Promise<void> {
     }
     if (result.outcome === "rebase-conflict") {
       console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")}; escalated.`);
+      return;
+    }
+    if (result.outcome === "immutable-refused") {
+      console.log(`#${issueNumber} touched the immutable set: ${result.paths.join(", ")}; escalated.`);
       return;
     }
     if (result.outcome === "fails-rule-refused") {

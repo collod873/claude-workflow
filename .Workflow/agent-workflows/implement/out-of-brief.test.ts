@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { checkoutReporting } from "../shared/claim-host.fixture";
+import { checkoutChanged } from "../shared/claim-host.fixture";
 import { createFakeStage } from "../shared/stage.fake";
-import { runImplement } from "./implement";
+import { runImplement, type ImplementDeps } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
 import { trackerWith } from "./out-of-brief-tracker.fixture";
 
@@ -13,17 +13,23 @@ function currentCount(
   return values.length > 0 ? Math.max(...values) : undefined;
 }
 
-const fakeGit = () => checkoutReporting().git;
+const BUILT_PATH = "a/b.ts";
 
-function outOfBriefDeps(gh: Parameters<typeof runImplement>[0]["gh"], git: Parameters<typeof runImplement>[0]["git"], exec: Parameters<typeof runImplement>[0]["exec"]) {
+const fakeGit = () => checkoutChanged([BUILT_PATH]).git;
+
+function outOfBriefDeps(gh: ImplementDeps["gh"], git: ImplementDeps["git"], exec: ImplementDeps["exec"]): ImplementDeps {
   return {
     gh,
     exec,
     git,
-    readFile: () => "# CONTEXT\n",
-    fileExists: () => false,
+    readFile: (path) => (path === BUILT_PATH ? "x" : "# CONTEXT\n"),
+    fileExists: (path) => path === BUILT_PATH,
     writeFile: () => {},
+    removeFile: () => {},
     regenerateIndex: () => false,
+    runGate: () => ({ ok: true }),
+    sourceFiles: () => [],
+    adrFiles: () => [],
     issueNumber: 167,
     failingTests: () => [],
   };
@@ -72,7 +78,6 @@ describe("runImplement: out-of-brief reads", () => {
     const git = fakeGit();
     const stage = createFakeStage(
       JSON.stringify({
-        files: [{ path: "a/b.ts", content: "x" }],
         summary: "Built the thing, having read shape/CONTEXT.md twice for vocabulary.",
         outOfBriefReads: ["shape", "shape"],
       }),
@@ -89,7 +94,7 @@ describe("runImplement: out-of-brief reads", () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
     const { gh, issues } = trackerWith(ticket);
     const git = fakeGit();
-    const stage = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "Built the thing." }));
+    const stage = createFakeStage(JSON.stringify({ summary:"Built the thing." }));
 
     await runImplement(outOfBriefDeps(gh, git, stage.exec));
 
@@ -115,7 +120,6 @@ describe("no scenario in this file ever writes the dependency graph", () => {
     const s3 = trackerWith(ticket);
     const stage = createFakeStage(
       JSON.stringify({
-        files: [{ path: "a/b.ts", content: "x" }],
         summary: "s",
         outOfBriefReads: ["shape", "shape"],
       }),
@@ -124,7 +128,7 @@ describe("no scenario in this file ever writes the dependency graph", () => {
     allCalls.push(...s3.calls);
 
     const s4 = trackerWith(ticket);
-    const stage2 = createFakeStage(JSON.stringify({ files: [{ path: "a/b.ts", content: "x" }], summary: "s" }));
+    const stage2 = createFakeStage(JSON.stringify({ summary:"s" }));
     await runImplement(outOfBriefDeps(s4.gh, fakeGit(), stage2.exec));
     allCalls.push(...s4.calls);
 

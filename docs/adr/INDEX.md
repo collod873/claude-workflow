@@ -164,5 +164,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0154 | [A sweep runs in its own session and the terminal only follows it, because a sweep outlives the terminal that starts it](0154-a-sweep-runs-in-its-own-session-and-the-terminal-only-follow.md) | constraint |
 | 0155 | [A canary that cannot tell which run its fire lit judges none of them](0155-a-canary-that-cannot-tell-which-run-its-fire-lit-judges-none.md) | constraint |
 | 0156 | [An enrolled target runs vitest under a config of its own](0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md) | constraint |
+| 0157 | [The implementer's checkout is its answer, and the push gate runs once in the wire with one repair round](0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md) | constraint |
 
-156 ADRs · 71 constraint · 44 note · 41 superseded · 15,491 words total.
+157 ADRs · 72 constraint · 44 note · 41 superseded · 15,643 words total.

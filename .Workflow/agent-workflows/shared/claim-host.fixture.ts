@@ -79,7 +79,23 @@ export function checkoutReporting(
   });
 }
 
-export const refDeletesIn = (calls: string[][]): string[][] =>
+export function checkoutChanged(modified: string[], deleted: string[] = []): FakeGit {
+  const report = (asked: string[]): string =>
+    [
+      ...modified.filter((path) => asked.includes(path)).map((path) => ` M ${path}`),
+      ...deleted.filter((path) => asked.includes(path)).map((path) => ` D ${path}`),
+    ].join("\n");
+  return createFakeGit((args) => {
+    if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
+    if (args[0] === "status") {
+      const at = args.indexOf("--");
+      return report(at === -1 ? [...modified, ...deleted] : args.slice(at + 1));
+    }
+    return "";
+  });
+}
+
+export const refDeletesIn =(calls: string[][]): string[][] =>
   calls.filter((call) => call[0] === "api" && call[1] === "--method" && call[2] === "DELETE");
 
 export const ticketCommentsIn = (calls: string[][]): string[] =>
