@@ -1,6 +1,10 @@
 import { expect } from "vitest";
 import { readWorkflow } from "./read-workflow";
 
+/**
+ * @fixture Reads the lanes' own checkout steps for the suite; nothing a lane runs asks that.
+ */
+
 export interface CheckoutPair {
   workflow: string;
   job: string;

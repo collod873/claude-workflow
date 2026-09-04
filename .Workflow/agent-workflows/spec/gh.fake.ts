@@ -1,5 +1,9 @@
 import type { GhExec } from "../shared/gh";
 
+/**
+ * @fixture A `gh` answering issue creation from memory, reached only from the suite.
+ */
+
 export const FAKE_CREATED_ISSUE_URL = "https://github.com/owner/repo/issues/903\n";
 
 export interface FakeIssueGh {

@@ -54,10 +54,8 @@ state rather than enumerated anywhere:
 ## What an enrolled repository owes its own test runner
 
 That runner is vitest, and the target carries its own config file for it
-([ADR-0156](../adr/0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md)). The
-acceptance lane writes the tests and the fixer lane re-runs them, and neither can spawn a runner
-it cannot read a failure out of. A target with no config of its own is worse than one with none at all:
-vitest climbs out of the checkout and runs under whatever config sits above it.
+([ADR-0156](../adr/0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md)). A target
+without one is refused by name by `vitest-json.ts`, whose error says why.
 
 Nothing from the target's own CI reaches a contract slot. The machine's Verify runs
 `.claude/contract.json`'s `test` command from `bin/gauntlet`, not from the target's `ci.yml`, so an

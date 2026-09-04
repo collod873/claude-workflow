@@ -1,5 +1,9 @@
 import type { RatifierVerdict } from "./verdict-schema";
 
+/**
+ * @fixture Builds a ratifier verdict for the suite; a lane reads the verdict Claude answered with.
+ */
+
 export function ratifierVerdict(overrides: Partial<RatifierVerdict> = {}): RatifierVerdict {
   return {
     verdict: "mechanise",

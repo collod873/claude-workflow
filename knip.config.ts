@@ -38,6 +38,51 @@ function shellLaunched(dir: string): string[] {
     .filter((path) => SHELL_TAG.test(readFileSync(join(REPO_ROOT, path), "utf8")));
 }
 
+const SPAWNED_TAG = /@shell[ \t]+spawns[ \t]+`([^`\n]+)`/g;
+
+const FIXTURE_TAG = /@fixture[ \t]+\S/;
+
+const SUITE_ONLY = /\.(fake|fixture|stub|setup)\.ts$|\.fixtures\//;
+
+function sourcesUnder(dir: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(join(REPO_ROOT, dir));
+  } catch {
+    return [];
+  }
+  return names.flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(join(REPO_ROOT, path)).isDirectory() ? sourcesUnder(path) : [path];
+  });
+}
+
+/**
+ * A spawned argv[0] earns its exemption where an export does: at the call site, tagged `@shell`,
+ * so the excuse cannot outlive the call it names and go on sitting here as a bare string.
+ */
+function spawnedNames(dirs: string[]): string[] {
+  const named = new Set<string>();
+  for (const path of dirs.flatMap((dir) => sourcesUnder(dir))) {
+    if (!/\.(m|c)?(t|j)s$/.test(path)) continue;
+    const text = readFileSync(join(REPO_ROOT, path), "utf8");
+    for (const match of text.matchAll(SPAWNED_TAG)) named.add(match[1]);
+  }
+  return [...named].sort();
+}
+
+/**
+ * A suite-only file earns its exemption where an export does: by carrying `@fixture` and its own
+ * reason, so the excuse cannot outlive the file and go on sitting here as a bare glob.
+ */
+function suiteOnly(dirs: string[]): string[] {
+  return dirs
+    .flatMap((dir) => sourcesUnder(dir))
+    .filter((path) => SUITE_ONLY.test(path) && /\.(m|c)?(t|j)s$/.test(path))
+    .filter((path) => FIXTURE_TAG.test(readFileSync(join(REPO_ROOT, path), "utf8")))
+    .sort();
+}
+
 const production = (paths: string[]) => paths.map((path) => `${path}!`);
 
 export default {
@@ -51,7 +96,7 @@ export default {
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
 
-  ignore: ["**/*.fake.ts", "**/*.fixture.ts", "**/*.stub.ts", "**/*.fixtures/**", "**/*.setup.ts"],
+  ignore: suiteOnly([".Workflow", "bin", ".claude"]),
 
   /**
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic
@@ -60,5 +105,5 @@ export default {
    */
   tags: ["-shell", "-fixture"],
 
-  ignoreUnresolved: ["bin/gauntlet", "bin/new-adr", "bin/close-ticket"],
+  ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude"]),
 };

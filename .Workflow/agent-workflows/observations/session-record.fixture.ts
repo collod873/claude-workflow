@@ -1,5 +1,9 @@
 import type { SessionRecord } from "./session-record-schema";
 
+/**
+ * @fixture Builds a `SessionRecord` for the suite; a lane's records come from a session it observed.
+ */
+
 export function sessionRecord(overrides: Partial<SessionRecord> & { head: string }): SessionRecord {
   return {
     sessionId: "session-123",

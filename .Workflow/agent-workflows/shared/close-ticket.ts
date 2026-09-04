@@ -7,6 +7,7 @@ export interface CloseTicketResult {
 }
 
 export function closeTicketProcess(args: readonly string[]): CloseTicketResult {
+  // @shell spawns `bin/close-ticket`: an extensionless argv[0] knip reads as an unresolved import.
   const result = spawnSync("bin/close-ticket", [...args], {
     encoding: "utf8",
     env: childEnv(),

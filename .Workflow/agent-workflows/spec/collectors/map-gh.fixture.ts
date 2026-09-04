@@ -1,5 +1,9 @@
 import type { GhExec } from "../../shared/gh";
 
+/**
+ * @fixture A `gh` answering a map issue from memory, reached only from the suite.
+ */
+
 export function mapTrackerGh(mapNumber: number, body: string, ticketComments: Record<number, string[]> = {}): GhExec {
   return (args) => {
     const issueNumber = Number(args[2]);

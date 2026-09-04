@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach } from "vitest";
 
+/**
+ * @fixture vitest loads this through `setupFiles`, so no import edge reaches it and no lane should.
+ */
+
 const root = mkdtempSync(join(tmpdir(), "checkpoints-"));
 let nth = 0;
 
