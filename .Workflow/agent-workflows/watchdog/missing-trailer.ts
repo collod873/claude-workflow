@@ -102,7 +102,7 @@ export function signalBody(findings: TrailerFinding[]): string {
     ...(adrLines.length > 0 ? ["**ADRs missing an `Amends:` trailer:**", "", ...adrLines, ""] : []),
     ...(noteLines.length > 0 ? ["**Research notes missing a `Resolves:` field:**", "", ...noteLines, ""] : []),
     "**To clear a line:** write the trailer (or the field), or reply here saying it is not a",
-    "supersession — this is a known-noisy heuristic (ADR-0045) and a false positive is an expected",
+    "supersession; this is a known-noisy heuristic (ADR-0045) and a false positive is an expected",
     "outcome here, not a bug.",
     "",
     FINDING_MARKER,

@@ -257,7 +257,7 @@ describe("walkHome", () => {
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))).toBe(false);
   });
 
-  it("writes nothing on a second sweep over the same unchanged run — no cursor, no ledger", () => {
+  it("writes nothing on a second sweep over the same unchanged run: no cursor, no ledger", () => {
     const fake = estateWith({
       repositories: ["owner/caller"],
       runs: { "owner/caller": [{ id: 557, path: ".github/workflows/verify-caller.yml" }] },
@@ -345,7 +345,7 @@ describe("walkHome", () => {
   }
 
   it("declares its ceiling on log reads rather than silently dropping the excess", () => {
-    const fake = redEstate(MAX_LOG_READS + 1, "exit code 1 — no path named anywhere in this log");
+    const fake = redEstate(MAX_LOG_READS + 1, "exit code 1, no path named anywhere in this log");
     const lines: string[] = [];
 
     const outcome = sweep(fake, { log: (line) => lines.push(line) });

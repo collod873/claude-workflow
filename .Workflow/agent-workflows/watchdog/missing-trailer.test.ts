@@ -91,7 +91,7 @@ describe("the rule, run over the corpus that motivated it", () => {
       .toBe(false);
   });
 
-  it("flags no research notes as missing a Resolves: field — every note on disk now carries a pointer", () => {
+  it("flags no research notes as missing a Resolves: field, since every note on disk now carries a pointer", () => {
     const missing = EVIDENCE.notes.filter(isMissingResolvesField);
     expect(missing.map((n) => n.filename).sort()).toEqual([]);
   });
@@ -121,7 +121,7 @@ describe("hasSupersessionVerb", () => {
     }
   });
 
-  it("leaves extends alone — the word an ADR that merely extends another uses", () => {
+  it("leaves extends alone, the word an ADR that merely extends another uses", () => {
     expect(hasSupersessionVerb("This ADR extends an earlier one, and both stand.")).toBe(false);
   });
 

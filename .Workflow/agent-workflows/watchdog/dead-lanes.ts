@@ -97,7 +97,7 @@ export function signalBody(lane: DeadLane): string {
     "",
     ...(isStub
       ? [
-          `\`${lane.path}\` is a caller stub — a trigger and \`uses:\`, six lines — that delegates to`,
+          `\`${lane.path}\` is a caller stub (a trigger and \`uses:\`, six lines) that delegates to`,
           `\`${reusable}\`. That is almost always where a break like this actually lives: GitHub`,
           "attributes every run reached through `uses:` to the caller's file, never the reusable",
           "workflow underneath it.",
@@ -106,7 +106,7 @@ export function signalBody(lane: DeadLane): string {
       : []),
     `Most recent: [run ${newest.id}](${newest.htmlUrl}) on \`${newest.headBranch}\`, ${newest.createdAt}.`,
     "",
-    ...lane.runs.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}) — \`${run.headBranch}\`, ${run.createdAt}`),
+    ...lane.runs.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}): \`${run.headBranch}\`, ${run.createdAt}`),
     ...(count > 10 ? [`- …and ${count - 10} more`] : []),
     "",
     "**Zero jobs is not a lane that declined the event.** GitHub lists a skipped job, so a lane whose",
@@ -128,7 +128,7 @@ export function signalBody(lane: DeadLane): string {
     "",
     ...(newest.name === lane.path
       ? [
-          "The run is named after its own file rather than a declared name — that is GitHub naming a",
+          "The run is named after its own file rather than a declared name, which is GitHub naming a",
           "workflow it could not parse well enough to read a `name:` out of.",
           "",
         ]
@@ -147,7 +147,7 @@ export function stillDeadBody(fresh: RunSummary[]): string {
           "",
           `${rest.length} further dead run${rest.length === 1 ? "" : "s"} since this lane was last noted here:`,
           "",
-          ...rest.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}) — \`${run.headBranch}\`, ${run.createdAt}`),
+          ...rest.slice(0, 10).map((run) => `- [${run.id}](${run.htmlUrl}): \`${run.headBranch}\`, ${run.createdAt}`),
           ...(rest.length > 10 ? [`- …and ${rest.length - 10} more`] : []),
         ]
       : []),

@@ -33,7 +33,7 @@ export function signalBody(entry: LostDispatchFinding): string {
   return [
     "A `repository_dispatch` that never arrived leaves no run for a run-reading sweep to find",
     "([#41](https://github.com/collod873/claude-workflow/issues/41) reads runs; this reads the",
-    "label the dispatch should have followed —",
+    "label the dispatch should have followed:",
     "`docs/adr/0065-parity-and-correction-do-not-survive-their-own-history-so-se.md`).",
     "",
     "**Carrying `sliceable` with no sub-issues and no completed slicing run:**",

@@ -130,7 +130,7 @@ async function main(): Promise<void> {
 
     const slicingWorkflow = process.env.SLICING_WORKFLOW;
     if (!slicingWorkflow) {
-      throw new Error("SLICING_WORKFLOW must be set — reading a workflow that does not exist misreports every PRD");
+      throw new Error("SLICING_WORKFLOW must be set: reading a workflow that does not exist misreports every PRD");
     }
 
     const outcome = countLostDispatch({

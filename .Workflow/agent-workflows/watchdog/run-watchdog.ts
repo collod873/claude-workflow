@@ -123,12 +123,12 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
   const oldest = runs[runs.length - 1];
   const pageClipped = runs.length >= RUN_PAGE_SIZE && Boolean(oldest) && isCandidate(oldest, now);
   if (pageClipped) {
-    log(`note: one page of ${RUN_PAGE_SIZE} runs reaches only back to ${oldest.createdAt} — anything older was not swept`);
+    log(`note: one page of ${RUN_PAGE_SIZE} runs reaches only back to ${oldest.createdAt}; anything older was not swept`);
   }
 
   const read = candidates.slice(0, MAX_JOB_READS);
   if (candidates.length > read.length) {
-    log(`note: ${candidates.length - read.length} failed run(s) in the window went unread — the sweep spends at most ${MAX_JOB_READS} job counts`);
+    log(`note: ${candidates.length - read.length} failed run(s) in the window went unread; the sweep spends at most ${MAX_JOB_READS} job counts`);
   }
 
   const counted = read.map((run) => ({ ...run, jobCount: jobCount(gh, run.id) }));
@@ -139,7 +139,7 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
 
   const reportable = lanes.slice(0, MAX_SIGNALS);
   if (lanes.length > reportable.length) {
-    log(`note: ${lanes.length - reportable.length} further dead lane(s) not written about this sweep — at most ${MAX_SIGNALS} per sweep`);
+    log(`note: ${lanes.length - reportable.length} further dead lane(s) not written about this sweep; at most ${MAX_SIGNALS} per sweep`);
   }
 
   for (const lane of reportable) {
@@ -253,7 +253,7 @@ function report(options: {
 async function main(): Promise<void> {
   try {
     const assignee = process.env.SIGNAL_ASSIGNEE;
-    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned issue notifies nobody");
+    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set: an unassigned issue notifies nobody");
 
     const outcome = runWatchdog({
       gh: execGh,

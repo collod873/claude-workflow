@@ -155,8 +155,8 @@ function machineTicketBody(repository: string, run: RunSummary, machineSha: stri
   return [
     "## What to build",
     "",
-    `A run of \`${run.path}\` in \`${repository}\` — an enrolled repository (docs/agents/enrolment.md)`,
-    `— failed with its failing step naming \`${path}\`, a path inside the machine checkout rather`,
+    `A run of \`${run.path}\` in \`${repository}\`, an enrolled repository (docs/agents/enrolment.md),`,
+    `failed with its failing step naming \`${path}\`, a path inside the machine checkout rather`,
     "than the caller's own tree (ADR-0135). That makes it this repository's own defect, filed here",
     "by the walk-home sweep (ADR-0136) rather than left for a human to decide whose it is.",
     "",
@@ -188,10 +188,10 @@ function machineImmutableTicketTitle(repository: string, path: string): string {
 
 function machineImmutableTicketBody(repository: string, run: RunSummary, machineSha: string, path: string, logTail: string): string {
   return [
-    `A run of \`${run.path}\` in \`${repository}\` — an enrolled repository (docs/agents/enrolment.md)`,
-    `— failed with its failing step naming \`${path}\`, a path inside the machine checkout's own`,
+    `A run of \`${run.path}\` in \`${repository}\`, an enrolled repository (docs/agents/enrolment.md),`,
+    `failed with its failing step naming \`${path}\`, a path inside the machine checkout's own`,
     "immutable set (`vitest.config.ts`, `.github/`). No pull request may edit",
-    "it (ADR-0053), so no implementer could ever build a ticket claiming it — filed `needs-human`",
+    "it (ADR-0053), so no implementer could ever build a ticket claiming it, so it is filed `needs-human`",
     "here instead of `to-build`.",
     "",
     `- Run: ${run.htmlUrl}`,
@@ -215,7 +215,7 @@ function callerIssueTitle(path: string): string {
 function callerIssueBody(repository: string, run: RunSummary, path: string, logTail: string): string {
   return [
     `A run of \`${run.path}\` failed with its failing step naming \`${path}\`, a path inside this`,
-    "repository's own tree rather than the claude-workflow machine checkout — so this is this",
+    "repository's own tree rather than the claude-workflow machine checkout, so this is this",
     "repository's own defect, not the machine's (ADR-0135). Filed by claude-workflow's walk-home",
     "sweep (ADR-0136), which runs there under a credential scoped to write here, and nowhere else.",
     "",
@@ -303,11 +303,11 @@ function walkOneRepository(
     if (hereMarkers.has(key)) continue;
 
     if (budget.filed <= 0) {
-      log(`${repository} run ${run.id}: not walked home — this sweep already filed ${MAX_FILED}`);
+      log(`${repository} run ${run.id}: not walked home; this sweep already filed ${MAX_FILED}`);
       continue;
     }
     if (budget.logReads <= 0) {
-      log(`${repository} run ${run.id}: not walked home — this sweep already read ${MAX_LOG_READS} log(s)`);
+      log(`${repository} run ${run.id}: not walked home; this sweep already read ${MAX_LOG_READS} log(s)`);
       continue;
     }
 
@@ -345,7 +345,7 @@ export function walkHome(options: WalkHomeOptions): WalkHomeOutcome {
 
   const repositories = enrolledRepositories(gh).filter((repository) => repository !== machineRepository);
   if (repositories.length === 0) {
-    log(`no repository carries the topic ${ENROLMENT_TOPIC} — nothing to walk home`);
+    log(`no repository carries the topic ${ENROLMENT_TOPIC}; nothing to walk home`);
     return { action: "swept", code: "no-enrolled-repositories", repositoriesSwept: 0, filed: [], failures: [] };
   }
 
@@ -373,11 +373,11 @@ async function main(): Promise<void> {
   try {
     const machineRepository = process.env.GITHUB_REPOSITORY;
     if (!machineRepository) {
-      throw new Error("GITHUB_REPOSITORY must be set — without it this sweep cannot tell itself from a target");
+      throw new Error("GITHUB_REPOSITORY must be set: without it this sweep cannot tell itself from a target");
     }
     const machineSha = process.env.GITHUB_SHA;
     if (!machineSha) {
-      throw new Error("GITHUB_SHA must be set — a filed ticket needs the machine's own revision");
+      throw new Error("GITHUB_SHA must be set: a filed ticket needs the machine's own revision");
     }
 
     const outcome = walkHome({

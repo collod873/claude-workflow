@@ -99,7 +99,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
 
   const read = failed.slice(0, MAX_JOB_READS);
   if (failed.length > read.length) {
-    log(`note: ${failed.length - read.length} failed run(s) went unread — this sweep spends at most ${MAX_JOB_READS} job reads`);
+    log(`note: ${failed.length - read.length} failed run(s) went unread; this sweep spends at most ${MAX_JOB_READS} job reads`);
   }
 
   const verifyRuns: VerifyRun[] = read.map((run) => ({
@@ -113,7 +113,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
 
   const count = bypassCount(verifyRuns);
   if (!shouldPropose(count)) {
-    log(`counted: ${count} bypass(es) — below the threshold of proposing move 10`);
+    log(`counted: ${count} bypass(es), below the threshold of proposing move 10`);
     return { code: "below-threshold", count };
   }
 
@@ -122,7 +122,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
 
   const standing = carriers.find((issue) => issue.state.toUpperCase() === "OPEN");
   if (standing) {
-    log(`counted: ${count} bypass(es) — proposal #${standing.number} already stands`);
+    log(`counted: ${count} bypass(es); proposal #${standing.number} already stands`);
     return { code: "already-proposed", count };
   }
 
@@ -130,7 +130,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
     (issue) => issue.state.toUpperCase() === "CLOSED" && issue.stateReason?.toUpperCase() === NOT_PLANNED,
   );
   if (refused) {
-    log(`counted: ${count} bypass(es) — #${refused.number} was closed as not planned, so this asks no further`);
+    log(`counted: ${count} bypass(es); #${refused.number} was closed as not planned, so this asks no further`);
     return { code: "declined-for-good", count };
   }
 
@@ -140,7 +140,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
     .sort((a, b) => a - b)
     .pop();
   if (highestDeclined !== undefined && count <= highestDeclined) {
-    log(`counted: ${count} bypass(es) — not past the declined count of ${highestDeclined}`);
+    log(`counted: ${count} bypass(es), not past the declined count of ${highestDeclined}`);
     return { code: "declined-and-not-grown", count };
   }
 
@@ -162,11 +162,11 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
 async function main(): Promise<void> {
   try {
     const assignee = process.env.SIGNAL_ASSIGNEE;
-    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set — an unassigned issue notifies nobody");
+    if (!assignee) throw new Error("SIGNAL_ASSIGNEE must be set: an unassigned issue notifies nobody");
 
     const verifyWorkflow = process.env.VERIFY_WORKFLOW;
     if (!verifyWorkflow) {
-      throw new Error("VERIFY_WORKFLOW must be set — counting a workflow that does not exist reads as zero bypasses");
+      throw new Error("VERIFY_WORKFLOW must be set: counting a workflow that does not exist reads as zero bypasses");
     }
 
     const outcome = runBypassCounter({ gh: execGh, assignee, verifyWorkflow });

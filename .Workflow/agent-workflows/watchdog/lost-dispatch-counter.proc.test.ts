@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 describe("countLostDispatch refuses to run without a slicing workflow named", () => {
-  it("the entrypoint throws when SLICING_WORKFLOW is unset — a default here would silently misread every PRD", () => {
+  it("the entrypoint throws when SLICING_WORKFLOW is unset, since a default here would silently misread every PRD", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const script = join(here, "lost-dispatch-counter.ts");
     const result = spawnSync("npx", ["tsx", script], {
