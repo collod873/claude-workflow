@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { dispatchVerify } from "../shared/verify-dispatch";
+import { changedPaths } from "../shared/changed-paths";
 import { execGh, type GhExec } from "../shared/gh";
 import { gateGrowth } from "../shared/gate-files";
 import { execGit, type GitExec } from "../shared/git";
@@ -76,17 +77,7 @@ export function runFixerStage(exec: StageExec, brief: string): Promise<FixerAnsw
   });
 }
 
-export function changedPaths(git: GitExec): string[] {
-  return git(["status", "--porcelain", "-uall"])
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => line.slice(3))
-    .map((path) => {
-      const arrow = path.indexOf(" -> ");
-      return arrow === -1 ? path : path.slice(arrow + 4);
-    })
-    .map((path) => (path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path));
-}
+export { changedPaths };
 
 function commitAndPushAttempt(
   git: GitExec,

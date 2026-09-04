@@ -1,20 +1,50 @@
 import { z } from "zod";
 import { ADR_DIR, INDEX_RELATIVE_PATH } from "./adr-index";
+import { changedPaths } from "./changed-paths";
 import { judgeFailsEdits } from "./fails-rule";
 import type { GhExec } from "./gh";
 import { branchCreationPath, comparePath, GIT_REFS_PATH } from "./gh-paths";
 import type { GitExec } from "./git";
+import { touchesImmutableSet } from "./immutable-set";
 import { escalateToOwner } from "./needs-human";
 import { reason } from "./reason";
 import { extractCriteria, type TicketRead } from "./ticket-shape";
 import { dispatchVerify } from "./verify-dispatch";
 
+export const ImplementerReply = z.object({
+  summary: z.string().min(1),
+  outOfBriefReads: z.array(z.string().min(1)).default([]),
+});
+export type ImplementerReply = z.infer<typeof ImplementerReply>;
+
 export const ImplementerAnswer = z.object({
-  files: z.array(z.object({ path: z.string().min(1), content: z.string().min(1) })).min(1),
+  files: z.array(z.object({ path: z.string().min(1), content: z.string() })),
+  deleted: z.array(z.string().min(1)).default([]),
   summary: z.string().min(1),
   outOfBriefReads: z.array(z.string().min(1)).default([]),
 });
 export type ImplementerAnswer = z.infer<typeof ImplementerAnswer>;
+
+export function deriveAnswer(
+  git: GitExec,
+  readFile: (path: string) => string,
+  fileExists: (path: string) => boolean,
+  reply: ImplementerReply,
+): ImplementerAnswer {
+  const files: { path: string; content: string }[] = [];
+  const deleted: string[] = [];
+
+  for (const path of [...changedPaths(git)].sort()) {
+    if (fileExists(path)) {
+      files.push({ path, content: readFile(path) });
+    } else {
+      deleted.push(path);
+    }
+  }
+
+  return { files, deleted, summary: reply.summary, outOfBriefReads: reply.outOfBriefReads };
+}
+
 export const CLAIM_TIMEOUT_MINUTES = 45;
 
 function refPath(branch: string): string {
@@ -147,12 +177,19 @@ function rebaseOntoTrunk(git: GitExec): void {
   }
 }
 
-function commitAndPushBranch(git: GitExec, branch: string, paths: string[], commitMessage: string, rebaseFirst: boolean): void {
+function commitAndPushBranch(
+  git: GitExec,
+  branch: string,
+  paths: string[],
+  commitMessage: string,
+  rebaseFirst: boolean,
+  skipPushHook: boolean,
+): void {
   git(["checkout", "-b", branch]);
   git(["add", ...paths]);
   git(["commit", "-m", commitMessage]);
   if (rebaseFirst) rebaseOntoTrunk(git);
-  git(["push", "origin", `HEAD:${branch}`]);
+  git(skipPushHook ? ["push", "--no-verify", "origin", `HEAD:${branch}`] : ["push", "origin", `HEAD:${branch}`]);
 }
 
 export function worktreeChanges(git: GitExec, paths: string[]): string[] {
@@ -212,6 +249,27 @@ export function nothingToBuildNote(issueNumber: number): string {
   ].join("\n");
 }
 
+export function immutableSetNote(paths: string[]): string {
+  return [
+    `Refused to push this run's answer: it touches the immutable set: ${paths.join(", ")}.`,
+    "",
+    "No pull request may change `vitest.config.ts` or `.github/`. Nothing was committed, the claim has",
+    "been released, and the ticket itself needs fixing before this can be re-dispatched.",
+  ].join("\n");
+}
+
+export function gateRedNote(output: string): string {
+  return [
+    "This run's own gate stayed red after one repair round.",
+    "",
+    "Pushed anyway so the work is not lost; the verify lane will show it red too.",
+    "",
+    "```",
+    output,
+    "```",
+  ].join("\n");
+}
+
 export interface PrDispatch {
   branch: string;
   title: string;
@@ -241,7 +299,8 @@ export type ImplementOutcome =
   | { outcome: "nothing-to-build" }
   | { outcome: "ticket-closed" }
   | { outcome: "rebase-conflict"; paths: string[] }
-  | { outcome: "fails-rule-refused"; reason: string };
+  | { outcome: "fails-rule-refused"; reason: string }
+  | { outcome: "immutable-refused"; paths: string[] };
 
 export function releaseFailedClaim(gh: GhExec, branch: string, log: (line: string) => void): void {
   try {
@@ -259,7 +318,16 @@ export interface LandDeps {
   gh: GhExec;
   git: GitExec;
   writeFile: (path: string, content: string) => void;
+  removeFile: (path: string) => void;
   regenerateIndex: () => boolean;
+}
+
+function removeIfPresent(removeFile: (path: string) => void, path: string): void {
+  try {
+    removeFile(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+  }
 }
 
 export async function landAnswer(
@@ -270,13 +338,17 @@ export async function landAnswer(
   answer: ImplementerAnswer,
   commitMessage: string,
   log: (line: string) => void,
-  options: { rebaseOntoTrunk?: boolean } = {},
+  options: { rebaseOntoTrunk?: boolean; skipPushHook?: boolean } = {},
 ): Promise<ImplementOutcome> {
   for (const file of answer.files) {
     deps.writeFile(file.path, file.content);
   }
+  for (const path of answer.deleted) {
+    removeIfPresent(deps.removeFile, path);
+  }
 
-  const changing = worktreeChanges(deps.git, answer.files.map((file) => file.path));
+  const answeredPaths = [...answer.files.map((file) => file.path), ...answer.deleted];
+  const changing = worktreeChanges(deps.git, answeredPaths);
 
   if (changing.length === 0) {
     releaseClaim(deps.gh, branch, log);
@@ -284,9 +356,16 @@ export async function landAnswer(
     return { outcome: "nothing-to-build" };
   }
 
-  const paths = answer.files.map((file) => file.path);
+  const paths = [...answeredPaths];
   if (paths.some((path) => path.startsWith(`${ADR_DIR}/`)) && deps.regenerateIndex()) {
     paths.push(INDEX_RELATIVE_PATH);
+  }
+
+  if (touchesImmutableSet(paths)) {
+    releaseClaim(deps.gh, branch, log);
+    escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+    sayOnTicket(deps.gh, issueNumber, immutableSetNote(paths), log);
+    return { outcome: "immutable-refused", paths };
   }
 
   const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]));
@@ -298,7 +377,7 @@ export async function landAnswer(
   }
 
   try {
-    commitAndPushBranch(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false);
+    commitAndPushBranch(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false, options.skipPushHook ?? false);
   } catch (err) {
     if (!(err instanceof RebaseConflictError)) throw err;
     releaseClaim(deps.gh, branch, log);

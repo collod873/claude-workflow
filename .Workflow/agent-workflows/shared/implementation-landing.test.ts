@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkoutReporting,
@@ -15,19 +17,24 @@ import {
 } from "./claim-host.fixture";
 import type { GhExec } from "./gh";
 import { GIT_REFS_PATH } from "./gh-paths";
+import type { GitExec } from "./git";
 import { createFakeGit, type FakeGit } from "./git.fake";
 import {
   claimImplementationBranch,
   CLAIM_TIMEOUT_MINUTES,
+  deriveAnswer,
   failsRuleNote,
+  immutableSetNote,
   landAnswer,
   nothingToBuildNote,
   rebaseConflictNote,
   releaseDeadClaim,
   releaseFailedClaim,
+  type ImplementerAnswer,
 } from "./implementation-landing";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { implementationBranch } from "./ready-set";
+import { makeTempRepo, type TempRepo } from "./temp-repo.fixture";
 
 const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
@@ -146,30 +153,38 @@ describe("releaseDeadClaim", () => {
 });
 
 describe("landAnswer", () => {
-  const ANSWER = { files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it.", outOfBriefReads: [] };
+  const ANSWER: ImplementerAnswer = {
+    files: [{ path: "a/b.ts", content: "export const x = 1;\n" }],
+    deleted: [],
+    summary: "Built it.",
+    outOfBriefReads: [],
+  };
 
   async function land(
     git: FakeGit = checkoutReporting(),
-    options: { rebaseOntoTrunk?: boolean } = {},
-    answer = ANSWER,
+    options: { rebaseOntoTrunk?: boolean; skipPushHook?: boolean } = {},
+    answer: ImplementerAnswer = ANSWER,
     hasIndex = false,
   ) {
     const host = githubHoldingClaims({ existingClaim: standing() });
     const written: string[] = [];
+    const removed: string[] = [];
     let regenerated = 0;
     const deps = {
       gh: host.gh,
       git: git.git,
       writeFile: (path: string) => { written.push(path); },
+      removeFile: (path: string) => { removed.push(path); },
       regenerateIndex: () => { regenerated += 1; return hasIndex; },
     };
 
     const result = await landAnswer(deps, BRANCH, ISSUE, TICKET, answer, "Implement #167", silent, options);
-    return { result, host, written, gitCalls: git.calls, regenerated: () => regenerated };
+    return { result, host, written, removed, gitCalls: git.calls, regenerated: () => regenerated };
   }
 
   const ADR_ANSWER = {
     files: [{ path: "docs/adr/0042-a-ruling.md", content: "---\nstatus: constraint\n---\n\n# A ruling\n" }],
+    deleted: [],
     summary: "Ruled it.",
     outOfBriefReads: [],
   };
@@ -259,6 +274,56 @@ describe("landAnswer", () => {
     expect(gitCalls[0]).toEqual(["status", "--porcelain", "--", "a/b.ts"]);
   });
 
+  describe("deletions", () => {
+    const DELETE_ANSWER = { files: [], deleted: ["a/gone.ts"], summary: "Removed it.", outOfBriefReads: [] };
+
+    it("removes a deleted path from disk, stages it, and carries it into the changed-files dispatch", async () => {
+      const { result, removed, gitCalls, host } = await land(checkoutReporting(), {}, DELETE_ANSWER);
+
+      expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+      expect(removed).toEqual(["a/gone.ts"]);
+      expect(gitCalls.find((call) => call[0] === "add")).toContain("a/gone.ts");
+      expect(host.dispatches[0].payload.changed_files).toContain("a/gone.ts");
+    });
+
+    it("commits an answer that only deletes, with nothing in files", async () => {
+      const { result, gitCalls } = await land(checkoutReporting(), {}, DELETE_ANSWER);
+
+      expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+      expect(gitCalls.some((call) => call[0] === "commit")).toBe(true);
+    });
+  });
+
+  describe("the immutable set", () => {
+    const IMMUTABLE_ANSWER = {
+      files: [{ path: "vitest.config.ts", content: "export default {};\n" }],
+      deleted: [],
+      summary: "Touched it.",
+      outOfBriefReads: [],
+    };
+
+    it("refuses before any commit, releasing the claim and posting the note", async () => {
+      const { result, host, gitCalls } = await land(checkoutReporting(), {}, IMMUTABLE_ANSWER);
+
+      expect(result).toEqual({ outcome: "immutable-refused", paths: ["vitest.config.ts"] });
+      expect(host.refs.has(BRANCH)).toBe(false);
+      expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
+      expect(ticketCommentsIn(host.calls)).toEqual([immutableSetNote(["vitest.config.ts"])]);
+      expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
+      expect(prCreatesIn(host.calls)).toEqual([]);
+    });
+  });
+
+  describe("skipPushHook", () => {
+    it("passes --no-verify to the push exactly when the caller opts in", async () => {
+      const { gitCalls: normal } = await land();
+      const { gitCalls: skipped } = await land(checkoutReporting(), { skipPushHook: true });
+
+      expect(normal).toContainEqual(["push", "origin", `HEAD:${BRANCH}`]);
+      expect(skipped).toContainEqual(["push", "--no-verify", "origin", `HEAD:${BRANCH}`]);
+    });
+  });
+
   describe("the test.fails( rule, judged on the answer's diff before the commit", () => {
     const checkoutDiffing = (diff: string): FakeGit =>
       createFakeGit((args) => {
@@ -294,5 +359,45 @@ describe("landAnswer", () => {
       expect(gitCalls).toContainEqual(["diff", "--", "a/b.ts"]);
       expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
     });
+  });
+});
+
+describe("deriveAnswer", () => {
+  it("sorts a modified and an added path into files with their content, and a missing path into deleted", () => {
+    const git: GitExec = (args) => (args[0] === "status" ? " M b.ts\n D a.ts\n?? c.ts" : "");
+    const disk = new Map([
+      ["b.ts", "content b"],
+      ["c.ts", "content c"],
+    ]);
+    const readFile = (path: string) => disk.get(path)!;
+    const fileExists = (path: string) => disk.has(path);
+
+    expect(deriveAnswer(git, readFile, fileExists, { summary: "did it", outOfBriefReads: ["a/CONTEXT.md"] })).toEqual({
+      files: [
+        { path: "b.ts", content: "content b" },
+        { path: "c.ts", content: "content c" },
+      ],
+      deleted: ["a.ts"],
+      summary: "did it",
+      outOfBriefReads: ["a/CONTEXT.md"],
+    });
+  });
+
+  it("reads a git rm'd file and an untracked file correctly against a real repository", () => {
+    const repo: TempRepo = makeTempRepo("derive-answer");
+    repo.write("kept.ts", "export const x = 1;\n");
+    repo.write("gone.ts", "export const y = 1;\n");
+    repo.commit("first");
+    repo.git("rm", "-q", "gone.ts");
+    repo.write("new.ts", "export const z = 1;\n");
+
+    const git: GitExec = (args) => repo.git(...args);
+    const readFile = (path: string) => readFileSync(join(repo.dir, path), "utf8");
+    const fileExists = (path: string) => existsSync(join(repo.dir, path));
+
+    const answer = deriveAnswer(git, readFile, fileExists, { summary: "s", outOfBriefReads: [] });
+
+    expect(answer.deleted).toEqual(["gone.ts"]);
+    expect(answer.files).toEqual([{ path: "new.ts", content: "export const z = 1;\n" }]);
   });
 });

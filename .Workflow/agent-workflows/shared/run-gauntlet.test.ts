@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MACHINE_ROOT, runGauntlet } from "./run-gauntlet.ts";
+import { gateVerdict, MACHINE_ROOT, runGauntlet } from "./run-gauntlet.ts";
 
 describe("MACHINE_ROOT", () => {
   it("names the checkout that carries bin/gauntlet", () => {
@@ -27,5 +27,43 @@ describe("runGauntlet", () => {
         target: "/tmp/some-target",
       },
     ]);
+  });
+});
+
+describe("gateVerdict", () => {
+  it("is ok when the push venue's checks pass", () => {
+    expect(gateVerdict("/tmp/some-target", { exec: () => "" })).toEqual({ ok: true });
+  });
+
+  it("reports stdout followed by stderr, trimmed, from a non-zero exit", () => {
+    const err = Object.assign(new Error("Command failed"), { stdout: "  ran the gate\n", stderr: "1 test failed\n" });
+    const verdict = gateVerdict("/tmp/some-target", {
+      exec: () => {
+        throw err;
+      },
+    });
+
+    expect(verdict).toEqual({ ok: false, output: "ran the gate\n1 test failed" });
+  });
+
+  it("reports an empty output when a non-zero exit carries neither stream", () => {
+    const err = Object.assign(new Error("Command failed"), { stdout: undefined, stderr: undefined });
+    const verdict = gateVerdict("/tmp/some-target", {
+      exec: () => {
+        throw err;
+      },
+    });
+
+    expect(verdict).toEqual({ ok: false, output: "" });
+  });
+
+  it("falls back to the error's message when there is no such binary to run", () => {
+    const verdict = gateVerdict("/tmp/some-target", {
+      exec: () => {
+        throw new Error("spawnSync bin/gauntlet ENOENT");
+      },
+    });
+
+    expect(verdict).toEqual({ ok: false, output: "spawnSync bin/gauntlet ENOENT" });
   });
 });
