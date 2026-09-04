@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-09-02
-superseded_by: ADR-0149, ADR-0152, ADR-0154
+superseded_by: ADR-0149, ADR-0152, ADR-0154, ADR-0155
 amends: ADR-0144
 reversal: Reversing it means a machine change can again be proven only after it lands on `main`, because every stub pins `@main` and every lane checks the machine out at its default branch — the shape of 2026-09-02, when nine defects of one class were each found on a hosted runner ten to forty-five minutes after landing and fixed in ninety seconds.
 ---
