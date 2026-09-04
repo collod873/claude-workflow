@@ -53,11 +53,11 @@ function rulingFor(gh: GhExec, repoRoot: string, entry: DecisionEntry): string {
   const durablePath = DURABLE_RECORD_RE.exec(entry.gist)?.[0];
   if (durablePath) {
     const record = readFileSync(join(repoRoot, durablePath), "utf8");
-    return `${entry.title} — durable record (${durablePath}):\n${record}`;
+    return `${entry.title}, durable record (${durablePath}):\n${record}`;
   }
 
   const comment = resolutionComment(gh, entry.issueNumber);
-  return `${entry.title} — resolution comment (its gist names no durable record):\n${comment}`;
+  return `${entry.title}, resolution comment (its gist names no durable record):\n${comment}`;
 }
 
 export function collectMapContext(

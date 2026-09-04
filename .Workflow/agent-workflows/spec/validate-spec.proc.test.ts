@@ -23,7 +23,7 @@ describe("validateSpecBody refuses what the session door has always refused", ()
     expect(() => validateSpecBody("## Problem Statement\nIt is unbuilt.")).toThrow(/'- \[ \]' item/);
   });
 
-  it("a body with more than one criterion — three behavioural claims are three specs", () => {
+  it("a body with more than one criterion, since three behavioural claims are three specs", () => {
     const body =
       "## Acceptance criteria\n\n- [ ] One — check: `false`\n- [ ] Two — check: `false`";
     expect(() => validateSpecBody(body)).toThrow(/not 2/);
@@ -66,7 +66,7 @@ describe("publishSpec's default validator is the real one", () => {
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(1);
   });
 
-  it("keeps the source marker out of the one criterion — the bug this validator found", () => {
+  it("keeps the source marker out of the one criterion, the bug this validator found", () => {
     const trailing = `${GOOD}\n\n<!-- spec-source:v1 {"kind":"sheet","issue":42} -->`;
     expect(() => validateSpecBody(trailing)).toThrow(/doesn't parse/);
 

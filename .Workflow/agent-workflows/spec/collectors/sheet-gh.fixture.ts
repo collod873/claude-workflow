@@ -1,7 +1,7 @@
 import type { GhExec } from "../../shared/gh";
 
 /**
- * @fixture Reached only from the suites, by design — no lane reads a posted sheet back.
+ * @fixture Reached only from the suites, by design: no lane reads a posted sheet back.
  */
 
 export function fakeSheetGh(body: string, comments: string[]): GhExec {

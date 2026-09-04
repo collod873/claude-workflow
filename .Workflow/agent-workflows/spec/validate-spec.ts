@@ -30,7 +30,7 @@ export const validateSpecBody: SpecBodyValidator = (body) => {
   try {
     verdict = JSON.parse(run.stdout) as typeof verdict;
   } catch (err) {
-    throw new Error(`the spec validator printed no verdict: ${reason(err)} — ${run.stdout.trim()}`);
+    throw new Error(`the spec validator printed no verdict: ${reason(err)}, ${run.stdout.trim()}`);
   }
 
   if (!verdict.ok) {

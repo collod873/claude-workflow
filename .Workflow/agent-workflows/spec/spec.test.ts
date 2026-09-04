@@ -104,7 +104,7 @@ describe("runSpecAuthor", () => {
     });
   });
 
-  it("invokes the sweep, then the author, then the critic — each strictly before the next", async () => {
+  it("invokes the sweep, then the author, then the critic, each strictly before the next", async () => {
     const fake = fakeChain();
 
     await runSpecAuthor(fake.exec, CONTEXT);
@@ -141,7 +141,7 @@ describe("runSpecAuthor", () => {
   });
 });
 
-describe("the sheet door — unfiled marks reach the assumptions section", () => {
+describe("the sheet door: unfiled marks reach the assumptions section", () => {
   const OWNER_WORDS = "make the accept file its own rulings";
 
   function chain(openQuestions: string[], critic: string, reconciledBody?: string): StageExec {
@@ -242,7 +242,7 @@ describe("the sheet door — unfiled marks reach the assumptions section", () =>
   });
 });
 
-describe("runSpecCritique — the critic-only entry", () => {
+describe("runSpecCritique: the critic-only entry", () => {
   const SPEC = {
     title: "PRD: A spec written in a session",
     body: "## Problem\nIt stalls on the tracker.",
@@ -277,7 +277,7 @@ describe("runSpecCritique — the critic-only entry", () => {
     expect(prompt).toContain(SPEC.body);
   });
 
-  it("never runs the author's stage — the expensive half already happened in the session", async () => {
+  it("never runs the author's stage, since the expensive half already happened in the session", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
     const { gh } = specGh();
 
@@ -318,7 +318,7 @@ describe("runSpecCritique — the critic-only entry", () => {
     expect(dispatch).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
   });
 
-  it("publishes nothing — the spec is already on the tracker", async () => {
+  it("publishes nothing, since the spec is already on the tracker", async () => {
     const fake = createFakeStage(SILENT_CRITIC);
     const { gh, calls } = specGh();
 
@@ -390,7 +390,7 @@ describe("runSpecCritique — the critic-only entry", () => {
   });
 });
 
-describe("planSpecRun — the cold door reads the issue, not the label", () => {
+describe("planSpecRun: the cold door reads the issue, not the label", () => {
   it("picks the sheet collector when the labelled issue carries a decision sheet", () => {
     const { gh } = coldDoorGh({ comments: acceptedSheetComments() });
 
@@ -426,7 +426,7 @@ describe("planSpecRun — the cold door reads the issue, not the label", () => {
     });
   });
 
-  it("leaves the sheet trigger with no repoRoot at all — the sheet collector reads nothing off disk", () => {
+  it("leaves the sheet trigger with no repoRoot at all, since the sheet collector reads nothing off disk", () => {
     const { gh } = coldDoorGh({ comments: acceptedSheetComments() });
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 42 }, "/some/target/checkout");

@@ -17,7 +17,7 @@ export function specFormat(): string {
     .find((section) => section.startsWith("Lane spec"));
   if (!core?.trim() || !laneSpec) {
     throw new Error(
-      `${SPEC_FORMAT_PATH} has no "### Lane spec" variant under "## Variants" — the author's spec contract would be empty`,
+      `${SPEC_FORMAT_PATH} has no "### Lane spec" variant under "## Variants", so the author's spec contract would be empty`,
     );
   }
   return `${core.trim()}\n\n## Variants\n\n### ${laneSpec.trim()}\n`;

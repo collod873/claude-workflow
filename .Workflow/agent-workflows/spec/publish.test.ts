@@ -120,7 +120,7 @@ describe("updateSpec", () => {
   });
 });
 
-describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
+describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
   const SWEEP_RESPONSE = JSON.stringify({ rulings: [] });
 
   const chain = (openQuestions: string[]) =>
@@ -158,7 +158,7 @@ describe("runSpecPublication — ADR-0062's publish-then-gate order", () => {
     expect(calls[dispatchIndex]).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
   });
 
-  it("publishes and dispatches even when the author leaves a question unresolved (#263 — no more held spec)", async () => {
+  it("publishes and dispatches even when the author leaves a question unresolved (#263, no more held spec)", async () => {
     const { gh, calls } = publishingGh();
     const stage = chain(["What does done mean?"]);
 

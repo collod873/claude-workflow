@@ -40,7 +40,7 @@ describe("runSpecSweep", () => {
     expect(argv).not.toContain("--disallowedTools");
   });
 
-  it("substitutes the context's own words, decisions, boundaries and open guesses — never its rulings", async () => {
+  it("substitutes the context's own words, decisions, boundaries and open guesses, never its rulings", async () => {
     const fake = createFakeStage(JSON.stringify(FOUND));
 
     await runSpecSweep(fake.exec, CONTEXT);
@@ -92,7 +92,7 @@ describe("applySweep", () => {
 });
 
 describe("renderSweepRulings", () => {
-  it("renders each finding in lane 01's own PriorArt shape — a citation and the line it quotes", () => {
+  it("renders each finding in lane 01's own PriorArt shape: a citation and the line it quotes", () => {
     const rendered = renderSweepRulings(FOUND.rulings);
 
     expect(rendered).toContain(FOUND.rulings[0]!.ref);

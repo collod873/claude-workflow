@@ -12,7 +12,7 @@ export interface SpecCriticInput {
   answers?: string[];
 }
 
-const NO_ANSWERS = "Nothing has been answered — this is the first read of this spec.";
+const NO_ANSWERS = "Nothing has been answered; this is the first read of this spec.";
 
 export interface Resolution {
   decision: string;

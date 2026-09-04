@@ -71,7 +71,7 @@ export async function runSpecReconciler(
   const after = countCriteria(body) ?? 0;
   if (after < before) {
     throw new Error(
-      `reconciler returned ${after} acceptance criteria, fewer than the ${before} it was handed — ` +
+      `reconciler returned ${after} acceptance criteria, fewer than the ${before} it was handed: ` +
         "refusing to write a rewrite that dropped one",
     );
   }

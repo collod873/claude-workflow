@@ -12,7 +12,7 @@ describe("collectSheetContext", () => {
       route: "long",
     };
     const gh = fakeSheetGh("the owner's words", [
-      `## Restatement\n\n…\n\n${sheetMarker(sheet({ routeReason: "Long — five decisions." }))}`,
+      `## Restatement\n\n…\n\n${sheetMarker(sheet({ routeReason: "Long: five decisions." }))}`,
       `## Accepted\n\n${acceptedMarker(payload)}`,
     ]);
 
@@ -44,7 +44,7 @@ describe("collectSheetContext", () => {
       ownerWords: "the owner's words",
       decisions: "- q1\n  r1\n  (Rejected: x1)\n- q2\n  r2\n  (Rejected: x2)",
       rulings: "- docs/adr/0060-slug.md",
-      boundaries: "Route: `short` — Short — one file.",
+      boundaries: "Route: `short`, Short: one file.",
       openGuesses: "- nobody checked the cap",
     });
   });

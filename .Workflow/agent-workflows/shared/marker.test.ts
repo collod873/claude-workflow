@@ -21,7 +21,7 @@ const sheet: Sheet = {
   ],
   survivors: [],
   route: "short",
-  routeReason: "Short — one file.",
+  routeReason: "Short: one file.",
   newTerms: [],
   round: 0,
 };

@@ -51,7 +51,7 @@ export function renderSweepRulings(rulings: SpecSweep["rulings"]): string {
   }
   return rulings
     .map(toPriorArt)
-    .map((entry) => `- **${entry.ref}** — ${entry.bearing}`)
+    .map((entry) => `- **${entry.ref}**: ${entry.bearing}`)
     .join("\n");
 }
 

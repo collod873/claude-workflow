@@ -23,7 +23,7 @@ export function collectSheetContext(
   const payload = payloads.at(-1);
   if (!payload) {
     throw new Error(
-      `sheet collector: issue #${issueNumber} carries no accept payload — reading the rendered ` +
+      `sheet collector: issue #${issueNumber} carries no accept payload, so reading the rendered ` +
         `comment prose instead is exactly what the marker's payload exists to prevent (ADR-0058)`,
     );
   }
@@ -33,7 +33,7 @@ export function collectSheetContext(
       ownerWords: issueBody(gh, issueNumber),
       decisions: formatDecisions(sheet.decisions),
       rulings: formatRulings(payload),
-      boundaries: `Route: \`${payload.route}\` — ${sheet.routeReason}`,
+      boundaries: `Route: \`${payload.route}\`, ${sheet.routeReason}`,
       openGuesses: formatOpenGuesses(sheet.survivors),
     },
     decisions: sheet.decisions,

@@ -10,7 +10,7 @@ export function sheet(over: Partial<Sheet> = {}): Sheet {
     decisions: [{ question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "", adrReversal: "" }],
     survivors: [],
     route: "short",
-    routeReason: "Short — one file.",
+    routeReason: "Short: one file.",
     newTerms: [],
     round: 0,
     ...over,

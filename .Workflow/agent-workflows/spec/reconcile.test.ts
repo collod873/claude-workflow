@@ -13,7 +13,7 @@ const SPEC = {
 
 const RESOLUTIONS = [
   {
-    decision: "Repoint every consumer and delete every duplicate — a re-export would leave it in place.",
+    decision: "Repoint every consumer and delete every duplicate; a re-export would leave it in place.",
     reason: "The restatement already rules out keeping a compatibility shim.",
   },
   {
@@ -27,7 +27,7 @@ const REWRITTEN =
 
 const RECONCILED =
   "## Problem\nIt stalls.\n\n## Acceptance criteria\n- [ ] Every consumer is repointed and every duplicate deleted — check: `make gate`\n- [ ] The check is the gauntlet, not a unit test — check: `make gate`\n\n## Assumptions\n\n" +
-  "- **Repoint every consumer and delete every duplicate — a re-export would leave it in place.** The restatement already rules out keeping a compatibility shim.\n" +
+  "- **Repoint every consumer and delete every duplicate; a re-export would leave it in place.** The restatement already rules out keeping a compatibility shim.\n" +
   "- **The check is the gauntlet, not the unit test.** Only the gauntlet observes the whole tree the criterion is actually about.";
 
 const reconciled = (body: string) => JSON.stringify({ body });

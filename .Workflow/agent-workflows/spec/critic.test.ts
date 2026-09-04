@@ -35,12 +35,12 @@ describe("runSpecCritic", () => {
 
     await runSpecCritic(fake.exec, {
       ...DRAFT,
-      answers: ["Done means the gauntlet exits 0.", "Yes — only the owner may fire it."],
+      answers: ["Done means the gauntlet exits 0.", "Yes, only the owner may fire it."],
     });
 
     const prompt = fake.stdins[0] ?? "";
     expect(prompt).toContain("Done means the gauntlet exits 0.");
-    expect(prompt).toContain("Yes — only the owner may fire it.");
+    expect(prompt).toContain("Yes, only the owner may fire it.");
   });
 
   it("substitutes a stated absence when no answers were passed, never an empty hole", async () => {

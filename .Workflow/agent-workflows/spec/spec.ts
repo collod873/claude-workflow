@@ -235,10 +235,10 @@ export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
   const issueNumber = Number(env.ISSUE_NUMBER);
 
   if (trigger !== "to-spec" && trigger !== "critique") {
-    throw new Error(`SPEC_TRIGGER must be one of to-spec, critique — got ${JSON.stringify(trigger)}`);
+    throw new Error(`SPEC_TRIGGER must be one of to-spec, critique; got ${JSON.stringify(trigger)}`);
   }
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
-    throw new Error(`ISSUE_NUMBER must be a positive integer — got ${JSON.stringify(env.ISSUE_NUMBER)}`);
+    throw new Error(`ISSUE_NUMBER must be a positive integer; got ${JSON.stringify(env.ISSUE_NUMBER)}`);
   }
 
   return { trigger, issueNumber };

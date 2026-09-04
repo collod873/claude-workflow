@@ -11,7 +11,7 @@ import {
   type MarkedDecision,
 } from "./open-questions";
 
-describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
+describe("unfiledMarkGap: the sheet's own unfiled-guess arithmetic", () => {
   it("is zero when every marked decision has a filed ADR and no open question names an unfiled mark", () => {
     const decisions: MarkedDecision[] = [
       { mark: "ADR-0060", adrTitle: "A ruling that files it" },
@@ -23,7 +23,7 @@ describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
 
   it("is zero when an unfiled mark's target is named by an open question", () => {
     const decisions: MarkedDecision[] = [{ mark: "docs/adr/0060", adrTitle: "" }];
-    const openQuestions = ["The sheet marked docs/adr/0060 and no ADR was filed for it — what should it say?"];
+    const openQuestions = ["The sheet marked docs/adr/0060 and no ADR was filed for it, so what should it say?"];
 
     expect(unfiledMarkGap(decisions, openQuestions)).toBe(0);
   });
@@ -45,7 +45,7 @@ describe("unfiledMarkGap — the sheet's own unfiled-guess arithmetic", () => {
   });
 });
 
-describe("unfiledMarks — the set unfiledMarkGap counts", () => {
+describe("unfiledMarks: the set unfiledMarkGap counts", () => {
   it("returns the marked, unfiled decisions that no open question names", () => {
     const named: MarkedDecision = { mark: "docs/adr/0060", adrTitle: "" };
     const unnamed: MarkedDecision = { mark: "docs/adr/0061", adrTitle: "" };
@@ -56,7 +56,7 @@ describe("unfiledMarks — the set unfiledMarkGap counts", () => {
     expect(unfiledMarks(decisions, openQuestions)).toEqual([unnamed]);
   });
 
-  it("is not thrown off by a single question naming two marks — where subtracting counts would be", () => {
+  it("is not thrown off by a single question naming two marks, where subtracting counts would be", () => {
     const decisions: MarkedDecision[] = [
       { mark: "docs/adr/0060", adrTitle: "" },
       { mark: "docs/adr/0061", adrTitle: "" },
@@ -66,7 +66,7 @@ describe("unfiledMarks — the set unfiledMarkGap counts", () => {
     expect(unfiledMarks(decisions, openQuestions)).toEqual([]);
   });
 
-  it("is not thrown off by two questions naming the same mark — where subtracting counts would be", () => {
+  it("is not thrown off by two questions naming the same mark, where subtracting counts would be", () => {
     const decisions: MarkedDecision[] = [{ mark: "docs/adr/0060", adrTitle: "" }];
     const openQuestions = ["First question about docs/adr/0060.", "Second question about docs/adr/0060."];
 
@@ -74,7 +74,7 @@ describe("unfiledMarks — the set unfiledMarkGap counts", () => {
   });
 });
 
-describe("gateCount — how much a run left unresolved", () => {
+describe("gateCount: how much a run left unresolved", () => {
   it("is zero with no open questions and no decisions", () => {
     expect(gateCount([])).toBe(0);
   });
@@ -89,12 +89,12 @@ describe("gateCount — how much a run left unresolved", () => {
     expect(gateCount([], decisions)).toBe(1);
   });
 
-  it("contributes nothing for a door with no decisions — a map, or a session-written spec", () => {
+  it("contributes nothing for a door with no decisions, such as a map or a session-written spec", () => {
     expect(gateCount(["one open question"], [])).toBe(1);
   });
 });
 
-describe("applyGate — unconditional since #263", () => {
+describe("applyGate: unconditional since #263", () => {
   it.each([
     ["called with no count at all", undefined],
     ["the count says something was left unresolved", 3],
