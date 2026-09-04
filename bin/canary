@@ -486,18 +486,31 @@ seed_fixture_issue() { # → issue number, on stdout, carrying the comments the 
   echo "$num"
 }
 
+open_pr() { # branch title → pull request number, on stdout
+  local out
+  if ! out="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$1" \
+    --title "$2" --body "Seed pull request created by bin/canary for the '$lane' lane." 2>&1)"; then
+    die "could not open a pull request from $1: $(tail -1 <<<"$out")"
+  fi
+  out="$(tail -1 <<<"$out")"
+  case "$out" in
+    https://github.com/*/pull/[0-9]*) ;;
+    *) die "gh pr create said '$out' instead of a pull request url, so there is no pull request to hand $lane" ;;
+  esac
+  echo "${out##*/}"
+}
+
 seed_pull_request() { # → pull request number, on stdout, merged so a lane that judges merges has one
-  local pr_branch base_sha url
+  local pr_branch base_sha num
   pr_branch="canary-pr-$lane-$(date -u +%s)"
   base_sha="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)"
   gh api "repos/$canary_repo/git/refs" -f "ref=refs/heads/$pr_branch" -f "sha=$base_sha" >/dev/null
-  gh api -X PUT "repos/$canary_repo/contents/.canary-pr-$lane" -f "message=canary: open a pull request for $lane" \
+  gh api -X PUT "repos/$canary_repo/contents/.canary-pr/$pr_branch" -f "message=canary: open a pull request for $lane" \
     -f "content=$(printf 'opened for %s\n' "$lane" | base64 -w0)" -f "branch=$pr_branch" >/dev/null
-  url="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$pr_branch" \
-    --title "canary: fire $lane" --body "Seed pull request created by bin/canary for the '$lane' lane." 2>&1 | tail -1)"
-  gh pr merge "${url##*/}" -R "$canary_repo" --merge --admin >/dev/null 2>&1 \
+  num="$(open_pr "$pr_branch" "canary: fire $lane")"
+  gh pr merge "$num" -R "$canary_repo" --merge --admin >/dev/null 2>&1 \
     || log "could not merge the seed pull request; a lane that judges merges will call it unjudged"
-  echo "${url##*/}"
+  echo "$num"
 }
 
 fixture_issue=""
@@ -506,8 +519,38 @@ if [ -n "$fixture_json" ]; then
   log "seeded issue #$fixture_issue on $canary_repo with $(jq '.comments | length' <<<"$fixture_json") marker comment(s)"
 fi
 
+newest_completed_run() { # → a completed run on the canary, for a lane whose whole job is reading one
+  local id
+  id="$(gh api "repos/$canary_repo/actions/runs?status=completed&per_page=1" --jq '.workflow_runs[0].id // empty')"
+  [ -n "$id" ] || die "$canary_repo has no completed run for $lane to read; prove any other lane first, then prove $lane"
+  echo "$id"
+}
+
+add_fixture_payload() { # envelope → appends the fixture's payload to dispatch_args under that envelope
+  local key value
+  [ -n "$fixture_json" ] || return 0
+  while IFS=$'\t' read -r key value; do
+    [ -n "$key" ] || continue
+    case "$value" in
+      @issue) value="$fixture_issue" ;;
+      @head) value="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)" ;;
+      @pr) value="$(seed_pull_request)" ;;
+      @run) value="$(newest_completed_run)" ;;
+    esac
+    dispatch_args+=(-f "$1[$key]=$value")
+    log "payload $key=$value"
+  done < <(jq -r '.payload // {} | to_entries[] | "\(.key)\t\(.value)"' <<<"$fixture_json")
+}
+
+stub_runs() { # → the ids of every run of this lane's stub matching the fire, newest first
+  { gh api "repos/$canary_repo/actions/workflows/$(basename "$stub_path")/runs?per_page=50" 2>/dev/null || echo '{"workflow_runs":[]}'; } \
+    | jq -r --argjson b "${1:-0}" --arg e "${2:-}" \
+      '[.workflow_runs[] | select(.id > $b) | select($e == "" or .event == $e) | .id] | sort | reverse | join(" ")'
+}
+
 before_time="$(date -u +%FT%TZ)"
-before_run="$(gh api "repos/$canary_repo/actions/runs?per_page=1" --jq '.workflow_runs[0].id // 0')"
+before_run="$(stub_runs 0 "" | tr ' ' '\n' | head -1)"
+before_run="${before_run:-0}"
 case "$fire_kind" in
   push)
     if [ -z "$fire_sha" ]; then
@@ -517,23 +560,14 @@ case "$fire_kind" in
     log "fired: $canary_repo@$fire_sha (push of $fire_path, the path $lane's filter accepts)"
     ;;
   workflow_dispatch)
-    gh api -X POST "repos/$canary_repo/actions/workflows/$(basename "$stub_path")/dispatches" -f "ref=$target_branch" >/dev/null
+    dispatch_args=(-X POST "repos/$canary_repo/actions/workflows/$(basename "$stub_path")/dispatches" -f "ref=$target_branch")
+    add_fixture_payload "inputs"
+    gh api "${dispatch_args[@]}" >/dev/null
     log "fired: $canary_repo workflow_dispatch on $stub_path@$target_branch"
     ;;
   repository_dispatch)
     dispatch_args=(-X POST "repos/$canary_repo/dispatches" -f "event_type=$fire_event_type" -f "client_payload[canary]=$id")
-    if [ -n "$fixture_json" ]; then
-      while IFS=$'\t' read -r payload_key payload_value; do
-        [ -n "$payload_key" ] || continue
-        case "$payload_value" in
-          @issue) payload_value="$fixture_issue" ;;
-          @head) payload_value="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)" ;;
-          @pr) payload_value="$(seed_pull_request)" ;;
-        esac
-        dispatch_args+=(-f "client_payload[$payload_key]=$payload_value")
-        log "payload $payload_key=$payload_value"
-      done < <(jq -r '.payload // {} | to_entries[] | "\(.key)\t\(.value)"' <<<"$fixture_json")
-    fi
+    add_fixture_payload "client_payload"
     gh api "${dispatch_args[@]}" >/dev/null
     log "fired: $canary_repo repository_dispatch event_type=$fire_event_type"
     ;;
@@ -565,10 +599,9 @@ case "$fire_kind" in
       -f "content=$(printf '%s\n' "fired at $before_time" | base64 -w0)" -f "branch=$pr_branch")
     [ -z "$fire_blob" ] || put_args+=(-f "sha=$fire_blob")
     gh api "${put_args[@]}" >/dev/null
-    pr_url="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$pr_branch" \
-      --title "${demand_pr_title:-canary: fire $lane}" --body "Seed pull request created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
-    gh pr close "$pr_url" -R "$canary_repo" >/dev/null
-    log "fired: $canary_repo PR ${pr_url##*/} closed"
+    pr_num="$(open_pr "$pr_branch" "${demand_pr_title:-canary: fire $lane}")"
+    gh pr close "$pr_num" -R "$canary_repo" >/dev/null
+    log "fired: $canary_repo PR $pr_num closed"
     ;;
   *)
     die "internal error: canary-fire-plan.ts returned an unhandled kind '$fire_kind'"
@@ -586,14 +619,17 @@ if [ "$fire_kind" = "push" ]; then
     sleep 3
   done
 else
-  while [ -z "$run_id" ]; do
-    run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=30" \
-      | jq -r --argjson b "$before_run" --arg p "$stub_path" \
-        '[.workflow_runs[] | select(.id > $b) | select(.path == $p)] | sort_by(.id) | .[0].id // empty')"
-    [ -n "$run_id" ] && break
+  candidates=()
+  while [ "${#candidates[@]}" -eq 0 ]; do
+    read -r -a candidates <<<"$(stub_runs "$before_run" "$fire_event")"
+    [ "${#candidates[@]}" -gt 0 ] && break
     [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing $stub_path answered in 120 s; does that stub actually declare that trigger on $canary_repo's default branch?"
     sleep 3
   done
+  sleep 8
+  read -r -a candidates <<<"$(stub_runs "$before_run" "$fire_event")"
+  [ "${#candidates[@]}" -eq 1 ] || die "the fire matches ${#candidates[@]} runs of $stub_path (${candidates[*]}); the canary cannot tell which one it lit, so it judges none of them. Let the others finish and prove again."
+  run_id="${candidates[0]}"
 fi
 log "run $run_id: https://github.com/$canary_repo/actions/runs/$run_id"
 deadline=$((SECONDS + timeout_s))

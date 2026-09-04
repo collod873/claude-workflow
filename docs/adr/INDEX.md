@@ -162,5 +162,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0152 | [A canary fire carries the fixture the lane reads, because a lane that starts on an empty issue proves only that it started](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) | superseded |
 | 0153 | [A canary fire satisfies the job guard the lane sits behind, including a guard that lives in the reusable workflow the caller uses](0153-a-canary-fire-satisfies-the-job-guard-the-lane-sits-behind-i.md) | constraint |
 | 0154 | [A sweep runs in its own session and the terminal only follows it, because a sweep outlives the terminal that starts it](0154-a-sweep-runs-in-its-own-session-and-the-terminal-only-follow.md) | constraint |
+| 0155 | [A canary that cannot tell which run its fire lit judges none of them](0155-a-canary-that-cannot-tell-which-run-its-fire-lit-judges-none.md) | constraint |
 
-154 ADRs · 70 constraint · 44 note · 40 superseded · 15,238 words total.
+155 ADRs · 71 constraint · 44 note · 40 superseded · 15,363 words total.

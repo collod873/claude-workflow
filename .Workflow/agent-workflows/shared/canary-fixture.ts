@@ -103,6 +103,14 @@ const FIXTURES: Record<string, CanaryFixture> = {
     ensureLabels: ["canary-fire", "prd"],
     payload: { head: "@head", prd_closed: "@issue" },
   },
+  fixer: {
+    title: "canary: react to a finished run",
+    body: "The fixer lane reads the run it is handed and resolves the pull request that run judged.",
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire"],
+    payload: { run_id: "@run" },
+  },
   integrate: {
     title: "canary: integrate the open pull request",
     body: "The integrate lane reads the pull request number it is handed.",
