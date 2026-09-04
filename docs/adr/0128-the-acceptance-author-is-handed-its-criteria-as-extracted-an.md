@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-01
+superseded_by: ADR-0159
 amends: ADR-0098
 reversal: Reversing means dropping the rendered criteria from lane 04's prompt assembly and letting the model re-derive each string from the ticket body by eye; a copy differing by one character selects no test in verify.yml's testsForCriteria grep, and the run then fails on the implementer's pull request rather than on the author that wrote the test.
 ---

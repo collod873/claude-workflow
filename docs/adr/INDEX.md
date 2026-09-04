@@ -58,7 +58,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0123 | [The owner signs by not reverting, and a revert writes declined memory](0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md) |
 | 0124 | [A lint rule is ratified only by reproducing its own evidence](0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md) |
 | 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) |
-| 0128 | [The acceptance author is handed its criteria as extracted, and quotes each into a comment](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) |
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) |
 | 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) |
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) |
@@ -165,6 +164,7 @@ demotion; nothing here binds later work.
 - [0121](0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md) note
 - [0125](0125-checkpoint-isolation-is-a-setupfiles-entry-that-every-test-g.md) note
 - [0126](0126-no-diff-counts-the-range-it-was-handed-and-refuses-a-range-i.md) note
+- [0128](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) superseded
 - [0133](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) superseded
 - [0135](0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) superseded
 - [0140](0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md) superseded
@@ -174,4 +174,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-159 ADRs · 74 constraint · 44 note · 41 superseded · 15,987 words total.
+159 ADRs · 73 constraint · 44 note · 42 superseded · 15,987 words total.
