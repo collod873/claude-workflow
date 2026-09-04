@@ -100,6 +100,58 @@ describe("the session id", () => {
   });
 });
 
+function toolUseEvent(name: string, input: Record<string, unknown>) {
+  return JSON.stringify({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name, input }] },
+  });
+}
+
+describe("turns and gauntlet runs", () => {
+  it("reports the turn count carried on the result event", () => {
+    const { turns } = parse([`${resultEvent("done", { num_turns: 7 })}\n`]);
+
+    expect(turns).toBe(7);
+  });
+
+  it("is undefined when no event carried a turn count", () => {
+    const { turns } = parse(['{"type":"system","subtype":"init"}\n', `${resultEvent("done")}\n`]);
+
+    expect(turns).toBeUndefined();
+  });
+
+  it("counts a Bash tool call that runs bin/gauntlet", () => {
+    const stream = `${toolUseEvent("Bash", { command: "bin/gauntlet push" })}\n${resultEvent("done")}\n`;
+
+    expect(parse([stream]).gauntletRuns).toBe(1);
+  });
+
+  it("counts every Bash call across turns that runs bin/gauntlet", () => {
+    const stream =
+      [
+        toolUseEvent("Bash", { command: "bin/gauntlet push" }),
+        toolUseEvent("Bash", { command: "npm test" }),
+        toolUseEvent("Bash", { command: "bin/gauntlet stop" }),
+        resultEvent("done"),
+      ].join("\n") + "\n";
+
+    expect(parse([stream]).gauntletRuns).toBe(2);
+  });
+
+  it("is zero when nothing ran, or a Bash call never mentions bin/gauntlet", () => {
+    expect(parse([`${resultEvent("done")}\n`]).gauntletRuns).toBe(0);
+
+    const stream = `${toolUseEvent("Bash", { command: "npm test" })}\n${resultEvent("done")}\n`;
+    expect(parse([stream]).gauntletRuns).toBe(0);
+  });
+
+  it("does not count a tool whose name merely resembles Bash", () => {
+    const stream = `${toolUseEvent("BashOutput", { command: "bin/gauntlet push" })}\n${resultEvent("done")}\n`;
+
+    expect(parse([stream]).gauntletRuns).toBe(0);
+  });
+});
+
 describe("chunk boundaries", () => {
   it("reassembles an event split across two chunks", () => {
     const event = resultEvent('{"entries":[]}');

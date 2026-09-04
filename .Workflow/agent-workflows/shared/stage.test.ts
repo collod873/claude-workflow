@@ -332,6 +332,20 @@ describe("runStageSession", () => {
     });
   });
 
+  it("surfaces the turn count and gauntlet run count a StageReply carried", async () => {
+    const promptPath = writePrompt("Prompt.");
+    const fake = createFakeStage({ text: RESPONSE, sessionId: "sess-999", turns: 41, gauntletRuns: 3 });
+
+    await expect(
+      runStageSession(promptPath, {}, fake.exec, GREETING, { stage: "test" }),
+    ).resolves.toEqual({
+      value: { greeting: "hi" },
+      sessionId: "sess-999",
+      turns: 41,
+      gauntletRuns: 3,
+    });
+  });
+
   it("leaves the session id undefined on a checkpoint hit", async () => {
     const promptPath = writePrompt("Checkpointed prompt for runStageSession.");
     const fake = createFakeStage({ text: RESPONSE, sessionId: "sess-first" });

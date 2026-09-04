@@ -7,6 +7,8 @@ export interface StreamResult {
   isError: boolean;
   missingResult: boolean;
   sessionId?: string;
+  turns?: number;
+  gauntletRuns: number;
 }
 
 export interface StreamJsonParser {
@@ -20,6 +22,8 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
   let isError = false;
   let sawResult = false;
   let sessionId: string | undefined;
+  let turns: number | undefined;
+  let gauntletRuns = 0;
 
   function consume(line: string): void {
     const trimmed = line.trim();
@@ -37,6 +41,11 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
       sawResult = true;
       text = finalText(event);
       isError = event.is_error === true || String(event.subtype ?? "").startsWith("error");
+      if (typeof event.num_turns === "number") turns = event.num_turns;
+    }
+
+    if (isRecord(event) && event.type === "assistant") {
+      gauntletRuns += countGauntletRuns(event);
     }
 
     if (isRecord(event) && typeof event.session_id === "string" && event.session_id !== "") {
@@ -59,7 +68,7 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
         consume(pending);
         pending = "";
       }
-      return { text, isError, missingResult: !sawResult, sessionId };
+      return { text, isError, missingResult: !sawResult, sessionId, turns, gauntletRuns };
     },
   };
 }
@@ -95,13 +104,15 @@ export function progressLine(event: unknown): string | null {
   }
 }
 
-function assistantLine(event: Record<string, unknown>): string | null {
+function assistantBlocks(event: Record<string, unknown>): Record<string, unknown>[] {
   const message = event.message;
-  if (!isRecord(message) || !Array.isArray(message.content)) return null;
+  if (!isRecord(message) || !Array.isArray(message.content)) return [];
+  return message.content.filter(isRecord);
+}
 
+function assistantLine(event: Record<string, unknown>): string | null {
   const lines: string[] = [];
-  for (const block of message.content) {
-    if (!isRecord(block)) continue;
+  for (const block of assistantBlocks(event)) {
     if (block.type === "tool_use") {
       lines.push(`→ ${String(block.name ?? "tool")}(${toolArg(block.input)})`);
     } else if (block.type === "text" && typeof block.text === "string") {
@@ -110,6 +121,16 @@ function assistantLine(event: Record<string, unknown>): string | null {
     }
   }
   return lines.length === 0 ? null : lines.join("\n");
+}
+
+function countGauntletRuns(event: Record<string, unknown>): number {
+  return assistantBlocks(event).filter(
+    (block) => block.type === "tool_use" && block.name === "Bash" && isGauntletCommand(block.input),
+  ).length;
+}
+
+function isGauntletCommand(input: unknown): boolean {
+  return isRecord(input) && typeof input.command === "string" && input.command.includes("bin/gauntlet");
 }
 
 function toolArg(input: unknown): string {

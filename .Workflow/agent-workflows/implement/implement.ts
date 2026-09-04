@@ -10,7 +10,7 @@ import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
-import { execClaudeIn, runStage, runStageSession, type StageExec } from "../shared/stage";
+import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractFilesClaimed,
@@ -100,7 +100,7 @@ export function moduleContextPath(filesClaimed: string[], fileExists: (path: str
 
 export const IMPLEMENTER_OUTPUT = structuredOutput(ImplementerReply);
 
-export function runImplementer(exec: StageExec, brief: string): Promise<{ value: ImplementerReply; sessionId?: string }> {
+export function runImplementer(exec: StageExec, brief: string): Promise<StageSessionResult<ImplementerReply>> {
   return runStageSession(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
@@ -113,14 +113,37 @@ export function gateOutputTail(output: string): string {
   return output.length > GATE_OUTPUT_TAIL_CHARS ? output.slice(-GATE_OUTPUT_TAIL_CHARS) : output;
 }
 
-export function runRepair(exec: StageExec, sessionId: string, gateOutput: string): Promise<ImplementerReply> {
-  return runStage(REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
+export function runRepair(exec: StageExec, sessionId: string, gateOutput: string): Promise<StageSessionResult<ImplementerReply>> {
+  return runStageSession(REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
     resume: sessionId,
     stage: "implementer-repair",
   });
+}
+
+export interface ImplementerSession {
+  stage: string;
+  turns?: number;
+  gauntletRuns?: number;
+}
+
+export function sessionsNote(sessions: ImplementerSession[]): string {
+  const lines = sessions.map(
+    (session) => `- ${session.stage}: ${turnsPhrase(session.turns)}, ${gauntletPhrase(session.gauntletRuns)}`,
+  );
+  return ["Implementer sessions", ...lines].join("\n");
+}
+
+function turnsPhrase(turns: number | undefined): string {
+  return turns === undefined ? "turns unknown" : `${turns} turns`;
+}
+
+function gauntletPhrase(gauntletRuns: number | undefined): string {
+  return gauntletRuns === undefined || gauntletRuns === 0
+    ? "never ran bin/gauntlet"
+    : `ran bin/gauntlet ${gauntletRuns} times`;
 }
 
 export const ANSWER_PATH_ENV = "IMPLEMENT_ANSWER_PATH";
@@ -232,15 +255,25 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   const first = await runImplementer(deps.exec, brief);
   let reply: ImplementerReply = first.value;
   let gate = gateOnChanges(deps, log);
+  const sessions: ImplementerSession[] = [
+    { stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns },
+  ];
 
   if (!gate.ok && first.sessionId) {
     log(`resuming session ${first.sessionId} for the one repair round`);
     const repaired = await runRepair(deps.exec, first.sessionId, gate.output);
     reply = {
-      summary: repaired.summary,
-      outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.outOfBriefReads],
+      summary: repaired.value.summary,
+      outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
     };
+    sessions.push({ stage: "implementer-repair", turns: repaired.turns, gauntletRuns: repaired.gauntletRuns });
     gate = gateOnChanges(deps, log);
+  }
+
+  if (sessions.some((session) => session.turns !== undefined)) {
+    const note = sessionsNote(sessions);
+    sayOnTicket(deps.gh, deps.issueNumber, note, log);
+    log(note);
   }
 
   const answer = deriveAnswer(deps.git, deps.readFile, deps.fileExists, reply);

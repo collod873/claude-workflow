@@ -34,6 +34,8 @@ describe("execClaude", () => {
     await expect(execClaude(["-p"], PROMPT_PAST_THE_PIPE_BUFFER)).resolves.toEqual({
       text: "answered anyway",
       sessionId: undefined,
+      turns: 1,
+      gauntletRuns: 0,
     });
   });
 
@@ -51,6 +53,8 @@ describe("execClaude", () => {
     await expect(execClaude(["-p", "a prompt on argv"])).resolves.toEqual({
       text: "1",
       sessionId: undefined,
+      turns: 1,
+      gauntletRuns: 0,
     });
   });
 
@@ -60,6 +64,8 @@ describe("execClaude", () => {
     await expect(execClaude(["-p", "a prompt on argv"])).resolves.toEqual({
       text: "with a session",
       sessionId: "sess-abc",
+      turns: 1,
+      gauntletRuns: 0,
     });
   });
 });

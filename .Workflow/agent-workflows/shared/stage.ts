@@ -11,6 +11,8 @@ import { rejectedResponse, type StructuredOutput } from "./structured-output";
 export interface StageReply {
   text: string;
   sessionId?: string;
+  turns?: number;
+  gauntletRuns?: number;
 }
 
 export type StageExec = (argv: string[], stdin?: string) => Promise<string | StageReply>;
@@ -54,7 +56,7 @@ export const execClaudeIn =
     child.on("error", (err) => reject(new Error(`could not spawn \`claude\`: ${err.message}`)));
 
     child.on("close", (code) => {
-      const { text, isError, missingResult, sessionId } = parser.end();
+      const { text, isError, missingResult, sessionId, turns, gauntletRuns } = parser.end();
       const prompt = stdinError === undefined ? "" : ` (the prompt never reached it: ${stdinError.message})`;
       if (code !== 0) {
         reject(new Error(`\`claude\` exited ${code}${prompt}${tail(stderr)}`));
@@ -68,7 +70,7 @@ export const execClaudeIn =
         reject(new Error(`\`claude\` produced no result event${prompt}${tail(stderr)}`));
         return;
       }
-      resolve({ text, sessionId });
+      resolve({ text, sessionId, turns, gauntletRuns });
     });
   });
 
@@ -200,13 +202,20 @@ function toStageReply(response: string | StageReply): StageReply {
   return typeof response === "string" ? { text: response } : response;
 }
 
+export interface StageSessionResult<T> {
+  value: T;
+  sessionId?: string;
+  turns?: number;
+  gauntletRuns?: number;
+}
+
 export async function runStageSession<T>(
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
   output: StructuredOutput<T>,
   options: StageOptions,
-): Promise<{ value: T; sessionId?: string }> {
+): Promise<StageSessionResult<T>> {
   if (options.allowedTools?.length && options.disallowedTools?.length) {
     throw new Error(
       "StageOptions set both allowedTools and disallowedTools; pick one: allowedTools says " +
@@ -239,7 +248,7 @@ export async function runStageSession<T>(
     ...allowed,
   ];
 
-  const spawnAndParse = async (): Promise<{ value: T; sessionId?: string }> => {
+  const spawnAndParse = async (): Promise<StageSessionResult<T>> => {
     let reply: StageReply;
     if (options.promptViaStdin) {
       reply = toStageReply(await exec(["-p", ...flags], prompt));
@@ -254,7 +263,7 @@ export async function runStageSession<T>(
     }
     const value = output.parse(reply.text);
     writeCheckpoint(stage, prompt, reply.text);
-    return { value, sessionId: reply.sessionId };
+    return { value, sessionId: reply.sessionId, turns: reply.turns, gauntletRuns: reply.gauntletRuns };
   };
 
   return preservingRaw(stage, spawnAndParse);

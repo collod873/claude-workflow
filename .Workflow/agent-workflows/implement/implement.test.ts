@@ -29,6 +29,7 @@ import {
   IMPLEMENTER_DENIED_TOOLS,
   moduleContextPath,
   runImplement,
+  sessionsNote,
   staleClaimTakeoverNote,
   VERIFY_DISPATCH_EVENT_TYPE,
   type ImplementDeps,
@@ -276,6 +277,27 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(git stash:*)");
     expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(gh:*)");
     expect(IMPLEMENTER_DENIED_TOOLS).not.toContain("Bash(git:*)");
+  });
+});
+
+describe("instrumentation: a sessionsNote comment tells red gates from unrun ones", () => {
+  it("posts one comment naming the implementer session's turns and gauntlet runs when the model reported them", async () => {
+    const stage = createFakeStage({ text: JSON.stringify(BUILDS), turns: 41, gauntletRuns: 3 });
+    const { deps, host } = arrange({ deps: { exec: stage.exec } });
+
+    await runImplement(deps);
+
+    expect(ticketCommentsIn(host.calls)).toEqual([
+      sessionsNote([{ stage: "implementer", turns: 41, gauntletRuns: 3 }]),
+    ]);
+  });
+
+  it("posts no sessionsNote comment when the run reported no turns, as on a checkpoint replay", async () => {
+    const { deps, host } = arrange();
+
+    await runImplement(deps);
+
+    expect(ticketCommentsIn(host.calls)).toEqual([]);
   });
 });
 
