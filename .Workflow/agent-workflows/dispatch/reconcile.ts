@@ -245,6 +245,13 @@ function toBuildRefusal(body: string): string | undefined {
   if (claimed.length > 0) {
     return `its \`## Files claimed\` touches paths no pull request may edit: ${claimed.join(", ")}`;
   }
+
+  if (!extractCriteria(body).some((criterion) => parseCheckMarker(criterion) !== undefined)) {
+    return (
+      "none of its acceptance criteria carry a `check:` marker, the same line " +
+      "`bin/close-ticket` refuses at close: add `- check: `<command>`` to at least one criterion"
+    );
+  }
   return undefined;
 }
 

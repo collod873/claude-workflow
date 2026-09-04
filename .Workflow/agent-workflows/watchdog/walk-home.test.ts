@@ -217,7 +217,7 @@ describe("walkHome", () => {
     expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes("-R"))).toBe(false);
   });
 
-  it.fails("#371.3: the ticket it files carries a check on its criterion that runs the tests beside the failing path, so lane 08 can close it once lane 04 has authored one", () => {
+  it("#371.3: the ticket it files carries a check on its criterion that runs the tests beside the failing path, so lane 08 can close it once lane 04 has authored one", () => {
     const fake = estateWith({
       repositories: ["owner/caller"],
       runs: { "owner/caller": [{ id: 555, path: ".github/workflows/verify-caller.yml" }] },
