@@ -48,6 +48,7 @@ export interface FakeIssue {
   labels?: string[];
   comments?: string[];
   children?: number[];
+  mergedCloser?: boolean;
 }
 
 export interface FakeClosed {
@@ -157,11 +158,14 @@ export function trackerWith(options: TrackerOptions): Tracker {
       );
     }
     if (args[0] === "issue" && args[1] === "view") {
-      const record = closed.get(Number(args[2]));
-      return JSON.stringify(record ? [closingPrFor(record.number)] : []);
+      const number = Number(args[2]);
+      const closes = closed.has(number) || open.get(number)?.mergedCloser === true;
+      return JSON.stringify(closes ? [closingPrFor(number)] : []);
     }
     if (args[0] === "pr" && args[1] === "view") {
-      const record = closed.get(closerOwner(Number(args[2])));
+      const owner = closerOwner(Number(args[2]));
+      const record: Partial<FakeClosed> | undefined =
+        closed.get(owner) ?? (open.get(owner)?.mergedCloser ? { merged: true } : undefined);
       if (args.includes("--jq")) return `${record?.merged ? "MERGED" : "CLOSED"}\n`;
       return JSON.stringify({
         mergedAt: record?.merged ? (record.mergedAt ?? null) : null,
