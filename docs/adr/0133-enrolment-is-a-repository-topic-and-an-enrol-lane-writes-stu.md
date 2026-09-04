@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-01
+superseded_by: ADR-0156
 amends: ADR-0057
 reversal: Reversing it means deleting the enrol lane and the topic-derived repository list it enumerates, rebuilding `bin/install` as a command a person has to remember to run again, and re-auditing every already-enrolled repository to confirm it still holds what that command would have installed by hand.
 ---
