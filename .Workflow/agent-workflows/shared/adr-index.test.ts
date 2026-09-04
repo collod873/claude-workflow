@@ -9,17 +9,27 @@ function adr(status: string, title: string, body = "one two three"): string {
 }
 
 describe("renderAdrIndex", () => {
-  it("renders a row per landed ADR, ascending by number, with the title as the ruling", () => {
+  it("renders a row per constraint, ascending by number, with the title as the ruling", () => {
     const index = renderAdrIndex([
-      { name: "0002-second.md", content: adr("note", "The second ruling") },
+      { name: "0002-second.md", content: adr("constraint", "The second ruling") },
       { name: "0001-first.md", content: adr("constraint", "The first ruling") },
     ]);
 
     const rows = index.split("\n").filter((line) => line.startsWith("| 0"));
-    expect(rows).toEqual([
-      "| 0001 | [The first ruling](0001-first.md) | constraint |",
-      "| 0002 | [The second ruling](0002-second.md) | note |",
+    expect(rows).toEqual(["| 0001 | [The first ruling](0001-first.md) |", "| 0002 | [The second ruling](0002-second.md) |"]);
+    expect(index).not.toContain("## Retired");
+  });
+
+  it("moves a demoted ADR out of the table into a retired tail that keeps its number but drops its ruling", () => {
+    const index = renderAdrIndex([
+      { name: "0001-first.md", content: adr("constraint", "The first ruling") },
+      { name: "0002-second.md", content: adr("note", "The second ruling") },
     ]);
+
+    expect(index.split("\n").filter((line) => line.startsWith("| 0"))).toEqual(["| 0001 | [The first ruling](0001-first.md) |"]);
+    expect(index).toContain("## Retired\n");
+    expect(index).toContain("- [0002](0002-second.md) note\n");
+    expect(index).not.toContain("The second ruling");
   });
 
   it("skips a draft, which carries no number, so work in progress never reaches the index", () => {
@@ -34,9 +44,9 @@ describe("renderAdrIndex", () => {
   });
 
   it("escapes a pipe in a title rather than breaking the row into extra columns", () => {
-    const index = renderAdrIndex([{ name: "0001-a.md", content: adr("note", "A | B") }]);
+    const index = renderAdrIndex([{ name: "0001-a.md", content: adr("constraint", "A | B") }]);
 
-    expect(index).toContain("| 0001 | [A \\| B](0001-a.md) | note |");
+    expect(index).toContain("| 0001 | [A \\| B](0001-a.md) |");
   });
 
   it("tallies by status and totals the words, excluding the title line the cap never charges for", () => {
@@ -52,7 +62,8 @@ describe("renderAdrIndex", () => {
   it("names a file with no status and no title rather than dropping it silently", () => {
     const index = renderAdrIndex([{ name: "0009-mystery.md", content: "no frontmatter, no heading\n" }]);
 
-    expect(index).toContain("| 0009 | [_(untitled: 0009-mystery.md)_](0009-mystery.md) | ? |");
+    expect(index).toContain("- [0009](0009-mystery.md) ?\n");
+    expect(index).toContain("1 ADR · 1 ? · 4 words total.");
   });
 });
 
@@ -69,7 +80,7 @@ describe("regenerateAdrIndex", () => {
     const root = corpus(true);
 
     expect(regenerateAdrIndex(root)).toBe(true);
-    expect(readFileSync(join(root, INDEX_RELATIVE_PATH), "utf8")).toContain("| 0001 | [A ruling](0001-a-ruling.md) | constraint |");
+    expect(readFileSync(join(root, INDEX_RELATIVE_PATH), "utf8")).toContain("| 0001 | [A ruling](0001-a-ruling.md) |");
   });
 
   it("stands down on a target that carries no index, so enrolment never invents one", () => {

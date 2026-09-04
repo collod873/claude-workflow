@@ -84,16 +84,10 @@ takes, and the shape the lane that slices one into tickets expects to read.
 `## Acceptance criteria` sits **last**, after the prose, because it is the sentence the whole spec
 was written to make true.
 
-## Variants
-
-Each producer's body is the core above plus its own framing. The two differ in one place only:
-where the owner's sentence comes from, and what happens to everything the producer had to guess at.
-
-### Session spec (`/to-spec`, live session)
-
-Written in a conversation with the owner and filed with `~/bin/file-issue spec`. The owner is in
-the room, so the one criterion is a sentence he finishes on the spot, and anything unsettled is
-asked rather than assumed.
+Written out, that is the body both producers file, and it is written here **once**. The two
+variants below carried a copy each, identical but for the criterion line: the same drift this doc
+exists to prevent, one level down, in the document that says so. A reader learns the shape from
+whichever copy they scrolled to, and the copies were already one edit from disagreeing.
 
 ```markdown
 ## Problem Statement
@@ -126,6 +120,22 @@ Any further notes about the feature.
 
 ## Acceptance criteria
 
+- [ ] <the one criterion, in the form its variant below gives> - check: `<the one command that proves it, allowed to read the tracker or production>`
+```
+
+## Variants
+
+Each producer files the body above. The two differ in one place only: where the owner's sentence
+comes from, and what happens to everything the producer had to guess at. So a variant here is the
+criterion line and nothing else.
+
+### Session spec (`/to-spec`, live session)
+
+Written in a conversation with the owner and filed with `~/bin/file-issue spec`. The owner is in
+the room, so the one criterion is a sentence he finishes on the spot, and anything unsettled is
+asked rather than assumed. The sentence completes the opener he was asked:
+
+```markdown
 - [ ] I'll know it works when I can <the owner's sentence, in his own words> - check: `<the one command that proves it, allowed to read the tracker or production>`
 ```
 
@@ -144,39 +154,15 @@ or a closed map) rather than from a conversation. Same body, three differences i
   whoever reads the spec next. It is the only changelog a rewrite leaves; the revised prose is the
   record for everything else.
 
+There is no opener to complete: the sentence is lifted whole from the record.
+
 ```markdown
-## Problem Statement
-
-The problem that the user is facing, from the user's perspective.
-
-## Solution
-
-The solution to the problem, from the user's perspective.
-
-## User Stories
-
-1. As a <actor>, I want a <feature>, so that <benefit>
-
-## Implementation Decisions
-
-- The modules built or modified, their interfaces, schema changes, API contracts, architectural rulings.
-
-## Testing Decisions
-
-- What makes a good test here, which modules are tested, and the prior art in this codebase.
-
-## Out of Scope
-
-A description of the things that are out of scope for this spec.
-
-## Further Notes
-
-Any further notes about the feature.
-
-## Acceptance criteria
-
 - [ ] <the owner's sentence, quoted from the record in his own words> - check: `<the one command that proves it, allowed to read the tracker or production>`
+```
 
+And the reconciler's section, appended after everything else in the body:
+
+```markdown
 ## Assumptions
 
 - **What was decided.** Why the Decided context did not settle it.

@@ -16,8 +16,16 @@ work must not stray from; the title is the ruling. Read a body only for the why.
 
 File one with \`new-adr "the ruling as a sentence"\`, then \`new-adr --land <draft>\`.
 
-| # | Ruling | Status |
-|---|---|---|
+| # | Ruling |
+|---|---|
+`;
+
+const RETIRED_HEADER = `
+## Retired
+
+Demoted. The numbers stay resolvable because citations escaped into issues before the
+demotion; nothing here binds later work.
+
 `;
 
 export interface AdrFile {
@@ -70,10 +78,16 @@ export function renderAdrIndex(files: AdrFile[]): string {
     .filter((entry): entry is Entry => entry !== undefined)
     .sort((left, right) => left.number - right.number);
 
-  const rows = corpus.map((entry) => {
-    const ruling = entry.title.replaceAll("|", "\\|") || `_(untitled: ${entry.name})_`;
-    return `| ${String(entry.number).padStart(4, "0")} | [${ruling}](${entry.name}) | ${entry.status} |`;
-  });
+  const rows = corpus
+    .filter((entry) => entry.status === "constraint")
+    .map((entry) => {
+      const ruling = entry.title.replaceAll("|", "\\|") || `_(untitled: ${entry.name})_`;
+      return `| ${String(entry.number).padStart(4, "0")} | [${ruling}](${entry.name}) |`;
+    });
+
+  const retired = corpus
+    .filter((entry) => entry.status !== "constraint")
+    .map((entry) => `- [${String(entry.number).padStart(4, "0")}](${entry.name}) ${entry.status}`);
 
   const counts = new Map<string, number>();
   for (const entry of corpus) counts.set(entry.status, (counts.get(entry.status) ?? 0) + 1);
@@ -86,7 +100,9 @@ export function renderAdrIndex(files: AdrFile[]): string {
   const noun = corpus.length === 1 ? "ADR" : "ADRs";
   const footer = `\n${corpus.length} ${noun} · ${tally} · ${words.toLocaleString("en-US")} words total.\n`;
 
-  return INDEX_HEADER + rows.join("\n") + "\n" + footer;
+  let out = INDEX_HEADER + rows.map((row) => `${row}\n`).join("");
+  if (retired.length > 0) out += RETIRED_HEADER + retired.map((row) => `${row}\n`).join("");
+  return out + footer;
 }
 
 export function adrCorpus(repoRoot: string): AdrFile[] {
