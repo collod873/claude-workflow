@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-03
+superseded_by: ADR-0153
 amends: ADR-0146
 reversal: Reversing it means deleting shared/canary-fixture.ts and the seeding in bin/canary, and
   accepting that every issue-driven lane is provable only as far as its first collector. Getting
