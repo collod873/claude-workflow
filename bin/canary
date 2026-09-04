@@ -15,6 +15,7 @@ usage: bin/canary <command> [options]
 
   up                       create and seed the canary target, public so hosted runners are free
   token [sk-ant-...]       set CLAUDE_CODE_OAUTH_TOKEN on the machine and the canary at once
+  token --clipboard        take the token straight off the clipboard, so it is never typed
   token --from <file>      take the token from a file, so it never reaches a shell history
   prove --lane <lane>      prove one lane's real code at this branch's head
   sweep [--lanes a,b|all]  prove every lane, groups at once, lanes behind one door in turn
@@ -36,6 +37,20 @@ put_file() { # path message content [sha] → "<commit sha> <blob sha>"
   gh api "${args[@]}" --jq '"\(.commit.sha) \(.content.sha)"'
 }
 
+read_clipboard() {
+  {
+    if command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -Command Get-Clipboard 2>/dev/null
+    elif command -v wl-paste >/dev/null 2>&1; then
+      wl-paste 2>/dev/null
+    elif command -v xclip >/dev/null 2>&1; then
+      xclip -o -selection clipboard 2>/dev/null
+    elif command -v pbpaste >/dev/null 2>&1; then
+      pbpaste 2>/dev/null
+    fi
+  } | tr -d '[:space:]'
+}
+
 cmd="${1:-}"
 case "$cmd" in prove|sweep|token|up|down|reset-cap) ;; *) usage ;; esac
 shift
@@ -51,6 +66,7 @@ while [ $# -gt 0 ]; do
     --lane) lane="$2"; shift 2 ;;
     sk-ant-*) token_arg="$1"; shift ;;
     --from) token_arg="$(tr -d '[:space:]' <"$2")"; shift 2 ;;
+    --clipboard) token_arg="$(read_clipboard)"; shift ;;
     --lanes) lanes="$2"; shift 2 ;;
     --no-wip) wip=0; shift ;;
     --no-push) push=0; shift ;;
