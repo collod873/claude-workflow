@@ -22,6 +22,7 @@ import { createFakeGit, type FakeGit } from "./git.fake";
 import {
   claimImplementationBranch,
   CLAIM_TIMEOUT_MINUTES,
+  declaredEditsNote,
   deriveAnswer,
   failsRuleNote,
   immutableSetNote,
@@ -158,6 +159,7 @@ describe("landAnswer", () => {
     deleted: [],
     summary: "Built it.",
     outOfBriefReads: [],
+    declaredEdits: [],
   };
 
   async function land(
@@ -187,6 +189,7 @@ describe("landAnswer", () => {
     deleted: [],
     summary: "Ruled it.",
     outOfBriefReads: [],
+    declaredEdits: [],
   };
 
   it("writes the files, commits and pushes the claimed branch, then opens the PR and dispatches Verify", async () => {
@@ -275,7 +278,13 @@ describe("landAnswer", () => {
   });
 
   describe("deletions", () => {
-    const DELETE_ANSWER = { files: [], deleted: ["a/gone.ts"], summary: "Removed it.", outOfBriefReads: [] };
+    const DELETE_ANSWER = {
+      files: [],
+      deleted: ["a/gone.ts"],
+      summary: "Removed it.",
+      outOfBriefReads: [],
+      declaredEdits: [],
+    };
 
     it("removes a deleted path from disk, stages it, and carries it into the changed-files dispatch", async () => {
       const { result, removed, gitCalls, host } = await land(checkoutReporting(), {}, DELETE_ANSWER);
@@ -300,6 +309,7 @@ describe("landAnswer", () => {
       deleted: [],
       summary: "Touched it.",
       outOfBriefReads: [],
+      declaredEdits: [],
     };
 
     it("refuses before any commit, releasing the claim and posting the note", async () => {
@@ -324,17 +334,17 @@ describe("landAnswer", () => {
     });
   });
 
+  const checkoutDiffing = (diff: string): FakeGit =>
+    createFakeGit((args) => {
+      if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
+      if (args[0] === "status") return " M a/b.ts";
+      if (args[0] === "diff") return diff;
+      return "";
+    });
+
+  const hunk = (lines: string[]) => ["--- a/a/b.ts", "+++ b/a/b.ts", "@@ -1,2 +1,2 @@", ...lines].join("\n");
+
   describe("the test.fails( rule, judged on the answer's diff before the commit", () => {
-    const checkoutDiffing = (diff: string): FakeGit =>
-      createFakeGit((args) => {
-        if (args[0] === "rev-parse") return `${HEAD_SHA}\n`;
-        if (args[0] === "status") return " M a/b.ts";
-        if (args[0] === "diff") return diff;
-        return "";
-      });
-
-    const hunk = (lines: string[]) => ["--- a/a/b.ts", "+++ b/a/b.ts", "@@ -1,2 +1,2 @@", ...lines].join("\n");
-
     it("refuses a rewritten test.fails( line: claim released, needs-human, the ticket says why, nothing committed or pushed", async () => {
       const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
 
@@ -360,6 +370,36 @@ describe("landAnswer", () => {
       expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
     });
   });
+
+  describe("declared edits widen the fails rule and are announced", () => {
+    const DECLARED_ANSWER: ImplementerAnswer = {
+      files: [{ path: "a/b.ts", content: "export const x = 2;\n" }],
+      deleted: [],
+      summary: "Rewrote the test; it was asserting the wrong shape.",
+      outOfBriefReads: [],
+      declaredEdits: [{ path: "a/b.ts", reason: "The acceptance test asserted the old return shape." }],
+    };
+
+    it("does not refuse a declared file's test.fails( rewrite, and posts the same note in the PR body and on the ticket", async () => {
+      const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
+
+      const { result, host } = await land(checkoutDiffing(rewritten), {}, DECLARED_ANSWER);
+
+      expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+      const note = declaredEditsNote(DECLARED_ANSWER.declaredEdits);
+      const prCall = prCreatesIn(host.calls)[0];
+      expect(prCall[prCall.indexOf("--body") + 1]).toContain(note);
+      expect(ticketCommentsIn(host.calls)).toContain(note);
+    });
+
+    it("still refuses an undeclared file's rewrite", async () => {
+      const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
+
+      const { result } = await land(checkoutDiffing(rewritten), {}, { ...DECLARED_ANSWER, declaredEdits: [] });
+
+      expect(result).toMatchObject({ outcome: "fails-rule-refused" });
+    });
+  });
 });
 
 describe("deriveAnswer", () => {
@@ -372,7 +412,10 @@ describe("deriveAnswer", () => {
     const readFile = (path: string) => disk.get(path)!;
     const fileExists = (path: string) => disk.has(path);
 
-    expect(deriveAnswer(git, readFile, fileExists, { summary: "did it", outOfBriefReads: ["a/CONTEXT.md"] })).toEqual({
+    const declaredEdits = [{ path: "b.ts", reason: "It was outside the claim but needed the fix." }];
+    expect(
+      deriveAnswer(git, readFile, fileExists, { summary: "did it", outOfBriefReads: ["a/CONTEXT.md"], declaredEdits }),
+    ).toEqual({
       files: [
         { path: "b.ts", content: "content b" },
         { path: "c.ts", content: "content c" },
@@ -380,6 +423,7 @@ describe("deriveAnswer", () => {
       deleted: ["a.ts"],
       summary: "did it",
       outOfBriefReads: ["a/CONTEXT.md"],
+      declaredEdits,
     });
   });
 
@@ -395,7 +439,7 @@ describe("deriveAnswer", () => {
     const readFile = (path: string) => readFileSync(join(repo.dir, path), "utf8");
     const fileExists = (path: string) => existsSync(join(repo.dir, path));
 
-    const answer = deriveAnswer(git, readFile, fileExists, { summary: "s", outOfBriefReads: [] });
+    const answer = deriveAnswer(git, readFile, fileExists, { summary: "s", outOfBriefReads: [], declaredEdits: [] });
 
     expect(answer.deleted).toEqual(["gone.ts"]);
     expect(answer.files).toEqual([{ path: "new.ts", content: "export const z = 1;\n" }]);

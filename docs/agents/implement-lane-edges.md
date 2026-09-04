@@ -183,17 +183,20 @@ alongside, for node 04b.
 
 ---
 
-## Node 04b — the push gate, once, and one repair round · [wire] [model]
+## Node 04b — the push gate, then a two-rung ladder before a red answer reaches the owner · [wire] [model]
 
-`implement.ts` `gateOnChanges` → `runRepair` · `implement/implementer/repair.md`
+`implement.ts` `gateOnChanges` → `runRepair` → `runFreshEyes` · `implement/implementer/repair.md`,
+`implement/implementer/fresh-eyes.md` ([ADR-0158](../adr/0158-a-second-model-gets-a-clean-context-and-a-looser-fence-befor.md))
 
 | | |
 |---|---|
 | **Skipped when** | `git status --porcelain -uall` is empty — the model changed nothing, so there is nothing to judge and ~95 s of runner are saved |
-| **The gate** | `gateVerdict(repoDir)`: `bin/gauntlet push` on the target checkout, which is `npm run check`, the same command `.husky/pre-push` runs. Green → straight to node 05. Red runs it once more before that counts: a flake costs ~95 s of runner, where a repair round it did not need costs a model call and a second gate, and a needs-human it did not need costs the owner |
-| **Red** | The same session resumes (`claude --resume <session_id>`) with `repair.md` on stdin: the gate's output, last 12,000 characters (`GATE_OUTPUT_TAIL_CHARS`), under the same tool fence and the same schema. One round, never two. The gate runs once more on what it leaves |
-| **Still red** | The run continues anyway: node 06 pushes the branch (`--no-verify`, since the wire itself just ran the hook's gate), the ticket gets `needs-human`, and `gateRedNote()` puts the gate's output on the ticket. Verify and the fixer already exist for a red pull request; a paid run's work is never discarded |
-| **Why the same session** | A fresh repair agent would re-pay orientation and would not know why the first one made the choices it did. The rejected alternative in ADR-0157 |
+| **The gate** | `gateVerdict(repoDir)`: `bin/gauntlet push` on the target checkout, which is `npm run check`, the same command `.husky/pre-push` runs. Green → straight to node 05. Red runs it once more before that counts: a flake costs ~95 s of runner, where a repair round it did not need costs a model call and a second gate |
+| **Rung one, red** | The same session resumes (`claude --resume <session_id>`) with `repair.md` on stdin: the gate's output, last 12,000 characters (`GATE_OUTPUT_TAIL_CHARS`), under the same tool fence and the same schema. One round, never two. The gate runs once more on what it leaves |
+| **Rung one, no session** | A checkpoint replay, or any answer without a `session_id`, skips straight to rung two rather than resuming nothing |
+| **Rung two, still red or unresumable** | A *fresh* session on `claude-opus-5`, no `--resume`, gets the brief again plus the attempt so far (`git diff`, the untracked paths a diff cannot show, and every round's own summary — `describeAttempt()`) and the gate's own output tail. Its fence is wider: it may edit a `test.fails(` test that is itself wrong, and touch a file outside the claim, but only by naming each such edit in `declaredEdits` with a reason. The immutable set stays closed regardless. The gate runs once more on what it leaves |
+| **Why a fresh session, not a second resume** | A resumed session inherits the first model's own read of the ticket; when that read is what is wrong, resuming it only re-plays the same blind spot. A clean context is the only way to get a genuinely second opinion (ADR-0158) — the mirror of ADR-0157's own case for resuming rung one instead of starting fresh |
+| **Still red after rung two** | The run continues anyway: node 06 pushes the branch (`--no-verify`, since the wire itself just ran the hook's gate), the ticket gets `needs-human`, and `gateRedNote()` puts the gate's output on the ticket. Verify and the fixer already exist for a red pull request; a paid run's work is never discarded |
 
 ### edge — `ImplementerAnswer` · derived, kept for node 07
 
@@ -203,13 +206,15 @@ alongside, for node 04b.
   {"path": "scripts/canary-summary.test.ts", "content": "..."}
 ],
  "deleted": ["scripts/canary-summary-stub.ts"],
- "summary": "...", "outOfBriefReads": ["scripts/nightly-run.ts"]}
+ "summary": "...", "outOfBriefReads": ["scripts/nightly-run.ts"],
+ "declaredEdits": [{"path": "scripts/nightly-run.test.ts", "reason": "Asserted the old summary-less shape; the ticket always wanted the new one."}]}
 ```
 
 `deriveAnswer()` reads every changed path off `git status` and inlines its content (or lists it
 under `deleted`), so the artifact the workflow uploads (`IMPLEMENT_ANSWER_PATH`) is still complete
-enough for node 07 to replay without the model. Out-of-brief reads from both rounds are
-concatenated — a module read twice counts twice on the tracker, as before.
+enough for node 07 to replay without the model. Out-of-brief reads from every round are
+concatenated — a module read twice counts twice on the tracker, as before. `declaredEdits` carries
+only rung two's own list, since rungs before it never populate it.
 
 ---
 
@@ -243,9 +248,9 @@ The busiest node in the lane, and the one that turns an answer into a pull reque
 | 2. Nothing changed? | `worktreeChanges()` — `git status --porcelain` on exactly the answered paths. Empty → release the claim, comment `nothingToBuildNote()`, outcome `nothing-to-build`. An implementer that leaves the checkout as trunk has it is a real outcome, not a bug |
 | 3. Regenerate the ADR index | Only if a written path starts with `docs/adr/` — the regenerated index is appended as an extra path to commit |
 | 4. The immutable set | `touchesImmutableSet(paths)` refuses a `.github/` or `vitest.config.ts` change the model made on its own, the same rule lane 06's Immutability job would enforce a pull request later. Refused → release the claim, escalate, comment `immutableSetNote()`, outcome `immutable-refused`. Exits zero: the claim is released and the owner told, and a non-zero exit would only wake node 07 to say it again |
-| 5. The fails rule | `judgeFailsEdits(git diff)` refuses if a removed `test.fails(`/`it.fails(` line's paired addition is anything other than that same line with `.fails` dropped. Refused → release the claim, `escalateToOwner()` (adds `needs-human`, assigns `$GITHUB_REPOSITORY_OWNER`), comment `failsRuleNote()`, outcome `fails-rule-refused` — the only outcome that exits the process non-zero |
+| 5. The fails rule | `judgeFailsEdits(git diff, declaredPaths)` refuses if a removed `test.fails(`/`it.fails(` line's paired addition is anything other than that same line with `.fails` dropped — unless that file is one of rung two's own `declaredEdits` paths, which is exempt. Refused → release the claim, `escalateToOwner()` (adds `needs-human`, assigns `$GITHUB_REPOSITORY_OWNER`), comment `failsRuleNote()`, outcome `fails-rule-refused` — the only outcome that exits the process non-zero |
 | 6. Rebase onto trunk | `git fetch origin main && git rebase origin/main`, always, for this lane. Conflict → abort the rebase, release the claim, escalate, comment `rebaseConflictNote()`, outcome `rebase-conflict` — resolved by a human, never guessed at |
-| 7. Commit, push, open | One commit, pushed to the claimed branch with `--no-verify` (node 04b already ran the hook's gate on this tree), then `gh pr create` and `dispatchVerify()` — the exact door lane 06 answers, [documented there](verify-lane-edges.md#node-00-the-two-doors-stop). If node 04b's gate was still red, `needs-human` and `gateRedNote()` land on the ticket right after |
+| 7. Commit, push, open | One commit, pushed to the claimed branch with `--no-verify` (node 04b already ran the hook's gate on this tree), then `gh pr create` and `dispatchVerify()` — the exact door lane 06 answers, [documented there](verify-lane-edges.md#node-00-the-two-doors-stop). A non-empty `declaredEdits` adds a `## Edits outside the ticket's fence` section to the PR body and the same text as a ticket comment (`declaredEditsNote()`), so the review lane sees it before judging the diff. If node 04b's gate was still red, `needs-human` and `gateRedNote()` land on the ticket right after |
 
 ### edge — the commit message
 
@@ -309,9 +314,10 @@ Two independent ways this run's death gets noticed, not one.
 | ticket-closed check (node 02) | — | no | — | no |
 | assemble brief (node 03) | — | yes — claimed and cited files, `CONTEXT.md`, tests, the ADRs the ticket names | — | no |
 | implementer (node 04) | sonnet-5 | yes (Read/Grep/Glob/Edit/Write/Bash; read-only `git`) | edits the worktree in place; the `git` verbs that would move it are denied, so is `gh` | no |
-| push gate + repair (node 04b) | sonnet-5, resumed, at most once | runs `npm run check` on the worktree | as node 04 | no |
+| push gate + rung one, repair (node 04b) | sonnet-5, resumed, at most once | runs `npm run check` on the worktree | as node 04; may still not touch a `test.fails(` test beyond turning it on, or a file outside the claim without naming it in the summary | no |
+| push gate + rung two, fresh eyes (node 04b) | opus-5, fresh session, at most once | as rung one, plus the fresh checkout read the prompt asks for | as node 04, but may edit a `test.fails(` test or a file outside the claim when it names the edit in `declaredEdits` | no |
 | out-of-brief (node 05) | — | no | — | comments on the *tracker* issue, never the ticket |
-| land the answer (node 06) | — | reads the worktree; re-writes and removes the answered paths | commits, rebases, pushes (`--no-verify`), opens the PR | comments; `needs-human` on refusal or a red gate |
+| land the answer (node 06) | — | reads the worktree; re-writes and removes the answered paths | commits, rebases, pushes (`--no-verify`), opens the PR | comments; `needs-human` on refusal or a red gate; posts `declaredEditsNote()` when rung two declared any |
 | recover (node 07) | — | reads the dead run's artifact | may commit/push, replaying `landAnswer` | may re-dispatch `ticket-ready` |
 
 ---
@@ -330,9 +336,9 @@ Ordered by how much has been spent when it fires.
 | 1 Sonnet call | node 04 | `ImplementerReply` fails its schema — the raw response is kept, not lost |
 | after the model, before any commit | node 06 step 2 | Nothing changed |
 | after the model, before any commit | node 06 step 4 | The immutable set — the model changed `.github/` or `vitest.config.ts` |
-| after the model, before any commit | node 06 step 5 | The fails rule — a `test.fails(` test was edited beyond turning it on |
+| after the model, before any commit | node 06 step 5 | The fails rule — a `test.fails(` test was edited beyond turning it on, and the edit is not one of rung two's own declared edits |
 | after the model, before push | node 06 step 6 | Rebase conflict onto trunk |
-| never | node 04b | A red gate does **not** stop the run: one repair round, then push and `needs-human` |
+| never | node 04b | A red gate does **not** stop the run: rung one (resumed Sonnet), then rung two (fresh Opus), then push and `needs-human` |
 | 45 min | `implement.yml` `timeout-minutes: 45` | The job is cancelled outright — see *Two things worth knowing* |
 
 ---

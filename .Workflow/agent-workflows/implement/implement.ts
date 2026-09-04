@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { regenerateAdrIndex } from "../shared/adr-index";
 import { suiteTestFiles } from "../shared/affected-tests";
-import { changedPaths } from "../shared/changed-paths";
+import { changedPaths, describeAttempt } from "../shared/changed-paths";
 import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
@@ -47,9 +47,13 @@ export { type FailingTestFile } from "./brief";
 
 export const IMPLEMENTER_MODEL = "claude-sonnet-5";
 
+export const FRESH_EYES_MODEL = "claude-opus-5";
+
 export const IMPLEMENTER_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/prompt.md";
 
 export const REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/repair.md";
+
+export const FRESH_EYES_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/fresh-eyes.md";
 
 export const IMPLEMENTER_DENIED_TOOLS = [
   "Bash(git stash:*)",
@@ -124,6 +128,26 @@ export function runRepair(exec: StageExec, sessionId: string, gateOutput: string
   });
 }
 
+export function runFreshEyes(
+  exec: StageExec,
+  brief: string,
+  attempt: string,
+  gateOutput: string,
+): Promise<StageSessionResult<ImplementerReply>> {
+  return runStageSession(
+    FRESH_EYES_PROMPT_PATH,
+    { BRIEF: brief, ATTEMPT: attempt, GATE_OUTPUT: gateOutputTail(gateOutput) },
+    exec,
+    IMPLEMENTER_OUTPUT,
+    {
+      model: FRESH_EYES_MODEL,
+      promptViaStdin: true,
+      disallowedTools: IMPLEMENTER_DENIED_TOOLS,
+      stage: "implementer-fresh-eyes",
+    },
+  );
+}
+
 export interface ImplementerSession {
   stage: string;
   turns?: number;
@@ -176,6 +200,7 @@ export interface ImplementDeps {
   gh: GhExec;
   exec: StageExec;
   git: GitExec;
+  attempt: () => string;
   readFile: (path: string) => string;
   fileExists: (path: string) => boolean;
   writeFile: (path: string, content: string) => void;
@@ -269,6 +294,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   const sessions: ImplementerSession[] = [
     { stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns },
   ];
+  const summaries: string[] = [first.value.summary];
 
   if (!gate.ok && first.sessionId) {
     log(`resuming session ${first.sessionId} for the one repair round`);
@@ -276,8 +302,23 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     reply = {
       summary: repaired.value.summary,
       outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
+      declaredEdits: repaired.value.declaredEdits,
     };
+    summaries.push(repaired.value.summary);
     sessions.push({ stage: "implementer-repair", turns: repaired.turns, gauntletRuns: repaired.gauntletRuns });
+    gate = gateOnChanges(deps, log);
+  }
+
+  if (!gate.ok) {
+    log("the push gate is still red after rung one; running a fresh Opus session with a clean context");
+    const attempt = [...summaries, deps.attempt()].join("\n\n");
+    const freshEyes = await runFreshEyes(deps.exec, brief, attempt, gate.output);
+    reply = {
+      summary: freshEyes.value.summary,
+      outOfBriefReads: [...reply.outOfBriefReads, ...freshEyes.value.outOfBriefReads],
+      declaredEdits: freshEyes.value.declaredEdits,
+    };
+    sessions.push({ stage: "implementer-fresh-eyes", turns: freshEyes.turns, gauntletRuns: freshEyes.gauntletRuns });
     gate = gateOnChanges(deps, log);
   }
 
@@ -345,10 +386,12 @@ async function main(): Promise<void> {
   const readInRepo = (path: string) => readFileSync(inRepo(path), "utf8");
 
   try {
+    const git: GitExec = (args) => execGit(["-C", repoDir, ...args]);
     const result = await runImplement({
       gh: execGh,
       exec: execClaudeIn(repoDir),
-      git: (args) => execGit(["-C", repoDir, ...args]),
+      git,
+      attempt: () => describeAttempt(git),
       readFile: readInRepo,
       fileExists: (path) => existsSync(inRepo(path)),
       writeFile: (path, content) => fsWriteFile(inRepo(path), content),

@@ -11,9 +11,13 @@ import { reason } from "./reason";
 import { extractCriteria, type TicketRead } from "./ticket-shape";
 import { dispatchVerify } from "./verify-dispatch";
 
+const DeclaredEdit = z.object({ path: z.string().min(1), reason: z.string().min(1) });
+export type DeclaredEdit = z.infer<typeof DeclaredEdit>;
+
 export const ImplementerReply = z.object({
   summary: z.string().min(1),
   outOfBriefReads: z.array(z.string().min(1)).default([]),
+  declaredEdits: z.array(DeclaredEdit).default([]),
 });
 export type ImplementerReply = z.infer<typeof ImplementerReply>;
 
@@ -22,6 +26,7 @@ export const ImplementerAnswer = z.object({
   deleted: z.array(z.string().min(1)).default([]),
   summary: z.string().min(1),
   outOfBriefReads: z.array(z.string().min(1)).default([]),
+  declaredEdits: z.array(DeclaredEdit).default([]),
 });
 export type ImplementerAnswer = z.infer<typeof ImplementerAnswer>;
 
@@ -42,7 +47,17 @@ export function deriveAnswer(
     }
   }
 
-  return { files, deleted, summary: reply.summary, outOfBriefReads: reply.outOfBriefReads };
+  return {
+    files,
+    deleted,
+    summary: reply.summary,
+    outOfBriefReads: reply.outOfBriefReads,
+    declaredEdits: reply.declaredEdits,
+  };
+}
+
+export function declaredEditsNote(edits: DeclaredEdit[]): string {
+  return ["## Edits outside the ticket's fence", ...edits.map((edit) => `- ${edit.path}: ${edit.reason}`)].join("\n");
 }
 
 export const CLAIM_TIMEOUT_MINUTES = 45;
@@ -368,7 +383,8 @@ export async function landAnswer(
     return { outcome: "immutable-refused", paths };
   }
 
-  const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]));
+  const declaredPaths = new Set(answer.declaredEdits.map((edit) => edit.path));
+  const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]), declaredPaths);
   if (!verdict.ok) {
     releaseClaim(deps.gh, branch, log);
     escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
@@ -386,12 +402,21 @@ export async function landAnswer(
     return { outcome: "rebase-conflict", paths: err.paths };
   }
 
+  const bodySections = [answer.summary];
+  if (answer.declaredEdits.length > 0) bodySections.push(declaredEditsNote(answer.declaredEdits));
+  bodySections.push(`Closes #${issueNumber}`);
+
   const pr = openPrAndDispatch(deps.gh, {
     branch,
     title: ticket.title,
-    body: `${answer.summary}\n\nCloses #${issueNumber}`,
+    body: bodySections.join("\n\n"),
     changedFiles: paths,
     criteria: extractCriteria(ticket.body),
   });
+
+  if (answer.declaredEdits.length > 0) {
+    sayOnTicket(deps.gh, issueNumber, declaredEditsNote(answer.declaredEdits), log);
+  }
+
   return { outcome: "opened", pr };
 }

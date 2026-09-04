@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedPaths } from "./changed-paths";
+import { changedPaths, describeAttempt } from "./changed-paths";
 import type { GitExec } from "./git";
 
 describe("changedPaths", () => {
@@ -35,5 +35,27 @@ describe("changedPaths", () => {
 
   it("strips the quotes git puts around a non-ASCII path", () => {
     expect(changedPaths(gitReporting(' M "docs/caf\\303\\251.md"'))).toEqual(["docs/caf\\303\\251.md"]);
+  });
+});
+
+describe("describeAttempt", () => {
+  function gitAnswering(diff: string, status: string): GitExec {
+    return (args) => (args[0] === "diff" ? diff : args[0] === "status" ? status : "");
+  }
+
+  it("is the diff alone when it already shows every changed path", () => {
+    const diff = "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new";
+
+    expect(describeAttempt(gitAnswering(diff, " M a.ts"))).toBe(diff);
+  });
+
+  it("appends an Untracked: list for a changed path the diff never shows", () => {
+    expect(describeAttempt(gitAnswering("", "?? new.ts"))).toBe("\nUntracked:\n- new.ts");
+  });
+
+  it("lists only the paths the diff omits, when it shows some but not all", () => {
+    const diff = "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new";
+
+    expect(describeAttempt(gitAnswering(diff, " M a.ts\n?? new.ts"))).toBe(`${diff}\nUntracked:\n- new.ts`);
   });
 });

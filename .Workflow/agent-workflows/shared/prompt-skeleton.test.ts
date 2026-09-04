@@ -21,6 +21,7 @@ const PROMPTS: ReadonlyArray<{ path: string; output: StructuredOutput<unknown> }
   { path: "ratify/prompt.md", output: RATIFIER_OUTPUT },
   { path: "acceptance/author/prompt.md", output: AUTHOR_OUTPUT },
   { path: "implement/implementer/prompt.md", output: IMPLEMENTER_OUTPUT },
+  { path: "implement/implementer/fresh-eyes.md", output: IMPLEMENTER_OUTPUT },
 ];
 
 function skeletons(promptPath: string): unknown[] {

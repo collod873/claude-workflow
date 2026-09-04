@@ -61,6 +61,30 @@ describe("judgeFailsEdits", () => {
     expect(judgeFailsEdits(diff)).toEqual({ ok: true });
   });
 
+  it("treats a rewrite on a declared path as not an offence", () => {
+    const diff = diffOf("lib/thing.test.ts", [
+      '-  test.fails("#360: the gate is a constant", () => {',
+      '+  test("#360: the gate is roughly a constant", () => {',
+    ]);
+
+    expect(judgeFailsEdits(diff, new Set(["lib/thing.test.ts"]))).toEqual({ ok: true });
+  });
+
+  it("still refuses an undeclared file's rewrite even when another file is declared", () => {
+    const diff = [
+      diffOf("a.test.ts", ['-  test.fails("#1: a", () => {', '+  test("#1: a, reworded", () => {']),
+      diffOf("b.test.ts", ['-  test.fails("#2: b", () => {', '+  test("#2: b, reworded", () => {']),
+    ].join("\n");
+
+    const verdict = judgeFailsEdits(diff, new Set(["a.test.ts"]));
+
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.reason).not.toContain("a.test.ts:");
+      expect(verdict.reason).toContain("b.test.ts");
+    }
+  });
+
   it("names every offending file when a diff touches several", () => {
     const diff = [
       diffOf("a.test.ts", ['-  test.fails("#1: a", () => {', "-  });"]),

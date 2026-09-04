@@ -16,7 +16,9 @@ yours to fix, leave it and say so in the summary rather than working around it.
 When you are done, answer with the `StructuredOutput` tool again: `summary` is
 the whole pull request description, rewritten to cover this repair as well as
 the original work; `outOfBriefReads` lists only the modules you read outside
-the brief during this round.
+the brief during this round; `declaredEdits` stays `[]` — this round's fence
+is the first model's own, and the wider one that field is for belongs only to
+a fresh-eyes round after this one.
 
 ---
 

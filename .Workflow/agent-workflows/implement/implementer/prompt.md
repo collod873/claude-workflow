@@ -106,19 +106,27 @@ path there is in your answer, whether you meant it or not.
 
 ## Output
 
-Return your answer by calling the `StructuredOutput` tool. Two keys:
+Return your answer by calling the `StructuredOutput` tool. Three keys:
 
 - `summary`: the paragraph from step 5.
 - `outOfBriefReads`: every module you read outside the brief, one entry per
   read, in the order you read them. The same module read twice is two entries.
   An empty array only when you truly read nothing beyond the brief.
+- `declaredEdits`: leave this `[]`. It exists for a later, fresh-eyes round on
+  this same ticket to declare an edit outside its own wider fence; your fence
+  never needs it. Its shape, for reference, since that later round does use
+  it:
+
+```structured-output
+{"summary": "...", "outOfBriefReads": [], "declaredEdits": [{"path": "shared/retry.test.ts", "reason": "Not this round's to use; a fresh-eyes round names it this way when it edits outside its own fence."}]}
+```
 
 Do not repeat the files you changed back in your answer; the checkout already
 holds them. Write whatever reasoning you need first; only the tool call is read
 as your answer.
 
 ```structured-output
-{"summary": "Added `implementationBranch` so the claim ref and the push name the same branch, which is the criterion's `implement/issue-<n>` shape. Repaired `shared/ready-set.test.ts`, outside Files claimed: its fixture still spelled the old `impl-<n>` prefix that this change replaced.", "outOfBriefReads": [".Workflow/agent-workflows/shared/ready-set.test.ts"]}
+{"summary": "Added `implementationBranch` so the claim ref and the push name the same branch, which is the criterion's `implement/issue-<n>` shape. Repaired `shared/ready-set.test.ts`, outside Files claimed: its fixture still spelled the old `impl-<n>` prefix that this change replaced.", "outOfBriefReads": [".Workflow/agent-workflows/shared/ready-set.test.ts"], "declaredEdits": []}
 ```
 
 ---

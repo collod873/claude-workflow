@@ -6,7 +6,7 @@ function withoutFails(line: string): string {
 
 export type FailsRuleVerdict = { ok: true } | { ok: false; reason: string };
 
-export function judgeFailsEdits(diff: string): FailsRuleVerdict {
+export function judgeFailsEdits(diff: string, declaredPaths: Set<string> = new Set()): FailsRuleVerdict {
   const lines = diff.split("\n");
   const offences: string[] = [];
   let file = "";
@@ -19,6 +19,7 @@ export function judgeFailsEdits(diff: string): FailsRuleVerdict {
     if (!line.startsWith("-") || line.startsWith("---")) continue;
     const removed = line.slice(1);
     if (!FAILS_CALL.test(removed)) continue;
+    if (declaredPaths.has(file)) continue;
     const next = lines[i + 1] ?? "";
     if (next.startsWith("+") && next.slice(1) === withoutFails(removed)) {
       i++;

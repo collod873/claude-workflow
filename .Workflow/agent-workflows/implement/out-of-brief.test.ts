@@ -22,6 +22,7 @@ function outOfBriefDeps(gh: ImplementDeps["gh"], git: ImplementDeps["git"], exec
     gh,
     exec,
     git,
+    attempt: () => "",
     readFile: (path) => (path === BUILT_PATH ? "x" : "# CONTEXT\n"),
     fileExists: (path) => path === BUILT_PATH,
     writeFile: () => {},

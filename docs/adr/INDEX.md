@@ -80,6 +80,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0155 | [A canary that cannot tell which run its fire lit judges none of them](0155-a-canary-that-cannot-tell-which-run-its-fire-lit-judges-none.md) |
 | 0156 | [An enrolled target runs vitest under a config of its own](0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md) |
 | 0157 | [The implementer's checkout is its answer, and the push gate runs once in the wire with one repair round](0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md) |
+| 0158 | [A second model gets a clean context and a looser fence before a red gate reaches the owner](0158-a-second-model-gets-a-clean-context-and-a-looser-fence-befor.md) |
 
 ## Retired
 
@@ -172,4 +173,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-157 ADRs · 72 constraint · 44 note · 41 superseded · 15,643 words total.
+158 ADRs · 73 constraint · 44 note · 41 superseded · 15,791 words total.
