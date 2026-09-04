@@ -1,6 +1,5 @@
 import { readdirSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-import { reason } from "./reason.ts";
+import { runLaneCli } from "./lane-cli.ts";
 import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow.ts";
 
 export type FirePlan =
@@ -77,16 +76,4 @@ export function planFire(lane: string): FirePlan {
   };
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const lane = process.argv[2];
-  if (!lane) {
-    console.error("usage: canary-fire-plan.ts <lane>");
-    process.exit(2);
-  }
-  try {
-    console.log(JSON.stringify(planFire(lane)));
-  } catch (err) {
-    console.error(reason(err));
-    process.exit(2);
-  }
-}
+runLaneCli(import.meta.url, "usage: canary-fire-plan.ts <lane>", planFire);

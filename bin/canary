@@ -248,6 +248,14 @@ fire_event="$(jq -r '.event // empty' <<<"$plan_json")"
 fire_event_type="$(jq -r '.eventType // empty' <<<"$plan_json")"
 log "lane '$lane' wakes on $fire_kind${fire_event_type:+ ($fire_event_type)}"
 
+fixture_json="$(npx --no-install tsx "$repo_root/.Workflow/agent-workflows/shared/canary-fixture.ts" "$lane")" \
+  || die "could not read the fixture for lane '$lane'; see above"
+if [ "$(jq -r '.kind // empty' <<<"$fixture_json")" = "none" ]; then
+  fixture_json=""
+else
+  log "lane '$lane' needs a seeded issue; the fixture stands in for the lane upstream of it"
+fi
+
 if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
   if [ "$wip" = "1" ]; then
     git -C "$repo_root" add -A
@@ -335,6 +343,23 @@ seed_issue() { # why → issue number, on stdout
     --body "Seed issue created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
   echo "${url##*/}"
 }
+seed_fixture_issue() { # → issue number, on stdout, carrying the comments the lane's collector reads
+  local url num label comment
+  while IFS= read -r label; do ensure_label "$label"; done < <(jq -r '.ensureLabels[]' <<<"$fixture_json")
+  url="$(gh issue create -R "$canary_repo" \
+    --title "$(jq -r .title <<<"$fixture_json")" --body "$(jq -r .body <<<"$fixture_json")" 2>&1 | tail -1)"
+  num="${url##*/}"
+  while IFS= read -r comment; do
+    gh issue comment "$num" -R "$canary_repo" --body "$(base64 -d <<<"$comment")" >/dev/null
+  done < <(jq -r '.comments[] | @base64' <<<"$fixture_json")
+  echo "$num"
+}
+
+fixture_issue=""
+if [ -n "$fixture_json" ]; then
+  fixture_issue="$(seed_fixture_issue)"
+  log "seeded issue #$fixture_issue on $canary_repo with $(jq '.comments | length' <<<"$fixture_json") marker comment(s)"
+fi
 
 before_time="$(date -u +%FT%TZ)"
 case "$fire_kind" in
@@ -350,17 +375,25 @@ case "$fire_kind" in
     log "fired: $canary_repo workflow_dispatch on $stub_path@$target_branch"
     ;;
   repository_dispatch)
-    gh api -X POST "repos/$canary_repo/dispatches" -f "event_type=$fire_event_type" -f "client_payload[canary]=$id" >/dev/null
-    log "fired: $canary_repo repository_dispatch event_type=$fire_event_type"
+    dispatch_args=(-X POST "repos/$canary_repo/dispatches" -f "event_type=$fire_event_type" -f "client_payload[canary]=$id")
+    [ -z "$fixture_issue" ] || dispatch_args+=(-f "client_payload[issue]=$fixture_issue")
+    gh api "${dispatch_args[@]}" >/dev/null
+    log "fired: $canary_repo repository_dispatch event_type=$fire_event_type${fixture_issue:+ issue=$fixture_issue}"
     ;;
   issues_labeled)
-    ensure_label "canary-fire"
-    issue_num="$(seed_issue "issues:labeled")"
-    gh issue edit "$issue_num" -R "$canary_repo" --add-label "canary-fire" >/dev/null
-    log "fired: $canary_repo issue #$issue_num labeled canary-fire"
+    if [ -n "$fixture_issue" ]; then
+      issue_num="$fixture_issue"
+      fire_label="$(jq -r .label <<<"$fixture_json")"
+    else
+      ensure_label "canary-fire"
+      issue_num="$(seed_issue "issues:labeled")"
+      fire_label="canary-fire"
+    fi
+    gh issue edit "$issue_num" -R "$canary_repo" --add-label "$fire_label" >/dev/null
+    log "fired: $canary_repo issue #$issue_num labeled $fire_label"
     ;;
   issues_closed)
-    issue_num="$(seed_issue "issues:closed")"
+    issue_num="${fixture_issue:-$(seed_issue "issues:closed")}"
     gh issue close "$issue_num" -R "$canary_repo" >/dev/null
     log "fired: $canary_repo issue #$issue_num closed"
     ;;

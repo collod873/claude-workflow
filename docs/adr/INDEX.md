@@ -159,5 +159,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) | constraint |
 | 0150 | [An acceptance test is colocated and marked test.fails, and the gate is fenced by size](0150-an-acceptance-test-is-colocated-and-marked-test-fails-and-th.md) | constraint |
 | 0151 | [Code carries no prose; the why lives in docs/adr and CONTEXT.md](0151-code-carries-no-prose-the-why-lives-in-docs-adr-and-context.md) | constraint |
+| 0152 | [A canary fire carries the fixture the lane reads, because a lane that starts on an empty issue proves only that it started](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) | constraint |
 
-151 ADRs · 68 constraint · 44 note · 39 superseded · 14,762 words total.
+152 ADRs · 69 constraint · 44 note · 39 superseded · 15,027 words total.
