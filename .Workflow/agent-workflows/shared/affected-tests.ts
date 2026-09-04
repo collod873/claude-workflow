@@ -34,11 +34,22 @@ export function suiteTestFiles(root: string = REPO_ROOT): string[] {
   return walkSuiteRoots(root, (name) => name.endsWith(".test.ts"));
 }
 
-export function testsForCriteria(criteria: string[], root: string = REPO_ROOT): string[] {
-  return suiteTestFiles(root).filter((path) => {
-    const source = readFileSync(path, "utf8");
-    return criteria.some((criterion) => source.includes(criterion));
-  });
+function ticketTitleRe(issue: number): RegExp {
+  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*"#${issue}(?:\\.\\d+)?:`);
+}
+
+function criterionTitleRe(issue: number, index: number): RegExp {
+  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*"#${issue}\\.${index}:`);
+}
+
+export function testsForTicket(issue: number, root: string = REPO_ROOT): string[] {
+  const matcher = ticketTitleRe(issue);
+  return suiteTestFiles(root).filter((path) => matcher.test(readFileSync(path, "utf8")));
+}
+
+export function testsForCriterion(issue: number, index: number, root: string = REPO_ROOT): string[] {
+  const matcher = criterionTitleRe(issue, index);
+  return suiteTestFiles(root).filter((path) => matcher.test(readFileSync(path, "utf8")));
 }
 
 export interface SliceRef {

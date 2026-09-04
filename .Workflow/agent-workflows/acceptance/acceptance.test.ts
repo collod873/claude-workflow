@@ -50,8 +50,13 @@ The larger feature #${ISSUE} is one slice of.
 const TICKET: TicketRead = { title: "Author acceptance tests", body: TICKET_BODY };
 
 function failsTest(issue: number = ISSUE): string {
-  const [criterion] = extractCriteria(TICKET_BODY);
-  return `import { expect, test } from "vitest";\n// ${criterion}\ntest.fails("#${issue}: no push", () => {\n  expect(1).toBe(2);\n});\n`;
+  const bodies = extractCriteria(TICKET_BODY)
+    .map(
+      (_criterion, i) =>
+        `test.fails("#${issue}.${i + 1}: criterion ${i + 1}", () => {\n  expect(1).toBe(2);\n});`,
+    )
+    .join("\n");
+  return `import { expect, test } from "vitest";\n${bodies}\n`;
 }
 
 function answer(files: AuthoredFile[]): FakeStage {
@@ -392,11 +397,12 @@ describe("refireAcceptance", () => {
     };
   }
 
-  function checkoutWith(tests: Record<string, string>): string {
+  function checkoutWith(tests: Record<string, Array<[sliceNumber: number, index: number]>>): string {
     const root = scratchDir("refire-acceptance");
-    for (const [path, criterion] of Object.entries(tests)) {
+    for (const [path, refs] of Object.entries(tests)) {
       mkdirSync(dirname(join(root, path)), { recursive: true });
-      writeFileSync(join(root, path), `// ${criterion}\ntest.fails("#201: x", () => {});\n`, "utf8");
+      const body = refs.map(([sliceNumber, index]) => `test.fails("#${sliceNumber}.${index}: x", () => {});`).join("\n");
+      writeFileSync(join(root, path), `${body}\n`, "utf8");
     }
     return root;
   }
@@ -420,9 +426,12 @@ describe("refireAcceptance", () => {
 
   it("re-authors exactly the slices whose existing test lost its criterion, in ascending order", async () => {
     const root = checkoutWith({
-      ".Workflow/x.test.ts": DROPPED,
-      ".claude/hooks/y.test.ts": OTHER_DROPPED,
-      ".Workflow/kept.test.ts": KEPT,
+      ".Workflow/x.test.ts": [[201, 2]],
+      ".claude/hooks/y.test.ts": [[202, 1]],
+      ".Workflow/kept.test.ts": [
+        [201, 1],
+        [203, 1],
+      ],
     });
     const { affected, calledFor, tracker } = await refire(
       `## What to build\n${KEPT}\n`,
@@ -435,14 +444,14 @@ describe("refireAcceptance", () => {
   });
 
   it("re-authors nothing when every existing test's criterion is still in the spec", async () => {
-    const root = checkoutWith({ ".Workflow/x.test.ts": KEPT });
+    const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
     const { affected, calledFor } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);
     expect(calledFor).toEqual([]);
   });
 
   it("ignores a slice criterion no existing test names, since that is a re-slice, not a re-entry (ADR-0079)", async () => {
-    const root = checkoutWith({ ".Workflow/x.test.ts": KEPT });
+    const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
     const { affected } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);
   });

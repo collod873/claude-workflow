@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
-import { affectedSlices, SUITE_ROOTS, suiteTestFiles, testsForCriteria, type ExistingTestCriterion } from "./affected-tests";
+import { affectedSlices, SUITE_ROOTS, suiteTestFiles, testsForCriterion, testsForTicket, type ExistingTestCriterion } from "./affected-tests";
 
 const WIDGET = "make test exits 0 with a widget that spins clockwise";
 const GADGET = "make test exits 0 with a gadget that beeps twice on startup";
@@ -36,6 +36,17 @@ function fixtureCheckout(): string {
     ".Workflow/node_modules/dep/dep.test.ts": `// ${WIDGET}\n`,
     ".claude/worktrees/other/.Workflow/copy.test.ts": `// ${WIDGET}\n`,
     "tests/acceptance/old.test.ts": `// ${WIDGET}\n`,
+  });
+}
+
+function titledCheckout(): string {
+  return checkoutWith({
+    [ALPHA]: 'test.fails("#101: widget spins clockwise", () => {});\n',
+    [BETA]: 'it.fails("#102: gadget beeps twice", () => {});\n',
+    [GAMMA]: 'test.fails("#101.2: doohickey hums in D", () => {});\n',
+    [DELTA]: 'test("#101: widget turned on", () => {});\n',
+    ".Workflow/unrelated.txt": 'test.fails("#101: widget spins clockwise", () => {});\n',
+    ".Workflow/not-a-test.ts": 'test.fails("#101: widget spins clockwise", () => {});\n',
   });
 }
 
@@ -73,46 +84,57 @@ describe("suiteTestFiles", () => {
   });
 });
 
-describe("testsForCriteria", () => {
-  it("returns only the file whose recorded criterion matches a single-criterion list", () => {
-    const root = fixtureCheckout();
-    expect(testsForCriteria([WIDGET], root)).toEqual([join(root, ALPHA)]);
+describe("testsForTicket", () => {
+  it("finds a test titled with the ticket number and no index", () => {
+    const root = titledCheckout();
+    expect(testsForTicket(101, root)).toEqual(
+      expect.arrayContaining([join(root, ALPHA), join(root, GAMMA), join(root, DELTA)]),
+    );
   });
 
-  it("returns every file whose recorded criterion matches a multi-criterion list, and nothing else", () => {
-    const root = fixtureCheckout();
-    const result = testsForCriteria([WIDGET, DOOHICKEY], root);
-    expect(result.sort()).toEqual([join(root, ALPHA), join(root, GAMMA)].sort());
-    expect(result).not.toContain(join(root, BETA));
+  it("finds a test in either suite root", () => {
+    const root = titledCheckout();
+    expect(testsForTicket(102, root)).toEqual([join(root, BETA)]);
   });
 
-  it("finds a match in either suite root", () => {
-    const root = fixtureCheckout();
-    expect(testsForCriteria([GADGET], root)).toEqual([join(root, BETA)]);
+  it("matches a title with no .fails, since a turned-on test still proves the criterion", () => {
+    const root = titledCheckout();
+    expect(testsForTicket(101, root)).toContain(join(root, DELTA));
   });
 
-  it("returns nothing when no criterion in the list matches any file", () => {
-    expect(testsForCriteria([NO_SUCH_CRITERION], fixtureCheckout())).toEqual([]);
+  it("returns nothing when no title names the ticket", () => {
+    expect(testsForTicket(999, titledCheckout())).toEqual([]);
   });
 
-  it("returns nothing for an empty criteria list", () => {
-    expect(testsForCriteria([], fixtureCheckout())).toEqual([]);
-  });
-
-  it("does not select a file naming the criterion that is not a *.test.ts", () => {
-    const root = fixtureCheckout();
-    const result = testsForCriteria([WIDGET], root);
+  it("does not select a file naming the ticket that is not a *.test.ts", () => {
+    const root = titledCheckout();
+    const result = testsForTicket(101, root);
     expect(result).not.toContain(join(root, ".Workflow/unrelated.txt"));
     expect(result).not.toContain(join(root, ".Workflow/not-a-test.ts"));
   });
 
-  it("matches a criterion containing regex-special characters as literal text, not a pattern", () => {
-    const root = fixtureCheckout();
-    expect(testsForCriteria([REGEX_LOOKING], root)).toEqual([join(root, DELTA)]);
+  it("does not match a longer ticket number sharing the same prefix", () => {
+    expect(testsForTicket(10, titledCheckout())).toEqual([]);
   });
 
   it("returns no files at all for a checkout with no suite", () => {
-    expect(testsForCriteria([WIDGET], scratchDir("affected-tests-bare"))).toEqual([]);
+    expect(testsForTicket(101, scratchDir("affected-tests-bare"))).toEqual([]);
+  });
+});
+
+describe("testsForCriterion", () => {
+  it("returns only the file titled with that ticket's criterion index", () => {
+    const root = titledCheckout();
+    expect(testsForCriterion(101, 2, root)).toEqual([join(root, GAMMA)]);
+  });
+
+  it("does not match the ticket-level title of the same ticket", () => {
+    const root = titledCheckout();
+    expect(testsForCriterion(101, 1, root)).toEqual([]);
+  });
+
+  it("returns nothing when no title names that criterion", () => {
+    expect(testsForCriterion(101, 9, titledCheckout())).toEqual([]);
   });
 });
 

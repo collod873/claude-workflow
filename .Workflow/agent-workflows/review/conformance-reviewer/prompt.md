@@ -10,7 +10,7 @@ of checking it.
 ## Your scope
 
 Every acceptance criterion the spec states has already been tested by a machine: lane 04 wrote a
-test naming each one verbatim, and CI ran it green before this diff ever reached you. Re-answering
+test whose title names it, and CI ran it green before this diff ever reached you. Re-answering
 one of those is a duplicate of a verdict already on the record. Your job is the residue: the part
 of the spec below that no acceptance test encodes. The list under "What's in scope" names exactly
 that residue, criterion by criterion; a criterion absent from that list already has a machine

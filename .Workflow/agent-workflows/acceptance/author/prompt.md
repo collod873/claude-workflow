@@ -16,11 +16,12 @@ real name and signature, a config key that is quoted, a function's real argument
 *before* state: never weaken an assertion to fit what you see, and never conclude a criterion is
 already satisfied because a file looks close.
 
-## The criteria, as the checker will look for them
+## The criteria, numbered as the checker will look for them
 
-Each block below is one criterion, exactly as it will be searched for. Copy from here, never
-retype from the ticket body, and never re-wrap, re-punctuate or trim what you copy. A criterion's
-trailing `check:` marker, where it has one, is part of the string.
+Each block below is one criterion, numbered in the order the checker uses. That number is the
+`<index>` in every test title you write for it: criterion 1 is `.1`, criterion 2 is `.2`, and so
+on. Read each in full; a criterion's trailing `check:` marker, where it has one, is part of what
+it claims.
 
 {{CRITERIA}}
 
@@ -39,13 +40,15 @@ Only `.Workflow/**` and `.claude/**` are collected by the suite. A test anywhere
 
 For each criterion:
 
-1. **Put the criterion's whole block, verbatim, in a comment on its own lines directly above the
-   test.** This is how the criterion is found: `shared/affected-tests.ts` greps test source for
-   that exact string, and a test naming none is invisible to the run that is supposed to prove it.
-2. **Name the test after the ticket**: `test.fails("#{{ISSUE_NUMBER}}: <what the criterion
-   claims>", …)`. The `#{{ISSUE_NUMBER}}` is load-bearing, and `bin/close-ticket` refuses to close a
-   ticket while a `test.fails(` line still names it, and the implementer turns the test on by
-   dropping `.fails` from exactly this line and nothing else.
+1. **Name the test after the ticket and the criterion's number**: `test.fails("#{{ISSUE_NUMBER}}.<index>:
+   <what the criterion claims>", …)`, where `<index>` is that criterion's number above. This title is
+   how the criterion is found: `shared/affected-tests.ts` matches test titles against
+   `#{{ISSUE_NUMBER}}.<index>:`, and a test titled with the wrong index, or none, is invisible to the
+   run that is supposed to prove it. No comment names the criterion; the title is the only record.
+2. **`#{{ISSUE_NUMBER}}.<index>` is load-bearing.** `bin/close-ticket` refuses to close a ticket
+   while a surviving `test.fails(` line still names it, and the implementer turns the test on by
+   dropping `.fails` from exactly this line and nothing else — the `#{{ISSUE_NUMBER}}.<index>:`
+   prefix stays untouched.
 3. **Import the subject and call it.** Reach the real module the ticket claims, exercise the real
    function, assert the real behaviour the criterion describes. Do not mock away the thing
    #{{ISSUE_NUMBER}} is supposed to build; do not read the subject's source as text; do not spawn
@@ -99,8 +102,9 @@ what the criterion actually claims and leave the rest alone.
 
 ## Before you answer
 
-Go back through the numbered criteria list and name, for each number, the test that covers it.
-Every number has a `test.fails`, or you are not done.
+Go back through the numbered criteria list and name, for each number, the test titled
+`#{{ISSUE_NUMBER}}.<that number>:` that covers it. Every number from 1 to {{CRITERIA_COUNT}} has
+one, or you are not done.
 
 ## Output
 
@@ -110,9 +114,9 @@ Return your answer by calling the `StructuredOutput` tool. Its one key, `files`,
 
 Write whatever reasoning you need first; only the tool call is read as your answer.
 
-Example, for a criterion whose block reads ``The gate is at most 120 lines - check: `wc -l bin/gauntlet` ``
+Example, for criterion 1, whose block reads ``The gate is at most 120 lines - check: `wc -l bin/gauntlet` ``
 against a claimed `.Workflow/agent-workflows/shared/gate-size.ts` that does not exist yet:
 
 ```structured-output
-{"files": [{"path": ".Workflow/agent-workflows/shared/gate-size.ts", "content": "export function gateLines(): number {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": ".Workflow/agent-workflows/shared/gate-size.test.ts", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\n// - [ ] The gate is at most 120 lines - check: `wc -l bin/gauntlet`\ntest.fails(\"#360: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
+{"files": [{"path": ".Workflow/agent-workflows/shared/gate-size.ts", "content": "export function gateLines(): number {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": ".Workflow/agent-workflows/shared/gate-size.test.ts", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\ntest.fails(\"#360.1: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
 ```

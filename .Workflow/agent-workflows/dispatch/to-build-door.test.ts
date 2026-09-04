@@ -36,7 +36,7 @@ describe("the to-build door goes through lane 04, not straight to lane 05", () =
     const dir = scratchDir("reconcile-door");
     const tests = join(dir, ".Workflow", "door");
     mkdirSync(tests, { recursive: true });
-    if (withTest) writeFileSync(join(tests, "door.test.ts"), `// ${CRITERION}\nit.fails("#77: x", () => {});\n`);
+    if (withTest) writeFileSync(join(tests, "door.test.ts"), 'it.fails("#77: x", () => {});\n');
     return dir;
   }
 

@@ -53,23 +53,29 @@ describe("keepSurvivingFindings", () => {
 
 const COVERED_CRITERION = "make test exits 0 with a widget that spins clockwise";
 const UNTESTED_CRITERION = "make test exits 0 with a criterion no fixture names";
+const CONFORMANCE_ISSUE = 1;
 
-function checkoutCoveringWidget(): string {
+function checkoutCoveringIndex(index: number): string {
   const root = scratchDir("review-root");
   mkdirSync(join(root, ".Workflow", "widget"), { recursive: true });
-  writeFileSync(join(root, ".Workflow", "widget", "widget.test.ts"), `// ${COVERED_CRITERION}\nit.fails("#1: spins", () => {});\n`);
+  writeFileSync(
+    join(root, ".Workflow", "widget", "widget.test.ts"),
+    `it.fails("#${CONFORMANCE_ISSUE}.${index}: spins", () => {});\n`,
+  );
   return root;
 }
 
 describe("untestedCriteria", () => {
-  it("drops a criterion testsForCriteria already found a test naming", () => {
-    expect(untestedCriteria([COVERED_CRITERION, UNTESTED_CRITERION], checkoutCoveringWidget())).toEqual([
-      UNTESTED_CRITERION,
-    ]);
+  it("drops a criterion whose index a test already names", () => {
+    expect(
+      untestedCriteria(CONFORMANCE_ISSUE, [COVERED_CRITERION, UNTESTED_CRITERION], checkoutCoveringIndex(1)),
+    ).toEqual([UNTESTED_CRITERION]);
   });
 
-  it("keeps every criterion no test under root names", () => {
-    expect(untestedCriteria([UNTESTED_CRITERION], checkoutCoveringWidget())).toEqual([UNTESTED_CRITERION]);
+  it("keeps every criterion whose index no test under root names", () => {
+    expect(untestedCriteria(CONFORMANCE_ISSUE, [UNTESTED_CRITERION], scratchDir("review-root-bare"))).toEqual([
+      UNTESTED_CRITERION,
+    ]);
   });
 });
 
@@ -141,6 +147,7 @@ async function classified(items: unknown[], firstIssueNumber?: number) {
     criteria: [],
     greenGateChecks: [],
     prdIssueNumber: 42,
+    ticketNumber: 42,
   });
   return { result, calls };
 }
@@ -156,6 +163,7 @@ describe("runConformanceReview", () => {
       criteria: [],
       greenGateChecks: [],
       prdIssueNumber: 1,
+      ticketNumber: 1,
     });
 
     const prompt = fake.prompts[0];
@@ -164,7 +172,7 @@ describe("runConformanceReview", () => {
     expect(prompt.indexOf("SPEC-MARKER-9f2")).toBeLessThan(prompt.indexOf("DIFF-MARKER-9f2"));
   });
 
-  it("scopes the reviewer to every criterion testsForCriteria did not find a test naming", async () => {
+  it("scopes the reviewer to every criterion no test names by index", async () => {
     const fake = fakeExec({ items: [] });
     const { gh } = trackerForReview();
 
@@ -173,8 +181,9 @@ describe("runConformanceReview", () => {
       diff: DIFF,
       criteria: [COVERED_CRITERION, UNTESTED_CRITERION],
       greenGateChecks: [],
-      prdIssueNumber: 1,
-      root: checkoutCoveringWidget(),
+      prdIssueNumber: CONFORMANCE_ISSUE,
+      ticketNumber: CONFORMANCE_ISSUE,
+      root: checkoutCoveringIndex(1),
     });
 
     const prompt = fake.prompts[0];

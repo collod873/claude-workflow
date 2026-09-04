@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { affectedSlices, SUITE_ROOTS, testsForCriteria, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
+import { affectedSlices, SUITE_ROOTS, testsForCriterion, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
 import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
@@ -25,7 +25,9 @@ export const AUTHOR_MODEL = "claude-opus-5";
 
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
 
-const FAILS_CALL = /\b(?:test|it)\.fails\(/;
+function criterionMarker(issue: number, index: number): RegExp {
+  return new RegExp(`\\b(?:test|it)\\.fails\\(\\s*"#${issue}\\.${index}:`);
+}
 
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
 
@@ -112,17 +114,24 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
     { model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
   );
 
-  const marker = new RegExp(`${FAILS_CALL.source}[^\\n]*#${deps.issueNumber}\\b`);
   for (const file of answer.files) {
     if (!underSuiteRoot(file.path)) {
       throw new Error(`author wrote outside ${SUITE_ROOTS.join("/, ")}/: ${file.path}`);
     }
-    if (file.path.endsWith(".test.ts") && !marker.test(file.content)) {
-      throw new Error(`author wrote a test with no test.fails( naming #${deps.issueNumber}: ${file.path}`);
-    }
   }
   if (!answer.files.some((file) => file.path.endsWith(".test.ts"))) {
     throw new Error(`author wrote no test file for #${deps.issueNumber}`);
+  }
+
+  const combined = answer.files.map((file) => file.content).join("\n");
+  const missing = criteria
+    .map((_criterion, i) => i + 1)
+    .filter((index) => !criterionMarker(deps.issueNumber, index).test(combined));
+  if (missing.length > 0) {
+    throw new Error(
+      `author wrote no test.fails( naming #${deps.issueNumber}.${missing.join(`, #${deps.issueNumber}.`)}: ` +
+        `missing criteri${missing.length === 1 ? "on" : "a"} ${missing.join(", ")} of ${criteria.length}`,
+    );
   }
 
   for (const file of answer.files) deps.writeFile(file.path, file.content);
@@ -242,9 +251,9 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
   const existingTests: ExistingTestCriterion[] = [];
   for (const sliceNumber of sliceNumbers) {
     const slice = readTicket(deps.gh, sliceNumber);
-    for (const criterion of extractCriteria(slice.body)) {
-      if (testsForCriteria([criterion], deps.root).length > 0) existingTests.push({ sliceNumber, criterion });
-    }
+    extractCriteria(slice.body).forEach((criterion, i) => {
+      if (testsForCriterion(sliceNumber, i + 1, deps.root).length > 0) existingTests.push({ sliceNumber, criterion });
+    });
   }
 
   const affected = affectedSlices(prd.body, existingTests);

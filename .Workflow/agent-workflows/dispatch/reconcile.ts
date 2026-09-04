@@ -11,7 +11,7 @@ import {
   subIssuesPath,
 } from "../shared/gh-paths";
 import { touchesImmutableSet } from "../shared/immutable-set";
-import { testsForCriteria } from "../shared/affected-tests";
+import { testsForTicket } from "../shared/affected-tests";
 import {
   dispatchAcceptanceWanted,
   dispatchTicketReady,
@@ -629,10 +629,6 @@ function reportUnreachable(
   return naming.map((finding) => finding.number);
 }
 
-function criteriaOf(issue: OpenIssue | undefined): string[] {
-  return issue ? extractCriteria(issue.body ?? "") : [];
-}
-
 export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const gh = input.gh ?? execGh;
   const log = input.log ?? ((line: string) => console.log(line));
@@ -695,7 +691,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const dispatched: number[] = [];
   const authoring: number[] = [];
   for (const state of ready) {
-    const authored = testsForCriteria(criteriaOf(byNumber.get(state.number)), targetWorkspace);
+    const authored = testsForTicket(state.number, targetWorkspace);
     const wants = authored.length === 0 ? "acceptance-wanted" : "ticket-ready";
 
     if (input.dryRun) {

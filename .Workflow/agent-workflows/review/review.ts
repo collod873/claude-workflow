@@ -7,7 +7,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
-import { testsForCriteria } from "../shared/affected-tests";
+import { testsForCriterion } from "../shared/affected-tests";
 import { commitPullsPath } from "../shared/gh-paths";
 import { implementationBranchTicket } from "../shared/ready-set";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
@@ -77,6 +77,7 @@ export interface ConformanceReviewInput {
   criteria: string[];
   greenGateChecks: GreenGateCheck[];
   prdIssueNumber: number;
+  ticketNumber: number;
   root?: string;
 }
 
@@ -85,8 +86,8 @@ export interface ConformanceReviewResult {
   gapIssues: number[];
 }
 
-export function untestedCriteria(criteria: string[], root?: string): string[] {
-  return criteria.filter((criterion) => testsForCriteria([criterion], root).length === 0);
+export function untestedCriteria(issue: number, criteria: string[], root?: string): string[] {
+  return criteria.filter((_criterion, index) => testsForCriterion(issue, index + 1, root).length === 0);
 }
 
 function fileConformanceGap(gh: GhExec, prdIssueNumber: number, report: string): number {
@@ -103,7 +104,7 @@ export async function runConformanceReview(
   gh: GhExec,
   input: ConformanceReviewInput,
 ): Promise<ConformanceReviewResult> {
-  const scope = untestedCriteria(input.criteria, input.root);
+  const scope = untestedCriteria(input.ticketNumber, input.criteria, input.root);
 
   const raw = await runStage(
     CONFORMANCE_REVIEWER_PROMPT_PATH,
@@ -137,7 +138,7 @@ export interface RunReviewInput {
   root?: string;
 }
 
-type ResolvedSpec = Pick<ConformanceReviewInput, "specText" | "criteria" | "prdIssueNumber">;
+type ResolvedSpec = Pick<ConformanceReviewInput, "specText" | "criteria" | "prdIssueNumber" | "ticketNumber">;
 
 interface CommitPull {
   head?: { sha?: string; ref?: string };
@@ -160,10 +161,10 @@ function resolveSpec(gh: GhExec, head: string): ResolvedSpec {
 
   const prdNumber = parentPrdNumber(ticket.body);
   if (prdNumber === undefined) {
-    return { specText: ticket.body, criteria, prdIssueNumber: ticketNumber };
+    return { specText: ticket.body, criteria, prdIssueNumber: ticketNumber, ticketNumber };
   }
 
-  return { specText: readTicket(gh, prdNumber).body, criteria, prdIssueNumber: prdNumber };
+  return { specText: readTicket(gh, prdNumber).body, criteria, prdIssueNumber: prdNumber, ticketNumber };
 }
 
 export interface RunReviewResult {
@@ -203,6 +204,7 @@ async function reviewConformance(exec: StageExec, gh: GhExec, input: RunReviewIn
     criteria: spec.criteria,
     greenGateChecks: input.greenGateChecks,
     prdIssueNumber: spec.prdIssueNumber,
+    ticketNumber: spec.ticketNumber,
     root: input.root,
   });
   return result.findings;
