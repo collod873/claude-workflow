@@ -38,3 +38,6 @@ How this doc stays small:
 - **Pin a mandated copy to its source**: where a boundary forces a definition to be written twice, one test reads both texts and asserts they still say the same thing.
   Why: no compiler sees across that boundary, so the copies drift in silence and the copy goes on enforcing a rule its source has already dropped.
   Red flag: a constant, grammar or literal restated in a second file (a workflow's YAML, an acceptance test's own copy) that no "agrees with the … it is a copy of" test names.
+- **Refuse rather than guess**: when a precondition for a correct answer is missing or the match is ambiguous, stop with an error naming what is absent and what would fix it, instead of taking a candidate or inheriting an ambient default.
+  Why: a guessed answer is indistinguishable from a real one downstream, so the wrong run gets judged green and the wrong config gets tested, and the report reads as evidence either way.
+  Red flag: a first-of-list pick where the list could hold more than one, or a fall-through to whatever the surrounding environment supplies when the thing itself was never found.
