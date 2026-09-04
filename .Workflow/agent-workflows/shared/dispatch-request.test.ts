@@ -9,7 +9,7 @@ function requestsFile(): string {
   return join(mkdtempSync(join(tmpdir(), "dispatch-request-")), "requests.jsonl");
 }
 
-describe("requestDispatch with no handoff path — the caller already holds contents: write", () => {
+describe("requestDispatch with no handoff path: the caller already holds contents: write", () => {
   it("sends the dispatch through gh, in the argv every caller used to build inline", () => {
     const { gh, calls } = createRecordingGh();
 
@@ -36,7 +36,7 @@ describe("requestDispatch with no handoff path — the caller already holds cont
   });
 });
 
-describe("requestDispatch with a handoff path — the caller is inside a model job", () => {
+describe("requestDispatch with a handoff path: the caller is inside a model job", () => {
   it("writes the request as JSON rather than attempting a call it cannot make", () => {
     const path = requestsFile();
     const { gh, calls } = createRecordingGh();

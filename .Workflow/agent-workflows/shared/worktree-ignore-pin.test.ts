@@ -16,7 +16,7 @@ async function eslintIgnores(): Promise<string[]> {
 }
 
 describe("every worktree ignore agrees with the vitest exclude it is a copy of", () => {
-  it("vitest.config.ts excludes a worktree glob at all — the source the copies are pinned to", () => {
+  it("vitest.config.ts excludes a worktree glob at all, which is the source the copies are pinned to", () => {
     expect(source).not.toEqual([]);
   });
 

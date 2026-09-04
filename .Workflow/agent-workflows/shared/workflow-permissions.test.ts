@@ -24,7 +24,7 @@ describe("a workflow that checks out grants itself contents", () => {
 
     expect(
       GRANTS_CONTENTS.test(source),
-      `${name} runs actions/checkout and declares a permissions: block without contents — that block ` +
+      `${name} runs actions/checkout and declares a permissions: block without contents, and that block ` +
         "replaces the default token rather than adding to it, so the checkout will fail with " +
         "`remote: Repository not found` before the workflow reaches any of its own steps",
     ).toBe(true);
@@ -186,7 +186,7 @@ function reachableWrites(entrypoint: string, root: string): Map<Permission, { wh
       const hit = find(body);
       if (hit !== undefined && !found.has(permission)) {
         const literal = hit.replace(/\s+/g, " ");
-        found.set(permission, { what, evidence: `${relative(root, file)} — ${literal}` });
+        found.set(permission, { what, evidence: `${relative(root, file)}: ${literal}` });
       }
     }
 
@@ -273,7 +273,7 @@ describe("a job grants itself the writes its entrypoints perform", () => {
     expect(
       derive(FIXTURE_ROOT).map((r) => r.workflow),
       "wide.yml runs the same entrypoint and declares the permission on the job, the level that " +
-        "counts — so the red above is the deriver reading a permissions block, not the deriver " +
+        "counts, so the red above is the deriver reading a permissions block, not the deriver " +
         "failing everything it is handed",
     ).not.toContain("wide.yml");
   });
@@ -310,7 +310,7 @@ describe("a lane that spends a model does not cancel itself", () => {
 
     expect(
       CANCELS_IN_PROGRESS.test(source),
-      `${name} spends a model and carries cancel-in-progress: true — the next event on the same ` +
+      `${name} spends a model and carries cancel-in-progress: true, so the next event on the same ` +
         "group kills the run mid-call, so the money is spent and the answer is thrown away, and " +
         "the run history reads `cancelled` as though a human pressed stop. Use " +
         "`cancel-in-progress: false` so a second event queues behind the first",
@@ -342,7 +342,7 @@ describe("a lane that spends or writes declares a concurrency group", () => {
 
     expect(
       DECLARES_CONCURRENCY.test(source) && NAMES_GROUP.test(source),
-      `${name} spends a model or performs a write and declares no concurrency group — two events ` +
+      `${name} spends a model or performs a write and declares no concurrency group, so two events ` +
         "for the same subject run side by side and both act, so one PRD slices into two sets of " +
         "sub-issues, or one close opens two release pull requests. Declare a group keyed on the " +
         "subject the run acts for",
@@ -380,7 +380,7 @@ describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", (
         expect(
           "GH_REPO" in (job.env ?? {}) || "GH_REPO" in (step.env ?? {}),
           `${name}'s ${jobName} job runs gh against ${GH_PLACEHOLDER} with no checkout and no ` +
-            "GH_REPO — gh expands that placeholder from GH_REPO or the cwd's git remote, so with " +
+            "GH_REPO, and gh expands that placeholder from GH_REPO or the cwd's git remote, so with " +
             "neither the call fails with `not a git repository` and the send is silently lost. " +
             "Add `GH_REPO: ${{ github.repository }}` to the job's env, the shape spec.yml uses",
         ).toBe(true);

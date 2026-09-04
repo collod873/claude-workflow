@@ -116,7 +116,7 @@ describe("parsing a response", () => {
     });
   });
 
-  it("names a response that is not JSON at all — the shape of a run that never called the tool", () => {
+  it("names a response that is not JSON at all, the shape of a run that never called the tool", () => {
     expect(() => SEAM_SWEEP_OUTPUT.parse("the model just talked")).toThrow(/not valid JSON/);
   });
 

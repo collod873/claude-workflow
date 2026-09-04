@@ -84,7 +84,7 @@ describe("undelivered", () => {
     expect(undelivered(children)).toEqual([]);
   });
 
-  it("refuses a child closed with no pull request naming it — closed by hand", () => {
+  it("refuses a child closed with no pull request naming it, closed by hand", () => {
     expect(undelivered([child(9, { prs: [] })])).toEqual(["#9: closed by hand, not by a merged PR"]);
   });
 
@@ -112,10 +112,10 @@ describe("undelivered", () => {
   it("refuses a child closed as not planned, merged PR or not", () => {
     const notPlanned = child(9, { stateReason: "NOT_PLANNED", prs: [{ number: 12, merged: true }] });
 
-    expect(undelivered([notPlanned])).toEqual(["#9: closed as not planned — not delivered"]);
+    expect(undelivered([notPlanned])).toEqual(["#9: closed as not planned, not delivered"]);
   });
 
-  it("passes a spec that was never sliced — nothing is undelivered", () => {
+  it("passes a spec that was never sliced, so nothing is undelivered", () => {
     expect(undelivered([])).toEqual([]);
   });
 
@@ -148,7 +148,7 @@ describe("render_record in --spec mode", () => {
     const { record, ok } = renderRecord([found], { spec: true });
 
     expect(ok).toBe(true);
-    expect(record).toContain("- a spec sourced from #143 exists — MET: `echo 271` exit 0");
+    expect(record).toContain("- a spec sourced from #143 exists (MET: `echo 271` exit 0)");
     expect(record).toContain("> 271");
     expect(record).toContain("1 of 1 criteria verified · 0 unverified");
   });
@@ -168,7 +168,7 @@ describe("render_record in --spec mode", () => {
     const { record, ok } = renderRecord([listy], { spec: true });
 
     expect(ok).toBe(true);
-    expect(gateBullets(record as string)).toEqual(["the sweep ran — MET: `printf -- '- one\\n- two\\n'` exit 0"]);
+    expect(gateBullets(record as string)).toEqual(["the sweep ran (MET: `printf -- '- one\\n- two\\n'` exit 0)"]);
   });
 
   it("caps the evidence it quotes rather than pasting a whole log", () => {
@@ -183,13 +183,13 @@ describe("render_record in --spec mode", () => {
 });
 
 describe("render_record in ticket mode", () => {
-  it("accepts a silent exit 0 — `grep -q` and `test -f` are how ticket checks are written", () => {
+  it("accepts a silent exit 0, since `grep -q` and `test -f` are how ticket checks are written", () => {
     const quiet = criterion("the module exists", "test -f bin/close-ticket");
 
     const { record, ok } = renderRecord([quiet], {});
 
     expect(ok).toBe(true);
-    expect(record).toContain("- the module exists — MET: `test -f bin/close-ticket` exit 0");
+    expect(record).toContain("- the module exists (MET: `test -f bin/close-ticket` exit 0)");
     expect(record).toContain("1 of 1 criteria verified · 0 unverified");
   });
 
@@ -222,7 +222,7 @@ describe("render_record's closing-pull-request line", () => {
   it("is never miscounted as a criterion bullet or as the range line", () => {
     const { record } = renderRecord([quiet], { closingPr: CLOSING_PR, verify: "passed" });
 
-    expect(gateBullets(record as string)).toEqual(["the module exists — MET: `test -f bin/close-ticket` exit 0"]);
+    expect(gateBullets(record as string)).toEqual(["the module exists (MET: `test -f bin/close-ticket` exit 0)"]);
   });
 });
 
@@ -292,7 +292,7 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     expect(fetchVerifyVerdict([]).verdict).toBe("unjudged");
   });
 
-  it("still reads passed when both jobs carry a caller-stub prefix — verify / Immutability, verify / Verify", () => {
+  it("still reads passed when both jobs carry a caller-stub prefix: verify / Immutability, verify / Verify", () => {
     const prefixed = PASSING_JOBS.map((job) => ({ ...job, name: `verify / ${job.name}` }));
 
     expect(fetchVerifyVerdict(verifyRoutes(prefixed, PR_URL)).verdict).toBe("passed");
@@ -320,7 +320,7 @@ except Exception as e:
     expect(verifyWorkflowFile({})).toEqual({ value: "verify-caller.yml" });
   });
 
-  it("refuses rather than defaulting on a runner — a wrong default there would misreport every enrolled repository's closing records, silently", () => {
+  it("refuses rather than defaulting on a runner, since a wrong default there would misreport every enrolled repository's closing records, silently", () => {
     expect(verifyWorkflowFile({ GITHUB_ACTIONS: "true" }).error).toContain("VERIFY_WORKFLOW must be set");
   });
 });
@@ -344,7 +344,7 @@ describe("a ticket close carries its closing pull request, driven end to end", (
     "",
   ].join("\n");
 
-  it("posts a record naming the PR, its merge SHA, and Verify's conclusion — read, not handed", () => {
+  it("posts a record naming the PR, its merge SHA, and Verify's conclusion, read and not handed", () => {
     const { checkout, gh, range } = checkoutAndTracker(2, CRITERION_BODY, [
       { contains: ["repo", "view"], respond: JSON.stringify({ nameWithOwner: "acme/widgets" }) },
       closingPrRoute([mergedPr(42, "deadbeef")]),

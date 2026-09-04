@@ -23,7 +23,7 @@ function criterionProblem(criterion: string): string | undefined {
       : "names no `check:` marker";
   }
   if (REMOTE_TRACKER_RE.test(command)) {
-    return "checks the tracker instead of the tree — it can never be answered by a diff";
+    return "checks the tracker instead of the tree; it can never be answered by a diff";
   }
   return undefined;
 }
@@ -33,7 +33,7 @@ function assertCheckableCriteria(criteria: string[], label: string): void {
     const problem = criterionProblem(criterion);
     if (problem) {
       throw new Error(
-        `${label}: acceptance criterion ${problem} — ${CRITERION_SHAPE}. Offending criterion: ${JSON.stringify(criterion)}`,
+        `${label}: acceptance criterion ${problem}: ${CRITERION_SHAPE}. Offending criterion: ${JSON.stringify(criterion)}`,
       );
     }
   }
@@ -60,7 +60,7 @@ export function validateClaimsAreMutable(plan: Plan): void {
     if (claimed.length > 0) {
       problems.push(
         `slice ${index + 1} ("${slice.title}") claims ${claimed.map((path) => JSON.stringify(path)).join(", ")}, ` +
-          `which no pull request may touch (${IMMUTABLE_SET.join(", ")}) — lane 06 would refuse the ` +
+          `which no pull request may touch (${IMMUTABLE_SET.join(", ")}), and lane 06 would refuse the ` +
           `implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.`,
       );
     }
@@ -112,7 +112,7 @@ export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = 
     if (unrootedClaims.length > 0) {
       problems.push(
         `${label} claims ${unrootedClaims.map((path) => JSON.stringify(path)).join(", ")}, ` +
-          `which name no top-level entry of the repository — a claim is what the ticket's prose is ` +
+          `which name no top-level entry of the repository, and a claim is what the ticket's prose is ` +
           `rooted against, so it has to be the full path from the repository root.`,
       );
     }

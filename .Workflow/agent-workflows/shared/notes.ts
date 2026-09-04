@@ -65,7 +65,7 @@ function hasLiveSite(options: {
   });
 
   for (const verdict of verdicts.filter((each) => !each.bare)) {
-    log(`note: ${entry.lens} finding "${entry.finding}" names a site that is not a path: ${JSON.stringify(verdict.site)} — read as ${verdict.path}`);
+    log(`note: ${entry.lens} finding "${entry.finding}" names a site that is not a path: ${JSON.stringify(verdict.site)}, read as ${verdict.path}`);
   }
 
   const live = verdicts.some((verdict) => verdict.exists);

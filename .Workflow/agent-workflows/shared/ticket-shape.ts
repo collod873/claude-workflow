@@ -125,7 +125,7 @@ function hasEvidence(line: string): boolean {
 
 const NO_EVIDENCE_WARNING =
   "no acceptance criterion names a path:line, a backtick-quoted command, or a " +
-  "file/artifact reference — criteria should be verifiable by a fresh context that has " +
+  "file/artifact reference; criteria should be verifiable by a fresh context that has " +
   "not seen the diff";
 
 const MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse";
@@ -136,7 +136,7 @@ function malformedCheckMarker(criterion: string): boolean {
 
 function malformedCheckMarkerWarning(criterion: string): string {
   return (
-    `${MALFORMED_CHECK_MARKER_PREFIX}: ${criterion} — a well-formed marker names exactly ` +
+    `${MALFORMED_CHECK_MARKER_PREFIX}: ${criterion}. A well-formed marker names exactly ` +
     "one backtick-quoted command immediately after `check:`, with nothing else following " +
     "it before the criterion ends"
   );
@@ -180,7 +180,7 @@ const BASENAME_RE = /\b[\w-]+(?:\.[\w-]+)+\b/;
 
 const MIGRATION_NO_POST_STATE_WARNING =
   "this reads like a migration, but every acceptance criterion is satisfied by the " +
-  "artifact existing — a test passing, or a path this ticket already claims. A migration " +
+  "artifact existing: a test passing, or a path this ticket already claims. A migration " +
   "ticket closes on the migration having run: add a criterion asserting the post-state of " +
   "what is being migrated, checkable against the real target rather than a fixture the " +
   "ticket's own test builds (ADR-0076 in collod873/claude-workflow, #134)";
@@ -234,7 +234,7 @@ export function validateTicket(body: string, repoRoot: string = defaultRepoRoot(
   }
   if (!CRITERIA_ITEM_RE.test(sectionText(normalized, CRITERIA_HEADING_RE))) {
     throw new TicketShapeError(
-      "'## Acceptance criteria' heading has no '- [ ]' items — plain '- ' bullets don't count",
+      "'## Acceptance criteria' heading has no '- [ ]' items; plain '- ' bullets don't count",
     );
   }
   if (!FILES_HEADING_RE.test(normalized)) {

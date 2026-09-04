@@ -31,7 +31,7 @@ function variantCases(): { label: string; example: string | undefined }[] {
 function kindFor(label: string): Kind | null {
   const row = VARIANT_KIND.find(([prefix]) => label.startsWith(prefix));
   if (row === undefined) {
-    throw new Error(`${label} is not in VARIANT_KIND — add a row (a kind, or null saying why)`);
+    throw new Error(`${label} is not in VARIANT_KIND; add a row (a kind, or null saying why)`);
   }
   return row[1];
 }

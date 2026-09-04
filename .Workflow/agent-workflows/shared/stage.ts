@@ -179,7 +179,7 @@ async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<
     const path = rawResponsePath(stage);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, raw, "utf8");
-    throw new Error(`${reason(err)} — the model's raw response is saved at ${path}`);
+    throw new Error(`${reason(err)}: the model's raw response is saved at ${path}`);
   }
 }
 
@@ -200,7 +200,7 @@ export async function runStage<T>(
 ): Promise<T> {
   if (options.allowedTools?.length && options.disallowedTools?.length) {
     throw new Error(
-      "StageOptions set both allowedTools and disallowedTools — pick one: allowedTools says " +
+      "StageOptions set both allowedTools and disallowedTools; pick one: allowedTools says " +
         "'these and no others', disallowedTools says 'everything but these'",
     );
   }
@@ -236,7 +236,7 @@ export async function runStage<T>(
       if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
         throw new Error(
           `${promptPath} renders to ${Buffer.byteLength(prompt, "utf8")} bytes, over the ${MAX_ARG_STRLEN}-byte ` +
-            "limit on a single argv element — this stage needs `promptViaStdin`",
+            "limit on a single argv element; this stage needs `promptViaStdin`",
         );
       }
       responseText = await exec(["-p", prompt, ...flags]);

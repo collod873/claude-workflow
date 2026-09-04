@@ -45,7 +45,7 @@ describe("normalizeSite", () => {
 });
 
 describe("isBareSite", () => {
-  it("refuses every site the first real audit wrote — the contract they broke", () => {
+  it("refuses every site the first real audit wrote, the contract they broke", () => {
     for (const site of FIRST_AUDIT_SITES) expect(isBareSite(site)).toBe(false);
   });
 

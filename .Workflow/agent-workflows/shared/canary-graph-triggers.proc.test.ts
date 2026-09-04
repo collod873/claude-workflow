@@ -30,7 +30,7 @@ function stubDoors(file: string): Record<string, unknown> {
 }
 
 describe("every canary-graph stub's on: block agrees with the lane workflow it is a copy of", () => {
-  it("generates a stub at all — the copies the assertions below are about", () => {
+  it("generates a stub at all, the copies the assertions below are about", () => {
     expect(stubs).not.toEqual([]);
   });
 

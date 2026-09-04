@@ -5,7 +5,7 @@ function untypedFieldHint(args: string[]): string {
   if (!args.includes("-f")) {
     return "";
   }
-  return " — this call used -f, which sends a string; these endpoints take a JSON integer, so it must be -F";
+  return ": this call used -f, which sends a string; these endpoints take a JSON integer, so it must be -F";
 }
 
 export interface FakeGh {

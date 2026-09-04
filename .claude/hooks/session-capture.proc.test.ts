@@ -87,7 +87,7 @@ describe("session-capture.sh: the fixture transcript", () => {
 
     expect(capture.content).toContain("Please help me ship this.");
     expect(capture.content).toContain("Sure, I will get started on shipping this.");
-    expect(capture.content).toContain("**Interrupted** — during a tool call");
+    expect(capture.content).toContain("**Interrupted**, during a tool call");
 
     expect(capture.content).not.toContain("secret plan");
     expect(capture.content).not.toContain("ls -la");

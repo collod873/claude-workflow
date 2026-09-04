@@ -32,15 +32,15 @@ function fakeWithIssues(count: number, options: Omit<FakeGhOptions, "firstIssueN
 }
 
 describe("the recorded shapes parse the way production parses them", () => {
-  it("issue create — a URL whose last segment is the number", () => {
+  it("issue create: a URL whose last segment is the number", () => {
     expect(parseIssueNumber(RECORDED.issueCreate)).toBe(360);
   });
 
-  it("--jq .id — a bare integer", () => {
+  it("--jq .id: a bare integer", () => {
     expect(Number.isInteger(parseId(RECORDED.issueId))).toBe(true);
   });
 
-  it("blocked_by --jq [.[].id] — an array of integers, possibly empty", () => {
+  it("blocked_by --jq [.[].id]: an array of integers, possibly empty", () => {
     expect(parseBlockedByIds(RECORDED.blockedByNone)).toEqual([]);
     expect(parseBlockedByIds(RECORDED.blockedByTwo)).toEqual([533896463, 533896464]);
   });
@@ -81,7 +81,7 @@ describe("createFakeGh answers in the recorded shapes", () => {
     expect(parseBlockedByIds(gh(["api", blockedByPath(root.number), "--jq", "[.[].id]"]))).toEqual([]);
   });
 
-  it("dropEdges accepts a wiring write but leaves it out of the read-back — the failure a verification exists to catch", () => {
+  it("dropEdges accepts a wiring write but leaves it out of the read-back, the failure a verification exists to catch", () => {
     const { gh, calls, created } = fakeWithIssues(2, { dropEdges: [{ blockedNumber: 501, blockerNumber: 500 }] });
     const [root, blocked] = created;
 

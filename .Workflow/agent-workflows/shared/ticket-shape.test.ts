@@ -27,7 +27,7 @@ describe("isRunnableSpec", () => {
     expect(isRunnableSpec(body)).toBe(false);
   });
 
-  it("rejects two well-formed check-marked criteria — a spec's check runs on exactly one", () => {
+  it("rejects two well-formed check-marked criteria, since a spec's check runs on exactly one", () => {
     const body = [
       heading,
       "",

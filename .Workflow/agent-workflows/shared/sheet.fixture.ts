@@ -1,7 +1,7 @@
 import type { Sheet } from "./sheet-schema";
 
 /**
- * @fixture Reached only from the suites, by design — no lane builds a sheet from nothing.
+ * @fixture Reached only from the suites, by design: no lane builds a sheet from nothing.
  */
 export function sheet(over: Partial<Sheet> = {}): Sheet {
   return {

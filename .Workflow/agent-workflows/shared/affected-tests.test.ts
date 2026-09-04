@@ -58,7 +58,7 @@ describe("suiteTestFiles", () => {
     expect(found.some((path) => path.includes("worktrees"))).toBe(false);
   });
 
-  it("does not return a test outside the suite roots — it would never run", () => {
+  it("does not return a test outside the suite roots, since it would never run", () => {
     const root = fixtureCheckout();
     expect(suiteTestFiles(root).some((path) => path.includes("tests/acceptance"))).toBe(false);
   });
@@ -68,7 +68,7 @@ describe("suiteTestFiles", () => {
     expect(suiteTestFiles(join(scratchDir("affected-tests-missing"), "no-such-directory"))).toEqual([]);
   });
 
-  it("defaults to this checkout — the file you are reading is one of its results", () => {
+  it("defaults to this checkout, so the file you are reading is one of its results", () => {
     expect(suiteTestFiles()).toContain(fileURLToPath(import.meta.url));
   });
 });
@@ -144,7 +144,7 @@ describe("affectedSlices", () => {
     expect(result.map((slice) => slice.sliceNumber)).not.toContain(103);
   });
 
-  it("never lists a criterion added with no existing test naming it — that is a re-slice, not a re-entry", () => {
+  it("never lists a criterion added with no existing test naming it, since that is a re-slice, not a re-entry", () => {
     const result = affectedSlices(EDITED_SPEC_BODY, EXISTING_TESTS);
     const onlySlices = [101, 102, 103];
     expect(result.every((slice) => onlySlices.includes(slice.sliceNumber))).toBe(true);

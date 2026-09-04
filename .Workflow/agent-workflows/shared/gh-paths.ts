@@ -99,7 +99,7 @@ export function repoRunsPathFor(repository: string, perPage: number): string {
 }
 
 /**
- * @fixture — no lane reads this; it exists so `watchdog/walk-home.test.ts`'s fake `gh` recognises
+ * @fixture No lane reads this; it exists so `watchdog/walk-home.test.ts`'s fake `gh` recognises
  * the path `repoRunsPathFor` sends, by the same segments, rather than restating the shape in a way
  * that could silently drift from what production actually calls.
  */
@@ -120,13 +120,13 @@ export const subIssuesPathMatcher: RegExp = subIssues.matcher;
 export const blockedByPathMatcher: RegExp = blockedBy.matcher;
 
 /**
- * @fixture — no lane reads this; a `GhExec` stand-in answers the comments-list lookup by the same
+ * @fixture No lane reads this; a `GhExec` stand-in answers the comments-list lookup by the same
  * segments `issueCommentsPath` sends, rather than restating a path that could drift from it.
  */
 export const issueCommentsPathMatcher: RegExp = issueComments.matcher;
 
 /**
- * @fixture — no lane reads this; same reason as `issueCommentsPathMatcher` above, for the rewrite
+ * @fixture No lane reads this; same reason as `issueCommentsPathMatcher` above, for the rewrite
  * side of the same pair.
  */
 export const issueCommentPathMatcher: RegExp = issueComment.matcher;
@@ -138,7 +138,7 @@ export const runJobsPathMatcher: RegExp = runJobs.matcher;
 export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
 
 /**
- * @fixture — no lane reads this; it exists so a `GhExec` stand-in answers the commit-to-pulls
+ * @fixture No lane reads this; it exists so a `GhExec` stand-in answers the commit-to-pulls
  * lookup by the same segments `commitPullsPath` sends, rather than restating the path in a way
  * that could name a different endpoint from the one production actually calls.
  */

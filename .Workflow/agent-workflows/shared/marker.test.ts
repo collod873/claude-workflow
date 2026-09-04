@@ -83,7 +83,7 @@ describe("the accept's trailer", () => {
     expect(isAccepted(`## Accepted\n\n${ACCEPTED_MARKER} -->`)).toBe(true);
   });
 
-  it("reads as absent — not as an exception — for the old bare marker", () => {
+  it("reads as absent, not as an exception, for the old bare marker", () => {
     expect(readAcceptedMarker(`${ACCEPTED_MARKER} -->`)).toBeUndefined();
   });
 });

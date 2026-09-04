@@ -215,7 +215,7 @@ const PRD_271 = {
     whatToBuild:
       "Add a literal `stage: \"<name>\"` to StageOptions at every remaining runStage call: spec.ts, " +
       "sweep.ts, critic.ts, reconcile.ts, amend.ts, review.ts (both calls), refuter.ts, implement.ts, " +
-      "fixer.ts, acceptance.ts. No other change — each stays exactly what it does today.",
+      "fixer.ts, acceptance.ts. No other change; each stays exactly what it does today.",
     acceptanceCriteria: [
       "Every one of the ten call sites' StageOptions literal includes a stage key — check: `npx vitest --run .Workflow/agent-workflows/shared/lane-stage-names.test.ts`",
       "The full existing suite still passes — check: `npx vitest --run .Workflow .claude`",
@@ -276,7 +276,7 @@ describe("validatePathsAreRooted, on PRD #271 as lane 03 actually published it",
     expect(() => validatePathsAreRooted([PRD_271[272]])).toThrow(/checkpoints\//);
   });
 
-  it("refuses #272 on nothing else — every other path it names resolves from the body", () => {
+  it("refuses #272 on nothing else, since every other path it names resolves from the body", () => {
     let refusal = "";
     try {
       validatePathsAreRooted([PRD_271[272]]);

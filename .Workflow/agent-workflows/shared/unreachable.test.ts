@@ -37,7 +37,7 @@ describe("the standing signal", () => {
     expect(signalBody([finding(90, "A slice", [77])])).toContain(FINDING_MARKER);
   });
 
-  it("names an event, a count and an action — ADR-0064's three", () => {
+  it("names an event, a count and an action: ADR-0064's three", () => {
     const body = signalBody([finding(90, "A slice", [77]), finding(91, "Another", [77])]);
 
     expect(body).toContain("unreachable");

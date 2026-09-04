@@ -20,7 +20,7 @@ function state(number: number, blockedBy: number[] = [], overrides: Partial<Slic
 const numbers = (slices: SliceState[]): number[] => slices.map((slice) => slice.number).sort((a, b) => a - b);
 
 describe("readySlices", () => {
-  it("is every slice with no blockers when nothing has happened yet — the answer the folded constant gave", () => {
+  it("is every slice with no blockers when nothing has happened yet: the answer the folded constant gave", () => {
     const graph = [state(1), state(2), state(3, [1]), state(4, [1, 2])];
 
     expect(numbers(readySlices(graph))).toEqual([1, 2]);
@@ -38,7 +38,7 @@ describe("readySlices", () => {
     expect(numbers(readySlices(graph))).toEqual([2]);
   });
 
-  it("does not include a slice already started — the branch ref is the claim", () => {
+  it("does not include a slice already started, since the branch ref is the claim", () => {
     const graph = [state(1, [], { delivery: "delivered" }), state(2, [1], { started: true })];
 
     expect(readySlices(graph)).toEqual([]);
@@ -94,13 +94,13 @@ describe("unreachableSlices", () => {
     expect(numbers(unreachableSlices(graph))).toEqual([2, 3, 4]);
   });
 
-  it("names nothing when every blocker is open or delivered — waiting is not unreachable", () => {
+  it("names nothing when every blocker is open or delivered, since waiting is not unreachable", () => {
     const graph = [state(1), state(2, [], { delivery: "delivered" }), state(3, [1, 2])];
 
     expect(unreachableSlices(graph)).toEqual([]);
   });
 
-  it("does not name a closed slice — it is the cause, not a casualty", () => {
+  it("does not name a closed slice, which is the cause and not a casualty", () => {
     const graph = [state(1, [], { delivery: "undelivered" }), state(2, [1], { delivery: "undelivered" })];
 
     expect(unreachableSlices(graph)).toEqual([]);

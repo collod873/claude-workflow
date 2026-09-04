@@ -286,7 +286,7 @@ describe("two tests in one file that render the same prompt for the same stage",
     expect(await runShared("first")).toEqual({ spawned: true, value: { greeting: "first" } });
   });
 
-  it("gets its own answer, second — not the checkpoint the first one just wrote", async () => {
+  it("gets its own answer, second, not the checkpoint the first one just wrote", async () => {
     expect(await runShared("second")).toEqual({ spawned: true, value: { greeting: "second" } });
   });
 });

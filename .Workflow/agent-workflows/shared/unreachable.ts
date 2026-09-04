@@ -17,12 +17,12 @@ export function entryLine(entry: UnreachableFinding): string {
 
 export function signalBody(entries: UnreachableFinding[]): string {
   return [
-    "An edge is satisfied when its blocker closed **having delivered** — closed as completed with a",
+    "An edge is satisfied when its blocker closed **having delivered**: closed as completed with a",
     "merged pull request. A blocker closed `not planned`, or closed with nothing merged, leaves its",
     "edge unsatisfied forever, so everything behind it is unreachable rather than late.",
     "",
     "Reported here as one standing count rather than left parked, because parked work is a queue",
-    "that drains onto the owner —",
+    "that drains onto the owner:",
     "`docs/adr/0011-a-refusal-ships-only-once-something-can-clear-it.md`.",
     "",
     "**Unreachable:**",
@@ -46,7 +46,7 @@ export function retirementBody(): string {
     "No diff.",
     "",
     "Nothing is unreachable. Every slice named above has since been re-sliced, had its blocker",
-    "re-opened and delivered, or had its edge cut — so the standing count has nothing left to",
+    "re-opened and delivered, or had its edge cut, so the standing count has nothing left to",
     "stand for.",
     "",
     "This closes the report, never the mechanism: the next slice to become unreachable opens a",

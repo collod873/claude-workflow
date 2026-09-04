@@ -25,7 +25,7 @@ FILE_PATH_RE = re.compile(r"\b[\w.\-]+(?:/[\w.\-]+)+\b")
 
 NO_EVIDENCE_WARNING = (
     "no acceptance criterion names a path:line, a backtick-quoted command, or a "
-    "file/artifact reference — criteria should be verifiable by a fresh context that has "
+    "file/artifact reference; criteria should be verifiable by a fresh context that has "
     "not seen the diff"
 )
 
@@ -36,12 +36,12 @@ CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$"
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
 
 SPEC_NO_CRITERIA = (
-    "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item — "
+    "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item; "
     "the one behavioural claim this spec closes on, in the owner's own words, with a trailing "
     "— check: `<command>` marker naming what proves it"
 )
 SPEC_CRITERIA_COUNT = (
-    "a spec body carries exactly one '- [ ]' acceptance criterion, not {n} — three behavioural "
+    "a spec body carries exactly one '- [ ]' acceptance criterion, not {n}: three behavioural "
     "claims are three specs, and a closer handed several has no single sentence to run"
 )
 SPEC_CRITERION_UNRUNNABLE = (
@@ -55,7 +55,7 @@ RED_AT_PUBLISH_TIMEOUT_SECONDS = 30
 SPEC_CRITERION_GREEN_AT_PUBLISH = (
     "a spec's one acceptance criterion is already true before any work exists: `{command}` "
     "exited 0 against this tree right now. A criterion that never turns red proves nothing when "
-    "it turns green later — rewrite it to name something only the finished spec makes true "
+    "it turns green later; rewrite it to name something only the finished spec makes true "
     "(claude-workflow/ADR-0130)"
 )
 
@@ -71,7 +71,7 @@ BASENAME_RE = re.compile(r"\b[\w\-]+(?:\.[\w\-]+)+\b")
 
 MIGRATION_NO_POST_STATE_WARNING = (
     "this reads like a migration, but every acceptance criterion is satisfied by the "
-    "artifact existing — a test passing, or a path this ticket already claims. A migration "
+    "artifact existing: a test passing, or a path this ticket already claims. A migration "
     "ticket closes on the migration having run: add a criterion asserting the post-state of "
     "what is being migrated, checkable against the real target rather than a fixture the "
     "ticket's own test builds (ADR-0076 in collod873/claude-workflow, #134)"
@@ -108,12 +108,12 @@ def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | Non
     except subprocess.TimeoutExpired:
         return False, (
             f"acceptance criterion's check: `{command}` did not finish within "
-            f"{RED_AT_PUBLISH_TIMEOUT_SECONDS}s — red-at-publish could not be checked "
+            f"{RED_AT_PUBLISH_TIMEOUT_SECONDS}s, so red-at-publish could not be checked "
             "(claude-workflow/ADR-0130)"
         )
     except OSError as e:
         return False, (
-            f"acceptance criterion's check: `{command}` could not be run: {e} — red-at-publish "
+            f"acceptance criterion's check: `{command}` could not be run: {e}, so red-at-publish "
             "could not be checked (claude-workflow/ADR-0130)"
         )
     return result.returncode == 0, None
@@ -123,14 +123,14 @@ def _malformed_check_marker(criterion: str) -> bool:
 
 def _malformed_check_marker_warning(criterion: str) -> str:
     return (
-        f"{MALFORMED_CHECK_MARKER_PREFIX}: {criterion} — a well-formed marker names exactly "
+        f"{MALFORMED_CHECK_MARKER_PREFIX}: {criterion}. A well-formed marker names exactly "
         "one backtick-quoted command immediately after `check:`, with nothing else following "
         "it before the criterion ends"
     )
 
 def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     if kind not in KINDS:
-        raise ValidationError(f"unknown kind {kind!r} — expected one of {', '.join(KINDS)}")
+        raise ValidationError(f"unknown kind {kind!r}; expected one of {', '.join(KINDS)}")
 
     if kind == "note":
         return []
@@ -138,7 +138,7 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     if kind == "question":
         if not QUESTION_HEADING_RE.search(body):
             raise ValidationError(
-                "missing required '## Question' heading — a `question` states what's undecided"
+                "missing required '## Question' heading; a `question` states what's undecided"
             )
         return []
 
@@ -149,7 +149,7 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
             )
         if not CRITERIA_ITEM_RE.search(section_text(body, CRITERIA_HEADING_RE)):
             raise ValidationError(
-                "'## Acceptance criteria' heading has no '- [ ]' items — plain '- ' bullets "
+                "'## Acceptance criteria' heading has no '- [ ]' items; plain '- ' bullets "
                 "don't count"
             )
         if not FILES_CLAIMED_HEADING_RE.search(body):
@@ -238,7 +238,7 @@ def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[s
         suggestion = _similar_existing_path(path, root)
         if suggestion:
             warnings.append(
-                f"claimed path `{path}` not found in the working tree — did you mean "
+                f"claimed path `{path}` not found in the working tree; did you mean "
                 f"`{suggestion}`?"
             )
         else:

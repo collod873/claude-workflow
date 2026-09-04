@@ -4,7 +4,7 @@ import ts from "typescript";
 import { everySourceUnder, REPO_ROOT, type RepoFile } from "./repo-sources";
 
 /**
- * @fixture Reached only from `prose-gate.test.ts`, by design — no lane reads its own source tree.
+ * @fixture Reached only from `prose-gate.test.ts`, by design: no lane reads its own source tree.
  */
 
 const MACHINE_READ = /shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|istanbul|@type\b|@shell\b|@fixture\b/;

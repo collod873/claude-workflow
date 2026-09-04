@@ -153,7 +153,7 @@ function bulleted(text: string, wrapFirstLine: (line: string) => string = (line)
 function turnLabel(turn: Turn): string {
   if (turn.role === "user") return "**User**";
   if (turn.role === "assistant") return "**Assistant**";
-  return turn.duringToolUse ? "**Interrupted** — during a tool call" : "**Interrupted**";
+  return turn.duringToolUse ? "**Interrupted**, during a tool call" : "**Interrupted**";
 }
 
 export function buildCaptureMarkdown(meta: SpineMeta, parsed: ParsedSpine): string {

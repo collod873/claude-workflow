@@ -66,7 +66,7 @@ export function planFire(lane: string): FirePlan {
     return {
       kind: "refuse",
       reason:
-        `lane '${lane}' wakes only on workflow_run from [${named}] completing — there is no push, ` +
+        `lane '${lane}' wakes only on workflow_run from [${named}] completing, so there is no push, ` +
         `dispatch, label, or pull-request door bin/canary can ring directly, and firing an upstream ` +
         `lane's own run just to hope this one follows is not a fire, it's a guess. Refusing: ${advice}.`,
     };

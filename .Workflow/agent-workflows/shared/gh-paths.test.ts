@@ -139,7 +139,7 @@ describe("the builders that no fake has to recognise", () => {
     expect(path).not.toContain("refs/heads");
   });
 
-  it("GIT_REFS_PATH has no variable segment — the ref is a field on the POST", () => {
+  it("GIT_REFS_PATH has no variable segment, since the ref is a field on the POST", () => {
     expect(GIT_REFS_PATH.endsWith("/git/refs")).toBe(true);
     expect(GIT_REFS_PATH).not.toContain("${");
   });

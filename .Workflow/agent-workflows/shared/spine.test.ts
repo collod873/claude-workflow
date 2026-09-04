@@ -37,7 +37,7 @@ function textsOf(parsed: ParsedSpine, role: Turn["role"]): string[] {
 const EMPTY: ParsedSpine = { turns: [], filesRead: [], filesEdited: [], filesWritten: [], commands: [] };
 const META = { sessionId: "session-123", project: "claude-workflow", date: "2026-08-25T00:00:00Z", source: "clear" };
 
-describe("parseTranscript — the user-turn filter", () => {
+describe("parseTranscript: the user-turn filter", () => {
   it("keeps a human-typed user turn", () => {
     const parsed = parseTranscript(userLine({ message: { content: "ship it" } }));
     expect(textsOf(parsed, "user")).toEqual(["ship it"]);
@@ -129,7 +129,7 @@ describe("parseTranscript — the user-turn filter", () => {
   });
 });
 
-describe("parseTranscript — Esc interrupts (#103 §1)", () => {
+describe("parseTranscript: Esc interrupts (#103 §1)", () => {
   it("keeps a plain interrupt despite it carrying no origin", () => {
     const parsed = parseTranscript(interruptLine());
     expect(parsed.turns).toEqual([{ role: "interrupt", text: "[Request interrupted by user]", duringToolUse: false }]);
@@ -142,7 +142,7 @@ describe("parseTranscript — Esc interrupts (#103 §1)", () => {
     ]);
   });
 
-  it("exempts only the exact markers — a prompt merely mentioning one is a user turn", () => {
+  it("exempts only the exact markers, so a prompt merely mentioning one is a user turn", () => {
     const mention = "why did [Request interrupted by user] show up in the corpus?";
     const parsed = parseTranscript(userLine({ message: { content: mention } }));
     expect(parsed.turns).toEqual([{ role: "user", text: mention }]);
@@ -169,7 +169,7 @@ describe("parseTranscript — Esc interrupts (#103 §1)", () => {
   });
 });
 
-describe("parseTranscript — assistant blocks", () => {
+describe("parseTranscript: assistant blocks", () => {
   it("collects a non-empty assistant text block", () => {
     const parsed = parseTranscript(assistantLine());
     expect(textsOf(parsed, "assistant")).toEqual(["an insight"]);
@@ -242,7 +242,7 @@ describe("buildCaptureMarkdown", () => {
     expect(md).not.toContain("## Key Commands");
   });
 
-  it("no longer emits Key Insights — the exchange holds the assistant side now", () => {
+  it("no longer emits Key Insights, since the exchange holds the assistant side now", () => {
     const md = buildCaptureMarkdown(META, { ...EMPTY, turns: [{ role: "assistant", text: "good idea" }] });
     expect(md).not.toContain("## Key Insights");
     expect(md).toContain("## Exchange");
@@ -288,11 +288,11 @@ describe("buildCaptureMarkdown", () => {
       ],
     });
     expect(md).toContain("**Interrupted**\n");
-    expect(md).toContain("**Interrupted** — during a tool call");
+    expect(md).toContain("**Interrupted**, during a tool call");
     expect(md).not.toContain("> [Request interrupted");
   });
 
-  it("emits an assistant turn uncut — no clip rule (#103 §1)", () => {
+  it("emits an assistant turn uncut, with no clip rule (#103 §1)", () => {
     const long = `${"a".repeat(5000)}\n\n${"b".repeat(5000)}`;
     const md = buildCaptureMarkdown(META, { ...EMPTY, turns: [{ role: "assistant", text: long }] });
     expect(md).toContain(`> ${"a".repeat(5000)}`);
@@ -328,7 +328,7 @@ describe("buildCaptureMarkdown", () => {
       expect(md).toContain("> ## Acceptance criteria");
     });
 
-    it("survives the real capture that exposed this — 2026-08-26-0c0cf08a.md", () => {
+    it("survives the real capture that exposed this, 2026-08-26-0c0cf08a.md", () => {
       const jsonl = [
         userLine({ uuid: "u-1", message: { content: "Look at GH 55.\n\n## Drill A\n\n## Files claimed\n\n- spine.ts" } }),
         assistantLine({ uuid: "a-1", message: { content: [{ type: "text", text: "## Key Insights\nnested, not a section" }] } }),

@@ -3,7 +3,7 @@ import { join, relative, resolve } from "node:path";
 import { WORKFLOWS_DIR } from "./read-workflow";
 
 /**
- * @fixture Reached only from the suites, by design — no lane reads its own source tree.
+ * @fixture Reached only from the suites, by design: no lane reads its own source tree.
  */
 
 export const REPO_ROOT = resolve(WORKFLOWS_DIR, "../..");

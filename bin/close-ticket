@@ -6,12 +6,12 @@ runs each `## Acceptance criteria` item's own `check:` marker (`bin/ticket_shape
 `criteria_blocks`/`parse_check_marker`, #166) in `<checkout>`, records the exit status it
 observed, renders the `## Closing record`, posts it, and closes the ticket.
 
-A criterion with no marker is prose — today's filing-time behaviour is unchanged — and is
+A criterion with no marker is prose (today's filing-time behaviour is unchanged) and is
 recorded `UNVERIFIED`, never `MET`: a script has no way to judge prose, so it doesn't try. A
 criterion whose marker command exits non-zero aborts the whole run before anything is posted:
 the failing criterion and the command's combined output go to stderr, nothing is commented,
 the issue stays open, and this exits non-zero. There is no partial close and no `needs-human`
-stamp on this route — re-running the same invocation after the work is fixed is the entire
+stamp on this route: re-running the same invocation after the work is fixed is the entire
 recovery path.
 
 Two shapes abort the same way, and for the same reason: **unverified is not a verdict this
@@ -21,7 +21,7 @@ out is a superset of what it would overwrite, never a silent revert of it (#194)
 
 - A criterion that says `check:` and hands this script nothing runnable (`UNPARSEABLE_CHECK_RE`)
   is a *failure*, never an `UNVERIFIED: no check` bullet. It was the second of those until
-  #215 there: a producer emitted `- [ ] check: grep -q ...` — no delimiter, no backticks — which
+  #215 there: a producer emitted `- [ ] check: grep -q ...` with no delimiter and no backticks, which
   read as prose, so two tickets each closed on `0 of 8 criteria verified` against work nobody had
   checked. A criterion meaning to be checked and failing to say how is a defect in the ticket.
 - A ticket whose criteria come back **every criterion unverified** does not close at all. The
@@ -30,7 +30,7 @@ out is a superset of what it would overwrite, never a silent revert of it (#194)
 
 A body carrying no `## Acceptance criteria` heading closes on the `No diff.` form, matching a
 map or task ticket's existing exit (`ticket_shape.criteria_blocks` returns `None` for that
-shape) — **but only against a range that really is empty**. `No diff.` is a claim about the
+shape), **but only against a range that really is empty**. `No diff.` is a claim about the
 range, not about the body, and this branch used to reach it without ever looking at the range
 it was handed: a body with no criteria heading was read as "this is a map or task ticket", and
 `args.range` was discarded unread. `claude-workflow`'s #283 closed COMPLETED on `No diff.`
@@ -38,31 +38,31 @@ against `3fc1769..7f9d443`, a range carrying a real commit, and the record had t
 by hand; 18 issues had closed that way, twelve of them referenced by real commits (#300).
 
 So the branch counts (`count_commits`, `git rev-list --count`) and refuses when the answer is
-not zero — naming the range and the count on stderr, posting nothing and closing nothing. A
+not zero, naming the range and the count on stderr, posting nothing and closing nothing. A
 range git cannot count refuses down the same path: a claim that a range is empty is only
 writable when the range can be read, and reading nothing is not reading zero. The other half of
-#300 — labelling a `ticket` `ticket` at filing time so this script can read the kind instead of
-sniffing the body — lands in `bin/file-issue`; this half is the belt-and-braces one, because it
+#300, labelling a `ticket` `ticket` at filing time so this script can read the kind instead of
+sniffing the body, lands in `bin/file-issue`; this half is the belt-and-braces one, because it
 holds regardless of kind, label, or body shape and so covers every issue already filed without
 a label.
 
 The record's wire shape is unchanged from the one 445 existing checker-written records already
-use — `hooks/close-gate.py`'s `RECORD_HEADING`, `RANGE_LINE_RE` and `BULLET_RE` parse this
-record the same way they parse a human-written one — with one addition: a summary line beneath
+use: `hooks/close-gate.py`'s `RECORD_HEADING`, `RANGE_LINE_RE` and `BULLET_RE` parse this
+record the same way they parse a human-written one. There is one addition, a summary line beneath
 the range counting criteria verified vs. unverified, so erosion of the guarantee stays visible
 on every ticket rather than inferred.
 
-Checks run with `<checkout>` as their working directory, never this process's own — marker
+Checks run with `<checkout>` as their working directory, never this process's own; marker
 commands are author-written, and in `/drain` they fire inside the merge lock. Passing a live
 work tree as `<checkout>` is the caller's choice to make, not this script's.
 
 `--superseded-by <n>` retires the ticket into an already-open successor instead of running any
 checks (#167): emits `Superseded by #<n>` in the slot the range line would occupy, and every
 criterion in the body needs a `--moved <where>` or `--dropped <why>` reason supplied at the
-invocation, one apiece, in the body's own order — the run refuses before posting anything when
+invocation, one apiece, in the body's own order, and the run refuses before posting anything when
 the reasons supplied don't exactly cover the criteria. `<n>`'s state is read with
-`gh issue view <n> --json state` through `run_gh` — the same one resolution path every other
-`gh` call in this script uses, never a second one — and the run refuses to post or close when
+`gh issue view <n> --json state` through `run_gh`, the same one resolution path every other
+`gh` call in this script uses and never a second one, and the run refuses to post or close when
 `<n>` doesn't resolve at all (an unresolvable successor) as well as when it resolves but is
 already closed (a closed successor): superseding into a closed ticket retires this ticket's
 debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
@@ -73,34 +73,34 @@ debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
 ticket's close runs, so a spec's one criterion is run, recorded and refused inside the same
 all-or-nothing contract. What `--spec` adds is a **precondition** and a stricter **verdict**.
 
-The precondition is checked before any check command runs: every sub-issue must be **delivered**
-— closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
+The precondition is checked before any check command runs: every sub-issue must be **delivered**:
+closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
 closed by hand, is not delivered; the run refuses, names every undelivered child and why, and
 posts and closes nothing.
 
 The verdict: a spec's criterion is `MET` only when its check exits 0 **and** prints something on
 stdout, and the `MET` bullet carries that stdout (trimmed and capped, quoted by `quote_evidence`)
 beneath the command. An exit 0 that printed **no evidence** is a failure, refused down the same
-path as a non-zero exit — name the criterion on stderr, post nothing, close nothing. #236 closed
+path as a non-zero exit: name the criterion on stderr, post nothing, close nothing. #236 closed
 on `gh issue list --label sliceable … | xargs -r …`, whose first half returns `[]` in a world
 where nothing was built and whose second half runs nothing and exits 0 on empty input: an unbuilt
 world and a proven one scored identically, because this script read the exit status and never
-what the check said (#270). Ticket mode is unmoved — `grep -q`, `! grep -q` and `test -f` succeed
+what the check said (#270). Ticket mode is unmoved: `grep -q`, `! grep -q` and `test -f` succeed
 in silence by design, and every ticket check written so far relies on that. The rule belongs to
 the world-reading check a spec carries, the one place a silent pass can mean nothing happened.
 
 The precondition comes first because a spec's check reads the world: running it against a spec
 whose slices have not all landed burns a run on a verdict that could not have been green, and
 reports red for a reason that is not the product's fault. A spec with no sub-issues at all has
-nothing undelivered and passes the precondition — the gate is "every child delivered", and
+nothing undelivered and passes the precondition, since the gate is "every child delivered", and
 vacuous truth is the honest reading of it for a spec that was never sliced.
 
 A spec's criterion is *required* to read the tracker or production, which is the exact opposite
-of the rule a published ticket's criterion is held to — see `bin/ticket_shape.py`'s `spec` branch
+of the rule a published ticket's criterion is held to; see `bin/ticket_shape.py`'s `spec` branch
 for why the ban is not extended here.
 
 `gh` is resolved and invoked entirely through `bin/gh_support.py` (`gh_bin`, `bind_gh`,
-`run_gh`, `GhError`, `AGENT_SKILLS_GH`) — the one resolution path and one failure envelope
+`run_gh`, `GhError`, `AGENT_SKILLS_GH`), the one resolution path and one failure envelope
 every `gh`-calling tool in this repo shares (#102, #109); there is no second copy here.
 """
 import argparse
@@ -123,7 +123,7 @@ NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
 
 UNPARSEABLE_CHECK_RE = re.compile(r"\bcheck:", re.IGNORECASE)
 
-MET_BULLET_RE = re.compile(r"^- .* — MET: ", re.MULTILINE)
+MET_BULLET_RE = re.compile(r"^- .* \(MET: ", re.MULTILINE)
 
 EVIDENCE_MAX_LINES = 10
 EVIDENCE_MAX_CHARS = 800
@@ -213,7 +213,7 @@ def verify_workflow_file() -> str:
         return env_value
     if os.environ.get("GITHUB_ACTIONS") == "true":
         raise RuntimeError(
-            "VERIFY_WORKFLOW must be set on a runner — a default naming a workflow the calling "
+            "VERIFY_WORKFLOW must be set on a runner; a default naming a workflow the calling "
             "repository does not have would read every closing record's Verify line as "
             "unjudged, silently, forever"
         )
@@ -282,7 +282,7 @@ def undelivered(children: list[dict]) -> list[str]:
             problems.append(f"#{number}: still open")
             continue
         if (child.get("stateReason") or "").upper() == "NOT_PLANNED":
-            problems.append(f"#{number}: closed as not planned — not delivered")
+            problems.append(f"#{number}: closed as not planned, not delivered")
             continue
         naming = (child.get("closedByPullRequestsReferences") or {}).get("nodes") or []
         if any(pr.get("merged") for pr in naming):
@@ -367,7 +367,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
             )
             print(
                 "  `No diff.` says this range is empty, so it is only writable when the range "
-                f"can be read in {checkout} — reading nothing is not reading zero.",
+                f"can be read in {checkout}: reading nothing is not reading zero.",
                 file=sys.stderr,
             )
             return None, False
@@ -375,7 +375,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
             plural = "" if count == 1 else "s"
             print(
                 f"error: {range_spec} carries {count} commit{plural}, and this body declares "
-                "no acceptance criteria — `No diff.` would record that the ticket carried "
+                "no acceptance criteria; `No diff.` would record that the ticket carried "
                 "none, which is the opposite of what happened",
                 file=sys.stderr,
             )
@@ -400,11 +400,11 @@ def render_record(range_spec: str, blocks: list[str] | None,
                 )
                 print(
                     "  a runnable criterion reads: <what is observably true> — check: "
-                    "`<command>` — one backtick-quoted command, nothing after it",
+                    "`<command>`, one backtick-quoted command, nothing after it",
                     file=sys.stderr,
                 )
                 return None, False
-            lines.append(f"- {reference} — UNVERIFIED: no check")
+            lines.append(f"- {reference} (UNVERIFIED: no check)")
             continue
         result = run_check(command, checkout)
         if result.returncode != 0:
@@ -421,14 +421,14 @@ def render_record(range_spec: str, blocks: list[str] | None,
                    file=sys.stderr)
             print(f"  command: {command}", file=sys.stderr)
             print(
-                "  exit status: 0, stdout empty — a spec's check reads the world, and a "
+                "  exit status: 0, stdout empty; a spec's check reads the world, and a "
                 "reading that produced nothing is not a reading. Exit 0 against an empty "
                 "world and exit 0 against a proven one are the same status; only the output "
                 "tells them apart.",
                 file=sys.stderr,
             )
             return None, False
-        lines.append(f"- {reference} — MET: `{command}` exit 0")
+        lines.append(f"- {reference} (MET: `{command}` exit 0)")
         if spec:
             lines.extend(quote_evidence(evidence))
         verified += 1
@@ -437,7 +437,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
     unverified = total - verified
     if total and not verified:
         print(
-            f"error: {total} acceptance criteria and every criterion unverified — nothing "
+            f"error: {total} acceptance criteria and every criterion unverified: nothing "
             "here was checked, so there is nothing to close on",
             file=sys.stderr,
         )
@@ -464,13 +464,13 @@ def render_superseded_record(successor: int, blocks: list[str] | None,
     if len(dispositions) != required:
         return None, (
             f"error: {required} acceptance criteria in the body but {len(dispositions)} "
-            "--moved/--dropped reasons supplied — exactly one reason per criterion, in the "
+            "--moved/--dropped reasons supplied: exactly one reason per criterion, in the "
             "body's own order."
         )
     bullets = []
     for criterion, (kind, reason) in zip(blocks or [], dispositions):
         reference, _ = split_check_marker(criterion)
-        bullets.append(f"- {reference} — {kind}: {reason}")
+        bullets.append(f"- {reference} ({kind}: {reason})")
     lines = [f"Superseded by #{successor}"]
     if bullets:
         lines += ["", *bullets]
@@ -550,7 +550,7 @@ def run(argv=None) -> int:
     unbuilt = surviving_fails_lines(args.checkout, args.issue)
     if unbuilt:
         print(
-            f"error: #{args.issue} is still named by {len(unbuilt)} test.fails( line(s) — an "
+            f"error: #{args.issue} is still named by {len(unbuilt)} test.fails( line(s): an "
             "acceptance test nobody has turned green means the ticket is not built, whatever its "
             "criteria say. Drop `.fails` where the work is done, or fix the work:",
             file=sys.stderr,
@@ -571,7 +571,7 @@ def run(argv=None) -> int:
         if state.upper() != "OPEN":
             print(
                 f"error: successor #{args.superseded_by} is not open "
-                f"(state: {state or 'unknown'}) — superseding into a closed ticket retires "
+                f"(state: {state or 'unknown'}): superseding into a closed ticket retires "
                 "this ticket's debt instead of moving it; name an open issue",
                 file=sys.stderr,
             )
@@ -596,7 +596,7 @@ def run(argv=None) -> int:
                 problems = undelivered(children)
                 if problems:
                     print(
-                        f"error: {len(problems)} of {len(children)} sub-issues not delivered — a "
+                        f"error: {len(problems)} of {len(children)} sub-issues not delivered: a "
                         "spec closes on its own check, but only once every slice beneath it has "
                         "actually landed:",
                         file=sys.stderr,

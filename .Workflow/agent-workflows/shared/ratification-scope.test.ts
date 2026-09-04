@@ -29,7 +29,7 @@ describe("countReleasedObservations", () => {
   });
 });
 
-describe("evaluateRatificationTrigger — ADR-0017's two work-volume events, ORed", () => {
+describe("evaluateRatificationTrigger: ADR-0017's two work-volume events, ORed", () => {
   it("fires on a PRD close however little has accumulated", () => {
     expect(evaluateRatificationTrigger({ releasedCount: 0, prdClosed: true })).toEqual({ shouldRatify: true });
   });
@@ -47,7 +47,7 @@ describe("evaluateRatificationTrigger — ADR-0017's two work-volume events, ORe
   });
 });
 
-describe("isMachineryCommit — the trailer this lane stamps on its own commits", () => {
+describe("isMachineryCommit: the trailer this lane stamps on its own commits", () => {
   it("recognises the exact line `land.ts` writes, which is what keeps a landing out of the next scope", () => {
     expect(
       isMachineryCommit({ sha: "a", author: "Bot <b@c>", subject: "Ratify: X", body: MACHINERY_TRAILER_LINE }),

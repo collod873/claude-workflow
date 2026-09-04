@@ -7,7 +7,7 @@ import { ACCEPTANCE_WANTED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION, TICKE
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 
 /**
- * @fixture Reached only from the suite, by design — this is the estate's description, not code any
+ * @fixture Reached only from the suite, by design: this is the estate's description, not code any
  * lane runs.
  */
 

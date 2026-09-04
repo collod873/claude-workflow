@@ -33,11 +33,11 @@ function createClaimRef(gh: GhExec, branch: string, sha: string, log: (line: str
 export function releaseDeadClaim(gh: GhExec, branch: string, base: string, log: (line: string) => void): boolean {
   try {
     if (hasPullRequest(gh, branch)) {
-      log(`\`${branch}\` has a pull request, so its claim is somebody's finished work — left alone.`);
+      log(`\`${branch}\` has a pull request, so its claim is somebody's finished work; left alone.`);
       return false;
     }
     if (commitsAhead(gh, branch, base) > 0) {
-      log(`\`${branch}\` carries commits, so its claim is somebody's unfinished work — left alone.`);
+      log(`\`${branch}\` carries commits, so its claim is somebody's unfinished work; left alone.`);
       return false;
     }
   } catch (err) {
@@ -116,7 +116,7 @@ export function claimImplementationBranch(
 
   if (assessClaim(gh, branch, sha, now, log) === "live") return { claimed: false, tookOverStaleClaim: false };
 
-  log(`\`${branch}\` is a claim no run is holding — taking it over.`);
+  log(`\`${branch}\` is a claim no run is holding; taking it over.`);
   releaseClaim(gh, branch, log);
   if (!createClaimRef(gh, branch, sha, log)) return { claimed: false, tookOverStaleClaim: false };
   return { claimed: true, tookOverStaleClaim: true };
@@ -174,14 +174,14 @@ export function staleClaimTakeoverNote(branch: string): string {
     `Took over a stale claim on \`${branch}\`.`,
     "",
     `The branch was already there when this run started, with no pull request, no commits, and older`,
-    `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout — a claim left behind by a run that`,
+    `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout, so a claim left behind by a run that`,
     "died rather than one a run is still holding. This run took it over and is building the ticket now.",
   ].join("\n");
 }
 
 export function rebaseConflictNote(paths: string[]): string {
   return [
-    `Could not rebase this run's branch onto trunk before pushing — conflicted in: ${paths.join(", ")}.`,
+    `Could not rebase this run's branch onto trunk before pushing; conflicted in: ${paths.join(", ")}.`,
     "",
     "This is escalated rather than resolved automatically, the same reason `fixer.yml`'s own rebase",
     "step stops instead of guessing at a merge. The claim has been released; whoever resolves the",
@@ -245,7 +245,7 @@ export type ImplementOutcome =
 export function releaseFailedClaim(gh: GhExec, branch: string, log: (line: string) => void): void {
   try {
     if (hasPullRequest(gh, branch)) {
-      log(`\`${branch}\` already carries a pull request — leaving its claim in place.`);
+      log(`\`${branch}\` already carries a pull request; leaving its claim in place.`);
       return;
     }
   } catch (err) {

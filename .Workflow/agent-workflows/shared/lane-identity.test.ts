@@ -44,7 +44,7 @@ describe("a workflow file whose only trigger is workflow_call can never carry a 
       const offenders = tsFiles.filter((file) => quotesLiteral(file.source, name)).map((file) => file.relative);
       expect(
         offenders,
-        `${name} can never carry a run of its own (ADR-0055, ADR-0132) — reading its history is ` +
+        `${name} can never carry a run of its own (ADR-0055, ADR-0132), so reading its history is ` +
           `a frozen page. Thread the caller's own file through as a required input instead ` +
           `(bypass-counter.ts's verifyWorkflow is the pattern).`,
       ).toEqual([]);
@@ -55,7 +55,7 @@ describe("a workflow file whose only trigger is workflow_call can never carry a 
     const offenders = binFiles.filter((file) => quotesLiteral(file.source, name)).map((file) => file.relative);
     expect(
       offenders,
-      `${name} can never carry a run of its own (ADR-0055, ADR-0132) — reading its history is a ` +
+      `${name} can never carry a run of its own (ADR-0055, ADR-0132), so reading its history is a ` +
         `frozen page. Require the caller's file from the environment instead (bin/close-ticket's ` +
         `verify_workflow_file() is the pattern).`,
     ).toEqual([]);
@@ -106,7 +106,7 @@ describe("the caller carries the plain name and the reusable half carries the su
     expect(
       pair.stub.displayName?.endsWith(REUSABLE_SUFFIX) || pair.stub.displayName?.includes("(caller)"),
       `${pair.stub.name} is the half that produces runs, so it owns the bare name a reader and a ` +
-        `workflow_run trigger both reach for — it must not carry a suffix.`,
+        `workflow_run trigger both reach for, so it must not carry a suffix.`,
     ).toBe(false);
   });
 
@@ -115,7 +115,7 @@ describe("the caller carries the plain name and the reusable half carries the su
     expect(
       pair.reusable?.displayName,
       `${pair.reusable?.name} can never carry a run of its own, so its name must not read as the ` +
-        `lane's — a workflow_run naming it would fire never, silently.`,
+        `lane's, since a workflow_run naming it would fire never, silently.`,
     ).toBe(`${pair.stub.displayName}${REUSABLE_SUFFIX}`);
   });
 });

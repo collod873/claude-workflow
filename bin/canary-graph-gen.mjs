@@ -236,7 +236,7 @@ const displayNames = {
   review: "Review",
   "run-watchdog": "Run watchdog",
   shape: "Shape",
-  "shape-accept": "Shape — accept",
+  "shape-accept": "Shape accept",
   spec: "Spec",
   "to-tickets": "To-Tickets",
   acceptance: "Acceptance",

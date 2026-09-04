@@ -45,7 +45,7 @@ describe("judgeFailsEdits", () => {
     expect(judgeFailsEdits(diff).ok).toBe(false);
   });
 
-  it("allows adding a test.fails test — that is how the acceptance author lands one", () => {
+  it("allows adding a test.fails test, which is how the acceptance author lands one", () => {
     const diff = diffOf("lib/thing.test.ts", ['+  test.fails("#361: the next thing", () => {', "+    expect(1).toBe(2);", "+  });"]);
 
     expect(judgeFailsEdits(diff)).toEqual({ ok: true });

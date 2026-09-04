@@ -21,7 +21,7 @@ function readNoteFromRemote(bareDir: string, sha: string): unknown[] {
 describe("rewriteSessionNotesSchema", () => {
   it(
     "drops spine from every note, backfills corpusPath for a session the corpus captured, and " +
-      "leaves an uncaptured session's range untouched — then force-pushes the rewrite",
+      "leaves an uncaptured session's range untouched, then force-pushes the rewrite",
     () => {
       const bareDir = makeBareRepo("rewrite-session-notes-bare");
       const repo = cloneRepo(bareDir, "rewrite-session-notes-clone");

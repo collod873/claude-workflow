@@ -57,7 +57,7 @@ function deriveJsonSchema(schema: z.ZodTypeAny, wrapIn: string | undefined): unk
   if (derived.type !== "object") {
     throw new Error(
       `a stage's JSON Schema must be object-rooted, but this one derives to ${JSON.stringify(derived.type ?? null)}` +
-        (wrapIn === undefined ? " — pass `wrapIn` to nest it under a field" : ""),
+        (wrapIn === undefined ? ": pass `wrapIn` to nest it under a field" : ""),
     );
   }
   return derived;

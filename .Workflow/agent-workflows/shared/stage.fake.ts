@@ -14,7 +14,7 @@ export function createFakeStages(responses: string[]): FakeStage {
   return recordingStage((call) => {
     const response = responses[call - 1];
     if (response === undefined) {
-      throw new Error(`fake stage: call ${call} has no response — ${responses.length} were supplied`);
+      throw new Error(`fake stage: call ${call} has no response; ${responses.length} were supplied`);
     }
     return response;
   });

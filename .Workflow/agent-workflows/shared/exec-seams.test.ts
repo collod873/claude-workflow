@@ -21,7 +21,7 @@ describe("every exec seam sets maxBuffer", () => {
   it.each(seams)("$name", ({ name, source }) => {
     expect(
       SETS_MAX_BUFFER.test(source),
-      `${name} spawns a child without setting maxBuffer — Node's 1 MB default makes any output past ` +
+      `${name} spawns a child without setting maxBuffer, and Node's 1 MB default makes any output past ` +
         "it exit `ENOBUFS`, an error that names neither the command nor the size",
     ).toBe(true);
   });
@@ -46,7 +46,7 @@ describe("a test spawning an entrypoint with the ambient environment neutralises
   it.each(spawningTests)("$name", ({ name, source }) => {
     expect(
       NEUTRALISES.test(code(source)),
-      `${name} spawns an entrypoint with the ambient environment and never mentions TARGET_WORKSPACE — ` +
+      `${name} spawns an entrypoint with the ambient environment and never mentions TARGET_WORKSPACE: ` +
         "every runner exports it and every entrypoint reads it ahead of GITHUB_WORKSPACE, so the child " +
         "will read the lane's target checkout rather than the repo this test built. Pass it explicitly, " +
         'or clear it with `TARGET_WORKSPACE: ""`',
@@ -73,7 +73,7 @@ describe("every test-side spawner passes stdio", () => {
   it.each(testSideSpawners)("$name", ({ name, source }) => {
     expect(
       SETS_STDIO.test(code(source)),
-      `${name} spawns a child without passing stdio — execFileSync echoes the child's stderr to this ` +
+      `${name} spawns a child without passing stdio, so execFileSync echoes the child's stderr to this ` +
         "process's stderr on top of capturing it, so a test exercising a failure path prints that failure " +
         "into the verify log, unlabelled and indistinguishable from a real one. Pass " +
         '`stdio: ["pipe", "pipe", "pipe"]`, which is the default minus the echo',

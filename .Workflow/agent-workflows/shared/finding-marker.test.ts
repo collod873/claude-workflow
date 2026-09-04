@@ -15,7 +15,7 @@ describe("the finding marker a ratifier PR body carries", () => {
     });
   });
 
-  it("stays hidden in the rendered body — the marker is an HTML comment", () => {
+  it("stays hidden in the rendered body, since the marker is an HTML comment", () => {
     const encoded = encodeFindingMarker(observation({ finding: "f" }), "N");
 
     expect(encoded.startsWith("<!--")).toBe(true);

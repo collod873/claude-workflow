@@ -135,7 +135,7 @@ describe("every workflow that can reach `git notes add` configures a committer",
 
     expect(
       CONFIGURES_COMMITTER.test(source),
-      `${name} runs ${writers.join(", ")}, which reaches \`git notes add\`, but configures no committer — ` +
+      `${name} runs ${writers.join(", ")}, which reaches \`git notes add\`, but configures no committer: ` +
         "a runner has no git identity, so that write will exit `fatal: empty ident name`",
     ).toBe(true);
   });
@@ -153,7 +153,7 @@ describe("every workflow that can reach `git notes add` configures a committer",
 
     for (const name of quiet) {
       const workflow = workflows.find((each) => each.name === name);
-      expect(workflow, `${name} no longer exists — this test's premise needs rechecking`).toBeDefined();
+      expect(workflow, `${name} no longer exists, so this test's premise needs rechecking`).toBeDefined();
       expect(entrypointsOf(workflow!.source).some(writesAGitNote), `${name} now writes a git note`).toBe(false);
     }
   });

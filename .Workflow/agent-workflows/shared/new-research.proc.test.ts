@@ -50,7 +50,7 @@ describe("bin/new-research", () => {
     const researchDir = join(dir, "docs/research");
     mkdirSync(researchDir, { recursive: true });
     for (const name of ["0003-third.md", "0001-first.md", "legacy-note-2026-08.md"]) {
-      writeFileSync(join(researchDir, name), "any content — only the filename is read\n");
+      writeFileSync(join(researchDir, name), "any content; only the filename is read\n");
     }
 
     expect(createdName(dir, ["9", "fourth note"])).toMatch(/^0004-/);
@@ -60,7 +60,7 @@ describe("bin/new-research", () => {
     expect(createdName(scratchTree(), ["7", "first note"])).toMatch(/^0001-/);
   });
 
-  it("slugifies the title the way bin/new-adr does — lowercased, non-alphanumeric collapsed to hyphens", () => {
+  it("slugifies the title the way bin/new-adr does: lowercased, non-alphanumeric collapsed to hyphens", () => {
     expect(createdName(scratchTree(), ["5", "A Title: With Punctuation!"])).toBe("0001-a-title-with-punctuation.md");
   });
 

@@ -74,7 +74,7 @@ describe("claimImplementationBranch", () => {
     expect(host.refs.has(BRANCH)).toBe(true);
   });
 
-  it("reads a claim it cannot inspect as held — every uncertainty answers live", () => {
+  it("reads a claim it cannot inspect as held, since every uncertainty answers live", () => {
     const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(600) }), answer: prListUnreachable });
 
     expect(claim(host).claimed).toBe(false);
@@ -245,7 +245,7 @@ describe("landAnswer", () => {
       expect(prCreatesIn(host.calls)).toEqual([]);
     });
 
-    it("proceeds to the commit when the diff only drops .fails — the one edit an implementer may make", async () => {
+    it("proceeds to the commit when the diff only drops .fails, the one edit an implementer may make", async () => {
       const turnedOn = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is a constant", () => {']);
 
       const { result, gitCalls } = await land(checkoutDiffing(turnedOn));
