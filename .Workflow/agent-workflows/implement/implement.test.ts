@@ -20,7 +20,8 @@ import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
 import type { GateVerdict } from "../shared/run-gauntlet";
 import { scratchDir } from "../shared/scratch.fixture";
-import { createFakeStage, createFakeStages } from "../shared/stage.fake";
+import type { StageReply } from "../shared/stage";
+import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   ANSWER_PATH_ENV,
@@ -59,6 +60,17 @@ interface Arrangement {
   deps?: Partial<ImplementDeps>;
   built?: Record<string, string>;
   deleted?: string[];
+}
+
+function stagesEndingWith(...later: Array<string | StageReply>) {
+  return createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS), ...later]);
+}
+
+async function buildThrough(stage: FakeStage, gate: ReturnType<typeof gateSaying>, github: ClaimHostOptions = {}) {
+  const arranged = arrange({ github, deps: { exec: stage.exec, runGate: gate.runGate } });
+  const result = await runImplement(arranged.deps);
+  expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+  return { ...arranged, stage, gate };
 }
 
 function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }: Arrangement = {}) {
@@ -271,13 +283,8 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });
 
-  async function buildWithSession(...verdicts: GateVerdict[]) {
-    const stage = createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS)]);
-    const gate = gateSaying(...verdicts);
-    const arranged = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
-    const result = await runImplement(arranged.deps);
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
-    return { ...arranged, stage, gate };
+  function buildWithSession(...verdicts: GateVerdict[]) {
+    return buildThrough(stagesEndingWith(), gateSaying(...verdicts));
   }
 
   it("re-runs a red gate once and, when the second run is green, treats the first as a flake and repairs nothing", async () => {
@@ -304,20 +311,13 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
 
 describe("rung two: a fresh Opus session with a clean context, after rung one is still red", () => {
   const RED = { ok: false, output: "--- typecheck ---\nerror TS2322: boom" } as const;
+  const greenOnRungTwo = () => gateSaying(RED, RED, RED, RED, { ok: true });
 
   it("runs a fresh session on claude-opus-5, with no --resume, carrying the ticket body, the attempt so far and the gate output", async () => {
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
-    const stage = createFakeStages([
-      { text: JSON.stringify(BUILDS), sessionId: "sess-1" },
-      JSON.stringify(BUILDS),
-      JSON.stringify(BUILDS),
-    ]);
-    const gate = gateSaying(RED);
-    const { deps, host } = arrange({ github: { ticket }, deps: { exec: stage.exec, runGate: gate.runGate } });
 
-    const result = await runImplement(deps);
+    const { host, stage, gate } = await buildThrough(stagesEndingWith(JSON.stringify(BUILDS)), gateSaying(RED), { ticket });
 
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(stage.calls).toHaveLength(3);
     const freshEyesArgv = stage.calls[2];
     expect(freshEyesArgv[freshEyesArgv.indexOf("--model") + 1]).toBe(FRESH_EYES_MODEL);
@@ -331,17 +331,10 @@ describe("rung two: a fresh Opus session with a clean context, after rung one is
   });
 
   it("leaves no trace of needs-human or a gateRedNote when the fresh-eyes round turns the gate green", async () => {
-    const stage = createFakeStages([
-      { text: JSON.stringify(BUILDS), sessionId: "sess-1" },
-      JSON.stringify(BUILDS),
-      JSON.stringify({ ...BUILDS, summary: "Fresh eyes fixed it." }),
-    ]);
-    const gate = gateSaying(RED, RED, RED, RED, { ok: true });
-    const { deps, host } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const freshEyes = JSON.stringify({ ...BUILDS, summary: "Fresh eyes fixed it." });
 
-    const result = await runImplement(deps);
+    const { host, gate } = await buildThrough(stagesEndingWith(freshEyes), greenOnRungTwo());
 
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(gate.runs).toEqual([RED, RED, RED, RED, { ok: true }]);
     expect(ticketCommentsIn(host.calls)).toEqual([]);
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
@@ -350,17 +343,8 @@ describe("rung two: a fresh Opus session with a clean context, after rung one is
   });
 
   it("pushes anyway when the fresh-eyes round is still red, and hands the owner the gate's output on the ticket", async () => {
-    const stage = createFakeStages([
-      { text: JSON.stringify(BUILDS), sessionId: "sess-1" },
-      JSON.stringify(BUILDS),
-      JSON.stringify(BUILDS),
-    ]);
-    const gate = gateSaying(RED);
-    const { deps, host, gitCalls } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const { host, gitCalls, gate } = await buildThrough(stagesEndingWith(JSON.stringify(BUILDS)), gateSaying(RED));
 
-    const result = await runImplement(deps);
-
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(gate.runs).toHaveLength(6);
     expect(gitCalls.some((call) => call[0] === "push")).toBe(true);
     expect(ticketCommentsIn(host.calls)).toEqual([gateRedNote(RED.output)]);
@@ -383,36 +367,18 @@ describe("rung two: a fresh Opus session with a clean context, after rung one is
 
   it("posts fresh-eyes's declaredEdits in the PR body and as a ticket comment, via declaredEditsNote", async () => {
     const edits = [{ path: "a/b.ts", reason: "The acceptance test asserted the old return shape." }];
-    const stage = createFakeStages([
-      { text: JSON.stringify(BUILDS), sessionId: "sess-1" },
-      JSON.stringify(BUILDS),
-      JSON.stringify({
-        summary: "Rewrote the acceptance test; it asserted the wrong shape.",
-        outOfBriefReads: [],
-        declaredEdits: edits,
-      }),
-    ]);
-    const gate = gateSaying(RED, RED, RED, RED, { ok: true });
-    const { deps, host } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const freshEyes = JSON.stringify({ summary: "Rewrote the acceptance test; it asserted the wrong shape.", declaredEdits: edits });
 
-    await runImplement(deps);
+    const { host } = await buildThrough(stagesEndingWith(freshEyes), greenOnRungTwo());
 
-    const note = declaredEditsNote(edits);
-    const prCall = prCreatesIn(host.calls)[0];
-    expect(prCall[prCall.indexOf("--body") + 1]).toContain(note);
-    expect(ticketCommentsIn(host.calls)).toContain(note);
+    expect(prCreatesIn(host.calls)[0]).toContainEqual(expect.stringContaining(declaredEditsNote(edits)));
+    expect(ticketCommentsIn(host.calls)).toContain(declaredEditsNote(edits));
   });
 
   it("names the fresh-eyes stage in the sessions note", async () => {
-    const stage = createFakeStages([
-      { text: JSON.stringify(BUILDS), sessionId: "sess-1" },
-      JSON.stringify(BUILDS),
-      { text: JSON.stringify(BUILDS), turns: 5, gauntletRuns: 2 },
-    ]);
-    const gate = gateSaying(RED, RED, RED, RED, { ok: true });
-    const { deps, host } = arrange({ deps: { exec: stage.exec, runGate: gate.runGate } });
+    const freshEyes = { text: JSON.stringify(BUILDS), turns: 5, gauntletRuns: 2 };
 
-    await runImplement(deps);
+    const { host } = await buildThrough(stagesEndingWith(freshEyes), greenOnRungTwo());
 
     expect(ticketCommentsIn(host.calls)).toEqual([
       sessionsNote([

@@ -176,13 +176,11 @@ describe("assembleBrief: ticket comments, oldest first", () => {
     expect(brief).toContain("## Ticket comments, oldest first\n\n(none)");
   });
 
+  const big = "x".repeat(20_000);
+  const ownerSaidOn = (day: number, body: string) => ({ author: "owner", createdAt: `2026-08-0${day}T00:00:00Z`, body });
+
   it("drops the oldest comments once the rendered section exceeds 30,000 bytes, and says how many were dropped", () => {
-    const big = "x".repeat(20_000);
-    const comments = [
-      { author: "owner", createdAt: "2026-08-01T00:00:00Z", body: big },
-      { author: "owner", createdAt: "2026-08-02T00:00:00Z", body: big },
-      { author: "owner", createdAt: "2026-08-03T00:00:00Z", body: "Latest and smallest." },
-    ];
+    const comments = [ownerSaidOn(1, big), ownerSaidOn(2, big), ownerSaidOn(3, "Latest and smallest.")];
 
     const brief = assembleBrief(baseInputs({ comments }));
     const section = brief.split("## Ticket comments, oldest first")[1].split("## Seam manifest lines consumed")[0];
@@ -194,14 +192,7 @@ describe("assembleBrief: ticket comments, oldest first", () => {
   });
 
   it("says '2 older comments' when more than one is dropped", () => {
-    const big = "x".repeat(20_000);
-    const comments = [
-      { author: "owner", createdAt: "2026-08-01T00:00:00Z", body: big },
-      { author: "owner", createdAt: "2026-08-02T00:00:00Z", body: big },
-      { author: "owner", createdAt: "2026-08-03T00:00:00Z", body: big },
-    ];
-
-    const brief = assembleBrief(baseInputs({ comments }));
+    const brief = assembleBrief(baseInputs({ comments: [ownerSaidOn(1, big), ownerSaidOn(2, big), ownerSaidOn(3, big)] }));
 
     expect(brief).toContain("2 older comments dropped to fit the brief.");
   });
