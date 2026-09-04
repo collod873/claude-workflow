@@ -12,17 +12,13 @@ export interface CanaryFixture {
 
 const SPEC_SHEET: Sheet = {
   restatement:
-    "The canary seed ships one test that asserts 1 + 1, so a green run proves the runner started " +
-    "and nothing else. The seed should carry a check that fails when the thing it names is broken.",
+    "The seed's package.json carries no engines field, so nothing records which Node it runs on.",
   priorArt: [],
   decisions: [
     {
-      question: "Should the seed's check read the repository, or stay a self-contained assertion?",
-      recommendation:
-        "Read package.json and assert every script the contract names is present, so the check " +
-        "fails when the seed and its contract drift apart.",
-      rejected:
-        "Keep the arithmetic assertion, which cannot fail for any reason a session would want to know about.",
+      question: "Where should the seed record its Node version?",
+      recommendation: "An engines.node field in package.json.",
+      rejected: "A .nvmrc, which npm does not read.",
       mark: "",
       adrTitle: "",
       adrReversal: "",
@@ -30,18 +26,17 @@ const SPEC_SHEET: Sheet = {
   ],
   survivors: [],
   route: "short",
-  routeReason: "One file, one assertion, no new dependency and no new venue.",
+  routeReason: "One field in one file.",
   newTerms: [],
   round: 0,
 };
 
 const FIXTURES: Record<string, CanaryFixture> = {
   spec: {
-    title: "canary: the seed's smoke test cannot fail",
+    title: "canary: the seed does not say which Node it runs on",
     body:
-      "tests/smoke.test.mjs asserts that 1 + 1 is 2. It passes on a seed whose scripts are missing " +
-      "and on one whose contract names commands that do not exist. Give the seed a check that reads " +
-      "package.json and fails when a script the contract names is gone.",
+      "package.json has no engines field. Add one naming Node 24, so the seed records the runtime " +
+      "it expects. One field, one file: keep the spec as short as that scope deserves.",
     comments: [
       sheetMarker(SPEC_SHEET),
       acceptedMarker({ adrPaths: [], coinedTerms: [], route: "short" }),
