@@ -151,7 +151,19 @@ function machineTicketTitle(repository: string, path: string): string {
   return `${repository}: ${path} failed inside the machine checkout`;
 }
 
+const TS_SUFFIXES = [".proc.test.ts", ".test.ts", ".ts"];
+
+function derivedCheckCommand(path: string): string | undefined {
+  const suffix = TS_SUFFIXES.find((candidate) => path.endsWith(candidate));
+  if (suffix === undefined) return undefined;
+  return `npx vitest run ${path.slice(0, -suffix.length)}`;
+}
+
 function machineTicketBody(repository: string, run: RunSummary, machineSha: string, path: string, logTail: string): string {
+  const check = derivedCheckCommand(path);
+  const criterion = `- [ ] \`${path}\` no longer fails this way, at or after machine SHA \`${machineSha}\`${
+    check === undefined ? "" : ` - check: \`${check}\``
+  }`;
   return [
     "## What to build",
     "",
@@ -172,7 +184,7 @@ function machineTicketBody(repository: string, run: RunSummary, machineSha: stri
     "",
     "## Acceptance criteria",
     "",
-    `- [ ] \`${path}\` no longer fails this way, at or after machine SHA \`${machineSha}\``,
+    criterion,
     "",
     "## Files claimed",
     "",

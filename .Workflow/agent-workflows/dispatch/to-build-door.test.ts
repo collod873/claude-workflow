@@ -30,7 +30,7 @@ function passOverLabelled(...issue: Parameters<typeof labelled>): Tracker {
 
 describe("the to-build door goes through lane 04, not straight to lane 05", () => {
   const CRITERION = "The door asks lane 04 first";
-  const body = `## Acceptance criteria\n\n- [ ] ${CRITERION}\n\n## Files claimed\n\n- src/a.ts\n`;
+  const body = `## Acceptance criteria\n\n- [ ] ${CRITERION} - check: \`true\`\n\n## Files claimed\n\n- src/a.ts\n`;
 
   function target(withTest: boolean): string {
     const dir = scratchDir("reconcile-door");
@@ -188,7 +188,7 @@ describe("the to-build door refuses what bin/close-ticket would refuse", () => {
 
   const ONE_CHECKED = CHECKLESS.replace("## Files claimed", "- [ ] It runs to the end — check: `true`\n\n## Files claimed");
 
-  it.fails("#371.1: a labelled ticket whose criteria carry no check at all is refused, and one where any criterion carries a check is admitted, the same line bin/close-ticket draws at close", () => {
+  it("#371.1: a labelled ticket whose criteria carry no check at all is refused, and one where any criterion carries a check is admitted, the same line bin/close-ticket draws at close", () => {
     const refused = passOverLabelled(690, CHECKLESS);
     const admitted = passOverLabelled(691, ONE_CHECKED);
 
@@ -196,7 +196,7 @@ describe("the to-build door refuses what bin/close-ticket would refuse", () => {
     expect(startedIssues(admitted)).toEqual([691]);
   });
 
-  it.fails("#371.2: the refusal stands on the ticket as the door's own comment and names the check: marker it wants", () => {
+  it("#371.2: the refusal stands on the ticket as the door's own comment and names the check: marker it wants", () => {
     const tracker = passOverLabelled(692, CHECKLESS);
 
     expect(tracker.comments).toHaveLength(1);
