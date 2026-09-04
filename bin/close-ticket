@@ -399,7 +399,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
                     file=sys.stderr,
                 )
                 print(
-                    "  a runnable criterion reads: <what is observably true> — check: "
+                    "  a runnable criterion reads: <what is observably true> - check: "
                     "`<command>`, one backtick-quoted command, nothing after it",
                     file=sys.stderr,
                 )
@@ -442,7 +442,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
             file=sys.stderr,
         )
         print(
-            "  give each criterion a trailing — check: `<command>` marker, or close this "
+            "  give each criterion a trailing - check: `<command>` marker, or close this "
             "as not planned if it is not being delivered",
             file=sys.stderr,
         )

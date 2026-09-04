@@ -20,7 +20,7 @@ already satisfied because a file looks close.
 
 Each block below is one criterion, exactly as it will be searched for. Copy from here, never
 retype from the ticket body, and never re-wrap, re-punctuate or trim what you copy. A criterion's
-trailing `— check: ...` marker, where it has one, is part of the string.
+trailing `check:` marker, where it has one, is part of the string.
 
 {{CRITERIA}}
 
@@ -110,9 +110,9 @@ Return your answer by calling the `StructuredOutput` tool. Its one key, `files`,
 
 Write whatever reasoning you need first; only the tool call is read as your answer.
 
-Example, for a criterion whose block reads ``The gate is at most 120 lines — check: `wc -l bin/gauntlet` ``
+Example, for a criterion whose block reads ``The gate is at most 120 lines - check: `wc -l bin/gauntlet` ``
 against a claimed `.Workflow/agent-workflows/shared/gate-size.ts` that does not exist yet:
 
 ```structured-output
-{"files": [{"path": ".Workflow/agent-workflows/shared/gate-size.ts", "content": "export function gateLines(): number {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": ".Workflow/agent-workflows/shared/gate-size.test.ts", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\n// - [ ] The gate is at most 120 lines — check: `wc -l bin/gauntlet`\ntest.fails(\"#360: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
+{"files": [{"path": ".Workflow/agent-workflows/shared/gate-size.ts", "content": "export function gateLines(): number {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": ".Workflow/agent-workflows/shared/gate-size.test.ts", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\n// - [ ] The gate is at most 120 lines - check: `wc -l bin/gauntlet`\ntest.fails(\"#360: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
 ```

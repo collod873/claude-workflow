@@ -26,7 +26,7 @@ be true, not assumed.
 spec's single check-marked criterion, or an open question if it can't be
 mechanised.** Where he said how he will know the work is done, quote that
 sentence and give it the one acceptance criterion carrying a check-mark,
-in the shape `<what is observably true> — check: <one command>`. If it
+in the shape `<what is observably true> - check: <one command>`. If it
 cannot be turned into a single mechanised check, do not invent one:
 raise it as an open question instead.
 

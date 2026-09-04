@@ -38,14 +38,14 @@ MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker 
 SPEC_NO_CRITERIA = (
     "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item, "
     "the one behavioural claim this spec closes on, in the owner's own words, with a trailing "
-    "— check: `<command>` marker naming what proves it"
+    "- check: `<command>` marker naming what proves it"
 )
 SPEC_CRITERIA_COUNT = (
     "a spec body carries exactly one '- [ ]' acceptance criterion, not {n}. Three behavioural "
     "claims are three specs, and a closer handed several has no single sentence to run"
 )
 SPEC_CRITERION_UNRUNNABLE = (
-    "a spec's one acceptance criterion must carry a well-formed trailing — check: `<command>` "
+    "a spec's one acceptance criterion must carry a well-formed trailing - check: `<command>` "
     "marker; a spec closes on that command running green, so a criterion nobody can run leaves "
     "the spec with no definition of done: {criterion}"
 )

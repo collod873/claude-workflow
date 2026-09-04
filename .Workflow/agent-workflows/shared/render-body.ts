@@ -7,8 +7,8 @@ import { reason } from "./reason";
 import { CHECK_MARKER_ATTEMPT_RE, CRITERIA_HEADING, parseCheckMarker } from "./ticket-shape";
 
 const CRITERION_SHAPE =
-  "a statement of what is observably true, then ` — check: ` and one backtick-quoted command, " +
-  "on one line (e.g. ``- [ ] `foo` is exported — check: `npx vitest run bar.test.ts` ``)";
+  "a statement of what is observably true, then ` - check: ` and one backtick-quoted command, " +
+  "on one line (e.g. ``- [ ] `foo` is exported - check: `npx vitest run bar.test.ts` ``)";
 
 const REMOTE_TRACKER_RE = /\bgh\s+(?:api|issue|pr|run)\b|\bcurl\b|\bwget\b/i;
 

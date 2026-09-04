@@ -67,7 +67,7 @@ Return your answer by calling the `StructuredOutput` tool. Write whatever reason
 first; only the tool call is read as your answer, so nothing you say before it can corrupt it.
 
 ```structured-output
-{"body":"## Problem\n\nThe whole statement of the work.\n\n## Acceptance criteria\n\n- [ ] Every criterion a resolution sharpened, as it now reads — check: `npx vitest run path/to.test.ts`\n\n## Assumptions\n\n- **Decision.** Reason.\n"}
+{"body":"## Problem\n\nThe whole statement of the work.\n\n## Acceptance criteria\n\n- [ ] Every criterion a resolution sharpened, as it now reads - check: `npx vitest run path/to.test.ts`\n\n## Assumptions\n\n- **Decision.** Reason.\n"}
 ```
 
 `body` is the complete replacement body. There is no way to say "no change": a run with nothing to
