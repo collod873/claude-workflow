@@ -173,6 +173,10 @@ ensure_seed() {
   }
 }'
   seed_file eslint.config.js 'export default [];'
+  seed_file CONTEXT.md 'The seed is one package.json, one lockfile, one contract and one test: the smallest
+target the machine can check that is provably not itself. A slice here names a path
+rooted at the repository root, because the lanes that read it never share a working
+directory.'
   seed_file docs/research/README.md 'Research notes live here. The counter lanes scan this directory, so it exists even while it is empty.'
   seed_file tests/smoke.test.mjs 'import test from "node:test";
 import assert from "node:assert/strict";
@@ -464,6 +468,20 @@ seed_fixture_issue() { # → issue number, on stdout, carrying the comments the 
   echo "$num"
 }
 
+seed_pull_request() { # → pull request number, on stdout, merged so a lane that judges merges has one
+  local pr_branch base_sha url
+  pr_branch="canary-pr-$lane-$(date -u +%s)"
+  base_sha="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)"
+  gh api "repos/$canary_repo/git/refs" -f "ref=refs/heads/$pr_branch" -f "sha=$base_sha" >/dev/null
+  gh api -X PUT "repos/$canary_repo/contents/.canary-pr-$lane" -f "message=canary: open a pull request for $lane" \
+    -f "content=$(printf 'opened for %s\n' "$lane" | base64 -w0)" -f "branch=$pr_branch" >/dev/null
+  url="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$pr_branch" \
+    --title "canary: fire $lane" --body "Seed pull request created by bin/canary for the '$lane' lane." 2>&1 | tail -1)"
+  gh pr merge "${url##*/}" -R "$canary_repo" --merge --admin >/dev/null 2>&1 \
+    || log "could not merge the seed pull request; a lane that judges merges will call it unjudged"
+  echo "${url##*/}"
+}
+
 fixture_issue=""
 if [ -n "$fixture_json" ]; then
   fixture_issue="$(seed_fixture_issue)"
@@ -486,9 +504,20 @@ case "$fire_kind" in
     ;;
   repository_dispatch)
     dispatch_args=(-X POST "repos/$canary_repo/dispatches" -f "event_type=$fire_event_type" -f "client_payload[canary]=$id")
-    [ -z "$fixture_issue" ] || dispatch_args+=(-f "client_payload[issue]=$fixture_issue")
+    if [ -n "$fixture_json" ]; then
+      while IFS=$'\t' read -r payload_key payload_value; do
+        [ -n "$payload_key" ] || continue
+        case "$payload_value" in
+          @issue) payload_value="$fixture_issue" ;;
+          @head) payload_value="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)" ;;
+          @pr) payload_value="$(seed_pull_request)" ;;
+        esac
+        dispatch_args+=(-f "client_payload[$payload_key]=$payload_value")
+        log "payload $payload_key=$payload_value"
+      done < <(jq -r '.payload // {} | to_entries[] | "\(.key)\t\(.value)"' <<<"$fixture_json")
+    fi
     gh api "${dispatch_args[@]}" >/dev/null
-    log "fired: $canary_repo repository_dispatch event_type=$fire_event_type${fixture_issue:+ issue=$fixture_issue}"
+    log "fired: $canary_repo repository_dispatch event_type=$fire_event_type"
     ;;
   issues_labeled)
     if [ -n "$fixture_issue" ]; then

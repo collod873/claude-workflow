@@ -8,6 +8,7 @@ export interface CanaryFixture {
   comments: string[];
   label: string;
   ensureLabels: string[];
+  payload?: Record<string, string>;
 }
 
 const SPEC_SHEET: Sheet = {
@@ -43,6 +44,72 @@ const FIXTURES: Record<string, CanaryFixture> = {
     ],
     label: "to-spec",
     ensureLabels: ["to-spec", "prd", "sliceable"],
+    payload: { issue: "@issue" },
+  },
+  acceptance: {
+    title: "canary: record the Node the seed runs on",
+    body: [
+      "## Parent PRD",
+      "none",
+      "",
+      "## Acceptance criteria",
+      "- [ ] package.json at the repository root has an engines.node field naming 24.",
+      "- [ ] npm test still passes.",
+      "",
+      "## Files claimed",
+      "- package.json",
+      "",
+    ].join("\n"),
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire", "prd", "running"],
+    payload: { issue: "@issue" },
+  },
+  implement: {
+    title: "canary: add engines.node to package.json",
+    body:
+      "Add an engines field naming Node 24 to package.json, rooted at the repository root. " +
+      "One field, one file.",
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire", "ticket", "running"],
+    payload: { issue: "@issue" },
+  },
+  "to-tickets": {
+    title: "canary: the seed does not say which Node it runs on",
+    body:
+      "package.json, rooted at the repository root, has no engines field. Add one naming Node 24, " +
+      "so the seed records the runtime it expects. Name every file the way this sentence does, as " +
+      "package.json at the repository root, never as ./package.json, because the lanes that read a " +
+      "slice share no working directory and a relative path means nothing to them.",
+    comments: [],
+    label: "sliceable",
+    ensureLabels: ["sliceable", "prd", "running"],
+    payload: { issue: "@issue" },
+  },
+  audit: {
+    title: "canary: audit the seed as it stands",
+    body: "Nothing to fix; the audit lane reads the head it is handed.",
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire"],
+    payload: { head: "@head" },
+  },
+  ratify: {
+    title: "canary: ratify the standards this batch settled",
+    body: "Nothing to ratify; the ratify lane reads the head it is handed.",
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire", "prd"],
+    payload: { head: "@head", prd_closed: "@issue" },
+  },
+  integrate: {
+    title: "canary: integrate the open pull request",
+    body: "The integrate lane reads the pull request number it is handed.",
+    comments: [],
+    label: "canary-fire",
+    ensureLabels: ["canary-fire"],
+    payload: { pr: "@pr" },
   },
 };
 
