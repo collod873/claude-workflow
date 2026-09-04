@@ -173,4 +173,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-158 ADRs · 73 constraint · 44 note · 41 superseded · 15,791 words total.
+158 ADRs · 73 constraint · 44 note · 41 superseded · 15,775 words total.

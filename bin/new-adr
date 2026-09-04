@@ -5,6 +5,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target_root="${TARGET_WORKSPACE:-$repo_root}"
 adr_dir="$target_root/docs/adr"
 
+WORD_CAP=150
+STATUSES="constraint note superseded"
+REQUIRED_KEYS="status date reversal"
+
+NO_FRONTMATTER='no frontmatter; an ADR opens with a `---` block carrying `status`, `date`, `reversal`. Run `new-adr "<the ruling>"` to get one stamped.'
+MISSING_KEY='frontmatter has no `{key}:`, which is required on every ADR.'
+BAD_STATUS='`status: {got}` is not one of {allowed}.'
+NO_TITLE='no `# ` title; the title is the ruling stated as a sentence, and it is what the index publishes.'
+SHORT_TITLE='title is {n} word(s); the title carries the ruling, so it reads as a sentence ("Triage labels are positions, not verdicts"), never a topic ("Triage labels").'
+OVER_CAP='body is {n} words, over the {cap}-word cap. The ruling and why it binds fit in ~120; evidence, worked examples and measurements go to docs/research/ and the ADR links them.'
+EMPTY_REVERSAL='`reversal:` is empty; state in a sentence what undoing this would cost. It is the admission bar: if the answer is one edit, this is not a constraint.'
+NO_REJECTED='the body names no rejected alternative. Add a line starting `**Rejected: <the alternative>.**` saying what else was on the table and what it would have cost.'
+
 slugify() {
   printf '%s' "$1" \
     | tr '[:upper:]' '[:lower:]' \
@@ -17,6 +30,144 @@ usage() {
   echo "       bin/new-adr --amends NNNN \"the ruling as a sentence\"" >&2
   echo "       bin/new-adr --land docs/adr/draft-<slug>.md" >&2
   echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
+}
+
+refuse() {
+  printf 'error: %s: %s\n' "$1" "$2" >&2
+  exit 1
+}
+
+frontmatter_of() {
+  awk '
+    NR == 1 { if ($0 != "---") exit 1; next }
+    $0 == "---" { closed = 1; exit }
+    { print; kept++ }
+    END { if (!closed || !kept) exit 1 }
+  ' "$1"
+}
+
+body_of() {
+  awk '
+    NR == 1 && $0 == "---" { inside = 1; next }
+    inside && $0 == "---" { inside = 0; next }
+    inside { next }
+    { print }
+  ' "$1"
+}
+
+frontmatter_has() {
+  awk -v want="$2" '
+    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
+    stripped ~ /^#/ { next }
+    index($0, ":") == 0 { next }
+    {
+      key = substr($0, 1, index($0, ":") - 1)
+      gsub(/^[ \t\r]+|[ \t\r]+$/, "", key)
+      if (key == want) found = 1
+    }
+    END { exit !found }
+  ' <<<"$1"
+}
+
+frontmatter_value() {
+  awk -v want="$2" '
+    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
+    stripped ~ /^#/ { next }
+    index($0, ":") == 0 { next }
+    {
+      key = substr($0, 1, index($0, ":") - 1)
+      value = substr($0, index($0, ":") + 1)
+      gsub(/^[ \t\r]+|[ \t\r]+$/, "", key)
+      gsub(/^[ \t\r]+|[ \t\r]+$/, "", value)
+      if (key == want) got = value
+    }
+    END { print got }
+  ' <<<"$1"
+}
+
+title_of() {
+  awk '
+    !seen && /^#[ \t]+/ {
+      seen = 1
+      line = $0
+      sub(/^#[ \t]+/, "", line)
+      gsub(/[ \t\r]+$/, "", line)
+      print line
+    }
+  ' <<<"$1"
+}
+
+body_word_count() {
+  awk '!dropped && /^#[ \t]+/ { dropped = 1; next } { print }' <<<"$1" \
+    | wc -w | tr -d '[:space:]'
+}
+
+without_html_comments() {
+  awk '
+    {
+      line = $0
+      out = ""
+      while (1) {
+        if (inside) {
+          at = index(line, "-->")
+          if (at == 0) { line = ""; break }
+          inside = 0
+          line = substr(line, at + 3)
+          continue
+        }
+        at = index(line, "<!--")
+        if (at == 0) { out = out line; break }
+        out = out substr(line, 1, at - 1)
+        line = substr(line, at + 4)
+        inside = 1
+      }
+      print out
+    }
+  ' <<<"$1"
+}
+
+names_rejected_alternative() {
+  without_html_comments "$1" \
+    | grep -qE '^[ 	]*\*\*Rejected:\*{0,2}[ 	]*[^[:space:]]'
+}
+
+validate() {
+  local file="$1" name="$2"
+  local frontmatter body title status reversal count message
+
+  frontmatter="$(frontmatter_of "$file")" || refuse "$name" "$NO_FRONTMATTER"
+
+  local key
+  for key in $REQUIRED_KEYS; do
+    frontmatter_has "$frontmatter" "$key" || refuse "$name" "${MISSING_KEY//\{key\}/$key}"
+  done
+
+  status="$(frontmatter_value "$frontmatter" status)"
+  case " $STATUSES " in
+    *" $status "*) ;;
+    *)
+      message="${BAD_STATUS//\{got\}/$status}"
+      refuse "$name" "${message//\{allowed\}/${STATUSES// /, }}"
+      ;;
+  esac
+
+  body="$(body_of "$file")"
+  title="$(title_of "$body")"
+  [ -n "$title" ] || refuse "$name" "$NO_TITLE"
+
+  count="$(wc -w <<<"$title" | tr -d '[:space:]')"
+  [ "$count" -ge 4 ] || refuse "$name" "${SHORT_TITLE//\{n\}/$count}"
+
+  count="$(body_word_count "$body")"
+  if [ "$count" -gt "$WORD_CAP" ]; then
+    message="${OVER_CAP//\{n\}/$count}"
+    refuse "$name" "${message//\{cap\}/$WORD_CAP}"
+  fi
+
+  reversal="$(frontmatter_value "$frontmatter" reversal)"
+  [ -n "$reversal" ] || refuse "$name" "$EMPTY_REVERSAL"
+
+  names_rejected_alternative "$body" || refuse "$name" "$NO_REJECTED"
 }
 
 highest_on_disk() {
@@ -35,14 +186,16 @@ highest_on_origin() {
 land() {
   local draft="$1"
   [ -n "$draft" ] || { usage; exit 1; }
-  [ -e "$draft" ] || { echo "no such draft: $draft" >&2; exit 1; }
+  [ -e "$draft" ] || { echo "error: no such draft: $draft" >&2; exit 1; }
 
   local base
   base="$(basename "$draft")"
   case "$base" in
     draft-*.md) ;;
-    *) echo "not a draft (expected draft-<slug>.md): $draft" >&2; exit 1 ;;
+    *) echo "error: not a draft (expected draft-<slug>.md): $draft" >&2; exit 1 ;;
   esac
+
+  validate "$draft" "$base"
 
   local disk origin next
   disk="$(highest_on_disk)"
@@ -55,7 +208,7 @@ land() {
   slug="${base#draft-}"
   slug="${slug%.md}"
   landed="$adr_dir/$next-$slug.md"
-  [ -e "$landed" ] && { echo "already exists: $landed" >&2; exit 1; }
+  [ -e "$landed" ] && { echo "error: already exists: $landed" >&2; exit 1; }
 
   if git -C "$target_root" ls-files --error-unmatch "$draft" >/dev/null 2>&1; then
     git -C "$target_root" mv "$draft" "$landed"
@@ -72,10 +225,10 @@ land() {
   echo "$landed"
 }
 
-if [ "${1:-}" = "--land" ]; then
-  land "${2:-}"
-  exit 0
-fi
+case "${1:-}" in
+  -h | --help) usage; exit 0 ;;
+  --land) land "${2:-}"; exit 0 ;;
+esac
 
 amends=""
 if [ "${1:-}" = "--amends" ]; then
@@ -92,37 +245,36 @@ if [ $# -eq 0 ]; then
   exit 1
 fi
 
+case "${1:-}" in
+  -*) usage; exit 1 ;;
+esac
+
 title="$*"
 mkdir -p "$adr_dir"
 
 file="$adr_dir/draft-$(slugify "$title").md"
-[ -e "$file" ] && { echo "already exists: $file" >&2; exit 1; }
+[ -e "$file" ] && { echo "error: already exists: $file" >&2; exit 1; }
 
+amends_line=""
 if [ -n "$amends" ]; then
-  amends_num=$(printf '%04d' "$((10#$amends))")
-  cat > "$file" <<EOF
----
-status: constraint
-date: $(date +%Y-%m-%d)
-amends: ADR-$amends_num
-reversal:
----
-
-# $title
-
-EOF
-else
-  cat > "$file" <<EOF
----
-status: constraint
-date: $(date +%Y-%m-%d)
-reversal:
----
-
-# $title
-
-EOF
+  amends_line="
+amends: ADR-$(printf '%04d' "$((10#$amends))")"
 fi
+
+cat > "$file" <<EOF
+---
+status: constraint
+date: $(date +%Y-%m-%d)
+reversal:$amends_line
+---
+
+# $title
+
+<!-- Why this binds: what forces it. $WORD_CAP words max. Evidence, measurements
+     and worked examples go to docs/research/ and are linked.
+
+     **Rejected: <the alternative>.** <What it would have cost.> -->
+EOF
 
 echo "$file"
 

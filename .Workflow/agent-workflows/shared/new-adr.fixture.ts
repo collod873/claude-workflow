@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { withReversal } from "./adr-frontmatter.ts";
 import { makeBareRepo, makeTempRepo, type TempRepo } from "./temp-repo.fixture.ts";
 
 /**
@@ -10,6 +11,15 @@ import { makeBareRepo, makeTempRepo, type TempRepo } from "./temp-repo.fixture.t
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 const MAX_BUFFER = 10 * 1024 * 1024;
+
+const REVERSAL = "Undoing this means rewriting every lane that reads the index.";
+const REJECTED = "**Rejected: a second corpus.** It would have cost two writers one grammar.";
+const BODY_PROMPT_RE = /<!--[\s\S]*?-->\n/;
+
+export function admit(draft: string): string {
+  writeFileSync(draft, withReversal(readFileSync(draft, "utf8"), REVERSAL).replace(BODY_PROMPT_RE, `${REJECTED}\n`));
+  return draft;
+}
 
 export function vendorBin(dir: string, ...names: string[]): void {
   mkdirSync(join(dir, "bin"), { recursive: true });
