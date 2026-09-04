@@ -32,6 +32,8 @@ function outOfBriefDeps(gh: ImplementDeps["gh"], git: ImplementDeps["git"], exec
     adrFiles: () => [],
     issueNumber: 167,
     failingTests: () => [],
+    standards: () => "",
+    comments: () => [],
   };
 }
 

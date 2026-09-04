@@ -1,7 +1,8 @@
 # Coding Standards
 
 Judgment calls tooling can't enforce. `/standards-pass` sweeps each landed batch against
-each entry here; implementation agents read this before writing code.
+each entry here; the implementer's brief inlines the entries below, so they govern the code as
+it is written.
 
 How this doc stays small:
 

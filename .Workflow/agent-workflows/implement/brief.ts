@@ -1,6 +1,7 @@
 import { readdirSync } from "node:fs";
 import { basename, join, relative, sep } from "node:path";
 import { walkSuiteRoots } from "../shared/affected-tests";
+import type { TicketComment } from "../shared/gh";
 import { PATH_LINE_RE } from "../shared/ticket-shape";
 
 export interface FileSnapshot {
@@ -18,6 +19,8 @@ export interface BriefInputs {
   ticketBody: string;
   seamManifestLines: string[];
   moduleContext: string;
+  standards: string;
+  comments: TicketComment[];
   failingTests: FailingTestFile[];
   claimed: FileSnapshot[];
   cited: FileSnapshot[];
@@ -26,6 +29,7 @@ export interface BriefInputs {
 
 export const INLINE_BUDGET_BYTES = 150_000;
 export const INLINE_FILE_CAP_BYTES = 40_000;
+export const COMMENTS_BUDGET_BYTES = 30_000;
 
 function renderSnapshots(entries: FileSnapshot[]): string {
   if (entries.length === 0) return "(none)";
@@ -40,6 +44,27 @@ function renderNearby(nearby: string[], claimed: FileSnapshot[], cited: FileSnap
   return lines.length > 0 ? lines.join("\n") : "(none)";
 }
 
+function renderComment(comment: TicketComment): string {
+  return `### ${comment.author} · ${comment.createdAt}\n\n${comment.body}`;
+}
+
+function renderComments(comments: TicketComment[]): string {
+  if (comments.length === 0) return "(none)";
+
+  let remaining = comments;
+  let rendered = remaining.map(renderComment).join("\n\n");
+  let dropped = 0;
+  while (Buffer.byteLength(rendered, "utf8") > COMMENTS_BUDGET_BYTES && remaining.length > 1) {
+    remaining = remaining.slice(1);
+    dropped += 1;
+    rendered = remaining.map(renderComment).join("\n\n");
+  }
+
+  return dropped === 0
+    ? rendered
+    : `${dropped} older comment${dropped === 1 ? "" : "s"} dropped to fit the brief.\n\n${rendered}`;
+}
+
 export function assembleBrief(inputs: BriefInputs): string {
   const seams = inputs.seamManifestLines.length > 0 ? inputs.seamManifestLines.join("\n") : "(none)";
   const tests =
@@ -50,10 +75,14 @@ export function assembleBrief(inputs: BriefInputs): string {
   return [
     "## Ticket",
     inputs.ticketBody,
+    "## Ticket comments, oldest first",
+    renderComments(inputs.comments),
     "## Seam manifest lines consumed",
     seams,
     "## Module CONTEXT.md",
     inputs.moduleContext,
+    "## Coding standards",
+    inputs.standards,
     "## Acceptance test(s) to turn on",
     tests,
     "## Files claimed, as they stand",

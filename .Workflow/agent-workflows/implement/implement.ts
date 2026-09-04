@@ -4,13 +4,14 @@ import { pathToFileURL } from "node:url";
 import { regenerateAdrIndex } from "../shared/adr-index";
 import { suiteTestFiles } from "../shared/affected-tests";
 import { changedPaths } from "../shared/changed-paths";
-import { execGh, type GhExec } from "../shared/gh";
+import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
+import { renderStandardsSection, readStandards } from "../shared/standards";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractFilesClaimed,
@@ -185,6 +186,8 @@ export interface ImplementDeps {
   adrFiles: () => string[];
   issueNumber: number;
   failingTests: () => FailingTestFile[];
+  standards: () => string;
+  comments: () => TicketComment[];
   log?: (line: string) => void;
   now?: Date;
   env?: Record<string, string | undefined>;
@@ -246,6 +249,8 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     ticketBody: ticket.body,
     seamManifestLines,
     moduleContext,
+    standards: renderStandardsSection(deps.standards()),
+    comments: deps.comments(),
     failingTests,
     ...gatherBriefContext({
       ticketBody: ticket.body,
@@ -354,6 +359,8 @@ async function main(): Promise<void> {
       adrFiles: () => listAdrFiles(repoDir),
       issueNumber,
       failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
+      standards: () => readStandards(repoDir),
+      comments: () => ticketComments(execGh, issueNumber),
     });
     if (result.outcome === "already-claimed") {
       console.log(`#${issueNumber} is already claimed; nothing to do.`);

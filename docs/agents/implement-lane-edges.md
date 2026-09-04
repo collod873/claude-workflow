@@ -87,14 +87,16 @@ the owner might close #421 by hand between the dispatch firing and the runner st
 
 `implement.ts` `buildAndOpen` → `gatherBriefContext` → `assembleBrief` (both in `implement/brief.ts`)
 
-Seven reads, joined into one document. This is what the model at node 04 starts from; it can still
+Nine reads, joined into one document. This is what the model at node 04 starts from; it can still
 read anything else in the checkout, and says so in `outOfBriefReads` when it does.
 
 | | |
 |---|---|
 | **`ticketBody`** | `readTicket(421)` — the issue body, verbatim |
+| **ticket comments** | `ticketComments(421)` — every comment on the ticket, oldest first: a correction the owner left, or a needs-human ticket's own gate-red note, would otherwise never reach the implementer on re-dispatch. Capped at 30 KB, dropping the oldest first |
 | **seam manifest** | `extractSeamsConsumed()` — the ticket's `## Seams consumed` lines |
 | **module context** | `moduleContextPath()` walks up from the first `## Files claimed` path looking for a `CONTEXT.md`, falling back to the root one |
+| **coding standards** | `renderStandardsSection(readStandards())` — `CODING_STANDARDS.md`'s `## Standards` entries, rendered back into the brief so they govern the code as it is written, not just a claim the doc makes about itself |
 | **failing tests** | `findFailingTestFiles()` — every suite test file whose body matches `` /^\s*(?:test|it)\.fails\([^\n]*#421\b/m `` gets inlined whole |
 | **claimed, as they stand** | every `## Files claimed` path, inlined whole; one that does not exist yet says so |
 | **cited by the ticket** | every `ADR-NNNN` the body mentions, and every path it names on a line or in backticks that exists, inlined |
@@ -111,11 +113,22 @@ first minutes rediscovering all of this with Grep.
 ## Ticket
 Implement #421: ...
 
+## Ticket comments, oldest first
+### collod873 · 2026-08-27T18:04:00Z
+
+Use the retry helper already in shared/ instead of hand-rolling one.
+
 ## Seam manifest lines consumed
 - scripts/nightly-run.ts exports `summariseRun(conclusion): string`
 
 ## Module CONTEXT.md
 canary — an enrolled repository that proves a machine change on real GitHub before it lands
+...
+
+## Coding standards
+- **Deep modules**: a small interface hiding substantial implementation.
+  Why: shallow wrappers add surface area without absorbing any complexity.
+  Red flag: an interface as wide as the implementation behind it; a layer that mostly delegates.
 ...
 
 ## Acceptance test(s) to turn on

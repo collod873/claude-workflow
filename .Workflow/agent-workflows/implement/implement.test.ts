@@ -79,6 +79,8 @@ function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }:
     adrFiles: () => [],
     issueNumber: ISSUE,
     failingTests: () => [],
+    standards: () => "",
+    comments: () => [],
     log: (line) => log.push(line),
     now: NOW,
     ...extra,
@@ -160,6 +162,31 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     expect(stage.stdins[0]).toContain(ticket.body);
     expect(stage.stdins[0]).toContain("the test.fails( assertion");
     expect(stage.stdins[0]).toContain("### a/b.ts\n\nexport const x = 1;");
+  });
+
+  it("hands the implementer stage a brief carrying a ticket comment's body and a coding standard's name", async () => {
+    const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
+    const standards = [
+      "## Standards",
+      "",
+      "- **Refuse rather than guess**: stop rather than take a guessed default.",
+      "  Why: a guessed answer is indistinguishable from a real one downstream.",
+      "  Red flag: a first-of-list pick where the list could hold more than one.",
+    ].join("\n");
+    const { deps, stage } = arrange({
+      github: { ticket },
+      deps: {
+        standards: () => standards,
+        comments: () => [
+          { author: "collod873", createdAt: "2026-08-01T00:00:00Z", body: "Use the retry helper instead." },
+        ],
+      },
+    });
+
+    await runImplement(deps);
+
+    expect(stage.stdins[0]).toContain("Use the retry helper instead.");
+    expect(stage.stdins[0]).toContain("Refuse rather than guess");
   });
 
   it("a file the implementer removed from the checkout lands as a deletion in the same commit", async () => {

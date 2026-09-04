@@ -26,12 +26,29 @@ function fakeDeps(overrides: Partial<BriefContextDeps> = {}): BriefContextDeps {
   };
 }
 
+function baseInputs(overrides: Partial<BriefInputs> = {}): BriefInputs {
+  return {
+    ticketBody: "body",
+    seamManifestLines: [],
+    moduleContext: "ctx",
+    standards: "std",
+    comments: [],
+    failingTests: [],
+    claimed: [],
+    cited: [],
+    nearby: [],
+    ...overrides,
+  };
+}
+
 describe("assembleBrief", () => {
-  it("contains the ticket body, seam manifest lines, module CONTEXT.md, acceptance tests, claimed files, citations and nearby paths, and nothing else", () => {
+  it("contains the ticket body, ticket comments, seam manifest lines, module CONTEXT.md, coding standards, acceptance tests, claimed files, citations and nearby paths, and nothing else", () => {
     const inputs: BriefInputs = {
       ticketBody: "## What to build\nDo the thing.",
       seamManifestLines: ["Line one seam.", "Line two seam."],
       moduleContext: "# Module\n\nSome vocabulary.",
+      standards: "- **Deep modules**: what.\n  Why: why.\n  Red flag: red.",
+      comments: [{ author: "collod873", createdAt: "2026-08-01T00:00:00Z", body: "Use the retry helper." }],
       failingTests: [{ path: "foo.test.ts", content: "describe('foo', () => {});" }],
       claimed: [{ path: "a/b.ts", content: "export const x = 1;" }],
       cited: [{ path: "docs/adr/0042-thing.md", content: "# The ruling" }],
@@ -41,10 +58,14 @@ describe("assembleBrief", () => {
     const expected = [
       "## Ticket",
       inputs.ticketBody,
+      "## Ticket comments, oldest first",
+      "### collod873 · 2026-08-01T00:00:00Z\n\nUse the retry helper.",
       "## Seam manifest lines consumed",
       "Line one seam.\nLine two seam.",
       "## Module CONTEXT.md",
       inputs.moduleContext,
+      "## Coding standards",
+      inputs.standards,
       "## Acceptance test(s) to turn on",
       "### foo.test.ts\n\ndescribe('foo', () => {});",
       "## Files claimed, as they stand",
@@ -59,42 +80,34 @@ describe("assembleBrief", () => {
   });
 
   it("carries every acceptance test file, not only the first", () => {
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [
-        { path: "a.test.ts", content: "content A" },
-        { path: "b.test.ts", content: "content B" },
-      ],
-      claimed: [],
-      cited: [],
-      nearby: [],
-    });
+    const brief = assembleBrief(
+      baseInputs({
+        failingTests: [
+          { path: "a.test.ts", content: "content A" },
+          { path: "b.test.ts", content: "content B" },
+        ],
+      }),
+    );
 
     expect(brief).toContain("content A");
     expect(brief).toContain("content B");
   });
 
   it("renders a placeholder rather than fabricating an ingredient when a section is empty", () => {
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [],
-      claimed: [],
-      cited: [],
-      nearby: [],
-    });
+    const brief = assembleBrief(baseInputs({ standards: "std" }));
 
     expect(brief).toBe(
       [
         "## Ticket",
         "body",
+        "## Ticket comments, oldest first",
+        "(none)",
         "## Seam manifest lines consumed",
         "(none)",
         "## Module CONTEXT.md",
         "ctx",
+        "## Coding standards",
+        "std",
         "## Acceptance test(s) to turn on",
         "(none)",
         "## Files claimed, as they stand",
@@ -107,39 +120,90 @@ describe("assembleBrief", () => {
     );
   });
 
+  it("renders '(none)' for coding standards too, when there are none to show", () => {
+    const brief = assembleBrief(baseInputs({ standards: "(none)" }));
+
+    expect(brief).toContain("## Coding standards\n\n(none)");
+  });
+
   it("prints '(does not exist yet)' for a claimed path with no content, alongside one that has it", () => {
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [],
-      claimed: [
-        { path: "a/b.ts", content: "export const x = 1;" },
-        { path: "a/new.ts" },
-      ],
-      cited: [],
-      nearby: [],
-    });
+    const brief = assembleBrief(
+      baseInputs({
+        claimed: [{ path: "a/b.ts", content: "export const x = 1;" }, { path: "a/new.ts" }],
+      }),
+    );
 
     expect(brief).toContain("### a/b.ts\n\nexport const x = 1;");
     expect(brief).toContain("### a/new.ts\n\n(does not exist yet)");
   });
 
   it("lists an over-budget claimed or cited path under Nearby, with a suffix saying why it isn't inlined", () => {
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [],
-      claimed: [{ path: "big.ts", omitted: "over-budget" }],
-      cited: [{ path: "also-big.ts", omitted: "over-budget" }],
-      nearby: ["nearby.ts"],
-    });
+    const brief = assembleBrief(
+      baseInputs({
+        claimed: [{ path: "big.ts", omitted: "over-budget" }],
+        cited: [{ path: "also-big.ts", omitted: "over-budget" }],
+        nearby: ["nearby.ts"],
+      }),
+    );
 
     const nearbySection = brief.split("## Nearby, by path")[1];
     expect(nearbySection).toContain("- nearby.ts");
     expect(nearbySection).toContain("- big.ts (not inlined: over budget)");
     expect(nearbySection).toContain("- also-big.ts (not inlined: over budget)");
+  });
+});
+
+describe("assembleBrief: ticket comments, oldest first", () => {
+  it("renders each comment as a heading naming its author and createdAt, then its body", () => {
+    const brief = assembleBrief(
+      baseInputs({
+        comments: [
+          { author: "owner1", createdAt: "2026-08-01T00:00:00Z", body: "First note." },
+          { author: "owner2", createdAt: "2026-08-02T00:00:00Z", body: "Second note." },
+        ],
+      }),
+    );
+
+    const section = brief.split("## Ticket comments, oldest first")[1].split("## Seam manifest lines consumed")[0];
+    expect(section).toContain("### owner1 · 2026-08-01T00:00:00Z\n\nFirst note.");
+    expect(section).toContain("### owner2 · 2026-08-02T00:00:00Z\n\nSecond note.");
+    expect(section.indexOf("First note.")).toBeLessThan(section.indexOf("Second note."));
+  });
+
+  it("renders '(none)' when the ticket carries no comments", () => {
+    const brief = assembleBrief(baseInputs({ comments: [] }));
+
+    expect(brief).toContain("## Ticket comments, oldest first\n\n(none)");
+  });
+
+  it("drops the oldest comments once the rendered section exceeds 30,000 bytes, and says how many were dropped", () => {
+    const big = "x".repeat(20_000);
+    const comments = [
+      { author: "owner", createdAt: "2026-08-01T00:00:00Z", body: big },
+      { author: "owner", createdAt: "2026-08-02T00:00:00Z", body: big },
+      { author: "owner", createdAt: "2026-08-03T00:00:00Z", body: "Latest and smallest." },
+    ];
+
+    const brief = assembleBrief(baseInputs({ comments }));
+    const section = brief.split("## Ticket comments, oldest first")[1].split("## Seam manifest lines consumed")[0];
+
+    expect(section).toContain("1 older comment dropped to fit the brief.");
+    expect(section).not.toContain("2026-08-01T00:00:00Z");
+    expect(section).toContain("2026-08-02T00:00:00Z");
+    expect(section).toContain("Latest and smallest.");
+  });
+
+  it("says '2 older comments' when more than one is dropped", () => {
+    const big = "x".repeat(20_000);
+    const comments = [
+      { author: "owner", createdAt: "2026-08-01T00:00:00Z", body: big },
+      { author: "owner", createdAt: "2026-08-02T00:00:00Z", body: big },
+      { author: "owner", createdAt: "2026-08-03T00:00:00Z", body: big },
+    ];
+
+    const brief = assembleBrief(baseInputs({ comments }));
+
+    expect(brief).toContain("2 older comments dropped to fit the brief.");
   });
 });
 
@@ -241,15 +305,7 @@ describe("gatherBriefContext gathers what the ticket claims and cites, and what 
       }),
     );
 
-    const brief = assembleBrief({
-      ticketBody: "body",
-      seamManifestLines: [],
-      moduleContext: "ctx",
-      failingTests: [],
-      claimed,
-      cited,
-      nearby,
-    });
+    const brief = assembleBrief(baseInputs({ claimed, cited, nearby }));
 
     expect(brief).toContain("- a/big.ts (not inlined: over budget)");
   });
