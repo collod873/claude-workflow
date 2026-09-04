@@ -56,3 +56,7 @@ venv/
 
 # bin/canary-graph's last-run snapshot: regenerated every run, read only by whoever just ran it.
 .canary-graph-last-run.json
+
+# ~/bin/md-html's rendered page for the doc beside it, rebuilt from that .md on every edit
+# (the md-html-refresh hook). A build of a tracked file, never the source of one.
+docs/**/*.html
