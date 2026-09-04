@@ -246,7 +246,13 @@ fire_kind="$(jq -r .kind <<<"$plan_json")"
 [ "$fire_kind" != "refuse" ] || die "$(jq -r .reason <<<"$plan_json")"
 fire_event="$(jq -r '.event // empty' <<<"$plan_json")"
 fire_event_type="$(jq -r '.eventType // empty' <<<"$plan_json")"
+demand_label="$(jq -r '.demands.label // empty' <<<"$plan_json")"
+demand_issue_labels="$(jq -r '.demands.issueLabels // [] | .[]' <<<"$plan_json")"
+demand_state_reason="$(jq -r '.demands.stateReason // empty' <<<"$plan_json")"
+demand_pr_title="$(jq -r '.demands.pullRequestTitle // empty' <<<"$plan_json")"
 log "lane '$lane' wakes on $fire_kind${fire_event_type:+ ($fire_event_type)}"
+[ "$(jq -r '.demands // empty' <<<"$plan_json")" = "" ] \
+  || log "its job guard demands $(jq -c .demands <<<"$plan_json")"
 
 fixture_json="$(npx --no-install tsx "$repo_root/.Workflow/agent-workflows/shared/canary-fixture.ts" "$lane")" \
   || die "could not read the fixture for lane '$lane'; see above"
@@ -337,16 +343,27 @@ done
 ensure_label() { # name, idempotent; issues:labeled needs a label to exist before it can be added
   gh label create "$1" -R "$canary_repo" --color eeeeee >/dev/null 2>&1 || true
 }
+demanded_label_args() { # → --label args for every label the job guard demands the issue carry
+  local label
+  while IFS= read -r label; do
+    [ -n "$label" ] || continue
+    ensure_label "$label"
+    printf '%s\n%s\n' "--label" "$label"
+  done <<<"$demand_issue_labels"
+}
 seed_issue() { # why → issue number, on stdout
-  local url
+  local url label_args
+  mapfile -t label_args < <(demanded_label_args)
   url="$(gh issue create -R "$canary_repo" --title "canary: fire $lane ($1)" \
+    "${label_args[@]}" \
     --body "Seed issue created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
   echo "${url##*/}"
 }
 seed_fixture_issue() { # → issue number, on stdout, carrying the comments the lane's collector reads
-  local url num label comment
+  local url num label comment label_args
   while IFS= read -r label; do ensure_label "$label"; done < <(jq -r '.ensureLabels[]' <<<"$fixture_json")
-  url="$(gh issue create -R "$canary_repo" \
+  mapfile -t label_args < <(demanded_label_args)
+  url="$(gh issue create -R "$canary_repo" "${label_args[@]}" \
     --title "$(jq -r .title <<<"$fixture_json")" --body "$(jq -r .body <<<"$fixture_json")" 2>&1 | tail -1)"
   num="${url##*/}"
   while IFS= read -r comment; do
@@ -385,26 +402,31 @@ case "$fire_kind" in
       issue_num="$fixture_issue"
       fire_label="$(jq -r .label <<<"$fixture_json")"
     else
-      ensure_label "canary-fire"
+      fire_label="${demand_label:-canary-fire}"
+      ensure_label "$fire_label"
       issue_num="$(seed_issue "issues:labeled")"
-      fire_label="canary-fire"
     fi
     gh issue edit "$issue_num" -R "$canary_repo" --add-label "$fire_label" >/dev/null
     log "fired: $canary_repo issue #$issue_num labeled $fire_label"
     ;;
   issues_closed)
     issue_num="${fixture_issue:-$(seed_issue "issues:closed")}"
-    gh issue close "$issue_num" -R "$canary_repo" >/dev/null
-    log "fired: $canary_repo issue #$issue_num closed"
+    close_args=(-R "$canary_repo")
+    [ -z "$demand_state_reason" ] || close_args+=(--reason "$demand_state_reason")
+    gh issue close "$issue_num" "${close_args[@]}" >/dev/null
+    log "fired: $canary_repo issue #$issue_num closed${demand_state_reason:+ as $demand_state_reason}"
     ;;
   pull_request_closed)
     pr_branch="canary-fire-$(date -u +%s)"
     base_sha="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)"
     gh api "repos/$canary_repo/git/refs" -f "ref=refs/heads/$pr_branch" -f "sha=$base_sha" >/dev/null
-    gh api -X PUT "repos/$canary_repo/contents/.canary-fire" \
-      -f "message=canary: fire $lane" -f "content=$(printf '%s\n' "fired at $before_time" | base64 -w0)" -f "branch=$pr_branch" >/dev/null
+    fire_blob="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$pr_branch" --jq '.sha // empty' 2>/dev/null || true)"
+    put_args=(-X PUT "repos/$canary_repo/contents/.canary-fire" -f "message=canary: fire $lane" \
+      -f "content=$(printf '%s\n' "fired at $before_time" | base64 -w0)" -f "branch=$pr_branch")
+    [ -z "$fire_blob" ] || put_args+=(-f "sha=$fire_blob")
+    gh api "${put_args[@]}" >/dev/null
     pr_url="$(gh pr create -R "$canary_repo" --base "$target_branch" --head "$pr_branch" \
-      --title "canary: fire $lane" --body "Seed pull request created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
+      --title "${demand_pr_title:-canary: fire $lane}" --body "Seed pull request created by bin/canary to fire the '$lane' lane." 2>&1 | tail -1)"
     gh pr close "$pr_url" -R "$canary_repo" >/dev/null
     log "fired: $canary_repo PR ${pr_url##*/} closed"
     ;;
@@ -417,17 +439,19 @@ run_id=""
 deadline=$((SECONDS + 120))
 if [ "$fire_kind" = "push" ]; then
   while [ -z "$run_id" ]; do
-    run_id="$(gh api "repos/$canary_repo/actions/runs?head_sha=$fire_sha" --jq '.workflow_runs[0].id // empty')"
+    run_id="$(gh api "repos/$canary_repo/actions/runs?head_sha=$fire_sha" \
+      | jq -r --arg p "$stub_path" '[.workflow_runs[] | select(.path == $p)] | .[0].id // empty')"
     [ -n "$run_id" ] && break
     [ $SECONDS -lt $deadline ] || die "the push fired nothing in 120 s; does $stub_path trigger on push to $target_branch, and did the change touch a path outside paths-ignore?"
     sleep 3
   done
 else
   while [ -z "$run_id" ]; do
-    run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=15" \
-      | jq -r --arg t "$before_time" '[.workflow_runs[] | select(.created_at >= $t)] | sort_by(.created_at) | .[0].id // empty')"
+    run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=30" \
+      | jq -r --arg t "$before_time" --arg p "$stub_path" \
+        '[.workflow_runs[] | select(.created_at >= $t) | select(.path == $p)] | sort_by(.created_at) | .[0].id // empty')"
     [ -n "$run_id" ] && break
-    [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing in 120 s; does $stub_path actually declare that trigger on $canary_repo's default branch?"
+    [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing $stub_path answered in 120 s; does that stub actually declare that trigger on $canary_repo's default branch?"
     sleep 3
   done
 fi

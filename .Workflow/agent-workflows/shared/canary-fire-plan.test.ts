@@ -42,18 +42,45 @@ describe("planFire", () => {
     });
   });
 
-  it("chooses issues_labeled for a lane whose only door is issues:labeled", () => {
-    expect(planFire("shape")).toEqual({ kind: "issues_labeled", event: "issues" });
-    expect(planFire("shape-accept")).toEqual({ kind: "issues_labeled", event: "issues" });
-    expect(planFire("lost-dispatch-counter")).toEqual({ kind: "issues_labeled", event: "issues" });
+  it("chooses issues_labeled for a lane whose only door is issues:labeled, and reads the label its guard demands", () => {
+    expect(planFire("shape")).toEqual({ kind: "issues_labeled", event: "issues", demands: { label: "idea" } });
+    expect(planFire("shape-accept")).toEqual({
+      kind: "issues_labeled",
+      event: "issues",
+      demands: { label: "approved" },
+    });
+    expect(planFire("lost-dispatch-counter")).toEqual({
+      kind: "issues_labeled",
+      event: "issues",
+      demands: { label: "sliceable" },
+    });
   });
 
-  it("chooses issues_closed for a lane whose only door is issues:closed", () => {
-    expect(planFire("ratify-on-prd-close")).toEqual({ kind: "issues_closed", event: "issues" });
+  it("keeps the label that fires the lane out of the labels the seed issue is born with", () => {
+    const plan = planFire("shape");
+    expect(plan.kind).toBe("issues_labeled");
+    if (plan.kind === "issues_labeled") expect(plan.demands?.issueLabels).toBeUndefined();
   });
 
-  it("chooses pull_request_closed for a lane whose only door is pull_request:closed", () => {
-    expect(planFire("ratify-release")).toEqual({ kind: "pull_request_closed", event: "pull_request" });
+  it("ignores a negated contains() so a guard that forbids a label does not demand it", () => {
+    const plan = planFire("spec");
+    expect(plan.kind).toBe("repository_dispatch");
+  });
+
+  it("chooses issues_closed for a lane whose only door is issues:closed, and reads the guard in the reusable workflow", () => {
+    expect(planFire("ratify-on-prd-close")).toEqual({
+      kind: "issues_closed",
+      event: "issues",
+      demands: { issueLabels: ["prd"], stateReason: "completed" },
+    });
+  });
+
+  it("chooses pull_request_closed for a lane whose only door is pull_request:closed, and titles the seed PR as its guard demands", () => {
+    expect(planFire("ratify-release")).toEqual({
+      kind: "pull_request_closed",
+      event: "pull_request",
+      demands: { pullRequestTitle: "Ratified: standards from this batch" },
+    });
   });
 
   it("refuses a workflow_run-only lane and names the upstream lane it can prove instead", () => {
