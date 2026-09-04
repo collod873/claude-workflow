@@ -6,11 +6,23 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$repo_root/bin/node-on-path.sh"
 node_on_path || exit 2
 
-RUNNER_LABEL="canary"
+CANARY_RUNNER="ubuntu-latest"
 CAP=5
 
 usage() {
-  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  cat >&2 <<'USAGE'
+usage: bin/canary <command> [options]
+
+  up                       create and seed the canary target, public so hosted runners are free
+  token [sk-ant-...]       mint or set CLAUDE_CODE_OAUTH_TOKEN on the machine and the canary at once
+  prove --lane <lane>      prove one lane's real code at this branch's head
+  sweep [--lanes a,b|all]  prove every lane, groups at once, lanes behind one door in turn
+  reset-cap                forget the consecutive-red count for every lane
+  down                     delete the canary target, its branch, and this canary's state
+
+  --timeout <s>            how long to wait on a run (default 900)
+  --no-wip                 refuse a dirty working tree instead of committing it
+USAGE
   exit 2
 }
 
@@ -24,15 +36,23 @@ put_file() { # path message content [sha] → "<commit sha> <blob sha>"
 }
 
 cmd="${1:-}"
-case "$cmd" in prove|up|down|reset-cap) ;; *) usage ;; esac
+case "$cmd" in prove|sweep|token|up|down|reset-cap) ;; *) usage ;; esac
 shift
 lane="verify"
+lanes=""
 wip=1
+push=1
+pin_only=0
 timeout_s=900
+token_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --lane) lane="$2"; shift 2 ;;
+    sk-ant-*) token_arg="$1"; shift ;;
+    --lanes) lanes="$2"; shift 2 ;;
     --no-wip) wip=0; shift ;;
+    --no-push) push=0; shift ;;
+    --pin-only) pin_only=1; shift ;;
     --timeout) timeout_s="$2"; shift 2 ;;
     *) usage ;;
   esac
@@ -55,29 +75,24 @@ owner="${machine_repo%%/*}"
 canary_repo="$owner/canary-$id"
 state_dir="$git_dir/canary"
 mkdir -p "$state_dir"
-cap_file="$state_dir/reds"
-fingerprint_file="$state_dir/last-fingerprint"
+cap_file="$state_dir/reds-$lane"
+fingerprint_file="$state_dir/last-fingerprint-$lane"
 
-runner_root="$HOME/canary-runner"
-runner_dir="$runner_root/$id"
-runner_home="$runner_root/home"
-runner_cache="$runner_root/cache"
 target_branch=""
 
 repo_exists() { gh api "repos/$1" --jq .name >/dev/null 2>&1; }
-runner_online() {
-  [ "$(gh api "repos/$canary_repo/actions/runners" \
-    --jq "[.runners[] | select(.status==\"online\") | select(any(.labels[]; .name==\"$RUNNER_LABEL\"))] | length")" -gt 0 ]
-}
-runner_running() { pgrep -f "$runner_dir/bin/Runner.Listener" >/dev/null 2>&1; }
 
 ensure_repo() {
   if ! repo_exists "$canary_repo"; then
     log "creating $canary_repo"
-    gh repo create "$canary_repo" --private --add-readme \
+    gh repo create "$canary_repo" --public --add-readme \
       --description "Canary target for $canary_branch. Created by bin/canary up; delete with bin/canary down." >/dev/null
     for _ in $(seq 30); do repo_exists "$canary_repo" && break; sleep 2; done
     repo_exists "$canary_repo" || die "created $canary_repo but the API still will not resolve it"
+  fi
+  if [ "$(gh api "repos/$canary_repo" --jq .private)" = "true" ]; then
+    gh repo edit "$canary_repo" --visibility public --accept-visibility-change-consequences >/dev/null
+    log "made $canary_repo public; hosted runners are free and unmetered there, and every lane can prove at once"
   fi
   target_branch="$(gh api "repos/$canary_repo" --jq .default_branch)"
 }
@@ -147,66 +162,12 @@ test("the seed has a test the machine can run", () => {
 });'
 }
 
-install_runner() {
-  mkdir -p "$runner_home" "$runner_cache" "$runner_dir"
-  local ver tarball
-  ver="$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')"
-  tarball="$runner_cache/actions-runner-linux-x64-$ver.tar.gz"
-  if [ ! -s "$tarball" ]; then
-    log "downloading runner $ver once into $runner_cache; every later canary extracts this copy"
-    curl -fsSL "https://github.com/actions/runner/releases/download/v$ver/actions-runner-linux-x64-$ver.tar.gz" \
-      -o "$tarball.$$.part" || die "could not download runner $ver"
-    mv "$tarball.$$.part" "$tarball"
-  fi
-  tar -xzf "$tarball" -C "$runner_dir"
-  log "registering runner '$id' on $canary_repo"
-  ( cd "$runner_dir" && HOME="$runner_home" ./config.sh --unattended --replace \
-      --url "https://github.com/$canary_repo" \
-      --token "$(gh api -X POST "repos/$canary_repo/actions/runners/registration-token" --jq .token)" \
-      --name "$id" --labels "$RUNNER_LABEL" --work _work >/dev/null ) \
-    || die "config.sh refused the registration; see $runner_dir"
-}
-
-start_runner() {
-  local runner_path gh_bin
-  gh_bin="$(command -v gh)" || die "no gh on PATH, and the lanes the runner serves cannot work without it"
-  runner_path="$(dirname "$(command -v node)"):$(dirname "$gh_bin"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  log "starting runner '$id' (log: $runner_dir.log)"
-  ( cd "$runner_dir" \
-    && HOME="$runner_home" PATH="$runner_path" setsid --fork ./run.sh >"$runner_dir.log" 2>&1 </dev/null & )
-}
-
-ensure_runner() {
-  runner_online && runner_running && return 0
-  [ -f "$runner_dir/.runner" ] || install_runner
-  runner_running || start_runner
-  for _ in $(seq 30); do
-    sleep 2
-    runner_online && { log "runner '$id' online"; return 0; }
-  done
-  die "runner '$id' did not come online in 60 s; tail $runner_dir.log"
-}
-
 canary_up() {
   ensure_repo
   ensure_seed
-  ensure_runner
 }
 
 canary_down() {
-  if [ -f "$runner_dir/.runner" ]; then
-    pkill -f "$runner_dir/run.sh" >/dev/null 2>&1 || true
-    pkill -f "$runner_dir/bin/Runner.Listener" >/dev/null 2>&1 || true
-    sleep 1
-    local token
-    token="$(gh api -X POST "repos/$canary_repo/actions/runners/remove-token" --jq .token 2>/dev/null || true)"
-    if [ -n "$token" ]; then
-      ( cd "$runner_dir" && HOME="$runner_home" ./config.sh remove --token "$token" >/dev/null 2>&1 ) \
-        || log "the runner would not deregister itself; removing its directory anyway"
-    fi
-    log "removed runner '$id'"
-  fi
-  rm -rf "$runner_dir" "$runner_dir.log"
   if repo_exists "$canary_repo"; then
     gh repo delete "$canary_repo" --yes && log "deleted $canary_repo"
   fi
@@ -216,9 +177,29 @@ canary_down() {
   log "down: nothing named $id is left but this worktree and its branch"
 }
 
+if [ "$cmd" = "token" ]; then
+  token="${token_arg:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
+  if [ -z "$token" ]; then
+    command -v claude >/dev/null || die "no claude on PATH, and no token given; pass one: bin/canary token <token>"
+    log "minting a long-lived token; the browser step is claude's, not mine"
+    token="$(claude setup-token 2>/dev/null | grep -aoE 'sk-ant-[A-Za-z0-9_-]+' | tail -1)"
+  fi
+  [ -n "$token" ] || die "no token to set; run 'claude setup-token' yourself and pass the value: bin/canary token <token>"
+  for token_repo in "$machine_repo" "$canary_repo"; do
+    if repo_exists "$token_repo"; then
+      gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$token_repo" --body "$token" >/dev/null
+      log "set CLAUDE_CODE_OAUTH_TOKEN on $token_repo"
+    else
+      log "no $token_repo yet; skipped"
+    fi
+  done
+  log "token: every agent lane on the machine and the canary now spends the same credential"
+  exit 0
+fi
+
 if [ "$cmd" = "up" ]; then
   canary_up
-  log "up: $canary_repo seeded, runner '$id' online"
+  log "up: $canary_repo seeded and public, lanes run on $CANARY_RUNNER"
   exit 0
 fi
 if [ "$cmd" = "down" ]; then
@@ -227,10 +208,87 @@ if [ "$cmd" = "down" ]; then
 fi
 
 if [ "$cmd" = "reset-cap" ]; then
-  rm -f "$cap_file" "$fingerprint_file"
-  log "cap reset for $id"
+  rm -f "$state_dir"/reds-* "$state_dir"/last-fingerprint-*
+  log "cap reset for every lane on $id"
   exit 0
 fi
+
+commit_wip() {
+  [ -n "$(git -C "$repo_root" status --porcelain)" ] || return 0
+  [ "$wip" = "1" ] || die "working tree is dirty and --no-wip was given"
+  git -C "$repo_root" add -A
+  git -C "$repo_root" commit -q --no-verify -m "canary: wip"
+  log "committed the working tree as wip (squash before landing)"
+}
+
+push_machine() {
+  local push_log="$state_dir/push.log"
+  log "pushing $(git -C "$repo_root" rev-parse HEAD) to $canary_branch (the pre-push gauntlet runs here)"
+  if ! git -C "$repo_root" push -q --force origin "HEAD:refs/heads/$canary_branch" >"$push_log" 2>&1; then
+    grep -E "^(--- |gauntlet: |error: | FAIL |×| ❯ )" "$push_log" | tail -20 >&2
+    die "the local gauntlet refused the push; fix that first; nothing was fired (full output: $push_log)"
+  fi
+}
+
+if [ "$cmd" = "sweep" ]; then
+  if [ -z "$lanes" ] || [ "$lanes" = "all" ]; then
+    mapfile -t sweep_lanes < <(cd "$repo_root/.github/workflows" && ls ./*-caller.yml | sed 's#^\./##; s/-caller\.yml$//')
+  else
+    mapfile -t sweep_lanes < <(tr ',' '\n' <<<"$lanes")
+  fi
+  commit_wip
+  push_machine
+  canary_up
+  sweep_dir="$state_dir/sweep"
+  rm -rf "$sweep_dir"
+  mkdir -p "$sweep_dir"
+  declare -A sweep_door=()
+  for sweep_lane in "${sweep_lanes[@]}"; do
+    [ -n "$sweep_lane" ] || continue
+    sweep_kind="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$sweep_lane" | jq -r .kind)"
+    case "$sweep_kind" in
+      issues_labeled | issues_closed) sweep_group="issues" ;;
+      *) sweep_group="$sweep_lane" ;;
+    esac
+    sweep_door["$sweep_group"]="${sweep_door["$sweep_group"]:-} $sweep_lane"
+  done
+  log "pinning ${#sweep_lanes[@]} stubs in turn, because the contents API serialises on the branch head"
+  for sweep_lane in "${sweep_lanes[@]}"; do
+    [ -n "$sweep_lane" ] || continue
+    "$0" prove --lane "$sweep_lane" --pin-only --no-push --no-wip >"$sweep_dir/$sweep_lane.pin.log" 2>&1 \
+      || log "could not pin $sweep_lane (see $sweep_dir/$sweep_lane.pin.log)"
+  done
+  log "sweeping ${#sweep_lanes[@]} lanes on $CANARY_RUNNER in ${#sweep_door[@]} groups; lanes behind one door go in turn, groups go at once"
+  for sweep_group in "${!sweep_door[@]}"; do
+    (
+      for sweep_lane in ${sweep_door["$sweep_group"]}; do
+        lane_code=0
+        "$0" prove --lane "$sweep_lane" --no-push --no-wip --timeout "$timeout_s" \
+          >"$sweep_dir/$sweep_lane.log" 2>&1 || lane_code=$?
+        echo "$lane_code" >"$sweep_dir/$sweep_lane.code"
+      done
+    ) &
+  done
+  wait
+  printf '%s\n' "================================================================ canary: sweep of $id"
+  sweep_failed=0
+  for sweep_lane in "${sweep_lanes[@]}"; do
+    [ -n "$sweep_lane" ] || continue
+    sweep_code="$(cat "$sweep_dir/$sweep_lane.code" 2>/dev/null || echo 2)"
+    case "$sweep_code" in
+      0) sweep_verdict="green" ;;
+      1) sweep_verdict="red"; sweep_failed=1 ;;
+      *) sweep_verdict="unfired"; sweep_failed=1 ;;
+    esac
+    sweep_why="$(grep -a -m1 '^why  ' "$sweep_dir/$sweep_lane.log" 2>/dev/null | sed 's/^why  *//' || true)"
+    [ -n "$sweep_why" ] || sweep_why="$(grep -a '^canary: ' "$sweep_dir/$sweep_lane.log" 2>/dev/null | tail -1 | sed 's/^canary: //' || true)"
+    sweep_why="$(cut -c1-96 <<<"$sweep_why")"
+    printf '%-24s %-8s %s\n' "$sweep_lane" "$sweep_verdict" "$sweep_why"
+  done
+  printf '%s\n' "logs          $sweep_dir/<lane>.log"
+  exit "$sweep_failed"
+fi
+
 reds="$(cat "$cap_file" 2>/dev/null || echo 0)"
 if [ "$reds" -ge "$CAP" ]; then
   die "$reds reds in a row on $id; the loop is not converging; stop, rethink, then bin/canary prove --reset-cap"
@@ -262,28 +320,20 @@ else
   log "lane '$lane' needs a seeded issue; the fixture stands in for the lane upstream of it"
 fi
 
-if [ -n "$(git -C "$repo_root" status --porcelain)" ]; then
-  if [ "$wip" = "1" ]; then
-    git -C "$repo_root" add -A
-    git -C "$repo_root" commit -q --no-verify -m "canary: wip"
-    log "committed the working tree as wip (squash before landing)"
-  else
-    die "working tree is dirty and --no-wip was given"
-  fi
-fi
 head="$(git -C "$repo_root" rev-parse HEAD)"
 expect_head="${CANARY_EXPECT_HEAD:-$head}"
-log "pushing $head to $canary_branch (the pre-push gauntlet runs here)"
-push_log="$state_dir/push.log"
-if ! git -C "$repo_root" push -q --force origin "HEAD:refs/heads/$canary_branch" >"$push_log" 2>&1; then
-  grep -E "^(--- |gauntlet: |error: | FAIL |×| ❯ )" "$push_log" | tail -20 >&2
-  die "the local gauntlet refused the push; fix that first; nothing was fired (full output: $push_log)"
+if [ "$push" = "1" ]; then
+  commit_wip
+  head="$(git -C "$repo_root" rev-parse HEAD)"
+  expect_head="${CANARY_EXPECT_HEAD:-$head}"
+  push_machine
+  canary_up
+else
+  target_branch="$(gh api "repos/$canary_repo" --jq .default_branch)"
 fi
 
-canary_up
-
 expected_stub="$(sed -E "s#(uses: $machine_repo/\.github/workflows/$lane\.yml)@main#\1@$canary_branch#" "$repo_root/$stub_path" \
-  | awk -v runner="$RUNNER_LABEL" -v ref="$canary_branch" -v usline="uses: $machine_repo/.github/workflows/$lane.yml@$canary_branch" '
+  | awk -v runner="$CANARY_RUNNER" -v ref="$canary_branch" -v usline="uses: $machine_repo/.github/workflows/$lane.yml@$canary_branch" '
     BEGIN { pending = 0; inserted = 0 }
     {
       if (pending) {
@@ -324,7 +374,9 @@ remote_stub_sha="$(jq -r '.sha // empty' <<<"$remote_stub_json")"
 
 fire_sha=""
 if [ "$remote_stub" != "$expected_stub" ]; then
-  read -r stub_commit stub_blob <<<"$(put_file "$stub_path" "canary: pin $lane to $canary_branch on the $RUNNER_LABEL runner" "$expected_stub" "$remote_stub_sha")"
+  stub_result="$(put_file "$stub_path" "canary: pin $lane to $canary_branch on the $CANARY_RUNNER runner" "$expected_stub" "$remote_stub_sha")" \
+    || die "could not pin $stub_path on $canary_repo; the contents API serialises on the branch head, so pin before firing, never beside another fire"
+  read -r stub_commit stub_blob <<<"$stub_result"
   if [ "$fire_kind" = "push" ] && [ "$stub_blob" != "$remote_stub_sha" ]; then
     fire_sha="$stub_commit"
     log "stub written on $canary_repo ($fire_sha), and that commit is the fire"
@@ -335,9 +387,15 @@ if [ "$remote_stub" != "$expected_stub" ]; then
   fi
 fi
 
-for run in $(gh run list -R "$canary_repo" --json databaseId,status --jq '.[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting") | .databaseId'); do
+if [ "$pin_only" = "1" ]; then
+  log "pinned $stub_path"
+  exit 0
+fi
+
+for run in $(gh api "repos/$canary_repo/actions/runs?per_page=50" \
+  | jq -r --arg p "$stub_path" '.workflow_runs[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting") | select(.path==$p) | .id'); do
   gh run cancel "$run" -R "$canary_repo" >/dev/null 2>&1 || true
-  log "cancelled stale run $run"
+  log "cancelled stale $lane run $run"
 done
 
 ensure_label() { # name, idempotent; issues:labeled needs a label to exist before it can be added
@@ -379,11 +437,13 @@ if [ -n "$fixture_json" ]; then
 fi
 
 before_time="$(date -u +%FT%TZ)"
+before_run="$(gh api "repos/$canary_repo/actions/runs?per_page=1" --jq '.workflow_runs[0].id // 0')"
 case "$fire_kind" in
   push)
     if [ -z "$fire_sha" ]; then
-      fire_json="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$target_branch" 2>/dev/null || echo '{}')"
-      read -r fire_sha _ <<<"$(put_file ".canary-fire" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
+      fire_path=".canary-fire-$lane"
+      fire_json="$(gh api "repos/$canary_repo/contents/$fire_path?ref=$target_branch" 2>/dev/null || echo '{}')"
+      read -r fire_sha _ <<<"$(put_file "$fire_path" "canary: fire $lane at $head" "$(date -u +%FT%TZ) machine=$head" "$(jq -r '.sha // empty' <<<"$fire_json")")"
     fi
     log "fired: $canary_repo@$fire_sha (push)"
     ;;
@@ -448,8 +508,8 @@ if [ "$fire_kind" = "push" ]; then
 else
   while [ -z "$run_id" ]; do
     run_id="$(gh api "repos/$canary_repo/actions/runs?event=$fire_event&per_page=30" \
-      | jq -r --arg t "$before_time" --arg p "$stub_path" \
-        '[.workflow_runs[] | select(.created_at >= $t) | select(.path == $p)] | sort_by(.created_at) | .[0].id // empty')"
+      | jq -r --argjson b "$before_run" --arg p "$stub_path" \
+        '[.workflow_runs[] | select(.id > $b) | select(.path == $p)] | sort_by(.id) | .[0].id // empty')"
     [ -n "$run_id" ] && break
     [ $SECONDS -lt $deadline ] || die "the $fire_kind fire triggered nothing $stub_path answered in 120 s; does that stub actually declare that trigger on $canary_repo's default branch?"
     sleep 3
@@ -494,8 +554,8 @@ elif [ "$machine_sha" != "$expect_head" ]; then
 fi
 ran_jobs="$(jq -r '[.jobs[] | select(.conclusion != "skipped")] | length' <<<"$jobs_json")"
 [ "$ran_jobs" -gt 0 ] || { verdict="red"; reasons+=("no job ran; every job was skipped"); }
-off_runner="$(jq -r --arg l "$RUNNER_LABEL" '[.jobs[] | select(.conclusion != "skipped") | select((.labels // []) | index($l) | not) | .name] | join(", ")' <<<"$jobs_json")"
-[ -z "$off_runner" ] || { verdict="red"; reasons+=("ran off the '$RUNNER_LABEL' runner: $off_runner"); }
+off_runner="$(jq -r --arg l "$CANARY_RUNNER" '[.jobs[] | select(.conclusion != "skipped") | select((.labels // []) | index($l) | not) | .name] | join(", ")' <<<"$jobs_json")"
+[ -z "$off_runner" ] || { verdict="red"; reasons+=("ran off the '$CANARY_RUNNER' runner: $off_runner"); }
 
 failed_steps="$(jq -r '.jobs[] | . as $j | (.steps // [])[] | select(.conclusion=="failure") | "\($j.name) → \(.name)"' <<<"$jobs_json")"
 fingerprint="$(printf '%s\n%s\n%s' "$verdict" "${reasons[*]:-}" "$failed_steps" | sha1sum | cut -c1-12)"

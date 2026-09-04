@@ -1,13 +1,13 @@
 name: Set up Node and install dependencies
 description: >
   The runtime every lane runs its entrypoints on: Node pinned to 24, then `npm ci` installing
-  exactly what `package-lock.json` names, never a fresh resolve. The install is unpacked once per
-  lockfile into a store on the runner's own disk and hardlinked into each later workspace, because
-  on a persistent runner `npm ci` spent five minutes relinking 13,000 unchanged files that the
-  previous run had already written. A hardlink farm is the same tree at nought cost; a cold store,
-  or a runner whose store and workspace are on different devices, falls back to the copy and then
-  to `npm ci`. `npm ci` runs `prepare`, which puts this repo's husky hooks in place, so the
-  hardlink path runs `prepare` itself.
+  exactly what `package-lock.json` names, never a fresh resolve. Three ways to get there, cheapest
+  first. A hosted runner keeps nothing between jobs, so `node_modules` is restored whole from the
+  Actions cache under the lockfile's hash. A persistent runner keeps a store on its own disk and
+  hardlinks it into each workspace, because there `npm ci` spent five minutes relinking 13,000
+  unchanged files the previous run had already written. Everything else falls back to `npm ci`.
+  `npm ci` runs `prepare`, which puts this repo's husky hooks in place, so the two restore paths
+  run `prepare` themselves.
 
 runs:
   using: composite
@@ -18,10 +18,24 @@ runs:
         node-version: "24"
         cache: npm
 
+    - name: Restore node_modules
+      id: modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
     - name: Install dependencies
       shell: bash
+      env:
+        RESTORED: ${{ steps.modules.outputs.cache-hit }}
       run: |
         set -euo pipefail
+        if [ "$RESTORED" = "true" ] && [ -d node_modules ]; then
+          echo "node_modules restored from the Actions cache"
+          npm run prepare --if-present
+          exit 0
+        fi
         store="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/node-modules/$(sha256sum package-lock.json | cut -d' ' -f1)"
         if [ -d "$store" ]; then
           rm -rf node_modules
