@@ -35,11 +35,11 @@ export function suiteTestFiles(root: string = REPO_ROOT): string[] {
 }
 
 function ticketTitleRe(issue: number): RegExp {
-  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*"#${issue}(?:\\.\\d+)?:`);
+  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*["'\`]#${issue}(?:\\.\\d+)?:`);
 }
 
 function criterionTitleRe(issue: number, index: number): RegExp {
-  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*"#${issue}\\.${index}:`);
+  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*["'\`]#${issue}\\.${index}:`);
 }
 
 export function testsForTicket(issue: number, root: string = REPO_ROOT): string[] {

@@ -26,7 +26,7 @@ export const AUTHOR_MODEL = "claude-opus-5";
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
 
 function criterionMarker(issue: number, index: number): RegExp {
-  return new RegExp(`\\b(?:test|it)\\.fails\\(\\s*"#${issue}\\.${index}:`);
+  return new RegExp(`\\b(?:test|it)\\.fails\\(\\s*["'\`]#${issue}\\.${index}:`);
 }
 
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();

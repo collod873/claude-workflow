@@ -18,5 +18,11 @@ before this ruling. What is real: the prose gate (ADR-0151) refuses a comment qu
 verbatim as prose with no machine reader, and `bin/close-ticket`'s `surviving_fails_lines` already
 matches `#<issue>\b`, accepting `#N.i` unchanged.
 
+The index is positional, so a body edit that reorders or removes criteria after tests are
+authored re-keys them silently. That is the cost of a key with no home in the body; the two
+places a ticket's body changes after filing, `file-issue ticketify --replace` and a hand edit,
+are the places to re-run the author or fix the titles. The same title, written before the issue
+has a number, carries `#?.<index>:` until `file-issue ticket --test` rewrites it.
+
 **Rejected:** keeping the comment alongside the title, which gives the criterion two homes that
 can drift from each other and from the ticket.
