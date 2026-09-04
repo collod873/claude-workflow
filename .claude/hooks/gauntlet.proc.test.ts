@@ -16,7 +16,7 @@ function runHook(venue: string, payload: string, env: Record<string, string> = {
     input: payload,
     encoding: "utf8",
     cwd: REPO_ROOT,
-    env: { ...process.env, WORKFLOW_STAGE: "", ...env },
+    env: { ...process.env, WORKFLOW_STAGE: "", STOP_GATE_LOG_DIR: scratchDir("gauntlet-hook-default-log"), ...env },
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
@@ -67,7 +67,12 @@ describe("the hook", () => {
       input: editOf("a.ts"),
       encoding: "utf8",
       cwd: REPO_ROOT,
-      env: { PATH: "/nonexistent", NODE_ON_PATH_SEARCH_DIRS: "/nonexistent", GAUNTLET_BIN: stubGauntlet(1) },
+      env: {
+        PATH: "/nonexistent",
+        NODE_ON_PATH_SEARCH_DIRS: "/nonexistent",
+        GAUNTLET_BIN: stubGauntlet(1),
+        STOP_GATE_LOG_DIR: scratchDir("gauntlet-hook-default-log"),
+      },
     });
     expect(absent.status).toBe(0);
     expect(absent.stdout).toBe("");
@@ -80,6 +85,7 @@ describe("the hook", () => {
         PATH: "/nonexistent",
         NODE_ON_PATH_SEARCH_DIRS: dirname(process.execPath),
         GAUNTLET_BIN: stubGauntlet(1, "--- lint ---\nboom\n"),
+        STOP_GATE_LOG_DIR: scratchDir("gauntlet-hook-default-log"),
       },
     });
     expect(found.status).toBe(0);
@@ -237,7 +243,7 @@ function realLogLines(path: string): number {
 }
 
 describe("the suite's own rows stay out of the machine's run log", () => {
-  test.fails("#373.1: runHook sets STOP_GATE_LOG_DIR to a scratch directory by default, so no case can reach the real log without deliberately overriding it", () => {
+  test("#373.1: runHook sets STOP_GATE_LOG_DIR to a scratch directory by default, so no case can reach the real log without deliberately overriding it", () => {
     const record = join(scratchDir("gauntlet-env"), "log-dir");
 
     runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: logDirRecordingGauntlet(record) });
@@ -248,7 +254,7 @@ describe("the suite's own rows stay out of the machine's run log", () => {
     expect(statSync(seen).isDirectory()).toBe(true);
   });
 
-  test.fails("#373.2: running the gauntlet hook suite adds zero lines to today's real log file", () => {
+  test("#373.2: running the gauntlet hook suite adds zero lines to today's real log file", () => {
     const realLog = realLogPath();
     const before = realLogLines(realLog);
 
@@ -260,7 +266,7 @@ describe("the suite's own rows stay out of the machine's run log", () => {
     expect(realLogLines(realLog)).toBe(before);
   });
 
-  test.fails("#373.3: npm test passes: every hook case keeps its verdict while leaving the real log untouched", () => {
+  test("#373.3: npm test passes: every hook case keeps its verdict while leaving the real log untouched", () => {
     const realLog = realLogPath();
     const before = realLogLines(realLog);
 
