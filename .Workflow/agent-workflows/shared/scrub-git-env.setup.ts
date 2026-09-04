@@ -1,4 +1,4 @@
-import { scrubGitLocationVars, scrubTargetLocationVars } from "./child-env.ts";
+import { scrubGitLocationVars, scrubStageSessionVars, scrubTargetLocationVars } from "./child-env.ts";
 
 /**
  * @fixture vitest loads this through `setupFiles`, so no import edge reaches it and no lane should.
@@ -7,3 +7,5 @@ import { scrubGitLocationVars, scrubTargetLocationVars } from "./child-env.ts";
 scrubGitLocationVars(process.env);
 
 scrubTargetLocationVars(process.env);
+
+scrubStageSessionVars(process.env);
