@@ -24,12 +24,7 @@ export function captured(stdout) {
 
 export function report(venue, stdout, file) {
   const checks = failedChecks(stdout);
-  const next =
-    venue === "turn"
-      ? `Fix, then re-run: \`bin/gauntlet turn ${file}\``
-      : "Fix, then re-run: `bin/gauntlet stop`. A red suite mid-task is a legitimate state (a TDD " +
-        "red phase is exactly that shape), so this report fires once per turn cycle and ending the " +
-        "turn is allowed.";
+  const next = venue === "turn" ? `Fix, then re-run: \`bin/gauntlet turn ${file}\`` : "Fix, then re-run: `bin/gauntlet stop`.";
   return (
     `[gauntlet] The ${venue} venue's checks failed${checks ? `: ${checks}` : ""}.\n\n` +
     `${next}\n\n` +

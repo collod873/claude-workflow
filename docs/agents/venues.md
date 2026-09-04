@@ -23,8 +23,10 @@ slot is red; there is no other verdict, and no venue refuses on a duration
 
 Only `push` and CI fail closed. The two in-session venues cannot refuse and are not meant to:
 PostToolUse fires after the edit has landed, and a venue that wedges every turn is worse than the
-defect it was catching. `.claude/hooks/gauntlet-hook.mjs` owns that half; `.husky/pre-push` and
-`.github/workflows/verify.yml` own the other.
+defect it was catching. `.claude/hooks/gauntlet-hook.mjs` owns `turn`; the machine-global
+`stop-gate.py` owns `stop`, running the contract's `stop.cmd` with a breaker, a liveness deferral
+and its own run row, so nothing registered inside this checkout may run that suite a second time.
+`.husky/pre-push` and `.github/workflows/verify.yml` own `push` and CI.
 
 `push` fails closed all the way down: a gauntlet that cannot run its checks refuses the push rather
 than waving it through, because unlike a hook mid-turn there is a human here who can fix it, and the
