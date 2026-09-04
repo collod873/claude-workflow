@@ -22,6 +22,16 @@ export interface RevertDetectorOutcome {
   declinedCount: number;
 }
 
+async function resolveRuleIds(configPath: string, log: (line: string) => void): Promise<Set<string>> {
+  if (!existsSync(configPath)) return new Set<string>();
+  try {
+    return await loadEnabledRuleIds(configPath);
+  } catch (err) {
+    log(`could not load ${configPath}, treating it as no enabled rules: ${reason(err)}`);
+    return new Set<string>();
+  }
+}
+
 export async function runRevertDetector(options: RunRevertDetectorOptions): Promise<RevertDetectorOutcome> {
   const { git, repoDir, head } = options;
   const remote = options.remote ?? "origin";
@@ -29,7 +39,7 @@ export async function runRevertDetector(options: RunRevertDetectorOptions): Prom
 
   const records = readRatificationRecords({ git, repoDir, head });
   const configPath = join(repoDir, ESLINT_CONFIG);
-  const ruleIds = options.ruleIds ?? (existsSync(configPath) ? await loadEnabledRuleIds(configPath) : new Set<string>());
+  const ruleIds = options.ruleIds ?? (await resolveRuleIds(configPath, log));
   const standards = existsSync(join(repoDir, STANDARDS_FILE)) ? readStandards(repoDir) : "";
   const scan = scanForReverts({
     records,
