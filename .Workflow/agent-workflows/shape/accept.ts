@@ -55,7 +55,7 @@ function approve(deps: AcceptDeps, issueNumber: number): AcceptOutcome {
       "comment",
       String(issueNumber),
       "--body",
-      "**Approved, but there is no sheet on this issue.** Nothing was filed and no route was recorded — an accept files the rulings a sheet decided, and this one has none to read.\n\nRemove and re-add `idea` to shape it first.",
+      "**Approved, but there is no sheet on this issue.** Nothing was filed and no route was recorded: an accept files the rulings a sheet decided, and this one has none to read.\n\nRemove and re-add `idea` to shape it first.",
     ]);
     return { kind: "no-sheet", verb: "approved" };
   }
@@ -119,7 +119,7 @@ Decided on the decision sheet for #${issueNumber}, and filed by the \`approved\`
 
 ## Consequences
 
-**${decision.mark}** moves if this answer flips — that pointer is the assumption mark the sheet
+**${decision.mark}** moves if this answer flips, and that pointer is the assumption mark the sheet
 carried, and it is why this decision was written down rather than left on the sheet
 ([ADR-0028](0028-an-assumption-mark-names-what-it-moves-or-it-is-not-a-mark.md)).
 `;
@@ -206,7 +206,7 @@ ${filed}${coined}
 
 ${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), route })}
 
-**Dispatched to lane 02.** This click filed what the sheet decided, so the spec cites the rulings rather than re-deciding them, and then started the spec author on them. The spec arrives as its own \`PRD:\` issue — carrying numbered open questions if it had to guess at anything, and nothing further from you if it did not.`;
+**Dispatched to lane 02.** This click filed what the sheet decided, so the spec cites the rulings rather than re-deciding them, and then started the spec author on them. The spec arrives as its own \`PRD:\` issue, carrying numbered open questions if it had to guess at anything, and nothing further from you if it did not.`;
 }
 
 function dropIdea(gh: GhExec, issueNumber: number): void {

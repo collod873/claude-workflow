@@ -30,7 +30,7 @@ describe("where a run sits", () => {
     expect(round.latestSheet).toBeUndefined();
   });
 
-  it("ignores the owner's own comments — only this lane's count", () => {
+  it("ignores the owner's own comments, counting only this lane's", () => {
     const round = roundFor(trackerWith("this is great", "do it").gh, 1);
 
     expect(round.round).toBe(0);

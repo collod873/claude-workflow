@@ -25,7 +25,7 @@ function sheet(over: Partial<Sheet> = {}): Sheet {
     decisions: [decision()],
     survivors: [],
     route: "short",
-    routeReason: "Short — one file.",
+    routeReason: "Short: one file.",
     newTerms: [],
     round: 0,
     ...over,

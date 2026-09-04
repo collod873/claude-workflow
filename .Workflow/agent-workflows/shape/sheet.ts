@@ -47,5 +47,5 @@ export function applyGrammar(shaped: ShaperSheet, refuted: Refutations, round: n
 
 function longByMarks(decisions: Sheet["decisions"]): string {
   const marked = decisions.filter((decision) => decision.mark !== "").length;
-  return `Long — ${marked} of ${decisions.length} decisions carry an assumption mark, which is more than half.`;
+  return `Long: ${marked} of ${decisions.length} decisions carry an assumption mark, which is more than half.`;
 }

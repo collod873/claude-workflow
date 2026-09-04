@@ -73,7 +73,7 @@ export async function runRatify(options: RunRatifyOptions): Promise<RatifyOutcom
 
   if (surviving.length === 0) {
     advanceRatifierRef(git, repoDir, head);
-    log("nothing survived ratification memory — bookmark advanced, no branch created.");
+    log("nothing survived ratification memory: bookmark advanced, no branch created.");
     return { action: "ran", code: "nothing-to-ratify", releasedCount: scope.releasedCount };
   }
 
@@ -116,7 +116,7 @@ export async function runRatify(options: RunRatifyOptions): Promise<RatifyOutcom
 
   log(
     `ratified ${batch.landed.length}, declined ${batch.declined.length}, skipped ${batch.skipped.length}` +
-      (prUrl ? ` — ${prUrl}` : " — no pull request opened"),
+      (prUrl ? `: ${prUrl}` : ": no pull request opened"),
   );
   return {
     action: "ran",

@@ -108,7 +108,7 @@ async function ratifyOne(
     restoreWorkingTree(git, repoDir);
     return {
       kind: "skipped",
-      why: `a ${observation.lens} finding answered "${verdict.verdict}" — ` +
+      why: `a ${observation.lens} finding answered "${verdict.verdict}": ` +
         `${VIOLATION_LENS} findings are fixed, never decided, and every other lens is decided, never fixed`,
     };
   }
@@ -150,7 +150,7 @@ async function ratifyOne(
         appendStandardEntry(deps.readFile(STANDARDS_FILE), verdict.fallback!.entry),
       );
       landedAs = verdict.fallback!.name;
-      kind = "prose (demoted — the rule did not reproduce its own evidence)";
+      kind = "prose (demoted: the rule did not reproduce its own evidence)";
     }
   }
 

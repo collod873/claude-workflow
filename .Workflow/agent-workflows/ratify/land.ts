@@ -78,7 +78,7 @@ export function renderRatifierBody(landed: LandedFinding[]): string {
 
   return [
     "The audit lane's two-site gate cleared these findings; the ratifier turned each one into the",
-    "standard below. **Ratified is merged** — lane 06 judges this pull request and lane 08 merges it",
+    "standard below. **Ratified is merged**: lane 06 judges this pull request and lane 08 merges it",
     "like any other. To decline a standard, revert it: the revert detector writes the declined",
     "memory, and the finding stays suppressed until it grows a new site.",
     "",
@@ -97,7 +97,7 @@ export interface OpenRatifierPrOptions {
 export function refuseImmutableSetBatch(changedFiles: string[]): void {
   if (!touchesImmutableSet(changedFiles)) return;
   throw new Error(
-    `this batch touches the immutable set — ${changedFiles.join(", ")}. ` +
+    `this batch touches the immutable set: ${changedFiles.join(", ")}. ` +
       "A ratifier pull request may never edit vitest.config.ts or .github/",
   );
 }
@@ -131,7 +131,7 @@ export function openRatifierPr(options: OpenRatifierPrOptions): string {
   const { gh, head, base, landed, changedFiles } = options;
 
   if (landed.length === 0) {
-    throw new Error("openRatifierPr: nothing landed — an empty batch opens no pull request");
+    throw new Error("openRatifierPr: nothing landed; an empty batch opens no pull request");
   }
   if (!head || head === base) {
     throw new Error(`openRatifierPr: head must be a branch distinct from base, got head=${head} base=${base}`);

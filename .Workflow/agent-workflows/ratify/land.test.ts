@@ -34,7 +34,7 @@ function landed(overrides: Partial<LandedFinding> = {}): LandedFinding {
   };
 }
 
-describe("readRatifierBase — the bookmark, and the one it inherited from", () => {
+describe("readRatifierBase: the bookmark, and the one it inherited from", () => {
   it("prefers this lane's own bookmark once it exists", () => {
     const git = createFakeGit((args) => (args.includes(LAST_RATIFIER_REF) ? "newbase\n" : "oldbase\n"));
 
@@ -58,7 +58,7 @@ describe("readRatifierBase — the bookmark, and the one it inherited from", () 
   });
 });
 
-describe("commitWorkingTree — plumbing, never a checkout", () => {
+describe("commitWorkingTree: plumbing, never a checkout", () => {
   it("stages, writes the tree and commits onto the parent, stamping the machinery trailer", () => {
     const git = createFakeGit((args) => {
       if (args.includes("write-tree")) return "newtree\n";
@@ -85,7 +85,7 @@ describe("commitWorkingTree — plumbing, never a checkout", () => {
   });
 });
 
-describe("restoreWorkingTree — the demotion's undo", () => {
+describe("restoreWorkingTree: the demotion's undo", () => {
   it("restores tracked files from the index and removes what the stage created, without -x", () => {
     const git = createFakeGit(() => "");
 
@@ -126,7 +126,7 @@ describe("renderRatifierBody", () => {
   });
 });
 
-describe("openRatifierPr — the refusals, all of them before any gh call", () => {
+describe("openRatifierPr: the refusals, all of them before any gh call", () => {
   it("refuses an empty batch", () => {
     const gh = createRecordingGh();
 
@@ -171,7 +171,7 @@ function fakePrGh(): { gh: GhExec; calls: string[][]; url: string } {
   return { gh, calls, url };
 }
 
-describe("openRatifierPr — the door it rings", () => {
+describe("openRatifierPr: the door it rings", () => {
   it("opens one PR and sends the implementation dispatch with the batch's own changed files", () => {
     const gh = fakePrGh();
 
@@ -226,7 +226,7 @@ const showFile = (repo: TempRepo, ref: string, path: string) => repo.git("show",
 
 const listPaths = (repo: TempRepo, ref: string) => repo.git("ls-tree", "-r", "--name-only", ref).split("\n");
 
-describe("alignImmutableSetWithTrunk — the push GitHub would otherwise refuse (#324)", () => {
+describe("alignImmutableSetWithTrunk: the push GitHub would otherwise refuse (#324)", () => {
   let dir: string | undefined;
   afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });

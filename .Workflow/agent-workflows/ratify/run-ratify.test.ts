@@ -32,7 +32,7 @@ async function ratifyDue(overrides: { prdClosed: boolean }) {
   return { outcome, git, stage };
 }
 
-describe("runRatify — scope: which dispatches this lane runs on at all", () => {
+describe("runRatify: scope: which dispatches this lane runs on at all", () => {
   it("makes no git or model call when the dispatch is not a ratification-due", async () => {
     const git = createFakeGit();
     const stage = createFakeStage("");
@@ -104,7 +104,7 @@ function ratifyDueRun(git: FakeGit, stage: FakeStage, repoDir: string) {
   });
 }
 
-describe("runRatify — which notes in the range the batch actually sees (#324)", () => {
+describe("runRatify: which notes in the range the batch actually sees (#324)", () => {
   let repoDir: string;
   beforeEach(() => {
     repoDir = mkdtempSync(join(tmpdir(), "run-ratify-"));

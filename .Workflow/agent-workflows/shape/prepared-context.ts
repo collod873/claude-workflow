@@ -24,7 +24,7 @@ export function renderPriorArt(priorArt: PriorArt[]): string {
     return "_Nothing found. `none found` is a legal line on the sheet._";
   }
   return priorArt
-    .map((entry) => `- **${entry.ref}** (${entry.verdict}) — ${entry.bearing}\n  ${entry.url}`)
+    .map((entry) => `- **${entry.ref}** (${entry.verdict}): ${entry.bearing}\n  ${entry.url}`)
     .join("\n");
 }
 
@@ -34,7 +34,7 @@ export function renderChangeRequest(changeRequest: string): string {
 
   return `## The owner's change request
 
-He read the last sheet and said this. It is the reason you are running again — answer it in the sheet itself, not in prose around it.
+He read the last sheet and said this. It is the reason you are running again, so answer it in the sheet itself, not in prose around it.
 
 > ${trimmed.split("\n").join("\n> ")}`;
 }
@@ -44,5 +44,5 @@ export function renderReSweepAnswer(needs: string): string {
 
 You asked for: ${needs}
 
-Whatever the sweep found for it is on the reading list above — including nothing, if it found nothing. **This is your last pass.** Emit a sheet. If the gap is still open, mark the decision it affects, point the mark at the gap, and write the sheet anyway.`;
+Whatever the sweep found for it is on the reading list above, including nothing, if it found nothing. **This is your last pass.** Emit a sheet. If the gap is still open, mark the decision it affects, point the mark at the gap, and write the sheet anyway.`;
 }

@@ -102,7 +102,7 @@ describe("the probation", () => {
     expect(checkProbation(tracker.gh)).toContain("filed a deletion proposal");
   });
 
-  it("reads closed proposals too — a declined one is exactly what must not re-file", () => {
+  it("reads closed proposals too, since a declined one is exactly what must not re-file", () => {
     const tracker = silentSheets(SILENT_SHEET_THRESHOLD);
     tracker.bodySearchResults = [`<!-- refuter-probation:v1 silent=${SILENT_SHEET_THRESHOLD} -->`];
 

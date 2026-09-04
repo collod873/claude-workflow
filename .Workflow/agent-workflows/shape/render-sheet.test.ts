@@ -7,11 +7,11 @@ function sheet(over: Partial<Sheet> = {}): Sheet {
     restatement: "the idea as work",
     priorArt: [],
     decisions: [
-      { question: "Where does it fire?", recommendation: "On push", rejected: "In Actions — the repair is cheaper earlier", mark: "", adrTitle: "", adrReversal: "" },
+      { question: "Where does it fire?", recommendation: "On push", rejected: "In Actions, where the repair is cheaper earlier", mark: "", adrTitle: "", adrReversal: "" },
     ],
     survivors: [],
     route: "short",
-    routeReason: "Short — one file, and the gauntlet still runs.",
+    routeReason: "Short: one file, and the gauntlet still runs.",
     newTerms: [],
     round: 0,
     ...over,
@@ -33,7 +33,7 @@ describe("the sheet as the owner reads it", () => {
   });
 
   it("carries the route, which is what §01a's accept acts on", () => {
-    expect(renderSheet(sheet())).toContain("Short — one file");
+    expect(renderSheet(sheet())).toContain("Short: one file");
   });
 });
 

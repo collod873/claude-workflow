@@ -7,7 +7,7 @@ const STANDARDS = [
   "",
   "## Standards",
   "",
-  "- **Deep modules** — a small interface hiding substantial implementation.",
+  "- **Deep modules**: a small interface hiding substantial implementation.",
   "  Why: shallow wrappers add surface area.",
   "  Red flag: a layer that mostly delegates.",
   "",
@@ -16,7 +16,7 @@ const STANDARDS = [
 const ratified = (finding: string, landedAs: string) =>
   ratificationRecord({ finding, decision: "ratified", landedAs, reason: "landed" });
 
-describe("scanForReverts — tree versus memory, one mechanical rule", () => {
+describe("scanForReverts: tree versus memory, one mechanical rule", () => {
   it("writes nothing while every ratified standard is still in the tree", () => {
     const scan = scanForReverts({
       records: [ratified("f1", "Deep modules"), ratified("f2", "ns/rule")],
@@ -59,7 +59,7 @@ describe("scanForReverts — tree versus memory, one mechanical rule", () => {
     expect(scan.declined.map((record) => record.landedAs)).toEqual(["ns/rule"]);
   });
 
-  it("is idempotent — a finding already declined derives nothing new", () => {
+  it("is idempotent, so a finding already declined derives nothing new", () => {
     const scan = scanForReverts({
       records: [ratified("f1", "Gone"), ratificationRecord({ finding: "f1" })],
       standards: STANDARDS,

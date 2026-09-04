@@ -232,7 +232,7 @@ function firstPassFocus(changeRequest: string): string {
   if (trimmed === "") return "";
   return `## The owner has already seen a sheet on this
 
-He asked for a change, in these words. Sweep with it as an explicit target — if he is pointing at something the last pass missed, finding it is this pass's job.
+He asked for a change, in these words. Sweep with it as an explicit target: if he is pointing at something the last pass missed, finding it is this pass's job.
 
 > ${trimmed.split("\n").join("\n> ")}`;
 }
@@ -245,7 +245,7 @@ The shaper read your first sweep and could not decide without this:
 > **Needs:** ${needs}
 > **Why:** ${why}
 
-Find it, and put whatever bears on it on the reading list. If it does not exist, return an empty \`readingList\` — saying so is a real answer, and the shaper will mark the decision and write the sheet anyway.
+Find it, and put whatever bears on it on the reading list. If it does not exist, return an empty \`readingList\`; saying so is a real answer, and the shaper will mark the decision and write the sheet anyway.
 
 **Prior art is settled.** Job 1 ran on the first pass and its verdicts already cleared; that answer stands and anything you return for it now is discarded. Return an empty \`priorArt\` and spend this pass on the reading list.`;
 }
@@ -262,7 +262,7 @@ function mergeSweeps(first: Sweep, second: Sweep): Sweep {
 }
 
 function needsLiveSessionComment(count: number): string {
-  return `**This needs a live session.** The decision tree did not close under ${DECISION_CAP} decisions — the shaper found ${count}.
+  return `**This needs a live session.** The decision tree did not close under ${DECISION_CAP} decisions; the shaper found ${count}.
 
 That is not a verdict on the idea. It is the shaper saying it cannot state this as work without asking you things a sheet cannot ask.
 

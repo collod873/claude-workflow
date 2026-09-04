@@ -5,7 +5,7 @@ import { CLOSE_STATE_REASON, PRD_LABEL, ratifyOnPrdClose } from "./prd-close";
 
 const silent = () => {};
 
-describe("ratifyOnPrdClose — the gate", () => {
+describe("ratifyOnPrdClose: the gate", () => {
   it("rings the door exactly once for a PRD closed as delivered", () => {
     const gh = createRecordingGh();
     const sent: Array<{ head: string; prdClosed: boolean }> = [];

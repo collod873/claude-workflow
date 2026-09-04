@@ -18,7 +18,7 @@ function renderPriorArt(sheet: Sheet): string {
     return "`none found`";
   }
   return sheet.priorArt
-    .map((entry) => `- [${entry.ref}](${entry.url}) — ${entry.bearing}`)
+    .map((entry) => `- [${entry.ref}](${entry.url}): ${entry.bearing}`)
     .join("\n");
 }
 

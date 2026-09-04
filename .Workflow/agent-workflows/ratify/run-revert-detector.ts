@@ -36,7 +36,7 @@ export async function runRevertDetector(options: RunRevertDetectorOptions): Prom
   });
 
   if (scan.declined.length === 0) {
-    log(`${scan.present.length} ratified standard(s) still in the tree — nothing was reverted.`);
+    log(`${scan.present.length} ratified standard(s) still in the tree; nothing was reverted.`);
     return { declinedCount: 0 };
   }
 

@@ -8,7 +8,7 @@ export function ratifierVerdict(overrides: Partial<RatifierVerdict> = {}): Ratif
     fallback: {
       name: "Lane-local imports",
       entry:
-        "- **Lane-local imports** — a lane imports from its own directory or from `shared/`.\n" +
+        "- **Lane-local imports**: a lane imports from its own directory or from `shared/`.\n" +
         "  Why: a cross-lane import makes two lanes one deployable unit.\n" +
         "  Red flag: a relative import climbing out of a lane's own directory.",
     },

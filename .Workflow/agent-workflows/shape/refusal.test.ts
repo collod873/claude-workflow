@@ -26,7 +26,7 @@ describe("the stage-1 refusal", () => {
     expect(refusal?.cause).toBe("already-ruled");
   });
 
-  it("lets a related hit through — it funds a prior-art line, it does not refuse", () => {
+  it("lets a related hit through: it funds a prior-art line, it does not refuse", () => {
     expect(refusalFor(sweep(art({ verdict: "related", ref: "ADR-0014" })), SUBJECT)).toBeUndefined();
   });
 

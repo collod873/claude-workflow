@@ -77,7 +77,7 @@ function trial(options: {
   return { result, calls: git.calls };
 }
 
-describe("runRuleTrial — a rule is ratified only by reproducing its own evidence", () => {
+describe("runRuleTrial: a rule is ratified only by reproducing its own evidence", () => {
   it("reproduces when the rule flags every site the observation carries", () => {
     const { result } = trial({
       present: ["a.ts", "b.ts"],

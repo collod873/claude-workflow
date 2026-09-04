@@ -6,7 +6,7 @@ import { ratifyBatch, type RatifyBatchDeps } from "./ratifier";
 import { ratifierVerdict } from "./verdict.fixture";
 import type { RatifierVerdict } from "./verdict-schema";
 
-const STANDARDS = ["# Coding Standards", "", "## Standards", "", "- **Existing** — w.", "  Why: y.", "  Red flag: r.", ""].join(
+const STANDARDS = ["# Coding Standards", "", "## Standards", "", "- **Existing**: w.", "  Why: y.", "  Red flag: r.", ""].join(
   "\n",
 );
 
@@ -42,7 +42,7 @@ function deps(overrides: Partial<RatifyBatchDeps> & { responses: RatifierVerdict
   };
 }
 
-describe("ratifyBatch — a reject verdict", () => {
+describe("ratifyBatch: a reject verdict", () => {
   it("writes declined memory, reverts the tree, and lands no commit", async () => {
     const git = fakeGit();
     const found = observation({ finding: "too narrow to standardise", sites: ["a.ts:1", "b.ts:2"] });
@@ -65,7 +65,7 @@ describe("ratifyBatch — a reject verdict", () => {
   });
 });
 
-describe("ratifyBatch — a prose verdict", () => {
+describe("ratifyBatch: a prose verdict", () => {
   it("commits whatever the stage wrote and records what it landed as", async () => {
     const git = fakeGit();
     const found = observation({ finding: "a judgement call", sites: ["a.ts:1", "b.ts:2"] });
@@ -104,7 +104,7 @@ describe("ratifyBatch — a prose verdict", () => {
   });
 });
 
-describe("ratifyBatch — a mechanise verdict and its rule trial", () => {
+describe("ratifyBatch: a mechanise verdict and its rule trial", () => {
   it("lands the rule when the trial reproduces every site", async () => {
     const git = fakeGit();
     const found = observation({ finding: "cross-lane reach", sites: ["a.ts:1"] });
@@ -162,7 +162,7 @@ describe("ratifyBatch — a mechanise verdict and its rule trial", () => {
   });
 });
 
-describe("ratifyBatch — the rule the schema cannot carry", () => {
+describe("ratifyBatch: the rule the schema cannot carry", () => {
   it("skips a VIOLATION finding the stage tried to decide instead of fix", async () => {
     const result = await ratifyBatch(
       deps({
@@ -203,7 +203,7 @@ describe("ratifyBatch — the rule the schema cannot carry", () => {
   });
 });
 
-describe("ratifyBatch — one bad finding costs that finding and nothing else", () => {
+describe("ratifyBatch: one bad finding costs that finding and nothing else", () => {
   it("restores the tree, skips it, and keeps deciding the rest of the batch", async () => {
     const git = fakeGit();
 

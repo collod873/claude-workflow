@@ -33,7 +33,7 @@ export function refusalComment(refusal: Refusal): string {
       ? `This idea already exists: ${evidence.ref}`
       : `An ADR has already ruled on this: ${evidence.ref}`;
 
-  return `**Refused before shaping.** ${lead} — ${evidence.url}
+  return `**Refused before shaping.** ${lead}: ${evidence.url}
 
 ${evidence.bearing}
 

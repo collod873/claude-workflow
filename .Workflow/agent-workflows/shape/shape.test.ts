@@ -53,7 +53,7 @@ const ONE_DECISION_SHEET = shaperAnswer({
   priorArt: [],
   decisions: [{ question: "q", recommendation: "r", rejected: "x", mark: "", adrTitle: "" }],
   route: "short",
-  routeReason: "Short — one file.",
+  routeReason: "Short: one file.",
   newTerms: [],
 });
 

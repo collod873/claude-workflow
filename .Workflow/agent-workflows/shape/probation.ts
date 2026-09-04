@@ -96,7 +96,7 @@ export function checkProbation(gh: GhExec): string {
 
   const proposedAt = highestProposedAt(gh);
   if (silent <= proposedAt) {
-    return `refuter probation: ${silent} silent sheets, already proposed at ${proposedAt} — not re-proposing until the count grows`;
+    return `refuter probation: ${silent} silent sheets, already proposed at ${proposedAt}, so not re-proposing until the count grows`;
   }
 
   gh([
@@ -117,13 +117,13 @@ Lane 01's refuter (Sonnet, stage 3) has now been spent on **${silent} sheets tha
 [ADR-0031](../docs/adr/0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) sets that count as \
 its firing condition: at ${SILENT_SHEET_THRESHOLD}, the counter proposes the stage's deletion.
 
-This proposes it. Nothing is deleted by this issue — [ADR-0064](../docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) \
+This proposes it. Nothing is deleted by this issue: [ADR-0064](../docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) \
 rules that a counter files an issue and never acts.
 
 **What the refuter costs:** one Sonnet stage per sheet, inside a chain budgeted at under a dollar per idea.
 
-**What killing it costs:** the sheet loses its only adversarial pass, and lane 01's named failure — a confident, \
-coherent sheet resting on a wrong premise — is left to the assumption marks alone.
+**What killing it costs:** the sheet loses its only adversarial pass, and lane 01's named failure, a confident, \
+coherent sheet resting on a wrong premise, is left to the assumption marks alone.
 
 **The argument for keeping it anyway:** silence is the *good* outcome for a stage asked to kill rather than to \
 approve, which is exactly why ADR-0031 gave it a firing condition silence alone could not satisfy forever. A run \

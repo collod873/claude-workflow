@@ -35,7 +35,7 @@ describe("parseStandardEntries", () => {
     const withPreambleBullet = [
       "# Coding Standards",
       "",
-      "- **Not a standard** — this is in the header's own list.",
+      "- **Not a standard**: this is in the header's own list.",
       "  Why: because the header explains the format.",
       "  Red flag: reading it as an entry.",
       "",
@@ -49,7 +49,7 @@ describe("parseStandardEntries", () => {
   });
 
   it("refuses a half-written entry rather than reporting it as a landed standard", () => {
-    const halfWritten = `${HEADER}- **Missing its tail** — what it is.\n  Why: it has no red flag.\n`;
+    const halfWritten = `${HEADER}- **Missing its tail**: what it is.\n  Why: it has no red flag.\n`;
 
     expect(parseStandardEntries(halfWritten)).toEqual([]);
   });
@@ -61,14 +61,14 @@ describe("parseStandardEntries", () => {
 
 describe("appendStandardEntry", () => {
   it("grows the flat list at the bottom, leaving what is already there untouched", () => {
-    const grown = appendStandardEntry(`${HEADER}${ENTRY}\n`, "- **New one** — what.\n  Why: y.\n  Red flag: r.");
+    const grown = appendStandardEntry(`${HEADER}${ENTRY}\n`, "- **New one**: what.\n  Why: y.\n  Red flag: r.");
 
     expect(parseStandardEntries(grown).map((entry) => entry.name)).toEqual(["Deep modules", "New one"]);
     expect(grown.startsWith(HEADER)).toBe(true);
   });
 
   it("refuses a file with no ## Standards heading rather than inventing one", () => {
-    expect(() => appendStandardEntry("# Something else\n", "- **X** — w.\n  Why: y.\n  Red flag: r.")).toThrow(
+    expect(() => appendStandardEntry("# Something else\n", "- **X**: w.\n  Why: y.\n  Red flag: r.")).toThrow(
       /## Standards/,
     );
   });

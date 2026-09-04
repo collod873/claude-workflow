@@ -14,7 +14,7 @@ function shaped(over: Partial<ShaperSheet> = {}): ShaperSheet {
     priorArt: [],
     decisions: [decision()],
     route: "short",
-    routeReason: "Short — one file.",
+    routeReason: "Short: one file.",
     newTerms: [],
     ...over,
   };
@@ -65,7 +65,7 @@ describe("the route override", () => {
     expect(marksForceLong([decision({ mark: "a" }), decision({ mark: "b" })])).toBe(true);
   });
 
-  it("leaves exactly half marked alone — more than half is the rule", () => {
+  it("leaves exactly half marked alone, since more than half is the rule", () => {
     expect(marksForceLong([decision({ mark: "a" }), decision()])).toBe(false);
   });
 

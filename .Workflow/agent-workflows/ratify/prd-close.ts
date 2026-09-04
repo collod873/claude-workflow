@@ -29,13 +29,13 @@ export function ratifyOnPrdClose(input: EntrypointInput): EntrypointOutcome {
   if (stateReason !== CLOSE_STATE_REASON || !labels.includes(PRD_LABEL)) {
     log(
       `#${issueNumber ?? "?"} out of scope: state_reason=${stateReason ?? "unspecified"}, ` +
-        `labels=${labels.length > 0 ? labels.join(",") : "none"} — not a completed PRD close.`,
+        `labels=${labels.length > 0 ? labels.join(",") : "none"}; not a completed PRD close.`,
     );
     return { sent: false };
   }
 
   send(gh, { head: input.head, prdClosed: true });
-  log(`#${issueNumber ?? "?"} closed as delivered — ratification is due at ${input.head}.`);
+  log(`#${issueNumber ?? "?"} closed as delivered; ratification is due at ${input.head}.`);
   return { sent: true };
 }
 
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     head,
   });
 
-  console.log(outcome.sent ? "ratification-due dispatched" : "out of scope — nothing dispatched");
+  console.log(outcome.sent ? "ratification-due dispatched" : "out of scope; nothing dispatched");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
