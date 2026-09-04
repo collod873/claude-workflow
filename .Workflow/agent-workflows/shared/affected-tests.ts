@@ -8,7 +8,7 @@ export const SUITE_ROOTS = [".Workflow", ".claude"] as const;
 
 const SKIPPED = new Set(["node_modules", "worktrees"]);
 
-export function suiteTestFiles(root: string = REPO_ROOT): string[] {
+export function walkSuiteRoots(root: string, keep: (name: string) => boolean): string[] {
   const files: string[] = [];
   const walk = (dir: string): void => {
     let entries: string[];
@@ -21,13 +21,17 @@ export function suiteTestFiles(root: string = REPO_ROOT): string[] {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) {
         if (!SKIPPED.has(entry)) walk(path);
-      } else if (entry.endsWith(".test.ts")) {
+      } else if (keep(entry)) {
         files.push(path);
       }
     }
   };
   for (const suiteRoot of SUITE_ROOTS) walk(join(root, suiteRoot));
   return files;
+}
+
+export function suiteTestFiles(root: string = REPO_ROOT): string[] {
+  return walkSuiteRoots(root, (name) => name.endsWith(".test.ts"));
 }
 
 export function testsForCriteria(criteria: string[], root: string = REPO_ROOT): string[] {
