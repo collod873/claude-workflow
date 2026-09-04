@@ -181,10 +181,16 @@ if [ "$cmd" = "token" ]; then
   token="${token_arg:-${CLAUDE_CODE_OAUTH_TOKEN:-}}"
   if [ -z "$token" ]; then
     command -v claude >/dev/null || die "no claude on PATH, and no token given; pass one: bin/canary token <token>"
-    log "minting a long-lived token; the browser step is claude's, not mine"
-    token="$(claude setup-token 2>/dev/null | grep -aoE 'sk-ant-[A-Za-z0-9_-]+' | tail -1)"
+    [ -t 0 ] || die "no terminal to mint on; run this with a leading '!' so claude can own the terminal, or pass the token: bin/canary token <token>"
+    log "minting a long-lived token; claude owns the terminal until its browser step is done"
+    claude setup-token || die "claude setup-token did not finish; nothing was written"
+    printf 'canary: paste the token it printed: ' >&2
+    read -r token
   fi
-  [ -n "$token" ] || die "no token to set; run 'claude setup-token' yourself and pass the value: bin/canary token <token>"
+  case "$token" in
+    sk-ant-*) ;;
+    *) die "that is not a Claude token (they start sk-ant-); nothing was written" ;;
+  esac
   for token_repo in "$machine_repo" "$canary_repo"; do
     if repo_exists "$token_repo"; then
       gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$token_repo" --body "$token" >/dev/null
