@@ -1,7 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { adrCorpus, INDEX_RELATIVE_PATH, regenerateAdrIndex, renderAdrIndex } from "./adr-index";
+import { errorMessage } from "./reason";
+
+const USAGE = "name exactly one repository root, as the first argument or in TARGET_WORKSPACE";
 
 function check(root: string): number {
   const index = join(root, INDEX_RELATIVE_PATH);
@@ -16,12 +19,32 @@ function check(root: string): number {
   return 1;
 }
 
+function repoRoot(args: string[], env: NodeJS.ProcessEnv): string {
+  const fromEnv = env.TARGET_WORKSPACE?.trim();
+  const named = [...args.filter((arg) => !arg.startsWith("--")), ...(fromEnv ? [fromEnv] : [])];
+  const roots = [...new Set(named.map((name) => resolve(name)))];
+
+  if (roots.length === 0) throw new Error(`adr-index: no repository root given; ${USAGE}.`);
+  if (roots.length > 1) throw new Error(`adr-index: roots disagree (${roots.join(", ")}); ${USAGE}.`);
+  if (!statSync(roots[0], { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`adr-index: ${roots[0]} is not a directory; ${USAGE}.`);
+  }
+  return roots[0];
+}
+
 function main(): void {
   const args = process.argv.slice(2);
-  const fix = args.includes("--fix");
-  const root = args.find((arg) => !arg.startsWith("--")) || process.env.TARGET_WORKSPACE || process.cwd();
 
-  if (!fix) {
+  let root: string;
+  try {
+    root = repoRoot(args, process.env);
+  } catch (error) {
+    console.error(errorMessage(error));
+    process.exitCode = 2;
+    return;
+  }
+
+  if (!args.includes("--fix")) {
     process.exitCode = check(root);
     return;
   }

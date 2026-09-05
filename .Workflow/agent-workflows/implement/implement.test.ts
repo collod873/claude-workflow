@@ -16,6 +16,7 @@ import {
 import { describeAttempt } from "../shared/changed-paths";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { declaredEditsNote, gateRedNote } from "../shared/implementation-landing";
+import { implementerAnswer, implementerReply } from "../shared/implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
 import type { GateVerdict } from "../shared/run-gauntlet";
@@ -40,7 +41,7 @@ import {
 
 const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
-const BUILDS = { summary: "Built the thing.", outOfBriefReads: [] as string[], declaredEdits: [] as { path: string; reason: string }[] };
+const BUILDS = implementerReply();
 const BUILT: Record<string, string> = { "a/b.ts": "export const x = 1;" };
 
 function gateSaying(...verdicts: GateVerdict[]): { runs: GateVerdict[]; runGate: () => GateVerdict } {
@@ -255,8 +256,8 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
 
   it("resumes the same session with the gate's output when it is red, then judges the repair once more", async () => {
     const stage = createFakeStages([
-      { text: JSON.stringify({ ...BUILDS, outOfBriefReads: ["shape"] }), sessionId: "sess-1" },
-      JSON.stringify({ summary: "Built, then repaired the thing.", outOfBriefReads: ["shape", "close-gate"] }),
+      { text: JSON.stringify(implementerReply({ outOfBriefReads: ["shape"] })), sessionId: "sess-1" },
+      JSON.stringify(implementerReply({ summary: "Built, then repaired the thing.", outOfBriefReads: ["shape", "close-gate"] })),
     ]);
     const gate = gateSaying(RED, RED, { ok: true });
     const kept: Record<string, string> = {};
@@ -331,7 +332,7 @@ describe("rung two: a fresh Opus session with a clean context, after rung one is
   });
 
   it("leaves no trace of needs-human or a gateRedNote when the fresh-eyes round turns the gate green", async () => {
-    const freshEyes = JSON.stringify({ ...BUILDS, summary: "Fresh eyes fixed it." });
+    const freshEyes = JSON.stringify(implementerReply({ summary: "Fresh eyes fixed it." }));
 
     const { host, gate } = await buildThrough(stagesEndingWith(freshEyes), greenOnRungTwo());
 
@@ -516,11 +517,11 @@ describe("the implementer's answer, kept", () => {
   }
 
   it("writes the derived answer where the workflow can upload it, even on the run that builds nothing", async () => {
-    expect(await keptAnswer({})).toEqual({ files: [], deleted: [], ...BUILDS });
+    expect(await keptAnswer({})).toEqual(implementerAnswer());
   });
 
   it("carries the checkout's content, so a replay can land it without the model", async () => {
-    expect(await keptAnswer(BUILT)).toEqual({ files: [{ path: "a/b.ts", content: "export const x = 1;" }], deleted: [], ...BUILDS });
+    expect(await keptAnswer(BUILT)).toEqual(implementerAnswer({ files: [{ path: "a/b.ts", content: "export const x = 1;" }] }));
   });
 
   it("writes nothing extra on a workstation run, which sets no path", async () => {

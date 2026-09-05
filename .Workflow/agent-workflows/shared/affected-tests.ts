@@ -34,12 +34,23 @@ export function suiteTestFiles(root: string = REPO_ROOT): string[] {
   return walkSuiteRoots(root, (name) => name.endsWith(".test.ts"));
 }
 
+const STILL_RED = "\\.fails";
+const RED_OR_TURNED_ON = "(?:\\.fails)?";
+
+function titleRe(fails: string, issue: number, index: string): RegExp {
+  return new RegExp(`\\b(?:test|it)${fails}\\(\\s*["'\`]#${issue}${index}:`);
+}
+
 function ticketTitleRe(issue: number): RegExp {
-  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*["'\`]#${issue}(?:\\.\\d+)?:`);
+  return titleRe(RED_OR_TURNED_ON, issue, "(?:\\.\\d+)?");
 }
 
 function criterionTitleRe(issue: number, index: number): RegExp {
-  return new RegExp(`\\b(?:test|it)(?:\\.fails)?\\(\\s*["'\`]#${issue}\\.${index}:`);
+  return titleRe(RED_OR_TURNED_ON, issue, `\\.${index}`);
+}
+
+export function authoredCriterionTitleRe(issue: number, index: number): RegExp {
+  return titleRe(STILL_RED, issue, `\\.${index}`);
 }
 
 export function testsForTicket(issue: number, root: string = REPO_ROOT): string[] {
