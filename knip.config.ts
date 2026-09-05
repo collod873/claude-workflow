@@ -106,4 +106,5 @@ export default {
   tags: ["-shell", "-fixture"],
 
   ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude"]),
+  ignoreBinaries: spawnedNames([".Workflow", "bin", ".claude"]),
 };

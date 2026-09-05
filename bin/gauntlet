@@ -18,6 +18,12 @@ case "$venue" in
     ;;
 esac
 
+lock="${GAUNTLET_LOCK:-/tmp/gauntlet-push.lock}"
+if [ "$venue" = push ] && [ -z "${GAUNTLET_LOCK_HELD:-}" ] && command -v flock >/dev/null; then
+  flock -n "$lock" true || echo "gauntlet: waiting for the push gate holding $lock" >&2
+  GAUNTLET_LOCK_HELD=1 exec flock "$lock" "${BASH_SOURCE[0]}" "$@"
+fi
+
 if ! node_on_path; then
   echo "gauntlet: no node on PATH" >&2
   exit 1

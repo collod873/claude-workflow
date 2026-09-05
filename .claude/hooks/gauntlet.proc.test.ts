@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -193,9 +193,23 @@ function contractOf(slots: Record<string, string | null>): string {
   return path;
 }
 
+const MACHINE_LOCK = "/tmp/gauntlet-push.lock";
+
 function runGauntlet(args: string[], env: Record<string, string> = {}): Run {
-  const run = spawnSync(GAUNTLET, args, { encoding: "utf8", cwd: REPO_ROOT, env: { ...process.env, ...env } });
+  const run = spawnSync(GAUNTLET, args, {
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    env: { ...process.env, GAUNTLET_LOCK: join(scratchDir("gauntlet-lock"), "push.lock"), ...env },
+  });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
+}
+
+function holdLock(lock: string, seconds: number): { held: string; release: () => void } {
+  const held = join(dirname(lock), "held");
+  // @shell spawns `flock`: the same util-linux binary bin/gauntlet takes the push lock with.
+  const holder = spawn("flock", [lock, "-c", `touch "${held}"; sleep ${seconds}; rm -f "${held}"`]);
+  spawnSync("bash", ["-c", `until [ -e "${held}" ]; do sleep 0.05; done`]);
+  return { held, release: () => void holder.kill() };
 }
 
 describe("the runner", () => {
@@ -270,6 +284,51 @@ describe("the runner", () => {
 
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("usage:");
+  });
+});
+
+describe("one push gate per machine (ADR-0162)", () => {
+  it("waits for the gate another process is running, so N lanes are one running and N-1 queued", () => {
+    const lock = join(scratchDir("gauntlet-lock"), "push.lock");
+    const { held } = holdLock(lock, 1);
+
+    const run = runGauntlet(["push"], {
+      GAUNTLET_LOCK: lock,
+      GAUNTLET_LOCK_HELD: "",
+      GAUNTLET_CONTRACT: contractOf({ typecheck: `test ! -e "${held}"` }),
+    });
+
+    expect(run.stdout).toBe("");
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("waiting");
+  });
+
+  it("runs straight through inside a gate that already holds the lock, and at the turn venue, which must never queue", () => {
+    const lock = join(scratchDir("gauntlet-lock"), "push.lock");
+    const { held, release } = holdLock(lock, 20);
+    const contract = contractOf({ typecheck: `test -e "${held}"` });
+
+    const nested = runGauntlet(["push"], { GAUNTLET_LOCK: lock, GAUNTLET_LOCK_HELD: "1", GAUNTLET_CONTRACT: contract });
+    const turn = runGauntlet(["turn", "a.ts"], { GAUNTLET_LOCK: lock, GAUNTLET_LOCK_HELD: "", GAUNTLET_CONTRACT: contract });
+    release();
+
+    expect(nested.stdout).toBe("");
+    expect(nested.status).toBe(0);
+    expect(turn.stdout).toBe("");
+    expect(turn.status).toBe(0);
+  });
+
+  it("keeps the suite's scratch gauntlets off the machine's lock, so a related-tests run never queues behind a live gate", () => {
+    const record = join(scratchDir("gauntlet-lock-seen"), "lock");
+    const run = runGauntlet(["push"], {
+      GAUNTLET_LOCK_HELD: "",
+      GAUNTLET_CONTRACT: contractOf({ typecheck: `printf '%s' "$GAUNTLET_LOCK" > ${JSON.stringify(record)}` }),
+    });
+
+    expect(run.status).toBe(0);
+    const seen = readFileSync(record, "utf8");
+    expect(seen).not.toBe("");
+    expect(resolve(seen)).not.toBe(MACHINE_LOCK);
   });
 });
 
