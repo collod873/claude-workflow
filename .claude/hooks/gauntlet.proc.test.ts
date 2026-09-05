@@ -287,6 +287,35 @@ describe("the runner", () => {
   });
 });
 
+describe("the pre-push gate", () => {
+  function prePush(refLines: string): string[] {
+    const bin = scratchDir("pre-push-bin");
+    const seen = join(bin, "seen");
+    writeFileSync(join(bin, "npm"), `#!/bin/bash\necho "$*" >> ${JSON.stringify(seen)}\n`);
+    chmodSync(join(bin, "npm"), 0o755);
+    const run = spawnSync("sh", ["-e", join(REPO_ROOT, ".husky/pre-push")], {
+      input: refLines,
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    });
+    expect(run.status, run.stderr).toBe(0);
+    return existsSync(seen) ? readFileSync(seen, "utf8").trim().split("\n") : [];
+  }
+
+  it("runs the push venue once for a branch push", () => {
+    expect(prePush("refs/heads/main aaaa refs/heads/main bbbb\n")).toEqual(["run check"]);
+  });
+
+  it("runs nothing for a push of notes refs alone, since a hook's own push must not re-enter its gate", () => {
+    expect(prePush("refs/notes/sessions aaaa refs/notes/sessions bbbb\n")).toEqual([]);
+  });
+
+  it("still gates a push that mixes a notes ref with a branch", () => {
+    expect(prePush("refs/notes/sessions aaaa refs/notes/sessions bbbb\nrefs/heads/x cccc refs/heads/x dddd\n")).toEqual(["run check"]);
+  });
+});
+
 describe("one push gate per machine (ADR-0162)", () => {
   it("waits for the gate another process is running, so N lanes are one running and N-1 queued", () => {
     const lock = join(scratchDir("gauntlet-lock"), "push.lock");

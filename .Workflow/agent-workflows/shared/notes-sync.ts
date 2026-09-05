@@ -30,7 +30,7 @@ export function syncNotesRef(options: SyncNotesRefOptions): void {
 
   function tryPush(): boolean {
     try {
-      git(["-C", repoDir, "push", remote, refspec]);
+      git(["-C", repoDir, "push", "--no-verify", remote, refspec]);
       return true;
     } catch (error) {
       if (isRejection(error)) return false;

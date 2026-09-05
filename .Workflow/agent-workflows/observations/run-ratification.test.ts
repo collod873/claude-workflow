@@ -81,7 +81,7 @@ describe("runRatification: a merged ratifier PR's landed standards", () => {
     ]);
 
     const pushCall = calls.find((argv) => argv[2] === "push");
-    expect(pushCall).toEqual(["-C", "/some/repo", "push", "origin", "refs/notes/ratifications:refs/notes/ratifications"]);
+    expect(pushCall).toEqual(["-C", "/some/repo", "push", "--no-verify", "origin", "refs/notes/ratifications:refs/notes/ratifications"]);
   });
 
   it("skips a marker with no landedAs, because a record naming nothing is memory nobody can act on", () => {

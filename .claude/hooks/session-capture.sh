@@ -43,6 +43,7 @@ fi
 hook_run_row "dispatched"
 
 (
+  unset HOOK_PAYLOAD HOOK_NAME HOOK_STARTED_MS GAUNTLET_LOCK_HELD
   node "$repo_root/.claude/hooks/session-capture-hook.mjs" "$transcript" "${session:-unknown}" "${project:-unknown}" "${source:-other}"
 ) </dev/null >/dev/null 2>&1 &
 disown 2>/dev/null || true

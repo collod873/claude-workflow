@@ -1,1 +1,11 @@
+only_notes=1
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/notes/*) ;;
+    *) only_notes=0 ;;
+  esac
+done
+if [ "$only_notes" = 1 ]; then
+  exit 0
+fi
 npm run check

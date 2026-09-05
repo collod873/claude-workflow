@@ -165,6 +165,20 @@ describe("session-capture.sh: failing open", () => {
 
     expect(row.verdict).toBe("skipped-no-transcript-path");
   });
+
+  it("captures the session on stdin, never one inherited through the environment (the 2026-09-05 fork bomb)", () => {
+    const stale = {
+      HOOK_PAYLOAD: JSON.stringify(sessionEnd("dead-session", oneHumanPrompt(), REPO_ROOT)),
+      HOOK_NAME: "dead-hook",
+      HOOK_STARTED_MS: "0",
+    };
+    const { result, rows } = fireSessionEnd("inherited-env", sessionEnd("abcdef1234567890", oneHumanPrompt(), "test-project"), stale);
+
+    expect(rows.map((row) => [row.hook, row.session_id, row.verdict])).toEqual([["session-capture", "abcdef1234567890", "dispatched"]]);
+    expect(Number(rows[0].seconds)).toBeLessThan(10);
+    expect(expectCaptured(result).content).toContain("session_id: abcdef1234567890");
+    expect(waitForLogToContain(result.logPath, "captured abcdef1234567890")).not.toContain("dead-session");
+  });
 });
 
 describe("session-capture.sh: publishing the session record and dispatching the audit", () => {

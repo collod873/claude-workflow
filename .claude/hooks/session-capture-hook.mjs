@@ -144,7 +144,7 @@ function flushKnowledgeBase(git, immediate) {
 
   function tryPush() {
     try {
-      git(["-C", KB_DIR, "push", "origin", `HEAD:${KB_FLUSH_REMOTE_REF}`]);
+      git(["-C", KB_DIR, "push", "--no-verify", "origin", `HEAD:${KB_FLUSH_REMOTE_REF}`]);
       return true;
     } catch (err) {
       if (reason(err).includes("[rejected]")) return false;

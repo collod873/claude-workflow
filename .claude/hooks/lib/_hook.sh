@@ -24,12 +24,27 @@
 # `_hook.py` reads `__main__`), `HOOK_STARTED_MS` to the moment of sourcing, so
 # `seconds` measures the hook and not the shim; both may be set beforehand.
 #
+# None of the three is ever exported, and a value that arrived *through the environment*
+# is discarded before any of that: it is some ancestor hook's, not this one's. On
+# 2026-09-05 a SessionEnd hook exported its payload to a detached child, the child's
+# `git push` ran the pre-push gate, the gate's suite re-ran the hook forty times with
+# fixture payloads on stdin, and every one of those read the dead session's payload from
+# the environment instead, dispatching forty more real captures apiece: a fork bomb that
+# took the VM down twice. A shell variable set by the sourcing script carries no export
+# attribute, so `declare -p` tells the two apart.
+#
 # `key=value` extras are typed as JSON literals where they parse (`chars=12` is a
 # number) and as strings where they do not, the same fields a Python hook passes as
 # keyword arguments. A consuming repo carries a byte-identical copy at
 # `.claude/hooks/lib/_hook.sh`; `bin/re-seed` reports when it drifts.
 
 _HOOK_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+for _hook_var in HOOK_PAYLOAD HOOK_NAME HOOK_STARTED_MS; do
+  case "$(declare -p "$_hook_var" 2>/dev/null)" in
+    "declare -x"*) unset "$_hook_var" ;;
+  esac
+done
+unset _hook_var
 # Epoch milliseconds from bash's own clock: `date +%s%3N` is GNU-only and a uutils `date`
 # prints nanoseconds for it, which read as a start 50,000 years in the future.
 if [ -z "${HOOK_STARTED_MS:-}" ]; then
@@ -51,7 +66,6 @@ if [ -z "${HOOK_PAYLOAD+x}" ]; then
     HOOK_PAYLOAD="$(cat 2>/dev/null || true)"
   fi
 fi
-export HOOK_PAYLOAD HOOK_NAME HOOK_STARTED_MS
 
 hook_run_row() {
   local verdict="${1:-}"
