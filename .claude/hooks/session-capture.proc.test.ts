@@ -441,7 +441,7 @@ function sourcedHookLib(script: string, payload: string, logDir: string): string
 }
 
 describe("session-capture.sh: the seeded bash shim owns the run row", () => {
-  test.fails("#382.3: session-capture.sh writes through hook_run_row, and no hook_lib_* call is left for anything under .claude/hooks/ to make", () => {
+  test("#382.3: session-capture.sh writes through hook_run_row, and no hook_lib_* call is left for anything under .claude/hooks/ to make", () => {
     const payload = JSON.stringify({
       hook_event_name: "SessionEnd",
       session_id: "shim-payload",
