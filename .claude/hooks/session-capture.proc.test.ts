@@ -7,7 +7,6 @@ import { makeBareRepo } from "../../.Workflow/agent-workflows/shared/temp-repo.f
 import {
   captureFiles,
   expectCaptured,
-  expectFailedOpen,
   flushForSessionElsewhere,
   gitAlwaysRejectingMainPush,
   gitRacingNotesPushOnce,
@@ -115,19 +114,31 @@ describe("session-capture.sh: the fixture transcript", () => {
   });
 });
 
-describe("session-capture.sh: failing open", () => {
-  it("exits 0, writes no capture file, and logs skipped no-transcript-path when the payload has no transcript_path", () => {
-    const log = expectFailedOpen(runHook({ session_id: "x", cwd: "y", hook_event_name: "SessionEnd", reason: "clear" }));
+function expectSkippedRow(label: string, payload: string | Record<string, unknown>, env: Record<string, string> = {}) {
+  const { result, rows } = fireSessionEnd(label, payload, env);
 
-    expect(log.trim().split("\n")).toHaveLength(1);
-    expect(log).toContain("skipped no-transcript-path");
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe("");
+  expect(captureFiles(result.outputDir)).toEqual([]);
+  expect(rows).toHaveLength(1);
+  return rows[0];
+}
+
+describe("session-capture.sh: failing open", () => {
+  it("exits 0, writes no capture file, and records a skipped-no-transcript-path row when the payload has no transcript_path", () => {
+    const row = expectSkippedRow("no-transcript-path", { session_id: "x", cwd: "y", hook_event_name: "SessionEnd", reason: "clear" });
+
+    expect(row.verdict).toBe("skipped-no-transcript-path");
   });
 
-  it("exits 0, writes no capture file, and logs skipped no-node when node isn't on PATH", () => {
-    const log = expectFailedOpen(runWithScrubbedPath(false));
+  it("exits 0, writes no capture file, and records a skipped-no-node row when node isn't on PATH", () => {
+    const row = expectSkippedRow("no-node", sessionEnd("x", oneHumanPrompt(), "y"), {
+      PATH: "/nonexistent",
+      HOME: "/nonexistent",
+      NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(false),
+    });
 
-    expect(log.trim().split("\n")).toHaveLength(1);
-    expect(log).toContain("skipped no-node");
+    expect(row.verdict).toBe("skipped-no-node");
   });
 
   it("still captures when PATH is scrubbed but node is findable, so the payload survives the repair", () => {
@@ -138,14 +149,16 @@ describe("session-capture.sh: failing open", () => {
     expect(log).not.toMatch(/skipped (?!publish-|push-)/);
   });
 
-  it("exits 0, writes no capture file, and logs skipped transcript-missing when the transcript file doesn't exist", () => {
-    expect(expectFailedOpen(runHook(sessionEnd("x", "/no/such/transcript.jsonl", "y")))).toContain(
-      "skipped transcript-missing",
-    );
+  it("exits 0, writes no capture file, and records a skipped-transcript-missing row when the transcript file doesn't exist", () => {
+    const row = expectSkippedRow("transcript-missing", sessionEnd("x", "/no/such/transcript.jsonl", "y"));
+
+    expect(row.verdict).toBe("skipped-transcript-missing");
   });
 
   it("stays quiet on a payload it cannot parse", () => {
-    expect(expectFailedOpen(runHook("not json at all"))).toContain("skipped no-transcript-path");
+    const row = expectSkippedRow("unparseable", "not json at all");
+
+    expect(row.verdict).toBe("skipped-no-transcript-path");
   });
 });
 
@@ -344,7 +357,7 @@ function realRunLogLines(): number {
 }
 
 describe("session-capture.sh: the shared run row every SessionEnd fire leaves behind", () => {
-  test.fails("#374.3: one run row per SessionEnd fire naming session-capture's outcome, and no session-capture.log of the shell's own", () => {
+  test("#374.3: one run row per SessionEnd fire naming session-capture's outcome, and no session-capture.log of the shell's own", () => {
     const noTranscript = fireSessionEnd("no-transcript-path", {
       session_id: "row-no-transcript",
       cwd: "y",
@@ -375,7 +388,7 @@ describe("session-capture.sh: the shared run row every SessionEnd fire leaves be
     ]);
   });
 
-  test.fails("#374.4: a SessionEnd payload driven through the shell entry with STOP_GATE_LOG_DIR sandboxed leaves a row carrying its hook, event, session_id and verdict", () => {
+  test("#374.4: a SessionEnd payload driven through the shell entry with STOP_GATE_LOG_DIR sandboxed leaves a row carrying its hook, event, session_id and verdict", () => {
     const { rows } = fireSessionEnd("session-end-payload", sessionEnd("row-session-end", oneHumanPrompt(), "y"));
 
     expect(rows).toHaveLength(1);
@@ -387,7 +400,7 @@ describe("session-capture.sh: the shared run row every SessionEnd fire leaves be
     });
   });
 
-  test.fails("#374.5: an ended session leaves the session-capture | SessionEnd line hook-report reads inside its --days 1 window", () => {
+  test("#374.5: an ended session leaves the session-capture | SessionEnd line hook-report reads inside its --days 1 window", () => {
     const { rows } = fireSessionEnd("hook-report-line", sessionEnd("row-report", oneHumanPrompt(), "y"));
 
     expect(rows).toHaveLength(1);
@@ -397,7 +410,7 @@ describe("session-capture.sh: the shared run row every SessionEnd fire leaves be
     expect(Math.abs(Date.now() - Date.parse(row.ts))).toBeLessThan(24 * 60 * 60 * 1000);
   });
 
-  test.fails("#374.6: npm run check passes: every sandboxed fire keeps its verdict and adds nothing to the machine's own run log", () => {
+  test("#374.6: npm run check passes: every sandboxed fire keeps its verdict and adds nothing to the machine's own run log", () => {
     const before = realRunLogLines();
 
     const missing = fireSessionEnd("check-missing", sessionEnd("row-check-missing", "/no/such/transcript.jsonl", "y"));
