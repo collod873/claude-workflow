@@ -46,6 +46,7 @@ jobs:
         with:
           path: target
           fetch-depth: 0
+          token: ${{ secrets.ENROL_PAT || github.token }}
 
       - name: Fetch the refs this lane reads
         working-directory: target
