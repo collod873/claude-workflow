@@ -413,7 +413,7 @@ function postToolUsePayload(sessionId: string, toolUseId: string): Record<string
 }
 
 describe("gauntlet-hook writes the row agent-skills' own writer builds", () => {
-  test.fails("#382.2: gauntlet-hook writes through runRow(payload, verdict, extra) and appendLog(row), naming no hook of its own", () => {
+  test("#382.2: gauntlet-hook writes through runRow(payload, verdict, extra) and appendLog(row), naming no hook of its own", () => {
     const dir = scratchDir("gauntlet-hook-run-row-signature");
     const payload = postToolUsePayload("run-row-signature", "toolu_signature");
 
@@ -440,7 +440,7 @@ describe("gauntlet-hook writes the row agent-skills' own writer builds", () => {
     expect(written[0].file.startsWith("gauntlet-hook-")).toBe(true);
   });
 
-  test.fails("#382.4: a gauntlet-hook row written from a PostToolUse payload carries the payload's tool_use_id", () => {
+  test("#382.4: a gauntlet-hook row written from a PostToolUse payload carries the payload's tool_use_id", () => {
     const dir = scratchDir("gauntlet-hook-tool-use-id");
     const payload = JSON.stringify(postToolUsePayload("join-key", "toolu_01JoinKey"));
 
@@ -459,7 +459,7 @@ describe("gauntlet-hook writes the row agent-skills' own writer builds", () => {
     });
   });
 
-  test.fails("#382.5: npm test stays green: every gauntlet-hook and session-capture verdict survives the seeded writer, and the machine's own run log gains nothing", () => {
+  test("#382.5: npm test stays green: every gauntlet-hook and session-capture verdict survives the seeded writer, and the machine's own run log gains nothing", () => {
     const realLog = realLogPath();
     const before = realLogLines(realLog);
     const dir = scratchDir("seeded-writer-green");

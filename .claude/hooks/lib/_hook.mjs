@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 
 const STARTED = Date.now();
 
@@ -13,25 +13,32 @@ function localTimestamp(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-export function runRow(hook, payload, verdict, extra = {}) {
+function callerStem() {
+  const frame = (new Error().stack ?? "").split("\n")[3] ?? "";
+  const match = frame.match(/(?:\()?(?:file:\/\/)?([^():\s]+):\d+:\d+\)?$/);
+  return match ? basename(match[1]).replace(/\.[^./]+$/, "") : "unknown";
+}
+
+export function runRow(payload, verdict, extra = {}) {
   const cwd = payload && typeof payload.cwd === "string" ? payload.cwd : "";
-  return {
-    hook,
+  const row = {
+    hook: callerStem(),
     event: (payload && payload.hook_event_name) || "",
     session_id: (payload && payload.session_id) || "",
     project: cwd ? cwd.split(sep).filter(Boolean).pop() || "" : "",
     verdict,
     seconds: Math.round((Date.now() - STARTED) / 100) / 10,
-    ...extra,
-    ts: localTimestamp(),
   };
+  if (payload && payload.tool_use_id) row.tool_use_id = payload.tool_use_id;
+  return { ...row, ...extra };
 }
 
-export function appendLog(hook, row) {
+export function appendLog(row) {
   try {
     const dir = logDir();
     mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, `${hook}-${row.ts.slice(0, 10)}.jsonl`), JSON.stringify(row) + "\n");
+    const stamped = { ...row, ts: localTimestamp() };
+    appendFileSync(join(dir, `${stamped.hook}-${stamped.ts.slice(0, 10)}.jsonl`), JSON.stringify(stamped) + "\n");
   } catch {
   }
 }

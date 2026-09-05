@@ -9,22 +9,15 @@ repo_root="$(cd "$here/../.." && pwd)"
 # shellcheck source=.claude/hooks/lib/_hook.sh
 . "$repo_root/.claude/hooks/lib/_hook.sh"
 
-run_row() {
-  local cwd="${project:-unknown}"
-  hook_lib_append_log session-capture "$(hook_lib_run_row session-capture SessionEnd "${session:-unknown}" "${cwd##*/}" "$1")"
-}
-
 node_on_path && have_node=1 || have_node=0
 
-INPUT="$(cat 2>/dev/null || true)"
-
 if [ "$have_node" -eq 0 ]; then
-  run_row "skipped-no-node"
+  hook_run_row "skipped-no-node"
   exit 0
 fi
 
 PARSED="$(
-  printf '%s' "$INPUT" | node -e '
+  printf '%s' "$HOOK_PAYLOAD" | node -e '
     let d = "";
     process.stdin.on("data", (c) => (d += c)).on("end", () => {
       let j = {};
@@ -39,16 +32,16 @@ PARSED="$(
 IFS=$'\x1f' read -r transcript session project source <<<"$PARSED"
 
 if [ -z "${transcript:-}" ]; then
-  run_row "skipped-no-transcript-path"
+  hook_run_row "skipped-no-transcript-path"
   exit 0
 fi
 
 if [ ! -f "$transcript" ]; then
-  run_row "skipped-transcript-missing"
+  hook_run_row "skipped-transcript-missing"
   exit 0
 fi
 
-run_row "dispatched"
+hook_run_row "dispatched"
 
 (
   node "$repo_root/.claude/hooks/session-capture-hook.mjs" "$transcript" "${session:-unknown}" "${project:-unknown}" "${source:-other}"
