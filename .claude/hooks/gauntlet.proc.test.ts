@@ -32,6 +32,14 @@ const editOf = (filePath: string) =>
   JSON.stringify({ hook_event_name: "PostToolUse", tool_input: { file_path: filePath } });
 const STOP = JSON.stringify({ hook_event_name: "Stop" });
 
+function expectTurnBlockedByTypecheck(payload: string, env: Record<string, string> = {}): void {
+  const blocked = runHook("turn", payload, { GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n"), ...env });
+
+  expect(blocked.status).toBe(0);
+  expect(JSON.parse(blocked.stdout).decision).toBe("block");
+  expect(JSON.parse(blocked.stdout).reason).toContain("error TS2322: nope");
+}
+
 describe("the hook", () => {
   it("hands a failure back to Claude rather than refusing the edit", () => {
     const result = runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n") });
@@ -313,10 +321,7 @@ describe("the suite's own rows stay out of the machine's run log", () => {
     const realLog = realLogPath();
     const before = realLogLines(realLog);
 
-    const blocked = runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n") });
-    expect(blocked.status).toBe(0);
-    expect(JSON.parse(blocked.stdout).decision).toBe("block");
-    expect(JSON.parse(blocked.stdout).reason).toContain("error TS2322: nope");
+    expectTurnBlockedByTypecheck(editOf("a.ts"));
 
     expect(runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(0) }).stdout).toBe("");
     expect(runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n") }).stdout).toBe("");
@@ -359,5 +364,139 @@ describe("the seeded writer owns every run row this repo's hooks write", () => {
       expect(String(row.ts)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
       expect(file.startsWith(String(row.hook))).toBe(true);
     }
+  });
+});
+
+const HOOK_LIB_MJS = join(REPO_ROOT, ".claude/hooks/lib/_hook.mjs");
+
+const RUN_ROW_PROBE = `
+import { runRow } from ${JSON.stringify(HOOK_LIB_MJS)};
+
+process.stdout.write(
+  JSON.stringify(
+    runRow(JSON.parse(process.env.PROBE_PAYLOAD), process.env.PROBE_VERDICT, JSON.parse(process.env.PROBE_EXTRA)),
+  ),
+);
+`;
+
+function runRowThroughSeededLib(
+  payload: Record<string, unknown>,
+  verdict: string,
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  const probe = join(scratchDir("gauntlet-run-row-probe"), "probe.mjs");
+  writeFileSync(probe, RUN_ROW_PROBE);
+
+  const run = spawnSync(process.execPath, [probe], {
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      PROBE_PAYLOAD: JSON.stringify(payload),
+      PROBE_VERDICT: verdict,
+      PROBE_EXTRA: JSON.stringify(extra),
+    },
+  });
+
+  expect(run.status, run.stderr).toBe(0);
+  return JSON.parse(run.stdout) as Record<string, unknown>;
+}
+
+function postToolUsePayload(sessionId: string, toolUseId: string): Record<string, unknown> {
+  return {
+    hook_event_name: "PostToolUse",
+    session_id: sessionId,
+    cwd: REPO_ROOT,
+    tool_use_id: toolUseId,
+    tool_input: { file_path: `${REPO_ROOT}/a.ts` },
+  };
+}
+
+describe("gauntlet-hook writes the row agent-skills' own writer builds", () => {
+  test.fails("#382.2: gauntlet-hook writes through runRow(payload, verdict, extra) and appendLog(row), naming no hook of its own", () => {
+    const dir = scratchDir("gauntlet-hook-run-row-signature");
+    const payload = postToolUsePayload("run-row-signature", "toolu_signature");
+
+    const direct = runRowThroughSeededLib(payload, "clean", { venue: "turn" });
+    expect(direct).toMatchObject({
+      event: "PostToolUse",
+      session_id: "run-row-signature",
+      verdict: "clean",
+      venue: "turn",
+    });
+
+    runHook("turn", JSON.stringify(payload), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir });
+
+    const written = rowsWithFiles(dir);
+    expect(written).toHaveLength(1);
+    expect(written[0].row).toMatchObject({
+      hook: "gauntlet-hook",
+      event: "PostToolUse",
+      session_id: "run-row-signature",
+      verdict: "clean",
+      venue: "turn",
+    });
+    expect(Object.keys(written[0].row)).toEqual(expect.arrayContaining(Object.keys(direct)));
+    expect(written[0].file.startsWith("gauntlet-hook-")).toBe(true);
+  });
+
+  test.fails("#382.4: a gauntlet-hook row written from a PostToolUse payload carries the payload's tool_use_id", () => {
+    const dir = scratchDir("gauntlet-hook-tool-use-id");
+    const payload = JSON.stringify(postToolUsePayload("join-key", "toolu_01JoinKey"));
+
+    runHook("turn", payload, {
+      GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\ngauntlet: FAILED at test\n"),
+      STOP_GATE_LOG_DIR: dir,
+    });
+
+    const rows = rowsWithFiles(dir).map(({ row }) => row);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      hook: "gauntlet-hook",
+      event: "PostToolUse",
+      verdict: "failed",
+      tool_use_id: "toolu_01JoinKey",
+    });
+  });
+
+  test.fails("#382.5: npm test stays green: every gauntlet-hook and session-capture verdict survives the seeded writer, and the machine's own run log gains nothing", () => {
+    const realLog = realLogPath();
+    const before = realLogLines(realLog);
+    const dir = scratchDir("seeded-writer-green");
+
+    expectTurnBlockedByTypecheck(JSON.stringify(postToolUsePayload("green-turn", "toolu_green")), { STOP_GATE_LOG_DIR: dir });
+    expect(runHook("turn", editOf("README.md"), { GAUNTLET_BIN: stubGauntlet(1, "never"), STOP_GATE_LOG_DIR: dir }).stdout).toBe("");
+    expect(runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n"), STOP_GATE_LOG_DIR: dir }).stdout).toBe("");
+
+    spawnSync(SESSION_CAPTURE, {
+      input: JSON.stringify({ hook_event_name: "SessionEnd", session_id: "green-capture", cwd: REPO_ROOT, reason: "clear" }),
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        STOP_GATE_LOG_DIR: dir,
+        SESSION_CAPTURE_LOG_PATH: join(scratchDir("seeded-writer-green-legacy"), "session-capture.log"),
+      },
+    });
+
+    const rows = rowsWithFiles(dir).map(({ row }) => row);
+    const gauntletRows = rows.filter((row) => row.hook === "gauntlet-hook");
+    const captureRows = rows.filter((row) => row.hook === "session-capture");
+
+    expect(gauntletRows.map((row) => row.verdict)).toEqual(expect.arrayContaining(["failed", "out-of-scope"]));
+    expect(gauntletRows.find((row) => row.verdict === "failed")).toMatchObject({
+      event: "PostToolUse",
+      session_id: "green-turn",
+      tool_use_id: "toolu_green",
+    });
+
+    expect(captureRows).toHaveLength(1);
+    expect(captureRows[0]).toMatchObject({
+      event: "SessionEnd",
+      session_id: "green-capture",
+      verdict: "skipped-no-transcript-path",
+    });
+
+    expect(realLogLines(realLog)).toBe(before);
   });
 });

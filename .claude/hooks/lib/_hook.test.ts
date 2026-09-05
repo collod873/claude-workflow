@@ -20,3 +20,14 @@ test("#374.1: .claude/hooks/lib/_hook.mjs and _hook.sh are byte-identical copies
     if (existsSync(seed)) expect(digest(copy)).toBe(digest(seed));
   }
 });
+
+test.fails("#382.1: .claude/hooks/lib/_hook.mjs and _hook.sh are byte-identical to agent-skills' hooks/_hook.mjs and hooks/_hook.sh", () => {
+  for (const name of ["_hook.mjs", "_hook.sh"]) {
+    const copy = join(HOOKS_LIB, name);
+    const seed = join(SEEDED_HOOKS, name);
+
+    expect(existsSync(copy), `${copy} is missing`).toBe(true);
+    expect(existsSync(seed), `${seed} is missing`).toBe(true);
+    expect(digest(copy), `${copy} is not a byte-identical copy of ${seed}`).toBe(digest(seed));
+  }
+});

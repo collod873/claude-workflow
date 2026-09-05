@@ -1,6 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture";
 import { makeBareRepo } from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
@@ -423,5 +424,53 @@ describe("session-capture.sh: the shared run row every SessionEnd fire leaves be
     expectCaptured(captured.result);
 
     expect(realRunLogLines()).toBe(before);
+  });
+});
+
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
+const HOOK_LIB_SH = join(REPO_ROOT, ".claude/hooks/lib/_hook.sh");
+
+function sourcedHookLib(script: string, payload: string, logDir: string): string {
+  const run = spawnSync("bash", ["-c", `. ${JSON.stringify(HOOK_LIB_SH)}\n${script}`], {
+    input: payload,
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    env: { ...process.env, STOP_GATE_LOG_DIR: logDir },
+  });
+  return run.stdout;
+}
+
+describe("session-capture.sh: the seeded bash shim owns the run row", () => {
+  test.fails("#382.3: session-capture.sh writes through hook_run_row, and no hook_lib_* call is left for anything under .claude/hooks/ to make", () => {
+    const payload = JSON.stringify({
+      hook_event_name: "SessionEnd",
+      session_id: "shim-payload",
+      cwd: REPO_ROOT,
+      reason: "clear",
+    });
+
+    const probe = sourcedHookLib(
+      [
+        "declare -F hook_run_row > /dev/null && echo defined || echo missing",
+        'printf "%s\\n" "${HOOK_PAYLOAD:-}"',
+        'declare -F | sed "s/^declare -f //" | grep -c "^hook_lib_" || true',
+      ].join("\n"),
+      payload,
+      scratchDir("session-capture-shim-probe"),
+    );
+
+    const [defined, seenPayload, hookLibFunctions] = probe.split("\n");
+    expect(defined).toBe("defined");
+    expect(JSON.parse(seenPayload || "{}").session_id).toBe("shim-payload");
+    expect(hookLibFunctions).toBe("0");
+
+    const { rows } = fireSessionEnd("hook-run-row", sessionEnd("row-shim", oneHumanPrompt(), "y"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      hook: "session-capture",
+      event: "SessionEnd",
+      session_id: "row-shim",
+      verdict: "dispatched",
+    });
   });
 });
