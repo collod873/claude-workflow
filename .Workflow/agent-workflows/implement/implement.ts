@@ -9,7 +9,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
-import { gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
 import { renderStandardsSection, readStandards } from "../shared/standards";
 import { structuredOutput } from "../shared/structured-output";
@@ -74,8 +74,6 @@ export const IMPLEMENTER_DENIED_TOOLS = [
   "ScheduleWakeup",
 ];
 
-export const GATE_OUTPUT_TAIL_CHARS = 12_000;
-
 export const IMPLEMENT_DISPATCH_EVENT_TYPE = TICKET_READY_DISPATCH_ACTION;
 
 export { VERIFY_DISPATCH_EVENT_TYPE };
@@ -112,10 +110,6 @@ export function runImplementer(exec: StageExec, brief: string): Promise<StageSes
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
     stage: "implementer",
   });
-}
-
-export function gateOutputTail(output: string): string {
-  return output.length > GATE_OUTPUT_TAIL_CHARS ? output.slice(-GATE_OUTPUT_TAIL_CHARS) : output;
 }
 
 export function runRepair(exec: StageExec, sessionId: string, gateOutput: string): Promise<StageSessionResult<ImplementerReply>> {

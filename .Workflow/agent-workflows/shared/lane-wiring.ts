@@ -312,7 +312,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         runs: `${tsx("acceptance/acceptance.ts")} --refire`,
         checkout: "pair",
         env: { ACCEPTANCE_LANDING: "commit" },
-        steps: [{ id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION }],
+        steps: [INSTALLS_TARGET, { id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION }],
       },
       author: {
         gate: { is: onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION) },
@@ -320,6 +320,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         checkout: "pair",
         env: { ACCEPTANCE_LANDING: "commit" },
         steps: [
+          INSTALLS_TARGET,
           { name: "Author acceptance tests for the published slice", runLacks: ["--refire"] },
           { id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION },
         ],
@@ -327,7 +328,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       land: {
         needs: ["refire", "author"],
         gate: { has: ["needs.refire.outputs.authored == 'true'", "needs.author.outputs.authored == 'true'"] },
-        permissions: { contents: "write" },
+        permissions: { contents: "write", issues: "write" },
         runs: "npm run check",
         checkout: { pair: true, fetchDepth: 0 },
         steps: [
@@ -337,6 +338,11 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             name: "Tell lane 05 this slice is ready",
             if: `${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && github.event.client_payload.ready == '1'`,
             run: [DISPATCH_SEND, `event_type=${TICKET_READY_DISPATCH_ACTION}`],
+          },
+          {
+            name: "Say on the ticket that landing failed, and wait for a human",
+            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)}`,
+            run: ["--add-label needs-human", "gh issue comment"],
           },
         ],
       },

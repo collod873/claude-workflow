@@ -28,6 +28,12 @@ export function runGauntlet(venue: GauntletVenue, targetRoot: string, deps: { ex
 
 export type GateVerdict = { ok: true } | { ok: false; output: string };
 
+export const GATE_OUTPUT_TAIL_CHARS = 12_000;
+
+export function gateOutputTail(output: string): string {
+  return output.length > GATE_OUTPUT_TAIL_CHARS ? output.slice(-GATE_OUTPUT_TAIL_CHARS) : output;
+}
+
 export function gateVerdict(targetRoot: string, deps: { exec?: GauntletExec } = {}): GateVerdict {
   try {
     runGauntlet("push", targetRoot, deps);

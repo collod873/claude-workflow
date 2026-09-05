@@ -60,6 +60,10 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
+
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
@@ -111,6 +115,10 @@ jobs:
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
+      - name: Install target dependencies
+        working-directory: target
+        run: npm ci
+
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
@@ -149,6 +157,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      issues: write
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -198,6 +207,19 @@ jobs:
       - name: Push to main
         working-directory: target
         run: git push origin HEAD:main
+
+      - name: Say on the ticket that landing failed, and wait for a human
+        if: failure() && github.event.action == 'acceptance-wanted'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+        run: |
+          set -euo pipefail
+          gh label create needs-human --color d93f0b \
+            --description "Ticket stalled; a human decision or action is required" --force
+          gh issue edit "$TICKET_NUMBER" --add-label needs-human
+          gh issue comment "$TICKET_NUMBER" --body "The authored tests were judged green in the author job, but landing them on main failed, so nothing landed and this ticket is waiting on a human. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - name: Tell lane 05 this slice is ready
         if: github.event.action == 'acceptance-wanted' && github.event.client_payload.ready == '1'

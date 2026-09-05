@@ -7,21 +7,26 @@ import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeGit } from "../shared/git.fake";
 import { scratchDir } from "../shared/scratch.fixture";
-import { createFakeStage, type FakeStage } from "../shared/stage.fake";
+import type { GateVerdict } from "../shared/run-gauntlet";
+import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractCriteria, type TicketRead } from "../shared/ticket-shape";
 import type { TestRunResult } from "../shared/vitest-json";
 import {
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
-  landAuthoredBatch,
+  commitAuthoredBatch,
+  judgeAuthoredBatch,
   landingFromEnv,
   NO_CLAIMED_FILES,
   refireAcceptance,
   renderCriteria,
   renderFiles,
   runAcceptanceAuthor,
+  type AuthoredBatch,
   type AuthoredFile,
-  type LandDeps,
+  type BatchVerdict,
+  type CommitDeps,
+  type JudgeDeps,
 } from "./acceptance";
 
 const ISSUE = 162;
@@ -66,7 +71,7 @@ function answer(files: AuthoredFile[]): FakeStage {
 function authoring(
   files: AuthoredFile[],
   options: { ticket?: TicketRead; readFile?: (path: string) => string | undefined; prdBody?: string } = {},
-): { attempt: Promise<AuthoredFile[]>; written: string[]; stage: FakeStage } {
+): { attempt: Promise<AuthoredBatch>; written: string[]; stage: FakeStage } {
   const stage = answer(files);
   const written: string[] = [];
   const attempt = authorAcceptanceTests({
@@ -118,7 +123,7 @@ describe("authorAcceptanceTests", () => {
   it("writes every file the model returned, in the model's order, stubs included", async () => {
     const stub = { path: SUBJECT, content: `export function widget(): never {\n  throw new Error("#${ISSUE}: not built");\n}\n` };
     const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, stub]);
-    const files = await attempt;
+    const { files } = await attempt;
     expect(files.map((file) => file.path)).toEqual([TEST_PATH, SUBJECT]);
     expect(written).toEqual([TEST_PATH, SUBJECT]);
   });
@@ -196,77 +201,92 @@ describe("renderFiles", () => {
 
 const GREEN: TestRunResult = { collected: true, failures: [] };
 
-function landing(overrides: Partial<LandDeps> = {}): { deps: LandDeps; git: ReturnType<typeof createFakeGit> } {
-  const git = createFakeGit(() => "");
-  const deps: LandDeps = {
-    runTests: () => GREEN,
-    lint: () => null,
-    git: git.git,
-    paths: [TEST_PATH, SUBJECT],
-    commitMessage: "Author acceptance tests for #162 from the spec alone",
-    landing: "push",
-    ...overrides,
-  };
-  return { deps, git };
+const GATE_GREEN: GateVerdict = { ok: true };
+
+const CLONE_REPORT = "Clone found (typescript):\n - widget.test.ts [12:1 - 17:3]\n   widget.test.ts [30:1 - 35:3]\ngauntlet: FAILED at clones";
+
+const GATE_RED: GateVerdict = { ok: false, output: CLONE_REPORT };
+
+const BATCH = [TEST_PATH, SUBJECT];
+
+function judging(overrides: Partial<JudgeDeps> = {}): JudgeDeps {
+  return { runTests: () => GREEN, gate: () => GATE_GREEN, ...overrides };
 }
 
-function refusal(outcome: ReturnType<typeof landAuthoredBatch>): string {
-  expect(outcome.verdict).toBe("refused");
-  return outcome.verdict === "refused" ? outcome.reason : "";
+function redReason(verdict: BatchVerdict): string {
+  expect(verdict.ok).toBe(false);
+  return verdict.ok ? "" : verdict.reason;
 }
 
-describe("landAuthoredBatch", () => {
-  it("refuses, before any git call, a batch whose test file did not collect", () => {
-    const { deps, git } = landing({
-      runTests: () => ({ collected: false, collectionError: "widget.test.ts: Cannot find module './widget'", failures: [] }),
-    });
-    expect(refusal(landAuthoredBatch(deps))).toContain("Cannot find module './widget'");
-    expect(git.calls).toEqual([]);
-  });
-
-  it("refuses, naming the tests, a batch red under test.fails, since those already pass", () => {
-    const { deps, git } = landing({
-      runTests: () => ({
-        collected: true,
-        failures: [
-          { name: "#162: no push", errorName: "Error" },
-          { name: "#162: exactly one push", errorName: "Error" },
-        ],
+describe("judgeAuthoredBatch", () => {
+  it("is red, before the gate runs, when a test file did not collect", () => {
+    let gateRan = false;
+    const verdict = judgeAuthoredBatch(
+      judging({
+        runTests: () => ({ collected: false, collectionError: "widget.test.ts: Cannot find module './widget'", failures: [] }),
+        gate: () => {
+          gateRan = true;
+          return GATE_GREEN;
+        },
       }),
-    });
-    const reason = refusal(landAuthoredBatch(deps));
-    expect(reason).toContain("2 test(s) are red under test.fails");
-    expect(reason).toContain("#162: no push, #162: exactly one push");
-    expect(git.calls).toEqual([]);
+      BATCH,
+    );
+    expect(redReason(verdict)).toContain("Cannot find module './widget'");
+    expect(gateRan).toBe(false);
   });
 
-  it("refuses, before any git call, a batch the linter has findings on", () => {
-    const { deps, git } = landing({ lint: () => `${TEST_PATH}\n  3:1  error  no-restricted-syntax` });
-    expect(refusal(landAuthoredBatch(deps))).toContain("3:1  error  no-restricted-syntax");
-    expect(git.calls).toEqual([]);
+  it("is red, naming the tests, when any is red under test.fails, since those already pass", () => {
+    const verdict = judgeAuthoredBatch(
+      judging({
+        runTests: () => ({
+          collected: true,
+          failures: [
+            { name: "#162: no push", errorName: "Error" },
+            { name: "#162: exactly one push", errorName: "Error" },
+          ],
+        }),
+      }),
+      BATCH,
+    );
+    expect(redReason(verdict)).toContain("2 test(s) are red under test.fails");
+    expect(redReason(verdict)).toContain("#162: no push, #162: exactly one push");
   });
 
-  it("runs only the test files, and lints every file, of the batch", () => {
+  it("is red with the gate's own output when the whole gate is red, so clones and wiring count here too", () => {
+    expect(redReason(judgeAuthoredBatch(judging({ gate: () => GATE_RED }), BATCH))).toContain(CLONE_REPORT);
+  });
+
+  it("runs only the test files of the batch, then the gate once", () => {
     const ran: string[][] = [];
-    const linted: string[][] = [];
-    const { deps } = landing({
-      runTests: (paths) => {
-        ran.push(paths);
-        return GREEN;
-      },
-      lint: (paths) => {
-        linted.push(paths);
-        return null;
-      },
-    });
-    landAuthoredBatch(deps);
+    let gateRuns = 0;
+    const verdict = judgeAuthoredBatch(
+      judging({
+        runTests: (paths) => {
+          ran.push(paths);
+          return GREEN;
+        },
+        gate: () => {
+          gateRuns += 1;
+          return GATE_GREEN;
+        },
+      }),
+      BATCH,
+    );
+    expect(verdict).toEqual({ ok: true });
     expect(ran).toEqual([[TEST_PATH]]);
-    expect(linted).toEqual([[TEST_PATH, SUBJECT]]);
+    expect(gateRuns).toBe(1);
   });
+});
 
+function committing(landing: CommitDeps["landing"]): { deps: CommitDeps; git: ReturnType<typeof createFakeGit> } {
+  const git = createFakeGit(() => "");
+  return { deps: { git: git.git, paths: BATCH, commitMessage: "Author acceptance tests for #162 from the spec alone", landing }, git };
+}
+
+describe("commitAuthoredBatch", () => {
   it("adds, commits, rebases onto origin/main and pushes HEAD:main when landing is push", () => {
-    const { deps, git } = landing();
-    expect(landAuthoredBatch(deps)).toEqual({ verdict: "pushed" });
+    const { deps, git } = committing("push");
+    commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
@@ -277,8 +297,8 @@ describe("landAuthoredBatch", () => {
   });
 
   it("commits and stops when landing is commit, since the contents: write job pushes (ADR-0091)", () => {
-    const { deps, git } = landing({ landing: "commit" });
-    expect(landAuthoredBatch(deps)).toEqual({ verdict: "pushed" });
+    const { deps, git } = committing("commit");
+    commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
@@ -298,10 +318,15 @@ describe("landingFromEnv", () => {
 function trackerWith(
   issues: Record<number, TicketRead>,
   subIssues: Record<number, number[]> = {},
+  writes?: string[][],
 ): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
   const fake = createFakeGh();
   const reads: string[][] = [];
   const gh: GhExec = (args) => {
+    if (writes && !(args[0] === "issue" && args[1] === "view")) {
+      writes.push(args);
+      return "";
+    }
     if (args[0] === "issue" && args[1] === "view") {
       reads.push(args);
       const issue = issues[Number(args[2])];
@@ -333,7 +358,7 @@ describe("runAcceptanceAuthor", () => {
       writeFile: (path) => written.push(path),
       issueNumber: ISSUE,
       runTests: () => GREEN,
-      lint: () => null,
+      gate: () => GATE_GREEN,
       git: git.git,
       landing: landingMode,
     });
@@ -376,11 +401,68 @@ describe("runAcceptanceAuthor", () => {
       writeFile: () => {},
       issueNumber: ISSUE,
       runTests: () => GREEN,
-      lint: () => null,
+      gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
     });
     expect(tracker.reads).toHaveLength(1);
     expect(stage.stdins[0]).toContain("(no parent PRD)");
+  });
+});
+
+describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", () => {
+  const TRACKER = { [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } };
+  const HELPER = ".Workflow/agent-workflows/shared/widget.fixture.ts";
+
+  async function repairRun(gates: GateVerdict[], first: { sessionId?: string } = { sessionId: "author-1" }) {
+    const writes: string[][] = [];
+    const tracker = trackerWith(TRACKER, {}, writes);
+    const stage = createFakeStages([
+      { text: JSON.stringify({ files: [{ path: TEST_PATH, content: failsTest() }] }), ...first },
+      JSON.stringify({ files: [{ path: HELPER, content: "export const arrange = 1;\n" }, { path: TEST_PATH, content: failsTest() }] }),
+    ]);
+    const git = createFakeGit(() => "");
+    const written: string[] = [];
+    const verdicts = [...gates];
+    const outcome = await runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: (path) => written.push(path),
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      gate: () => verdicts.shift() ?? GATE_RED,
+      git: git.git,
+      log: () => {},
+    });
+    return { outcome, stage, git, written, writes };
+  }
+
+  it("resumes the author's session with the judgement, rewrites the files, and lands the repaired batch", async () => {
+    const { outcome, stage, git, written, writes } = await repairRun([GATE_RED, GATE_GREEN]);
+    expect(outcome).toEqual({ verdict: "pushed" });
+    expect(stage.calls[1]).toContain("--resume");
+    expect(stage.calls[1]).toContain("author-1");
+    expect(stage.stdins[1]).toContain(CLONE_REPORT);
+    expect(written).toEqual([TEST_PATH, HELPER, TEST_PATH]);
+    expect(git.calls.find((call) => call[0] === "add")).toEqual(["add", HELPER, TEST_PATH]);
+    expect(writes).toEqual([]);
+  });
+
+  it("stops after that one round when still red: needs-human, the judgement on the ticket, nothing committed", async () => {
+    const { outcome, stage, git, writes } = await repairRun([GATE_RED, GATE_RED]);
+    expect(outcome.verdict).toBe("refused");
+    expect(stage.calls).toHaveLength(2);
+    expect(git.calls).toEqual([]);
+    expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", "needs-human"]);
+    const comment = writes.find((call) => call[0] === "issue" && call[1] === "comment");
+    expect(comment?.[4]).toContain("one repair round");
+    expect(comment?.[4]).toContain(CLONE_REPORT);
+  });
+
+  it("has no round to resume when the first answer came back without a session, so it stops on the first judgement", async () => {
+    const { outcome, stage, writes } = await repairRun([GATE_RED], {});
+    expect(outcome.verdict).toBe("refused");
+    expect(stage.calls).toHaveLength(1);
+    expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", "needs-human"]);
   });
 });
 

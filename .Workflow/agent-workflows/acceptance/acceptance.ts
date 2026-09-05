@@ -1,15 +1,16 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { affectedSlices, SUITE_ROOTS, testsForCriterion, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
-import { childEnv } from "../shared/child-env";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { sayOnTicket } from "../shared/implementation-landing";
+import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
-import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
+import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import {
   CRITERIA_HEADING_RE,
@@ -24,6 +25,8 @@ import { runVitestJson, type TestRunResult } from "../shared/vitest-json";
 export const AUTHOR_MODEL = "claude-opus-5";
 
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
+
+export const AUTHOR_REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/repair.md";
 
 function criterionMarker(issue: number, index: number): RegExp {
   return new RegExp(`\\b(?:test|it)\\.fails\\(\\s*["'\`]#${issue}\\.${index}:`);
@@ -90,7 +93,12 @@ function underSuiteRoot(path: string): boolean {
   return SUITE_ROOTS.some((root) => path.startsWith(`${root}/`));
 }
 
-export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredFile[]> {
+export interface AuthoredBatch {
+  files: AuthoredFile[];
+  sessionId?: string;
+}
+
+export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
   if (criteria.length === 0) {
     throw new Error(
@@ -98,7 +106,7 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
     );
   }
 
-  const answer = await runStage(
+  const round = await runStageSession(
     AUTHOR_PROMPT_PATH,
     {
       ISSUE_NUMBER: String(deps.issueNumber),
@@ -113,7 +121,27 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
     AUTHOR_OUTPUT,
     { model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
   );
+  return acceptRound(deps, criteria, round);
+}
 
+export async function repairAcceptanceTests(deps: AuthorDeps, sessionId: string, judgement: string): Promise<AuthoredBatch> {
+  const criteria = extractCriteria(deps.ticket.body);
+  const round = await runStageSession(
+    AUTHOR_REPAIR_PROMPT_PATH,
+    {
+      ISSUE_NUMBER: String(deps.issueNumber),
+      CRITERIA_COUNT: String(criteria.length),
+      JUDGEMENT: gateOutputTail(judgement),
+    },
+    deps.exec,
+    AUTHOR_OUTPUT,
+    { model: AUTHOR_MODEL, promptViaStdin: true, resume: sessionId, stage: "author-repair" },
+  );
+  return acceptRound(deps, criteria, round);
+}
+
+function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionResult<AuthorAnswer>): AuthoredBatch {
+  const answer = round.value;
   for (const file of answer.files) {
     if (!underSuiteRoot(file.path)) {
       throw new Error(`author wrote outside ${SUITE_ROOTS.join("/, ")}/: ${file.path}`);
@@ -135,16 +163,33 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredF
   }
 
   for (const file of answer.files) deps.writeFile(file.path, file.content);
-  return answer.files;
+  return { files: answer.files, sessionId: round.sessionId };
 }
 
-export interface LandDeps {
+export interface JudgeDeps {
   runTests: (paths: string[]) => TestRunResult;
-  lint: (paths: string[]) => string | null;
-  git: GitExec;
-  paths: string[];
-  commitMessage: string;
-  landing: Landing;
+  gate: () => GateVerdict;
+}
+
+export type BatchVerdict = { ok: true } | { ok: false; reason: string };
+
+export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[]): BatchVerdict {
+  const tests = paths.filter((path) => path.endsWith(".test.ts"));
+  const result = deps.runTests(tests);
+  if (!result.collected) {
+    return { ok: false, reason: `a test file failed to collect: ${result.collectionError ?? "no detail reported"}` };
+  }
+  if (result.failures.length > 0) {
+    const names = result.failures.map((failure) => failure.name).join(", ");
+    return {
+      ok: false,
+      reason:
+        `${result.failures.length} test(s) are red under test.fails, which means they already pass: ` +
+        `a vacuous test or one about work already done: ${names}`,
+    };
+  }
+  const gate = deps.gate();
+  return gate.ok ? { ok: true } : { ok: false, reason: `the gate is red on the authored batch:\n${gate.output}` };
 }
 
 export type LandOutcome = { verdict: "pushed" } | { verdict: "refused"; reason: string };
@@ -155,26 +200,14 @@ export function landingFromEnv(env: NodeJS.ProcessEnv = process.env): Landing {
   return env.ACCEPTANCE_LANDING === "commit" ? "commit" : "push";
 }
 
-export function landAuthoredBatch(deps: LandDeps): LandOutcome {
-  const tests = deps.paths.filter((path) => path.endsWith(".test.ts"));
-  const result = deps.runTests(tests);
-  if (!result.collected) {
-    return { verdict: "refused", reason: `a test file failed to collect: ${result.collectionError ?? "no detail reported"}` };
-  }
-  if (result.failures.length > 0) {
-    const names = result.failures.map((failure) => failure.name).join(", ");
-    return {
-      verdict: "refused",
-      reason:
-        `${result.failures.length} test(s) are red under test.fails, which means they already pass: ` +
-        `a vacuous test or one about work already done: ${names}`,
-    };
-  }
-  const lintReport = deps.lint(deps.paths);
-  if (lintReport !== null) {
-    return { verdict: "refused", reason: `the authored files do not lint:\n${lintReport}` };
-  }
+export interface CommitDeps {
+  git: GitExec;
+  paths: string[];
+  commitMessage: string;
+  landing: Landing;
+}
 
+export function commitAuthoredBatch(deps: CommitDeps): void {
   deps.git(["add", ...deps.paths]);
   deps.git(["commit", "-m", deps.commitMessage]);
   if (deps.landing === "push") {
@@ -182,18 +215,42 @@ export function landAuthoredBatch(deps: LandDeps): LandOutcome {
     deps.git(["rebase", "origin/main"]);
     deps.git(["push", "origin", "HEAD:main"]);
   }
-  return { verdict: "pushed" };
 }
 
-export function runEslint(paths: string[], repoDir: string = process.cwd()): string | null {
-  if (paths.length === 0) return null;
-  try {
-    execFileSync("npx", ["eslint", ...paths], { cwd: repoDir, encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
-    return null;
-  } catch (err) {
-    const output = (err as { stdout?: string }).stdout;
-    return typeof output === "string" && output.trim() !== "" ? output.trim() : reason(err);
-  }
+export function authorRedNote(judgement: string): string {
+  return [
+    "The acceptance author's batch was still red after its one repair round, so nothing landed and this ticket is waiting on a human.",
+    "",
+    "```",
+    gateOutputTail(judgement),
+    "```",
+  ].join("\n");
+}
+
+function authorDiedNote(why: string): string {
+  return `The acceptance author died before landing anything, so this ticket is waiting on a human: ${why}`;
+}
+
+function haltLoudly(gh: GhExec, issueNumber: number, note: string, log: (line: string) => void): void {
+  escalateToOwner(gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+  sayOnTicket(gh, issueNumber, note, log);
+}
+
+type Attempt = { ok: true; paths: string[] } | { ok: false; reason: string };
+
+function batchPaths(batch: AuthoredBatch): string[] {
+  return batch.files.map((file) => file.path);
+}
+
+async function authorWithOneRepair(deps: AuthorDeps, judge: JudgeDeps): Promise<Attempt> {
+  const first = await authorAcceptanceTests(deps);
+  const verdict = judgeAuthoredBatch(judge, batchPaths(first));
+  if (verdict.ok) return { ok: true, paths: batchPaths(first) };
+  if (first.sessionId === undefined) return { ok: false, reason: verdict.reason };
+
+  const repaired = await repairAcceptanceTests(deps, first.sessionId, verdict.reason);
+  const again = judgeAuthoredBatch(judge, batchPaths(repaired));
+  return again.ok ? { ok: true, paths: batchPaths(repaired) } : { ok: false, reason: again.reason };
 }
 
 export interface RunAcceptanceDeps {
@@ -202,33 +259,37 @@ export interface RunAcceptanceDeps {
   writeFile: (path: string, content: string) => void;
   issueNumber: number;
   runTests?: (paths: string[]) => TestRunResult;
-  lint?: (paths: string[]) => string | null;
+  gate?: () => GateVerdict;
   git?: GitExec;
   landing?: Landing;
+  log?: (line: string) => void;
 }
 
 export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<LandOutcome> {
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);
+  const log = deps.log ?? ((line: string) => console.log(line));
 
-  const files = await authorAcceptanceTests({
-    exec: deps.exec,
-    writeFile: deps.writeFile,
-    issueNumber: deps.issueNumber,
-    ticket,
-    prdBody: prd?.body,
-  });
-  const paths = files.map((file) => file.path);
+  const attempt = await authorWithOneRepair(
+    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body },
+    {
+      runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
+      gate: deps.gate ?? (() => gateVerdict(REPO_DIR)),
+    },
+  );
+  if (!attempt.ok) {
+    haltLoudly(deps.gh, deps.issueNumber, authorRedNote(attempt.reason), log);
+    return { verdict: "refused", reason: attempt.reason };
+  }
 
-  return landAuthoredBatch({
-    runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
-    lint: deps.lint ?? ((lintPaths) => runEslint(lintPaths, REPO_DIR)),
+  commitAuthoredBatch({
     git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
-    paths,
-    commitMessage: authorCommitMessage(deps.issueNumber, paths),
+    paths: attempt.paths,
+    commitMessage: authorCommitMessage(deps.issueNumber, attempt.paths),
     landing: deps.landing ?? "push",
   });
+  return { verdict: "pushed" };
 }
 
 function readSliceNumbers(gh: GhExec, prdNumber: number): number[] {
@@ -277,14 +338,23 @@ function fsWriteFile(path: string, content: string): void {
   writeFileSync(resolved, content, "utf8");
 }
 
+async function authorInProcess(issueNumber: number): Promise<LandOutcome> {
+  try {
+    return await runAcceptanceAuthor({
+      gh: execGh,
+      exec: execClaudeIn(REPO_DIR),
+      writeFile: fsWriteFile,
+      issueNumber,
+      landing: landingFromEnv(),
+    });
+  } catch (err) {
+    haltLoudly(execGh, issueNumber, authorDiedNote(reason(err)), console.error);
+    throw err;
+  }
+}
+
 async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
-  const outcome = await runAcceptanceAuthor({
-    gh: execGh,
-    exec: execClaudeIn(REPO_DIR),
-    writeFile: fsWriteFile,
-    issueNumber: sliceNumber,
-    landing: landingFromEnv(),
-  });
+  const outcome = await authorInProcess(sliceNumber);
   if (outcome.verdict === "refused") throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
 }
 
@@ -317,20 +387,13 @@ async function main(): Promise<void> {
     return;
   }
   try {
-    const landing = landingFromEnv();
-    const outcome = await runAcceptanceAuthor({
-      gh: execGh,
-      exec: execClaudeIn(REPO_DIR),
-      writeFile: fsWriteFile,
-      issueNumber: Number(issueArg),
-      landing,
-    });
+    const outcome = await authorInProcess(Number(issueArg));
     if (outcome.verdict === "refused") {
       console.error(`refused: ${outcome.reason}`);
       process.exitCode = 1;
       return;
     }
-    console.log(landing === "commit" ? "committed" : "pushed");
+    console.log(landingFromEnv() === "commit" ? "committed" : "pushed");
   } catch (err) {
     console.error(`acceptance authoring failed: ${reason(err)}`);
     process.exitCode = 1;
