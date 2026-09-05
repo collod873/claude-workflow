@@ -10,7 +10,8 @@ repo_root="$(cd "$here/../.." && pwd)"
 . "$repo_root/.claude/hooks/lib/_hook.sh"
 
 run_row() {
-  hook_lib_append_log session-capture "$(hook_lib_run_row session-capture SessionEnd "${session:-unknown}" "${project:-unknown}" "$1")"
+  local cwd="${project:-unknown}"
+  hook_lib_append_log session-capture "$(hook_lib_run_row session-capture SessionEnd "${session:-unknown}" "${cwd##*/}" "$1")"
 }
 
 node_on_path && have_node=1 || have_node=0
