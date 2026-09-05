@@ -2,7 +2,14 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { affectedSlices, SUITE_ROOTS, testsForCriterion, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
+import {
+  affectedSlices,
+  authoredCriterionTitleRe,
+  SUITE_ROOTS,
+  testsForCriterion,
+  type ExistingTestCriterion,
+  type SliceRef,
+} from "../shared/affected-tests";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -27,10 +34,6 @@ export const AUTHOR_MODEL = "claude-opus-5";
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
 
 export const AUTHOR_REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/repair.md";
-
-function criterionMarker(issue: number, index: number): RegExp {
-  return new RegExp(`\\b(?:test|it)\\.fails\\(\\s*["'\`]#${issue}\\.${index}:`);
-}
 
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
 
@@ -154,7 +157,7 @@ function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionRe
   const combined = answer.files.map((file) => file.content).join("\n");
   const missing = criteria
     .map((_criterion, i) => i + 1)
-    .filter((index) => !criterionMarker(deps.issueNumber, index).test(combined));
+    .filter((index) => !authoredCriterionTitleRe(deps.issueNumber, index).test(combined));
   if (missing.length > 0) {
     throw new Error(
       `author wrote no test.fails( naming #${deps.issueNumber}.${missing.join(`, #${deps.issueNumber}.`)}: ` +

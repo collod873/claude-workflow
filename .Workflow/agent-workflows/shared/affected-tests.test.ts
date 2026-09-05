@@ -1,9 +1,17 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
-import { affectedSlices, SUITE_ROOTS, suiteTestFiles, testsForCriterion, testsForTicket, type ExistingTestCriterion } from "./affected-tests";
+import {
+  affectedSlices,
+  authoredCriterionTitleRe,
+  SUITE_ROOTS,
+  suiteTestFiles,
+  testsForCriterion,
+  testsForTicket,
+  type ExistingTestCriterion,
+} from "./affected-tests";
 
 const WIDGET = "make test exits 0 with a widget that spins clockwise";
 const GADGET = "make test exits 0 with a gadget that beeps twice on startup";
@@ -135,6 +143,30 @@ describe("testsForCriterion", () => {
 
   it("returns nothing when no title names that criterion", () => {
     expect(testsForCriterion(101, 9, titledCheckout())).toEqual([]);
+  });
+});
+
+describe("authoredCriterionTitleRe", () => {
+  it("matches the title the author is required to write", () => {
+    expect(authoredCriterionTitleRe(101, 2).test('test.fails("#101.2: doohickey hums in D", () => {});')).toBe(true);
+    expect(authoredCriterionTitleRe(101, 2).test('it.fails("#101.2: doohickey hums in D", () => {});')).toBe(true);
+  });
+
+  it("refuses a title with no .fails, which testsForCriterion still selects once an implementer turns it on", () => {
+    const turnedOn = 'test("#101.2: doohickey hums in D", () => {});';
+    const root = checkoutWith({ [GAMMA]: `${turnedOn}\n` });
+    expect(authoredCriterionTitleRe(101, 2).test(turnedOn)).toBe(false);
+    expect(testsForCriterion(101, 2, root)).toEqual([join(root, GAMMA)]);
+  });
+
+  it("selects the same file testsForCriterion does when the author's own title is read back", () => {
+    const root = titledCheckout();
+    const authored = suiteTestFiles(root).filter((path) => authoredCriterionTitleRe(101, 2).test(readFileSync(path, "utf8")));
+    expect(authored).toEqual(testsForCriterion(101, 2, root));
+  });
+
+  it("does not match another criterion of the same ticket", () => {
+    expect(authoredCriterionTitleRe(101, 1).test('test.fails("#101.2: doohickey hums in D", () => {});')).toBe(false);
   });
 });
 
