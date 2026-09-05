@@ -33,7 +33,7 @@
   },
   "adrs": {
     "cmd": "npm run adrs",
-    "why": "package.json#scripts.adrs (tsx .Workflow/agent-workflows/shared/adr-index.cli.ts)"
+    "why": "package.json#scripts.adrs (tsx .Workflow/agent-workflows/shared/adr-index.cli.ts .)"
   },
   "all": {
     "cmd": "npm run check",

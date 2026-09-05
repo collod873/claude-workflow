@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -31,4 +31,43 @@ describe("the in-repo renderer and adr-check", () => {
       expect(readFileSync(join(root, INDEX_RELATIVE_PATH), "utf8")).toBe(fromChecker);
     },
   );
+});
+
+const CLI = ".Workflow/agent-workflows/shared/adr-index.cli.ts";
+
+function runCli(args: string[], targetWorkspace = ""): { status: number | null; stderr: string } {
+  const run = spawnSync("npx", ["tsx", CLI, ...args], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: { ...process.env, TARGET_WORKSPACE: targetWorkspace },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return { status: run.status, stderr: run.stderr };
+}
+
+describe("the index checker names its root or refuses", () => {
+  it("passes over the root it is given", () => {
+    expect(runCli(["."]).status).toBe(0);
+  });
+
+  it("refuses when nothing named a root, rather than checking whichever directory it was launched from", () => {
+    const run = runCli([]);
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("no repository root given");
+  });
+
+  it("refuses when the argument and TARGET_WORKSPACE name different checkouts", () => {
+    const run = runCli(["."], join(REPO_ROOT, ".Workflow"));
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("roots disagree");
+  });
+
+  it("refuses a root that is not there, rather than reporting the absent corpus green", () => {
+    const run = runCli([join(tmpdir(), "adr-index-absent-root")]);
+
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("is not a directory");
+  });
 });
