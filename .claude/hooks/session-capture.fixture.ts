@@ -42,6 +42,7 @@ export function readLog(logPath: string): string {
 }
 
 function settled(logPath: string): boolean {
+  if (!existsSync(logPath)) return true;
   const lines = readLog(logPath).trimEnd().split("\n");
   const last = lines[lines.length - 1] ?? "";
   const sawCaptured = lines.some((l) => /\tcaptured /.test(l));
@@ -331,10 +332,3 @@ export function expectCaptured(result: RunResult): { path: string; content: stri
   return waitForCaptureFile(result.outputDir);
 }
 
-export function expectFailedOpen(result: RunResult): string {
-  expect(result.status).toBe(0);
-  expect(result.stdout).toBe("");
-  const log = waitForLogLine(result.logPath);
-  expect(captureFiles(result.outputDir)).toEqual([]);
-  return log;
-}

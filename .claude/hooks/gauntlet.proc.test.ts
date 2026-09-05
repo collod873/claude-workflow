@@ -294,7 +294,7 @@ function rowsWithFiles(dir: string): { file: string; row: Record<string, unknown
 }
 
 describe("the seeded writer owns every run row this repo's hooks write", () => {
-  test.fails("#374.2: gauntlet-hook writes its rows through lib/_hook.mjs, the same seeded writer session-capture reaches through lib/_hook.sh", () => {
+  test("#374.2: gauntlet-hook writes its rows through lib/_hook.mjs, the same seeded writer session-capture reaches through lib/_hook.sh", () => {
     const dir = scratchDir("seeded-writer-rows");
 
     runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir });

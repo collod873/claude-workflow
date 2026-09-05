@@ -6,14 +6,11 @@ here="${BASH_SOURCE[0]%/*}"
 repo_root="$(cd "$here/../.." && pwd)"
 # shellcheck source=bin/node-on-path.sh
 . "$repo_root/bin/node-on-path.sh"
+# shellcheck source=.claude/hooks/lib/_hook.sh
+. "$repo_root/.claude/hooks/lib/_hook.sh"
 
-log_path="${SESSION_CAPTURE_LOG_PATH:-$HOME/.claude/session-capture.log}"
-
-log_outcome() {
-  {
-    mkdir -p "$(dirname "$log_path")" &&
-      printf '%s\t%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" >>"$log_path"
-  } 2>/dev/null || true
+run_row() {
+  hook_lib_append_log session-capture "$(hook_lib_run_row session-capture SessionEnd "${session:-unknown}" "${project:-unknown}" "$1")"
 }
 
 node_on_path && have_node=1 || have_node=0
@@ -21,7 +18,7 @@ node_on_path && have_node=1 || have_node=0
 INPUT="$(cat 2>/dev/null || true)"
 
 if [ "$have_node" -eq 0 ]; then
-  log_outcome "skipped no-node"
+  run_row "skipped-no-node"
   exit 0
 fi
 
@@ -41,14 +38,16 @@ PARSED="$(
 IFS=$'\x1f' read -r transcript session project source <<<"$PARSED"
 
 if [ -z "${transcript:-}" ]; then
-  log_outcome "skipped no-transcript-path"
+  run_row "skipped-no-transcript-path"
   exit 0
 fi
 
 if [ ! -f "$transcript" ]; then
-  log_outcome "skipped transcript-missing"
+  run_row "skipped-transcript-missing"
   exit 0
 fi
+
+run_row "dispatched"
 
 (
   node "$repo_root/.claude/hooks/session-capture-hook.mjs" "$transcript" "${session:-unknown}" "${project:-unknown}" "${source:-other}"
