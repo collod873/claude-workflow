@@ -33,6 +33,7 @@ import {
   releaseFailedClaim,
   type ImplementerAnswer,
 } from "./implementation-landing";
+import { implementerAnswer } from "./implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { implementationBranch } from "./ready-set";
 import { makeTempRepo, type TempRepo } from "./temp-repo.fixture";
@@ -154,13 +155,7 @@ describe("releaseDeadClaim", () => {
 });
 
 describe("landAnswer", () => {
-  const ANSWER: ImplementerAnswer = {
-    files: [{ path: "a/b.ts", content: "export const x = 1;\n" }],
-    deleted: [],
-    summary: "Built it.",
-    outOfBriefReads: [],
-    declaredEdits: [],
-  };
+  const ANSWER = implementerAnswer({ files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it." });
 
   async function land(
     git: FakeGit = checkoutReporting(),
@@ -184,13 +179,10 @@ describe("landAnswer", () => {
     return { result, host, written, removed, gitCalls: git.calls, regenerated: () => regenerated };
   }
 
-  const ADR_ANSWER = {
+  const ADR_ANSWER = implementerAnswer({
     files: [{ path: "docs/adr/0042-a-ruling.md", content: "---\nstatus: constraint\n---\n\n# A ruling\n" }],
-    deleted: [],
     summary: "Ruled it.",
-    outOfBriefReads: [],
-    declaredEdits: [],
-  };
+  });
 
   it("writes the files, commits and pushes the claimed branch, then opens the PR and dispatches Verify", async () => {
     const { result, host, written, gitCalls } = await land();
@@ -278,13 +270,7 @@ describe("landAnswer", () => {
   });
 
   describe("deletions", () => {
-    const DELETE_ANSWER = {
-      files: [],
-      deleted: ["a/gone.ts"],
-      summary: "Removed it.",
-      outOfBriefReads: [],
-      declaredEdits: [],
-    };
+    const DELETE_ANSWER = implementerAnswer({ deleted: ["a/gone.ts"], summary: "Removed it." });
 
     it("removes a deleted path from disk, stages it, and carries it into the changed-files dispatch", async () => {
       const { result, removed, gitCalls, host } = await land(checkoutReporting(), {}, DELETE_ANSWER);
@@ -304,13 +290,7 @@ describe("landAnswer", () => {
   });
 
   describe("the immutable set", () => {
-    const IMMUTABLE_ANSWER = {
-      files: [{ path: "vitest.config.ts", content: "export default {};\n" }],
-      deleted: [],
-      summary: "Touched it.",
-      outOfBriefReads: [],
-      declaredEdits: [],
-    };
+    const IMMUTABLE_ANSWER = implementerAnswer({ files: [{ path: "vitest.config.ts", content: "export default {};\n" }], summary: "Touched it." });
 
     it("refuses before any commit, releasing the claim and posting the note", async () => {
       const { result, host, gitCalls } = await land(checkoutReporting(), {}, IMMUTABLE_ANSWER);
@@ -372,13 +352,11 @@ describe("landAnswer", () => {
   });
 
   describe("declared edits widen the fails rule and are announced", () => {
-    const DECLARED_ANSWER: ImplementerAnswer = {
+    const DECLARED_ANSWER = implementerAnswer({
       files: [{ path: "a/b.ts", content: "export const x = 2;\n" }],
-      deleted: [],
       summary: "Rewrote the test; it was asserting the wrong shape.",
-      outOfBriefReads: [],
       declaredEdits: [{ path: "a/b.ts", reason: "The acceptance test asserted the old return shape." }],
-    };
+    });
 
     it("does not refuse a declared file's test.fails( rewrite, and posts the same note in the PR body and on the ticket", async () => {
       const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
