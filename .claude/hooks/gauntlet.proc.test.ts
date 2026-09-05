@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture.ts";
 
@@ -131,6 +131,49 @@ describe("the machine-global stop-gate.py is the one turn-end owner", () => {
     const grep = spawnSync("grep", ["-q", "stop-gate.py", "docs/agents/venues.md"], { cwd: REPO_ROOT });
 
     expect(grep.status).toBe(0);
+  });
+});
+
+const PY_HOOK = join(REPO_ROOT, ".claude/hooks/_hook.py");
+
+const READ_BACK_WITH_HOOK_PY = `
+import importlib.util, json, sys
+
+spec = importlib.util.spec_from_file_location("_hook", sys.argv[1])
+hook = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hook)
+
+hook.append_log("pin", {"project": "pin"}, path=sys.argv[3])
+with open(sys.argv[3], encoding="utf-8") as fh:
+    own = json.loads(fh.readline())["ts"]
+
+print(json.dumps({"ts": own, "sessions": hook.active_sessions(sys.argv[4], log_dir=sys.argv[2])}))
+`;
+
+const digitsBlanked = (ts: string) => ts.replace(/\d/g, "d");
+
+describe("the ts shape the shim writes agrees with the _hook.py it is a copy of", () => {
+  it("hands _hook.py's active_sessions() a row it parses, in the shape _hook.py's own append_log writes", () => {
+    const dir = scratchDir("gauntlet-logs");
+    const payload = JSON.stringify({
+      hook_event_name: "PostToolUse",
+      session_id: "pin-session",
+      cwd: REPO_ROOT,
+      tool_input: { file_path: `${REPO_ROOT}/a.ts` },
+    });
+    runHook("turn", payload, { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir });
+
+    const rowOfItsOwn = join(scratchDir("hook-py-row"), "row.jsonl");
+    const python = spawnSync(
+      "python3",
+      ["-c", READ_BACK_WITH_HOOK_PY, PY_HOOK, dir, rowOfItsOwn, basename(REPO_ROOT)],
+      { encoding: "utf8" },
+    );
+
+    expect(python.status, python.stderr).toBe(0);
+    const readBack = JSON.parse(python.stdout);
+    expect(Object.keys(readBack.sessions)).toEqual(["pin-session"]);
+    expect(digitsBlanked(readBack.ts)).toBe(digitsBlanked(readBack.sessions["pin-session"]));
   });
 });
 
