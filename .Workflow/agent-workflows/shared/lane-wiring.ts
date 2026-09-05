@@ -45,6 +45,7 @@ export const TARGET_WORKSPACE = "${{ github.workspace }}/target";
 
 export const CHECKPOINTS_ACTION = "./.github/actions/checkpoints";
 export const ACCEPTANCE_BUNDLE_ACTION = "./.github/actions/acceptance-bundle";
+export const TARGET_DEPS_ACTION = "./.github/actions/target-deps";
 
 export const DISPATCH_SEND = "gh api --method POST 'repos/{owner}/{repo}/dispatches'";
 
@@ -130,7 +131,11 @@ const CHECKPOINTS = (lane: string, first: string, last: string): StepFact[] => [
   { uses: CHECKPOINTS_ACTION, with: { phase: "upload", lane }, if: "always()", after: last },
 ];
 
-const INSTALLS_TARGET: StepFact = { name: "Install target dependencies", workingDirectory: "target", run: ["npm ci"] };
+const INSTALLS_TARGET: StepFact = {
+  name: "Install target dependencies",
+  uses: TARGET_DEPS_ACTION,
+  with: { "working-directory": "target" },
+};
 
 const ACTS_ON_PULL_REQUEST: Permissions = { contents: "write", "pull-requests": "write", issues: "write", actions: "read" };
 

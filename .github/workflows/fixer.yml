@@ -181,8 +181,9 @@ jobs:
 
       - name: Install target dependencies
         if: steps.target.outputs.mode == 'model'
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       - name: Install Claude Code
         if: steps.target.outputs.mode == 'model'

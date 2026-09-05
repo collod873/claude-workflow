@@ -61,8 +61,9 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Install target dependencies
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
@@ -116,8 +117,9 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Install target dependencies
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
@@ -182,8 +184,9 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Install target dependencies
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       - name: Download the authored commits
         uses: actions/download-artifact@v4

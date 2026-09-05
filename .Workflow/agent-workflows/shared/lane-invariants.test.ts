@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { TARGET_DEPS_ACTION } from "./lane-wiring";
 import { readWorkflows } from "./read-workflow";
 import { binSources, entrypointsOf, hookSources, laneSources, readRepoText, REPO_ROOT } from "./repo-sources";
 
@@ -75,7 +76,9 @@ describe("a lane that writes into a target installs that target's dependencies",
   it.each(writers.map((w) => w.name))("%s installs the target's dependencies before it writes", (name) => {
     const target = workflows.find((w) => w.name === name)!;
     const install = target.steps.find(
-      (step) => step["working-directory"] === "target" && /npm ci|npm install|pnpm i|yarn/.test(step.run ?? ""),
+      (step) =>
+        (step.uses === TARGET_DEPS_ACTION && step.with?.["working-directory"] === "target") ||
+        (step["working-directory"] === "target" && /npm ci|npm install|pnpm i|yarn/.test(step.run ?? "")),
     );
     expect(
       install,

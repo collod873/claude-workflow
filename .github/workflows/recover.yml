@@ -56,8 +56,9 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Install target dependencies
-        working-directory: target
-        run: npm ci
+        uses: ./.github/actions/target-deps
+        with:
+          working-directory: target
 
       - name: Recover or re-dispatch
         env:
