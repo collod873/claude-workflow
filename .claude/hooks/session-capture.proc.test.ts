@@ -1,5 +1,8 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
+import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture";
 import { makeBareRepo } from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
 import {
   captureFiles,
@@ -310,5 +313,102 @@ describe("session-capture.sh: flushing the Knowledge-Base checkout", () => {
     expect(log).toContain("skipped push-");
     expect(log).not.toContain("flushed");
     expect(log).toContain(`published session-kb-unreachable ${head}`);
+  });
+});
+
+function runRows(dir: string): Record<string, string>[] {
+  return existsSync(dir)
+    ? readdirSync(dir).flatMap((name) =>
+        readFileSync(join(dir, name), "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as Record<string, string>),
+      )
+    : [];
+}
+
+function fireSessionEnd(label: string, payload: Parameters<typeof runHook>[0], env: Record<string, string> = {}) {
+  const logDir = scratchDir(`session-capture-run-row-${label}`);
+  const result = runHook(payload, { ...env, STOP_GATE_LOG_DIR: logDir });
+  return {
+    result,
+    rows: runRows(logDir),
+    legacyLog: existsSync(result.logPath) ? readFileSync(result.logPath, "utf8") : "",
+  };
+}
+
+function realRunLogLines(): number {
+  const dir = join(homedir(), ".claude", "logs");
+  const mine = existsSync(dir) ? readdirSync(dir).filter((name) => name.startsWith("session-capture-")) : [];
+  return mine.reduce((lines, name) => lines + readFileSync(join(dir, name), "utf8").split("\n").filter(Boolean).length, 0);
+}
+
+describe("session-capture.sh: the shared run row every SessionEnd fire leaves behind", () => {
+  test.fails("#374.3: one run row per SessionEnd fire naming session-capture's outcome, and no session-capture.log of the shell's own", () => {
+    const noTranscript = fireSessionEnd("no-transcript-path", {
+      session_id: "row-no-transcript",
+      cwd: "y",
+      hook_event_name: "SessionEnd",
+      reason: "clear",
+    });
+    const missing = fireSessionEnd("transcript-missing", sessionEnd("row-missing", "/no/such/transcript.jsonl", "y"));
+    const noNode = fireSessionEnd("no-node", sessionEnd("row-no-node", oneHumanPrompt(), "y"), {
+      PATH: "/nonexistent",
+      HOME: "/nonexistent",
+      NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(false),
+    });
+    const dispatched = fireSessionEnd("dispatched", sessionEnd("row-dispatched", oneHumanPrompt(), "y"));
+
+    for (const fire of [noTranscript, missing, noNode, dispatched]) {
+      expect(fire.rows).toHaveLength(1);
+      expect(fire.rows[0]).toMatchObject({ hook: "session-capture", event: "SessionEnd" });
+    }
+    for (const fire of [noTranscript, missing, noNode]) {
+      expect(fire.legacyLog).not.toContain("skipped");
+    }
+
+    expect([noTranscript, missing, noNode, dispatched].map((fire) => fire.rows[0].verdict)).toEqual([
+      "skipped-no-transcript-path",
+      "skipped-transcript-missing",
+      "skipped-no-node",
+      "dispatched",
+    ]);
+  });
+
+  test.fails("#374.4: a SessionEnd payload driven through the shell entry with STOP_GATE_LOG_DIR sandboxed leaves a row carrying its hook, event, session_id and verdict", () => {
+    const { rows } = fireSessionEnd("session-end-payload", sessionEnd("row-session-end", oneHumanPrompt(), "y"));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      hook: "session-capture",
+      event: "SessionEnd",
+      session_id: "row-session-end",
+      verdict: "dispatched",
+    });
+  });
+
+  test.fails("#374.5: an ended session leaves the session-capture | SessionEnd line hook-report reads inside its --days 1 window", () => {
+    const { rows } = fireSessionEnd("hook-report-line", sessionEnd("row-report", oneHumanPrompt(), "y"));
+
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(`${row.hook} | ${row.event}`).toBe("session-capture | SessionEnd");
+    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    expect(Math.abs(Date.now() - Date.parse(row.ts))).toBeLessThan(24 * 60 * 60 * 1000);
+  });
+
+  test.fails("#374.6: npm run check passes: every sandboxed fire keeps its verdict and adds nothing to the machine's own run log", () => {
+    const before = realRunLogLines();
+
+    const missing = fireSessionEnd("check-missing", sessionEnd("row-check-missing", "/no/such/transcript.jsonl", "y"));
+    const captured = fireSessionEnd("check-dispatched", sessionEnd("row-check-dispatched", oneHumanPrompt(), "y"));
+
+    expect(missing.rows.map((row) => row.verdict)).toEqual(["skipped-transcript-missing"]);
+    expect(captureFiles(missing.result.outputDir)).toHaveLength(0);
+
+    expect(captured.rows.map((row) => row.verdict)).toEqual(["dispatched"]);
+    expectCaptured(captured.result);
+
+    expect(realRunLogLines()).toBe(before);
   });
 });

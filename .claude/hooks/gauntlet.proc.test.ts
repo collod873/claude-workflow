@@ -281,3 +281,40 @@ describe("the suite's own rows stay out of the machine's run log", () => {
     expect(realLogLines(realLog)).toBe(before);
   });
 });
+
+const SESSION_CAPTURE = join(REPO_ROOT, ".claude/hooks/session-capture.sh");
+
+function rowsWithFiles(dir: string): { file: string; row: Record<string, unknown> }[] {
+  return readdirSync(dir).flatMap((file) =>
+    readFileSync(join(dir, file), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => ({ file, row: JSON.parse(line) as Record<string, unknown> })),
+  );
+}
+
+describe("the seeded writer owns every run row this repo's hooks write", () => {
+  test.fails("#374.2: gauntlet-hook writes its rows through lib/_hook.mjs, the same seeded writer session-capture reaches through lib/_hook.sh", () => {
+    const dir = scratchDir("seeded-writer-rows");
+
+    runHook("turn", editOf("a.ts"), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir });
+    spawnSync(SESSION_CAPTURE, {
+      input: JSON.stringify({ hook_event_name: "SessionEnd", session_id: "seeded-writer", cwd: REPO_ROOT, reason: "clear" }),
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        STOP_GATE_LOG_DIR: dir,
+        SESSION_CAPTURE_LOG_PATH: join(scratchDir("seeded-writer-legacy"), "session-capture.log"),
+      },
+    });
+
+    const written = rowsWithFiles(dir);
+    expect(written.map(({ row }) => row.hook).sort()).toEqual(["gauntlet-hook", "session-capture"]);
+    for (const { file, row } of written) {
+      expect(Object.keys(row)).toEqual(expect.arrayContaining(["hook", "event", "session_id", "verdict", "ts"]));
+      expect(String(row.ts)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+      expect(file.startsWith(String(row.hook))).toBe(true);
+    }
+  });
+});
