@@ -27,14 +27,15 @@ it claims.
 
 ## Where a test lives
 
-**Beside its subject.** A criterion about `.Workflow/agent-workflows/shared/foo.ts` is proved by
-`.Workflow/agent-workflows/shared/foo.test.ts`: the same directory, the subject's name, the
-`.test.ts` suffix. If that test file already exists (it is shown below when the ticket claims it),
-return the **whole file** with your tests added; never a fragment. A criterion about a `bin/`
-script or a hook is proved from the nearest `.test.ts` under `.Workflow/` or `.claude/` that
-already drives it, or a new `.proc.test.ts` beside the hook.
+**Beside its subject.** A criterion about `<dir>/foo.ts` is proved by `<dir>/foo.test.ts`: the same
+directory, the subject's name, and one of the test suffixes this repository already uses, which are
+{{TEST_SUFFIXES}}. If that test file already exists (it is shown below when the ticket claims it),
+return the **whole file** with your tests added; never a fragment. A criterion about a script or a
+hook is proved from the nearest test that already drives it, or a new test beside it whose name
+carries `.proc.` before the suffix.
 
-Only `.Workflow/**` and `.claude/**` are collected by the suite. A test anywhere else never runs.
+Only {{SUITE_ROOTS}} are collected by this repository's suite. A test anywhere else never runs, and
+a batch writing a file outside those trees is refused whole.
 
 ## What to write
 
@@ -52,9 +53,9 @@ For each criterion:
 3. **Import the subject and call it.** Reach the real module the ticket claims, exercise the real
    function, assert the real behaviour the criterion describes. Do not mock away the thing
    #{{ISSUE_NUMBER}} is supposed to build; do not read the subject's source as text; do not spawn
-   `vitest`, `tsc` or `eslint`. A test file may not import `node:child_process` unless it is named
-   `*.proc.test.ts`, and it may not `readFileSync` a workflow, a Markdown file or anything under
-   `bin/`.
+   `vitest`, `tsc` or `eslint`. A test file may not import `node:child_process` unless its name
+   carries `.proc.` before the suffix, and it may not `readFileSync` a workflow, a Markdown file or
+   anything under `bin/`.
 4. **Give a subject that does not exist yet a stub entry point.** When the ticket claims a file that
    does not exist, also return that file with the exports your test imports, each one throwing
    `new Error("#{{ISSUE_NUMBER}}: not built")`, so the test collects, runs, and fails honestly on
@@ -65,19 +66,7 @@ For each criterion:
    whole batch runs green. A test that already passes today is either vacuous or about work that is
    already done, and either way it is refused.
 
-## Fixtures
-
-Use the shared ones rather than writing your own: `shared/gh.fake.ts` (`createFakeGh`,
-`createRecordingGh`) for a `GhExec`, `shared/git.fake.ts` for a `GitExec`, `shared/stage.fake.ts`
-for a model stage, `shared/temp-repo.fixture.ts` for a real throwaway git repo,
-`shared/scratch.fixture.ts` for a temp directory. Never define a function or const named `fakeGh`,
-`createFakeGh`, `stubGh` or `makeGh` in a test.
-
-## Two things the linter does
-
-No hand-written `repos/{owner}/{repo}/...` REST paths, as a template literal or as a regex: build
-them through `shared/gh-paths.ts`. No inline `err instanceof Error ? err.message : String(err)`:
-use `reason(err)` from `shared/reason.ts`.
+{{HOUSE_RULES}}
 
 ## The failure that looks honest
 
@@ -109,14 +98,14 @@ one, or you are not done.
 ## Output
 
 Return your answer by calling the `StructuredOutput` tool. Its one key, `files`, is an array of
-`{"path": "...", "content": "..."}`, where `path` is repo-relative under `.Workflow/` or `.claude/`,
+`{"path": "...", "content": "..."}`, where `path` is repo-relative under one of {{SUITE_ROOTS}},
 `content` the complete file.
 
 Write whatever reasoning you need first; only the tool call is read as your answer.
 
 Example, for criterion 1, whose block reads ``The gate is at most 120 lines - check: `wc -l bin/gauntlet` ``
-against a claimed `.Workflow/agent-workflows/shared/gate-size.ts` that does not exist yet:
+against a claimed `{{EXAMPLE_SUBJECT_PATH}}` that does not exist yet:
 
 ```structured-output
-{"files": [{"path": ".Workflow/agent-workflows/shared/gate-size.ts", "content": "export function gateLines(): number {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": ".Workflow/agent-workflows/shared/gate-size.test.ts", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\ntest.fails(\"#360.1: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
+{"files": [{"path": "{{EXAMPLE_SUBJECT_PATH}}", "content": "export function gateLines() {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": "{{EXAMPLE_TEST_PATH}}", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\ntest.fails(\"#360.1: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
 ```

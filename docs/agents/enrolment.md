@@ -57,6 +57,13 @@ That runner is vitest, and the target carries its own config file for it
 ([ADR-0156](../adr/0156-an-enrolled-target-runs-vitest-under-a-config-of-its-own.md)). A target
 without one is refused by name by `vitest-json.ts`, whose error says why.
 
+That config is also where the machine learns the shape of the target's suite. `shared/suite-layout.ts`
+asks vitest what it collects and derives the roots and the test suffixes from the answer
+([ADR-0161](../adr/0161-a-target-s-suite-roots-and-test-suffixes-are-read-from-the-t.md)), so a
+target whose tests are `*.test.tsx` under `src/` is authored into and read back exactly there. A
+repository owes nothing for this beyond the config it already owes; a checkout with no config to ask
+falls back to its tree, where every directory holding a test counts as a root.
+
 Nothing from the target's own CI reaches a contract slot. The machine's Verify runs
 `.claude/contract.json`'s `test` command from `bin/gauntlet`, not from the target's `ci.yml`, so an
 `env:` declared there (a worker width, say) is absent on every run the machine makes. A test

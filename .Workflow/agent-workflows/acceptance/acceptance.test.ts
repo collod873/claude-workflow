@@ -1,12 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SUITE_ROOTS } from "../shared/affected-tests";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
 import { createFakeGit } from "../shared/git.fake";
 import { scratchDir } from "../shared/scratch.fixture";
+import type { SuiteLayout } from "../shared/suite-layout";
 import type { GateVerdict } from "../shared/run-gauntlet";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractCriteria, type TicketRead } from "../shared/ticket-shape";
@@ -15,6 +15,7 @@ import {
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
   commitAuthoredBatch,
+  exampleSubject,
   judgeAuthoredBatch,
   landingFromEnv,
   NO_CLAIMED_FILES,
@@ -22,6 +23,7 @@ import {
   renderCriteria,
   renderFiles,
   runAcceptanceAuthor,
+  suiteOf,
   type AuthoredBatch,
   type AuthoredFile,
   type BatchVerdict,
@@ -33,6 +35,8 @@ const ISSUE = 162;
 const PRD = 145;
 const SUBJECT = ".Workflow/agent-workflows/shared/widget.ts";
 const TEST_PATH = ".Workflow/agent-workflows/shared/widget.test.ts";
+
+const SUITE: SuiteLayout = { files: [TEST_PATH], roots: [".Workflow", ".claude"], suffixes: [".test.ts"] };
 
 const TICKET_BODY = `## Parent PRD
 #${PRD}
@@ -81,6 +85,7 @@ function authoring(
     ticket: options.ticket ?? TICKET,
     prdBody: options.prdBody,
     readFile: options.readFile ?? (() => undefined),
+    suite: SUITE,
   });
   return { attempt, written, stage };
 }
@@ -112,6 +117,45 @@ describe("authorAcceptanceTests", () => {
   it("hands the author the parent PRD, and says when there is none", async () => {
     expect(await promptFor({ prdBody: PRD_BODY })).toContain(PRD_BODY);
     expect(await promptFor()).toContain("(no parent PRD)");
+  });
+
+  it("tells the author the target's own suite roots and test suffixes, not this repository's", async () => {
+    const foreign: SuiteLayout = {
+      files: ["src/a.test.tsx", "scripts/b.test.mjs"],
+      roots: ["scripts", "src"],
+      suffixes: [".test.mjs", ".test.tsx"],
+    };
+    const stage = answer([{ path: "src/widget.test.tsx", content: failsTest() }]);
+    await authorAcceptanceTests({
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      ticket: TICKET,
+      suite: foreign,
+    });
+
+    const prompt = stage.stdins[0] as string;
+    expect(prompt).toContain("`scripts/**`, `src/**`");
+    expect(prompt).toContain("`.test.mjs`, `.test.tsx`");
+    expect(prompt).not.toContain(".Workflow/**");
+    expect(prompt).not.toMatch(/\{\{\w+\}\}/);
+  });
+
+  it("keeps this repository's own house rules out of a prompt aimed at another repository", async () => {
+    const here = await promptFor();
+    expect(here).toContain("shared/gh.fake.ts");
+
+    const stage = answer([{ path: "src/widget.test.tsx", content: failsTest() }]);
+    await authorAcceptanceTests({
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      ticket: TICKET,
+      suite: { files: ["src/a.test.tsx"], roots: ["src"], suffixes: [".test.tsx"] },
+      houseRules: "",
+    });
+    expect(stage.stdins[0]).not.toContain("shared/gh.fake.ts");
+    expect(stage.stdins[0]).not.toMatch(/\{\{\w+\}\}/);
   });
 
   it("gives the author no tools to read anything else with", async () => {
@@ -146,7 +190,7 @@ describe("authorAcceptanceTests", () => {
     "throws, writing nothing, when a path is outside the suite's trees (%s)",
     async (path) => {
       const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, { path, content: failsTest() }]);
-      await expect(attempt).rejects.toThrow(new RegExp(`outside ${SUITE_ROOTS.join("/, ")}/`));
+      await expect(attempt).rejects.toThrow(new RegExp(`outside ${SUITE.roots.join("/, ")}/`));
       expect(written).toEqual([]);
     },
   );
@@ -165,6 +209,34 @@ describe("authorAcceptanceTests", () => {
     const { attempt, written } = authoring([{ path: SUBJECT, content: "export const widget = 1;\n" }]);
     await expect(attempt).rejects.toThrow(/no test file/);
     expect(written).toEqual([]);
+  });
+});
+
+describe("exampleSubject", () => {
+  it("names the busiest tree and the busiest suffix, so the worked example looks like this repository", () => {
+    const suite: SuiteLayout = {
+      files: ["src/a.test.tsx", "src/b.test.tsx", "scripts/c.test.mjs"],
+      roots: ["scripts", "src"],
+      suffixes: [".test.mjs", ".test.tsx"],
+    };
+
+    expect(exampleSubject(suite, "widget")).toEqual({ subject: "src/widget.tsx", test: "src/widget.test.tsx" });
+  });
+
+  it("falls back to the first of each when the counts cannot separate them", () => {
+    const suite: SuiteLayout = { files: [], roots: [".Workflow"], suffixes: [".test.ts"] };
+
+    expect(exampleSubject(suite, "widget")).toEqual({ subject: ".Workflow/widget.ts", test: ".Workflow/widget.test.ts" });
+  });
+});
+
+describe("suiteOf", () => {
+  it("refuses a target whose runner collects nothing, rather than authoring into a tree nothing reads", () => {
+    expect(() => suiteOf({ suite: { files: [], roots: [], suffixes: [] } })).toThrow(/collects no tests at all/);
+  });
+
+  it("takes the caller's suite as given when it names a tree", () => {
+    expect(suiteOf({ suite: SUITE })).toBe(SUITE);
   });
 });
 
@@ -230,6 +302,7 @@ describe("judgeAuthoredBatch", () => {
         },
       }),
       BATCH,
+      SUITE.suffixes,
     );
     expect(redReason(verdict)).toContain("Cannot find module './widget'");
     expect(gateRan).toBe(false);
@@ -247,13 +320,14 @@ describe("judgeAuthoredBatch", () => {
         }),
       }),
       BATCH,
+      SUITE.suffixes,
     );
     expect(redReason(verdict)).toContain("2 test(s) are red under test.fails");
     expect(redReason(verdict)).toContain("#162: no push, #162: exactly one push");
   });
 
   it("is red with the gate's own output when the whole gate is red, so clones and wiring count here too", () => {
-    expect(redReason(judgeAuthoredBatch(judging({ gate: () => GATE_RED }), BATCH))).toContain(CLONE_REPORT);
+    expect(redReason(judgeAuthoredBatch(judging({ gate: () => GATE_RED }), BATCH, SUITE.suffixes))).toContain(CLONE_REPORT);
   });
 
   it("runs only the test files of the batch, then the gate once", () => {
@@ -271,6 +345,7 @@ describe("judgeAuthoredBatch", () => {
         },
       }),
       BATCH,
+      SUITE.suffixes,
     );
     expect(verdict).toEqual({ ok: true });
     expect(ran).toEqual([[TEST_PATH]]);
@@ -361,6 +436,7 @@ describe("runAcceptanceAuthor", () => {
       gate: () => GATE_GREEN,
       git: git.git,
       landing: landingMode,
+      suite: SUITE,
     });
     return { outcome, tracker, stage, git, written };
   }
@@ -403,6 +479,7 @@ describe("runAcceptanceAuthor", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
+      suite: SUITE,
     });
     expect(tracker.reads).toHaveLength(1);
     expect(stage.stdins[0]).toContain("(no parent PRD)");
@@ -432,6 +509,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
       gate: () => verdicts.shift() ?? GATE_RED,
       git: git.git,
       log: () => {},
+      suite: SUITE,
     });
     return { outcome, stage, git, written, writes };
   }

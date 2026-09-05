@@ -19,6 +19,40 @@ function targetVitestConfig(repoDir: string): string | undefined {
   return CONFIG_NAMES.map((name) => join(repoDir, name)).find((path) => existsSync(path));
 }
 
+const listed = new Map<string, string[]>();
+
+export function listVitestFiles(repoDir: string): string[] | undefined {
+  const remembered = listed.get(repoDir);
+  if (remembered) return remembered;
+
+  const config = targetVitestConfig(repoDir);
+  if (!config) return undefined;
+
+  let stdout: string;
+  try {
+    stdout = execFileSync("npx", ["vitest", "list", "--filesOnly", "--json", "--config", config, "--root", repoDir], {
+      cwd: repoDir,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      env: childEnv(),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch {
+    return undefined;
+  }
+
+  let entries: Array<{ file?: string }>;
+  try {
+    entries = JSON.parse(stdout) as Array<{ file?: string }>;
+  } catch {
+    return undefined;
+  }
+
+  const files = [...new Set(entries.map((entry) => entry.file).filter((file) => file !== undefined))].sort();
+  listed.set(repoDir, files);
+  return files;
+}
+
 export interface TestFailure {
   name: string;
   errorName: string;

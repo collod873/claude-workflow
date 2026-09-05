@@ -1,12 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
 import {
   affectedSlices,
   authoredCriterionTitleRe,
-  SUITE_ROOTS,
   suiteTestFiles,
   testsForCriterion,
   testsForTicket,
@@ -43,7 +41,6 @@ function fixtureCheckout(): string {
     ".Workflow/not-a-test.ts": `// ${WIDGET}\n`,
     ".Workflow/node_modules/dep/dep.test.ts": `// ${WIDGET}\n`,
     ".claude/worktrees/other/.Workflow/copy.test.ts": `// ${WIDGET}\n`,
-    "tests/acceptance/old.test.ts": `// ${WIDGET}\n`,
   });
 }
 
@@ -58,14 +55,8 @@ function titledCheckout(): string {
   });
 }
 
-describe("SUITE_ROOTS", () => {
-  it("names the two trees the suite collects, and nothing else", () => {
-    expect(SUITE_ROOTS).toEqual([".Workflow", ".claude"]);
-  });
-});
-
 describe("suiteTestFiles", () => {
-  it("walks every *.test.ts under both suite roots, however deep", () => {
+  it("finds every test in the checkout, however deep, whatever tree it sits in", () => {
     const root = fixtureCheckout();
     expect(suiteTestFiles(root).sort()).toEqual([ALPHA, BETA, GAMMA, DELTA].map((path) => join(root, path)).sort());
   });
@@ -77,18 +68,9 @@ describe("suiteTestFiles", () => {
     expect(found.some((path) => path.includes("worktrees"))).toBe(false);
   });
 
-  it("does not return a test outside the suite roots, since it would never run", () => {
-    const root = fixtureCheckout();
-    expect(suiteTestFiles(root).some((path) => path.includes("tests/acceptance"))).toBe(false);
-  });
-
-  it("yields nothing, not a throw, for a root carrying neither tree", () => {
+  it("yields nothing, not a throw, for a checkout carrying no test at all", () => {
     expect(suiteTestFiles(scratchDir("affected-tests-empty"))).toEqual([]);
     expect(suiteTestFiles(join(scratchDir("affected-tests-missing"), "no-such-directory"))).toEqual([]);
-  });
-
-  it("defaults to this checkout, so the file you are reading is one of its results", () => {
-    expect(suiteTestFiles()).toContain(fileURLToPath(import.meta.url));
   });
 });
 

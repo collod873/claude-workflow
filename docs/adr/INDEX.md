@@ -82,6 +82,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0158 | [A second model gets a clean context and a looser fence before a red gate reaches the owner](0158-a-second-model-gets-a-clean-context-and-a-looser-fence-befor.md) |
 | 0159 | [The acceptance author names its criterion in the test title, not a comment above it](0159-the-acceptance-author-names-its-criterion-in-the-test-title.md) |
 | 0160 | [A vendored copy is pinned to its source by digest, and the prose gate does not read it](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) |
+| 0161 | [A target's suite roots and test suffixes are read from the target's own vitest, never assumed to be the machine's](0161-a-target-s-suite-roots-and-test-suffixes-are-read-from-the-t.md) |
 
 ## Retired
 
@@ -175,4 +176,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-160 ADRs · 74 constraint · 44 note · 42 superseded · 16,118 words total.
+161 ADRs · 75 constraint · 44 note · 42 superseded · 16,255 words total.

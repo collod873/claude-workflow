@@ -1,11 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
   affectedSlices,
   authoredCriterionTitleRe,
-  SUITE_ROOTS,
   testsForCriterion,
   type ExistingTestCriterion,
   type SliceRef,
@@ -19,6 +18,7 @@ import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
+import { suiteLayout, type SuiteLayout } from "../shared/suite-layout";
 import {
   CRITERIA_HEADING_RE,
   extractCriteria,
@@ -36,6 +36,10 @@ export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/p
 export const AUTHOR_REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/repair.md";
 
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
+
+const MACHINE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+export const HOUSE_RULES_PATH = ".Workflow/agent-workflows/acceptance/author/house-rules.md";
 
 const AuthoredFile = z.object({
   path: z.string().min(1),
@@ -57,6 +61,8 @@ export interface AuthorDeps {
   ticket: TicketRead;
   prdBody?: string;
   readFile?: (path: string) => string | undefined;
+  suite?: SuiteLayout;
+  houseRules?: string;
 }
 
 export const CLAIMED_FILE_ABSENT = "(does not exist yet; this ticket creates it)";
@@ -92,8 +98,45 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
-function underSuiteRoot(path: string): boolean {
-  return SUITE_ROOTS.some((root) => path.startsWith(`${root}/`));
+export function suiteOf(deps: Pick<AuthorDeps, "suite">): SuiteLayout {
+  const suite = deps.suite ?? suiteLayout(REPO_DIR);
+  if (suite.roots.length === 0) {
+    throw new Error(`${REPO_DIR} collects no tests at all, so an acceptance test written there would never run`);
+  }
+  return suite;
+}
+
+function isTestPath(path: string, suffixes: string[]): boolean {
+  return suffixes.some((suffix) => path.endsWith(suffix));
+}
+
+function busiest(counts: Map<string, number>, fallback: string): string {
+  let best = fallback;
+  for (const [name, count] of counts) if (count > (counts.get(best) ?? 0)) best = name;
+  return best;
+}
+
+export function exampleSubject(suite: SuiteLayout, name = "gate-size"): { subject: string; test: string } {
+  const perRoot = new Map<string, number>();
+  const perSuffix = new Map<string, number>();
+  for (const root of suite.roots) perRoot.set(root, suite.files.filter((file) => file.startsWith(`${root}/`)).length);
+  for (const suffix of suite.suffixes) perSuffix.set(suffix, suite.files.filter((file) => file.endsWith(suffix)).length);
+
+  const root = busiest(perRoot, suite.roots[0]);
+  const suffix = busiest(perSuffix, suite.suffixes[0]);
+  return {
+    subject: `${root}/${name}${suffix.replace(/^\.(?:test|spec)/, "")}`,
+    test: `${root}/${name}${suffix}`,
+  };
+}
+
+function houseRules(): string {
+  if (resolve(REPO_DIR) !== MACHINE_ROOT) return "";
+  try {
+    return readFileSync(join(MACHINE_ROOT, HOUSE_RULES_PATH), "utf8");
+  } catch {
+    return "";
+  }
 }
 
 export interface AuthoredBatch {
@@ -109,6 +152,8 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredB
     );
   }
 
+  const suite = suiteOf(deps);
+  const example = exampleSubject(suite);
   const round = await runStageSession(
     AUTHOR_PROMPT_PATH,
     {
@@ -119,6 +164,11 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredB
       CRITERIA: renderCriteria(criteria),
       CRITERIA_COUNT: String(criteria.length),
       CLAIMED_FILES: renderFiles(extractFilesClaimed(deps.ticket.body), deps.readFile ?? readIfPresent, NO_CLAIMED_FILES),
+      SUITE_ROOTS: suite.roots.map((root) => `\`${root}/**\``).join(", "),
+      TEST_SUFFIXES: suite.suffixes.map((suffix) => `\`${suffix}\``).join(", "),
+      EXAMPLE_SUBJECT_PATH: example.subject,
+      EXAMPLE_TEST_PATH: example.test,
+      HOUSE_RULES: deps.houseRules ?? houseRules(),
     },
     deps.exec,
     AUTHOR_OUTPUT,
@@ -145,12 +195,13 @@ export async function repairAcceptanceTests(deps: AuthorDeps, sessionId: string,
 
 function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionResult<AuthorAnswer>): AuthoredBatch {
   const answer = round.value;
+  const { roots, suffixes } = suiteOf(deps);
   for (const file of answer.files) {
-    if (!underSuiteRoot(file.path)) {
-      throw new Error(`author wrote outside ${SUITE_ROOTS.join("/, ")}/: ${file.path}`);
+    if (!roots.some((root) => file.path.startsWith(`${root}/`))) {
+      throw new Error(`author wrote outside ${roots.join("/, ")}/: ${file.path}`);
     }
   }
-  if (!answer.files.some((file) => file.path.endsWith(".test.ts"))) {
+  if (!answer.files.some((file) => isTestPath(file.path, suffixes))) {
     throw new Error(`author wrote no test file for #${deps.issueNumber}`);
   }
 
@@ -176,8 +227,8 @@ export interface JudgeDeps {
 
 export type BatchVerdict = { ok: true } | { ok: false; reason: string };
 
-export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[]): BatchVerdict {
-  const tests = paths.filter((path) => path.endsWith(".test.ts"));
+export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[], suffixes: string[]): BatchVerdict {
+  const tests = paths.filter((path) => isTestPath(path, suffixes));
   const result = deps.runTests(tests);
   if (!result.collected) {
     return { ok: false, reason: `a test file failed to collect: ${result.collectionError ?? "no detail reported"}` };
@@ -246,13 +297,14 @@ function batchPaths(batch: AuthoredBatch): string[] {
 }
 
 async function authorWithOneRepair(deps: AuthorDeps, judge: JudgeDeps): Promise<Attempt> {
+  const { suffixes } = suiteOf(deps);
   const first = await authorAcceptanceTests(deps);
-  const verdict = judgeAuthoredBatch(judge, batchPaths(first));
+  const verdict = judgeAuthoredBatch(judge, batchPaths(first), suffixes);
   if (verdict.ok) return { ok: true, paths: batchPaths(first) };
   if (first.sessionId === undefined) return { ok: false, reason: verdict.reason };
 
   const repaired = await repairAcceptanceTests(deps, first.sessionId, verdict.reason);
-  const again = judgeAuthoredBatch(judge, batchPaths(repaired));
+  const again = judgeAuthoredBatch(judge, batchPaths(repaired), suffixes);
   return again.ok ? { ok: true, paths: batchPaths(repaired) } : { ok: false, reason: again.reason };
 }
 
@@ -266,6 +318,7 @@ export interface RunAcceptanceDeps {
   git?: GitExec;
   landing?: Landing;
   log?: (line: string) => void;
+  suite?: SuiteLayout;
 }
 
 export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<LandOutcome> {
@@ -275,7 +328,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const log = deps.log ?? ((line: string) => console.log(line));
 
   const attempt = await authorWithOneRepair(
-    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body },
+    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite },
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
       gate: deps.gate ?? (() => gateVerdict(REPO_DIR)),

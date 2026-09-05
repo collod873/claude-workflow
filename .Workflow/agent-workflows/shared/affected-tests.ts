@@ -1,37 +1,16 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { suiteLayout, walkTree } from "./suite-layout";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
-export const SUITE_ROOTS = [".Workflow", ".claude"] as const;
-
-const SKIPPED = new Set(["node_modules", "worktrees"]);
-
 export function walkSuiteRoots(root: string, keep: (name: string) => boolean): string[] {
-  const files: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const path = join(dir, entry);
-      if (statSync(path).isDirectory()) {
-        if (!SKIPPED.has(entry)) walk(path);
-      } else if (keep(entry)) {
-        files.push(path);
-      }
-    }
-  };
-  for (const suiteRoot of SUITE_ROOTS) walk(join(root, suiteRoot));
-  return files;
+  return suiteLayout(root).roots.flatMap((suiteRoot) => walkTree(join(root, suiteRoot), keep));
 }
 
 export function suiteTestFiles(root: string = REPO_ROOT): string[] {
-  return walkSuiteRoots(root, (name) => name.endsWith(".test.ts"));
+  return suiteLayout(root).files.map((file) => join(root, file));
 }
 
 const STILL_RED = "\\.fails";
