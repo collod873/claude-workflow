@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { everySourceUnder, REPO_ROOT, type RepoFile } from "./repo-sources";
+import { isVendored } from "./vendored.fixture";
 
 /**
  * @fixture Reached only from `prose-gate.test.ts`, by design: no lane reads its own source tree.
@@ -109,5 +110,5 @@ export function gatedSources(): RepoFile[] {
     .map((entry) => join(REPO_ROOT, entry))
     .filter((path) => statSync(path).isFile())
     .map((path) => ({ path, relative: relative(REPO_ROOT, path), source: readFileSync(path, "utf8") }));
-  return [...roots, ...loose];
+  return [...roots, ...loose].filter((file) => !isVendored(file.relative));
 }

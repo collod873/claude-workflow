@@ -132,14 +132,18 @@ describe("session-capture.sh: failing open", () => {
     expect(row.verdict).toBe("skipped-no-transcript-path");
   });
 
-  it("exits 0, writes no capture file, and records a skipped-no-node row when node isn't on PATH", () => {
-    const row = expectSkippedRow("no-node", sessionEnd("x", oneHumanPrompt(), "y"), {
+  it("exits 0, writes no capture file, and leaves no row when node isn't on PATH, since the row writer is node", () => {
+    const { result, rows, legacyLog } = fireSessionEnd("no-node", sessionEnd("x", oneHumanPrompt(), "y"), {
       PATH: "/nonexistent",
       HOME: "/nonexistent",
       NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(false),
     });
 
-    expect(row.verdict).toBe("skipped-no-node");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(captureFiles(result.outputDir)).toEqual([]);
+    expect(rows).toEqual([]);
+    expect(legacyLog).not.toContain("skipped");
   });
 
   it("still captures when PATH is scrubbed but node is findable, so the payload survives the repair", () => {
@@ -366,25 +370,19 @@ describe("session-capture.sh: the shared run row every SessionEnd fire leaves be
       reason: "clear",
     });
     const missing = fireSessionEnd("transcript-missing", sessionEnd("row-missing", "/no/such/transcript.jsonl", "y"));
-    const noNode = fireSessionEnd("no-node", sessionEnd("row-no-node", oneHumanPrompt(), "y"), {
-      PATH: "/nonexistent",
-      HOME: "/nonexistent",
-      NODE_ON_PATH_SEARCH_DIRS: minimalBinDir(false),
-    });
     const dispatched = fireSessionEnd("dispatched", sessionEnd("row-dispatched", oneHumanPrompt(), "y"));
 
-    for (const fire of [noTranscript, missing, noNode, dispatched]) {
+    for (const fire of [noTranscript, missing, dispatched]) {
       expect(fire.rows).toHaveLength(1);
       expect(fire.rows[0]).toMatchObject({ hook: "session-capture", event: "SessionEnd" });
     }
-    for (const fire of [noTranscript, missing, noNode]) {
+    for (const fire of [noTranscript, missing]) {
       expect(fire.legacyLog).not.toContain("skipped");
     }
 
-    expect([noTranscript, missing, noNode, dispatched].map((fire) => fire.rows[0].verdict)).toEqual([
+    expect([noTranscript, missing, dispatched].map((fire) => fire.rows[0].verdict)).toEqual([
       "skipped-no-transcript-path",
       "skipped-transcript-missing",
-      "skipped-no-node",
       "dispatched",
     ]);
   });

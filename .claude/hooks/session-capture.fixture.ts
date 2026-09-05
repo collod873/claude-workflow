@@ -74,7 +74,7 @@ function onPath(tool: string): string {
 
 export function minimalBinDir(withNode: boolean): string {
   const dir = scratchDir("session-capture-min-bin");
-  const tools = ["cat", "date", "mkdir", "dirname"];
+  const tools = ["cat", "date", "mkdir", "dirname", "basename"];
   for (const tool of withNode ? [...tools, "node"] : tools) symlinkSync(onPath(tool), join(dir, tool));
   if (!withNode && existsSync(join(dir, "node"))) throw new Error("the nodeless bin dir has a node in it");
   return dir;

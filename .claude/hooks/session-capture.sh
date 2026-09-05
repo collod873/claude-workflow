@@ -6,10 +6,9 @@ here="${BASH_SOURCE[0]%/*}"
 repo_root="$(cd "$here/../.." && pwd)"
 # shellcheck source=bin/node-on-path.sh
 . "$repo_root/bin/node-on-path.sh"
+node_on_path && have_node=1 || have_node=0
 # shellcheck source=.claude/hooks/lib/_hook.sh
 . "$repo_root/.claude/hooks/lib/_hook.sh"
-
-node_on_path && have_node=1 || have_node=0
 
 if [ "$have_node" -eq 0 ]; then
   hook_run_row "skipped-no-node"

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { braceProse, gatedSources, hashProse, proseIn } from "./prose";
+import { repoFileExists } from "./repo-sources";
+import { VENDORED_COPIES } from "./vendored.fixture";
 
 describe("code in this repo carries no prose (#360)", () => {
   const sources = gatedSources();
@@ -13,6 +15,15 @@ describe("code in this repo carries no prose (#360)", () => {
 
     expect(covered).toContain(".husky/pre-push");
     expect([...covered].filter((path) => path.includes(".fixtures/")).length).toBeGreaterThan(0);
+  });
+
+  it("leaves a vendored copy to its digest pin, and only a copy that exists", () => {
+    const covered = new Set(sources.map((file) => file.relative));
+
+    for (const copy of VENDORED_COPIES) {
+      expect(repoFileExists(copy.relative), `${copy.relative} is pinned but missing`).toBe(true);
+      expect(covered).not.toContain(copy.relative);
+    }
   });
 
   it("reads an extensionless husky hook as the shell it is", () => {
