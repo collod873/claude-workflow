@@ -6,7 +6,6 @@ import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { GATE_JOB, IMMUTABILITY_JOB } from "../integrate/integrate";
 import { BYPASS_STEP } from "../watchdog/bypass";
 import { AUDIT_DISPATCH_ACTION, KNOWLEDGE_BASE_CHECKOUT_DIR } from "../observations/run-audit";
-import { RATIFIER_PR_TITLE } from "../ratify/land";
 import { CLOSE_STATE_REASON, PRD_LABEL } from "../ratify/prd-close";
 import { LABELS_APPLIED } from "../shape/shape";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "../spec/open-questions";
@@ -234,7 +233,6 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     ["prd", LANE_OWNED.prd, [PRD_LABEL]],
     ["to-build", LANE_OWNED.toBuild, [TO_BUILD_LABEL]],
     ["close state reason", LANE_OWNED.closeStateReason, [CLOSE_STATE_REASON]],
-    ["ratifier PR title", LANE_OWNED.ratifierPrTitle, [RATIFIER_PR_TITLE]],
     ["Immutability job", LANE_OWNED.immutabilityJob, [IMMUTABILITY_JOB]],
     ["gate job", LANE_OWNED.gateJob, [GATE_JOB]],
     ["gate step", LANE_OWNED.gateStep, [BYPASS_STEP]],

@@ -6,10 +6,9 @@ import type { Observation } from "../shared/observation-schema";
 import { encodeFindingMarker } from "../shared/finding-marker";
 import { LAST_RATIFIER_REF, LEGACY_RATIFIER_REF, readRatifierBase } from "../shared/ratifier-base";
 import { MACHINERY_TRAILER_LINE } from "../shared/ratification-scope";
+import { RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
 
 export { LAST_RATIFIER_REF, LEGACY_RATIFIER_REF, readRatifierBase };
-
-export const RATIFIER_PR_TITLE = "Ratified: standards from this batch";
 
 export const RATIFIER_CRITERION =
   "Every enabled eslint rule resolves to a definition and every CODING_STANDARDS.md entry parses to the three-line shape";

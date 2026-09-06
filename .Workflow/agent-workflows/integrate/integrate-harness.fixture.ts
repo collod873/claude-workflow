@@ -64,6 +64,7 @@ export interface HarnessOptions {
   gauntlet?: GauntletResult;
   closeTicket?: CloseTicketResult;
   body?: string;
+  title?: string;
   commentThrows?: boolean;
   prCommentThrows?: boolean;
   verifyRuns?: VerifyRunFixture[] | (() => VerifyRunFixture[]);
@@ -111,6 +112,7 @@ export function integrateHarness({
   gauntlet = { exitCode: 0 },
   closeTicket,
   body = PR_BODY,
+  title = "Rebuild the thing",
   commentThrows = false,
   prCommentThrows = false,
   verifyRuns = LANE_06_ALL_GREEN,
@@ -132,7 +134,7 @@ export function integrateHarness({
   const currentRuns = () => scriptRuns(typeof verifyRuns === "function" ? verifyRuns() : verifyRuns);
 
   const answer = (args: string[]): string | undefined => {
-    if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, body });
+    if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, title, body });
     if (args[0] === "run" && args[1] === "view" && args[2] === "--job" && args[4] === "--log") {
       const jobId = Number(args[3]);
       const run = currentRuns().find((each) => each.jobs.some((job) => job.id === jobId));

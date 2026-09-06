@@ -1,11 +1,12 @@
 name: Ratify release
 
 "on":
-  pull_request:
-    types: [closed]
+  repository_dispatch:
+    types: [ratifier-merged]
 
 jobs:
   ratify-release:
     permissions:
       contents: write
+      pull-requests: read
     uses: collod873/claude-workflow/.github/workflows/ratify-release.yml@main

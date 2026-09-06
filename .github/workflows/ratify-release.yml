@@ -14,17 +14,17 @@ name: Ratify release (reusable)
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   ratify-release:
-    if: "github.event.pull_request.title == 'Ratified: standards from this batch'"
+    if: github.event.action == 'ratifier-merged'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      PR_MERGED: ${{ github.event.pull_request.merged }}
-      PR_BODY: ${{ github.event.pull_request.body }}
-      MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      PR: ${{ github.event.client_payload.pr }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: target
-          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
 
       - name: Fetch the ratifications ref
         working-directory: target

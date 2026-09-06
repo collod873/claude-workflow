@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RATIFIER_MERGED_DISPATCH_ACTION, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
 import { GRAPH_CHANGED_DISPATCH_ACTION, runIntegrate } from "./integrate";
 import {
   BRANCH,
@@ -183,6 +184,27 @@ describe("runIntegrate announces the merge without interpreting it", () => {
 
       expect(dispatches).toEqual([]);
     }
+  });
+
+  it("rings ratifier-merged too when the merged PR is the ratifier's, after the merge and before the graph bell", () => {
+    const { calls, deps, dispatches } = integrateHarness({ title: RATIFIER_PR_TITLE, body: "Ratified things." });
+
+    runIntegrate(deps);
+
+    expect(dispatches).toEqual([
+      { eventType: RATIFIER_MERGED_DISPATCH_ACTION, payload: { pr: PR } },
+      { eventType: GRAPH_CHANGED_DISPATCH_ACTION, payload: { pr: PR } },
+    ]);
+    const mergeIndex = calls.findIndex((call) => call[0] === "pr" && call[1] === "merge");
+    expect(calls.findIndex(isBell)).toBeGreaterThan(mergeIndex);
+  });
+
+  it("rings no ratifier-merged for a ratifier PR that did not merge", () => {
+    const { dispatches, deps } = integrateHarness({ title: RATIFIER_PR_TITLE, gauntlet: { exitCode: 1 } });
+
+    runIntegrate(deps);
+
+    expect(dispatches).toEqual([]);
   });
 
   it("makes no gh call that reads the dependency graph", () => {

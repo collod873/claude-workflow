@@ -7,6 +7,7 @@ import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { findJobByName } from "../shared/job-match";
 import { escalateToOwner } from "../shared/needs-human";
+import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
@@ -47,17 +48,19 @@ export interface IntegrateDeps {
 
 interface PullRequest {
   branch: string;
+  title: string;
   ticket: number | undefined;
 }
 
 const CLOSING_REFERENCE_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i;
 
 function readPr(gh: GhExec, pr: string): PullRequest {
-  const raw = gh(["pr", "view", pr, "--json", "headRefName,body"]);
-  const json = JSON.parse(raw) as { headRefName?: string; body?: string };
+  const raw = gh(["pr", "view", pr, "--json", "headRefName,title,body"]);
+  const json = JSON.parse(raw) as { headRefName?: string; title?: string; body?: string };
   const match = CLOSING_REFERENCE_RE.exec(json.body ?? "");
   return {
     branch: (json.headRefName ?? "").trim(),
+    title: json.title ?? "",
     ticket: match ? Number(match[1]) : undefined,
   };
 }
@@ -281,6 +284,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   }
 
   mergePr(deps.gh, deps.pr);
+  if (pullRequest.title === RATIFIER_PR_TITLE) dispatchRatifierMerged(deps.gh, deps.pr);
   const closing = closeMergedTicket(deps, pullRequest.ticket, range);
   announceGraphChanged(deps.gh, deps.pr);
   return { merged: true, closing };

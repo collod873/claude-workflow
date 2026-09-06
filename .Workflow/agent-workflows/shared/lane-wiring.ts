@@ -2,7 +2,7 @@ import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
 import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { CLAIM_TIMEOUT_MINUTES } from "./implementation-landing";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
-import { RATIFICATION_DUE_DISPATCH_ACTION } from "./ratification-dispatch";
+import { RATIFICATION_DUE_DISPATCH_ACTION, RATIFIER_MERGED_DISPATCH_ACTION } from "./ratification-dispatch";
 import { ACCEPTANCE_WANTED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 
@@ -18,7 +18,6 @@ export const LANE_OWNED = {
   prd: "prd",
   toBuild: "to-build",
   closeStateReason: "completed",
-  ratifierPrTitle: "Ratified: standards from this batch",
   immutabilityJob: "Immutability",
   gateJob: "Verify",
   gateStep: "Gauntlet",
@@ -604,14 +603,18 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   },
 
   "ratify-release": {
-    caller: { name: "Ratify release", on: { pull_request: ["closed"] }, permissions: { contents: "write" } },
-    permissions: { contents: "write" },
+    caller: {
+      name: "Ratify release",
+      on: { repository_dispatch: [RATIFIER_MERGED_DISPATCH_ACTION] },
+      permissions: { contents: "write", "pull-requests": "read" },
+    },
+    permissions: { contents: "write", "pull-requests": "read" },
     jobs: {
       "ratify-release": {
-        gate: { is: `github.event.pull_request.title == '${LANE_OWNED.ratifierPrTitle}'` },
+        gate: { is: onAction(RATIFIER_MERGED_DISPATCH_ACTION) },
         runs: tsx("observations/run-ratification.ts"),
-        checkout: "pair",
-        env: { PR_NUMBER: true, PR_MERGED: true, PR_BODY: true, MERGE_COMMIT_SHA: true },
+        checkout: { pair: true, fetchDepth: 0 },
+        env: { PR: "${{ github.event.client_payload.pr }}" },
       },
     },
   },

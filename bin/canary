@@ -379,7 +379,6 @@ fire_path="$(jq -r '.firePath // empty' <<<"$plan_json")"
 demand_label="$(jq -r '.demands.label // empty' <<<"$plan_json")"
 demand_issue_labels="$(jq -r '.demands.issueLabels // [] | .[]' <<<"$plan_json")"
 demand_state_reason="$(jq -r '.demands.stateReason // empty' <<<"$plan_json")"
-demand_pr_title="$(jq -r '.demands.pullRequestTitle // empty' <<<"$plan_json")"
 log "lane '$lane' wakes on $fire_kind${fire_event_type:+ ($fire_event_type)}"
 [ "$(jq -r '.demands // empty' <<<"$plan_json")" = "" ] \
   || log "its job guard demands $(jq -c .demands <<<"$plan_json")"
@@ -605,19 +604,6 @@ case "$fire_kind" in
     [ -z "$demand_state_reason" ] || close_args+=(--reason "$demand_state_reason")
     gh issue close "$issue_num" "${close_args[@]}" >/dev/null
     log "fired: $canary_repo issue #$issue_num closed${demand_state_reason:+ as $demand_state_reason}"
-    ;;
-  pull_request_closed)
-    pr_branch="canary-fire-$(date -u +%s)"
-    base_sha="$(gh api "repos/$canary_repo/git/ref/heads/$target_branch" --jq .object.sha)"
-    gh api "repos/$canary_repo/git/refs" -f "ref=refs/heads/$pr_branch" -f "sha=$base_sha" >/dev/null
-    fire_blob="$(gh api "repos/$canary_repo/contents/.canary-fire?ref=$pr_branch" --jq '.sha // empty' 2>/dev/null || true)"
-    put_args=(-X PUT "repos/$canary_repo/contents/.canary-fire" -f "message=canary: fire $lane" \
-      -f "content=$(printf '%s\n' "fired at $before_time" | base64 -w0)" -f "branch=$pr_branch")
-    [ -z "$fire_blob" ] || put_args+=(-f "sha=$fire_blob")
-    gh api "${put_args[@]}" >/dev/null
-    pr_num="$(open_pr "$pr_branch" "${demand_pr_title:-canary: fire $lane}")"
-    gh pr close "$pr_num" -R "$canary_repo" >/dev/null
-    log "fired: $canary_repo PR $pr_num closed"
     ;;
   *)
     die "internal error: canary-fire-plan.ts returned an unhandled kind '$fire_kind'"

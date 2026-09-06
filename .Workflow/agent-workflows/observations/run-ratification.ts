@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { execGh } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { syncNotesRef } from "../shared/notes-sync";
 import { normalizeNewlines } from "../shared/ticket-shape";
@@ -68,21 +69,37 @@ export function runRatification(input: EntrypointInput): EntrypointOutcome {
   return { ran: true, recordCount: records.length };
 }
 
+interface MergedPullRequest {
+  number: number;
+  body: string | null;
+  mergedAt: string | null;
+  mergeCommit: { oid: string } | null;
+}
+
+function readMergedPr(pr: string): MergedPullRequest {
+  return JSON.parse(execGh(["pr", "view", pr, "--json", "number,body,mergedAt,mergeCommit"])) as MergedPullRequest;
+}
+
 async function main(): Promise<void> {
-  const prNumberRaw = process.env.PR_NUMBER;
-  const prNumber = prNumberRaw ? Number(prNumberRaw) : undefined;
-  const merged = process.env.PR_MERGED === "true";
-  const commit = process.env.MERGE_COMMIT_SHA ?? "";
+  const pr = process.env.PR;
+  if (!pr) {
+    console.error("PR must be set: the ratifier-merged dispatch names the pull request that merged");
+    process.exit(1);
+  }
+
+  const view = readMergedPr(pr);
+  const merged = view.mergedAt !== null;
+  const commit = view.mergeCommit?.oid ?? "";
 
   if (merged && !commit) {
-    console.error("MERGE_COMMIT_SHA must be set for a merged PR");
+    console.error(`${pr} reads as merged but GitHub names no merge commit for it`);
     process.exit(1);
   }
 
   const outcome = runRatification({
-    prNumber,
+    prNumber: view.number,
     merged,
-    body: process.env.PR_BODY,
+    body: view.body,
     commit,
     repoDir: process.env.TARGET_WORKSPACE ?? process.cwd(),
   });

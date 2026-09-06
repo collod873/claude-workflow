@@ -240,8 +240,9 @@ Sent via `gh api ... -f client_payload[prd_closed]=false` — a literal string, 
 Three workflows, one shared destination. `ratify-on-prd-close.yml` and `audit.yml` (Part one) are two
 independent doors that both end by sending the same `ratification-due` dispatch; `ratify.yml` is the
 one workflow that ever reads it; `ratify-release.yml` runs afterward, once the ratifier's own pull
-request has been judged and merged by the ordinary lane 06 / lane 08 machinery, to record what
-survived.
+request has been judged and merged by the ordinary lane 06 / lane 08 machinery: lane 08 rings
+`ratifier-merged` when the pull request it merged carries the ratifier's title, and that ring is
+what wakes the recording of what survived.
 
 ## Node 07 — the two doors in · [stop]
 
@@ -492,13 +493,17 @@ nothing downstream reads it.
 
 `ratify-release.yml` `jobs.ratify-release.if` · `observations/run-ratification.ts`
 
-Fires on **every** `pull_request: closed` in the repository, and the `if:` is the only thing that
-narrows it to this machinery's own PRs.
+Wakes on the `ratifier-merged` dispatch lane 08 rings right after `gh pr merge`, and only when the
+pull request it merged carries `RATIFIER_PR_TITLE` (`integrate/integrate.ts`). It cannot wake on
+`pull_request: closed`: lane 08 merges with the Actions token, and GitHub starts no workflow for
+an event that token caused, so a door on the close event never opened for the machine's own merge
+(ADR-0164).
 
 | | |
 |---|---|
-| **Gate** | `github.event.pull_request.title == 'Ratified: standards from this batch'` — title match, nothing structural |
-| **Closed unmerged** | `merged: false` → logs and stops; nothing recorded |
+| **Gate** | `github.event.action == 'ratifier-merged'` — the ring is the whole gate; the title check already happened in lane 08 |
+| **Payload** | `client_payload.pr`, the pull request URL lane 08 merged; the job reads `number`, `body`, `mergedAt` and `mergeCommit` back from GitHub rather than trusting the ring |
+| **Closed unmerged** | `mergedAt` null → logs and stops; nothing recorded (unreachable from lane 08, which rings only after a merge, but the script keeps the check) |
 | **Reads** | The merged PR's own body — the same body Node 13 wrote — for `<!-- release-finding:... -->` markers, via `parseFindingMarker()` |
 | **No `landedAs` on a marker** | Skipped (a declined finding, from a batch this doc never sees land a PR for, carries no marker at all) |
 | **Writes** | One `RatificationRecord` per marker, `decision: "ratified"`, `reason: 'landed as "<landedAs>" in ratifier PR #<n>'`, at `MERGE_COMMIT_SHA` — into `refs/notes/ratifications`, the same ref Node 09 reads and the same ref `decline-on-revert` (Node 16) both reads and writes |
@@ -543,7 +548,7 @@ from `CODING_STANDARDS.md`, this is the workflow that notices, on the very push 
 | audit's own dispatch (Node 06) | — | Observation notes in range | `refs/notes/observations` | One `repository_dispatch` |
 | ratifier (Node 11) | opus, **unrestricted tools** | `CODING_STANDARDS.md`, the checkout at large | The working tree (rule + fixes, or a `CODING_STANDARDS.md` entry) | — |
 | land (Nodes 13–14) | — | The batch's own commits, trunk's immutable set | Pushes a branch, opens a PR | Opens a PR, dispatches `implementation-opened` |
-| ratify-release (Node 15) | — | The merged PR's own body | `refs/notes/ratifications` | — |
+| ratify-release (Node 15) | — | The merged PR's own body, read back by `gh pr view` | `refs/notes/ratifications` | — |
 | decline-on-revert (Node 16) | — | `CODING_STANDARDS.md`, `eslint.config.js`, ratification notes | `refs/notes/ratifications` | — |
 
 Two single-job workflows here — `ratify.yml` and `implement.yml` — hold full `contents: write,

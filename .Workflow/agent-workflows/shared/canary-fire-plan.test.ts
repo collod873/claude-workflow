@@ -87,14 +87,6 @@ describe("planFire", () => {
     });
   });
 
-  it("chooses pull_request_closed for a lane whose only door is pull_request:closed, and titles the seed PR as its guard demands", () => {
-    expect(planFire("ratify-release")).toEqual({
-      kind: "pull_request_closed",
-      event: "pull_request",
-      demands: { pullRequestTitle: "Ratified: standards from this batch" },
-    });
-  });
-
   it("refuses a workflow_run-only lane and names the upstream lane it can prove instead", () => {
     for (const lane of ["bypass-counter", "review"]) {
       const plan = planFire(lane);

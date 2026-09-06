@@ -56,8 +56,8 @@ const triggers = {
     types: [ratification-due]`,
   "ratify-on-prd-close": `  issues:
     types: [closed]`,
-  "ratify-release": `  pull_request:
-    types: [closed]`,
+  "ratify-release": `  repository_dispatch:
+    types: [ratifier-merged]`,
   recover: `  workflow_run:
     workflows: ["Implement"]
     types: [completed]
@@ -101,11 +101,10 @@ const dispatchForward = {
   implement: [`dispatch implementation-opened`],
   fixer: [`dispatch implementation-opened`],
   recover: [`dispatch ticket-ready`],
-  integrate: [`dispatch graph-changed`],
+  integrate: [`dispatch graph-changed`, `dispatch ratifier-merged`],
   "dispatch-reconcile": [`dispatch ticket-ready`],
   spec: [`dispatch prd-sliceable`],
   "to-tickets": [`dispatch ticket-ready`],
-  "ratify-release": [`dispatch implementation-opened`],
 };
 
 const labelForward = {

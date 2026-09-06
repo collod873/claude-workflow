@@ -8,6 +8,7 @@ import type { GhExec } from "../shared/gh";
 import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
 import { observation } from "../shared/observation.fixture";
 import { parseFindingMarker } from "../shared/finding-marker";
+import { RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
 import {
   alignImmutableSetWithTrunk,
   changedFilesBetween,
@@ -16,7 +17,6 @@ import {
   LEGACY_RATIFIER_REF,
   openRatifierPr,
   RATIFIER_CRITERION,
-  RATIFIER_PR_TITLE,
   readRatifierBase,
   refuseImmutableSetBatch,
   renderRatifierBody,

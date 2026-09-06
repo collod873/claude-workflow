@@ -328,6 +328,14 @@ attempt, whichever way the close went.
 {"event_type": "graph-changed", "client_payload": {"pr": "https://github.com/collod873/claude-workflow/pull/501"}}
 ```
 
+One more ring shares this node, and only for one kind of pull request. When the PR lane 08 merged
+carries the ratifier's title (`RATIFIER_PR_TITLE`, `shared/ratification-dispatch.ts`), it rings
+`ratifier-merged` with the same `{pr}` payload, right after the merge and before the close attempt.
+That ring is the only thing that wakes `ratify-release.yml`: a `pull_request: closed` door never
+opens for a merge the Actions token made
+([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)). An
+implementation PR, like #501 here, rings nothing extra.
+
 This is the same shape of ring that, earlier in this worked example's own history, announced
 ticket #420's merge and let reconcile-lane-edges.md's node 04 notice #421's blocker had cleared,
 dispatching `ticket-ready` for #421 directly — the hop that put #421 in front of lane 05 and,
