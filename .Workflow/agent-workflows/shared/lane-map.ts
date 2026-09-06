@@ -402,96 +402,260 @@ export function tallyRuns(rows: { name: string; conclusion: string | null }[], n
   return tallies;
 }
 
+const BOX_W = 168;
+const BOX_H = 56;
+const PILL_H = 34;
+const ROW_GAP = 92;
+const COL_GAP = 28;
+const DUMMY_W = 18;
+const MARGIN = 48;
+const TOP_PAD = 40;
+const BACK_LANE = 16;
+const LABEL_CHAR_W = 5.9;
+const LABEL_H = 14;
+const NARROW_GLYPH = /[iljtfr.,:;'·\s*/|!()\-]/;
+const WIDE_GLYPH = /[A-Z0-9_mw—…]/;
+const HUB_SHARE = 0.5;
+const GRAVITY = 0.15;
+
 interface Placed {
-  node: LaneNode;
+  id: string;
+  node?: LaneNode;
   layer: number;
   x: number;
   y: number;
+  w: number;
 }
 
-const BOX_W = 168;
-const BOX_H = 52;
-const ROW_GAP = 104;
-const COL_GAP = 26;
-const STAGGER_ABOVE = 6;
+interface DrawEdge {
+  from: string;
+  to: string;
+  label: string;
+  kind: Edge["kind"];
+  back: boolean;
+  path: string[];
+}
 
-function layout(map: LaneMap): { placed: Map<string, Placed>; width: number; height: number; back: Set<Edge> } {
-  const ids = map.nodes.map((node) => node.id);
-  const forward = map.edges.filter((edge) => edge.from !== edge.to);
-  const out = new Map<string, string[]>(ids.map((id) => [id, []]));
-  for (const edge of forward) out.get(edge.from)?.push(edge.to);
+interface Layout {
+  placed: Map<string, Placed>;
+  edges: DrawEdge[];
+  hubs: Set<string>;
+  width: number;
+  height: number;
+  backLanes: number;
+  hubNotes: Map<string, string>;
+}
 
+interface Label {
+  text: string;
+  x: number;
+  y: number;
+  anchor: "middle" | "start" | "end";
+  first?: boolean;
+}
+
+function isLane(node: LaneNode | undefined): boolean {
+  return node?.kind === "model" || node?.kind === "wire";
+}
+
+function hubLanes(map: LaneMap): string[] {
+  const lanes = map.nodes.filter((node) => isLane(node));
+  return lanes.filter((node) => node.wakesOn.filter((door) => door.endsWith(" completed")).length > lanes.length * HUB_SHARE).map((node) => node.id);
+}
+
+function drawableEdges(map: LaneMap, hubs: Set<string>): { edges: DrawEdge[]; hubNotes: Map<string, string> } {
+  const edges: DrawEdge[] = [];
+  const hubNotes = new Map<string, string>([...hubs].map((hub) => [hub, "any lane ends"]));
+  for (const edge of map.edges) {
+    if (edge.from === edge.to) continue;
+    let label = edge.label;
+    if (hubs.has(edge.to)) {
+      if (edge.from === MAIN) {
+        hubNotes.set(edge.to, `${hubNotes.get(edge.to)} · any push`);
+        continue;
+      }
+      label = label
+        .split(" · ")
+        .filter((part) => !part.endsWith(" ended"))
+        .join(" · ");
+      if (label === "") continue;
+    }
+    edges.push({
+      from: edge.from,
+      to: edge.to,
+      label,
+      kind: edge.kind,
+      back: false,
+      path: [],
+    });
+  }
+  return { edges, hubNotes };
+}
+
+function markBackEdges(order: string[], edges: DrawEdge[]): void {
+  const rank = new Map(order.map((id, index) => [id, index]));
+  const sorted = [...edges].sort((a, b) => (rank.get(a.to) ?? 0) - (rank.get(b.to) ?? 0));
   const state = new Map<string, "open" | "done">();
-  const back = new Set<Edge>();
   const visit = (id: string) => {
     state.set(id, "open");
-    for (const edge of forward.filter((candidate) => candidate.from === id)) {
+    for (const edge of sorted.filter((candidate) => candidate.from === id)) {
       const mark = state.get(edge.to);
-      if (mark === "open") back.add(edge);
+      if (mark === "open") edge.back = true;
       else if (mark === undefined) visit(edge.to);
     }
     state.set(id, "done");
   };
-  for (const id of ids) if (!state.has(id)) visit(id);
+  for (const id of order) if (!state.has(id)) visit(id);
+}
 
-  const layered = forward.filter((edge) => !back.has(edge));
+function assignLayers(map: LaneMap, ids: string[], edges: DrawEdge[], hubs: Set<string>): Map<string, number> {
+  const byId = new Map(map.nodes.map((node) => [node.id, node]));
   const layer = new Map<string, number>(ids.map((id) => [id, 0]));
+  const forward = edges.filter((edge) => !edge.back);
+  const raise = (id: string, want: number) => {
+    if ((layer.get(id) ?? 0) < want) {
+      layer.set(id, want);
+      return true;
+    }
+    return false;
+  };
   for (let pass = 0; pass < ids.length; pass += 1) {
     let moved = false;
-    for (const edge of layered) {
-      const want = (layer.get(edge.from) ?? 0) + 1;
-      if ((layer.get(edge.to) ?? 0) < want) {
-        layer.set(edge.to, want);
-        moved = true;
-      }
+    for (const edge of forward) if (raise(edge.to, (layer.get(edge.from) ?? 0) + 1)) moved = true;
+    if (!moved) break;
+  }
+  const floating = ids.filter((id) => isLane(byId.get(id)) && (byId.get(id)?.number === undefined || hubs.has(id)));
+  for (let pass = 0; pass < ids.length; pass += 1) {
+    let moved = false;
+    for (const id of floating) {
+      const below = forward.filter((edge) => edge.from === id && edge.to !== MAIN).map((edge) => layer.get(edge.to) ?? 0);
+      if (below.length > 0 && raise(id, Math.min(...below) - 1)) moved = true;
     }
     if (!moved) break;
   }
-  for (const edge of layered) {
-    if (edge.from.startsWith("you:")) layer.set(edge.from, Math.max(0, (layer.get(edge.to) ?? 1) - 1));
-  }
-
-  const rows = new Map<number, string[]>();
   for (const id of ids) {
-    const depth = layer.get(id) ?? 0;
-    rows.set(depth, [...(rows.get(depth) ?? []), id]);
+    if (!id.startsWith("you:")) continue;
+    const targets = forward.filter((edge) => edge.from === id).map((edge) => layer.get(edge.to) ?? 1);
+    if (targets.length > 0) layer.set(id, Math.max(0, Math.min(...targets) - 1));
   }
-  const position = new Map<string, number>();
+  return layer;
+}
+
+function layout(map: LaneMap): Layout {
+  const hubs = new Set(hubLanes(map));
+  const { edges, hubNotes } = drawableEdges(map, hubs);
+  const byId = new Map(map.nodes.map((node) => [node.id, node]));
+  const touched = new Set(edges.flatMap((edge) => [edge.from, edge.to]));
+  const ids = [
+    ...map.nodes
+      .filter((node) => node.kind === "source" || node.kind === "nobody")
+      .map((node) => node.id)
+      .filter((id) => id !== MAIN && touched.has(id)),
+    ...map.nodes
+      .filter((node) => isLane(node))
+      .sort((a, b) => (a.number ?? "99").localeCompare(b.number ?? "99") || a.name.localeCompare(b.name))
+      .map((node) => node.id),
+    ...(touched.has(MAIN) ? [MAIN] : []),
+  ];
+  markBackEdges(ids, edges);
+  const layer = assignLayers(map, ids, edges, hubs);
+
+  const widthOf = (id: string) => (id.startsWith("d:") ? DUMMY_W : BOX_W);
+  const rows = new Map<number, string[]>();
+  const put = (id: string, depth: number) => rows.set(depth, [...(rows.get(depth) ?? []), id]);
+  for (const id of ids) put(id, layer.get(id) ?? 0);
+  let dummies = 0;
+  for (const edge of edges) {
+    const from = layer.get(edge.from) ?? 0;
+    const to = layer.get(edge.to) ?? 0;
+    edge.path = [edge.from];
+    if (!edge.back) {
+      for (let depth = from + 1; depth < to; depth += 1) {
+        const id = `d:${(dummies += 1)}`;
+        put(id, depth);
+        edge.path.push(id);
+      }
+    }
+    edge.path.push(edge.to);
+  }
+  const segments = edges.filter((edge) => !edge.back).flatMap((edge) => edge.path.slice(1).map((to, index) => ({ from: edge.path[index], to })));
+
   const order = [...rows.keys()].sort((a, b) => a - b);
+  const position = new Map<string, number>();
   for (const depth of order) rows.get(depth)?.forEach((id, index) => position.set(id, index));
-  for (let sweep = 0; sweep < 6; sweep += 1) {
+  const neighboursOf = (id: string, upward: boolean) => segments.filter((segment) => (upward ? segment.to === id : segment.from === id)).map((segment) => (upward ? segment.from : segment.to));
+  for (let sweep = 0; sweep < 10; sweep += 1) {
     const downward = sweep % 2 === 0;
     for (const depth of downward ? order : [...order].reverse()) {
       const row = rows.get(depth) ?? [];
       const bary = (id: string) => {
-        const neighbours = layered
-          .filter((edge) => (downward ? edge.to === id : edge.from === id))
-          .map((edge) => position.get(downward ? edge.from : edge.to) ?? 0);
-        return neighbours.length === 0 ? position.get(id) ?? 0 : neighbours.reduce((a, b) => a + b, 0) / neighbours.length;
+        const neighbours = neighboursOf(id, downward).map((other) => position.get(other) ?? 0);
+        return neighbours.length === 0 ? (position.get(id) ?? 0) : neighbours.reduce((a, b) => a + b, 0) / neighbours.length;
       };
-      const sorted = [...row].sort((a, b) => bary(a) - bary(b));
+      const sorted = [...row].sort((a, b) => bary(a) - bary(b) || (position.get(a) ?? 0) - (position.get(b) ?? 0));
       rows.set(depth, sorted);
       sorted.forEach((id, index) => position.set(id, index));
     }
   }
 
-  const step = BOX_W + COL_GAP;
-  const spanOf = (row: string[]) => (row.length > STAGGER_ABOVE ? (row.length + 1) / 2 : row.length) * step - COL_GAP;
-  const width = Math.max(...[...rows.values()].map(spanOf)) + 2 * COL_GAP;
-  const placed = new Map<string, Placed>();
-  let y = 20;
+  const left = new Map<string, number>();
   for (const depth of order) {
     const row = rows.get(depth) ?? [];
-    const staggered = row.length > STAGGER_ABOVE;
-    const left = (width - spanOf(row)) / 2;
-    row.forEach((id, index) => {
-      const node = map.nodes.find((candidate) => candidate.id === id) as LaneNode;
-      const x = staggered ? left + (index * step) / 2 : left + index * step;
-      placed.set(id, { node, layer: depth, x, y: y + (staggered && index % 2 === 1 ? BOX_H + 14 : 0) });
-    });
-    y += ROW_GAP + (staggered ? BOX_H + 14 : 0);
+    const span = row.reduce((sum, id) => sum + widthOf(id), 0) + COL_GAP * (row.length - 1);
+    let cursor = -span / 2;
+    for (const id of row) {
+      left.set(id, cursor);
+      cursor += widthOf(id) + COL_GAP;
+    }
   }
-  return { placed, width, height: y, back };
+  const centre = (id: string) => (left.get(id) ?? 0) + widthOf(id) / 2;
+  for (let sweep = 0; sweep < 12; sweep += 1) {
+    const downward = sweep % 2 === 0;
+    for (const depth of downward ? order : [...order].reverse()) {
+      const row = rows.get(depth) ?? [];
+      const targets = row.map((id) => {
+        const neighbours = [...neighboursOf(id, true), ...neighboursOf(id, false)].map(centre);
+        const pull = neighbours.length === 0 ? 0 : neighbours.reduce((a, b) => a + b, 0) / neighbours.length;
+        return pull * (1 - GRAVITY) - widthOf(id) / 2;
+      });
+      const packed: number[] = [];
+      row.forEach((id, index) => {
+        const want = targets[index] ?? left.get(id) ?? 0;
+        const floor = index === 0 ? -Infinity : packed[index - 1] + widthOf(row[index - 1]) + COL_GAP;
+        packed.push(Math.max(want, floor));
+      });
+      const anchored = row.map((_, index) => index).filter((index) => targets[index] !== undefined);
+      const shift = anchored.length === 0 ? 0 : anchored.reduce((sum, index) => sum + (packed[index] - (targets[index] ?? 0)), 0) / anchored.length;
+      row.forEach((id, index) => left.set(id, packed[index] - shift));
+    }
+  }
+
+  const backLanes = edges.filter((edge) => edge.back).length;
+  const minLeft = Math.min(...left.values());
+  const offset = MARGIN - minLeft;
+  const placed = new Map<string, Placed>();
+  for (const depth of order) {
+    for (const id of rows.get(depth) ?? []) {
+      placed.set(id, {
+        id,
+        node: byId.get(id),
+        layer: depth,
+        x: (left.get(id) ?? 0) + offset,
+        y: TOP_PAD + depth * (BOX_H + ROW_GAP),
+        w: widthOf(id),
+      });
+    }
+  }
+  const right = Math.max(...[...placed.values()].map((slot) => slot.x + slot.w));
+  return {
+    placed,
+    edges,
+    hubs,
+    width: Math.ceil(right + MARGIN + backLanes * BACK_LANE),
+    height: TOP_PAD + order.length * (BOX_H + ROW_GAP) + 16,
+    backLanes,
+    hubNotes,
+  };
 }
 
 function splitPill(title: string): [string, string?] {
@@ -508,85 +672,217 @@ function escape(text: string): string {
 }
 
 function isIdle(map: LaneMap, node: LaneNode): boolean {
-  if (node.kind !== "model" && node.kind !== "wire") return false;
+  if (!isLane(node)) return false;
   if (!map.window) return false;
   const tally = map.runs.get(node.id);
   return !tally || tally.worked + tally.red + tally.cancelled === 0;
 }
 
-export function renderSvg(map: LaneMap): string {
-  const { placed, width, height, back } = layout(map);
-  const lines: string[] = [];
-  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px;font-family:system-ui,sans-serif;display:block;margin:1rem auto">`);
-  lines.push("<style>");
-  lines.push(".lm-box{stroke-width:1.5}.lm-model{fill:#fde68a;stroke:#b45309}.lm-wire{fill:#bfdbfe;stroke:#1d4ed8}.lm-source{fill:#e5e7eb;stroke:#4b5563}.lm-sink{fill:#fecaca;stroke:#b91c1c}.lm-nobody{fill:none;stroke:#b91c1c;stroke-dasharray:4 3}");
-  lines.push(".lm-idle{opacity:.45;stroke-dasharray:5 3}.lm-text{fill:#111;font-size:12.5px;font-weight:600}.lm-pill{fill:#111;font-size:11px;font-weight:600}.lm-sub{fill:#444;font-size:10px}.lm-stopline{fill:#b91c1c;font-size:10px}.lm-edge{fill:none;stroke:#6b7280;stroke-width:1.2}.lm-stop{stroke:#b91c1c}.lm-back{stroke-dasharray:6 4}.lm-label{font-size:10.5px;fill:#374151;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}");
-  lines.push("@media (prefers-color-scheme:dark){.lm-model{fill:#78350f;stroke:#fbbf24}.lm-wire{fill:#1e3a8a;stroke:#93c5fd}.lm-source{fill:#374151;stroke:#d1d5db}.lm-sink{fill:#7f1d1d;stroke:#fca5a5}.lm-text{fill:#f3f4f6}.lm-pill{fill:#f3f4f6}.lm-sub{fill:#d1d5db}.lm-stopline{fill:#fca5a5}.lm-edge{stroke:#9ca3af}.lm-label{fill:#e5e7eb;stroke:#111827}}");
-  lines.push("</style>");
-  lines.push('<defs><marker id="lm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker></defs>');
-
-  const arrivals = new Map<string, number>();
-  for (const edge of map.edges) {
-    const from = placed.get(edge.from);
-    const to = placed.get(edge.to);
-    if (!from || !to || edge.from === edge.to) continue;
-    const reversed = back.has(edge) || to.layer <= from.layer;
-    const arrival = arrivals.get(edge.to) ?? 0;
-    arrivals.set(edge.to, arrival + 1);
-    let path: string;
-    let lx: number;
-    let ly: number;
-    if (!reversed) {
-      const x1 = from.x + BOX_W / 2;
-      const y1 = from.y + BOX_H;
-      const x2 = to.x + BOX_W / 2;
-      const y2 = to.y;
-      const bend = (y2 - y1) / 2;
-      path = `M${x1},${y1} C${x1},${y1 + bend} ${x2},${y2 - bend} ${x2},${y2}`;
-      const t = 0.8 - (arrival % 3) * 0.13;
-      const u = 1 - t;
-      lx = u * u * u * x1 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x2;
-      ly = u * u * u * y1 + 3 * u * u * t * (y1 + bend) + 3 * u * t * t * (y2 - bend) + t * t * t * y2 - 4;
-    } else {
-      const x1 = from.x + BOX_W;
-      const y1 = from.y + BOX_H / 2;
-      const x2 = to.x + BOX_W;
-      const y2 = to.y + BOX_H / 2;
-      const swing = 60 + Math.abs(from.layer - to.layer) * 10;
-      path = `M${x1},${y1} C${x1 + swing},${y1} ${x2 + swing},${y2} ${x2},${y2}`;
-      lx = Math.max(x1, x2) + swing * 0.75;
-      ly = (y1 + y2) / 2;
-    }
-    const classes = ["lm-edge", edge.kind === "stop" ? "lm-stop" : "", reversed ? "lm-back" : ""].filter(Boolean).join(" ");
-    lines.push(`<path class="${classes}" d="${path}" marker-end="url(#lm-arrow)"/>`);
-    if (edge.label) lines.push(`<text class="lm-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${escape(edge.label)}</text>`);
-  }
-
-  for (const { node, x, y } of placed.values()) {
-    const idle = isIdle(map, node);
-    const classes = ["lm-box", `lm-${node.kind}`, idle ? "lm-idle" : ""].filter(Boolean).join(" ");
-    const isLane = node.kind === "model" || node.kind === "wire";
-    const height = isLane ? BOX_H : 34;
-    const top = isLane ? y : y + (BOX_H - height) / 2;
-    lines.push(`<rect class="${classes}" x="${x}" y="${top}" width="${BOX_W}" height="${height}" rx="${isLane ? 6 : 17}"/>`);
-    const title = node.number ? `${node.number} · ${node.name}` : node.name;
-    const tally = map.runs.get(node.id);
-    const sub = isLane ? (tally ? `${tally.worked + tally.red + tally.cancelled} ran · ${tally.skipped} skipped · ${tally.red} red` : map.window ? "0 runs" : node.kind) : "";
-    const stop = node.stops.map((entry) => entry.replace("labels ", "")).join(", ");
-    const [first, second] = isLane ? [title] : splitPill(title);
-    if (second) {
-      lines.push(`<text class="lm-pill" x="${x + BOX_W / 2}" y="${top + 14}" text-anchor="middle">${escape(first)}</text>`);
-      lines.push(`<text class="lm-pill" x="${x + BOX_W / 2}" y="${top + 26}" text-anchor="middle">${escape(second)}</text>`);
-      continue;
-    }
-    lines.push(`<text class="${isLane ? "lm-text" : "lm-pill"}" x="${x + BOX_W / 2}" y="${top + (isLane ? 16 : 21)}" text-anchor="middle">${escape(title)}</text>`);
-    if (sub) lines.push(`<text class="lm-sub" x="${x + BOX_W / 2}" y="${top + 30}" text-anchor="middle">${escape(sub)}</text>`);
-    if (stop) lines.push(`<text class="lm-stopline" x="${x + BOX_W / 2}" y="${top + 44}" text-anchor="middle">stops: ${escape(stop)}</text>`);
-  }
-  lines.push("</svg>");
-  return lines.join("\n");
+function isPill(slot: Placed): boolean {
+  return !isLane(slot.node);
 }
 
+function topOf(slot: Placed): number {
+  return slot.id.startsWith("d:") ? slot.y + BOX_H / 2 : isPill(slot) ? slot.y + (BOX_H - PILL_H) / 2 : slot.y;
+}
+
+function bottomOf(slot: Placed): number {
+  return slot.id.startsWith("d:") ? slot.y + BOX_H / 2 : isPill(slot) ? slot.y + (BOX_H + PILL_H) / 2 : slot.y + BOX_H;
+}
+
+function portSpread(edges: DrawEdge[], placed: Map<string, Placed>): Map<string, number> {
+  const ports = new Map<string, number>();
+  const outs = new Map<string, { key: string; toward: number }[]>();
+  const ins = new Map<string, { key: string; toward: number }[]>();
+  for (const edge of edges.filter((candidate) => !candidate.back)) {
+    edge.path.slice(1).forEach((to, index) => {
+      const from = edge.path[index];
+      const key = `${from}>${to}`;
+      const a = placed.get(from);
+      const b = placed.get(to);
+      if (!a || !b) return;
+      outs.set(from, [...(outs.get(from) ?? []), { key: `out:${key}`, toward: b.x + b.w / 2 }]);
+      ins.set(to, [...(ins.get(to) ?? []), { key: `in:${key}`, toward: a.x + a.w / 2 }]);
+    });
+  }
+  for (const [id, list] of [...outs, ...ins]) {
+    const slot = placed.get(id);
+    if (!slot) continue;
+    const sorted = [...list].sort((a, b) => a.toward - b.toward);
+    const usable = slot.w > DUMMY_W ? slot.w - 24 : 0;
+    sorted.forEach((entry, index) => ports.set(entry.key, slot.x + slot.w / 2 - usable / 2 + (usable * (index + 1)) / (sorted.length + 1)));
+  }
+  return ports;
+}
+
+function bezierAt(t: number, p: [number, number], c1: [number, number], c2: [number, number], q: [number, number]): [number, number] {
+  const u = 1 - t;
+  return [u * u * u * p[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * q[0], u * u * u * p[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * q[1]];
+}
+
+function textWidth(text: string): number {
+  return [...text].reduce((sum, glyph) => sum + (NARROW_GLYPH.test(glyph) ? 0.55 : WIDE_GLYPH.test(glyph) ? 1.35 : 1), 0) * LABEL_CHAR_W + 8;
+}
+
+function settle(labels: Label[], obstacles: { x1: number; y1: number; x2: number; y2: number }[]): Label[] {
+  const boxes = [...obstacles];
+  const boxOf = (label: Label, y: number) => {
+    const w = textWidth(label.text);
+    const x1 = label.anchor === "middle" ? label.x - w / 2 : label.anchor === "start" ? label.x : label.x - w;
+    return { x1: x1 - 3, y1: y - LABEL_H + 3, x2: x1 + w + 3, y2: y + 2 };
+  };
+  const clashes = (box: { x1: number; y1: number; x2: number; y2: number }) => boxes.some((other) => box.x1 < other.x2 && box.x2 > other.x1 && box.y1 < other.y2 && box.y2 > other.y1);
+  return [...labels]
+    .sort((a, b) => Number(b.first ?? false) - Number(a.first ?? false) || a.y - b.y || a.x - b.x)
+    .map((label) => {
+      let y = label.y;
+      let attempt = 0;
+      for (; attempt < 10 && clashes(boxOf(label, y)); attempt += 1) y = label.y + (attempt % 2 === 0 ? 1 : -1) * Math.ceil((attempt + 1) / 2) * LABEL_H;
+      if (attempt === 10) y = label.y;
+      boxes.push(boxOf(label, y));
+      return { ...label, y };
+    });
+}
+
+export function renderSvg(map: LaneMap): string {
+  const { placed, edges, width, height, hubNotes } = layout(map);
+  const ports = portSpread(edges, placed);
+  const lines: string[] = [];
+  lines.push(`<div style="width:calc(100vw - 44px);max-width:${width}px;position:relative;left:50%;transform:translateX(-50%);overflow-x:auto;margin:1.5rem 0">`);
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" style="min-width:${Math.min(width, 860)}px;font-family:system-ui,sans-serif;display:block">`);
+  lines.push("<style>");
+  lines.push(
+    ".lm-box{stroke-width:1.5}.lm-model{fill:#fde68a;stroke:#b45309}.lm-wire{fill:#bfdbfe;stroke:#1d4ed8}.lm-source{fill:#e5e7eb;stroke:#4b5563}.lm-sink{fill:#fecaca;stroke:#b91c1c}.lm-nobody{fill:none;stroke:#b91c1c;stroke-dasharray:4 3}",
+  );
+  lines.push(
+    ".lm-idle{opacity:.45;stroke-dasharray:5 3}.lm-text{fill:#111;font-size:12.5px;font-weight:600}.lm-pill{fill:#111;font-size:11px;font-weight:600}.lm-sub{fill:#444;font-size:10px}.lm-stopline{fill:#b91c1c;font-size:10px}.lm-edge{fill:none;stroke:#6b7280;stroke-width:1.2}.lm-stop{stroke:#b91c1c}.lm-back{stroke-dasharray:6 4}.lm-hub{stroke:#6b7280;stroke-width:1.6}.lm-label{font-size:10.5px;fill:#374151;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}",
+  );
+  lines.push(
+    "@media (prefers-color-scheme:dark){.lm-model{fill:#78350f;stroke:#fbbf24}.lm-wire{fill:#1e3a8a;stroke:#93c5fd}.lm-source{fill:#374151;stroke:#d1d5db}.lm-sink{fill:#7f1d1d;stroke:#fca5a5}.lm-text{fill:#f3f4f6}.lm-pill{fill:#f3f4f6}.lm-sub{fill:#d1d5db}.lm-stopline{fill:#fca5a5}.lm-edge{stroke:#9ca3af}.lm-hub{stroke:#9ca3af}.lm-label{fill:#e5e7eb;stroke:#111827}}",
+  );
+  lines.push("</style>");
+  lines.push(
+    '<defs><marker id="lm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker></defs>',
+  );
+
+  const labels = new Map<string, Label[]>();
+  const noteLabel = (key: string, label: Label) => labels.set(key, [...(labels.get(key) ?? []), label]);
+  let backLane = 0;
+  for (const edge of edges) {
+    const from = placed.get(edge.from);
+    const to = placed.get(edge.to);
+    if (!from || !to) continue;
+    const classes = ["lm-edge", edge.kind === "stop" ? "lm-stop" : "", edge.back ? "lm-back" : ""].filter(Boolean).join(" ");
+    if (edge.back) {
+      backLane += 1;
+      const railX = width - MARGIN / 2 + (backLane - 1) * BACK_LANE - 8;
+      const exitX = from.x + from.w - 14;
+      const exitY = from.y + BOX_H + ROW_GAP / 2 + (backLane % 2) * 10;
+      const gapY = to.y - ROW_GAP / 2 - (backLane % 2) * 10;
+      const entryX = to.x + to.w - 14;
+      const path = `M${exitX},${bottomOf(from)} V${exitY - 8} Q${exitX},${exitY} ${exitX + 8},${exitY} H${railX - 8} Q${railX},${exitY} ${railX},${exitY - 8} V${gapY + 8} Q${railX},${gapY} ${railX - 8},${gapY} H${entryX + 8} Q${entryX},${gapY} ${entryX},${gapY + 8} V${topOf(to)}`;
+      lines.push(`<path class="${classes}" d="${path}" marker-end="url(#lm-arrow)"/>`);
+      if (edge.label)
+        noteLabel(`back:${edge.to}|${edge.label}`, {
+          text: edge.label,
+          x: entryX + 12,
+          y: gapY - 4,
+          anchor: "start",
+        });
+      continue;
+    }
+    const points: [number, number][] = [];
+    edge.path.forEach((id, index) => {
+      const slot = placed.get(id);
+      if (!slot) return;
+      if (index === 0) points.push([ports.get(`out:${id}>${edge.path[1]}`) ?? slot.x + slot.w / 2, bottomOf(slot)]);
+      else if (index === edge.path.length - 1) points.push([ports.get(`in:${edge.path[index - 1]}>${id}`) ?? slot.x + slot.w / 2, topOf(slot)]);
+      else points.push([slot.x + slot.w / 2, slot.y + BOX_H / 2]);
+    });
+    if (points.length < 2) continue;
+    let d = `M${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`;
+    for (let index = 1; index < points.length; index += 1) {
+      const [px, py] = points[index - 1];
+      const [qx, qy] = points[index];
+      const bend = (qy - py) / 2;
+      d += ` C${px.toFixed(1)},${(py + bend).toFixed(1)} ${qx.toFixed(1)},${(qy - bend).toFixed(1)} ${qx.toFixed(1)},${qy.toFixed(1)}`;
+    }
+    lines.push(`<path class="${classes}" d="${d}" marker-end="url(#lm-arrow)"/>`);
+    if (edge.label) {
+      const [px, py] = points[points.length - 2];
+      const [qx, qy] = points[points.length - 1];
+      const bend = (qy - py) / 2;
+      const [lx, ly] = bezierAt(0.58, [px, py], [px, py + bend], [qx, qy - bend], [qx, qy]);
+      noteLabel(`${edge.to}|${edge.label}`, {
+        text: edge.label,
+        x: lx,
+        y: ly - 3,
+        anchor: "middle",
+      });
+    }
+  }
+  for (const [hub, note] of hubNotes) {
+    const slot = placed.get(hub);
+    if (!slot) continue;
+    const x = slot.x + 14;
+    lines.push(`<path class="lm-edge lm-hub" d="M${x},${slot.y - 30} V${slot.y}" marker-end="url(#lm-arrow)"/>`);
+    noteLabel(`${hub}|${note}`, {
+      text: note,
+      x: x + 6,
+      y: slot.y - 17,
+      anchor: "start",
+      first: true,
+    });
+  }
+  const merged: Label[] = [...labels.values()].map((group) => ({
+    ...group[0],
+    x: group.reduce((sum, label) => sum + label.x, 0) / group.length,
+    y: group.reduce((sum, label) => sum + label.y, 0) / group.length,
+  }));
+  const obstacles = [...placed.values()]
+    .filter((slot) => !slot.id.startsWith("d:"))
+    .map((slot) => ({
+      x1: slot.x,
+      y1: topOf(slot),
+      x2: slot.x + slot.w,
+      y2: bottomOf(slot),
+    }));
+  for (const label of settle(merged, obstacles)) {
+    lines.push(`<text class="lm-label" x="${label.x.toFixed(1)}" y="${label.y.toFixed(1)}" text-anchor="${label.anchor}">${escape(label.text)}</text>`);
+  }
+
+  for (const slot of placed.values()) {
+    if (slot.id.startsWith("d:")) continue;
+    const { node, x, y } = slot;
+    const pill = isPill(slot);
+    const kind = node?.kind ?? "source";
+    const idle = node ? isIdle(map, node) : false;
+    const classes = ["lm-box", `lm-${kind}`, idle ? "lm-idle" : ""].filter(Boolean).join(" ");
+    const boxHeight = pill ? PILL_H : BOX_H;
+    const top = pill ? y + (BOX_H - PILL_H) / 2 : y;
+    lines.push(`<rect class="${classes}" x="${x}" y="${top}" width="${BOX_W}" height="${boxHeight}" rx="${pill ? 17 : 6}"/>`);
+    const title = node?.number ? `${node.number} · ${node.name}` : (node?.name ?? slot.id);
+    if (pill) {
+      const [first, second] = splitPill(title);
+      if (second) {
+        lines.push(`<text class="lm-pill" x="${x + BOX_W / 2}" y="${top + 14}" text-anchor="middle">${escape(first)}</text>`);
+        lines.push(`<text class="lm-pill" x="${x + BOX_W / 2}" y="${top + 26}" text-anchor="middle">${escape(second)}</text>`);
+      } else {
+        lines.push(`<text class="lm-pill" x="${x + BOX_W / 2}" y="${top + 21}" text-anchor="middle">${escape(title)}</text>`);
+      }
+      continue;
+    }
+    const tally = node ? map.runs.get(node.id) : undefined;
+    const sub = tally ? `${tally.worked + tally.red + tally.cancelled} ran · ${tally.skipped} skipped · ${tally.red} red` : map.window ? "0 runs" : kind;
+    const stop = (node?.stops ?? []).map((entry) => entry.replace("labels ", "")).join(", ");
+    lines.push(`<text class="lm-text" x="${x + BOX_W / 2}" y="${top + 18}" text-anchor="middle">${escape(title)}</text>`);
+    lines.push(`<text class="lm-sub" x="${x + BOX_W / 2}" y="${top + 33}" text-anchor="middle">${escape(sub)}</text>`);
+    if (stop) lines.push(`<text class="lm-stopline" x="${x + BOX_W / 2}" y="${top + 47}" text-anchor="middle">stops: ${escape(stop)}</text>`);
+  }
+  lines.push("</svg>");
+  lines.push("</div>");
+  return lines.join("\n");
+}
 function cell(items: string[]): string {
   return items.length === 0 ? "" : items.map((item) => `\`${item}\``).join(", ");
 }
@@ -660,8 +956,15 @@ export function renderLaneMap(map: LaneMap): string {
   }
   lines.push("Amber is a lane that spends a model; blue is deterministic TypeScript; grey pills are the outside world,");
   lines.push("you included. A red line inside a box is a stop: a label the lane writes that no lane reads, so the ticket");
-  lines.push("waits for you. A dashed arrow is a ring back up the page.");
+  lines.push("waits for you. A dashed arrow is a ring back up the page, routed along the margin.");
   lines.push("");
+  const hubs = hubLanes(map).map((id) => lanes.find((node) => node.id === id)).filter((node): node is LaneNode => node !== undefined);
+  for (const hub of hubs) {
+    const heard = hub.wakesOn.filter((door) => door.endsWith(" completed")).length;
+    lines.push(`Every lane's ending also wakes **${hub.name}**, as does any push to \`main\`: ${heard} arrows that would cross`);
+    lines.push('the whole page, so the box carries one short arrow marked "any lane ends · any push" instead.');
+    lines.push("");
+  }
   lines.push(renderSvg(map));
   lines.push("");
   lines.push("## What is not connected");
