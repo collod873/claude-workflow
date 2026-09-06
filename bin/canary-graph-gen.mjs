@@ -39,6 +39,32 @@ const triggers = {
     types: [session-captured, graph-changed]
   issues:
     types: [labeled]
+  workflow_run:
+    workflows:
+      - Acceptance
+      - Audit
+      - Back-stamp
+      - Bypass counter
+      - Decline on revert
+      - Fixer
+      - Implement
+      - Integrate
+      - Lost-dispatch counter
+      - Mechanic
+      - Missing-trailer counter
+      - Ratify
+      - Ratify on PRD close
+      - Ratify release
+      - Review
+      - Run watchdog
+      - Shape
+      - Shape — accept
+      - Spec
+      - To-Tickets
+      - Verify
+    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:`,
   fixer: `  workflow_run:
     workflows: ["Verify"]
@@ -58,12 +84,8 @@ const triggers = {
     types: [closed]`,
   "ratify-release": `  repository_dispatch:
     types: [ratifier-merged]`,
-  recover: `  workflow_run:
-    workflows: ["Implement"]
-    types: [completed]
-  repository_dispatch:
-    types: [implement-failed]
-  workflow_dispatch:`,
+  mechanic: `  repository_dispatch:
+    types: [mechanic-wanted]`,
   review: `  workflow_run:
     workflows: ["Verify"]
     types: [completed]`,
@@ -100,9 +122,9 @@ const dispatchForward = {
   verify: [`dispatch fixer-needed`],
   implement: [`dispatch implementation-opened`],
   fixer: [`dispatch implementation-opened`],
-  recover: [`dispatch ticket-ready`],
+  mechanic: [`dispatch implementation-opened`],
   integrate: [`dispatch graph-changed`, `dispatch ratifier-merged`],
-  "dispatch-reconcile": [`dispatch ticket-ready`],
+  "dispatch-reconcile": [`dispatch ticket-ready`, `dispatch mechanic-wanted`],
   spec: [`dispatch prd-sliceable`],
   "to-tickets": [`dispatch ticket-ready`],
 };
@@ -121,7 +143,7 @@ function jobPermissions(id) {
   return perms.map((p) => `      ${p}`).join("\n");
 }
 
-const hasWorkflowRunDoor = new Set(["fixer", "recover"]);
+const hasWorkflowRunDoor = new Set(["fixer"]);
 const MAX_HOPS = 12;
 
 function dispatchStep(id, displayName) {
@@ -231,7 +253,7 @@ const displayNames = {
   ratify: "Ratify",
   "ratify-on-prd-close": "Ratify on PRD close",
   "ratify-release": "Ratify release",
-  recover: "Recover",
+  mechanic: "Mechanic",
   review: "Review",
   "run-watchdog": "Run watchdog",
   shape: "Shape",

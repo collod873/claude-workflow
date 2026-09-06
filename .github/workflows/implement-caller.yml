@@ -1,4 +1,5 @@
 name: Implement
+run-name: "Implement #${{ github.event.client_payload.issue }}"
 
 "on":
   repository_dispatch:

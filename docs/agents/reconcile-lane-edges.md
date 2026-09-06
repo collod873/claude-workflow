@@ -30,12 +30,14 @@ shell · **[stop]** can refuse and end the run.
 
 ## Part one — the recompute (`dispatch-reconcile.yml`)
 
-## Node 00 — the four doors · [stop]
+## Node 00 — the six doors · [stop]
 
 `dispatch-reconcile.yml` `jobs.reconcile.if`
 
 ```
 github.event_name == 'workflow_dispatch' ||
+github.event_name == 'workflow_run' ||
+github.event_name == 'push' ||
 github.event.action == 'session-captured' ||
 github.event.action == 'graph-changed' ||
 (github.event_name == 'issues' && github.event.label.name == 'to-build' &&
@@ -48,21 +50,27 @@ github.event.action == 'graph-changed' ||
 | **Door 2 — session-captured** | `repository_dispatch`, sent by `.claude/hooks/session-capture-hook.mjs` at the end of a local session. The same dispatch also wakes `audit.yml`, `run-watchdog.yml`, and `walk-home.yml` — this lane is one listener among several, not the event's owner |
 | **Door 3 — graph-changed** | Sent by lane 08 (`integrate.ts`, `announceGraphChanged`) once it merges — "a merge announces without interpreting" |
 | **Door 4 — to-build label** | `issues:labeled`, `label.name == 'to-build'`, sender must be the repo owner — the hand-off door ([`pipeline-labels.md`](pipeline-labels.md)) |
-| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once |
+| **Door 5 — any lane ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, so a run killed at `timeout-minutes` reaches this door without any step of its own having to survive ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md)) |
+| **Door 6 — main moved** | `push` to `main`, no paths filter: a docs-only commit that says `Closes #421` changes the graph as much as a code one |
+| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 5 and 6 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
 
 ### edge — `EVENT_ACTION`, a collapse worth reading carefully
 
 ```
-EVENT_ACTION = (github.event_name == 'repository_dispatch' && github.event.action) || 'session-captured'
+EVENT_ACTION = (github.event_name == 'repository_dispatch' && github.event.action)
+            || (github.event_name == 'workflow_run' && 'run-ended')
+            || (github.event_name == 'push' && 'main-moved')
+            || 'session-captured'
 ```
 
-`main()`'s own guard checks `EVENT_ACTION` against `[session-captured, graph-changed]`. On doors 3
-and 4 — the label door and the manual door — `EVENT_ACTION` is synthesized as the literal string
-`'session-captured'`, because neither is actually a `repository_dispatch` event and the expression
-falls through to its own right-hand side. The guard passes for all four doors, but not because the
-label and manual doors are secretly session-captured events; they simply never reach the branch
-that would read a real one. Reading `main()`'s guard alone, without this, makes it look like doors
-3 and 4 shouldn't pass it at all.
+`main()`'s own guard checks `EVENT_ACTION` against `RECONCILE_ENDINGS`:
+`[session-captured, graph-changed, run-ended, main-moved]`. On doors 1 and 4 — the manual door and
+the label door — `EVENT_ACTION` is synthesized as the literal string `'session-captured'`, because
+neither is actually a `repository_dispatch` event and the expression falls through to its last
+right-hand side. The guard passes for all six doors, but not because the label and manual doors
+are secretly session-captured events; they simply never reach the branch that would read a real
+one. Reading `main()`'s guard alone, without this, makes it look like doors 1 and 4 shouldn't pass
+it at all. Nothing downstream reads which door opened: every door runs the same recompute.
 
 ---
 
@@ -154,16 +162,33 @@ criterion string, verbatim:
 |---|---|
 | `dispatchAcceptanceWanted(number, true)` — back into this same lane's own author | `dispatchTicketReady(number)` — rings lane 05 directly. This is the branch #421 takes once #420 delivers: its test was already authored back when lane 03 first published it, so the recompute finds it and skips straight past the author |
 
-### edge — the two outbound dispatches
+### edge — the three outbound dispatches
 
 ```json
 {"event_type": "acceptance-wanted", "client_payload": {"issue": 421, "ready": 1}}
 {"event_type": "ticket-ready", "client_payload": {"issue": 420}}
+{"event_type": "ticket-ready", "client_payload": {"issue": 420, "rung": "fresh-eyes"}}
+{"event_type": "mechanic-wanted", "client_payload": {"issue": 420}}
 ```
 
 Sent directly via `gh`, no split-job file-collection like lanes 02 and 03 use — this workflow is a
 single job holding `contents: write, issues: write` throughout, so there's no separate
 model-spending job whose token needs protecting from write access.
+
+### The ladder · `climbLadder()`, `dispatch/strikes.ts`
+
+Before a `ticket-ready` goes out, the recompute asks what already died on this ticket.
+
+| | |
+|---|---|
+| **In flight** | `gh run list --limit 100 --json databaseId,displayTitle,status,conclusion,url`, one call. A ticket is in flight when a non-completed run's title is `Implement #420`, `Mechanic #420` or `Acceptance #420` — the caller stubs' `run-name` — and an in-flight ticket is `started` whatever the refs say |
+| **A bare claim** | `implement/issue-420` exists, no run carries #420, no pull request, no commits: a dead run's leftover. `releaseDeadClaim()` deletes the ref and the ticket reads as unstarted. A branch with a pull request or commits is somebody's work and stays |
+| **Dead runs** | Completed runs titled `Implement #420` or `Mechanic #420` whose conclusion is `failure`, `cancelled` or `timed_out`, minus those a strike comment already names |
+| **The strike** | One comment per dead run: `<!-- strike:v1 run=<id> conclusion=<c> -->`, the signature (`<!-- strike-signature:… -->`, the last `implement failed:` or `mechanic failed:` line of `gh run view --log-failed`, or `<conclusion> before answering` when nothing said why), the run's URL, and the rung that follows. At most ten logs are read per recompute |
+| **The rung** | `rungFor(strikes)`: 0 → `ticket-ready`; 1 → `ticket-ready` with `rung: fresh-eyes` (lane 05 skips its first model); 2 → `mechanic-wanted` ([mechanic-lane-edges.md](mechanic-lane-edges.md)); 3 → the decision |
+| **The decision** | One comment (`<!-- strike-decision:v1 -->`) listing every strike with its run, whether the signatures repeat, and three lettered options with a recommendation; `needs-human` and the owner assigned. Nothing is dispatched. Strikes before the decision no longer count, so removing `needs-human` starts the ladder from rung one; a fourth death after the decision is a new first strike |
+| **`needs-human` on a ticket** | is the owner's hold: the recompute never dispatches such a ticket, whatever its strikes say |
+| **In a dry run** | no strike is written, no claim released, and a bare claim reads as started |
 
 ---
 

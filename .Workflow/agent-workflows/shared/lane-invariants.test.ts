@@ -69,7 +69,6 @@ describe("a lane that writes into a target installs that target's dependencies",
 
   it("finds the lanes that write into a target, so this sweep is not vacuous", () => {
     expect(writers.map((w) => w.name).sort()).toContain("implement.yml");
-    expect(writers.map((w) => w.name).sort()).toContain("recover.yml");
     expect(writers.map((w) => w.name).sort()).toContain("fixer.yml");
   });
 
@@ -90,26 +89,7 @@ describe("a lane that writes into a target installs that target's dependencies",
   });
 });
 
-describe("a step that reports a dead run covers every way a run dies", () => {
-  const notifiers = workflows.flatMap((w) =>
-    w.steps
-      .filter((step) => /event_type=[a-z-]*failed/.test(step.run ?? ""))
-      .map((step) => ({ workflow: w.name, name: step.name ?? "(unnamed)", condition: step.if ?? "" })),
-  );
-
-  it("finds the steps that ring a recovery lane, so this sweep is not vacuous", () => {
-    expect(notifiers.length).toBeGreaterThan(0);
-  });
-
-  it.each(notifiers)("$workflow's '$name' reacts to a cancelled run as well as a failed one", ({ condition }) => {
-    expect(
-      /cancelled\(\)|always\(\)/.test(condition),
-      `this step tells a recovery lane a run died, but its \`if:\` is \`${condition}\`, and a ` +
-        `timeout-minutes kill reports cancelled, not failure, so the death it most exists for ` +
-        `would skip it (#342, run 33687023105).`,
-    ).toBe(true);
-  });
-
+describe("a job that reacts to a run dying covers every way a run dies", () => {
   it("no job reacts to a sibling's failure without also reacting to its cancellation", () => {
     const blind = workflows.flatMap((w) =>
       Object.entries(w.workflow.jobs ?? {})
@@ -168,7 +148,7 @@ describe("every dispatch wire has a sender and a receiver", () => {
 
   it("finds the wire names, so this sweep is not vacuous", () => {
     expect(declared.length).toBeGreaterThan(0);
-    expect(declared).toEqual(expect.arrayContaining(["session-captured", "fixer-needed", "implement-failed", "ticket-ready"]));
+    expect(declared).toEqual(expect.arrayContaining(["session-captured", "fixer-needed", "mechanic-wanted", "ticket-ready"]));
   });
 
   it.each(declared)("some workflow listens for %s", (action) => {

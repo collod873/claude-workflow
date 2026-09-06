@@ -86,6 +86,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0162 | [One push gate runs per machine, so lane fan-out queues instead of forking](0162-one-push-gate-runs-per-machine-so-lane-fan-out-queues-instea.md) |
 | 0163 | [A hook's own push skips the push gate, because a gate that re-enters its hook forks the machine](0163-a-hook-s-own-push-skips-the-push-gate-because-a-gate-that-re.md) |
 | 0164 | [The ratifier's merge is announced by a ring from lane 08, because a pull_request door never hears a merge the Actions token made](0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md) |
+| 0165 | [Reconcile is the only connector that starts work, and it fires on every ending, so a dead run is a strike the ladder climbs rather than a ring that has to arrive](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) |
 
 ## Retired
 
@@ -179,4 +180,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-164 ADRs · 78 constraint · 44 note · 42 superseded · 16,689 words total.
+165 ADRs · 79 constraint · 44 note · 42 superseded · 16,837 words total.

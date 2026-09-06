@@ -6,6 +6,7 @@ import { TO_BUILD_LABEL } from "./reconcile";
 import {
   type FakeIssue,
   HAND_WRITTEN_TICKET,
+  liveRun,
   reconcileOver,
   startedIssues,
   type Tracker,
@@ -88,8 +89,8 @@ describe("the to-build door into lane 06 (#184)", () => {
     expect(startedIssues(cleared)).toEqual([610]);
   });
 
-  it("does not start a labelled ticket twice, since the implement/issue-<n> ref is still the claim", () => {
-    const tracker = trackerWith({ open: [labelled(620)], claimed: ["implement/issue-620"] });
+  it("does not start a labelled ticket twice while a run carries it", () => {
+    const tracker = trackerWith({ open: [labelled(620)], runs: [liveRun(901, "Implement #620")] });
 
     const outcome = reconcileOver(tracker);
 

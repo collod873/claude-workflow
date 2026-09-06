@@ -11,9 +11,12 @@ import {
   subIssuesPath,
 } from "../shared/gh-paths";
 import { touchesImmutableSet } from "../shared/immutable-set";
+import { releaseDeadClaim } from "../shared/claim";
+import { escalateToOwner, NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { testsForTicket } from "../shared/affected-tests";
 import {
   dispatchAcceptanceWanted,
+  dispatchMechanicWanted,
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
   implementationBranch,
@@ -24,6 +27,21 @@ import {
   type SliceState,
 } from "../shared/ready-set";
 import { reason } from "../shared/reason";
+import {
+  deadRunsOf,
+  decisionBody,
+  fetchLaneRuns,
+  hasStandingDecision,
+  readFailedLog,
+  recordedRunIds,
+  rungFor,
+  signatureFromLog,
+  strikeBody,
+  strikesIn,
+  ticketsInFlight,
+  type LaneRun,
+  type Rung,
+} from "./strikes";
 import {
   countCriteria,
   extractCriteria,
@@ -50,6 +68,14 @@ export const RECONCILE_DISPATCH_ACTIONS = [
   SESSION_CAPTURED_DISPATCH_ACTION,
   GRAPH_CHANGED_DISPATCH_ACTION,
 ] as const;
+
+export const RUN_ENDED_ACTION = "run-ended";
+
+export const MAIN_MOVED_ACTION = "main-moved";
+
+export const RECONCILE_ENDINGS = [...RECONCILE_DISPATCH_ACTIONS, RUN_ENDED_ACTION, MAIN_MOVED_ACTION] as const;
+
+const MAX_STRIKE_LOG_READS = 10;
 
 export const ISSUE_PAGE_SIZE = 100;
 
@@ -187,10 +213,29 @@ export function deliveryOf(blocker: Blocker, byMergedPr: () => boolean): Deliver
   return byMergedPr() ? "delivered" : "undelivered";
 }
 
+interface Progress {
+  inFlight: Set<number>;
+  claimed: Set<string>;
+  dryRun: boolean;
+}
+
+function startedTicket(gh: GhExec, number: number, progress: Progress, log: (line: string) => void): boolean {
+  if (progress.inFlight.has(number)) return true;
+  const branch = implementationBranch(number);
+  if (!progress.claimed.has(branch)) return false;
+  if (progress.dryRun) {
+    log(`#${number}: \`${branch}\` stands and no run carries the ticket; a live run would ask whether the claim is dead.`);
+    return true;
+  }
+  const released = releaseDeadClaim(gh, branch, "main", log);
+  if (released) log(`#${number}: \`${branch}\` was a claim no run was holding, so it is released and the ticket reads as unstarted.`);
+  return !released;
+}
+
 function buildGraph(
   gh: GhExec,
   issues: OpenIssue[],
-  claimed: Set<string>,
+  progress: Progress,
   log: (line: string) => void,
 ): SliceState[] | null {
   const states = new Map<number, SliceState>();
@@ -206,7 +251,7 @@ function buildGraph(
       number: issue.number,
       blockedBy: blockers.map((blocker) => blocker.number),
       delivery: "open",
-      started: claimed.has(implementationBranch(issue.number)),
+      started: startedTicket(gh, issue.number, progress, log),
     });
     for (const blocker of blockers) {
       if (deliveryCache.has(blocker.number)) continue;
@@ -329,8 +374,6 @@ function admitToBuild(
 }
 
 const PRD_LABEL = "prd";
-
-const NEEDS_HUMAN_LABEL = "needs-human";
 
 const PRD_CHECK_MARKER = "<!-- prd-check:v1 -->";
 
@@ -661,7 +704,12 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     );
   }
 
-  const graph = buildGraph(gh, issues, claimed, log);
+  const runs = fetchLaneRuns(gh);
+  if (runs === null) {
+    return degraded("the runs API did not return a readable list, and without it every ticket in flight reads as unstarted.");
+  }
+
+  const graph = buildGraph(gh, issues, { inFlight: ticketsInFlight(runs), claimed, dryRun: input.dryRun ?? false }, log);
   if (graph === null) return degraded("the dependency graph could not be read for every open issue.");
 
   for (const issue of issues) {
@@ -695,6 +743,11 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
   const ready: SliceState[] = [];
   for (const state of readyStartable) {
+    const labels = (byNumber.get(state.number)?.labels ?? []).map((each) => each.name);
+    if (labels.includes(NEEDS_HUMAN_LABEL)) {
+      log(`#${state.number}: not dispatching; it carries \`${NEEDS_HUMAN_LABEL}\` and waits for a human.`);
+      continue;
+    }
     const landedPr = mergedCloser(gh, state.number);
     if (landedPr === undefined) {
       ready.push(state);
@@ -711,6 +764,8 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
   const dispatched: number[] = [];
   const authoring: number[] = [];
+  const deciding: number[] = [];
+  const logReads = { left: MAX_STRIKE_LOG_READS };
   for (const state of ready) {
     const authored = testsForTicket(state.number, targetWorkspace);
     const wants = authored.length === 0 ? "acceptance-wanted" : "ticket-ready";
@@ -727,8 +782,15 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
         log(`#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author first.`);
         continue;
       }
-      dispatchTicketReady(gh, state.number);
+      const rung = climbLadder(gh, state.number, runs, logReads, log);
+      if (rung === "decision") {
+        deciding.push(state.number);
+        continue;
+      }
+      if (rung === "mechanic") dispatchMechanicWanted(gh, state.number);
+      else dispatchTicketReady(gh, state.number, rung === "fresh-eyes");
       dispatched.push(state.number);
+      log(`#${state.number}: dispatched rung ${rung}.`);
     } catch (err) {
       log(`could not dispatch #${state.number}: ${reason(err)}`);
     }
@@ -747,7 +809,10 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       checked: startable.size,
       dispatched,
       unreachable: filed,
-      note: `nothing became ready: ${startable.size} startable issue(s) open, none of them ready and unstarted.`,
+      note:
+        deciding.length > 0
+          ? `nothing dispatched: #${deciding.join(", #")} wait on a decision after three strikes.`
+          : `nothing became ready: ${startable.size} startable issue(s) open, none of them ready and unstarted.`,
     };
   }
   if (dispatched.length === 0) {
@@ -772,12 +837,50 @@ export function runRealSpecClose(number: number, range: string, targetWorkspace:
   return closeTicketProcess(["--spec", String(number), range, targetWorkspace]);
 }
 
+function climbLadder(
+  gh: GhExec,
+  ticket: number,
+  runs: LaneRun[],
+  logReads: { left: number },
+  log: (line: string) => void,
+): Rung {
+  const comments = fetchComments(gh, ticket)?.map((comment) => comment.body);
+  if (comments === undefined) {
+    log(`#${ticket}: could not read its comments, so its strikes are unknown and rung one runs.`);
+    return "implementer";
+  }
+  if (hasStandingDecision(comments)) return "decision";
+
+  const recorded = recordedRunIds(comments);
+  const unrecorded = deadRunsOf(runs, ticket).filter((run) => !recorded.has(run.databaseId));
+  const strikes = strikesIn(comments);
+  for (const run of unrecorded.sort((a, b) => a.databaseId - b.databaseId)) {
+    const conclusion = run.conclusion ?? "failure";
+    const signature =
+      logReads.left > 0 ? signatureFromLog(readFailedLog(gh, run.databaseId), conclusion) : `${conclusion} (log unread)`;
+    logReads.left -= 1;
+    const strike = { runId: run.databaseId, conclusion, signature };
+    strikes.push(strike);
+    gh(["issue", "comment", String(ticket), "--body", strikeBody(strike, run.url, rungFor(strikes.length))]);
+    log(`#${ticket}: strike ${strikes.length} from run ${run.databaseId}: ${signature}`);
+  }
+
+  const rung = rungFor(strikes.length);
+  if (rung === "decision") {
+    const urlOf = (runId: number) => runs.find((run) => run.databaseId === runId)?.url ?? `run ${runId}`;
+    gh(["issue", "comment", String(ticket), "--body", decisionBody(ticket, strikes, urlOf)]);
+    escalateToOwner(gh, ticket, process.env.GITHUB_REPOSITORY_OWNER);
+    log(`#${ticket}: three strikes; posted the decision and stopped.`);
+  }
+  return rung;
+}
+
 function main(): void {
   const eventAction = process.env.EVENT_ACTION || "";
-  if (!RECONCILE_DISPATCH_ACTIONS.some((action) => action === eventAction)) {
+  if (!RECONCILE_ENDINGS.some((action) => action === eventAction)) {
     console.log(
-      `dispatch action \`${eventAction}\` is not one of ` +
-        `${RECONCILE_DISPATCH_ACTIONS.map((action) => `\`${action}\``).join(" or ")}; nothing to do.`,
+      `ending \`${eventAction}\` is not one of ` +
+        `${RECONCILE_ENDINGS.map((action) => `\`${action}\``).join(" or ")}; nothing to do.`,
     );
     return;
   }

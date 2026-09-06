@@ -1,15 +1,11 @@
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { regenerateAdrIndex } from "../shared/adr-index";
 import { suiteTestFiles } from "../shared/affected-tests";
 import { changedPaths, describeAttempt } from "../shared/changed-paths";
 import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
-import { execGit, type GitExec } from "../shared/git";
-import { escalateToOwner } from "../shared/needs-human";
-import { implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
+import { FRESH_EYES_RUNG, implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
-import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { gateOutputTail, type GateVerdict } from "../shared/run-gauntlet";
 import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
 import { renderStandardsSection, readStandards } from "../shared/standards";
 import { structuredOutput } from "../shared/structured-output";
@@ -21,18 +17,16 @@ import {
   sectionText,
   type TicketRead,
 } from "../shared/ticket-shape";
+import { holdingClaim, releaseFailedClaim } from "../shared/claim";
 import {
-  claimImplementationBranch,
   deriveAnswer,
-  gateRedNote,
   ImplementerReply,
-  landAnswer,
-  releaseFailedClaim,
+  landUnderGate,
   sayOnTicket,
   staleClaimTakeoverNote,
-  type ImplementerAnswer,
   type ImplementOutcome,
 } from "../shared/implementation-landing";
+import { targetCheckout, type TargetCheckout } from "../shared/target-checkout";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
 import { assembleBrief, gatherBriefContext, listAdrFiles, walkSourceFiles, type FailingTestFile } from "./brief";
 import { recordOutOfBrief } from "./out-of-brief";
@@ -165,70 +159,30 @@ function gauntletPhrase(gauntletRuns: number | undefined): string {
     : `ran bin/gauntlet ${gauntletRuns} times`;
 }
 
-export const ANSWER_PATH_ENV = "IMPLEMENT_ANSWER_PATH";
-
-function keepAnswer(
-  writeFile: (path: string, content: string) => void,
-  env: Record<string, string | undefined>,
-  answer: ImplementerAnswer,
-  log: (line: string) => void,
-): void {
-  const path = env[ANSWER_PATH_ENV];
-  if (!path) return;
-  try {
-    writeFile(path, JSON.stringify(answer, null, 2));
-    log(`kept the implementer's answer at ${path}`);
-  } catch (err) {
-    log(`could not keep the implementer's answer at ${path}: ${reason(err)}`);
-  }
-}
-
-function fsWriteFile(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content, "utf8");
-}
-
 export { implementationBranch };
 
-export interface ImplementDeps {
+export interface ImplementDeps extends TargetCheckout {
   gh: GhExec;
   exec: StageExec;
-  git: GitExec;
   attempt: () => string;
-  readFile: (path: string) => string;
-  fileExists: (path: string) => boolean;
-  writeFile: (path: string, content: string) => void;
-  removeFile: (path: string) => void;
-  regenerateIndex: () => boolean;
-  runGate: () => GateVerdict;
   sourceFiles: () => string[];
   adrFiles: () => string[];
   issueNumber: number;
   failingTests: () => FailingTestFile[];
   standards: () => string;
   comments: () => TicketComment[];
+  rung?: string;
   log?: (line: string) => void;
   now?: Date;
-  env?: Record<string, string | undefined>;
 }
 
-export async function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
+export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
-
   const branch = implementationBranch(deps.issueNumber);
-  const claim = claimImplementationBranch(deps.gh, deps.git, branch, log, deps.now ?? new Date());
-  if (!claim.claimed) return { outcome: "already-claimed" };
-
-  if (claim.tookOverStaleClaim) {
-    sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
-  }
-
-  try {
-    return await buildAndOpen(deps, branch, log);
-  } catch (err) {
-    releaseFailedClaim(deps.gh, branch, log);
-    throw err;
-  }
+  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), (claim) => {
+    if (claim.tookOverStaleClaim) sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
+    return buildAndOpen(deps, branch, log);
+  });
 }
 
 function gateOnChanges(deps: ImplementDeps, log: (line: string) => void): GateVerdict {
@@ -282,25 +236,33 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     }),
   });
 
-  const first = await runImplementer(deps.exec, brief);
-  let reply: ImplementerReply = first.value;
-  let gate = gateOnChanges(deps, log);
-  const sessions: ImplementerSession[] = [
-    { stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns },
-  ];
-  const summaries: string[] = [first.value.summary];
+  const sessions: ImplementerSession[] = [];
+  const summaries: string[] = [];
+  let reply: ImplementerReply = { summary: "", outOfBriefReads: [], declaredEdits: [] };
+  let gate: GateVerdict = { ok: false, output: "" };
 
-  if (!gate.ok && first.sessionId) {
-    log(`resuming session ${first.sessionId} for the one repair round`);
-    const repaired = await runRepair(deps.exec, first.sessionId, gate.output);
-    reply = {
-      summary: repaired.value.summary,
-      outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
-      declaredEdits: repaired.value.declaredEdits,
-    };
-    summaries.push(repaired.value.summary);
-    sessions.push({ stage: "implementer-repair", turns: repaired.turns, gauntletRuns: repaired.gauntletRuns });
+  if (deps.rung === FRESH_EYES_RUNG) {
+    log("the tracker carries a strike against this ticket, so rung one is skipped and fresh eyes run first");
+    gate = { ok: false, output: strikesAsGateOutput(deps.comments()) };
+  } else {
+    const first = await runImplementer(deps.exec, brief);
+    reply = first.value;
     gate = gateOnChanges(deps, log);
+    sessions.push({ stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns });
+    summaries.push(first.value.summary);
+
+    if (!gate.ok && first.sessionId) {
+      log(`resuming session ${first.sessionId} for the one repair round`);
+      const repaired = await runRepair(deps.exec, first.sessionId, gate.output);
+      reply = {
+        summary: repaired.value.summary,
+        outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
+        declaredEdits: repaired.value.declaredEdits,
+      };
+      summaries.push(repaired.value.summary);
+      sessions.push({ stage: "implementer-repair", turns: repaired.turns, gauntletRuns: repaired.gauntletRuns });
+      gate = gateOnChanges(deps, log);
+    }
   }
 
   if (!gate.ok) {
@@ -323,28 +285,25 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   }
 
   const answer = deriveAnswer(deps.git, deps.readFile, deps.fileExists, reply);
-  keepAnswer(deps.writeFile, deps.env ?? process.env, answer, log);
 
   for (const module of answer.outOfBriefReads) {
     recordOutOfBrief(deps.gh, module);
   }
 
-  const outcome = await landAnswer(
-    deps,
-    branch,
-    deps.issueNumber,
-    ticket,
-    answer,
-    `Implement #${deps.issueNumber}\n\n${answer.summary}\n\nPart of #${deps.issueNumber}`,
-    log,
-    { rebaseOntoTrunk: true, skipPushHook: true },
-  );
+  return landUnderGate(deps, branch, deps.issueNumber, ticket, answer, "Implement", gate, log);
+}
 
-  if (!gate.ok && outcome.outcome === "opened") {
-    escalateToOwner(deps.gh, deps.issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
-    sayOnTicket(deps.gh, deps.issueNumber, gateRedNote(gateOutputTail(gate.output)), log);
-  }
-  return outcome;
+const STRIKE_SIGNATURE_RE = /<!-- strike-signature:(.*) -->/;
+
+export function strikesAsGateOutput(comments: TicketComment[]): string {
+  const signatures = comments.flatMap((comment) => {
+    const match = STRIKE_SIGNATURE_RE.exec(comment.body);
+    return match ? [match[1]] : [];
+  });
+  return [
+    "No gate ran: every earlier run of this ticket died before reaching it. Their strikes, oldest first:",
+    ...signatures.map((signature, index) => `${index + 1}. ${signature}`),
+  ].join("\n");
 }
 
 function sliceMarker(issueNumber: number): RegExp {
@@ -366,14 +325,6 @@ export function findFailingTestFiles(
   return files;
 }
 
-function isRegularFile(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
 async function main(): Promise<void> {
   const issueArg = process.argv[2];
   if (!issueArg) {
@@ -384,28 +335,21 @@ async function main(): Promise<void> {
   const issueNumber = Number(issueArg);
 
   const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
-  const inRepo = (path: string) => resolve(repoDir, path);
-  const readInRepo = (path: string) => readFileSync(inRepo(path), "utf8");
+  const checkout = targetCheckout(repoDir);
 
   try {
-    const git: GitExec = (args) => execGit(["-C", repoDir, ...args]);
     const result = await runImplement({
+      ...checkout,
       gh: execGh,
       exec: execClaudeIn(repoDir),
-      git,
-      attempt: () => describeAttempt(git),
-      readFile: readInRepo,
-      fileExists: (path) => isRegularFile(inRepo(path)),
-      writeFile: (path, content) => fsWriteFile(inRepo(path), content),
-      removeFile: (path) => rmSync(inRepo(path), { force: true }),
-      regenerateIndex: () => regenerateAdrIndex(repoDir),
-      runGate: () => gateVerdict(repoDir),
+      attempt: () => describeAttempt(checkout.git),
       sourceFiles: () => walkSourceFiles(repoDir),
       adrFiles: () => listAdrFiles(repoDir),
       issueNumber,
-      failingTests: () => findFailingTestFiles(issueNumber, readInRepo, repoDir),
+      failingTests: () => findFailingTestFiles(issueNumber, checkout.readFile, repoDir),
       standards: () => readStandards(repoDir),
       comments: () => ticketComments(execGh, issueNumber),
+      ...(process.env.RUNG ? { rung: process.env.RUNG } : {}),
     });
     if (result.outcome === "already-claimed") {
       console.log(`#${issueNumber} is already claimed; nothing to do.`);

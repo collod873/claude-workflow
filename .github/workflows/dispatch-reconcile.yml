@@ -27,6 +27,8 @@ jobs:
   reconcile:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_run' ||
+      github.event_name == 'push' ||
       github.event.action == 'session-captured' ||
       github.event.action == 'graph-changed' ||
       (github.event_name == 'issues' &&
@@ -35,7 +37,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
-      EVENT_ACTION: ${{ (github.event_name == 'repository_dispatch' && github.event.action) || 'session-captured' }}
+      EVENT_ACTION: ${{ (github.event_name == 'repository_dispatch' && github.event.action) || (github.event_name == 'workflow_run' && 'run-ended') || (github.event_name == 'push' && 'main-moved') || 'session-captured' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}

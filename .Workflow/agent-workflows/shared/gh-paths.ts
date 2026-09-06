@@ -115,6 +115,20 @@ export function commitPullsPath(head: string): string {
 
 export const issuePathMatcher: RegExp = issue.matcher;
 
+/**
+ * @fixture No lane reads this; a `GhExec` stand-in answers the compare lookup by the same segments
+ * `comparePath` sends, so a claim's commits-ahead read is faked where it is built.
+ */
+export const comparePathMatcher: RegExp = new RegExp(
+  `^${escapeRegExp(comparePath("", "").replace(/\.\.\.$/, ""))}([^.]+)\\.\\.\\.(.+)$`,
+);
+
+/**
+ * @fixture No lane reads this; the stand-in recognises a claim's release by the same ref path
+ * `implementation-landing.ts` deletes through.
+ */
+export const branchRefPathMatcher: RegExp = new RegExp(`^${escapeRegExp(GIT_REFS_PATH)}/heads/(.+)$`);
+
 export const subIssuesPathMatcher: RegExp = subIssues.matcher;
 
 export const blockedByPathMatcher: RegExp = blockedBy.matcher;

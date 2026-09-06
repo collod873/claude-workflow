@@ -24,8 +24,10 @@ describe("planFire", () => {
 
   it("prefers workflow_dispatch over repository_dispatch and workflow_run on the same lane", () => {
     expect(planFire("fixer")).toEqual({ kind: "workflow_dispatch", event: "workflow_dispatch" });
-    expect(planFire("recover")).toEqual({ kind: "workflow_dispatch", event: "workflow_dispatch" });
-    expect(planFire("dispatch-reconcile")).toEqual({ kind: "workflow_dispatch", event: "workflow_dispatch" });
+  });
+
+  it("fires the reconciler by a push, since it now wakes on every push to main", () => {
+    expect(planFire("dispatch-reconcile")).toEqual({ kind: "push", firePath: ".canary-fire-dispatch-reconcile" });
   });
 
   it("fires the declared event_type for a repository_dispatch-only lane", () => {

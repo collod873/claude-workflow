@@ -1,20 +1,28 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
 import PR_STATE from "./closing-prs.fixtures/pr-244-state.json";
+import { scratchDir } from "../shared/scratch.fixture";
 import {
   closedByMergedPr,
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
   SESSION_CAPTURED_DISPATCH_ACTION,
+  TO_BUILD_LABEL,
 } from "./reconcile";
 import {
+  commentsCarrying,
+  deadRun,
   HAND_WRITTEN_TICKET,
+  liveRun,
   reconcileOver,
   startedIssues,
   trackerWith,
+  type Tracker,
   type TrackerOptions,
 } from "./tracker.fixture";
 
@@ -118,17 +126,50 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     expect(startedIssues(tracker)).toEqual([11]);
   });
 
-  it("does not start a slice that already has an implement/issue-<n> ref", () => {
-    const tracker = trackerWith({
-      open: [{ number: 20, title: "Already claimed", blockedBy: [10] }],
+  it("does not start a slice a live Implement run carries, whatever the refs say", () => {
+    const tracker = leftBehind({ runs: [liveRun(900, "Implement #20")] });
+
+    expect(reconcileOver(tracker).action).toBe("clear");
+    expect(tracker.released).toEqual([]);
+  });
+
+  const leftBehind = (held: Partial<TrackerOptions> = {}) =>
+    trackerWith({
+      open: [{ number: 20, title: "Left behind", blockedBy: [10] }],
       closed: [{ number: 10, stateReason: "completed", merged: true }],
       claimed: ["implement/issue-20"],
+      ...held,
     });
+
+  it("does not start a slice whose implement/issue-<n> ref has a pull request or commits, since that is somebody's work", () => {
+    for (const held of [{ withPullRequest: ["implement/issue-20"] }, { withCommits: ["implement/issue-20"] }]) {
+      const tracker = leftBehind(held);
+
+      const outcome = reconcileOver(tracker);
+
+      expect(startedIssues(tracker)).toEqual([]);
+      expect(tracker.released).toEqual([]);
+      expect(outcome.action).toBe("clear");
+    }
+  });
+
+  it("releases a bare implement/issue-<n> ref no run is holding and starts the slice, since a claim with no run is a dead run's leftover (#384)", () => {
+    const tracker = leftBehind();
 
     const outcome = reconcileOver(tracker);
 
+    expect(tracker.released).toEqual(["implement/issue-20"]);
+    expect(startedIssues(tracker)).toEqual([20]);
+    expect(outcome.action).toBe("dispatched");
+  });
+
+  it("leaves a bare ref alone in a dry run and reads the slice as started", () => {
+    const tracker = leftBehind();
+
+    reconcileOver(tracker, { dryRun: true });
+
+    expect(tracker.released).toEqual([]);
     expect(startedIssues(tracker)).toEqual([]);
-    expect(outcome.action).toBe("clear");
   });
 
   it("never starts an issue that is neither a published slice nor labelled to-build", () => {
@@ -321,5 +362,120 @@ describe("runReconcile refuses to answer when it cannot read its own inputs", ()
 
     expect(reconcileOver(tracker).action).toBe("degraded");
     expect(tracker.dispatches).toEqual([]);
+  });
+});
+
+describe("the ladder: a dead run is a strike on its ticket, and the count picks the rung (#384)", () => {
+  const TICKET = 77;
+
+  function targetNamingTheTicket(): string {
+    const dir = scratchDir("reconcile-ladder");
+    mkdirSync(join(dir, ".Workflow", "ladder"), { recursive: true });
+    writeFileSync(join(dir, ".Workflow", "ladder", "ladder.test.ts"), `it.fails("#${TICKET}: x", () => {});\n`);
+    return dir;
+  }
+
+  function ladderOver(options: Omit<TrackerOptions, "open"> & { comments?: string[]; labels?: string[] }) {
+    const { comments, labels, ...rest } = options;
+    const tracker = trackerWith({
+      open: [{ number: TICKET, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: labels ?? [TO_BUILD_LABEL], comments }],
+      ...rest,
+    });
+    const outcome = reconcileOver(tracker, { targetWorkspace: targetNamingTheTicket() });
+    return { tracker, outcome };
+  }
+
+  const rungOf = (tracker: Tracker) => tracker.dispatches.map((d) => `${d.eventType}${d.payload.rung ? `:${d.payload.rung}` : ""}`);
+
+  it("starts a ticket with no strikes on rung one, the implementer", () => {
+    const { tracker } = ladderOver({});
+
+    expect(rungOf(tracker)).toEqual(["ticket-ready"]);
+    expect(tracker.comments).toEqual([]);
+  });
+
+  it("records one dead run as one strike carrying the log's failure line, and re-dispatches with fresh eyes", () => {
+    const { tracker } = ladderOver({ runs: [deadRun(900, TICKET, "implementing #77\nimplement failed: EISDIR bin/close-ticket\n")] });
+
+    const strikes = commentsCarrying(tracker, "strike:v1 run=900");
+    expect(strikes).toHaveLength(1);
+    expect(strikes[0]).toContain("EISDIR bin/close-ticket");
+    expect(rungOf(tracker)).toEqual(["ticket-ready:fresh-eyes"]);
+  });
+
+  it("records a cancelled run that never answered by its conclusion", () => {
+    const { tracker } = ladderOver({ runs: [deadRun(901, TICKET, undefined, "cancelled")] });
+
+    expect(commentsCarrying(tracker, "strike:v1 run=901")[0]).toContain("cancelled before answering");
+  });
+
+  it("records a dead run once, so the next recompute counts it rather than repeating it", () => {
+    const first = ladderOver({ runs: [deadRun(900, TICKET, "implement failed: x\n")] });
+    const recorded = first.tracker.comments.map((comment) => comment.body);
+
+    const second = ladderOver({ runs: [deadRun(900, TICKET, "implement failed: x\n")], comments: recorded });
+
+    expect(second.tracker.comments).toEqual([]);
+    expect(rungOf(second.tracker)).toEqual(["ticket-ready:fresh-eyes"]);
+  });
+
+  it("sends the mechanic after two strikes", () => {
+    const runs = [deadRun(900, TICKET, "implement failed: x\n"), deadRun(901, TICKET, "implement failed: x\n")];
+    const { tracker } = ladderOver({ runs });
+
+    expect(commentsCarrying(tracker, "strike:v1").map((body) => /run=(\d+)/.exec(body)?.[1])).toEqual(["900", "901"]);
+    expect(rungOf(tracker)).toEqual(["mechanic-wanted"]);
+  });
+
+  it("counts a dead Mechanic run as a strike too", () => {
+    const runs = [deadRun(900, TICKET, "implement failed: x\n"), deadRun(901, TICKET, "implement failed: x\n")];
+    const first = ladderOver({ runs });
+    const recorded = first.tracker.comments.map((comment) => comment.body);
+
+    const { tracker } = ladderOver({
+      runs: [...runs, { id: 902, title: `Mechanic #${TICKET}`, conclusion: "failure", failedLog: "mechanic failed: fence\n" }],
+      comments: recorded,
+    });
+
+    expect(commentsCarrying(tracker, "strike:v1 run=902")[0]).toContain("fence");
+    expect(rungOf(tracker)).toEqual([]);
+    expect(commentsCarrying(tracker, "strike-decision:v1")).toHaveLength(1);
+  });
+
+  it("stops after three strikes: posts one decision with lettered options, labels needs-human, dispatches nothing", () => {
+    const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
+    const { tracker, outcome } = ladderOver({ runs });
+
+    const decision = commentsCarrying(tracker, "strike-decision:v1");
+    expect(decision).toHaveLength(1);
+    expect(decision[0]).toContain("- A. ");
+    expect(tracker.labelsAdded).toContainEqual({ issue: TICKET, name: "needs-human" });
+    expect(rungOf(tracker)).toEqual([]);
+    expect(outcome.action).toBe("clear");
+    expect(outcome.note).toContain("decision");
+  });
+
+  it("neither re-posts the decision nor dispatches while the decision stands", () => {
+    const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
+    const first = ladderOver({ runs });
+    const recorded = first.tracker.comments.map((comment) => comment.body);
+
+    const { tracker } = ladderOver({ runs, comments: recorded });
+
+    expect(tracker.comments).toEqual([]);
+    expect(rungOf(tracker)).toEqual([]);
+  });
+
+  it("does not start a ticket carrying needs-human at all; the label is the owner's hold", () => {
+    const { tracker } = ladderOver({ labels: [TO_BUILD_LABEL, "needs-human"] });
+
+    expect(rungOf(tracker)).toEqual([]);
+  });
+
+  it("reads as degraded, and dispatches nothing, when the runs API cannot be read", () => {
+    const { tracker, outcome } = ladderOver({ fail: "runs" });
+
+    expect(outcome.action).toBe("degraded");
+    expect(rungOf(tracker)).toEqual([]);
   });
 });

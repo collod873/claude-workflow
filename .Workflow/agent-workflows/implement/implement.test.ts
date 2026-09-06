@@ -20,12 +20,12 @@ import { implementerAnswer, implementerReply } from "../shared/implementation-la
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
 import type { GateVerdict } from "../shared/run-gauntlet";
+import { gateSaying } from "../shared/gate.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { StageReply } from "../shared/stage";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
-  ANSWER_PATH_ENV,
   CLAIM_TIMEOUT_MINUTES,
   extractSeamsConsumed,
   findFailingTestFiles,
@@ -43,18 +43,6 @@ const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
 const BUILDS = implementerReply();
 const BUILT: Record<string, string> = { "a/b.ts": "export const x = 1;" };
-
-function gateSaying(...verdicts: GateVerdict[]): { runs: GateVerdict[]; runGate: () => GateVerdict } {
-  const runs: GateVerdict[] = [];
-  return {
-    runs,
-    runGate: () => {
-      const verdict = verdicts[runs.length] ?? verdicts[verdicts.length - 1] ?? { ok: true };
-      runs.push(verdict);
-      return verdict;
-    },
-  };
-}
 
 interface Arrangement {
   github?: ClaimHostOptions;
@@ -260,14 +248,11 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
       JSON.stringify(implementerReply({ summary: "Built, then repaired the thing.", outOfBriefReads: ["shape", "close-gate"] })),
     ]);
     const gate = gateSaying(RED, RED, { ok: true });
-    const kept: Record<string, string> = {};
     const { deps, host } = arrange({
       github: { answer: (args) => (args[0] === "issue" && args[1] === "list" ? "[]" : undefined) },
       deps: {
         exec: stage.exec,
         runGate: gate.runGate,
-        env: { [ANSWER_PATH_ENV]: "/tmp/answer.json" },
-        writeFile: (path, content) => { kept[path] = content; },
       },
     });
 
@@ -279,7 +264,6 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     expect(stage.calls[1][stage.calls[1].indexOf("--resume") + 1]).toBe("sess-1");
     expect(stage.stdins[1]).toContain(RED.output);
     expect(prCreatesIn(host.calls)[0]).toContain("Built, then repaired the thing.\n\nCloses #167");
-    expect(JSON.parse(kept["/tmp/answer.json"]).outOfBriefReads).toEqual(["shape", "shape", "close-gate"]);
     expect(ticketCommentsIn(host.calls)).toEqual([]);
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });
@@ -501,50 +485,6 @@ describe("a claim does not outlive the run that made it", () => {
   });
 });
 
-describe("the implementer's answer, kept", () => {
-  const RECEIPT = "/tmp/answer.json";
-
-  async function keptAnswer(built: Record<string, string>): Promise<unknown> {
-    const written: Record<string, string> = {};
-    const { deps } = arrange({
-      built,
-      deps: { env: { [ANSWER_PATH_ENV]: RECEIPT }, writeFile: (path, content) => { written[path] = content; } },
-    });
-
-    await runImplement(deps);
-
-    return JSON.parse(written[RECEIPT]);
-  }
-
-  it("writes the derived answer where the workflow can upload it, even on the run that builds nothing", async () => {
-    expect(await keptAnswer({})).toEqual(implementerAnswer());
-  });
-
-  it("carries the checkout's content, so a replay can land it without the model", async () => {
-    expect(await keptAnswer(BUILT)).toEqual(implementerAnswer({ files: [{ path: "a/b.ts", content: "export const x = 1;" }] }));
-  });
-
-  it("writes nothing extra on a workstation run, which sets no path", async () => {
-    const written: string[] = [];
-    const { deps } = arrange({ deps: { env: {}, writeFile: (path) => written.push(path) } });
-
-    await runImplement(deps);
-
-    expect(written).toEqual(["a/b.ts"]);
-  });
-
-  it("still builds the ticket when the receipt cannot be written", async () => {
-    const { deps } = arrange({
-      deps: {
-        env: { [ANSWER_PATH_ENV]: RECEIPT },
-        writeFile: (path) => { if (path === RECEIPT) throw new Error("read-only filesystem"); },
-      },
-    });
-
-    expect(await runImplement(deps)).toEqual({ outcome: "opened", pr: PR_URL });
-  });
-});
-
 describe("findFailingTestFiles finds the slice's test.fails( tests without running anything", () => {
   const SLICE_TEST = ['// The gate is a constant', 'test.fails("#360: the gate is a constant", () => {', "  expect(1).toBe(2);", "});"].join("\n");
 
@@ -579,5 +519,52 @@ describe("findFailingTestFiles finds the slice's test.fails( tests without runni
 
     expect(findFailingTestFiles(42, readFile, root)).toHaveLength(1);
     expect(findFailingTestFiles(42, readFile, scratchDir("implement-empty")), "an unauthored slice is not an error").toEqual([]);
+  });
+});
+
+describe("rung two: a ticket dispatched with rung=fresh-eyes skips the implementer (#384)", () => {
+  const STRIKE = [
+    "<!-- strike:v1 run=900 conclusion=failure -->",
+    "<!-- strike-signature:EISDIR bin/close-ticket -->",
+    "Strike: run 900 ended `failure`.",
+  ].join("\n");
+
+  it("runs one fresh-eyes session on the brief with the strikes as the gate output, then lands as usual", async () => {
+    const stage = createFakeStages([JSON.stringify(implementerReply({ summary: "Fixed it fresh." }))]);
+    const gate = gateSaying({ ok: true });
+    const { deps, host } = arrange({
+      deps: {
+        exec: stage.exec,
+        runGate: gate.runGate,
+        rung: "fresh-eyes",
+        comments: () => [{ author: "github-actions", createdAt: "2026-09-06T00:00:00Z", body: STRIKE }],
+      },
+    });
+
+    const result = await runImplement(deps);
+
+    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
+    expect(stage.calls).toHaveLength(1);
+    expect(stage.calls[0]).toContain(FRESH_EYES_MODEL);
+    expect(stage.stdins[0]).toContain("EISDIR bin/close-ticket");
+    expect(stage.stdins[0]).toContain("died before reaching it");
+    expect(prCreatesIn(host.calls)[0].join("\n")).toContain("Fixed it fresh.");
+  });
+
+  it("runs the implementer first when no rung is named, whatever the comments say", async () => {
+    const stage = stagesEndingWith();
+    const gate = gateSaying({ ok: true });
+    const { deps } = arrange({
+      deps: {
+        exec: stage.exec,
+        runGate: gate.runGate,
+        comments: () => [{ author: "github-actions", createdAt: "2026-09-06T00:00:00Z", body: STRIKE }],
+      },
+    });
+
+    await runImplement(deps);
+
+    expect(stage.calls).toHaveLength(1);
+    expect(stage.calls[0]).not.toContain(FRESH_EYES_MODEL);
   });
 });

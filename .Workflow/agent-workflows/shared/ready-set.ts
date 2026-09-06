@@ -42,9 +42,20 @@ export function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready:
   });
 }
 
-export function dispatchTicketReady(gh: GhExec, issueNumber: number): void {
+export const MECHANIC_WANTED_DISPATCH_ACTION = "mechanic-wanted";
+
+export const FRESH_EYES_RUNG = "fresh-eyes";
+
+export function dispatchTicketReady(gh: GhExec, issueNumber: number, freshEyes = false): void {
   requestDispatch(gh, {
     event_type: TICKET_READY_DISPATCH_ACTION,
+    client_payload: freshEyes ? { issue: issueNumber, rung: FRESH_EYES_RUNG } : { issue: issueNumber },
+  });
+}
+
+export function dispatchMechanicWanted(gh: GhExec, issueNumber: number): void {
+  requestDispatch(gh, {
+    event_type: MECHANIC_WANTED_DISPATCH_ACTION,
     client_payload: { issue: issueNumber },
   });
 }

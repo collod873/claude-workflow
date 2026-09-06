@@ -1,0 +1,16 @@
+name: Mechanic
+run-name: "Mechanic #${{ github.event.client_payload.issue }}"
+
+"on":
+  repository_dispatch:
+    types: [mechanic-wanted]
+
+jobs:
+  mechanic:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    uses: collod873/claude-workflow/.github/workflows/mechanic.yml@main
+    secrets: inherit

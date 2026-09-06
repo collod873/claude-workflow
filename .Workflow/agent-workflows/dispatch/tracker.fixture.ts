@@ -2,6 +2,8 @@ import type { GhExec } from "../shared/gh";
 import { createFakeGh, type FakeDispatch } from "../shared/gh.fake";
 import {
   blockedByPathMatcher,
+  branchRefPathMatcher,
+  comparePathMatcher,
   issueCommentPathMatcher,
   issueCommentsPathMatcher,
   matchingRefsPath,
@@ -66,12 +68,33 @@ export function delivered(number: number, mergedAt: string, mergeSha: string): F
 const closingPrFor = (issue: number) => issue * 10 + 4;
 const closerOwner = (pr: number) => (pr - 4) / 10;
 
+export interface FakeRun {
+  id: number;
+  title: string;
+  status?: "completed" | "in_progress" | "queued";
+  conclusion?: "success" | "failure" | "cancelled" | "timed_out";
+  failedLog?: string;
+}
+
+export function deadRun(id: number, ticket: number, failedLog?: string, conclusion: FakeRun["conclusion"] = "failure"): FakeRun {
+  return failedLog === undefined
+    ? { id, title: `Implement #${ticket}`, conclusion }
+    : { id, title: `Implement #${ticket}`, conclusion, failedLog };
+}
+
+export function liveRun(id: number, title: string): FakeRun {
+  return { id, title, status: "in_progress" };
+}
+
 export interface TrackerOptions {
   open: FakeIssue[];
   closed?: FakeClosed[];
   claimed?: string[];
+  withPullRequest?: string[];
+  withCommits?: string[];
+  runs?: FakeRun[];
   standing?: { number: number; body: string; comments?: string[] };
-  fail?: "issues" | "refs" | "edges";
+  fail?: "issues" | "refs" | "edges" | "runs";
 }
 
 export interface Tracker {
@@ -84,6 +107,7 @@ export interface Tracker {
   commentEdits: Array<{ id: number; body: string }>;
   labelsAdded: Array<{ issue: number; name: string }>;
   labelsRemoved: Array<{ issue: number; name: string }>;
+  released: string[];
 }
 
 export function trackerWith(options: TrackerOptions): Tracker {
@@ -94,8 +118,10 @@ export function trackerWith(options: TrackerOptions): Tracker {
   const commentEdits: Tracker["commentEdits"] = [];
   const labelsAdded: Tracker["labelsAdded"] = [];
   const labelsRemoved: Tracker["labelsRemoved"] = [];
+  const released: string[] = [];
   const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
   const open = new Map(options.open.map((issue) => [issue.number, issue]));
+  const runs = options.runs ?? [];
 
   const issueRefs = (numbers: number[]): string =>
     JSON.stringify(
@@ -112,6 +138,15 @@ export function trackerWith(options: TrackerOptions): Tracker {
     if (path === matchingRefsPath("implement/")) {
       if (options.fail === "refs") throw new Error("gh: 403");
       return JSON.stringify((options.claimed ?? []).map((branch) => `refs/heads/${branch}`));
+    }
+    const compared = comparePathMatcher.exec(path)?.[2];
+    if (compared !== undefined) {
+      return JSON.stringify({ ahead_by: (options.withCommits ?? []).includes(compared) ? 1 : 0 });
+    }
+    const deleted = args[1] === "--method" && args[2] === "DELETE" ? branchRefPathMatcher.exec(args[3] ?? "")?.[1] : undefined;
+    if (deleted !== undefined) {
+      released.push(deleted);
+      return "";
     }
     const commentPatch = issueCommentPathMatcher.exec(path);
     if (commentPatch) {
@@ -136,6 +171,26 @@ export function trackerWith(options: TrackerOptions): Tracker {
 
   const answer = (args: string[]): string | undefined => {
     if (args[0] === "api") return answerApi(args);
+
+    if (args[0] === "run" && args[1] === "list") {
+      if (options.fail === "runs") throw new Error("gh: 403");
+      return JSON.stringify(
+        runs.map((run) => ({
+          databaseId: run.id,
+          displayTitle: run.title,
+          status: run.status ?? "completed",
+          conclusion: run.status === undefined || run.status === "completed" ? (run.conclusion ?? "success") : null,
+          url: `https://github.com/owner/repo/actions/runs/${run.id}`,
+        })),
+      );
+    }
+    if (args[0] === "run" && args[1] === "view") {
+      return runs.find((run) => run.id === Number(args[2]))?.failedLog ?? "";
+    }
+    if (args[0] === "pr" && args[1] === "list") {
+      const head = args[args.indexOf("--head") + 1];
+      return JSON.stringify((options.withPullRequest ?? []).includes(head) ? [{ number: 1 }] : []);
+    }
 
     if (args[0] === "issue" && args[1] === "list") {
       const fields = args[args.indexOf("--json") + 1] ?? "";
@@ -190,6 +245,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
       created.push({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1] });
       return "https://github.com/owner/repo/issues/500\n";
     }
+    if (args[0] === "label") return "";
     return undefined;
   };
 
@@ -199,7 +255,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
     return answer(args) ?? sender.gh(args);
   };
 
-  return { gh, calls, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved };
+  return { gh, calls, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved, released };
 }
 
 export const silent = () => {};

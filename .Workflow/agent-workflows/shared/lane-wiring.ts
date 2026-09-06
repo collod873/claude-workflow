@@ -3,7 +3,12 @@ import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-se
 import { CLAIM_TIMEOUT_MINUTES } from "./implementation-landing";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { RATIFICATION_DUE_DISPATCH_ACTION, RATIFIER_MERGED_DISPATCH_ACTION } from "./ratification-dispatch";
-import { ACCEPTANCE_WANTED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
+import {
+  ACCEPTANCE_WANTED_DISPATCH_ACTION,
+  GRAPH_CHANGED_DISPATCH_ACTION,
+  MECHANIC_WANTED_DISPATCH_ACTION,
+  TICKET_READY_DISPATCH_ACTION,
+} from "./ready-set";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 
 /**
@@ -27,8 +32,37 @@ export const LANE_OWNED = {
 
 export const DEAD_RUN_WIRES = {
   fixerNeeded: "fixer-needed",
-  implementFailed: "implement-failed",
 } as const;
+
+export const RUN_ENDED = "run-ended";
+
+export const MAIN_MOVED = "main-moved";
+
+export const ENDING_LANES = [
+  "Acceptance",
+  "Audit",
+  "Back-stamp",
+  "Bypass counter",
+  "Decline on revert",
+  "Fixer",
+  "Implement",
+  "Integrate",
+  "Lost-dispatch counter",
+  "Mechanic",
+  "Missing-trailer counter",
+  "Ratify",
+  "Ratify on PRD close",
+  "Ratify release",
+  "Review",
+  "Run watchdog",
+  "Shape",
+  "Shape — accept",
+  "Spec",
+  "To-Tickets",
+  "Verify",
+] as const;
+
+const ticketRunName = (lane: string) => `${lane} #\${{ github.event.client_payload.issue }}`;
 
 export const IDEA_LABEL = "idea";
 
@@ -109,6 +143,7 @@ export interface JobFacts {
 
 export interface CallerFacts {
   name: string;
+  runName?: string;
   on: Doors;
   permissions: Permissions;
   gate?: Gate;
@@ -305,6 +340,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   acceptance: {
     caller: {
       name: "Acceptance",
+      runName: "Acceptance #${{ github.event.client_payload.issue || github.event.issue.number }}",
       on: { issues: ["edited"], repository_dispatch: [ACCEPTANCE_WANTED_DISPATCH_ACTION] },
       permissions: { contents: "write", issues: "write" },
     },
@@ -356,6 +392,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   implement: {
     caller: {
       name: "Implement",
+      runName: ticketRunName("Implement"),
       on: { repository_dispatch: [TICKET_READY_DISPATCH_ACTION] },
       permissions: { contents: "write", "pull-requests": "write", issues: "write" },
     },
@@ -370,12 +407,37 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { TICKET_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
         steps: [
           INSTALLS_TARGET,
-          { name: "Implement the ticket", run: ['echo "implementing #$TICKET_NUMBER"'] },
-          { name: "Tell Recover this run failed", if: "failure() || cancelled()", run: ring(DEAD_RUN_WIRES.implementFailed) },
+          {
+            name: "Implement the ticket",
+            env: { RUNG: "${{ github.event.client_payload.rung }}" },
+            run: ['echo "implementing #$TICKET_NUMBER"'],
+          },
+          { name: "Tell Recover this run failed", absent: true },
         ],
       },
     },
-    source: { lacks: ["implementation-pr-opened"] },
+    source: { lacks: ["implementation-pr-opened", "implement-failed", "upload-artifact"] },
+  },
+
+  mechanic: {
+    caller: {
+      name: "Mechanic",
+      runName: ticketRunName("Mechanic"),
+      on: { repository_dispatch: [MECHANIC_WANTED_DISPATCH_ACTION] },
+      permissions: ACTS_ON_PULL_REQUEST,
+    },
+    permissions: ACTS_ON_PULL_REQUEST,
+    concurrency: "implement-${{ github.event.client_payload.issue }}",
+    jobs: {
+      mechanic: {
+        gate: { is: onAction(MECHANIC_WANTED_DISPATCH_ACTION), lacks: ["sender", "author_association"] },
+        timeout: CLAIM_TIMEOUT_MINUTES,
+        runs: `${tsx("mechanic/mechanic.ts")} "$TICKET_NUMBER"`,
+        checkout: "pair",
+        env: { TICKET_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
+        steps: [INSTALLS_TARGET, { name: "Repair the ticket's cause", run: ['echo "mechanic on #$TICKET_NUMBER"'] }],
+      },
+    },
   },
 
   verify: {
@@ -505,29 +567,14 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     },
   },
 
-  recover: {
-    caller: deadRunCaller("Recover", "Implement", DEAD_RUN_WIRES.implementFailed),
-    inputs: { run_id: { required: false, default: "" } },
-    permissions: ACTS_ON_PULL_REQUEST,
-    concurrency: "recover-${{ inputs.run_id || github.run_id }}",
-    jobs: {
-      recover: {
-        ungated: true,
-        runs: tsx("recover/recover.ts"),
-        checkout: "pair",
-        env: { RUN_ID: "${{ inputs.run_id }}" },
-        steps: [INSTALLS_TARGET, { name: "Recover or re-dispatch", env: { HUSKY: "0" } }],
-      },
-    },
-    source: { lacks: ["npm install -g @anthropic-ai/claude-code", "secrets.CLAUDE_CODE_OAUTH_TOKEN"] },
-  },
-
   "dispatch-reconcile": {
     caller: {
       name: "Dispatch reconcile",
       on: {
         repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION],
         issues: ["labeled"],
+        workflow_run: { workflows: [...ENDING_LANES], types: ["completed"] },
+        push: { branches: ["main"] },
         workflow_dispatch: true,
       },
       permissions: { contents: "write", issues: "write" },
@@ -540,12 +587,24 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       reconcile: {
         gate: {
           actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION],
-          has: ["github.event_name == 'workflow_dispatch'", "github.event_name == 'issues'", onLabel(LANE_OWNED.toBuild), OWNER_GATE],
+          has: [
+            "github.event_name == 'workflow_dispatch'",
+            "github.event_name == 'workflow_run'",
+            "github.event_name == 'push'",
+            "github.event_name == 'issues'",
+            onLabel(LANE_OWNED.toBuild),
+            OWNER_GATE,
+          ],
         },
         runs: tsx("dispatch/reconcile.ts"),
         checkout: "pair",
         env: {
-          EVENT_ACTION: "${{ (github.event_name == 'repository_dispatch' && github.event.action) || '" + LANE_OWNED.sessionCaptured + "' }}",
+          EVENT_ACTION: [
+            "${{ (github.event_name == 'repository_dispatch' && github.event.action)",
+            `|| (github.event_name == 'workflow_run' && '${RUN_ENDED}')`,
+            `|| (github.event_name == 'push' && '${MAIN_MOVED}')`,
+            `|| '${LANE_OWNED.sessionCaptured}' }}`,
+          ].join(" "),
           VERIFY_WORKFLOW: "${{ inputs.verify_workflow }}",
         },
       },

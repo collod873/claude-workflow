@@ -198,7 +198,7 @@ alongside, for node 04b.
 | **Why a fresh session, not a second resume** | A resumed session inherits the first model's own read of the ticket; when that read is what is wrong, resuming it only re-plays the same blind spot. A clean context is the only way to get a genuinely second opinion (ADR-0158) — the mirror of ADR-0157's own case for resuming rung one instead of starting fresh |
 | **Still red after rung two** | The run continues anyway: node 06 pushes the branch (`--no-verify`, since the wire itself just ran the hook's gate), the ticket gets `needs-human`, and `gateRedNote()` puts the gate's output on the ticket. Verify and the fixer already exist for a red pull request; a paid run's work is never discarded |
 
-### edge — `ImplementerAnswer` · derived, kept for node 07
+### edge — `ImplementerAnswer` · derived
 
 ```json
 {"files": [
@@ -211,10 +211,15 @@ alongside, for node 04b.
 ```
 
 `deriveAnswer()` reads every changed path off `git status` and inlines its content (or lists it
-under `deleted`), so the artifact the workflow uploads (`IMPLEMENT_ANSWER_PATH`) is still complete
-enough for node 07 to replay without the model. Out-of-brief reads from every round are
-concatenated — a module read twice counts twice on the tracker, as before. `declaredEdits` carries
-only rung two's own list, since rungs before it never populate it.
+under `deleted`). Out-of-brief reads from every round are concatenated — a module read twice
+counts twice on the tracker, as before. `declaredEdits` carries only rung two's own list, since
+rungs before it never populate it.
+
+**Rung two first, when the reconciler says so.** A `ticket-ready` dispatch may carry
+`rung: fresh-eyes` (`RUNG` in the job's env). That means the tracker already holds a strike
+against this ticket: an earlier run died before any gate ran. Rung one is skipped, and the fresh
+session gets the strikes' signatures where the gate output would have been
+([reconcile-lane-edges.md](reconcile-lane-edges.md), the ladder).
 
 ---
 
@@ -291,17 +296,19 @@ Closes #421" \
 
 ## Node 07 — if it died instead · [wire]
 
-`implement.yml` (always-steps) → `recover-caller.yml` → `recover.yml`
-
-Two independent ways this run's death gets noticed, not one.
+Nothing in this lane reports its own death. `dispatch-reconcile-caller.yml` listens for
+`workflow_run: completed` on every caller stub, this one included, and GitHub fires that for every
+conclusion: `success`, `failure`, `cancelled`, a runner killed at `timeout-minutes`. The reconciler
+then reads this run off the runs API by its title (`Implement #421`, the stub's `run-name`), finds
+no live run and no pull request on `implement/issue-421`, releases the bare claim, writes one
+strike comment on #421 with the last `implement failed:` line from the failed log, and dispatches
+the next rung. The whole path is [reconcile-lane-edges.md](reconcile-lane-edges.md)'s ladder;
+the third rung is [mechanic-lane-edges.md](mechanic-lane-edges.md).
 
 | | |
 |---|---|
-| **Signal 1** | `implement.yml`'s own `if: failure() \|\| cancelled()` step fires `repository_dispatch: implement-failed`, carrying `run_id` and `issue`. Needs the job to survive long enough to reach that step |
-| **Signal 2** | `recover-caller.yml` separately listens for `workflow_run: [Implement], types: [completed]` with conclusion `failure` or `cancelled` — GitHub's own event, which fires even when the runner is killed before Signal 1's step ever runs |
-| **Either wakes** | `recover.yml`, with `RUN_ID` set from whichever signal arrived |
-| **What it can do** | Read the dead run's own uploaded `implementer-answer-421` artifact. If the model already answered and only the landing steps died, `recover.ts` replays `landAnswer()` against that artifact directly, spending **no** second Sonnet call ([ADR-0114](../adr/0114-a-red-lane-05-run-is-recovered-from-its-own-artifact-and-han.md)). No artifact → it re-dispatches `ticket-ready`, and this whole lane runs again from node 00, claim and all |
-| **Always, regardless of outcome** | The `implementer-answer-421` artifact is uploaded (`if: always()`), and the running-label comes off |
+| **Always, regardless of outcome** | the running-label comes off |
+| **Never** | a `repository_dispatch` saying this run failed; a `workflow_run` door on this lane alone; an artifact kept for a replay |
 
 ---
 
@@ -318,7 +325,7 @@ Two independent ways this run's death gets noticed, not one.
 | push gate + rung two, fresh eyes (node 04b) | opus-5, fresh session, at most once | as rung one, plus the fresh checkout read the prompt asks for | as node 04, but may edit a `test.fails(` test or a file outside the claim when it names the edit in `declaredEdits` | no |
 | out-of-brief (node 05) | — | no | — | comments on the *tracker* issue, never the ticket |
 | land the answer (node 06) | — | reads the worktree; re-writes and removes the answered paths | commits, rebases, pushes (`--no-verify`), opens the PR | comments; `needs-human` on refusal or a red gate; posts `declaredEditsNote()` when rung two declared any |
-| recover (node 07) | — | reads the dead run's artifact | may commit/push, replaying `landAnswer` | may re-dispatch `ticket-ready` |
+| if it died (node 07) | — | nothing here; the reconciler reads the run off the API | may delete the bare claim | writes a strike, dispatches the next rung |
 
 ---
 
@@ -352,12 +359,10 @@ time a claim is old enough to call stale, GitHub itself has already killed whate
 There is no window where a claim reads as stale while its own run might still be alive to contest
 the takeover.
 
-**Recovery replays the answer, not the model.** A run that dies after node 04 but before node 06
-finishes has already paid for the one thing that costs money. `recover.ts` checks for that first —
-the uploaded `implementer-answer-421` artifact — and if it is there, feeds the same
-`ImplementerAnswer` straight back into `landAnswer()` rather than re-dispatching and re-spending
-Sonnet. Only a genuinely answerless death (the model itself never returned) falls back to running
-this lane over from node 00.
+**A death here is read, never reported.** A run that dies anywhere in this lane leaves a bare
+claim and a dead run in the Actions API. The reconciler reads both on the next ending of any kind
+and starts the next rung. Every dollar the dead run spent is gone; what survives is the strike,
+which is what decides whether the next dollar goes to the same model, a fresh one, or the mechanic.
 
 ---
 

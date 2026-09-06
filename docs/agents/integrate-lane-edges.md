@@ -416,7 +416,7 @@ made in both places to keep the record honest; nothing enforces that today.
   and stopped: a criterion still unmet after one fix pass, or the merge gate rejected the same
   merge twice." Lane 08's own use of it (node 02, on a rebase conflict) is neither of those — a
   first-time git-level conflict, not a repeated rejection. The label's actual trigger set is
-  wider than that table documents; `fixer.ts`, `acceptance.ts`, `implement.ts` and `recover.ts`
+  wider than that table documents; `fixer.ts`, `acceptance.ts`, `implement.ts`, `mechanic.ts` and `reconcile.ts`
   each write it too, for their own reasons.
 - `bin/close-ticket`'s own docstring says it "dispatches nothing." True of the script's own I/O
   boundary — but the ticket it closes is exactly what lets node 07's `graph-changed` ring carry

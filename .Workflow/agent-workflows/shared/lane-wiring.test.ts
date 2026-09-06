@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RECONCILE_DISPATCH_ACTIONS, SESSION_CAPTURED_DISPATCH_ACTION, TO_BUILD_LABEL } from "../dispatch/reconcile";
+import { RECONCILE_DISPATCH_ACTIONS, RECONCILE_ENDINGS, SESSION_CAPTURED_DISPATCH_ACTION, TO_BUILD_LABEL } from "../dispatch/reconcile";
 import { derivedSecretNames } from "../enrol/secrets";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { GATE_JOB, IMMUTABILITY_JOB } from "../integrate/integrate";
@@ -15,10 +15,13 @@ import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import {
   doors,
+  ENDING_LANES,
   LANE_OWNED,
   LANE_WIRING,
   MACHINE_REPOSITORY,
+  MAIN_MOVED,
   OWNER_GATE,
+  RUN_ENDED,
   SHAPE_LABELS_APPLIED,
   type Checkout,
   type Gate,
@@ -55,6 +58,7 @@ interface Job {
 }
 interface Workflow {
   name?: string;
+  "run-name"?: string;
   on?: Record<string, unknown>;
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
@@ -181,6 +185,7 @@ describe.each(rows)("$lane", ({ lane, row, file }) => {
       const stub = readWorkflow<Workflow>(stubOf(lane)).workflow;
       const jobs = Object.values(stub.jobs ?? {});
       expect(stub.name).toBe(caller.name);
+      expect(stub["run-name"]).toBe(caller.runName);
       expect(doors(stub.on)).toEqual(caller.on);
       expect(jobs).toHaveLength(1);
       expect(jobs[0].permissions).toEqual(caller.permissions);
@@ -245,6 +250,15 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
 
   it("the reconciler answers exactly the two actions its caller listens for", () => {
     expect([...RECONCILE_DISPATCH_ACTIONS]).toEqual([LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION]);
+  });
+
+  it("the reconciler hears every caller stub end except its own, so no lane's death goes unread (#384)", () => {
+    const callers = Object.values(LANE_WIRING)
+      .flatMap((row) => (row.caller ? [row.caller.name] : []))
+      .filter((name) => name !== LANE_WIRING["dispatch-reconcile"].caller?.name)
+      .sort();
+    expect([...ENDING_LANES].sort()).toEqual(callers);
+    expect([...RECONCILE_ENDINGS]).toEqual([...RECONCILE_DISPATCH_ACTIONS, RUN_ENDED, MAIN_MOVED]);
   });
 
   it("shape.yml creates every label shape.ts applies", () => {

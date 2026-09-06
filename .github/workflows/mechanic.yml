@@ -1,4 +1,4 @@
-name: Implement (reusable)
+name: Mechanic (reusable)
 
 "on":
   workflow_call:
@@ -16,14 +16,15 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: read
 
 concurrency:
   group: implement-${{ github.event.client_payload.issue }}
   cancel-in-progress: false
 
 jobs:
-  implement:
-    if: github.event.action == 'ticket-ready'
+  mechanic:
+    if: github.event.action == 'mechanic-wanted'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 45
     env:
@@ -47,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before the implementer can run." >&2
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before the mechanic can run." >&2
             exit 1
           fi
 
@@ -74,13 +75,12 @@ jobs:
           issue: ${{ env.TICKET_NUMBER }}
           mode: "on"
 
-      - name: Implement the ticket
+      - name: Repair the ticket's cause
         env:
-          RUNG: ${{ github.event.client_payload.rung }}
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: |
-          echo "implementing #$TICKET_NUMBER"
-          npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
+          echo "mechanic on #$TICKET_NUMBER"
+          npx tsx .Workflow/agent-workflows/mechanic/mechanic.ts "$TICKET_NUMBER"
 
       - name: Unmark the ticket
         if: always()

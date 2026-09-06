@@ -1,4 +1,5 @@
 name: Acceptance
+run-name: "Acceptance #${{ github.event.client_payload.issue || github.event.issue.number }}"
 
 "on":
   issues:

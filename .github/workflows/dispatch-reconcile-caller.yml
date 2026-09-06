@@ -5,6 +5,32 @@ name: Dispatch reconcile
     types: [session-captured, graph-changed]
   issues:
     types: [labeled]
+  workflow_run:
+    workflows:
+      - Acceptance
+      - Audit
+      - Back-stamp
+      - Bypass counter
+      - Decline on revert
+      - Fixer
+      - Implement
+      - Integrate
+      - Lost-dispatch counter
+      - Mechanic
+      - Missing-trailer counter
+      - Ratify
+      - Ratify on PRD close
+      - Ratify release
+      - Review
+      - Run watchdog
+      - Shape
+      - Shape — accept
+      - Spec
+      - To-Tickets
+      - Verify
+    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
