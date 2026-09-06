@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-30
+superseded_by: ADR-0165
 reversal: Removing recovery deletes the `workflow_run`-triggered lane, its artifact-replay path, the three-comment cap counted off the ticket's own comments and the shared `shared/needs-human.ts` escalation three callers now depend on — and returns the repo to its measured state of 7 `Implement` reds in a week with no repair, their paid work reachable only by a person rebuilding a branch by hand.
 ---
 

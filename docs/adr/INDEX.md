@@ -50,7 +50,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0106 | [A reader is proved against a payload the API actually served, never against a fake that agrees with it](0106-a-reader-is-proved-against-a-payload-the-api-actually-served.md) |
 | 0110 | [Files claimed bound what a run decides, not what it repairs](0110-files-claimed-bound-what-a-run-decides-not-what-it-repairs.md) |
 | 0111 | [A lane that spends a model queues behind itself rather than cancelling, and one with no concurrency group gets one](0111-a-lane-that-spends-a-model-queues-behind-itself-rather-than.md) |
-| 0114 | [A red lane 05 run is recovered from its own artifact and handed to Verify, and the third recovery of one ticket reaches the owner](0114-a-red-lane-05-run-is-recovered-from-its-own-artifact-and-han.md) |
 | 0115 | [The doorbell rings after the close it announces, and a lane handed a closed ticket refuses it](0115-the-doorbell-rings-after-the-close-it-announces-and-a-lane-h.md) |
 | 0117 | [A standing report speaks only on evidence it has not already cited, and retires only on evidence its subject recovered](0117-a-standing-report-speaks-only-on-evidence-it-has-not-already.md) |
 | 0118 | [A ticket roots every path it names, because lane 04 and lane 05 root a relative one separately](0118-a-ticket-roots-every-path-it-names-because-lane-04-and-lane.md) |
@@ -164,6 +163,7 @@ demotion; nothing here binds later work.
 - [0109](0109-a-ticket-s-check-reads-the-tree-while-a-spec-s-check-reads-t.md) note
 - [0112](0112-a-non-zero-open-question-count-no-longer-waits-on-the-owner.md) note
 - [0113](0113-wave-0-may-hold-more-than-one-slice-so-validateplan-requires.md) note
+- [0114](0114-a-red-lane-05-run-is-recovered-from-its-own-artifact-and-han.md) superseded
 - [0116](0116-a-clone-the-detector-re-cut-is-carried-across-not-deleted-an.md) note
 - [0119](0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md) note
 - [0120](0120-an-acceptance-test-may-not-turn-on-a-file-no-pull-request-ma.md) superseded
@@ -180,4 +180,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-165 ADRs · 79 constraint · 44 note · 42 superseded · 16,837 words total.
+165 ADRs · 78 constraint · 44 note · 43 superseded · 16,837 words total.
