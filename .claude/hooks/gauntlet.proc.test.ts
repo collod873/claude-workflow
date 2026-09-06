@@ -117,32 +117,6 @@ describe("the hook", () => {
   });
 });
 
-describe("the machine-global stop-gate.py is the one turn-end owner", () => {
-  it("#367.2: a Stop payload gets nothing back from the shim, so a stray registration cannot run the suite a second time", () => {
-    const result = runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n") });
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
-  });
-
-  it("#367.4: the run row's ts is local time at seconds precision, the shape _hook.py writes and active_sessions() reads", () => {
-    const dir = scratchDir("gauntlet-logs");
-    runHook("turn", editOf(`${REPO_ROOT}/a.ts`), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir, TZ: "Asia/Tokyo" });
-
-    const [row] = readdirSync(dir).flatMap((name) =>
-      readFileSync(join(dir, name), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)),
-    );
-    expect(row.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
-    expect(Math.abs(Date.parse(`${row.ts}+09:00`) - Date.now())).toBeLessThan(60_000);
-  });
-
-  it("#367.5: docs/agents/venues.md names stop-gate.py as the stop venue's owner", () => {
-    const grep = spawnSync("grep", ["-q", "stop-gate.py", "docs/agents/venues.md"], { cwd: REPO_ROOT });
-
-    expect(grep.status).toBe(0);
-  });
-});
-
 const PY_HOOK = join(REPO_ROOT, ".claude/hooks/_hook.py");
 
 const READ_BACK_WITH_HOOK_PY = `
@@ -161,6 +135,42 @@ print(json.dumps({"ts": own, "sessions": hook.active_sessions(sys.argv[4], log_d
 
 const digitsBlanked = (ts: string) => ts.replace(/\d/g, "d");
 
+function readBackWithHookPy(logDir: string, project: string): { ts: string; sessions: Record<string, string> } {
+  const rowOfItsOwn = join(scratchDir("hook-py-row"), "row.jsonl");
+  const python = spawnSync("python3", ["-c", READ_BACK_WITH_HOOK_PY, PY_HOOK, logDir, rowOfItsOwn, project], {
+    encoding: "utf8",
+  });
+
+  expect(python.status, python.stderr).toBe(0);
+  return JSON.parse(python.stdout);
+}
+
+describe("the machine-global stop-gate.py is the one turn-end owner", () => {
+  it("#367.2: a Stop payload gets nothing back from the shim, so a stray registration cannot run the suite a second time", () => {
+    const result = runHook("stop", STOP, { GAUNTLET_BIN: stubGauntlet(1, "--- test ---\n1 failed\n") });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("#367.4: the run row's ts is local time at seconds precision, the shape _hook.py writes and active_sessions() reads", () => {
+    const dir = scratchDir("gauntlet-logs");
+    runHook("turn", editOf(`${REPO_ROOT}/a.ts`), { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir, TZ: "Asia/Tokyo" });
+
+    const [row] = readdirSync(dir).flatMap((name) =>
+      readFileSync(join(dir, name), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)),
+    );
+    expect(digitsBlanked(row.ts)).toBe(digitsBlanked(readBackWithHookPy(dir, basename(REPO_ROOT)).ts));
+    expect(Math.abs(Date.parse(`${row.ts}+09:00`) - Date.now())).toBeLessThan(60_000);
+  });
+
+  it("#367.5: docs/agents/venues.md names stop-gate.py as the stop venue's owner", () => {
+    const grep = spawnSync("grep", ["-q", "stop-gate.py", "docs/agents/venues.md"], { cwd: REPO_ROOT });
+
+    expect(grep.status).toBe(0);
+  });
+});
+
 describe("the ts shape the shim writes agrees with the _hook.py it is a copy of", () => {
   it("hands _hook.py's active_sessions() a row it parses, in the shape _hook.py's own append_log writes", () => {
     const dir = scratchDir("gauntlet-logs");
@@ -172,15 +182,7 @@ describe("the ts shape the shim writes agrees with the _hook.py it is a copy of"
     });
     runHook("turn", payload, { GAUNTLET_BIN: stubGauntlet(0), STOP_GATE_LOG_DIR: dir });
 
-    const rowOfItsOwn = join(scratchDir("hook-py-row"), "row.jsonl");
-    const python = spawnSync(
-      "python3",
-      ["-c", READ_BACK_WITH_HOOK_PY, PY_HOOK, dir, rowOfItsOwn, basename(REPO_ROOT)],
-      { encoding: "utf8" },
-    );
-
-    expect(python.status, python.stderr).toBe(0);
-    const readBack = JSON.parse(python.stdout);
+    const readBack = readBackWithHookPy(dir, basename(REPO_ROOT));
     expect(Object.keys(readBack.sessions)).toEqual(["pin-session"]);
     expect(digitsBlanked(readBack.ts)).toBe(digitsBlanked(readBack.sessions["pin-session"]));
   });

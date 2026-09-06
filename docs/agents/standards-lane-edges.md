@@ -495,9 +495,8 @@ nothing downstream reads it.
 
 Wakes on the `ratifier-merged` dispatch lane 08 rings right after `gh pr merge`, and only when the
 pull request it merged carries `RATIFIER_PR_TITLE` (`integrate/integrate.ts`). It cannot wake on
-`pull_request: closed`: lane 08 merges with the Actions token, and GitHub starts no workflow for
-an event that token caused, so a door on the close event never opened for the machine's own merge
-(ADR-0164).
+`pull_request: closed`
+([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)).
 
 | | |
 |---|---|
