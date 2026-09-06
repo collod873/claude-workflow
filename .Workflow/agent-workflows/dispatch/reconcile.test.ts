@@ -472,10 +472,10 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(rungOf(tracker)).toEqual([]);
   });
 
-  it("reads as degraded, and dispatches nothing, when the runs API cannot be read", () => {
+  it("reads every ticket as unstarted, with no strikes, when the runs API cannot be read (#390)", () => {
     const { tracker, outcome } = ladderOver({ fail: "runs" });
 
-    expect(outcome.action).toBe("degraded");
-    expect(rungOf(tracker)).toEqual([]);
+    expect(outcome.action).toBe("dispatched");
+    expect(rungOf(tracker)).toEqual(["ticket-ready"]);
   });
 });

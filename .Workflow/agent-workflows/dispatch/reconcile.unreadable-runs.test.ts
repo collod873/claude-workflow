@@ -11,7 +11,7 @@ function ghWithUnreadableRuns(): GhExec {
   return gh;
 }
 
-test.fails("#390.1: an unreadable runs list no longer degrades the reconcile pass", () => {
+test("#390.1: an unreadable runs list no longer degrades the reconcile pass", () => {
   const outcome = runReconcile({ gh: ghWithUnreadableRuns(), log: () => {}, dryRun: true });
 
   expect(outcome.note).not.toContain("the runs API did not return a readable list");

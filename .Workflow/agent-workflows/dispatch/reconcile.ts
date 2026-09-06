@@ -704,10 +704,11 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     );
   }
 
-  const runs = fetchLaneRuns(gh);
-  if (runs === null) {
-    return degraded("the runs API did not return a readable list, and without it every ticket in flight reads as unstarted.");
+  const fetchedRuns = fetchLaneRuns(gh);
+  if (fetchedRuns === null) {
+    log("the runs API did not return a readable list, so every ticket in flight reads as unstarted this pass.");
   }
+  const runs = fetchedRuns ?? [];
 
   const graph = buildGraph(gh, issues, { inFlight: ticketsInFlight(runs), claimed, dryRun: input.dryRun ?? false }, log);
   if (graph === null) return degraded("the dependency graph could not be read for every open issue.");
