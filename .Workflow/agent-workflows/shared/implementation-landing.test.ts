@@ -33,7 +33,7 @@ import {
   releaseFailedClaim,
   type ImplementerAnswer,
 } from "./implementation-landing";
-import { implementerAnswer } from "./implementation-landing.fixture";
+import { implementerAnswer, implementerReply } from "./implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { implementationBranch } from "./ready-set";
 import { makeTempRepo, type TempRepo } from "./temp-repo.fixture";
@@ -390,19 +390,21 @@ describe("deriveAnswer", () => {
     const readFile = (path: string) => disk.get(path)!;
     const fileExists = (path: string) => disk.has(path);
 
-    const declaredEdits = [{ path: "b.ts", reason: "It was outside the claim but needed the fix." }];
-    expect(
-      deriveAnswer(git, readFile, fileExists, { summary: "did it", outOfBriefReads: ["a/CONTEXT.md"], declaredEdits }),
-    ).toEqual({
-      files: [
-        { path: "b.ts", content: "content b" },
-        { path: "c.ts", content: "content c" },
-      ],
-      deleted: ["a.ts"],
+    const reply = implementerReply({
       summary: "did it",
       outOfBriefReads: ["a/CONTEXT.md"],
-      declaredEdits,
+      declaredEdits: [{ path: "b.ts", reason: "It was outside the claim but needed the fix." }],
     });
+    expect(deriveAnswer(git, readFile, fileExists, reply)).toEqual(
+      implementerAnswer({
+        ...reply,
+        files: [
+          { path: "b.ts", content: "content b" },
+          { path: "c.ts", content: "content c" },
+        ],
+        deleted: ["a.ts"],
+      }),
+    );
   });
 
   it("reads a git rm'd file and an untracked file correctly against a real repository", () => {
@@ -417,7 +419,7 @@ describe("deriveAnswer", () => {
     const readFile = (path: string) => readFileSync(join(repo.dir, path), "utf8");
     const fileExists = (path: string) => existsSync(join(repo.dir, path));
 
-    const answer = deriveAnswer(git, readFile, fileExists, { summary: "s", outOfBriefReads: [], declaredEdits: [] });
+    const answer = deriveAnswer(git, readFile, fileExists, implementerReply({ summary: "s" }));
 
     expect(answer.deleted).toEqual(["gone.ts"]);
     expect(answer.files).toEqual([{ path: "new.ts", content: "export const z = 1;\n" }]);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkoutChanged } from "../shared/claim-host.fixture";
+import { implementerReply } from "../shared/implementation-landing.fixture";
 import { createFakeStage } from "../shared/stage.fake";
 import { runImplement, type ImplementDeps } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
@@ -80,10 +81,12 @@ describe("runImplement: out-of-brief reads", () => {
     const { gh, issues } = trackerWith(ticket);
     const git = fakeGit();
     const stage = createFakeStage(
-      JSON.stringify({
-        summary: "Built the thing, having read shape/CONTEXT.md twice for vocabulary.",
-        outOfBriefReads: ["shape", "shape"],
-      }),
+      JSON.stringify(
+        implementerReply({
+          summary: "Built the thing, having read shape/CONTEXT.md twice for vocabulary.",
+          outOfBriefReads: ["shape", "shape"],
+        }),
+      ),
     );
 
     await runImplement(outOfBriefDeps(gh, git, stage.exec));
@@ -121,12 +124,7 @@ describe("no scenario in this file ever writes the dependency graph", () => {
 
     const ticket = { title: "Do the thing", body: "## Files claimed\n- a/b.ts\n" };
     const s3 = trackerWith(ticket);
-    const stage = createFakeStage(
-      JSON.stringify({
-        summary: "s",
-        outOfBriefReads: ["shape", "shape"],
-      }),
-    );
+    const stage = createFakeStage(JSON.stringify(implementerReply({ summary: "s", outOfBriefReads: ["shape", "shape"] })));
     await runImplement(outOfBriefDeps(s3.gh, fakeGit(), stage.exec));
     allCalls.push(...s3.calls);
 
