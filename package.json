@@ -10,7 +10,8 @@
     "gauntlet": "bin/gauntlet",
     "check": "bin/gauntlet push",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && knip && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows"
+    "lint": "eslint . && knip && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows",
+    "lane-map": "tsx .Workflow/agent-workflows/shared/lane-map.cli.ts"
   },
   "dependencies": {
     "zod": "^3.23.8",
