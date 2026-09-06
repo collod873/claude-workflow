@@ -483,12 +483,11 @@ back-stamp never writes; back-stamp only ever writes `superseded_by:`/`status:` 
 - **`decline-on-revert`'s record supply was dead for a week, and is now rung.** The `ratified`
   records its detector reads back are written exclusively by `run-ratification.ts`
   (`ratify-release.yml`). Until 2026-09-06 that workflow sat on a `pull_request: [closed]` door
-  gated on the ratifier's PR title, a door the ratifier's own merge never opened: lane 08 merges
-  with the Actions token, and GitHub starts no workflow for an event that token caused. Eleven
+  gated on the ratifier's PR title, which the ratifier's own merge never opened
+  ([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)). Eleven
   ratifier PRs merged with no `ratified` record written, so a reverted standard would have been
   re-proposed. Lane 08 now rings `ratifier-merged` after merging a PR with the ratifier's title,
-  and `ratify-release.yml` wakes on that ring
-  ([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)).
+  and `ratify-release.yml` wakes on that ring.
 - **`lost-dispatch-counter`'s freshness check reads a run's `status`, never its `conclusion`.**
   `hasCompletedSlicingRun` is true once a `to-tickets` run created after the PRD reaches
   `status: "completed"` — success or failure alike. A slicing run that started, then crashed,
