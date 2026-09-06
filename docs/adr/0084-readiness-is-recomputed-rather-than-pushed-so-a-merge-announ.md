@@ -6,7 +6,7 @@ reversal: Reversing means rebuilding fan-out as edge-triggered promotion in lane
 
 # Readiness is recomputed rather than pushed, so a merge announces without interpreting and an unsatisfiable edge is a counter finding rather than a park
 
-The ready set is recomputed, never pushed. A lane 09 reconciler derives it from durable state on session end and on lane 08's `graph-changed` doorbell, and dispatches `ticket-ready` for every published, unstarted slice in it.
+The ready set is recomputed, never pushed. A lane 04 reconciler derives it from durable state on session end and on lane 08's `graph-changed` doorbell, and dispatches `ticket-ready` for every published, unstarted slice in it.
 
 `dispatchReadySlices` filtered on `dependsOn.length === 0` — the real predicate, every blocker delivered, folded into a constant true only at t=0, so nothing sent the second wave. An edge is satisfied when its blocker closed having delivered a merged pull request; open, `not planned`, and closed-with-nothing-merged all leave it unsatisfied. An unsatisfiable edge is one standing counter finding, never a park (ADR-0011). The branch ref is the claim, created first, so duplicate dispatch is free and no lock is needed.
 

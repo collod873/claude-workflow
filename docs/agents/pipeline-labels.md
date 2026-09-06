@@ -34,7 +34,7 @@ is intact: `to-spec` says *spec this*, `to-build` says *build this now*.
 | Label      | Applied by                 | Read by                                                       | Means                                                                 |
 | ---------- | -------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `to-spec`  | the owner, by hand         | `.github/workflows/spec-caller.yml` -> lane 02                  | Spec this accepted idea or closed Wayfinder Map (ADR-0059)             |
-| `to-build` | the owner, by hand         | `.github/workflows/dispatch-reconcile-caller.yml` -> lane 09's recompute -> lane 06 | Build this hand-written ticket now, without the spec chain (#184) |
+| `to-build` | the owner, by hand         | `.github/workflows/dispatch-reconcile-caller.yml` -> lane 04's recompute -> lane 04's acceptance author -> lane 05 | Build this hand-written ticket now, without the spec chain (#184) |
 
 `to-build` is the one term nothing can infer from a body: **intent to build now**. Ticket *shape* is
 not it (plenty of ticket-shaped issues are not wanted built), so the reconciler admits an issue

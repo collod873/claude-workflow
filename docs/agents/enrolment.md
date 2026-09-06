@@ -113,7 +113,7 @@ defect, and a failing path inside `target/` is the caller's.
 `.github/workflows/walk-home.yml` is what acts on that routing. Like `enrol.yml`, it is the other
 lane with no caller stub: it runs only here, walking every repository the enrolment topic
 enumerates on the `session-captured` dispatch, reading each failed run's failing step and routing by
-path: a machine-side failure files a ticket-shaped issue **here**, labelled `to-build` so lane 09's
+path: a machine-side failure files a ticket-shaped issue **here**, labelled `to-build` so lane 04's
 next recompute starts an implementer against it without the spec chain, carrying the machine SHA,
 the run URL and the log tail; a caller-side failure files into that repository's own tracker
 instead. [ADR-0136](../adr/0136-a-caller-s-red-run-is-swept-from-here-under-enrol-pat-never.md)

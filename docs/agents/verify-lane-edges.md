@@ -11,7 +11,7 @@ of the logic. The one thing it calls out to is [`bin/gauntlet`](../../bin/gauntl
 ([ADR-0139](../adr/0139-an-enrolled-repository-is-checked-by-the-machine-s-gauntlet.md)).
 
 Payload contents below are a worked example built to the real shapes and rules. The example run:
-lane 05's implementer opens **PR #501** on branch `impl/421`, implementing **ticket #421** (sliced
+lane 05's implementer opens **PR #501** on branch `implement/issue-421`, implementing **ticket #421** (sliced
 from PRD #419, the spec lane's own worked example), changing `scripts/canary-summary.ts` and
 `scripts/canary-summary.test.ts`.
 
@@ -71,7 +71,7 @@ costs a runner at all.
 ### edge — the log line · `judging <pr> on <branch>`
 
 ```
-judging https://github.com/collod873/claude-workflow/pull/501 on impl/421
+judging https://github.com/collod873/claude-workflow/pull/501 on implement/issue-421
 ```
 
 Printed to the job's own log, for no reason internal to this job. It is the rendezvous key node 04
