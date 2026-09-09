@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: read
     uses: collod873/claude-workflow/.github/workflows/dispatch-reconcile.yml@main
     with:
       verify_workflow: verify-caller.yml
