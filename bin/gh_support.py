@@ -5,10 +5,12 @@ import subprocess
 
 DEFAULT_GH_TIMEOUT_SECONDS = 30
 
+
 class GhError(RuntimeError):
     pass
 
 GH_SEARCH_DIRS = ("~/.local/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin")
+
 
 def gh_bin() -> str | None:
     override = os.environ.get("AGENT_SKILLS_GH")
@@ -20,6 +22,7 @@ def gh_bin() -> str | None:
             return candidate
     return shutil.which("gh")
 
+
 def bind_gh(gh_path: str, repo: str | None = None,
             timeout: float | None = DEFAULT_GH_TIMEOUT_SECONDS):
     def gh(*args, **kwargs):
@@ -30,6 +33,7 @@ def bind_gh(gh_path: str, repo: str | None = None,
         return subprocess.run(argv, **kwargs)
     gh.timeout = timeout
     return gh
+
 
 def run_gh(gh, *args, **kwargs) -> str:
     kwargs.setdefault("capture_output", True)

@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+import argparse
+import fnmatch
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+
+DEFAULT_CONFIG_NAME = ".clone-check.json"
+LOG_RETENTION_DAYS_NOTE = 30
+
+LANGUAGE_EXTENSIONS = {
+    "python": {".py"},
+    "bash": {".sh", ".bash"},
+    "markdown": {".md", ".markdown"},
+    "json": {".json"},
+    "yaml": {".yaml", ".yml"},
+    "swift": {".swift"},
+    "javascript": {".js", ".mjs", ".cjs"},
+}
+
+SHEBANG_LANGUAGES = {
+    "python": "python",
+    "bash": "bash",
+    "sh": "bash",
+}
+
+TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+(?:\.[0-9]+)?")
+
+BASELINE_HASH_CHARS = 16
+
+
+def load_config(config_path: Path) -> dict:
+    if not config_path.is_file():
+        sys.exit(f"clone-check: no config at {config_path}")
+    try:
+        cfg = json.loads(config_path.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"clone-check: {config_path} is not valid JSON: {e}")
+    for key in ("path", "format", "minTokens", "minLines", "ignoreExtensions"):
+        if key not in cfg:
+            sys.exit(f"clone-check: {config_path} is missing required key {key!r}")
+    cfg.setdefault("exclude", [])
+    cfg.setdefault("baseline", None)
+    if cfg["baseline"] is not None and not isinstance(cfg["baseline"], str):
+        sys.exit(f"clone-check: {config_path}'s `baseline` must be a path string, "
+                 f"got {cfg['baseline']!r}")
+    cfg["_baseline_path"] = (
+        (config_path.resolve().parent / cfg["baseline"]).resolve()
+        if cfg["baseline"] else None
+    )
+    exts = set()
+    for lang in cfg["format"]:
+        if lang not in LANGUAGE_EXTENSIONS:
+            sys.exit(
+                f"clone-check: {config_path} names unknown format {lang!r}; "
+                f"known languages: {sorted(LANGUAGE_EXTENSIONS)}"
+            )
+        exts |= LANGUAGE_EXTENSIONS[lang]
+    cfg["_extensions"] = exts
+    ignored = set()
+    for entry in cfg["ignoreExtensions"]:
+        if "ext" not in entry or not str(entry.get("reason", "")).strip():
+            sys.exit(
+                f"clone-check: {config_path} has an ignoreExtensions entry without "
+                f'both "ext" and a non-empty "reason": {entry!r}'
+            )
+        ignored.add(entry["ext"])
+    cfg["_ignored_extensions"] = ignored
+    return cfg
+
+
+def excluded(rel: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatch(rel, p) for p in patterns)
+
+
+def shebang_language(path: Path) -> str | None:
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+    except OSError:
+        return None
+    if not first.startswith("#!"):
+        return None
+    for interpreter, lang in SHEBANG_LANGUAGES.items():
+        if re.search(rf"\b{interpreter}[0-9.]*\b", first):
+            return lang
+    return None
+
+
+def in_scope_files(config_dir: Path, cfg: dict):
+    root = (config_dir / cfg["path"]).resolve()
+    patterns = [e["pattern"] for e in cfg["exclude"]]
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        if ".git" in p.relative_to(root).parts:
+            continue
+        if p.is_symlink():
+            continue
+        if cfg["_baseline_path"] is not None and p == cfg["_baseline_path"]:
+            continue
+        if excluded(p.relative_to(root).as_posix(), patterns):
+            continue
+        yield p
+
+
+def covered(path: Path, cfg: dict) -> bool:
+    if path.suffix:
+        return path.suffix in cfg["_extensions"]
+    return shebang_language(path) in cfg["format"]
+
+
+def discover_files(config_dir: Path, cfg: dict) -> list[Path]:
+    return [p for p in in_scope_files(config_dir, cfg) if covered(p, cfg)]
+
+
+def audit_coverage(config_dir: Path, cfg: dict, config_path: Path) -> None:
+    uncovered: dict[str, list[Path]] = {}
+    for p in in_scope_files(config_dir, cfg):
+        if covered(p, cfg) or p.suffix in cfg["_ignored_extensions"]:
+            continue
+        uncovered.setdefault(p.suffix, []).append(p)
+    if not uncovered:
+        return
+
+    root = (config_dir / cfg["path"]).resolve()
+    lines = [
+        f"clone-check: {len(uncovered)} extension(s) under {root} are neither in "
+        f"`format` nor in `ignoreExtensions`; scanning now would report a pass "
+        f"over code the gate never read:"
+    ]
+    for ext, paths in sorted(uncovered.items()):
+        shown = ext or "(no extension, no recognized shebang)"
+        lines.append(f"  {shown}  {len(paths)} file(s)  e.g. {paths[0].relative_to(root)}")
+    lines.append(
+        f"Fix each in {config_path}: add the language to `format` (known: "
+        f"{sorted(LANGUAGE_EXTENSIONS)}), or add "
+        f'{{"ext": "<ext>", "reason": "<why it is not source>"}} to `ignoreExtensions`.'
+    )
+    sys.exit("\n".join(lines))
+
+
+def tokenize(path: Path):
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None, None
+    tokens: list[str] = []
+    token_line: list[int] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        for m in TOKEN_RE.finditer(line):
+            tokens.append(m.group())
+            token_line.append(lineno)
+    return tokens, token_line
+
+
+def find_clones(files: list[Path], min_tokens: int, min_lines: int) -> list[dict]:
+    corpus: dict[Path, tuple[list[str], list[int]]] = {}
+    index: dict[tuple, list[tuple[Path, int]]] = {}
+    for f in files:
+        tokens, token_line = tokenize(f)
+        if tokens is None or len(tokens) < min_tokens:
+            continue
+        corpus[f] = (tokens, token_line)
+        for i in range(len(tokens) - min_tokens + 1):
+            kgram = tuple(tokens[i:i + min_tokens])
+            index.setdefault(kgram, []).append((f, i))
+
+    order = {f: n for n, f in enumerate(corpus)}
+    diagonals: dict[tuple, list[int]] = {}
+    for occurrences in index.values():
+        if len(occurrences) < 2:
+            continue
+        for a in range(len(occurrences)):
+            for b in range(a + 1, len(occurrences)):
+                fa, ia = occurrences[a]
+                fb, ib = occurrences[b]
+                if order[fa] > order[fb] or (fa is fb and ia > ib):
+                    fa, ia, fb, ib = fb, ib, fa, ia
+                if fa is fb and ia == ib:
+                    continue
+                diagonals.setdefault((fa, fb, ia - ib), []).append(ia)
+
+    clones = []
+    for (fa, fb, diag), starts in diagonals.items():
+        starts = sorted(set(starts))
+        run_start = starts[0]
+        prev = starts[0]
+        for s in starts[1:] + [None]:
+            if s is not None and s - prev <= 1:
+                prev = s
+                continue
+            ia0, ia1 = run_start, prev + min_tokens - 1
+            ib0, ib1 = ia0 - diag, ia1 - diag
+            self_overlap = fa is fb and not (ia1 < ib0 or ib1 < ia0)
+            if not self_overlap:
+                tla, tlb = corpus[fa][1], corpus[fb][1]
+                la0, la1 = tla[ia0], tla[ia1]
+                lb0, lb1 = tlb[ib0], tlb[ib1]
+                if (la1 - la0 + 1) >= min_lines and (lb1 - lb0 + 1) >= min_lines:
+                    clones.append({
+                        "a": (fa, la0, la1),
+                        "b": (fb, lb0, lb1),
+                        "tokens": ia1 - ia0 + 1,
+                        "hash": hashlib.sha256(
+                            "\n".join(corpus[fa][0][ia0:ia1 + 1]).encode()
+                        ).hexdigest()[:BASELINE_HASH_CHARS],
+                    })
+            if s is not None:
+                run_start = s
+                prev = s
+    return clones
+
+
+def _append_row(row: dict) -> None:
+    try:
+        log_dir = Path(os.environ.get("STOP_GATE_LOG_DIR")
+                       or (Path.home() / ".claude" / "logs"))
+        row.setdefault("ts", datetime.now().isoformat(timespec="seconds"))
+        target = log_dir / f"clone-check-{datetime.now():%Y-%m-%d}.jsonl"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except Exception:
+        return
+
+
+def clone_key(clone: dict, root: Path) -> tuple[str, str, str]:
+    a = clone["a"][0].relative_to(root).as_posix()
+    b = clone["b"][0].relative_to(root).as_posix()
+    lo, hi = sorted((a, b))
+    return (lo, hi, clone["hash"])
+
+
+def load_baseline(path: Path) -> Counter:
+    if not path.is_file():
+        return Counter()
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"clone-check: {path} is not valid JSON: {e}")
+    entries = data.get("clones") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        sys.exit(f'clone-check: {path} must be a JSON object with a "clones" list')
+    keys = Counter()
+    for entry in entries:
+        if not isinstance(entry, dict) or not all(k in entry for k in ("a", "b", "hash")):
+            sys.exit(f'clone-check: {path} has an entry without "a", "b" and "hash": {entry!r}')
+        lo, hi = sorted((entry["a"], entry["b"]))
+        keys[(lo, hi, entry["hash"])] += 1
+    return keys
+
+
+def write_baseline(path: Path, clones: list[dict], root: Path) -> None:
+    entries = sorted(
+        ({"a": k[0], "b": k[1], "tokens": c["tokens"], "hash": k[2]}
+         for c, k in ((c, clone_key(c, root)) for c in clones)),
+        key=lambda e: (e["a"], e["b"], e["hash"]),
+    )
+    path.write_text(json.dumps({
+        "$comment": (
+            f"{len(entries)} clone(s) recorded by `clone-check --record-baseline`: the "
+            f"duplication this repo already had when it turned the gate on. A ratchet, not "
+            f"an allow-list (clone-gate rule 5): remove each entry in the commit that removes "
+            f"its duplication, an entry matching nothing fails the run as stale, and the gate "
+            f"is not done until this file is gone."
+        ),
+        "clones": entries,
+    }, indent=2) + "\n")
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="clone-check",
+        description="Clone (copy-paste) detector; see this file's module docstring.",
+    )
+    parser.add_argument("config", nargs="?", default=None,
+                        help=f"path to the config (default: ./{DEFAULT_CONFIG_NAME})")
+    parser.add_argument("--record-baseline", action="store_true",
+                        help="write the config's `baseline` file from this scan, then still "
+                             "exit 1; a recorded baseline is not a pass")
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    started = time.monotonic()
+    args = parse_args(argv)
+    config_path = Path(args.config) if args.config else Path.cwd() / DEFAULT_CONFIG_NAME
+
+    def row(verdict, **extra):
+        _append_row(dict({
+            "tool": "clone-check",
+            "event": "bin",
+            "session_id": "",
+            "project": config_path.resolve().parent.name,
+            "repo": config_path.resolve().parent.name,
+            "verdict": verdict,
+            "seconds": round(time.monotonic() - started, 4),
+        }, **extra))
+
+    try:
+        cfg = load_config(config_path)
+        config_dir = config_path.resolve().parent
+        root = (config_dir / cfg["path"]).resolve()
+        audit_coverage(config_dir, cfg, config_path)
+        files = discover_files(config_dir, cfg)
+        clones = find_clones(files, cfg["minTokens"], cfg["minLines"])
+        baseline_path = cfg["_baseline_path"]
+        recorded = load_baseline(baseline_path) if baseline_path else Counter()
+    except SystemExit:
+        row("refused", files=0, clones=0)
+        raise
+
+    if args.record_baseline:
+        if baseline_path is None:
+            sys.exit(f"clone-check: --record-baseline needs a `baseline` key in {config_path} "
+                     f"naming the file to write")
+        write_baseline(baseline_path, clones, root)
+        row("recorded", files=len(files), clones=len(clones), baselined=len(clones))
+        print(f"clone-check: recorded {len(clones)} clone(s) to "
+              f"{baseline_path.relative_to(config_dir)}; this run still fails. A baseline only "
+              f"ever shrinks: remove each entry in the commit that removes its duplication, and "
+              f"the gate is not done until the file is gone.")
+        return 1
+
+    seen: Counter = Counter()
+    unbaselined = []
+    for c in clones:
+        key = clone_key(c, root)
+        seen[key] += 1
+        if seen[key] > recorded[key]:
+            unbaselined.append(c)
+    baselined = len(clones) - len(unbaselined)
+    stale: list[tuple[str, str, str]] = []
+    for key, n in sorted(recorded.items()):
+        stale.extend([key] * (n - seen[key]))
+
+    row("stale" if stale else ("clean" if not unbaselined else "clones"),
+        files=len(files), clones=len(unbaselined), baselined=baselined, stale=len(stale))
+
+    summary = "0 clones" if not unbaselined else f"{len(unbaselined)} clone(s) found"
+    print(f"clone-check: {summary}, {baselined} baselined across {len(files)} file(s) "
+          f"(minTokens={cfg['minTokens']}, minLines={cfg['minLines']})")
+
+    for c in unbaselined:
+        fa, la0, la1 = c["a"]
+        fb, lb0, lb1 = c["b"]
+        print(f"  {fa.relative_to(root)}:{la0}-{la1}  <->  "
+              f"{fb.relative_to(root)}:{lb0}-{lb1}  ({c['tokens']} tokens)")
+
+    if stale:
+        print(f"clone-check: {len(stale)} stale entry(ies) in "
+              f"{baseline_path.relative_to(config_dir)} match no clone in this scan; remove "
+              f"them, a baseline only ever shrinks:")
+        for a, b, digest in stale:
+            print(f"  {a}  <->  {b}  ({digest})")
+    return 1 if unbaselined or stale else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,358 @@
+#!/usr/bin/env node
+/**
+ * md-html: render a Markdown file to one standalone, styled HTML file.
+ *
+ * Usage: md-html <input.md> [-o out.html] [--title T] [--toc] [--stdout] [--open]
+ *
+ * The output is self-contained: CSS inlined, no scripts, no CDN, no network. It opens
+ * from a file:// path, survives being emailed as an attachment, and can be handed to the
+ * Artifact tool as-is when a hosted link is wanted.
+ *
+ * Markdown is GitHub-flavored (marked): tables, task lists, strikethrough, fenced code.
+ * Headings get slug ids so deep links work. Tables and code blocks scroll inside their own
+ * box rather than widening the page. Light and dark both come from `prefers-color-scheme`.
+ *
+ * marked is vendored under `lib/md-html/` next to this tree rather than installed globally,
+ * so the tool keeps working when a global npm prefix is wiped.
+ */
+
+import { createRequire } from "node:module";
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(join(HERE, "../lib/md-html/package.json"));
+const { Marked } = require("marked");
+
+const USAGE = `md-html: render a Markdown file to one standalone, styled HTML file.
+
+usage: md-html <input.md> [options]
+
+options:
+  -o, --out <file>   write here (default: input path with .html)
+      --title <text> page title (default: the first H1, else the filename)
+      --toc          prepend a table of contents built from H2 and H3
+      --stdout       write the HTML to stdout instead of a file
+      --open         open the written file in the Windows default browser
+  -h, --help         this text
+
+The output has no scripts and no network references, so it opens from a file:// path
+and can be handed to the Artifact tool unchanged when a hosted link is wanted.`;
+
+function die(msg) {
+  process.stderr.write(`md-html: ${msg}\n`);
+  process.exit(1);
+}
+
+function parseArgs(argv) {
+  const opts = { input: undefined, out: undefined, title: undefined, toc: false, stdout: false, open: false };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    switch (arg) {
+      case "-h":
+      case "--help":
+        process.stdout.write(`${USAGE}\n`);
+        process.exit(0);
+        break;
+      case "-o":
+      case "--out":
+        opts.out = argv[++i];
+        break;
+      case "--title":
+        opts.title = argv[++i];
+        break;
+      case "--toc":
+        opts.toc = true;
+        break;
+      case "--stdout":
+        opts.stdout = true;
+        break;
+      case "--open":
+        opts.open = true;
+        break;
+      default:
+        if (arg.startsWith("-")) die(`unknown option ${arg}`);
+        if (opts.input !== undefined) die("more than one input file given");
+        opts.input = arg;
+    }
+  }
+  if (opts.input === undefined) die(`no input file given\n\n${USAGE}`);
+  if (opts.out !== undefined && opts.stdout) die("--out and --stdout ask for two different destinations");
+  return opts;
+}
+
+function escapeHtml(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function slugger() {
+  const seen = new Map();
+  return (text) => {
+    const base =
+      text
+        .toLowerCase()
+        .replace(/<[^>]*>/g, "")
+        .replace(/[^\w\- ]+/g, "")
+        .trim()
+        .replace(/\s+/g, "-") || "section";
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}-${n}`;
+  };
+}
+
+function renderMarkdown(source) {
+  const headings = [];
+  const slug = slugger();
+
+  const instance = new Marked({ gfm: true, breaks: false });
+  instance.use({
+    renderer: {
+      heading({ tokens, depth }) {
+        const text = this.parser.parseInline(tokens);
+        const id = slug(text);
+        if (depth === 2 || depth === 3) headings.push({ depth, id, text });
+        return `<h${depth} id="${id}">${text}</h${depth}>\n`;
+      },
+    },
+  });
+
+  const html = instance.parse(source).replaceAll("<table>", '<div class="tbl"><table>').replaceAll("</table>", "</table></div>");
+  return { html, headings };
+}
+
+function firstHeading(source) {
+  const match = /^#\s+(.+?)\s*$/m.exec(source);
+  return match ? match[1] : undefined;
+}
+
+function tocHtml(headings) {
+  if (headings.length === 0) return "";
+  const items = headings
+    .map(({ depth, id, text }) => `<li class="d${depth}"><a href="#${id}">${text}</a></li>`)
+    .join("\n");
+  return `<nav class="toc"><p class="toc-label">Contents</p>\n<ul>\n${items}\n</ul>\n</nav>\n`;
+}
+
+function withToc(html, toc) {
+  if (toc === "") return html;
+  const lead = /<\/h1>\n?(?:<p>.*?<\/p>\n?)*/s.exec(html);
+  if (!lead) return toc + html;
+  const at = lead.index + lead[0].length;
+  return html.slice(0, at) + toc + html.slice(at);
+}
+
+const CSS = `
+:root {
+  color-scheme: light dark;
+  --paper: #faf9f5;
+  --surface: #ffffff;
+  --sunk: #f0eee8;
+  --ink: #1a1917;
+  --muted: #5f5c55;
+  --faint: #8a867d;
+  --rule: #ddd9d0;
+  --rule-soft: #eae7e0;
+  --accent: #1a6b7a;
+  --mark: #a3234f;
+  --mono: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --display: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14161a;
+    --surface: #1a1d22;
+    --sunk: #21252b;
+    --ink: #e4e6ea;
+    --muted: #9aa1ab;
+    --faint: #767d87;
+    --rule: #2f343b;
+    --rule-soft: #262a30;
+    --accent: #6fc7d8;
+    --mark: #f0799f;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0 22px 120px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 940px; margin: 0 auto; padding-top: 52px; }
+h1, h2, h3, h4, h5, h6 { font-family: var(--display); line-height: 1.15; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 700; letter-spacing: -0.025em; margin: 0 0 0.5em; }
+h2 {
+  font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em;
+  margin: 2.4em 0 0.7em; padding-top: 0.7em; border-top: 1.5px solid var(--rule);
+}
+h3 { font-size: 1.13rem; font-weight: 600; margin: 1.9em 0 0.55em; }
+h4 { font-size: 1rem; font-weight: 600; margin: 1.6em 0 0.5em; color: var(--muted); }
+h1 + h2 { border-top: 0; padding-top: 0; margin-top: 1.6em; }
+p { margin: 0 0 1.05em; }
+a { color: inherit; text-decoration-color: var(--accent); text-underline-offset: 2px; }
+a:hover { color: var(--accent); }
+strong { font-weight: 600; }
+hr { border: 0; border-top: 1.5px solid var(--rule); margin: 2.6em 0; }
+hr + h2 { border-top: 0; padding-top: 0; margin-top: -0.8em; }
+hr:has(+ h2) { margin-bottom: 2.2em; }
+blockquote {
+  margin: 1.4em 0; padding: 0.2em 0 0.2em 1.2em;
+  border-left: 3px solid var(--rule); color: var(--muted);
+}
+ul, ol { margin: 0 0 1.05em; padding-left: 1.5em; }
+li { margin: 0.3em 0; }
+li input[type=checkbox] { margin-right: 0.5em; }
+code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: var(--sunk); padding: 0.1em 0.36em; border-radius: 3px;
+}
+pre {
+  background: var(--sunk); border: 1.5px solid var(--rule); border-left: 4px solid var(--accent);
+  padding: 15px 18px; margin: 0 0 1.3em; overflow-x: auto;
+  font-family: var(--mono); font-size: 0.8rem; line-height: 1.7;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+.tbl { overflow-x: auto; border: 1.5px solid var(--rule); background: var(--surface); margin: 0 0 1.4em; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 10px 15px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-family: var(--display); font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  background: var(--sunk); border-bottom: 1.5px solid var(--rule);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td code, th code { background: none; padding: 0; color: var(--mark); }
+img { max-width: 100%; height: auto; }
+.toc {
+  border: 1.5px solid var(--rule); background: var(--surface);
+  padding: 16px 22px 18px; margin: 0 0 2.6em;
+}
+.toc-label {
+  font-family: var(--display); font-size: 0.66rem; font-weight: 600;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; font-family: var(--display); font-size: 0.9rem; }
+.toc li { margin: 0.22em 0; }
+.toc li.d3 { padding-left: 1.3em; font-size: 0.85rem; color: var(--muted); }
+.toc a { text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+@media print {
+  body { background: #fff; color: #000; padding: 0; }
+  h2 { break-after: avoid; }
+  pre, .tbl { break-inside: avoid; }
+}
+`;
+
+function page(title, bodyHtml) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>${CSS}</style>
+</head>
+<body>
+<main>
+${bodyHtml}</main>
+</body>
+</html>
+`;
+}
+
+function windowsPath(path) {
+  const converted = spawnSync("wslpath", ["-w", path], { encoding: "utf8" });
+  if (converted.error !== undefined || converted.status !== 0) return undefined;
+  return converted.stdout.trim() || undefined;
+}
+
+function reg(key, value) {
+  const query = spawnSync("reg.exe", ["query", key, ...value], { encoding: "utf8" });
+  if (query.error !== undefined || query.status !== 0) return undefined;
+  const match = /REG_SZ\s+(.+)/.exec(query.stdout.replaceAll("\r", ""));
+  return match ? match[1].trim() : undefined;
+}
+
+function defaultBrowser() {
+  const progId = reg(
+    "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice",
+    ["/v", "ProgId"],
+  );
+  if (progId === undefined) return undefined;
+
+  const command = reg(`HKCR\\${progId}\\shell\\open\\command`, ["/ve"]);
+  const exe = command === undefined ? undefined : /^"([^"]+)"/.exec(command)?.[1];
+  if (exe === undefined) return undefined;
+
+  const linux = spawnSync("wslpath", ["-u", exe], { encoding: "utf8" });
+  if (linux.error !== undefined || linux.status !== 0) return undefined;
+  return linux.stdout.trim() || undefined;
+}
+
+/**
+ * `explorer.exe` and `cmd.exe /c start` both fail silently on this machine, reporting success
+ * while opening nothing, so neither can be a fallback anything falls back *from*. The registry
+ * names the browser the user actually chose, and Chrome reads a `\\\\wsl.localhost\\...` path
+ * directly, so nothing has to be copied onto the Windows side first.
+ */
+function openInBrowser(path) {
+  if (spawnSync("wslview", [path], { stdio: "ignore" }).status === 0) return;
+
+  const win = windowsPath(path);
+  if (win === undefined) die(`wrote the page but wslpath could not convert ${path} for Windows`);
+
+  const browser = defaultBrowser();
+  if (browser === undefined) {
+    die(`wrote the page but could not find the default browser; open it yourself at ${win}`);
+  }
+
+  const opened = spawnSync(browser, [win], { stdio: "ignore", timeout: 5000 });
+  if (opened.error !== undefined && opened.error.code !== "ETIMEDOUT") {
+    die(`wrote the page but ${browser} would not start it: ${opened.error.message}`);
+  }
+}
+
+function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  const inputPath = resolve(opts.input);
+
+  let source;
+  try {
+    source = readFileSync(inputPath, "utf8");
+  } catch (err) {
+    die(`could not read ${opts.input}: ${err.message}`);
+  }
+
+  const { html, headings } = renderMarkdown(source);
+  const title = opts.title ?? firstHeading(source) ?? basename(inputPath).replace(/\.mdx?$/i, "");
+  const document = page(title, opts.toc ? withToc(html, tocHtml(headings)) : html);
+
+  if (opts.stdout) {
+    process.stdout.write(document);
+    return;
+  }
+
+  const outPath = resolve(opts.out ?? inputPath.replace(/\.mdx?$/i, "") + ".html");
+  if (outPath === inputPath) die("refusing to overwrite the input file; pass -o");
+  try {
+    writeFileSync(outPath, document, "utf8");
+  } catch (err) {
+    die(`could not write ${outPath}: ${err.message}`);
+  }
+  process.stdout.write(`${outPath}\n`);
+  if (opts.open) openInBrowser(outPath);
+}
+
+main();

@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""bin/link-deps <worktree> <repo>: give a `/drain` worktree its own
+`node_modules` that shares the main checkout's packages without sharing
+anything the package manager writes (#140).
+
+The problem this closes: `drain/WORKER-PROMPT.md` forbade `pnpm install` in a
+worktree but named no mechanism, so workers reached for the obvious one and
+symlinked the whole of `<worktree>/node_modules` at `<repo>/node_modules`.
+That makes the main checkout's `node_modules` a *shared mutable* resource
+across every parallel worker and the foreman. pnpm's deps-status check runs on
+`pnpm <script>` and rewrites `node_modules/.modules.yaml`; a worker running it
+through the symlink stamped its own worktree path into `virtualStoreDir` in the
+**main checkout's** manifest. From the main checkout that path no longer
+resolved, so every later pnpm invocation there decided the modules dir was
+foreign and tried to purge it, surfacing as `ERR_PNPM_ABORTED_REMOVE_MODULES_
+DIR_NO_TTY`, which then failed the foreman's husky `commit-msg` hook on a merge
+that had nothing to do with it.
+
+## The shape
+
+A **symlink farm with a private manifest**. `<worktree>/node_modules` is a real
+directory this script owns; what goes in it is decided per entry by what writes
+to it, not by what it costs:
+
+    node_modules/                       real dir (ours)
+      react            -> <repo>/node_modules/react           symlink, shared
+      @types           -> <repo>/node_modules/@types          symlink, shared
+      .pnpm            -> <repo>/node_modules/.pnpm           symlink, shared
+      .modules.yaml                     REAL COPY, private
+      .bin/            real dir, one symlink per shim         private dir
+      .vite/ .cache/   not linked at all; the tool recreates them locally
+
+Packages and the virtual store are read-only in every gate run, so sharing them
+is free and correct. The manifests are the files a package manager rewrites, so
+each worktree gets its own copy and a worker's rewrite lands on its own. `.bin`
+is a real directory of symlinks rather than one symlink to the repo's, so a
+tool that regenerates a shim writes a worktree-local file instead of the main
+checkout's. Cache directories are deliberately *absent*: linking them would
+hand every parallel worker one shared vitest/vite working set, which is the
+second failure #140 records: a red gate that is nothing but 20s timeouts in
+files the ticket never touched, indistinguishable from a real regression.
+
+## Why not a hardlink clone
+
+#140 proposed `cp -al`, and on the repo's own filesystem that would work. But a
+drain's worktrees live wherever the session's scratchpad is, and that is
+sometimes `/tmp`, a `tmpfs` on this machine, a *different* filesystem, where
+hardlinks are impossible and `cp -al` silently degrades to a full copy: 1.1G
+and ~87k inodes per worker against a 632k-inode budget, three workers in
+flight. The farm costs one inode per top-level entry (~57 for a real project,
+measured against Lumaria) and works cross-filesystem, so it holds whichever
+scratchpad the session was handed. That is the same inode argument
+`drain/SKILL.md` step 2's `df -i` guard already makes, applied one level down.
+
+## Refusing rather than deleting
+
+If `<worktree>/node_modules` is already a real directory this script did not
+create (someone's actual install) it is left alone and the run exits 2.
+Deleting a dependency tree because it was in the way is not a repair. A
+directory carrying our own `.drain-linked` marker is ours and gets rebuilt, and
+the forbidden whole-tree symlink is replaced in place, which is what makes this
+safe to run on an existing worktree.
+
+## Retargeting the workspace state
+
+One manifest needs more than a copy. pnpm's `.pnpm-workspace-state-v1.json`
+keys its `projects` map by *absolute path*, the main checkout's. Copied
+verbatim into a worktree, pnpm's deps-status check finds the worktree's own
+path absent from that map, concludes the workspace changed, and escalates to a
+full install, which on a non-interactive gate run is
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`, the same error #140 records,
+arriving now for a different reason. So every string in that file that names
+the repo root is rewritten to name the worktree root instead. Verified against
+a real checkout: without the rewrite `pnpm exec` aborts; with it, `pnpm exec
+tsc`, `pnpm exec vitest` and package resolution all run, and both of the main
+checkout's manifests come back byte-identical.
+
+Only the workspace-state file is retargeted. `.modules.yaml` carries no repo
+paths: `storeDir` points at the global content-addressed store (shared and
+read-only) and `virtualStoreDir` is the relative `.pnpm`, which resolves
+through this farm's own symlink, so rewriting it would be a change with
+nothing to change.
+
+Stdlib only, same as every other `bin/` tool here; a drain's gate must not
+depend on a registry being reachable. Exit 0 on success or on a repo with no
+dependency tree at all (nothing to link is not a failure), 2 on a usage or
+refusal error.
+"""
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+try:
+    import run_log
+except ImportError:
+    run_log = None
+
+MARKER = ".drain-linked"
+
+PRIVATE_MANIFESTS = (
+    ".modules.yaml",
+    ".package-lock.json",
+    ".yarn-state.yml",
+    ".yarn-integrity",
+)
+
+PRIVATE_MANIFEST_PREFIXES = (".pnpm-workspace-state",)
+
+SHARED_DOT_ENTRIES = (".pnpm",)
+
+
+def is_private_manifest(name: str) -> bool:
+    return name in PRIVATE_MANIFESTS or name.startswith(PRIVATE_MANIFEST_PREFIXES)
+
+
+def retarget(node, repo: str, worktree: str):
+    if isinstance(node, dict):
+        return {retarget(k, repo, worktree): retarget(v, repo, worktree) for k, v in node.items()}
+    if isinstance(node, list):
+        return [retarget(v, repo, worktree) for v in node]
+    if isinstance(node, str) and (node == repo or node.startswith(repo + os.sep)):
+        return worktree + node[len(repo):]
+    return node
+
+
+def copy_manifest(source: Path, target: Path, repo: Path, worktree: Path) -> None:
+    if source.name.startswith(PRIVATE_MANIFEST_PREFIXES):
+        try:
+            doc = json.loads(source.read_text())
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            shutil.copyfile(source, target)
+            return
+        target.write_text(json.dumps(retarget(doc, str(repo), str(worktree)), indent=2))
+        return
+    shutil.copyfile(source, target)
+
+
+def die(msg: str) -> None:
+    print(f"link-deps: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def prepare_destination(dst: Path) -> None:
+    if dst.is_symlink():
+        dst.unlink()
+        return
+    if not dst.exists():
+        return
+    if not dst.is_dir():
+        die(f"{dst} exists and is not a directory; refusing to replace it")
+    if not (dst / MARKER).exists():
+        die(
+            f"{dst} is an existing dependency tree this script did not create "
+            f"(no {MARKER} marker); refusing to delete it. Remove it yourself "
+            f"if it is disposable."
+        )
+    shutil.rmtree(dst)
+
+
+def link_farm(src: Path, dst: Path, repo: Path, worktree: Path) -> dict:
+    dst.mkdir(parents=True)
+    (dst / MARKER).write_text(
+        "Written by bin/link-deps (#140). This node_modules is a symlink farm "
+        "over the main checkout's packages, with private copies of the files a "
+        "package manager rewrites. Safe to delete with the worktree.\n"
+    )
+    counts = {"linked": 0, "copied": 0, "skipped": 0, "bin_shims": 0}
+
+    for entry in sorted(os.listdir(src)):
+        source = src / entry
+        target = dst / entry
+
+        if is_private_manifest(entry):
+            copy_manifest(source, target, repo, worktree)
+            counts["copied"] += 1
+        elif entry == ".bin":
+            target.mkdir()
+            for shim in sorted(os.listdir(source)):
+                os.symlink(source / shim, target / shim)
+                counts["bin_shims"] += 1
+        elif entry.startswith(".") and entry not in SHARED_DOT_ENTRIES:
+            counts["skipped"] += 1
+        else:
+            os.symlink(source, target)
+            counts["linked"] += 1
+
+    return counts
+
+
+ROW: dict = {}
+
+
+def main(argv: list[str]) -> int:
+    ROW.clear()
+    try:
+        code = run(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 2
+    verdict = {0: "linked", 2: "refused"}.get(code, "refused")
+    if code == 0 and not ROW.get("count"):
+        verdict = "nothing"
+    if run_log is not None:
+        run_log.append_log(verdict, count=ROW.get("count", 0))
+    return code
+
+
+def run(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print(__doc__.split("\n\n")[0], file=sys.stderr)
+        print("\nusage: bin/link-deps <worktree> <repo>", file=sys.stderr)
+        return 2
+
+    worktree = Path(argv[0]).resolve()
+    repo = Path(argv[1]).resolve()
+
+    if not worktree.is_dir():
+        die(f"worktree {worktree} does not exist")
+    if not repo.is_dir():
+        die(f"repo {repo} does not exist")
+
+    src = repo / "node_modules"
+    if not src.is_dir():
+        print(f"link-deps: no dependency tree at {src}, nothing to link")
+        return 0
+
+    dst = worktree / "node_modules"
+    prepare_destination(dst)
+    counts = link_farm(src, dst, repo, worktree)
+    ROW["count"] = counts["linked"]
+
+    print(
+        f"link-deps: {dst}\n"
+        f"  {counts['linked']} shared entries symlinked, "
+        f"{counts['copied']} manifests copied private, "
+        f"{counts['bin_shims']} .bin shims, "
+        f"{counts['skipped']} cache entries left local\n"
+        f"  cost: {counts['linked'] + counts['copied'] + counts['bin_shims'] + 2} inodes"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

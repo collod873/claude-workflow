@@ -1,281 +1,230 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env python3
+from __future__ import annotations
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-target_root="${TARGET_WORKSPACE:-$repo_root}"
-adr_dir="$target_root/docs/adr"
+import argparse
+import os
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
 
-WORD_CAP=150
-STATUSES="constraint note superseded"
-REQUIRED_KEYS="status date reversal"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import adr_shape
 
-NO_FRONTMATTER='no frontmatter; an ADR opens with a `---` block carrying `status`, `date`, `reversal`. Run `new-adr "<the ruling>"` to get one stamped.'
-MISSING_KEY='frontmatter has no `{key}:`, which is required on every ADR.'
-BAD_STATUS='`status: {got}` is not one of {allowed}.'
-NO_TITLE='no `# ` title; the title is the ruling stated as a sentence, and it is what the index publishes.'
-SHORT_TITLE='title is {n} word(s); the title carries the ruling, so it reads as a sentence ("Triage labels are positions, not verdicts"), never a topic ("Triage labels").'
-OVER_CAP='body is {n} words, over the {cap}-word cap. The ruling and why it binds fit in ~120; evidence, worked examples and measurements go to docs/research/ and the ADR links them.'
-EMPTY_REVERSAL='`reversal:` is empty; state in a sentence what undoing this would cost. It is the admission bar: if the answer is one edit, this is not a constraint.'
-NO_REJECTED='the body names no rejected alternative. Add a line starting `**Rejected: <the alternative>.**` saying what else was on the table and what it would have cost.'
+GIT_TIMEOUT_SECONDS = 5
 
-slugify() {
-  printf '%s' "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
-    | cut -c1-60 | sed -E 's/-+$//'
-}
+TEMPLATE = (
+    '---\n'
+    'status: constraint\n'
+    'date: {date}\n'
+    'reversal:{amends}\n'
+    '---\n'
+    '\n'
+    '# {title}\n'
+    '\n'
+)
 
-usage() {
-  echo "usage: bin/new-adr \"the ruling as a sentence\"" >&2
-  echo "       bin/new-adr --amends NNNN \"the ruling as a sentence\"" >&2
-  echo "       bin/new-adr --land docs/adr/draft-<slug>.md" >&2
-  echo "  e.g. bin/new-adr \"Event-driven triggers only, never a clock\"" >&2
-}
-
-refuse() {
-  printf 'error: %s: %s\n' "$1" "$2" >&2
-  exit 1
-}
-
-frontmatter_of() {
-  awk '
-    NR == 1 { if ($0 != "---") exit 1; next }
-    $0 == "---" { closed = 1; exit }
-    { print; kept++ }
-    END { if (!closed || !kept) exit 1 }
-  ' "$1"
-}
-
-body_of() {
-  awk '
-    NR == 1 && $0 == "---" { inside = 1; next }
-    inside && $0 == "---" { inside = 0; next }
-    inside { next }
-    { print }
-  ' "$1"
-}
-
-frontmatter_has() {
-  awk -v want="$2" '
-    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
-    stripped ~ /^#/ { next }
-    index($0, ":") == 0 { next }
-    {
-      key = substr($0, 1, index($0, ":") - 1)
-      gsub(/^[ \t\r]+|[ \t\r]+$/, "", key)
-      if (key == want) found = 1
-    }
-    END { exit !found }
-  ' <<<"$1"
-}
-
-frontmatter_value() {
-  awk -v want="$2" '
-    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
-    stripped ~ /^#/ { next }
-    index($0, ":") == 0 { next }
-    {
-      key = substr($0, 1, index($0, ":") - 1)
-      value = substr($0, index($0, ":") + 1)
-      gsub(/^[ \t\r]+|[ \t\r]+$/, "", key)
-      gsub(/^[ \t\r]+|[ \t\r]+$/, "", value)
-      if (key == want) got = value
-    }
-    END { print got }
-  ' <<<"$1"
-}
-
-title_of() {
-  awk '
-    !seen && /^#[ \t]+/ {
-      seen = 1
-      line = $0
-      sub(/^#[ \t]+/, "", line)
-      gsub(/[ \t\r]+$/, "", line)
-      print line
-    }
-  ' <<<"$1"
-}
-
-body_word_count() {
-  awk '!dropped && /^#[ \t]+/ { dropped = 1; next } { print }' <<<"$1" \
-    | wc -w | tr -d '[:space:]'
-}
-
-without_html_comments() {
-  awk '
-    {
-      line = $0
-      out = ""
-      while (1) {
-        if (inside) {
-          at = index(line, "-->")
-          if (at == 0) { line = ""; break }
-          inside = 0
-          line = substr(line, at + 3)
-          continue
-        }
-        at = index(line, "<!--")
-        if (at == 0) { out = out line; break }
-        out = out substr(line, 1, at - 1)
-        line = substr(line, at + 4)
-        inside = 1
-      }
-      print out
-    }
-  ' <<<"$1"
-}
-
-names_rejected_alternative() {
-  without_html_comments "$1" \
-    | grep -qE '^[ 	]*\*\*Rejected:\*{0,2}[ 	]*[^[:space:]]'
-}
-
-validate() {
-  local file="$1" name="$2"
-  local frontmatter body title status reversal count message
-
-  frontmatter="$(frontmatter_of "$file")" || refuse "$name" "$NO_FRONTMATTER"
-
-  local key
-  for key in $REQUIRED_KEYS; do
-    frontmatter_has "$frontmatter" "$key" || refuse "$name" "${MISSING_KEY//\{key\}/$key}"
-  done
-
-  status="$(frontmatter_value "$frontmatter" status)"
-  case " $STATUSES " in
-    *" $status "*) ;;
-    *)
-      message="${BAD_STATUS//\{got\}/$status}"
-      refuse "$name" "${message//\{allowed\}/${STATUSES// /, }}"
-      ;;
-  esac
-
-  body="$(body_of "$file")"
-  title="$(title_of "$body")"
-  [ -n "$title" ] || refuse "$name" "$NO_TITLE"
-
-  count="$(wc -w <<<"$title" | tr -d '[:space:]')"
-  [ "$count" -ge 4 ] || refuse "$name" "${SHORT_TITLE//\{n\}/$count}"
-
-  count="$(body_word_count "$body")"
-  if [ "$count" -gt "$WORD_CAP" ]; then
-    message="${OVER_CAP//\{n\}/$count}"
-    refuse "$name" "${message//\{cap\}/$WORD_CAP}"
-  fi
-
-  reversal="$(frontmatter_value "$frontmatter" reversal)"
-  [ -n "$reversal" ] || refuse "$name" "$EMPTY_REVERSAL"
-
-  names_rejected_alternative "$body" || refuse "$name" "$NO_REJECTED"
-}
-
-highest_on_disk() {
-  find "$adr_dir" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null \
-    | cut -c1-4 | sort -n | tail -1
-}
-
-highest_on_origin() {
-  git -C "$target_root" rev-parse --git-dir >/dev/null 2>&1 || return 0
-  git -C "$target_root" fetch --quiet origin main 2>/dev/null || true
-  git -C "$target_root" ls-tree --name-only FETCH_HEAD -- docs/adr/ 2>/dev/null \
-    | sed -E 's#.*/##' | grep -E '^[0-9]{4}-.*\.md$' 2>/dev/null \
-    | cut -c1-4 | sort -n | tail -1 || true
-}
-
-land() {
-  local draft="$1"
-  [ -n "$draft" ] || { usage; exit 1; }
-  [ -e "$draft" ] || { echo "error: no such draft: $draft" >&2; exit 1; }
-
-  local base
-  base="$(basename "$draft")"
-  case "$base" in
-    draft-*.md) ;;
-    *) echo "error: not a draft (expected draft-<slug>.md): $draft" >&2; exit 1 ;;
-  esac
-
-  validate "$draft" "$base"
-
-  local disk origin next
-  disk="$(highest_on_disk)"
-  origin="$(highest_on_origin)"
-  next=$((10#${disk:-0}))
-  [ $((10#${origin:-0})) -gt "$next" ] && next=$((10#${origin:-0}))
-  next=$(printf '%04d' $((next + 1)))
-
-  local slug landed
-  slug="${base#draft-}"
-  slug="${slug%.md}"
-  landed="$adr_dir/$next-$slug.md"
-  [ -e "$landed" ] && { echo "error: already exists: $landed" >&2; exit 1; }
-
-  if git -C "$target_root" ls-files --error-unmatch "$draft" >/dev/null 2>&1; then
-    git -C "$target_root" mv "$draft" "$landed"
-  else
-    mv "$draft" "$landed"
-  fi
-
-  local renderer="$repo_root/.Workflow/agent-workflows/shared/adr-index.cli.ts"
-  local tsx="$repo_root/node_modules/.bin/tsx"
-  if [ -f "$renderer" ] && [ -x "$tsx" ]; then
-    ( cd "$repo_root" && "$tsx" "$renderer" --fix "$target_root" >/dev/null ) || true
-  fi
-
-  echo "$landed"
-}
-
-case "${1:-}" in
-  -h | --help) usage; exit 0 ;;
-  --land) land "${2:-}"; exit 0 ;;
-esac
-
-amends=""
-if [ "${1:-}" = "--amends" ]; then
-  if [ $# -lt 3 ]; then
-    usage
-    exit 1
-  fi
-  amends="$2"
-  shift 2
-fi
-
-if [ $# -eq 0 ]; then
-  usage
-  exit 1
-fi
-
-case "${1:-}" in
-  -*) usage; exit 1 ;;
-esac
-
-title="$*"
-mkdir -p "$adr_dir"
-
-file="$adr_dir/draft-$(slugify "$title").md"
-[ -e "$file" ] && { echo "error: already exists: $file" >&2; exit 1; }
-
-amends_line=""
-if [ -n "$amends" ]; then
-  amends_line="
-amends: ADR-$(printf '%04d' "$((10#$amends))")"
-fi
-
-cat > "$file" <<EOF
----
-status: constraint
-date: $(date +%Y-%m-%d)
-reversal:$amends_line
----
-
-# $title
-
-<!-- Why this binds: what forces it. $WORD_CAP words max. Evidence, measurements
+BODY_PROMPT = """<!-- Why this binds: what forces it. {cap} words max. Evidence, measurements
      and worked examples go to docs/research/ and are linked.
 
      **Rejected: <the alternative>.** <What it would have cost.> -->
-EOF
+"""
 
-echo "$file"
+NO_REJECTED = (
+    "the body names no rejected alternative. Add a line starting `**Rejected: <the "
+    "alternative>.**` saying what else was on the table and what it would have cost."
+)
 
-if [ -t 1 ] && [ -n "${EDITOR:-}" ]; then exec "$EDITOR" "$file"; fi
+_FORMAT_DOC_CANDIDATES = (
+    Path(__file__).resolve().parent.parent / "domain-modeling" / "ADR-FORMAT.md",
+    Path(__file__).resolve().parent.parent / ".claude" / "skills" / "domain-modeling" / "ADR-FORMAT.md",
+)
+FORMAT_DOC = next((c for c in _FORMAT_DOC_CANDIDATES if c.is_file()), _FORMAT_DOC_CANDIDATES[0])
+BAR_HEADING = "## The bar"
+BAR_FRAME = "The bar, from {doc}:\n\n{bar}"
+BAR_POINTER = (
+    "The bar is stated in the `domain-modeling` skill's ADR-FORMAT.md, which is not "
+    "readable from here ({doc}). Read it before writing the body."
+)
+
+
+def bar() -> str:
+    try:
+        text = FORMAT_DOC.read_text(encoding="utf-8")
+    except OSError:
+        return BAR_POINTER.format(doc=FORMAT_DOC)
+
+    section: list[str] = []
+    taking = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if taking:
+                break
+            taking = line.strip() == BAR_HEADING
+            continue
+        if taking:
+            section.append(line)
+
+    rendered = "\n".join(section).strip()
+    if not rendered:
+        return BAR_POINTER.format(doc=FORMAT_DOC)
+    return BAR_FRAME.format(doc=FORMAT_DOC, bar=rendered)
+
+
+def target_root_for(machine_root: Path) -> Path:
+    override = os.environ.get("TARGET_WORKSPACE", "").strip()
+    return Path(override).resolve() if override else machine_root
+
+
+def origin_numbers(target_root: Path) -> list[int]:
+    found: list[int] = []
+    try:
+        subprocess.run(
+            ["git", "-C", str(target_root), "fetch", "--quiet", "origin"],
+            capture_output=True, timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for ref in ("origin/main", "origin/master", "HEAD"):
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(target_root), "ls-tree", "--name-only", ref, "--", "docs/adr/"],
+                capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if out.returncode != 0:
+            continue
+        for line in out.stdout.splitlines():
+            m = adr_shape.LANDED_RE.match(Path(line.strip()).name)
+            if m:
+                found.append(int(m.group(1)))
+    return found
+
+
+def write_index(target_root: Path) -> Path:
+    corpus = adr_shape.load_corpus(target_root)
+    path = adr_shape.index_path(target_root)
+    path.write_text(adr_shape.render_index(corpus), encoding="utf-8")
+    return path
+
+
+def run_index_renderer(machine_root: Path, target_root: Path) -> Path:
+    renderer = machine_root / ".Workflow" / "agent-workflows" / "shared" / "adr-index.cli.ts"
+    tsx = machine_root / "node_modules" / ".bin" / "tsx"
+    if not renderer.is_file() or not os.access(tsx, os.X_OK):
+        return write_index(target_root)
+    subprocess.run(
+        [str(tsx), str(renderer), "--fix", str(target_root)],
+        cwd=machine_root, capture_output=True,
+    )
+    return adr_shape.index_path(target_root)
+
+
+def draft(machine_root: Path, target_root: Path, title: str, amends: int | None) -> int:
+    d = adr_shape.adr_dir(target_root)
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{adr_shape.DRAFT_PREFIX}{adr_shape.slugify(title)}.md"
+    if path.exists():
+        print(f"error: already exists: {path}", file=sys.stderr)
+        return 1
+    amends_line = f"\namends: ADR-{amends:04d}" if amends is not None else ""
+    path.write_text(
+        TEMPLATE.format(date=date.today().isoformat(), title=title, amends=amends_line)
+        + BODY_PROMPT.format(cap=adr_shape.WORD_CAP),
+        encoding="utf-8",
+    )
+    print(path)
+    print(bar(), file=sys.stderr)
+    if sys.stdout.isatty():
+        editor = os.environ.get("EDITOR")
+        if editor:
+            os.execvp(editor, [editor, str(path)])
+    return 0
+
+
+def land(machine_root: Path, target_root: Path, draft_path: Path) -> int:
+    if not draft_path.exists():
+        print(f"error: no such draft: {draft_path}", file=sys.stderr)
+        return 1
+    m = adr_shape.DRAFT_RE.match(draft_path.name)
+    if not m:
+        print(
+            f"error: not a draft (expected {adr_shape.DRAFT_PREFIX}<slug>.md): {draft_path}",
+            file=sys.stderr,
+        )
+        return 1
+
+    text = draft_path.read_text(encoding="utf-8", errors="replace")
+    try:
+        warnings = adr_shape.validate(text)
+    except adr_shape.ValidationError as e:
+        print(f"error: {draft_path.name}: {e}", file=sys.stderr)
+        return 1
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+
+    if not adr_shape.rejected_alternative(text):
+        print(f"error: {draft_path.name}: {NO_REJECTED}", file=sys.stderr)
+        return 1
+
+    number = adr_shape.next_number(target_root, origin_numbers(target_root))
+    landed = adr_shape.adr_dir(target_root) / f"{number:04d}-{m.group(1)}.md"
+    if landed.exists():
+        print(f"error: already exists: {landed}", file=sys.stderr)
+        return 1
+
+    tracked = subprocess.run(
+        ["git", "-C", str(target_root), "ls-files", "--error-unmatch", str(draft_path)],
+        capture_output=True, text=True,
+    ).returncode == 0
+    if tracked:
+        subprocess.run(
+            ["git", "-C", str(target_root), "mv", str(draft_path), str(landed)],
+            capture_output=True,
+        )
+    if draft_path.exists():
+        draft_path.rename(landed)
+
+    index = run_index_renderer(machine_root, target_root)
+    print(landed)
+    print(f"index: {index}", file=sys.stderr)
+    return 0
+
+
+class _StderrHelpParser(argparse.ArgumentParser):
+    def print_help(self, file=None) -> None:
+        super().print_help(sys.stderr if file is None else file)
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = _StderrHelpParser(
+        prog="new-adr",
+        description="File an ADR as a draft; claim its number when it lands.",
+    )
+    p.add_argument("--land", metavar="DRAFT", help="land a draft: validate, number, index")
+    p.add_argument("--amends", type=int, metavar="NNNN",
+                   help="this ruling replaces ADR-NNNN (rare; correct in place instead "
+                        "unless the constraint itself reverses)")
+    p.add_argument("title", nargs="*", help="the ruling, stated as a sentence")
+    args = p.parse_args(argv)
+
+    root = adr_shape.repo_root_from()
+    if root is None:
+        print("error: not inside a git repository", file=sys.stderr)
+        return 1
+    target_root = target_root_for(root)
+
+    if args.land:
+        if args.title:
+            p.error("--land takes no title")
+        return land(root, target_root, Path(args.land).resolve())
+
+    if not args.title:
+        p.error("give the ruling as a sentence, e.g. "
+                'new-adr "Triage labels are positions, not verdicts"')
+    return draft(root, target_root, " ".join(args.title), args.amends)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

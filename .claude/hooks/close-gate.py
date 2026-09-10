@@ -8,8 +8,8 @@ import subprocess
 from pathlib import Path
 
 import _hook
-import gh_support  # noqa: E402
-import ticket_shape  # noqa: E402
+import gh_support
+import ticket_shape
 
 GH_TIMEOUT_SECONDS = 5
 GIT_REMOTE_TIMEOUT_SECONDS = 2
@@ -18,6 +18,7 @@ REPO_GATE_PATH = ".claude/hooks/close-gate.py"
 
 TICKETIFY_PATH = Path.home() / "bin" / "file-issue"
 
+
 def write_criteria_hint() -> str:
     if TICKETIFY_PATH.is_file():
         return "run `~/bin/file-issue ticketify <n>` to write them"
@@ -25,6 +26,8 @@ def write_criteria_hint() -> str:
         "add an `## Acceptance criteria` heading to the issue body, one `- [ ]` per "
         "checkable claim"
     )
+
+
 
 ISSUE_CLOSE_RE = re.compile(r"\bgh\s+issue\s+close\b")
 API_STATE_CLOSED_RE = re.compile(
@@ -59,6 +62,7 @@ COMMENT_HEREDOC_RE = re.compile(
 COMMENT_DQUOTE_RE = re.compile(r'--comment\s+"((?:[^"\\]|\\.)*)"', re.DOTALL)
 COMMENT_SQUOTE_RE = re.compile(r"--comment\s+'((?:[^'\\])*)'", re.DOTALL)
 
+
 RECORD_HEADING = "## Closing record"
 REVSPEC = r"[A-Za-z0-9._/@{}~^+-]+"
 RANGE_LINE_RE = re.compile(rf"^[ \t]*`?({REVSPEC})\.\.({REVSPEC})`?[ \t]*$", re.MULTILINE)
@@ -67,6 +71,8 @@ BULLET_RE = re.compile(r"^[ \t]*-\s+(.*)$", re.MULTILINE)
 REPO_REF = r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*"
 SUPERSEDED_RE = re.compile(
     rf"^[ \t]*`?Superseded by (?:({REPO_REF}))?#(\d+)`?[ \t]*\.?[ \t]*$", re.MULTILINE)
+
+
 
 def detect_close_route(command: str) -> str | None:
     if ISSUE_CLOSE_RE.search(command):
@@ -77,12 +83,14 @@ def detect_close_route(command: str) -> str | None:
         return "api-graphql"
     return None
 
+
 def declares_non_delivery(command: str) -> bool:
     spans = _hook.quoted_spans(command)
     for pattern in (NON_DELIVERY_REASON_RE, API_NON_DELIVERY_REASON_RE):
         if _hook.unquoted_matches(pattern, command, spans):
             return True
     return False
+
 
 def close_is_only_quoted_prose(command: str) -> bool:
     spans = _hook.quoted_spans(command)
@@ -91,9 +99,11 @@ def close_is_only_quoted_prose(command: str) -> bool:
             return False
     return True
 
+
 def extract_repo_flag(command: str) -> str | None:
     matches = _hook.unquoted_matches(REPO_FLAG_RE, command)
     return matches[-1].group(2) if matches else None
+
 
 def effective_cwd(command: str, cwd: str | None) -> str | None:
     route = None
@@ -117,6 +127,7 @@ def effective_cwd(command: str, cwd: str | None) -> str | None:
         path = os.path.join(cwd, path)
     return path if os.path.isdir(path) else cwd
 
+
 def extract_issue_number(command: str) -> int | None:
     m = ISSUE_NUMBER_FROM_CLOSE_RE.search(command)
     if m:
@@ -125,6 +136,7 @@ def extract_issue_number(command: str) -> int | None:
     if m:
         return int(m.group(1))
     return None
+
 
 def extract_inline_comment(command: str) -> str | None:
     m = COMMENT_HEREDOC_RE.search(command)
@@ -138,6 +150,7 @@ def extract_inline_comment(command: str) -> str | None:
         return m.group(1)
     return None
 
+
 def find_marker_text(text: str | None) -> str | None:
     if text is None:
         return None
@@ -145,6 +158,7 @@ def find_marker_text(text: str | None) -> str | None:
     if not stripped.startswith(RECORD_HEADING):
         return None
     return stripped[len(RECORD_HEADING):].lstrip("\n")
+
 
 def most_recent_record(comments: list) -> str | None:
     for c in reversed(comments or []):
@@ -154,11 +168,13 @@ def most_recent_record(comments: list) -> str | None:
             return marker
     return None
 
+
 def count_body_criteria(body: str) -> int | None:
     if not ticket_shape.CRITERIA_HEADING_RE.search(body):
         return None
     section = ticket_shape.section_text(body, ticket_shape.CRITERIA_HEADING_RE)
     return len(ticket_shape.CRITERIA_ITEM_RE.findall(section))
+
 
 def _bullet_count_denial(record_text: str, criteria_count: int,
                           close_ticket_stub_text: str = "close-ticket"):
@@ -183,6 +199,7 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
             "hand; it generates exactly one bullet per criterion.",
         ), []
     return None, bullets
+
 
 def evaluate_record(record_text: str, criteria_count: int | None,
                     close_ticket_stub_text: str = "close-ticket") -> tuple[str, str, str]:
@@ -246,6 +263,9 @@ def evaluate_record(record_text: str, criteria_count: int | None,
 
     return "allow", "met", "one bullet per criterion, in the body's own order."
 
+
+
+
 def derive_repo(cwd: str | None) -> str:
     if not cwd:
         return ""
@@ -260,6 +280,7 @@ def derive_repo(cwd: str | None) -> str:
         return ""
     m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?\s*$", result.stdout.strip())
     return m.group(1) if m else ""
+
 
 @functools.lru_cache(maxsize=None)
 def repo_toplevel(cwd: str | None) -> Path | None:
@@ -276,12 +297,14 @@ def repo_toplevel(cwd: str | None) -> Path | None:
         return None
     return Path(result.stdout.strip())
 
+
 def ships_repo_gate(cwd: str | None) -> bool:
     top = repo_toplevel(cwd)
     if top is None:
         return False
     gate = top / REPO_GATE_PATH
     return gate.is_file() and gate.resolve() != Path(__file__).resolve()
+
 
 def close_ticket_stub(issue_number, cwd: str | None, repo_flag: str | None) -> str:
     checkout = repo_toplevel(cwd)
@@ -293,6 +316,7 @@ def close_ticket_stub(issue_number, cwd: str | None, repo_flag: str | None) -> s
     tool = "bin/close-ticket" if vendored else "~/.agents/skills/bin/close-ticket"
     repo_arg = f" --repo {repo_flag}" if repo_flag else ""
     return f"{tool} {issue_number} <base>..<head> {checkout_value}{repo_arg}"
+
 
 def fetch_issue(gh_path: str, cwd: str | None, issue_number: int,
                 repo: str | None = None) -> tuple[str, list, str | None]:
@@ -312,6 +336,9 @@ def fetch_issue(gh_path: str, cwd: str | None, issue_number: int,
         return "", [], "gh-bad-response"
     return data.get("body", "") or "", data.get("comments", []) or [], None
 
+
+
+
 def _row(payload: dict, repo: str, issue_number, verdict: str, reason: str,
          gh_path: str) -> None:
     _hook.append_log(_hook.HOOK_NAME, _hook.run_row(
@@ -322,13 +349,16 @@ def _row(payload: dict, repo: str, issue_number, verdict: str, reason: str,
         gh=gh_path or "",
     ))
 
+
 def deny(payload: dict, repo: str, issue_number, reason: str, gh_path: str,
          human_message: str, verdict: str = "deny") -> None:
     _row(payload, repo, issue_number, verdict, reason, gh_path)
     _hook.deny(human_message)
 
+
 def allow(payload: dict, repo: str, issue_number, reason: str, gh_path: str) -> None:
     _row(payload, repo, issue_number, "allow", reason, gh_path)
+
 
 def main() -> None:
     resolved_gh = gh_support.gh_bin()
@@ -379,6 +409,7 @@ def main() -> None:
 
     inline_record = find_marker_text(extract_inline_comment(command))
 
+
     if resolved_gh is None:
         deny(payload, repo, issue_number, "gh-not-found", "",
              "gh is not resolvable on this machine, so it cannot verify and the close is refused.",
@@ -408,6 +439,7 @@ def main() -> None:
         allow(payload, repo, issue_number, reason, resolved_gh)
     else:
         deny(payload, repo, issue_number, reason, resolved_gh, message)
+
 
 if __name__ == "__main__":
     main()

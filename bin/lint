@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -u
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"   # resolved before the cd below moves us
+STARTED=$(date +%s%N)                       # the row's own `seconds`: log-row's process
+cd "$(dirname "$0")/.." || exit 1
+fail=0
+hit_counts=""
+
+rule() { # rule <slug> <hits>
+  if [ -n "$2" ]; then
+    printf '[lint] %s\n%s\n' "$1" "$2"
+    fail=1
+    hit_counts="$hit_counts$1 $(printf '%s\n' "$2" | grep -c .)"$'\n'
+  fi
+}
+
+hits=""
+for d in .claude/skills/*/; do
+  d=${d%/}
+  [ -f "$d/SKILL.md" ] || continue
+  h=$(grep -rn 'hooks/' --include='*.md' "$d" | grep -v '\.claude/hooks/')
+  [ -n "$h" ] && hits="$hits$h"$'\n'
+done
+rule "bare-hooks-path" "$hits"
+
+hits=""
+for d in .claude/skills/*/; do
+  d=${d%/}
+  [ -f "$d/SKILL.md" ] || continue
+  h=$(grep -rnE '(^|[^/[:alnum:]_.])bin/(file-issue|close-ticket|link-deps|publish-issue-graph)' \
+        --include='*.md' --include='*.json' "$d")
+  [ -n "$h" ] && hits="$hits$h"$'\n'
+done
+h=$(grep -rnE '(^|[^/[:alnum:]_.])bin/(file-issue|close-ticket|link-deps|publish-issue-graph)' \
+      .claude/hooks/ --include='*.md' --include='*.py' --exclude='test_*.py' 2>/dev/null \
+      | while IFS=: read -r f n rest; do
+          sed -n "$(( n > 1 ? n - 1 : 1 )),$(( n + 1 ))p" "$f" | grep -q 'vendor' || echo "$f:$n:$rest"
+        done)
+[ -n "$h" ] && hits="$hits$h"$'\n'
+rule "bare-bin-path" "$hits"
+
+rule "message-chains/tool-input-null-crash" \
+  "$(grep -rnE 'get\("tool_input", ?\{\}\)' .claude/hooks/)"
+
+rule "duplicated-code/test-run-hook-subprocess" \
+  "$(grep -nE '\["python3", str\(HOOK\)\]' .claude/hooks/test_*.py)"
+
+rule "duplicated-code/subagent-dispatch-convention-restated" \
+  "$(grep -rlE 'never by pasting|run_in_background: true|never nested|top of the session' --include='*.md' --exclude-dir=worktrees . | grep -v '^./docs/adr/')"
+
+hits=""
+for n in coding-standards ticket-format clone-gate pipeline-labels; do
+  seed=setup-matt-pocock-skills/$n.md
+  doc=docs/agents/$n.md
+  [ "$n" = coding-standards ] && doc=CODING_STANDARDS.md
+  [ -f "$seed" ] || continue
+  h=$(diff <(head -n "$(wc -l < "$seed")" "$doc") "$seed")
+  [ -n "$h" ] && hits="$hits$n:"$'\n'"$h"$'\n'
+done
+rule "duplicated-code/standards-seed-mirror" "$hits"
+
+rule "duplicated-code/deny-envelope" \
+  "$(grep -l '\"permissionDecision\": \"deny\"' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/_hook.py$')"
+
+rule "duplicated-code/deny-envelope" \
+  "$(grep -nE "decision['\"]?\s*:\s*['\"]block" .claude/hooks/*.py .claude/hooks/*.sh 2>/dev/null \
+     | grep -vE '^.claude/hooks/(stop-gate|test_stop_gate)\.py:')"
+
+rule "duplicated-code/hook-name-constant" \
+  "$(grep -n '^HOOK_NAME = "' .claude/hooks/*.py 2>/dev/null)"
+
+rule "duplicated-code/edit-tool-roster" \
+  "$(grep -l 'Edit|Write|MultiEdit|NotebookEdit' .claude/hooks/* 2>/dev/null | grep -v '^.claude/hooks/_hook.py$')"
+
+rule "duplicated-code/test-runner-check-failures" \
+  "$(grep -lE '^def check\(label, cond' .claude/hooks/test_*.py)"
+rule "duplicated-code/test-runner-check-failures" \
+  "$(grep -nE 'RESULTS(:| =)|RESULTS\.append' .claude/hooks/test_*.py)"
+rule "duplicated-code/test-runner-check-failures" \
+  "$(grep -nE '^\s+def check\(' .claude/hooks/test_*.py)"
+rule "duplicated-code/test-runner-check-failures" \
+  "$(grep -n 'for f in FAILURES' .claude/hooks/test_*.py)"
+
+rule "duplicated-code/test-baseline-diff-block" \
+  "$(grep -n 'with_suffix(".baseline.json")' .claude/hooks/test_*.py)"
+rule "duplicated-code/test-baseline-diff-block" \
+  "$(grep -n "CATEGORY':<" .claude/hooks/test_*.py)"
+
+rule "duplicated-code/test-run-hook-subprocess" \
+  "$(grep -nE '\[sys\.executable, str\(HOOK\)\]' .claude/hooks/test_*.py)"
+rule "duplicated-code/test-run-hook-subprocess" \
+  "$(grep -n 'json.loads(r.stdout.decode() or "{}")' .claude/hooks/test_*.py)"
+
+rule "duplicated-code/test-run-hook-subprocess" \
+  "$(grep -nE 'timeout=[0-9]+' .claude/hooks/test_*.py)"
+
+rule "duplicated-code/test-malformed-stdin-fixture" \
+  "$(grep -lE 'b"not json' .claude/hooks/test_*.py | grep -v '^.claude/hooks/test_vendored_router.py$')"
+
+rule "duplicated-code/malformed-quartet-subset" \
+  "$(grep -n '_QUARTET\|dict(_harness.MALFORMED_STDIN)' .claude/hooks/test_*.py 2>/dev/null)"
+
+rule "duplicated-code/gh-resolution" \
+  "$(grep -ohE 'environ\.get\("[A-Z_]+_GH"\)' .claude/hooks/*.py bin/* 2>/dev/null \
+     | sort -u | grep -v '^environ\.get("AGENT_SKILLS_GH")$')"
+
+rule "duplicated-code/gh-resolution" \
+  "$(grep -n 'args += \["-R", repo\]' bin/file-issue 2>/dev/null)"
+
+rule "duplicated-code/hooks-bin-sys-path-splice" \
+  "$(grep -n 'parent.parent / "bin"' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/_hook.py:')"
+
+rule "duplicated-code/gh-call-failure-envelope" \
+  "$(grep -nE 'gh .*timed out after' bin/* .claude/hooks/*.py 2>/dev/null | grep -v '^bin/gh_support.py:\|^bin/lint:')"
+rule "duplicated-code/gh-call-failure-envelope" \
+  "$(grep -n 'subprocess.run(\[gh_path' bin/* .claude/hooks/*.py 2>/dev/null | grep -v '^bin/lint:')"
+
+rule "duplicated-code/markdown-section-slice" \
+  "$(grep -nE 'rest\[: ?(end|nxt)\.start\(\)\] if (end|nxt) else rest' .claude/hooks/*.py bin/* 2>/dev/null \
+     | grep -v '^bin/ticket_shape.py:')"
+
+rule "duplicated-code/subprocess-magic-timeout" \
+  "$(grep -nE 'timeout=[0-9]+' .claude/hooks/*.py bin/* 2>/dev/null)"
+
+rule "duplicated-code/stdin-payload-read" \
+  "$(grep -lE 'json\.load\(sys\.stdin\)|sys\.stdin\.(read|buffer)' .claude/hooks/*.py 2>/dev/null \
+     | grep -v '^.claude/hooks/_hook.py$')"
+rule "duplicated-code/stdin-payload-read" \
+  "$(grep -nE 'get\("tool_input"\) or \{\}' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/_hook.py')"
+
+rule "duplicated-code/append-log-swallow" \
+  "$(grep -nE 'open\([^)]*"a"' .claude/hooks/*.py 2>/dev/null \
+     | grep -v '^.claude/hooks/_hook.py')"
+
+rule "duplicated-code/shell-quote-spans" \
+  "$(grep -lE 'def _?quoted_spans' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/_hook.py$')"
+
+rule "duplicated-code/shell-quote-spans" \
+  "$(grep -lE 'any\(a <= m\.start\(\) < b for a,? ?b in spans\)' .claude/hooks/*.py 2>/dev/null \
+     | grep -v '^.claude/hooks/_hook.py$')"
+
+rule "shotgun-surgery/ticket-grammar-two-compilers" \
+  "$(grep -lE '^(CRITERIA_HEADING_RE|CRITERIA_ITEM_RE|PATH_LINE_RE) = ' .claude/hooks/*.py bin/* 2>/dev/null \
+     | grep -v '^bin/ticket_shape.py$')"
+
+hits=""
+for f in $(grep -oE '^def [a-z][a-z_]*' .claude/hooks/_hook.py | cut -c5-); do
+  grep -q "_hook\.$f(" .claude/hooks/test__hook.py || hits="$hits$f"$'\n'
+done
+rule "duplicated-code/hook-helper-tested-through-hook-harnesses" "$hits"
+
+rule "duplicated-code/hook-helper-tested-through-hook-harnesses" \
+  "$(grep -ln 'QUOTED_SPAN_CASES' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/test__hook.py$')"
+
+rule "duplicated-code/deny-envelope-asserted-per-harness" \
+  "$(grep -lE 'hookEventName"?\)? ?== ?"PreToolUse"|"decision" not in' .claude/hooks/test_*.py 2>/dev/null \
+     | grep -v '^.claude/hooks/test__hook.py$')"
+
+adr_out=$("$SELF_DIR/adr-check" 2>&1 >/dev/null); adr_rc=$?
+if [ "$adr_rc" -eq 2 ]; then
+  printf '[lint] adr-corpus could not run:\n%s\n' "$adr_out" >&2
+else
+  rule "adr-corpus" "$(printf '%s' "$adr_out" | grep '^finding:')"
+fi
+
+hits_json=$(printf '%s' "$hit_counts" | awk '
+  NF { c[$1] += $2 }
+  END {
+    out = ""
+    for (k in c) { if (out != "") out = out ", "; out = out "\"" k "\": " c[k] }
+    print "{" out "}"
+  }')
+if [ "$fail" -eq 0 ]; then verdict=clean; else verdict=hit; fi
+elapsed=$(awk -v a="$STARTED" -v b="$(date +%s%N)" 'BEGIN { printf "%.4f", (b - a) / 1000000000 }')
+[ -x "$SELF_DIR/log-row" ] && "$SELF_DIR/log-row" lint \
+  "{\"verdict\": \"$verdict\", \"hits\": $hits_json, \"seconds\": $elapsed}"
+
+exit $fail

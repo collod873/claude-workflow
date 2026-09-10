@@ -1,0 +1,5 @@
+interface:
+  display_name: "Standards"
+  short_description: "Run standards-pass, ratify, to-tickets, and drain as one chain"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ratify"
+  short_description: "Decide standards-pass ledger candidates from the record"
+policy:
+  allow_implicit_invocation: false

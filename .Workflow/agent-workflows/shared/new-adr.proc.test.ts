@@ -115,7 +115,7 @@ describe("bin/new-adr, drafting and landing", () => {
     const landed = draftAndLand(root, [RULING]);
 
     expect(() => runNewAdr(root, ["--land", landed])).toThrow();
-    expect(readdirSync(join(root, "docs/adr"))).toEqual([`0001-${SLUG}.md`]);
+    expect(readdirSync(join(root, "docs/adr")).sort()).toEqual([`0001-${SLUG}.md`, "INDEX.md"]);
   });
 
   it("drafts and lands into the target checkout rather than the machine checkout it runs from, given TARGET_WORKSPACE", () => {

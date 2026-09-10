@@ -1,0 +1,760 @@
+#!/usr/bin/env python3
+"""bin/hook-trace [<transcript>] [--last] [--session <id>] [--days <n>] [--main-only] [--check]
+
+One line per hook fire, joined from the two records a fire leaves behind. Both have
+always existed; nothing had ever read them together (#205).
+
+  our row        `~/.claude/logs/<hook>-<day>.jsonl`, written by `_hook.run_row()`. The
+                 hook's self-report: that it ran, what it decided (`verdict`), what it
+                 was looking at (`exposed`, a guard slug), and what it cost (`seconds`).
+                 It is the only record a silent fire leaves at all, and it stops at the
+                 hook's own process exit, so it can say "I refused" and never say
+                 whether the refusal held.
+  the harness's  the session transcript, written by Claude Code itself. It holds the
+                 other half: which channel the text went out on, which audience saw it,
+                 how long the harness waited, and what happened next.
+
+`bin/hook-report` divides the rows into rates; this joins them to the behaviour. A row
+proves the fire, the transcript proves the outcome.
+
+THE HARNESS'S SCHEMA
+--------------------
+Undocumented, and this docstring is the only place on this machine it is written down:
+`bin/hook-trace` is the reader, the skills point here rather than caching a copy, and
+`hooks/test_hook_trace.py` fails with the field named when a Claude Code version
+renames one. Measured 2026-09-04 over the last 150 sessions, Claude Code 2.1.259 and
+2.1.260.
+
+A transcript is one JSON object per line at
+`~/.claude/projects/<project>/<sessionId>.jsonl`. A subagent gets its own file,
+`~/.claude/projects/<project>/<sessionId>/subagents/agent-<agentId>.jsonl`, whose
+records carry `agentId` and `isSidechain: true` and the *parent's* `sessionId`, which is
+the only session id a subagent's hooks are handed and therefore the only one its rows
+can carry. Envelope fields read here: `type` and `subtype`, `timestamp` (UTC,
+milliseconds, trailing `Z`; our rows are local seconds, so every comparison converts),
+`agentId` (which agent a fire belongs to, taken from the record rather than the file it
+sits in), `message`, `isMeta` and `toolDenialKind` (the outcome records below). The
+session is the transcript's own filename, which is what `sessionId` holds on every
+record and what every run row carries; the envelope's *other* id, `session_id`, is
+deliberately not read, since it names neither.
+
+`type: "attachment"`, keyed by `attachment.type`. `hookEvent` is the event
+(`PreToolUse`, `PostToolUse`, `Stop`, `PermissionRequest`); `hookName` is the
+*registration* (`PreToolUse:Bash`, `Stop`), never the script, so a fire is attributed to
+a hook by its `command` where one is recorded and otherwise by the `[hook]` prefix every
+channel on this machine opens with (#197):
+
+  hook_success            `command`, `stdout`, `stderr`, `exitCode`, `durationMs`,
+                          `content`, `toolUseID`. Written only when the hook spoke: 108
+                          of 872 Stop fires carried one and no `PreToolUse:Bash` fire
+                          did, so its absence is not evidence a hook did not run.
+  hook_cancelled          `command`, `durationMs`, `timedOut`, `timeoutMs`, `toolUseID`
+                          (all but `toolUseID` absent on 1 of the 4 in the corpus).
+  hook_blocking_error     `blockingError.blockingError`: the text the agent saw as a
+                          block. No `command`.
+  hook_additional_context `content`, a *list* of strings: the text the agent saw as
+                          context. No `command`.
+  hook_system_message     `content`, a string: the line the human saw. The one record
+                          that separates the two audiences. No `command`.
+  hook_non_blocking_error `stderr`, `stdout`, `exitCode`, `command`, `durationMs`: a
+                          hook that exited 1.
+  hook_permission_decision `decision`, `toolUseID`, `hookEvent: "PermissionRequest"`.
+                          The one record type that names neither hook nor command, so a
+                          PermissionRequest fire takes its name from the row it joins.
+
+`type: "system"`:
+
+  subtype stop_hook_summary   one per Stop, and the only record that names the *silent*
+                              fires: `hookInfos[{command, durationMs}]` for every Stop
+                              hook registered, plus `hookCount`, `hookErrors`,
+                              `hookAdditionalContext`, `preventedContinuation`,
+                              `stopReason`, `hasOutput`, `toolUseID`.
+                              `preventedContinuation` was `false` on all 1,150 summaries
+                              in the corpus, including every one carrying a block, so it
+                              is read and printed but never believed: the turn's fate is
+                              taken from what follows the summary.
+  subtype informational       `content`, the block-cap override ("A hook blocked the
+                              turn from ending N consecutive times").
+
+The two records that carry the outcome, both written by the harness for the agent:
+
+  a `user` record whose `message.content[]` holds a `tool_result` with `tool_use_id`,
+  `is_error`, and (on a hook refusal) `toolDenialKind` on the envelope. `is_error` alone
+  is a tool that ran and failed; `toolDenialKind` is the deny. Two values measured on
+  this machine: `permission-rule`, a hook's own refusal, and `user-rejected`, a person
+  declining in the UI, whose `content` is the harness's own boilerplate ("The user
+  doesn't want to proceed…") and names no hook at all (#209) — only the first builds a
+  fire from the `tool_result` alone.
+
+  a `user` record whose `message.content` is the string `Stop hook feedback:\\n<reason>`
+  (`isMeta: true`): a Stop block, as the agent received it.
+
+Inside a subagent, a `permission-rule` PreToolUse deny writes no `hook_system_message` at
+all (#209): the `tool_result` above is the *only* record, its own `content` carrying the
+hook's text where an attachment would otherwise have carried it. Read there and nowhere
+else, that text is what names the fire and fills its one channel, printed as `agent` since
+a record with no attachment can prove only that the agent, not a person, saw it.
+
+THE JOIN
+--------
+`sessionId` plus `toolUseID` on the tool events: `_hook.run_row()` stamps the payload's
+`tool_use_id` (#205), which PreToolUse and PostToolUse carry and Stop does not. Where
+one side has no id (a Stop fire, or a row written before #205), the fall-back is nearest
+timestamp within the same session, event and hook, paired nearest-first so two fires of
+the same hook in the same second cannot both claim one record.
+
+THE COLUMNS
+-----------
+  hook      the script, from `command`, the `[hook]` prefix, or a bare `hook:` prefix
+            (#209, gauntlet's own shape); `?` where the harness named none of those and
+            no row joined.
+  event     `hookEvent`, or our row's `event` for a fire only the row saw.
+  agent     `main`, or the subagent's `agentId`. `--main-only` drops the subagents.
+  verdict   our row's word. `-` means no row: the harness saw a fire we did not record.
+  channel   what the harness routed, `context`/`block`/`agent`/`system`/`stderr`/
+            `stdout`/`cancelled`/`permission`. `agent` is a `tool_result`-only deny with
+            no attachment at all (#209). `-` is a silent fire.
+  audience  `agent`, `human`, or `both`, from those channels. The question
+            `/audit-doc` asks and no other record answers.
+  chars     per channel, in the channel column's order.
+  ms        the harness's own `durationMs`, which includes the process the row's
+            `seconds` could not measure from inside itself.
+  outcome   read from the transcript, never from the verdict: `ran`/`ran-error`/`denied`
+            for a gate, `continued`/`ended` for a Stop (the first assistant record or
+            human prompt after the summary), the `decision` for a PermissionRequest, and
+            `mismatch` where that contradicts the row, the sentence below saying which
+            way round.
+
+MISMATCHES
+----------
+Printed under the table, and `--check` exits 1 if there are any, so the join can run in
+a harness rather than be read by a human. Five kinds, each one a place where the two
+records disagree about what happened:
+
+  a speaking verdict with no harness record   the hook says it refused or injected and
+                                              the transcript holds no trace of it.
+  a harness record with no row                the transcript holds text a hook put in
+                                              front of someone, and no hook admits it.
+  `deny` whose tool ran                       the refusal did not reach the tool.
+  a hand-back/`not-mine`/`deferred` whose      #204, generalised by #209: every Stop
+  turn continued                              verdict meant to end the turn continues
+                                              under the same cap as a block.
+  `block` whose turn ended                    the block did not hold (the cap override).
+
+UNATTRIBUTED
+------------
+Printed once, grouped, below the mismatches: every text neither a `[hook]` prefix nor a
+bare `hook:` prefix could name (#209), so a wide `--days` window answers "what is this
+`?`" in one line instead of a grep. Each line is the text's first 40 characters and how
+many fires carried it.
+"""
+import argparse
+import bisect
+import json
+import re
+import shlex
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_HOOKS_DIR = next((c for c in (_REPO_ROOT / "hooks", _REPO_ROOT / ".claude" / "hooks") if c.is_dir()), _REPO_ROOT / "hooks")
+sys.path.insert(0, str(_HOOKS_DIR))
+
+import _harness
+import _hook
+
+PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+MATCH_WINDOW_SECONDS = 300
+
+CANDIDATES_PER_FIRE = 40
+
+SKEW_SAMPLE = 50
+SKEW_HOURS = 14
+SKEW_MINIMUM = 3
+
+SPEAKING = {"deny", "block", "handback", "not-mine", "deferred", "warn", "stop", "inform", "ask"}
+
+ENDS_TURN = {"handback": "hand-back", "not-mine": "not-mine", "deferred": "deferred"}
+
+CHANNELS = {
+    "hook_additional_context": "context",
+    "hook_blocking_error": "block",
+    "hook_system_message": "system",
+    "hook_non_blocking_error": "stderr",
+    "hook_success": "stdout",
+    "hook_cancelled": "cancelled",
+    "hook_permission_decision": "permission",
+}
+CHANNEL_ORDER = ["context", "block", "agent", "system", "stderr", "stdout", "cancelled",
+                 "permission"]
+AGENT_CHANNELS = {"context", "block", "agent"}
+HUMAN_CHANNELS = {"system", "stderr"}
+
+HOOK_PREFIX_RE = re.compile(r"^\s*\[([A-Za-z0-9_][A-Za-z0-9_.-]*)\]")
+HOOK_COLON_RE = re.compile(r"^\s*([A-Za-z0-9_][A-Za-z0-9_.-]*):")
+
+STOP_FEEDBACK = "Stop hook feedback:"
+OVERRIDE_PHRASE = "blocked the turn from ending"
+
+
+@dataclass
+class Fire:
+    session: str
+    agent: str
+    event: str
+    hook: str
+    tool_use_id: str = ""
+    when: datetime | None = None
+    index: int = -1
+    channels: dict = field(default_factory=dict)
+    duration_ms: int | None = None
+    timed_out: bool = False
+    exit_code: int | None = None
+    decision: str = ""
+    prevented: bool | None = None
+    row: dict | None = None
+    outcome: str = "-"
+    why: str = ""
+
+    @property
+    def audience(self) -> str:
+        agent = bool(set(self.channels) & AGENT_CHANNELS)
+        human = bool(set(self.channels) & HUMAN_CHANNELS)
+        return "both" if agent and human else "agent" if agent else "human" if human else "-"
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="hook-trace", description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("transcript", nargs="?", default=None,
+                        help="a transcript path; its own subagents/ are read with it")
+    parser.add_argument("--last", action="store_true", help="the newest transcript")
+    parser.add_argument("--session", default=None, help="one session id")
+    parser.add_argument("--days", type=int, default=None,
+                        help="every session touched in this many days")
+    parser.add_argument("--projects-dir", default=None,
+                        help=f"read transcripts from here instead of {PROJECTS_DIR}")
+    parser.add_argument("--log-dir", default=None,
+                        help="read run rows from here instead of ~/.claude/logs")
+    parser.add_argument("--main-only", action="store_true",
+                        help="drop the subagents' fires")
+    parser.add_argument("--check", action="store_true",
+                        help="print only the mismatches, and exit 1 if there are any")
+    return parser.parse_args(argv)
+
+
+
+
+def transcripts(args) -> list[Path]:
+    root = Path(args.projects_dir) if args.projects_dir else PROJECTS_DIR
+    if args.transcript:
+        return [Path(args.transcript)]
+    try:
+        found = sorted(root.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return []
+    if args.session:
+        return [p for p in found if p.stem == args.session]
+    if args.days is not None:
+        cutoff = datetime.now().timestamp() - args.days * 86400
+        return [p for p in found if p.stat().st_mtime >= cutoff]
+    return found[-1:]
+
+
+def subagent_files(main: Path) -> list[Path]:
+    try:
+        return sorted((main.parent / main.stem / "subagents").glob("agent-*.jsonl"))
+    except OSError:
+        return []
+
+
+
+
+def local_time(stamp) -> datetime | None:
+    if not isinstance(stamp, str) or not stamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone().replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+def hook_of_command(command) -> str:
+    if not isinstance(command, str) or not command.strip():
+        return ""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    for token in tokens:
+        stem = Path(token).name
+        if "." in stem and not stem.startswith("."):
+            return canon(Path(stem).stem)
+    return canon(Path(tokens[0]).stem) if tokens else ""
+
+
+def canon(name: str) -> str:
+    name = (name or "").strip().lower()
+    for suffix in ("-hook", "_hook"):
+        if name.endswith(suffix) and len(name) > len(suffix):
+            name = name[: -len(suffix)]
+    return name
+
+
+def hook_of_text(text: str) -> str:
+    match = HOOK_PREFIX_RE.match(text or "") or HOOK_COLON_RE.match(text or "")
+    return canon(match.group(1)) if match else ""
+
+
+def channel_text(kind: str, attachment: dict) -> str:
+    if kind == "hook_blocking_error":
+        blocking = attachment.get("blockingError")
+        if isinstance(blocking, dict):
+            blocking = blocking.get("blockingError")
+        return blocking if isinstance(blocking, str) else ""
+    if kind == "hook_additional_context":
+        content = attachment.get("content")
+        if isinstance(content, list):
+            return "\n".join(c for c in content if isinstance(c, str))
+        return content if isinstance(content, str) else ""
+    if kind == "hook_system_message":
+        content = attachment.get("content")
+        return content if isinstance(content, str) else ""
+    if kind in ("hook_success", "hook_non_blocking_error"):
+        parts = [attachment.get(f) for f in ("stdout", "stderr")]
+        return "".join(p for p in parts if isinstance(p, str))
+    return ""
+
+
+def block_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(c["text"] for c in content
+                         if isinstance(c, dict) and isinstance(c.get("text"), str))
+    return ""
+
+
+class Transcript:
+
+    def __init__(self, session: str):
+        self.session = session
+        self.fires: dict[tuple, Fire] = {}
+        self.results: dict[str, tuple[bool, bool]] = {}
+        self.marks: list[tuple[int, str]] = []
+        self.overrides: list[str] = []
+        self.attached_ids: set[str] = set()
+        self.unattributed: list[str] = []
+        self.next_index = 0
+
+    def fire(self, agent, event, hook, tool_use_id, when, index) -> Fire:
+        key = (agent, event, hook, tool_use_id)
+        found = self.fires.get(key)
+        if found is None:
+            found = Fire(session=self.session, agent=agent, event=event, hook=hook,
+                         tool_use_id=tool_use_id, when=when, index=index)
+            self.fires[key] = found
+        if found.index < 0 or 0 <= index < found.index:
+            found.index, found.when = index, when
+        return found
+
+    def read(self, path: Path) -> None:
+        try:
+            handle = path.open(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        with handle:
+            for line in handle:
+                index = self.next_index
+                self.next_index += 1
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                kind = record.get("type")
+                if kind == "attachment":
+                    self._attachment(record, index)
+                elif kind == "system":
+                    if record.get("subtype") == "stop_hook_summary":
+                        self._summary(record, index)
+                    elif record.get("subtype") == "informational":
+                        self._informational(record)
+                elif kind == "assistant":
+                    self.marks.append((index, "assistant"))
+                elif kind == "user":
+                    self._user(record, index)
+
+    def _attachment(self, record: dict, index: int) -> None:
+        agent = record.get("agentId") or "main"
+        attachment = record.get("attachment")
+        if not isinstance(attachment, dict):
+            return
+        kind = attachment.get("type")
+        if kind not in CHANNELS:
+            return
+        event = attachment.get("hookEvent") or ""
+        text = channel_text(kind, attachment)
+        hook = hook_of_command(attachment.get("command")) or hook_of_text(text)
+        if not hook and text.strip():
+            self.unattributed.append(text)
+        when = local_time(record.get("timestamp"))
+        tool_use_id = attachment.get("toolUseID") or ""
+        fire = self.fire(agent, event, hook, tool_use_id, when, index)
+        if tool_use_id:
+            self.attached_ids.add(tool_use_id)
+        channel = CHANNELS[kind]
+        if text.strip() or channel in ("permission", "cancelled"):
+            fire.channels[channel] = fire.channels.get(channel, 0) + len(text)
+        if isinstance(attachment.get("durationMs"), int):
+            fire.duration_ms = attachment["durationMs"]
+        if isinstance(attachment.get("exitCode"), int):
+            fire.exit_code = attachment["exitCode"]
+        if attachment.get("timedOut") is True:
+            fire.timed_out = True
+        if isinstance(attachment.get("decision"), str):
+            fire.decision = attachment["decision"]
+
+    def _summary(self, record: dict, index: int) -> None:
+        agent = record.get("agentId") or "main"
+        when = local_time(record.get("timestamp"))
+        infos = record.get("hookInfos")
+        for info in infos if isinstance(infos, list) else []:
+            if not isinstance(info, dict):
+                continue
+            fire = self.fire(agent, "Stop", hook_of_command(info.get("command")),
+                             record.get("toolUseID") or "", when, index)
+            if fire.duration_ms is None and isinstance(info.get("durationMs"), int):
+                fire.duration_ms = info["durationMs"]
+            fire.prevented = record.get("preventedContinuation")
+
+    def _informational(self, record: dict) -> None:
+        content = record.get("content")
+        if isinstance(content, str) and OVERRIDE_PHRASE in content:
+            self.overrides.append(content)
+
+    def _user(self, record: dict, index: int) -> None:
+        message = record.get("message")
+        content = (message or {}).get("content") if isinstance(message, dict) else None
+        if isinstance(content, list):
+            results = [b for b in content
+                       if isinstance(b, dict) and b.get("type") == "tool_result"]
+            kind = record.get("toolDenialKind")
+            for block in results:
+                tool_use_id = block.get("tool_use_id")
+                if isinstance(tool_use_id, str) and tool_use_id:
+                    self.results[tool_use_id] = (block.get("is_error") is True, bool(kind))
+                    if kind == "permission-rule":
+                        self._denial_fire(record, block, tool_use_id, index)
+            if results:
+                return
+        if isinstance(content, str) and content.startswith(STOP_FEEDBACK):
+            return
+        if record.get("isMeta") is True:
+            return
+        self.marks.append((index, "prompt"))
+
+    def _denial_fire(self, record: dict, block: dict, tool_use_id: str, index: int) -> None:
+        if tool_use_id in self.attached_ids:
+            return
+        text = block_text(block.get("content"))
+        hook = hook_of_text(text)
+        if not hook and text.strip():
+            self.unattributed.append(text)
+        agent = record.get("agentId") or "main"
+        when = local_time(record.get("timestamp"))
+        fire = self.fire(agent, "PreToolUse", hook, tool_use_id, when, index)
+        if text.strip():
+            fire.channels["agent"] = fire.channels.get("agent", 0) + len(text)
+
+    def turn_after(self, index: int) -> str:
+        for at, kind in self.marks:
+            if at > index:
+                return "continued" if kind == "assistant" else "ended"
+        return "-"
+
+    def outcome(self, fire: Fire) -> str:
+        if fire.event == "Stop":
+            return self.turn_after(fire.index) if fire.index >= 0 else "-"
+        if fire.event == "PermissionRequest":
+            return fire.decision or "-"
+        result = self.results.get(fire.tool_use_id)
+        if result is None:
+            return "-"
+        is_error, denied = result
+        return "denied" if denied else "ran-error" if is_error else "ran"
+
+
+def read_session(main: Path, main_only: bool) -> Transcript:
+    transcript = Transcript(main.stem)
+    transcript.read(main)
+    if not main_only:
+        for path in subagent_files(main):
+            transcript.read(path)
+    return transcript
+
+
+
+
+def row_time(row: dict) -> datetime | None:
+    try:
+        return datetime.fromisoformat(row["ts"]) if isinstance(row.get("ts"), str) else None
+    except ValueError:
+        return None
+
+
+def join(fires: list[Fire], rows: list[dict]) -> list[dict]:
+    by_id: dict[str, Fire] = {}
+    for fire in fires:
+        if fire.tool_use_id:
+            by_id.setdefault(fire.tool_use_id, fire)
+    spare = []
+    for row in rows:
+        fire = by_id.get(row.get("tool_use_id"))
+        if fire is not None and fire.row is None and _compatible(fire, row):
+            fire.row = row
+        else:
+            spare.append(row)
+
+    buckets: dict[str, list[tuple[datetime, int, dict]]] = {}
+    for n, row in enumerate(spare):
+        when = row_time(row)
+        if when is not None:
+            buckets.setdefault(row.get("event") or "", []).append((when, n, row))
+    for bucket in buckets.values():
+        bucket.sort(key=lambda entry: entry[:2])
+
+    pairs = []
+    for n, fire in enumerate(fires):
+        if fire.row is not None or fire.when is None:
+            continue
+        for gap, index, row in _candidates(fire, buckets):
+            pairs.append((int(gap), _affinity(fire, row), gap, n, index, fire, row))
+    taken_rows, taken_fires = set(), set()
+    for *_, fire_n, row_index, fire, row in sorted(pairs, key=lambda pair: pair[:5]):
+        if fire_n in taken_fires or row_index in taken_rows:
+            continue
+        fire.row = row
+        taken_fires.add(fire_n)
+        taken_rows.add(row_index)
+    return [row for n, row in enumerate(spare) if n not in taken_rows]
+
+
+def _affinity(fire: Fire, row: dict) -> tuple[int, int]:
+    spoke = any(fire.channels.get(c) for c in AGENT_CHANNELS | HUMAN_CHANNELS)
+    row_hook = canon(row.get("hook") or row.get("tool") or "")
+    return (0 if spoke == ((row.get("verdict") or "") in SPEAKING) else 1,
+            0 if fire.hook and fire.hook == row_hook else 1)
+
+
+def _candidates(fire: Fire, buckets: dict[str, list]) -> list[tuple]:
+    found = []
+    for event in dict.fromkeys((fire.event, "")):
+        found.extend(_walk(fire, buckets.get(event) or []))
+    return found
+
+
+def _walk(fire: Fire, bucket: list[tuple[datetime, int, dict]]) -> list[tuple]:
+    at = bisect.bisect_left(bucket, (fire.when,))
+    left, right, found = at - 1, at, []
+    while len(found) < CANDIDATES_PER_FIRE and (left >= 0 or right < len(bucket)):
+        take_left = right >= len(bucket) or (
+            left >= 0 and (fire.when - bucket[left][0]) <= (bucket[right][0] - fire.when))
+        when, index, row = bucket[left] if take_left else bucket[right]
+        left, right = (left - 1, right) if take_left else (left, right + 1)
+        gap = abs((fire.when - when).total_seconds())
+        if gap > MATCH_WINDOW_SECONDS:
+            break
+        if _compatible(fire, row):
+            found.append((gap, index, row))
+    return found
+
+
+def clock_skews(fires: list[Fire], spare: list[dict]) -> dict[tuple, int]:
+    joined = {(f.hook, f.event) for f in fires if f.row is not None}
+    unmatched: dict[tuple, list[datetime]] = {}
+    for fire in fires:
+        if fire.row is None and fire.when is not None:
+            if (fire.hook, fire.event) not in joined:
+                unmatched.setdefault((fire.hook, fire.event), []).append(fire.when)
+    for times in unmatched.values():
+        times.sort()
+    sampled: dict[tuple, list[datetime]] = {}
+    for row in spare:
+        key = (canon(row.get("hook") or row.get("tool") or ""), row.get("event") or "")
+        when = row_time(row)
+        if when is not None and key in unmatched and len(sampled.get(key, ())) < SKEW_SAMPLE:
+            sampled.setdefault(key, []).append(when)
+
+    skews = {}
+    for key, times in sampled.items():
+        best, hits = 0, 0
+        for hours in range(-SKEW_HOURS, SKEW_HOURS + 1):
+            if not hours:
+                continue
+            shift = timedelta(hours=hours)
+            aligned = sum(1 for when in times if _near(unmatched[key], when - shift))
+            if aligned > hits:
+                best, hits = hours, aligned
+        if hits >= max(SKEW_MINIMUM, len(times) // 2):
+            skews[key] = best
+    return skews
+
+
+def _near(times: list[datetime], when: datetime) -> bool:
+    at = bisect.bisect_left(times, when)
+    return any(abs((when - t).total_seconds()) <= MATCH_WINDOW_SECONDS
+               for t in times[max(0, at - 1):at + 1])
+
+
+def _compatible(fire: Fire, row: dict) -> bool:
+    if row.get("session_id") != fire.session:
+        return False
+    row_event = row.get("event") or ""
+    if row_event and row_event != fire.event:
+        return False
+    row_hook = canon(row.get("hook") or row.get("tool") or "")
+    return not fire.hook or not row_hook or fire.hook == row_hook
+
+
+
+
+def mismatch(fire: Fire, skews: dict[tuple, int] | None = None) -> str:
+    row, verdict = fire.row, (fire.row or {}).get("verdict") or ""
+    spoke = [c for c, chars in fire.channels.items() if chars]
+    if row is None:
+        if not spoke:
+            return ""
+        hours = (skews or {}).get((fire.hook, fire.event))
+        return (f"the harness recorded {'+'.join(sorted(spoke))} and no hook wrote a row "
+                "for it" + (f", though that hook's rows are stamped {hours:+d}h from its "
+                            "fires: two writers, two clocks" if hours else ""))
+    if verdict in ("deny", "block") and fire.event != "Stop" and fire.outcome == "ran":
+        return f"row says {verdict!r} and the tool ran"
+    if not fire.channels and fire.index < 0 and verdict in SPEAKING:
+        return f"row says {verdict!r} and the transcript holds no record of it"
+    released = row.get("released") or verdict
+    if fire.event == "Stop":
+        label = ENDS_TURN.get(released)
+        if label and fire.outcome == "continued":
+            return f"{label} continued the turn instead of ending it (#204)"
+        if released == "block" and fire.outcome == "ended":
+            return "block did not hold: the turn ended anyway"
+    return ""
+
+
+def group_unattributed(texts: list[str]) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    for text in texts:
+        prefix = text[:40]
+        if prefix not in counts:
+            order.append(prefix)
+        counts[prefix] = counts.get(prefix, 0) + 1
+    return sorted(((p, counts[p]) for p in order), key=lambda pc: (-pc[1], pc[0]))
+
+
+
+
+def cells(fire: Fire) -> list[str]:
+    channels = [c for c in CHANNEL_ORDER if c in fire.channels]
+    row = fire.row or {}
+    return [
+        fire.hook or canon(row.get("hook") or row.get("tool") or "") or "?",
+        fire.event or row.get("event") or "-",
+        fire.agent,
+        row.get("verdict") or "-",
+        "+".join(channels) or "-",
+        fire.audience,
+        "+".join(str(fire.channels[c]) for c in channels) or "-",
+        "-" if fire.duration_ms is None else str(fire.duration_ms),
+        "mismatch" if fire.why else
+        (fire.outcome + " timeout") if fire.timed_out else fire.outcome,
+    ]
+
+
+def render(fires: list[Fire]) -> list[str]:
+    header = ["hook", "event", "agent", "verdict", "channel", "audience", "chars", "ms",
+              "outcome"]
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    for fire in fires:
+        lines.append("| " + " | ".join(cells(fire)) + " |")
+    return lines
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    paths = transcripts(args)
+    if not paths:
+        print("No transcript selected. Try --last, --session <id>, --days <n>, or a path.")
+        return 0
+
+    log_dir = Path(args.log_dir) if args.log_dir else _hook.LOG_DIR
+    rows = [r for r in _harness.rows(log_dir, days=_hook.LOG_RETENTION_DAYS)
+            if (r.get("event") or "") != "bin"]
+    retained = datetime.now() - timedelta(days=_hook.LOG_RETENTION_DAYS)
+    by_session: dict[str, list[dict]] = {}
+    for row in rows:
+        by_session.setdefault(row.get("session_id") or "", []).append(row)
+
+    fires: list[Fire] = []
+    orphan_rows: list[dict] = []
+    unattributed: list[str] = []
+    skews: dict[tuple, int] = {}
+    for path in paths:
+        transcript = read_session(path, args.main_only)
+        found = sorted(transcript.fires.values(), key=lambda f: f.index)
+        for fire in found:
+            fire.outcome = transcript.outcome(fire)
+        spare = join(found, by_session.get(transcript.session, []))
+        skews.update(clock_skews(found, spare))
+        unattributed.extend(transcript.unattributed)
+        for row in spare:
+            orphan = Fire(session=transcript.session, agent="main",
+                          event=row.get("event") or "", hook=canon(row.get("hook") or ""),
+                          tool_use_id=row.get("tool_use_id") or "", when=row_time(row),
+                          row=row)
+            orphan.outcome = transcript.outcome(orphan)
+            orphan_rows.append(orphan)
+            found.append(orphan)
+        fires.extend(found)
+        for text in transcript.overrides:
+            print(f"override: {transcript.session}: {text}")
+
+    for fire in fires:
+        if fire.row is not None or fire.when is None or fire.when >= retained:
+            fire.why = mismatch(fire, skews)
+    mismatches = [(f, f.why) for f in fires if f.why]
+
+    if not args.check:
+        print(f"{len(fires)} fire(s) across {len(paths)} session(s), "
+              f"{len(fires) - len(orphan_rows)} with a harness record, "
+              f"{sum(1 for f in fires if f.row is not None)} with a run row\n")
+        for line in render(sorted(fires, key=lambda f: (f.session, f.index))):
+            print(line)
+        if mismatches:
+            print()
+    for fire, why in mismatches:
+        stamp = fire.when.isoformat(timespec="seconds") if fire.when else "?"
+        print(f"mismatch: {fire.session[:8]} {stamp} {fire.hook or '?'}/{fire.event}: {why}")
+    grouped = group_unattributed(unattributed)
+    if grouped:
+        print(f"\n{len(grouped)} unattributed text(s), by their first 40 characters:")
+        for prefix, count in grouped:
+            print(f"  {count:>4}  {prefix!r}")
+    if args.check:
+        print(f"\n{len(mismatches)} mismatch(es) over {len(fires)} fire(s) in "
+              f"{len(paths)} session(s).")
+        return 1 if mismatches else 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

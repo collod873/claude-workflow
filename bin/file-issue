@@ -1,0 +1,499 @@
+#!/usr/bin/env python3
+"""file-issue <kind> --title TITLE [--body-file PATH] [--test PATH ...] [-R owner/repo]
+file-issue ticketify <n> [--body-file PATH] [--replace] [--test PATH ...] [-R owner/repo]
+
+Files a GitHub issue shaped and labelled for its **kind**: the one filing verb every producer
+(`/to-spec`, `/wayfinder`, `/standards-pass`, and any ad-hoc session) uses instead of freehand
+`gh issue create`. The author states what they know; they never pick a label themselves:
+
+  note      no shape requirement                                  no label
+  question  requires a `## Question` heading                      `fuzzy`
+  ticket    requires `## Acceptance criteria` (`- [ ]` items)      `ticket` (label created
+            and `## Files claimed`                                 if missing)
+  spec      requires `## Acceptance criteria` with exactly one     `prd` (label created
+            `- [ ]` item carrying a `check:` marker; title gets     if missing)
+            `PRD: ` prefixed once, if it doesn't already exist
+
+A kind is stated once, here, and it has to survive: `ticket` used to file with no label, so
+downstream nothing could ask what an issue *was* and `bin/close-ticket` sniffed the body
+instead, reading "no `## Acceptance criteria` heading" as "map or task ticket" and closing a
+ticket that carried a real commit on `No diff.` (#300, and `claude-workflow`'s #283). `ticketify`
+writes the same label for the same reason: it is the other route an issue becomes a ticket.
+
+Shape and label are never guessed here: `bin/ticket_shape.py`'s `validate(kind, body)` is the
+one place that knows each kind's required shape, shared with `hooks/test_ticket_templates.py`
+so a producer's documented example and this tool can never silently drift apart.
+
+A body that doesn't fit its kind is refused: this prints what's missing to stderr and exits
+nonzero without ever calling `gh`. A `ticket` whose acceptance criteria carry no verifiable
+evidence (a `path:line`, a backtick-quoted command, or a file/artifact reference) is not
+refused; it's a warning on stderr, and filing still proceeds.
+
+`ticketify <n>` is the one exit from `fuzzy` (ADR-0024, #79): whichever session reached a
+decision (grilling, `/wayfinder`, or a bare conversation) pipes the criteria and file claim
+(a `## Acceptance criteria` / `## Files claimed` block, on stdin or via `--body-file`, in the
+same shape `ticket_shape.validate("ticket", ...)` already enforces) into this verb rather than
+authoring the sections into the issue by hand. It appends the two canonical headings, lifts
+`fuzzy` if the issue carries it, and intersects the new claim against every other open issue's
+`## Files claimed` to wire native `blockedBy` edges (ADR-0007): lower issue number blocks
+higher, regardless of which side is being ticketified. A body that already has
+`## Acceptance criteria` is refused unless `--replace` is given, which substitutes the two
+sections instead of appending a second copy, and, on an issue with an assignee, also posts a
+comment noting the criteria were revised after work started. A claim that excludes nothing real
+(`**`, or the like) is refused with the canonical degenerate-claim message (ADR-0007).
+
+`gh` is resolved by `gh_support.gh_bin()` (#102): `AGENT_SKILLS_GH` when set (tests point it
+at `hooks/stub_gh.py` so no test here ever calls GitHub for real), else the shared ADR-0005
+search order, else PATH.
+
+`--test <path>` (repeatable, `ticket` and `ticketify` only) hands the filing session's own
+acceptance test over instead of leaving it for lane 04's acceptance author to write cold,
+minutes later, from the ticket text alone. Every criterion index `1..count` (`## Acceptance
+criteria`'s own `- [ ]` count) must have a `(test|it).fails("#?.<index>: <claim>", ...)` title
+somewhere in the combined `--test` files, `#?` being the placeholder used because the issue has
+no number yet; a missing index, an index beyond `count`, or a `#?` anywhere else refuses filing
+before anything is created. On success, `#?.` is rewritten to `#<n>.` in each test file, which is
+then `git add`ed, committed (a message naming why: authored before the work, green under
+`test.fails` until `#<n>` lands), and pushed on the current branch. A commit or push failure
+prints the git output, then states plainly that the issue exists as `#<n>`, that the test files
+are rewritten and staged/committed locally, and that the pipeline routes to the acceptance author
+until they reach the default branch by hand. List the stub subject file too: a test that
+imports a subject stubbed to throw `#N: not built` fails to import if only the test itself is
+staged, so pass every file the test needs alongside it, not just the one carrying `#?.` titles.
+"""
+import argparse
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gh_support
+try:
+    import run_log
+except ImportError:
+    run_log = None
+import ticket_shape
+
+KIND_LABELS = {
+    "note": None,
+    "question": "fuzzy",
+    "ticket": "ticket",
+    "spec": "prd",
+}
+
+CREATED_LABELS = {
+    "prd": ("5319e7", "A spec issue, filed by file-issue spec"),
+    "ticket": ("0e8a16", "A ticket: acceptance criteria and a file claim, filed by file-issue ticket"),
+}
+
+SPEC_TITLE_PREFIX = "PRD: "
+
+QUESTION_TICKETIFY_MARKER = "file-issue ticketify"
+QUESTION_TICKETIFY_LINE = (
+    "Run `file-issue ticketify <n>` once this is decided, to write its acceptance criteria "
+    "and rejoin the pipeline."
+)
+
+
+def ensure_question_exit_line(body: str) -> str:
+    if QUESTION_TICKETIFY_MARKER in body:
+        return body
+    sep = "" if body.endswith("\n\n") or not body else ("\n" if body.endswith("\n") else "\n\n")
+    return f"{body}{sep}{QUESTION_TICKETIFY_LINE}\n"
+
+
+
+TEST_TITLE_RE = re.compile(r"""\b(?:test|it)\.fails\(\s*["'`]#\?\.(\d+):""")
+
+
+class TestHandoffError(Exception):
+    pass
+
+
+def check_test_handoff(paths: list[str], criteria_count: int) -> None:
+    missing_paths = [p for p in paths if not Path(p).exists()]
+    if missing_paths:
+        raise TestHandoffError("--test path(s) not found: " + ", ".join(missing_paths))
+
+    combined = "\n".join(Path(p).read_text() for p in paths)
+    matches = list(TEST_TITLE_RE.finditer(combined))
+    indices = {int(m.group(1)) for m in matches}
+
+    missing = sorted(i for i in range(1, criteria_count + 1) if i not in indices)
+    if missing:
+        raise TestHandoffError(
+            "--test file(s) carry no (test|it).fails(\"#?.<i>: ...\") title for "
+            f"acceptance criterion index(es) {missing} (of {criteria_count} criteria)"
+        )
+
+    beyond = sorted(i for i in indices if i > criteria_count)
+    if beyond:
+        raise TestHandoffError(
+            f"--test file(s) name '#?.<i>:' for index(es) {beyond}, beyond this ticket's "
+            f"{criteria_count} acceptance criteria"
+        )
+
+    if len(matches) != combined.count("#?"):
+        raise TestHandoffError(
+            "'#?' appears in a --test file outside a well-formed "
+            "(test|it).fails(\"#?.<i>: ...\") title"
+        )
+
+
+def rewrite_test_placeholders(paths: list[str], n: int) -> None:
+    for p in paths:
+        path = Path(p)
+        path.write_text(path.read_text().replace("#?.", f"#{n}."))
+
+
+def _test_handoff_commit_message(n: int) -> str:
+    return (
+        f"Test for #{n} authored while filing, not by lane 04's acceptance author "
+        "minutes later with no context: green under test.fails until it lands, "
+        "so the implementer runs against it instead of waiting."
+    )
+
+
+def commit_test_handoff(paths: list[str], n: int) -> tuple[bool, str]:
+    for step in (
+        ["git", "add", *paths],
+        ["git", "commit", "-m", _test_handoff_commit_message(n)],
+        ["git", "push", "origin", "HEAD"],
+    ):
+        result = subprocess.run(step, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, result.stdout + result.stderr
+    return True, ""
+
+
+def print_test_handoff_failure(n: int, output: str) -> None:
+    print(output, file=sys.stderr)
+    print(
+        f"error: git failed handing #{n} its test off. The issue exists as #{n}; the "
+        "test files are rewritten and staged/committed locally. Fix the failure above, "
+        "then push them yourself so the ticket's own test reaches the default branch -- "
+        "until it does, the pipeline routes this ticket to the acceptance author instead "
+        "of using yours.",
+        file=sys.stderr,
+    )
+
+
+NO_TEST_HANDOFF_HINT = (
+    "hint: no acceptance test handed over; lane 04 will author one from this ticket's "
+    "text once it's picked up. --test hands your own over instead, skipping that wait."
+)
+
+
+def no_test_handoff_hint_applies() -> bool:
+    return (ticket_shape.caller_repo_root() / ".Workflow").is_dir()
+
+
+def resolve_gh() -> str:
+    found = gh_support.gh_bin()
+    if not found:
+        print(
+            "error: gh not found (set AGENT_SKILLS_GH to point at a gh binary)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return found
+
+
+def run_gh(gh, args: list[str]) -> str:
+    try:
+        return gh_support.run_gh(gh, *args)
+    except gh_support.GhError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def ensure_label_exists(gh, name: str) -> None:
+    if name not in CREATED_LABELS:
+        return
+    color, description = CREATED_LABELS[name]
+    run_gh(gh, [
+        "label", "create", name,
+        "--color", color,
+        "--description", description,
+        "--force",
+    ])
+
+
+def create_issue(gh, title: str, body: str, label: str | None) -> str:
+    args = ["issue", "create", "--title", title, "--body", body]
+    if label:
+        args += ["--label", label]
+    return run_gh(gh, args)
+
+
+
+REPLACE_COMMENT = (
+    "The acceptance criteria on this issue were revised after work started "
+    "(`file-issue ticketify --replace`); re-check them against what's already in flight."
+)
+
+
+def fetch_open_issues(gh) -> list[dict]:
+    args = [
+        "api", "repos/{owner}/{repo}/issues", "--method", "GET",
+        "-f", "state=open", "-f", "per_page=100",
+    ]
+    out = run_gh(gh, args)
+    try:
+        data = json.loads(out) if out.strip() else []
+    except json.JSONDecodeError:
+        data = []
+    if isinstance(data, dict):
+        data = [data]
+    return [d for d in data if isinstance(d, dict) and "pull_request" not in d]
+
+
+def edit_issue_body(gh, n: int, body: str, remove_fuzzy: bool, add_ticket: bool = False) -> None:
+    fh = tempfile.NamedTemporaryFile(
+        "w", suffix=".md", prefix=f"file-issue-ticketify-{n}-", delete=False
+    )
+    fh.write(body)
+    fh.close()
+    args = ["issue", "edit", str(n), "--body-file", fh.name]
+    if remove_fuzzy:
+        args += ["--remove-label", "fuzzy"]
+    if add_ticket:
+        args += ["--add-label", "ticket"]
+    run_gh(gh, args)
+
+
+def comment_issue(gh, n: int, text: str) -> None:
+    run_gh(gh, ["issue", "comment", str(n), "--body", text])
+
+
+def wire_blocked_by(gh, blocked_n: int, blocker_id) -> None:
+    run_gh(gh, [
+        "api", "-X", "POST",
+        f"repos/{{owner}}/{{repo}}/issues/{blocked_n}/dependencies/blocked_by",
+        "-F", f"issue_id={blocker_id}",
+    ])
+
+
+def _append_section(body: str, addition: str) -> str:
+    base = body.rstrip("\n")
+    addition = addition.strip("\n")
+    if not base:
+        return addition + "\n"
+    return f"{base}\n\n{addition}\n"
+
+
+def run_ticketify(args) -> int:
+    ROW["issue"] = args.n
+    supplied = Path(args.body_file).read_text() if args.body_file else sys.stdin.read()
+
+    try:
+        warnings = ticket_shape.validate("ticket", supplied)
+    except ticket_shape.ValidationError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+
+    claim = ticket_shape.claimed_paths(supplied)
+    if ticket_shape.is_degenerate_claim(claim):
+        print(
+            f'error: files claim excludes nothing: "{ticket_shape.DEGENERATE_CLAIM_MESSAGE}"',
+            file=sys.stderr,
+        )
+        return 1
+
+    test_paths = args.test or []
+    if test_paths:
+        try:
+            check_test_handoff(test_paths, len(ticket_shape.criteria_blocks(supplied) or []))
+        except TestHandoffError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+
+    gh_path = resolve_gh()
+    gh = gh_support.bind_gh(gh_path, args.repo)
+    issues = fetch_open_issues(gh)
+    target = next((i for i in issues if i.get("number") == args.n), None)
+    if target is None:
+        print(f"error: issue #{args.n} not found among open issues", file=sys.stderr)
+        return 1
+
+    current_body = target.get("body") or ""
+    had_criteria = ticket_shape.acceptance_criteria_present(current_body)
+
+    if had_criteria and not args.replace:
+        print(
+            f"error: issue #{args.n} already has '## Acceptance criteria'; pass "
+            "--replace to substitute it",
+            file=sys.stderr,
+        )
+        return 1
+
+    base_body = current_body
+    if had_criteria:
+        base_body = ticket_shape.strip_section(base_body, ticket_shape.CRITERIA_HEADING_RE)
+        base_body = ticket_shape.strip_section(base_body, ticket_shape.FILES_CLAIMED_HEADING_RE)
+
+    new_body = _append_section(base_body, supplied)
+
+    label_names = {lbl.get("name") for lbl in target.get("labels", []) if isinstance(lbl, dict)}
+    remove_fuzzy = "fuzzy" in label_names
+    add_ticket = "ticket" not in label_names
+    if add_ticket:
+        ensure_label_exists(gh, "ticket")
+
+    edit_issue_body(gh, args.n, new_body, remove_fuzzy, add_ticket)
+
+    if had_criteria and args.replace and target.get("assignees"):
+        comment_issue(gh, args.n, REPLACE_COMMENT)
+
+    target_id = target.get("id")
+    for other in issues:
+        other_n = other.get("number")
+        if other_n is None or other_n == args.n:
+            continue
+        other_claim = ticket_shape.claimed_paths(other.get("body") or "")
+        if not other_claim or not ticket_shape.claims_collide(claim, other_claim):
+            continue
+        if other_n > args.n:
+            wire_blocked_by(gh, other_n, target_id)
+        else:
+            wire_blocked_by(gh, args.n, other.get("id"))
+
+    if test_paths:
+        rewrite_test_placeholders(test_paths, args.n)
+        ok, output = commit_test_handoff(test_paths, args.n)
+        if not ok:
+            print_test_handoff_failure(args.n, output)
+            return 1
+
+    return 0
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="file-issue", description=__doc__,
+                                      formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    for kind in sorted(KIND_LABELS):
+        kp = sub.add_parser(kind)
+        kp.add_argument("--title", required=True)
+        kp.add_argument("--body-file")
+        kp.add_argument("-R", "--repo")
+        if kind == "ticket":
+            kp.add_argument(
+                "--test", action="append", default=[],
+                help="path to an acceptance-test file titled '#?.<i>: <claim>' per "
+                     "criterion (repeatable); list the stub subject file too",
+            )
+
+    tp = sub.add_parser("ticketify")
+    tp.add_argument("n", type=int)
+    tp.add_argument("--body-file")
+    tp.add_argument("--replace", action="store_true")
+    tp.add_argument(
+        "--test", action="append", default=[],
+        help="path to an acceptance-test file titled '#?.<i>: <claim>' per criterion "
+             "(repeatable); list the stub subject file too",
+    )
+    tp.add_argument("-R", "--repo")
+
+    return parser.parse_args(argv)
+
+
+ROW: dict = {}
+
+
+def main(argv=None) -> int:
+    ROW.clear()
+    try:
+        code = run(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+    if run_log is not None:
+        run_log.append_log("filed" if code == 0 else "refused", **ROW)
+    return code
+
+
+def run(argv=None) -> int:
+    args = parse_args(argv)
+    ROW["kind"] = args.command
+
+    if args.command == "ticketify":
+        return run_ticketify(args)
+
+    kind = args.command
+    body = Path(args.body_file).read_text() if args.body_file else ""
+
+    try:
+        warnings = ticket_shape.validate(kind, body)
+    except ticket_shape.ValidationError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+
+    test_paths = getattr(args, "test", None) or []
+    if test_paths:
+        try:
+            check_test_handoff(test_paths, len(ticket_shape.criteria_blocks(body) or []))
+        except TestHandoffError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+
+    gh_path = resolve_gh()
+    gh = gh_support.bind_gh(gh_path, args.repo)
+
+    if kind == "question":
+        body = ensure_question_exit_line(body)
+
+    title = args.title
+    if kind == "spec":
+        if not title.startswith(SPEC_TITLE_PREFIX):
+            title = f"{SPEC_TITLE_PREFIX}{title}"
+
+    label = KIND_LABELS[kind]
+    if label:
+        ensure_label_exists(gh, label)
+    out = create_issue(gh, title, body, label)
+    tail = out.strip().rsplit("/", 1)[-1]
+    n = int(tail) if tail.isdigit() else None
+    ROW["issue"] = n
+
+    if kind != "ticket":
+        sys.stdout.write(out)
+        return 0
+
+    if not test_paths:
+        if no_test_handoff_hint_applies():
+            print(NO_TEST_HANDOFF_HINT, file=sys.stderr)
+        sys.stdout.write(out)
+        return 0
+
+    if n is None:
+        print(
+            "error: issue created, but its number could not be read from gh's own output "
+            f"({out.strip()!r}), so the #?. placeholders were not rewritten and nothing "
+            "was committed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    rewrite_test_placeholders(test_paths, n)
+    if "#?." in body:
+        edit_issue_body(gh, n, body.replace("#?.", f"#{n}."), remove_fuzzy=False)
+    ok, output = commit_test_handoff(test_paths, n)
+    if not ok:
+        print_test_handoff_failure(n, output)
+        return 1
+
+    sys.stdout.write(out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

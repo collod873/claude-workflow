@@ -183,7 +183,7 @@ const MIGRATION_NO_POST_STATE_WARNING =
   "artifact existing: a test passing, or a path this ticket already claims. A migration " +
   "ticket closes on the migration having run: add a criterion asserting the post-state of " +
   "what is being migrated, checkable against the real target rather than a fixture the " +
-  "ticket's own test builds (ADR-0076 in collod873/claude-workflow, #134)";
+  "ticket's own test builds (claude-workflow/ADR-0076, #134)";
 
 function evidenceTokens(text: string): string[] {
   const tokens: string[] = [];
