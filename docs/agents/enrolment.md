@@ -13,7 +13,7 @@ whole enumeration; no file on either side names a target repository.
 
 ## What an enrolled repository receives
 
-Four writes, in the same pass, under the same `ENROL_PAT`, each derived from this repository's own
+Five writes, in the same pass, under the same `ENROL_PAT`, each derived from this repository's own
 state rather than enumerated anywhere:
 
 1. **The caller stubs.** Every `*-caller.yml` under this repository's `.github/workflows`: a
@@ -51,6 +51,17 @@ state rather than enumerated anywhere:
    cannot be read back once written, so this write is unconditional: it lands on every pass, and the
    report says written, never changed.
 
+5. **Seeded docs, as pointers rather than copies.** `docs/agents/ticket-format.md`,
+   `pipeline-labels.md`, `issue-tracker.md` and `spec-format.md` are each written under a thousand
+   bytes, naming this repository's own copy and the workstation clone's path
+   (`~/.agents/workflow/docs/agents/`); a target whose copy is already a matching pointer is left
+   alone. A target already carrying one of these as a full copy has it reduced to the pointer on
+   its next pass, the same way a stub drift is corrected: read, compare, write only what differs.
+   The target's own `CLAUDE.md` gets one pointer line under an `## Agent skills` heading, added
+   once and left alone once present; a `CLAUDE.md` the target does not carry at all is never
+   created. This write is attempted independently of the other four and a failure in it never
+   withholds them.
+
 ## What an enrolled repository owes its own test runner
 
 That runner is vitest, and the target carries its own config file for it
@@ -85,9 +96,9 @@ target opts into by seeding one itself.
 
 ## Failure isolation
 
-Each of the four writes is attempted independently, per repository. A repository whose label sync
+Each of the five writes is attempted independently, per repository. A repository whose label sync
 fails is still worth the ADR-0093 setting and the secrets; a repository with no commit yet to build a
-stub commit on is still worth all three of the others, since none of them touches git history. A
+stub commit on is still worth all the others that do not need one. A
 failure anywhere is reported against that repository and the pass continues over the rest of the
 topic, but the run still exits non-zero, because the estate is now inconsistent on that one axis and
 the run's own conclusion is the only thing that can say so.

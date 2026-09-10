@@ -718,18 +718,19 @@ def run_cases(tmp):
                           env_extra=stub_env(body=issue_body(2), comments=[]), home=home)
         return parse_stdout_json(result.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
 
-    vendored = make_repo(tmp / "repo-vendored", ship_gate=False)
-    (vendored / "bin").mkdir()
-    (vendored / "bin" / "close-ticket").write_text("#!/bin/sh\n")
-    reason21h = stub_case("vendored", vendored)
-    check("stub: a checkout carrying bin/close-ticket is handed the repo-relative path",
+    other = make_repo(tmp / "repo-other", ship_gate=False)
+    reason21h = stub_case("other", other)
+    check("stub: the tool is resolved beside the hook's own file, not the target checkout",
           "bin/close-ticket 55 <base>..<head>" in reason21h
           and "~/.agents" not in reason21h, reason21h)
 
-    bare = make_repo(tmp / "repo-bare", ship_gate=False)
-    reason21i = stub_case("bare", bare)
-    check("stub: a checkout carrying none is handed the skills-repo path it can actually run",
-          "~/.agents/skills/bin/close-ticket 55 <base>..<head>" in reason21i, reason21i)
+    close_gate.LOCAL_CLOSE_TICKET = tmp / "no-such-close-ticket"
+    try:
+        fallback_stub = close_gate.close_ticket_stub(55, str(other), None)
+    finally:
+        close_gate.LOCAL_CLOSE_TICKET = CLOSE_TICKET
+    check("stub: falls back to ~/bin/close-ticket when the local file cannot be found",
+          fallback_stub.startswith("~/bin/close-ticket 55 <base>..<head>"), fallback_stub)
 
 
 def run_close_ticket_round_trip(tmp):

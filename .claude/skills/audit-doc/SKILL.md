@@ -24,8 +24,7 @@ The bar below is the whole standard. "audit X" and "be relentless about X" are t
    - every file, command, tool, skill, ticket, or ADR it names: read it, or run it with `--help`;
    - whatever enforces its rules: the validator, the test, the hook, the sibling skill that makes
      the same call one step later;
-   - `git log` on the file, and its `UPSTREAM.md` rows when it is vendored: the markers an edit
-     must keep;
+   - `git log` on the file;
    - every prior ruling on it: open tickets, `docs/research/`, ADRs that name it;
    - when the document is generated rather than written, whatever fills each interpolation
      point: the command whose output it inlines, the variable's source;

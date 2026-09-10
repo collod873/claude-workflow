@@ -468,7 +468,7 @@ function postToolUsePayload(sessionId: string, toolUseId: string): Record<string
   };
 }
 
-describe("gauntlet-hook writes the row agent-skills' own writer builds", () => {
+describe("gauntlet-hook writes the row this repo's own writer builds", () => {
   test("#382.2: gauntlet-hook writes through runRow(payload, verdict, extra) and appendLog(row), naming no hook of its own", () => {
     const dir = scratchDir("gauntlet-hook-run-row-signature");
     const payload = postToolUsePayload("run-row-signature", "toolu_signature");

@@ -34,7 +34,7 @@ done
 h=$(grep -rnE '(^|[^/[:alnum:]_.])bin/(file-issue|close-ticket|link-deps|publish-issue-graph)' \
       .claude/hooks/ --include='*.md' --include='*.py' --exclude='test_*.py' 2>/dev/null \
       | while IFS=: read -r f n rest; do
-          sed -n "$(( n > 1 ? n - 1 : 1 )),$(( n + 1 ))p" "$f" | grep -q 'vendor' || echo "$f:$n:$rest"
+          sed -n "$(( n > 1 ? n - 1 : 1 )),$(( n + 1 ))p" "$f" | grep -q 'is_file()' || echo "$f:$n:$rest"
         done)
 [ -n "$h" ] && hits="$hits$h"$'\n'
 rule "bare-bin-path" "$hits"
@@ -47,17 +47,6 @@ rule "duplicated-code/test-run-hook-subprocess" \
 
 rule "duplicated-code/subagent-dispatch-convention-restated" \
   "$(grep -rlE 'never by pasting|run_in_background: true|never nested|top of the session' --include='*.md' --exclude-dir=worktrees . | grep -v '^./docs/adr/')"
-
-hits=""
-for n in coding-standards ticket-format clone-gate pipeline-labels; do
-  seed=setup-matt-pocock-skills/$n.md
-  doc=docs/agents/$n.md
-  [ "$n" = coding-standards ] && doc=CODING_STANDARDS.md
-  [ -f "$seed" ] || continue
-  h=$(diff <(head -n "$(wc -l < "$seed")" "$doc") "$seed")
-  [ -n "$h" ] && hits="$hits$n:"$'\n'"$h"$'\n'
-done
-rule "duplicated-code/standards-seed-mirror" "$hits"
 
 rule "duplicated-code/deny-envelope" \
   "$(grep -l '\"permissionDecision\": \"deny\"' .claude/hooks/*.py 2>/dev/null | grep -v '^.claude/hooks/_hook.py$')"

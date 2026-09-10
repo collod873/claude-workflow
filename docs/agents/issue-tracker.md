@@ -36,15 +36,16 @@ tracker belongs to **the code under work**, and the machinery's fix would not la
 Route by what broke, not by which repo the session happens to be in:
 
 - A defect in the code under work goes to that project's tracker, by the conventions above.
-- A defect in the machinery goes to `collod873/agent-skills`, named explicitly:
-  `~/bin/file-issue ticket -R collod873/agent-skills --title "..." --body-file <path>`. Omitting
+- A defect in the machinery goes to `collod873/claude-workflow`, named explicitly:
+  `~/bin/file-issue ticket -R collod873/claude-workflow --title "..." --body-file <path>`. Omitting
   `-R` here is the same failure the bullet above warns about, one layer down: the issue silently
   lands in whichever tracker the session is standing in, never the machinery's.
 
-The distinction bites hardest from inside this repo, because this repo is *both*. Its lanes, hooks
-and `bin/` verbs are the code under work and belong here. The skills those lanes invoke are seeded
-from `collod873/agent-skills` and belong there, so a fix filed here is a fix the next `bin/re-seed`
-overwrites.
+Working inside `collod873/claude-workflow` itself collapses the distinction: its lanes, hooks,
+pipeline skills and `bin/` verbs are both the machinery and the code under work, so a defect in
+either files here with no `-R` needed. Its working checkout is
+`/home/collin/Claude Projects/Workflow`; on the workstation the same tree runs from a dedicated
+clone at `~/.agents/workflow`, pulled fast-forward and never edited in place.
 
 ## Numbers vs IDs
 

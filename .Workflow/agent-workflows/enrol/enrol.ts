@@ -7,6 +7,7 @@ import { execGh, type GhExec } from "../shared/gh.ts";
 import { errorMessage, reason } from "../shared/reason.ts";
 import { labelPlan, type Label } from "./labels.ts";
 import { derivedSecretNames } from "./secrets.ts";
+import { SEEDED_DOC_NAMES, pointerDoc, pointerDocPath, withAgentSkillsPointer } from "./seeded-docs.ts";
 import {
   planFor,
   planIsEmpty,
@@ -47,6 +48,8 @@ export interface RepositoryOutcome {
   settingFailure?: string;
   secretsWritten?: string[];
   secretsFailure?: string;
+  docsWritten?: string[];
+  docsFailure?: string;
 }
 
 export interface EnrolOptions {
@@ -108,19 +111,29 @@ function remoteStubs(gh: GhExec, repository: string, branch: string): RemoteFile
   return RemoteFileSchema.array().parse(JSON.parse(raw));
 }
 
-function createBlob(gh: GhExec, repository: string, stub: Stub): string {
+function createBlob(gh: GhExec, repository: string, content: string): string {
   return gh([
     "api",
     "--method",
     "POST",
     `repos/${repository}/git/blobs`,
     "-f",
-    `content=${Buffer.from(stub.content, "utf8").toString("base64")}`,
+    `content=${Buffer.from(content, "utf8").toString("base64")}`,
     "-f",
     "encoding=base64",
     "--jq",
     ".sha",
   ]).trim();
+}
+
+function readFileMaybe(gh: GhExec, repository: string, path: string, branch: string): string | undefined {
+  try {
+    const raw = gh(["api", `repos/${repository}/contents/${path}?ref=${branch}`, "--jq", ".content"]).trim();
+    return Buffer.from(raw, "base64").toString("utf8");
+  } catch (err) {
+    if (errorMessage(err).includes(NOT_FOUND)) return undefined;
+    throw err;
+  }
 }
 
 function headCommit(gh: GhExec, repository: string, branch: string): string | undefined {
@@ -132,31 +145,22 @@ function headCommit(gh: GhExec, repository: string, branch: string): string | un
   }
 }
 
-function commitPlan(
+interface TreeEntry {
+  path: string;
+  mode: string;
+  type: "blob";
+  sha: string | null;
+}
+
+function commitTree(
   gh: GhExec,
   repository: string,
   branch: string,
   headSha: string,
-  plan: EnrolPlan,
+  tree: TreeEntry[],
   message: string,
 ): string {
   const baseTree = gh(["api", `repos/${repository}/git/commits/${headSha}`, "--jq", ".tree.sha"]).trim();
-
-  const tree = [
-    ...plan.writes.map((stub) => ({
-      path: `${WORKFLOWS_PATH}/${stub.name}`,
-      mode: FILE_MODE,
-      type: "blob",
-      sha: createBlob(gh, repository, stub),
-    })),
-    ...plan.deletes.map((file) => ({
-      path: `${WORKFLOWS_PATH}/${file.name}`,
-      mode: FILE_MODE,
-      type: "blob",
-      sha: null,
-    })),
-  ];
-
   const treeSha = postJson(gh, `repos/${repository}/git/trees`, { base_tree: baseTree, tree }, ".sha");
   const commitSha = postJson(
     gh,
@@ -166,6 +170,93 @@ function commitPlan(
   );
   gh(["api", "--method", "PATCH", `repos/${repository}/git/refs/heads/${branch}`, "-f", `sha=${commitSha}`]);
   return commitSha;
+}
+
+function commitPlan(
+  gh: GhExec,
+  repository: string,
+  branch: string,
+  headSha: string,
+  plan: EnrolPlan,
+  message: string,
+): string {
+  const tree: TreeEntry[] = [
+    ...plan.writes.map((stub) => ({
+      path: `${WORKFLOWS_PATH}/${stub.name}`,
+      mode: FILE_MODE,
+      type: "blob" as const,
+      sha: createBlob(gh, repository, stub.content),
+    })),
+    ...plan.deletes.map((file) => ({
+      path: `${WORKFLOWS_PATH}/${file.name}`,
+      mode: FILE_MODE,
+      type: "blob" as const,
+      sha: null,
+    })),
+  ];
+
+  return commitTree(gh, repository, branch, headSha, tree, message);
+}
+
+function commitFiles(
+  gh: GhExec,
+  repository: string,
+  branch: string,
+  headSha: string,
+  writes: Array<{ path: string; content: string }>,
+  message: string,
+): string {
+  const tree: TreeEntry[] = writes.map((write) => ({
+    path: write.path,
+    mode: FILE_MODE,
+    type: "blob" as const,
+    sha: createBlob(gh, repository, write.content),
+  }));
+
+  return commitTree(gh, repository, branch, headSha, tree, message);
+}
+
+function seededDocMessage(paths: string[], machineRepository: string): string {
+  return [
+    `Point ${paths.length} seeded doc(s) at ${machineRepository}`,
+    "",
+    "Written by the enrol lane, not by hand: these are pointers, not copies, naming this",
+    `repository's own file at ${machineRepository} and the workstation clone path.`,
+    "",
+    ...paths.map((path) => `- ${path}`),
+  ].join("\n");
+}
+
+function syncSeededDocs(
+  gh: GhExec,
+  repository: string,
+  machineRepository: string,
+): Pick<RepositoryOutcome, "docsWritten" | "docsFailure"> {
+  try {
+    const branch = gh(["api", `repos/${repository}`, "--jq", ".default_branch"]).trim();
+    const desired = SEEDED_DOC_NAMES.map((name) => ({
+      path: pointerDocPath(name),
+      content: pointerDoc(name, machineRepository),
+    }));
+
+    const changed = desired.filter((doc) => readFileMaybe(gh, repository, doc.path, branch) !== doc.content);
+
+    const currentClaudeMd = readFileMaybe(gh, repository, "CLAUDE.md", branch);
+    if (currentClaudeMd !== undefined) {
+      const desiredClaudeMd = withAgentSkillsPointer(currentClaudeMd, machineRepository);
+      if (desiredClaudeMd !== currentClaudeMd) changed.push({ path: "CLAUDE.md", content: desiredClaudeMd });
+    }
+
+    if (changed.length === 0) return { docsWritten: [] };
+
+    const headSha = headCommit(gh, repository, branch);
+    if (headSha === undefined) return { docsWritten: [] };
+
+    commitFiles(gh, repository, branch, headSha, changed, seededDocMessage(changed.map((c) => c.path), machineRepository));
+    return { docsWritten: changed.map((c) => c.path) };
+  } catch (err) {
+    return { docsFailure: reason(err) };
+  }
 }
 
 function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: string): string {
@@ -314,6 +405,7 @@ function enrolOne(
   const labels = attempt(() => syncLabels(gh, repository, ownLabels));
   const setting = attempt(() => setPullRequestApproval(gh, repository));
   const secrets = attempt(() => propagateSecrets(gh, repository, secretNames, options.secretValues));
+  const docs = syncSeededDocs(gh, repository, options.machineRepository);
 
   return {
     repository,
@@ -323,6 +415,7 @@ function enrolOne(
     settingFailure: setting.failure,
     secretsWritten: secrets.value,
     secretsFailure: secrets.failure,
+    ...docs,
   };
 }
 
@@ -382,6 +475,10 @@ export function describeOutcome(outcome: RepositoryOutcome): string {
     extra.push(`labels: ${outcome.labelsWritten.join(", ")}`);
   }
   if (outcome.settingFailure !== undefined) extra.push(`ADR-0093 setting FAILED, ${outcome.settingFailure}`);
+  if (outcome.docsFailure !== undefined) extra.push(`docs FAILED, ${outcome.docsFailure}`);
+  else if (outcome.docsWritten !== undefined && outcome.docsWritten.length > 0) {
+    extra.push(`docs pointed: ${outcome.docsWritten.join(", ")}`);
+  }
   if (outcome.secretsFailure !== undefined) extra.push(`secrets FAILED, ${outcome.secretsFailure}`);
   else if (outcome.secretsWritten !== undefined && outcome.secretsWritten.length > 0) {
     extra.push(`secrets written: ${outcome.secretsWritten.join(", ")}`);

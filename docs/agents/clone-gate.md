@@ -5,7 +5,7 @@ which detector it runs; it is that a passing run cannot mean "I read nothing."**
 
 This doc is the policy. The runner is per-repo and chosen by toolchain: a repo with a
 `package.json` runs jscpd through its own npm script; a repo without one runs
-`bin/clone-check`, the stdlib-only Python detector `setup-matt-pocock-skills` seeds. Either
+`bin/clone-check`, this repo's own stdlib-only Python detector. Either
 satisfies the six rules below, or it is not a gate, just a number nobody can act on.
 
 ## Why the rules are about coverage, not detection
