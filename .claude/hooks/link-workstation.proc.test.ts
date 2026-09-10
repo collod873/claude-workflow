@@ -33,7 +33,7 @@ function homeWith(settings: unknown): string {
   return home;
 }
 
-test.fails(
+test(
   "#417.1: link-workstation --settings --apply writes env.CLAUDE_WORKFLOW_ROOT equal to the clone root into ~/.claude/settings.json and leaves every other key untouched",
   () => {
     const root = cloneRoot();

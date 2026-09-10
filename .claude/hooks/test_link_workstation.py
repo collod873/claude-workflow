@@ -135,7 +135,7 @@ def main() -> None:
         check("a hook link pointing elsewhere is left exactly as it was",
               (home / ".claude" / "hooks" / "stop-gate.py").resolve() == elsewhere_target.resolve(), "")
 
-    print("\n## --settings rewrites only the hooks key")
+    print("\n## --settings rewrites the hooks key and the env key")
     roster = json.loads((REPO / ".claude" / "hooks" / "roster.json").read_text())
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
@@ -148,6 +148,7 @@ def main() -> None:
             },
             "permissions": {"allow": ["Bash(git *)"]},
             "model": "sonnet",
+            "env": {"EDITOR": "vim"},
         }
         settings_path = home / ".claude" / "settings.json"
         settings_path.write_text(json.dumps(original, indent=2))
@@ -168,6 +169,10 @@ def main() -> None:
         check("settings: unrelated top-level keys preserved",
               rewritten["permissions"] == original["permissions"]
               and rewritten["model"] == original["model"], rewritten)
+        check("settings: env.CLAUDE_WORKFLOW_ROOT names the clone root",
+              rewritten["env"]["CLAUDE_WORKFLOW_ROOT"] == str(REPO), rewritten.get("env"))
+        check("settings: a pre-existing env key is preserved beside it",
+              rewritten["env"]["EDITOR"] == "vim", rewritten.get("env"))
 
         backup_path = home / ".claude" / "settings.json.pre-dispatch"
         check("settings: a backup of the pre-dispatch original was written",
