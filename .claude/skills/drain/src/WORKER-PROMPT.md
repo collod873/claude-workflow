@@ -1,6 +1,6 @@
 # Worker prompt template
 
-Dispatch by **stub**, in the foreground (ADR-0026): the subagent's prompt is one line naming this
+Dispatch by **stub**, in the foreground (ADR-0168): the subagent's prompt is one line naming this
 file plus the `{{PLACEHOLDER}}` values, and the worker reads the template itself,
 
 ```

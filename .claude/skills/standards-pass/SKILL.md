@@ -1,6 +1,6 @@
 ---
 name: standards-pass
-description: Opens one issue (and writes nothing else), routing every recurring smell in the batch landed since the last pass to a drafted lint rule or a stated reason no rule can express it, citing the ADR or standard that already decides one where it exists, plus every `CODING_STANDARDS.md` entry a landed rule now mechanises to a proposed retirement. The issue is a ledger `/ratify` decides and the next pass reads, so declined candidates stay declined. Returns no verdict on any diff. Nothing dispatches it: run it, or `/standards`, when you want the standards of everything landed since the last pass written up (ADR-0029).
+description: Opens one issue (and writes nothing else), routing every recurring smell in the batch landed since the last pass to a drafted lint rule or a stated reason no rule can express it, citing the ADR or standard that already decides one where it exists, plus every `CODING_STANDARDS.md` entry a landed rule now mechanises to a proposed retirement. The issue is a ledger `/ratify` decides and the next pass reads, so declined candidates stay declined. Returns no verdict on any diff. Nothing dispatches it: run it, or `/standards`, when you want the standards of everything landed since the last pass written up.
 disable-model-invocation: true
 ---
 
@@ -12,9 +12,7 @@ to a drafted lint rule, a stated reason no rule can express it, or, for a `CODIN
 entry a landed rule now mechanises, a proposed retirement. The tracker is the only thing
 it changes: the working tree and branch are identical when it ends, and `CODING_STANDARDS.md` and
 the lint config are edited by `/ratify`'s ratification, never by this pass. It returns no
-verdict on any diff, and a clean pass is not evidence that any ticket may close; the why is in
-[ADR-0003](../docs/adr/0003-the-standards-axis-is-batch-authorship.md); the ledger shape below is
-ADR-0023.
+verdict on any diff, and a clean pass is not evidence that any ticket may close.
 
 ## 1. Find the scope and read the ledger
 

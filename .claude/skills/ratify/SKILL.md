@@ -12,9 +12,7 @@ questions the record had already answered: 82% of 72 candidates audited across t
 decided by an ADR, a `CODING_STANDARDS.md` entry, or a code fact. This skill re-verifies each
 candidate against HEAD and the record, writes the verdict itself, lands what's small, tickets what
 isn't, and never stops for the maintainer; five named shapes are flagged for review after the
-fact, not held before it. The why is
-[ADR-0025](../docs/adr/0025-ratification-is-automated-except-for-named-triggers.md) as amended by
-[ADR-0027](../docs/adr/0027-flagged-not-deferred.md).
+fact, not held before it.
 
 Local-only, like `standards-pass`.
 
@@ -25,7 +23,7 @@ in scope, since a repo can carry more than one open ledger at once (a predecesso
 isn't fully filled yet, plus the newest pass).
 
 Every `<slug>:` line with no verdict after it, across every open ledger, is a candidate to verify.
-A `deferred, needs-human: <question> (rec: <answer>)` line left by a run before ADR-0027 is also a
+A `deferred, needs-human: <question> (rec: <answer>)` line left by an older run is also a
 candidate: its recommendation is already the verdict; apply §3's flagged form to it without
 re-verifying.
 
@@ -34,7 +32,7 @@ re-verifying.
 Each ledger issue already carries the candidate's evidence and drafted routing from `standards-pass`
 (its `## Recurrences observed` and `## Routing` sections); this step checks that draft against the
 record, it doesn't re-derive it. Per candidate, dispatch a **fresh-context verifier**: the Agent
-tool, by stub, in the foreground (ADR-0026), since the verdict can't be written without its report.
+tool, by stub, in the foreground (ADR-0168), since the verdict can't be written without its report.
 Dispatch every candidate's verifier in parallel within one turn; wait for all of them before §3.
 If the harness runs them asynchronously anyway, their reports arrive as task notifications; wait
 for every one (or read the finished task's transcript) rather than ending the turn with verdicts
@@ -59,7 +57,7 @@ class:
   taking.
 - **Flagged**: forced or mechanical, *and* the candidate matches one of the
   [flag triggers](#flag-triggers) below. It is still decided this run, on the verifier's own
-  recommendation; the flag only changes how the line is written and where it's reported (ADR-0027).
+  recommendation; the flag only changes how the line is written and where it's reported.
   Read the trigger list against the candidate's specifics, don't pattern-match the smell name.
 
 **A retirement candidate** (`standards-pass`'s `retirement/<slug>` class) gets one check before it
@@ -151,5 +149,5 @@ only by editing this section:
 Report the ledgers touched, the verdict counts by class, and every **flagged** line with the
 trigger it matched and what was decided: the maintainer's reversal inbox, read after the fact. Name
 `/drain` always: it drains any spec this or a prior run filed, and ends there: it does not sweep
-its own landing (ADR-0029). Also name `/to-tickets <spec>` when §4 filed one this run, since
+its own landing. Also name `/to-tickets <spec>` when §4 filed one this run, since
 `/drain` only drains tickets that already exist.

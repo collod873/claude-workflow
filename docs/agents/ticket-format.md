@@ -7,8 +7,7 @@ Producers reference this doc rather than restate it; a restated copy is exactly 
 `/wayfinder`'s template drift out of sync with the parser it feeds.
 
 Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
-(`close-gate.py`). See
-ADR-0017, recorded in `collod873/agent-skills`, for why the two calls differ.
+(`close-gate.py`).
 
 ## The core, gate-parsed
 
@@ -20,7 +19,7 @@ second.
 ### `## Acceptance criteria`
 
 One `- [ ]` item per checkable claim about the finished work, written before the work starts. See
-`collod873/agent-skills`' `CONTEXT.md`, "Acceptance criterion" entry, for why. Each item must be verifiable
+this repo's `CONTEXT.md`, "Ticket" entry, for why. Each item must be verifiable
 by a fresh context that has not seen the diff: a `path:line`, a command's exit status, an artifact
 that exists. A `path:line` needs a `/` or `.` somewhere in the path (`src/router:12`,
 `f.py:1`); a bare word before the colon (`foo:12`) isn't shaped like a repo path and doesn't
@@ -64,8 +63,7 @@ recorded in `collod873/claude-workflow`.
 ### `## Files claimed`
 
 The repo-relative paths (globs permitted) this ticket expects to touch, biased coarse. See
-`CONTEXT.md`'s "Files claimed" entry and ADR-0007, both in `collod873/agent-skills`,
-for why the claim exists at all. A ticket that touches no files writes the sentinel, never an empty
+this repo's `CONTEXT.md`, "Ticket" entry, for why the claim exists at all. A ticket that touches no files writes the sentinel, never an empty
 or missing section:
 
 ```markdown
