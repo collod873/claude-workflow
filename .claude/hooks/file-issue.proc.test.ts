@@ -61,7 +61,7 @@ function labelsAppliedWhenFiling(claim: string, extraArgs: string[]): string[] {
   return [...labels];
 }
 
-test.fails(
+test(
   "#438.1: `file-issue ticket` adds `by-hand` alongside `ticket` when the claim is workstation or cross-repo, else no such label",
   () => {
     const workstation = labelsAppliedWhenFiling("~/.claude/settings.json", []);
