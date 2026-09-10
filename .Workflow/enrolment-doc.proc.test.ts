@@ -20,7 +20,7 @@ function names(pattern: string, flags: string[] = []): boolean {
   return spawnSync("grep", [...flags, "-q", "-e", pattern, enrolmentDoc()]).status === 0;
 }
 
-test.fails(
+test(
   "#417.2: docs/agents/enrolment.md names CLAUDE_WORKFLOW_ROOT as how an enrolled repository's hooks reach _hook.mjs and _hook.sh, and says a repository enrols only with a GitHub remote",
   () => {
     expect(names("CLAUDE_WORKFLOW_ROOT")).toBe(true);

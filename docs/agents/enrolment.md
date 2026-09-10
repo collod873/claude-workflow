@@ -62,6 +62,28 @@ state rather than enumerated anywhere:
    created. This write is attempted independently of the other four and a failure in it never
    withholds them.
 
+## What an enrolled repository's own hooks reach
+
+An enrolled repository's own hooks (Lumaria's UI guard, design-context loader, decision capture)
+need the run-row writers this repository ships at `.claude/hooks/lib/_hook.mjs` and `_hook.sh`, so
+that `hook-report` reads one row format across repositories. There is no sixth enrol write copying
+either file into a target: that would rebuild the copy-plus-sync ADR-0097 forbids one repository
+further out. Instead, one environment variable, `CLAUDE_WORKFLOW_ROOT`, is the whole contract: it
+names wherever the machine checkout is, and an enrolled repository's hooks import
+`$CLAUDE_WORKFLOW_ROOT/.claude/hooks/lib/_hook.mjs` and `$CLAUDE_WORKFLOW_ROOT/.claude/hooks/lib/_hook.sh`
+from there, carrying no copy of either.
+
+`bin/link-workstation --settings --apply` publishes the variable locally, naming the clone root,
+into `~/.claude/settings.json`'s `env` key, so every local session and every hook it spawns has it.
+A checkout an enrolled repository's own CI makes on a runner is that repository's own concern: its
+`ci.yml` checks the machine out at a path of its choosing and exports `CLAUDE_WORKFLOW_ROOT` before
+running its hook tests. The reusable lanes here already run Claude Code with the machine at the
+workspace root, so a target's project hooks are never a lane's concern, and the enrol lane writes
+no hook file into a target, now or later.
+
+Only a repository that can be enrolled needs any of this: a software repository with a GitHub remote.
+A folder with no remote runs under the global hooks only and is never enrolled.
+
 ## What an enrolled repository owes its own test runner
 
 That runner is vitest, and the target carries its own config file for it

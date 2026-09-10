@@ -126,10 +126,16 @@ def rewrite_settings(apply: bool) -> int:
     if notification is not None:
         new_hooks["Notification"] = notification
 
+    old_env = data.get("env")
+    new_env = dict(old_env) if isinstance(old_env, dict) else {}
+    new_env["CLAUDE_WORKFLOW_ROOT"] = str(REPO_ROOT)
+
     new_data = dict(data)
     new_data["hooks"] = new_hooks
+    new_data["env"] = new_env
 
     note(f"rewrite {settings_path}'s hooks key to one dispatcher entry per roster event")
+    note(f"rewrite {settings_path}'s env key to name CLAUDE_WORKFLOW_ROOT={REPO_ROOT}")
     if not apply:
         return 0
 
