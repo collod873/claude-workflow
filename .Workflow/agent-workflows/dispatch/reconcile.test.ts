@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
@@ -478,4 +478,44 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(outcome.action).toBe("dispatched");
     expect(rungOf(tracker)).toEqual(["ticket-ready"]);
   });
+});
+
+test.fails("#437.2: the to-build door never admits a `by-hand` issue and stands it down with its own comment, never adding needs-human", () => {
+  const BY_HAND_TICKET = 55;
+  const tracker = trackerWith({
+    open: [
+      {
+        number: BY_HAND_TICKET,
+        title: "Rewire this workstation",
+        body: HAND_WRITTEN_TICKET,
+        labels: [TO_BUILD_LABEL, "by-hand"],
+      },
+    ],
+  });
+
+  reconcileOver(tracker);
+
+  expect(tracker.dispatches).toEqual([]);
+
+  const standDown = tracker.comments.filter((comment) => comment.issue === BY_HAND_TICKET);
+  expect(standDown).toHaveLength(1);
+  expect(standDown[0].body).toContain("by-hand");
+  expect(standDown[0].body).not.toContain("to-build-refused:v1");
+
+  expect(tracker.labelsAdded.filter((label) => label.name === "needs-human")).toEqual([]);
+});
+
+test.fails("#437.3: a `by-hand` issue never reaches the dispatched set, even with every other precondition met", () => {
+  const tracker = trackerWith({
+    open: [
+      { number: 20, title: "Rewire this workstation", labels: ["by-hand"], blockedBy: [10] },
+      { number: 21, title: "An ordinary slice", blockedBy: [10] },
+    ],
+    closed: [{ number: 10, stateReason: "completed", merged: true }],
+  });
+
+  const outcome = reconcileOver(tracker);
+
+  expect(startedIssues(tracker)).toEqual([21]);
+  expect(outcome.dispatched).not.toContain(20);
 });
