@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -162,7 +163,7 @@ def main() -> None:
         for event in roster:
             commands = [h["command"] for group in rewritten["hooks"][event] for h in group["hooks"]]
             check(f"settings[{event}]: exactly one dispatcher command",
-                  commands == [f"python3 {REPO / '.claude' / 'hooks' / 'dispatch.py'} {event}"],
+                  commands == [f"python3 {shlex.quote(str(REPO / '.claude' / 'hooks' / 'dispatch.py'))} {event}"],
                   commands)
         check("settings: Notification preserved verbatim",
               rewritten["hooks"]["Notification"] == original["hooks"]["Notification"], rewritten)
