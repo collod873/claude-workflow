@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { expect, test } from "vitest";
 import { GH_REPO_SLUG, ghStubHarness, namesRepo, type GhCall } from "./gh-stub-harness";
 
-test.fails("#418.3: close-ticket -R is unchanged by the shared fix", () => {
+test("#418.3: close-ticket -R is unchanged by the shared fix", () => {
   const harness = ghStubHarness();
   const script = [
     "import sys",

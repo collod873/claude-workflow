@@ -36,7 +36,7 @@ function fileIssue(args: string[], opts: { body?: string; issues?: unknown; url?
   return { run, calls };
 }
 
-test.fails(
+test(
   "#418.1: file-issue ticketify <n> -R owner/repo completes: no gh api argv carries -R, and the repository still reaches every gh call",
   () => {
     const issues = [
@@ -78,7 +78,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#418.2: note, question, spec and ticket under -R still name the repository on every gh call",
   () => {
     const kinds: Array<{ args: string[]; body?: string }> = [

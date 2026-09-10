@@ -28,7 +28,9 @@ def bind_gh(gh_path: str, repo: str | None = None,
     def gh(*args, **kwargs):
         argv = [gh_path, *args]
         if repo:
-            argv += ["-R", repo]
+            env = dict(kwargs.pop("env", None) or os.environ)
+            env["GH_REPO"] = repo
+            kwargs["env"] = env
         kwargs.setdefault("timeout", timeout)
         return subprocess.run(argv, **kwargs)
     gh.timeout = timeout

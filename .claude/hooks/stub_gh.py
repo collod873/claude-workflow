@@ -10,7 +10,11 @@ mode = os.environ.get("STUB_MODE", "json")
 
 argv_log = os.environ.get("STUB_ARGV_LOG")
 if argv_log:
-    _hook.append_log("stub_gh", {"argv": sys.argv[1:], "cwd": os.getcwd()}, path=argv_log)
+    _hook.append_log(
+        "stub_gh",
+        {"argv": sys.argv[1:], "cwd": os.getcwd(), "GH_REPO": os.environ.get("GH_REPO")},
+        path=argv_log,
+    )
 
 if mode == "sleep":
     time.sleep(float(os.environ.get("STUB_SLEEP", "30")))

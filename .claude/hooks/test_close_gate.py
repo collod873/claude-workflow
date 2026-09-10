@@ -476,8 +476,7 @@ def run_cases(tmp):
         "repo-flag", CLOSE_CMD_HEREDOC.format(n=7, record=good).replace(
             "gh issue close 7", "gh issue close 7 -R other/repo"))
     check("-R: gh is run against the named repo",
-          bool(calls19a) and "-R" in calls19a[0]["argv"]
-          and "other/repo" in calls19a[0]["argv"], calls19a)
+          bool(calls19a) and calls19a[0]["GH_REPO"] == "other/repo", calls19a)
     check("-R: a valid record still allows", not is_denied(r19a), r19a.stdout)
     check("-R: the log row names the repo verified against",
           any(row.get("repo") == "other/repo" for row in gate_rows(home19a)), gate_rows(home19a))
@@ -487,14 +486,14 @@ def run_cases(tmp):
             "gh issue close 7", "gh issue close -R other/repo 7"))
     check("-R before the number: issue number still parses, repo still carried",
           bool(calls19b) and "7" in calls19b[0]["argv"]
-          and "other/repo" in calls19b[0]["argv"], calls19b)
+          and calls19b[0]["GH_REPO"] == "other/repo", calls19b)
     check("-R before the number: a valid record still allows", not is_denied(r19b), r19b.stdout)
 
     r19c, calls19c, _ = aim_case(
         "long-repo-flag", CLOSE_CMD_HEREDOC.format(n=7, record=good).replace(
             "gh issue close 7", "gh issue close 7 --repo=other/repo"))
     check("--repo=owner/repo: carried through the same way",
-          bool(calls19c) and "other/repo" in calls19c[0]["argv"], calls19c)
+          bool(calls19c) and calls19c[0]["GH_REPO"] == "other/repo", calls19c)
 
     elsewhere = tmp / "elsewhere"
     elsewhere.mkdir()
@@ -518,7 +517,7 @@ def run_cases(tmp):
         f"cd {elsewhere} && " + CLOSE_CMD_HEREDOC.format(n=7, record=good).replace(
             "gh issue close 7", "gh issue close 7 -R other/repo"))
     check("cd and -R together: -R is the fetch target",
-          bool(calls19f) and "other/repo" in calls19f[0]["argv"], calls19f)
+          bool(calls19f) and calls19f[0]["GH_REPO"] == "other/repo", calls19f)
 
     quoted_record = record("aaaa..bbbb", [
         "criterion 1 - MET: `cd /elsewhere && gh issue close 1 -R decoy/repo` exit 0."])
