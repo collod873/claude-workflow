@@ -70,6 +70,8 @@ def sibling_page(file_path: str) -> tuple[Path | None, Path | None]:
 
 def main():
     data, ok = _hook.read_payload()
+    if not _hook.enrolled(data.get("cwd")):
+        return
     file_path = _hook.edited_path(data["tool_input"]) if ok else ""
 
     source, page = sibling_page(file_path)

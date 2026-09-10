@@ -369,6 +369,8 @@ def main() -> None:
         return
 
     cwd = payload.get("cwd")
+    if not _hook.enrolled(cwd):
+        return
     tool_input = payload["tool_input"]
 
     command = tool_input.get("command")

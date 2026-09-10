@@ -40,6 +40,8 @@ def unchecked_count(data, ok):
 
 def main():
     data, ok = _hook.read_payload()
+    if not _hook.enrolled(data.get("cwd")):
+        return
     unchecked, checked = unchecked_count(data, ok)
 
     inform = unchecked is not None and 0 < unchecked <= MAX_UNCHECKED_FOR_TASK_LIST

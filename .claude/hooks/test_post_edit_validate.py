@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from _harness import check, finish
 HOOK = Path(__file__).with_name("post-edit-validate.py")
 ROWLOG = _harness.RowLog("post-edit-validate-log-")
 TMP = Path(tempfile.mkdtemp(prefix="post-edit-validate-fixture-"))
+subprocess.run(["git", "init", "-q", str(TMP)], capture_output=True)
+_harness.enroll(TMP)
 HAVE_NODE = shutil.which("node") is not None
 
 
@@ -19,11 +22,11 @@ def write(name, text):
     return p
 
 
-def payload(file_path):
+def payload(file_path, cwd=None):
     return json.dumps({
         "hook_event_name": "PostToolUse",
         "session_id": "sess-validate",
-        "cwd": "/home/collin/Projects/Demo",
+        "cwd": cwd or str(TMP),
         "tool_name": "Write",
         "tool_input": {"file_path": str(file_path)},
     }).encode()
@@ -104,8 +107,22 @@ def main():
     print("\n## Nothing to validate at all")
     grade("path that does not exist", payload(TMP / "gone.py"), "no-validator", ".py")
     grade("empty file_path", payload(""), "no-validator", "")
+
+    print("\n## Malformed stdin carries no cwd, so enrollment cannot be told and it stands down")
     for label, raw in _harness.MALFORMED_STDIN:
-        grade(f"malformed({label})", raw, "no-validator", "")
+        text, rows = drive(raw)
+        check(f"malformed({label}): stays quiet", text == "", f"text={text[:90]!r}")
+        check(f"malformed({label}): no row, cwd unknown means enrollment unknown", rows == [], rows)
+
+    print("\n## Stands down when unenrolled")
+    unenrolled = Path(tempfile.mkdtemp(prefix="post-edit-validate-unenrolled-"))
+    subprocess.run(["git", "init", "-q", str(unenrolled)], capture_output=True)
+    broken = unenrolled / "bad.py"
+    broken.write_text("def f(\n")
+    text, rows = drive(payload(broken, cwd=str(unenrolled)))
+    check("the same broken .py is silent in an unenrolled repo", text == "", f"text={text[:90]!r}")
+    check("an unenrolled repo writes no row", rows == [], rows)
+    shutil.rmtree(unenrolled, ignore_errors=True)
 
     print("\n## An unwritable log dir never changes the report")
     run = _harness.run_hook(HOOK, payload(write("bad2.py", "def f(\n")),

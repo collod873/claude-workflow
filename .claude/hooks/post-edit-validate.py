@@ -64,6 +64,8 @@ def validate(path):
 
 def main():
     data, ok = _hook.read_payload()
+    if not _hook.enrolled(data.get("cwd")):
+        return
     file_path = _hook.edited_path(data["tool_input"]) if ok else ""
     path = Path(file_path) if file_path else None
 

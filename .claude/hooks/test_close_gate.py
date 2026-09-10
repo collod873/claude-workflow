@@ -22,6 +22,10 @@ _spec = importlib.util.spec_from_file_location("close_gate", HOOK)
 close_gate = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(close_gate)
 
+ENROLLED_CWD = Path(tempfile.mkdtemp(prefix="close-gate-enrolled-"))
+subprocess.run(["git", "init", "-q", str(ENROLLED_CWD)], check=True, capture_output=True)
+_harness.enroll(ENROLLED_CWD)
+
 
 def run_hook(payload_bytes, env_extra=None, home=None, timeout=_harness.HOOK_TIMEOUT):
     env = dict(os.environ)
@@ -36,7 +40,7 @@ def run_hook(payload_bytes, env_extra=None, home=None, timeout=_harness.HOOK_TIM
 def payload(command, session_id="sess-1", cwd=None):
     return json.dumps({
         "session_id": session_id,
-        "cwd": cwd or "/tmp",
+        "cwd": cwd or str(ENROLLED_CWD),
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",
         "tool_input": {"command": command},
@@ -171,6 +175,7 @@ def run_cases(tmp):
     (home3b / ".claude").mkdir(parents=True)
     repo3b = tmp / "repo3b"
     subprocess.run(["git", "init", "-q", str(repo3b)], check=True, capture_output=True, text=True)
+    _harness.enroll(repo3b)
     env3b = stub_env(body=issue_body(2), comments=[])
     r3b = run_hook(payload(CLOSE_CMD.format(n=45), cwd=str(repo3b)), env_extra=env3b, home=home3b)
     check("no-record: denied (repo_toplevel case)", is_denied(r3b), r3b.stdout)
@@ -355,8 +360,13 @@ def run_cases(tmp):
         r = run_hook(raw, home=homeN)
         check(f"malformed({label}): exit 0", r.returncode == 0, f"rc={r.returncode}")
         check(f"malformed({label}): silent stdout", r.stdout == b"", repr(r.stdout))
-        check(f"malformed({label}): log row present, verdict=allow",
-              logged(homeN, "allow", "unparseable-stdin"), gate_rows(homeN))
+        if label == "empty-object":
+            check(f"malformed({label}): valid JSON but cwd-less, so enrollment "
+                  "cannot be told and it stands down with no row",
+                  gate_rows(homeN) == [], gate_rows(homeN))
+        else:
+            check(f"malformed({label}): log row present, verdict=allow",
+                  logged(homeN, "allow", "unparseable-stdin"), gate_rows(homeN))
 
     home11 = tmp / "home11"
     (home11 / ".claude").mkdir(parents=True)
@@ -451,7 +461,7 @@ def run_cases(tmp):
 
     good = record("aaaa..bbbb", ["criterion 1 - MET: `hooks/close-gate.py:1` proves it."])
 
-    def aim_case(tag, command, cwd="/tmp", mode="json"):
+    def aim_case(tag, command, cwd=None, mode="json"):
         home = tmp / f"home19-{tag}"
         (home / ".claude").mkdir(parents=True)
         argv_log = tmp / f"argv-{tag}.jsonl"
@@ -500,7 +510,7 @@ def run_cases(tmp):
         "cd-nonexistent",
         "cd /no/such/dir && " + CLOSE_CMD_HEREDOC.format(n=7, record=good))
     check("cd to a directory that does not exist: falls back to the payload cwd",
-          bool(calls19e) and Path(calls19e[0]["cwd"]).resolve() == Path("/tmp").resolve(),
+          bool(calls19e) and Path(calls19e[0]["cwd"]).resolve() == ENROLLED_CWD.resolve(),
           calls19e)
 
     r19f, calls19f, _ = aim_case(
@@ -517,7 +527,7 @@ def run_cases(tmp):
     check("quoted -R in the record: does not move the fetch target",
           bool(calls19g) and "decoy/repo" not in calls19g[0]["argv"], calls19g)
     check("quoted cd in the record: does not move the working directory",
-          bool(calls19g) and Path(calls19g[0]["cwd"]).resolve() == Path("/tmp").resolve(),
+          bool(calls19g) and Path(calls19g[0]["cwd"]).resolve() == ENROLLED_CWD.resolve(),
           calls19g)
 
     r19h, _, home19h = aim_case(
@@ -593,6 +603,7 @@ def run_cases(tmp):
         subprocess.run(["git", "-C", str(path), "remote", "add", "origin",
                         "https://github.com/collod873/claude-workflow.git"],
                        check=True, capture_output=True, text=True)
+        _harness.enroll(path)
         if ship_gate:
             hooks = path / ".claude" / "hooks"
             hooks.mkdir(parents=True)
@@ -649,13 +660,28 @@ def run_cases(tmp):
     check("repo-gate: the repo's own copy does not stand down for itself",
           is_denied(r21d), r21d.stdout)
 
+    unenrolled = tmp / "repo-unenrolled"
+    subprocess.run(["git", "init", "-q", str(unenrolled)], check=True, capture_output=True, text=True)
+    home21u = tmp / "home21-unenrolled"
+    (home21u / ".claude").mkdir(parents=True)
+    argv_log21u = tmp / "argv21-unenrolled.jsonl"
+    env21u = stub_env(body=issue_body(2), comments=[])
+    env21u["STUB_ARGV_LOG"] = str(argv_log21u)
+    r21u = run_hook(payload(CLOSE_CMD.format(n=55), cwd=str(unenrolled)),
+                    env_extra=env21u, home=home21u)
+    check("unenrolled: the same close-with-no-record command is silent",
+          r21u.returncode == 0 and r21u.stdout == b"", r21u.stdout)
+    check("unenrolled: no gh call is spent deciding to stand down",
+          not argv_log21u.exists(), argv_log21u)
+    check("unenrolled: no log row at all", gate_rows(home21u) == [], gate_rows(home21u))
+
     def reason_case(tag, command):
         home = tmp / f"home21b-{tag}"
         (home / ".claude").mkdir(parents=True)
         argv_log = tmp / f"argv21b-{tag}.jsonl"
         env = stub_env(body=issue_body(2), comments=[])
         env["STUB_ARGV_LOG"] = str(argv_log)
-        result = run_hook(payload(command, cwd="/tmp"), env_extra=env, home=home)
+        result = run_hook(payload(command), env_extra=env, home=home)
         calls = [json.loads(line) for line in
                  argv_log.read_text().splitlines()] if argv_log.exists() else []
         return result, calls, home

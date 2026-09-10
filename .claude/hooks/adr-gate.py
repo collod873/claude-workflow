@@ -55,6 +55,8 @@ def check(file_path: str) -> tuple[str, str]:
 
 def main():
     data, ok = _hook.read_payload()
+    if not _hook.enrolled(data.get("cwd")):
+        return
     file_path = data["tool_input"].get("file_path", "") if ok else ""
     guard, reason = check(file_path)
 
