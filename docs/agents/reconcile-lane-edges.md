@@ -172,7 +172,7 @@ criterion string, verbatim:
 ```
 
 Sent directly via `gh`, no split-job file-collection like lanes 02 and 03 use — this workflow is a
-single job holding `contents: write, issues: write, actions: read` throughout, so there's no separate
+single job holding `contents: write, issues: write, actions: read, pull-requests: read` throughout, so there's no separate
 model-spending job whose token needs protecting from write access.
 
 ### The ladder · `climbLadder()`, `dispatch/strikes.ts`

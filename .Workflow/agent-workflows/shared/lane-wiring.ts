@@ -577,11 +577,11 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         push: { branches: ["main"] },
         workflow_dispatch: true,
       },
-      permissions: { contents: "write", issues: "write", actions: "read" },
+      permissions: { contents: "write", issues: "write", actions: "read", "pull-requests": "read" },
       with: NAMES_VERIFY_CALLER,
     },
     inputs: VERIFY_FILE_INPUT,
-    permissions: { contents: "write", issues: "write", actions: "read" },
+    permissions: { contents: "write", issues: "write", actions: "read", "pull-requests": "read" },
     concurrency: "dispatch-reconcile",
     jobs: {
       reconcile: {
