@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -340,6 +341,23 @@ def check_edit_payload_readers():
               _hook.edited_path(junk) == "" and _hook.new_content(junk) == "", junk)
 
 
+def check_read_stdin_bytes():
+    class FakeStdin:
+        def __init__(self, data: bytes):
+            self.buffer = io.BytesIO(data)
+
+    saved = sys.stdin
+    try:
+        sys.stdin = FakeStdin(b'{"a": 1}')
+        check("read_stdin_bytes: returns the raw bytes on stdin, undecoded",
+              _hook.read_stdin_bytes() == b'{"a": 1}', "")
+        sys.stdin = FakeStdin(b"")
+        check("read_stdin_bytes: empty stdin is empty bytes, not an error",
+              _hook.read_stdin_bytes() == b"", "")
+    finally:
+        sys.stdin = saved
+
+
 def check_enrolled():
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td) / "repo"
@@ -420,6 +438,7 @@ def main():
     check_active_sessions()
     check_caller_stem_subprocess()
     check_quoted_spans()
+    check_read_stdin_bytes()
     check_read_payload()
     check_append_log()
     check_run_row()

@@ -1,0 +1,35 @@
+{
+  "PreToolUse": [
+    "clone-guard.py",
+    "credential-scan.py",
+    "adr-gate.py",
+    "validate-bash.py",
+    "close-gate.py"
+  ],
+  "PostToolUse": [
+    "checklist-reminder.py",
+    "post-edit-validate.py",
+    "md-html-refresh.py",
+    "circuit-breaker.py"
+  ],
+  "PostToolUseFailure": [
+    "circuit-breaker.py"
+  ],
+  "SessionStart": [
+    "clone-refresh.py",
+    "circuit-breaker.py"
+  ],
+  "Stop": [
+    "stop-fire-log.py",
+    "stop-gate.py"
+  ],
+  "StopFailure": [
+    "log-stop-failure.py"
+  ],
+  "PermissionRequest": [
+    "auto-approve-permissions.py"
+  ],
+  "SessionEnd": [
+    "session-capture.sh"
+  ]
+}

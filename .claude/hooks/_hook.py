@@ -42,9 +42,13 @@ def deny(msg: str) -> None:
 
 
 
+def read_stdin_bytes() -> bytes:
+    return sys.stdin.buffer.read()
+
+
 def read_payload() -> tuple[dict, bool]:
     try:
-        raw = sys.stdin.buffer.read().decode("utf-8")
+        raw = read_stdin_bytes().decode("utf-8")
         payload = json.loads(raw)
     except (OSError, ValueError):
         return {}, False
