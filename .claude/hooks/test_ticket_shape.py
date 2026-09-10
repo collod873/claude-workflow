@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -110,6 +111,44 @@ def test_classify_venue_workstation_paths():
           ticket_shape.classify_venue([ordinary]) is None)
 
 
+def test_check_marker_word_resolution():
+    print("validate('ticket', ...): a check: marker's first word must resolve on PATH or as "
+          "an executable file")
+
+    with tempfile.TemporaryDirectory(prefix="ticket-shape-home-") as home:
+        bin_dir = Path(home) / "bin"
+        bin_dir.mkdir()
+        hook_report = bin_dir / "hook-report"
+        hook_report.write_text("#!/bin/sh\n")
+        hook_report.chmod(0o755)
+
+        old_home = os.environ.get("HOME")
+        os.environ["HOME"] = home
+        try:
+            path_form_body = (
+                "## Acceptance criteria\n\n"
+                "- [ ] `hook-report` posts a summary - check: `~/bin/hook-report --flag`\n\n"
+                "## Files claimed\n\n- None, no files.\n"
+            )
+            warnings = ticket_shape.validate("ticket", path_form_body, repo_root=REPO)
+            check("a check: marker naming an executable ~/-path is accepted, no warning",
+                  warnings == [], warnings)
+        finally:
+            if old_home is None:
+                del os.environ["HOME"]
+            else:
+                os.environ["HOME"] = old_home
+
+    unresolved_word_body = (
+        "## Acceptance criteria\n\n"
+        "- [ ] the suite passes - check: `pytest tests/`\n\n"
+        "## Files claimed\n\n- None, no files.\n"
+    )
+    warnings = ticket_shape.validate("ticket", unresolved_word_body, repo_root=REPO)
+    check("a check: marker whose first word doesn't resolve on PATH is refused, naming the word",
+          len(warnings) == 1 and "pytest" in warnings[0], warnings)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="ticket-shape-test-"):
         test_immutable_set_pinned_to_shared_json()
@@ -119,6 +158,8 @@ def main():
         test_validate_ticket_refuses_immutable_claim()
         print()
         test_classify_venue_workstation_paths()
+        print()
+        test_check_marker_word_resolution()
 
     finish("All ticket_shape checks passed.")
 

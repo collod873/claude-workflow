@@ -60,7 +60,7 @@ def outcome(candidate_body):
 print(json.dumps({"example": outcome(example), "probe": outcome(unresolvable)}))
 `;
 
-test.fails(
+test(
   "#439.3: the ticket-template test's Spec sub-issue example still validates under the new rule",
   () => {
     const verdict = JSON.parse(

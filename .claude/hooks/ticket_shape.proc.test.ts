@@ -59,7 +59,7 @@ function homeCarryingHookReport(): string {
   return home;
 }
 
-test.fails(
+test(
   "#439.1: a check marker naming `~/bin/hook-report ...` (path form, executable file) is accepted by validate()",
   () => {
     const home = homeCarryingHookReport();
@@ -77,7 +77,7 @@ test.fails(
   30000,
 );
 
-test.fails(
+test(
   "#439.2: a check marker naming `pytest ...` when no `pytest` resolves on PATH is refused, naming the word",
   () => {
     const barePath = mkdtempSync(join(tmpdir(), "no-pytest-path-439-"));

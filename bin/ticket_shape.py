@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import fnmatch
 import json
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -68,6 +70,10 @@ CHECK_MARKER_ATTEMPT_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:", re.IGNOR
 CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$")
 
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
+
+UNRESOLVED_CHECK_COMMAND_WORD_PREFIX = (
+    "acceptance criterion's check: marker names a command whose first word doesn't resolve"
+)
 
 SPEC_NO_CRITERIA = (
     "a spec body needs a '## Acceptance criteria' heading carrying exactly one '- [ ]' item, "
@@ -146,6 +152,20 @@ def parse_check_marker(criterion: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def _check_command_word(command: str) -> str:
+    stripped = command.strip()
+    return stripped.split(maxsplit=1)[0] if stripped else ""
+
+
+def _check_command_word_resolves(word: str, repo_root: Path | None = None) -> bool:
+    if "/" not in word:
+        return shutil.which(word) is not None
+    path = Path(word).expanduser()
+    if not path.is_absolute():
+        path = (repo_root or caller_repo_root()) / path
+    return path.is_file() and os.access(path, os.X_OK)
+
+
 def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | None]:
     try:
         result = subprocess.run(
@@ -175,6 +195,24 @@ def _malformed_check_marker_warning(criterion: str) -> str:
         f"{MALFORMED_CHECK_MARKER_PREFIX}: {criterion}. A well-formed marker names exactly "
         "one backtick-quoted command immediately after `check:`, with nothing else following "
         "it before the criterion ends"
+    )
+
+
+def _unresolved_check_command_word_reason(word: str) -> str:
+    return (
+        f"`{word}` has no `/` and doesn't resolve on PATH, and isn't a `/`-path naming an "
+        "existing executable file after expanding a leading `~`"
+    )
+
+
+def _unresolved_check_command_word_warning(criterion: str, word: str) -> str:
+    return f"{UNRESOLVED_CHECK_COMMAND_WORD_PREFIX}: {criterion}. {_unresolved_check_command_word_reason(word)}"
+
+
+def _unresolved_check_command_word_error(command: str, word: str) -> str:
+    return (
+        f"acceptance criterion's check: `{command}` names a command whose first word doesn't "
+        f"resolve. {_unresolved_check_command_word_reason(word)}"
     )
 
 
@@ -218,6 +256,12 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         for block in criteria_blocks(body) or []:
             if _malformed_check_marker(block):
                 warnings.append(_malformed_check_marker_warning(block))
+                continue
+            command = parse_check_marker(block)
+            if command is not None:
+                word = _check_command_word(command)
+                if word and not _check_command_word_resolves(word, repo_root):
+                    warnings.append(_unresolved_check_command_word_warning(block, word))
         warnings.extend(unresolved_claimed_paths(body, repo_root))
         warnings.extend(migration_without_post_state(body))
         warnings.extend(config_or_md_evidence(body))
@@ -234,6 +278,9 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     if command is None:
         raise ValidationError(SPEC_CRITERION_UNRUNNABLE.format(criterion=blocks[0]))
     root = repo_root or caller_repo_root()
+    word = _check_command_word(command)
+    if word and not _check_command_word_resolves(word, root):
+        raise ValidationError(_unresolved_check_command_word_error(command, word))
     green, warning = _check_already_green(command, root)
     if green:
         raise ValidationError(SPEC_CRITERION_GREEN_AT_PUBLISH.format(command=command))
