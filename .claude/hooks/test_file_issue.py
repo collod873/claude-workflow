@@ -231,7 +231,7 @@ def test_validator():
 
     good = ("## Problem Statement\n\nIt's broken.\n\n"
             "## Acceptance criteria\n\n"
-            "- [ ] I can see a green deploy on the dashboard - check: `bin/deploy-status`\n")
+            "- [ ] I can see a green deploy on the dashboard - check: `false`\n")
     check("spec: accepts exactly one criterion carrying a well-formed marker",
           ticket_shape.validate("spec", good) == [])
 
@@ -485,7 +485,7 @@ def test_cli(tmp):
     spec_body.write_text(
         "## Problem Statement\n\nWidgets don't work.\n\n"
         "## Acceptance criteria\n\n"
-        "- [ ] I can order a widget and it arrives - check: `bin/widget-smoke`\n"
+        "- [ ] I can order a widget and it arrives - check: `false`\n"
     )
 
     log = tmp / "log6.jsonl"
