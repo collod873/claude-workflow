@@ -89,7 +89,7 @@ how do we catch that without fail?"* The dreamboat framing is about coverage, no
 trigger: *"its not this or that, its heres things that its possible to find and how do we design the
 dreamboat."*
 **Test:** which evidence class does this see, and what still has no mechanism looking at it?
-(`agent-skills/docs/research/finding-what-goes-wrong.md` is the taxonomy: ten classes, four
+(`docs/research/finding-what-goes-wrong.md` is the taxonomy: ten classes, four
 uncovered.)
 
 **C6 · Short, disposable sessions.**

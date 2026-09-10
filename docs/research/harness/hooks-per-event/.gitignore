@@ -1,0 +1,6 @@
+raw-*.jsonl
+results.json
+settings.json
+hooktest.log
+work/
+__pycache__/
