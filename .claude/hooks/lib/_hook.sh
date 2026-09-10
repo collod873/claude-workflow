@@ -1,42 +1,4 @@
 # shellcheck shell=bash
-# The run-row writer for a hook written in bash: the same row `_hook.py`'s `run_row()` +
-# `append_log()` write, spelled once per language (#210). Source it as the hook's first
-# line; call `hook_run_row <verdict> [key=value ...]` on every exit path.
-#
-#   . "$(dirname "${BASH_SOURCE[0]}")/lib/_hook.sh"      # a consuming repo's copy
-#   . "$HOME/.claude/hooks/_hook.sh"                       # this machine's symlink
-#   ...
-#   hook_run_row allow slug=x chars=12
-#
-# A thin shim, on purpose: it parses no JSON of its own. The payload goes to `_hook.mjs`
-# beside this file, which reads it the one way every JS hook does, so a field's spelling
-# (`hook_event_name`, `tool_use_id`) lives in one place and a bash hook building a row
-# by hand (Workflow's old `hook_lib_run_row`, its own quote-escaping included) is the
-# private copy this replaces. A bash hook lives beside Node hooks everywhere one exists
-# on this machine, so Node is the toolchain it can count on; where `node` is not on
-# PATH there is no row, and nothing else changes: a verdict never depends on its own
-# observability (ADR-0005).
-#
-# Sourcing reads stdin into `HOOK_PAYLOAD`, because a row needs the payload and stdin
-# can be read once. A hook that forwards the payload to a child pipes `$HOOK_PAYLOAD`
-# to it; a hook that already read stdin sets `HOOK_PAYLOAD` before sourcing and nothing
-# is read here. `HOOK_NAME` defaults to the sourcing script's own stem (`$0`, the way
-# `_hook.py` reads `__main__`), `HOOK_STARTED_MS` to the moment of sourcing, so
-# `seconds` measures the hook and not the shim; both may be set beforehand.
-#
-# None of the three is ever exported, and a value that arrived *through the environment*
-# is discarded before any of that: it is some ancestor hook's, not this one's. On
-# 2026-09-05 a SessionEnd hook exported its payload to a detached child, the child's
-# `git push` ran the pre-push gate, the gate's suite re-ran the hook forty times with
-# fixture payloads on stdin, and every one of those read the dead session's payload from
-# the environment instead, dispatching forty more real captures apiece: a fork bomb that
-# took the VM down twice. A shell variable set by the sourcing script carries no export
-# attribute, so `declare -p` tells the two apart.
-#
-# `key=value` extras are typed as JSON literals where they parse (`chars=12` is a
-# number) and as strings where they do not, the same fields a Python hook passes as
-# keyword arguments. A consuming repo carries a byte-identical copy at
-# `.claude/hooks/lib/_hook.sh`; `bin/re-seed` reports when it drifts.
 
 _HOOK_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 for _hook_var in HOOK_PAYLOAD HOOK_NAME HOOK_STARTED_MS; do
@@ -45,8 +7,6 @@ for _hook_var in HOOK_PAYLOAD HOOK_NAME HOOK_STARTED_MS; do
   esac
 done
 unset _hook_var
-# Epoch milliseconds from bash's own clock: `date +%s%3N` is GNU-only and a uutils `date`
-# prints nanoseconds for it, which read as a start 50,000 years in the future.
 if [ -z "${HOOK_STARTED_MS:-}" ]; then
   if [ -n "${EPOCHREALTIME:-}" ]; then
     HOOK_STARTED_MS="${EPOCHREALTIME/./}"
