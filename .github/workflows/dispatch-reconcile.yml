@@ -19,6 +19,7 @@ permissions:
   contents: write
   issues: write
   actions: read
+  pull-requests: read
 
 concurrency:
   group: dispatch-reconcile
