@@ -15,7 +15,7 @@ function testFiles(dir: string): string[] {
 
 const NO_BYTECODE_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
 
-describe("hooks/test_*.py run as standalone harnesses (agent-skills' own contract.json test slot)", () => {
+describe("hooks/test_*.py run as standalone harnesses (this repo's own contract.json test slot)", () => {
   for (const name of testFiles(HOOKS_DIR)) {
     it(`${name} exits 0`, () => {
       const run = spawnSync("python3", [join(HOOKS_DIR, name)], { encoding: "utf8", env: NO_BYTECODE_ENV });

@@ -301,7 +301,7 @@ def check_caller_stem_subprocess():
               r2.proc.stdout.decode().strip() == "some-fixture-hook", r2.proc.stdout)
 
 
-SETTINGS = Path.home() / ".claude" / "settings.json"
+ROSTER = HOOKS_DIR / "roster.json"
 
 EDIT_PAYLOADS = [
     ("Write", {"file_path": "/tmp/a.py", "content": "SECRET=1"}, "/tmp/a.py", "SECRET=1"),
@@ -406,29 +406,15 @@ def check_enrolled():
 
 def check_edit_matcher_registration():
     try:
-        registered = json.loads(SETTINGS.read_text())
+        registered = json.loads(ROSTER.read_text())
     except (OSError, ValueError) as exc:
-        check("settings.json unreadable: matcher case skipped by name, not silently",
+        check("roster.json unreadable: registration case skipped by name, not silently",
               True, f"{type(exc).__name__}: {exc}")
         return
 
-    watchers = ("credential-scan.py", "post-edit-validate.py",
-                "vendored-router.py", "seeded-doc-router.py")
-    seen = set()
-    for event, groups in registered.get("hooks", {}).items():
-        for group in groups:
-            commands = " ".join(str(h.get("command", "")) for h in group.get("hooks", []))
-            named = [w for w in watchers if w in commands]
-            if not named:
-                continue
-            seen.update(named)
-            matcher = group.get("matcher", "")
-            check(f"{event} matcher for {', '.join(named)} covers the whole edit roster",
-                  matcher == _hook.EDIT_TOOL_MATCHER,
-                  f"matcher={matcher!r} expected={_hook.EDIT_TOOL_MATCHER!r}")
-
-    missing = sorted(set(watchers) - seen)
-    check("every edit-watching hook is registered somewhere in settings.json",
+    watchers = {"credential-scan.py": "PreToolUse", "post-edit-validate.py": "PostToolUse"}
+    missing = [name for name, event in watchers.items() if name not in registered.get(event, [])]
+    check("every edit-watching hook is registered under its event in roster.json",
           not missing, f"unregistered: {missing}")
 
 

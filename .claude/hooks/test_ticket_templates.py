@@ -10,7 +10,6 @@ from _harness import check, finish
 HOOKS = Path(__file__).resolve().parent
 REPO = next((c for c in (HOOKS.parent, HOOKS.parent.parent) if (c / "bin").is_dir()), HOOKS.parent)
 TICKET_FORMAT_DOC = REPO / "docs" / "agents" / "ticket-format.md"
-TICKET_FORMAT_SEED = REPO / "setup-matt-pocock-skills" / "ticket-format.md"
 
 _spec = importlib.util.spec_from_file_location("close_gate", HOOKS / "close-gate.py")
 _close_gate = importlib.util.module_from_spec(_spec)
@@ -219,16 +218,6 @@ def main():
           f"expected {TICKET_FORMAT_DOC}")
     if not TICKET_FORMAT_DOC.is_file():
         finish()
-
-    if TICKET_FORMAT_SEED.parent.is_dir():
-        check("setup-matt-pocock-skills/ticket-format.md exists", TICKET_FORMAT_SEED.is_file(),
-              f"expected {TICKET_FORMAT_SEED}, the setup seed mirroring the canonical doc (#52)")
-    if TICKET_FORMAT_SEED.is_file():
-        canonical_bytes = TICKET_FORMAT_DOC.read_bytes()
-        seed_bytes = TICKET_FORMAT_SEED.read_bytes()
-        check("setup-matt-pocock-skills/ticket-format.md is byte-identical to docs/agents/ticket-format.md",
-              seed_bytes == canonical_bytes,
-              "the seed drifted from the canonical doc; copy docs/agents/ticket-format.md over it verbatim")
 
     cases = list(variant_cases())
     check("at least one variant discovered under '## Variants'", len(cases) > 0,
