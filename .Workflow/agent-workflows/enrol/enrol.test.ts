@@ -6,9 +6,18 @@ import type { GhExec } from "../shared/gh.ts";
 import { ENROLMENT_TOPIC, exitCodeFor, runEnrol, type RepositoryOutcome } from "./enrol.ts";
 import { labelPlan, type Label } from "./labels.ts";
 import { OUTWARD_CREDENTIAL, derivedSecretNames } from "./secrets.ts";
-import { blobSha, planFor, readStubSet, type RemoteFile } from "./stub-set.ts";
+import { SEEDED_DOC_NAMES, claudeMdPointerLine, pointerDoc, pointerDocPath } from "./seeded-docs.ts";
+import { WORKFLOWS_PATH, blobSha, planFor, readStubSet, type RemoteFile } from "./stub-set.ts";
 
 const MACHINE_REPOSITORY = "owner/machine";
+
+const SEEDED_DOC_PATHS = new Map(SEEDED_DOC_NAMES.map((name) => [pointerDocPath(name), name]));
+
+function nameFromDocPath(path: string): string {
+  const name = SEEDED_DOC_PATHS.get(path);
+  if (name === undefined) throw new Error(`not a seeded doc path: ${path}`);
+  return name;
+}
 
 function stubBody(lane: string): string {
   return `name: ${lane}\n\n"on":\n  workflow_dispatch:\n`;
@@ -31,6 +40,8 @@ interface FakeRepo {
   refusesSetting?: string;
   refusesSecrets?: string;
   empty?: boolean;
+  docFiles?: Record<string, string>;
+  refusesDocs?: string;
 }
 
 interface LabelWrite {
@@ -133,7 +144,16 @@ function createWire(repos: Record<string, FakeRepo>, ownLabels: Label[] = []): W
     if (path === `repos/${name}`) return "main\n";
 
     if (path.startsWith(`repos/${name}/contents/`)) {
-      return `${JSON.stringify(repo.files)}\n`;
+      const filePath = path.slice(`repos/${name}/contents/`.length).split("?")[0];
+      if (filePath === WORKFLOWS_PATH) return `${JSON.stringify(repo.files)}\n`;
+      if (repo.refusesDocs && (SEEDED_DOC_PATHS.has(filePath) || filePath === "CLAUDE.md")) {
+        throw new Error(repo.refusesDocs);
+      }
+      const overridden = repo.docFiles?.[filePath];
+      const defaulted = SEEDED_DOC_PATHS.has(filePath) ? pointerDoc(nameFromDocPath(filePath), MACHINE_REPOSITORY) : undefined;
+      const content = overridden ?? defaulted;
+      if (content === undefined) throw new Error("gh: Not Found (HTTP 404)");
+      return `${Buffer.from(content, "utf8").toString("base64")}\n`;
     }
 
     if (path === `repos/${name}/git/ref/heads/main`) {
@@ -477,6 +497,89 @@ describe("the machine itself", () => {
 
     expect(outcome.code).toBe("skipped");
     expect(wire.calls.filter((argv) => (argv[1] ?? "").startsWith("repos/"))).toEqual([]);
+  });
+});
+
+describe("seeded docs are pointers, written in the same pass", () => {
+  it("writes a pointer for a doc the target carries as a full copy", () => {
+    const dir = machineWorkflows(["verify"]);
+    const wire = createWire({
+      "owner/full-copy": {
+        files: [],
+        docFiles: { [pointerDocPath("ticket-format.md")]: "# Ticket format\n\nThe whole seeded copy, byte for byte.\n" },
+      },
+    });
+
+    const outcomes = enrol(dir, wire);
+    const outcome = outcomeFor(outcomes, "owner/full-copy");
+
+    expect(outcome.docsFailure).toBeUndefined();
+    expect(outcome.docsWritten).toContain(pointerDocPath("ticket-format.md"));
+
+    const tree = wire.trees.get("owner/full-copy") ?? [];
+    expect(tree.map((entry) => entry.path)).toContain(pointerDocPath("ticket-format.md"));
+  });
+
+  it("writes nothing when every seeded doc already carries the pointer text", () => {
+    const dir = machineWorkflows(["verify"]);
+    const wire = createWire({
+      "owner/already-pointers": { files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })) },
+    });
+
+    const outcomes = enrol(dir, wire);
+    const outcome = outcomeFor(outcomes, "owner/already-pointers");
+
+    expect(outcome.docsWritten).toEqual([]);
+    expect(wire.trees.has("owner/already-pointers")).toBe(false);
+  });
+
+  it("adds the CLAUDE.md pointer line under a heading of its own, leaving the rest of the file alone", () => {
+    const dir = machineWorkflows(["verify"]);
+    const wire = createWire({
+      "owner/needs-claude-md": { files: [], docFiles: { "CLAUDE.md": "# Some project\n\nSome prose.\n" } },
+    });
+
+    const outcomes = enrol(dir, wire);
+    const outcome = outcomeFor(outcomes, "owner/needs-claude-md");
+
+    expect(outcome.docsWritten).toContain("CLAUDE.md");
+    const tree = wire.trees.get("owner/needs-claude-md") ?? [];
+    const claudeMdWrite = tree.find((entry) => entry.path === "CLAUDE.md");
+    expect(claudeMdWrite).toBeDefined();
+  });
+
+  it("never touches CLAUDE.md the target does not carry at all", () => {
+    const dir = machineWorkflows(["verify"]);
+    const wire = createWire({ "owner/no-claude-md": { files: [] } });
+
+    const outcomes = enrol(dir, wire);
+    const outcome = outcomeFor(outcomes, "owner/no-claude-md");
+
+    expect(outcome.docsWritten ?? []).not.toContain("CLAUDE.md");
+  });
+
+  it("a doc failure never withholds the stub, label, setting or secret writes for the same repository", () => {
+    const dir = machineWorkflows(["verify"], ["FOO"]);
+    const wire = createWire({
+      "owner/docs-down": {
+        files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: `stale-${stub.sha}` })),
+        refusesDocs: "gh: Internal Server Error (HTTP 500)",
+      },
+    });
+
+    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcome = outcomeFor(outcomes, "owner/docs-down");
+
+    expect(outcome.docsFailure).toContain("500");
+    expect(outcome.code).toBe("written");
+    expect(outcome.settingFailure).toBeUndefined();
+    expect(outcome.secretsFailure).toBeUndefined();
+    expect(exitCodeFor(outcomes)).toBe(0);
+  });
+
+  it("names the machine repository and the workstation clone in the pointer it writes", () => {
+    expect(pointerDoc("ticket-format.md", MACHINE_REPOSITORY)).toContain(MACHINE_REPOSITORY);
+    expect(claudeMdPointerLine(MACHINE_REPOSITORY)).toContain(MACHINE_REPOSITORY);
   });
 });
 
