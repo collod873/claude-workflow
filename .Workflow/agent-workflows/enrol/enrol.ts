@@ -218,7 +218,7 @@ function commitFiles(
 
 function seededDocMessage(paths: string[], machineRepository: string): string {
   return [
-    `Point ${paths.length} seeded doc(s) at ${machineRepository}`,
+    `docs: point ${paths.length} seeded doc(s) at ${machineRepository}`,
     "",
     "Written by the enrol lane, not by hand: these are pointers, not copies, naming this",
     `repository's own file at ${machineRepository} and the workstation clone path.`,
@@ -262,7 +262,7 @@ function syncSeededDocs(
 function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: string): string {
   const changed = plan.writes.length + plan.deletes.length;
   return [
-    `Carry ${changed} caller stub change(s) from ${machineRepository}`,
+    `ci: carry ${changed} caller stub change(s) from ${machineRepository}`,
     "",
     "Written by the enrol lane, not by hand: this repository carries the enrolment topic, so the",
     "stubs under .github/workflows/*-caller.yml are the machine's and are overwritten from it",

@@ -298,7 +298,7 @@ both jobs) stops here with no push — this job holds `contents: read` only.
 ### edge — the commit message
 
 ```
-Author acceptance tests for #421 from the spec alone
+test: author acceptance tests for #421 from the spec alone
 
 Nobody has implemented #421 yet, so every test here is test.fails, green until the work
 lands, and the implementer turns each on by dropping .fails from its line (#360).

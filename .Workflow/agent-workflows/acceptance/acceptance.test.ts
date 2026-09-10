@@ -355,7 +355,7 @@ describe("judgeAuthoredBatch", () => {
 
 function committing(landing: CommitDeps["landing"]): { deps: CommitDeps; git: ReturnType<typeof createFakeGit> } {
   const git = createFakeGit(() => "");
-  return { deps: { git: git.git, paths: BATCH, commitMessage: "Author acceptance tests for #162 from the spec alone", landing }, git };
+  return { deps: { git: git.git, paths: BATCH, commitMessage: "test: author acceptance tests for #162 from the spec alone", landing }, git };
 }
 
 describe("commitAuthoredBatch", () => {

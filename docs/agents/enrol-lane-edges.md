@@ -175,7 +175,7 @@ No deletes on a first pass — kestrel carries nothing under the glob yet, so `d
 ### edge — the commit message · fixed shape, nothing reads it back
 
 ```
-Carry 22 caller stub change(s) from collod873/claude-workflow
+ci: carry 22 caller stub change(s) from collod873/claude-workflow
 
 Written by the enrol lane, not by hand: this repository carries the enrolment topic, so the
 stubs under .github/workflows/*-caller.yml are the machine's and are overwritten from it

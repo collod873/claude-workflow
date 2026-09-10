@@ -260,7 +260,7 @@ The busiest node in the lane, and the one that turns an answer into a pull reque
 ### edge — the commit message
 
 ```
-Implement #421
+feat: implement #421
 
 Wrote the run's own step summary from its conclusion via $GITHUB_STEP_SUMMARY. Turned on the
 ticket's acceptance test. Repaired scripts/nightly-run.test.ts, outside Files claimed...

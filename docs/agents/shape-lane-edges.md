@@ -442,7 +442,7 @@ known that; the shaper, reading `CONTEXT.md` directly rather than through a lane
 
 ```
 git add docs/adr/0107-a-lane-reports-its-own-outcome-in-the-run-that-produ.md CONTEXT.md
-git commit -m "Land the rulings and vocabulary #412's sheet decided, before a spec can re-decide them
+git commit -m "docs: land the rulings and vocabulary #412's sheet decided, before a spec can re-decide them
 
 The accept is the signature (ADR-0006), and ADR-0005 files at accept precisely so lane 02
 cites these rather than restating them. Written from the decision sheet on #412."

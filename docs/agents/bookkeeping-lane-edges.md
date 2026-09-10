@@ -327,7 +327,7 @@ line); `status:` is flipped to `superseded` in place, only when a `status:` key 
 ### edge — the commit message
 
 ```
-Back-stamp 1 predecessor a trailer already names
+docs: back-stamp 1 predecessor a trailer already names
 
 docs/adr/README.md said a superseded ADR gains a status line all along, and zero of 43 ever carried
 one (ADR-0044); a convention with no reader does not hold. This derives it from the Amends: trailer
