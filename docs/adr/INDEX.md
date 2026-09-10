@@ -44,7 +44,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0088 | [The close gate fires in the agent's turn at both venues, so the tracker-side gate and its reconciler retire](0088-the-close-gate-fires-in-the-agent-s-turn-at-both-venues-so-t.md) |
 | 0091 | [The token that spends a model and the token that starts the next lane are separate, so a lane needing both is two jobs](0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md) |
 | 0093 | [A lane that opens a pull request depends on a repository setting no file records, so the record is here and the installer sets it](0093-a-lane-that-opens-a-pull-request-depends-on-a-repository-set.md) |
-| 0097 | [Machine-global agent machinery lives in the agent-skills repo, not vendored into a consumer](0097-machine-global-agent-machinery-lives-in-the-agent-skills-rep.md) |
+| 0097 | [Machine-global agent machinery lives in one dedicated clone, symlinked, never vendored into a consumer](0097-machine-global-agent-machinery-lives-in-the-agent-skills-rep.md) |
 | 0102 | [A lint rule that points at an import the boundary forbids does not apply inside that boundary](0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md) |
 | 0104 | [Lane 06 judges the pull request rather than trunk, and both of its jobs now bind on lane 08's merge](0104-lane-06-judges-the-pull-request-rather-than-trunk-and-both-o.md) |
 | 0106 | [A reader is proved against a payload the API actually served, never against a fake that agrees with it](0106-a-reader-is-proved-against-a-payload-the-api-actually-served.md) |
@@ -80,7 +80,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0157 | [The implementer's checkout is its answer, and the push gate runs once in the wire with one repair round](0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md) |
 | 0158 | [A second model gets a clean context and a looser fence before a red gate reaches the owner](0158-a-second-model-gets-a-clean-context-and-a-looser-fence-befor.md) |
 | 0159 | [The acceptance author names its criterion in the test title, not a comment above it](0159-the-acceptance-author-names-its-criterion-in-the-test-title.md) |
-| 0160 | [A vendored copy is pinned to its source by digest, and the prose gate does not read it](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) |
 | 0161 | [A target's suite roots and test suffixes are read from the target's own vitest, never assumed to be the machine's](0161-a-target-s-suite-roots-and-test-suffixes-are-read-from-the-t.md) |
 | 0162 | [One push gate runs per machine, so lane fan-out queues instead of forking](0162-one-push-gate-runs-per-machine-so-lane-fan-out-queues-instea.md) |
 | 0163 | [A hook's own push skips the push gate, because a gate that re-enters its hook forks the machine](0163-a-hook-s-own-push-skips-the-push-gate-because-a-gate-that-re.md) |
@@ -96,6 +95,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0173 | [Run rows expire at thirty days, so evidence that must outlive them moves to docs/research](0173-run-rows-expire-at-thirty-days-so-evidence-that-must-outlive.md) |
 | 0174 | [A ratified standard must be expressible as a sub-second grep](0174-a-ratified-standard-must-be-expressible-as-a-sub-second-grep.md) |
 | 0175 | [A hook writes its run row through its language's writer, never a private append](0175-a-hook-writes-its-run-row-through-its-language-s-writer-neve.md) |
+| 0176 | [The hook run-row writers are this repo's own files, and the prose gate reads them like everything else](0176-the-hook-run-row-writers-are-this-repo-s-own-files-and-the-p.md) |
 
 ## Retired
 
@@ -189,5 +189,6 @@ demotion; nothing here binds later work.
 - [0146](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) superseded
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
+- [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 
-175 ADRs · 88 constraint · 44 note · 43 superseded · 17,980 words total.
+176 ADRs · 88 constraint · 44 note · 44 superseded · 18,040 words total.
