@@ -86,6 +86,16 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0163 | [A hook's own push skips the push gate, because a gate that re-enters its hook forks the machine](0163-a-hook-s-own-push-skips-the-push-gate-because-a-gate-that-re.md) |
 | 0164 | [The ratifier's merge is announced by a ring from lane 08, because a pull_request door never hears a merge the Actions token made](0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md) |
 | 0165 | [Reconcile is the only connector that starts work, and it fires on every ending, so a dead run is a strike the ladder climbs rather than a ring that has to arrive](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) |
+| 0166 | [Hooks sharing an event self-identify on `systemMessage`](0166-hooks-sharing-an-event-self-identify-on-systemmessage.md) |
+| 0167 | [Turn-end gates run fast checks only; CI owns the project suite](0167-turn-end-gates-run-fast-checks-only-ci-owns-the-project-suit.md) |
+| 0168 | [Subagents are dispatched by stub, in the foreground](0168-subagents-are-dispatched-by-stub-in-the-foreground.md) |
+| 0169 | [A criterion is verified by running its own check marker, and one without a marker is UNVERIFIED](0169-a-criterion-is-verified-by-running-its-own-check-marker-and.md) |
+| 0170 | [The edit-tool matcher is one roster, asserted against the live settings](0170-the-edit-tool-matcher-is-one-roster-asserted-against-the-liv.md) |
+| 0171 | [A router injects a question and never refuses](0171-a-router-injects-a-question-and-never-refuses.md) |
+| 0172 | [Reading a log is a grader's job and a report's, never a gate's](0172-reading-a-log-is-a-grader-s-job-and-a-report-s-never-a-gate.md) |
+| 0173 | [Run rows expire at thirty days, so evidence that must outlive them moves to docs/research](0173-run-rows-expire-at-thirty-days-so-evidence-that-must-outlive.md) |
+| 0174 | [A ratified standard must be expressible as a sub-second grep](0174-a-ratified-standard-must-be-expressible-as-a-sub-second-grep.md) |
+| 0175 | [A hook writes its run row through its language's writer, never a private append](0175-a-hook-writes-its-run-row-through-its-language-s-writer-neve.md) |
 
 ## Retired
 
@@ -180,4 +190,4 @@ demotion; nothing here binds later work.
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 
-165 ADRs · 78 constraint · 44 note · 43 superseded · 16,774 words total.
+175 ADRs · 88 constraint · 44 note · 43 superseded · 17,980 words total.
