@@ -83,6 +83,15 @@ decision answered twice. A producer that publishes a plan refuses one breaking t
 files anything, rather than leaving it for a reader to trip over. See claude-workflow/ADR-0118, recorded in
 `collod873/claude-workflow`.
 
+A claim may not touch the **immutable set** — `vitest.config.ts` or a path under `.github/`
+(`shared/immutable-set.ts`, mirrored for the Python side by
+`.Workflow/agent-workflows/shared/immutable-set.json`) — since no pull request may land a change
+there; a human commits that half by hand. `bin/ticket_shape.py`'s `validate("ticket", ...)`, used
+by both `file-issue ticket` and `ticketify`, refuses such a claim before the issue is ever filed,
+naming the offending path, in the same words `reconcile.ts`'s `to-build` door already used to
+refuse it a recompute later. Ask for the immutable-set edit by name in the ticket's prose instead,
+and claim only what a pull request may actually touch.
+
 ## Variants
 
 Each producer's body is the core above plus its own framing. These are complete, verbatim

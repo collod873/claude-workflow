@@ -28,7 +28,7 @@ describe("touchesImmutableSet", () => {
   });
 });
 
-test.fails("#425.2: the Python and TypeScript sides agree on the immutable set", () => {
+test("#425.2: the Python and TypeScript sides agree on the immutable set", () => {
   const shared = JSON.parse(readFileSync(sharedListPath, "utf8")) as string[];
 
   expect(Array.isArray(shared)).toBe(true);
