@@ -1,5 +1,7 @@
 # Machinery audit, 2026-08-27
 
+Unprompted: no issue preceded this note
+
 Three read-only audits of the pipeline's judgment mechanisms, run the same way the checker was
 audited earlier today (#160): measure per-use cost and payoff from the last 30 days of transcripts
 and hook logs, read the code and ADRs, then a separate skeptic argues from `~/.claude/VALUES.md`.

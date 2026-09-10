@@ -1,5 +1,7 @@
 # Finding what goes wrong: the space, the coverage, and the holes
 
+Unprompted: no issue preceded this note
+
 _Written 2026-08-21._
 
 > **Status: mixed.** Source reads and volume measurements are real and cited. The

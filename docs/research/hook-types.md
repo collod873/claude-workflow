@@ -1,5 +1,7 @@
 # Research: what `prompt` and `agent` hook types can actually do
 
+Researches: collod873/agent-skills#4
+
 _Resolves [#4](https://github.com/collod873/agent-skills/issues/4). Researched 2026-07-28._
 
 **Scope note.** This ticket originally asked for a full survey of every hook type, event, and field

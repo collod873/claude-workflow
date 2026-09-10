@@ -1,5 +1,7 @@
 # `/audit-doc hooks/circuit-breaker.py`, headless run, 2026-08-29
 
+Unprompted: no issue preceded this note
+
 **How:** `claude -p "/audit-doc hooks/circuit-breaker.py"` from the repo root, unattended, the
 day `audit-doc` shipped (b338feb). Kept because it is the first trial of the skill against a
 hook, and because the finding that ranked its list (the injected text was a no-op in every

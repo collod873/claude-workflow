@@ -1,5 +1,7 @@
 # Stop refusal channels, measured 2026-08-29
 
+Unprompted: no issue preceded this note
+
 ADR-0016 measured `decision: "block"` on `PostToolUse` only; `stop-gate.py` refused on `Stop` with
 `exit 2` + stderr and its docstring said the JSON form had no channel there. Neither claim had been
 driven on `Stop`. Two scenarios on [`harness/hooks-per-event/`](harness/hooks-per-event/README.md)

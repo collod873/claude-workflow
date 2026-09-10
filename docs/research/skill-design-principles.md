@@ -1,5 +1,7 @@
 # Skill & Hook Design Principles
 
+Researches: collod873/agent-skills#3
+
 _Studied 2026-07-28. Synthesis of five skills and their disclosed reference files._
 
 > **Status: unmaintained snapshot.** Filed 2026-07-28 by

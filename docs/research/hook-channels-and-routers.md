@@ -1,5 +1,7 @@
 # Hook channel behaviour: identity, refusal reach, and the edit-time router
 
+Unprompted: no issue preceded this note
+
 Recorded 2026-08-31. The measurements formerly carried by ADR-0166's and ADR-0015's bodies,
 moved here when both were re-admitted: ADR-0166 kept its ruling (hooks self-identify) as a
 constraint and shed its evidence; ADR-0015 and ADR-0016 were judged implementation

@@ -1,5 +1,7 @@
 # Workflow Fixes: what's broken and what to do
 
+Unprompted: no issue preceded this note
+
 _Session findings, 2026-07-28. Companion to `skill-design-principles.md`._
 
 Repos looked at: `collod873/Lumaria`, `collod873/PWPP-Projects`.

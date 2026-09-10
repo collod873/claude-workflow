@@ -1,5 +1,7 @@
 # Hook timeout and subagent scope, measured 2026-08-29
 
+Unprompted: no issue preceded this note
+
 Two claims `writing-great-hooks` was about to state from memory, measured instead on
 [`harness/hooks-per-event/`](harness/hooks-per-event/README.md) (the ADR-0166/0016 harness, four
 new scenarios: `T1-deny-timeout`, `T2-exit2-timeout`, `S1-sub-pretooluse`, `S2-sub-stop`). One
