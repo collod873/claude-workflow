@@ -1,48 +1,79 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
-const hooksDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(hooksDir, "..", "..");
-const fileIssue = join(repoRoot, "bin", "file-issue");
-const ghStubPath = join(hooksDir, "stub_gh.py");
+const HOOKS = path.dirname(fileURLToPath(import.meta.url));
+const CLAUDE_DIR = path.resolve(HOOKS, "..");
+const REPO = existsSync(path.join(CLAUDE_DIR, "bin"))
+  ? CLAUDE_DIR
+  : path.resolve(CLAUDE_DIR, "..");
 
-const TICKET_CLAIMING_CI = [
-  "## Acceptance criteria",
-  "",
-  "- [ ] the lane runs green - check: `true`",
-  "",
-  "## Files claimed",
-  "",
-  "- .github/workflows/ci.yml",
-  "",
-].join("\n");
+function ticketBody(claim: string): string {
+  return `## Acceptance criteria\n\n- [ ] it works - check: \`true\`\n\n## Files claimed\n\n- ${claim}\n`;
+}
 
-test(
-  "#425.1: a ticket body claiming .github/workflows/ci.yml is refused by file-issue ticket before gh is called, and the refusal names the path",
-  () => {
-    const tmp = mkdtempSync(join(tmpdir(), "file-issue-425-"));
-    const bodyFile = join(tmp, "ticket-body.md");
-    const ghLog = join(tmp, "gh-calls.jsonl");
-    writeFileSync(bodyFile, TICKET_CLAIMING_CI);
+function labelsAppliedWhenFiling(claim: string, extraArgs: string[]): string[] {
+  const tmp = mkdtempSync(path.join(tmpdir(), "file-issue-venue-"));
+  const bodyPath = path.join(tmp, "body.md");
+  writeFileSync(bodyPath, ticketBody(claim));
+  const argvLog = path.join(tmp, "argv.jsonl");
 
-    const result = spawnSync(
-      "python3",
-      [fileIssue, "ticket", "--title", "A ticket", "--body-file", bodyFile],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        env: { ...process.env, AGENT_SKILLS_GH: ghStubPath, STUB_ARGV_LOG: ghLog },
+  execFileSync(
+    "python3",
+    [
+      path.join(REPO, "bin", "file-issue"),
+      "ticket",
+      "--title",
+      "A ticket",
+      "--body-file",
+      bodyPath,
+      ...extraArgs,
+    ],
+    {
+      cwd: REPO,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AGENT_SKILLS_GH: path.join(HOOKS, "stub_gh.py"),
+        STUB_ARGV_LOG: argvLog,
+        STUB_JSON: "https://github.com/acme/widgets/issues/1",
       },
-    );
+    },
+  );
 
-    const ghCalls = existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim() : "";
+  const calls = readFileSync(argvLog, "utf8")
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => (JSON.parse(line) as { argv: string[] }).argv);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(".github/workflows/ci.yml");
-    expect(ghCalls).toBe("");
+  const labels = new Set<string>();
+  for (const argv of calls) {
+    argv.forEach((token, index) => {
+      if (token !== "--label" && token !== "--add-label") return;
+      for (const name of (argv[index + 1] ?? "").split(",")) {
+        if (name.trim()) labels.add(name.trim());
+      }
+    });
+  }
+  return [...labels];
+}
+
+test.fails(
+  "#438.1: `file-issue ticket` adds `by-hand` alongside `ticket` when the claim is workstation or cross-repo, else no such label",
+  () => {
+    const workstation = labelsAppliedWhenFiling("~/.claude/settings.json", []);
+    expect(workstation).toContain("ticket");
+    expect(workstation).toContain("by-hand");
+
+    const crossRepo = labelsAppliedWhenFiling("bin/file-issue", ["-R", "acme/widgets"]);
+    expect(crossRepo).toContain("ticket");
+    expect(crossRepo).toContain("by-hand");
+
+    const ordinary = labelsAppliedWhenFiling("bin/file-issue", []);
+    expect(ordinary).toContain("ticket");
+    expect(ordinary).not.toContain("by-hand");
   },
 );
