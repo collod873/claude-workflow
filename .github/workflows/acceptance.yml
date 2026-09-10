@@ -156,7 +156,7 @@ jobs:
       ((needs.refire.result == 'success' && needs.refire.outputs.authored == 'true') ||
       (needs.author.result == 'success' && needs.author.outputs.authored == 'true'))
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 10
+    timeout-minutes: 30
     concurrency:
       group: land-${{ github.repository }}
       cancel-in-progress: false
