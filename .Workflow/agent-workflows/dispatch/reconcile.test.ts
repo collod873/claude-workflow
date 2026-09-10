@@ -480,7 +480,7 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
   });
 });
 
-test.fails("#437.2: the to-build door never admits a `by-hand` issue and stands it down with its own comment, never adding needs-human", () => {
+test("#437.2: the to-build door never admits a `by-hand` issue and stands it down with its own comment, never adding needs-human", () => {
   const BY_HAND_TICKET = 55;
   const tracker = trackerWith({
     open: [
@@ -505,7 +505,7 @@ test.fails("#437.2: the to-build door never admits a `by-hand` issue and stands 
   expect(tracker.labelsAdded.filter((label) => label.name === "needs-human")).toEqual([]);
 });
 
-test.fails("#437.3: a `by-hand` issue never reaches the dispatched set, even with every other precondition met", () => {
+test("#437.3: a `by-hand` issue never reaches the dispatched set, even with every other precondition met", () => {
   const tracker = trackerWith({
     open: [
       { number: 20, title: "Rewire this workstation", labels: ["by-hand"], blockedBy: [10] },

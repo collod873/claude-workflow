@@ -43,7 +43,7 @@ function mentionsByHand(calls: string[][]): boolean {
   return calls.some((call) => call.some((arg) => arg.includes("by-hand")));
 }
 
-test.fails("#437.1: publishSubIssues labels `by-hand` when the claim names a workstation or immutable-set path, and labels nothing when it does not", () => {
+test("#437.1: publishSubIssues labels `by-hand` when the claim names a workstation or immutable-set path, and labels nothing when it does not", () => {
   for (const claimed of [["vitest.config.ts"], ["~/.claude/settings.json"]]) {
     const workstation = recordingGh();
 

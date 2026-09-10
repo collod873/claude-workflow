@@ -1,8 +1,13 @@
 import type { GhExec } from "./gh";
 import { blockedByPath, issuePath, subIssuesPath } from "./gh-paths";
+import { BY_HAND_LABEL, touchesImmutableSet, touchesWorkstation } from "./immutable-set";
 import { parseIssueNumber } from "./issue-url";
 import type { Plan } from "./plan-schema";
 import { renderBody } from "./render-body";
+
+function isByHand(filesClaimed: string[]): boolean {
+  return touchesWorkstation(filesClaimed) || touchesImmutableSet(filesClaimed);
+}
 
 export interface PublishedIssue {
   position: number;
@@ -14,7 +19,9 @@ export interface PublishedIssue {
 export function publishSubIssues(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
   return plan.map((slice, index) => {
     const body = renderBody(slice, prdNumber);
-    const createOutput = gh(["issue", "create", "--title", slice.title, "--body", body]);
+    const createArgs = ["issue", "create", "--title", slice.title, "--body", body];
+    if (isByHand(slice.filesClaimed)) createArgs.push("--label", BY_HAND_LABEL);
+    const createOutput = gh(createArgs);
     const number = parseIssueNumber(createOutput, slice.title);
     const id = fetchIssueId(gh, number);
     attachUnderPrd(gh, prdNumber, id);
