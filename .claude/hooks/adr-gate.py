@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import _hook
+import adr_shape
 
 LANDED_RE = re.compile(r"^\d{4}-.+\.md$")
 INDEX_NAME = "INDEX.md"
@@ -39,7 +40,10 @@ def check(file_path: str) -> tuple[str, str]:
         if not path.parent.is_dir():
             return "", ""
         root = _repo_root(path.parent)
-        if root is None or path.parent.parent != root / "docs":
+        if root is None:
+            return "", ""
+        rel_parts = path.parent.relative_to(root).parts
+        if any(part in adr_shape.SKIP_DIRS for part in rel_parts):
             return "", ""
     except (OSError, ValueError):
         return "", ""

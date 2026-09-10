@@ -23,7 +23,7 @@ function guarded(target: string): [string, string] {
   return JSON.parse(asked.stdout) as [string, string];
 }
 
-test.fails(
+test(
   "#412.3: adr-gate.py refuses a hand-numbered write in any corpus, not only the root, and still allows a landed-shape write under a feature corpus",
   () => {
     const repo = mkdtempSync(join(tmpdir(), "adr-gate-412-"));

@@ -35,6 +35,10 @@ def main() -> None:
         (adr / "INDEX.md").write_text("# Decisions\n")
         feature_adr = repo / "src" / "features" / "crm" / "docs" / "adr"
         feature_adr.mkdir(parents=True)
+        feature_existing = feature_adr / "0042-a-feature-ruling-that-binds-later-work.md"
+        feature_existing.write_text("# A feature ruling that binds later work\n")
+        vendored_adr = repo / "node_modules" / "vendored" / "docs" / "adr"
+        vendored_adr.mkdir(parents=True)
 
         print("adr-gate: refusals")
         run = run_hook(HOOK, payload(str(adr / "0034-a-new-ruling.md"), str(repo)),
@@ -64,6 +68,14 @@ def main() -> None:
         check("a hand-numbered root ADR is still refused beside a feature corpus",
               run.denied, run.proc.stdout)
 
+        run = run_hook(HOOK, payload(str(feature_adr / "0091-a-new-ruling.md"), str(repo)),
+                       env=log.env())
+        check("a hand-numbered ADR under a feature corpus is refused too, "
+              "now that new-adr can file there",
+              run.denied, run.proc.stdout)
+        check("the feature-corpus refusal names the same tool as the root's",
+              "new-adr" in spoken(run, "adr-gate"), spoken(run, "adr-gate"))
+
         print("\nadr-gate: the silence cases")
         silent = [
             ("a draft", str(adr / "draft-a-new-ruling.md")),
@@ -73,7 +85,9 @@ def main() -> None:
             ("a docs/adr path in a tree that has no such directory",
              str(repo / "other" / "docs" / "adr" / "0034-x.md")),
             ("a landed-shape write under a feature-dir corpus",
-             str(feature_adr / "0091-a-ruling.md")),
+             str(feature_existing)),
+            ("a hand-numbered write under a corpus vendored into node_modules",
+             str(vendored_adr / "0001-a-vendored-ruling.md")),
         ]
         for label, path in silent:
             run = run_hook(HOOK, payload(path, str(repo)), env=log.env())

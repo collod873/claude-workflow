@@ -33,7 +33,7 @@ function corpora(prefix: string, records: Array<[string, number, string, string]
   return repo;
 }
 
-test.fails(
+test(
   "#412.1: adr-check reads every docs/adr/ under the root, outside node_modules, as one corpus with one number sequence",
   () => {
     const repo = corpora("adr-one-corpus-412-", [
@@ -62,7 +62,7 @@ test.fails(
   60_000,
 );
 
-test.fails(
+test(
   "#412.4: adr-check --bar-from YYYY-MM-DD exempts records dated before that day from the body cap and the frontmatter checks, and from nothing else",
   () => {
     const repo = corpora("adr-bar-412-", [
@@ -90,7 +90,7 @@ test.fails(
   60_000,
 );
 
-test.fails(
+test(
   "#412.5: this repository's own corpus is unchanged by the above and adr-check stays clean at its root",
   () => {
     const plain = check([], root);

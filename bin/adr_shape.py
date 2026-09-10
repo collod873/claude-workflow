@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 WORD_CAP = 150
@@ -9,6 +10,12 @@ WORD_CAP = 150
 STATUSES = ("constraint", "note", "superseded")
 
 REQUIRED_KEYS = ("status", "date", "reversal")
+BAR_KEYS = ("status", "reversal")
+
+SKIP_DIRS = {
+    ".git", "node_modules", "__pycache__", "worktrees", ".venv", "venv",
+    "dist", "build", ".next", ".cache", ".mypy_cache",
+}
 
 DRAFT_PREFIX = "draft-"
 LANDED_RE = re.compile(r"^(\d{4})-(.+)\.md$")
@@ -126,17 +133,33 @@ def weak_alternative(alternative: str) -> str:
     return m.group(0) if m else ""
 
 
-def validate(text: str) -> list[str]:
+def _grandfathered(fm: dict[str, str], bar_from: date | None) -> bool:
+    if bar_from is None:
+        return False
+    try:
+        recorded = date.fromisoformat(fm.get("date", "").strip())
+    except ValueError:
+        return False
+    return recorded < bar_from
+
+
+def validate(text: str, *, bar_from: date | None = None) -> list[str]:
     fm, body = split_frontmatter(text)
     if not fm:
         raise ValidationError(NO_FRONTMATTER)
 
-    for key in REQUIRED_KEYS:
-        if key not in fm:
-            raise ValidationError(MISSING_KEY.format(key=key))
+    if "date" not in fm:
+        raise ValidationError(MISSING_KEY.format(key="date"))
 
-    status = fm["status"]
-    if status not in STATUSES:
+    grandfathered = _grandfathered(fm, bar_from)
+
+    if not grandfathered:
+        for key in BAR_KEYS:
+            if key not in fm:
+                raise ValidationError(MISSING_KEY.format(key=key))
+
+    status = fm.get("status", "")
+    if not grandfathered and status not in STATUSES:
         raise ValidationError(BAD_STATUS.format(got=status, allowed=", ".join(STATUSES)))
 
     title = title_of(body)
@@ -146,11 +169,11 @@ def validate(text: str) -> list[str]:
         raise ValidationError(SHORT_TITLE.format(n=len(title.split())))
 
     words = body_words(body)
-    if words > WORD_CAP:
+    if not grandfathered and words > WORD_CAP:
         raise ValidationError(OVER_CAP.format(n=words, cap=WORD_CAP))
 
-    reversal = fm["reversal"].strip()
-    if not reversal:
+    reversal = fm.get("reversal", "").strip()
+    if not grandfathered and not reversal:
         raise ValidationError(EMPTY_REVERSAL)
 
     warnings: list[str] = []
@@ -167,12 +190,13 @@ def validate(text: str) -> list[str]:
 
 class Adr:
 
-    __slots__ = ("number", "slug", "path", "frontmatter", "body", "title", "words")
+    __slots__ = ("number", "slug", "path", "frontmatter", "body", "title", "words", "corpus")
 
     def __init__(self, path: Path, number: int, slug: str, text: str):
         self.path = path
         self.number = number
         self.slug = slug
+        self.corpus = path.parent
         self.frontmatter, self.body = split_frontmatter(text)
         self.title = title_of(self.body)
         self.words = body_words(self.body)
@@ -194,8 +218,28 @@ def adr_dir(repo_root: Path) -> Path:
     return repo_root / "docs" / "adr"
 
 
-def load_corpus(repo_root: Path) -> list[Adr]:
-    d = adr_dir(repo_root)
+def find_adr_dirs(repo_root: Path) -> list[Path]:
+    found: list[Path] = []
+    stack = [repo_root]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if not e.is_dir():
+                continue
+            if e.name in SKIP_DIRS:
+                continue
+            if e.name == "adr" and e.parent.name == "docs":
+                found.append(e)
+                continue
+            stack.append(e)
+    return sorted(found)
+
+
+def load_corpus_dir(d: Path) -> list[Adr]:
     out: list[Adr] = []
     if not d.is_dir():
         return out
@@ -211,8 +255,19 @@ def load_corpus(repo_root: Path) -> list[Adr]:
     return sorted(out, key=lambda a: a.number)
 
 
+def load_corpus(repo_root: Path) -> list[Adr]:
+    return load_corpus_dir(adr_dir(repo_root))
+
+
+def load_all_corpora(repo_root: Path) -> list[Adr]:
+    out: list[Adr] = []
+    for d in find_adr_dirs(repo_root):
+        out.extend(load_corpus_dir(d))
+    return sorted(out, key=lambda a: a.number)
+
+
 def next_number(repo_root: Path, origin_numbers: list[int] | None = None) -> int:
-    highest = max((a.number for a in load_corpus(repo_root)), default=0)
+    highest = max((a.number for a in load_all_corpora(repo_root)), default=0)
     for n in origin_numbers or []:
         highest = max(highest, n)
     return highest + 1

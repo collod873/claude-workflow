@@ -57,8 +57,12 @@ def refusal(text: str) -> str | None:
 
 
 def run(args, cwd, **kw) -> subprocess.CompletedProcess:
+    env = kw.pop("env", None) or dict(os.environ)
+    env.pop("TARGET_WORKSPACE", None)
+    env.pop("EDITOR", None)
+    env.pop("VISUAL", None)
     return subprocess.run([sys.executable, *args], cwd=cwd, capture_output=True,
-                          text=True, timeout=_harness.HOOK_TIMEOUT, **kw)
+                          text=True, timeout=_harness.HOOK_TIMEOUT, env=env, **kw)
 
 
 def new_repo(stack) -> Path:
@@ -68,7 +72,11 @@ def new_repo(stack) -> Path:
 
 
 def write_adr(repo: Path, number: int, title: str) -> Path:
-    p = adr_shape.adr_dir(repo) / f"{number:04d}-{adr_shape.slugify(title)}.md"
+    return write_adr_in(adr_shape.adr_dir(repo), number, title)
+
+
+def write_adr_in(corpus_dir: Path, number: int, title: str) -> Path:
+    p = corpus_dir / f"{number:04d}-{adr_shape.slugify(title)}.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(variant().replace("# Triage labels are positions, not verdicts", f"# {title}"))
     return p
@@ -202,6 +210,26 @@ def main() -> None:
 
     import contextlib
     with contextlib.ExitStack() as stack:
+        print("\nadr_shape: every docs/adr/ is one corpus, one number sequence")
+        multi = new_repo(stack)
+        root_adr = adr_shape.adr_dir(multi)
+        feature_adr = multi / "src" / "features" / "accounting" / "docs" / "adr"
+        vendored_adr = multi / "node_modules" / "vendored" / "docs" / "adr"
+        write_adr_in(root_adr, 1, "A root ruling that binds later work")
+        write_adr_in(feature_adr, 2, "A feature ruling that binds later work")
+        write_adr_in(vendored_adr, 1, "A vendored ruling nothing here is bound by")
+        found = adr_shape.find_adr_dirs(multi)
+        check("find_adr_dirs finds every docs/adr/, outside node_modules",
+              sorted(found) == sorted([root_adr, feature_adr]), found)
+        merged = adr_shape.load_all_corpora(multi)
+        check("load_all_corpora merges every corpus into one number sequence",
+              [a.number for a in merged] == [1, 2], [a.number for a in merged])
+        check("each ADR remembers the corpus directory it was loaded from",
+              {a.number: a.corpus for a in merged} == {1: root_adr, 2: feature_adr},
+              {a.number: a.corpus for a in merged})
+        check("next_number claims across every corpus, not just the root",
+              adr_shape.next_number(multi) == 3, adr_shape.next_number(multi))
+
         print("\nnew-adr: the draft carries no number")
         repo = new_repo(stack)
         r = run([BIN / "new-adr", "Triage labels are positions, not verdicts"], repo)
@@ -391,6 +419,94 @@ def main() -> None:
               r.returncode == 2, r.returncode)
         check("and reports no tiers rather than tiers built from one count",
               "Retirement tiers" not in r.stdout, r.stdout)
+
+        print("\nadr-check: multiple corpora, one number sequence")
+        two_corpora = new_repo(stack)
+        write_adr_in(adr_shape.adr_dir(two_corpora), 1, "A root ruling that binds later work")
+        write_adr_in(two_corpora / "src" / "features" / "accounting" / "docs" / "adr", 2,
+                     "A feature ruling that binds later work")
+        write_adr_in(two_corpora / "node_modules" / "vendored" / "docs" / "adr", 1,
+                     "A vendored ruling nothing here is bound by")
+        run([BIN / "adr-check", "--fix"], two_corpora)
+        r = run([BIN / "adr-check"], two_corpora)
+        check("a clean multi-corpus tree exits 0", r.returncode == 0, r.stdout + r.stderr)
+        check("the vendored corpus under node_modules is not counted",
+              "2 ADRs" in r.stdout, r.stdout)
+        (two_corpora / "notes.md").write_text("the ledger follows ADR-0002\n")
+        r = run([BIN / "adr-check"], two_corpora)
+        check("a citation into another corpus resolves, so it is not a finding",
+              r.returncode == 0 and "finding:" not in r.stderr, r.stderr)
+
+        clash = new_repo(stack)
+        write_adr_in(adr_shape.adr_dir(clash), 1, "A root ruling that binds later work")
+        write_adr_in(clash / "src" / "features" / "crm" / "docs" / "adr", 1,
+                     "A second ruling filed under the same number")
+        run([BIN / "adr-check", "--fix"], clash)
+        r = run([BIN / "adr-check"], clash)
+        check("the same number claimed by two corpora is a finding",
+              r.returncode == 1, r.stdout + r.stderr)
+        check("the finding names the clashing number",
+              re.search(r"finding:.*0001", r.stderr) is not None, r.stderr)
+
+        print("\nadr-check --bar-from: grandfathering records dated before the bar")
+        barred = new_repo(stack)
+        write_adr_in(adr_shape.adr_dir(barred), 3, "A ruling filed after the bar was adopted")
+        old = adr_shape.adr_dir(barred) / "0001-an-old-ruling-written-before-the-bar.md"
+        old.write_text(
+            "---\nstatus: constraint\ndate: 2020-01-01\n---\n\n"
+            "# An old ruling written before the bar\n\n" + ("word " * 200).strip() + "\n"
+        )
+        run([BIN / "adr-check", "--fix", "--bar-from", "2026-01-01"], barred)
+        r = run([BIN / "adr-check", "--bar-from", "2026-01-01"], barred)
+        check("a record dated before the bar is exempt from the body cap and reversal",
+              r.returncode == 0 and "finding:" not in r.stderr, r.stderr)
+        r = run([BIN / "adr-check"], barred)
+        check("without --bar-from the same record is held to the ordinary bar",
+              r.returncode == 1 and "0001" in r.stderr, r.stderr)
+        (barred / "notes.md").write_text("this cites ADR-0002\n")
+        r = run([BIN / "adr-check", "--bar-from", "2026-01-01"], barred)
+        check("--bar-from exempts nothing about citation integrity",
+              r.returncode == 1 and "ADR-0002" in r.stderr, r.stderr)
+        r = run([BIN / "adr-check", "--bar-from", "not-a-date"], barred)
+        check("a badly-shaped --bar-from refuses rather than guessing",
+              r.returncode == 2, r.returncode)
+
+        print("\nnew-adr --corpus: filing into a named corpus, landing into the draft's own")
+        multi_new = new_repo(stack)
+        write_adr_in(adr_shape.adr_dir(multi_new), 1, "A root ruling that binds later work")
+        write_adr_in(multi_new / "src" / "features" / "accounting" / "docs" / "adr", 7,
+                     "A feature ruling that binds later work")
+
+        r = run([BIN / "new-adr", "--corpus", "src/features/accounting",
+                 "Ledger entries are appended, never edited"], multi_new)
+        feature_draft = (multi_new / "src" / "features" / "accounting" / "docs" / "adr"
+                          / "draft-ledger-entries-are-appended-never-edited.md")
+        check("--corpus drafts under the named corpus, not the root",
+              r.returncode == 0 and Path(r.stdout.strip()) == feature_draft,
+              r.stdout + r.stderr)
+        feature_draft.write_text(feature_draft.read_text().replace(
+            "reversal:", "reversal: two authors write the corpus from separate trees")
+            + "\n**Rejected: one shared sequence, filed only at the root.** It would force "
+              "every feature corpus to write through one directory.\n")
+        r = run([BIN / "new-adr", "--land", str(feature_draft)], multi_new)
+        eighth = (multi_new / "src" / "features" / "accounting" / "docs" / "adr"
+                  / "0008-ledger-entries-are-appended-never-edited.md")
+        check("--land claims the next number across every corpus",
+              r.returncode == 0 and eighth.is_file(), r.stdout + r.stderr)
+        check("--land files it in the corpus the caller named, not the root",
+              not (adr_shape.adr_dir(multi_new)
+                   / "0008-ledger-entries-are-appended-never-edited.md").exists(),
+              "landed at the root instead")
+
+        r = run([BIN / "new-adr", "--land", str(eighth), "--corpus", "docs/adr"], multi_new)
+        check("--land refuses a --corpus alongside it", r.returncode != 0, r.stderr)
+
+        r = run([BIN / "new-adr", "A root-filed ruling that binds later work"], multi_new)
+        default_draft = (adr_shape.adr_dir(multi_new)
+                          / "draft-a-root-filed-ruling-that-binds-later-work.md")
+        check("omitting --corpus still drafts at the root, the default",
+              r.returncode == 0 and Path(r.stdout.strip()) == default_draft,
+              r.stdout + r.stderr)
 
         print("\nadr-check: degradation")
         bare = Path(stack.enter_context(tempfile.TemporaryDirectory()))

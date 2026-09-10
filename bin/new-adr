@@ -88,7 +88,7 @@ def origin_numbers(target_root: Path) -> list[int]:
     for ref in ("origin/main", "origin/master", "HEAD"):
         try:
             out = subprocess.run(
-                ["git", "-C", str(target_root), "ls-tree", "--name-only", ref, "--", "docs/adr/"],
+                ["git", "-C", str(target_root), "ls-tree", "-r", "--name-only", ref],
                 capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
             )
         except (OSError, subprocess.SubprocessError):
@@ -96,33 +96,43 @@ def origin_numbers(target_root: Path) -> list[int]:
         if out.returncode != 0:
             continue
         for line in out.stdout.splitlines():
-            m = adr_shape.LANDED_RE.match(Path(line.strip()).name)
+            p = Path(line.strip())
+            if p.parent.name != "adr" or p.parent.parent.name != "docs":
+                continue
+            m = adr_shape.LANDED_RE.match(p.name)
             if m:
                 found.append(int(m.group(1)))
     return found
 
 
-def write_index(target_root: Path) -> Path:
-    corpus = adr_shape.load_corpus(target_root)
-    path = adr_shape.index_path(target_root)
+def corpus_dir_for(target_root: Path, corpus_arg: str | None) -> Path:
+    base = target_root if corpus_arg is None else target_root / corpus_arg
+    return adr_shape.adr_dir(base)
+
+
+def write_index(corpus_dir: Path) -> Path:
+    corpus = adr_shape.load_corpus_dir(corpus_dir)
+    path = corpus_dir / adr_shape.INDEX_NAME
     path.write_text(adr_shape.render_index(corpus), encoding="utf-8")
     return path
 
 
-def run_index_renderer(machine_root: Path, target_root: Path) -> Path:
+def run_index_renderer(machine_root: Path, target_root: Path, corpus_dir: Path) -> Path:
     renderer = machine_root / ".Workflow" / "agent-workflows" / "shared" / "adr-index.cli.ts"
     tsx = machine_root / "node_modules" / ".bin" / "tsx"
-    if not renderer.is_file() or not os.access(tsx, os.X_OK):
-        return write_index(target_root)
+    if corpus_dir != adr_shape.adr_dir(target_root) or not renderer.is_file() \
+            or not os.access(tsx, os.X_OK):
+        return write_index(corpus_dir)
     subprocess.run(
         [str(tsx), str(renderer), "--fix", str(target_root)],
         cwd=machine_root, capture_output=True,
     )
-    return adr_shape.index_path(target_root)
+    return corpus_dir / adr_shape.INDEX_NAME
 
 
-def draft(machine_root: Path, target_root: Path, title: str, amends: int | None) -> int:
-    d = adr_shape.adr_dir(target_root)
+def draft(machine_root: Path, target_root: Path, title: str, amends: int | None,
+          corpus_arg: str | None) -> int:
+    d = corpus_dir_for(target_root, corpus_arg)
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{adr_shape.DRAFT_PREFIX}{adr_shape.slugify(title)}.md"
     if path.exists():
@@ -169,7 +179,8 @@ def land(machine_root: Path, target_root: Path, draft_path: Path) -> int:
         return 1
 
     number = adr_shape.next_number(target_root, origin_numbers(target_root))
-    landed = adr_shape.adr_dir(target_root) / f"{number:04d}-{m.group(1)}.md"
+    corpus_dir = draft_path.parent
+    landed = corpus_dir / f"{number:04d}-{m.group(1)}.md"
     if landed.exists():
         print(f"error: already exists: {landed}", file=sys.stderr)
         return 1
@@ -186,7 +197,7 @@ def land(machine_root: Path, target_root: Path, draft_path: Path) -> int:
     if draft_path.exists():
         draft_path.rename(landed)
 
-    index = run_index_renderer(machine_root, target_root)
+    index = run_index_renderer(machine_root, target_root, corpus_dir)
     print(landed)
     print(f"index: {index}", file=sys.stderr)
     return 0
@@ -206,6 +217,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--amends", type=int, metavar="NNNN",
                    help="this ruling replaces ADR-NNNN (rare; correct in place instead "
                         "unless the constraint itself reverses)")
+    p.add_argument("--corpus", metavar="DIR",
+                   help="draft under DIR/docs/adr instead of the root corpus; --land "
+                        "ignores this and uses the draft's own directory")
     p.add_argument("title", nargs="*", help="the ruling, stated as a sentence")
     args = p.parse_args(argv)
 
@@ -218,12 +232,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.land:
         if args.title:
             p.error("--land takes no title")
+        if args.corpus:
+            p.error("--land takes no --corpus; the draft's own directory names it")
         return land(root, target_root, Path(args.land).resolve())
 
     if not args.title:
         p.error("give the ruling as a sentence, e.g. "
                 'new-adr "Triage labels are positions, not verdicts"')
-    return draft(root, target_root, " ".join(args.title), args.amends)
+    return draft(root, target_root, " ".join(args.title), args.amends, args.corpus)
 
 
 if __name__ == "__main__":
