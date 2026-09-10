@@ -110,6 +110,17 @@ function isTestPath(path: string, suffixes: string[]): boolean {
   return suffixes.some((suffix) => path.endsWith(suffix));
 }
 
+const HOOKS_DIR = ".claude/hooks/";
+
+const NOT_A_LIFECYCLE_HOOK = new Set(["_hook.py", "_harness.py", "stub_gh.py", "conftest.py", "dispatch.py", "gauntlet.sh"]);
+
+function lifecycleHookStub(path: string): string | undefined {
+  if (!path.startsWith(HOOKS_DIR)) return undefined;
+  const name = path.slice(HOOKS_DIR.length);
+  if (name.includes("/") || NOT_A_LIFECYCLE_HOOK.has(name) || name.startsWith("test_")) return undefined;
+  return name.endsWith(".py") || name.endsWith(".sh") ? path : undefined;
+}
+
 function busiest(counts: Map<string, number>, fallback: string): string {
   let best = fallback;
   for (const [name, count] of counts) if (count > (counts.get(best) ?? 0)) best = name;
@@ -200,9 +211,19 @@ function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionRe
     if (!roots.some((root) => file.path.startsWith(`${root}/`))) {
       throw new Error(`author wrote outside ${roots.join("/, ")}/: ${file.path}`);
     }
+    const stub = lifecycleHookStub(file.path);
+    if (stub !== undefined) {
+      throw new Error(
+        `author wrote ${stub}, a stub for a subject the test runs as a process; house rule ` +
+          `(${HOUSE_RULES_PATH}): a .claude/hooks/*.py or *.sh lifecycle hook gets no stub, ` +
+          `the test spawns it from a .proc.test.ts and the missing file is the honest failure`,
+      );
+    }
   }
   if (!answer.files.some((file) => isTestPath(file.path, suffixes))) {
-    throw new Error(`author wrote no test file for #${deps.issueNumber}`);
+    throw new Error(
+      `author wrote no test file for #${deps.issueNumber}: looked for a path ending in ${suffixes.join(", ")}`,
+    );
   }
 
   const combined = answer.files.map((file) => file.content).join("\n");

@@ -621,7 +621,7 @@ describe("acceptRound: a subject the test runs as a process gets no stub", () =>
   const HOOK = ".claude/hooks/session-brief.py";
   const HARNESS = ".claude/hooks/test_session_brief.py";
 
-  test.fails("#448.2: acceptRound refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
+  test("#448.2: acceptRound refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, []);
     const stage = answer([
       { path: TEST_PATH, content: failsTest() },
@@ -655,7 +655,7 @@ describe("acceptRound: a subject the test runs as a process gets no stub", () =>
     expect(written).toEqual([]);
   });
 
-  test.fails("#448.3: the no-test-file refusal names the suffixes it looked for", async () => {
+  test("#448.3: the no-test-file refusal names the suffixes it looked for", async () => {
     const suite: SuiteLayout = {
       files: [".claude/hooks/ticket-shape.test.tsx"],
       roots: [".claude"],

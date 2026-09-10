@@ -50,7 +50,7 @@ describe("the criterion title grammar the author prompt mandates", () => {
 });
 
 describe("the house rules the author prompt hands the author", () => {
-  test.fails("#448.1: a hook, a bin/ script or a check-marker program gets no stub, and Python is a .proc.test.ts", () => {
+  test("#448.1: a hook, a bin/ script or a check-marker program gets no stub, and Python is a .proc.test.ts", () => {
     const rules = houseRulesSource().replace(/\s+/g, " ");
 
     expect(rules).toContain(".claude/hooks/");
