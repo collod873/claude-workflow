@@ -57,6 +57,7 @@ describe("the micro door", () => {
 });
 
 const ISSUE_EDIT = /issue["'\s,]+edit/g;
+const TICKETIFY_IS_THE_ONE_SANCTIONED_EXIT_FROM_FUZZY = new Set(["bin/file-issue"]);
 
 function callText(source: string, from: number): string {
   const rest = source.slice(from);
@@ -65,7 +66,9 @@ function callText(source: string, from: number): string {
 }
 
 describe("nothing downstream edits the owner's words", () => {
-  const files = readIssueWriterCandidates();
+  const files = readIssueWriterCandidates().filter(
+    ({ path }) => !TICKETIFY_IS_THE_ONE_SANCTIONED_EXIT_FROM_FUZZY.has(path),
+  );
 
   it("has files to scan", () => {
     expect(files.length).toBeGreaterThan(20);

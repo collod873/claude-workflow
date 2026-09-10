@@ -30,7 +30,7 @@ export function vendorBin(dir: string, ...names: string[]): void {
 
 export function newAdrRepo(prefix: string): TempRepo {
   const repo = makeTempRepo(prefix);
-  vendorBin(repo.dir, "new-adr", "node-on-path.sh");
+  vendorBin(repo.dir, "new-adr", "adr_shape.py", "node-on-path.sh");
   return repo;
 }
 
@@ -43,7 +43,7 @@ export function twoAuthorRepo(taken: string): TempRepo {
   seed.git("push", "--quiet", "origin", "main");
 
   const work = makeTempRepo("new-adr-work", { origin });
-  vendorBin(work.dir, "new-adr", "node-on-path.sh");
+  vendorBin(work.dir, "new-adr", "adr_shape.py", "node-on-path.sh");
   mkdirSync(join(work.dir, "docs/adr"), { recursive: true });
   return work;
 }

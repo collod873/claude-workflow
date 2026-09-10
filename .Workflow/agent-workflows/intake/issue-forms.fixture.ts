@@ -35,7 +35,7 @@ export function readIssueWriterCandidates(): SourceFile[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (!/\.(test|fake|fixture)\.ts$/.test(entry.name)) {
+      else if (!/\.(test|fake|fixture)\.ts$/.test(entry.name) && !/^(test_.*|conftest|stub_gh)\.py$/.test(entry.name)) {
         out.push({ path: full.slice(REPO_ROOT.length + 1), text: readFileSync(full, "utf8") });
       }
     }
