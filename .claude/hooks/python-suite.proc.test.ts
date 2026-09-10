@@ -22,9 +22,9 @@ describe("hooks/test_*.py run as standalone harnesses (agent-skills' own contrac
   }
 });
 
-describe("bin/tests/ runs under pytest (chezmoi's tools came in without a self-running suite)", () => {
-  it("python3 -m pytest bin/tests/ exits 0", () => {
-    const run = spawnSync("python3", ["-m", "pytest", BIN_TESTS_DIR, "-q"], {
+describe("bin/tests/ runs under unittest", () => {
+  it("python3 -m unittest discover bin/tests/ exits 0", () => {
+    const run = spawnSync("python3", ["-m", "unittest", "discover", "-s", BIN_TESTS_DIR, "-p", "test_*.py"], {
       encoding: "utf8",
       cwd: REPO_ROOT,
     });
