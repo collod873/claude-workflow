@@ -26,7 +26,7 @@ function run(home: string, args: string[]) {
   });
 }
 
-test.fails(
+test(
   "#424.1: run from a clone that is not ~/.agents/workflow, link-workstation exits non-zero before any link or settings write, naming both paths",
   () => {
     const home = makeHome();
