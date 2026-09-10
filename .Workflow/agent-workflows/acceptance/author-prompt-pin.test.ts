@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { authoredCriterionTitleRe } from "../shared/affected-tests";
 import { promptSource } from "../shared/prompts.fixture";
+import { HOUSE_RULES_PATH } from "./acceptance";
 
 const PROMPT = promptSource("acceptance/author/prompt.md");
 
@@ -26,6 +27,10 @@ function workedExample(): string {
   return files.map((file) => file.content).join("\n");
 }
 
+function houseRulesSource(): string {
+  return promptSource(HOUSE_RULES_PATH.replace(".Workflow/agent-workflows/", ""));
+}
+
 describe("the criterion title grammar the author prompt mandates", () => {
   it("is the grammar acceptance greps its batch for", () => {
     const titles = mandatedTitles();
@@ -41,5 +46,18 @@ describe("the criterion title grammar the author prompt mandates", () => {
     expect(numbered).not.toBeNull();
     const [, issue, index] = numbered as RegExpExecArray;
     expect(authoredCriterionTitleRe(Number(issue), Number(index)).test(example)).toBe(true);
+  });
+});
+
+describe("the house rules the author prompt hands the author", () => {
+  test.fails("#448.1: a hook, a bin/ script or a check-marker program gets no stub, and Python is a .proc.test.ts", () => {
+    const rules = houseRulesSource().replace(/\s+/g, " ");
+
+    expect(rules).toContain(".claude/hooks/");
+    expect(rules).toContain("bin/");
+    expect(rules).toContain(".proc.test.ts");
+    expect(rules).toMatch(/\b(?:no|never|not|without)\b[^.]{0,200}stub|stub[^.]{0,200}\b(?:never|not)\b/i);
+    expect(rules).toMatch(/python/i);
+    expect(rules).toMatch(/check[ -]?marker|check:/i);
   });
 });

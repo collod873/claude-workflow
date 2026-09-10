@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
@@ -614,5 +614,69 @@ describe("refireAcceptance", () => {
     const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
     const { affected } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);
+  });
+});
+
+describe("acceptRound: a subject the test runs as a process gets no stub", () => {
+  const HOOK = ".claude/hooks/session-brief.py";
+  const HARNESS = ".claude/hooks/test_session_brief.py";
+
+  test.fails("#448.2: acceptRound refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
+    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, []);
+    const stage = answer([
+      { path: TEST_PATH, content: failsTest() },
+      { path: HOOK, content: `raise SystemExit("#${ISSUE}: not built")\n` },
+    ]);
+    const written: string[] = [];
+    let testsRan = false;
+    const outcome = runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: (path) => written.push(path),
+      issueNumber: ISSUE,
+      runTests: () => {
+        testsRan = true;
+        return GREEN;
+      },
+      gate: () => GATE_GREEN,
+      git: createFakeGit(() => "").git,
+      landing: "commit",
+      log: () => {},
+      suite: SUITE,
+    });
+
+    const refusal = await outcome.then(
+      () => "",
+      (thrown: unknown) => (thrown as Error).message,
+    );
+    expect(refusal).toContain(HOOK);
+    expect(refusal).toMatch(/stub|\.proc\.test\.ts/i);
+    expect(testsRan).toBe(false);
+    expect(written).toEqual([]);
+  });
+
+  test.fails("#448.3: the no-test-file refusal names the suffixes it looked for", async () => {
+    const suite: SuiteLayout = {
+      files: [".claude/hooks/ticket-shape.test.tsx"],
+      roots: [".claude"],
+      suffixes: [".test.mjs", ".test.tsx"],
+    };
+    const stage = answer([{ path: HARNESS, content: "def test_brief():\n    assert False\n" }]);
+    const written: string[] = [];
+    const attempt = authorAcceptanceTests({
+      exec: stage.exec,
+      writeFile: (path) => written.push(path),
+      issueNumber: ISSUE,
+      ticket: TICKET,
+      suite,
+    });
+
+    const refusal = await attempt.then(
+      () => "",
+      (thrown: unknown) => (thrown as Error).message,
+    );
+    expect(refusal).toContain("no test file");
+    for (const suffix of suite.suffixes) expect(refusal).toContain(suffix);
+    expect(written).toEqual([]);
   });
 });
