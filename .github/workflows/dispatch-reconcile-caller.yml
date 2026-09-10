@@ -2,7 +2,7 @@ name: Dispatch reconcile
 
 "on":
   repository_dispatch:
-    types: [session-captured, graph-changed]
+    types: [session-captured, graph-changed, run-ended]
   issues:
     types: [labeled]
   workflow_run:

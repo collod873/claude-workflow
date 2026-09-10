@@ -16,7 +16,7 @@ describe("the lane map", () => {
   it("reads what a lane rings from its own call path, not from every file it imports", () => {
     expect(lane("dispatch-reconcile").rings).toEqual(["acceptance-wanted", "mechanic-wanted", "ticket-ready"]);
     expect(lane("review").rings).toEqual([]);
-    expect(lane("implement").rings).toEqual(["implementation-opened"]);
+    expect(lane("implement").rings).toEqual(["implementation-opened", "run-ended"]);
   });
 
   it("follows a dispatcher handed in as a dependency", () => {

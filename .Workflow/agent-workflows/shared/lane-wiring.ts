@@ -191,6 +191,12 @@ function deadRunCaller(name: string, upstream: string, wire: string, extraGate: 
   };
 }
 const CONFIGURES_COMMITTER: StepFact = { name: "Configure a committer", run: ["git config user.email"] };
+const WAKES_RECONCILER: StepFact = {
+  name: "Wake the reconciler, whatever ended this run",
+  if: "always()",
+  after: "Unmark the ticket",
+  run: [DISPATCH_SEND, ...ring(RUN_ENDED)],
+};
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
 const NAMES_VERIFY_CALLER = { verify_workflow: "verify-caller.yml" };
@@ -413,6 +419,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             run: ['echo "implementing #$TICKET_NUMBER"'],
           },
           { name: "Tell Recover this run failed", absent: true },
+          WAKES_RECONCILER,
         ],
       },
     },
@@ -435,7 +442,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         runs: `${tsx("mechanic/mechanic.ts")} "$TICKET_NUMBER"`,
         checkout: "pair",
         env: { TICKET_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
-        steps: [INSTALLS_TARGET, { name: "Repair the ticket's cause", run: ['echo "mechanic on #$TICKET_NUMBER"'] }],
+        steps: [INSTALLS_TARGET, { name: "Repair the ticket's cause", run: ['echo "mechanic on #$TICKET_NUMBER"'] }, WAKES_RECONCILER],
       },
     },
   },
@@ -571,7 +578,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     caller: {
       name: "Dispatch reconcile",
       on: {
-        repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION],
+        repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED],
         issues: ["labeled"],
         workflow_run: { workflows: [...ENDING_LANES], types: ["completed"] },
         push: { branches: ["main"] },
@@ -586,7 +593,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       reconcile: {
         gate: {
-          actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION],
+          actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED],
           has: [
             "github.event_name == 'workflow_dispatch'",
             "github.event_name == 'workflow_run'",

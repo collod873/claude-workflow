@@ -64,16 +64,17 @@ import {
 
 export const SESSION_CAPTURED_DISPATCH_ACTION = "session-captured";
 
+export const RUN_ENDED_ACTION = "run-ended";
+
 export const RECONCILE_DISPATCH_ACTIONS = [
   SESSION_CAPTURED_DISPATCH_ACTION,
   GRAPH_CHANGED_DISPATCH_ACTION,
+  RUN_ENDED_ACTION,
 ] as const;
-
-export const RUN_ENDED_ACTION = "run-ended";
 
 export const MAIN_MOVED_ACTION = "main-moved";
 
-export const RECONCILE_ENDINGS = [...RECONCILE_DISPATCH_ACTIONS, RUN_ENDED_ACTION, MAIN_MOVED_ACTION] as const;
+export const RECONCILE_ENDINGS = [...RECONCILE_DISPATCH_ACTIONS, MAIN_MOVED_ACTION] as const;
 
 const MAX_STRIKE_LOG_READS = 10;
 

@@ -296,19 +296,24 @@ Closes #421" \
 
 ## Node 07 — if it died instead · [wire]
 
-Nothing in this lane reports its own death. `dispatch-reconcile-caller.yml` listens for
-`workflow_run: completed` on every caller stub, this one included, and GitHub fires that for every
-conclusion: `success`, `failure`, `cancelled`, a runner killed at `timeout-minutes`. The reconciler
-then reads this run off the runs API by its title (`Implement #421`, the stub's `run-name`), finds
-no live run and no pull request on `implement/issue-421`, releases the bare claim, writes one
-strike comment on #421 with the last `implement failed:` line from the failed log, and dispatches
-the next rung. The whole path is [reconcile-lane-edges.md](reconcile-lane-edges.md)'s ladder;
-the third rung is [mechanic-lane-edges.md](mechanic-lane-edges.md).
+Nothing in this lane interprets its own death. Its last step, `if: always()`, sends one
+`repository_dispatch: run-ended` carrying only the run id, on every ending alike: `success`,
+`failure`, `cancelled`, the job killed at `timeout-minutes` (an `always()` step still runs after
+the cap, as the running-label step beside it proves on every capped run). That dispatch is needed
+because this run was itself started by a `repository_dispatch` under `GITHUB_TOKEN`, and GitHub
+starts nothing from a `workflow_run: completed` whose actor is the bot; the reconciler's
+`workflow_run` door hears only runs a person set in motion
+([reconcile-lane-edges.md](reconcile-lane-edges.md), node 00). The reconciler then reads this run
+off the runs API by its title (`Implement #421`, the stub's `run-name`), finds no live run and no
+pull request on `implement/issue-421`, releases the bare claim, writes one strike comment on #421
+with the last `implement failed:` line from the failed log, and dispatches the next rung. The
+whole path is [reconcile-lane-edges.md](reconcile-lane-edges.md)'s ladder; the third rung is
+[mechanic-lane-edges.md](mechanic-lane-edges.md).
 
 | | |
 |---|---|
-| **Always, regardless of outcome** | the running-label comes off |
-| **Never** | a `repository_dispatch` saying this run failed; a `workflow_run` door on this lane alone; an artifact kept for a replay |
+| **Always, regardless of outcome** | the running-label comes off; `run-ended` goes out with the run id and nothing else |
+| **Never** | a dispatch that says *how* this run ended; a `workflow_run` door on this lane alone; an artifact kept for a replay |
 
 ---
 
@@ -359,10 +364,11 @@ time a claim is old enough to call stale, GitHub itself has already killed whate
 There is no window where a claim reads as stale while its own run might still be alive to contest
 the takeover.
 
-**A death here is read, never reported.** A run that dies anywhere in this lane leaves a bare
-claim and a dead run in the Actions API. The reconciler reads both on the next ending of any kind
-and starts the next rung. Every dollar the dead run spent is gone; what survives is the strike,
-which is what decides whether the next dollar goes to the same model, a fresh one, or the mechanic.
+**A death here is read, never interpreted.** A run that dies anywhere in this lane leaves a bare
+claim and a dead run in the Actions API, and its `always()` tail says only "run 34530270263
+ended". The reconciler reads the claim and the run's conclusion for itself and starts the next
+rung. Every dollar the dead run spent is gone; what survives is the strike, which is what decides
+whether the next dollar goes to the same model, a fresh one, or the mechanic.
 
 ---
 

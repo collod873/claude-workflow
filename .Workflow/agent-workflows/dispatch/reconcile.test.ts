@@ -11,6 +11,7 @@ import {
   closedByMergedPr,
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
+  RUN_ENDED_ACTION,
   SESSION_CAPTURED_DISPATCH_ACTION,
   TO_BUILD_LABEL,
 } from "./reconcile";
@@ -89,9 +90,9 @@ describe("deliveryOf", () => {
   });
 });
 
-describe("runReconcile answers both dispatch actions and no others", () => {
-  it("names session-captured as the floor and graph-changed as the hint", () => {
-    expect(RECONCILE_DISPATCH_ACTIONS).toEqual([SESSION_CAPTURED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION]);
+describe("runReconcile answers its three dispatch actions and no others", () => {
+  it("names session-captured as the floor, graph-changed as the hint, and run-ended as a lane saying it stopped", () => {
+    expect(RECONCILE_DISPATCH_ACTIONS).toEqual([SESSION_CAPTURED_DISPATCH_ACTION, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED_ACTION]);
   });
 });
 

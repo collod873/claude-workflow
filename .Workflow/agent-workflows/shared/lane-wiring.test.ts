@@ -248,8 +248,9 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     for (const owner of owners) expect(spelled).toBe(owner);
   });
 
-  it("the reconciler answers exactly the two actions its caller listens for", () => {
-    expect([...RECONCILE_DISPATCH_ACTIONS]).toEqual([LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION]);
+  it("the reconciler answers exactly the dispatch actions its caller listens for", () => {
+    expect([...RECONCILE_DISPATCH_ACTIONS]).toEqual(LANE_WIRING["dispatch-reconcile"].caller?.on.repository_dispatch);
+    expect([...RECONCILE_DISPATCH_ACTIONS]).toContain(RUN_ENDED);
   });
 
   it("the reconciler hears every caller stub end except its own, so no lane's death goes unread (#384)", () => {
@@ -258,7 +259,15 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
       .filter((name) => name !== LANE_WIRING["dispatch-reconcile"].caller?.name)
       .sort();
     expect([...ENDING_LANES].sort()).toEqual(callers);
-    expect([...RECONCILE_ENDINGS]).toEqual([...RECONCILE_DISPATCH_ACTIONS, RUN_ENDED, MAIN_MOVED]);
+    expect([...RECONCILE_ENDINGS]).toEqual([...RECONCILE_DISPATCH_ACTIONS, MAIN_MOVED]);
+  });
+
+  it("a lane that holds a claim says its own ending, since GitHub starts nothing from a bot-started run's completion (#445)", () => {
+    for (const lane of ["implement", "mechanic"]) {
+      const steps = LANE_WIRING[lane].jobs[lane].steps ?? [];
+      const wake = steps.find((step) => step.run?.includes(`event_type=${RUN_ENDED}`));
+      expect(wake?.if, `${lane} wakes the reconciler on every ending`).toBe("always()");
+    }
   });
 
   it("shape.yml creates every label shape.ts applies", () => {

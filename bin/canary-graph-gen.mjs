@@ -36,7 +36,7 @@ const triggers = {
       - "CODING_STANDARDS.md"
       - "eslint.config.js"`,
   "dispatch-reconcile": `  repository_dispatch:
-    types: [session-captured, graph-changed]
+    types: [session-captured, graph-changed, run-ended]
   issues:
     types: [labeled]
   workflow_run:
