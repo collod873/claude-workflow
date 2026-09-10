@@ -91,6 +91,7 @@ def _init_repo(root: Path) -> None:
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
     (root / "committed.txt").write_text("v1\n")
+    _harness.enroll(root)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True)
 
@@ -486,13 +487,16 @@ def main() -> None:
               r.returncode == 0 and r.stdout == b"" and r.stderr == b"",
               f"rc={r.returncode} err={r.stderr!r}")
 
-    def _one_row(label: str, want: str, run) -> None:
+    def _one_row(label: str, want: str | None, run) -> None:
         path_log = Path(tempfile.mkdtemp(prefix="stopgate-path-"))
         scratch_dirs.append(str(path_log))
         env = _env()
         env["STOP_GATE_LOG_DIR"] = str(path_log)
         run(env)
         got = _harness.rows(path_log, "stop-gate")
+        if want is None:
+            check(f"path {label}: no row (unenrolled, stood down)", got == [], f"rows={got}")
+            return
         check(f"path {label}: exactly one row, verdict={want}",
               len(got) == 1 and got[0].get("verdict") == want,
               f"rows={got}")
@@ -522,7 +526,7 @@ def main() -> None:
         return run
 
     for label, stdin_bytes in _harness.MALFORMED_STDIN:
-        want = "no-contract" if stdin_bytes.strip() == b"{}" else "fail-open"
+        want = None if stdin_bytes.strip() == b"{}" else "fail-open"
         _one_row(f"malformed/{label}", want, _raw(stdin_bytes))
 
     _one_row("no-contract", "no-contract", _repo_case(None))
@@ -1090,6 +1094,26 @@ def main() -> None:
         _run(_payload(root, session_id=session), _env())
         rows = [x for x in _harness.rows(LOG_DIR, "stop-gate") if x.get("session_id") == session]
         check("a clean row carries no chars", rows and "chars" not in rows[0], rows)
+
+    print("\n## Stands down when unenrolled")
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+        (root / "committed.txt").write_text("v1\n")
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=root, check=True)
+        _dirty(root)
+        _write_contract(root, {"stop": {"cmd": FAIL_CMD, "why": "x"}})
+        session = "sess-unenrolled-" + uuid.uuid4().hex[:8]
+        SESSION_IDS_USED.append(session)
+        r = _run(_payload(root, session_id=session), _env())
+        check("the same failing check that would block is silent in an unenrolled repo",
+              r.returncode == 0 and r.stdout == b"" and r.stderr == b"",
+              f"rc={r.returncode} out={r.stdout!r} err={r.stderr!r}")
+        rows = [x for x in _harness.rows(LOG_DIR, "stop-gate") if x.get("session_id") == session]
+        check("an unenrolled repo writes no row", rows == [], rows)
 
     shutil.rmtree(LOG_DIR, ignore_errors=True)
     for d in scratch_dirs:

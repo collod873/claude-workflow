@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from _harness import check, finish
 HOOK = Path(__file__).with_name("checklist-reminder.py")
 ROWLOG = _harness.RowLog("checklist-reminder-log-")
 TMP = Path(tempfile.mkdtemp(prefix="checklist-reminder-fixture-"))
+subprocess.run(["git", "init", "-q", str(TMP)], capture_output=True)
+_harness.enroll(TMP)
 
 MAX_UNCHECKED = 30
 
@@ -25,11 +28,11 @@ def items(unchecked, checked=0):
     return "\n".join(["- [ ] todo"] * unchecked + ["- [x] done"] * checked) + "\n"
 
 
-def payload(file_path):
+def payload(file_path, cwd=None):
     return json.dumps({
         "hook_event_name": "PostToolUse",
         "session_id": "sess-checklist",
-        "cwd": "/home/collin/Projects/Demo",
+        "cwd": cwd or str(TMP),
         "tool_name": "Read",
         "tool_input": {"file_path": str(file_path)},
     }).encode()
@@ -92,9 +95,21 @@ def main():
     grade("unreadable file", payload(unreadable), False, None)
     unreadable.chmod(0o644)
 
-    print("\n## Malformed stdin is still a fire")
+    print("\n## Stands down when unenrolled")
+    unenrolled = Path(tempfile.mkdtemp(prefix="checklist-reminder-unenrolled-"))
+    subprocess.run(["git", "init", "-q", str(unenrolled)], capture_output=True)
+    unenrolled_file = unenrolled / "todo.md"
+    unenrolled_file.write_text(items(3))
+    informed, _text, rows = drive(payload(unenrolled_file, cwd=str(unenrolled)))
+    check("the same 3-unchecked file is silent in an unenrolled repo", not informed, informed)
+    check("an unenrolled repo writes no row", rows == [], rows)
+    shutil.rmtree(unenrolled, ignore_errors=True)
+
+    print("\n## Malformed stdin carries no cwd, so enrollment cannot be told and it stands down")
     for label, raw in _harness.MALFORMED_STDIN:
-        grade(f"malformed({label})", raw, False, None)
+        informed, _text, rows = drive(raw)
+        check(f"malformed({label}): silent", not informed, informed)
+        check(f"malformed({label}): no row, cwd unknown means enrollment unknown", rows == [], rows)
 
     print("\n## An unwritable log dir never changes the advice")
     run = _harness.run_hook(HOOK, payload(write("still.md", items(2))),

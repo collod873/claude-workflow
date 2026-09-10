@@ -27,6 +27,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
         subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
+        _harness.enroll(repo)
         adr = repo / "docs" / "adr"
         adr.mkdir(parents=True)
         existing = adr / "0001-triage-labels-are-positions-not-verdicts.md"
@@ -85,6 +86,19 @@ def main() -> None:
             run = run_hook(HOOK, payload(str(existing), str(repo), tool=tool),
                            env=log.env())
             check(f"{tool} on an existing ADR passes", not run.denied, run.proc.stdout)
+
+        print("\nadr-gate: stands down when unenrolled")
+        with tempfile.TemporaryDirectory() as unenrolled_td:
+            unenrolled = Path(unenrolled_td)
+            subprocess.run(["git", "init", "-q", str(unenrolled)], capture_output=True)
+            unenrolled_adr = unenrolled / "docs" / "adr"
+            unenrolled_adr.mkdir(parents=True)
+            run = run_hook(
+                HOOK, payload(str(unenrolled_adr / "0034-a-new-ruling.md"), str(unenrolled)),
+                env=log.env())
+            check("the same hand-numbered ADR passes silently in an unenrolled repo",
+                  not run.denied and run.proc.stdout.strip() == b"", run.proc.stdout)
+            check("an unenrolled repo writes no row", log.last() == [], log.last())
 
         print("\nadr-gate: no repo root")
         with tempfile.TemporaryDirectory() as ungit_td:

@@ -218,6 +218,15 @@ class RowLog:
 
 
 
+def enroll(repo) -> None:
+    workflows = Path(repo) / ".github" / "workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    (workflows / "example-caller.yml").write_text(
+        "on: push\njobs:\n  call:\n    uses: collod873/claude-workflow/.github/workflows/"
+        "example.yml@main\n"
+    )
+
+
 MALFORMED_STDIN: list[tuple[str, bytes]] = [
     ("empty", b""),
     ("bad-json", b"not json"),

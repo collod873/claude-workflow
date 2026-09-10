@@ -226,6 +226,47 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
 
 
 
+ENROLLMENT_NEEDLE = "uses: collod873/claude-workflow/"
+
+_ENROLLED_CACHE: dict[str, bool] = {}
+
+
+def _walk_to_git(start: Path) -> Path | None:
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def enrolled(path: str | Path | None) -> bool:
+    if not path:
+        return False
+    try:
+        p = Path(path).resolve()
+    except OSError:
+        return False
+    root = _walk_to_git(p)
+    key = str(root) if root is not None else f"\0no-git\0{p}"
+    if key in _ENROLLED_CACHE:
+        return _ENROLLED_CACHE[key]
+    result = False
+    if root is not None:
+        workflows_dir = root / ".github" / "workflows"
+        if workflows_dir.is_dir():
+            for f in sorted(workflows_dir.iterdir()):
+                if not f.is_file():
+                    continue
+                try:
+                    text = f.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                if ENROLLMENT_NEEDLE in text:
+                    result = True
+                    break
+    _ENROLLED_CACHE[key] = result
+    return result
+
+
 def quoted_spans(command: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     i, n = 0, len(command)

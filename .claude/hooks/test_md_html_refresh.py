@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from _harness import check, finish
 HOOK = Path(__file__).with_name("md-html-refresh.py")
 ROWLOG = _harness.RowLog("md-html-refresh-log-")
 TMP = Path(tempfile.mkdtemp(prefix="md-html-refresh-fixture-"))
+subprocess.run(["git", "init", "-q", str(TMP)], capture_output=True)
+_harness.enroll(TMP)
 
 SOURCE = "# The title\n\nA paragraph.\n\n## A section\n\nMore words.\n"
 
@@ -21,11 +24,11 @@ def write(name, text):
     return p
 
 
-def payload(file_path, tool_name="Edit"):
+def payload(file_path, tool_name="Edit", cwd=None):
     return json.dumps({
         "hook_event_name": "PostToolUse",
         "session_id": "sess-md-html-refresh",
-        "cwd": str(TMP),
+        "cwd": cwd or str(TMP),
         "tool_name": tool_name,
         "tool_input": {"file_path": str(file_path)},
     }).encode()
@@ -84,9 +87,25 @@ def main():
     missing = TMP / "gone.md"
     grade("path does not exist", payload(missing), "not-markdown")
 
-    print("\n## Malformed stdin fails open")
+    print("\n## Malformed stdin carries no cwd, so enrollment cannot be told and it stands down")
     for label, stdin_bytes in _harness.MALFORMED_STDIN:
-        grade(f"malformed {label}", stdin_bytes, "not-markdown")
+        stdout, rows = drive(stdin_bytes)
+        check(f"malformed {label}: nothing on stdout", stdout == b"", stdout)
+        check(f"malformed {label}: no row, cwd unknown means enrollment unknown", rows == [], rows)
+
+    print("\n## Stands down when unenrolled")
+    unenrolled = Path(tempfile.mkdtemp(prefix="md-html-refresh-unenrolled-"))
+    subprocess.run(["git", "init", "-q", str(unenrolled)], capture_output=True)
+    unenrolled_source = unenrolled / "doc.md"
+    unenrolled_source.write_text(SOURCE, encoding="utf-8")
+    unenrolled_page = unenrolled_source.with_suffix(".html")
+    unenrolled_page.write_text("<!doctype html>stale\n", encoding="utf-8")
+    stdout, rows = drive(payload(unenrolled_source, cwd=str(unenrolled)))
+    check("the same rebuild is silent in an unenrolled repo", stdout == b"", stdout)
+    check("an unenrolled repo writes no row", rows == [], rows)
+    check("the stale page is left untouched",
+          "stale" in unenrolled_page.read_text(encoding="utf-8"), "")
+    shutil.rmtree(unenrolled, ignore_errors=True)
 
     print("\n## No node on PATH leaves the last good page standing")
     degraded_source = write("degraded.md", SOURCE)

@@ -247,6 +247,9 @@ def main() -> None:
         _row(payload, "fail-open", project=project_dir.name)
         return
 
+    if not _hook.enrolled(project_dir):
+        return
+
     stop_hook_active = bool(payload.get("stop_hook_active", False))
 
     session_id = payload.get("session_id") or ""

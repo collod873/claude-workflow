@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -339,6 +340,52 @@ def check_edit_payload_readers():
               _hook.edited_path(junk) == "" and _hook.new_content(junk) == "", junk)
 
 
+def check_enrolled():
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td) / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
+
+        check("enrolled: a repo with no .github/workflows is not enrolled",
+              _hook.enrolled(str(repo)) is False, "")
+
+        nested = repo / "src" / "deep"
+        nested.mkdir(parents=True)
+        check("enrolled: a path below the repo root, still not enrolled",
+              _hook.enrolled(str(nested)) is False, "")
+
+        workflows = repo / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "other.yml").write_text("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n")
+        check("enrolled: a workflow with no caller stub is still not enrolled",
+              _hook.enrolled(str(repo)) is False, "")
+
+        (workflows / "caller.yml").write_text(
+            "on: push\njobs:\n  call:\n    uses: collod873/claude-workflow/.github/workflows/x.yml@main\n"
+        )
+        _hook._ENROLLED_CACHE.clear()
+        check("enrolled: a caller stub under .github/workflows/ makes the repo enrolled",
+              _hook.enrolled(str(repo)) is True, "")
+        check("enrolled: a path below an enrolled root walks up to it",
+              _hook.enrolled(str(nested)) is True, "")
+
+        (workflows / "caller.yml").unlink()
+        check("enrolled: cached per process, a later removal does not flip the answer",
+              _hook.enrolled(str(repo)) is True, "")
+        _hook._ENROLLED_CACHE.clear()
+        check("enrolled: clearing the cache re-reads the tree",
+              _hook.enrolled(str(repo)) is False, "")
+
+    with tempfile.TemporaryDirectory() as td:
+        outside = Path(td) / "not-a-repo"
+        outside.mkdir()
+        check("enrolled: no .git anywhere above is not enrolled",
+              _hook.enrolled(str(outside)) is False, "")
+
+    for junk in (None, "", "/no/such/path/at/all"):
+        check(f"enrolled: survives {junk!r}", _hook.enrolled(junk) is False, "")
+
+
 def check_edit_matcher_registration():
     try:
         registered = json.loads(SETTINGS.read_text())
@@ -377,6 +424,7 @@ def main():
     check_append_log()
     check_run_row()
     check_edit_payload_readers()
+    check_enrolled()
     check_edit_matcher_registration()
     finish("All _hook.py checks passed.")
 
