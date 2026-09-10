@@ -17,6 +17,7 @@ GIT_REMOTE_TIMEOUT_SECONDS = 2
 REPO_GATE_PATH = ".claude/hooks/close-gate.py"
 
 TICKETIFY_PATH = Path.home() / "bin" / "file-issue"
+LOCAL_CLOSE_TICKET = _hook.BIN / "close-ticket"
 
 
 def write_criteria_hint() -> str:
@@ -312,8 +313,7 @@ def close_ticket_stub(issue_number, cwd: str | None, repo_flag: str | None) -> s
         checkout_value = str(checkout)
     else:
         checkout_value = "<a checkout of this repo at the range's head>"
-    vendored = checkout is not None and (checkout / "bin" / "close-ticket").is_file()
-    tool = "bin/close-ticket" if vendored else "~/.agents/skills/bin/close-ticket"
+    tool = "bin/close-ticket" if LOCAL_CLOSE_TICKET.is_file() else "~/bin/close-ticket"
     repo_arg = f" --repo {repo_flag}" if repo_flag else ""
     return f"{tool} {issue_number} <base>..<head> {checkout_value}{repo_arg}"
 

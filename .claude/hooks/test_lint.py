@@ -64,22 +64,20 @@ def check_bare_bin_path() -> None:
     print("bare-bin-path: machine-absolute paths never fire")
     code, out = run_lint_on({
         ".claude/skills/foo/SKILL.md": (
-            "`~/bin/file-issue`, `~/.agents/skills/bin/close-ticket`, "
+            "`~/bin/file-issue`, `~/bin/close-ticket`, "
             "`$HOME/bin/publish-issue-graph`, `#!/usr/bin/env python3`\n"
         ),
     })
     check("rule silent on absolute paths", RULE not in out, out)
     check("lint exits 0", code == 0, str(code) + out)
 
-    print("bare-bin-path: a hook line that branches on the vendored copy is the one place a bare path is right")
+    print("bare-bin-path: a hook line that resolves the tool relative to its own file is the one place a bare path is right")
     code, out = run_lint_on({
         ".claude/hooks/close-gate.py": (
-            'tool = "bin/close-ticket" if vendored else "~/.agents/skills/bin/close-ticket"\n'
-            "# a bare `bin/close-ticket` runs\n"
-            "# only where the checkout vendors one\n"
+            'tool = "bin/close-ticket" if LOCAL.is_file() else "~/bin/close-ticket"\n'
         ),
     })
-    check("rule silent on a vendored branch", RULE not in out, out)
+    check("rule silent on a locally-resolved branch", RULE not in out, out)
 
     print("bare-bin-path: harness fixtures and this repo's own contract are out of scope")
     code, out = run_lint_on({
