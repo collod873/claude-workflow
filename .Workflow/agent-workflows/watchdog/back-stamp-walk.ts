@@ -71,7 +71,7 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
 
 function commitMessage(writes: BackStampWrite[]): string {
   const names = writes.map((write) => write.path.split("/").pop()).join(", ");
-  return `Back-stamp ${writes.length} predecessor${writes.length === 1 ? "" : "s"} a trailer already names
+  return `docs: back-stamp ${writes.length} predecessor${writes.length === 1 ? "" : "s"} a trailer already names
 
 docs/adr/README.md said a superseded ADR gains a status line all along, and zero of 43 ever carried
 one (ADR-0044); a convention with no reader does not hold. This derives it from the Amends: trailer

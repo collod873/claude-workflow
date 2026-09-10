@@ -154,7 +154,7 @@ async function ratifyOne(
     }
   }
 
-  const commit = commitWorkingTree(git, repoDir, parent, `Ratify: ${landedAs}`);
+  const commit = commitWorkingTree(git, repoDir, parent, `chore: ratify ${landedAs}`);
   if (commit === null) {
     return { kind: "skipped", why: `a ${verdict.verdict} verdict for ${landedAs} changed no file` };
   }

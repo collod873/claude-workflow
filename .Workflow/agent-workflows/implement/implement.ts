@@ -290,7 +290,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     recordOutOfBrief(deps.gh, module);
   }
 
-  return landUnderGate(deps, branch, deps.issueNumber, ticket, answer, "Implement", gate, log);
+  return landUnderGate(deps, branch, deps.issueNumber, ticket, answer, "feat: implement", gate, log);
 }
 
 const STRIKE_SIGNATURE_RE = /<!-- strike-signature:(.*) -->/;

@@ -157,6 +157,9 @@ jobs:
       (needs.author.result == 'success' && needs.author.outputs.authored == 'true'))
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
+    concurrency:
+      group: land-${{ github.repository }}
+      cancel-in-progress: false
     permissions:
       contents: write
       issues: write
@@ -207,9 +210,17 @@ jobs:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npm run check
 
-      - name: Push to main
+      - name: Push to main, refreshed against whatever landed during the gauntlet
         working-directory: target
-        run: git push origin HEAD:main
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 5))
+          done
+          exit 1
 
       - name: Say on the ticket that landing failed, and wait for a human
         if: failure() && github.event.action == 'acceptance-wanted'

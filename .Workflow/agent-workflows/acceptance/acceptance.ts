@@ -379,7 +379,7 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
 }
 
 function authorCommitMessage(issueNumber: number, paths: string[]): string {
-  return `Author acceptance tests for #${issueNumber} from the spec alone
+  return `test: author acceptance tests for #${issueNumber} from the spec alone
 
 Nobody has implemented #${issueNumber} yet, so every test here is test.fails, green until the
 work lands, and the implementer turns each on by dropping .fails from its line (#360).

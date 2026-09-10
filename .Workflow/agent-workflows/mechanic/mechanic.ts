@@ -232,7 +232,7 @@ async function repairAndOpen(deps: MechanicDeps, branch: string, log: (line: str
   }
 
   const answer = deriveAnswer(deps.git, deps.readFile, deps.fileExists, reply);
-  return landUnderGate(deps, branch, deps.issueNumber, ticket, answer, "Mechanic", gate, log);
+  return landUnderGate(deps, branch, deps.issueNumber, ticket, answer, "fix: mechanic", gate, log);
 }
 
 function readFailedLog(runId: number): string {
