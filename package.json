@@ -47,5 +47,8 @@
       "consoleFull"
     ],
     "absolute": true
-  }
+  },
+  "workspaces": [
+    "lib/md-html"
+  ]
 }

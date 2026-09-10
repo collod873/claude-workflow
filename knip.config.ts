@@ -92,6 +92,7 @@ export default {
     ...[...invoked].sort(),
   ]),
   project: ["**/*.{js,mjs,ts}!"],
+  ignoreWorkspaces: ["lib/md-html"],
 
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
