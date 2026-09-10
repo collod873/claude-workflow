@@ -1,52 +1,92 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SUBJECT =
-  [resolve(HERE, "../bin/ticket_shape.py"), resolve(HERE, "../../bin/ticket_shape.py")].find(
-    (candidate) => existsSync(candidate),
-  ) ?? resolve(HERE, "../bin/ticket_shape.py");
+type Outcome = { refused: boolean; message: string; warnings: string[] };
 
-const PROBE = [
-  "import importlib.util, json, sys",
-  "spec = importlib.util.spec_from_file_location('ticket_shape', sys.argv[1])",
-  "module = importlib.util.module_from_spec(spec)",
-  "spec.loader.exec_module(module)",
-  "paths = json.loads(sys.argv[2])",
-  "print(json.dumps({",
-  "    'venue': {p: module.classify_venue([p]) for p in paths},",
-  "    'immutable': {p: module.touches_immutable_set([p]) for p in paths},",
-  "}))",
-].join("\n");
+const DRIVER = `import importlib.util
+import json
+import sys
+from pathlib import Path
 
-type Classification = {
-  venue: Record<string, string | null>;
-  immutable: Record<string, string[]>;
-};
+here = Path(sys.argv[1]).resolve()
+root = next(d for d in (here, *here.parents) if (d / "bin" / "ticket_shape.py").is_file())
+spec = importlib.util.spec_from_file_location("ticket_shape", str(root / "bin" / "ticket_shape.py"))
+ticket_shape = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ticket_shape)
 
-function classify(paths: string[]): Classification {
-  const out = execFileSync("python3", ["-c", PROBE, SUBJECT, JSON.stringify(paths)], {
-    cwd: dirname(dirname(SUBJECT)),
-    encoding: "utf8",
-  });
-  return JSON.parse(out) as Classification;
+request = json.loads(sys.stdin.read())
+verdict = {"refused": False, "message": "", "warnings": []}
+try:
+    verdict["warnings"] = list(ticket_shape.validate(request["kind"], request["body"], root))
+except ticket_shape.ValidationError as error:
+    verdict["refused"] = True
+    verdict["message"] = str(error)
+
+print(json.dumps(verdict))
+`;
+
+function interpreter(): string {
+  return execFileSync("sh", ["-c", "command -v python3"], { encoding: "utf8" }).trim();
 }
 
-test(
-  "#438.2: ticket_shape's venue predicate classifies a home-dir or `.claude/` settings path as workstation, independent of immutable-set",
+function runValidate(kind: string, body: string, env: Record<string, string>): Outcome {
+  const stdout = execFileSync(interpreter(), ["-c", DRIVER, process.cwd()], {
+    input: JSON.stringify({ kind, body }),
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
+  return JSON.parse(stdout) as Outcome;
+}
+
+function specBody(command: string): string {
+  return [
+    "## Acceptance criteria",
+    "",
+    `- [ ] the session brief hands over the next by-hand ticket - check: \`${command}\``,
+    "",
+  ].join("\n");
+}
+
+function homeCarryingHookReport(): string {
+  const home = mkdtempSync(join(tmpdir(), "hook-report-home-439-"));
+  mkdirSync(join(home, "bin"), { recursive: true });
+  const report = join(home, "bin", "hook-report");
+  writeFileSync(report, "#!/bin/sh\nexit 1\n");
+  chmodSync(report, 0o755);
+  return home;
+}
+
+test.fails(
+  "#439.1: a check marker naming `~/bin/hook-report ...` (path form, executable file) is accepted by validate()",
   () => {
-    const homeDir = "~/.claude/settings.json";
-    const claudeSettings = ".claude/settings.json";
-    const ordinary = "src/router.ts";
+    const home = homeCarryingHookReport();
 
-    const result = classify([homeDir, claudeSettings, ordinary]);
+    const accepted = runValidate("spec", specBody("~/bin/hook-report --days 7"), { HOME: home });
+    expect(accepted.refused).toBe(false);
+    expect(accepted.warnings.join(" ")).not.toContain("hook-report");
 
-    expect(result.venue[homeDir]).toBe("workstation");
-    expect(result.venue[claudeSettings]).toBe("workstation");
-    expect(result.immutable[homeDir]).toEqual([]);
-    expect(result.venue[ordinary]).not.toBe("workstation");
+    const missing = runValidate("spec", specBody("~/bin/hook-report-absent --days 7"), {
+      HOME: home,
+    });
+    expect(missing.refused).toBe(true);
+    expect(missing.message).toContain("hook-report-absent");
   },
+  30000,
+);
+
+test.fails(
+  "#439.2: a check marker naming `pytest ...` when no `pytest` resolves on PATH is refused, naming the word",
+  () => {
+    const barePath = mkdtempSync(join(tmpdir(), "no-pytest-path-439-"));
+
+    const outcome = runValidate("spec", specBody("pytest tests/test_session_brief.py"), {
+      PATH: barePath,
+    });
+    expect(outcome.refused).toBe(true);
+    expect(outcome.message).toContain("pytest");
+  },
+  30000,
 );
