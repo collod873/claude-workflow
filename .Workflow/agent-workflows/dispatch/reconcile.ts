@@ -10,7 +10,7 @@ import {
   matchingRefsPath,
   subIssuesPath,
 } from "../shared/gh-paths";
-import { touchesImmutableSet } from "../shared/immutable-set";
+import { BY_HAND_LABEL, touchesImmutableSet } from "../shared/immutable-set";
 import { releaseDeadClaim } from "../shared/claim";
 import { escalateToOwner, NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { testsForTicket } from "../shared/affected-tests";
@@ -86,6 +86,8 @@ const PARENT_PRD_HEADING = /^##[ \t]+Parent PRD[ \t]*$/m;
 export const TO_BUILD_LABEL = "to-build";
 
 const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
+
+const BY_HAND_STAND_DOWN_MARKER = "<!-- by-hand-stand-down:v1 -->";
 
 const COMPLETED = "completed";
 
@@ -315,6 +317,27 @@ function toBuildRefusalBody(refusal: string): string {
   ].join("\n");
 }
 
+function byHandStandDownBody(): string {
+  return [
+    `This is labelled \`${BY_HAND_LABEL}\`: its \`## Files claimed\` names a workstation or immutable-set`,
+    `path, which only a human can build. Lane 06 will not start against it, and this stand-down is not a`,
+    `\`${NEEDS_HUMAN_LABEL}\` hold — nobody needs to act on it.`,
+    "",
+    BY_HAND_STAND_DOWN_MARKER,
+  ].join("\n");
+}
+
+function recordByHandStandDown(gh: GhExec, number: number, log: (line: string) => void): void {
+  const comments = fetchComments(gh, number);
+  if (comments === null) {
+    log(`could not read #${number}'s comments, so leaving whatever this door said last run standing.`);
+    return;
+  }
+  if (markedComment(comments, BY_HAND_STAND_DOWN_MARKER) !== undefined) return;
+  gh(["issue", "comment", String(number), "--body", byHandStandDownBody()]);
+  log(`#${number}: stood down at the ${TO_BUILD_LABEL} door: labelled \`${BY_HAND_LABEL}\`.`);
+}
+
 const TO_BUILD_CLEARED_BODY = [
   "This ticket's shape is no longer refused: it carries both headings lane 06 needs, so the",
   "recompute that read this will start it as soon as every blocker has delivered.",
@@ -355,7 +378,21 @@ function admitToBuild(
 ): Set<number> {
   const admitted = new Set<number>();
   for (const issue of issues) {
-    if (!(issue.labels ?? []).some((label) => label.name === TO_BUILD_LABEL)) continue;
+    const labels = (issue.labels ?? []).map((label) => label.name);
+    if (!labels.includes(TO_BUILD_LABEL)) continue;
+
+    if (labels.includes(BY_HAND_LABEL)) {
+      if (dryRun) {
+        log(`would stand down #${issue.number} at the ${TO_BUILD_LABEL} door: labelled \`${BY_HAND_LABEL}\`.`);
+        continue;
+      }
+      try {
+        recordByHandStandDown(gh, issue.number, log);
+      } catch (err) {
+        log(`could not record #${issue.number}'s by-hand stand-down: ${reason(err)}`);
+      }
+      continue;
+    }
 
     const refusal = toBuildRefusal(issue.body ?? "");
     if (refusal === undefined) admitted.add(issue.number);
@@ -747,6 +784,10 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     const labels = (byNumber.get(state.number)?.labels ?? []).map((each) => each.name);
     if (labels.includes(NEEDS_HUMAN_LABEL)) {
       log(`#${state.number}: not dispatching; it carries \`${NEEDS_HUMAN_LABEL}\` and waits for a human.`);
+      continue;
+    }
+    if (labels.includes(BY_HAND_LABEL)) {
+      log(`#${state.number}: not dispatching; it carries \`${BY_HAND_LABEL}\` and only a human can build it.`);
       continue;
     }
     const landedPr = mergedCloser(gh, state.number);

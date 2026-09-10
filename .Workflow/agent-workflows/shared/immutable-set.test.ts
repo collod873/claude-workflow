@@ -36,7 +36,7 @@ test("#425.2: the Python and TypeScript sides agree on the immutable set", () =>
   expect([...IMMUTABLE_SET]).toEqual(shared);
 });
 
-test.fails("#437.4: touchesWorkstation classifies a home-directory or `.claude/` settings path, independent of the immutable-set check", () => {
+test("#437.4: touchesWorkstation classifies a home-directory or `.claude/` settings path, independent of the immutable-set check", () => {
   expect(touchesWorkstation(["~/.claude/settings.json"])).toBe(true);
   expect(touchesWorkstation(["~/bin/hook-report"])).toBe(true);
   expect(touchesWorkstation([".claude/settings.json"])).toBe(true);
