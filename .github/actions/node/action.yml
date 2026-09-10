@@ -22,8 +22,10 @@ runs:
       id: modules
       uses: actions/cache@v4
       with:
-        path: node_modules
-        key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+        path: |
+          node_modules
+          lib/md-html/node_modules
+        key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json', 'lib/md-html/package-lock.json') }}
 
     - name: Install dependencies
       shell: bash
@@ -34,6 +36,7 @@ runs:
         if [ "$RESTORED" = "true" ] && [ -d node_modules ]; then
           echo "node_modules restored from the Actions cache"
           npm run prepare --if-present
+          [ -d lib/md-html/node_modules ] || npm ci --prefix lib/md-html
           exit 0
         fi
         store="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/node-modules/$(sha256sum package-lock.json | cut -d' ' -f1)"
@@ -42,12 +45,14 @@ runs:
           if cp -al "$store" node_modules 2>/dev/null || cp -a "$store" node_modules; then
             echo "node_modules restored from $store"
             npm run prepare --if-present
+            [ -d lib/md-html/node_modules ] || npm ci --prefix lib/md-html
             exit 0
           fi
           echo "::warning::could not restore $store; falling back to npm ci"
           rm -rf node_modules
         fi
         npm ci
+        npm ci --prefix lib/md-html
         staging="$store.$$"
         rm -rf "$staging"
         mkdir -p "$(dirname "$store")"
