@@ -510,14 +510,16 @@ def test_repo_flag_carried_through(tmp: Path):
         env_extra={"STUB_JSON": json.dumps({"body": TICKET_BODY_ALL_PASS}), "STUB_ARGV_LOG": str(log)},
     )
     check("-R: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
-    argvs = [row["argv"] for row in read_log(log)]
-    def names_repo(a):
+    rows = read_log(log)
+    argvs = [row["argv"] for row in rows]
+    def names_repo(row):
+        a = row["argv"]
         if a[:2] == ["api", "graphql"]:
             return 'owner: "acme", name: "widgets"' in a[-1]
-        return "-R" in a and a[a.index("-R") + 1] == "acme/widgets"
+        return row.get("GH_REPO") == "acme/widgets"
 
     check("-R: names the repo on every gh call",
-          bool(argvs) and all(names_repo(a) for a in argvs), argvs)
+          bool(rows) and all(names_repo(row) for row in rows), rows)
     check("-R: repo view is never asked, the flag already names the repo",
           not any(a[:2] == ["repo", "view"] for a in argvs), argvs)
 

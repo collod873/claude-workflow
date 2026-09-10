@@ -20,6 +20,10 @@ _spec = importlib.util.spec_from_file_location("ticket_shape", BIN / "ticket_sha
 ticket_shape = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ticket_shape)
 
+_gh_support_spec = importlib.util.spec_from_file_location("gh_support", BIN / "gh_support.py")
+gh_support = importlib.util.module_from_spec(_gh_support_spec)
+_gh_support_spec.loader.exec_module(gh_support)
+
 
 
 QUESTION_BODY_OK = (
@@ -261,6 +265,46 @@ def test_check_marker():
           multi_span_warnings)
 
 
+RECORDING_GH = (
+    "#!/usr/bin/env python3\n"
+    "import json, os, sys\n"
+    "with open(os.environ['RECORD_LOG'], 'a') as f:\n"
+    "    f.write(json.dumps({'argv': sys.argv[1:], 'GH_REPO': os.environ.get('GH_REPO')}) + '\\n')\n"
+)
+
+
+def test_bind_gh_repo_binding(tmp):
+    print("gh_support.bind_gh: GH_REPO in the environment names the repo on every call (#418)")
+
+    recorder = tmp / "recording-gh.py"
+    recorder.write_text(RECORDING_GH)
+    recorder.chmod(0o755)
+    log = tmp / "bind-gh-calls.jsonl"
+    env = {**os.environ, "RECORD_LOG": str(log)}
+
+    gh = gh_support.bind_gh(str(recorder), "acme/widgets")
+
+    def call(*args):
+        result = gh(*args, env=env, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        return result
+
+    call("api", "repos/{owner}/{repo}/issues", "--method", "GET")
+    call("issue", "view", "1")
+
+    rows = [json.loads(ln) for ln in log.read_text().splitlines() if ln.strip()]
+    api_row = next(r for r in rows if r["argv"][0] == "api")
+    issue_row = next(r for r in rows if r["argv"][0] == "issue")
+
+    check("gh api: argv carries no -R (#418, gh api rejects the flag)",
+          "-R" not in api_row["argv"], api_row)
+    check("gh api: GH_REPO reaches the call through the environment",
+          api_row["GH_REPO"] == "acme/widgets", api_row)
+    check("gh issue: argv carries no -R either, one rule for every subcommand",
+          "-R" not in issue_row["argv"], issue_row)
+    check("gh issue: GH_REPO reaches the call through the environment",
+          issue_row["GH_REPO"] == "acme/widgets", issue_row)
+
 
 
 ROWLOG = _harness.RowLog("file-issue-log-")
@@ -293,11 +337,15 @@ def write_body(tmp, name, text):
     return p
 
 
-def read_argv_log(log_path):
+def read_log_rows(log_path):
     if not log_path.exists():
         return []
     lines = [ln for ln in log_path.read_text().splitlines() if ln.strip()]
-    return [json.loads(ln)["argv"] for ln in lines]
+    return [json.loads(ln) for ln in lines]
+
+
+def read_argv_log(log_path):
+    return [row["argv"] for row in read_log_rows(log_path)]
 
 
 def test_cli(tmp):
@@ -460,20 +508,20 @@ def test_cli(tmp):
     r = run_cli(["note", "--title", "cross-repo", "-R", "acme/widgets"],
                 env_extra={"STUB_ARGV_LOG": str(log)})
     check("note/-R: exits 0", r.returncode == 0, r.stderr)
-    calls = read_argv_log(log)
-    if calls:
-        check("note/-R: -R carried to gh", "-R" in calls[0] and
-              calls[0][calls[0].index("-R") + 1] == "acme/widgets", calls[0])
+    rows = read_log_rows(log)
+    if rows:
+        check("note/-R: no -R in argv, GH_REPO carried in the environment instead (#418)",
+              "-R" not in rows[0]["argv"] and rows[0]["GH_REPO"] == "acme/widgets", rows[0])
 
     log = tmp / "log8.jsonl"
     r = run_cli(["spec", "--title", "cross-repo spec", "-R", "acme/widgets"],
                 env_extra={"STUB_ARGV_LOG": str(log)}, body_file=spec_body)
     check("spec/-R: exits 0", r.returncode == 0, r.stderr)
-    calls = read_argv_log(log)
-    check("spec/-R: -R carried on every gh call",
-          len(calls) == 2 and all("-R" in c and c[c.index("-R") + 1] == "acme/widgets"
-                                   for c in calls),
-          calls)
+    rows = read_log_rows(log)
+    check("spec/-R: no -R in argv, GH_REPO carried on every gh call instead (#418)",
+          len(rows) == 2 and all("-R" not in row["argv"] and row["GH_REPO"] == "acme/widgets"
+                                  for row in rows),
+          rows)
 
 
 
@@ -612,10 +660,17 @@ def test_ticketify(tmp):
     issues = [issue_obj(17, 1717, "Some fuzzy description.\n", labels=["fuzzy"])]
     r, calls = run_ticketify(17, ["-R", "acme/widgets"], issues, NEW_CRITERIA_BODY, log)
     check("-R: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
-    check("-R: carried on every gh call",
-          bool(calls) and all("-R" in c and c[c.index("-R") + 1] == "acme/widgets"
-                               for c in calls),
-          calls)
+    rows = read_log_rows(log)
+    api_rows = [row for row in rows if row["argv"][:1] == ["api"]]
+    other_rows = [row for row in rows if row["argv"][:1] != ["api"]]
+    check("-R: at least one api call and one non-api call exercised",
+          bool(api_rows) and bool(other_rows), rows)
+    check("-R: no gh api call carries -R (#418, gh api rejects the flag)",
+          all("-R" not in row["argv"] for row in api_rows), api_rows)
+    check("-R: no other gh call carries -R either, GH_REPO carries the repo for all of them",
+          bool(rows) and all("-R" not in row["argv"] and row["GH_REPO"] == "acme/widgets"
+                              for row in rows),
+          rows)
 
 
 
@@ -891,6 +946,8 @@ def main():
         test_check_marker()
         print()
         test_config_or_md_evidence()
+        print()
+        test_bind_gh_repo_binding(tmp)
         print()
         test_cli(tmp)
         print()
