@@ -87,7 +87,7 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    recorded in `collod873/claude-workflow`.
 
 6. **It runs in `test` and `all`, and in CI. Never in `stop`.** Token-window matching across a few
-   hundred files takes seconds, not the sub-second budget the turn-end gate reserves (ADR-0022).
+   hundred files takes seconds, not the sub-second budget the turn-end gate reserves (ADR-0167).
    The contract slots are where the gate belongs; the turn-end gate is where it would only ever be
    a tax.
 

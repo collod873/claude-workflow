@@ -104,7 +104,7 @@ pipeline step reads as a position:
 | `spec/gap`       | lane 07's conformance reviewer; the fixer's no-progress stop | The contract is wrong rather than the diff. Filed at a PRD, read by lane 02's amendment path: ADR-0034, ADR-0038, ADR-0119 |
 
 GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not
-pipeline labels; see ADR-0004 in `collod873/agent-skills`, which deleted them from the vocabulary.
+pipeline labels; they were deleted from the vocabulary.
 Lane 00's second form applies stock `bug` at creation, which is intake, not a position: it records
 that the owner called it a break, and no step reads it as a verdict.
 

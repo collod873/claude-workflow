@@ -312,11 +312,10 @@ the batch:
 batch has already built, held only in your own context across the loop, never a file on the drain
 branch. A file would reintroduce the same collision named at step 3's merge conflict shape (two
 tickets appending to one shared file), and it would give this orchestrator state its edge does not
-produce (see [ADR-0001](docs/adr/0001-pipeline-is-states-not-activities.md)). You are the one
+produce. You are the one
 context that watches every ticket in the batch land, so you are also the only place positioned to
 hold it. Inject only the lines plausibly relevant to the ticket being dispatched, never the whole
-ledger. See
-[ADR-0030](docs/adr/0030-a-seam-is-prefactored-where-predictable-ledgered-where-it-is-not.md).
+ledger.
 
 Done when: every ticket in the batch is closed or labelled `needs-human`, every merge and every
 gate in the run ran against a tip this loop left and a tree `git status --porcelain` reported clean,
@@ -388,8 +387,8 @@ unmentioned here is lost with the session, which is the exact failure this line 
 
 **Then stop.** A drain lands one batch and ends; it never sweeps its own landing for standards, and
 it never drains what a sweep filed. Both are commands the maintainer gives, never consequences of
-this run (ADR-0029). Filing a machinery defect above is reporting, not sweeping; it changes no
-code, only where the defect gets addressed, so it narrows ADR-0029's wording, never weakens it.
+this run. Filing a machinery defect above is reporting, not sweeping; it changes no
+code, only where the defect gets addressed, so it narrows that boundary, never weakens it.
 
 Never run `/standards`, `/standards-pass`, or `/ratify` from here, and never dispatch a subagent
 that would. Whether to name them in the debrief depends on how this run started:

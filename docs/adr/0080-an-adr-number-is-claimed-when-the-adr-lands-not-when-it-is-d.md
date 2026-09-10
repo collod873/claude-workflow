@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-27
-reversal: Undoing it means rewriting both modes of `bin/new-adr`, the `draft-` exclusions in `generate-corpus-fixture.ts` and `missing-trailer-counter.ts`, and the fixture regeneration in `shape/accept.ts` and `watchdog/back-stamp-walk.ts`, while re-admitting the collision that already produced two ADR-0077s across two disks — and the `--land` gesture is documented outside this repo, in agent-skills' ADR-FORMAT.md.
+reversal: Undoing it means rewriting both modes of `bin/new-adr`, the `draft-` exclusions in `generate-corpus-fixture.ts` and `missing-trailer-counter.ts`, and the fixture regeneration in `shape/accept.ts` and `watchdog/back-stamp-walk.ts`, while re-admitting the collision that already produced two ADR-0077s across two disks — and the `--land` gesture is documented in this repo's own `docs/adr/README.md`.
 ---
 
 # An ADR number is claimed when the ADR lands, not when it is drafted, because two authors write into docs/adr and neither sees the other's uncommitted work

@@ -9,7 +9,7 @@ Event catalog, matcher rules, and I/O schema for the events this machine registe
 | Event | Fires | Ceiling | Matcher filters on |
 |---|---|---|---|
 | `PreToolUse` | Before a tool runs | gate | tool name |
-| `PostToolUse` | After a tool succeeds | steer (`decision: block`; the tool already ran, ADR-0016) | tool name |
+| `PostToolUse` | After a tool succeeds | steer (`decision: block`; the tool already ran) | tool name |
 | `PostToolUseFailure` | After a tool fails | inject (`additionalContext` lands beside the error; `is_interrupt` marks an abort, not a tool error) | tool name |
 | `PermissionRequest` | When a permission dialog would appear | gate (`decision.behavior: deny`) | tool name |
 | `UserPromptSubmit` | User submits a prompt, before Claude sees it | gate (`exit 2` erases the prompt) | (none) |
@@ -46,7 +46,7 @@ Event-specific additions:
 - **any other**: non-blocking error. First stderr line shown in transcript; execution continues. A **timeout** is this case, with nothing on either channel (`hook_response`: `outcome: "cancelled"`, `exit_code: 1`).
 
 ### JSON stdout (exit 0 only)
-Universal fields: `continue` (false = halt Claude entirely), `stopReason`, `suppressOutput`, `systemMessage` (per-hook, reaches the human, ADR-0012).
+Universal fields: `continue` (false = halt Claude entirely), `stopReason`, `suppressOutput`, `systemMessage` (per-hook, reaches the human, ADR-0166).
 
 `hookSpecificOutput` requires `hookEventName` to match the event, or the whole block is ignored:
 
@@ -58,11 +58,11 @@ Universal fields: `continue` (false = halt Claude entirely), `stopReason`, `supp
     "additionalContext": "injected for Claude" } }
 ```
 
-- **`permissionDecision`** (PreToolUse only): `allow` skips the prompt (deny rules still apply), `deny` cancels + tells Claude, `ask` normal prompt, `defer` preserves the call (`-p` mode). `permissionDecisionReason` is a single raced slot under contention (ADR-0012).
+- **`permissionDecision`** (PreToolUse only): `allow` skips the prompt (deny rules still apply), `deny` cancels + tells Claude, `ask` normal prompt, `defer` preserves the call (`-p` mode). `permissionDecisionReason` is a single raced slot under contention (ADR-0166).
 - **`additionalContext`** (most events): text fed to Claude next to the result. The non-blocking way to inject guidance, **except on `Stop`/`SubagentStop`**, where it continues the turn under the same `stop_hook_active` and 8-strike protections as `decision: "block"`, labelled `Stop hook feedback` instead of a hook error (docs § Stop decision control; measured in the field 2026-09-04, 24 forced continuations from a hand-back that carried it). A `Stop` fire that wants the turn to end puts nothing on Claude's channel: `systemMessage` alone reaches the human and lets the turn end.
 - **`updatedInput`** (PreToolUse/PermissionRequest): rewrite the tool call. Last writer wins if multiple hooks set it.
 - **`updatedToolOutput`** (PostToolUse): replace stdout/exit_code.
-- **`decision: "block"` + `reason`** (top-level; PostToolUse, Stop, UserPromptSubmit, PreCompact): block with a reason. PreToolUse uses `permissionDecision` instead. On Post events `reason` is per-hook, not raced (ADR-0016). On `Stop` it forces the continue exactly as `exit 2` does and is the only refusal shape with a human channel: `systemMessage` lands as a `system/informational` notice, stderr under `exit 2` reaches the model alone, prefixed with the hook's whole command line (`docs/research/stop-refusal-channels-2026-08-29.md`).
+- **`decision: "block"` + `reason`** (top-level; PostToolUse, Stop, UserPromptSubmit, PreCompact): block with a reason. PreToolUse uses `permissionDecision` instead. On Post events `reason` is per-hook, not raced. On `Stop` it forces the continue exactly as `exit 2` does and is the only refusal shape with a human channel: `systemMessage` lands as a `system/informational` notice, stderr under `exit 2` reaches the model alone, prefixed with the hook's whole command line (`docs/research/stop-refusal-channels-2026-08-29.md`).
 - `SessionStart` extras: `sessionTitle`, `watchPaths`, `reloadSkills`, `initialUserMessage` (`-p` only).
 - `PermissionRequest`: `decision: {behavior: "allow|deny", updatedInput}`.
 
@@ -72,7 +72,7 @@ Hard rule: **JSON needs exit 0.** Emitting JSON *and* `exit 2` throws the JSON a
 - `$CLAUDE_PROJECT_DIR` (project root, quote it), `$CLAUDE_PLUGIN_ROOT`, `$CLAUDE_ENV_FILE` (SessionStart/CwdChanged: append `export FOO=bar` to persist env into Bash).
 - Default timeout: `command`/`http`/`mcp_tool` 600s (UserPromptSubmit 30s), `prompt` 30s, `agent` 60s. Override with `"timeout"` (seconds).
 - `"async": true`: the hook runs in the background; the turn doesn't wait. It cannot block or rewrite; its `additionalContext`/`systemMessage` land on a later turn.
-- Output cap 10,000 chars (overflow spills to a file). Matching hooks run **in parallel**, with no ordering (ADR-0012). Stop hooks are force-released after 8 consecutive blocks.
+- Output cap 10,000 chars (overflow spills to a file). Matching hooks run **in parallel**, with no ordering (ADR-0166). Stop hooks are force-released after 8 consecutive blocks.
 - **Runtime env**: command hooks run in a **non-interactive** shell and do **not** reliably inherit your login-shell PATH/aliases/direnv. Use absolute paths or `${CLAUDE_PROJECT_DIR}`; the working directory is the `cwd` field. Interactive-only-guard any profile `echo` (`[[ $- == *i* ]]`) so it can't corrupt stdout JSON.
 
 ## Hook types (the `type` field)
@@ -127,7 +127,7 @@ A rubric that hits every intended BLOCK/ALLOW branch can still miss whole classe
 - **Keyword as substring / anchoring leaks**: `cat src/build.sh`, `pre-build`, `rebuild`, `.env.example`, `.env.backup`, `environment.txt`. If the guard is `\bK\b` or bare `.env`, these are where anchoring leaks.
 - **Find/ls on a parent**: `find . -name X` where `.` transitively contains `K/`. Pruning an excluded dir isn't reading it.
 - **Redirect-write not read**: `echo x > K/out.log`, `cp file K/`, `tar -xf f -C K/`. Writing to a guarded dir isn't reading from one.
-- **Keyword as data**: the guarded word inside a `--comment` body, heredoc, grep pattern, or string literal (`_hook.unquoted_matches()` is the shared filter; ADR-0012 § The collision is live).
+- **Keyword as data**: the guarded word inside a `--comment` body, heredoc, grep pattern, or string literal (`_hook.unquoted_matches()` is the shared filter).
 
 Then brainstorm *this* hook's own quirks: shell syntax the regex doesn't tokenize (`$(...)`, backticks), aliases/functions wrapping the command, path expansions (`~`, `$HOME`, `..` resolving into `K/`). 40+ cases is normal; coverage is cheap because the harness runs in seconds.
 
