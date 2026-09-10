@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-test.fails("#425.3: the ticket format doc states the rule", () => {
+test("#425.3: the ticket format doc states the rule", () => {
   const result = spawnSync("grep", ["-qi", "immutable set", "docs/agents/ticket-format.md"], {
     cwd: repoRoot,
     encoding: "utf8",

@@ -21,7 +21,7 @@ const TICKET_CLAIMING_CI = [
   "",
 ].join("\n");
 
-test.fails(
+test(
   "#425.1: a ticket body claiming .github/workflows/ci.yml is refused by file-issue ticket before gh is called, and the refusal names the path",
   () => {
     const tmp = mkdtempSync(join(tmpdir(), "file-issue-425-"));

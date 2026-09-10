@@ -1,10 +1,27 @@
 #!/usr/bin/env python3
 import fnmatch
+import json
 import re
 import subprocess
 from pathlib import Path
 
 KINDS = ("note", "question", "ticket", "spec")
+
+IMMUTABLE_SET_PATH = (
+    Path(__file__).resolve().parent.parent
+    / ".Workflow" / "agent-workflows" / "shared" / "immutable-set.json"
+)
+IMMUTABLE_SET: tuple[str, ...] = tuple(json.loads(IMMUTABLE_SET_PATH.read_text()))
+
+
+def touches_immutable_set(paths: list[str]) -> list[str]:
+    return [p for p in paths if any(p == entry or p.startswith(entry) for entry in IMMUTABLE_SET)]
+
+
+IMMUTABLE_SET_CLAIM_MESSAGE = (
+    "'## Files claimed' touches paths no pull request may edit: {paths} -- a human commits "
+    "that half by hand; claim what the ticket needs outside the immutable set instead"
+)
 
 def caller_repo_root(start: Path | None = None) -> Path:
     here = (start or Path.cwd()).resolve()
@@ -171,6 +188,11 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         if not FILES_CLAIMED_HEADING_RE.search(body):
             raise ValidationError(
                 "missing required '## Files claimed' heading"
+            )
+        immutable_claims = touches_immutable_set(claimed_paths(body))
+        if immutable_claims:
+            raise ValidationError(
+                IMMUTABLE_SET_CLAIM_MESSAGE.format(paths=", ".join(immutable_claims))
             )
         warnings = []
         lines = _criteria_lines(body)

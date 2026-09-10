@@ -76,6 +76,11 @@ TICKET_BODY_CHECK_MARKER_MULTIPLE_SPANS = (
     "## Files claimed\n\n- None, no files.\n"
 )
 
+TICKET_BODY_CLAIMS_CI = (
+    "## Acceptance criteria\n\n- [ ] the lane runs green - check: `true`\n\n"
+    "## Files claimed\n\n- .github/workflows/ci.yml\n"
+)
+
 
 def refusal(call) -> str | None:
     try:
@@ -918,6 +923,28 @@ def test_test_handoff(tmp):
           log4.stdout.count("\n") == 1, log4.stdout)
 
 
+def test_immutable_set_claim(tmp):
+    print("#425: a '## Files claimed' path inside the immutable set is refused before gh runs")
+
+    log = tmp / "immutable-ticket.jsonl"
+    body = write_body(tmp, "ticket-claims-ci.md", TICKET_BODY_CLAIMS_CI)
+    r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
+                body_file=body)
+    check("ticket/claims .github/workflows/ci.yml: exits nonzero", r.returncode != 0, r.returncode)
+    check("ticket/claims .github/workflows/ci.yml: refusal names the path",
+          ".github/workflows/ci.yml" in r.stderr, r.stderr)
+    check("ticket/claims .github/workflows/ci.yml: never called gh",
+          read_argv_log(log) == [], read_argv_log(log))
+
+    log = tmp / "immutable-ticketify.jsonl"
+    issues = [issue_obj(40, 4040, "Some fuzzy description.\n", labels=["fuzzy"])]
+    r, calls = run_ticketify(40, [], issues, TICKET_BODY_CLAIMS_CI, log)
+    check("ticketify/claims .github/workflows/ci.yml: exits nonzero", r.returncode != 0, r.returncode)
+    check("ticketify/claims .github/workflows/ci.yml: refusal names the path",
+          ".github/workflows/ci.yml" in r.stderr, r.stderr)
+    check("ticketify/claims .github/workflows/ci.yml: never called gh", calls == [], calls)
+
+
 def test_run_row(tmp: Path):
     print("one run row per invocation, filed or refused")
     r = run_cli(["ticket", "--title", "A ticket"],
@@ -954,6 +981,8 @@ def main():
         test_ticketify(tmp)
         print()
         test_test_handoff(tmp)
+        print()
+        test_immutable_set_claim(tmp)
         print()
         test_run_row(tmp)
 
