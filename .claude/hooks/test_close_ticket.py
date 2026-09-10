@@ -511,9 +511,15 @@ def test_repo_flag_carried_through(tmp: Path):
     )
     check("-R: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
     argvs = [row["argv"] for row in read_log(log)]
-    check("-R: carried on every gh call",
-          bool(argvs) and all("-R" in a and a[a.index("-R") + 1] == "acme/widgets" for a in argvs),
-          argvs)
+    def names_repo(a):
+        if a[:2] == ["api", "graphql"]:
+            return 'owner: "acme", name: "widgets"' in a[-1]
+        return "-R" in a and a[a.index("-R") + 1] == "acme/widgets"
+
+    check("-R: names the repo on every gh call",
+          bool(argvs) and all(names_repo(a) for a in argvs), argvs)
+    check("-R: repo view is never asked, the flag already names the repo",
+          not any(a[:2] == ["repo", "view"] for a in argvs), argvs)
 
 
 def test_run_row(tmp: Path):

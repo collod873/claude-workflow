@@ -188,7 +188,9 @@ query {
 """
 
 
-def fetch_repo_name(gh) -> str:
+def fetch_repo_name(gh, repo: str | None = None) -> str:
+    if repo:
+        return repo
     return json.loads(gh_support.run_gh(gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
 
 
@@ -615,7 +617,7 @@ def run(argv=None) -> int:
         if blocks is not None:
             if args.spec:
                 try:
-                    name_with_owner = fetch_repo_name(gh)
+                    name_with_owner = fetch_repo_name(gh, args.repo)
                     children = fetch_sub_issues(gh_path, name_with_owner, args.issue)
                 except (gh_support.GhError, KeyError, ValueError) as e:
                     print(f"error: could not read #{args.issue}'s sub-issues: {e}", file=sys.stderr)
@@ -634,7 +636,7 @@ def run(argv=None) -> int:
                     return 1
 
             try:
-                name_with_owner = fetch_repo_name(gh)
+                name_with_owner = fetch_repo_name(gh, args.repo)
                 closing_pr = fetch_closing_pr(gh_path, name_with_owner, args.issue)
                 if closing_pr is not None:
                     verify = fetch_verify_verdict(gh, closing_pr["url"])
