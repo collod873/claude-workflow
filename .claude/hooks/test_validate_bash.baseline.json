@@ -1,0 +1,835 @@
+[
+  [
+    "block:dotenv-bare",
+    "cat .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-head",
+    "head -1 .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-with-path",
+    "cat /Users/me/project/.env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-local",
+    "cat .env.local",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-production",
+    "less .env.production",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-backup",
+    "cat .env.backup",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-tilde",
+    "cat ~/.env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-homevar",
+    "cat $HOME/.env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-subshell",
+    "echo $(cat .env)",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:dotenv-quoted-path",
+    "cat \"secrets/.env\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:git-head",
+    "cat .git/HEAD",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:git-config",
+    "bat .git/config",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-cat-nm",
+    "cat node_modules/foo/package.json",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-rg-nm",
+    "rg pattern node_modules/",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-grep-dist",
+    "grep -r foo dist/",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-tree-nm",
+    "tree node_modules/",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-next",
+    "cat .next/cache/webpack/foo",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-pycache",
+    "bat __pycache__/foo.pyc",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-venv-cat",
+    "cat .venv/lib/foo.py",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-absolute-build",
+    "cat /home/u/build/x.log",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-dotslash-build",
+    "cat ./build/x",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:waste-bounded-pipe",
+    "cat build/x.log | head -20",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:compound-cat-env",
+    "ls && cat .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:env-example",
+    "cat .env.example",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:env-sample",
+    "cat .env.sample",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:env-template",
+    "cat .env.template",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:env-dist",
+    "cat .env.dist",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:env-example-old",
+    "cat .env.example.old",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:envrc",
+    "cat .envrc",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:find-env-glob",
+    "find . -type f -name '.env*'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:find-tmp",
+    "find /tmp -type d",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:find-in-nm",
+    "find node_modules -name 'package.json'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:ls-nm",
+    "ls node_modules/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:ls-la-nm",
+    "ls -la node_modules/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:ls-R-src",
+    "ls -R src/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:exclude-dir",
+    "rg --exclude-dir=node_modules foo .",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:exclude-eq",
+    "grep --exclude=build/* foo src/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:word-build-rg",
+    "rg \"build\" src/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:file-build-sh",
+    "cat scripts/build.sh",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:dist-substring",
+    "rg foo docs/dist-architecture.md",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:dash-prefix",
+    "cat myproject-build-tools/x",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:rebuild",
+    "cat rebuild/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:builds-plural",
+    "cat builds/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:nm-no-slash",
+    "cat node_modules",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:npm-run-build",
+    "npm run build",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:cargo-build",
+    "cargo build --release",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:go-build",
+    "go build ./...",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:make-build",
+    "make build",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:pip-install",
+    "pip install requests",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-diff-build",
+    "git diff build/foo.log",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-log-build",
+    "git log build/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-show-build",
+    "git show HEAD:build/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-add-build",
+    "git add build/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-blame-build",
+    "git blame build/foo",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-log-oneline",
+    "git log --oneline -20",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:cd-build",
+    "cd build/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:pushd-dist",
+    "pushd dist/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:cd-build-no-slash",
+    "cd build && ls",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:echo-redirect-build",
+    "echo x > build/out.log",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:cp-into-build",
+    "cp file build/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:tar-extract-build",
+    "tar -xf foo -C build/",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:rm-rf-nm",
+    "rm -rf node_modules",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:mkdir-dist",
+    "mkdir -p dist/out",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:rm-rf-dotenv",
+    "rm -rf .env",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:npm-install",
+    "npm install",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:source-env",
+    "source .env",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "block:install-then-catenv",
+    "install foo && cat .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:mkdir-then-catenv",
+    "mkdir foo && cat .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:rmrf-then-cat-git",
+    "rm -rf foo && cat .git/HEAD",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:install-then-cat-git",
+    "install x && cat .git/config",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:rm-rf-still-allows-nm",
+    "rm -rf node_modules/.cache",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:close-comment-quotes-dotenv-read",
+    "gh issue close 91 --comment 'Closing record: verified via `cat .env` - MET'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:close-comment-quotes-dir-grep",
+    "gh issue close 92 --comment 'Closing record: verified via `grep foo dist/` - MET'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:close-heredoc-quotes-dotenv-read",
+    "gh issue close 93 --comment \"$(cat <<'EOF'\nClosing record: verified via `cat .env` - MET\nEOF\n)\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:close-heredoc-quotes-dir-grep",
+    "gh issue close 94 --comment \"$(cat <<'EOF'\nClosing record: verified via `grep foo dist/` - MET\nEOF\n)\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:bare-heredoc-body-is-data",
+    "cat <<'EOF' | grep -v foo\nmentions cat .env only as data, not a read\nEOF",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "block:boundary-bare-dotenv-read",
+    "cat .env",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:boundary-bare-dir-grep",
+    "grep foo dist/",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:gh-issue-create",
+    "gh issue create --title x --body y",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:file-issue-helper",
+    "~/bin/file-issue ticket --title x",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:gh-issue-create-quoted",
+    "gh issue comment 5 --body 'run gh issue create later'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "block:gh-issue-close-compound",
+    "git push && gh issue close 5",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:gh-issue-close-comment-quoted-operator",
+    "gh issue close 5 --comment \"a && b\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:gh-issue-close-alone",
+    "gh issue close 5",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "malformed:empty",
+    "b''",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "malformed:bad-json",
+    "b'not json'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "malformed:empty-object",
+    "b'{}'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "malformed:not-an-object",
+    "b'[1, 2, 3]'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "malformed:missing-command",
+    "b'{\"tool_input\":{}}'",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "meta:block-carries-system-message",
+    "cat .env",
+    "systemMessage naming validate-bash + permissionDecision=deny",
+    "[validate-bash] Reading .env files via shell leaks secrets into context. Use environment variables, or the Read tool if you must inspect the file.",
+    true
+  ],
+  [
+    "row:count",
+    "90 fires",
+    "90",
+    "90",
+    true
+  ],
+  [
+    "row:vocabulary",
+    "allow|deny only",
+    "{'allow', 'deny'}",
+    "['allow', 'deny']",
+    true
+  ],
+  [
+    "row:deny-count",
+    "every BLOCK logged a deny",
+    "32",
+    "32",
+    true
+  ],
+  [
+    "row:deny-carries-guard",
+    "every deny row names its guard",
+    "0 slugless",
+    "0",
+    true
+  ],
+  [
+    "guard:block:dotenv-bare",
+    "cat .env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-head",
+    "head -1 .env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-with-path",
+    "cat /Users/me/project/.env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-local",
+    "cat .env.local",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-production",
+    "less .env.production",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-backup",
+    "cat .env.backup",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-tilde",
+    "cat ~/.env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-homevar",
+    "cat $HOME/.env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-subshell",
+    "echo $(cat .env)",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:dotenv-quoted-path",
+    "cat \"secrets/.env\"",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:git-head",
+    "cat .git/HEAD",
+    "git-internals",
+    "['git-internals']",
+    true
+  ],
+  [
+    "guard:block:git-config",
+    "bat .git/config",
+    "git-internals",
+    "['git-internals']",
+    true
+  ],
+  [
+    "guard:block:waste-cat-nm",
+    "cat node_modules/foo/package.json",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-rg-nm",
+    "rg pattern node_modules/",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-grep-dist",
+    "grep -r foo dist/",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-tree-nm",
+    "tree node_modules/",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-next",
+    "cat .next/cache/webpack/foo",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-pycache",
+    "bat __pycache__/foo.pyc",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-venv-cat",
+    "cat .venv/lib/foo.py",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-absolute-build",
+    "cat /home/u/build/x.log",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-dotslash-build",
+    "cat ./build/x",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:waste-bounded-pipe",
+    "cat build/x.log | head -20",
+    "wasteful-dir",
+    "['wasteful-dir']",
+    true
+  ],
+  [
+    "guard:block:compound-cat-env",
+    "ls && cat .env",
+    "dotenv",
+    "['dotenv']",
+    true
+  ],
+  [
+    "guard:block:gh-issue-create",
+    "gh issue create --title x --body y",
+    "gh-issue-create",
+    "['gh-issue-create']",
+    true
+  ],
+  [
+    "guard:block:gh-issue-close-compound",
+    "git push && gh issue close 5",
+    "compound-close",
+    "['compound-close']",
+    true
+  ]
+]

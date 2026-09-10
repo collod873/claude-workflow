@@ -48,7 +48,7 @@ a label.
 
 The record's wire shape is unchanged from the one 445 existing checker-written records already
 use: `hooks/close-gate.py`'s `RECORD_HEADING`, `RANGE_LINE_RE` and `BULLET_RE` parse this
-record the same way they parse a human-written one. There is one addition, a summary line beneath
+record the same way they parse a human-written one, with one addition: a summary line beneath
 the range counting criteria verified vs. unverified, so erosion of the guarantee stays visible
 on every ticket rather than inferred.
 
@@ -59,10 +59,10 @@ work tree as `<checkout>` is the caller's choice to make, not this script's.
 `--superseded-by <n>` retires the ticket into an already-open successor instead of running any
 checks (#167): emits `Superseded by #<n>` in the slot the range line would occupy, and every
 criterion in the body needs a `--moved <where>` or `--dropped <why>` reason supplied at the
-invocation, one apiece, in the body's own order, and the run refuses before posting anything when
+invocation, one apiece, in the body's own order; the run refuses before posting anything when
 the reasons supplied don't exactly cover the criteria. `<n>`'s state is read with
 `gh issue view <n> --json state` through `run_gh`, the same one resolution path every other
-`gh` call in this script uses and never a second one, and the run refuses to post or close when
+`gh` call in this script uses, never a second one, and the run refuses to post or close when
 `<n>` doesn't resolve at all (an unresolvable successor) as well as when it resolves but is
 already closed (a closed successor): superseding into a closed ticket retires this ticket's
 debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
@@ -73,8 +73,8 @@ debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
 ticket's close runs, so a spec's one criterion is run, recorded and refused inside the same
 all-or-nothing contract. What `--spec` adds is a **precondition** and a stricter **verdict**.
 
-The precondition is checked before any check command runs: every sub-issue must be **delivered**:
-closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
+The precondition is checked before any check command runs: every sub-issue must be **delivered**
+meaning closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
 closed by hand, is not delivered; the run refuses, names every undelivered child and why, and
 posts and closes nothing.
 
@@ -92,7 +92,7 @@ the world-reading check a spec carries, the one place a silent pass can mean not
 The precondition comes first because a spec's check reads the world: running it against a spec
 whose slices have not all landed burns a run on a verdict that could not have been green, and
 reports red for a reason that is not the product's fault. A spec with no sub-issues at all has
-nothing undelivered and passes the precondition, since the gate is "every child delivered", and
+nothing undelivered and passes the precondition; the gate is "every child delivered", and
 vacuous truth is the honest reading of it for a spec that was never sliced.
 
 A spec's criterion is *required* to read the tracker or production, which is the exact opposite
@@ -100,7 +100,7 @@ of the rule a published ticket's criterion is held to; see `bin/ticket_shape.py`
 for why the ban is not extended here.
 
 `gh` is resolved and invoked entirely through `bin/gh_support.py` (`gh_bin`, `bind_gh`,
-`run_gh`, `GhError`, `AGENT_SKILLS_GH`), the one resolution path and one failure envelope
+`run_gh`, `GhError`, `AGENT_SKILLS_GH`): the one resolution path and one failure envelope
 every `gh`-calling tool in this repo shares (#102, #109); there is no second copy here.
 """
 import argparse
@@ -112,12 +112,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gh_support  # noqa: E402
+import gh_support
 try:
-    import run_log  # noqa: E402
+    import run_log
 except ImportError:
     run_log = None
-import ticket_shape  # noqa: E402
+import ticket_shape
 
 NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
 
@@ -128,13 +128,16 @@ MET_BULLET_RE = re.compile(r"^- .* \(MET: ", re.MULTILINE)
 EVIDENCE_MAX_LINES = 10
 EVIDENCE_MAX_CHARS = 800
 
+
 def fetch_body(gh, issue: str) -> str:
     out = gh_support.run_gh(gh, "issue", "view", issue, "--json", "body")
     return json.loads(out).get("body") or ""
 
+
 def fetch_state(gh, issue) -> str:
     out = gh_support.run_gh(gh, "issue", "view", str(issue), "--json", "state")
     return json.loads(out).get("state") or ""
+
 
 SUB_ISSUES_QUERY = """
 query {
@@ -155,6 +158,7 @@ query {
 }
 """
 
+
 def fetch_issue_node(gh_path: str, name_with_owner: str, issue: str, query_template: str) -> dict:
     owner, _, name = name_with_owner.partition("/")
     query = query_template % {"owner": owner, "name": name, "issue": issue}
@@ -165,9 +169,11 @@ def fetch_issue_node(gh_path: str, name_with_owner: str, issue: str, query_templ
         raise gh_support.GhError(f"issue #{issue} not found")
     return issue_node
 
+
 def fetch_sub_issues(gh_path: str, name_with_owner: str, issue: str) -> list[dict]:
     issue_node = fetch_issue_node(gh_path, name_with_owner, issue, SUB_ISSUES_QUERY)
     return issue_node["subIssues"]["nodes"]
+
 
 CLOSING_PR_QUERY = """
 query {
@@ -181,8 +187,10 @@ query {
 }
 """
 
+
 def fetch_repo_name(gh) -> str:
     return json.loads(gh_support.run_gh(gh, "repo", "view", "--json", "nameWithOwner"))["nameWithOwner"]
+
 
 def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | None:
     issue_node = fetch_issue_node(gh_path, name_with_owner, issue, CLOSING_PR_QUERY)
@@ -199,13 +207,16 @@ def fetch_closing_pr(gh_path: str, name_with_owner: str, issue: str) -> dict | N
         "merge_sha": (newest.get("mergeCommit") or {}).get("oid"),
     }
 
+
 JUDGING_LINE_RE = re.compile(r"judging (https://\S+/pull/\d+) on \S+")
 
 IMMUTABILITY_JOB = "Immutability"
 GATE_JOB = "Verify"
 
+
 def job_matches_name(name: str | None, wanted: str) -> bool:
     return name is not None and (name == wanted or name.endswith(f" / {wanted}"))
+
 
 def verify_workflow_file() -> str:
     env_value = os.environ.get("VERIFY_WORKFLOW")
@@ -219,7 +230,9 @@ def verify_workflow_file() -> str:
         )
     return "verify-caller.yml"
 
+
 VERIFY_RUN_PAGE_SIZE = 100
+
 
 def fetch_verify_verdict(gh, pr_url: str) -> str:
     workflow_file = verify_workflow_file()
@@ -274,6 +287,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         return "unjudged"
     return "unjudged"
 
+
 def undelivered(children: list[dict]) -> list[str]:
     problems = []
     for child in children:
@@ -294,8 +308,10 @@ def undelivered(children: list[dict]) -> list[str]:
             problems.append(f"#{number}: closed by hand, not by a merged PR")
     return problems
 
+
 SUITE_ROOTS = (".Workflow", ".claude")
 FAILS_LINE_RE = re.compile(r"^\s*(?:test|it)\.fails\(")
+
 
 def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
     number_re = re.compile(rf"#{re.escape(issue)}\b")
@@ -317,6 +333,7 @@ def surviving_fails_lines(checkout: str, issue: str) -> list[str]:
                         found.append(f"{os.path.relpath(path, checkout)}:{index}")
     return found
 
+
 def split_check_marker(criterion: str) -> tuple[str, str | None]:
     criterion = criterion.strip()
     box = ticket_shape.CRITERIA_ITEM_RE.match(criterion)
@@ -328,8 +345,10 @@ def split_check_marker(criterion: str) -> tuple[str, str | None]:
     m = ticket_shape.CHECK_MARKER_RE.search(criterion)
     return criterion[: m.start()].rstrip(), command
 
+
 def run_check(command: str, checkout: str) -> subprocess.CompletedProcess:
     return subprocess.run(command, shell=True, cwd=checkout, capture_output=True, text=True)
+
 
 def count_commits(range_spec: str, checkout: str) -> tuple[int | None, str]:
     result = subprocess.run(
@@ -343,6 +362,7 @@ def count_commits(range_spec: str, checkout: str) -> tuple[int | None, str]:
     except ValueError:
         return None, f"git printed {result.stdout.strip()!r}, which is not a count"
 
+
 def quote_evidence(output: str) -> list[str]:
     text = output.strip()
     if len(text) > EVIDENCE_MAX_CHARS:
@@ -353,6 +373,7 @@ def quote_evidence(output: str) -> list[str]:
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
     fence = "`" * max(3, longest + 1)
     return [f"> {fence}", *(f"> {line}".rstrip() for line in lines), f"> {fence}"]
+
 
 def render_record(range_spec: str, blocks: list[str] | None,
                    checkout: str, spec: bool = False,
@@ -367,7 +388,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
             )
             print(
                 "  `No diff.` says this range is empty, so it is only writable when the range "
-                f"can be read in {checkout}: reading nothing is not reading zero.",
+                f"can be read in {checkout}; reading nothing is not reading zero.",
                 file=sys.stderr,
             )
             return None, False
@@ -421,7 +442,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
                    file=sys.stderr)
             print(f"  command: {command}", file=sys.stderr)
             print(
-                "  exit status: 0, stdout empty; a spec's check reads the world, and a "
+                "  exit status: 0, stdout empty. A spec's check reads the world, and a "
                 "reading that produced nothing is not a reading. Exit 0 against an empty "
                 "world and exit 0 against a proven one are the same status; only the output "
                 "tells them apart.",
@@ -437,7 +458,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
     unverified = total - verified
     if total and not verified:
         print(
-            f"error: {total} acceptance criteria and every criterion unverified: nothing "
+            f"error: {total} acceptance criteria and every criterion unverified, so nothing "
             "here was checked, so there is nothing to close on",
             file=sys.stderr,
         )
@@ -454,9 +475,11 @@ def render_record(range_spec: str, blocks: list[str] | None,
     body = "\n".join([*header, "", summary, "", *lines])
     return f"## Closing record\n\n{body}\n", True
 
+
 def render_closing_pr_line(closing_pr: dict, verify: str | None) -> str:
     sha = closing_pr.get("merge_sha") or "unknown"
     return f"Closed by #{closing_pr['number']} · merge `{sha}` · Verify: {verify or 'unjudged'}"
+
 
 def render_superseded_record(successor: int, blocks: list[str] | None,
                               dispositions: list[tuple[str, str]]) -> tuple[str | None, str | None]:
@@ -464,7 +487,7 @@ def render_superseded_record(successor: int, blocks: list[str] | None,
     if len(dispositions) != required:
         return None, (
             f"error: {required} acceptance criteria in the body but {len(dispositions)} "
-            "--moved/--dropped reasons supplied: exactly one reason per criterion, in the "
+            "--moved/--dropped reasons supplied; exactly one reason per criterion, in the "
             "body's own order."
         )
     bullets = []
@@ -476,11 +499,13 @@ def render_superseded_record(successor: int, blocks: list[str] | None,
         lines += ["", *bullets]
     return "## Closing record\n\n" + "\n".join(lines) + "\n", None
 
+
 class DispositionAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         kind = "MOVED" if option_string == "--moved" else "DROPPED"
         getattr(namespace, self.dest).append((kind, values))
+
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="close-ticket", description=__doc__,
@@ -511,7 +536,9 @@ def parse_args(argv):
     )
     return parser.parse_args(argv)
 
+
 ROW: dict = {}
+
 
 def main(argv=None) -> int:
     ROW.clear()
@@ -519,6 +546,7 @@ def main(argv=None) -> int:
     if run_log is not None:
         run_log.append_log("closed" if code == 0 else "refused", **ROW)
     return code
+
 
 def run(argv=None) -> int:
     args = parse_args(argv)
@@ -571,7 +599,7 @@ def run(argv=None) -> int:
         if state.upper() != "OPEN":
             print(
                 f"error: successor #{args.superseded_by} is not open "
-                f"(state: {state or 'unknown'}): superseding into a closed ticket retires "
+                f"(state: {state or 'unknown'}); superseding into a closed ticket retires "
                 "this ticket's debt instead of moving it; name an open issue",
                 file=sys.stderr,
             )
@@ -596,7 +624,7 @@ def run(argv=None) -> int:
                 problems = undelivered(children)
                 if problems:
                     print(
-                        f"error: {len(problems)} of {len(children)} sub-issues not delivered: a "
+                        f"error: {len(problems)} of {len(children)} sub-issues not delivered; a "
                         "spec closes on its own check, but only once every slice beneath it has "
                         "actually landed:",
                         file=sys.stderr,
@@ -631,6 +659,7 @@ def run(argv=None) -> int:
 
     sys.stdout.write(record_text)
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

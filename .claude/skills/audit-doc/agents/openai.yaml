@@ -1,0 +1,5 @@
+interface:
+  display_name: "Audit Doc"
+  short_description: "Audit a document an agent consumes against the writing-for-agents levers"
+policy:
+  allow_implicit_invocation: false

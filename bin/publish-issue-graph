@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""Publish an issue graph (issues + sub-issue links + blocked-by edges) to GitHub in one shot.
+
+Usage: publish-issue-graph <graph.json> [--repo owner/name]
+
+Graph JSON shape:
+{
+  "parent": 459,                      // optional: all issues become sub-issues of this
+  "labels": [],                       // optional: applied to every issue (leave unset for tickets)
+  "issues": [
+    {
+      "key": "decoration",            // local handle other issues reference
+      "title": "Decoration rule (report mode)",
+      "body": "## What to build\n...",
+      "labels": ["extra-label"],      // optional, merged with top-level labels
+      "blockedBy": ["otherkey", 123]  // keys of sibling issues, or existing issue numbers
+    }
+  ]
+}
+
+Does: validate every issue body as a `ticket` (`ticket_shape.validate`, shared with
+`file-issue`, #77) -> parallel creates -> one GraphQL query for all internal IDs ->
+parallel sub-issue + blocked-by POSTs -> read-back verification against the intended
+graph. A malformed issue fails the whole publish up front, naming its `key`, before the
+first `gh issue create`. Exits nonzero (and says exactly what's missing) if the read-back
+doesn't match. Prints a markdown table of the published graph on success.
+
+`gh` is resolved by `gh_support.gh_bin()` (#102): `AGENT_SKILLS_GH` when set (tests point it
+at `hooks/stub_gh.py` so no test here ever calls GitHub for real), else the shared ADR-0005
+search order, else PATH.
+"""
+
+import json
+import re
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gh_support
+try:
+    import run_log
+except ImportError:
+    run_log = None
+import ticket_shape
+
+_BOUND_GH = None
+
+
+def die(msg):
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def gh(*args, input=None):
+    global _BOUND_GH
+    if _BOUND_GH is None:
+        gh_path = gh_support.gh_bin()
+        if gh_path is None:
+            raise RuntimeError("gh not found (set AGENT_SKILLS_GH to point at a gh binary)")
+        _BOUND_GH = gh_support.bind_gh(gh_path)
+    return gh_support.run_gh(_BOUND_GH, *args, input=input)
+
+
+ROW: dict = {}
+
+
+def main():
+    ROW.clear()
+    try:
+        run()
+        code = 0
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+    except BaseException:
+        if run_log is not None:
+            run_log.append_log("refused", count=ROW.get("count", 0))
+        raise
+    if run_log is not None:
+        run_log.append_log("published" if code == 0 else "refused", count=ROW.get("count", 0))
+    if code:
+        sys.exit(code)
+
+
+def run():
+    args = sys.argv[1:]
+    repo = None
+    if "--repo" in args:
+        i = args.index("--repo")
+        repo = args[i + 1]
+        del args[i : i + 2]
+    if len(args) != 1:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    with open(args[0]) as f:
+        graph = json.load(f)
+
+    if repo is None:
+        repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").strip()
+    owner, name = repo.split("/")
+
+    issues = graph.get("issues") or die("graph has no issues[]")
+    parent = graph.get("parent")
+    global_labels = graph.get("labels", [])
+
+    keys = [i["key"] for i in issues]
+    if len(set(keys)) != len(keys):
+        die("duplicate keys in issues[]")
+    keyset = set(keys)
+    for i in issues:
+        for b in i.get("blockedBy", []):
+            if isinstance(b, str) and b not in keyset:
+                die(f"issue '{i['key']}' blockedBy unknown key '{b}'")
+    deps = {i["key"]: [b for b in i.get("blockedBy", []) if isinstance(b, str)] for i in issues}
+    seen, done = set(), set()
+
+    def visit(k, path):
+        if k in done:
+            return
+        if k in seen:
+            die(f"blockedBy cycle: {' -> '.join(path + [k])}")
+        seen.add(k)
+        for d in deps[k]:
+            visit(d, path + [k])
+        done.add(k)
+
+    for k in keys:
+        visit(k, [])
+
+    for i in issues:
+        try:
+            warnings = ticket_shape.validate("ticket", i["body"])
+        except ticket_shape.ValidationError as e:
+            die(f"issue '{i['key']}': {e}")
+        for w in warnings:
+            print(f"warning: issue '{i['key']}': {w}", file=sys.stderr)
+
+    def create(issue):
+        body = issue["body"]
+        if parent and f"#{parent}" not in body:
+            body = f"Part of #{parent}.\n\n{body}"
+        labels = list(dict.fromkeys(global_labels + issue.get("labels", [])))
+        cmd = ["issue", "create", "--repo", repo, "--title", issue["title"], "--body", body]
+        for l in labels:
+            cmd += ["--label", l]
+        url = gh(*cmd).strip()
+        m = re.search(r"/issues/(\d+)$", url)
+        if not m:
+            raise RuntimeError(f"unparseable create output for '{issue['key']}': {url}")
+        return int(m.group(1))
+
+    print(f"creating {len(issues)} issues in {repo}...", file=sys.stderr)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        numbers = list(pool.map(create, issues))
+    num = dict(zip(keys, numbers))
+    for k in keys:
+        print(f"  #{num[k]}  {k}", file=sys.stderr)
+
+    referenced = set(numbers)
+    if parent:
+        referenced.add(parent)
+    for i in issues:
+        for b in i.get("blockedBy", []):
+            if isinstance(b, int):
+                referenced.add(b)
+    aliases = " ".join(f"i{n}: issue(number: {n}) {{ databaseId }}" for n in sorted(referenced))
+    q = f'query {{ repository(owner: "{owner}", name: "{name}") {{ {aliases} }} }}'
+    data = json.loads(gh("api", "graphql", "-f", f"query={q}"))["data"]["repository"]
+    dbid = {}
+    for n in referenced:
+        node = data.get(f"i{n}")
+        if not node:
+            die(f"issue #{n} not found in {repo} (bad parent/blocker number?)")
+        dbid[n] = node["databaseId"]
+
+    def resolve(b):
+        return num[b] if isinstance(b, str) else b
+
+    def link_parent(child_num):
+        gh("api", "-X", "POST", f"repos/{repo}/issues/{parent}/sub_issues",
+           "-F", f"sub_issue_id={dbid[child_num]}")
+
+    def link_blocker(blocked_num, blocker_num):
+        gh("api", "-X", "POST", f"repos/{repo}/issues/{blocked_num}/dependencies/blocked_by",
+           "-F", f"issue_id={dbid[blocker_num]}")
+
+    edges = [(num[i["key"]], resolve(b)) for i in issues for b in i.get("blockedBy", [])]
+    print(f"wiring {len(numbers) if parent else 0} sub-issue links + {len(edges)} blocked-by edges...",
+          file=sys.stderr)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = []
+        if parent:
+            futures += [pool.submit(link_parent, n) for n in numbers]
+        futures += [pool.submit(link_blocker, blocked, blocker) for blocked, blocker in edges]
+        errors = [f.exception() for f in futures if f.exception()]
+    if errors:
+        die("edge wiring failed:\n" + "\n".join(f"  {e}" for e in errors))
+
+    problems = []
+    if parent:
+        children = {c["number"] for c in json.loads(
+            gh("api", f"repos/{repo}/issues/{parent}/sub_issues", "--paginate"))}
+        for n in numbers:
+            if n not in children:
+                problems.append(f"#{n} missing from #{parent} sub-issues")
+
+    def read_blockers(n):
+        return n, {b["number"] for b in json.loads(
+            gh("api", f"repos/{repo}/issues/{n}/dependencies/blocked_by", "--paginate"))}
+
+    want = {}
+    for blocked, blocker in edges:
+        want.setdefault(blocked, set()).add(blocker)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        got = dict(pool.map(read_blockers, want))
+    for n, blockers in want.items():
+        missing = blockers - got[n]
+        if missing:
+            problems.append(f"#{n} missing blocked-by {sorted(missing)}")
+
+    if problems:
+        die("read-back verification FAILED:\n" + "\n".join(f"  {p}" for p in problems))
+
+    ROW["count"] = len(numbers)
+    print(f"\nVerified on read-back: {len(numbers)} issues"
+          + (f" under #{parent}" if parent else "") + f", {len(edges)} blocked-by edges.\n")
+    print("| Issue | Title | Blocked by |")
+    print("|-------|-------|------------|")
+    for i in issues:
+        n = num[i["key"]]
+        blockers = ", ".join(f"#{resolve(b)}" for b in i.get("blockedBy", [])) or "-"
+        print(f"| #{n} | {i['title']} | {blockers} |")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except RuntimeError as e:
+        die(str(e))

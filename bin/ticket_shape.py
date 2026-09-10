@@ -82,7 +82,7 @@ MIGRATION_NO_POST_STATE_WARNING = (
     "artifact existing: a test passing, or a path this ticket already claims. A migration "
     "ticket closes on the migration having run: add a criterion asserting the post-state of "
     "what is being migrated, checkable against the real target rather than a fixture the "
-    "ticket's own test builds (ADR-0076 in collod873/claude-workflow, #134)"
+    "ticket's own test builds (claude-workflow/ADR-0076, #134)"
 )
 
 _GLOB_CHAR_RE = re.compile(r"[*?\[]")
@@ -93,19 +93,24 @@ CATCH_ALL_PATTERNS = frozenset({"**", "*", "**/*", "./**", "**/**", ".", "/", ".
 
 DEGENERATE_CLAIM_MESSAGE = "could not name the files this touches"
 
+
 class ValidationError(Exception):
     pass
+
 
 def _criteria_lines(body: str) -> list[str]:
     section = section_text(body, CRITERIA_HEADING_RE)
     return [ln for ln in section.splitlines() if CRITERIA_ITEM_RE.match(ln)]
 
+
 def _has_evidence(line: str) -> bool:
     return bool(PATH_LINE_RE.search(line) or BACKTICK_RE.search(line) or FILE_PATH_RE.search(line))
+
 
 def parse_check_marker(criterion: str) -> str | None:
     m = CHECK_MARKER_RE.search(criterion.strip())
     return m.group(1).strip() if m else None
+
 
 def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | None]:
     try:
@@ -121,13 +126,15 @@ def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | Non
         )
     except OSError as e:
         return False, (
-            f"acceptance criterion's check: `{command}` could not be run: {e}, so red-at-publish "
+            f"acceptance criterion's check: `{command}` could not be run: {e}. Red-at-publish "
             "could not be checked (claude-workflow/ADR-0130)"
         )
     return result.returncode == 0, None
 
+
 def _malformed_check_marker(criterion: str) -> bool:
     return bool(CHECK_MARKER_ATTEMPT_RE.search(criterion)) and parse_check_marker(criterion) is None
+
 
 def _malformed_check_marker_warning(criterion: str) -> str:
     return (
@@ -136,9 +143,10 @@ def _malformed_check_marker_warning(criterion: str) -> str:
         "it before the criterion ends"
     )
 
+
 def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     if kind not in KINDS:
-        raise ValidationError(f"unknown kind {kind!r}; expected one of {', '.join(KINDS)}")
+        raise ValidationError(f"unknown kind {kind!r}, expected one of {', '.join(KINDS)}")
 
     if kind == "note":
         return []
@@ -192,8 +200,10 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         raise ValidationError(SPEC_CRITERION_GREEN_AT_PUBLISH.format(command=command))
     return [warning] if warning else []
 
+
 def acceptance_criteria_present(body: str) -> bool:
     return bool(CRITERIA_HEADING_RE.search(body))
+
 
 def section_text(body: str, heading_re: re.Pattern) -> str:
     m = heading_re.search(body)
@@ -203,6 +213,7 @@ def section_text(body: str, heading_re: re.Pattern) -> str:
     end = NEXT_HEADING_RE.search(rest)
     return rest[: end.start()] if end else rest
 
+
 def strip_section(body: str, heading_re: re.Pattern) -> str:
     m = heading_re.search(body)
     if not m:
@@ -211,6 +222,7 @@ def strip_section(body: str, heading_re: re.Pattern) -> str:
     end = NEXT_HEADING_RE.search(rest)
     section_end = m.end() + (end.start() if end else len(rest))
     return body[: m.start()] + body[section_end:]
+
 
 def claimed_paths(body: str) -> list[str]:
     paths = []
@@ -223,8 +235,10 @@ def claimed_paths(body: str) -> list[str]:
             paths.append(item)
     return paths
 
+
 def is_degenerate_claim(paths: list[str]) -> bool:
     return bool(paths) and all(p in CATCH_ALL_PATTERNS for p in paths)
+
 
 def _similar_existing_path(path: str, repo_root: Path) -> str | None:
     parts = path.split("/")
@@ -235,6 +249,7 @@ def _similar_existing_path(path: str, repo_root: Path) -> str | None:
         candidates.add("/".join(parts[:-2] + parts[-1:]))
     hits = [c for c in candidates if c and (repo_root / c).exists()]
     return hits[0] if len(hits) == 1 else None
+
 
 def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[str]:
     root = repo_root or caller_repo_root()
@@ -254,6 +269,7 @@ def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[s
             warnings.append(f"claimed path `{path}` not found in the working tree")
     return warnings
 
+
 def criteria_blocks(body: str) -> list[str] | None:
     if not CRITERIA_HEADING_RE.search(body):
         return None
@@ -265,11 +281,13 @@ def criteria_blocks(body: str) -> list[str] | None:
             blocks[-1] += " " + line.strip()
     return blocks
 
+
 def _evidence_tokens(text: str) -> list[str]:
     tokens = [m.rsplit(":", 1)[0] for m in PATH_LINE_RE.findall(text)]
     tokens += FILE_PATH_RE.findall(text)
     tokens += BASENAME_RE.findall(text)
     return [t for t in tokens if t]
+
 
 def _is_claimed(token: str, claimed: list[str]) -> bool:
     for claim in claimed:
@@ -282,11 +300,13 @@ def _is_claimed(token: str, claimed: list[str]) -> bool:
             return True
     return False
 
+
 def _is_config_or_md_path(token: str) -> bool:
     stripped = token.strip("`")
     if ".github/" in stripped or stripped.startswith("github/"):
         return True
     return stripped.lower().endswith(CONFIG_MD_EXTENSIONS)
+
 
 def config_or_md_evidence(body: str) -> list[str]:
     warnings = []
@@ -298,11 +318,13 @@ def config_or_md_evidence(body: str) -> list[str]:
             warnings.append(CONFIG_OR_MD_EVIDENCE_WARNING.format(criterion=block))
     return warnings
 
+
 def _path_evidence_tokens(text: str) -> list[str]:
     paths = [m.rsplit(":", 1)[0] for m in PATH_LINE_RE.findall(text)]
     paths += FILE_PATH_RE.findall(text)
     paths = [t for t in paths if t]
     return paths or _evidence_tokens(text)
+
 
 def migration_without_post_state(body: str) -> list[str]:
     if not MIGRATION_RE.search(body):
@@ -319,6 +341,7 @@ def migration_without_post_state(body: str) -> list[str]:
             continue
         return []
     return [MIGRATION_NO_POST_STATE_WARNING]
+
 
 def claims_collide(a_paths: list[str], b_paths: list[str]) -> bool:
     for a in a_paths:

@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""The ADR corpus's one checker: shape, index freshness, citation integrity, size.
+
+    adr-check              # check; print findings
+    adr-check --fix        # regenerate the index rather than failing on it
+    adr-check --blast      # add the GitHub reach measurement (slow, needs `gh`)
+
+Exit is three-valued, and the third value is the point (claude-workflow/ADR-0087: a
+contract slot published as a hook path reported 255 consecutive clean turn-end runs
+in a median of 0.020s while checking nothing). `0` clean, `1` a finding, `2` the
+checks could not run. A caller that cannot tell "clean" from "could not run" has a
+gate with a blind spot.
+
+Fast enough for a `lint`/`stop` slot by default: no network, no subprocess, one pass
+over `docs/adr/` and one grep-equivalent over the tree. `--blast` is the exception
+and is never on the sub-second path.
+
+**Why `--blast` exists.** Whether an ADR is hard to reverse is not a judgement to
+re-litigate; it is a measurement, and citation is what makes it. In the corpus this
+was built against, blast radius and the admission bar agreed almost everywhere: the
+entries with one or two references were the ones that failed the bar, and the entry
+cited in 21 files and named as the identity of two lint rules was hard to reverse
+whatever it had been when written. So the bar is judged at today's cost, `--blast`
+computes it, and demoting an ADR becomes a sort rather than an argument: it prints
+the corpus partitioned into cited nowhere, cited only from issues, and cited from
+code, which is the sort. Report only — it moves, renames and edits nothing.
+
+**What this never does is move a file.** 107 permalinks of the form
+`.../blob/main/docs/adr/0008-<slug>.md` sit in GitHub issue bodies, and 32 issues
+carry machine-written closing records naming ADR numbers. Renaming an ADR 404s them
+and nothing here can retract a comment, so a demotion is a `status:` change and the
+filename is frozen for good.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import adr_shape
+
+CLEAN, FINDING, CANNOT_RUN = 0, 1, 2
+
+GH_TIMEOUT_SECONDS = 120
+
+SKIP_DIRS = {
+    ".git", "node_modules", "__pycache__", "worktrees", ".venv", "venv",
+    "dist", "build", ".next", ".cache", ".mypy_cache",
+}
+TEXT_SUFFIXES = {".md", ".py", ".json", ".sh", ".ts", ".js", ".txt", ".yml", ".yaml"}
+
+
+def repo_files(root: Path):
+    adr = adr_shape.adr_dir(root)
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.is_dir():
+                if e.name not in SKIP_DIRS and e != adr:
+                    stack.append(e)
+            elif e.suffix in TEXT_SUFFIXES or e.parent.name == "bin":
+                yield e
+
+
+def scan_citations(root: Path) -> dict[int, list[str]]:
+    found: dict[int, list[str]] = {}
+    for f in repo_files(root):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for n in set(adr_shape.citations(text)):
+            found.setdefault(n, []).append(str(f.relative_to(root)))
+    return found
+
+
+def blast(root: Path, corpus: list[adr_shape.Adr]) -> dict[int, int] | None:
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "list", "--state", "all", "--limit", "500",
+             "--json", "number,title,body,comments"],
+            cwd=root, capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    try:
+        issues = json.loads(out.stdout)
+    except ValueError:
+        return None
+    reach: dict[int, int] = {}
+    for issue in issues:
+        blob = " ".join([
+            issue.get("title") or "", issue.get("body") or "",
+            *(c.get("body") or "" for c in (issue.get("comments") or [])),
+        ])
+        for n in set(adr_shape.citations(blob)):
+            reach[n] = reach.get(n, 0) + 1
+    return reach
+
+
+TIERS = ("cited nowhere", "cited only from issues", "cited from code")
+
+
+def tier(in_repo: int, issues: int) -> str:
+    if in_repo:
+        return TIERS[2]
+    return TIERS[1] if issues else TIERS[0]
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="adr-check", description=__doc__.splitlines()[0])
+    p.add_argument("--fix", action="store_true", help="regenerate the index instead of failing")
+    p.add_argument("--blast", action="store_true", help="measure GitHub reach per ADR")
+    args = p.parse_args(argv)
+
+    root = adr_shape.repo_root_from() or Path.cwd()
+
+    d = adr_shape.adr_dir(root)
+    if not d.is_dir():
+        return CLEAN
+
+    corpus = adr_shape.load_corpus(root)
+    if not corpus:
+        return CLEAN
+    findings: list[str] = []
+    warnings: list[str] = []
+
+    for a in corpus:
+        try:
+            for w in adr_shape.validate(a.path.read_text(encoding="utf-8", errors="replace")):
+                warnings.append(f"{a.ident}: {w}")
+        except adr_shape.ValidationError as e:
+            findings.append(f"{a.ident} ({a.path.name}): {e}")
+        except OSError as e:
+            print(f"adr-check: cannot read {a.path}: {e}", file=sys.stderr)
+            return CANNOT_RUN
+
+    want = adr_shape.render_index(corpus)
+    index = adr_shape.index_path(root)
+    have = index.read_text(encoding="utf-8", errors="replace") if index.exists() else ""
+    if want != have:
+        if args.fix:
+            index.write_text(want, encoding="utf-8")
+            print(f"adr-check: regenerated {index.relative_to(root)}")
+        else:
+            findings.append(
+                f"{index.relative_to(root)} is stale; run `adr-check --fix`."
+            )
+
+    numbers = {a.number for a in corpus}
+    highest = max(numbers, default=0)
+    sites = scan_citations(root)
+    for n in sorted(sites):
+        where = ", ".join(sorted(sites[n])[:4])
+        if n in numbers:
+            continue
+        if n <= highest:
+            findings.append(f"ADR-{n:04d} is cited but does not exist: {where}")
+        else:
+            warnings.append(
+                f"ADR-{n:04d} is cited but this corpus stops at ADR-{highest:04d}: "
+                f"another repo's ADR, unqualified. Write it `<repo>/ADR-{n:04d}` "
+                f"(e.g. `claude-workflow/ADR-{n:04d}`) so it stops resolving against "
+                f"this corpus when it reaches {n:04d}. Sites: {where}"
+            )
+
+    words = sum(a.words for a in corpus)
+    by_status: dict[str, int] = {}
+    for a in corpus:
+        by_status[a.status or "?"] = by_status.get(a.status or "?", 0) + 1
+    tally = " · ".join(f"{n} {s}" for s, n in sorted(by_status.items()))
+    print(f"adr-check: {len(corpus)} ADRs · {tally} · {words:,} words")
+
+    if args.blast:
+        reach = blast(root, corpus)
+        if reach is None:
+            print("adr-check: --blast could not reach `gh`; reach not measured",
+                  file=sys.stderr)
+            return CANNOT_RUN
+        print("\n  ADR   in-repo  issues  ruling")
+        buckets: dict[str, list[int]] = {name: [] for name in TIERS}
+        for a in corpus:
+            in_repo, issues = len(sites.get(a.number, [])), reach.get(a.number, 0)
+            print(f"  {a.number:04d}  {in_repo:>7}  {issues:>6}  {a.title[:56]}")
+            buckets[tier(in_repo, issues)].append(a.number)
+        print("\n  Retirement tiers, by what breaks on removal:")
+        label = max(len(name) for name in TIERS)
+        for name in TIERS:
+            head = f"    {name:<{label}} ({len(buckets[name]):>3}): "
+            nums = ", ".join(f"{n:04d}" for n in buckets[name]) or "—"
+            print(textwrap.fill(nums, width=96, initial_indent=head,
+                                subsequent_indent=" " * len(head)))
+
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    for f in findings:
+        print(f"finding: {f}", file=sys.stderr)
+    return FINDING if findings else CLEAN
+
+
+if __name__ == "__main__":
+    sys.exit(main())

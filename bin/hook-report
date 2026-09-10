@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""bin/hook-report [--days 30] [--repo <name>] [--log-dir <path>]
+
+The audit table, rendered from the rows every hook and every `bin/` tool now writes
+(#182) instead of rebuilt by hand from transcripts.
+
+`docs/research/machinery-audit-2026-08-27.md:234` is the table this reproduces. That one
+cost a sweep of 2,200 session transcripts, and every cell in its `Median` column reads
+`n/i` (not instrumented) because no mechanism recorded its own timing. Its five
+denominators (Bash 56,331 · Read 10,505 · Edit 7,864 · Write 2,058 · Stop 3,242) exist
+only because somebody typed them into a document that the 30-day corpus will outlive. This
+command answers the same questions by division.
+
+    | Mechanism | Event | Fires | Exposed | Catches | Verdicts | Median s | Injected |
+
+  Fires     rows for that mechanism in the window.
+  Exposed   fires where the mechanism had something it could act on. A row carrying an
+            explicit `exposed` field (the two Stop mechanisms read it off the transcript)
+            is believed; otherwise a fire counts as exposed unless its verdict is one of
+            the SILENT words below: the hook ran, found nothing to look at, and said so.
+  Catches   fires where it refused, warned, injected, or found something (CATCH below).
+            A census hook that only ever counts has no catches and should not pretend to.
+  Verdicts  every verdict word with its count, `deny 12 · allow 4`, ordered by count.
+  Median s  the middle `seconds` value. Never `n/i`: a mechanism that writes rows writes
+            its own cost with them.
+  Injected  characters put in front of Claude or the human across the window, the sum of
+            the rows' `chars`, stamped by a hook on the row of a fire that spoke (#197).
+            Context load by fire rate, the number `/audit-doc` weighs a hook's text by.
+            `-` where no row carries one: not instrumented, which is not the same as silent.
+
+Below the table, `tripwire:` lines: what the table holds but does not say. One so far. A Stop
+gate's breaker refuses once per streak and then hands back, so a hand-back that ends the turn
+can never outnumber the blocks; more `handback` than `block` rows means the hand-back is
+continuing the turn (on `Stop`, `additionalContext` continues under the same cap as a block).
+The ratio sat in this log for a month, 32 to 17, before a 24-to-2 session made someone divide.
+#204 moved the hand-back to `systemMessage` alone; the wire stays, since it is the one line
+that would say so if that ever regresses.
+
+`--repo` filters on the row's `project`, which is the payload's `cwd` basename for a hook
+and the working directory's for a tool. The question "is Lumaria's clone gate actually
+being run" is `--repo Lumaria`, and an empty table is the answer "no".
+
+Reads through `_harness.rows()`, the same reader thirteen harnesses assert with, so the
+report cannot drift from what the tests believe a row is.
+"""
+import argparse
+import statistics
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_HOOKS_DIR = next((c for c in (_REPO_ROOT / "hooks", _REPO_ROOT / ".claude" / "hooks") if c.is_dir()), _REPO_ROOT / "hooks")
+sys.path.insert(0, str(_HOOKS_DIR))
+
+import _harness
+import _hook
+
+DEFAULT_DAYS = 30
+
+SILENT = {
+    "silent", "passthrough", "no-validator", "bad-stdin", "reset",
+    "no-contract", "null-cmd", "fail-open", "exempt", "nothing",
+}
+
+CATCH = {
+    "deny", "block", "handback", "not-mine", "deferred", "degraded", "error", "warn", "stop",
+    "inform", "ask", "inject", "drift", "clones", "hit", "refused",
+    "bad-contract", "bad-cmd", "git-error", "no-session",
+}
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="hook-report", description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--days", type=int, default=DEFAULT_DAYS,
+                        help=f"window in days (default {DEFAULT_DAYS}, the retention period)")
+    parser.add_argument("--repo", default=None,
+                        help="only rows whose `project` is this repo")
+    parser.add_argument("--log-dir", default=None,
+                        help="read from here instead of ~/.claude/logs (or $STOP_GATE_LOG_DIR)")
+    return parser.parse_args(argv)
+
+
+def summarise(rows: list[dict]) -> dict:
+    verdicts: dict[str, int] = {}
+    exposed = catches = 0
+    seconds = []
+    chars = []
+    for row in rows:
+        verdict = row.get("verdict") or ""
+        verdicts[verdict] = verdicts.get(verdict, 0) + 1
+        if verdict in CATCH:
+            catches += 1
+        flag = row.get("exposed")
+        if flag is True or (flag is None and "exposed" not in row and verdict not in SILENT):
+            exposed += 1
+        if isinstance(row.get("seconds"), (int, float)):
+            seconds.append(row["seconds"])
+        if isinstance(row.get("chars"), int) and not isinstance(row.get("chars"), bool):
+            chars.append(row["chars"])
+    return {
+        "fires": len(rows),
+        "exposed": exposed,
+        "catches": catches,
+        "verdicts": verdicts,
+        "median": statistics.median(seconds) if seconds else None,
+        "injected": sum(chars) if chars else None,
+    }
+
+
+def grouped(rows: list[dict]) -> dict[tuple, list[dict]]:
+    groups: dict[tuple, list[dict]] = {}
+    for row in rows:
+        key = (row.get("hook") or row.get("tool") or "?", row.get("event") or "")
+        groups.setdefault(key, []).append(row)
+    return groups
+
+
+def tripwires(rows: list[dict]) -> list[str]:
+    lines = []
+    for (mechanism, event), group in sorted(grouped(rows).items()):
+        verdicts = summarise(group)["verdicts"]
+        handback, block = verdicts.get("handback", 0), verdicts.get("block", 0)
+        if handback > block:
+            lines.append(f"tripwire: {mechanism}/{event or '-'} handback {handback} > block {block}: "
+                         "the hand-back is continuing the turn, not ending it")
+    return lines
+
+
+def render(rows: list[dict]) -> list[str]:
+    lines = ["| Mechanism | Event | Fires | Exposed | Catches | Verdicts | Median s | Injected |",
+             "|---|---|---|---|---|---|---|---|"]
+    for (mechanism, event), group in sorted(grouped(rows).items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        s = summarise(group)
+        verdicts = " · ".join(f"{v or '(pre-row)'} {n}" for v, n in
+                              sorted(s["verdicts"].items(), key=lambda kv: (-kv[1], kv[0])))
+        median = "-" if s["median"] is None else f"{s['median']:.3f}"
+        injected = "-" if s["injected"] is None else str(s["injected"])
+        lines.append(f"| {mechanism} | {event or '-'} | {s['fires']} | {s['exposed']} | "
+                     f"{s['catches']} | {verdicts or '-'} | {median} | {injected} |")
+    return lines
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    log_dir = Path(args.log_dir) if args.log_dir else _hook.LOG_DIR
+    rows = _harness.rows(log_dir, days=args.days)
+    if args.repo is not None:
+        rows = [r for r in rows if r.get("project") == args.repo]
+
+    scope = f" in {args.repo}" if args.repo else ""
+    print(f"{len(rows)} rows over {args.days} day(s){scope}, from {log_dir}\n")
+    if not rows:
+        print("No rows. Either nothing fired in this window, or nothing is instrumented here.")
+        return 0
+    for line in render(rows):
+        print(line)
+    wires = tripwires(rows)
+    if wires:
+        print()
+        for line in wires:
+            print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

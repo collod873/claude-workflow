@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        return 0
+    name, raw = sys.argv[1], sys.argv[2]
+    try:
+        fields = json.loads(raw)
+        if not isinstance(fields, dict):
+            return 0
+        verdict = fields.pop("verdict", "")
+    except ValueError:
+        return 0
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+    try:
+        import run_log
+    except ImportError:
+        return 0
+    run_log.append_log(verdict, tool=name, **fields)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

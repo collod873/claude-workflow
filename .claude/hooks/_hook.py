@@ -15,6 +15,7 @@ BIN = next((c for c in _BIN_CANDIDATES if c.is_dir()), _BIN_CANDIDATES[0])
 if str(BIN) not in sys.path:
     sys.path.insert(0, str(BIN))
 
+
 def _caller_stem() -> str:
     main = sys.modules.get("__main__")
     path = getattr(main, "__file__", None) or (sys.argv[0] if sys.argv else "")
@@ -22,7 +23,9 @@ def _caller_stem() -> str:
         return "_hook"
     return Path(path).resolve().stem
 
+
 HOOK_NAME = _caller_stem()
+
 
 def deny(msg: str) -> None:
     message = f"[{HOOK_NAME}] {msg}"
@@ -36,6 +39,9 @@ def deny(msg: str) -> None:
     }
     print(json.dumps(output))
 
+
+
+
 def read_payload() -> tuple[dict, bool]:
     try:
         raw = sys.stdin.buffer.read().decode("utf-8")
@@ -48,9 +54,12 @@ def read_payload() -> tuple[dict, bool]:
     payload["tool_input"] = tool_input if isinstance(tool_input, dict) else {}
     return payload, True
 
+
+
 LOG_DIR = Path(os.environ.get("STOP_GATE_LOG_DIR") or (Path.home() / ".claude" / "logs"))
 
 LOG_RETENTION_DAYS = 30
+
 
 def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
     row = dict(row)
@@ -65,8 +74,10 @@ def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
     if path is None:
         _prune_old_logs(hook)
 
+
 def run_row(payload: dict, verdict: str, **extra) -> dict:
     cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    tool_use_id = payload.get("tool_use_id") if isinstance(payload, dict) else None
     row = {
         "hook": HOOK_NAME,
         "event": (isinstance(payload, dict) and payload.get("hook_event_name")) or "",
@@ -75,8 +86,11 @@ def run_row(payload: dict, verdict: str, **extra) -> dict:
         "verdict": verdict,
         "seconds": round(time.monotonic() - _STARTED, 4),
     }
+    if isinstance(tool_use_id, str) and tool_use_id:
+        row["tool_use_id"] = tool_use_id
     row.update(extra)
     return row
+
 
 def _prune_old_logs(hook: str) -> None:
     cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
@@ -91,10 +105,13 @@ def _prune_old_logs(hook: str) -> None:
     except OSError:
         pass
 
+
+
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 EDIT_TOOL_RE = re.compile(rb'"name"\s*:\s*"(?:Edit|Write|MultiEdit|NotebookEdit)"')
 
 EDIT_TOOL_MATCHER = "|".join(EDIT_TOOLS)
+
 
 def edited_path(tool_input: dict) -> str:
     if not isinstance(tool_input, dict):
@@ -104,6 +121,7 @@ def edited_path(tool_input: dict) -> str:
         if isinstance(value, str) and value:
             return value
     return ""
+
 
 def new_content(tool_input: dict) -> str:
     if not isinstance(tool_input, dict):
@@ -119,6 +137,7 @@ def new_content(tool_input: dict) -> str:
             if isinstance(edit, dict) and isinstance(edit.get("new_string"), str):
                 parts.append(edit["new_string"])
     return "\n".join(parts)
+
 
 def exposure(payload: dict) -> tuple[bool | None, int]:
     transcript_path = payload.get("transcript_path") if isinstance(payload, dict) else None
@@ -152,8 +171,11 @@ def exposure(payload: dict) -> tuple[bool | None, int]:
                 n += 1
     return n > 0, n
 
+
+
 LIVENESS_SECONDS = 300
 _LIVENESS_TAIL_BYTES = 256 * 1024
+
 
 def active_sessions(project: str, exclude_session_id: str | None = None,
                     within_seconds: int = LIVENESS_SECONDS,
@@ -201,6 +223,9 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
                     seen[sid] = ts
     return dict(sorted(seen.items(), key=lambda kv: kv[1], reverse=True))
 
+
+
+
 def quoted_spans(command: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     i, n = 0, len(command)
@@ -242,6 +267,7 @@ def quoted_spans(command: str) -> list[tuple[int, int]]:
         else:
             i += 1
     return spans
+
 
 def unquoted_matches(pattern: re.Pattern, command: str,
                       spans: list[tuple[int, int]] | None = None) -> list:
