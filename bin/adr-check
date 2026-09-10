@@ -38,6 +38,7 @@ import json
 import subprocess
 import sys
 import textwrap
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -47,15 +48,11 @@ CLEAN, FINDING, CANNOT_RUN = 0, 1, 2
 
 GH_TIMEOUT_SECONDS = 120
 
-SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", "worktrees", ".venv", "venv",
-    "dist", "build", ".next", ".cache", ".mypy_cache",
-}
 TEXT_SUFFIXES = {".md", ".py", ".json", ".sh", ".ts", ".js", ".txt", ".yml", ".yaml"}
 
 
-def repo_files(root: Path):
-    adr = adr_shape.adr_dir(root)
+def repo_files(root: Path, corpora: list[Path]):
+    corpora_set = set(corpora)
     stack = [root]
     while stack:
         d = stack.pop()
@@ -65,15 +62,15 @@ def repo_files(root: Path):
             continue
         for e in entries:
             if e.is_dir():
-                if e.name not in SKIP_DIRS and e != adr:
+                if e.name not in adr_shape.SKIP_DIRS and e not in corpora_set:
                     stack.append(e)
             elif e.suffix in TEXT_SUFFIXES or e.parent.name == "bin":
                 yield e
 
 
-def scan_citations(root: Path) -> dict[int, list[str]]:
+def scan_citations(root: Path, corpora: list[Path]) -> dict[int, list[str]]:
     found: dict[int, list[str]] = {}
-    for f in repo_files(root):
+    for f in repo_files(root, corpora):
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -122,15 +119,27 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="adr-check", description=__doc__.splitlines()[0])
     p.add_argument("--fix", action="store_true", help="regenerate the index instead of failing")
     p.add_argument("--blast", action="store_true", help="measure GitHub reach per ADR")
+    p.add_argument("--bar-from", metavar="YYYY-MM-DD",
+                   help="exempt records dated before this day from the body cap and the "
+                        "frontmatter checks, and from nothing else")
     args = p.parse_args(argv)
 
     root = adr_shape.repo_root_from() or Path.cwd()
 
-    d = adr_shape.adr_dir(root)
-    if not d.is_dir():
+    bar_from = None
+    if args.bar_from:
+        try:
+            bar_from = date.fromisoformat(args.bar_from)
+        except ValueError:
+            print(f"adr-check: --bar-from wants YYYY-MM-DD, got {args.bar_from!r}",
+                  file=sys.stderr)
+            return CANNOT_RUN
+
+    corpora = adr_shape.find_adr_dirs(root)
+    if not corpora:
         return CLEAN
 
-    corpus = adr_shape.load_corpus(root)
+    corpus = adr_shape.load_all_corpora(root)
     if not corpus:
         return CLEAN
     findings: list[str] = []
@@ -138,7 +147,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for a in corpus:
         try:
-            for w in adr_shape.validate(a.path.read_text(encoding="utf-8", errors="replace")):
+            text = a.path.read_text(encoding="utf-8", errors="replace")
+            for w in adr_shape.validate(text, bar_from=bar_from):
                 warnings.append(f"{a.ident}: {w}")
         except adr_shape.ValidationError as e:
             findings.append(f"{a.ident} ({a.path.name}): {e}")
@@ -146,21 +156,32 @@ def main(argv: list[str] | None = None) -> int:
             print(f"adr-check: cannot read {a.path}: {e}", file=sys.stderr)
             return CANNOT_RUN
 
-    want = adr_shape.render_index(corpus)
-    index = adr_shape.index_path(root)
-    have = index.read_text(encoding="utf-8", errors="replace") if index.exists() else ""
-    if want != have:
-        if args.fix:
-            index.write_text(want, encoding="utf-8")
-            print(f"adr-check: regenerated {index.relative_to(root)}")
-        else:
-            findings.append(
-                f"{index.relative_to(root)} is stale; run `adr-check --fix`."
-            )
+    for d in corpora:
+        local = [a for a in corpus if a.corpus == d]
+        want = adr_shape.render_index(local)
+        index = d / adr_shape.INDEX_NAME
+        have = index.read_text(encoding="utf-8", errors="replace") if index.exists() else ""
+        if want != have:
+            if args.fix:
+                index.write_text(want, encoding="utf-8")
+                print(f"adr-check: regenerated {index.relative_to(root)}")
+            else:
+                findings.append(
+                    f"{index.relative_to(root)} is stale; run `adr-check --fix`."
+                )
 
-    numbers = {a.number for a in corpus}
+    by_number: dict[int, list[adr_shape.Adr]] = {}
+    for a in corpus:
+        by_number.setdefault(a.number, []).append(a)
+    for n in sorted(by_number):
+        group = by_number[n]
+        if len(group) > 1:
+            where = ", ".join(str(a.path.relative_to(root)) for a in group)
+            findings.append(f"ADR-{n:04d} is claimed by more than one corpus: {where}")
+
+    numbers = set(by_number)
     highest = max(numbers, default=0)
-    sites = scan_citations(root)
+    sites = scan_citations(root, corpora)
     for n in sorted(sites):
         where = ", ".join(sorted(sites[n])[:4])
         if n in numbers:

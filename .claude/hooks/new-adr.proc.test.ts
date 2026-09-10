@@ -45,7 +45,7 @@ function file(args: string[], cwd: string): { code: number | null; out: string }
   return { code: done.status, out: (done.stdout ?? "").trim() };
 }
 
-test.fails(
+test(
   "#412.2: new-adr claims the next number across every corpus and lands the record in the corpus the caller names, defaulting to the root",
   () => {
     const repo = mkdtempSync(join(tmpdir(), "new-adr-412-"));
