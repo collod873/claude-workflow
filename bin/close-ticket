@@ -15,9 +15,9 @@ stamp on this route: re-running the same invocation after the work is fixed is t
 recovery path.
 
 Two shapes abort the same way, and for the same reason: **unverified is not a verdict this
-script may close on**. Both come from `collod873/claude-workflow`'s #215, whose copy of this
-tool grew them first; they are merged back here so the source of truth `bin/re-seed` vendors
-out is a superset of what it would overwrite, never a silent revert of it (#194).
+script may close on**. Both trace to `collod873/claude-workflow`'s #215, whose fork of this tool
+grew them first, back when the machine and this tool lived in separate repositories; #392's merge
+folded that fork's fixes into this one copy rather than losing them (#194).
 
 - A criterion that says `check:` and hands this script nothing runnable (`UNPARSEABLE_CHECK_RE`)
   is a *failure*, never an `UNVERIFIED: no check` bullet. It was the second of those until

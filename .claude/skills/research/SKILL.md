@@ -17,7 +17,7 @@ A research ticket carries `## Acceptance criteria` like any other ticket in the 
 findings file this step writes is a commit, a diff, so a research ticket never closes on
 `No diff.`; that exemption covers only a ticket that truly produces no commit. Close it the way
 any diff-carrying ticket closes: commit the findings file, then run
-`~/.agents/skills/bin/close-ticket <ticket> <base>..<head> <checkout>` bare; `<checkout>` is
+`~/bin/close-ticket <ticket> <base>..<head> <checkout>` bare; `<checkout>` is
 wherever the commit landed, that ticket's own worktree when one was cut for it. It fetches the
 ticket's own criteria, runs each one's `check:` marker there, posts the `## Closing record`, and
 closes the ticket itself. Exit 0: closed. Nonzero: nothing was posted, so fix what stderr names and

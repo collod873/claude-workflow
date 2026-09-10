@@ -77,7 +77,7 @@ describe("a published body, read by the script that closes it", () => {
 
   it("does not refuse a check that reaches an absolute path outside the repo (#220's own criteria)", () => {
     const criterion =
-      "The drain skill resolves the repository's own `bin/close-ticket` in preference to the skill's copy — check: `grep -q 'bin/close-ticket' /home/collin/.agents/skills/drain/SKILL.md`";
+      "The drain skill resolves close-ticket relative to its own machine checkout — check: `grep -q 'close-gate.py. resolves it' /home/collin/.agents/workflow/.claude/skills/drain/SKILL.md`";
 
     expect(() =>
       renderBody(slice({ title: "A slice", acceptanceCriteria: [criterion] }), 1),

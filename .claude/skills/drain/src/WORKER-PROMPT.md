@@ -4,7 +4,7 @@ Dispatch by **stub**, in the foreground (ADR-0026): the subagent's prompt is one
 file plus the `{{PLACEHOLDER}}` values, and the worker reads the template itself,
 
 ```
-Read /home/collin/.agents/skills/drain/WORKER-PROMPT.md below its `---` and follow it with these values:
+Read /home/collin/.agents/workflow/.claude/skills/drain/WORKER-PROMPT.md below its `---` and follow it with these values:
 WORKTREE_PATH=… WORKER_BRANCH=… BRANCH=… TICKET_NUMBER=… TICKET_TITLE=… REPO_PATH=…
 ```
 
@@ -18,16 +18,16 @@ You are implementing one ticket of a batch `/drain` is working. You work in your
 - **This ticket**: #{{TICKET_NUMBER}}, {{TICKET_TITLE}}
 - **Main checkout**: `{{REPO_PATH}}`, **read-only to you.**
 
-`{{REPO_PATH}}` is the foreman's own tree, and it is where every gate in this batch runs. Read from it freely; never write to it. Not a file, not an install, not a `git` command that moves `HEAD` (`checkout`, `switch`, `reset`, `restore`, `stash`), not a commit. This is the general rule, not a list; the two specific prohibitions below are instances of it, and the incident that produced this paragraph was an `npm install` aimed at `{{REPO_PATH}}` itself (#143). A gate is a verdict on the tree it ran in, so a gate run against a tree you have edited is not a verdict on your merge, and nothing downstream will notice. If your work seems to require writing there, stop and report it: you are missing a tree of your own, and asking is cheap. The mechanics are in `~/.agents/skills/docs/agents/agent-worktrees.md`.
+`{{REPO_PATH}}` is the foreman's own tree, and it is where every gate in this batch runs. Read from it freely; never write to it. Not a file, not an install, not a `git` command that moves `HEAD` (`checkout`, `switch`, `reset`, `restore`, `stash`), not a commit. This is the general rule, not a list; the two specific prohibitions below are instances of it, and the incident that produced this paragraph was an `npm install` aimed at `{{REPO_PATH}}` itself (#143). A gate is a verdict on the tree it ran in, so a gate run against a tree you have edited is not a verdict on your merge, and nothing downstream will notice. If your work seems to require writing there, stop and report it: you are missing a tree of your own, and asking is cheap. The mechanics are documented where `~/bin/link-deps --help` prints them.
 
 Before starting: gitignored files (`.env*`, local config) do not follow into worktrees, so copy any the gate needs from `{{REPO_PATH}}`.
 
-Your dependency tree is already provisioned: the foreman ran `~/.agents/skills/bin/link-deps` when it cut this worktree, so `node_modules` here is a real directory that shares `{{REPO_PATH}}`'s packages by symlink while keeping its own private copies of the manifests a package manager rewrites. Two things follow, and the second is the one that costs a whole batch if you improvise it:
+Your dependency tree is already provisioned: the foreman ran `~/bin/link-deps` when it cut this worktree, so `node_modules` here is a real directory that shares `{{REPO_PATH}}`'s packages by symlink while keeping its own private copies of the manifests a package manager rewrites. Two things follow, and the second is the one that costs a whole batch if you improvise it:
 
 - **Never run `pnpm install` or any equivalent install here.** The gate runs against `{{REPO_PATH}}`'s existing packages, not a fresh tree; a second copy inflates your worktree and starves the scratchpad's inode budget for siblings still running.
 - **Never symlink this worktree's `node_modules` at `{{REPO_PATH}}`'s.** That is the obvious way to reach a dependency tree and it is the one that corrupts the batch: the symlink makes the main checkout's `node_modules` shared *and mutable*, so pnpm's deps-status check, which runs on any `pnpm <script>`, rewrites `virtualStoreDir` in the **main checkout's** `.modules.yaml` to name your worktree. From the main checkout that path no longer resolves, so every later pnpm invocation there tries to purge and reinstall and dies on `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`, taking the foreman's merge commit down with it (#140).
 
-If the tree looks absent or wrong, re-run `~/.agents/skills/bin/link-deps <this worktree> {{REPO_PATH}}`; it rebuilds its own farm idempotently and refuses to delete anything it did not create. Reaching for an install or a symlink instead is what this paragraph exists to stop.
+If the tree looks absent or wrong, re-run `~/bin/link-deps <this worktree> {{REPO_PATH}}`; it rebuilds its own farm idempotently and refuses to delete anything it did not create. Reaching for an install or a symlink instead is what this paragraph exists to stop.
 
 Stay inside the files your ticket's work requires. If correctness genuinely demands editing an area a sibling ticket owns, stop and report that instead of touching it; a collision costs the whole batch more than your pause does.
 

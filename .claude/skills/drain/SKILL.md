@@ -118,8 +118,7 @@ and rode into the batch's landing merge attributed to a drain that never ran it 
 rule is that an agent that will write needs its own working tree, and a path it was handed is
 read-only unless it was told otherwise. `<repo>` is that path for you from here on: a source to read
 context from, to copy gitignored files out of, and to name as `link-deps`' second argument, never a
-target for a write, an install, a commit, or a `git` command that moves `HEAD`. The mechanics are in
-`~/.agents/skills/docs/agents/agent-worktrees.md`.
+target for a write, an install, a commit, or a `git` command that moves `HEAD`. The mechanics are documented where `~/bin/link-deps --help` prints them.
 
 Cut the drain tree **beside the main checkout**, not in the scratchpad:
 
@@ -130,7 +129,7 @@ git worktree add "$tree" '<branch>'                       # the branch exists, s
 git fetch origin '<default>' &&                           # it does not, so cut both at once, from the
   git worktree add "$tree" -b '<branch>' origin/'<default>'  #   remote tip, not a stale local ref
 
-~/.agents/skills/bin/link-deps "$tree" '<repo>'
+~/bin/link-deps "$tree" '<repo>'
 ```
 
 - **Beside**, because step 4's gate is this batch's verdict *because* it runs at a path shaped like
@@ -174,7 +173,7 @@ the batch:
    drain-worker-<ticket> <branch>`, naming the drain branch explicitly as the base (built-in
    worktree isolation forks from the repo's default branch, never the tip you mean), then,
    **before dispatching**, give it its own
-   dependency tree: `~/.agents/skills/bin/link-deps <scratchpad>/wt-<ticket> <repo>`. That builds a
+   dependency tree: `~/bin/link-deps <scratchpad>/wt-<ticket> <repo>`. That builds a
    `node_modules` sharing the main checkout's packages by symlink while keeping private copies of
    the manifests a package manager rewrites, at a cost of one inode per top-level entry (~79 on a
    real project) rather than the ~87k a second install would spend against the budget step 2 just
@@ -268,7 +267,7 @@ the batch:
    forward as "last left" for the next ticket's tip assertion above. Cut one dedicated detached
    worktree the first time this step runs in this drain, `git worktree add --detach
    <scratchpad>/wt-checker <head>`, then give it a dependency tree with the **same** tool and the
-   same call the **Dispatch** step gives every worker worktree: `~/.agents/skills/bin/link-deps
+   same call the **Dispatch** step gives every worker worktree: `~/bin/link-deps
    <scratchpad>/wt-checker <repo>`, run immediately after the `git worktree add`. One mechanism for
    both, never a second one invented here, and never a whole-tree symlink at the main checkout's
    `node_modules`; that shape is the corruption #140 closed. A bare checkout leaves a criterion's
@@ -280,18 +279,13 @@ the batch:
    touched by nothing but this step, so no concurrent gate run can be corrupted by it moving).
 
    **Which `close-ticket` runs is resolved once, before this step's first ticket, never re-decided
-   per ticket**: `<repo>/bin/close-ticket` when the repository under drain ships one, the skill's
-   own `~/.agents/skills/bin/close-ticket` only when it does not, the same precedence a repo-local
-   tool gets over a generic one everywhere else. The two are not interchangeable. This repository's
-   own copy carries #215's refusal (a ticket whose every criterion comes back unverified does not
-   close) and the skill's copy, written before #215, does not; following the skill's copy against
-   a repository that has moved past it undoes that refusal silently, since the `## Closing record`
-   it posts looks identical either way. The run of 2026-08-29 found exactly this: the repository's
-   `<repo>/bin/close-ticket` had grown two refusals the skill's copy carried neither of, and a drain that
-   didn't know to prefer it would have reintroduced #215 without anyone noticing until the next
-   ticket closed on nothing (#220). Do not fix this by syncing the two files instead; the next
-   change to either re-diverges them, and the fix would need repeating every time it does. Call the
-   resolved path `<closer>` below and use it for every ticket in the batch.
+   per ticket**, the same way `close-gate.py` resolves it: this machine's own tool, found relative
+   to its own tree, with `~/bin/close-ticket` as the name to fall back to when that cannot
+   be found. There is exactly one `close-ticket`; #220 was a repository under drain carrying its own
+   stale copy that silently outranked the machine's, undoing #215's refusal (a ticket whose every
+   criterion comes back unverified does not close) with a `## Closing record` that looked identical
+   either way. Retiring the per-repository copy retires the precedence #220 needed, not just the
+   symptom. Call the resolved path `<closer>` below and use it for every ticket in the batch.
 
    Run `<closer> <ticket> <base>..<head> <scratchpad>/wt-checker` bare.
    cross-repo, add `-R <owner>/<name>`. It fetches the ticket's own criteria from the issue body,

@@ -13,7 +13,7 @@ Three branches; route first:
 - **Test / debug** a hook → *Testing*.
 - **Audit** existing hooks → *Auditing*.
 
-Hooks on this machine live in `~/.agents/skills/hooks/` and run through `~/.claude/hooks/` symlinks (ADR-0019). Every hook imports `_hook.py`; every harness imports `_harness.py`. Those two docstrings are the contract; read them before writing either. How the harness behaves under contention, on timeout, and inside subagents was measured, not assumed: ADR-0012 (Pre), ADR-0016 (Post), `docs/research/hook-timeout-and-subagent-scope-2026-08-29.md`. Event catalog and I/O schema: `REFERENCE.md`; an event missing there means fetch `code.claude.com/docs/en/hooks.md` before designing.
+Hooks on this machine live in this repo's `.claude/hooks/` (on the workstation, the dedicated clone at `~/.agents/workflow`) and run through `~/.claude/hooks/` symlinks (ADR-0019). Every hook imports `_hook.py`; every harness imports `_harness.py`. Those two docstrings are the contract; read them before writing either. How the harness behaves under contention, on timeout, and inside subagents was measured, not assumed: ADR-0012 (Pre), ADR-0016 (Post), `docs/research/hook-timeout-and-subagent-scope-2026-08-29.md`. Event catalog and I/O schema: `REFERENCE.md`; an event missing there means fetch `code.claude.com/docs/en/hooks.md` before designing.
 
 ## The hook model
 
@@ -49,7 +49,7 @@ Common pattern → event:
 2. **Honor the contract exactly**: `_hook.read_payload()` in; `_hook.deny()` or `additionalContext` out. The text on either channel is a document Claude reads (`writing-for-agents`): `[HOOK_NAME]` first, then the one fact the hook knows, then one checkable step, stated positively, so a refusal says what to run instead. Completion criterion: for every path the hook can take, the exit code *and* the channel carrying the message are named. No path left implicit.
 3. **Choose the failure mode on purpose.** Convenience (formatter, logger, notifier) → fail open: `|| true`, guarded deps, so a broken hook never wedges the session. Safety (block a command, protect a file) → fail closed, knowing the ceiling: regex and `if` matching fail open on tricky shell, and past `timeout` every hook fails open. A permission `deny` rule is the lock; the hook is defense-in-depth.
 4. **Keep it tight.** A synchronous hook blocks the turn, and `PreToolUse`, `SessionStart`, `Stop` fire constantly. React-only hooks are `"async": true` (background; can't block; output lands next turn). The shell is non-interactive (no login PATH, aliases, or direnv) so absolute paths or `${CLAUDE_PROJECT_DIR}`, and profile `echo` guarded to interactive shells or it corrupts stdout JSON.
-5. **Make it observable**: every fire writes a `_hook.run_row()` (CODING_STANDARDS "One log shape"); `~/.agents/skills/bin/hook-report` reads them.
+5. **Make it observable**: every fire writes a `_hook.run_row()` (CODING_STANDARDS "One log shape"); `~/bin/hook-report` reads them.
 6. **Test before you trust it**, per *Testing*. A hook you have not driven is a guess.
 7. **Register it** in `~/.claude/settings.json`, a project's `.claude/settings.json` (it ships to every clone), a skill's frontmatter `hooks:`, or a plugin's `hooks.json`. All that apply run. Shape: `REFERENCE.md` § Config shape.
 

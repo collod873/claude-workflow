@@ -45,7 +45,7 @@ those, from the issue body, against your commits.
    file that satisfies it. Every criterion has a file, or you are not done. `close-ticket` is about
    to run exactly those criteria, and catching the gap here costs one commit instead of a
    `needs-human` label.
-5. **Close.** For each ticket, run `~/.agents/skills/bin/close-ticket <ticket> $(git rev-parse
+5. **Close.** For each ticket, run `~/bin/close-ticket <ticket> $(git rev-parse
    refs/implement/base)..HEAD <this checkout>` bare, passing this checkout's own path; it is
    already at `head` with dependencies present, so there is no separate tree to cut. It fetches
    the ticket's own criteria from the issue body, runs each one's `check:` marker here, posts the
