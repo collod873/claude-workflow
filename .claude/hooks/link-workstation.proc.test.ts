@@ -1,74 +1,52 @@
-import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
-const hooksDir = fileURLToPath(new URL(".", import.meta.url));
-const repoRoot =
-  [resolve(hooksDir, ".."), resolve(hooksDir, "..", "..")].find((candidate) =>
-    existsSync(join(candidate, "bin", "link-workstation")),
-  ) ?? resolve(hooksDir, "..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const LINK_WORKSTATION = join(REPO_ROOT, "bin", "link-workstation");
 
-const DISPATCHER_ENTRY_AS_JSON = [
-  "import importlib.machinery, importlib.util, json, sys",
-  'loader = importlib.machinery.SourceFileLoader("link_workstation", sys.argv[1])',
-  'spec = importlib.util.spec_from_loader("link_workstation", loader)',
-  "module = importlib.util.module_from_spec(spec)",
-  "loader.exec_module(module)",
-  "print(json.dumps(module.dispatcher_entry(sys.argv[2])))",
-].join("\n");
+const SETTINGS = `${JSON.stringify({ hooks: {}, model: "sonnet", env: { EDITOR: "vim" } }, null, 2)}\n`;
 
-function shellWords(command: string, stubBin: string): string[] {
-  const stdout = execFileSync("/bin/sh", ["-c", command], {
-    encoding: "utf8",
-    env: { ...process.env, PATH: `${stubBin}:${process.env.PATH ?? ""}` },
-  });
-  return stdout.split("\n").filter((word) => word.length > 0);
+function makeHome(): string {
+  const home = mkdtempSync(join(tmpdir(), "link-workstation-"));
+  mkdirSync(join(home, "bin"), { recursive: true });
+  mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+  mkdirSync(join(home, ".claude", "hooks"), { recursive: true });
+  writeFileSync(join(home, ".claude", "settings.json"), SETTINGS);
+  return home;
 }
 
-test(
-  "#421.1: dispatcher_entry's command parses to exactly python3, the dispatcher path and the event when the hooks directory contains a space",
+function run(home: string, args: string[]) {
+  return spawnSync("python3", [LINK_WORKSTATION, ...args], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH ?? "", HOME: home },
+  });
+}
+
+test.fails(
+  "#424.1: run from a clone that is not ~/.agents/workflow, link-workstation exits non-zero before any link or settings write, naming both paths",
   () => {
-    const scratch = realpathSync(mkdtempSync(join(tmpdir(), "link-workstation-")));
-    const cloneRoot = join(scratch, "Claude Projects", "Workflow");
-    const script = join(cloneRoot, "bin", "link-workstation");
-    mkdirSync(join(cloneRoot, "bin"), { recursive: true });
-    mkdirSync(join(cloneRoot, ".claude", "hooks"), { recursive: true });
-    copyFileSync(join(repoRoot, "bin", "link-workstation"), script);
+    const home = makeHome();
+    const workstationClone = join(home, ".agents", "workflow");
+    try {
+      for (const args of [["--dry-run"], ["--apply", "--settings"]]) {
+        const result = run(home, args);
+        const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
 
-    const stubBin = join(scratch, "stub-bin");
-    mkdirSync(stubBin);
-    const stubPython = join(stubBin, "python3");
-    writeFileSync(stubPython, '#!/bin/sh\nprintf "%s\\n" "$@"\n');
-    chmodSync(stubPython, 0o755);
+        expect(result.status).not.toBe(0);
+        expect(output).toContain(REPO_ROOT);
+        expect(output.includes(workstationClone) || output.includes("~/.agents/workflow")).toBe(true);
+      }
 
-    const entry = JSON.parse(
-      execFileSync("python3", ["-c", DISPATCHER_ENTRY_AS_JSON, script, "PreToolUse"], {
-        encoding: "utf8",
-      }),
-    );
-    const command: string = entry.hooks[0].command;
-
-    expect(shellWords(command, stubBin)).toEqual([
-      join(cloneRoot, ".claude", "hooks", "dispatch.py"),
-      "PreToolUse",
-    ]);
+      expect(existsSync(join(home, "bin", "close-ticket"))).toBe(false);
+      expect(existsSync(join(home, ".claude", "skills", "tdd"))).toBe(false);
+      expect(readFileSync(join(home, ".claude", "settings.json"), "utf8")).toBe(SETTINGS);
+      expect(existsSync(join(home, ".claude", "settings.json.pre-dispatch"))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   },
 );
-
-test("#421.2: the test suite exercises a clone root containing a space", () => {
-  const suite = readFileSync(join(repoRoot, ".claude", "hooks", "test_link_workstation.py"), "utf8");
-
-  expect(suite).toMatch(/Claude Projects|with a space|with space/);
-});
