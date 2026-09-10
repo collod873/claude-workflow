@@ -25,7 +25,7 @@ jobs:
   implement:
     if: github.event.action == 'ticket-ready'
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
       GH_TOKEN: ${{ github.token }}
@@ -75,6 +75,7 @@ jobs:
           mode: "on"
 
       - name: Implement the ticket
+        id: implement
         env:
           RUNG: ${{ github.event.client_payload.rung }}
           TARGET_WORKSPACE: ${{ github.workspace }}/target

@@ -26,7 +26,7 @@ jobs:
   mechanic:
     if: github.event.action == 'mechanic-wanted'
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
       GH_TOKEN: ${{ github.token }}
