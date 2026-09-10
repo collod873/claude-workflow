@@ -87,7 +87,10 @@ KIND_LABELS = {
 CREATED_LABELS = {
     "prd": ("5319e7", "A spec issue, filed by file-issue spec"),
     "ticket": ("0e8a16", "A ticket: acceptance criteria and a file claim, filed by file-issue ticket"),
+    "by-hand": ("b60205", "Claims a workstation, cross-repo, or immutable-set path; a human builds it by hand"),
 }
+
+BY_HAND_LABEL = "by-hand"
 
 SPEC_TITLE_PREFIX = "PRD: "
 
@@ -222,11 +225,15 @@ def ensure_label_exists(gh, name: str) -> None:
     ])
 
 
-def create_issue(gh, title: str, body: str, label: str | None) -> str:
+def create_issue(gh, title: str, body: str, labels: list[str]) -> str:
     args = ["issue", "create", "--title", title, "--body", body]
-    if label:
+    for label in labels:
         args += ["--label", label]
     return run_gh(gh, args)
+
+
+def by_hand_classification(paths: list[str], repo: str | None) -> bool:
+    return bool(repo) or ticket_shape.classify_venue(paths) is not None
 
 
 
@@ -251,7 +258,9 @@ def fetch_open_issues(gh) -> list[dict]:
     return [d for d in data if isinstance(d, dict) and "pull_request" not in d]
 
 
-def edit_issue_body(gh, n: int, body: str, remove_fuzzy: bool, add_ticket: bool = False) -> None:
+def edit_issue_body(
+    gh, n: int, body: str, remove_fuzzy: bool, add_ticket: bool = False, add_by_hand: bool = False
+) -> None:
     fh = tempfile.NamedTemporaryFile(
         "w", suffix=".md", prefix=f"file-issue-ticketify-{n}-", delete=False
     )
@@ -262,6 +271,8 @@ def edit_issue_body(gh, n: int, body: str, remove_fuzzy: bool, add_ticket: bool 
         args += ["--remove-label", "fuzzy"]
     if add_ticket:
         args += ["--add-label", "ticket"]
+    if add_by_hand:
+        args += ["--add-label", BY_HAND_LABEL]
     run_gh(gh, args)
 
 
@@ -342,10 +353,13 @@ def run_ticketify(args) -> int:
     label_names = {lbl.get("name") for lbl in target.get("labels", []) if isinstance(lbl, dict)}
     remove_fuzzy = "fuzzy" in label_names
     add_ticket = "ticket" not in label_names
+    add_by_hand = BY_HAND_LABEL not in label_names and by_hand_classification(claim, args.repo)
     if add_ticket:
         ensure_label_exists(gh, "ticket")
+    if add_by_hand:
+        ensure_label_exists(gh, BY_HAND_LABEL)
 
-    edit_issue_body(gh, args.n, new_body, remove_fuzzy, add_ticket)
+    edit_issue_body(gh, args.n, new_body, remove_fuzzy, add_ticket, add_by_hand)
 
     if had_criteria and args.replace and target.get("assignees"):
         comment_issue(gh, args.n, REPLACE_COMMENT)
@@ -457,9 +471,12 @@ def run(argv=None) -> int:
             title = f"{SPEC_TITLE_PREFIX}{title}"
 
     label = KIND_LABELS[kind]
-    if label:
-        ensure_label_exists(gh, label)
-    out = create_issue(gh, title, body, label)
+    labels = [label] if label else []
+    if kind == "ticket" and by_hand_classification(ticket_shape.claimed_paths(body), args.repo):
+        labels.append(BY_HAND_LABEL)
+    for l in labels:
+        ensure_label_exists(gh, l)
+    out = create_issue(gh, title, body, labels)
     tail = out.strip().rsplit("/", 1)[-1]
     n = int(tail) if tail.isdigit() else None
     ROW["issue"] = n

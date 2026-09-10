@@ -81,6 +81,11 @@ TICKET_BODY_CLAIMS_CI = (
     "## Files claimed\n\n- .github/workflows/ci.yml\n"
 )
 
+TICKET_BODY_WORKSTATION_CLAIM = (
+    "## Acceptance criteria\n\n- [ ] the workstation settings are correct - check: `true`\n\n"
+    "## Files claimed\n\n- ~/.claude/settings.json\n"
+)
+
 
 def refusal(call) -> str | None:
     try:
@@ -679,6 +684,87 @@ def test_ticketify(tmp):
 
 
 
+def labels_of(call):
+    labels = set()
+    for i, token in enumerate(call):
+        if token in ("--label", "--add-label"):
+            labels.update(n.strip() for n in call[i + 1].split(",") if n.strip())
+    return labels
+
+
+def all_labels(calls):
+    out = set()
+    for c in calls:
+        out |= labels_of(c)
+    return out
+
+
+def test_by_hand_label(tmp):
+    print("#438: by-hand alongside ticket for a workstation or cross-repo claim, "
+          "no such label for an ordinary one")
+
+    log = tmp / "bh1.jsonl"
+    body = write_body(tmp, "ticket-workstation.md", TICKET_BODY_WORKSTATION_CLAIM)
+    r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
+                body_file=body)
+    check("ticket/workstation claim: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("ticket/workstation claim: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
+
+    log = tmp / "bh2.jsonl"
+    body = write_body(tmp, "ticket-cross-repo.md", TICKET_BODY_OK)
+    r = run_cli(["ticket", "--title", "A ticket", "-R", "acme/widgets"],
+                env_extra={"STUB_ARGV_LOG": str(log)}, body_file=body)
+    check("ticket/-R cross-repo: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("ticket/-R cross-repo: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
+
+    log = tmp / "bh3.jsonl"
+    body = write_body(tmp, "ticket-ordinary.md", TICKET_BODY_OK)
+    r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
+                body_file=body)
+    check("ticket/ordinary claim: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("ticket/ordinary claim: labelled ticket, not by-hand",
+          "ticket" in labels and "by-hand" not in labels, labels)
+
+    log = tmp / "bh4.jsonl"
+    issues = [issue_obj(60, 6060, "Some fuzzy description.\n", labels=["fuzzy"])]
+    workstation_supplied = (
+        "## Acceptance criteria\n\n- [ ] the workstation is wired - check: `true`\n\n"
+        "## Files claimed\n\n- ~/.claude/settings.json\n"
+    )
+    r, calls = run_ticketify(60, [], issues, workstation_supplied, log)
+    check("ticketify/workstation claim: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(calls)
+    check("ticketify/workstation claim: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
+
+    log = tmp / "bh5.jsonl"
+    issues = [issue_obj(61, 6161, "Some fuzzy description.\n", labels=["fuzzy"])]
+    r, calls = run_ticketify(61, ["-R", "acme/widgets"], issues, NEW_CRITERIA_BODY, log)
+    check("ticketify/-R cross-repo: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(calls)
+    check("ticketify/-R cross-repo: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
+
+    log = tmp / "bh6.jsonl"
+    issues = [issue_obj(62, 6262, "Some fuzzy description.\n", labels=["fuzzy"])]
+    r, calls = run_ticketify(62, [], issues, NEW_CRITERIA_BODY, log)
+    check("ticketify/ordinary claim: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(calls)
+    check("ticketify/ordinary claim: labelled ticket, not by-hand",
+          "ticket" in labels and "by-hand" not in labels, labels)
+
+
 TEST_FILE_TWO_TITLES = (
     'test.fails("#?.1: does the first thing", () => {})\n'
     "it.fails('#?.2: does the second thing', () => {})\n"
@@ -979,6 +1065,8 @@ def main():
         test_cli(tmp)
         print()
         test_ticketify(tmp)
+        print()
+        test_by_hand_label(tmp)
         print()
         test_test_handoff(tmp)
         print()

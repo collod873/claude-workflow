@@ -88,6 +88,28 @@ def test_validate_ticket_refuses_immutable_claim():
           warnings == [], warnings)
 
 
+def test_classify_venue_workstation_paths():
+    print("classify_venue: a home-dir or .claude/ settings path is workstation, "
+          "independent of immutable-set")
+
+    home_dir = "~/.claude/settings.json"
+    claude_settings = ".claude/settings.json"
+    ordinary = "src/router.ts"
+
+    check("home-dir path classifies as workstation",
+          ticket_shape.classify_venue([home_dir]) == "workstation")
+    check("home-dir path is not in the immutable set",
+          ticket_shape.touches_immutable_set([home_dir]) == [])
+    check(".claude/ settings path classifies as workstation",
+          ticket_shape.classify_venue([claude_settings]) == "workstation")
+    check("an ordinary path does not classify as workstation",
+          ticket_shape.classify_venue([ordinary]) != "workstation")
+    check("an immutable-set path classifies, but not as workstation",
+          ticket_shape.classify_venue(["vitest.config.ts"]) == "immutable-set")
+    check("a path outside both sets classifies as nothing",
+          ticket_shape.classify_venue([ordinary]) is None)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="ticket-shape-test-"):
         test_immutable_set_pinned_to_shared_json()
@@ -95,6 +117,8 @@ def main():
         test_touches_immutable_set()
         print()
         test_validate_ticket_refuses_immutable_claim()
+        print()
+        test_classify_venue_workstation_paths()
 
     finish("All ticket_shape checks passed.")
 

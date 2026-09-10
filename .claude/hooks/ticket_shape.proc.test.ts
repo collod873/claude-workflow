@@ -35,7 +35,7 @@ function classify(paths: string[]): Classification {
   return JSON.parse(out) as Classification;
 }
 
-test.fails(
+test(
   "#438.2: ticket_shape's venue predicate classifies a home-dir or `.claude/` settings path as workstation, independent of immutable-set",
   () => {
     const homeDir = "~/.claude/settings.json";

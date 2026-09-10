@@ -18,6 +18,23 @@ def touches_immutable_set(paths: list[str]) -> list[str]:
     return [p for p in paths if any(p == entry or p.startswith(entry) for entry in IMMUTABLE_SET)]
 
 
+WORKSTATION_PATH_EXACT = ("~", ".claude")
+WORKSTATION_PATH_PREFIXES = ("~/", ".claude/")
+
+
+def is_workstation_path(path: str) -> bool:
+    stripped = path.strip("`")
+    return stripped in WORKSTATION_PATH_EXACT or stripped.startswith(WORKSTATION_PATH_PREFIXES)
+
+
+def classify_venue(paths: list[str]) -> str | None:
+    if any(is_workstation_path(p) for p in paths):
+        return "workstation"
+    if touches_immutable_set(paths):
+        return "immutable-set"
+    return None
+
+
 IMMUTABLE_SET_CLAIM_MESSAGE = (
     "'## Files claimed' touches paths no pull request may edit: {paths} -- a human commits "
     "that half by hand; claim what the ticket needs outside the immutable set instead"
