@@ -344,7 +344,30 @@ so the model job's own commits are smuggled out as an artifact instead of pushed
 Checks out the target **fresh** at `main` (not the worktree the author job used), downloads the
 patch artifact, replays it: `git am --3way`, `git fetch origin main && git rebase origin/main`,
 then re-runs the **full gauntlet** (`npm run check` — the same command every other venue runs)
-against the replayed tree, and only then `git push origin HEAD:main`.
+against the replayed tree, and only then `git push origin HEAD:main`, itself a rebase-and-push
+loop of five attempts.
+
+### edge — when the replay conflicts, author again once
+
+Siblings are authored in parallel from one base; `concurrency: land-${{ github.repository }}`
+serialises only the landings. Two slices with no existing test file for a shared subject both
+*create* it, and the second to land hits `CONFLICT (add/add)` on a file that is now on `main`
+(#438 and #439, 2026-09-10). A fresh author against current `main` would simply append to it.
+
+| | |
+|---|---|
+| **The signal** | `git am` or either `git rebase origin/main` fails: the step writes `conflict=true` to its own output (`steps.replay`, `steps.push`) and exits 1. Any other failure leaves it unset |
+| **First conflict** | `Author again against the main that moved, once` fires on `failure() && acceptance-wanted && conflict && client_payload.refire != '1'`: comments the ticket, then dispatches `acceptance-wanted` for the same ticket, carrying the **same `ready` flag the original dispatch had** and `refire: 1`. The author job starts over on the `main` that moved |
+| **Second conflict** | The re-fired run arrives with `refire: 1`, so a conflict now falls through to the `needs-human` step below; the one-re-fire bound rides the payload, not the tracker |
+| **Not a conflict** | A red gauntlet, a failed download, a push that never wins after five tries: `conflict` is unset, straight to `needs-human` as before |
+
+```json
+{"event_type": "acceptance-wanted", "client_payload": {"issue": 439, "ready": "1", "refire": "1"}}
+```
+
+The `ready` flag is carried rather than forced to `1` on purpose: a slice authored while still
+blocked (`ready: 0`) must not become a `ticket-ready` ring to lane 05 because a sibling happened
+to land first.
 
 ### edge — the final ring to lane 05
 
@@ -370,7 +393,7 @@ delivers.
 | `to-build` admission (node 03) | — | Ticket body | — | One standing comment per ticket |
 | readiness + dispatch (node 04) | — | `.test.ts` files under `SUITE_ROOTS` | — | Two dispatch types |
 | `refire`/`author` (nodes 08–10) | opus-5, no tools | Prompt-inlined claimed files only, plus the tests it just wrote | Commits (not pushed) | Marks `running` |
-| `land` (node 12) | — | Replays a patch bundle onto fresh `main` | Pushes to `main` after a full gauntlet | Dispatches `ticket-ready` |
+| `land` (node 12) | — | Replays a patch bundle onto fresh `main` | Pushes to `main` after a full gauntlet | Dispatches `ticket-ready`; on a first replay conflict, `acceptance-wanted` back to its own author; `needs-human` otherwise |
 
 ---
 
@@ -384,7 +407,7 @@ delivers.
 | 0 model calls | `evaluateSpecCheck` | An unrunnable spec — comments and adds `needs-human` |
 | 1 opus call | `authorAcceptanceTests` post-response checks | Bad JSON; a file outside the suite roots; a `.test.ts` missing its `#N` marker; no test file returned at all |
 | after the model, before commit | `landAuthoredBatch` | Collection failure, an accidentally-green test, or a lint failure |
-| after commit, in `land` | `git am --3way` / rebase | The patch doesn't apply or the rebase conflicts |
+| after commit, in `land` | `git am --3way` / rebase | The patch doesn't apply or the rebase conflicts. The first time on a ticket this re-fires `acceptance-wanted` (`refire: 1`, same `ready`); a conflict on the re-fired run is the `needs-human` |
 | after replay | `land`'s `npm run check` | Any gauntlet slot red against the replayed tree |
 | 10 min / 30 min | job `timeout-minutes` | `dispatch-reconcile`: 10 min; `acceptance.yml`'s three jobs: 30/30/10 |
 
