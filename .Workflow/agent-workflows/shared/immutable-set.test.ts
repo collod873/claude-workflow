@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { touchesImmutableSet } from "./immutable-set";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, test } from "vitest";
+import { IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
+
+const sharedListPath = resolve(dirname(fileURLToPath(import.meta.url)), "immutable-set.json");
 
 describe("touchesImmutableSet", () => {
   it("flags vitest.config.ts itself", () => {
@@ -21,4 +26,12 @@ describe("touchesImmutableSet", () => {
   it("does not flag an empty change list", () => {
     expect(touchesImmutableSet([])).toBe(false);
   });
+});
+
+test.fails("#425.2: the Python and TypeScript sides agree on the immutable set", () => {
+  const shared = JSON.parse(readFileSync(sharedListPath, "utf8")) as string[];
+
+  expect(Array.isArray(shared)).toBe(true);
+  expect(shared.length).toBeGreaterThan(0);
+  expect([...IMMUTABLE_SET]).toEqual(shared);
 });
