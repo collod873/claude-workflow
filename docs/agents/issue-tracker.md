@@ -98,7 +98,7 @@ pipeline step reads as a position:
 | ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
 | `ticket`         | `~/bin/file-issue ticket` / `ticketify` | The issue's **kind**, stated at filing rather than inferred later from its body. Nothing reads it as a position, and its absence on the 187 issues filed before it says nothing about them (#300), which is also why `bin/close-ticket` counts the range instead of trusting a kind |
 | `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited |
-| `slice-failed`   | `.github/workflows/to-tickets.yml`  | A slicing run refused or failed; the PRD was not split              |
+| `slice-failed`   | `.github/workflows/to-tickets.yml`  | The latest slicing run refused or failed; the PRD was not split by it. Lifted by the same workflow the moment a later run publishes children (#446), so it is never worn alongside sub-issues |
 | `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
 | `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
 | `spec/gap`       | lane 07's conformance reviewer; the fixer's no-progress stop | The contract is wrong rather than the diff. Filed at a PRD, read by lane 02's amendment path: ADR-0034, ADR-0038, ADR-0119 |

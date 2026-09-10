@@ -325,6 +325,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           ...CHECKPOINTS("to-tickets", "Seam sweep", "Audit and publish"),
           { name: "Slice", run: ["--stage slice"], env: { TARGET_WORKSPACE } },
           { name: "Audit and publish", run: ["--stage audit-and-publish"], env: { TARGET_WORKSPACE } },
+          { name: "Lift slice-failed, the PRD is split now", follows: "Audit and publish", run: ['gh issue edit "$PRD_NUMBER" --remove-label slice-failed'] },
           {
             name: "Report failure",
             if: "failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'",
