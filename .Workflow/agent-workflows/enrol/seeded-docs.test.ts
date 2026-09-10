@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { binSources } from "../shared/repo-sources";
 import {
   CLAUDE_MD_HEADING,
   SEEDED_DOC_NAMES,
+  WORKSTATION_CLONE,
   claudeMdPointerLine,
   pointerDoc,
   pointerDocPath,
@@ -23,6 +25,16 @@ describe("a seeded doc is a pointer, not a copy", () => {
     expect(doc).toContain(MACHINE_REPOSITORY);
     expect(doc).toContain(pointerDocPath("ticket-format.md"));
     expect(doc).toContain("~/.agents/workflow/docs/agents/ticket-format.md");
+  });
+});
+
+describe("bin/link-workstation's WORKSTATION_CLONE agrees with the one it is a copy of", () => {
+  it("names the same clone path seeded-docs.ts does", () => {
+    const source = binSources().find((file) => file.relative === "bin/link-workstation")?.source;
+    const linkWorkstationClone = /^WORKSTATION_CLONE = "([^"]*)"$/m.exec(source ?? "")?.[1];
+
+    expect(linkWorkstationClone, "bin/link-workstation's WORKSTATION_CLONE").toBeDefined();
+    expect(linkWorkstationClone).toBe(WORKSTATION_CLONE);
   });
 });
 

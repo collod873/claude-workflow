@@ -15,7 +15,7 @@ const LINK_WORKSTATION = resolve(
   "link-workstation",
 );
 
-test.fails(
+test(
   "#424.2: the Python constant and enrol/seeded-docs.ts's WORKSTATION_CLONE name the same path",
   () => {
     const home = mkdtempSync(join(tmpdir(), "seeded-docs-workstation-"));

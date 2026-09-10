@@ -22,15 +22,42 @@ def run(home: Path, *args: str):
                           capture_output=True, text=True, env=env, timeout=_harness.HOOK_TIMEOUT * 3)
 
 
-def make_home(tmp: Path) -> Path:
+def make_home(tmp: Path, workstation: Path | None = REPO) -> Path:
     home = tmp / "home"
     (home / "bin").mkdir(parents=True)
     (home / ".claude" / "skills").mkdir(parents=True)
     (home / ".claude" / "hooks").mkdir(parents=True)
+    if workstation is not None:
+        agents_dir = home / ".agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "workflow").symlink_to(workstation, target_is_directory=True)
     return home
 
 
 def main() -> None:
+    print("\n## Refuses to run outside the workstation clone, before touching anything")
+    with tempfile.TemporaryDirectory() as td:
+        home = make_home(Path(td), workstation=None)
+        expected_clone = home / ".agents" / "workflow"
+        settings_path = home / ".claude" / "settings.json"
+        original_settings = json.dumps({"hooks": {}, "model": "sonnet"})
+        settings_path.write_text(original_settings)
+
+        for mode_args in (("--dry-run",), ("--apply",), ("--apply", "--settings")):
+            r = run(home, *mode_args)
+            check(f"{mode_args}: non-zero exit when REPO_ROOT is not the workstation clone",
+                  r.returncode != 0, (r.stdout, r.stderr))
+            check(f"{mode_args}: names this clone's own path", str(REPO) in r.stderr, r.stderr)
+            check(f"{mode_args}: names the workstation clone's path",
+                  str(expected_clone) in r.stderr, r.stderr)
+            check(f"{mode_args}: names the fix", "run" in r.stderr.lower(), r.stderr)
+
+        check("refused: nothing was linked", not (home / "bin" / "close-ticket").exists(), "")
+        check("refused: settings.json is untouched",
+              settings_path.read_text() == original_settings, settings_path.read_text())
+        check("refused: no settings backup appears",
+              not (home / ".claude" / "settings.json.pre-dispatch").exists(), "")
+
     print("\n## --dry-run reports without touching the filesystem")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
@@ -210,7 +237,7 @@ def main() -> None:
         (clone_root / ".claude" / "hooks" / "roster.json").write_text(
             (REPO / ".claude" / "hooks" / "roster.json").read_text())
 
-        home = make_home(Path(td) / "home-with-space-clone")
+        home = make_home(Path(td) / "home-with-space-clone", workstation=clone_root)
         settings_path = home / ".claude" / "settings.json"
         settings_path.write_text(json.dumps({"hooks": {}}))
 

@@ -13,6 +13,8 @@ SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
 ROSTER_PATH = HOOKS_DIR / "roster.json"
 
+WORKSTATION_CLONE = "~/.agents/workflow"
+
 TOOL_SCOPED_EVENTS = {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"}
 
 ACTIONS: list[str] = []
@@ -156,6 +158,16 @@ def rewrite_settings(apply: bool) -> int:
     return 0
 
 
+def workstation_mismatch() -> str | None:
+    expected = Path(WORKSTATION_CLONE).expanduser().resolve()
+    if REPO_ROOT == expected:
+        return None
+    return (
+        f"link-workstation: this clone is {REPO_ROOT}, but the workstation clone is "
+        f"{expected}; run link-workstation from {expected} instead."
+    )
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="link-workstation")
     mode = parser.add_mutually_exclusive_group()
@@ -168,6 +180,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     apply = bool(args.apply)
+
+    mismatch = workstation_mismatch()
+    if mismatch is not None:
+        print(mismatch, file=sys.stderr)
+        return 1
 
     link_bin(apply)
     link_skills(apply)
