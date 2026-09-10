@@ -198,6 +198,44 @@ def main() -> None:
         check("settings dry-run: no backup file appears",
               not (home / ".claude" / "settings.json.pre-dispatch").exists(), "")
 
+    print("\n## --settings quotes the dispatcher command when the clone root contains a space")
+    with tempfile.TemporaryDirectory() as td:
+        clone_root = Path(td) / "Claude Projects" / "Workflow"
+        (clone_root / "bin").mkdir(parents=True)
+        (clone_root / ".claude" / "hooks").mkdir(parents=True)
+        clone_script = clone_root / "bin" / "link-workstation"
+        clone_script.write_text(LINK_WORKSTATION.read_text())
+        clone_script.chmod(0o755)
+        (clone_root / ".claude" / "hooks" / "roster.json").write_text(
+            (REPO / ".claude" / "hooks" / "roster.json").read_text())
+
+        home = make_home(Path(td) / "home-with-space-clone")
+        settings_path = home / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({"hooks": {}}))
+
+        env = dict(os.environ)
+        env["HOME"] = str(home)
+        r = subprocess.run([sys.executable, str(clone_script), "--apply", "--settings"],
+                            capture_output=True, text=True, env=env, timeout=_harness.HOOK_TIMEOUT * 3)
+        check("space clone: exit 0", r.returncode == 0, r.stderr)
+
+        rewritten = json.loads(settings_path.read_text())
+        command = rewritten["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+        stub_bin = Path(td) / "stub-bin"
+        stub_bin.mkdir()
+        stub_python = stub_bin / "python3"
+        stub_python.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        stub_python.chmod(0o755)
+        shell_env = dict(os.environ)
+        shell_env["PATH"] = f"{stub_bin}:{shell_env.get('PATH', '')}"
+        shell_result = subprocess.run(["/bin/sh", "-c", command],
+                                       capture_output=True, text=True, env=shell_env)
+        words = [w for w in shell_result.stdout.split("\n") if w]
+        check("space clone: command parses to exactly the dispatcher path and the event",
+              words == [str(clone_root / ".claude" / "hooks" / "dispatch.py"), "PreToolUse"],
+              (command, words, shell_result.stderr))
+
     print("\n## --settings against a malformed settings.json fails loudly, not silently")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))

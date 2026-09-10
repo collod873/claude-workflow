@@ -37,7 +37,7 @@ function shellWords(command: string, stubBin: string): string[] {
   return stdout.split("\n").filter((word) => word.length > 0);
 }
 
-test.fails(
+test(
   "#421.1: dispatcher_entry's command parses to exactly python3, the dispatcher path and the event when the hooks directory contains a space",
   () => {
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), "link-workstation-")));
@@ -67,7 +67,7 @@ test.fails(
   },
 );
 
-test.fails("#421.2: the test suite exercises a clone root containing a space", () => {
+test("#421.2: the test suite exercises a clone root containing a space", () => {
   const suite = readFileSync(join(repoRoot, ".claude", "hooks", "test_link_workstation.py"), "utf8");
 
   expect(suite).toMatch(/Claude Projects|with a space|with space/);

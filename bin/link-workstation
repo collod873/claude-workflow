@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -93,8 +94,9 @@ def prune_superseded_hook_symlinks(apply: bool) -> None:
 
 
 def dispatcher_entry(event: str) -> dict:
+    dispatch_path = shlex.quote(str(HOOKS_DIR / "dispatch.py"))
     entry: dict = {"hooks": [
-        {"type": "command", "command": f"python3 {HOOKS_DIR / 'dispatch.py'} {event}"}
+        {"type": "command", "command": f"python3 {dispatch_path} {shlex.quote(event)}"}
     ]}
     if event in TOOL_SCOPED_EVENTS:
         entry = {"matcher": "*", **entry}
