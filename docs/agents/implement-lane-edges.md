@@ -62,13 +62,13 @@ running-label on the ticket.
 |---|---|
 | **Branch name** | `implement/issue-421` — `implementationBranch(421)` |
 | **Claims by** | `POST /git/refs`, creating `refs/heads/implement/issue-421` at the target's current HEAD. A creation that fails **is** the refusal — GitHub itself is the lock, not an application-level check |
-| **On collision** | `assessClaim()`: **live** if the branch already carries a pull request, already has commits ahead of trunk, its creation time can't be read, or the check itself errors — every uncertain case reads as live, never stale. **stale** only past 45 minutes (`CLAIM_TIMEOUT_MINUTES`) with none of those true: a run that died before writing anything |
+| **On collision** | `assessClaim()`: **live** if the branch already carries a pull request, already has commits ahead of trunk, its creation time can't be read, or the check itself errors — every uncertain case reads as live, never stale. **stale** only past 90 minutes (`CLAIM_TIMEOUT_MINUTES`) with none of those true: a run that died before writing anything |
 | **Live claim** | Outcome `already-claimed`. No comment, nothing past the console log — a duplicate dispatch for a ticket already being built is a silent no-op, not an event |
 | **Stale claim** | Deletes the old ref, creates a fresh one, and posts the one comment this node can produce: *"Took over a stale claim on `implement/issue-421`..."* |
 
 Why this exists *alongside* the workflow's own per-issue `concurrency:` group: the group only
 serializes two runs of *this* workflow. It has no way to know whether the run holding the branch is
-still alive 45 minutes later, or dead with nothing to show for it. The ref is the thing a stale run
+still alive 90 minutes later, or dead with nothing to show for it. The ref is the thing a stale run
 can be judged against from outside its own execution — see *Two things worth knowing*.
 
 ---
@@ -346,14 +346,14 @@ Ordered by how much has been spent when it fires.
 | after the model, before any commit | node 06 step 5 | The fails rule — a `test.fails(` test was edited beyond turning it on, and the edit is not one of rung two's own declared edits |
 | after the model, before push | node 06 step 6 | Rebase conflict onto trunk |
 | never | node 04b | A red gate does **not** stop the run: rung one (resumed Sonnet), then rung two (fresh Opus), then push and `needs-human` |
-| 45 min | `implement.yml` `timeout-minutes: 45` | The job is cancelled outright — see *Two things worth knowing* |
+| 90 min | `implement.yml` `timeout-minutes: 90` | The job is cancelled outright — see *Two things worth knowing* |
 
 ---
 
 ## Two things worth knowing
 
-**The 45 minutes are the same 45 minutes, on purpose.** `CLAIM_TIMEOUT_MINUTES` (node 01's staleness
-window) and `implement.yml`'s own `timeout-minutes: 45` (this job's hard ceiling) are the identical
+**The 90 minutes are the same 90 minutes, on purpose.** `CLAIM_TIMEOUT_MINUTES` (node 01's staleness
+window) and `implement.yml`'s own `timeout-minutes: 90` (this job's hard ceiling) are the identical
 number. That is not a coincidence to notice — it is the guarantee the claim logic depends on: by the
 time a claim is old enough to call stale, GitHub itself has already killed whatever run made it.
 There is no window where a claim reads as stale while its own run might still be alive to contest

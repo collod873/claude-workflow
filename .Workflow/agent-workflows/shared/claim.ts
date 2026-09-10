@@ -3,7 +3,7 @@ import { branchCreationPath, comparePath, GIT_REFS_PATH } from "./gh-paths";
 import type { GitExec } from "./git";
 import { reason } from "./reason";
 
-export const CLAIM_TIMEOUT_MINUTES = 45;
+export const CLAIM_TIMEOUT_MINUTES = 90;
 
 function refPath(branch: string): string {
   return `${GIT_REFS_PATH}/heads/${branch}`;
