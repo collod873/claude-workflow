@@ -18,7 +18,7 @@ function ticketBody(claim: string): string {
 function specBody(): string {
   return (
     "## Problem Statement\n\nA spec whose children are sliced by hand.\n\n" +
-    "## Acceptance criteria\n\n- [ ] the spec keeps its label - check: `true`\n"
+    "## Acceptance criteria\n\n- [ ] the spec keeps its label - check: `false`\n"
   );
 }
 
@@ -98,7 +98,7 @@ test(
   },
 );
 
-test.fails(
+test(
   "#479.2: `file-issue spec --by-hand` creates the issue carrying both `prd` and `by-hand`, and without the flag `prd` alone",
   () => {
     const byHand = labelsAppliedFilingSpec(["--by-hand"]);
@@ -111,7 +111,7 @@ test.fails(
   },
 );
 
-test.fails("#479.3: the spec subcommand's help names the --by-hand flag", () => {
+test("#479.3: the spec subcommand's help names the --by-hand flag", () => {
   const help = execFileSync(
     "python3",
     [path.join(REPO, "bin", "file-issue"), "spec", "--help"],

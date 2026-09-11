@@ -33,7 +33,9 @@ export function sessionSpecGh(spec: { title: string; body: string }, comments: s
       ? JSON.stringify(spec)
       : fields === "comments"
         ? JSON.stringify({ comments: comments.map((body) => ({ body })) })
-        : undefined,
+        : fields === "labels"
+          ? JSON.stringify({ labels: [] })
+          : undefined,
   );
 }
 

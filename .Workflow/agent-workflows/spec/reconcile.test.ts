@@ -103,7 +103,13 @@ describe("runSpecReconciler", () => {
 describe("the reconciler is the end of a clearing run", () => {
   it("runs no critic stage after it", async () => {
     const gh = createIssueGh((fields) =>
-      fields === "title,body" ? JSON.stringify(SPEC) : fields === "comments" ? JSON.stringify({ comments: [] }) : undefined,
+      fields === "title,body"
+        ? JSON.stringify(SPEC)
+        : fields === "comments"
+          ? JSON.stringify({ comments: [] })
+          : fields === "labels"
+            ? JSON.stringify({ labels: [] })
+            : undefined,
     ).gh;
     const critiqued = JSON.stringify({ resolutions: RESOLUTIONS });
     const fake = createFakeStages([critiqued, reconciled(REWRITTEN)]);
