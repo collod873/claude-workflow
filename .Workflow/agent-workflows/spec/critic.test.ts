@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { createFakeStage } from "../shared/stage.fake";
 import { runSpecCritic, SPEC_CRITIC_MODEL } from "./critic";
+import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
 
 const DRAFT = {
   title: "A spec",
@@ -79,4 +80,15 @@ describe("runSpecCritic", () => {
 
     await expect(runSpecCritic(fake.exec, DRAFT)).rejects.toThrow();
   });
+});
+
+describe("the lane budget over the critic stage", () => {
+  test.fails(
+    "#501.3: critic.ts runs its stage under the lane budget, so a model that overruns ends the run instead of hanging",
+    async () => {
+      const outcome = await outcomeAfterLaneBudget((exec) => runSpecCritic(exec, DRAFT));
+
+      expect(outcome).toMatch(/^rejected: /);
+    },
+  );
 });

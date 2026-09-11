@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { createFakeStage } from "../shared/stage.fake";
+import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext } from "./spec";
 import { applySweep, renderSweepRulings, runSpecSweep, type SpecSweep } from "./sweep";
 
@@ -102,4 +103,15 @@ describe("renderSweepRulings", () => {
   it("says nothing was found, legally, rather than rendering an empty section", () => {
     expect(renderSweepRulings([])).not.toBe("");
   });
+});
+
+describe("the lane budget over the sweep stage", () => {
+  test.fails(
+    "#501.2: sweep.ts runs its stage under the lane budget, so a model that overruns ends the run instead of hanging",
+    async () => {
+      const outcome = await outcomeAfterLaneBudget((exec) => runSpecSweep(exec, CONTEXT));
+
+      expect(outcome).toMatch(/^rejected: /);
+    },
+  );
 });

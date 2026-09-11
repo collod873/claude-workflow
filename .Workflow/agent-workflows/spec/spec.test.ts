@@ -4,6 +4,7 @@ import type { StageExec } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import type { Sheet } from "../shared/sheet-schema";
 import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
+import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import { PRD_LABEL, sourceMarker } from "./publish";
 import { NO_VALIDATION } from "./validate-spec.fixture";
@@ -558,4 +559,24 @@ describe("invocationFromEnv", () => {
       /to-spec, critique/,
     );
   });
+});
+
+describe("the lane budget over the author stage", () => {
+  test.fails(
+    "#501.1: spec.ts runs its author stage under the lane budget, so a model that overruns ends the run instead of hanging",
+    async () => {
+      const outcome = await outcomeAfterLaneBudget((exec) => runSpecAuthor(exec, CONTEXT), [SWEEP_RESPONSE]);
+
+      expect(outcome).toMatch(/^rejected: /);
+    },
+  );
+
+  test.fails(
+    "#501.4: an elapsed budget strikes the ticket, carrying `timed out after <n> minutes at <step>`",
+    async () => {
+      const outcome = await outcomeAfterLaneBudget((exec) => runSpecAuthor(exec, CONTEXT), [SWEEP_RESPONSE]);
+
+      expect(outcome).toMatch(/timed out after \d+ minutes at \S*author/);
+    },
+  );
 });
