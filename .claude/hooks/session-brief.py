@@ -15,6 +15,7 @@ PRD_LABEL = "prd"
 SNAPSHOT_FILENAME = "session-snapshot.json"
 TRACKED_LABELS = (PRD_LABEL, NEEDS_HUMAN_LABEL, BY_HAND_LABEL)
 TRACKED_FIELDS = "number,title,state,labels,assignees"
+MAX_BRIEF_LINES = 30
 
 
 def first_criterion_sentence(body: str) -> str | None:
@@ -213,6 +214,49 @@ def claimed_line(snapshot: dict) -> str | None:
     return f"Your claimed by-hand ticket: #{number}: {title}"
 
 
+def build_sections(
+    delta: list[str],
+    prds: list[str],
+    needs_human: list[str],
+    claimed: str | None,
+    by_hand: str | None,
+    other_sessions: list[str],
+) -> list[list[str]]:
+    sections = []
+    if delta:
+        sections.append(["Delta:"] + delta)
+    if prds:
+        sections.append(["Open PRDs:"] + prds)
+    if needs_human:
+        sections.append(["Needs human:"] + needs_human)
+    if claimed:
+        sections.append([claimed])
+    if by_hand:
+        sections.append([by_hand])
+    if other_sessions:
+        sections.append(["Other live sessions:"] + other_sessions)
+    return sections
+
+
+def cap_sections(sections: list[list[str]], max_lines: int = MAX_BRIEF_LINES) -> list[list[str]]:
+    total = sum(len(section) for section in sections)
+    if total <= max_lines:
+        return sections
+    budget = max_lines - 1
+    kept: list[list[str]] = []
+    count = 0
+    dropped = 0
+    for section in sections:
+        if count + len(section) <= budget:
+            kept.append(section)
+            count += len(section)
+        else:
+            dropped += len(section)
+    if dropped:
+        kept.append([f"+{dropped} more"])
+    return kept
+
+
 def main() -> None:
     payload, _ok = _hook.read_payload()
     cwd = payload.get("cwd") or "."
@@ -238,19 +282,7 @@ def main() -> None:
     delta = delta_lines(snapshot, tracked_tickets(repo_gh, cwd)) if snapshot is not None else []
     claimed = claimed_line(snapshot) if snapshot is not None else None
 
-    sections = []
-    if delta:
-        sections.append("Delta:\n" + "\n".join(delta))
-    if prds:
-        sections.append("Open PRDs:\n" + "\n".join(prds))
-    if needs_human:
-        sections.append("Needs human:\n" + "\n".join(needs_human))
-    if other_sessions:
-        sections.append("Other live sessions:\n" + "\n".join(other_sessions))
-    if claimed:
-        sections.append(claimed)
-    if by_hand:
-        sections.append(by_hand)
+    sections = build_sections(delta, prds, needs_human, claimed, by_hand, other_sessions)
 
     _hook.append_log(_hook.HOOK_NAME, _hook.run_row(
         payload, "brief" if sections else "none", prds=len(prds), needs_human=len(needs_human),
@@ -259,7 +291,8 @@ def main() -> None:
     if not sections:
         return
 
-    msg = f"[{_hook.HOOK_NAME}] " + "\n\n".join(sections)
+    capped = cap_sections(sections)
+    msg = f"[{_hook.HOOK_NAME}] " + "\n\n".join("\n".join(section) for section in capped)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

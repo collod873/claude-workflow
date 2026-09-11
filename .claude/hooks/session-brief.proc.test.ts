@@ -675,7 +675,7 @@ test(
   },
 );
 
-test.fails(
+test(
   "#444.1: sections print in the fixed order, and a section that would push the brief past line 30 is dropped whole rather than half-printed",
   () => {
     const world = makeWorld();
@@ -733,7 +733,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#444.2: when lines are dropped the last printed line reads +N more, naming the dropped count",
   () => {
     const run = fire(
