@@ -459,15 +459,24 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(outcome.note).toContain("decision");
   });
 
-  it("neither re-posts the decision nor dispatches while the decision stands", () => {
+  test.fails("#463.1: a ticket whose comments end with a decision marker and no later strike is dispatched at rung implementer", () => {
     const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
     const first = ladderOver({ runs });
     const recorded = first.tracker.comments.map((comment) => comment.body);
 
-    const { tracker } = ladderOver({ runs, comments: recorded });
+    const { tracker, outcome } = ladderOver({ runs, comments: recorded });
 
+    expect(rungOf(tracker)).toEqual(["ticket-ready"]);
+    expect(outcome.action).toBe("dispatched");
     expect(tracker.comments).toEqual([]);
-    expect(rungOf(tracker)).toEqual([]);
+  });
+
+  test.fails("#463.3: the reconcile note never says a ticket waits on a decision after three strikes", () => {
+    const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
+
+    const { outcome } = ladderOver({ runs });
+
+    expect(outcome.note).not.toContain("wait on a decision");
   });
 
   it("counts a dead Acceptance run as a strike and asks the author again, so a capped author is bounded rather than looped (#457)", () => {

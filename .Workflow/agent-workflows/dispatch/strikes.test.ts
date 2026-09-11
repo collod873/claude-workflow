@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   DECISION_MARKER,
   deadRunsOf,
   decisionBody,
-  hasStandingDecision,
   recordedRunIds,
   RUNGS,
   rungFor,
@@ -65,13 +64,10 @@ describe("a strike on the ticket", () => {
     expect(recordedRunIds([...before, decision, after])).toEqual(new Set([1, 2, 3]));
   });
 
-  it("knows whether a decision still stands, which is whether nothing died since it was posted", () => {
-    const decision = decisionBody(7, [strike], url);
-    const later = strikeBody({ ...strike, runId: 9 }, url(9), "fresh-eyes");
+  test.fails("#463.2: hasStandingDecision no longer exists in strikes.ts", async () => {
+    const exported = await import("./strikes");
 
-    expect(hasStandingDecision([decision])).toBe(true);
-    expect(hasStandingDecision([decision, later])).toBe(false);
-    expect(hasStandingDecision([later])).toBe(false);
+    expect("hasStandingDecision" in exported).toBe(false);
   });
 });
 
