@@ -20,8 +20,8 @@ def touches_immutable_set(paths: list[str]) -> list[str]:
     return [p for p in paths if any(p == entry or p.startswith(entry) for entry in IMMUTABLE_SET)]
 
 
-WORKSTATION_PATH_EXACT = ("~", ".claude")
-WORKSTATION_PATH_PREFIXES = ("~/", ".claude/")
+WORKSTATION_PATH_EXACT = ("~",)
+WORKSTATION_PATH_PREFIXES = ("~/", ".claude/settings")
 
 
 def is_workstation_path(path: str) -> bool:
