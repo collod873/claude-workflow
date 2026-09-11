@@ -134,6 +134,13 @@ def main():
     out, _rows = drive(by_label=STUB_BY_LABEL, blocked=STUB_BLOCKED)
     check("names only the unblocked, unassigned by-hand ticket",
           "#712" in out and "#711" not in out and "#709" not in out, out)
+    screen = json.loads(out).get("systemMessage") or ""
+    check("puts the by-hand ticket on screen as one line",
+          "#712" in screen and "\n" not in screen and screen.startswith("[session-brief]"), screen)
+
+    print("\n## A brief with nothing to act on stays off screen")
+    out, _rows = drive(by_label=json.dumps({"prd": [ISSUE]}))
+    check("no systemMessage when only a prd is open", "systemMessage" not in json.loads(out), out)
 
     print("\n## A second live session in this repository is named, a lone session names none")
     env = ROWLOG.env(AGENT_SKILLS_GH=str(STUB_GH), STUB_REPO="acme/widgets")

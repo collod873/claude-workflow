@@ -238,6 +238,15 @@ def build_sections(
     return sections
 
 
+def screen_line(needs_human: list[str], claimed: str | None, by_hand: str | None) -> str | None:
+    parts = [line for line in (claimed or by_hand,) if line]
+    if needs_human:
+        parts.append(f"{len(needs_human)} needs human")
+    if not parts:
+        return None
+    return f"[{_hook.HOOK_NAME}] " + " · ".join(parts) + " — say go"
+
+
 def cap_sections(sections: list[list[str]], max_lines: int = MAX_BRIEF_LINES) -> list[list[str]]:
     total = sum(len(section) for section in sections)
     if total <= max_lines:
@@ -293,12 +302,16 @@ def main() -> None:
 
     capped = cap_sections(sections)
     msg = f"[{_hook.HOOK_NAME}] " + "\n\n".join("\n".join(section) for section in capped)
-    print(json.dumps({
+    output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
             "additionalContext": msg,
         }
-    }))
+    }
+    screen = screen_line(needs_human, claimed, by_hand)
+    if screen:
+        output["systemMessage"] = screen
+    print(json.dumps(output))
 
 
 if __name__ == "__main__":
