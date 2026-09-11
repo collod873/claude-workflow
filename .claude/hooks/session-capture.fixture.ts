@@ -41,8 +41,8 @@ export function readLog(logPath: string): string {
   return existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
 }
 
-function settled(logPath: string): boolean {
-  if (!existsSync(logPath)) return true;
+function settled(logPath: string, captureDir: string | undefined): boolean {
+  if (!existsSync(logPath)) return captureDir === undefined || captureFiles(captureDir).length === 0;
   const lines = readLog(logPath).trimEnd().split("\n");
   const last = lines[lines.length - 1] ?? "";
   const sawCaptured = lines.some((l) => /\tcaptured /.test(l));
@@ -51,9 +51,13 @@ function settled(logPath: string): boolean {
     : last !== "" && !/\tcaptured /.test(last);
 }
 
-export function settle(logPath: string): void {
+export function settle(logPath: string, captureDir?: string, timeoutMs?: number): void {
   try {
-    poll(() => (settled(logPath) ? true : undefined), () => "settle", SETTLE_TIMEOUT_MS);
+    poll(
+      () => (settled(logPath, captureDir) ? true : undefined),
+      () => "settle",
+      timeoutMs ?? (captureDir === undefined ? SETTLE_TIMEOUT_MS : POLL_TIMEOUT_MS),
+    );
   } catch {
   }
 }
@@ -87,7 +91,7 @@ export function runHook(input: string | Record<string, unknown>, env: Record<str
   const logPath = join(scratchDir("session-capture-log"), "session-capture.log");
   const kbDir = join(scratchDir("session-capture-kb"), "missing");
   const kbStampPath = join(scratchDir("session-capture-kb-stamp"), "stamp");
-  onTestFinished(() => settle(logPath));
+  onTestFinished(() => settle(logPath, outputDir));
 
   const run = spawnSync(HOOK, [], {
     input: typeof input === "string" ? input : JSON.stringify(input),

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
@@ -32,6 +32,12 @@ import {
   writeTranscript,
   type RunResult,
 } from "./session-capture.fixture";
+
+function elapsed(act: () => void): number {
+  const start = Date.now();
+  act();
+  return Date.now() - start;
+}
 
 function fixtureSession(reason: string): RunResult {
   return runHook({
@@ -104,7 +110,7 @@ describe("session-capture.sh: the fixture transcript", () => {
     const result = fixtureSession("clear");
 
     waitForCaptureFile(result.outputDir);
-    settle(result.logPath);
+    settle(result.logPath, result.outputDir);
 
     const settled = readLog(result.logPath);
     expect(settled).toContain("captured abcdef1234567890");
@@ -112,6 +118,25 @@ describe("session-capture.sh: the fixture transcript", () => {
 
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
     expect(readLog(result.logPath)).toBe(settled);
+  });
+
+  it("keeps waiting when the capture file lands before the log does, rather than reading an empty log", () => {
+    const outputDir = scratchDir("settle-capture-first");
+    const logPath = join(scratchDir("settle-capture-first-log"), "session-capture.log");
+    writeFileSync(join(outputDir, "2026-09-11-session.md"), "# captured\n");
+
+    const waited = elapsed(() => settle(logPath, outputDir, 300));
+    expect(waited).toBeGreaterThanOrEqual(300);
+
+    writeFileSync(logPath, "t\tcaptured abcdef1234567890\nt\tpublished abcdef1234567890\n");
+    expect(elapsed(() => settle(logPath, outputDir, 300))).toBeLessThan(300);
+  });
+
+  it("settles at once on a run that wrote no capture file, which has no log to wait for", () => {
+    const outputDir = scratchDir("settle-no-capture");
+    const logPath = join(scratchDir("settle-no-capture-log"), "session-capture.log");
+
+    expect(elapsed(() => settle(logPath, outputDir, 300))).toBeLessThan(300);
   });
 });
 
