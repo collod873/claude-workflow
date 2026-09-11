@@ -248,6 +248,35 @@ platform.
 
 ---
 
+## Node 05a — ring the target's own CI · [wire]
+
+`ringTrunkCi()`, `integrate.ts` — called immediately after `mergePr()`, before anything that
+touches the ticket or the doorbell.
+
+A merge landed by this lane runs under `GITHUB_TOKEN`, and GitHub fires no `push` event for a
+commit `GITHUB_TOKEN` puts on a branch. A target repository whose own CI workflow triggers on
+`push` — the ordinary way a project gates its trunk — therefore never runs on the commit this
+lane just moved `main` to, unless something asks it to. This node is that ask.
+
+| | |
+|---|---|
+| **Guarded by** | Whether the target checkout carries `.github/workflows/ci.yml`. Absent, this node does nothing — a target with no such file has no trunk-only job this lane could ring, and this repository's own trunk gate is Verify, run on the pull request, not a `ci.yml` on `main` |
+| **Sends** | `gh workflow run ci.yml --ref main` — an argv, not a shell string, the same discipline every other call in this lane holds to |
+| **Needs** | The dispatched workflow to answer `workflow_dispatch` as well as `push`; a `ci.yml` that only declares `on: push` has nothing for this call to trigger |
+| **On failure** | Logged to the job's own console only. The merge already landed at node 05; a ring that cannot reach the target's Actions API is information about that repository's CI, not about this one, and reverses nothing this lane already did |
+
+### edge — the dispatch
+
+```
+gh workflow run ci.yml --ref main
+```
+
+No payload beyond the ref — this is a trigger, not an announcement; node 05a tells the target
+repository to run its own build, and node 07 below is what tells this repository's own
+reconciler that anything happened here at all.
+
+---
+
 ## Node 06 — close the ticket · [wire] [stop-per-ticket]
 
 `closeMergedTicket()` → `bin/close-ticket`, via `closeTicketProcess()`

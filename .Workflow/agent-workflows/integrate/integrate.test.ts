@@ -296,7 +296,7 @@ describe("runIntegrate rings the merged trunk's own CI", () => {
 
   const MERGED = { merged: true, closing: { closed: true, ticket: TICKET } };
 
-  test.fails(
+  test(
     "#474.1: after a merge Integrate runs gh workflow run ci.yml --ref main when the target has .github/workflows/ci.yml, skips the ring when the file is absent, and reports merged: true either way and when the ring throws",
     () => {
       const present = integrateHarness({ closeTicket: CLOSED });
@@ -334,7 +334,7 @@ describe("runIntegrate rings the merged trunk's own CI", () => {
     },
   );
 
-  test.fails("#474.2: the ring reaches the fixture as an argv, not a shell string", () => {
+  test("#474.2: the ring reaches the fixture as an argv, not a shell string", () => {
     const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
 
     runIntegrate(at(deps, checkoutWithCi()));
@@ -347,7 +347,7 @@ describe("runIntegrate rings the merged trunk's own CI", () => {
     expect(calls.filter((call) => call.some((arg) => /workflow\s+run/.test(arg)))).toEqual([]);
   });
 
-  test.fails(
+  test(
     "#474.3: docs/agents/integrate-lane-edges.md names the ring between mergePr() and announceGraphChanged() and says why a bot merge needs it",
     async () => {
       const doc = await readFile(new URL("../../../docs/agents/integrate-lane-edges.md", import.meta.url), "utf8");

@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
@@ -44,6 +46,7 @@ export interface IntegrateDeps {
   closeTicket: (ticket: number, range: string) => CloseTicketResult;
   sleep?: (ms: number) => void;
   verifyWorkflow: string;
+  repoDir?: string;
 }
 
 interface PullRequest {
@@ -229,6 +232,19 @@ function mergePr(gh: GhExec, pr: string): void {
   gh(["pr", "merge", pr, "--merge", "--delete-branch"]);
 }
 
+const TRUNK_CI_WORKFLOW = "ci.yml";
+const TRUNK_BRANCH = "main";
+
+function ringTrunkCi(gh: GhExec, repoDir: string | undefined): void {
+  if (repoDir === undefined) return;
+  if (!existsSync(join(repoDir, ".github", "workflows", TRUNK_CI_WORKFLOW))) return;
+  try {
+    gh(["workflow", "run", TRUNK_CI_WORKFLOW, "--ref", TRUNK_BRANCH]);
+  } catch (err) {
+    console.error(`could not dispatch ${TRUNK_CI_WORKFLOW} on ${TRUNK_BRANCH}: ${reason(err)}`);
+  }
+}
+
 const REFUSAL_TAIL = 4000;
 
 function noteRefusal(gh: GhExec, ticket: number, pr: string, result: CloseTicketResult): void {
@@ -284,6 +300,7 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   }
 
   mergePr(deps.gh, deps.pr);
+  ringTrunkCi(deps.gh, deps.repoDir);
   if (pullRequest.title === RATIFIER_PR_TITLE) dispatchRatifierMerged(deps.gh, deps.pr);
   const closing = closeMergedTicket(deps, pullRequest.ticket, range);
   announceGraphChanged(deps.gh, deps.pr);
@@ -339,6 +356,7 @@ async function main(): Promise<void> {
       closeTicket: (ticket, range) => runRealCloseTicket(ticket, range, repoDir),
       assignee: process.env.SIGNAL_ASSIGNEE,
       verifyWorkflow,
+      repoDir,
     });
 
     if (!outcome.merged) {
