@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createRecordingGh } from "../shared/gh.fake";
 import type { GitExec } from "../shared/git";
@@ -22,6 +22,23 @@ import {
 } from "./fixer";
 
 vi.mock("../shared/vitest-json", () => ({ runVitestReport: vi.fn() }));
+
+const { stageModuleCalls } = vi.hoisted(() => ({ stageModuleCalls: [] as string[] }));
+
+vi.mock("../shared/stage", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  const recorded: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(actual)) {
+    recorded[name] =
+      typeof value === "function"
+        ? (...args: unknown[]) => {
+            stageModuleCalls.push(name);
+            return (value as (...rest: unknown[]) => unknown)(...args);
+          }
+        : value;
+  }
+  return recorded;
+});
 
 function fakeGit(porcelain = " M fix.ts"): { git: GitExec; calls: string[][] } {
   const calls: string[][] = [];
@@ -455,4 +472,40 @@ describe("the cap across fixer runs", () => {
     expect(stage.calls).toHaveLength(2);
     expect(outcome).toEqual({ verdict: "blocked", attempts: 2, stopReason: "capped" });
   });
+});
+
+test.fails("#502.1: fixer reaches its model through the lane-budget wrapper in shared/stage.ts, not runStage directly", async () => {
+  stageModuleCalls.length = 0;
+
+  const deps = baseDeps({
+    exec: attempts(2).exec,
+    runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
+  });
+
+  await runFixer(deps);
+
+  expect(stageModuleCalls.length).toBeGreaterThan(0);
+  expect(stageModuleCalls[0]).not.toBe("runStage");
+  expect(stageModuleCalls[0]).not.toBe("runStageSession");
+});
+
+test.fails("#502.2: a fixer run whose lane budget elapses strikes the ticket with the timed-out-at-fixer signature", async () => {
+  const realSetTimeout = setTimeout;
+  vi.useFakeTimers();
+
+  const deps = baseDeps({
+    exec: () => new Promise<string>(() => {}),
+    runTestsSequence: [{ failures: [] }],
+  });
+  const run = runFixer(deps).catch(() => undefined);
+
+  try {
+    await vi.advanceTimersByTimeAsync(90 * 60 * 1000);
+    await Promise.race([run, new Promise((resolve) => realSetTimeout(resolve, 200))]);
+  } finally {
+    vi.useRealTimers();
+  }
+
+  const struck = deps.ghCalls.some((call) => call.some((arg) => /timed out after \d+ minutes at fixer/.test(arg)));
+  expect(struck).toBe(true);
 });
