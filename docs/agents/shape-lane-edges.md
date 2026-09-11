@@ -347,14 +347,15 @@ Runs unconditionally after every posted sheet, cold start or change-request re-r
 `shape-accept.yml` `jobs.accept.if`
 
 ```
-github.event.label.name == 'approved' ||
-github.event.label.name == 'parked' ||
-github.event.label.name == 'killed'
+(github.event.label.name == 'approved' ||
+ github.event.label.name == 'parked' ||
+ github.event.label.name == 'killed') &&
+github.event.sender.login == github.repository_owner
 ```
 
 | | |
 |---|---|
-| **No sender check** | Unlike node 00, this `if:` names no owner or `author_association` gate at all — see *Loose ends* |
+| **Owner only** | The same sender gate as node 00's label door: only the repository owner's label starts the run, because this is the one place in the lane that pushes to `main` and files ADRs unattended (#480) |
 | **Concurrency** | `shape-accept-${{ github.event.issue.number }}`, `cancel-in-progress: false` — this run writes to `main`, which alone earns it a concurrency group under [ADR-0111](../adr/0111-a-lane-that-spends-a-model-queues-behind-itself-rather-than.md) even though it spends no model |
 | **Permissions** | `contents: write`, `issues: write` — the whole job, throughout; there is no split between a model-spending job and a write-capable one the way lane 02 splits `spec`/`dispatch`, because this job spends no model to protect a token from |
 | **Checkout** | Machine and target side by side, plus a committer configured on the target as `github-actions[bot]` |
@@ -537,7 +538,7 @@ Ordered by how much has been spent when it fires.
 | 1 model call | structured output | A stage's JSON fails its schema; the raw response is saved to `<handoff dir>/<stage>-raw-response.txt` |
 | 2 model calls | the re-sweep cap | The shaper asks for a second re-sweep — thrown, not refused gracefully |
 | 30 min | shape run timeout | The job is cancelled |
-| free | `shape-accept.yml` `if:` | The label is not one of `approved`, `parked`, `killed` |
+| free | `shape-accept.yml` `if:` | The label is not one of `approved`, `parked`, `killed`, or someone other than the owner applied it |
 | free | `roundFor().accepted` | The issue already carries `ACCEPTED_MARKER` — a second `approved` is a no-op |
 | free | no sheet | `approved` applied to an issue with no posted sheet to read |
 | 10 min | accept run timeout | The job is cancelled |
@@ -573,11 +574,6 @@ half-finished attempt.
 
 ## Loose ends in the tree
 
-- **`shape-accept.yml`'s `if:` names no sender or `author_association` check at all**, unlike
-  `shape.yml`'s two doors. [ADR-0073](../adr/0073-a-lane-that-spends-model-fires-only-for-the-owner-because-a.md)
-  gates every model-spending lane on who fired it; this run spends no model, so it falls outside
-  that ADR's stated scope, but it is the one place in this lane that pushes to `main` and files
-  ADRs unattended, and nothing in the tree names who may apply `approved`, `parked` or `killed`.
 - **`needs-human` means two different things.** [`pipeline-labels.md`](pipeline-labels.md)
   documents it as "an agent tried and stopped: a criterion still unmet after one fix pass, or the
   merge gate rejected the same merge twice." `shape.ts`'s `NEEDS_LIVE_SESSION_LABEL` applies the
