@@ -23,9 +23,10 @@ concurrency:
 jobs:
   accept:
     if: >-
-      github.event.label.name == 'approved' ||
-      github.event.label.name == 'parked' ||
-      github.event.label.name == 'killed'
+      (github.event.label.name == 'approved' ||
+       github.event.label.name == 'parked' ||
+       github.event.label.name == 'killed') &&
+      github.event.sender.login == github.repository_owner
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
