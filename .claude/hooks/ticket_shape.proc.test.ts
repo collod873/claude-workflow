@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
 import { touchesWorkstation } from "../../.Workflow/agent-workflows/shared/immutable-set";
 
@@ -79,6 +79,19 @@ function specBody(command: string): string {
   ].join("\n");
 }
 
+function ticketBody(command: string): string {
+  return [
+    "## Acceptance criteria",
+    "",
+    `- [ ] the close gate runs the one check this ticket names - check: \`${command}\``,
+    "",
+    "## Files claimed",
+    "",
+    "- None, no files.",
+    "",
+  ].join("\n");
+}
+
 function homeCarryingHookReport(): string {
   const home = mkdtempSync(join(tmpdir(), "hook-report-home-439-"));
   mkdirSync(join(home, "bin"), { recursive: true });
@@ -87,6 +100,28 @@ function homeCarryingHookReport(): string {
   chmodSync(report, 0o755);
   return home;
 }
+
+function repoRoot(): string {
+  let dir = process.cwd();
+  for (;;) {
+    if (existsSync(join(dir, "bin", "ticket_shape.py"))) return dir;
+    const up = dirname(dir);
+    if (up === dir) return process.cwd();
+    dir = up;
+  }
+}
+
+function grepLines(pattern: string, path: string): string[] {
+  const stdout = execFileSync("sh", ["-c", 'grep -n -F -- "$1" "$2" || true', "sh", pattern, path], {
+    cwd: repoRoot(),
+    encoding: "utf8",
+  });
+  return stdout.split("\n").filter((line) => line.trim().length > 0);
+}
+
+const BASH_ONLY_CHECK = "comm -12 <(ls) <(ls)";
+const WRAPPED_CHECK = `bash -c '! ${BASH_ONLY_CHECK}'`;
+const TICKET_FORMAT_DOC = "docs/agents/ticket-format.md";
 
 test(
   "#439.1: a check marker naming `~/bin/hook-report ...` (path form, executable file) is accepted by validate()",
@@ -153,6 +188,47 @@ test(
     expect(venue[0]).toBeNull();
     expect(venue[1]).toBe("workstation");
     expect(venue[2]).toBe("immutable-set");
+  },
+  30000,
+);
+
+test.fails(
+  "#483.1: validate('spec', ...) refuses a body whose check is `comm -12 <(ls) <(ls)`, naming `/bin/sh` and the command, and admits the same command wrapped in `bash -c '...'`",
+  () => {
+    const unparseable = runValidate("spec", specBody(BASH_ONLY_CHECK), {});
+    expect(unparseable.refused).toBe(true);
+    expect(unparseable.message).toContain("/bin/sh");
+    expect(unparseable.message).toContain(BASH_ONLY_CHECK);
+
+    const wrapped = runValidate("spec", specBody(WRAPPED_CHECK), {});
+    expect(wrapped.refused).toBe(false);
+    expect(wrapped.message).toBe("");
+    expect(wrapped.warnings.filter((w) => w.includes("/bin/sh"))).toEqual([]);
+  },
+  60000,
+);
+
+test.fails(
+  "#483.2: validate('ticket', ...) warns rather than refuses for a check marker `/bin/sh` cannot parse, and raises no such warning for one it can",
+  () => {
+    const unparseable = runValidate("ticket", ticketBody(BASH_ONLY_CHECK), {});
+    expect(unparseable.refused).toBe(false);
+    const flagged = unparseable.warnings.filter((w) => w.includes("/bin/sh"));
+    expect(flagged.length).toBeGreaterThan(0);
+    expect(flagged.join(" ")).toContain(BASH_ONLY_CHECK);
+
+    const parseable = runValidate("ticket", ticketBody(WRAPPED_CHECK), {});
+    expect(parseable.refused).toBe(false);
+    expect(parseable.warnings.filter((w) => w.includes("/bin/sh"))).toEqual([]);
+  },
+  60000,
+);
+
+test.fails(
+  "#483.3: docs/agents/ticket-format.md says a check runs under `/bin/sh` and that a bash-only command must be wrapped in `bash -c`",
+  () => {
+    expect(grepLines("/bin/sh", TICKET_FORMAT_DOC).length).toBeGreaterThan(0);
+    expect(grepLines("bash -c", TICKET_FORMAT_DOC).length).toBeGreaterThan(0);
   },
   30000,
 );
