@@ -438,7 +438,7 @@ describe("runSpecCritique: a spec the session slices by hand", () => {
     return calls.find((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches");
   }
 
-  test.fails(
+  test(
     "#479.1: a prd spec carrying by-hand runs no critic, gets no sliceable label and no prd-sliceable dispatch, while a prd spec without it still gets both",
     async () => {
       const byHandStage = createFakeStage(SILENT_CRITIC);

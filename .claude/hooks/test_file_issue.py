@@ -86,6 +86,11 @@ TICKET_BODY_WORKSTATION_CLAIM = (
     "## Files claimed\n\n- ~/.claude/settings.json\n"
 )
 
+SPEC_BODY_BY_HAND = (
+    "## Problem Statement\n\nA spec whose children are hand-built.\n\n"
+    "## Acceptance criteria\n\n- [ ] the spec keeps its label - check: `false`\n"
+)
+
 
 def refusal(call) -> str | None:
     try:
@@ -765,6 +770,27 @@ def test_by_hand_label(tmp):
           "ticket" in labels and "by-hand" not in labels, labels)
 
 
+def test_spec_by_hand(tmp):
+    print("#479: spec --by-hand adds by-hand alongside prd, without the flag prd alone")
+
+    log = tmp / "sbh1.jsonl"
+    body = write_body(tmp, "spec-by-hand.md", SPEC_BODY_BY_HAND)
+    r = run_cli(["spec", "--title", "The merge journey", "--by-hand"],
+                env_extra={"STUB_ARGV_LOG": str(log)}, body_file=body)
+    check("spec/--by-hand: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("spec/--by-hand: labelled prd and by-hand", {"prd", "by-hand"} <= labels, labels)
+
+    log = tmp / "sbh2.jsonl"
+    body = write_body(tmp, "spec-ordinary.md", SPEC_BODY_BY_HAND)
+    r = run_cli(["spec", "--title", "The merge journey"],
+                env_extra={"STUB_ARGV_LOG": str(log)}, body_file=body)
+    check("spec/ordinary: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("spec/ordinary: labelled prd, not by-hand",
+          "prd" in labels and "by-hand" not in labels, labels)
+
+
 TEST_FILE_TWO_TITLES = (
     'test.fails("#?.1: does the first thing", () => {})\n'
     "it.fails('#?.2: does the second thing', () => {})\n"
@@ -1068,6 +1094,8 @@ def main():
         test_ticketify(tmp)
         print()
         test_by_hand_label(tmp)
+        print()
+        test_spec_by_hand(tmp)
         print()
         test_test_handoff(tmp)
         print()

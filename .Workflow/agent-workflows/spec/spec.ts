@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
+import { BY_HAND_LABEL } from "../shared/immutable-set";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
@@ -149,11 +150,22 @@ export interface SpecCritiqueResult {
   issueNumber: number;
   resolutions: Resolution[];
   gateCount: number;
-  outcome: GateOutcome;
+  outcome: GateOutcome | "stood-down";
   rewritten: boolean;
 }
 
+function issueLabels(gh: GhExec, issueNumber: number): string[] {
+  const raw = gh(["issue", "view", String(issueNumber), "--json", "labels"]);
+  const parsed = JSON.parse(raw) as { labels?: Array<{ name?: string }> };
+  return (parsed.labels ?? []).map((label) => label.name ?? "");
+}
+
 export async function runSpecCritique(exec: StageExec, gh: GhExec, issueNumber: number): Promise<SpecCritiqueResult> {
+  if (issueLabels(gh, issueNumber).includes(BY_HAND_LABEL)) {
+    console.log(`spec #${issueNumber}: carries \`${BY_HAND_LABEL}\`, standing down before the critic`);
+    return { issueNumber, resolutions: [], gateCount: 0, outcome: "stood-down", rewritten: false };
+  }
+
   const spec = readPublishedSpec(gh, issueNumber);
   const answers = issueComments(gh, issueNumber);
   const critique = await runSpecCritic(exec, {

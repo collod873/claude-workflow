@@ -403,6 +403,12 @@ def parse_args(argv):
                 help="path to an acceptance-test file titled '#?.<i>: <claim>' per "
                      "criterion (repeatable); list the stub subject file too",
             )
+        if kind == "spec":
+            kp.add_argument(
+                "--by-hand", action="store_true",
+                help="apply the by-hand label alongside prd, so a spec whose children are "
+                     "sliced by hand stays off the slicer without losing prd",
+            )
 
     tp = sub.add_parser("ticketify")
     tp.add_argument("n", type=int)
@@ -473,6 +479,8 @@ def run(argv=None) -> int:
     label = KIND_LABELS[kind]
     labels = [label] if label else []
     if kind == "ticket" and by_hand_classification(ticket_shape.claimed_paths(body), args.repo):
+        labels.append(BY_HAND_LABEL)
+    if kind == "spec" and getattr(args, "by_hand", False):
         labels.append(BY_HAND_LABEL)
     for l in labels:
         ensure_label_exists(gh, l)
