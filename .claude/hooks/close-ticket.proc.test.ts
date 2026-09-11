@@ -232,7 +232,7 @@ function runSpecClose(
   return { run, calls };
 }
 
-test.fails(
+test(
   "#471.1: --spec closes a spec whose child was closed with a `## Closing record` whose head sha is on the child repository's default branch, refuses one whose record head is not, and still refuses a `not planned` child that carries a record",
   () => {
     const onDefault = runSpecClose(
@@ -280,7 +280,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#471.2: the sub-issue query carries each child's repository, so a cross-repository child's record is compared against its own default branch",
   () => {
     const { run, calls } = runSpecClose(
@@ -309,7 +309,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#471.3: the help text names the record as the second delivery route, in the paragraph that defines **delivered**",
   () => {
     const run = spawnSync("python3", [CLOSE_TICKET, "--help"], {

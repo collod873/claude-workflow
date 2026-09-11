@@ -73,10 +73,16 @@ debt instead of moving it. The emitted form satisfies `hooks/close-gate.py`'s
 ticket's close runs, so a spec's one criterion is run, recorded and refused inside the same
 all-or-nothing contract. What `--spec` adds is a **precondition** and a stricter **verdict**.
 
-The precondition is checked before any check command runs: every sub-issue must be **delivered**
-meaning closed by a *merged* pull request, not merely closed. A child closed as `not planned`, or
-closed by hand, is not delivered; the run refuses, names every undelivered child and why, and
-posts and closes nothing.
+The precondition is checked before any check command runs: every sub-issue must be **delivered**,
+meaning closed by a *merged* pull request, or delivered by its own closing record when that link
+is missing: a child this same script closed after its own pull request merged carries no
+`closedByPullRequestsReferences` of its own, so the newest `## Closing record` comment on the
+child is read instead, and its backticked `base..head` range is delivered when
+`repos/{child}/compare/{default branch}...{head}` reports `behind` or `identical`, that is, the
+record's head is on the child's own default branch. A child closed as `not planned` is refused
+before its record is ever read. A child closed by hand with no record, or whose record's head
+never reached the default branch, is not delivered; the run refuses, names every undelivered
+child and why, and posts and closes nothing.
 
 The verdict: a spec's criterion is `MET` only when its check exits 0 **and** prints something on
 stdout, and the `MET` bullet carries that stdout (trimmed and capped, quoted by `quote_evidence`)
@@ -148,9 +154,11 @@ query {
           number
           state
           stateReason
+          repository { nameWithOwner }
           closedByPullRequestsReferences(first: 20, includeClosedPrs: true) {
             nodes { number merged }
           }
+          comments(last: 10) { nodes { body } }
         }
       }
     }
@@ -290,7 +298,51 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
     return "unjudged"
 
 
-def undelivered(children: list[dict]) -> list[str]:
+CLOSING_RECORD_HEADING = "## Closing record"
+CLOSING_RECORD_RANGE_RE = re.compile(r"^`([^`\s]+)\.\.([^`\s]+)`$")
+
+
+def newest_closing_record_head(child: dict) -> str | None:
+    nodes = (child.get("comments") or {}).get("nodes") or []
+    for node in reversed(nodes):
+        body = (node.get("body") or "").strip()
+        if not body.startswith(CLOSING_RECORD_HEADING):
+            continue
+        rest = body[len(CLOSING_RECORD_HEADING):].lstrip()
+        first_line = rest.split("\n", 1)[0].strip()
+        m = CLOSING_RECORD_RANGE_RE.match(first_line)
+        if m:
+            return m.group(2)
+    return None
+
+
+def fetch_default_branch(gh, name_with_owner: str) -> str | None:
+    try:
+        out = gh_support.run_gh(gh, "api", f"repos/{name_with_owner}", "--jq", "default_branch")
+    except gh_support.GhError:
+        return None
+    return out.strip() or None
+
+
+def fetch_compare_status(gh, name_with_owner: str, base: str, head: str) -> str | None:
+    try:
+        out = gh_support.run_gh(
+            gh, "api", f"repos/{name_with_owner}/compare/{base}...{head}", "--jq", "status",
+        )
+    except gh_support.GhError:
+        return None
+    return out.strip() or None
+
+
+def record_head_delivered(gh, name_with_owner: str, head: str) -> bool:
+    default_branch = fetch_default_branch(gh, name_with_owner)
+    if not default_branch:
+        return False
+    status = fetch_compare_status(gh, name_with_owner, default_branch, head)
+    return status in ("behind", "identical")
+
+
+def undelivered(children: list[dict], gh=None) -> list[str]:
     problems = []
     for child in children:
         number = child.get("number")
@@ -306,8 +358,18 @@ def undelivered(children: list[dict]) -> list[str]:
         if naming:
             unmerged = ", ".join(f"#{pr.get('number')}" for pr in naming)
             problems.append(f"#{number}: closed by PR {unmerged}, which is not merged")
-        else:
-            problems.append(f"#{number}: closed by hand, not by a merged PR")
+            continue
+        head = newest_closing_record_head(child)
+        if head is not None:
+            name_with_owner = (child.get("repository") or {}).get("nameWithOwner")
+            if name_with_owner and record_head_delivered(gh, name_with_owner, head):
+                continue
+            problems.append(
+                f"#{number}: closed by hand, not by a merged PR (its closing record's head "
+                "is not on the child repository's default branch)"
+            )
+            continue
+        problems.append(f"#{number}: closed by hand, not by a merged PR")
     return problems
 
 
@@ -623,7 +685,7 @@ def run(argv=None) -> int:
                     print(f"error: could not read #{args.issue}'s sub-issues: {e}", file=sys.stderr)
                     return 1
                 ROW["children"] = len(children)
-                problems = undelivered(children)
+                problems = undelivered(children, gh)
                 if problems:
                     print(
                         f"error: {len(problems)} of {len(children)} sub-issues not delivered; a "
