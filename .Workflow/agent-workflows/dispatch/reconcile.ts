@@ -349,28 +349,29 @@ function recordToBuildShape(
   refusal: string | undefined,
   hasNeedsHuman: boolean,
   log: (line: string) => void,
-): void {
+): boolean {
   const comments = fetchComments(gh, number);
   if (comments === null) {
     log(`could not read #${number}'s comments, so leaving whatever this door said last run standing.`);
-    return;
+    return false;
   }
   const standing = markedComment(comments, TO_BUILD_REFUSED_MARKER);
 
   if (refusal === undefined) {
-    if (standing === undefined) return;
+    if (standing === undefined) return false;
     rewriteComment(gh, standing.id, TO_BUILD_CLEARED_BODY);
     if (hasNeedsHuman) gh(["issue", "edit", String(number), "--remove-label", NEEDS_HUMAN_LABEL]);
     log(`#${number}: its shape is no longer refused at the ${TO_BUILD_LABEL} door; ${NEEDS_HUMAN_LABEL} lifted.`);
-    return;
+    return hasNeedsHuman;
   }
 
   const body = toBuildRefusalBody(refusal);
-  if (standing?.body === body) return;
+  if (standing?.body === body) return false;
   if (standing) rewriteComment(gh, standing.id, body);
   else gh(["issue", "comment", String(number), "--body", body]);
   escalateToOwner(gh, number, process.env.GITHUB_REPOSITORY_OWNER);
   log(`#${number}: refused at the ${TO_BUILD_LABEL} door: ${refusal}; holds ${NEEDS_HUMAN_LABEL}.`);
+  return false;
 }
 
 function admitToBuild(
@@ -405,7 +406,8 @@ function admitToBuild(
       continue;
     }
     try {
-      recordToBuildShape(gh, issue.number, refusal, labels.includes(NEEDS_HUMAN_LABEL), log);
+      const lifted = recordToBuildShape(gh, issue.number, refusal, labels.includes(NEEDS_HUMAN_LABEL), log);
+      if (lifted) issue.labels = (issue.labels ?? []).filter((label) => label.name !== NEEDS_HUMAN_LABEL);
     } catch (err) {
       log(`could not record #${issue.number}'s shape verdict: ${reason(err)}`);
     }

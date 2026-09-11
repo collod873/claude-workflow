@@ -241,6 +241,10 @@ test(
     expect(fixed.commentEdits).toHaveLength(1);
     expect(fixed.commentEdits[0].body).not.toContain(REFUSED_MARKER);
     expect(labelsRemovedFrom(fixed, 701)).toContain(NEEDS_HUMAN_LABEL);
+    expect(
+      startedIssues(fixed),
+      "the label the door just lifted must not hold the same run's dispatch; its own unlabel never wakes another",
+    ).toEqual([701]);
 
     const byHand = trackerWith({ open: [{ ...labelled(702), labels: [TO_BUILD_LABEL, BY_HAND_LABEL] }] });
     reconcileOver(byHand);
