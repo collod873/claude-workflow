@@ -34,7 +34,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0071 | [Branch protection is declined, so move 10 retires and its counter goes quiet](0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md) |
 | 0073 | [A lane that spends model fires only for the owner, because a public tracker lets anyone pull the trigger](0073-a-lane-that-spends-model-fires-only-for-the-owner-because-a.md) |
 | 0075 | [The public repository carries the argument, the private repository carries the evidence](0075-the-public-repository-carries-the-argument-the-private-repos.md) |
-| 0079 | [A spec-gap amendment clarifies an existing criterion and never adds one, so nothing re-slices](0079-a-spec-gap-amendment-clarifies-an-existing-criterion-and-nev.md) |
 | 0080 | [An ADR number is claimed when the ADR lands, not when it is drafted, because two authors write into docs/adr and neither sees the other's uncommitted work](0080-an-adr-number-is-claimed-when-the-adr-lands-not-when-it-is-d.md) |
 | 0081 | [A stage's answer is a structured-output tool call, not a block it hand-types](0081-a-stage-s-answer-is-a-structured-output-tool-call-not-a-bloc.md) |
 | 0082 | [A lane carries the vocabulary it works in rather than reading the repo's](0082-a-lane-carries-the-vocabulary-it-works-in-rather-than-readin.md) |
@@ -159,6 +158,7 @@ demotion; nothing here binds later work.
 - [0076](0076-a-migration-ticket-closes-on-the-migration-having-run-not-on.md) note
 - [0077](0077-a-checkpoint-resumes-only-on-an-exact-match-of-its-stage-s-r.md) note
 - [0078](0078-checkpoints-ride-an-always-uploaded-artifact-rather-than-the.md) note
+- [0079](0079-a-spec-gap-amendment-clarifies-an-existing-criterion-and-nev.md) superseded
 - [0085](0085-a-spec-that-arrives-already-written-enters-lane-02-at-the-cr.md) superseded
 - [0087](0087-a-contract-slot-names-a-check-a-reader-can-run-never-a-hook.md) note
 - [0089](0089-the-clone-gate-runs-beside-the-gauntlet-not-inside-it-so-the.md) note
@@ -196,4 +196,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-181 ADRs · 92 constraint · 44 note · 45 superseded · 18,774 words total.
+181 ADRs · 91 constraint · 44 note · 46 superseded · 18,774 words total.

@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-27
+superseded_by: ADR-0181
 amends: ADR-0033
 reversal: Reversing means designing and building incremental re-slicing in lane 03 — how a plan diffs against published sub-issues, what becomes of a slice whose criteria moved underneath it — and accepting a re-slice while N implementers are in flight, which is the parked-work failure ADR-0011 and ADR-0068 exist to forbid.
 ---
