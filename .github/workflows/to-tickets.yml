@@ -133,6 +133,9 @@ jobs:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/to-tickets/to-tickets.ts --stage audit-and-publish --issue "$PRD_NUMBER"
 
+      - name: Lift slice-failed, the PRD is split now
+        run: gh issue edit "$PRD_NUMBER" --remove-label slice-failed
+
       - name: Collect the dispatches this run asked for
         id: collect-dispatch
         run: |

@@ -71,7 +71,9 @@ then remove and re-add `prd` to retry.
 ```
 
 Both add `slice-failed` and exit 1. Zero model calls spent — these two run as plain shell before
-`to-tickets.ts` is even invoked, the cheapest refusals this lane has.
+`to-tickets.ts` is even invoked, the cheapest refusals this lane has. The label is a statement
+about the *last* run, not the PRD: a later run that publishes lifts it (node 04, step 5), so a
+PRD never wears `slice-failed` while its children exist (#446).
 
 **Upload checkpoints** (`phase: upload`, `if: always()`) re-uploads the checkpoint directory under
 the same artifact name after the last stage runs, win or lose.
@@ -181,6 +183,11 @@ Once all four pass:
    *before* anything is written.
 4. `dispatchReadySlices` — for **every** published slice, not only the ready ones, dispatches
    `acceptance-wanted` with a `ready` flag.
+5. Back in `to-tickets.yml`, the step after this one succeeds, `Lift slice-failed, the PRD is
+   split now`, runs `gh issue edit "$PRD_NUMBER" --remove-label slice-failed`. It runs only when
+   the publish stage exited 0, and is a no-op on a PRD that never wore the label. Without it a
+   PRD whose first run failed and second run published kept saying "not split" for as long as
+   nobody removed the label by hand: #434 for 48 minutes on 2026-09-10.
 
 ### edge — a published ticket body (`#420`)
 
@@ -253,7 +260,9 @@ lines, one `repos/{owner}/{repo}/dispatches` POST per line.
 
 All refusals past the two nested-sub-issue guards post one comment (`to-tickets run failed.\n\n
 **Reason:** <reason>\n\n**Workflow run:** <url>\n**Checkpoints:** the
-checkpoints-to-tickets-<PRD> artifact on that run.`) and add `slice-failed`.
+checkpoints-to-tickets-<PRD> artifact on that run.`) and add `slice-failed`. A run that reaches
+the end of node 04 removes it again, so the label reads as "the latest slicing run failed", never
+as history.
 
 ---
 
