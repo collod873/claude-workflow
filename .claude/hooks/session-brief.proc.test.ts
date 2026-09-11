@@ -126,7 +126,7 @@ function countRunRows(dir: string): number {
   return total;
 }
 
-test.fails(
+test(
   "#440.1: a stubbed repo with one open prd issue prints its first criterion's sentence with any check-marker stripped; none open prints nothing",
   () => {
     const withPrd = fire(makeWorld(), [OPEN_PRD_ISSUE]);
@@ -141,12 +141,12 @@ test.fails(
   },
 );
 
-test.fails("#440.2: session-brief.py is registered under SessionStart in the hook roster", () => {
+test("#440.2: session-brief.py is registered under SessionStart in the hook roster", () => {
   const roster = JSON.parse(readFileSync(rosterPath, "utf8")) as Record<string, string[]>;
   expect(roster.SessionStart).toContain("session-brief.py");
 });
 
-test.fails("#440.3: the hook writes its own run row on every fire", () => {
+test("#440.3: the hook writes its own run row on every fire", () => {
   const world = makeWorld();
 
   fire(world, [OPEN_PRD_ISSUE]);

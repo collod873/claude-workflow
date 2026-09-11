@@ -16,11 +16,14 @@ def gh_bin() -> str | None:
     override = os.environ.get("AGENT_SKILLS_GH")
     if override:
         return override if os.path.isfile(override) and os.access(override, os.X_OK) else None
+    on_path = shutil.which("gh")
+    if on_path:
+        return on_path
     for d in GH_SEARCH_DIRS:
         candidate = os.path.join(os.path.expanduser(d), "gh")
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
-    return shutil.which("gh")
+    return None
 
 
 def bind_gh(gh_path: str, repo: str | None = None,
