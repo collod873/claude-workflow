@@ -61,8 +61,8 @@ function readSignals(gh: GhExec): Array<z.infer<typeof SignalIssueSchema>> {
     "list",
     "--state",
     "all",
-    "--limit",
-    "200",
+    "--search",
+    "bypass-counter in:body",
     "--json",
     "number,body,state,stateReason",
   ]);
