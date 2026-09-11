@@ -15,6 +15,7 @@ import { expect, test } from "vitest";
 const hooksDir = fileURLToPath(new URL(".", import.meta.url));
 const hookPath = join(hooksDir, "session-brief.py");
 const rosterPath = join(hooksDir, "roster.json");
+const endHookPath = join(hooksDir, "session-end.py");
 
 const STUB_GH = `#!/usr/bin/env python3
 import json
@@ -758,4 +759,202 @@ test(
       0,
     );
   },
+);
+
+const ROUND_TRIP_LOGIN = "octocat";
+const ROUND_TRIP_REPO = "acme/alpha";
+const ROUND_TRIP_TICKET_TAG = "#8501";
+
+const ROUND_TRIP_GH = `#!/usr/bin/env python3
+import json
+import os
+import sys
+import time
+
+args = sys.argv[1:]
+
+time.sleep(float(os.environ.get("STUB_GH_SLEEP") or "0"))
+
+
+def env_json(name, default):
+    raw = os.environ.get(name) or default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(default)
+
+
+def flag(name):
+    for index, item in enumerate(args):
+        if item == name and index + 1 < len(args):
+            return args[index + 1]
+        if item.startswith(name + "="):
+            return item.split("=", 1)[1]
+    return None
+
+
+def has(*seq):
+    seq = list(seq)
+    return any(args[index:index + len(seq)] == seq for index in range(len(args)))
+
+
+def labels_of(issue):
+    names = []
+    for label in issue.get("labels") or []:
+        names.append(label.get("name") if isinstance(label, dict) else label)
+    return names
+
+
+def logins_of(issue):
+    names = []
+    for who in issue.get("assignees") or []:
+        names.append(who.get("login") if isinstance(who, dict) else who)
+    return names
+
+
+LOGIN = os.environ.get("STUB_GH_LOGIN") or "octocat"
+REPO = os.environ.get("STUB_GH_REPO") or ""
+ISSUES = env_json("STUB_GH_ISSUES", "[]")
+
+if has("repo", "view"):
+    if not REPO:
+        sys.stderr.write("could not determine base repository" + chr(10))
+        sys.exit(1)
+    owner, _, name = REPO.partition("/")
+    print(json.dumps({"nameWithOwner": REPO, "name": name, "owner": {"login": owner}}))
+elif any(item.rstrip("/").endswith("user") for item in args):
+    print(json.dumps({"login": LOGIN}))
+elif has("api"):
+    print("[]")
+else:
+    selected = list(ISSUES)
+    label = flag("--label")
+    if label:
+        selected = [item for item in selected if label in labels_of(item)]
+    state = (flag("--state") or "").lower()
+    if state in ("open", "closed"):
+        selected = [item for item in selected if (item.get("state") or "open").lower() == state]
+    assignee = flag("--assignee")
+    if assignee:
+        who = LOGIN if assignee == "@me" else assignee
+        selected = [item for item in selected if who in logins_of(item)]
+    print(json.dumps(selected))
+`;
+
+const ROUND_TRIP_TICKET = {
+  number: 8501,
+  title: "Rewire the alpha symlinks",
+  state: "open",
+  labels: [{ name: "by-hand" }],
+  assignees: [{ login: ROUND_TRIP_LOGIN }],
+  body: "## What to build\n\nRewire them.\n",
+};
+
+const ROUND_TRIP_TICKET_RELABELLED = {
+  ...ROUND_TRIP_TICKET,
+  labels: [{ name: "by-hand" }, { name: "blocked" }],
+};
+
+type RoundTripStage = { root: string; home: string; logDir: string; bin: string; repo: string };
+
+function roundTripStage(): RoundTripStage {
+  const root = mkdtempSync(join(tmpdir(), "sb484-"));
+  const home = join(root, "home");
+  const logDir = join(root, "logs");
+  const bin = join(root, "bin");
+  const repo = join(root, "repo");
+  for (const dir of [home, logDir, bin, repo]) {
+    mkdirSync(dir, { recursive: true });
+  }
+  const gh = join(bin, "gh");
+  writeFileSync(gh, ROUND_TRIP_GH);
+  chmodSync(gh, 0o755);
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  return { root, home, logDir, bin, repo };
+}
+
+function roundTripEnv(stage: RoundTripStage, issues: unknown[]): Record<string, string> {
+  return {
+    ...process.env,
+    HOME: stage.home,
+    STOP_GATE_LOG_DIR: stage.logDir,
+    CLAUDE_PROJECT_DIR: stage.repo,
+    PATH: `${stage.bin}:${process.env.PATH ?? ""}`,
+    AGENT_SKILLS_GH: join(stage.bin, "gh"),
+    GH_TOKEN: "stub-token",
+    STUB_GH_SLEEP: "0",
+    STUB_GH_LOGIN: ROUND_TRIP_LOGIN,
+    STUB_GH_REPO: ROUND_TRIP_REPO,
+    STUB_GH_ISSUES: JSON.stringify(issues),
+  } as Record<string, string>;
+}
+
+function endRoundTripSession(stage: RoundTripStage, issues: unknown[]): void {
+  spawnSync("python3", [endHookPath], {
+    cwd: stage.repo,
+    stdio: ["pipe", "ignore", "ignore"],
+    input: JSON.stringify({
+      session_id: "sb-484-end",
+      transcript_path: join(stage.root, "transcript.jsonl"),
+      cwd: stage.repo,
+      hook_event_name: "SessionEnd",
+      reason: "clear",
+    }),
+    env: roundTripEnv(stage, issues),
+  });
+}
+
+function briefRoundTrip(stage: RoundTripStage, issues: unknown[]) {
+  return spawnSync("python3", [hookPath], {
+    cwd: stage.repo,
+    encoding: "utf8",
+    input: JSON.stringify({
+      session_id: "sb-484-start",
+      transcript_path: join(stage.root, "transcript.jsonl"),
+      cwd: stage.repo,
+      hook_event_name: "SessionStart",
+      source: "startup",
+    }),
+    env: roundTripEnv(stage, issues),
+  });
+}
+
+async function briefOnceTheDetachedSnapshotLands(
+  stage: RoundTripStage,
+  issues: unknown[],
+  ticket: string,
+  timeoutMs: number,
+) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const attempt = briefRoundTrip(stage, issues);
+    if (briefLines(attempt).some((line) => line.includes(ticket))) return attempt;
+    if (Date.now() >= deadline) return attempt;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+test.fails(
+  "#484.1: running session-end.py then session-brief.py against the same stubbed gh and log dir, after a by-hand ticket changes labels between the two, prints that ticket's delta line and the claimed-ticket line",
+  async () => {
+    const stage = roundTripStage();
+    endRoundTripSession(stage, [ROUND_TRIP_TICKET]);
+
+    const run = await briefOnceTheDetachedSnapshotLands(
+      stage,
+      [ROUND_TRIP_TICKET_RELABELLED],
+      ROUND_TRIP_TICKET_TAG,
+      10_000,
+    );
+    expect(run.status).toBe(0);
+
+    const namingTheTicket = naming(briefLines(run), ROUND_TRIP_TICKET_TAG);
+    const claimedLines = namingTheTicket.filter((line) => /claimed/i.test(line));
+    const deltaLines = namingTheTicket.filter((line) => !/claimed/i.test(line));
+
+    expect(claimedLines).toHaveLength(1);
+    expect(claimedLines[0]).toContain(ROUND_TRIP_TICKET.title);
+    expect(deltaLines.length).toBeGreaterThanOrEqual(1);
+  },
+  40_000,
 );
