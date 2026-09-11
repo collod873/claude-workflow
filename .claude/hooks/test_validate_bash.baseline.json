@@ -588,6 +588,76 @@
     true
   ],
   [
+    "block:commit-closes-dquote",
+    "git commit -m \"Resolves #176\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:commit-closes-squote",
+    "git commit -m 'Fixes #176'",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:commit-closes-am-flag",
+    "git add -A && git commit -am \"Closes #12\" && git push",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:commit-closes-heredoc",
+    "git commit -m \"$(cat <<'EOF'\nResolves #176\n\nBody text\nEOF\n)\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:commit-closes-cross-repo",
+    "git commit -m \"fixes owner/repo#392\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:commit-closes-lowercase",
+    "git commit -m \"closed #176\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:commit-refs-only",
+    "git commit -m \"Refs #176\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:commit-bare-issue-number",
+    "git commit -m \"test: author acceptance tests for #402\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:commit-no-message-flag",
+    "git commit --amend --no-edit",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:comment-mentions-keyword-not-commit",
+    "gh issue comment 5 --body \"Fixes #176 was reverted\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
     "malformed:empty",
     "b''",
     "ALLOW",
@@ -631,9 +701,9 @@
   ],
   [
     "row:count",
-    "90 fires",
-    "90",
-    "90",
+    "100 fires",
+    "100",
+    "100",
     true
   ],
   [
@@ -646,8 +716,8 @@
   [
     "row:deny-count",
     "every BLOCK logged a deny",
-    "32",
-    "32",
+    "38",
+    "38",
     true
   ],
   [
@@ -830,6 +900,48 @@
     "git push && gh issue close 5",
     "compound-close",
     "['compound-close']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-dquote",
+    "git commit -m \"Resolves #176\"",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-squote",
+    "git commit -m 'Fixes #176'",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-am-flag",
+    "git add -A && git commit -am \"Closes #12\" && git push",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-heredoc",
+    "git commit -m \"$(cat <<'EOF'\nResolves #176\n\nBody text\nEOF\n)\"",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-cross-repo",
+    "git commit -m \"fixes owner/repo#392\"",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:commit-closes-lowercase",
+    "git commit -m \"closed #176\"",
+    "commit-closes-ticket",
+    "['commit-closes-ticket']",
     true
   ]
 ]

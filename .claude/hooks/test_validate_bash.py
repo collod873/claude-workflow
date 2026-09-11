@@ -144,6 +144,42 @@ CASES = [
     ("allow:gh-issue-close-alone",
      "gh issue close 5",
      "ALLOW"),
+
+    ("block:commit-closes-dquote",
+     'git commit -m "Resolves #176"',
+     "BLOCK"),
+    ("block:commit-closes-squote",
+     "git commit -m 'Fixes #176'",
+     "BLOCK"),
+    ("block:commit-closes-am-flag",
+     'git add -A && git commit -am "Closes #12" && git push',
+     "BLOCK"),
+    ("block:commit-closes-heredoc",
+     "git commit -m \"$(cat <<'EOF'\n"
+     "Resolves #176\n"
+     "\n"
+     "Body text\n"
+     "EOF\n)\"",
+     "BLOCK"),
+    ("block:commit-closes-cross-repo",
+     'git commit -m "fixes owner/repo#392"',
+     "BLOCK"),
+    ("block:commit-closes-lowercase",
+     'git commit -m "closed #176"',
+     "BLOCK"),
+
+    ("allow:commit-refs-only",
+     'git commit -m "Refs #176"',
+     "ALLOW"),
+    ("allow:commit-bare-issue-number",
+     'git commit -m "test: author acceptance tests for #402"',
+     "ALLOW"),
+    ("allow:commit-no-message-flag",
+     "git commit --amend --no-edit",
+     "ALLOW"),
+    ("allow:comment-mentions-keyword-not-commit",
+     'gh issue comment 5 --body "Fixes #176 was reverted"',
+     "ALLOW"),
 ]
 
 MALFORMED = [(f"malformed:{label}", raw, "ALLOW") for label, raw in _harness.MALFORMED_STDIN] + [
@@ -184,6 +220,7 @@ GUARD_BY_CASE = {
     "block:compound-cat-env": "dotenv",
     "block:gh-issue-create": "gh-issue-create",
     "block:gh-issue-close-compound": "compound-close",
+    "block:commit-closes": "commit-closes-ticket",
 }
 
 
