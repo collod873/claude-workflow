@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, test } from "vitest";
 import { RATIFIER_MERGED_DISPATCH_ACTION, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
-import { GRAPH_CHANGED_DISPATCH_ACTION, runIntegrate } from "./integrate";
+import { GRAPH_CHANGED_DISPATCH_ACTION, type IntegrateDeps, runIntegrate } from "./integrate";
 import {
   BRANCH,
   CLOSED,
@@ -274,4 +278,89 @@ describe("runIntegrate when the rebase onto trunk conflicts", () => {
     expect(() => runIntegrate(deps)).toThrow(/CONFLICT/);
     expect(calls.filter((call) => call[0] === "pr" && call[1] === "edit")).toEqual([]);
   });
+});
+
+describe("runIntegrate rings the merged trunk's own CI", () => {
+  const emptyCheckout = () => mkdtempSync(join(tmpdir(), "integrate-target-"));
+
+  const checkoutWithCi = () => {
+    const dir = emptyCheckout();
+    mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+    writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "on: [push, workflow_dispatch]\n");
+    return dir;
+  };
+
+  const at = (deps: IntegrateDeps, repoDir: string) => Object.assign({}, deps, { repoDir });
+
+  const ciRings = (calls: string[][]) => calls.filter((call) => call[0] === "workflow" && call[1] === "run");
+
+  const MERGED = { merged: true, closing: { closed: true, ticket: TICKET } };
+
+  test.fails(
+    "#474.1: after a merge Integrate runs gh workflow run ci.yml --ref main when the target has .github/workflows/ci.yml, skips the ring when the file is absent, and reports merged: true either way and when the ring throws",
+    () => {
+      const present = integrateHarness({ closeTicket: CLOSED });
+
+      const rung = runIntegrate(at(present.deps, checkoutWithCi()));
+
+      const rings = ciRings(present.calls);
+      expect(rings).toHaveLength(1);
+      expect(rings[0].slice(0, 3)).toEqual(["workflow", "run", "ci.yml"]);
+      expect(rings[0][rings[0].indexOf("--ref") + 1]).toBe("main");
+      expect(present.calls.findIndex((call) => call[0] === "workflow")).toBeGreaterThan(
+        present.calls.findIndex((call) => call[0] === "pr" && call[1] === "merge"),
+      );
+      expect(rung).toEqual(MERGED);
+
+      const absent = integrateHarness({ closeTicket: CLOSED });
+
+      const skipped = runIntegrate(at(absent.deps, emptyCheckout()));
+
+      expect(ciRings(absent.calls)).toEqual([]);
+      expect(mergeCalls(absent.calls)).toHaveLength(1);
+      expect(skipped).toEqual(MERGED);
+
+      const refused = integrateHarness({ closeTicket: CLOSED });
+      const refusingGh = (args: string[]): string => {
+        if (args[0] === "workflow") throw new Error("could not dispatch ci.yml");
+        return refused.deps.gh(args);
+      };
+
+      const stood = runIntegrate(Object.assign({}, refused.deps, { gh: refusingGh, repoDir: checkoutWithCi() }));
+
+      expect(stood).toEqual(MERGED);
+      expect(mergeCalls(refused.calls)).toHaveLength(1);
+      expect(refused.dispatches).toEqual([{ eventType: GRAPH_CHANGED_DISPATCH_ACTION, payload: { pr: PR } }]);
+    },
+  );
+
+  test.fails("#474.2: the ring reaches the fixture as an argv, not a shell string", () => {
+    const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
+
+    runIntegrate(at(deps, checkoutWithCi()));
+
+    const rings = ciRings(calls);
+    expect(rings).toHaveLength(1);
+    expect(rings[0]).toContain("ci.yml");
+    expect(rings[0]).toContain("--ref");
+    for (const arg of rings[0]) expect(arg).not.toMatch(/\s/);
+    expect(calls.filter((call) => call.some((arg) => /workflow\s+run/.test(arg)))).toEqual([]);
+  });
+
+  test.fails(
+    "#474.3: docs/agents/integrate-lane-edges.md names the ring between mergePr() and announceGraphChanged() and says why a bot merge needs it",
+    async () => {
+      const doc = await readFile(new URL("../../../docs/agents/integrate-lane-edges.md", import.meta.url), "utf8");
+
+      expect(doc).toMatch(/workflow_dispatch/i);
+
+      const merge = doc.indexOf("mergePr()");
+      const bell = doc.lastIndexOf("announceGraphChanged()");
+      const ring = doc.indexOf("ci.yml", merge);
+      expect(merge).toBeGreaterThan(-1);
+      expect(bell).toBeGreaterThan(merge);
+      expect(ring).toBeGreaterThan(merge);
+      expect(ring).toBeLessThan(bell);
+    },
+  );
 });
