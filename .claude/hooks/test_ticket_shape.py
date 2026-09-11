@@ -141,12 +141,12 @@ def test_check_marker_word_resolution():
 
     unresolved_word_body = (
         "## Acceptance criteria\n\n"
-        "- [ ] the suite passes - check: `pytest tests/`\n\n"
+        "- [ ] the suite passes - check: `no-such-runner-9f3a tests/`\n\n"
         "## Files claimed\n\n- None, no files.\n"
     )
     warnings = ticket_shape.validate("ticket", unresolved_word_body, repo_root=REPO)
     check("a check: marker whose first word doesn't resolve on PATH is refused, naming the word",
-          len(warnings) == 1 and "pytest" in warnings[0], warnings)
+          len(warnings) == 1 and "no-such-runner-9f3a" in warnings[0], warnings)
 
 
 def main():
