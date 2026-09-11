@@ -12,6 +12,7 @@ const ApiRun = z.object({
   html_url: z.string(),
   head_branch: z.string().nullable(),
   created_at: z.string(),
+  event: z.string(),
 });
 
 const JobsResponse = z.object({
@@ -31,8 +32,11 @@ export const RUN_PAGE_SIZE = 100;
 
 export const MAX_JOB_READS = 60;
 
-function readRuns(gh: GhExec, verifyWorkflow: string): Array<{ id: number; conclusion: string; htmlUrl: string; headBranch: string; createdAt: string }> {
-  const projection = "[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at}]";
+function readRuns(
+  gh: GhExec,
+  verifyWorkflow: string,
+): Array<{ id: number; conclusion: string; htmlUrl: string; headBranch: string; createdAt: string; event: string }> {
+  const projection = "[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at, event}]";
   const raw = gh(["api", workflowRunsPath(verifyWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
   return ApiRun.array()
     .parse(JSON.parse(raw))
@@ -42,6 +46,7 @@ function readRuns(gh: GhExec, verifyWorkflow: string): Array<{ id: number; concl
       htmlUrl: run.html_url,
       headBranch: run.head_branch ?? "",
       createdAt: run.created_at,
+      event: run.event,
     }));
 }
 
@@ -109,6 +114,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
     htmlUrl: run.htmlUrl,
     conclusion: run.conclusion,
     failedStep: failedStepName(gh, run.id),
+    event: run.event,
   }));
 
   const count = bypassCount(verifyRuns);

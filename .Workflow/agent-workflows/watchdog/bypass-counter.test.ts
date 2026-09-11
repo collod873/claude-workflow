@@ -14,6 +14,7 @@ function failedRunsOnMain(): string {
       html_url: `https://github.com/collod873/claude-workflow/actions/runs/${5000 + index}`,
       head_branch: "main",
       created_at: new Date(now - index * 6 * HOUR).toISOString(),
+      event: "push",
     })),
   );
 }
