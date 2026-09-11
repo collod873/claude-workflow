@@ -94,6 +94,19 @@ SPEC_CRITERION_GREEN_AT_PUBLISH = (
     "(claude-workflow/ADR-0130)"
 )
 
+SH_PARSE_TIMEOUT_SECONDS = 5
+
+SPEC_CRITERION_UNPARSEABLE_BY_SH = (
+    "acceptance criterion's check: `{command}` cannot be parsed by /bin/sh, the shell "
+    "bin/close-ticket and red-at-publish both run every check under ({error}); wrap a "
+    "bash-only command (process substitution, arrays) in bash -c '...'"
+)
+
+UNPARSEABLE_CHECK_COMMAND_SH_PREFIX = (
+    "acceptance criterion's check: marker cannot be parsed by /bin/sh, the shell "
+    "bin/close-ticket runs it under"
+)
+
 MIGRATION_RE = re.compile(
     r"\b(?:migrat(?:e|es|ed|ing|ion|ions)|backfill(?:s|ed|ing)?|scrub(?:s|bed|bing)?"
     r"|purg(?:e|es|ed|ing)|rewrit(?:e|es|ing|ten)|reindex(?:es|ed|ing)?|one-off)\b",
@@ -181,6 +194,24 @@ def _check_already_green(command: str, repo_root: Path) -> tuple[bool, str | Non
     return result.returncode == 0, None
 
 
+def _check_sh_parseable(command: str) -> tuple[bool, str | None]:
+    try:
+        result = subprocess.run(
+            ["/bin/sh", "-n", "-c", command],
+            capture_output=True, text=True, timeout=SH_PARSE_TIMEOUT_SECONDS,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return True, None
+    if result.returncode == 0:
+        return True, None
+    return False, ((result.stderr or result.stdout) or "").strip()
+
+
+def _unparseable_by_sh_warning(criterion: str, error: str | None) -> str:
+    detail = f": {error}" if error else ""
+    return f"{UNPARSEABLE_CHECK_COMMAND_SH_PREFIX}: {criterion}{detail}"
+
+
 def _malformed_check_marker(criterion: str) -> bool:
     return bool(CHECK_MARKER_ATTEMPT_RE.search(criterion)) and parse_check_marker(criterion) is None
 
@@ -252,6 +283,9 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
                 word = _check_command_word(command)
                 if word and not _check_command_word_resolves(word, repo_root):
                     warnings.append(_unresolved_check_command_word_warning(block, word))
+                parseable, sh_error = _check_sh_parseable(command)
+                if not parseable:
+                    warnings.append(_unparseable_by_sh_warning(block, sh_error))
         warnings.extend(unresolved_claimed_paths(body, repo_root))
         warnings.extend(migration_without_post_state(body))
         warnings.extend(config_or_md_evidence(body))
@@ -271,6 +305,9 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     word = _check_command_word(command)
     if word and not _check_command_word_resolves(word, root):
         raise ValidationError(_unresolved_check_command_word_error(command, word))
+    parseable, sh_error = _check_sh_parseable(command)
+    if not parseable:
+        raise ValidationError(SPEC_CRITERION_UNPARSEABLE_BY_SH.format(command=command, error=sh_error))
     green, warning = _check_already_green(command, root)
     if green:
         raise ValidationError(SPEC_CRITERION_GREEN_AT_PUBLISH.format(command=command))

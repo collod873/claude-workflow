@@ -192,7 +192,7 @@ test(
   30000,
 );
 
-test.fails(
+test(
   "#483.1: validate('spec', ...) refuses a body whose check is `comm -12 <(ls) <(ls)`, naming `/bin/sh` and the command, and admits the same command wrapped in `bash -c '...'`",
   () => {
     const unparseable = runValidate("spec", specBody(BASH_ONLY_CHECK), {});
@@ -208,7 +208,7 @@ test.fails(
   60000,
 );
 
-test.fails(
+test(
   "#483.2: validate('ticket', ...) warns rather than refuses for a check marker `/bin/sh` cannot parse, and raises no such warning for one it can",
   () => {
     const unparseable = runValidate("ticket", ticketBody(BASH_ONLY_CHECK), {});
@@ -224,7 +224,7 @@ test.fails(
   60000,
 );
 
-test.fails(
+test(
   "#483.3: docs/agents/ticket-format.md says a check runs under `/bin/sh` and that a bash-only command must be wrapped in `bash -c`",
   () => {
     expect(grepLines("/bin/sh", TICKET_FORMAT_DOC).length).toBeGreaterThan(0);
