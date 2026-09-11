@@ -162,6 +162,15 @@ Add what is missing and the next session end starts it.
 Cleared → the same comment is rewritten to say so. Unchanged from last pass → no-op, so a
 persistently-refused ticket doesn't accumulate a comment per run.
 
+Every post or rewrite of the refused comment also calls `escalateToOwner()`, adding `needs-human`
+so the session brief's own `needs-human` section carries the ticket and a later recompute does not
+just skip it again in silence. A run that finds the shape fixed rewrites the comment to the cleared
+body and lifts `needs-human` the same way node 02's spec pass does for its own earlier refusal —
+"clears `needs-human` if this pass's own earlier refusal is what put it there." An owner holding
+the ticket for another reason re-applies the label the same way they do after a strike decision.
+The by-hand stand-down (`recordByHandStandDown()`) is the deliberate exception: it never adds
+`needs-human` and is never dispatched, whatever its shape.
+
 ---
 
 ## Node 04 — compute readiness and dispatch · [wire]
