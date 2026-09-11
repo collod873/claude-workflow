@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "husky",
+    "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi",
     "test": "vitest run .Workflow .claude",
     "clones": "jscpd",
     "adrs": "tsx .Workflow/agent-workflows/shared/adr-index.cli.ts .",
