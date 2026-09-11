@@ -8,10 +8,18 @@ import { execGit, type GitExec } from "../shared/git";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
-import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+} from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { runVitestReport } from "../shared/vitest-json";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 
 export type StopReason = "no-progress" | "capped" | "gate-growth";
 
@@ -69,12 +77,13 @@ export function assembleFixBrief(signature: FailureSignature, attempt: number, p
   ].join("\n\n");
 }
 
-export function runFixerStage(exec: StageExec, brief: string): Promise<FixerAnswer> {
-  return runStage(FIXER_PROMPT_PATH, { BRIEF: brief }, exec, FIXER_OUTPUT, {
+export function runFixerStage(exec: StageExec, budget: LaneBudget, brief: string): Promise<FixerAnswer> {
+  return runStageSessionWithinBudget(FIXER_PROMPT_PATH, { BRIEF: brief }, exec, FIXER_OUTPUT, {
+    budget,
     model: FIXER_MODEL,
     promptViaStdin: true,
     stage: "fixer",
-  });
+  }).then((session) => session.value);
 }
 
 export { changedPaths };
@@ -223,9 +232,11 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     return { verdict: "blocked", attempts: 0, stopReason: "capped" };
   }
 
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS - already; attempt += 1) {
     const brief = assembleFixBrief(previousSignature, attempt, attemptSummaries);
-    const answer = await runFixerStage(deps.exec, brief);
+    const answer = await runFixerStage(deps.exec, budget, brief);
 
     const paths = changedPaths(deps.git);
     attemptSummaries.push(answer.summary);
