@@ -13,7 +13,16 @@ import {
 } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
-import { checkpointPath, execClaudeIn, rawResponsePath, runStage, type StageExec } from "../shared/stage";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import {
+  checkpointPath,
+  currentLaneRun,
+  execClaudeIn,
+  rawResponsePath,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type StageExec,
+} from "../shared/stage";
 import type { StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
 import { sliceAndPublish } from "./slice-and-publish";
@@ -42,9 +51,12 @@ async function runTypedStage<T>(
   config: TypedStageConfig<T>,
   issueNumber: string,
   exec: StageExec,
+  gh: GhExec,
 ): Promise<T> {
-  const value = await runStage(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh, ticket: Number(issueNumber), run: currentLaneRun() });
+  const { value } = await runStageSessionWithinBudget(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
     stage,
+    budget,
   });
   config.validate?.(value);
   if (config.measure) {
@@ -55,8 +67,8 @@ async function runTypedStage<T>(
 
 function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
   return {
-    run: async (issueNumber, exec) => {
-      const output = await runTypedStage(name, config, issueNumber, exec);
+    run: async (issueNumber, exec, gh) => {
+      const output = await runTypedStage(name, config, issueNumber, exec, gh);
       console.log(`${name}: wrote a schema-valid output`);
       console.log(JSON.stringify(output, null, 2));
       return output;
@@ -157,7 +169,7 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
 };
 
 const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => {
-  const audited = await runTypedStage("audit-and-publish", AUDIT_CONFIG, issueNumber, exec);
+  const audited = await runTypedStage("audit-and-publish", AUDIT_CONFIG, issueNumber, exec, gh);
   if (audited.notes) {
     console.log(audited.notes);
   }
