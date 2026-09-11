@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import type { StageExec } from "../shared/stage";
 import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
 import { LABELS_APPLIED, runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
@@ -313,4 +313,80 @@ describe("a change request", () => {
 
     expect(spawnOf(model, "shaper").prompt).not.toContain("change request");
   });
+});
+
+const PAST_ANY_BUDGET_MS = 6 * 60 * 60 * 1000;
+
+function silentModel(): FakeModel {
+  const fake: FakeModel = {
+    spawns: [],
+    exec: async (argv, stdin) => {
+      fake.spawns.push({ argv: [...argv], prompt: stdin ?? argv[argv.indexOf("-p") + 1] });
+      return new Promise<string>(() => {});
+    },
+  };
+  return fake;
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+}
+
+interface BudgetRun {
+  settled: boolean;
+  failure: unknown;
+  model: FakeModel;
+  tracker: FakeTracker;
+}
+
+async function runPastTheBudget(): Promise<BudgetRun> {
+  const model = silentModel();
+  const tracker = createFakeTracker();
+  const run: BudgetRun = { settled: false, failure: undefined, model, tracker };
+
+  void runChain(depsFor(model, tracker), 1, "").then(
+    () => {
+      run.settled = true;
+    },
+    (err) => {
+      run.settled = true;
+      run.failure = err;
+    },
+  );
+
+  await flushMicrotasks();
+  await vi.advanceTimersByTimeAsync(PAST_ANY_BUDGET_MS);
+  await flushMicrotasks();
+
+  return run;
+}
+
+test.fails("#498.1: shape.ts calls the budget wrapper rather than runStage directly", async () => {
+  vi.useFakeTimers();
+  try {
+    const run = await runPastTheBudget();
+
+    expect(run.model.spawns).toHaveLength(1);
+    expect(run.settled).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.fails("#498.2: an elapsed budget strikes the ticket", async () => {
+  vi.useFakeTimers();
+  try {
+    const run = await runPastTheBudget();
+
+    expect(run.settled).toBe(true);
+
+    const strikes = run.tracker.calls.filter(
+      (call) => call[0] === "issue" && call.some((arg) => /timed out after \d+ minutes at /.test(arg)),
+    );
+
+    expect(strikes).toHaveLength(1);
+    expect(strikes[0]).toContain("1");
+  } finally {
+    vi.useRealTimers();
+  }
 });
