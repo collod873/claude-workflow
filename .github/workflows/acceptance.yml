@@ -270,3 +270,22 @@ jobs:
           gh api --method POST 'repos/{owner}/{repo}/dispatches' \
             -f event_type=ticket-ready \
             -f "client_payload[issue]=${{ github.event.client_payload.issue }}"
+
+  wake-reconciler:
+    name: Wake the reconciler
+    needs: [refire, author, land]
+    if: always() && (needs.refire.result != 'skipped' || needs.author.result != 'skipped')
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Wake the reconciler, whatever ended this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=run-ended \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID"

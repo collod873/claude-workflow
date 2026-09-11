@@ -13,13 +13,13 @@ const SIGNATURE_MARKER_RE = /<!-- strike-signature:(.*) -->/;
 export const DECISION_MARKER = "<!-- strike-decision:v1 -->";
 const SIGNATURE_CAP = 300;
 
-const FAILED_LINE_RE = /(?:implement|mechanic) failed: (.+)$/gm;
+const FAILED_LINE_RE = /(?:implement|mechanic|acceptance(?: [a-z-]+)?) failed: (.+)$/gm;
 
 export const DEAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"] as const;
 
-export const STRIKE_TITLE_RE = /^(Implement|Mechanic) #(\d+)$/;
+export const LANE_RUN_TITLE_RE = /^(Implement|Mechanic|Acceptance) #(\d+)$/;
 
-export const IN_FLIGHT_TITLE_RE = /^(Implement|Mechanic|Acceptance) #(\d+)$/;
+export type Next = Rung | "author";
 
 export interface Strike {
   runId: number;
@@ -36,7 +36,7 @@ export function signatureFromLog(raw: string, conclusion: string): string {
   return last ? strikeSignature(last[1]) : `${conclusion} before answering`;
 }
 
-export function strikeBody(strike: Strike, runUrl: string, next: Rung): string {
+export function strikeBody(strike: Strike, runUrl: string, next: Next): string {
   return [
     `<!-- strike:v1 run=${strike.runId} conclusion=${strike.conclusion} -->`,
     `<!-- strike-signature:${strikeSignature(strike.signature)} -->`,
@@ -50,8 +50,10 @@ export function strikeBody(strike: Strike, runUrl: string, next: Rung): string {
   ].join("\n");
 }
 
-function nextLine(next: Rung): string {
+function nextLine(next: Next): string {
   switch (next) {
+    case "author":
+      return "Next: the author starts again from the spec; the count climbs the same ladder.";
     case "implementer":
       return "Next: the implementer starts again from the brief.";
     case "fresh-eyes":
@@ -151,7 +153,7 @@ export function ticketsInFlight(runs: LaneRun[]): Set<number> {
   const tickets = new Set<number>();
   for (const run of runs) {
     if (run.status === "completed") continue;
-    const match = IN_FLIGHT_TITLE_RE.exec(run.displayTitle);
+    const match = LANE_RUN_TITLE_RE.exec(run.displayTitle);
     if (match) tickets.add(Number(match[2]));
   }
   return tickets;
@@ -161,7 +163,7 @@ export function deadRunsOf(runs: LaneRun[], ticket: number): LaneRun[] {
   return runs.filter((run) => {
     if (run.status !== "completed") return false;
     if (!DEAD_CONCLUSIONS.some((conclusion) => conclusion === run.conclusion)) return false;
-    const match = STRIKE_TITLE_RE.exec(run.displayTitle);
+    const match = LANE_RUN_TITLE_RE.exec(run.displayTitle);
     return match !== null && Number(match[2]) === ticket;
   });
 }

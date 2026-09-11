@@ -270,6 +270,16 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     }
   });
 
+  it("the author says its own ending from a job of its own, since the jobs that spend a model hold contents: read (#457)", () => {
+    const tail = LANE_WIRING.acceptance.jobs["wake-reconciler"];
+    const modelJobs = ["refire", "author"];
+    expect(tail.needs).toEqual(expect.arrayContaining(modelJobs));
+    expect(tail.gate?.is).toContain("always()");
+    expect(tail.permissions).toEqual({ contents: "write" });
+    for (const job of modelJobs) expect(LANE_WIRING.acceptance.jobs[job].permissions).toBeUndefined();
+    expect(tail.steps?.some((step) => step.run?.includes(`event_type=${RUN_ENDED}`))).toBe(true);
+  });
+
   it("shape.yml creates every label shape.ts applies", () => {
     expect([...LABELS_APPLIED]).toEqual(SHAPE_LABELS_APPLIED);
   });

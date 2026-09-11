@@ -23,6 +23,7 @@ import {
   reconcileOver,
   startedIssues,
   trackerWith,
+  type FakeRun,
   type Tracker,
   type TrackerOptions,
 } from "./tracker.fixture";
@@ -376,15 +377,17 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     return dir;
   }
 
-  function ladderOver(options: Omit<TrackerOptions, "open"> & { comments?: string[]; labels?: string[] }) {
-    const { comments, labels, ...rest } = options;
+  function ladderOver(options: Omit<TrackerOptions, "open"> & { comments?: string[]; labels?: string[]; authored?: false }) {
+    const { comments, labels, authored, ...rest } = options;
     const tracker = trackerWith({
       open: [{ number: TICKET, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: labels ?? [TO_BUILD_LABEL], comments }],
       ...rest,
     });
-    const outcome = reconcileOver(tracker, { targetWorkspace: targetNamingTheTicket() });
+    const outcome = reconcileOver(tracker, { targetWorkspace: authored === false ? scratchDir("reconcile-ladder-untested") : targetNamingTheTicket() });
     return { tracker, outcome };
   }
+
+  const deadAuthor = (id: number, conclusion: FakeRun["conclusion"] = "cancelled"): FakeRun => ({ id, title: `Acceptance #${TICKET}`, conclusion });
 
   const rungOf = (tracker: Tracker) => tracker.dispatches.map((d) => `${d.eventType}${d.payload.rung ? `:${d.payload.rung}` : ""}`);
 
@@ -465,6 +468,33 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
 
     expect(tracker.comments).toEqual([]);
     expect(rungOf(tracker)).toEqual([]);
+  });
+
+  it("counts a dead Acceptance run as a strike and asks the author again, so a capped author is bounded rather than looped (#457)", () => {
+    const { tracker } = ladderOver({ authored: false, runs: [deadAuthor(910)] });
+
+    const strikes = commentsCarrying(tracker, "strike:v1 run=910");
+    expect(strikes).toHaveLength(1);
+    expect(strikes[0]).toContain("cancelled before answering");
+    expect(strikes[0]).toContain("the author starts again");
+    expect(rungOf(tracker)).toEqual(["acceptance-wanted"]);
+  });
+
+  it("stops asking the author after three dead Acceptance runs, the same decision the implementer's ladder ends on (#457)", () => {
+    const runs = [910, 911, 912].map((id) => deadAuthor(id));
+    const { tracker, outcome } = ladderOver({ authored: false, runs });
+
+    expect(commentsCarrying(tracker, "strike-decision:v1")).toHaveLength(1);
+    expect(tracker.labelsAdded).toContainEqual({ issue: TICKET, name: "needs-human" });
+    expect(rungOf(tracker)).toEqual([]);
+    expect(outcome.note).toContain("decision");
+  });
+
+  it("carries an Acceptance strike into the implementer's ladder once a test exists, since the count is the ticket's, not a lane's (#457)", () => {
+    const { tracker } = ladderOver({ runs: [deadAuthor(910, "failure")] });
+
+    expect(commentsCarrying(tracker, "strike:v1 run=910")).toHaveLength(1);
+    expect(rungOf(tracker)).toEqual(["ticket-ready:fresh-eyes"]);
   });
 
   it("does not start a ticket carrying needs-human at all; the label is the owner's hold", () => {

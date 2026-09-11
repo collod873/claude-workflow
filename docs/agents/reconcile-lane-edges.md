@@ -53,7 +53,7 @@ github.event.action == 'run-ended' ||
 | **Door 4 — to-build label** | `issues:labeled`, `label.name == 'to-build'`, sender must be the repo owner — the hand-off door ([`pipeline-labels.md`](pipeline-labels.md)) |
 | **Door 5 — a lane you started ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, **but starts a run from it only when the ended run's actor is a person**: a push-triggered Verify, a label you applied, a hand `workflow_dispatch`. A run the machine itself started with `repository_dispatch` under `GITHUB_TOKEN` (`actor: github-actions[bot]`, which is every Implement, Mechanic, Acceptance and To-Tickets run) completes without waking anything here; see *why the completed event was missed* below |
 | **Door 6 — main moved** | `push` to `main`, no paths filter: a docs-only commit that says `Closes #421` changes the graph as much as a code one |
-| **Door 7 — a claim-holding lane says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml` and `mechanic.yml` under `if: always()`, carrying only `run_id`. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step runs after the cap cancels the job (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
+| **Door 7 — a lane the machine started says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml` and `mechanic.yml` under `if: always()`, and by `acceptance.yml`'s own `wake-reconciler` job (node 07), carrying only `run_id`. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step or job runs after the cap cancels the work (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
 | **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 5, 6 and 7 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
 
 ### Why the completed event was missed before #445
@@ -176,7 +176,7 @@ criterion string, verbatim:
 
 | No matching test found | A matching test already exists |
 |---|---|
-| `dispatchAcceptanceWanted(number, true)` — back into this same lane's own author | `dispatchTicketReady(number)` — rings lane 05 directly. This is the branch #421 takes once #420 delivers: its test was already authored back when lane 03 first published it, so the recompute finds it and skips straight past the author |
+| `dispatchAcceptanceWanted(number, true)` — back into this same lane's own author, after the ladder below has counted the ticket's dead runs; on the third strike nothing is sent and the decision is posted instead | `dispatchTicketReady(number)` — rings lane 05 directly. This is the branch #421 takes once #420 delivers: its test was already authored back when lane 03 first published it, so the recompute finds it and skips straight past the author |
 
 ### edge — the three outbound dispatches
 
@@ -193,15 +193,16 @@ model-spending job whose token needs protecting from write access.
 
 ### The ladder · `climbLadder()`, `dispatch/strikes.ts`
 
-Before a `ticket-ready` goes out, the recompute asks what already died on this ticket.
+Before a `ticket-ready` or an `acceptance-wanted` goes out, the recompute asks what already died
+on this ticket.
 
 | | |
 |---|---|
 | **In flight** | `gh run list --limit 100 --json databaseId,displayTitle,status,conclusion,url`, one call. A ticket is in flight when a non-completed run's title is `Implement #420`, `Mechanic #420` or `Acceptance #420` — the caller stubs' `run-name` — and an in-flight ticket is `started` whatever the refs say |
 | **A bare claim** | `implement/issue-420` exists, no run carries #420, no pull request, no commits: a dead run's leftover. `releaseDeadClaim()` deletes the ref and the ticket reads as unstarted. A branch with a pull request or commits is somebody's work and stays |
-| **Dead runs** | Completed runs titled `Implement #420` or `Mechanic #420` whose conclusion is `failure`, `cancelled` or `timed_out`, minus those a strike comment already names |
-| **The strike** | One comment per dead run: `<!-- strike:v1 run=<id> conclusion=<c> -->`, the signature (`<!-- strike-signature:… -->`, the last `implement failed:` or `mechanic failed:` line of `gh run view --log-failed`, or `<conclusion> before answering` when nothing said why), the run's URL, and the rung that follows. At most ten logs are read per recompute |
-| **The rung** | `rungFor(strikes)`: 0 → `ticket-ready`; 1 → `ticket-ready` with `rung: fresh-eyes` (lane 05 skips its first model); 2 → `mechanic-wanted` ([mechanic-lane-edges.md](mechanic-lane-edges.md)); 3 → the decision |
+| **Dead runs** | Completed runs titled `Implement #420`, `Mechanic #420` or `Acceptance #420` whose conclusion is `failure`, `cancelled` or `timed_out`, minus those a strike comment already names. An Acceptance death is a strike like any other (#457): before it was, a ticket whose author died by its 30-minute cap every time would have been re-dispatched immediately and forever once door 7 heard it, one Opus call per half hour |
+| **The strike** | One comment per dead run: `<!-- strike:v1 run=<id> conclusion=<c> -->`, the signature (`<!-- strike-signature:… -->`, the last `implement failed:`, `mechanic failed:` or `acceptance … failed:` line of `gh run view --log-failed`, or `<conclusion> before answering` when nothing said why), the run's URL, and what follows. At most ten logs are read per recompute |
+| **The rung** | `rungFor(strikes)`: 0 → `ticket-ready`; 1 → `ticket-ready` with `rung: fresh-eyes` (lane 05 skips its first model); 2 → `mechanic-wanted` ([mechanic-lane-edges.md](mechanic-lane-edges.md)); 3 → the decision. A ticket with no test yet climbs the same count, but every rung short of the decision sends `acceptance-wanted` again: the author has no second model and no mechanic, so there the strike is the bound and not the routing. A strike earned by the author still counts once a test exists, since the count is the ticket's |
 | **The decision** | One comment (`<!-- strike-decision:v1 -->`) listing every strike with its run, whether the signatures repeat, and three lettered options with a recommendation; `needs-human` and the owner assigned. Nothing is dispatched. Strikes before the decision no longer count, so removing `needs-human` starts the ladder from rung one; a fourth death after the decision is a new first strike |
 | **`needs-human` on a ticket** | is the owner's hold: the recompute never dispatches such a ticket, whatever its strikes say |
 | **In a dry run** | no strike is written, no claim released, and a bare claim reads as started |
@@ -235,13 +236,14 @@ A slice is unreachable when it's transitively blocked on a blocker that closed w
 `acceptance-caller.yml` `on:` — `issues: [edited]` and `repository_dispatch: [acceptance-wanted]`.
 Concurrency: `acceptance-${{ issue.number || client_payload.issue }}`.
 
-Three jobs:
+Four jobs:
 
 | Job | Fires when | Does |
 |---|---|---|
 | `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body (a spec-gap amendment) | Checks out machine + target, notes `ACCEPTANCE_BASE = git rev-parse HEAD`, runs `acceptance.ts --refire "$PRD_NUMBER"` |
 | `author` | `action == 'acceptance-wanted'` — node 04's own dispatch door | Marks the ticket `running`, runs `acceptance.ts "$TICKET_NUMBER"`, unmarks on `always()` |
-| `land` | `needs: [refire, author]`, either upstream job set `authored == 'true'` | The only job with `contents: write` — both upstream jobs run with the workflow's default `contents: read` |
+| `land` | `needs: [refire, author]`, either upstream job set `authored == 'true'` | Holds `contents: write` to push — both upstream jobs run with the workflow's default `contents: read` |
+| `wake-reconciler` | `needs: [refire, author, land]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 5's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs. It is a job rather than a last step because a step inside `author` would hold that job's `contents: read` and could not send a dispatch ([ADR-0091](../adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md)); the same reason `land` is its own job |
 
 ---
 
@@ -409,7 +411,7 @@ delivers.
 | after the model, before commit | `landAuthoredBatch` | Collection failure, an accidentally-green test, or a lint failure |
 | after commit, in `land` | `git am --3way` / rebase | The patch doesn't apply or the rebase conflicts. The first time on a ticket this re-fires `acceptance-wanted` (`refire: 1`, same `ready`); a conflict on the re-fired run is the `needs-human` |
 | after replay | `land`'s `npm run check` | Any gauntlet slot red against the replayed tree |
-| 10 min / 30 min | job `timeout-minutes` | `dispatch-reconcile`: 10 min; `acceptance.yml`'s three jobs: 30/30/10 |
+| 10 min / 30 min | job `timeout-minutes` | `dispatch-reconcile`: 10 min; `acceptance.yml`'s `refire`/`author`/`land`: 30 each, and its `wake-reconciler` tail 5. A cap death here is a strike on the ticket (node 04's ladder), so the wake it rings starts the author again at most twice |
 
 ---
 

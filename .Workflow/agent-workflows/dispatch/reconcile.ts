@@ -819,15 +819,15 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       continue;
     }
     try {
+      const rung = climbLadder(gh, state.number, runs, logReads, log, wants === "acceptance-wanted" ? "author" : undefined);
+      if (rung === "decision") {
+        deciding.push(state.number);
+        continue;
+      }
       if (wants === "acceptance-wanted") {
         dispatchAcceptanceWanted(gh, state.number, true);
         authoring.push(state.number);
         log(`#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author first.`);
-        continue;
-      }
-      const rung = climbLadder(gh, state.number, runs, logReads, log);
-      if (rung === "decision") {
-        deciding.push(state.number);
         continue;
       }
       if (rung === "mechanic") dispatchMechanicWanted(gh, state.number);
@@ -886,6 +886,7 @@ function climbLadder(
   runs: LaneRun[],
   logReads: { left: number },
   log: (line: string) => void,
+  next?: "author",
 ): Rung {
   const comments = fetchComments(gh, ticket)?.map((comment) => comment.body);
   if (comments === undefined) {
@@ -904,7 +905,8 @@ function climbLadder(
     logReads.left -= 1;
     const strike = { runId: run.databaseId, conclusion, signature };
     strikes.push(strike);
-    gh(["issue", "comment", String(ticket), "--body", strikeBody(strike, run.url, rungFor(strikes.length))]);
+    const following = rungFor(strikes.length);
+    gh(["issue", "comment", String(ticket), "--body", strikeBody(strike, run.url, following === "decision" ? following : (next ?? following))]);
     log(`#${ticket}: strike ${strikes.length} from run ${run.databaseId}: ${signature}`);
   }
 
