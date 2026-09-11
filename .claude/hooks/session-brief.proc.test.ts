@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
@@ -214,12 +214,116 @@ const UNASSIGNED_BY_HAND_ISSUE = {
   body: "## What to build\n\nPrune them.\n",
 };
 
+const UNCHANGED_BY_HAND_ISSUE = {
+  number: 631,
+  title: "keep the run rows where they are",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/631",
+  html_url: "https://github.com/stub/repo/issues/631",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [],
+  body: "## What to build\n\nKeep them.\n",
+};
+
+const REMOVED_BY_HAND_ISSUE = {
+  number: 632,
+  title: "retire the pasted closing message",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/632",
+  html_url: "https://github.com/stub/repo/issues/632",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [],
+  body: "## What to build\n\nRetire it.\n",
+};
+
+const RESTATED_BY_HAND_ISSUE = {
+  number: 633,
+  title: "relabel the dotfiles ticket",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/633",
+  html_url: "https://github.com/stub/repo/issues/633",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [],
+  body: "## What to build\n\nRelabel it.\n",
+};
+
+const RESTATED_BY_HAND_ISSUE_NOW_CLAIMED = {
+  ...RESTATED_BY_HAND_ISSUE,
+  assignees: [{ login: "owner" }],
+};
+
+const ADDED_BY_HAND_ISSUE = {
+  number: 634,
+  title: "sweep the stale worktrees",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/634",
+  html_url: "https://github.com/stub/repo/issues/634",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [],
+  body: "## What to build\n\nSweep them.\n",
+};
+
+const WORKSTATION_CLAIMED_ISSUE = {
+  number: 641,
+  title: "relink the run-row reader",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/641",
+  html_url: "https://github.com/stub/repo/issues/641",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [{ login: "owner" }],
+  body: "## What to build\n\nRelink it.\n",
+};
+
+const OTHER_WORKSTATION_CLAIMED_ISSUE = {
+  number: 642,
+  title: "repoint the chezmoi symlinks",
+  state: "open",
+  url: "https://github.com/stub/repo/issues/642",
+  html_url: "https://github.com/stub/repo/issues/642",
+  repository_url: "https://api.github.com/repos/stub/repo",
+  labels: [{ name: "by-hand" }],
+  assignees: [{ login: "owner" }],
+  body: "## What to build\n\nRepoint them.\n",
+};
+
+const DELTA_SNAPSHOT = {
+  repo: "stub/repo",
+  session_id: "sb-previous-session",
+  tickets: [
+    OPEN_PRD_ISSUE,
+    UNCHANGED_BY_HAND_ISSUE,
+    REMOVED_BY_HAND_ISSUE,
+    RESTATED_BY_HAND_ISSUE,
+  ],
+  claimed: null,
+};
+
+const REMOVED_ONLY_SNAPSHOT = {
+  repo: "stub/repo",
+  session_id: "sb-previous-session",
+  tickets: [OPEN_PRD_ISSUE, UNCHANGED_BY_HAND_ISSUE, REMOVED_BY_HAND_ISSUE],
+  claimed: null,
+};
+
+const WORKSTATION_CLAIM_SNAPSHOT = {
+  repo: "stub/repo",
+  session_id: "sb-previous-session",
+  tickets: [OPEN_PRD_ISSUE, WORKSTATION_CLAIMED_ISSUE, OTHER_WORKSTATION_CLAIMED_ISSUE],
+  claimed: WORKSTATION_CLAIMED_ISSUE,
+};
+
 type World = { root: string; home: string; repo: string; bin: string };
 
 type FireOptions = {
   sessionId?: string;
   comments?: Record<string, unknown[]>;
   blocked?: Record<string, unknown[]>;
+  env?: Record<string, string>;
 };
 
 function makeWorld(): World {
@@ -256,6 +360,57 @@ function fire(world: World, issues: unknown[], options: FireOptions = {}) {
       STUB_GH_ISSUES: JSON.stringify(issues),
       STUB_GH_COMMENTS: JSON.stringify(options.comments ?? {}),
       STUB_GH_BLOCKED: JSON.stringify(options.blocked ?? {}),
+      ...(options.env ?? {}),
+    },
+  });
+}
+
+function machineLocalDir(world: World): string {
+  const dir = join(world.root, "machine-local");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function snapshotPaths(world: World, stateDir: string): string[] {
+  const project = basename(world.repo);
+  const dirs = [
+    stateDir,
+    join(world.home, ".claude", "state"),
+    join(world.home, ".claude", "logs"),
+    join(world.repo, ".claude", "state"),
+    join(world.repo, ".claude", "logs"),
+  ];
+  const names = [
+    "session-snapshot.json",
+    `session-snapshot-${project}.json`,
+    "session-brief-snapshot.json",
+    "session-end-snapshot.json",
+    `${project}.json`,
+  ];
+  return dirs.flatMap((dir) => names.map((name) => join(dir, name)));
+}
+
+function fireWithMachineLocalState(
+  world: World,
+  issues: unknown[],
+  snapshot: unknown | null,
+  options: FireOptions = {},
+) {
+  const stateDir = machineLocalDir(world);
+  const paths = snapshotPaths(world, stateDir);
+  if (snapshot !== null) {
+    for (const path of paths) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify(snapshot, null, 2));
+    }
+  }
+  return fire(world, issues, {
+    ...options,
+    env: {
+      STOP_GATE_LOG_DIR: stateDir,
+      SESSION_BRIEF_SNAPSHOT: paths[0],
+      SESSION_SNAPSHOT_FILE: paths[0],
+      ...(options.env ?? {}),
     },
   });
 }
@@ -281,6 +436,17 @@ function briefLines(run: { stdout: string | null }): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
+}
+
+function linesBeforeTheFirstCriterion(run: { stdout: string | null }): string[] {
+  const lines = briefLines(run);
+  const criterionAt = lines.findIndex((line) => line.includes(FIRST_CRITERION));
+  const head = criterionAt === -1 ? lines : lines.slice(0, criterionAt);
+  return head.filter((line) => !line.endsWith(":"));
+}
+
+function naming(lines: string[], ticket: string): string[] {
+  return lines.filter((line) => line.includes(ticket));
 }
 
 function otherLiveSessionLines(run: { stdout: string | null }): string[] {
@@ -407,3 +573,65 @@ test("#441.4: an assigned by-hand issue is never named in this section", () => {
   expect(text).toContain("#622");
   expect(text).not.toContain("#621");
 });
+
+test.fails(
+  "#443.1: given a snapshot and a since-changed stubbed tracker, the brief's first lines are the delta, one per added, removed or changed-state ticket",
+  () => {
+    const run = fireWithMachineLocalState(
+      makeWorld(),
+      [
+        OPEN_PRD_ISSUE,
+        UNCHANGED_BY_HAND_ISSUE,
+        RESTATED_BY_HAND_ISSUE_NOW_CLAIMED,
+        ADDED_BY_HAND_ISSUE,
+      ],
+      DELTA_SNAPSHOT,
+    );
+    expect(run.status).toBe(0);
+    expect(briefText(run)).toContain(FIRST_CRITERION);
+
+    const delta = linesBeforeTheFirstCriterion(run);
+    expect(naming(delta, "#632")).toHaveLength(1);
+    expect(naming(delta, "#633")).toHaveLength(1);
+    expect(naming(delta, "#634")).toHaveLength(1);
+    expect(naming(delta, "#631")).toHaveLength(0);
+    expect(naming(delta, "#501")).toHaveLength(0);
+  },
+);
+
+test.fails("#443.2: with no snapshot file present, no delta line is printed", () => {
+  const withSnapshot = fireWithMachineLocalState(
+    makeWorld(),
+    [OPEN_PRD_ISSUE, UNCHANGED_BY_HAND_ISSUE],
+    REMOVED_ONLY_SNAPSHOT,
+  );
+  expect(withSnapshot.status).toBe(0);
+  expect(briefText(withSnapshot)).toContain(FIRST_CRITERION);
+  expect(naming(linesBeforeTheFirstCriterion(withSnapshot), "#632")).toHaveLength(1);
+
+  const withoutSnapshot = fireWithMachineLocalState(
+    makeWorld(),
+    [OPEN_PRD_ISSUE, UNCHANGED_BY_HAND_ISSUE],
+    null,
+  );
+  expect(withoutSnapshot.status).toBe(0);
+  expect(briefText(withoutSnapshot)).toContain(FIRST_CRITERION);
+  expect(linesBeforeTheFirstCriterion(withoutSnapshot)).toHaveLength(0);
+});
+
+test.fails(
+  "#443.3: the workstation's own claimed-and-open by-hand ticket is named from its snapshot, and a same-account ticket from another workstation's is not",
+  () => {
+    const run = fireWithMachineLocalState(
+      makeWorld(),
+      [OPEN_PRD_ISSUE, WORKSTATION_CLAIMED_ISSUE, OTHER_WORKSTATION_CLAIMED_ISSUE],
+      WORKSTATION_CLAIM_SNAPSHOT,
+    );
+    expect(run.status).toBe(0);
+
+    const text = briefText(run);
+    expect(text).toContain(FIRST_CRITERION);
+    expect(text).toContain("#641");
+    expect(text).not.toContain("#642");
+  },
+);
