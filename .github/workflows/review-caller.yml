@@ -1,19 +1,17 @@
 name: Review
 
 "on":
-  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
+  repository_dispatch:
+    types: [review-wanted]
 
 jobs:
   review:
     permissions:
       contents: read
       issues: write
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event != 'push'
+    if: github.event.action == 'review-wanted'
     uses: collod873/claude-workflow/.github/workflows/review.yml@main
     with:
-      head_sha: ${{ github.event.workflow_run.head_sha }}
+      head_sha: ${{ github.event.client_payload.head_sha }}
+      base_sha: ${{ github.event.client_payload.base_sha }}
     secrets: inherit

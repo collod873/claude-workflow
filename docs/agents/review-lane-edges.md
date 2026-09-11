@@ -17,14 +17,17 @@ model call in both still goes through
 
 What is structurally unusual here, twice over. First: unlike lane 08's `integrate.ts`, which races
 lane 06 by waking on the *same* `implementation-opened` dispatch verify-lane-edges.md's node 00
-describes, both halves of this lane wake only once lane 06's entire run has *finished* —
-`workflow_run: [Verify], types: [completed]` — and split on which way its conclusion went. Second:
-the fixer has the same "two doors" shape lane 06's own dispatch does, for a different reason: it
-answers both the `workflow_run` completion directly *and* the `fixer-needed` `repository_dispatch`
-that `verify.yml`'s `signal-fixer` job sends on that same run (documented in
-[`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire)) — two wakes
-naming the identical run id, deduplicated by a marker comment rather than by picking one door to
-listen at.
+describes, both halves of this lane wake only once lane 06's judging jobs have *finished*, and each
+is rung by a `repository_dispatch` that run's own tail jobs send: `review-wanted` when `Verify` is
+green (node 00), `fixer-needed` when it is red (node 08), both documented in
+[`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire). Second: neither
+half listens on `workflow_run: [Verify]`, and the reason is worth keeping. A Verify run a dispatch
+started has `actor: github-actions[bot]`, and GitHub's recursion guard starts no workflow from a
+bot-started run's completion
+([ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)). The
+only Verify completions that ever opened such a door were push-started ones, which both gates
+then excluded: Review had never run once, and the fixer had only ever heard its dispatch (#456,
+[ADR-0179](../adr/0179-a-judged-run-rings-its-readers-by-dispatch-because-a-workflo.md)).
 
 Payload contents below are a worked example built to the real shapes and rules, continuing
 [`verify-lane-edges.md`](verify-lane-edges.md)'s own thread: **PR #501** on branch
@@ -47,22 +50,24 @@ shell · **[stop]** can refuse and end the run.
 
 `review-caller.yml` `on:` / `review.yml` `jobs.review`
 
-Woken by lane 06's own completion, not by the dispatch that started it.
+Woken by a ring from lane 06's own green run, not by the dispatch that started it.
 
 | | |
 |---|---|
-| **Fires on** | `workflow_run: [Verify], types: [completed]` |
-| **Passes when** | `github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'push'` |
-| **Why `event != 'push'`** | Door 1 of lane 06 is trunk judging itself — no pull request, nothing for this lane to read either. The exclusion is identical to the one on the fixer's own door (node 08) |
-| **Hands off** | `head_sha: ${{ github.event.workflow_run.head_sha }}` — the one fact this lane inherits from lane 06's run, rather than reading `client_payload` itself |
+| **Fires on** | `repository_dispatch: review-wanted`, sent by `verify.yml`'s `signal-review` job once that run's `Verify` job is green ([`verify-lane-edges.md`](verify-lane-edges.md#node-03b-the-signal-review-job-wire)) |
+| **Passes when** | `github.event.action == 'review-wanted'` |
+| **Why no push run reaches here** | Door 1 of lane 06 is trunk judging itself — no pull request, nothing for this lane to read. `signal-review` fires only on lane 06's dispatch door, so a push run rings nobody rather than being filtered out here |
+| **Hands off** | `head_sha` and `base_sha` off `client_payload`: the pull request's head as it stood when lane 06 went green, and the `main` commit that run judged — `github.sha` of a dispatch-started run is the default branch's tip at dispatch time |
 | **Concurrency** | `review-${{ inputs.head_sha }}`, `cancel-in-progress: false` |
 | **Permissions** | `contents: read`, `issues: write` — this lane never writes to the repository or the pull request, only to issues |
 
-### edge — `workflow_run` completed · the one field this lane reads
+### edge — `repository_dispatch` · `review-wanted`
 
 ```json
-{"workflow_run": {"conclusion": "success", "event": "repository_dispatch",
-  "head_sha": "9f2e7a1c4b8d3f0a5e6c7b8d9a0f1e2d3c4b5a6f"}}
+{"event_type": "review-wanted",
+ "client_payload": {"run_id": 18234501177,
+   "head_sha": "9f2e7a1c4b8d3f0a5e6c7b8d9a0f1e2d3c4b5a6f",
+   "base_sha": "3c1d8e2f9a0b4c5d6e7f8a9b0c1d2e3f4a5b6c7d"}}
 ```
 
 ---
@@ -78,9 +83,9 @@ all — the diff comes from two commits, not from asking GitHub what changed.
 |---|---|
 | **Checks out** | The machine (`collod873/claude-workflow@main`) at the workspace root, and the target at `ref: inputs.head_sha`, `fetch-depth: 0`, under `target/` |
 | **Refuses** | `CLAUDE_CODE_OAUTH_TOKEN` empty, before Node is installed — same preflight every model-spending job runs |
-| **Runs** | `npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ inputs.head_sha }}"` |
-| **The diff** | `execGit(["diff", "origin/main...HEAD_SHA"])` — three-dot, so what shows is what `HEAD_SHA` carries since it diverged from `origin/main` |
-| **What `HEAD_SHA` is, precisely** | Whatever `github.event.workflow_run.head_sha` named on lane 06's own run — see *Loose ends* for what that is worth, given how that run itself woke |
+| **Runs** | `npx tsx .Workflow/agent-workflows/review/review.ts "${{ inputs.base_sha }}" "${{ inputs.head_sha }}"` |
+| **The diff** | `execGit(["diff", "BASE_SHA...HEAD_SHA"])` — three-dot, so what shows is what `HEAD_SHA` carries since it diverged from `BASE_SHA` |
+| **Why two fixed commits, not `origin/main`** | Lane 08 merges the pull request the moment lane 06's gate is green, usually before this job has checked out. Against a live `origin/main` the merge-base would then be `HEAD_SHA` itself and the diff empty; between two commits fixed when lane 06 rang, it is the pull request's own whenever this runs. The implementer rebases onto trunk before pushing, so `BASE_SHA` (trunk at dispatch time) is that merge-base |
 
 ### edge — the diff · raw `git diff` text
 
@@ -305,19 +310,17 @@ prompt edit."
 
 ---
 
-## Node 08 — the fixer's two doors, and the dedup · [stop]
+## Node 08 — the fixer's doors, and the dedup · [stop]
 
 `fixer-caller.yml` `on:` / `fixer.yml` `jobs.fixer.if`
 
-The mirror image of node 00: wakes on lane 06's own run going the other way, from either of two
-independent signals for the identical run.
+The mirror image of node 00: wakes on lane 06's own run going the other way.
 
 | | |
 |---|---|
-| **Door 1** | `workflow_run: [Verify], types: [completed]`, passing when `conclusion` is `failure` or `cancelled` **and** `event != 'push'` |
-| **Door 2** | `repository_dispatch: fixer-needed` — sent by `verify.yml`'s own `signal-fixer` job, carrying `client_payload.run_id`, documented at [`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire) |
-| **Door 3** | `workflow_dispatch`, `run_id` optional — empty resolves no pull request and exits |
-| **Both doors 1 and 2 name the same run** | `signal-fixer` fires *because* `verify`/`immutability` already went red on that run, which is the identical condition door 1's own `if` re-checks independently. Whichever fires first reaches node 09; the other is deduplicated there, not here |
+| **Door 1** | `repository_dispatch: fixer-needed` — sent by `verify.yml`'s own `signal-fixer` job, carrying `client_payload.run_id`, documented at [`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire) |
+| **Door 2** | `workflow_dispatch`, `run_id` optional — empty resolves no pull request and exits |
+| **The door that is gone** | This stub used to carry `workflow_run: [Verify]` beside door 1, gated on `conclusion` red and `event != 'push'`. It opened only for push-started runs, which that gate excluded, so door 1 was the one wake that ever arrived; the door came off with #456. Node 09's marker still deduplicates a hand re-dispatch of a run already reacted to |
 | **Concurrency** | `fixer-${{ inputs.run_id \|\| github.run_id }}`, `cancel-in-progress: false` |
 | **Permissions** | `contents: write`, `pull-requests: write`, `issues: write`, `actions: read` |
 
@@ -525,7 +528,7 @@ Ordered by how much has been spent when it fires.
 
 | Cost | Where | Fires when |
 |---|---|---|
-| free | `review-caller.yml` `on:` | Not a completed `Verify` run, the run failed, or it was a push |
+| free | `review-caller.yml` `on:` | No `review-wanted` arrived — lane 06 rings it only when a dispatch-started run's `Verify` job is green |
 | free | `fixer-caller.yml` `on:` | Neither door's condition holds |
 | one runner, before any model | node 09's no-op exits | Empty `RUN_ID`; no `Immutability` job; the log names no pull request; the PR isn't `OPEN`; the marker is already there |
 | one runner, real failure | node 09's poll | The named run is still not `completed` five minutes in |
@@ -568,15 +571,10 @@ discipline lane 05's node 01 uses for who owns `implement/issue-421` at all.
   never joined by a colon. What a real correctness or conformance finding would have to say for
   its citation to land inside a real diff's text is not established by anything this lane's tests
   exercise.
-- What `github.event.workflow_run.head_sha` actually names, for a `Verify` run woken by
-  `repository_dispatch` (door 2 of that lane, the only door this lane's own gate admits), is not
-  settled by anything in `client_payload` — the `implementation-opened` payload
-  (`verify-lane-edges.md`'s own node 00) carries `pr` and `changed_files`, never a sha or a ref. A
-  `repository_dispatch`-triggered run's own `github.sha` context is documented to be the default
-  branch's tip at dispatch time, not a value the payload names, and nothing in `verify.yml`'s
-  `jobs.verify` checkout (also unreffed) overrides it either. What relationship `origin/main...HEAD_SHA`
-  (node 01) bears to the pull request's real diff is not something this document can establish from
-  the code alone.
+- `signal-review` reads the pull request's head when lane 06 goes green, not when it was
+  dispatched. A push to the branch in the minutes between is reviewed as if it had been judged;
+  lane 08 judges the head it merges for itself, so nothing lands on that account, but the review
+  and the verdict can name different commits.
 - `fixer-caller.yml` hardcodes `test_dir: .Workflow`. `enrol.ts`'s `syncStubs` copies every
   `*-caller.yml` byte-for-byte into every enrolled repository
   ([ADR-0133](../adr/0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md)'s own

@@ -90,14 +90,16 @@ describe("planFire", () => {
   });
 
   it("refuses a workflow_run-only lane and names the upstream lane it can prove instead", () => {
-    for (const lane of ["bypass-counter", "review"]) {
-      const plan = planFire(lane);
-      expect(plan.kind).toBe("refuse");
-      if (plan.kind === "refuse") {
-        expect(plan.reason).toContain("workflow_run");
-        expect(plan.reason).toContain("--lane verify");
-      }
+    const plan = planFire("bypass-counter");
+    expect(plan.kind).toBe("refuse");
+    if (plan.kind === "refuse") {
+      expect(plan.reason).toContain("workflow_run");
+      expect(plan.reason).toContain("--lane verify");
     }
+  });
+
+  it("plans a dispatch for review now that lane 06 rings it by review-wanted rather than a door that never opened (#456)", () => {
+    expect(planFire("review").kind).not.toBe("refuse");
   });
 
   it("produces a plan for every real caller.yml lane in the repo without throwing", () => {

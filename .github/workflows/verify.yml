@@ -118,3 +118,27 @@ jobs:
           gh api "repos/{owner}/{repo}/dispatches" \
             -f event_type=fixer-needed \
             -f "client_payload[run_id]=$GITHUB_RUN_ID"
+
+  signal-review:
+    name: Signal the reviewer
+    needs: [immutability, verify]
+    if: github.event.action == 'implementation-opened' && needs.verify.result == 'success'
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Tell Review this run went green, naming the commits it judged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.client_payload.pr }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=review-wanted \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID" \
+            -f "client_payload[head_sha]=$HEAD_SHA" \
+            -f "client_payload[base_sha]=$GITHUB_SHA"

@@ -21,6 +21,7 @@ import {
   MACHINE_REPOSITORY,
   MAIN_MOVED,
   OWNER_GATE,
+  REVIEW_WANTED,
   RUN_ENDED,
   SHAPE_LABELS_APPLIED,
   type Checkout,
@@ -278,6 +279,15 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     expect(tail.permissions).toEqual({ contents: "write" });
     for (const job of modelJobs) expect(LANE_WIRING.acceptance.jobs[job].permissions).toBeUndefined();
     expect(tail.steps?.some((step) => step.run?.includes(`event_type=${RUN_ENDED}`))).toBe(true);
+  });
+
+  it("a judged run rings its readers by dispatch, and neither reader keeps a workflow_run door, since one never opens for a bot-started Verify (#456)", () => {
+    const signal = LANE_WIRING.verify.jobs["signal-review"];
+    expect(signal.gate?.is).toContain("needs.verify.result == 'success'");
+    expect(signal.steps?.some((step) => step.run?.includes(`event_type=${REVIEW_WANTED}`))).toBe(true);
+    expect(LANE_WIRING.review.caller?.on).toEqual({ repository_dispatch: [REVIEW_WANTED] });
+    for (const input of ["head_sha", "base_sha"]) expect(LANE_WIRING.review.caller?.with?.[input]).toContain(`client_payload.${input}`);
+    expect(Object.keys(LANE_WIRING.fixer.caller?.on ?? {})).not.toContain("workflow_run");
   });
 
   it("shape.yml creates every label shape.ts applies", () => {

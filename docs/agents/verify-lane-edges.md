@@ -35,6 +35,7 @@ itself — nothing has been dispatched, there is no pull request, no ticket, no 
 | **Door 2 — dispatch** | `repository_dispatch: implementation-opened` |
 | **Who sends door 2** | Three callers, all through the same `dispatchVerify()`: lane 05's implementer opening a PR ([`implementation-landing.ts`](../../.Workflow/agent-workflows/shared/implementation-landing.ts)), the fixer re-dispatching after a repair ([`fixer.ts`](../../.Workflow/agent-workflows/fixer/fixer.ts)), and the ratifier landing a batch ([`ratify/land.ts`](../../.Workflow/agent-workflows/ratify/land.ts)) |
 | **Same event, two workflows** | `integrate-caller.yml` listens for the identical `implementation-opened` dispatch and starts in parallel — see node 04. Nothing here tells it to wait |
+| **Who hears a door-2 run end** | Nobody through `workflow_run`. A dispatch-started run has `actor: github-actions[bot]`, and GitHub's recursion guard starts no workflow from a bot-started run's completion ([ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)); a `workflow_run: [Verify]` door opens only for door-1 runs, which a person pushed. So this workflow rings its own readers by `repository_dispatch` from two tail jobs: `fixer-needed` when the judgment is red (node 03), `review-wanted` when it is green (node 03b). The bypass counter is not rung and keeps its `workflow_run` door: it counts door-1 runs, and those do open it (#456, [ADR-0179](../adr/0179-a-judged-run-rings-its-readers-by-dispatch-because-a-workflo.md)) |
 | **Concurrency** | None declared, unlike `integrate.yml`'s `group: integrate` — see *Loose ends* |
 
 ### edge — `client_payload` · what a dispatch carries
@@ -137,6 +138,33 @@ what it was.
 
 ---
 
+## Node 03b — the signal-review job · [wire]
+
+`verify.yml` `jobs.signal-review`
+
+`needs: [immutability, verify]`, fires only when door 2 fired this run *and* the `Verify` job came
+back `success`. The green twin of node 03: a red run rings the fixer, a green one rings the
+reviewer, and a push run rings neither.
+
+| | |
+|---|---|
+| **Permission** | `contents: write` for the dispatch, `pull-requests: read` for one `gh pr view` |
+| **Resolves** | The pull request's head commit, `gh pr view "$PR" --json headRefOid`, from the `pr` the dispatch carried. The run's own `github.sha` is not it: on a dispatch-started run that is `main`'s tip at dispatch time, the commit this run's gauntlet judged |
+| **Sends** | One `repository_dispatch`, `review-wanted`, carrying this run's id, that head, and `github.sha` as `base_sha` |
+| **Wakes** | `review-caller.yml`, which diffs `base_sha...head_sha` and reviews it ([`review-lane-edges.md`](review-lane-edges.md)) |
+| **Why both shas** | Lane 08 merges the pull request the moment this run's gate is green, usually before the reviewer has checked out. A diff against a live `origin/main` would then be empty; a diff between two fixed commits is the pull request's own whenever it runs |
+
+### edge — `repository_dispatch` · `review-wanted`
+
+```json
+{"event_type": "review-wanted",
+ "client_payload": {"run_id": 18234501177,
+   "head_sha": "9f2e7a1c4b8d3f0a5e6c7b8d9a0f1e2d3c4b5a6f",
+   "base_sha": "3c1d8e2f9a0b4c5d6e7f8a9b0c1d2e3f4a5b6c7d"}}
+```
+
+---
+
 ## Node 04 — the sibling that reads the verdict · [wire] [stop]
 
 `integrate-caller.yml` → `integrate.ts` (lane 08)
@@ -183,6 +211,7 @@ Green produces no comment at all — silence is the passing case, same as lane 0
 | immutability | no (`if` skips) | yes | nothing | read | no |
 | verify | yes | yes | machine + target | read | no |
 | signal-fixer | no (`if` requires dispatch) | only on a judged failure | nothing | **write** | no — sends a dispatch, not a comment |
+| signal-review (node 03b) | no (`if` requires dispatch) | only on a judged green | nothing | **write**, `pull-requests: read` | reads its head commit; sends a dispatch |
 | integrate (node 04) | no | yes, same event | machine + target | **write**, `pull-requests: write`, `issues: write` | yes — merges it, or comments the refusal |
 
 ---
