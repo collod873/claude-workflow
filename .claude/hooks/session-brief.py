@@ -12,7 +12,7 @@ NEEDS_HUMAN_LABEL = "needs-human"
 BY_HAND_LABEL = "by-hand"
 PRD_LABEL = "prd"
 
-SNAPSHOT_FILENAME = "session-snapshot.json"
+SNAPSHOT_PREFIX = "session-snapshot-"
 TRACKED_LABELS = (PRD_LABEL, NEEDS_HUMAN_LABEL, BY_HAND_LABEL)
 TRACKED_FIELDS = "number,title,state,labels,assignees"
 MAX_BRIEF_LINES = 30
@@ -149,8 +149,8 @@ def next_by_hand_line(gh, repo: str, cwd: str) -> str | None:
     return None
 
 
-def load_snapshot() -> dict | None:
-    path = _hook.LOG_DIR / SNAPSHOT_FILENAME
+def load_snapshot(repo: str) -> dict | None:
+    path = _hook.LOG_DIR / f"{SNAPSHOT_PREFIX}{repo.replace('/', '__')}.json"
     try:
         raw = path.read_text()
     except OSError:
@@ -287,7 +287,7 @@ def main() -> None:
     other_sessions = other_live_session_lines(payload.get("session_id") or "", cwd)
     by_hand = next_by_hand_line(repo_gh, repo, cwd)
 
-    snapshot = load_snapshot()
+    snapshot = load_snapshot(repo)
     delta = delta_lines(snapshot, tracked_tickets(repo_gh, cwd)) if snapshot is not None else []
     claimed = claimed_line(snapshot) if snapshot is not None else None
 

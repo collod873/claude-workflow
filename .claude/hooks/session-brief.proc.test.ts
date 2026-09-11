@@ -413,6 +413,7 @@ function snapshotPaths(world: World, stateDir: string): string[] {
     join(world.repo, ".claude", "logs"),
   ];
   const names = [
+    "session-snapshot-stub__repo.json",
     "session-snapshot.json",
     `session-snapshot-${project}.json`,
     "session-brief-snapshot.json",
@@ -934,7 +935,7 @@ async function briefOnceTheDetachedSnapshotLands(
   }
 }
 
-test.fails(
+test(
   "#484.1: running session-end.py then session-brief.py against the same stubbed gh and log dir, after a by-hand ticket changes labels between the two, prints that ticket's delta line and the claimed-ticket line",
   async () => {
     const stage = roundTripStage();

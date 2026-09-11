@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import tempfile
+import time
 from pathlib import Path
 
 import _harness
@@ -21,6 +22,9 @@ STUB_GH.write_text(
     "        if i + 1 < len(argv):\n"
     "            return argv[i + 1]\n"
     "    return None\n"
+    "if argv[:2] == ['repo', 'view']:\n"
+    "    print(json.dumps({'nameWithOwner': os.environ.get('STUB_REPO', 'acme/workstation')}))\n"
+    "    sys.exit(0)\n"
     "table = json.loads(os.environ.get('STUB_BY_LABEL', '{}'))\n"
     "issues = table.get(flag('--label') or '', [])\n"
     "assignee = flag('--assignee')\n"
@@ -35,30 +39,31 @@ STUB_GH.chmod(0o755)
 CWD = Path(tempfile.mkdtemp(prefix="session-end-cwd-"))
 
 LOGIN = "octocat"
+STUB_REPO = "acme/workstation"
 
-PRD_CRITERION = "a session is handed the next by-hand ticket"
 PRD_ISSUE = {
-    "number": 9100,
-    "title": "Sessions do not finish",
-    "body": "\n".join([
-        "## Acceptance criteria",
-        "",
-        f"- [ ] {PRD_CRITERION} - check: `npm test`",
-        "",
-    ]),
+    "number": 9100, "title": "Sessions do not finish", "state": "open",
+    "labels": [{"name": "prd"}], "assignees": [], "body": "",
 }
-NEEDS_HUMAN_ISSUE = {"number": 9101, "title": "Door stood this one down", "body": ""}
+NEEDS_HUMAN_ISSUE = {
+    "number": 9101, "title": "Door stood this one down", "state": "open",
+    "labels": [{"name": "needs-human"}], "assignees": [], "body": "",
+}
 CLAIMED_BY_HAND_ISSUE = {
     "number": 9142,
     "title": "Rewire the workstation symlinks",
-    "body": "",
+    "state": "open",
+    "labels": [{"name": "by-hand"}],
     "assignees": [{"login": LOGIN}],
+    "body": "",
 }
 UNCLAIMED_BY_HAND_ISSUE = {
     "number": 9143,
     "title": "Someone else's by-hand ticket",
-    "body": "",
+    "state": "open",
+    "labels": [{"name": "by-hand"}],
     "assignees": [],
+    "body": "",
 }
 
 STUB_BY_LABEL = json.dumps({
@@ -67,7 +72,8 @@ STUB_BY_LABEL = json.dumps({
     "by-hand": [CLAIMED_BY_HAND_ISSUE, UNCLAIMED_BY_HAND_ISSUE],
 })
 
-SNAPSHOT_PATH = CWD / ".claude" / "state" / "session-end.json"
+SNAPSHOT_NAME = f"session-snapshot-{STUB_REPO.replace('/', '__')}.json"
+SNAPSHOT_WAIT_SECONDS = 20
 
 
 def payload():
@@ -81,39 +87,38 @@ def payload():
 
 
 def drive():
-    env = ROWLOG.env(AGENT_SKILLS_GH=str(STUB_GH), STUB_BY_LABEL=STUB_BY_LABEL, STUB_LOGIN=LOGIN)
+    env = ROWLOG.env(AGENT_SKILLS_GH=str(STUB_GH), STUB_BY_LABEL=STUB_BY_LABEL,
+                     STUB_LOGIN=LOGIN, STUB_REPO=STUB_REPO)
+    log_dir = ROWLOG.root / str(ROWLOG.n)
     run = _harness.run_hook(HOOK, payload(), env=env)
     assert run.proc.returncode == 0, f"exit {run.proc.returncode}: {run.proc.stderr!r}"
     assert run.proc.stderr == b"", run.proc.stderr
-    return run, ROWLOG.last("session-end")
+    snapshot_path = log_dir / SNAPSHOT_NAME
+    deadline = time.monotonic() + SNAPSHOT_WAIT_SECONDS
+    while not snapshot_path.is_file() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return run, ROWLOG.last("session-end"), snapshot_path
 
 
 def main():
     print("## A session end with open spec, needs-human and by-hand issues")
-    _run, rows = drive()
+    _run, rows, snapshot_path = drive()
 
-    check("writes the snapshot file", SNAPSHOT_PATH.is_file(), str(SNAPSHOT_PATH))
-    snapshot = json.loads(SNAPSHOT_PATH.read_text())
+    check("writes the snapshot file", snapshot_path.is_file(), str(snapshot_path))
+    snapshot = json.loads(snapshot_path.read_text())
+    numbers = {ticket.get("number") for ticket in snapshot.get("tickets", [])}
 
-    check("names the spec-criteria issue with its criterion sentence",
-          any("#9100" in line and PRD_CRITERION in line for line in snapshot["spec_criteria"]),
-          str(snapshot["spec_criteria"]))
-    check("names the needs-human issue",
-          any("#9101" in line for line in snapshot["needs_human"]),
-          str(snapshot["needs_human"]))
-    check("names both open by-hand issues",
-          {"#9142" in line for line in snapshot["by_hand"]} != set()
-          and any("#9143" in line for line in snapshot["by_hand"]),
-          str(snapshot["by_hand"]))
+    check("names the spec-criteria issue", 9100 in numbers, str(numbers))
+    check("names the needs-human issue", 9101 in numbers, str(numbers))
+    check("names both open by-hand issues", {9142, 9143} <= numbers, str(numbers))
+    claimed = snapshot.get("claimed") or {}
     check("names only this session's claimed-and-open by-hand ticket",
-          any("#9142" in line for line in snapshot["claimed_open_by_hand"])
-          and not any("#9143" in line for line in snapshot["claimed_open_by_hand"]),
-          str(snapshot["claimed_open_by_hand"]))
+          claimed.get("number") == 9142, str(claimed))
     check("writes exactly one run row", len(rows) == 1, str(rows))
 
     print("\n## Every fire writes its own row")
     for n in range(1, 4):
-        _, rows = drive()
+        _, rows, _ = drive()
         check(f"fire {n}: exactly one row", len(rows) == 1, str(rows))
 
     finish("session-end: snapshot content and run-row checks all passed.")
