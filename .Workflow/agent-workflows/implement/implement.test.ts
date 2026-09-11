@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   checkoutChanged,
   githubHoldingClaims,
@@ -20,11 +20,12 @@ import { declaredEditsNote, gateRedNote } from "../shared/implementation-landing
 import { implementerAnswer, implementerReply } from "../shared/implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
+import { errorMessage } from "../shared/reason";
 import type { GateVerdict } from "../shared/run-gauntlet";
 import { gateSaying } from "../shared/gate.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { StageReply } from "../shared/stage";
-import { createFakeStage, createFakeStages, unspentBudget, type FakeStage } from "../shared/stage.fake";
+import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   CLAIM_TIMEOUT_MINUTES,
@@ -72,7 +73,6 @@ function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }:
   const deps: ImplementDeps = {
     gh: host.gh,
     exec: stage.exec,
-    budget: unspentBudget(host.gh, ISSUE),
     git: checkout.git,
     attempt: () => describeAttempt(checkout.git),
     readFile: (path) => built[path] ?? "# CONTEXT\n",
@@ -459,12 +459,20 @@ describe("a claim does not outlive the run that made it", () => {
     expect(refDeletesIn(host.calls)).toHaveLength(1);
   });
 
-  it("ends a run whose lane budget is spent at the implementer, and releases the claim it made", async () => {
-    const { deps, host } = arrange();
-    deps.budget = { ...deps.budget, signal: AbortSignal.abort() };
+  it("ends a run whose lane budget runs out at the implementer, and releases the claim it made", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { deps, host } = arrange({ deps: { exec: () => new Promise(() => {}) } });
 
-    await expect(runImplement(deps)).rejects.toThrow(`timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`);
+    const running = runImplement(deps).then(
+      () => "opened",
+      (err: unknown) => errorMessage(err),
+    );
+    await vi.advanceTimersByTimeAsync(LANE_BUDGET_MINUTES * 60_000);
 
+    expect(await running).toBe(`timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`);
     expect(host.refs.has(BRANCH)).toBe(false);
     expect(refDeletesIn(host.calls)).toHaveLength(1);
   });

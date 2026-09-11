@@ -110,7 +110,8 @@ export function runImplementer(
   budget: LaneBudget,
   brief: string,
 ): Promise<StageSessionResult<ImplementerReply>> {
-  return runStageSessionWithinBudget(budget, IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
+  return runStageSessionWithinBudget(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
+    budget,
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
@@ -124,7 +125,8 @@ export function runRepair(
   sessionId: string,
   gateOutput: string,
 ): Promise<StageSessionResult<ImplementerReply>> {
-  return runStageSessionWithinBudget(budget, REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
+  return runStageSessionWithinBudget(REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
+    budget,
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
@@ -141,12 +143,12 @@ export function runFreshEyes(
   gateOutput: string,
 ): Promise<StageSessionResult<ImplementerReply>> {
   return runStageSessionWithinBudget(
-    budget,
     FRESH_EYES_PROMPT_PATH,
     { BRIEF: brief, ATTEMPT: attempt, GATE_OUTPUT: gateOutputTail(gateOutput) },
     exec,
     IMPLEMENTER_OUTPUT,
     {
+      budget,
       model: FRESH_EYES_MODEL,
       promptViaStdin: true,
       disallowedTools: IMPLEMENTER_DENIED_TOOLS,
@@ -183,7 +185,6 @@ export { implementationBranch };
 export interface ImplementDeps extends TargetCheckout {
   gh: GhExec;
   exec: StageExec;
-  budget: LaneBudget;
   attempt: () => string;
   sourceFiles: () => string[];
   adrFiles: () => string[];
@@ -199,9 +200,10 @@ export interface ImplementDeps extends TargetCheckout {
 export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
   return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), (claim) => {
     if (claim.tookOverStaleClaim) sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
-    return buildAndOpen(deps, branch, log);
+    return buildAndOpen(deps, budget, branch, log);
   });
 }
 
@@ -221,7 +223,12 @@ function gateOnChanges(deps: ImplementDeps, log: (line: string) => void): GateVe
   return again;
 }
 
-async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: string) => void): Promise<ImplementOutcome> {
+async function buildAndOpen(
+  deps: ImplementDeps,
+  budget: LaneBudget,
+  branch: string,
+  log: (line: string) => void,
+): Promise<ImplementOutcome> {
   const stateRead = JSON.parse(deps.gh(["issue", "view", String(deps.issueNumber), "--json", "state"])) as {
     state?: string;
   };
@@ -265,7 +272,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     log("the tracker carries a strike against this ticket, so rung one is skipped and fresh eyes run first");
     gate = { ok: false, output: strikesAsGateOutput(deps.comments()) };
   } else {
-    const first = await runImplementer(deps.exec, deps.budget, brief);
+    const first = await runImplementer(deps.exec, budget, brief);
     reply = first.value;
     gate = gateOnChanges(deps, log);
     sessions.push({ stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns });
@@ -273,7 +280,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
 
     if (!gate.ok && first.sessionId) {
       log(`resuming session ${first.sessionId} for the one repair round`);
-      const repaired = await runRepair(deps.exec, deps.budget, first.sessionId, gate.output);
+      const repaired = await runRepair(deps.exec, budget, first.sessionId, gate.output);
       reply = {
         summary: repaired.value.summary,
         outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
@@ -288,7 +295,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   if (!gate.ok) {
     log("the push gate is still red after rung one; running a fresh Opus session with a clean context");
     const attempt = [...summaries, deps.attempt()].join("\n\n");
-    const freshEyes = await runFreshEyes(deps.exec, deps.budget, brief, attempt, gate.output);
+    const freshEyes = await runFreshEyes(deps.exec, budget, brief, attempt, gate.output);
     reply = {
       summary: freshEyes.value.summary,
       outOfBriefReads: [...reply.outOfBriefReads, ...freshEyes.value.outOfBriefReads],
@@ -362,7 +369,6 @@ async function main(): Promise<void> {
       ...checkout,
       gh: execGh,
       exec: execClaudeIn(repoDir),
-      budget: startLaneBudget(LANE_BUDGET_MINUTES, { gh: execGh, ticket: issueNumber, run: currentLaneRun() }),
       attempt: () => describeAttempt(checkout.git),
       sourceFiles: () => walkSourceFiles(repoDir),
       adrFiles: () => listAdrFiles(repoDir),

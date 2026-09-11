@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STAGE_SESSION_VARS } from "./child-env";
+import { LANE_BUDGET_MINUTES } from "./claim";
 import { issueComments, type GhExec } from "./gh";
 import { handoffPath } from "./handoff-path";
 import { reason } from "./reason";
@@ -295,20 +296,22 @@ export function currentLaneRun(env: NodeJS.ProcessEnv = process.env): LaneRunRef
   return { id, url: `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${id}` };
 }
 
-export interface LaneBudget {
-  minutes: number;
-  signal: AbortSignal;
+export interface LaneTicket {
   gh: GhExec;
   ticket: number;
   run?: LaneRunRef;
 }
 
-export function startLaneBudget(
-  minutes: number,
-  lane: Pick<LaneBudget, "gh" | "ticket" | "run">,
-  timeout: (ms: number) => AbortSignal = AbortSignal.timeout,
-): LaneBudget {
-  return { ...lane, minutes, signal: timeout(minutes * 60_000) };
+export interface LaneBudget {
+  minutes: number;
+  signal: AbortSignal;
+  ticket?: LaneTicket;
+}
+
+export function startLaneBudget(minutes: number = LANE_BUDGET_MINUTES, ticket?: LaneTicket): LaneBudget {
+  const spent = new AbortController();
+  setTimeout(() => spent.abort(), minutes * 60_000).unref();
+  return { minutes, signal: spent.signal, ticket };
 }
 
 function whenSpent(signal: AbortSignal): { spent: Promise<undefined>; release: () => void } {
@@ -321,25 +324,39 @@ function whenSpent(signal: AbortSignal): { spent: Promise<undefined>; release: (
   return { spent, release: () => signal.removeEventListener("abort", onAbort) };
 }
 
-function writeTimeoutStrike(budget: LaneBudget, signature: string): void {
-  if (budget.run === undefined) return;
+function priorStrikes(on: LaneTicket): number {
   try {
-    const prior = strikesIn(issueComments(budget.gh, budget.ticket)).length;
-    const strike = { runId: budget.run.id, conclusion: "failure", signature };
-    budget.gh(["issue", "comment", String(budget.ticket), "--body", strikeBody(strike, budget.run.url, rungFor(prior + 1))]);
+    return strikesIn(issueComments(on.gh, on.ticket)).length;
+  } catch {
+    return 0;
+  }
+}
+
+function timeoutComment(on: LaneTicket, signature: string): string {
+  if (on.run === undefined) {
+    return ["Timed out outside GitHub Actions, so no run carries a strike:", "", "```", signature, "```"].join("\n");
+  }
+  const strike = { runId: on.run.id, conclusion: "failure", signature };
+  return strikeBody(strike, on.run.url, rungFor(priorStrikes(on) + 1));
+}
+
+function writeTimeoutStrike(on: LaneTicket | undefined, signature: string): void {
+  if (on === undefined) return;
+  try {
+    on.gh(["issue", "comment", String(on.ticket), "--body", timeoutComment(on, signature)]);
   } catch {
   }
 }
 
 export async function runStageSessionWithinBudget<T>(
-  budget: LaneBudget,
   promptPath: string,
   vars: Record<string, string>,
   exec: StageExec,
   output: StructuredOutput<T>,
-  options: StageOptions,
+  options: StageOptions & { budget?: LaneBudget },
 ): Promise<StageSessionResult<T>> {
-  const session = runStageSession(promptPath, vars, exec, output, { ...options, signal: budget.signal });
+  const { budget = startLaneBudget(), ...stageOptions } = options;
+  const session = runStageSession(promptPath, vars, exec, output, { ...stageOptions, signal: budget.signal });
   session.catch(() => {});
   const { spent, release } = whenSpent(budget.signal);
   let finished: StageSessionResult<T> | undefined;
@@ -352,7 +369,7 @@ export async function runStageSessionWithinBudget<T>(
   }
   if (finished !== undefined) return finished;
   const signature = `timed out after ${budget.minutes} minutes at ${options.stage}`;
-  writeTimeoutStrike(budget, signature);
+  writeTimeoutStrike(budget.ticket, signature);
   throw new Error(signature);
 }
 

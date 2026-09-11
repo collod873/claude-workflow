@@ -1,11 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
 import { LANE_BUDGET_MINUTES } from "./claim";
 import type { GhExec } from "./gh";
 import { withHandoffDir } from "./handoff-dir.fixture";
+import { errorMessage } from "./reason";
 import { createFakeStage } from "./stage.fake";
 import {
   checkpointPath,
@@ -15,6 +16,7 @@ import {
   runStageSessionWithinBudget,
   startLaneBudget,
   type LaneRunRef,
+  type LaneTicket,
   type StageExec,
 } from "./stage";
 import { strikeBody } from "./strikes";
@@ -380,7 +382,12 @@ describe("runStageSession", () => {
 describe("runStageSessionWithinBudget", () => {
   const TICKET = 494;
   const RUN: LaneRunRef = { id: 777, url: "https://github.com/o/r/actions/runs/777" };
+  const BUDGET_MS = LANE_BUDGET_MINUTES * 60_000;
   const TIMED_OUT = `timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   function trackerWith(priorComments: string[]) {
     const posted: string[] = [];
@@ -409,73 +416,72 @@ describe("runStageSessionWithinBudget", () => {
     return { exec, killed };
   }
 
-  function injectedClock() {
-    const clock = new AbortController();
-    const asked: number[] = [];
-    const timeout = (ms: number) => {
-      asked.push(ms);
-      return clock.signal;
-    };
-    return { timeout, asked, expire: () => clock.abort() };
+  async function settledAfter<T>(running: Promise<T>, ms: number): Promise<string> {
+    const settled = running.then(
+      () => "answered",
+      (err: unknown) => errorMessage(err),
+    );
+    await vi.advanceTimersByTimeAsync(ms);
+    return Promise.race([settled, Promise.resolve("still running")]);
   }
 
-  it("kills the model process and writes a `timed out after 85 minutes at implementer` strike when the clock expires", async () => {
-    const promptPath = writePrompt("A prompt the budget runs out on.");
-    const tracker = trackerWith([]);
-    const clock = injectedClock();
+  async function expireOn(ticket: LaneTicket | undefined, stage = "implementer") {
+    vi.useFakeTimers();
+    const promptPath = writePrompt(`A prompt the budget runs out on at ${stage}.`);
     const model = modelThatNeverAnswers();
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, ticket);
+    const running = runStageSessionWithinBudget(promptPath, {}, model.exec, GREETING, { stage, budget });
+    const before = await settledAfter(running, BUDGET_MS - 1);
+    const after = await settledAfter(running, 1);
+    return { before, after, killed: model.killed };
+  }
 
-    const running = runStageSessionWithinBudget(budget, promptPath, {}, model.exec, GREETING, { stage: "implementer" });
-    clock.expire();
+  it("kills the model process and writes a `timed out after 85 minutes at implementer` strike when the clock reaches the budget", async () => {
+    const tracker = trackerWith([]);
 
-    await expect(running).rejects.toThrow(TIMED_OUT);
-    expect(clock.asked).toEqual([LANE_BUDGET_MINUTES * 60_000]);
-    expect(model.killed).toEqual([true]);
+    const outcome = await expireOn({ gh: tracker.gh, ticket: TICKET, run: RUN });
+
+    expect(outcome).toEqual({ before: "still running", after: TIMED_OUT, killed: [true] });
     expect(tracker.posted).toEqual([strikeBody({ runId: RUN.id, conclusion: "failure", signature: TIMED_OUT }, RUN.url, "fresh-eyes")]);
   });
 
   it("names the rung after the strikes already on the ticket, as reconcile would", async () => {
-    const promptPath = writePrompt("A prompt the budget runs out on, second strike.");
     const earlier = strikeBody({ runId: 1, conclusion: "cancelled", signature: "cancelled before answering" }, "u", "fresh-eyes");
     const tracker = trackerWith([earlier]);
-    const clock = injectedClock();
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
 
-    const running = runStageSessionWithinBudget(budget, promptPath, {}, modelThatNeverAnswers().exec, GREETING, {
-      stage: "implementer",
-    });
-    clock.expire();
+    await expireOn({ gh: tracker.gh, ticket: TICKET, run: RUN });
 
-    await expect(running).rejects.toThrow(TIMED_OUT);
     expect(tracker.posted[0]).toContain("Next: the mechanic");
   });
 
-  it("throws the same signature without a comment when no Actions run is known to name in it", async () => {
-    const promptPath = writePrompt("A prompt the budget runs out on, off the runner.");
+  it("still says so on the ticket off the runner, without a strike marker no dead run could match", async () => {
     const tracker = trackerWith([]);
-    const clock = injectedClock();
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET }, clock.timeout);
 
-    const running = runStageSessionWithinBudget(budget, promptPath, {}, modelThatNeverAnswers().exec, GREETING, {
-      stage: "implementer",
-    });
-    clock.expire();
+    const outcome = await expireOn({ gh: tracker.gh, ticket: TICKET });
 
-    await expect(running).rejects.toThrow(TIMED_OUT);
-    expect(tracker.posted).toEqual([]);
+    expect(outcome.after).toBe(TIMED_OUT);
+    expect(tracker.posted).toHaveLength(1);
+    expect(tracker.posted[0]).toContain(TIMED_OUT);
+    expect(tracker.posted[0]).not.toContain("<!-- strike:v1");
+  });
+
+  it("budgets a stage from its own start when no lane budget is handed in, and names that stage", async () => {
+    vi.useFakeTimers();
+    const promptPath = writePrompt("A prompt with no lane budget handed in.");
+    const running = runStageSessionWithinBudget(promptPath, {}, modelThatNeverAnswers().exec, GREETING, { stage: "ratifier" });
+
+    expect(await settledAfter(running, BUDGET_MS)).toBe(`timed out after ${LANE_BUDGET_MINUTES} minutes at ratifier`);
   });
 
   it("returns the stage's answer and writes nothing when the model answers inside the budget", async () => {
     const promptPath = writePrompt("A prompt answered in time.");
     const tracker = trackerWith([]);
-    const clock = injectedClock();
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN });
 
-    const answered = await runStageSessionWithinBudget(budget, promptPath, {}, createFakeStage(RESPONSE).exec, GREETING, {
+    const answered = await runStageSessionWithinBudget(promptPath, {}, createFakeStage(RESPONSE).exec, GREETING, {
       stage: "in-budget",
+      budget,
     });
-    clock.expire();
 
     expect(answered.value).toEqual({ greeting: "hi" });
     expect(tracker.posted).toEqual([]);
@@ -484,14 +490,14 @@ describe("runStageSessionWithinBudget", () => {
   it("lets a stage's own failure through untouched while the budget still has time", async () => {
     const promptPath = writePrompt("A prompt whose model dies on its own.");
     const tracker = trackerWith([]);
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, injectedClock().timeout);
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN });
     const dies: StageExec = async () => {
       throw new Error("`claude` exited 1");
     };
 
-    await expect(
-      runStageSessionWithinBudget(budget, promptPath, {}, dies, GREETING, { stage: "dies-alone" }),
-    ).rejects.toThrow("`claude` exited 1");
+    await expect(runStageSessionWithinBudget(promptPath, {}, dies, GREETING, { stage: "dies-alone", budget })).rejects.toThrow(
+      "`claude` exited 1",
+    );
     expect(tracker.posted).toEqual([]);
   });
 });
