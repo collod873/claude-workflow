@@ -64,7 +64,7 @@ describe("a strike on the ticket", () => {
     expect(recordedRunIds([...before, decision, after])).toEqual(new Set([1, 2, 3]));
   });
 
-  test.fails("#463.2: hasStandingDecision no longer exists in strikes.ts", async () => {
+  test("#463.2: hasStandingDecision no longer exists in strikes.ts", async () => {
     const exported = await import("./strikes");
 
     expect("hasStandingDecision" in exported).toBe(false);

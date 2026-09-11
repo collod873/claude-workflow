@@ -459,7 +459,7 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(outcome.note).toContain("decision");
   });
 
-  test.fails("#463.1: a ticket whose comments end with a decision marker and no later strike is dispatched at rung implementer", () => {
+  test("#463.1: a ticket whose comments end with a decision marker and no later strike is dispatched at rung implementer", () => {
     const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
     const first = ladderOver({ runs });
     const recorded = first.tracker.comments.map((comment) => comment.body);
@@ -471,7 +471,7 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(tracker.comments).toEqual([]);
   });
 
-  test.fails("#463.3: the reconcile note never says a ticket waits on a decision after three strikes", () => {
+  test("#463.3: the reconcile note never says a ticket waits on a decision after three strikes", () => {
     const runs = [900, 901, 902].map((id) => deadRun(id, TICKET, "implement failed: x\n"));
 
     const { outcome } = ladderOver({ runs });

@@ -31,7 +31,6 @@ import {
   deadRunsOf,
   decisionBody,
   fetchLaneRuns,
-  hasStandingDecision,
   readFailedLog,
   recordedRunIds,
   rungFor,
@@ -854,7 +853,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       unreachable: filed,
       note:
         deciding.length > 0
-          ? `nothing dispatched: #${deciding.join(", #")} wait on a decision after three strikes.`
+          ? `nothing dispatched: three strikes posted a decision for the owner on #${deciding.join(", #")}.`
           : `nothing became ready: ${startable.size} startable issue(s) open, none of them ready and unstarted.`,
     };
   }
@@ -893,7 +892,6 @@ function climbLadder(
     log(`#${ticket}: could not read its comments, so its strikes are unknown and rung one runs.`);
     return "implementer";
   }
-  if (hasStandingDecision(comments)) return "decision";
 
   const recorded = recordedRunIds(comments);
   const unrecorded = deadRunsOf(runs, ticket).filter((run) => !recorded.has(run.databaseId));
