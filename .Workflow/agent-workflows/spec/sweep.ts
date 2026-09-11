@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import type { PriorArt } from "../shared/sweep-schema";
-import { runStage, type StageExec } from "../shared/stage";
+import { runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext } from "./author-contract";
 
@@ -22,7 +23,7 @@ export type SpecSweep = z.infer<typeof SpecSweep>;
 export const SPEC_SWEEP_OUTPUT = structuredOutput(SpecSweep);
 
 export async function runSpecSweep(exec: StageExec, context: DecidedContext): Promise<SpecSweep> {
-  return runStage(
+  const { value } = await runStageSessionWithinBudget(
     PROMPT_PATH,
     {
       OWNER_WORDS: context.ownerWords,
@@ -33,12 +34,14 @@ export async function runSpecSweep(exec: StageExec, context: DecidedContext): Pr
     exec,
     SPEC_SWEEP_OUTPUT,
     {
+      budget: startLaneBudget(LANE_BUDGET_MINUTES),
       model: SPEC_SWEEP_MODEL,
       allowedTools: SPEC_AUTHOR_ALLOWED_TOOLS,
       promptViaStdin: true,
       stage: "sweep",
     },
   );
+  return value;
 }
 
 function toPriorArt(citation: z.infer<typeof SweepCitation>): PriorArt {

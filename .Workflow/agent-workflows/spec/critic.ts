@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { runStage, type StageExec } from "../shared/stage";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 
 export const SPEC_CRITIC_MODEL = "claude-opus-5";
@@ -40,7 +41,7 @@ export async function runSpecCritic(
 ): Promise<SpecCriticOutput> {
   const answers = input.answers?.filter((answer) => answer.trim() !== "") ?? [];
 
-  return runStage(
+  const { value } = await runStageSessionWithinBudget(
     PROMPT_PATH,
     {
       TITLE: input.title,
@@ -50,9 +51,11 @@ export async function runSpecCritic(
     exec,
     SPEC_CRITIC_OUTPUT,
     {
+      budget: startLaneBudget(LANE_BUDGET_MINUTES),
       model: SPEC_CRITIC_MODEL,
       promptViaStdin: true,
       stage: "critic",
     },
   );
+  return value;
 }
