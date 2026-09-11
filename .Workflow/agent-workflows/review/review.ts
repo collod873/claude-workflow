@@ -1,9 +1,17 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+} from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
@@ -41,14 +49,16 @@ export function keepSurvivingFindings(
 
 export async function runCorrectnessReview(
   exec: StageExec,
+  budget: LaneBudget,
   input: CorrectnessReviewInput,
 ): Promise<Finding[]> {
-  const raw = await runStage(
+  const { value: raw } = await runStageSessionWithinBudget(
     PROMPT_PATH,
     { DIFF: input.diff },
     exec,
     CORRECTNESS_REVIEWER_OUTPUT,
     {
+      budget,
       model: CORRECTNESS_REVIEWER_MODEL,
       promptViaStdin: true,
       stage: "correctness",
@@ -79,6 +89,7 @@ export interface ConformanceReviewInput {
   prdIssueNumber: number;
   ticketNumber: number;
   root?: string;
+  budget?: LaneBudget;
 }
 
 export interface ConformanceReviewResult {
@@ -106,12 +117,13 @@ export async function runConformanceReview(
 ): Promise<ConformanceReviewResult> {
   const scope = untestedCriteria(input.ticketNumber, input.criteria, input.root);
 
-  const raw = await runStage(
+  const { value: raw } = await runStageSessionWithinBudget(
     CONFORMANCE_REVIEWER_PROMPT_PATH,
     { SPEC: input.specText, SCOPE: scope.join("\n"), DIFF: input.diff },
     exec,
     CONFORMANCE_REVIEWER_OUTPUT,
     {
+      budget: input.budget ?? startLaneBudget(LANE_BUDGET_MINUTES),
       model: CORRECTNESS_REVIEWER_MODEL,
       promptViaStdin: true,
       stage: "conformance",
@@ -136,6 +148,7 @@ export interface RunReviewInput {
   assignee: string;
   head: string;
   root?: string;
+  budgetMinutes?: number;
 }
 
 type ResolvedSpec = Pick<ConformanceReviewInput, "specText" | "criteria" | "prdIssueNumber" | "ticketNumber">;
@@ -174,13 +187,30 @@ export interface RunReviewResult {
   counter: CounterOutcome;
 }
 
-export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
-  const correctness = await runCorrectnessReview(exec, { diff: input.diff, greenGateChecks: input.greenGateChecks });
+function resolveSpecSafely(gh: GhExec, head: string): ResolvedSpec | undefined {
+  try {
+    return resolveSpec(gh, head);
+  } catch (err) {
+    console.error(`conformance review skipped: ${reason(err)}`);
+    return undefined;
+  }
+}
 
-  const conformance = await reviewConformance(exec, gh, input);
+export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
+  const budgetMinutes = input.budgetMinutes ?? LANE_BUDGET_MINUTES;
+  const spec = resolveSpecSafely(gh, input.head);
+  const ticket = spec ? { gh, ticket: spec.ticketNumber, run: currentLaneRun() } : undefined;
+  const budget = startLaneBudget(budgetMinutes, ticket);
+
+  const correctness = await runCorrectnessReview(exec, budget, {
+    diff: input.diff,
+    greenGateChecks: input.greenGateChecks,
+  });
+
+  const conformance = await reviewConformance(exec, gh, input, spec, budget);
 
   const candidates = [...correctness, ...conformance];
-  const survivors = await runRefuter(exec, candidates, input.diff, input.greenGateChecks);
+  const survivors = await runRefuter(exec, candidates, input.diff, input.greenGateChecks, budgetMinutes);
   const tally: RefuterTally = { reached: candidates.length, refuted: candidates.length - survivors.length };
 
   const publishedIssues = publishFindings(gh, survivors, input.assignee);
@@ -189,14 +219,14 @@ export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInp
   return { survivors, publishedIssues, tally, counter };
 }
 
-async function reviewConformance(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<Finding[]> {
-  let spec: ResolvedSpec;
-  try {
-    spec = resolveSpec(gh, input.head);
-  } catch (err) {
-    console.error(`conformance review skipped: ${reason(err)}`);
-    return [];
-  }
+async function reviewConformance(
+  exec: StageExec,
+  gh: GhExec,
+  input: RunReviewInput,
+  spec: ResolvedSpec | undefined,
+  budget: LaneBudget,
+): Promise<Finding[]> {
+  if (spec === undefined) return [];
 
   const result = await runConformanceReview(exec, gh, {
     specText: spec.specText,
@@ -206,6 +236,7 @@ async function reviewConformance(exec: StageExec, gh: GhExec, input: RunReviewIn
     prdIssueNumber: spec.prdIssueNumber,
     ticketNumber: spec.ticketNumber,
     root: input.root,
+    budget,
   });
   return result.findings;
 }

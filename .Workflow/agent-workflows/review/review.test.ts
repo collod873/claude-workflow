@@ -431,14 +431,14 @@ function budgetedReviewInput() {
   };
 }
 
-test.fails("#499.1: review.ts calls the budget wrapper instead of runStage directly", async () => {
+test("#499.1: review.ts calls the budget wrapper instead of runStage directly", async () => {
   const exec = overBudgetExec({ findings: [] });
   const { gh } = trackerForReview({ pullsByCommit: claimedPulls(), tickets: CONFORMANCE_TICKETS });
 
   await expect(runReview(exec, gh, budgetedReviewInput())).rejects.toThrow(TIMED_OUT_AT_CORRECTNESS);
 });
 
-test.fails(
+test(
   "#499.3: both suites pass, including a case proving an elapsed budget strikes the ticket",
   async () => {
     const exec = overBudgetExec({ findings: [] });

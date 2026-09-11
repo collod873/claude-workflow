@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import { PATH_LINE_RE } from "../shared/ticket-shape";
-import { runStage, type StageExec } from "../shared/stage";
+import { runStageSessionWithinBudget, startLaneBudget, type LaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import type { Finding, GreenGateCheck } from "./structural-refusal";
 
@@ -30,8 +31,9 @@ async function runOne(
   finding: Finding,
   diff: string,
   greenGateChecks: GreenGateCheck[],
+  budget: LaneBudget,
 ): Promise<RefuterVerdict> {
-  return runStage(
+  const { value } = await runStageSessionWithinBudget(
     PROMPT_PATH,
     {
       FINDING: finding.message,
@@ -41,11 +43,13 @@ async function runOne(
     exec,
     REFUTER_OUTPUT,
     {
+      budget,
       model: REFUTER_MODEL,
       promptViaStdin: true,
       stage: "refuter",
     },
   );
+  return value;
 }
 
 export async function runRefuter(
@@ -53,10 +57,12 @@ export async function runRefuter(
   findings: Finding[],
   diff: string,
   greenGateChecks: GreenGateCheck[],
+  budgetMinutes?: number,
 ): Promise<Finding[]> {
+  const budget = startLaneBudget(budgetMinutes ?? LANE_BUDGET_MINUTES);
   const survivors: Finding[] = [];
   for (const finding of findings) {
-    const verdict = await runOne(exec, finding, diff, greenGateChecks);
+    const verdict = await runOne(exec, finding, diff, greenGateChecks, budget);
     if (survivesRefutation(verdict, greenGateChecks)) survivors.push(finding);
   }
   return survivors;
