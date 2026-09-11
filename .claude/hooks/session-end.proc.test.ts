@@ -95,7 +95,9 @@ def rendered(argv, payload):
 
 def main():
     argv = sys.argv[1:]
-    if "api" in argv and any(item.rstrip("/").endswith("user") for item in argv):
+    if argv[:2] == ["repo", "view"]:
+        payload = {"nameWithOwner": "acme/workstation"}
+    elif "api" in argv and any(item.rstrip("/").endswith("user") for item in argv):
         payload = {"login": LOGIN}
     else:
         payload = selected(argv)
@@ -105,19 +107,6 @@ def main():
 
 sys.exit(main())
 `;
-
-function filesUnder(root: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const full = join(root, entry.name);
-    if (entry.isDirectory()) {
-      found.push(...filesUnder(full));
-    } else {
-      found.push(full);
-    }
-  }
-  return found;
-}
 
 function sessionRepo(): string {
   const repo = mkdtempSync(join(tmpdir(), "session-end-"));
@@ -131,8 +120,8 @@ function sessionRepo(): string {
 }
 
 test(
-  "#442.1: running the hook writes a snapshot file under .claude/state/ naming the stubbed open issues and this session's claimed-and-open by-hand ticket",
-  () => {
+  "#442.1: running the hook writes a snapshot file naming the stubbed open issues and this session's claimed-and-open by-hand ticket",
+  async () => {
     const repo = sessionRepo();
     const payload = JSON.stringify({
       session_id: "session-442",
@@ -160,15 +149,19 @@ test(
       }
     }
 
-    const stateDir = join(repo, ".claude", "state");
-    expect(existsSync(stateDir)).toBe(true);
+    const logDir = join(repo, ".claude", "logs");
+    const snapshotPath = join(logDir, "session-snapshot-acme__workstation.json");
+    const deadline = Date.now() + 20_000;
+    while (!existsSync(snapshotPath) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(existsSync(snapshotPath)).toBe(true);
 
-    const snapshot = filesUnder(stateDir)
-      .map((file) => readFileSync(file, "utf8"))
-      .join("\n");
+    const snapshot = readFileSync(snapshotPath, "utf8");
     expect(snapshot).toContain("9142");
     expect(snapshot).toMatch(/91(00|01)/);
   },
+  30_000,
 );
 
 test("#442.2: session-end.py is registered under SessionEnd in the hook roster", () => {
@@ -477,7 +470,7 @@ function briefLinesOf(run: { stdout: string | null }): string[] {
     .filter((line) => line !== "");
 }
 
-test.fails(
+test(
   "#484.2: two session ends in two different repositories leave two snapshot files, and each repository's brief reads only its own",
   async () => {
     const stage = makeStage();
@@ -518,7 +511,7 @@ test.fails(
   60_000,
 );
 
-test.fails(
+test(
   "#484.3: session-end.py exits within 1 s when every gh call sleeps 5 s, and the snapshot still appears once the calls return",
   async () => {
     const stage = makeStage();
@@ -536,7 +529,7 @@ test.fails(
   150_000,
 );
 
-test.fails("#484.4: session-end.py no longer writes under .claude/state/", async () => {
+test("#484.4: session-end.py no longer writes under .claude/state/", async () => {
   const stage = makeStage();
   const repo = makeRepo(stage, "acme/tidy");
 
