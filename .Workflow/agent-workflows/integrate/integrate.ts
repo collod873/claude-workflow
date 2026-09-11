@@ -13,6 +13,7 @@ import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratificatio
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
+import { dispatchVerify } from "../shared/verify-dispatch";
 
 export { GRAPH_CHANGED_DISPATCH_ACTION };
 
@@ -166,7 +167,7 @@ function awaitVerifyVerdict(
   return verdict;
 }
 
-function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict): void {
+function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict, marker: string): void {
   const body = [
     `Lane 06's \`${GATE_JOB}\` job is **${verdict}** for this head commit, so lane 08 did not merge.`,
     "",
@@ -175,6 +176,8 @@ function noteAcceptanceRefusal(gh: GhExec, pr: string, verdict: JobVerdict): voi
       : "The job never reached a verdict within the window this lane waits, and an absent verdict is a refusal, never a pass (ADR-0054).",
     "",
     "Re-dispatch the pull request once the cause is dealt with; nothing retries this on its own.",
+    "",
+    marker,
   ].join("\n");
   try {
     gh(["pr", "comment", pr, "--body", body]);
@@ -213,7 +216,14 @@ function rebaseOntoTrunk(git: GitExec, branch: string): RebaseOutcome {
   return { conflicted: false };
 }
 
-function blockOnConflict(gh: GhExec, pr: string, paths: string[], ticket: number | undefined, assignee: string | undefined): void {
+function blockOnConflict(
+  gh: GhExec,
+  pr: string,
+  paths: string[],
+  ticket: number | undefined,
+  assignee: string | undefined,
+  marker: string,
+): void {
   const body = [
     "**Blocked: rebase conflict.** Lane 08 could not replay this branch onto current trunk, so it",
     "aborted the rebase and merged nothing. No model ran and nothing here judged the diff.",
@@ -223,6 +233,8 @@ function blockOnConflict(gh: GhExec, pr: string, paths: string[], ticket: number
     ...paths.map((path) => `- \`${path}\``),
     "",
     "Rebase it by hand and re-dispatch the pull request; nothing retries this on its own.",
+    "",
+    marker,
   ].join("\n");
   if (ticket !== undefined) escalateToOwner(gh, ticket, assignee);
   gh(["pr", "comment", pr, "--body", body]);
@@ -274,28 +286,66 @@ function closeMergedTicket(deps: IntegrateDeps, ticket: number | undefined, rang
   return { closed: false, reason: "refused", ticket };
 }
 
-export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
-  const pullRequest = readPr(deps.gh, deps.pr);
+const REFUSED_MARKER_OPEN = "<!-- integrate-refused:v1 ";
+const REFUSED_MARKER_CLOSE = " -->";
+const DRAINED_BRANCH_PREFIX = "implement/issue-";
+const OPEN_PR_PAGE_SIZE = 100;
+
+function refusedMarker(headSha: string): string {
+  return `${REFUSED_MARKER_OPEN}${headSha}${REFUSED_MARKER_CLOSE}`;
+}
+
+type Refusal = Exclude<IntegrateOutcome, { merged: true }>;
+
+const SILENT_REFUSALS: Record<Exclude<Refusal["reason"], "conflict" | "gate">, string> = {
+  red: "its own re-run gauntlet was red against this branch rebased onto trunk; the failures are in the Integrate run's log",
+  "no-run": "its own re-run gauntlet could not run at all; the Integrate run's log says why",
+  "immutable-set": "lane 06's `Immutability` job failed for this head commit; its log names the file",
+  unjudged: "lane 06 left no immutability verdict for this head commit",
+};
+
+function noteSilentRefusal(gh: GhExec, pr: string, why: string, headSha: string): void {
+  const body = [
+    `Lane 08 did not merge this at \`${headSha}\`: ${why}.`,
+    "",
+    "Lane 08 will not re-send it on its own. A new push re-dispatched, or a hand re-dispatch, judges it again.",
+    "",
+    refusedMarker(headSha),
+  ].join("\n");
+  try {
+    gh(["pr", "comment", pr, "--body", body]);
+  } catch (err) {
+    console.error(`could not mark ${pr} refused: ${reason(err)}`);
+  }
+}
+
+function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome {
   const rebase = rebaseOntoTrunk(deps.git, pullRequest.branch);
   if (rebase.conflicted) {
-    blockOnConflict(deps.gh, deps.pr, rebase.paths, pullRequest.ticket, deps.assignee);
+    const unrebased = refusedMarker(deps.git(["rev-parse", "HEAD"]).trim());
+    blockOnConflict(deps.gh, deps.pr, rebase.paths, pullRequest.ticket, deps.assignee, unrebased);
     return { merged: false, reason: "conflict", paths: rebase.paths };
   }
   const range = prCommitRange(deps.git);
+  const rebasedHead = range.slice(range.indexOf("..") + 2);
+  const refuse = (refusal: Exclude<Refusal, { reason: "conflict" | "gate" }>): Refusal => {
+    noteSilentRefusal(deps.gh, deps.pr, SILENT_REFUSALS[refusal.reason], rebasedHead);
+    return refusal;
+  };
 
   const result = deps.runGauntlet();
-  if (result.exitCode === 1) return { merged: false, reason: "red" };
-  if (result.exitCode !== 0) return { merged: false, reason: "no-run" };
+  if (result.exitCode === 1) return refuse({ merged: false, reason: "red" });
+  if (result.exitCode !== 0) return refuse({ merged: false, reason: "no-run" });
 
   const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.pr, deps.verifyWorkflow, deps.sleep ?? sleepSync);
-  if (verdict.immutability === "failed") return { merged: false, reason: "immutable-set" };
-  if (verdict.immutability !== "passed") return { merged: false, reason: "unjudged" };
+  if (verdict.immutability === "failed") return refuse({ merged: false, reason: "immutable-set" });
+  if (verdict.immutability !== "passed") return refuse({ merged: false, reason: "unjudged" });
   if (verdict.acceptance === "failed") {
-    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);
+    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance, refusedMarker(rebasedHead));
     return { merged: false, reason: "gate" };
   }
   if (verdict.acceptance !== "passed") {
-    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance);
+    noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance, refusedMarker(rebasedHead));
     return { merged: false, reason: "unjudged" };
   }
 
@@ -305,6 +355,53 @@ export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
   const closing = closeMergedTicket(deps, pullRequest.ticket, range);
   announceGraphChanged(deps.gh, deps.pr);
   return { merged: true, closing };
+}
+
+const OpenPr = z.object({
+  number: z.number(),
+  url: z.string(),
+  headRefName: z.string(),
+  headRefOid: z.string(),
+  files: z.array(z.object({ path: z.string() })),
+  comments: z.array(z.object({ body: z.string() })),
+});
+
+function refusedAtHead(pr: z.infer<typeof OpenPr>): boolean {
+  const marker = refusedMarker(pr.headRefOid);
+  return pr.comments.some((comment) => comment.body.includes(marker));
+}
+
+function drainNextPr(gh: GhExec, judged: string): void {
+  try {
+    const open = OpenPr.array().parse(
+      JSON.parse(
+        gh([
+          "pr",
+          "list",
+          "--state",
+          "open",
+          "--limit",
+          String(OPEN_PR_PAGE_SIZE),
+          "--json",
+          "number,url,headRefName,headRefOid,files,comments",
+        ]),
+      ),
+    );
+    const next = open
+      .filter((pr) => pr.headRefName.startsWith(DRAINED_BRANCH_PREFIX) && pr.url !== judged && !refusedAtHead(pr))
+      .sort((a, b) => a.number - b.number)[0];
+    if (next === undefined) return;
+    dispatchVerify(gh, { prUrl: next.url, changedFiles: next.files.map((file) => file.path), criteria: [] });
+    console.log(`drained ${next.url}: re-sent implementation-opened`);
+  } catch (err) {
+    console.error(`could not drain the next pull request: ${reason(err)}`);
+  }
+}
+
+export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
+  const outcome = judge(deps, readPr(deps.gh, deps.pr));
+  drainNextPr(deps.gh, deps.pr);
+  return outcome;
 }
 
 export function runRealGauntlet(repoDir: string = process.cwd()): GauntletResult {

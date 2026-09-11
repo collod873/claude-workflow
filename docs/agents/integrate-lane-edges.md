@@ -47,8 +47,8 @@ is no push door — nothing about merging trunk into itself is a thing this lane
 | **Fires on** | `repository_dispatch: implementation-opened` |
 | **Guarded by** | `jobs.integrate.if: github.event.action == 'implementation-opened'` — the `on:` block already lists only this one dispatch type, so this `if:` is closer to a restated confirmation than a second, independent filter |
 | **Same event as** | `verify-caller.yml`'s door 2 (verify-lane-edges.md, node 00). Both workflows wake off the identical dispatch, in parallel; neither `needs:` the other — this lane finds out lane 06's verdict for itself, at node 04 |
-| **Who sends it** | The same three callers `dispatchVerify()` funnels through: lane 05's implementer opening a pull request, the fixer re-dispatching after a repair, the ratifier landing a batch |
-| **Concurrency** | `group: integrate`, **global** — not scoped per pull request or issue the way `spec.yml` scopes per issue, and global for a different reason than `dispatch-reconcile.yml`'s own global group. Two pull requests merging at once would each rebase onto and push `main`; ADR-0040 keeps the merge serialised rather than building anything to arbitrate that race ("The merge stays serialised") |
+| **Who sends it** | The callers `dispatchVerify()` funnels through: lane 05's implementer opening a pull request, the fixer re-dispatching after a repair, the ratifier landing a batch, and this lane's own node 08 draining the next PR |
+| **Concurrency** | `group: integrate`, **global** — not scoped per pull request or issue the way `spec.yml` scopes per issue, and global for a different reason than `dispatch-reconcile.yml`'s own global group. Two pull requests merging at once would each rebase onto and push `main`; ADR-0040 keeps the merge serialised rather than building anything to arbitrate that race ("The merge stays serialised"). `cancel-in-progress: false` is **not a queue**: GitHub holds one running and one pending run per group, and each newer pending run cancels the older one. Seven PRs opening in three minutes on 2026-09-11 left five `cancelled` runs and five PRs unmerged (#516). Node 08's drain covers the dispatches the group drops |
 | **Permissions** | `contents: write`, `issues: write`, `pull-requests: write`, `actions: read` — declared once, at the workflow's top level, for the lane's single job |
 
 Before `integrate.ts` runs at all, the job also: checks out the machine
@@ -156,7 +156,7 @@ against the rebased result, before anything is asked about lane 06's verdict at 
 | **Exit 0** | Continue to node 04 |
 | **Exit 1** | `{merged: false, reason: "red"}` |
 | **Any other exit** | `{merged: false, reason: "no-run"}` — a crash, or a tool that could not even run, is kept a distinct finding from a red test, even though neither merges |
-| **On failure** | Captured stdout+stderr goes to the job's own log (`console.error`) and nowhere else. Neither `red` nor `no-run` posts a pull request comment or touches the ticket — see *Where it stops* |
+| **On failure** | Captured stdout+stderr goes to the job's own log (`console.error`). Both `red` and `no-run` post one short pull request comment naming the refusal and carrying the refusal marker node 08 reads; neither touches the ticket — see *Where it stops* |
 
 ### edge — `GauntletResult` · in-process, exit code only
 
@@ -183,8 +183,8 @@ grepping the immutability job's own log for `` judging ${pr} on ``.
 | | |
 |---|---|
 | **Waits** | Up to 40 attempts, 15 seconds apart (10 minutes), for the `Verify` job to leave `unjudged` |
-| **Immutability failed** | `{merged:false, reason:"immutable-set"}` — silent: no pull request comment, no ticket touched |
-| **Immutability not passed** (unjudged, still running, skipped) | `{merged:false, reason:"unjudged"}` — also silent |
+| **Immutability failed** | `{merged:false, reason:"immutable-set"}` — one short pull request comment pointing at lane 06's log, carrying the refusal marker; no ticket touched |
+| **Immutability not passed** (unjudged, still running, skipped) | `{merged:false, reason:"unjudged"}` — the same short comment |
 | **Acceptance (`Verify` job) failed** | `noteAcceptanceRefusal()` posts once on the pull request, then `{merged:false, reason:"gate"}` |
 | **Acceptance still unresolved after the wait** | The same comment function, worded for the timeout case, then `{merged:false, reason:"unjudged"}` |
 | **Both jobs passed** | Falls through to node 05 |
@@ -192,10 +192,11 @@ grepping the immutability job's own log for `` judging ${pr} on ``.
 ADR-0104 is the ruling actually in force: both of lane 06's jobs bind the merge, judged on the
 pull request's own head commit rather than trunk. ADR-0095's own text — block on immutability,
 only *warn* on acceptance — is superseded and no longer describes this code: every failure mode
-above refuses the merge outright. What survives from that history is only which refusals talk. An
-immutability failure never comments — its cause is already stated in lane 06's own job log, and
-nothing here spends anything to restate it. A gate failure or a timeout does comment, because
-that is the one verdict a pull request's author has no other way to see without opening Actions.
+above refuses the merge outright. Every refusal now leaves a pull request comment, because node
+08 reads the comment's marker to know not to re-send the PR. An immutability refusal's comment
+only points at lane 06's log, where the cause already is. A gate failure or a timeout gets the
+longer comment below, since that verdict is one a pull request's author cannot see without opening
+Actions.
 
 ### edge — `VerifyVerdict` · in-process object
 
@@ -376,6 +377,26 @@ outcome `"clear"` — a legitimate ending, not a lesser one than `"dispatched"`.
 
 ---
 
+## Node 08 — drain the next pull request · [wire]
+
+`drainNextPr()`, `integrate.ts` — runs after every run that reached an outcome, merged or refused,
+so the queue does not depend on each PR's own dispatch surviving node 00's concurrency group.
+
+| | |
+|---|---|
+| **Reads** | `gh pr list --state open --json number,url,headRefName,headRefOid,files,comments`, one call |
+| **Picks** | The lowest-numbered open PR on an `implement/issue-*` branch that is not the one this run just judged and carries no refusal marker for its current head |
+| **Refusal marker** | `<!-- integrate-refused:v1 <sha> -->`, written into every refusal comment nodes 02–04 post. `<sha>` is the head the refusal judged: the rebased head for every refusal after node 02, the unrebased head for a conflict. A push to the branch moves the head past the marker, so a fixed PR is drained again; an unchanged one never is, so a red PR cannot loop |
+| **Sends** | `implementation-opened` through `dispatchVerify()`, carrying the PR's own `files` as `changed_files`, since lane 06 wakes on the same dispatch and its immutability job refuses an empty list. `criteria` is empty: nothing downstream reads it |
+| **Drops** | Its own failure. A `gh` error here is logged and the run keeps the outcome it already had |
+| **Not drained** | Branches the implementer did not open (a ratifier PR, a by-hand branch), which still need their own dispatch |
+
+Each drained run sends the next one, and each send replaces whatever pending run the group was
+holding, so at most one PR is in flight and one queued at any moment. A PR whose own dispatch was
+already the pending one is simply re-sent; the group keeps one copy.
+
+---
+
 ## What each stage may touch
 
 | Node | Reads | Writes | Can act on the pull request / ticket |
@@ -383,11 +404,12 @@ outcome `"clear"` — a legitimate ending, not a lesser one than `"dispatched"`.
 | 00 — the door | the dispatch payload | — | — |
 | 01 — `readPr` | the pull request's own `headRefName` + `body` | — | — |
 | 02 — rebase | the target's git history, trunk | force-pushes the branch, on success | on conflict: labels + assigns the ticket, comments the pull request |
-| 03 — gauntlet | the rebased target tree | — | — |
-| 04 — await verdict | lane 06's run history, the immutability job's own log | — | comments the pull request on a gate failure or a timeout |
+| 03 — gauntlet | the rebased target tree | — | on failure: one short refusal comment on the pull request |
+| 04 — await verdict | lane 06's run history, the immutability job's own log | — | comments the pull request on every refusal |
 | 05 — merge | — | merges and deletes the branch, on GitHub | merges the pull request |
 | 06 — close | the ticket body, the target's `.test.ts` tree, each criterion's own check command | comments and closes the ticket | closes the ticket, or comments its own refusal |
 | 07 — ring | — | sends one dispatch | — |
+| 08 — drain | every open pull request's head, files and comments | sends at most one dispatch | — |
 
 ---
 
@@ -400,8 +422,8 @@ Ordered by how much has been spent when it fires.
 | free | `integrate-caller.yml`/`integrate.yml` `if:` | Wrong dispatch type or action — no runner is ever allocated | — |
 | one checkout, no gauntlet spend | node 02 | The rebase leaves real conflicts | **green** — the one refusal that costs the job nothing in its own eyes |
 | one checkout, no gauntlet spend, re-thrown | node 02 | The rebase fails with nothing left unmerged | red — an unhandled error, not this node's own refusal |
-| up to 15 min | node 03 | Any gauntlet slot is red against the rebased tree, or the gauntlet cannot run at all | red, silent to both the pull request and the ticket |
-| up to 10 min, then gives up | node 04's poll | Lane 06's immutability job failed, or never resolves | red, silent |
+| up to 15 min | node 03 | Any gauntlet slot is red against the rebased tree, or the gauntlet cannot run at all | red, one short refusal comment on the pull request, silent to the ticket |
+| up to 10 min, then gives up | node 04's poll | Lane 06's immutability job failed, or never resolves | red, one short refusal comment on the pull request |
 | up to 10 min, then gives up | node 04's poll | Lane 06's gate job failed, or never resolves | red, pull request comment posted |
 | after the merge | node 06 | `bin/close-ticket` refuses, or throws | **still green** — the merge already happened, and nothing here reverses it |
 | 30 min | the job's own `timeout-minutes` | The whole job, poll included, is cancelled | red |
@@ -436,11 +458,10 @@ made in both places to keep the record honest; nothing enforces that today.
   `integrate.yml`, or `integrate-caller.yml` — `runIntegrate` ends at `announceGraphChanged()`.
   Either the ADR names a step that was never built, or one that lives somewhere this reading did
   not find.
-- A gauntlet failure after the rebase (`red` or `no-run`, node 03) produces no pull request
-  comment and no ticket escalation of any kind — the only signal is a red Actions run on this
-  workflow. Every other refusal in this lane that reddens the job (`gate`, the unjudged timeout,
-  a rebase conflict) tells the pull request or the ticket why; this one does not, and nothing
-  re-dispatches it automatically.
+- A gauntlet failure after the rebase (`red` or `no-run`, node 03) now comments on the pull
+  request, but still escalates nothing on the ticket, and node 08 deliberately never re-sends
+  it. A red caused by a flaky test (#517) strands the PR until someone re-dispatches it by hand
+  or pushes to it.
 - [`pipeline-labels.md`](pipeline-labels.md) describes `needs-human` as meaning "an agent tried
   and stopped: a criterion still unmet after one fix pass, or the merge gate rejected the same
   merge twice." Lane 08's own use of it (node 02, on a rebase conflict) is neither of those — a

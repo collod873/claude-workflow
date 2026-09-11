@@ -52,6 +52,16 @@ export const GATE_JOB_RUNNING: VerifyJobFixture[] = [
   { name: GATE_JOB, status: "in_progress", conclusion: null },
 ];
 
+export interface OpenPrFixture {
+  number: number;
+  headRefOid?: string;
+  headRefName?: string;
+  files?: string[];
+  comments?: string[];
+}
+
+export const prUrl = (number: number) => `https://github.com/owner/repo/pull/${number}`;
+
 export const LANE_06_ALL_GREEN: VerifyRunFixture[] = [{ id: 900, jobs: BOTH_JOBS_GREEN }];
 
 export const CLOSED: CloseTicketResult = { exitCode: 0, output: "## Closing record\n" };
@@ -69,6 +79,7 @@ export interface HarnessOptions {
   prCommentThrows?: boolean;
   verifyRuns?: VerifyRunFixture[] | (() => VerifyRunFixture[]);
   rebaseLeavesUnmerged?: string[];
+  openPrs?: OpenPrFixture[];
 }
 
 export interface IntegrateHarness {
@@ -117,6 +128,7 @@ export function integrateHarness({
   prCommentThrows = false,
   verifyRuns = LANE_06_ALL_GREEN,
   rebaseLeavesUnmerged,
+  openPrs = [],
 }: HarnessOptions = {}): IntegrateHarness {
   const fakeGit = createFakeGit((args) => {
     if (args[0] === "rev-parse") return `${args[1] === "HEAD" ? HEAD_SHA : TRUNK_SHA}\n`;
@@ -130,6 +142,15 @@ export function integrateHarness({
   const closeCalls: Array<[number, string]> = [];
   const sleeps: number[] = [];
   let gauntletRuns = 0;
+
+  const open = openPrs.map((pr) => ({
+    number: pr.number,
+    url: prUrl(pr.number),
+    headRefName: pr.headRefName ?? `implement/issue-${pr.number}`,
+    headRefOid: pr.headRefOid ?? HEAD_SHA,
+    files: (pr.files ?? [`src/${pr.number}.ts`]).map((path) => ({ path })),
+    comments: (pr.comments ?? []).map((body) => ({ body })),
+  }));
 
   const currentRuns = () => scriptRuns(typeof verifyRuns === "function" ? verifyRuns() : verifyRuns);
 
@@ -148,9 +169,16 @@ export function integrateHarness({
     if (args[0] === "run" && args[1] === "view" && args[3] === "--log") {
       throw new Error(`gh: run ${args[2]} is still in progress; logs will be available when it is complete`);
     }
-    if (args[0] === "pr" && (args[1] === "merge" || args[1] === "edit")) return "";
+    if (args[0] === "pr" && args[1] === "list") return JSON.stringify(open);
+    if (args[0] === "pr" && args[1] === "merge") {
+      const merged = open.findIndex((pr) => pr.url === args[2]);
+      if (merged !== -1) open.splice(merged, 1);
+      return "";
+    }
+    if (args[0] === "pr" && args[1] === "edit") return "";
     if (args[0] === "pr" && args[1] === "comment") {
       if (prCommentThrows) throw new Error("gh: could not comment on the pull request");
+      open.find((pr) => pr.url === args[2])?.comments.push({ body: args[4] ?? "" });
       return "";
     }
     if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {

@@ -4,14 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { RATIFIER_MERGED_DISPATCH_ACTION, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
-import { GRAPH_CHANGED_DISPATCH_ACTION, type IntegrateDeps, runIntegrate } from "./integrate";
+import { GATE_JOB, GRAPH_CHANGED_DISPATCH_ACTION, IMMUTABILITY_JOB, type IntegrateDeps, runIntegrate } from "./integrate";
+import type { FakeDispatch } from "../shared/gh.fake";
+import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
 import {
+  BOTH_JOBS_GREEN,
   BRANCH,
   CLOSED,
+  GATE_JOB_RED,
+  GATE_JOB_RUNNING,
+  type HarnessOptions,
   integrateHarness,
   mergeCalls,
   PR,
   prComments,
+  prUrl,
   RANGE,
   REFUSED,
   TICKET,
@@ -363,4 +370,137 @@ describe("runIntegrate rings the merged trunk's own CI", () => {
       expect(ring).toBeLessThan(bell);
     },
   );
+});
+
+const resends = (dispatches: FakeDispatch[]) =>
+  dispatches.filter((dispatch) => dispatch.eventType === IMPLEMENTATION_PR_DISPATCH_ACTION);
+
+describe("runIntegrate drains the queue a dropped dispatch leaves behind", () => {
+  it("merges three open implementation PRs one per run from the one dispatch that survived", () => {
+    const judged: string[] = [];
+    const { calls, deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [{ number: 44 }, { number: 42 }, { number: 43 }],
+      verifyRuns: () => [{ jobs: BOTH_JOBS_GREEN, judging: judged.at(-1) }],
+    });
+
+    for (let next: string | undefined = prUrl(42); next !== undefined && judged.length < 5; ) {
+      const before = resends(dispatches).length;
+      judged.push(next);
+      runIntegrate({ ...deps, pr: next });
+      next = resends(dispatches).slice(before)[0]?.payload.pr;
+    }
+
+    expect(judged).toEqual([prUrl(42), prUrl(43), prUrl(44)]);
+    expect(mergeCalls(calls).map((call) => call[2])).toEqual([prUrl(42), prUrl(43), prUrl(44)]);
+  });
+
+  it("re-sends the next PR with its own changed files, since lane 06 wakes on the same dispatch and refuses an empty list", () => {
+    const { deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [{ number: 42 }, { number: 43, files: ["src/a.ts", "src/b.ts"] }],
+    });
+
+    runIntegrate(deps);
+
+    expect(resends(dispatches)).toEqual([
+      { eventType: IMPLEMENTATION_PR_DISPATCH_ACTION, payload: { pr: prUrl(43), changed_files: "src/a.ts,src/b.ts" } },
+    ]);
+  });
+
+  it("drains only the implementer's branches", () => {
+    const { deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [{ number: 42 }, { number: 40, headRefName: "fix/by-hand" }],
+    });
+
+    runIntegrate(deps);
+
+    expect(resends(dispatches)).toEqual([]);
+  });
+
+  it("keeps its outcome when the drain itself cannot read the open PRs", () => {
+    const { deps } = integrateHarness({ closeTicket: CLOSED });
+    const listless = (args: string[]): string => {
+      if (args[0] === "pr" && args[1] === "list") throw new Error("gh: rate limited");
+      return deps.gh(args);
+    };
+
+    expect(runIntegrate({ ...deps, gh: listless })).toEqual({ merged: true, closing: { closed: true, ticket: TICKET } });
+  });
+});
+
+describe("runIntegrate never drains a PR it refused", () => {
+  const REFUSALS: Array<[string, HarnessOptions]> = [
+    ["red", { gauntlet: { exitCode: 1 } }],
+    ["no-run", { gauntlet: { exitCode: 2 } }],
+    ["conflict", { rebaseLeavesUnmerged: ["src/a.ts"] }],
+    ["gate", { verifyRuns: [{ jobs: GATE_JOB_RED }] }],
+    ["gate unjudged", { verifyRuns: [{ jobs: GATE_JOB_RUNNING }] }],
+    [
+      "immutable-set",
+      {
+        verifyRuns: [
+          {
+            jobs: [
+              { name: IMMUTABILITY_JOB, conclusion: "failure" },
+              { name: GATE_JOB, conclusion: "success" },
+            ],
+          },
+        ],
+      },
+    ],
+    ["immutability unjudged", { verifyRuns: [] }],
+  ];
+
+  const refusedComments = (options: HarnessOptions): string[] => {
+    const refusing = integrateHarness({ ...options, openPrs: [{ number: 42 }] });
+    expect(runIntegrate(refusing.deps).merged).toBe(false);
+    return prComments(refusing.calls).map((call) => call[4]);
+  };
+
+  it.each(REFUSALS)("leaves a %s-refused PR where the next drain skips it", (_, options) => {
+    const { deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [{ number: 42, comments: refusedComments(options) }, { number: 43 }],
+    });
+
+    runIntegrate({ ...deps, pr: prUrl(43) });
+
+    expect(resends(dispatches)).toEqual([]);
+  });
+
+  it("drains past a refused PR to the one behind it, and never back to the refused one", () => {
+    const { deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [{ number: 42 }, { number: 43 }, { number: 44 }],
+    });
+
+    runIntegrate({ ...deps, runGauntlet: () => ({ exitCode: 1 }) });
+    runIntegrate({ ...deps, pr: prUrl(43) });
+    runIntegrate({ ...deps, pr: prUrl(44) });
+
+    expect(resends(dispatches).map((dispatch) => dispatch.payload.pr)).toEqual([prUrl(43), prUrl(44)]);
+  });
+
+  it("drains a refused PR again once a new push moves its head past the refusal", () => {
+    const { deps, dispatches } = integrateHarness({
+      closeTicket: CLOSED,
+      openPrs: [
+        { number: 42, headRefOid: "3333333333333333333333333333333333333333", comments: refusedComments({ gauntlet: { exitCode: 1 } }) },
+        { number: 43 },
+      ],
+    });
+
+    runIntegrate({ ...deps, pr: prUrl(43) });
+
+    expect(resends(dispatches).map((dispatch) => dispatch.payload.pr)).toEqual([prUrl(42)]);
+  });
+
+  it("says on the pull request why it refused, even where lane 08 used to refuse silently", () => {
+    const [comment] = refusedComments({ gauntlet: { exitCode: 1 } });
+
+    expect(comment).toContain("re-run gauntlet was red");
+    expect(comment).toContain("re-dispatch");
+  });
 });
