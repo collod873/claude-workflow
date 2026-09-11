@@ -83,12 +83,9 @@ export function readTicket(gh: GhExec, issueNumber: number): TicketRead {
 }
 
 export function extractCriteria(body: string): string[] {
-  const normalized = normalizeNewlines(body);
-  const section = sectionText(normalized, CRITERIA_HEADING_RE);
-  return section
-    .split("\n")
-    .filter((line) => CRITERIA_ITEM_RE.test(line))
-    .map((line) => line.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim());
+  return (criteriaBlocks(body) ?? []).map((block) =>
+    block.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim(),
+  );
 }
 
 export function isRunnableSpec(body: string): boolean {

@@ -75,6 +75,25 @@ describe("ticket-shape's existing grammar primitives, exercised so this file is 
     ]);
   });
 
+  it("extractCriteria folds a criterion wrapped over continuation lines, so a check: marker on the wrapped line still parses", () => {
+    const body = [
+      heading,
+      "",
+      "- [ ] The mechanism has a regression harness under `hooks/test_*.py` that reproduces the bypass",
+      "      (a commit message carrying the keyword) and asserts it no longer closes ungated",
+      "      — check: `bash -c 'for f in hooks/test_*.py; do python3 \"$f\" >/dev/null || exit 1; done'`",
+      "- [ ] A second criterion",
+      "",
+    ].join("\n");
+
+    const criteria = extractCriteria(body);
+    expect(criteria).toHaveLength(2);
+    expect(parseCheckMarker(criteria[0])).toBe(
+      "bash -c 'for f in hooks/test_*.py; do python3 \"$f\" >/dev/null || exit 1; done'",
+    );
+    expect(criteria[1]).toBe("A second criterion");
+  });
+
   it("parseCheckMarker answers undefined for prose and for a malformed marker alike", () => {
     expect(parseCheckMarker("do the thing")).toBeUndefined();
     expect(parseCheckMarker("do the thing — check: nope")).toBeUndefined();
