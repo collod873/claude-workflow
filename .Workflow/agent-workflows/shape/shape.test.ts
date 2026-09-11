@@ -361,7 +361,7 @@ async function runPastTheBudget(): Promise<BudgetRun> {
   return run;
 }
 
-test.fails("#498.1: shape.ts calls the budget wrapper rather than runStage directly", async () => {
+test("#498.1: shape.ts calls the budget wrapper rather than runStage directly", async () => {
   vi.useFakeTimers();
   try {
     const run = await runPastTheBudget();
@@ -373,7 +373,7 @@ test.fails("#498.1: shape.ts calls the budget wrapper rather than runStage direc
   }
 });
 
-test.fails("#498.2: an elapsed budget strikes the ticket", async () => {
+test("#498.2: an elapsed budget strikes the ticket", async () => {
   vi.useFakeTimers();
   try {
     const run = await runPastTheBudget();
