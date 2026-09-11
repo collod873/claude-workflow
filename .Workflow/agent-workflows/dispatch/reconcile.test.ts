@@ -562,7 +562,7 @@ test("#437.3: a `by-hand` issue never reaches the dispatched set, even with ever
   expect(outcome.dispatched).not.toContain(20);
 });
 
-test.fails("#472.2: the door's log line for a refusal names the needs-human hold it applied", () => {
+test("#472.2: the door's log line for a refusal names the needs-human hold it applied", () => {
   const lines: string[] = [];
   const tracker = trackerWith({
     open: [
@@ -585,7 +585,7 @@ test.fails("#472.2: the door's log line for a refusal names the needs-human hold
   expect(refusal).toContain(NEEDS_HUMAN_LABEL);
 });
 
-test.fails(
+test(
   "#472.3: the to-build door section of the reconcile lane's edge walkthrough says a refusal escalates and a clear lifts the label",
   async () => {
     const doc = await readFile(new URL("../../../docs/agents/reconcile-lane-edges.md", import.meta.url), "utf8");

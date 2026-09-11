@@ -216,7 +216,7 @@ function labelsRemovedFrom(tracker: Tracker, issue: number): string[] {
     .map((call) => call[call.indexOf("--remove-label") + 1]);
 }
 
-test.fails(
+test(
   "#472.1: a to-build ticket refused at the door carries needs-human after the run, a run that finds the shape fixed lifts it again, and the by-hand stand-down still never adds it",
   () => {
     const MALFORMED = "## Acceptance criteria\n\n- [ ] It works — check: `true`\n";
