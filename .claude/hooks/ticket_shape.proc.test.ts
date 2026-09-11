@@ -120,7 +120,7 @@ test(
   30000,
 );
 
-test.fails(
+test(
   "#473.2: neither predicate names the bare `.claude/` prefix any more, and both name `.claude/settings`",
   () => {
     const { workstation } = runPredicates([
@@ -140,7 +140,7 @@ test.fails(
   30000,
 );
 
-test.fails(
+test(
   "#473.3: classify_venue returns machine work for a hook-file claim",
   () => {
     const { venue } = runPredicates([

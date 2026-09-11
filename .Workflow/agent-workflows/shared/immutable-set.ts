@@ -6,7 +6,7 @@ export const IMPLEMENTATION_PR_DISPATCH_ACTION = "implementation-opened";
 
 export const BY_HAND_LABEL = "by-hand";
 
-const WORKSTATION_PREFIXES = ["~/", ".claude/"];
+const WORKSTATION_PREFIXES = ["~/", ".claude/settings"];
 
 export function touchesImmutableSet(paths: string[]): boolean {
   return paths.some((path) => IMMUTABLE_SET.some((entry) => path === entry || path.startsWith(entry)));
