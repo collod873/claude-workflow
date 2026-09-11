@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { BYPASS_STEP } from "./bypass";
 import { runBypassCounter, type BypassCounterOutcome } from "./bypass-counter";
 
 const HOUR = 60 * 60 * 1000;
@@ -18,7 +19,7 @@ function failedRunsOnMain(): string {
 }
 
 const FAILED_JOB = JSON.stringify({
-  jobs: [{ steps: [{ name: "gauntlet", conclusion: "failure" }] }],
+  jobs: [{ steps: [{ name: BYPASS_STEP, conclusion: "failure" }] }],
 });
 
 const AGED_OUT_CARRIER = JSON.stringify([
@@ -56,7 +57,7 @@ function countBypasses(calls: string[][]): BypassCounterOutcome {
   });
 }
 
-test.fails(
+test(
   "#461.1: a not planned carrier absent from the newest 200 issues still returns declined-for-good",
   () => {
     const outcome = countBypasses([]);
@@ -67,7 +68,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#461.2: the gh issue list call carries a --search on the carrier marker and no --limit 200 remains",
   () => {
     const calls: string[][] = [];
