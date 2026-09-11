@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import {
   checkoutChanged,
   githubHoldingClaims,
@@ -70,6 +70,42 @@ function arrange({ github = {}, deps: extra = {}, built = { "a/b.ts": "export co
     ...extra,
   };
   return { deps, host, stage: stages, gate, log };
+}
+
+function repairRound() {
+  const stage = createFakeStages([
+    { text: JSON.stringify(implementerReply({ summary: "First pass." })), sessionId: "mech-1" },
+    JSON.stringify(implementerReply({ summary: "Repaired." })),
+  ]);
+  const red: GateVerdict = { ok: false, output: "1 failed" };
+  return { stage, gate: gateSaying(red, red, { ok: true }) };
+}
+
+async function laneBudgetMinutes(): Promise<number> {
+  const claim = (await import("../shared/claim")) as unknown as { LANE_BUDGET_MINUTES?: number };
+  return claim.LANE_BUDGET_MINUTES ?? 85;
+}
+
+async function underFakeClock(run: (budgetMinutes: number) => Promise<void>): Promise<void> {
+  vi.useFakeTimers();
+  try {
+    await run(await laneBudgetMinutes());
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+function execBurningBudget(stages: FakeStage, budgetMinutes: number, atSession: number): MechanicDeps["exec"] {
+  let sessions = 0;
+  return (...args) => {
+    sessions += 1;
+    if (sessions === atSession) vi.advanceTimersByTime((budgetMinutes + 1) * 60_000);
+    return stages.exec(...args);
+  };
+}
+
+function ghSaid(calls: string[][]): string {
+  return calls.map((call) => call.join("\n")).join("\n---\n");
 }
 
 describe("what the mechanic decides from", () => {
@@ -178,12 +214,7 @@ describe("runMechanic", () => {
   });
 
   it("resumes the same session once when the gate is red, then lands", async () => {
-    const stage = createFakeStages([
-      { text: JSON.stringify(implementerReply({ summary: "First pass." })), sessionId: "mech-1" },
-      JSON.stringify(implementerReply({ summary: "Repaired." })),
-    ]);
-    const red: GateVerdict = { ok: false, output: "1 failed" };
-    const gate = gateSaying(red, red, { ok: true });
+    const { stage, gate } = repairRound();
     const { deps, host } = arrange({ stage, deps: { runGate: gate.runGate } });
 
     const result = await runMechanic(deps);
@@ -192,5 +223,33 @@ describe("runMechanic", () => {
     expect(stage.calls[1]).toContain("--resume");
     expect(stage.stdins[1]).toContain("1 failed");
     expect(prCreatesIn(host.calls)[0].join("\n")).toContain("Repaired.");
+  });
+});
+
+describe("the lane budget", () => {
+  test.fails("#497.1: mechanic.ts calls the budget wrapper rather than runStageSession directly, the repair session included", async () => {
+    await underFakeClock(async (budgetMinutes) => {
+      const { stage, gate } = repairRound();
+      const exec = execBurningBudget(stage, budgetMinutes, 2);
+      const { deps, host } = arrange({ stage, deps: { exec, runGate: gate.runGate } });
+
+      await runMechanic(deps).catch((err: unknown) => err);
+
+      expect(stage.calls).toHaveLength(2);
+      expect(prCreatesIn(host.calls)).toEqual([]);
+      expect(ghSaid(host.calls)).toContain(`timed out after ${budgetMinutes} minutes at `);
+    });
+  });
+
+  test.fails("#497.2: an elapsed budget strikes the ticket with the signature naming its stage", async () => {
+    await underFakeClock(async (budgetMinutes) => {
+      const stage = createFakeStages([JSON.stringify(implementerReply({ summary: "Found the cause." }))]);
+      const { deps, host } = arrange({ stage, deps: { exec: execBurningBudget(stage, budgetMinutes, 1) } });
+
+      await runMechanic(deps).catch((err: unknown) => err);
+
+      expect(ghSaid(host.calls)).toContain(`timed out after ${budgetMinutes} minutes at mechanic`);
+      expect(prCreatesIn(host.calls)).toEqual([]);
+    });
   });
 });
