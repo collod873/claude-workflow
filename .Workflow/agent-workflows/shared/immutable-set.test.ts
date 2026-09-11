@@ -45,3 +45,9 @@ test("#437.4: touchesWorkstation classifies a home-directory or `.claude/` setti
 
   expect(touchesImmutableSet(["~/.claude/settings.json"])).toBe(false);
 });
+
+test.fails("#473.1: touchesWorkstation returns false for `.claude/hooks/session-brief.py` and true for `.claude/settings.json` and `~/bin/hook-report`", () => {
+  expect(touchesWorkstation([".claude/hooks/session-brief.py"])).toBe(false);
+  expect(touchesWorkstation([".claude/settings.json"])).toBe(true);
+  expect(touchesWorkstation(["~/bin/hook-report"])).toBe(true);
+});
