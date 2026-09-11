@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
+import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import type { Sheet } from "../shared/sheet-schema";
 import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
-import { sourceMarker } from "./publish";
+import { PRD_LABEL, sourceMarker } from "./publish";
 import { NO_VALIDATION } from "./validate-spec.fixture";
 import {
   invocationFromEnv,
@@ -388,6 +389,78 @@ describe("runSpecCritique: the critic-only entry", () => {
       expect(fake.stdins[1]).not.toContain(marker);
     });
   });
+});
+
+describe("runSpecCritique: a spec the session slices by hand", () => {
+  const BY_HAND_LABEL = "by-hand";
+
+  const HAND_SLICED = {
+    title: "PRD: The merge journey",
+    body: "## Problem\nIts children are hand-built, and one of them lives in another repo.",
+  };
+
+  function withLabels(
+    gh: GhExec,
+    labels: string[],
+    fallback: { title: string; body: string },
+  ): GhExec {
+    const labelled = labels.map((name) => ({ name }));
+    const wrapped = (...args: Parameters<GhExec>): string => {
+      const argv = args[0] as string[];
+      const isView = argv[0] === "issue" && argv[1] === "view";
+      let out: string;
+      try {
+        out = gh(...args) as string;
+      } catch (err) {
+        if (!isView) throw err;
+        return JSON.stringify({ ...fallback, labels: labelled, comments: [] });
+      }
+      if (!isView) return out;
+      try {
+        const parsed = JSON.parse(out) as Record<string, unknown>;
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return JSON.stringify({ ...parsed, labels: labelled });
+        }
+      } catch {
+        return out;
+      }
+      return out;
+    };
+    return wrapped as unknown as GhExec;
+  }
+
+  function labelledSpecGh(labels: string[]) {
+    const { gh, calls } = sessionSpecGh(HAND_SLICED, []);
+    return { gh: withLabels(gh, labels, HAND_SLICED), calls };
+  }
+
+  function dispatchOf(calls: string[][]): string[] | undefined {
+    return calls.find((args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches");
+  }
+
+  test.fails(
+    "#479.1: a prd spec carrying by-hand runs no critic, gets no sliceable label and no prd-sliceable dispatch, while a prd spec without it still gets both",
+    async () => {
+      const byHandStage = createFakeStage(SILENT_CRITIC);
+      const byHand = labelledSpecGh([PRD_LABEL, BY_HAND_LABEL]);
+
+      await runSpecCritique(byHandStage.exec, byHand.gh, 433);
+
+      expect(byHandStage.calls).toHaveLength(0);
+      expect(byHand.calls.some((args) => args.includes(SLICEABLE_LABEL))).toBe(false);
+      expect(dispatchOf(byHand.calls)).toBeUndefined();
+
+      const plainStage = createFakeStage(SILENT_CRITIC);
+      const plain = labelledSpecGh([PRD_LABEL]);
+
+      await runSpecCritique(plainStage.exec, plain.gh, 434);
+
+      expect(plainStage.calls).toHaveLength(1);
+      const labelWrite = plain.calls.find((args) => args.includes("--add-label"));
+      expect(labelWrite).toContain(SLICEABLE_LABEL);
+      expect(dispatchOf(plain.calls)).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
+    },
+  );
 });
 
 describe("planSpecRun: the cold door reads the issue, not the label", () => {
