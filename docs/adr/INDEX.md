@@ -96,6 +96,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0175 | [A hook writes its run row through its language's writer, never a private append](0175-a-hook-writes-its-run-row-through-its-language-s-writer-neve.md) |
 | 0176 | [The hook run-row writers are this repo's own files, and the prose gate reads them like everything else](0176-the-hook-run-row-writers-are-this-repo-s-own-files-and-the-p.md) |
 | 0177 | [A run the machine started says its own ending, because GitHub starts nothing from a bot-started run's completion](0177-a-run-the-machine-started-says-its-own-ending-because-github.md) |
+| 0178 | [An Acceptance death is a strike on the ticket's one ladder, so waking on it is bounded by the same decision](0178-an-acceptance-death-is-a-strike-on-the-ticket-s-one-ladder-s.md) |
 
 ## Retired
 
@@ -192,4 +193,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-177 ADRs · 88 constraint · 44 note · 45 superseded · 18,190 words total.
+178 ADRs · 89 constraint · 44 note · 45 superseded · 18,340 words total.

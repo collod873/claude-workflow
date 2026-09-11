@@ -44,7 +44,15 @@ describe("a strike on the ticket", () => {
   it("is read from the log's last `failed:` line, and from the conclusion when no line says why", () => {
     expect(signatureFromLog("x\nimplement failed: fetch: 403\nimplement failed: EISDIR\n", "failure")).toBe("EISDIR");
     expect(signatureFromLog("mechanic failed: fence\n", "failure")).toBe("fence");
+    expect(signatureFromLog("acceptance authoring failed: no test file returned\n", "failure")).toBe("no test file returned");
     expect(signatureFromLog("", "cancelled")).toBe("cancelled before answering");
+  });
+
+  it("says the author runs again when the ticket has no test yet, since the count bounds the author the same way (#457)", () => {
+    const body = strikeBody(strike, url(42), "author");
+
+    expect(body).toContain("the author starts again");
+    expect(strikesIn([body])).toEqual([strike]);
   });
 
   it("counts only strikes after the last decision, so clearing needs-human restarts the ladder", () => {
@@ -98,14 +106,16 @@ describe("reading the runs API", () => {
     { databaseId: 5, displayTitle: "Implement #22", status: "completed", conclusion: "success", url: url(5) },
     { databaseId: 6, displayTitle: "Verify", status: "completed", conclusion: "failure", url: url(6) },
     { databaseId: 7, displayTitle: "Mechanic #23", status: "in_progress", conclusion: null, url: url(7) },
+    { databaseId: 8, displayTitle: "Acceptance #22", status: "completed", conclusion: "cancelled", url: url(8) },
+    { databaseId: 9, displayTitle: "Acceptance #22", status: "completed", conclusion: "success", url: url(9) },
   ];
 
   it("reads a ticket as in flight from any non-completed run whose title carries it", () => {
     expect(ticketsInFlight(runs)).toEqual(new Set([20, 21, 23]));
   });
 
-  it("reads a ticket's dead runs as its completed Implement or Mechanic runs that did not succeed", () => {
-    expect(deadRunsOf(runs, 22).map((run) => run.databaseId)).toEqual([3, 4]);
+  it("reads a ticket's dead runs as its completed Implement, Mechanic or Acceptance runs that did not succeed (#457)", () => {
+    expect(deadRunsOf(runs, 22).map((run) => run.databaseId)).toEqual([3, 4, 8]);
     expect(deadRunsOf(runs, 20)).toEqual([]);
   });
 });

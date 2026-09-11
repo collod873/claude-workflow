@@ -200,7 +200,9 @@ _Avoid_: attempt, failure record, retry count
 **Rung**:
 What runs next on a ticket, chosen by its strike count: the implementer, a second model with a
 clean context, the mechanic with the dead runs' logs and the whole tree in reach, then a decision
-for the owner. A rung is not a lane; the reconciler picks it and the lanes stay as they are.
+for the owner. A rung is not a lane; the reconciler picks it and the lanes stay as they are. A
+ticket with no acceptance test yet climbs the same count, and every rung short of the decision is
+the author again: there the strike is the bound, not the routing.
 _Avoid_: retry, escalation level, fallback
 
 **Checkpoint**:

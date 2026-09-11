@@ -197,6 +197,14 @@ const WAKES_RECONCILER: StepFact = {
   after: "Unmark the ticket",
   run: [DISPATCH_SEND, ...ring(RUN_ENDED)],
 };
+const WAKES_RECONCILER_JOB: JobFacts = {
+  needs: ["refire", "author", "land"],
+  gate: { is: "always() && (needs.refire.result != 'skipped' || needs.author.result != 'skipped')" },
+  permissions: { contents: "write" },
+  checkout: "none",
+  timeout: 5,
+  steps: [{ name: WAKES_RECONCILER.name, run: WAKES_RECONCILER.run, env: { GH_REPO: "${{ github.repository }}" } }],
+};
 const LAND_CONFLICTED = "(steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true')";
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
@@ -399,6 +407,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           },
         ],
       },
+      "wake-reconciler": WAKES_RECONCILER_JOB,
     },
   },
 
