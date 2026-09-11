@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type { GitExec } from "../shared/git";
+import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
 import { observation } from "../shared/observation.fixture";
-import { ratifyBatch, type RatifyBatchDeps } from "./ratifier";
+import { ratifierVars, ratifyBatch, runRatifierStage, type RatifyBatchDeps } from "./ratifier";
 import { ratifierVerdict } from "./verdict.fixture";
 import type { RatifierVerdict } from "./verdict-schema";
 
@@ -222,4 +223,73 @@ describe("ratifyBatch: one bad finding costs that finding and nothing else", () 
     expect(result.skipped).toEqual(["the broken one"]);
     expect(result.landed.map((entry) => entry.landedAs)).toEqual(["Survivor"]);
   });
+});
+
+type Settled =
+  | { state: "pending" }
+  | { state: "resolved"; value: unknown }
+  | { state: "rejected"; error: unknown };
+
+const PRD_LANE_BUDGET_MINUTES = 85;
+
+async function laneBudgetMinutes(): Promise<number> {
+  const claim = (await import("../shared/claim")) as { LANE_BUDGET_MINUTES?: number };
+  return claim.LANE_BUDGET_MINUTES ?? PRD_LANE_BUDGET_MINUTES;
+}
+
+function stalledExec(): StageExec {
+  return (() => new Promise(() => undefined)) as unknown as StageExec;
+}
+
+function budgetVars(): Record<string, string> {
+  return ratifierVars({
+    observation: observation({ finding: "a pattern", sites: ["a.ts:1"] }),
+    batch: [],
+    standards: STANDARDS,
+  });
+}
+
+async function advance(run: Promise<unknown>, ms: number): Promise<Settled> {
+  const tracked: Promise<Settled> = run.then(
+    (value): Settled => ({ state: "resolved", value }),
+    (error): Settled => ({ state: "rejected", error }),
+  );
+  await vi.advanceTimersByTimeAsync(ms);
+  for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+  return Promise.race([tracked, Promise.resolve<Settled>({ state: "pending" })]);
+}
+
+function strikeText(error: unknown): string {
+  const carrier = error as { message?: unknown; cause?: unknown; body?: unknown; strike?: unknown } | null | undefined;
+  return [String(error), carrier?.message, carrier?.cause, carrier?.body, carrier?.strike]
+    .filter((part) => part !== undefined && part !== null)
+    .map((part) => String(part))
+    .join(" ");
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+test.fails("#500.1: ratifier runs its stage under the lane budget instead of calling runStage directly", async () => {
+  const minutes = await laneBudgetMinutes();
+  vi.useFakeTimers();
+
+  const run = runRatifierStage(stalledExec(), budgetVars());
+
+  expect((await advance(run, minutes * 60_000 - 60_000)).state).toBe("pending");
+  expect((await advance(run, 120_000)).state).toBe("rejected");
+});
+
+test.fails("#500.2: an elapsed budget strikes the ticket with the timed-out-at-ratifier signature", async () => {
+  const minutes = await laneBudgetMinutes();
+  vi.useFakeTimers();
+
+  const run = runRatifierStage(stalledExec(), budgetVars());
+  const outcome = await advance(run, minutes * 60_000 + 120_000);
+
+  expect(outcome.state).toBe("rejected");
+  expect(outcome.state === "rejected" ? strikeText(outcome.error) : "").toContain(
+    `timed out after ${minutes} minutes at ratifier`,
+  );
 });
