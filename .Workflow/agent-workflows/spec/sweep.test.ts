@@ -106,7 +106,7 @@ describe("renderSweepRulings", () => {
 });
 
 describe("the lane budget over the sweep stage", () => {
-  test.fails(
+  test(
     "#501.2: sweep.ts runs its stage under the lane budget, so a model that overruns ends the run instead of hanging",
     async () => {
       const outcome = await outcomeAfterLaneBudget((exec) => runSpecSweep(exec, CONTEXT));

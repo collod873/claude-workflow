@@ -83,7 +83,7 @@ describe("runSpecCritic", () => {
 });
 
 describe("the lane budget over the critic stage", () => {
-  test.fails(
+  test(
     "#501.3: critic.ts runs its stage under the lane budget, so a model that overruns ends the run instead of hanging",
     async () => {
       const outcome = await outcomeAfterLaneBudget((exec) => runSpecCritic(exec, DRAFT));

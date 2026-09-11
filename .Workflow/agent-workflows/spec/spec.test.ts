@@ -562,7 +562,7 @@ describe("invocationFromEnv", () => {
 });
 
 describe("the lane budget over the author stage", () => {
-  test.fails(
+  test(
     "#501.1: spec.ts runs its author stage under the lane budget, so a model that overruns ends the run instead of hanging",
     async () => {
       const outcome = await outcomeAfterLaneBudget((exec) => runSpecAuthor(exec, CONTEXT), [SWEEP_RESPONSE]);
@@ -571,7 +571,7 @@ describe("the lane budget over the author stage", () => {
     },
   );
 
-  test.fails(
+  test(
     "#501.4: an elapsed budget strikes the ticket, carrying `timed out after <n> minutes at <step>`",
     async () => {
       const outcome = await outcomeAfterLaneBudget((exec) => runSpecAuthor(exec, CONTEXT), [SWEEP_RESPONSE]);
