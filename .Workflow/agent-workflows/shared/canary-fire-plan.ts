@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runLaneCli } from "./lane-cli.ts";
-import { readWorkflow, WORKFLOWS_DIR } from "./read-workflow.ts";
+import { readWorkflow, WORKFLOWS_DIR, type WorkflowJob } from "./read-workflow.ts";
 
 export interface FireDemands {
   label?: string;
@@ -30,15 +30,10 @@ interface OnBlock {
   workflow_run?: { workflows?: string[]; types?: string[] };
 }
 
-interface Job {
-  if?: unknown;
-  uses?: unknown;
-}
-
 interface CallerYaml {
   name?: string;
   on?: OnBlock;
-  jobs?: Record<string, Job>;
+  jobs?: Record<string, WorkflowJob>;
 }
 
 const LABEL_ADDED = /github\.event\.label\.name\s*==\s*'([^']*)'/;
