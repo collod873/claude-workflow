@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { laneRun } from "./lane-run.fixture";
 import {
   DECISION_MARKER,
   deadRunsOf,
@@ -95,15 +96,15 @@ describe("the decision", () => {
 
 describe("reading the runs API", () => {
   const runs: LaneRun[] = [
-    { databaseId: 1, displayTitle: "Implement #20", status: "in_progress", conclusion: null, url: url(1) },
-    { databaseId: 2, displayTitle: "Acceptance #21", status: "queued", conclusion: null, url: url(2) },
-    { databaseId: 3, displayTitle: "Implement #22", status: "completed", conclusion: "failure", url: url(3) },
-    { databaseId: 4, displayTitle: "Mechanic #22", status: "completed", conclusion: "cancelled", url: url(4) },
-    { databaseId: 5, displayTitle: "Implement #22", status: "completed", conclusion: "success", url: url(5) },
-    { databaseId: 6, displayTitle: "Verify", status: "completed", conclusion: "failure", url: url(6) },
-    { databaseId: 7, displayTitle: "Mechanic #23", status: "in_progress", conclusion: null, url: url(7) },
-    { databaseId: 8, displayTitle: "Acceptance #22", status: "completed", conclusion: "cancelled", url: url(8) },
-    { databaseId: 9, displayTitle: "Acceptance #22", status: "completed", conclusion: "success", url: url(9) },
+    laneRun({ databaseId: 1, displayTitle: "Implement #20", status: "in_progress", conclusion: null }),
+    laneRun({ databaseId: 2, displayTitle: "Acceptance #21", status: "queued", conclusion: null }),
+    laneRun({ databaseId: 3, displayTitle: "Implement #22", conclusion: "failure" }),
+    laneRun({ databaseId: 4, displayTitle: "Mechanic #22", conclusion: "cancelled" }),
+    laneRun({ databaseId: 5, displayTitle: "Implement #22", conclusion: "success" }),
+    laneRun({ databaseId: 6, displayTitle: "Verify", conclusion: "failure" }),
+    laneRun({ databaseId: 7, displayTitle: "Mechanic #23", status: "in_progress", conclusion: null }),
+    laneRun({ databaseId: 8, displayTitle: "Acceptance #22", conclusion: "cancelled" }),
+    laneRun({ databaseId: 9, displayTitle: "Acceptance #22", conclusion: "success" }),
   ];
 
   it("reads a ticket as in flight from any non-completed run whose title carries it", () => {
