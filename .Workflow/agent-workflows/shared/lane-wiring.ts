@@ -197,6 +197,7 @@ const WAKES_RECONCILER: StepFact = {
   after: "Unmark the ticket",
   run: [DISPATCH_SEND, ...ring(RUN_ENDED)],
 };
+const LAND_CONFLICTED = "(steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true')";
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
 const NAMES_VERIFY_CALLER = { verify_workflow: "verify-caller.yml" };
@@ -386,8 +387,13 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             run: [DISPATCH_SEND, `event_type=${TICKET_READY_DISPATCH_ACTION}`],
           },
           {
+            name: "Author again against the main that moved, once",
+            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && ${LAND_CONFLICTED} && github.event.client_payload.refire != '1'`,
+            run: [DISPATCH_SEND, `event_type=${ACCEPTANCE_WANTED_DISPATCH_ACTION}`, "client_payload[ready]=$READY", "client_payload[refire]=1"],
+          },
+          {
             name: "Say on the ticket that landing failed, and wait for a human",
-            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)}`,
+            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && (github.event.client_payload.refire == '1' || !${LAND_CONFLICTED})`,
             run: ["--add-label needs-human", "gh issue comment"],
           },
         ],

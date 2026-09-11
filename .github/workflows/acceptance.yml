@@ -198,12 +198,14 @@ jobs:
           path: ${{ runner.temp }}/acceptance-patches
 
       - name: Replay them onto main
+        id: replay
         working-directory: target
         run: |
           set -euo pipefail
-          git am --3way "$RUNNER_TEMP"/acceptance-patches/*.patch
+          conflicted() { echo "conflict=true" >> "$GITHUB_OUTPUT"; exit 1; }
+          git am --3way "$RUNNER_TEMP"/acceptance-patches/*.patch || conflicted
           git fetch origin main
-          git rebase origin/main
+          git rebase origin/main || conflicted
 
       - name: Gauntlet
         env:
@@ -211,19 +213,42 @@ jobs:
         run: npm run check
 
       - name: Push to main, refreshed against whatever landed during the gauntlet
+        id: push
         working-directory: target
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5; do
             git fetch origin main
-            git rebase origin/main
+            git rebase origin/main || { echo "conflict=true" >> "$GITHUB_OUTPUT"; exit 1; }
             if git push origin HEAD:main; then exit 0; fi
             sleep $((attempt * 5))
           done
           exit 1
 
+      - name: Author again against the main that moved, once
+        if: >-
+          failure() && github.event.action == 'acceptance-wanted' &&
+          (steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true') &&
+          github.event.client_payload.refire != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+          READY: ${{ github.event.client_payload.ready }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$TICKET_NUMBER" --body "The authored tests were judged green, but a sibling's batch landed on main first and replaying them conflicted, so the author runs once more against the main that moved. A second conflict waits for a human. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=acceptance-wanted \
+            -f "client_payload[issue]=$TICKET_NUMBER" \
+            -f "client_payload[ready]=$READY" \
+            -f "client_payload[refire]=1"
+
       - name: Say on the ticket that landing failed, and wait for a human
-        if: failure() && github.event.action == 'acceptance-wanted'
+        if: >-
+          failure() && github.event.action == 'acceptance-wanted' &&
+          (github.event.client_payload.refire == '1' ||
+          !(steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true'))
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
