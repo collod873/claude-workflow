@@ -89,12 +89,6 @@ export function recordedRunIds(comments: string[]): Set<number> {
   return ids;
 }
 
-export function hasStandingDecision(comments: string[]): boolean {
-  const lastDecision = comments.map((body) => body.includes(DECISION_MARKER)).lastIndexOf(true);
-  if (lastDecision === -1) return false;
-  return !comments.slice(lastDecision + 1).some((body) => STRIKE_MARKER_RE.test(body));
-}
-
 export function decisionBody(ticket: number, strikes: Strike[], runUrl: (runId: number) => string): string {
   const lines = strikes.map(
     (strike, index) => `${index + 1}. ${runUrl(strike.runId)} ended \`${strike.conclusion}\`: \`${strike.signature}\``,
