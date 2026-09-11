@@ -111,6 +111,22 @@ const Blockers = z.array(Blocker);
 type Blocker = z.infer<typeof Blocker>;
 
 const ClosingPrNumbers = z.array(z.number());
+
+const RecordComment = z.object({
+  body: z.string(),
+  author_association: z.string(),
+  user: z.object({ login: z.string() }).nullable(),
+});
+const CommentPages = z.array(z.array(RecordComment));
+type RecordComment = z.infer<typeof RecordComment>;
+
+const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+const LANE_BOT = "github-actions[bot]";
+
+const CLOSING_RECORD_HEADING = "## Closing record";
+
+const VERIFIED_COUNT = /^(\d+) of \d+ criteria verified/m;
 const Refs = z.array(z.string());
 
 export interface ReconcileInput {
@@ -190,6 +206,24 @@ function mergedCloser(gh: GhExec, number: number): number | undefined {
   return closers.find((pr) => prIsMerged(gh, pr));
 }
 
+export function carriesVerifiedClosingRecord(comments: RecordComment[]): boolean {
+  return comments.some(
+    (comment) =>
+      (TRUSTED_ASSOCIATIONS.has(comment.author_association) || comment.user?.login === LANE_BOT) &&
+      comment.body.startsWith(CLOSING_RECORD_HEADING) &&
+      Number(VERIFIED_COUNT.exec(comment.body)?.[1] ?? 0) > 0,
+  );
+}
+
+function closedByVerifiedRecord(gh: GhExec, number: number): boolean {
+  try {
+    const parsed = CommentPages.safeParse(JSON.parse(gh(["api", issueCommentsPath(number), "--paginate", "--slurp"])));
+    return parsed.success && carriesVerifiedClosingRecord(parsed.data.flat());
+  } catch {
+    return false;
+  }
+}
+
 function prIsMerged(gh: GhExec, pr: number): boolean {
   try {
     return gh(["pr", "view", String(pr), "--json", "state", "--jq", ".state"]).trim() === MERGED;
@@ -209,10 +243,10 @@ function fetchClaimedBranches(gh: GhExec): Set<string> | null {
   }
 }
 
-export function deliveryOf(blocker: Blocker, byMergedPr: () => boolean): Delivery {
+export function deliveryOf(blocker: Blocker, shipped: () => boolean): Delivery {
   if (blocker.state.toLowerCase() === "open") return "open";
   if ((blocker.state_reason ?? "").toLowerCase() !== COMPLETED) return "undelivered";
-  return byMergedPr() ? "delivered" : "undelivered";
+  return shipped() ? "delivered" : "undelivered";
 }
 
 interface Progress {
@@ -259,7 +293,7 @@ function buildGraph(
       if (deliveryCache.has(blocker.number)) continue;
       deliveryCache.set(
         blocker.number,
-        deliveryOf(blocker, () => closedByMergedPr(gh, blocker.number)),
+        deliveryOf(blocker, () => closedByMergedPr(gh, blocker.number) || closedByVerifiedRecord(gh, blocker.number)),
       );
     }
   }

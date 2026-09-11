@@ -18,8 +18,9 @@ export function entryLine(entry: UnreachableFinding): string {
 export function signalBody(entries: UnreachableFinding[]): string {
   return [
     "An edge is satisfied when its blocker closed **having delivered**: closed as completed with a",
-    "merged pull request. A blocker closed `not planned`, or closed with nothing merged, leaves its",
-    "edge unsatisfied forever, so everything behind it is unreachable rather than late.",
+    "merged pull request or a closing record that verified at least one criterion. A blocker closed",
+    "`not planned`, or closed with neither, leaves its edge unsatisfied forever, so everything",
+    "behind it is unreachable rather than late.",
     "",
     "Reported here as one standing count rather than left parked, because parked work is a queue",
     "that drains onto the owner:",

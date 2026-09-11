@@ -8,8 +8,11 @@ import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
 import PR_STATE from "./closing-prs.fixtures/pr-244-state.json";
+import BOT_CLOSED from "./closing-prs.fixtures/issue-493-comments.json";
+import OWNER_CLOSED from "./closing-prs.fixtures/issue-494-comments.json";
 import { scratchDir } from "../shared/scratch.fixture";
 import {
+  carriesVerifiedClosingRecord,
   closedByMergedPr,
   deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
@@ -65,6 +68,28 @@ describe("the delivery question, against payloads GitHub actually served", () =>
     closedByMergedPr(watched, 237);
     expect(asked[0].slice(0, 2)).toEqual(["issue", "view"]);
     expect(asked[1].slice(0, 3)).toEqual(["pr", "view", "244"]);
+  });
+});
+
+describe("a closing record delivers what no linked pull request shows", () => {
+  const recordOf = <T extends { body: string }>(pages: T[][]) => pages.flat().filter((comment) => comment.body.startsWith("## Closing record"));
+
+  it("reads #493 as delivered: lane 08 merged its PR unlinked and the bot posted the record", () => {
+    expect(carriesVerifiedClosingRecord(BOT_CLOSED.flat())).toBe(true);
+  });
+
+  it("reads #494 as delivered: pushed by hand and closed by the owner's record", () => {
+    expect(carriesVerifiedClosingRecord(OWNER_CLOSED.flat())).toBe(true);
+  });
+
+  it("refuses the same record from a stranger", () => {
+    const forged = recordOf(OWNER_CLOSED).map((comment) => ({ ...comment, author_association: "NONE", user: { login: "stranger" } }));
+    expect(carriesVerifiedClosingRecord(forged)).toBe(false);
+  });
+
+  it("refuses a record that verified nothing", () => {
+    const empty = recordOf(OWNER_CLOSED).map((comment) => ({ ...comment, body: comment.body.replace(/^\d+ of/m, "0 of") }));
+    expect(carriesVerifiedClosingRecord(empty)).toBe(false);
   });
 });
 
