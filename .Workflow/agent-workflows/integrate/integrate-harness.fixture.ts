@@ -20,7 +20,7 @@ export const TRUNK_SHA = "1111111111111111111111111111111111111111";
 export const HEAD_SHA = "2222222222222222222222222222222222222222";
 export const RANGE = `${TRUNK_SHA}..${HEAD_SHA}`;
 
-export const PR_BODY = `Rebuilt the thing.\n\nCloses #${TICKET}`;
+export const PR_BODY = `Rebuilt the thing.\n\nTicket: #${TICKET}`;
 
 export interface VerifyJobFixture {
   name: string;

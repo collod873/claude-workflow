@@ -651,6 +651,41 @@
     true
   ],
   [
+    "block:pr-closes-create-body",
+    "gh pr create --title \"t\" --body \"Built it.\n\nCloses #402\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:pr-closes-edit-short-flag",
+    "gh pr edit 492 -b 'Fixes #402'",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:pr-closes-heredoc",
+    "gh pr create --title t --body \"$(cat <<'EOF'\nBuilt it.\n\nResolves #402\nEOF\n)\"",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:pr-ticket-reference",
+    "gh pr create --title \"t\" --body \"Built it.\n\nTicket: #402\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:pr-keyword-in-title-only",
+    "gh pr create --title \"Fixes #402\" --body \"Built it.\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
     "allow:comment-mentions-keyword-not-commit",
     "gh issue comment 5 --body \"Fixes #176 was reverted\"",
     "ALLOW",
@@ -701,9 +736,9 @@
   ],
   [
     "row:count",
-    "100 fires",
-    "100",
-    "100",
+    "105 fires",
+    "105",
+    "105",
     true
   ],
   [
@@ -716,8 +751,8 @@
   [
     "row:deny-count",
     "every BLOCK logged a deny",
-    "38",
-    "38",
+    "41",
+    "41",
     true
   ],
   [
@@ -942,6 +977,27 @@
     "git commit -m \"closed #176\"",
     "commit-closes-ticket",
     "['commit-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:pr-closes-create-body",
+    "gh pr create --title \"t\" --body \"Built it.\n\nCloses #402\"",
+    "pr-closes-ticket",
+    "['pr-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:pr-closes-edit-short-flag",
+    "gh pr edit 492 -b 'Fixes #402'",
+    "pr-closes-ticket",
+    "['pr-closes-ticket']",
+    true
+  ],
+  [
+    "guard:block:pr-closes-heredoc",
+    "gh pr create --title t --body \"$(cat <<'EOF'\nBuilt it.\n\nResolves #402\nEOF\n)\"",
+    "pr-closes-ticket",
+    "['pr-closes-ticket']",
     true
   ]
 ]

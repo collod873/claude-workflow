@@ -286,7 +286,7 @@ export async function landAnswer(
 
   const bodySections = [answer.summary];
   if (answer.declaredEdits.length > 0) bodySections.push(declaredEditsNote(answer.declaredEdits));
-  bodySections.push(`Closes #${issueNumber}`);
+  bodySections.push(`Ticket: #${issueNumber}`);
 
   const pr = openPrAndDispatch(deps.gh, {
     branch,

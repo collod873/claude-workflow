@@ -81,12 +81,12 @@ ends* — and nothing in this workflow reads either.
 `integrate.ts` `readPr()`
 
 Reads the pull request exactly once, for two facts: which branch to rebase, and which ticket, if
-any, merging it closes.
+any, it built.
 
 | | |
 |---|---|
 | **Reads** | `gh pr view $PR --json headRefName,body` |
-| **Finds the ticket by** | Matching `CLOSING_REFERENCE_RE` — `` /\b(?:close[sd]?\|fix(?:e[sd])?\|resolve[sd]?)\s+#(\d+)/i `` — against the pull request's own body text |
+| **Finds the ticket by** | Matching `TICKET_REFERENCE_RE` — `` /^Ticket: #(\d+)\b/m `` — against the pull request's own body text. Not a GitHub closing keyword: a `Closes #<n>` body lets anyone who merges the PR in the web UI close the ticket with no `## Closing record` ([ADR-0180](../adr/0180-a-commit-message-carrying-a-github-closing-keyword-is-refuse.md)'s bypass, by the PR route) |
 | **Deliberately not** | GitHub's own `closingIssuesReferences` field. A test names this directly: the ticket comes from the body this lane reads for itself, never a second API's interpretation of it |
 | **No match** | `ticket` is `undefined` — legal; node 06 reads that as "nothing to close" |
 
@@ -96,7 +96,7 @@ any, merging it closes.
 { branch: "implement/issue-421", ticket: 421 }
 ```
 
-Read off PR #501's own body, `"Wrote the run's own step summary...\n\nCloses #421"` — the exact
+Read off PR #501's own body, `"Wrote the run's own step summary...\n\nTicket: #421"` — the exact
 text implement-lane-edges.md's own worked example shows `gh pr create` writing.
 
 ---

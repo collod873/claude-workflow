@@ -177,6 +177,25 @@ CASES = [
     ("allow:commit-no-message-flag",
      "git commit --amend --no-edit",
      "ALLOW"),
+    ("block:pr-closes-create-body",
+     'gh pr create --title "t" --body "Built it.\n\nCloses #402"',
+     "BLOCK"),
+    ("block:pr-closes-edit-short-flag",
+     "gh pr edit 492 -b 'Fixes #402'",
+     "BLOCK"),
+    ("block:pr-closes-heredoc",
+     "gh pr create --title t --body \"$(cat <<'EOF'\n"
+     "Built it.\n"
+     "\n"
+     "Resolves #402\n"
+     "EOF\n)\"",
+     "BLOCK"),
+    ("allow:pr-ticket-reference",
+     'gh pr create --title "t" --body "Built it.\n\nTicket: #402"',
+     "ALLOW"),
+    ("allow:pr-keyword-in-title-only",
+     'gh pr create --title "Fixes #402" --body "Built it."',
+     "ALLOW"),
     ("allow:comment-mentions-keyword-not-commit",
      'gh issue comment 5 --body "Fixes #176 was reverted"',
      "ALLOW"),
@@ -221,6 +240,7 @@ GUARD_BY_CASE = {
     "block:gh-issue-create": "gh-issue-create",
     "block:gh-issue-close-compound": "compound-close",
     "block:commit-closes": "commit-closes-ticket",
+    "block:pr-closes": "pr-closes-ticket",
 }
 
 

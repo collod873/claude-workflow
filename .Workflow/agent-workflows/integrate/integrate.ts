@@ -55,12 +55,12 @@ interface PullRequest {
   ticket: number | undefined;
 }
 
-const CLOSING_REFERENCE_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i;
+const TICKET_REFERENCE_RE = /^Ticket: #(\d+)\b/m;
 
 function readPr(gh: GhExec, pr: string): PullRequest {
   const raw = gh(["pr", "view", pr, "--json", "headRefName,title,body"]);
   const json = JSON.parse(raw) as { headRefName?: string; title?: string; body?: string };
-  const match = CLOSING_REFERENCE_RE.exec(json.body ?? "");
+  const match = TICKET_REFERENCE_RE.exec(json.body ?? "");
   return {
     branch: (json.headRefName ?? "").trim(),
     title: json.title ?? "",

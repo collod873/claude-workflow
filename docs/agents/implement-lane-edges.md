@@ -275,7 +275,7 @@ gh pr create \
   --title "Report the nightly canary's own conclusion" \
   --body  "Wrote the run's own step summary...
 
-Closes #421" \
+Ticket: #421" \
   --head implement/issue-421
 
 → https://github.com/collod873/claude-workflow/pull/501

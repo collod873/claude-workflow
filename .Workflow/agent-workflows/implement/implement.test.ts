@@ -263,7 +263,8 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     expect(stage.calls[1]).toContain("--resume");
     expect(stage.calls[1][stage.calls[1].indexOf("--resume") + 1]).toBe("sess-1");
     expect(stage.stdins[1]).toContain(RED.output);
-    expect(prCreatesIn(host.calls)[0]).toContain("Built, then repaired the thing.\n\nCloses #167");
+    expect(prCreatesIn(host.calls)[0]).toContain("Built, then repaired the thing.\n\nTicket: #167");
+    expect(prCreatesIn(host.calls)[0].join(" ")).not.toMatch(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d/i);
     expect(ticketCommentsIn(host.calls)).toEqual([]);
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });

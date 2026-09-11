@@ -39,18 +39,23 @@ COMPOUND_OPERATOR = re.compile(r"&&|\|\||;|\|")
 
 GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 
-COMMIT_MESSAGE_FLAG = r"(?:--message|-a?m|-ma)"
-COMMIT_MESSAGE_HEREDOC = re.compile(
-    rf"{COMMIT_MESSAGE_FLAG}(?:\s+|=)\"\$\(cat\s*<<-?\s*'?(?P<tag>\w+)'?\s*\n"
-    r"(?P<body>.*?)\n\s*(?P=tag)\s*\)\"",
-    re.DOTALL,
-)
-COMMIT_MESSAGE_DQUOTE = re.compile(
-    rf'{COMMIT_MESSAGE_FLAG}(?:\s+|=)"((?:[^"\\]|\\.)*)"', re.DOTALL
-)
-COMMIT_MESSAGE_SQUOTE = re.compile(
-    rf"{COMMIT_MESSAGE_FLAG}(?:\s+|=)'((?:[^'\\])*)'", re.DOTALL
-)
+GH_PR_WRITE = re.compile(r"\bgh\s+pr\s+(?:create|edit)\b")
+
+
+def flag_value_patterns(flag: str) -> tuple[re.Pattern, ...]:
+    return (
+        re.compile(
+            rf"(?<![\w-]){flag}(?:\s+|=)\"\$\(cat\s*<<-?\s*'?(?P<tag>\w+)'?\s*\n"
+            r"(?P<body>.*?)\n\s*(?P=tag)\s*\)\"",
+            re.DOTALL,
+        ),
+        re.compile(rf'(?<![\w-]){flag}(?:\s+|=)"(?P<body>(?:[^"\\]|\\.)*)"', re.DOTALL),
+        re.compile(rf"(?<![\w-]){flag}(?:\s+|=)'(?P<body>(?:[^'\\])*)'", re.DOTALL),
+    )
+
+
+COMMIT_MESSAGE = flag_value_patterns(r"(?:--message|-a?m|-ma)")
+PR_BODY = flag_value_patterns(r"(?:--body|-b)")
 
 CLOSING_KEYWORD = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+"
@@ -64,16 +69,23 @@ def close_ticket_command(issue: str) -> str:
     return f"{tool} {issue} <base>..<head> <checkout>"
 
 
-def extract_commit_messages(command: str) -> list[str]:
-    commits = list(GIT_COMMIT.finditer(command))
-    if not commits:
+def flag_values(command: str, anchor: re.Pattern, patterns: tuple[re.Pattern, ...]) -> list[str]:
+    first = anchor.search(command)
+    if not first:
         return []
-    tail = command[commits[0].start():]
-    messages = [m.group("body") for m in COMMIT_MESSAGE_HEREDOC.finditer(tail)]
-    remainder = COMMIT_MESSAGE_HEREDOC.sub("", tail)
-    for pattern in (COMMIT_MESSAGE_DQUOTE, COMMIT_MESSAGE_SQUOTE):
-        messages.extend(m.group(1) for m in pattern.finditer(remainder))
-    return messages
+    tail = command[first.start():]
+    heredoc, *quoted = patterns
+    values = [m.group("body") for m in heredoc.finditer(tail)]
+    remainder = heredoc.sub("", tail)
+    for pattern in quoted:
+        values.extend(m.group("body") for m in pattern.finditer(remainder))
+    return values
+
+
+CLOSING_WRITES = (
+    (GIT_COMMIT, COMMIT_MESSAGE, "commit-closes-ticket", "commit message", "pushing it"),
+    (GH_PR_WRITE, PR_BODY, "pr-closes-ticket", "pull request body", "merging it"),
+)
 
 
 def check(command: str) -> tuple[str, str]:
@@ -106,17 +118,19 @@ def check(command: str) -> tuple[str, str]:
             "only ever sees a lone close."
         )
 
-    if _hook.unquoted_matches(GIT_COMMIT, command, spans):
-        for message in extract_commit_messages(command):
-            m = CLOSING_KEYWORD.search(message)
+    for anchor, patterns, guard, where, trigger in CLOSING_WRITES:
+        if not _hook.unquoted_matches(anchor, command, spans):
+            continue
+        for text in flag_values(command, anchor, patterns):
+            m = CLOSING_KEYWORD.search(text)
             if m:
                 issue = m.group("num")
-                return "commit-closes-ticket", (
-                    f"this commit message closes #{issue} with a GitHub keyword "
-                    f"({m.group(0).strip()!r}); pushing it lets GitHub close the ticket "
-                    "the moment it parses the message, with no `## Closing record` and "
-                    "none of close-ticket's checks run -- the exact bypass the close gate "
-                    f"exists to prevent. Drop the keyword (a bare '#{issue}' still links "
+                return guard, (
+                    f"this {where} closes #{issue} with a GitHub keyword "
+                    f"({m.group(0).strip()!r}); {trigger} lets GitHub close the ticket "
+                    "on its own, with no `## Closing record` and none of close-ticket's "
+                    "checks run -- the exact bypass the close gate exists to prevent. "
+                    f"Drop the keyword (a bare '#{issue}' or 'Ticket: #{issue}' still links "
                     "the issue without closing it), then close the ticket by running "
                     f"`{close_ticket_command(issue)}` once the work lands."
                 )
