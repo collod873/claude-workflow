@@ -157,53 +157,68 @@ describe("affectedSlices", () => {
   const DELETED_CRITERION = "make test exits 0 with a gadget that beeps twice on startup";
   const UNCHANGED_CRITERION = "make test exits 0 with a doohickey that hums in the key of D";
   const ADDED_CRITERION = "make test exits 0 with a brand-new sprocket nobody has a test for yet";
+  const SLICER_WORDING = "make test exits 0 with wording only the slicer ever wrote";
 
   const EXISTING_TESTS: ExistingTestCriterion[] = [
     { sliceNumber: 101, criterion: WIDGET },
     { sliceNumber: 102, criterion: DELETED_CRITERION },
     { sliceNumber: 103, criterion: UNCHANGED_CRITERION },
+    { sliceNumber: 104, criterion: SLICER_WORDING },
   ];
 
-  const EDITED_SPEC_BODY = `## Acceptance criteria
+  const BEFORE_EDIT = `## Acceptance criteria
+- [ ] ${WIDGET}
+- [ ] ${DELETED_CRITERION}
+- [ ] ${UNCHANGED_CRITERION}
+`;
+
+  const AFTER_EDIT = `## Acceptance criteria
 - [ ] ${EDITED_CRITERION}
 - [ ] ${UNCHANGED_CRITERION}
 - [ ] ${ADDED_CRITERION}
 `;
 
-  it("returns only the slices whose test's verbatim criterion is missing from the new spec body, across edited, deleted and added-criterion fixtures", () => {
-    const result = affectedSlices(EDITED_SPEC_BODY, EXISTING_TESTS);
+  it("returns the slices whose test's criterion the edit itself took out of the spec", () => {
+    const result = affectedSlices({ before: BEFORE_EDIT, after: AFTER_EDIT }, EXISTING_TESTS);
     expect(result.map((slice) => slice.sliceNumber)).toEqual([101, 102]);
   });
 
   it("does not flag a slice whose test's criterion the spec still carries verbatim", () => {
-    const result = affectedSlices(EDITED_SPEC_BODY, EXISTING_TESTS);
+    const result = affectedSlices({ before: BEFORE_EDIT, after: AFTER_EDIT }, EXISTING_TESTS);
     expect(result.map((slice) => slice.sliceNumber)).not.toContain(103);
   });
 
+  it("does not flag a slice whose criterion the spec never carried, since the edit cannot have removed it", () => {
+    const result = affectedSlices({ before: BEFORE_EDIT, after: AFTER_EDIT }, EXISTING_TESTS);
+    expect(result.map((slice) => slice.sliceNumber)).not.toContain(104);
+  });
+
   it("never lists a criterion added with no existing test naming it, since that is a re-slice, not a re-entry", () => {
-    const result = affectedSlices(EDITED_SPEC_BODY, EXISTING_TESTS);
-    const onlySlices = [101, 102, 103];
+    const result = affectedSlices({ before: BEFORE_EDIT, after: AFTER_EDIT }, EXISTING_TESTS);
+    const onlySlices = [101, 102, 103, 104];
     expect(result.every((slice) => onlySlices.includes(slice.sliceNumber))).toBe(true);
   });
 
-  it("returns nothing when the spec still carries every existing test's criterion verbatim", () => {
-    const unchangedSpec = `## Acceptance criteria\n- [ ] ${WIDGET}\n- [ ] ${DELETED_CRITERION}\n- [ ] ${UNCHANGED_CRITERION}\n`;
-    expect(affectedSlices(unchangedSpec, EXISTING_TESTS)).toEqual([]);
+  it("returns nothing when the edit left every existing test's criterion where it was", () => {
+    expect(affectedSlices({ before: BEFORE_EDIT, after: BEFORE_EDIT }, EXISTING_TESTS)).toEqual([]);
   });
 
-  it("lists a slice once even when more than one of its criteria goes missing, sorted ascending", () => {
-    const bothMissing: ExistingTestCriterion[] = [
+  it("returns nothing when no earlier body is known, rather than reading every criterion as dropped", () => {
+    expect(affectedSlices({ before: undefined, after: AFTER_EDIT }, EXISTING_TESTS)).toEqual([]);
+  });
+
+  it("lists a slice once even when the edit drops more than one of its criteria, sorted ascending", () => {
+    const bothDropped: ExistingTestCriterion[] = [
       { sliceNumber: 102, criterion: WIDGET },
       { sliceNumber: 101, criterion: DELETED_CRITERION },
       { sliceNumber: 101, criterion: WIDGET },
     ];
-    expect(affectedSlices("## Acceptance criteria\n- [ ] nothing here matches\n", bothMissing)).toEqual([
-      { sliceNumber: 101 },
-      { sliceNumber: 102 },
-    ]);
+    expect(
+      affectedSlices({ before: BEFORE_EDIT, after: "## Acceptance criteria\n- [ ] nothing here matches\n" }, bothDropped),
+    ).toEqual([{ sliceNumber: 101 }, { sliceNumber: 102 }]);
   });
 
   it("returns an empty list for an empty existing-tests record", () => {
-    expect(affectedSlices(EDITED_SPEC_BODY, [])).toEqual([]);
+    expect(affectedSlices({ before: BEFORE_EDIT, after: AFTER_EDIT }, [])).toEqual([]);
   });
 });

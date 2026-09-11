@@ -31,6 +31,7 @@ jobs:
       authored: ${{ steps.bundle.outputs.authored }}
     env:
       PRD_NUMBER: ${{ github.event.issue.number }}
+      PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -87,6 +88,7 @@ jobs:
       authored: ${{ steps.bundle.outputs.authored }}
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+      PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

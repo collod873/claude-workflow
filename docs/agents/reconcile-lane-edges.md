@@ -265,11 +265,15 @@ Four jobs:
 
 `acceptance.ts`
 
-Reads the PRD and its sibling slice numbers. For each sibling whose criteria are already matched
-by an existing authored test, checks whether that criterion text is still present in the
-just-edited PRD body. Gone → the slice is *affected*, and `authorForSlice()` re-enters node 09
-in-process for it. A criterion no existing test names at all is ignored here — "that's a re-slice,
-not a re-entry."
+Reads the PRD and its **open** sibling slice numbers; a closed slice's work is already on main and
+is never re-authored. For each open sibling whose criteria are already matched by an existing
+authored test, it compares the body before the edit (`PRD_BODY_BEFORE`, GitHub's own
+`changes.body.from`) with the body after: a criterion the edit itself took out of the spec makes
+that slice *affected*, and `authorForSlice()` re-enters node 09 in-process for it. A criterion the
+spec never carried is not affected, which is most of them, since the slicer writes its own wording
+rather than copying the spec's ([ADR-0181](../adr/0181-a-spec-edit-re-fires-acceptance-only-for-what-the-edit-remov.md)). A criterion no existing test
+names at all is ignored here — "that's a re-slice, not a re-entry." No earlier body — a title-only
+edit, or a run by hand — re-authors nothing rather than everything.
 
 ---
 

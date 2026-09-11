@@ -51,10 +51,15 @@ export interface ExistingTestCriterion {
   criterion: string;
 }
 
-export function affectedSlices(specBody: string, existingTests: ExistingTestCriterion[]): SliceRef[] {
+export interface SpecEdit {
+  before: string | undefined;
+  after: string;
+}
+
+export function affectedSlices(edit: SpecEdit, existingTests: ExistingTestCriterion[]): SliceRef[] {
   const affected = new Set<number>();
   for (const { sliceNumber, criterion } of existingTests) {
-    if (!specBody.includes(criterion)) affected.add(sliceNumber);
+    if (edit.before?.includes(criterion) && !edit.after.includes(criterion)) affected.add(sliceNumber);
   }
   return [...affected].sort((a, b) => a - b).map((sliceNumber) => ({ sliceNumber }));
 }

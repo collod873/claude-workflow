@@ -388,22 +388,24 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   return { verdict: "pushed" };
 }
 
-function readSliceNumbers(gh: GhExec, prdNumber: number): number[] {
+function readOpenSliceNumbers(gh: GhExec, prdNumber: number): number[] {
   const raw = gh(["api", subIssuesPath(prdNumber)]);
-  const issues = JSON.parse(raw) as Array<{ number: number }>;
-  return issues.map((issue) => issue.number);
+  const issues = JSON.parse(raw) as Array<{ number: number; state?: string }>;
+  return issues.filter((issue) => issue.state !== "closed").map((issue) => issue.number);
 }
 
 export interface RefireDeps {
   gh: GhExec;
   prdNumber: number;
+  bodyBeforeEdit: string | undefined;
   authorForSlice: (sliceNumber: number) => void | Promise<void>;
   root?: string;
 }
 
 export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
+  if (deps.bodyBeforeEdit === undefined) return [];
   const prd = readTicket(deps.gh, deps.prdNumber);
-  const sliceNumbers = readSliceNumbers(deps.gh, deps.prdNumber);
+  const sliceNumbers = readOpenSliceNumbers(deps.gh, deps.prdNumber);
 
   const existingTests: ExistingTestCriterion[] = [];
   for (const sliceNumber of sliceNumbers) {
@@ -413,7 +415,7 @@ export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
     });
   }
 
-  const affected = affectedSlices(prd.body, existingTests);
+  const affected = affectedSlices({ before: deps.bodyBeforeEdit, after: prd.body }, existingTests);
   for (const { sliceNumber } of affected) await deps.authorForSlice(sliceNumber);
   return affected;
 }
@@ -463,10 +465,16 @@ async function main(): Promise<void> {
       return;
     }
     try {
-      const affected = await refireAcceptance({ gh: execGh, prdNumber: Number(prdArg), authorForSlice: authorForSliceInProcess, root: REPO_DIR });
+      const affected = await refireAcceptance({
+        gh: execGh,
+        prdNumber: Number(prdArg),
+        bodyBeforeEdit: process.env.PRD_BODY_BEFORE || undefined,
+        authorForSlice: authorForSliceInProcess,
+        root: REPO_DIR,
+      });
       console.log(
         affected.length === 0
-          ? "no slice's test lost its criterion; nothing re-fired"
+          ? "no open slice's test lost a criterion this edit removed; nothing re-fired"
           : `re-fired acceptance for ${affected.length} slice(s): ${affected.map((s) => s.sliceNumber).join(", ")}`,
       );
     } catch (err) {

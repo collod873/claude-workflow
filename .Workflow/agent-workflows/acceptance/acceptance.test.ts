@@ -390,9 +390,11 @@ describe("landingFromEnv", () => {
   });
 });
 
+type SubIssueRef = number | { number: number; state: string };
+
 function trackerWith(
   issues: Record<number, TicketRead>,
-  subIssues: Record<number, number[]> = {},
+  subIssues: Record<number, SubIssueRef[]> = {},
   writes?: string[][],
 ): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
   const fake = createFakeGh();
@@ -411,7 +413,7 @@ function trackerWith(
     for (const [parent, numbers] of Object.entries(subIssues)) {
       if (args[0] === "api" && args[1] === subIssuesPath(Number(parent)) && !args.includes("-F")) {
         reads.push(args);
-        return JSON.stringify(numbers.map((number) => ({ number })));
+        return JSON.stringify(numbers.map((ref) => (typeof ref === "number" ? { number: ref, state: "open" } : ref)));
       }
     }
     return fake.gh(args);
@@ -549,6 +551,10 @@ describe("refireAcceptance", () => {
   const KEPT = "make test exits 0 with a criterion the edit leaves untouched";
   const DROPPED = "make test exits 0 with a criterion the edit removes";
   const OTHER_DROPPED = "make test exits 0 with a second criterion the edit removes";
+  const SLICER_WORDING = "make test exits 0 with wording only the slicer ever wrote";
+
+  const SPEC_BEFORE = `## What to build\n${KEPT}\n${DROPPED}\n${OTHER_DROPPED}\n`;
+  const SPEC_AFTER = `## What to build\n${KEPT}\n`;
 
   function slice(criteria: string[]): TicketRead {
     return {
@@ -567,15 +573,26 @@ describe("refireAcceptance", () => {
     return root;
   }
 
-  async function refire(prdBody: string, slices: Record<number, TicketRead>, root: string) {
+  async function refire(
+    prdBody: string,
+    slices: Record<number, TicketRead>,
+    root: string,
+    { noEarlierBody = false, closed = [] as number[] } = {},
+  ) {
     const calledFor: number[] = [];
     const tracker = trackerWith(
       { [PRD_NUMBER]: { title: "PRD", body: prdBody }, ...slices },
-      { [PRD_NUMBER]: Object.keys(slices).map(Number).reverse() },
+      {
+        [PRD_NUMBER]: Object.keys(slices)
+          .map(Number)
+          .reverse()
+          .map((number) => ({ number, state: closed.includes(number) ? "closed" : "open" })),
+      },
     );
     const affected = await refireAcceptance({
       gh: tracker.gh,
       prdNumber: PRD_NUMBER,
+      bodyBeforeEdit: noEarlierBody ? undefined : SPEC_BEFORE,
       authorForSlice: (sliceNumber) => {
         calledFor.push(sliceNumber);
       },
@@ -584,7 +601,7 @@ describe("refireAcceptance", () => {
     return { affected, calledFor, tracker };
   }
 
-  it("re-authors exactly the slices whose existing test lost its criterion, in ascending order", async () => {
+  it("re-authors exactly the slices whose existing test lost a criterion this edit removed, in ascending order", async () => {
     const root = checkoutWith({
       ".Workflow/x.test.ts": [[201, 2]],
       ".claude/hooks/y.test.ts": [[202, 1]],
@@ -594,7 +611,7 @@ describe("refireAcceptance", () => {
       ],
     });
     const { affected, calledFor, tracker } = await refire(
-      `## What to build\n${KEPT}\n`,
+      SPEC_AFTER,
       { 202: slice([OTHER_DROPPED]), 201: slice([KEPT, DROPPED]), 203: slice([KEPT]) },
       root,
     );
@@ -603,16 +620,51 @@ describe("refireAcceptance", () => {
     expect(tracker.fake.calls, "reads only").toEqual([]);
   });
 
-  it("re-authors nothing when every existing test's criterion is still in the spec", async () => {
+  it("re-authors nothing when the edit leaves every slice's criteria untouched, whatever else it changed", async () => {
     const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
-    const { affected, calledFor } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
+    const { affected, calledFor } = await refire(
+      `${SPEC_BEFORE}A sentence the owner added.\n`,
+      { 201: slice([SLICER_WORDING]) },
+      root,
+    );
     expect(affected).toEqual([]);
     expect(calledFor).toEqual([]);
   });
 
+  it("re-authors nothing when the spec never carried the slicer's wording, which is every slice it ever writes", async () => {
+    const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
+    const { affected } = await refire(SPEC_AFTER, { 201: slice([SLICER_WORDING]) }, root);
+    expect(affected).toEqual([]);
+  });
+
+  it("never re-authors a closed slice, whose work is already on main", async () => {
+    const root = checkoutWith({
+      ".Workflow/x.test.ts": [[201, 1]],
+      ".Workflow/y.test.ts": [[202, 1]],
+    });
+    const { affected, calledFor } = await refire(
+      SPEC_AFTER,
+      { 201: slice([DROPPED]), 202: slice([OTHER_DROPPED]) },
+      root,
+      { closed: [201] },
+    );
+    expect(affected).toEqual([{ sliceNumber: 202 }]);
+    expect(calledFor).toEqual([202]);
+  });
+
+  it("re-authors nothing, and reads nothing, when no earlier body came with the edit", async () => {
+    const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
+    const { affected, calledFor, tracker } = await refire(SPEC_AFTER, { 201: slice([DROPPED]) }, root, {
+      noEarlierBody: true,
+    });
+    expect(affected).toEqual([]);
+    expect(calledFor).toEqual([]);
+    expect(tracker.reads).toEqual([]);
+  });
+
   it("ignores a slice criterion no existing test names, since that is a re-slice, not a re-entry (ADR-0079)", async () => {
     const root = checkoutWith({ ".Workflow/x.test.ts": [[201, 1]] });
-    const { affected } = await refire(`## What to build\n${KEPT}\n`, { 201: slice([KEPT, DROPPED]) }, root);
+    const { affected } = await refire(SPEC_AFTER, { 201: slice([KEPT, DROPPED]) }, root);
     expect(affected).toEqual([]);
   });
 });
