@@ -227,7 +227,7 @@ describe("runMechanic", () => {
 });
 
 describe("the lane budget", () => {
-  test.fails("#497.1: mechanic.ts calls the budget wrapper rather than runStageSession directly, the repair session included", async () => {
+  test("#497.1: mechanic.ts calls the budget wrapper rather than runStageSession directly, the repair session included", async () => {
     await underFakeClock(async (budgetMinutes) => {
       const { stage, gate } = repairRound();
       const exec = execBurningBudget(stage, budgetMinutes, 2);
@@ -241,7 +241,7 @@ describe("the lane budget", () => {
     });
   });
 
-  test.fails("#497.2: an elapsed budget strikes the ticket with the signature naming its stage", async () => {
+  test("#497.2: an elapsed budget strikes the ticket with the signature naming its stage", async () => {
     await underFakeClock(async (budgetMinutes) => {
       const stage = createFakeStages([JSON.stringify(implementerReply({ summary: "Found the cause." }))]);
       const { deps, host } = arrange({ stage, deps: { exec: execBurningBudget(stage, budgetMinutes, 1) } });
