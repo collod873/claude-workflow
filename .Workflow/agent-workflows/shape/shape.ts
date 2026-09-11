@@ -5,7 +5,15 @@ import { runEntrypoint } from "../shared/entrypoint";
 import { execGh, type GhExec } from "../shared/gh";
 import { handoffPath } from "../shared/handoff-path";
 import { reason } from "../shared/reason";
-import { execClaudeIn, runStage, type StageExec } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+} from "../shared/stage";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import { REFUSAL_MARKER } from "../shared/marker";
 import {
   renderChangeRequest,
@@ -105,11 +113,12 @@ export function fetchRef(gh: GhExec, repoDir: string): Fetch {
 
 async function runSweep(
   deps: ChainDeps,
+  budget: LaneBudget,
   issueNumber: number,
   idea: string,
   focus: string,
 ): Promise<Sweep> {
-  return runStage(
+  const { value } = await runStageSessionWithinBudget(
     PROMPTS.sweep,
     {
       ISSUE_NUMBER: String(issueNumber),
@@ -118,18 +127,20 @@ async function runSweep(
     },
     deps.exec,
     SWEEP_OUTPUT,
-    { model: SWEEP_MODEL, disallowedTools: SWEEP_DENIED_TOOLS, stage: "sweep" },
+    { budget, model: SWEEP_MODEL, disallowedTools: SWEEP_DENIED_TOOLS, stage: "sweep" },
   );
+  return value;
 }
 
 async function runShaper(
   deps: ChainDeps,
+  budget: LaneBudget,
   idea: string,
   sweep: Sweep,
   changeRequest: string,
   reSweep: string,
 ): Promise<ShaperOutput> {
-  return runStage(
+  const { value } = await runStageSessionWithinBudget(
     PROMPTS.shaper,
     {
       IDEA: idea,
@@ -142,12 +153,13 @@ async function runShaper(
     },
     deps.exec,
     SHAPER_OUTPUT,
-    { model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true, stage: "shaper" },
+    { budget, model: SHAPER_MODEL, disallowedTools: SHAPER_DENIED_TOOLS, promptViaStdin: true, stage: "shaper" },
   );
+  return value;
 }
 
-async function runRefuter(deps: ChainDeps, shaped: ShaperSheet): Promise<Refutations> {
-  return runStage(
+async function runRefuter(deps: ChainDeps, budget: LaneBudget, shaped: ShaperSheet): Promise<Refutations> {
+  const { value } = await runStageSessionWithinBudget(
     PROMPTS.refuter,
     {
       DECISIONS: JSON.stringify(shaped.decisions, null, 2),
@@ -155,8 +167,9 @@ async function runRefuter(deps: ChainDeps, shaped: ShaperSheet): Promise<Refutat
     },
     deps.exec,
     REFUTER_OUTPUT,
-    { model: REFUTER_MODEL, stage: "refuter" },
+    { budget, model: REFUTER_MODEL, stage: "refuter" },
   );
+  return value;
 }
 
 function comment(gh: GhExec, issueNumber: number, body: string): void {
@@ -179,8 +192,10 @@ export async function runChain(
     return { kind: "capped" };
   }
 
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: issueNumber, run: currentLaneRun() });
+
   const idea = readIdea(deps.gh, issueNumber);
-  let sweep = await runSweep(deps, issueNumber, idea, firstPassFocus(changeRequest));
+  let sweep = await runSweep(deps, budget, issueNumber, idea, firstPassFocus(changeRequest));
 
   if (round.refusalApplies) {
     const refusal = refusalFor(sweep, issueNumber);
@@ -191,13 +206,13 @@ export async function runChain(
     }
   }
 
-  let shaped = await runShaper(deps, idea, sweep, changeRequest, "");
+  let shaped = await runShaper(deps, budget, idea, sweep, changeRequest, "");
 
   if (shaped.kind === "re-sweep") {
     const needs = shaped.needs;
-    const second = await runSweep(deps, issueNumber, idea, reSweepFocus(shaped.needs, shaped.why));
+    const second = await runSweep(deps, budget, issueNumber, idea, reSweepFocus(shaped.needs, shaped.why));
     sweep = mergeSweeps(sweep, second);
-    shaped = await runShaper(deps, idea, sweep, changeRequest, renderReSweepAnswer(needs));
+    shaped = await runShaper(deps, budget, idea, sweep, changeRequest, renderReSweepAnswer(needs));
 
     if (shaped.kind === "re-sweep") {
       throw new Error(
@@ -213,7 +228,7 @@ export async function runChain(
     return { kind: "needs-live-session", decisions: overflow.count };
   }
 
-  const refuted = await runRefuter(deps, shaped);
+  const refuted = await runRefuter(deps, budget, shaped);
   const sheet = applyGrammar(shaped, refuted, round.round);
   comment(deps.gh, issueNumber, renderSheet(sheet));
 
