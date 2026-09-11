@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
+import { BY_HAND_LABEL } from "../shared/immutable-set";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { TO_BUILD_LABEL } from "./reconcile";
 import {
   type FakeIssue,
@@ -206,3 +208,44 @@ describe("the to-build door refuses what bin/close-ticket would refuse", () => {
     expect(tracker.comments[0].body).toContain("check:");
   });
 });
+
+function labelsRemovedFrom(tracker: Tracker, issue: number): string[] {
+  return tracker.calls
+    .filter((call) => call[0] === "issue" && call[1] === "edit" && call[2] === String(issue))
+    .filter((call) => call.includes("--remove-label"))
+    .map((call) => call[call.indexOf("--remove-label") + 1]);
+}
+
+test.fails(
+  "#472.1: a to-build ticket refused at the door carries needs-human after the run, a run that finds the shape fixed lifts it again, and the by-hand stand-down still never adds it",
+  () => {
+    const MALFORMED = "## Acceptance criteria\n\n- [ ] It works — check: `true`\n";
+
+    const refused = trackerWith({ open: [labelled(700, MALFORMED)] });
+    reconcileOver(refused);
+
+    expect(refused.dispatches).toEqual([]);
+    expect(refused.labelsAdded).toContainEqual({ issue: 700, name: NEEDS_HUMAN_LABEL });
+
+    const fixed = trackerWith({
+      open: [
+        {
+          ...labelled(701),
+          labels: [TO_BUILD_LABEL, NEEDS_HUMAN_LABEL],
+          comments: [`Missing something.\n\n<!-- ${REFUSED_MARKER} -->`],
+        },
+      ],
+    });
+    reconcileOver(fixed);
+
+    expect(fixed.commentEdits).toHaveLength(1);
+    expect(fixed.commentEdits[0].body).not.toContain(REFUSED_MARKER);
+    expect(labelsRemovedFrom(fixed, 701)).toContain(NEEDS_HUMAN_LABEL);
+
+    const byHand = trackerWith({ open: [{ ...labelled(702), labels: [TO_BUILD_LABEL, BY_HAND_LABEL] }] });
+    reconcileOver(byHand);
+
+    expect(byHand.dispatches).toEqual([]);
+    expect(byHand.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
+  },
+);

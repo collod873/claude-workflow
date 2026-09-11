@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
@@ -559,3 +561,43 @@ test("#437.3: a `by-hand` issue never reaches the dispatched set, even with ever
   expect(startedIssues(tracker)).toEqual([21]);
   expect(outcome.dispatched).not.toContain(20);
 });
+
+test.fails("#472.2: the door's log line for a refusal names the needs-human hold it applied", () => {
+  const lines: string[] = [];
+  const tracker = trackerWith({
+    open: [
+      {
+        number: 710,
+        title: "Refused at the door",
+        body: "## Acceptance criteria\n\n- [ ] It works — check: `true`\n",
+        labels: [TO_BUILD_LABEL],
+      },
+    ],
+  });
+
+  reconcileOver(tracker, { log: (line) => lines.push(line) });
+
+  const refusal = lines.find(
+    (line) => line.includes("#710") && line.includes("refused at the") && line.includes(TO_BUILD_LABEL) && line.includes("door"),
+  );
+
+  expect(refusal).toBeDefined();
+  expect(refusal).toContain(NEEDS_HUMAN_LABEL);
+});
+
+test.fails(
+  "#472.3: the to-build door section of the reconcile lane's edge walkthrough says a refusal escalates and a clear lifts the label",
+  async () => {
+    const doc = await readFile(new URL("../../../docs/agents/reconcile-lane-edges.md", import.meta.url), "utf8");
+    const lines = doc.split("\n");
+
+    const opens = lines.findIndex((line) => line.includes("toBuildRefusal"));
+    expect(opens).toBeGreaterThanOrEqual(0);
+
+    const rest = lines.slice(opens + 1);
+    const closes = rest.findIndex((line) => line.startsWith("## "));
+    const section = rest.slice(0, closes === -1 ? rest.length : closes).join("\n");
+
+    expect(section).toContain(NEEDS_HUMAN_LABEL);
+  },
+);
