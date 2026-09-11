@@ -318,7 +318,7 @@ def newest_closing_record_head(child: dict) -> str | None:
 
 def fetch_default_branch(gh, name_with_owner: str) -> str | None:
     try:
-        out = gh_support.run_gh(gh, "api", f"repos/{name_with_owner}", "--jq", "default_branch")
+        out = gh_support.run_gh(gh, "api", f"repos/{name_with_owner}", "--jq", ".default_branch")
     except gh_support.GhError:
         return None
     return out.strip() or None
@@ -327,7 +327,7 @@ def fetch_default_branch(gh, name_with_owner: str) -> str | None:
 def fetch_compare_status(gh, name_with_owner: str, base: str, head: str) -> str | None:
     try:
         out = gh_support.run_gh(
-            gh, "api", f"repos/{name_with_owner}/compare/{base}...{head}", "--jq", "status",
+            gh, "api", f"repos/{name_with_owner}/compare/{base}...{head}", "--jq", ".status",
         )
     except gh_support.GhError:
         return None

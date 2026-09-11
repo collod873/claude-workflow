@@ -113,6 +113,9 @@ def rest_path(args):
 
 
 def emit(payload, expression=None):
+    if expression and not expression.startswith("."):
+        sys.stderr.write("failed to parse jq expression: function not defined: " + expression + "/0\\n")
+        sys.exit(1)
     if expression:
         cursor = payload
         for key in [part for part in expression.split(".") if part]:
