@@ -1,5 +1,8 @@
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import type * as TypeScript from "typescript";
+import { describe, expect, it, test } from "vitest";
 import { RECONCILE_DISPATCH_ACTIONS, RECONCILE_ENDINGS, SESSION_CAPTURED_DISPATCH_ACTION, TO_BUILD_LABEL } from "../dispatch/reconcile";
 import { derivedSecretNames } from "../enrol/secrets";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
@@ -440,4 +443,122 @@ describe("every variable an entrypoint reads is set by the job that runs it", ()
       expect(set.has(variable), `${name}#${jobName} runs ${entrypoint}, which reads ${variable}, and never sets it`).toBe(true);
     }
   });
+});
+
+const ts = createRequire(import.meta.url)("typescript") as typeof TypeScript;
+const SHARED_TYPES = fileURLToPath(new URL("./read-workflow.ts", import.meta.url));
+const THIS_SUITE = fileURLToPath(import.meta.url);
+const WORKFLOW_STEP_MEMBERS = ["name", "id", "if", "run", "uses", "with", "env", "working-directory"];
+const WORKFLOW_JOB_MEMBERS = ["name", "if", "needs", "timeout-minutes", "permissions", "env", "steps", "uses", "with", "secrets"];
+const STEP_STRING_MEMBERS = ["name", "id", "if", "run", "uses", "working-directory"];
+
+function declarationsOf(path: string): TypeScript.SourceFile {
+  const program = ts.createProgram([path], { noResolve: true, noLib: true, target: ts.ScriptTarget.ESNext });
+  const source = program.getSourceFile(path);
+  expect(source, `no declarations at ${path}`).toBeDefined();
+  return source as TypeScript.SourceFile;
+}
+
+function exportedInterface(source: TypeScript.SourceFile, name: string): TypeScript.InterfaceDeclaration {
+  const found = source.statements.find(
+    (statement): statement is TypeScript.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) &&
+      statement.name.text === name &&
+      (statement.modifiers ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
+  );
+  expect(found, `${source.fileName} exports no interface ${name}`).toBeDefined();
+  return found as TypeScript.InterfaceDeclaration;
+}
+
+function declaredInterfaceNames(source: TypeScript.SourceFile): string[] {
+  return source.statements
+    .filter((statement): statement is TypeScript.InterfaceDeclaration => ts.isInterfaceDeclaration(statement))
+    .map((declaration) => declaration.name.text);
+}
+
+function propertySignatures(declaration: TypeScript.InterfaceDeclaration): TypeScript.PropertySignature[] {
+  return declaration.members.filter((member): member is TypeScript.PropertySignature => ts.isPropertySignature(member));
+}
+
+function memberName(member: TypeScript.PropertySignature): string {
+  const name = member.name;
+  return ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : "";
+}
+
+function namedImportsFrom(source: TypeScript.SourceFile, specifier: string): string[] {
+  return source.statements.flatMap((statement) => {
+    if (!ts.isImportDeclaration(statement)) return [];
+    if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== specifier) return [];
+    const bindings = statement.importClause?.namedBindings;
+    return bindings !== undefined && ts.isNamedImports(bindings) ? bindings.elements.map((element) => element.name.text) : [];
+  });
+}
+
+function carriesWorkflowStep(node: TypeScript.TypeNode | undefined): boolean {
+  if (node === undefined) return false;
+  if (ts.isArrayTypeNode(node)) return carriesWorkflowStep(node.elementType);
+  if (ts.isTypeOperatorNode(node)) return carriesWorkflowStep(node.type);
+  if (ts.isParenthesizedTypeNode(node)) return carriesWorkflowStep(node.type);
+  if (ts.isUnionTypeNode(node)) return node.types.some((each) => carriesWorkflowStep(each));
+  if (ts.isTypeReferenceNode(node)) {
+    const named = ts.isIdentifier(node.typeName) && node.typeName.text === "WorkflowStep";
+    return named || (node.typeArguments ?? []).some((each) => carriesWorkflowStep(each));
+  }
+  return false;
+}
+
+test.fails("#493.1: WorkflowStep and WorkflowJob are exported from read-workflow.ts", () => {
+  const source = declarationsOf(SHARED_TYPES);
+  const step = propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName);
+  const job = propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName);
+  expect(step, "WorkflowStep members").toEqual(expect.arrayContaining(WORKFLOW_STEP_MEMBERS));
+  expect(job, "WorkflowJob members").toEqual(expect.arrayContaining(WORKFLOW_JOB_MEMBERS));
+});
+
+test.fails("#493.2: lane-wiring.test.ts imports WorkflowStep/WorkflowJob instead of declaring its own", () => {
+  const source = declarationsOf(THIS_SUITE);
+  expect(namedImportsFrom(source, "./read-workflow")).toEqual(expect.arrayContaining(["WorkflowStep", "WorkflowJob"]));
+  const declared = declaredInterfaceNames(source);
+  expect(declared, "a local Step is still declared here").not.toContain("Step");
+  expect(declared, "a local Job is still declared here").not.toContain("Job");
+});
+
+test.fails("#493.3: the suite still passes with the shared types wired in", () => {
+  const source = declarationsOf(SHARED_TYPES);
+  expect(propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName)).toContain("steps");
+  expect(propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName)).toContain("run");
+
+  const named = estate.flatMap(({ name, workflow }) =>
+    Object.entries(workflow.jobs ?? {}).map(([jobName, job]) => ({ where: `${name} › ${jobName}`, job })),
+  );
+  expect(named.length, "the estate the suite reads").toBeGreaterThan(0);
+
+  let seen = 0;
+  for (const { where, job } of named) {
+    const read: Record<string, unknown> = { ...job };
+    if (read["timeout-minutes"] !== undefined) expect(typeof read["timeout-minutes"], `${where} › timeout-minutes`).toBe("number");
+    if (read.if !== undefined) expect(typeof read.if, `${where} › if`).toBe("string");
+    if (read.name !== undefined) expect(typeof read.name, `${where} › name`).toBe("string");
+    if (read.steps !== undefined) expect(Array.isArray(read.steps), `${where} › steps`).toBe(true);
+    for (const step of job.steps ?? []) {
+      seen += 1;
+      const readStep: Record<string, unknown> = { ...step };
+      for (const member of STEP_STRING_MEMBERS) {
+        if (readStep[member] !== undefined) expect(typeof readStep[member], `${where} › step ${member}`).toBe("string");
+      }
+    }
+  }
+  expect(seen, "the steps the suite reads").toBeGreaterThan(0);
+});
+
+test.fails("#493.4: the repo still typechecks", () => {
+  const source = declarationsOf(SHARED_TYPES);
+  const step = propertySignatures(exportedInterface(source, "WorkflowStep"));
+  const job = propertySignatures(exportedInterface(source, "WorkflowJob"));
+  for (const member of [...step, ...job]) {
+    expect(member.questionToken, `${memberName(member)} is not optional`).toBeDefined();
+  }
+  const steps = job.find((member) => memberName(member) === "steps");
+  expect(steps, "WorkflowJob declares no steps").toBeDefined();
+  expect(carriesWorkflowStep(steps?.type), "WorkflowJob.steps carries WorkflowStep").toBe(true);
 });
