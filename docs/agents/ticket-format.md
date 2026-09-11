@@ -43,6 +43,18 @@ reading the diff rather than a command's exit status. A marker that's attempted 
 parse (a missing command, or prose trailing the closing backtick) is warned about by
 `bin/ticket_shape.py`'s validator rather than silently read as plain prose.
 
+A check runs under `/bin/sh`, not bash: `bin/close-ticket` and `bin/ticket_shape.py`'s
+red-at-publish check both run every marker command with `shell=True`, which is `/bin/sh`, dash on
+the workstation and on every Ubuntu runner. A command that only bash understands — process
+substitution (`comm -12 <(ls) <(ls)`), arrays — is a syntax error under dash, not a red result, so
+a spec carrying one is refused at filing rather than discovered when the ticket closes; a ticket
+carrying one is warned about instead, since a ticket also names work still to be scoped. Wrap a
+bash-only command in `bash -c '...'`:
+
+```markdown
+- [ ] the two sets have no members in common - check: `bash -c '! comm -12 <(sort a) <(sort b)'`
+```
+
 A ticket whose deliverable is a **migration** (a history rewrite, a schema backfill, a one-off
 scrub) is worded as **the run**, never as the artifact. "Ship a script that scrubs X" is satisfied
 the moment the file exists; "Scrub X" isn't. At least one criterion must assert the **post-state of
