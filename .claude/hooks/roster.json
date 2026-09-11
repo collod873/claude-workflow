@@ -17,6 +17,7 @@
   ],
   "SessionStart": [
     "clone-refresh.py",
+    "session-brief.py",
     "circuit-breaker.py"
   ],
   "Stop": [
