@@ -341,7 +341,7 @@ describe("bypassRuns", () => {
   });
 });
 
-test.fails("#460.1: isBypass leaves a dispatch-started Gauntlet failure on main uncounted", () => {
+test("#460.1: isBypass leaves a dispatch-started Gauntlet failure on main uncounted", () => {
   const dispatched = run({ id: 34526216112, event: "repository_dispatch" });
 
   expect(dispatched.headBranch).toBe("main");
@@ -351,7 +351,7 @@ test.fails("#460.1: isBypass leaves a dispatch-started Gauntlet failure on main 
   expect(bypassCount([dispatched, run({ id: 2 })])).toBe(1);
 });
 
-test.fails("#460.2: readRuns projects event off the runs API and VerifyRun carries it", () => {
+test("#460.2: readRuns projects event off the runs API and VerifyRun carries it", () => {
   const fake = historyWith({ runs: gauntletFailures(3).map((each) => ({ ...each, event: "repository_dispatch" })) });
 
   const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
@@ -361,7 +361,7 @@ test.fails("#460.2: readRuns projects event off the runs API and VerifyRun carri
   expect(outcome).toMatchObject({ code: "below-threshold", count: 0 });
 });
 
-test.fails("#460.3: issueBody says the count is of push-started runs", () => {
+test("#460.3: issueBody says the count is of push-started runs", () => {
   const body = issueBody([run({ id: 10 }), run({ id: 12 })]);
 
   expect(body.toLowerCase()).toContain("push-started");

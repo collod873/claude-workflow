@@ -13,10 +13,16 @@ export interface VerifyRun {
   htmlUrl: string;
   conclusion: string;
   failedStep?: string;
+  event: string;
 }
 
 export function isBypass(run: VerifyRun): boolean {
-  return run.headBranch === "main" && run.conclusion === "failure" && run.failedStep === BYPASS_STEP;
+  return (
+    run.event === "push" &&
+    run.headBranch === "main" &&
+    run.conclusion === "failure" &&
+    run.failedStep === BYPASS_STEP
+  );
 }
 
 export function bypassRuns(runs: VerifyRun[]): VerifyRun[] {
@@ -47,7 +53,7 @@ export function issueBody(runs: VerifyRun[]): string {
   const count = bypasses.length;
   const newest = bypasses[0];
   return [
-    `The verification lane has failed at the \`${BYPASS_STEP}\` step **${count}** time${count === 1 ? "" : "s"} on \`main\`:`,
+    `The verification lane has failed at the \`${BYPASS_STEP}\` step **${count}** time${count === 1 ? "" : "s"} on \`main\` in a push-started run:`,
     "a red tree that reached trunk despite the free venues (in-turn, turn-end, pre-push) that should",
     "have refused it first. That only happens when one of them was skipped: `--no-verify`, a clone",
     "where `npm ci` never ran, or a commit made outside a session that installs the hooks at all.",
