@@ -10,6 +10,11 @@ GH_TIMEOUT_SECONDS = 10
 
 NEEDS_HUMAN_LABEL = "needs-human"
 BY_HAND_LABEL = "by-hand"
+PRD_LABEL = "prd"
+
+SNAPSHOT_FILENAME = "session-snapshot.json"
+TRACKED_LABELS = (PRD_LABEL, NEEDS_HUMAN_LABEL, BY_HAND_LABEL)
+TRACKED_FIELDS = "number,title,state,labels,assignees"
 
 
 def first_criterion_sentence(body: str) -> str | None:
@@ -143,6 +148,71 @@ def next_by_hand_line(gh, repo: str, cwd: str) -> str | None:
     return None
 
 
+def load_snapshot() -> dict | None:
+    path = _hook.LOG_DIR / SNAPSHOT_FILENAME
+    try:
+        raw = path.read_text()
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def tracked_tickets(gh, cwd: str) -> dict[int, dict]:
+    tickets: dict[int, dict] = {}
+    for label in TRACKED_LABELS:
+        for issue in open_issues_by_label(gh, cwd, label, fields=TRACKED_FIELDS):
+            number = issue.get("number")
+            if isinstance(number, int):
+                tickets[number] = issue
+    return tickets
+
+
+def ticket_identity(issue: dict) -> tuple:
+    labels = tuple(sorted(
+        (label.get("name") if isinstance(label, dict) else label)
+        for label in (issue.get("labels") or [])
+    ))
+    assignees = tuple(sorted(
+        (who.get("login") if isinstance(who, dict) else who)
+        for who in (issue.get("assignees") or [])
+    ))
+    return (issue.get("title"), issue.get("state"), labels, assignees)
+
+
+def delta_lines(snapshot: dict, current: dict[int, dict]) -> list[str]:
+    previous = {
+        ticket.get("number"): ticket
+        for ticket in (snapshot.get("tickets") or [])
+        if isinstance(ticket, dict) and isinstance(ticket.get("number"), int)
+    }
+    lines = []
+    for number in sorted(set(previous) | set(current)):
+        before = previous.get(number)
+        after = current.get(number)
+        if before is None:
+            lines.append(f"#{number}: {after.get('title', '')} — new")
+        elif after is None:
+            lines.append(f"#{number}: {before.get('title', '')} — gone")
+        elif ticket_identity(before) != ticket_identity(after):
+            lines.append(f"#{number}: {after.get('title', '')} — changed")
+    return lines
+
+
+def claimed_line(snapshot: dict) -> str | None:
+    claimed = snapshot.get("claimed")
+    if not isinstance(claimed, dict):
+        return None
+    number = claimed.get("number")
+    if number is None:
+        return None
+    title = claimed.get("title") or ""
+    return f"Your claimed by-hand ticket: #{number}: {title}"
+
+
 def main() -> None:
     payload, _ok = _hook.read_payload()
     cwd = payload.get("cwd") or "."
@@ -164,19 +234,28 @@ def main() -> None:
     other_sessions = other_live_session_lines(payload.get("session_id") or "", cwd)
     by_hand = next_by_hand_line(repo_gh, repo, cwd)
 
+    snapshot = load_snapshot()
+    delta = delta_lines(snapshot, tracked_tickets(repo_gh, cwd)) if snapshot is not None else []
+    claimed = claimed_line(snapshot) if snapshot is not None else None
+
     sections = []
+    if delta:
+        sections.append("Delta:\n" + "\n".join(delta))
     if prds:
         sections.append("Open PRDs:\n" + "\n".join(prds))
     if needs_human:
         sections.append("Needs human:\n" + "\n".join(needs_human))
     if other_sessions:
         sections.append("Other live sessions:\n" + "\n".join(other_sessions))
+    if claimed:
+        sections.append(claimed)
     if by_hand:
         sections.append(by_hand)
 
     _hook.append_log(_hook.HOOK_NAME, _hook.run_row(
         payload, "brief" if sections else "none", prds=len(prds), needs_human=len(needs_human),
-        other_sessions=len(other_sessions), by_hand=1 if by_hand else 0))
+        other_sessions=len(other_sessions), by_hand=1 if by_hand else 0,
+        delta=len(delta), claimed=1 if claimed else 0))
     if not sections:
         return
 

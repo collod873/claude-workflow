@@ -574,7 +574,7 @@ test("#441.4: an assigned by-hand issue is never named in this section", () => {
   expect(text).not.toContain("#621");
 });
 
-test.fails(
+test(
   "#443.1: given a snapshot and a since-changed stubbed tracker, the brief's first lines are the delta, one per added, removed or changed-state ticket",
   () => {
     const run = fireWithMachineLocalState(
@@ -599,7 +599,7 @@ test.fails(
   },
 );
 
-test.fails("#443.2: with no snapshot file present, no delta line is printed", () => {
+test("#443.2: with no snapshot file present, no delta line is printed", () => {
   const withSnapshot = fireWithMachineLocalState(
     makeWorld(),
     [OPEN_PRD_ISSUE, UNCHANGED_BY_HAND_ISSUE],
@@ -619,7 +619,7 @@ test.fails("#443.2: with no snapshot file present, no delta line is printed", ()
   expect(linesBeforeTheFirstCriterion(withoutSnapshot)).toHaveLength(0);
 });
 
-test.fails(
+test(
   "#443.3: the workstation's own claimed-and-open by-hand ticket is named from its snapshot, and a same-account ticket from another workstation's is not",
   () => {
     const run = fireWithMachineLocalState(
