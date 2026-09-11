@@ -384,7 +384,7 @@ describe("the lane budget wrapper, against a model call that never returns", () 
     };
   }
 
-  test.fails(
+  test(
     "#504.1: to-tickets.ts calls the budget wrapper rather than runStage directly, so a stage whose model call never returns is ended when the budget elapses",
     async () => {
       const run = startOverrunningStage(createFakeGh().gh);
@@ -396,7 +396,7 @@ describe("the lane budget wrapper, against a model call that never returns", () 
     },
   );
 
-  test.fails(
+  test(
     "#504.2: an elapsed budget strikes the ticket with the `timed out after <n> minutes at <step>` signature",
     async () => {
       const fake = createFakeGh();
