@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { changedPaths } from "../shared/changed-paths";
-import { holdingClaim, releaseFailedClaim } from "../shared/claim";
+import { holdingClaim, LANE_BUDGET_MINUTES, releaseFailedClaim } from "../shared/claim";
 import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
 import { gateGrowth } from "../shared/gate-files";
 import { deriveAnswer, ImplementerReply, landUnderGate, sayOnTicket, type ImplementOutcome } from "../shared/implementation-landing";
@@ -9,7 +9,14 @@ import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { gateOutputTail, MACHINE_ROOT, type GateVerdict } from "../shared/run-gauntlet";
-import { execClaudeIn, runStageSession, type StageExec } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+} from "../shared/stage";
 import { readStandards, renderStandardsSection } from "../shared/standards";
 import { structuredOutput } from "../shared/structured-output";
 import { targetCheckout, type TargetCheckout } from "../shared/target-checkout";
@@ -164,10 +171,11 @@ export const SKIP_NOTE =
 export function runMechanic(deps: MechanicDeps): Promise<MechanicOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
-  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), () => repairAndOpen(deps, branch, log));
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), () => repairAndOpen(deps, budget, branch, log));
 }
 
-async function repairAndOpen(deps: MechanicDeps, branch: string, log: (line: string) => void): Promise<MechanicOutcome> {
+async function repairAndOpen(deps: MechanicDeps, budget: LaneBudget, branch: string, log: (line: string) => void): Promise<MechanicOutcome> {
   const state = JSON.parse(deps.gh(["issue", "view", String(deps.issueNumber), "--json", "state"])) as { state?: string };
   if (state.state === "CLOSED") {
     log(`refusing #${deps.issueNumber}: the ticket is already closed; a stale dispatch repairs nothing`);
@@ -190,7 +198,8 @@ async function repairAndOpen(deps: MechanicDeps, branch: string, log: (line: str
     targetRoot: deps.targetRoot,
   });
 
-  const first = await runStageSession(MECHANIC_PROMPT_PATH, { BRIEF: brief }, deps.exec, MECHANIC_OUTPUT, {
+  const first = await runStageSessionWithinBudget(MECHANIC_PROMPT_PATH, { BRIEF: brief }, deps.exec, MECHANIC_OUTPUT, {
+    budget,
     model: MECHANIC_MODEL,
     promptViaStdin: true,
     disallowedTools: MECHANIC_DENIED_TOOLS,
@@ -201,12 +210,12 @@ async function repairAndOpen(deps: MechanicDeps, branch: string, log: (line: str
 
   if (!gate.ok && first.sessionId) {
     log(`resuming session ${first.sessionId} for the one repair round`);
-    const repaired = await runStageSession(
+    const repaired = await runStageSessionWithinBudget(
       MECHANIC_REPAIR_PROMPT_PATH,
       { GATE_OUTPUT: gateOutputTail(gate.output) },
       deps.exec,
       MECHANIC_OUTPUT,
-      { model: MECHANIC_MODEL, promptViaStdin: true, disallowedTools: MECHANIC_DENIED_TOOLS, resume: first.sessionId, stage: "mechanic-repair" },
+      { budget, model: MECHANIC_MODEL, promptViaStdin: true, disallowedTools: MECHANIC_DENIED_TOOLS, resume: first.sessionId, stage: "mechanic-repair" },
     );
     reply = {
       summary: repaired.value.summary,
