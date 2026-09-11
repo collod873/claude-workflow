@@ -83,14 +83,14 @@ decision answered twice. A producer that publishes a plan refuses one breaking t
 files anything, rather than leaving it for a reader to trip over. See claude-workflow/ADR-0118, recorded in
 `collod873/claude-workflow`.
 
-A claim may not touch the **immutable set** — `vitest.config.ts` or a path under `.github/`
+A claim that touches the **immutable set** — `vitest.config.ts` or a path under `.github/`
 (`shared/immutable-set.ts`, mirrored for the Python side by
-`.Workflow/agent-workflows/shared/immutable-set.json`) — since no pull request may land a change
-there; a human commits that half by hand. `bin/ticket_shape.py`'s `validate("ticket", ...)`, used
-by both `file-issue ticket` and `ticketify`, refuses such a claim before the issue is ever filed,
-naming the offending path, in the same words `reconcile.ts`'s `to-build` door already used to
-refuse it a recompute later. Ask for the immutable-set edit by name in the ticket's prose instead,
-and claim only what a pull request may actually touch.
+`.Workflow/agent-workflows/shared/immutable-set.json`) — is work no pull request may land, so a
+session builds it. `bin/ticket_shape.py`'s `classify_venue`, used by both `file-issue ticket` and
+`ticketify`, files such a ticket with `by-hand` beside `ticket`, the same label a workstation or
+cross-repo claim gets; `reconcile.ts`'s `to-build` door stands a `by-hand` ticket down, and
+`session-brief` hands it to the next session. A ticket that needs both kinds of work is two
+tickets: the half a pull request may touch, and the `by-hand` half.
 
 ## Variants
 

@@ -1010,25 +1010,26 @@ def test_test_handoff(tmp):
 
 
 def test_immutable_set_claim(tmp):
-    print("#425: a '## Files claimed' path inside the immutable set is refused before gh runs")
+    print("#434: a '## Files claimed' path inside the immutable set files by-hand, not refused")
 
     log = tmp / "immutable-ticket.jsonl"
     body = write_body(tmp, "ticket-claims-ci.md", TICKET_BODY_CLAIMS_CI)
     r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
                 body_file=body)
-    check("ticket/claims .github/workflows/ci.yml: exits nonzero", r.returncode != 0, r.returncode)
-    check("ticket/claims .github/workflows/ci.yml: refusal names the path",
-          ".github/workflows/ci.yml" in r.stderr, r.stderr)
-    check("ticket/claims .github/workflows/ci.yml: never called gh",
-          read_argv_log(log) == [], read_argv_log(log))
+    check("ticket/claims .github/workflows/ci.yml: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("ticket/claims .github/workflows/ci.yml: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
 
     log = tmp / "immutable-ticketify.jsonl"
     issues = [issue_obj(40, 4040, "Some fuzzy description.\n", labels=["fuzzy"])]
     r, calls = run_ticketify(40, [], issues, TICKET_BODY_CLAIMS_CI, log)
-    check("ticketify/claims .github/workflows/ci.yml: exits nonzero", r.returncode != 0, r.returncode)
-    check("ticketify/claims .github/workflows/ci.yml: refusal names the path",
-          ".github/workflows/ci.yml" in r.stderr, r.stderr)
-    check("ticketify/claims .github/workflows/ci.yml: never called gh", calls == [], calls)
+    check("ticketify/claims .github/workflows/ci.yml: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(calls)
+    check("ticketify/claims .github/workflows/ci.yml: labelled ticket and by-hand",
+          {"ticket", "by-hand"} <= labels, labels)
 
 
 def test_run_row(tmp: Path):

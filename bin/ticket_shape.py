@@ -37,11 +37,6 @@ def classify_venue(paths: list[str]) -> str | None:
     return None
 
 
-IMMUTABLE_SET_CLAIM_MESSAGE = (
-    "'## Files claimed' touches paths no pull request may edit: {paths} -- a human commits "
-    "that half by hand; claim what the ticket needs outside the immutable set instead"
-)
-
 def caller_repo_root(start: Path | None = None) -> Path:
     here = (start or Path.cwd()).resolve()
     for d in (here, *here.parents):
@@ -243,11 +238,6 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         if not FILES_CLAIMED_HEADING_RE.search(body):
             raise ValidationError(
                 "missing required '## Files claimed' heading"
-            )
-        immutable_claims = touches_immutable_set(claimed_paths(body))
-        if immutable_claims:
-            raise ValidationError(
-                IMMUTABLE_SET_CLAIM_MESSAGE.format(paths=", ".join(immutable_claims))
             )
         warnings = []
         lines = _criteria_lines(body)

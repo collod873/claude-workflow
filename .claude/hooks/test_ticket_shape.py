@@ -69,24 +69,23 @@ def test_touches_immutable_set():
     check("does not flag an empty list", ticket_shape.touches_immutable_set([]) == [])
 
 
-def test_validate_ticket_refuses_immutable_claim():
-    print("validate('ticket', ...) refuses a '## Files claimed' path in the immutable set")
+def test_validate_ticket_admits_immutable_claim_for_by_hand():
+    print("validate('ticket', ...) admits a '## Files claimed' path in the immutable set, "
+          "which classify_venue routes to by-hand")
 
-    msg = refusal(lambda: ticket_shape.validate("ticket", TICKET_BODY_CLAIMS_CI))
-    check("refuses (raises ValidationError, not a warning)", msg is not None, msg)
-    check("refusal names the offending path", msg is not None and ".github/workflows/ci.yml" in msg, msg)
-
-    msg = refusal(lambda: ticket_shape.validate("ticket", TICKET_BODY_CLAIMS_VITEST_CONFIG))
-    check("refuses a claim naming vitest.config.ts",
-          msg is not None and "vitest.config.ts" in msg, msg)
-
-    msg = refusal(lambda: ticket_shape.validate("ticket", TICKET_BODY_CLAIMS_MIXED))
-    check("refuses when only one of several claimed paths is immutable",
-          msg is not None and ".github/workflows/ci.yml" in msg, msg)
+    for name, body, path in (
+        ("a .github/ claim", TICKET_BODY_CLAIMS_CI, ".github/workflows/ci.yml"),
+        ("a vitest.config.ts claim", TICKET_BODY_CLAIMS_VITEST_CONFIG, "vitest.config.ts"),
+        ("a mixed claim", TICKET_BODY_CLAIMS_MIXED, ".github/workflows/ci.yml"),
+    ):
+        msg = refusal(lambda: ticket_shape.validate("ticket", body))
+        check(f"{name} is not refused", msg is None, msg)
+        claimed = ticket_shape.claimed_paths(body)
+        check(f"{name} classifies as immutable-set",
+              ticket_shape.classify_venue(claimed) == "immutable-set" and path in claimed, claimed)
 
     warnings = ticket_shape.validate("ticket", TICKET_BODY_CLAIMS_NONE_IMMUTABLE, repo_root=REPO)
-    check("a claim outside the immutable set is not refused on that account",
-          warnings == [], warnings)
+    check("a claim outside the immutable set validates with no warning", warnings == [], warnings)
 
 
 def test_classify_venue_workstation_paths():
@@ -155,7 +154,7 @@ def main():
         print()
         test_touches_immutable_set()
         print()
-        test_validate_ticket_refuses_immutable_claim()
+        test_validate_ticket_admits_immutable_claim_for_by_hand()
         print()
         test_classify_venue_workstation_paths()
         print()
