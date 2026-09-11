@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { handoffPath, writeFailure } from "../shared/handoff-path";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
@@ -8,7 +9,7 @@ import { slice } from "../shared/plan.fixture";
 import { SLICE_OUTPUT, type Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { scratchDir } from "../shared/scratch.fixture";
-import { checkpointPath } from "../shared/stage";
+import { checkpointPath, type StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
 import { seamSweepResponse, seedCheckpoint, sliceResponse, unreachableGh } from "./checkpoint.fixture";
 import { runStageCli, stageCliFailure } from "./stage-cli.fixture";
@@ -343,4 +344,71 @@ describe("to-tickets.ts --stage slice (CLI)", () => {
   it("writes a failure reason naming the stage and exits nonzero when the graph is malformed", () => {
     expect(sliceFailure([slice({ title: "A", dependsOn: [1] })])).toMatch(/^slice: .*depends on itself/);
   });
+});
+
+describe("the lane budget wrapper, against a model call that never returns", () => {
+  const PAST_ANY_BUDGET_MS = 120 * 60 * 1000;
+  const STILL_RUNNING = "still running";
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function neverReturningExec(): StageExec {
+    return (() => new Promise<never>(() => undefined)) as unknown as StageExec;
+  }
+
+  function startOverrunningStage(gh: GhExec): {
+    outcome: () => string;
+    elapseTheBudget: () => Promise<string>;
+  } {
+    withHandoffDir();
+    vi.useFakeTimers();
+    let outcome = STILL_RUNNING;
+    void runNamedStage("seam-sweep", "13", neverReturningExec(), gh).then(
+      () => {
+        outcome = "resolved";
+      },
+      () => {
+        outcome = "rejected";
+      },
+    );
+    return {
+      outcome: () => outcome,
+      elapseTheBudget: async () => {
+        await vi.advanceTimersByTimeAsync(PAST_ANY_BUDGET_MS);
+        await Promise.resolve();
+        return outcome;
+      },
+    };
+  }
+
+  test.fails(
+    "#504.1: to-tickets.ts calls the budget wrapper rather than runStage directly, so a stage whose model call never returns is ended when the budget elapses",
+    async () => {
+      const run = startOverrunningStage(createFakeGh().gh);
+
+      await Promise.resolve();
+      expect(run.outcome()).toBe(STILL_RUNNING);
+
+      expect(await run.elapseTheBudget()).toBe("rejected");
+    },
+  );
+
+  test.fails(
+    "#504.2: an elapsed budget strikes the ticket with the `timed out after <n> minutes at <step>` signature",
+    async () => {
+      const fake = createFakeGh();
+      const run = startOverrunningStage(fake.gh);
+
+      await run.elapseTheBudget();
+
+      const strike = fake.calls.find((args) =>
+        args.some((arg) => /timed out after \d+ minutes at seam-sweep/.test(String(arg))),
+      );
+      expect(strike).toBeDefined();
+      expect(JSON.stringify(strike)).toContain("13");
+    },
+  );
 });
