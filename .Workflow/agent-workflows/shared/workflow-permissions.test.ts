@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
 import { readWorkflows } from "./read-workflow";
 import { readRepoText, REPO_ROOT } from "./repo-sources";
@@ -395,4 +395,68 @@ describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", (
 
     expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));
   });
+});
+
+const SHARED_WORKFLOW_TYPES = join(REPO_ROOT, ".Workflow/agent-workflows/shared/read-workflow.ts");
+
+function sharedDeclaration(name: string): string | undefined {
+  const source = readRepoText(SHARED_WORKFLOW_TYPES);
+  const opener = new RegExp(`^export\\s+(?:interface|type)\\s+${name}\\b`, "m").exec(source);
+  if (opener === null) return undefined;
+  const rest = source.slice(opener.index);
+  const close = rest.indexOf("\n}");
+  return close === -1 ? rest : rest.slice(0, close + 2);
+}
+
+test.fails("#495.1: workflow-permissions.test.ts imports the shared WorkflowJob type", () => {
+  const shared = sharedDeclaration("WorkflowJob");
+
+  expect(
+    shared,
+    "read-workflow.ts exports no WorkflowJob, so workflow-permissions.test.ts has nothing to import " +
+      "and goes on hand-rolling its own near-identical copy of a parsed job's shape",
+  ).toBeTypeOf("string");
+  expect(
+    shared,
+    "the shared WorkflowJob carries no env field, so this suite's GH_REPO sweep cannot read a job's env off it",
+  ).toMatch(/^\s*env\??\s*:/m);
+  expect(
+    shared,
+    "the shared WorkflowJob carries no steps field, so this suite's checkout and placeholder sweeps " +
+      "cannot read a job's steps off it",
+  ).toMatch(/^\s*steps\??\s*:/m);
+});
+
+test.fails("#495.2: the suite still passes", () => {
+  expect(
+    sharedDeclaration("WorkflowJob"),
+    "read-workflow.ts exports no WorkflowJob, so the suite is still running on the local interface",
+  ).toBeTypeOf("string");
+
+  expect(workflows.length).toBeGreaterThanOrEqual(10);
+
+  const checkingOut = workflows.filter(({ source }) => CHECKS_OUT.test(source));
+  expect(checkingOut.length).toBeGreaterThanOrEqual(3);
+  for (const { name, source } of checkingOut) {
+    expect(DECLARES_PERMISSIONS.test(source), `${name} declares no permissions block`).toBe(true);
+    expect(GRANTS_CONTENTS.test(source), `${name} checks out under a permissions block without contents`).toBe(true);
+  }
+
+  expect(describeShortfall(derive(REPO_ROOT))).toBe("");
+  expect(derive(FIXTURE_ROOT).map((r) => `${r.workflow} ${r.permission}`)).toEqual(["narrow.yml issues"]);
+
+  for (const { name, source } of workflows) {
+    if (!spendsModel(source)) continue;
+    expect(CANCELS_IN_PROGRESS.test(source), `${name} spends a model and cancels itself mid-call`).toBe(false);
+  }
+
+  const acting = workflows
+    .filter(({ source }) => spendsModel(source) || performsWrite(source))
+    .map(({ name }) => name);
+  expect(acting.length).toBeGreaterThanOrEqual(10);
+
+  const sending = workflows.flatMap(({ name, workflow }) =>
+    placeholderJobsWithoutCheckout(workflow).map(([jobName]) => `${name}#${jobName}`),
+  );
+  expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));
 });
