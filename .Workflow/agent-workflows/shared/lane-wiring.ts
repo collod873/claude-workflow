@@ -1,5 +1,5 @@
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
-import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
+import { BY_HAND_LABEL, IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { CLAIM_TIMEOUT_MINUTES } from "./implementation-landing";
 import { NEEDS_HUMAN_LABEL } from "./needs-human";
 import { RATIFICATION_DUE_DISPATCH_ACTION, RATIFIER_MERGED_DISPATCH_ACTION } from "./ratification-dispatch";
@@ -609,7 +609,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       name: "Dispatch reconcile",
       on: {
         repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED],
-        issues: ["labeled"],
+        issues: ["labeled", "unlabeled"],
         workflow_run: { workflows: [...ENDING_LANES], types: ["completed"] },
         push: { branches: ["main"] },
         workflow_dispatch: true,
@@ -623,13 +623,15 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       reconcile: {
         gate: {
-          actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED],
+          actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED, "labeled", "unlabeled"],
           has: [
             "github.event_name == 'workflow_dispatch'",
             "github.event_name == 'workflow_run'",
             "github.event_name == 'push'",
             "github.event_name == 'issues'",
             onLabel(LANE_OWNED.toBuild),
+            onLabel(NEEDS_HUMAN_LABEL),
+            onLabel(BY_HAND_LABEL),
             OWNER_GATE,
           ],
         },
@@ -640,6 +642,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             "${{ (github.event_name == 'repository_dispatch' && github.event.action)",
             `|| (github.event_name == 'workflow_run' && '${RUN_ENDED}')`,
             `|| (github.event_name == 'push' && '${MAIN_MOVED}')`,
+            `|| (github.event_name == 'issues' && github.event.action == 'unlabeled' && '${GRAPH_CHANGED_DISPATCH_ACTION}')`,
             `|| '${LANE_OWNED.sessionCaptured}' }}`,
           ].join(" "),
           VERIFY_WORKFLOW: "${{ inputs.verify_workflow }}",

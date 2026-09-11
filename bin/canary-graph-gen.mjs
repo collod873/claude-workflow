@@ -38,7 +38,7 @@ const triggers = {
   "dispatch-reconcile": `  repository_dispatch:
     types: [session-captured, graph-changed, run-ended]
   issues:
-    types: [labeled]
+    types: [labeled, unlabeled]
   workflow_run:
     workflows:
       - Acceptance

@@ -30,7 +30,7 @@ shell · **[stop]** can refuse and end the run.
 
 ## Part one — the recompute (`dispatch-reconcile.yml`)
 
-## Node 00 — the seven doors · [stop]
+## Node 00 — the eight doors · [stop]
 
 `dispatch-reconcile.yml` `jobs.reconcile.if`
 
@@ -41,7 +41,11 @@ github.event_name == 'push' ||
 github.event.action == 'session-captured' ||
 github.event.action == 'graph-changed' ||
 github.event.action == 'run-ended' ||
-(github.event_name == 'issues' && github.event.label.name == 'to-build' &&
+(github.event_name == 'issues' && github.event.action == 'labeled' &&
+ github.event.label.name == 'to-build' &&
+ github.event.sender.login == github.repository_owner) ||
+(github.event_name == 'issues' && github.event.action == 'unlabeled' &&
+ (github.event.label.name == 'needs-human' || github.event.label.name == 'by-hand') &&
  github.event.sender.login == github.repository_owner)
 ```
 
@@ -51,6 +55,7 @@ github.event.action == 'run-ended' ||
 | **Door 2 — session-captured** | `repository_dispatch`, sent by `.claude/hooks/session-capture-hook.mjs` at the end of a local session. The same dispatch also wakes `audit.yml`, `run-watchdog.yml`, and `walk-home.yml` — this lane is one listener among several, not the event's owner |
 | **Door 3 — graph-changed** | Sent by lane 08 (`integrate.ts`, `announceGraphChanged`) once it merges — "a merge announces without interpreting" |
 | **Door 4 — to-build label** | `issues:labeled`, `label.name == 'to-build'`, sender must be the repo owner — the hand-off door ([`pipeline-labels.md`](pipeline-labels.md)) |
+| **Door 4b — hold lifted** | `issues:unlabeled`, `label.name` is `needs-human` or `by-hand`, sender must be the repo owner, arriving as `graph-changed`. Lifting a hold is the owner's whole recovery gesture after a strike decision, an acceptance death and a to-build refusal; before this door the recompute heard a label added and never one removed, so a lifted hold waited for whatever event happened next (#471's `by-hand`, lifted 2026-09-11 10:51, dispatched only when #473's label rang a minute later) |
 | **Door 5 — a lane you started ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, **but starts a run from it only when the ended run's actor is a person**: a push-triggered Verify, a label you applied, a hand `workflow_dispatch`. A run the machine itself started with `repository_dispatch` under `GITHUB_TOKEN` (`actor: github-actions[bot]`, which is every Implement, Mechanic, Acceptance and To-Tickets run) completes without waking anything here; see *why the completed event was missed* below |
 | **Door 6 — main moved** | `push` to `main`, no paths filter: a docs-only commit that says `Closes #421` changes the graph as much as a code one |
 | **Door 7 — a lane the machine started says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml` and `mechanic.yml` under `if: always()`, and by `acceptance.yml`'s own `wake-reconciler` job (node 07), carrying only `run_id`. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step or job runs after the cap cancels the work (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
