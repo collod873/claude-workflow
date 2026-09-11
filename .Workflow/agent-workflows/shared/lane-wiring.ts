@@ -533,11 +533,11 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     caller: {
       name: "Integrate",
       on: { repository_dispatch: [IMPLEMENTATION_PR_DISPATCH_ACTION] },
-      permissions: { contents: "write", issues: "write", "pull-requests": "write", actions: "read" },
+      permissions: { contents: "write", issues: "write", "pull-requests": "write", actions: "write" },
       with: NAMES_VERIFY_CALLER,
     },
     inputs: VERIFY_FILE_INPUT,
-    permissions: { contents: "write", issues: "write", "pull-requests": "write", actions: "read" },
+    permissions: { contents: "write", issues: "write", "pull-requests": "write", actions: "write" },
     concurrency: "integrate",
     jobs: {
       integrate: {
