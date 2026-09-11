@@ -348,7 +348,7 @@ test("#440.3: the hook writes its own run row on every fire", () => {
   expect(afterSecondFire).toBeGreaterThan(afterFirstFire);
 });
 
-test.fails(
+test(
   "#441.1: a stubbed needs-human-labeled issue produces one line naming it and its refusal reason",
   () => {
     const run = fire(makeWorld(), [OPEN_PRD_ISSUE, NEEDS_HUMAN_ISSUE], {
@@ -362,7 +362,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#441.2: a second live session's run row produces an other-live-sessions line, and none appears when this is the only session",
   () => {
     const shared = makeWorld();
@@ -379,7 +379,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#441.3: given two open unassigned by-hand issues where one is blocked, the brief names only the unblocked one",
   () => {
     const run = fire(
@@ -395,7 +395,7 @@ test.fails(
   },
 );
 
-test.fails("#441.4: an assigned by-hand issue is never named in this section", () => {
+test("#441.4: an assigned by-hand issue is never named in this section", () => {
   const run = fire(makeWorld(), [
     OPEN_PRD_ISSUE,
     ASSIGNED_BY_HAND_ISSUE,
