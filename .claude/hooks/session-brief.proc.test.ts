@@ -317,6 +317,37 @@ const WORKSTATION_CLAIM_SNAPSHOT = {
   claimed: WORKSTATION_CLAIMED_ISSUE,
 };
 
+const EVERY_SECTION_ISSUES = [
+  OPEN_PRD_ISSUE,
+  NEEDS_HUMAN_ISSUE,
+  UNASSIGNED_BY_HAND_ISSUE,
+  WORKSTATION_CLAIMED_ISSUE,
+];
+
+const EVERY_SECTION_SNAPSHOT = {
+  repo: "stub/repo",
+  session_id: "sb-previous-session",
+  tickets: [...EVERY_SECTION_ISSUES, REMOVED_BY_HAND_ISSUE],
+  claimed: WORKSTATION_CLAIMED_ISSUE,
+};
+
+const OVERFLOWING_NEEDS_HUMAN_ISSUES = Array.from({ length: 40 }, (_, index) => {
+  const number = 5001 + index;
+  return {
+    number,
+    title: `stalled at the door ${index + 1}`,
+    state: "open",
+    url: `https://github.com/stub/repo/issues/${number}`,
+    html_url: `https://github.com/stub/repo/issues/${number}`,
+    repository_url: "https://api.github.com/repos/stub/repo",
+    labels: [{ name: "needs-human" }],
+    assignees: [],
+    body: `## What to build\n\nDo the thing.\n\n${REFUSAL_COMMENT}\n`,
+  };
+});
+
+const OVERFLOW_LINE_RE = /^\+(\d+) more$/;
+
 type World = { root: string; home: string; repo: string; bin: string };
 
 type FireOptions = {
@@ -451,6 +482,14 @@ function naming(lines: string[], ticket: string): string[] {
 
 function otherLiveSessionLines(run: { stdout: string | null }): string[] {
   return briefLines(run).filter((line) => /session/i.test(line) && /live|other/i.test(line));
+}
+
+function indexOfLineNaming(lines: string[], needle: string): number {
+  return lines.findIndex((line) => line.includes(needle));
+}
+
+function contentLines(run: { stdout: string | null }): string[] {
+  return briefLines(run).filter((line) => !OVERFLOW_LINE_RE.test(line));
 }
 
 function countRunRows(dir: string): number {
@@ -633,5 +672,90 @@ test(
     expect(text).toContain(FIRST_CRITERION);
     expect(text).toContain("#641");
     expect(text).not.toContain("#642");
+  },
+);
+
+test.fails(
+  "#444.1: sections print in the fixed order, and a section that would push the brief past line 30 is dropped whole rather than half-printed",
+  () => {
+    const world = makeWorld();
+    const comments = { "604": NEEDS_HUMAN_ISSUE.comments };
+
+    const earlier = fireWithMachineLocalState(
+      world,
+      EVERY_SECTION_ISSUES,
+      EVERY_SECTION_SNAPSHOT,
+      { sessionId: "sb-order-alpha", comments },
+    );
+    expect(earlier.status).toBe(0);
+
+    const run = fireWithMachineLocalState(
+      world,
+      EVERY_SECTION_ISSUES,
+      EVERY_SECTION_SNAPSHOT,
+      { sessionId: "sb-order-beta", comments },
+    );
+    expect(run.status).toBe(0);
+
+    const lines = briefLines(run);
+    const delta = indexOfLineNaming(lines, "#632");
+    const criterion = indexOfLineNaming(lines, FIRST_CRITERION);
+    const needsHuman = indexOfLineNaming(lines, "#604");
+    const claimed = indexOfLineNaming(lines, "#641");
+    const nextByHand = indexOfLineNaming(lines, "#622");
+    const otherSessions = indexOfLineNaming(lines, "sb-order-alpha");
+
+    for (const index of [delta, criterion, needsHuman, claimed, nextByHand, otherSessions]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(delta).toBeLessThan(criterion);
+    expect(criterion).toBeLessThan(needsHuman);
+    expect(needsHuman).toBeLessThan(claimed);
+    expect(claimed).toBeLessThan(nextByHand);
+    expect(nextByHand).toBeLessThan(otherSessions);
+
+    const overflowing = fire(
+      makeWorld(),
+      [OPEN_PRD_ISSUE, UNASSIGNED_BY_HAND_ISSUE, ...OVERFLOWING_NEEDS_HUMAN_ISSUES],
+      { comments },
+    );
+    expect(overflowing.status).toBe(0);
+
+    const printed = contentLines(overflowing);
+    expect(printed.length).toBeGreaterThan(0);
+    expect(printed.length).toBeLessThanOrEqual(30);
+
+    const text = briefText(overflowing);
+    const halfPrinted = OVERFLOWING_NEEDS_HUMAN_ISSUES.filter((issue) =>
+      text.includes(`#${issue.number}`),
+    );
+    expect(halfPrinted).toHaveLength(0);
+  },
+);
+
+test.fails(
+  "#444.2: when lines are dropped the last printed line reads +N more, naming the dropped count",
+  () => {
+    const run = fire(
+      makeWorld(),
+      [OPEN_PRD_ISSUE, UNASSIGNED_BY_HAND_ISSUE, ...OVERFLOWING_NEEDS_HUMAN_ISSUES],
+      { comments: { "604": NEEDS_HUMAN_ISSUE.comments } },
+    );
+    expect(run.status).toBe(0);
+
+    const lines = briefLines(run);
+    const last = lines[lines.length - 1] ?? "";
+    expect(last).toMatch(OVERFLOW_LINE_RE);
+    expect(lines.filter((line) => OVERFLOW_LINE_RE.test(line))).toHaveLength(1);
+
+    const dropped = Number(OVERFLOW_LINE_RE.exec(last)?.[1]);
+    expect(dropped).toBeGreaterThanOrEqual(OVERFLOWING_NEEDS_HUMAN_ISSUES.length);
+
+    const nothingDropped = fire(makeWorld(), [OPEN_PRD_ISSUE, UNASSIGNED_BY_HAND_ISSUE]);
+    expect(nothingDropped.status).toBe(0);
+    expect(briefLines(nothingDropped).length).toBeGreaterThan(0);
+    expect(briefLines(nothingDropped).filter((line) => OVERFLOW_LINE_RE.test(line))).toHaveLength(
+      0,
+    );
   },
 );
