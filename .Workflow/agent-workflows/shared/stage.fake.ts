@@ -1,4 +1,6 @@
-import type { StageExec, StageReply } from "./stage";
+import { LANE_BUDGET_MINUTES } from "./claim";
+import type { GhExec } from "./gh";
+import type { LaneBudget, StageExec, StageReply } from "./stage";
 
 /**
  * @fixture A stage exec recording argv and replaying a canned response, reached only from the suite.
@@ -33,4 +35,8 @@ function recordingStage(answer: (call: number) => string | StageReply): FakeStag
     return answer(calls.length);
   };
   return { exec, calls, stdins };
+}
+
+export function unspentBudget(gh: GhExec, ticket: number): LaneBudget {
+  return { minutes: LANE_BUDGET_MINUTES, signal: new AbortController().signal, gh, ticket };
 }

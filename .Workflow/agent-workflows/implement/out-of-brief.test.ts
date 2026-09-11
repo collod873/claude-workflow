@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkoutChanged } from "../shared/claim-host.fixture";
 import { implementerReply } from "../shared/implementation-landing.fixture";
-import { createFakeStage } from "../shared/stage.fake";
+import { createFakeStage, unspentBudget } from "../shared/stage.fake";
 import { runImplement, type ImplementDeps } from "./implement";
 import { markedCount, recordOutOfBrief, TRACKER_TITLE } from "./out-of-brief";
 import { trackerWith } from "./out-of-brief-tracker.fixture";
@@ -22,6 +22,7 @@ function outOfBriefDeps(gh: ImplementDeps["gh"], git: ImplementDeps["git"], exec
   return {
     gh,
     exec,
+    budget: unspentBudget(gh, 167),
     git,
     attempt: () => "",
     readFile: (path) => (path === BUILT_PATH ? "x" : "# CONTEXT\n"),

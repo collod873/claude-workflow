@@ -1,4 +1,4 @@
-import type { LaneRun } from "./strikes";
+import type { LaneRun } from "../shared/strikes";
 
 /**
  * @fixture Builds a `LaneRun` for the suite; a lane's runs come from `gh run list`.

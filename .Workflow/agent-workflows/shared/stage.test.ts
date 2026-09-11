@@ -3,9 +3,21 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
+import { LANE_BUDGET_MINUTES } from "./claim";
+import type { GhExec } from "./gh";
 import { withHandoffDir } from "./handoff-dir.fixture";
 import { createFakeStage } from "./stage.fake";
-import { checkpointPath, runStage, runStageSession, type StageExec } from "./stage";
+import {
+  checkpointPath,
+  currentLaneRun,
+  runStage,
+  runStageSession,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneRunRef,
+  type StageExec,
+} from "./stage";
+import { strikeBody } from "./strikes";
 import { structuredOutput } from "./structured-output";
 
 const GREETING = structuredOutput(z.object({ greeting: z.string().min(1) }));
@@ -362,5 +374,136 @@ describe("runStageSession", () => {
       value: { greeting: "hi" },
       sessionId: undefined,
     });
+  });
+});
+
+describe("runStageSessionWithinBudget", () => {
+  const TICKET = 494;
+  const RUN: LaneRunRef = { id: 777, url: "https://github.com/o/r/actions/runs/777" };
+  const TIMED_OUT = `timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`;
+
+  function trackerWith(priorComments: string[]) {
+    const posted: string[] = [];
+    const gh: GhExec = (args) => {
+      if (args[0] === "issue" && args[1] === "view") {
+        return JSON.stringify({ comments: priorComments.map((body) => ({ body })) });
+      }
+      if (args[0] === "issue" && args[1] === "comment") {
+        posted.push(args[args.indexOf("--body") + 1]);
+        return "";
+      }
+      throw new Error(`unexpected gh ${args.join(" ")}`);
+    };
+    return { gh, posted };
+  }
+
+  function modelThatNeverAnswers() {
+    const killed: boolean[] = [];
+    const exec: StageExec = (_argv, _stdin, signal) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          killed.push(true);
+          reject(new Error("the model process was killed"));
+        });
+      });
+    return { exec, killed };
+  }
+
+  function injectedClock() {
+    const clock = new AbortController();
+    const asked: number[] = [];
+    const timeout = (ms: number) => {
+      asked.push(ms);
+      return clock.signal;
+    };
+    return { timeout, asked, expire: () => clock.abort() };
+  }
+
+  it("kills the model process and writes a `timed out after 85 minutes at implementer` strike when the clock expires", async () => {
+    const promptPath = writePrompt("A prompt the budget runs out on.");
+    const tracker = trackerWith([]);
+    const clock = injectedClock();
+    const model = modelThatNeverAnswers();
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
+
+    const running = runStageSessionWithinBudget(budget, promptPath, {}, model.exec, GREETING, { stage: "implementer" });
+    clock.expire();
+
+    await expect(running).rejects.toThrow(TIMED_OUT);
+    expect(clock.asked).toEqual([LANE_BUDGET_MINUTES * 60_000]);
+    expect(model.killed).toEqual([true]);
+    expect(tracker.posted).toEqual([strikeBody({ runId: RUN.id, conclusion: "failure", signature: TIMED_OUT }, RUN.url, "fresh-eyes")]);
+  });
+
+  it("names the rung after the strikes already on the ticket, as reconcile would", async () => {
+    const promptPath = writePrompt("A prompt the budget runs out on, second strike.");
+    const earlier = strikeBody({ runId: 1, conclusion: "cancelled", signature: "cancelled before answering" }, "u", "fresh-eyes");
+    const tracker = trackerWith([earlier]);
+    const clock = injectedClock();
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
+
+    const running = runStageSessionWithinBudget(budget, promptPath, {}, modelThatNeverAnswers().exec, GREETING, {
+      stage: "implementer",
+    });
+    clock.expire();
+
+    await expect(running).rejects.toThrow(TIMED_OUT);
+    expect(tracker.posted[0]).toContain("Next: the mechanic");
+  });
+
+  it("throws the same signature without a comment when no Actions run is known to name in it", async () => {
+    const promptPath = writePrompt("A prompt the budget runs out on, off the runner.");
+    const tracker = trackerWith([]);
+    const clock = injectedClock();
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET }, clock.timeout);
+
+    const running = runStageSessionWithinBudget(budget, promptPath, {}, modelThatNeverAnswers().exec, GREETING, {
+      stage: "implementer",
+    });
+    clock.expire();
+
+    await expect(running).rejects.toThrow(TIMED_OUT);
+    expect(tracker.posted).toEqual([]);
+  });
+
+  it("returns the stage's answer and writes nothing when the model answers inside the budget", async () => {
+    const promptPath = writePrompt("A prompt answered in time.");
+    const tracker = trackerWith([]);
+    const clock = injectedClock();
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, clock.timeout);
+
+    const answered = await runStageSessionWithinBudget(budget, promptPath, {}, createFakeStage(RESPONSE).exec, GREETING, {
+      stage: "in-budget",
+    });
+    clock.expire();
+
+    expect(answered.value).toEqual({ greeting: "hi" });
+    expect(tracker.posted).toEqual([]);
+  });
+
+  it("lets a stage's own failure through untouched while the budget still has time", async () => {
+    const promptPath = writePrompt("A prompt whose model dies on its own.");
+    const tracker = trackerWith([]);
+    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN }, injectedClock().timeout);
+    const dies: StageExec = async () => {
+      throw new Error("`claude` exited 1");
+    };
+
+    await expect(
+      runStageSessionWithinBudget(budget, promptPath, {}, dies, GREETING, { stage: "dies-alone" }),
+    ).rejects.toThrow("`claude` exited 1");
+    expect(tracker.posted).toEqual([]);
+  });
+});
+
+describe("currentLaneRun", () => {
+  it("names the Actions run this lane is inside from the runner's own environment", () => {
+    expect(
+      currentLaneRun({ GITHUB_RUN_ID: "42", GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "o/r" }),
+    ).toEqual({ id: 42, url: "https://github.com/o/r/actions/runs/42" });
+  });
+
+  it("is undefined off the runner", () => {
+    expect(currentLaneRun({})).toBeUndefined();
   });
 });

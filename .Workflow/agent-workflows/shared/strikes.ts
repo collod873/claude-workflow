@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GhExec } from "../shared/gh";
+import type { GhExec } from "./gh";
 
 export const RUNGS = ["implementer", "fresh-eyes", "mechanic", "decision"] as const;
 export type Rung = (typeof RUNGS)[number];

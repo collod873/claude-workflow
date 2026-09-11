@@ -15,6 +15,7 @@ import {
 } from "../shared/claim-host.fixture";
 import { describeAttempt } from "../shared/changed-paths";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import { declaredEditsNote, gateRedNote } from "../shared/implementation-landing";
 import { implementerAnswer, implementerReply } from "../shared/implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
@@ -23,7 +24,7 @@ import type { GateVerdict } from "../shared/run-gauntlet";
 import { gateSaying } from "../shared/gate.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { StageReply } from "../shared/stage";
-import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
+import { createFakeStage, createFakeStages, unspentBudget, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   CLAIM_TIMEOUT_MINUTES,
@@ -71,6 +72,7 @@ function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }:
   const deps: ImplementDeps = {
     gh: host.gh,
     exec: stage.exec,
+    budget: unspentBudget(host.gh, ISSUE),
     git: checkout.git,
     attempt: () => describeAttempt(checkout.git),
     readFile: (path) => built[path] ?? "# CONTEXT\n",
@@ -454,6 +456,16 @@ describe("a claim does not outlive the run that made it", () => {
     await expect(runImplement(deps)).rejects.toThrow(/not permitted to create pull requests/);
 
     expect(host.refs.has(BRANCH), "the claim this run made outlived it").toBe(false);
+    expect(refDeletesIn(host.calls)).toHaveLength(1);
+  });
+
+  it("ends a run whose lane budget is spent at the implementer, and releases the claim it made", async () => {
+    const { deps, host } = arrange();
+    deps.budget = { ...deps.budget, signal: AbortSignal.abort() };
+
+    await expect(runImplement(deps)).rejects.toThrow(`timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`);
+
+    expect(host.refs.has(BRANCH)).toBe(false);
     expect(refDeletesIn(host.calls)).toHaveLength(1);
   });
 

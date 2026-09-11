@@ -205,7 +205,7 @@ Sent directly via `gh`, no split-job file-collection like lanes 02 and 03 use �
 single job holding `contents: write, issues: write, actions: read, pull-requests: read` throughout, so there's no separate
 model-spending job whose token needs protecting from write access.
 
-### The ladder · `climbLadder()`, `dispatch/strikes.ts`
+### The ladder · `climbLadder()`, `shared/strikes.ts`
 
 Before a `ticket-ready` or an `acceptance-wanted` goes out, the recompute asks what already died
 on this ticket.

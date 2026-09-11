@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STAGE_SESSION_VARS } from "./child-env";
+import { issueComments, type GhExec } from "./gh";
 import { handoffPath } from "./handoff-path";
 import { reason } from "./reason";
+import { rungFor, strikeBody, strikesIn } from "./strikes";
 import { createStreamJsonParser } from "./stream-json";
 import { rejectedResponse, type StructuredOutput } from "./structured-output";
 
@@ -15,7 +17,7 @@ export interface StageReply {
   gauntletRuns?: number;
 }
 
-export type StageExec = (argv: string[], stdin?: string) => Promise<string | StageReply>;
+export type StageExec = (argv: string[], stdin?: string, signal?: AbortSignal) => Promise<string | StageReply>;
 
 const MAX_ARG_STRLEN = 32 * 4096;
 
@@ -27,13 +29,14 @@ function stageEnv(): NodeJS.ProcessEnv {
 
 export const execClaudeIn =
   (cwd?: string): StageExec =>
-  (argv, stdin) =>
+  (argv, stdin, signal) =>
   new Promise((resolve, reject) => {
     const parser = createStreamJsonParser((line) => process.stderr.write(`${line}\n`));
     const child = spawn("claude", [...withoutOutputFormat(argv), ...STREAM_FLAGS], {
       stdio: ["pipe", "pipe", "pipe"],
       env: stageEnv(),
       cwd,
+      signal,
     });
 
     let stdinError: Error | undefined;
@@ -196,6 +199,7 @@ export interface StageOptions {
   promptViaStdin?: boolean;
   resume?: string;
   stage: string;
+  signal?: AbortSignal;
 }
 
 function toStageReply(response: string | StageReply): StageReply {
@@ -251,7 +255,7 @@ export async function runStageSession<T>(
   const spawnAndParse = async (): Promise<StageSessionResult<T>> => {
     let reply: StageReply;
     if (options.promptViaStdin) {
-      reply = toStageReply(await exec(["-p", ...flags], prompt));
+      reply = toStageReply(await exec(["-p", ...flags], prompt, options.signal));
     } else {
       if (Buffer.byteLength(prompt, "utf8") > MAX_ARG_STRLEN) {
         throw new Error(
@@ -259,7 +263,7 @@ export async function runStageSession<T>(
             "limit on a single argv element; this stage needs `promptViaStdin`",
         );
       }
-      reply = toStageReply(await exec(["-p", prompt, ...flags]));
+      reply = toStageReply(await exec(["-p", prompt, ...flags], undefined, options.signal));
     }
     const value = output.parse(reply.text);
     writeCheckpoint(stage, prompt, reply.text);
@@ -278,6 +282,78 @@ export async function runStage<T>(
 ): Promise<T> {
   const { value } = await runStageSession(promptPath, vars, exec, output, options);
   return value;
+}
+
+export interface LaneRunRef {
+  id: number;
+  url: string;
+}
+
+export function currentLaneRun(env: NodeJS.ProcessEnv = process.env): LaneRunRef | undefined {
+  const id = Number(env.GITHUB_RUN_ID);
+  if (!Number.isSafeInteger(id) || id <= 0) return undefined;
+  return { id, url: `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${id}` };
+}
+
+export interface LaneBudget {
+  minutes: number;
+  signal: AbortSignal;
+  gh: GhExec;
+  ticket: number;
+  run?: LaneRunRef;
+}
+
+export function startLaneBudget(
+  minutes: number,
+  lane: Pick<LaneBudget, "gh" | "ticket" | "run">,
+  timeout: (ms: number) => AbortSignal = AbortSignal.timeout,
+): LaneBudget {
+  return { ...lane, minutes, signal: timeout(minutes * 60_000) };
+}
+
+function whenSpent(signal: AbortSignal): { spent: Promise<undefined>; release: () => void } {
+  let onAbort = () => {};
+  const spent = new Promise<undefined>((resolve) => {
+    onAbort = () => resolve(undefined);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  return { spent, release: () => signal.removeEventListener("abort", onAbort) };
+}
+
+function writeTimeoutStrike(budget: LaneBudget, signature: string): void {
+  if (budget.run === undefined) return;
+  try {
+    const prior = strikesIn(issueComments(budget.gh, budget.ticket)).length;
+    const strike = { runId: budget.run.id, conclusion: "failure", signature };
+    budget.gh(["issue", "comment", String(budget.ticket), "--body", strikeBody(strike, budget.run.url, rungFor(prior + 1))]);
+  } catch {
+  }
+}
+
+export async function runStageSessionWithinBudget<T>(
+  budget: LaneBudget,
+  promptPath: string,
+  vars: Record<string, string>,
+  exec: StageExec,
+  output: StructuredOutput<T>,
+  options: StageOptions,
+): Promise<StageSessionResult<T>> {
+  const session = runStageSession(promptPath, vars, exec, output, { ...options, signal: budget.signal });
+  session.catch(() => {});
+  const { spent, release } = whenSpent(budget.signal);
+  let finished: StageSessionResult<T> | undefined;
+  try {
+    finished = await Promise.race([session, spent]);
+  } catch (err) {
+    if (!budget.signal.aborted) throw err;
+  } finally {
+    release();
+  }
+  if (finished !== undefined) return finished;
+  const signature = `timed out after ${budget.minutes} minutes at ${options.stage}`;
+  writeTimeoutStrike(budget, signature);
+  throw new Error(signature);
 }
 
 function substitute(promptPath: string, template: string, vars: Record<string, string>): string {

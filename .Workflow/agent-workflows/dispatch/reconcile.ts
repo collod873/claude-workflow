@@ -40,7 +40,7 @@ import {
   ticketsInFlight,
   type LaneRun,
   type Rung,
-} from "./strikes";
+} from "../shared/strikes";
 import {
   countCriteria,
   extractCriteria,

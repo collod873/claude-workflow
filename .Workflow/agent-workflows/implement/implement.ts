@@ -6,7 +6,15 @@ import { execGh, ticketComments, type GhExec, type TicketComment } from "../shar
 import { FRESH_EYES_RUNG, implementationBranch, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { gateOutputTail, type GateVerdict } from "../shared/run-gauntlet";
-import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+  type StageSessionResult,
+} from "../shared/stage";
 import { renderStandardsSection, readStandards } from "../shared/standards";
 import { structuredOutput } from "../shared/structured-output";
 import {
@@ -17,7 +25,7 @@ import {
   sectionText,
   type TicketRead,
 } from "../shared/ticket-shape";
-import { holdingClaim, releaseFailedClaim } from "../shared/claim";
+import { holdingClaim, LANE_BUDGET_MINUTES, releaseFailedClaim } from "../shared/claim";
 import {
   deriveAnswer,
   ImplementerReply,
@@ -97,8 +105,12 @@ export function moduleContextPath(filesClaimed: string[], fileExists: (path: str
 
 export const IMPLEMENTER_OUTPUT = structuredOutput(ImplementerReply);
 
-export function runImplementer(exec: StageExec, brief: string): Promise<StageSessionResult<ImplementerReply>> {
-  return runStageSession(IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
+export function runImplementer(
+  exec: StageExec,
+  budget: LaneBudget,
+  brief: string,
+): Promise<StageSessionResult<ImplementerReply>> {
+  return runStageSessionWithinBudget(budget, IMPLEMENTER_PROMPT_PATH, { BRIEF: brief }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
@@ -106,8 +118,13 @@ export function runImplementer(exec: StageExec, brief: string): Promise<StageSes
   });
 }
 
-export function runRepair(exec: StageExec, sessionId: string, gateOutput: string): Promise<StageSessionResult<ImplementerReply>> {
-  return runStageSession(REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
+export function runRepair(
+  exec: StageExec,
+  budget: LaneBudget,
+  sessionId: string,
+  gateOutput: string,
+): Promise<StageSessionResult<ImplementerReply>> {
+  return runStageSessionWithinBudget(budget, REPAIR_PROMPT_PATH, { GATE_OUTPUT: gateOutputTail(gateOutput) }, exec, IMPLEMENTER_OUTPUT, {
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
     disallowedTools: IMPLEMENTER_DENIED_TOOLS,
@@ -118,11 +135,13 @@ export function runRepair(exec: StageExec, sessionId: string, gateOutput: string
 
 export function runFreshEyes(
   exec: StageExec,
+  budget: LaneBudget,
   brief: string,
   attempt: string,
   gateOutput: string,
 ): Promise<StageSessionResult<ImplementerReply>> {
-  return runStageSession(
+  return runStageSessionWithinBudget(
+    budget,
     FRESH_EYES_PROMPT_PATH,
     { BRIEF: brief, ATTEMPT: attempt, GATE_OUTPUT: gateOutputTail(gateOutput) },
     exec,
@@ -164,6 +183,7 @@ export { implementationBranch };
 export interface ImplementDeps extends TargetCheckout {
   gh: GhExec;
   exec: StageExec;
+  budget: LaneBudget;
   attempt: () => string;
   sourceFiles: () => string[];
   adrFiles: () => string[];
@@ -245,7 +265,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
     log("the tracker carries a strike against this ticket, so rung one is skipped and fresh eyes run first");
     gate = { ok: false, output: strikesAsGateOutput(deps.comments()) };
   } else {
-    const first = await runImplementer(deps.exec, brief);
+    const first = await runImplementer(deps.exec, deps.budget, brief);
     reply = first.value;
     gate = gateOnChanges(deps, log);
     sessions.push({ stage: "implementer", turns: first.turns, gauntletRuns: first.gauntletRuns });
@@ -253,7 +273,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
 
     if (!gate.ok && first.sessionId) {
       log(`resuming session ${first.sessionId} for the one repair round`);
-      const repaired = await runRepair(deps.exec, first.sessionId, gate.output);
+      const repaired = await runRepair(deps.exec, deps.budget, first.sessionId, gate.output);
       reply = {
         summary: repaired.value.summary,
         outOfBriefReads: [...first.value.outOfBriefReads, ...repaired.value.outOfBriefReads],
@@ -268,7 +288,7 @@ async function buildAndOpen(deps: ImplementDeps, branch: string, log: (line: str
   if (!gate.ok) {
     log("the push gate is still red after rung one; running a fresh Opus session with a clean context");
     const attempt = [...summaries, deps.attempt()].join("\n\n");
-    const freshEyes = await runFreshEyes(deps.exec, brief, attempt, gate.output);
+    const freshEyes = await runFreshEyes(deps.exec, deps.budget, brief, attempt, gate.output);
     reply = {
       summary: freshEyes.value.summary,
       outOfBriefReads: [...reply.outOfBriefReads, ...freshEyes.value.outOfBriefReads],
@@ -342,6 +362,7 @@ async function main(): Promise<void> {
       ...checkout,
       gh: execGh,
       exec: execClaudeIn(repoDir),
+      budget: startLaneBudget(LANE_BUDGET_MINUTES, { gh: execGh, ticket: issueNumber, run: currentLaneRun() }),
       attempt: () => describeAttempt(checkout.git),
       sourceFiles: () => walkSourceFiles(repoDir),
       adrFiles: () => listAdrFiles(repoDir),

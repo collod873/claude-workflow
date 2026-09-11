@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { laneRun } from "./lane-run.fixture";
+import { laneRun } from "../dispatch/lane-run.fixture";
 import {
   DECISION_MARKER,
   deadRunsOf,
