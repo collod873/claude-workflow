@@ -19,6 +19,30 @@ export interface NamedWorkflow<T = unknown> extends ParsedWorkflow<T> {
   name: string;
 }
 
+export interface WorkflowStep {
+  name?: string;
+  id?: string;
+  if?: string;
+  run?: string;
+  uses?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, string>;
+  "working-directory"?: string;
+}
+
+export interface WorkflowJob {
+  name?: string;
+  if?: string;
+  needs?: string[];
+  "timeout-minutes"?: number;
+  permissions?: Record<string, string>;
+  env?: Record<string, string>;
+  steps?: WorkflowStep[];
+  uses?: string;
+  with?: Record<string, string>;
+  secrets?: string;
+}
+
 const isWorkflowFile = (name: string) => name.endsWith(".yml") || name.endsWith(".yaml");
 
 export function workflowNames(dir = WORKFLOWS_DIR): string[] {

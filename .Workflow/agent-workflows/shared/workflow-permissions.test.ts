@@ -408,7 +408,7 @@ function sharedDeclaration(name: string): string | undefined {
   return close === -1 ? rest : rest.slice(0, close + 2);
 }
 
-test.fails("#495.1: workflow-permissions.test.ts imports the shared WorkflowJob type", () => {
+test("#495.1: workflow-permissions.test.ts imports the shared WorkflowJob type", () => {
   const shared = sharedDeclaration("WorkflowJob");
 
   expect(
@@ -427,7 +427,7 @@ test.fails("#495.1: workflow-permissions.test.ts imports the shared WorkflowJob 
   ).toMatch(/^\s*steps\??\s*:/m);
 });
 
-test.fails("#495.2: the suite still passes", () => {
+test("#495.2: the suite still passes", () => {
   expect(
     sharedDeclaration("WorkflowJob"),
     "read-workflow.ts exports no WorkflowJob, so the suite is still running on the local interface",

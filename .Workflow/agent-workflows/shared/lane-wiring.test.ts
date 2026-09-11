@@ -34,39 +34,25 @@ import {
   type StepFact,
 } from "./lane-wiring";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
-import { readWorkflow, readWorkflows, STUB_SUFFIX, WORKFLOWS_DIR, workflowNames } from "./read-workflow";
+import {
+  readWorkflow,
+  readWorkflows,
+  STUB_SUFFIX,
+  WORKFLOWS_DIR,
+  workflowNames,
+  type WorkflowJob,
+  type WorkflowStep,
+} from "./read-workflow";
 import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
-interface Step {
-  name?: string;
-  id?: string;
-  if?: string;
-  run?: string;
-  uses?: string;
-  with?: Record<string, unknown>;
-  env?: Record<string, string>;
-  "working-directory"?: string;
-}
-interface Job {
-  name?: string;
-  if?: string;
-  needs?: string[];
-  "timeout-minutes"?: number;
-  permissions?: Record<string, string>;
-  env?: Record<string, string>;
-  steps?: Step[];
-  uses?: string;
-  with?: Record<string, string>;
-  secrets?: string;
-}
 interface Workflow {
   name?: string;
   "run-name"?: string;
   on?: Record<string, unknown>;
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs?: Record<string, Job>;
+  jobs?: Record<string, WorkflowJob>;
 }
 interface CallOn {
   workflow_call?: { inputs?: Record<string, { required?: boolean; default?: string }> };
@@ -91,13 +77,13 @@ function expectGate(condition: string, gate: Gate): void {
   }
 }
 
-function stepIndex(steps: Step[], name: string): number {
+function stepIndex(steps: WorkflowStep[], name: string): number {
   const index = steps.findIndex((step) => step.name === name);
   expect(index, `no step named "${name}"`).toBeGreaterThanOrEqual(0);
   return index;
 }
 
-function expectStep(steps: Step[], fact: StepFact): void {
+function expectStep(steps: WorkflowStep[], fact: StepFact): void {
   const matches = steps.filter(
     (step) =>
       (fact.name === undefined || step.name === fact.name) &&
@@ -126,7 +112,7 @@ function expectStep(steps: Step[], fact: StepFact): void {
   if (fact.after !== undefined) expect(at).toBeGreaterThan(stepIndex(steps, fact.after));
 }
 
-function expectCheckout(file: string, jobName: string, facts: JobFacts, steps: Step[]): void {
+function expectCheckout(file: string, jobName: string, facts: JobFacts, steps: WorkflowStep[]): void {
   const shape: Checkout = facts.checkout ?? "none";
   const checkouts = steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
   const machine = steps.find((step) => step.name === "Checkout machine");
@@ -151,7 +137,7 @@ function expectCheckout(file: string, jobName: string, facts: JobFacts, steps: S
   }
 }
 
-function expectJob(file: string, jobName: string, facts: JobFacts, job: Job | undefined): void {
+function expectJob(file: string, jobName: string, facts: JobFacts, job: WorkflowJob | undefined): void {
   expect(job, `${file} has no job ${jobName}`).toBeDefined();
   const steps = job?.steps ?? [];
 
@@ -507,7 +493,7 @@ function carriesWorkflowStep(node: TypeScript.TypeNode | undefined): boolean {
   return false;
 }
 
-test.fails("#493.1: WorkflowStep and WorkflowJob are exported from read-workflow.ts", () => {
+test("#493.1: WorkflowStep and WorkflowJob are exported from read-workflow.ts", () => {
   const source = declarationsOf(SHARED_TYPES);
   const step = propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName);
   const job = propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName);
@@ -515,7 +501,7 @@ test.fails("#493.1: WorkflowStep and WorkflowJob are exported from read-workflow
   expect(job, "WorkflowJob members").toEqual(expect.arrayContaining(WORKFLOW_JOB_MEMBERS));
 });
 
-test.fails("#493.2: lane-wiring.test.ts imports WorkflowStep/WorkflowJob instead of declaring its own", () => {
+test("#493.2: lane-wiring.test.ts imports WorkflowStep/WorkflowJob instead of declaring its own", () => {
   const source = declarationsOf(THIS_SUITE);
   expect(namedImportsFrom(source, "./read-workflow")).toEqual(expect.arrayContaining(["WorkflowStep", "WorkflowJob"]));
   const declared = declaredInterfaceNames(source);
@@ -523,7 +509,7 @@ test.fails("#493.2: lane-wiring.test.ts imports WorkflowStep/WorkflowJob instead
   expect(declared, "a local Job is still declared here").not.toContain("Job");
 });
 
-test.fails("#493.3: the suite still passes with the shared types wired in", () => {
+test("#493.3: the suite still passes with the shared types wired in", () => {
   const source = declarationsOf(SHARED_TYPES);
   expect(propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName)).toContain("steps");
   expect(propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName)).toContain("run");
@@ -551,7 +537,7 @@ test.fails("#493.3: the suite still passes with the shared types wired in", () =
   expect(seen, "the steps the suite reads").toBeGreaterThan(0);
 });
 
-test.fails("#493.4: the repo still typechecks", () => {
+test("#493.4: the repo still typechecks", () => {
   const source = declarationsOf(SHARED_TYPES);
   const step = propertySignatures(exportedInterface(source, "WorkflowStep"));
   const job = propertySignatures(exportedInterface(source, "WorkflowJob"));
