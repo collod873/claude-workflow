@@ -474,7 +474,7 @@ describe("the cap across fixer runs", () => {
   });
 });
 
-test.fails("#502.1: fixer reaches its model through the lane-budget wrapper in shared/stage.ts, not runStage directly", async () => {
+test("#502.1: fixer reaches its model through the lane-budget wrapper in shared/stage.ts, not runStage directly", async () => {
   stageModuleCalls.length = 0;
 
   const deps = baseDeps({
@@ -489,7 +489,7 @@ test.fails("#502.1: fixer reaches its model through the lane-budget wrapper in s
   expect(stageModuleCalls[0]).not.toBe("runStageSession");
 });
 
-test.fails("#502.2: a fixer run whose lane budget elapses strikes the ticket with the timed-out-at-fixer signature", async () => {
+test("#502.2: a fixer run whose lane budget elapses strikes the ticket with the timed-out-at-fixer signature", async () => {
   const realSetTimeout = setTimeout;
   vi.useFakeTimers();
 
