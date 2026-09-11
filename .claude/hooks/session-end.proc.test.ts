@@ -129,7 +129,7 @@ function sessionRepo(): string {
   return repo;
 }
 
-test.fails(
+test(
   "#442.1: running the hook writes a snapshot file under .claude/state/ naming the stubbed open issues and this session's claimed-and-open by-hand ticket",
   () => {
     const repo = sessionRepo();
@@ -170,7 +170,7 @@ test.fails(
   },
 );
 
-test.fails("#442.2: session-end.py is registered under SessionEnd in the hook roster", () => {
+test("#442.2: session-end.py is registered under SessionEnd in the hook roster", () => {
   const roster = JSON.parse(readFileSync(rosterPath, "utf8")) as Record<string, string[]>;
   expect(roster.SessionEnd).toContain("session-end.py");
 });

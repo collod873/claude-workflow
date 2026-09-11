@@ -31,6 +31,7 @@
     "auto-approve-permissions.py"
   ],
   "SessionEnd": [
-    "session-capture.sh"
+    "session-capture.sh",
+    "session-end.py"
   ]
 }
