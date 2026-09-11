@@ -9,6 +9,7 @@ import {
   type ExistingTestCriterion,
   type SliceRef,
 } from "../shared/affected-tests";
+import { LANE_BUDGET_MINUTES } from "../shared/claim";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -16,7 +17,15 @@ import { sayOnTicket } from "../shared/implementation-landing";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
-import { execClaudeIn, runStageSession, type StageExec, type StageSessionResult } from "../shared/stage";
+import {
+  currentLaneRun,
+  execClaudeIn,
+  runStageSessionWithinBudget,
+  startLaneBudget,
+  type LaneBudget,
+  type StageExec,
+  type StageSessionResult,
+} from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { suiteLayout, type SuiteLayout } from "../shared/suite-layout";
 import {
@@ -155,7 +164,10 @@ export interface AuthoredBatch {
   sessionId?: string;
 }
 
-export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredBatch> {
+export async function authorAcceptanceTests(
+  deps: AuthorDeps,
+  budget: LaneBudget = startLaneBudget(),
+): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
   if (criteria.length === 0) {
     throw new Error(
@@ -165,7 +177,7 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredB
 
   const suite = suiteOf(deps);
   const example = exampleSubject(suite);
-  const round = await runStageSession(
+  const round = await runStageSessionWithinBudget(
     AUTHOR_PROMPT_PATH,
     {
       ISSUE_NUMBER: String(deps.issueNumber),
@@ -183,14 +195,19 @@ export async function authorAcceptanceTests(deps: AuthorDeps): Promise<AuthoredB
     },
     deps.exec,
     AUTHOR_OUTPUT,
-    { model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
+    { budget, model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
   );
   return acceptRound(deps, criteria, round);
 }
 
-export async function repairAcceptanceTests(deps: AuthorDeps, sessionId: string, judgement: string): Promise<AuthoredBatch> {
+export async function repairAcceptanceTests(
+  deps: AuthorDeps,
+  sessionId: string,
+  judgement: string,
+  budget: LaneBudget = startLaneBudget(),
+): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
-  const round = await runStageSession(
+  const round = await runStageSessionWithinBudget(
     AUTHOR_REPAIR_PROMPT_PATH,
     {
       ISSUE_NUMBER: String(deps.issueNumber),
@@ -199,7 +216,7 @@ export async function repairAcceptanceTests(deps: AuthorDeps, sessionId: string,
     },
     deps.exec,
     AUTHOR_OUTPUT,
-    { model: AUTHOR_MODEL, promptViaStdin: true, resume: sessionId, stage: "author-repair" },
+    { budget, model: AUTHOR_MODEL, promptViaStdin: true, resume: sessionId, stage: "author-repair" },
   );
   return acceptRound(deps, criteria, round);
 }
@@ -317,14 +334,14 @@ function batchPaths(batch: AuthoredBatch): string[] {
   return batch.files.map((file) => file.path);
 }
 
-async function authorWithOneRepair(deps: AuthorDeps, judge: JudgeDeps): Promise<Attempt> {
+async function authorWithOneRepair(deps: AuthorDeps, judge: JudgeDeps, budget: LaneBudget): Promise<Attempt> {
   const { suffixes } = suiteOf(deps);
-  const first = await authorAcceptanceTests(deps);
+  const first = await authorAcceptanceTests(deps, budget);
   const verdict = judgeAuthoredBatch(judge, batchPaths(first), suffixes);
   if (verdict.ok) return { ok: true, paths: batchPaths(first) };
   if (first.sessionId === undefined) return { ok: false, reason: verdict.reason };
 
-  const repaired = await repairAcceptanceTests(deps, first.sessionId, verdict.reason);
+  const repaired = await repairAcceptanceTests(deps, first.sessionId, verdict.reason, budget);
   const again = judgeAuthoredBatch(judge, batchPaths(repaired), suffixes);
   return again.ok ? { ok: true, paths: batchPaths(repaired) } : { ok: false, reason: again.reason };
 }
@@ -347,6 +364,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);
   const log = deps.log ?? ((line: string) => console.log(line));
+  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
 
   const attempt = await authorWithOneRepair(
     { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite },
@@ -354,6 +372,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
       gate: deps.gate ?? (() => gateVerdict(REPO_DIR)),
     },
+    budget,
   );
   if (!attempt.ok) {
     haltLoudly(deps.gh, deps.issueNumber, authorRedNote(attempt.reason), log);

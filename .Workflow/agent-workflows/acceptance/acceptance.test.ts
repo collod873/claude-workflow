@@ -717,7 +717,7 @@ describe("the lane budget bounds the acceptance author's model session", () => {
     for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
   }
 
-  test.fails("#503.1: the acceptance author's session runs under the lane budget, not a bare runStageSession", async () => {
+  test("#503.1: the acceptance author's session runs under the lane budget, not a bare runStageSession", async () => {
     vi.useFakeTimers();
     try {
       const run = sessionThatNeverReturns();
@@ -737,7 +737,7 @@ describe("the lane budget bounds the acceptance author's model session", () => {
     }
   });
 
-  test.fails("#503.2: an elapsed budget strikes the ticket with the timed-out signature", async () => {
+  test("#503.2: an elapsed budget strikes the ticket with the timed-out signature", async () => {
     vi.useFakeTimers();
     try {
       const run = sessionThatNeverReturns();
