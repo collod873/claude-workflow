@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-06
+superseded_by: ADR-0177
 amends: ADR-0114
 reversal: Putting a per-lane recovery door back makes every way a run can die one `if:` in YAML again that has to fire for the ticket to move, the state #384 measured on 2026-09-02 as ten Implement runs cancelled in a minute and no Recover run after any, and moves the strike count off the tracker into a lane's own artifacts.
 ---
