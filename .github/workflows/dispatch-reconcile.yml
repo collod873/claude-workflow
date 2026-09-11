@@ -33,6 +33,7 @@ jobs:
       github.event_name == 'push' ||
       github.event.action == 'session-captured' ||
       github.event.action == 'graph-changed' ||
+      github.event.action == 'run-ended' ||
       (github.event_name == 'issues' &&
        github.event.label.name == 'to-build' &&
        github.event.sender.login == github.repository_owner)

@@ -30,7 +30,7 @@ shell · **[stop]** can refuse and end the run.
 
 ## Part one — the recompute (`dispatch-reconcile.yml`)
 
-## Node 00 — the six doors · [stop]
+## Node 00 — the seven doors · [stop]
 
 `dispatch-reconcile.yml` `jobs.reconcile.if`
 
@@ -40,6 +40,7 @@ github.event_name == 'workflow_run' ||
 github.event_name == 'push' ||
 github.event.action == 'session-captured' ||
 github.event.action == 'graph-changed' ||
+github.event.action == 'run-ended' ||
 (github.event_name == 'issues' && github.event.label.name == 'to-build' &&
  github.event.sender.login == github.repository_owner)
 ```
@@ -50,9 +51,24 @@ github.event.action == 'graph-changed' ||
 | **Door 2 — session-captured** | `repository_dispatch`, sent by `.claude/hooks/session-capture-hook.mjs` at the end of a local session. The same dispatch also wakes `audit.yml`, `run-watchdog.yml`, and `walk-home.yml` — this lane is one listener among several, not the event's owner |
 | **Door 3 — graph-changed** | Sent by lane 08 (`integrate.ts`, `announceGraphChanged`) once it merges — "a merge announces without interpreting" |
 | **Door 4 — to-build label** | `issues:labeled`, `label.name == 'to-build'`, sender must be the repo owner — the hand-off door ([`pipeline-labels.md`](pipeline-labels.md)) |
-| **Door 5 — any lane ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, so a run killed at `timeout-minutes` reaches this door without any step of its own having to survive ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md)) |
+| **Door 5 — a lane you started ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, **but starts a run from it only when the ended run's actor is a person**: a push-triggered Verify, a label you applied, a hand `workflow_dispatch`. A run the machine itself started with `repository_dispatch` under `GITHUB_TOKEN` (`actor: github-actions[bot]`, which is every Implement, Mechanic, Acceptance and To-Tickets run) completes without waking anything here; see *why the completed event was missed* below |
 | **Door 6 — main moved** | `push` to `main`, no paths filter: a docs-only commit that says `Closes #421` changes the graph as much as a code one |
-| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 5 and 6 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
+| **Door 7 — a claim-holding lane says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml` and `mechanic.yml` under `if: always()`, carrying only `run_id`. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step runs after the cap cancels the job (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
+| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 5, 6 and 7 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
+
+### Why the completed event was missed before #445
+
+`collod873/Lumaria`, 2026-09-10: Implement #880 (run 34530270263, `actor: github-actions[bot]`)
+was cancelled by its cap at 21:51:45. No Dispatch reconcile run followed; the next was a hand
+`workflow_dispatch` at 22:10, and #880's bare claim sat for nineteen minutes. Reading every run in
+both repositories that day: every Dispatch reconcile run with `event: workflow_run` has
+`triggering_actor: collod873`, and not one bot-started lane run, whatever its conclusion, was
+followed by any `workflow_run`-triggered run at all. A hand-sent `prd-sliceable` (To-Tickets run
+34535319465, actor `collod873`) woke the reconciler two seconds after it failed; the bot-sent one a
+minute earlier (34534729757) woke nothing. This is GitHub's recursion guard: an event an action
+causes under `GITHUB_TOKEN` starts no workflow, `workflow_dispatch` and `repository_dispatch`
+excepted, and a bot-started run's own completion counts as such an event. Door 5's claim that
+"every ending" reaches here was true only of endings a person had set in motion.
 
 ### edge — `EVENT_ACTION`, a collapse worth reading carefully
 

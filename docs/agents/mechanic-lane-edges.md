@@ -80,7 +80,10 @@ ticket's claim with a reason.
 | `skip-refused` | `git diff` added lines matching `.skip(`, `.todo(`, `xit(`, `xdescribe(` | the same |
 
 Either exit is a dead run, so the reconciler reads it as the ticket's third strike and posts the
-decision.
+decision. As in lane 05, the job's last step sends `run-ended` under `if: always()` so the
+reconciler is actually woken: this run was bot-started, and GitHub starts nothing from a
+bot-started run's `workflow_run: completed` ([reconcile-lane-edges.md](reconcile-lane-edges.md),
+node 00).
 
 ---
 

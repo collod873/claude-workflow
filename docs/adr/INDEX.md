@@ -96,6 +96,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0174 | [A ratified standard must be expressible as a sub-second grep](0174-a-ratified-standard-must-be-expressible-as-a-sub-second-grep.md) |
 | 0175 | [A hook writes its run row through its language's writer, never a private append](0175-a-hook-writes-its-run-row-through-its-language-s-writer-neve.md) |
 | 0176 | [The hook run-row writers are this repo's own files, and the prose gate reads them like everything else](0176-the-hook-run-row-writers-are-this-repo-s-own-files-and-the-p.md) |
+| 0177 | [A run the machine started says its own ending, because GitHub starts nothing from a bot-started run's completion](0177-a-run-the-machine-started-says-its-own-ending-because-github.md) |
 
 ## Retired
 
@@ -191,4 +192,4 @@ demotion; nothing here binds later work.
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 
-176 ADRs · 88 constraint · 44 note · 44 superseded · 18,040 words total.
+177 ADRs · 89 constraint · 44 note · 44 superseded · 18,190 words total.

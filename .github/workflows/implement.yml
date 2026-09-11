@@ -89,3 +89,11 @@ jobs:
         with:
           issue: ${{ env.TICKET_NUMBER }}
           mode: "off"
+
+      - name: Wake the reconciler, whatever ended this run
+        if: always()
+        run: |
+          set -euo pipefail
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=run-ended \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID"
