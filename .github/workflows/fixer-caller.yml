@@ -1,9 +1,6 @@
 name: Fixer
 
 "on":
-  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
   repository_dispatch:
     types: [fixer-needed]
   workflow_dispatch:
@@ -22,12 +19,9 @@ jobs:
       actions: read
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.action == 'fixer-needed' ||
-      ((github.event.workflow_run.conclusion == 'failure' ||
-      github.event.workflow_run.conclusion == 'cancelled') &&
-      github.event.workflow_run.event != 'push')
+      github.event.action == 'fixer-needed'
     uses: collod873/claude-workflow/.github/workflows/fixer.yml@main
     with:
-      run_id: ${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}
+      run_id: ${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
       test_dir: .Workflow
     secrets: inherit

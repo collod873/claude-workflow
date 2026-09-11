@@ -34,6 +34,8 @@ export const DEAD_RUN_WIRES = {
   fixerNeeded: "fixer-needed",
 } as const;
 
+export const REVIEW_WANTED = "review-wanted";
+
 export const RUN_ENDED = "run-ended";
 
 export const MAIN_MOVED = "main-moved";
@@ -87,7 +89,7 @@ const onLabel = (label: string) => `github.event.label.name == '${label}'`;
 const tsx = (entrypoint: string) => `npx tsx .Workflow/agent-workflows/${entrypoint}`;
 const ring = (wire: string) => [`event_type=${wire}`, "client_payload[run_id]=$GITHUB_RUN_ID"];
 
-const RESOLVED_RUN_ID = "${{ github.event.workflow_run.id || github.event.client_payload.run_id || github.event.inputs.run_id }}";
+const RESOLVED_RUN_ID = "${{ github.event.client_payload.run_id || github.event.inputs.run_id }}";
 
 export type Scope = "read" | "write";
 export type Permissions = Readonly<Partial<Record<"contents" | "issues" | "pull-requests" | "actions", Scope>>>;
@@ -173,20 +175,12 @@ const INSTALLS_TARGET: StepFact = {
 
 const ACTS_ON_PULL_REQUEST: Permissions = { contents: "write", "pull-requests": "write", issues: "write", actions: "read" };
 
-function deadRunCaller(name: string, upstream: string, wire: string, extraGate: string[] = []): CallerFacts {
+function deadRunCaller(name: string, wire: string): CallerFacts {
   return {
     name,
-    on: { workflow_run: { workflows: [upstream], types: ["completed"] }, repository_dispatch: [wire], workflow_dispatch: true },
+    on: { repository_dispatch: [wire], workflow_dispatch: true },
     permissions: ACTS_ON_PULL_REQUEST,
-    gate: {
-      actions: [wire],
-      has: [
-        "github.event_name == 'workflow_dispatch'",
-        "github.event.workflow_run.conclusion == 'failure'",
-        "github.event.workflow_run.conclusion == 'cancelled'",
-        ...extraGate,
-      ],
-    },
+    gate: { actions: [wire], has: ["github.event_name == 'workflow_dispatch'"], lacks: ["workflow_run"] },
     with: { run_id: RESOLVED_RUN_ID },
   };
 }
@@ -511,6 +505,26 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         checkout: "none",
         steps: [{ name: "Tell the Fixer this run went red", run: ring(DEAD_RUN_WIRES.fixerNeeded), env: { GH_REPO: "${{ github.repository }}" } }],
       },
+      "signal-review": {
+        needs: ["immutability", "verify"],
+        gate: { is: `${onAction(IMPLEMENTATION_PR_DISPATCH_ACTION)} && needs.verify.result == 'success'` },
+        permissions: { contents: "write", "pull-requests": "read" },
+        checkout: "none",
+        timeout: 5,
+        steps: [
+          {
+            name: "Tell Review this run went green, naming the commits it judged",
+            run: [
+              'gh pr view "$PR" --json headRefOid',
+              DISPATCH_SEND,
+              ...ring(REVIEW_WANTED),
+              "client_payload[head_sha]=$HEAD_SHA",
+              "client_payload[base_sha]=$GITHUB_SHA",
+            ],
+            env: { GH_REPO: "${{ github.repository }}", PR: "${{ github.event.client_payload.pr }}" },
+          },
+        ],
+      },
     },
     source: { lacks: ["implementation-pr-opened", "continue-on-error"] },
   },
@@ -538,7 +552,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   },
 
   fixer: {
-    caller: deadRunCaller("Fixer", "Verify", DEAD_RUN_WIRES.fixerNeeded, ["github.event.workflow_run.event != 'push'"]),
+    caller: deadRunCaller("Fixer", DEAD_RUN_WIRES.fixerNeeded),
     inputs: { run_id: { required: false, default: "" } },
     permissions: ACTS_ON_PULL_REQUEST,
     concurrency: "fixer-${{ inputs.run_id || github.run_id }}",
@@ -571,12 +585,12 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   review: {
     caller: {
       name: "Review",
-      on: VERIFY_COMPLETED,
+      on: { repository_dispatch: [REVIEW_WANTED] },
       permissions: { contents: "read", issues: "write" },
-      gate: { has: ["github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event != 'push'"] },
-      with: { head_sha: "${{ github.event.workflow_run.head_sha }}" },
+      gate: { is: onAction(REVIEW_WANTED) },
+      with: { head_sha: "${{ github.event.client_payload.head_sha }}", base_sha: "${{ github.event.client_payload.base_sha }}" },
     },
-    inputs: { head_sha: { required: true } },
+    inputs: { head_sha: { required: true }, base_sha: { required: true } },
     permissions: { contents: "read", issues: "write" },
     concurrency: "review-${{ inputs.head_sha }}",
     jobs: {

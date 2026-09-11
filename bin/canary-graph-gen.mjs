@@ -66,10 +66,7 @@ const triggers = {
   push:
     branches: [main]
   workflow_dispatch:`,
-  fixer: `  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]
-  repository_dispatch:
+  fixer: `  repository_dispatch:
     types: [fixer-needed]
   workflow_dispatch:`,
   implement: `  repository_dispatch:
@@ -86,9 +83,8 @@ const triggers = {
     types: [ratifier-merged]`,
   mechanic: `  repository_dispatch:
     types: [mechanic-wanted]`,
-  review: `  workflow_run:
-    workflows: ["Verify"]
-    types: [completed]`,
+  review: `  repository_dispatch:
+    types: [review-wanted]`,
   "run-watchdog": `  repository_dispatch:
     types: [session-captured]`,
   shape: `  issues:

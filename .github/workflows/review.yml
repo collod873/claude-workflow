@@ -6,6 +6,9 @@ name: Review (reusable)
       head_sha:
         type: string
         required: true
+      base_sha:
+        type: string
+        required: true
       runner:
         type: string
         required: false
@@ -63,4 +66,4 @@ jobs:
       - name: Run the correctness reviewer
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
-        run: npx tsx .Workflow/agent-workflows/review/review.ts "origin/main" "${{ inputs.head_sha }}"
+        run: npx tsx .Workflow/agent-workflows/review/review.ts "${{ inputs.base_sha }}" "${{ inputs.head_sha }}"
