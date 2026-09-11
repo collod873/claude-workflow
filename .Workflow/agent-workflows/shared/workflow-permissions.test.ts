@@ -2,13 +2,8 @@ import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
-import { readWorkflows } from "./read-workflow";
+import { readWorkflows, type WorkflowJob } from "./read-workflow";
 import { readRepoText, REPO_ROOT } from "./repo-sources";
-
-interface WorkflowJob {
-  env?: Record<string, unknown>;
-  steps?: Array<{ run?: string; uses?: string; env?: Record<string, unknown> }>;
-}
 
 const DECLARES_PERMISSIONS = /^permissions:\s*$/m;
 
