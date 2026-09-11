@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import {
@@ -27,6 +27,7 @@ interface EvidenceRun {
   created_at: string;
   html_url: string;
   failed_step: string | null;
+  event?: string;
 }
 
 const EVIDENCE: EvidenceRun[] = evidence;
@@ -39,10 +40,13 @@ function asVerifyRun(run: EvidenceRun): VerifyRun {
     htmlUrl: run.html_url,
     conclusion: run.conclusion,
     failedStep: run.failed_step ?? undefined,
-  };
+    event: run.event ?? "push",
+  } as VerifyRun;
 }
 
-function run(overrides: Partial<VerifyRun> = {}): VerifyRun {
+type RunOverrides = Partial<VerifyRun> & { event?: string };
+
+function run(overrides: RunOverrides = {}): VerifyRun {
   const id = overrides.id ?? 1;
   return {
     id,
@@ -51,8 +55,9 @@ function run(overrides: Partial<VerifyRun> = {}): VerifyRun {
     htmlUrl: `https://github.com/owner/repo/actions/runs/${id}`,
     conclusion: "failure",
     failedStep: BYPASS_STEP,
+    event: "push",
     ...overrides,
-  };
+  } as VerifyRun;
 }
 
 describe("the rule, run over verify.yml's real run history", () => {
@@ -156,6 +161,7 @@ interface FakeRun {
   headBranch?: string;
   createdAt?: string;
   failedStep?: string;
+  event?: string;
 }
 
 function historyWith(options: {
@@ -176,6 +182,7 @@ function historyWith(options: {
           html_url: `https://github.com/owner/repo/actions/runs/${each.id}`,
           head_branch: each.headBranch ?? "main",
           created_at: each.createdAt ?? "2026-08-26T12:00:00Z",
+          event: each.event ?? "push",
         })),
       );
     }
@@ -332,4 +339,30 @@ describe("bypassRuns", () => {
 
     expect(bypassRuns([bypass, ...others])).toEqual([bypass]);
   });
+});
+
+test.fails("#460.1: isBypass leaves a dispatch-started Gauntlet failure on main uncounted", () => {
+  const dispatched = run({ id: 34526216112, event: "repository_dispatch" });
+
+  expect(dispatched.headBranch).toBe("main");
+  expect(dispatched.conclusion).toBe("failure");
+  expect(dispatched.failedStep).toBe(BYPASS_STEP);
+  expect(isBypass(dispatched)).toBe(false);
+  expect(bypassCount([dispatched, run({ id: 2 })])).toBe(1);
+});
+
+test.fails("#460.2: readRuns projects event off the runs API and VerifyRun carries it", () => {
+  const fake = historyWith({ runs: gauntletFailures(3).map((each) => ({ ...each, event: "repository_dispatch" })) });
+
+  const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
+
+  const runsRead = fake.calls.find((argv) => argv[0] === "api" && workflowRunsPathMatcher.test((argv[1] ?? "").split("?")[0]))!;
+  expect(runsRead[runsRead.indexOf("--jq") + 1]).toContain("event");
+  expect(outcome).toMatchObject({ code: "below-threshold", count: 0 });
+});
+
+test.fails("#460.3: issueBody says the count is of push-started runs", () => {
+  const body = issueBody([run({ id: 10 }), run({ id: 12 })]);
+
+  expect(body.toLowerCase()).toContain("push-started");
 });
