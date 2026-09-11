@@ -665,6 +665,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         steps: [{ name: "Checkout Knowledge-Base", with: { repository: "collod873/Knowledge-Base", path: `target/${LANE_OWNED.knowledgeBaseDir}` } }],
       },
     },
+    source: { lacks: [NEEDS_HUMAN_LABEL] },
   },
 
   ratify: {
@@ -683,6 +684,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { HEAD_SHA: true, PRD_CLOSED: true, EVENT_ACTION: true, PR_BASE: true, CLAUDE_CODE_OAUTH_TOKEN: true },
       },
     },
+    source: { lacks: [NEEDS_HUMAN_LABEL] },
   },
 
   "ratify-on-prd-close": {
@@ -716,6 +718,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { PR: "${{ github.event.client_payload.pr }}" },
       },
     },
+    source: { lacks: [NEEDS_HUMAN_LABEL] },
   },
 
   "decline-on-revert": {
@@ -729,6 +732,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       decline: { ungated: true, runs: tsx("ratify/run-revert-detector.ts"), checkout: { pair: true, fetchDepth: 0 } },
     },
+    source: { lacks: [NEEDS_HUMAN_LABEL] },
   },
 
   "run-watchdog": {
@@ -747,7 +751,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { EVENT_ACTION: true, SIGNAL_ASSIGNEE: true },
       },
     },
-    source: { lacks: ["schedule:"] },
+    source: { lacks: [NEEDS_HUMAN_LABEL, "schedule:"] },
   },
 
   "bypass-counter": {
@@ -769,7 +773,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { SIGNAL_ASSIGNEE: true, VERIFY_WORKFLOW: "${{ inputs.verify_workflow }}" },
       },
     },
-    source: { lacks: ["schedule:"] },
+    source: { lacks: [NEEDS_HUMAN_LABEL, "schedule:"] },
   },
 
   "lost-dispatch-counter": {
@@ -791,7 +795,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { LABEL_NAME: true, PRD_NUMBER: true, SLICING_WORKFLOW: "${{ inputs.slicing_workflow }}" },
       },
     },
-    source: { lacks: ["schedule:"] },
+    source: { lacks: [NEEDS_HUMAN_LABEL, "schedule:"] },
   },
 
   "missing-trailer-counter": {
@@ -805,6 +809,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       count: { ungated: true, runs: tsx("watchdog/missing-trailer-counter.ts"), checkout: "pair", env: { SIGNAL_ASSIGNEE: true } },
     },
+    source: { lacks: [NEEDS_HUMAN_LABEL] },
   },
 
   "back-stamp": {

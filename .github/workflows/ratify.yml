@@ -97,15 +97,3 @@ jobs:
           if git rev-parse --verify --quiet refs/ratifier/last >/dev/null; then
             git push origin --delete refs/release/last || true
           fi
-
-      - name: Escalate a ratifier that died
-        if: failure()
-        run: |
-          set -euo pipefail
-          gh label create needs-human --color d93f0b \
-            --description "Ticket stalled; a human decision or action is required" --force
-          gh issue create \
-            --title "Ratifier run $GITHUB_RUN_ID failed" \
-            --label needs-human \
-            --assignee "$GITHUB_REPOSITORY_OWNER" \
-            --body "The ratifier lane failed at ${HEAD_SHA}. Its findings were not decided and re-batch at the next trigger. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -418,7 +418,7 @@ the second.
 |---|---|
 | **No-op verdict** | `commitWorkingTree()` returns `null` when the tree is unchanged from `parent` (identical `write-tree` hash) — the finding is `skipped`, not landed, even though a model call answered it |
 | **Commit trailer** | Every landed commit carries `Machinery-Commit: true` — the line the *next* audit's `isMachineryCommit()` filters out of its own commit range, so a ratifier landing never becomes evidence for the following audit |
-| **Immutable-set refusal** | `refuseImmutableSetBatch(changedFiles)` — if *any* file across the whole batch touches `vitest.config.ts` or `.github/`, the **entire batch throws**, discarding every finding this run processed, however many Opus calls it cost. This is not caught anywhere in `runRatify`; it propagates to `main()`, sets `exitCode = 1`, and fires the "Escalate a ratifier that died" step in `ratify.yml` |
+| **Immutable-set refusal** | `refuseImmutableSetBatch(changedFiles)` — if *any* file across the whole batch touches `vitest.config.ts` or `.github/`, the **entire batch throws**, discarding every finding this run processed, however many Opus calls it cost. This is not caught anywhere in `runRatify`; it propagates to `main()`, sets `exitCode = 1`, and the run dies red; the findings re-batch at the next trigger |
 | **Trunk alignment** | `alignImmutableSetWithTrunk()` fetches trunk, force-checks-out its own copies of the immutable-set paths onto the batch tip, and commits that as one more `Machinery-Commit: true` commit (`"Carry trunk's immutable set, which this batch may not edit"`) — so the ratifier's branch can never diverge from trunk on the two files it is forbidden to author |
 | **PR gate** | `openRatifierPr()` refuses (throws) if `landed` is empty, if `head === base`, or if `changedFiles` is empty — never opens a pull request with nothing in it |
 
@@ -485,7 +485,7 @@ nothing downstream reads it.
 | **Advance** | `advanceRatifierRef()` moves the local `refs/ratifier/last` to `head` — called whether or not anything landed |
 | **Publish** | A dedicated step pushes `refs/ratifier/last` to `origin`, using `secrets.ENROL_PAT \|\| github.token` for the target checkout — the ambient Actions token cannot move a ref whose range includes a workflow-file change (see commit `c71f727`: a batch untouched by `.github/` still failed to push its bookmark because the *range since the bookmark last moved* crossed an owner's own workflow edit) |
 | **Retire** | A second step deletes the legacy `refs/release/last` on `origin`, `\|\| true` (never fails the job) — migrating every future run off `readRatifierBase()`'s fallback path |
-| **Escalate** | On `failure()`, files a `needs-human`-labelled issue naming the run, assigned to the repo owner: *"Its findings were not decided and re-batch at the next trigger."* `audit.yml` has no equivalent step at all — an audit failure is silent past the Actions tab; a ratifier failure is not |
+| **Death** | Files nothing and labels nothing. The undecided findings re-batch at the next trigger, so there is nothing for a human to do; the run log is the record. `lane-wiring.ts` pins `needs-human` out of every lens and counter workflow |
 
 ---
 
@@ -577,7 +577,7 @@ Ordered by how much has been spent when it fires.
 | 1 opus call | Node 11, `reject` | Declined memory is written; no commit |
 | 1 opus call + a local eslint run | Node 12, demotion | The freshly authored rule doesn't flag every site on the pre-fix tree |
 | after the model, before commit | `commitWorkingTree()` returns `null` | The verdict's own edits left the tree byte-identical to its parent |
-| **the whole batch, after every model call already spent** | `refuseImmutableSetBatch()` | Any file across the batch touches `vitest.config.ts` or `.github/` — the run then fails outright and files a `needs-human` issue |
+| **the whole batch, after every model call already spent** | `refuseImmutableSetBatch()` | Any file across the batch touches `vitest.config.ts` or `.github/` — the run then fails outright, and the batch re-forms at the next trigger |
 | free | `openRatifierPr()`'s own guards | Nothing landed, `head === base`, or no files actually changed |
 | 20 min | `audit.yml` job timeout | — |
 | 110 min / 120 min | `ratify.yml` step / job timeout | — |
@@ -625,8 +625,6 @@ writes `ratified` records after a merge (Node 15), and `decline-on-revert.yml` w
   live.
 - `audit.yml` never checks `CLAUDE_CODE_OAUTH_TOKEN` before spending a checkout and a Node install,
   unlike `ratify.yml` and `spec.yml`, which both refuse on it before Node is installed at all.
-- `audit.yml` has no equivalent of `ratify.yml`'s "Escalate a ratifier that died" step: a failed audit
-  run is visible only in the Actions tab, with no issue filed and no `needs-human` label.
 - ADR-0017, the release-PR channel ADR-0122 superseded, is marked `superseded` but its own reversal
   note says its PRD-close-or-N-observations *trigger* survives inside the very files this doc
   documents (`ratification-scope.ts`, `run-ratify.ts`, `land.ts`, `prd-close.ts`) — only the "released
