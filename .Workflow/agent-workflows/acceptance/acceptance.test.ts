@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
@@ -678,5 +678,77 @@ describe("acceptRound: a subject the test runs as a process gets no stub", () =>
     expect(refusal).toContain("no test file");
     for (const suffix of suite.suffixes) expect(refusal).toContain(suffix);
     expect(written).toEqual([]);
+  });
+});
+
+describe("the lane budget bounds the acceptance author's model session", () => {
+  const TRACKER = { [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } };
+  const TIMED_OUT = /timed out after \d+ minutes at \S+/;
+  const WELL_PAST_ANY_BUDGET_MS = 6 * 60 * 60 * 1000;
+
+  function sessionThatNeverReturns() {
+    const writes: string[][] = [];
+    const tracker = trackerWith(TRACKER, {}, writes);
+    const hangingExec = (() => new Promise(() => {})) as unknown as FakeStage["exec"];
+    let settlement: string | undefined;
+    void runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: hangingExec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      gate: () => GATE_GREEN,
+      git: createFakeGit(() => "").git,
+      landing: "commit",
+      log: () => {},
+      suite: SUITE,
+    }).then(
+      (outcome) => {
+        settlement = JSON.stringify(outcome);
+      },
+      (thrown: unknown) => {
+        settlement = String((thrown as Error)?.message ?? thrown);
+      },
+    );
+    return { writes, settlement: () => settlement };
+  }
+
+  async function settleMicrotasks(): Promise<void> {
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+  }
+
+  test.fails("#503.1: the acceptance author's session runs under the lane budget, not a bare runStageSession", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = sessionThatNeverReturns();
+      await vi.advanceTimersByTimeAsync(30_000);
+      await settleMicrotasks();
+      expect(run.settlement(), "the budget is a duration, so half a minute in the session is still running").toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(WELL_PAST_ANY_BUDGET_MS);
+      await settleMicrotasks();
+      expect(
+        run.settlement(),
+        "a model session that never returns ends on the lane budget instead of running forever",
+      ).toBeDefined();
+      expect(String(run.settlement())).toMatch(/timed out|budget/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test.fails("#503.2: an elapsed budget strikes the ticket with the timed-out signature", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = sessionThatNeverReturns();
+      await vi.advanceTimersByTimeAsync(WELL_PAST_ANY_BUDGET_MS);
+      await settleMicrotasks();
+
+      const strike = run.writes.find((call) => call.some((arg) => TIMED_OUT.test(arg)));
+      expect(strike, `nothing matching ${TIMED_OUT} reached the tracker: ${JSON.stringify(run.writes)}`).toBeDefined();
+      expect(strike, "the strike lands on the ticket the lane was authoring for").toContain(String(ISSUE));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
