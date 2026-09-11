@@ -271,7 +271,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test.fails("#500.1: ratifier runs its stage under the lane budget instead of calling runStage directly", async () => {
+test("#500.1: ratifier runs its stage under the lane budget instead of calling runStage directly", async () => {
   const minutes = await laneBudgetMinutes();
   vi.useFakeTimers();
 
@@ -281,7 +281,7 @@ test.fails("#500.1: ratifier runs its stage under the lane budget instead of cal
   expect((await advance(run, 120_000)).state).toBe("rejected");
 });
 
-test.fails("#500.2: an elapsed budget strikes the ticket with the timed-out-at-ratifier signature", async () => {
+test("#500.2: an elapsed budget strikes the ticket with the timed-out-at-ratifier signature", async () => {
   const minutes = await laneBudgetMinutes();
   vi.useFakeTimers();
 

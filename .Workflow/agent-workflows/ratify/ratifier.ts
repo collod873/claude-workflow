@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import type { GitExec } from "../shared/git";
 import { reason } from "../shared/reason";
-import { runStage, type StageExec } from "../shared/stage";
+import { runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { VIOLATION_LENS, type Observation } from "../shared/observation-schema";
 import type { RatificationRecord } from "../shared/ratification-schema";
 import { appendStandardEntry, STANDARDS_FILE } from "./standards";
@@ -13,12 +13,14 @@ const RATIFIER_PROMPT_PATH = fileURLToPath(new URL("./prompt.md", import.meta.ur
 
 const RATIFIER_MODEL = "opus";
 
-export function runRatifierStage(exec: StageExec, vars: Record<string, string>): Promise<RatifierVerdict> {
-  return runStage(RATIFIER_PROMPT_PATH, vars, exec, RATIFIER_OUTPUT, {
+export async function runRatifierStage(exec: StageExec, vars: Record<string, string>): Promise<RatifierVerdict> {
+  const { value } = await runStageSessionWithinBudget(RATIFIER_PROMPT_PATH, vars, exec, RATIFIER_OUTPUT, {
+    budget: startLaneBudget(),
     model: RATIFIER_MODEL,
     promptViaStdin: true,
     stage: "ratifier",
   });
+  return value;
 }
 
 export function ratifierVars(options: {
