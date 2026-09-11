@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
 import { scratchDir } from "../shared/scratch.fixture";
@@ -408,3 +408,47 @@ describe("runReview's conformance half", () => {
     expect(result.tally).toEqual({ reached: 0, refuted: 0 });
   });
 });
+
+const OVER_BUDGET_STAGE_MS = 250;
+const TINY_BUDGET_MINUTES = 0.001;
+const TIMED_OUT_AT_CORRECTNESS = /timed out after [\d.]+ minutes at correctness/;
+
+function overBudgetExec(response: unknown): StageExec {
+  return () =>
+    new Promise<string>((resolve) => {
+      setTimeout(() => resolve(JSON.stringify(response)), OVER_BUDGET_STAGE_MS);
+    });
+}
+
+function budgetedReviewInput() {
+  return {
+    diff: DIFF,
+    greenGateChecks: [] as string[],
+    assignee: ASSIGNEE,
+    head: HEAD_SHA,
+    root: scratchDir("review-budget"),
+    budgetMinutes: TINY_BUDGET_MINUTES,
+  };
+}
+
+test.fails("#499.1: review.ts calls the budget wrapper instead of runStage directly", async () => {
+  const exec = overBudgetExec({ findings: [] });
+  const { gh } = trackerForReview({ pullsByCommit: claimedPulls(), tickets: CONFORMANCE_TICKETS });
+
+  await expect(runReview(exec, gh, budgetedReviewInput())).rejects.toThrow(TIMED_OUT_AT_CORRECTNESS);
+});
+
+test.fails(
+  "#499.3: both suites pass, including a case proving an elapsed budget strikes the ticket",
+  async () => {
+    const exec = overBudgetExec({ findings: [] });
+    const { gh, calls } = trackerForReview({ pullsByCommit: claimedPulls(), tickets: CONFORMANCE_TICKETS });
+
+    await expect(runReview(exec, gh, budgetedReviewInput())).rejects.toThrow(TIMED_OUT_AT_CORRECTNESS);
+
+    const strike = calls.find((call) => call.join(" ").includes("timed out after"));
+    expect(strike).toBeDefined();
+    expect(strike?.join(" ")).toContain(`${TICKET_NUMBER}`);
+    expect(strike?.join(" ")).toMatch(TIMED_OUT_AT_CORRECTNESS);
+  },
+);

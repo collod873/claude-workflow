@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import type { StageExec } from "../shared/stage";
 import { refusalNamesReason, runRefuter, survivesRefutation, type RefuterVerdict } from "./refuter";
-import type { Finding } from "./structural-refusal";
+import type { Finding, GreenGateCheck } from "./structural-refusal";
 
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 @@ -10,3 +10,4 @@ src/widget.ts:12
@@ -113,4 +113,28 @@ describe("runRefuter", () => {
     expect(fake.prompts[0]).toContain(survivor.message);
     expect(fake.prompts[0]).toContain("src/widget.ts");
   });
+});
+
+type BudgetedRefuter = (
+  exec: StageExec,
+  findings: Finding[],
+  diff: string,
+  greenGateChecks: GreenGateCheck[],
+  budgetMinutes?: number,
+) => Promise<Finding[]>;
+
+const OVER_BUDGET_STAGE_MS = 250;
+const TINY_BUDGET_MINUTES = 0.001;
+
+test.fails("#499.2: refuter.ts calls the budget wrapper instead of runStage directly", async () => {
+  const overBudget: StageExec = () =>
+    new Promise<string>((resolve) => {
+      setTimeout(() => resolve(JSON.stringify(verdict())), OVER_BUDGET_STAGE_MS);
+    });
+  const finding: Finding = { message: "src/widget.ts:12 returns undefined on the empty-cart path" };
+  const budgeted = runRefuter as BudgetedRefuter;
+
+  await expect(budgeted(overBudget, [finding], DIFF, [], TINY_BUDGET_MINUTES)).rejects.toThrow(
+    /timed out after [\d.]+ minutes at refuter/,
+  );
 });
