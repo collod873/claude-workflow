@@ -126,7 +126,7 @@ type BudgetedRefuter = (
 const OVER_BUDGET_STAGE_MS = 250;
 const TINY_BUDGET_MINUTES = 0.001;
 
-test.fails("#499.2: refuter.ts calls the budget wrapper instead of runStage directly", async () => {
+test("#499.2: refuter.ts calls the budget wrapper instead of runStage directly", async () => {
   const overBudget: StageExec = () =>
     new Promise<string>((resolve) => {
       setTimeout(() => resolve(JSON.stringify(verdict())), OVER_BUDGET_STAGE_MS);
