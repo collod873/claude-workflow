@@ -107,7 +107,12 @@ export interface Tracker {
   commentEdits: Array<{ id: number; body: string }>;
   labelsAdded: Array<{ issue: number; name: string }>;
   labelsRemoved: Array<{ issue: number; name: string }>;
+  bodyEdits: Array<{ issue: number; body: string }>;
   released: string[];
+}
+
+function flagValues(args: string[], flag: string): string[] {
+  return args.flatMap((arg, at) => (arg === flag && args[at + 1] !== undefined ? [args[at + 1]] : []));
 }
 
 export function trackerWith(options: TrackerOptions): Tracker {
@@ -118,6 +123,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
   const commentEdits: Tracker["commentEdits"] = [];
   const labelsAdded: Tracker["labelsAdded"] = [];
   const labelsRemoved: Tracker["labelsRemoved"] = [];
+  const bodyEdits: Tracker["bodyEdits"] = [];
   const released: string[] = [];
   const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
   const open = new Map(options.open.map((issue) => [issue.number, issue]));
@@ -214,6 +220,9 @@ export function trackerWith(options: TrackerOptions): Tracker {
     }
     if (args[0] === "issue" && args[1] === "view") {
       const number = Number(args[2]);
+      if (args[args.indexOf("--json") + 1] === "labels") {
+        return JSON.stringify({ labels: (open.get(number)?.labels ?? []).map((name) => ({ name })) });
+      }
       const closes = closed.has(number) || open.get(number)?.mergedCloser === true;
       return JSON.stringify(closes ? [closingPrFor(number)] : []);
     }
@@ -237,8 +246,16 @@ export function trackerWith(options: TrackerOptions): Tracker {
     }
     if (args[0] === "issue" && args[1] === "edit") {
       const issue = Number(args[2]);
-      if (args.includes("--add-label")) labelsAdded.push({ issue, name: args[args.indexOf("--add-label") + 1] });
-      if (args.includes("--remove-label")) labelsRemoved.push({ issue, name: args[args.indexOf("--remove-label") + 1] });
+      const record = open.get(issue);
+      for (const name of flagValues(args, "--remove-label")) {
+        labelsRemoved.push({ issue, name });
+        if (record) record.labels = (record.labels ?? []).filter((each) => each !== name);
+      }
+      for (const name of flagValues(args, "--add-label")) {
+        labelsAdded.push({ issue, name });
+        if (record && !(record.labels ?? []).includes(name)) record.labels = [...(record.labels ?? []), name];
+      }
+      for (const body of flagValues(args, "--body")) bodyEdits.push({ issue, body });
       return "";
     }
     if (args[0] === "issue" && args[1] === "create") {
@@ -255,7 +272,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
     return answer(args) ?? sender.gh(args);
   };
 
-  return { gh, calls, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved, released };
+  return { gh, calls, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved, bodyEdits, released };
 }
 
 export const silent = () => {};

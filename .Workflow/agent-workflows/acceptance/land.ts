@@ -16,6 +16,8 @@ export const PUSH_ATTEMPTS = 5;
 
 export const PUSH_BACKOFF_SECONDS = 5;
 
+const STALLED_OUTCOMES = new Set<LandingOutcome["outcome"]>(["needs-human", "unreported"]);
+
 export interface AuthoringResults {
   refireResult: string;
   refireAuthored: string;
@@ -186,7 +188,7 @@ async function main(): Promise<void> {
   );
 
   console.log(outcome.outcome === "landed" ? "landed" : `${outcome.outcome}: ${"why" in outcome ? outcome.why : "nothing was authored"}`);
-  if (outcome.outcome === "needs-human" || outcome.outcome === "unreported") process.exitCode = 1;
+  if (STALLED_OUTCOMES.has(outcome.outcome)) process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

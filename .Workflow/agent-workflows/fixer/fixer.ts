@@ -5,6 +5,7 @@ import { changedPaths } from "../shared/changed-paths";
 import { execGh, type GhExec } from "../shared/gh";
 import { gateGrowth } from "../shared/gate-files";
 import { execGit, type GitExec } from "../shared/git";
+import { FIXING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
@@ -389,6 +390,7 @@ async function runEscalate(): Promise<void> {
 
 async function fixInCheckout(issueNumber: number, prNumber: number, branch: string, dir: string, repoDir: string): Promise<void> {
   const targets = [dir];
+  markLane(execGh, issueNumber, FIXING_LABEL);
 
   const initialFailure = runVitestJsonForFixer(targets, repoDir).failures;
   if (initialFailure.length === 0) {

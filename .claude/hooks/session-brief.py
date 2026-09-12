@@ -12,9 +12,23 @@ NEEDS_HUMAN_LABEL = "needs-human"
 BY_HAND_LABEL = "by-hand"
 PRD_LABEL = "prd"
 
+OWNER_LABELS = (
+    NEEDS_HUMAN_LABEL,
+    "fuzzy",
+    BY_HAND_LABEL,
+    "1-decide",
+    "2-questions-open",
+    "slice-failed",
+    "shape-refused",
+    "spec/gap",
+)
+LISTED_OWNER_LABELS = tuple(label for label in OWNER_LABELS if label != BY_HAND_LABEL)
+
 SNAPSHOT_PREFIX = "session-snapshot-"
 TRACKED_LABELS = (PRD_LABEL, NEEDS_HUMAN_LABEL, BY_HAND_LABEL)
 TRACKED_FIELDS = "number,title,state,labels,assignees"
+OWNER_FIELDS = "number,title,body,labels"
+ISSUE_PAGE_SIZE = "200"
 MAX_BRIEF_LINES = 30
 
 
@@ -95,7 +109,7 @@ def issue_comments(gh, repo: str, number, cwd: str) -> list[dict]:
     return [c for c in comments if isinstance(c, dict)] if isinstance(comments, list) else []
 
 
-def needs_human_reason(gh, repo: str, issue: dict, cwd: str) -> str:
+def owner_reason(gh, repo: str, issue: dict, cwd: str) -> str:
     for comment in reversed(issue_comments(gh, repo, issue.get("number"), cwd)):
         body = comment.get("body")
         if isinstance(body, str) and body.strip():
@@ -104,12 +118,48 @@ def needs_human_reason(gh, repo: str, issue: dict, cwd: str) -> str:
     return body_lines[-1] if body_lines else ""
 
 
-def needs_human_lines(gh, repo: str, cwd: str) -> list[str]:
+def label_names(issue: dict) -> list[str]:
+    names = []
+    for label in issue.get("labels") or []:
+        name = label.get("name") if isinstance(label, dict) else label
+        if isinstance(name, str):
+            names.append(name)
+    return names
+
+
+def open_issues(gh, cwd: str, fields: str) -> list[dict]:
+    try:
+        raw = gh_support.run_gh(
+            gh, "issue", "list", "--state", "open", "--limit", ISSUE_PAGE_SIZE,
+            "--json", fields, cwd=cwd,
+        )
+    except gh_support.GhError:
+        return []
+    try:
+        issues = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [i for i in issues if isinstance(i, dict)] if isinstance(issues, list) else []
+
+
+def owner_label_of(issue: dict) -> str | None:
+    worn = label_names(issue)
+    for label in LISTED_OWNER_LABELS:
+        if label in worn:
+            return label
+    return None
+
+
+def waiting_on_owner_lines(gh, repo: str, cwd: str) -> list[str]:
     lines = []
-    for issue in open_issues_by_label(gh, cwd, NEEDS_HUMAN_LABEL):
-        reason = needs_human_reason(gh, repo, issue, cwd)
+    for issue in open_issues(gh, cwd, OWNER_FIELDS):
+        label = owner_label_of(issue)
+        if label is None:
+            continue
+        reason = owner_reason(gh, repo, issue, cwd)
         title = issue.get("title") or ""
-        lines.append(f"#{issue.get('number')}: {title} needs a human: {reason}")
+        held = "needs a human" if label == NEEDS_HUMAN_LABEL else f"waits on you, {label}"
+        lines.append(f"#{issue.get('number')}: {title} {held}: {reason}")
     return lines
 
 
@@ -217,7 +267,7 @@ def claimed_line(snapshot: dict) -> str | None:
 def build_sections(
     delta: list[str],
     prds: list[str],
-    needs_human: list[str],
+    waiting_on_owner: list[str],
     claimed: str | None,
     by_hand: str | None,
     other_sessions: list[str],
@@ -227,8 +277,8 @@ def build_sections(
         sections.append(["Delta:"] + delta)
     if prds:
         sections.append(["Open PRDs:"] + prds)
-    if needs_human:
-        sections.append(["Needs human:"] + needs_human)
+    if waiting_on_owner:
+        sections.append(["Waiting on you:"] + waiting_on_owner)
     if claimed:
         sections.append([claimed])
     if by_hand:
@@ -238,10 +288,10 @@ def build_sections(
     return sections
 
 
-def screen_line(needs_human: list[str], claimed: str | None, by_hand: str | None) -> str | None:
+def screen_line(waiting_on_owner: list[str], claimed: str | None, by_hand: str | None) -> str | None:
     parts = [line for line in (claimed or by_hand,) if line]
-    if needs_human:
-        parts.append(f"{len(needs_human)} needs human")
+    if waiting_on_owner:
+        parts.append(f"{len(waiting_on_owner)} waiting on you")
     if not parts:
         return None
     return f"[{_hook.HOOK_NAME}] " + " · ".join(parts) + " — say go"
@@ -283,7 +333,7 @@ def main() -> None:
 
     repo_gh = gh_support.bind_gh(gh_path, repo, timeout=GH_TIMEOUT_SECONDS)
     prds = prd_lines(repo_gh, repo, cwd)
-    needs_human = needs_human_lines(repo_gh, repo, cwd)
+    waiting_on_owner = waiting_on_owner_lines(repo_gh, repo, cwd)
     other_sessions = other_live_session_lines(payload.get("session_id") or "", cwd)
     by_hand = next_by_hand_line(repo_gh, repo, cwd)
 
@@ -291,10 +341,10 @@ def main() -> None:
     delta = delta_lines(snapshot, tracked_tickets(repo_gh, cwd)) if snapshot is not None else []
     claimed = claimed_line(snapshot) if snapshot is not None else None
 
-    sections = build_sections(delta, prds, needs_human, claimed, by_hand, other_sessions)
+    sections = build_sections(delta, prds, waiting_on_owner, claimed, by_hand, other_sessions)
 
     _hook.append_log(_hook.HOOK_NAME, _hook.run_row(
-        payload, "brief" if sections else "none", prds=len(prds), needs_human=len(needs_human),
+        payload, "brief" if sections else "none", prds=len(prds), waiting_on_owner=len(waiting_on_owner),
         other_sessions=len(other_sessions), by_hand=1 if by_hand else 0,
         delta=len(delta), claimed=1 if claimed else 0))
     if not sections:
@@ -308,7 +358,7 @@ def main() -> None:
             "additionalContext": msg,
         }
     }
-    screen = screen_line(needs_human, claimed, by_hand)
+    screen = screen_line(waiting_on_owner, claimed, by_hand)
     if screen:
         output["systemMessage"] = screen
     print(json.dumps(output))

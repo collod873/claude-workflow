@@ -278,6 +278,16 @@ A published slice: a child issue carrying acceptance criteria, file claims and n
 edges. A slice becomes a ticket at publish, not before, so a drafted breakdown holds no tickets.
 _Avoid_: issue, sub-issue, card, item
 
+**Lane label**:
+The one green or blue label an open issue wears, saying which lane holds it now or what machine
+step it waits for: `1-shaping` … `8-landing`, `ratifying`, or `3-sliced`, `waiting`, `queued`,
+`sliceable`. Exclusive within green and blue, so stamping one removes the others; a red label is a
+hold the owner lifts and stands beside it. The number is the lane's number, so the label filter
+reads in pipeline order, and a green label with no run behind it is where a chain died. Every
+label's name, colour and family lives in one catalogue, `shared/labels.ts`. See
+[ADR-0182](docs/adr/0182-every-open-issue-wears-one-lane-label-coloured-by-who-holds.md).
+_Avoid_: status label, state label, running, in-progress
+
 **Seam manifest**:
 The list of shared shapes a batch needs, one line each, naming what it is, where it lives or should
 live, and what consumes it. The one-line bound is load-bearing: every line is injected into every

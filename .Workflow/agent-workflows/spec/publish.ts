@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type { GhExec } from "../shared/gh";
 import { parseIssueNumber } from "../shared/issue-url";
+import { PRD_LABEL } from "../shared/labels";
 import type { SpecAuthorOutput } from "./author-contract";
 import { validateSpecBody, type SpecBodyValidator } from "./validate-spec";
 
-export const PRD_LABEL = "prd";
+export { PRD_LABEL };
 
 export const SpecSource = z.object({
   kind: z.enum(["sheet", "map"]),

@@ -10,9 +10,26 @@ import {
   matchingRefsPath,
   subIssuesPath,
 } from "../shared/gh-paths";
-import { BY_HAND_LABEL, touchesImmutableSet } from "../shared/immutable-set";
+import { touchesImmutableSet } from "../shared/immutable-set";
 import { releaseDeadClaim } from "../shared/claim";
-import { escalateToOwner, NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import {
+  ACCEPTING_LABEL,
+  BUILDING_LABEL,
+  BY_HAND_LABEL,
+  IDEA_LABEL,
+  isLaneLabel,
+  markLane,
+  NEEDS_HUMAN_LABEL,
+  PRD_LABEL,
+  QUEUED_LABEL,
+  TO_BUILD_LABEL,
+  unlabel,
+  WAITING_LABEL,
+  wearsLane,
+  type StateLabel,
+} from "../shared/labels";
+import { escalateToOwner } from "../shared/needs-human";
+import { countRollup, readRollup, rollupLine, writeRollup } from "./rollup";
 import { testsForTicket } from "../shared/affected-tests";
 import {
   dispatchAcceptanceWanted,
@@ -83,7 +100,9 @@ const MAX_UNREACHABLE_REPORTED = 10;
 
 const PARENT_PRD_HEADING = /^##[ \t]+Parent PRD[ \t]*$/m;
 
-export const TO_BUILD_LABEL = "to-build";
+export { TO_BUILD_LABEL };
+
+const NEVER_BUILT = [PRD_LABEL, IDEA_LABEL];
 
 const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
 
@@ -408,16 +427,31 @@ function recordToBuildShape(
   return false;
 }
 
+function labelNames(issue: OpenIssue): string[] {
+  return (issue.labels ?? []).map((label) => label.name);
+}
+
+function admittedByLaneLabel(issue: OpenIssue): boolean {
+  const labels = labelNames(issue);
+  if (!labels.some(isLaneLabel) || labels.some((label) => NEVER_BUILT.includes(label))) return false;
+  return toBuildRefusal(issue.body ?? "") === undefined;
+}
+
 function admitToBuild(
   gh: GhExec,
   issues: OpenIssue[],
+  started: Set<number>,
   log: (line: string) => void,
   dryRun: boolean,
 ): Set<number> {
   const admitted = new Set<number>();
   for (const issue of issues) {
-    const labels = (issue.labels ?? []).map((label) => label.name);
-    if (!labels.includes(TO_BUILD_LABEL)) continue;
+    if (started.has(issue.number)) continue;
+    const labels = labelNames(issue);
+    if (!labels.includes(TO_BUILD_LABEL)) {
+      if (admittedByLaneLabel(issue)) admitted.add(issue.number);
+      continue;
+    }
 
     if (labels.includes(BY_HAND_LABEL)) {
       if (dryRun) {
@@ -449,8 +483,6 @@ function admitToBuild(
   return admitted;
 }
 
-const PRD_LABEL = "prd";
-
 const PRD_CHECK_MARKER = "<!-- prd-check:v1 -->";
 
 const PRD_UNRUNNABLE_MARKER = "<!-- prd-unrunnable:v1 -->";
@@ -458,8 +490,6 @@ const PRD_UNRUNNABLE_MARKER = "<!-- prd-unrunnable:v1 -->";
 const IssueComment = z.object({ id: z.number(), body: z.string() });
 type IssueComment = z.infer<typeof IssueComment>;
 const IssueComments = z.array(IssueComment);
-
-const SubIssueList = z.array(z.object({ number: z.number() }));
 
 function rewriteComment(gh: GhExec, id: number, body: string): void {
   gh(["api", issueCommentPath(id), "-X", "PATCH", "-f", `body=${body}`]);
@@ -477,16 +507,6 @@ function fetchComments(gh: GhExec, number: number): IssueComment[] | null {
 
 function markedComment(comments: IssueComment[], ...markers: string[]): IssueComment | undefined {
   return comments.find((comment) => markers.some((marker) => comment.body.includes(marker)));
-}
-
-function fetchSubIssueCount(gh: GhExec, number: number): number | null {
-  try {
-    const raw = gh(["api", subIssuesPath(number)]);
-    const parsed = SubIssueList.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data.length : null;
-  } catch {
-    return null;
-  }
 }
 
 function fetchChildren(gh: GhExec, number: number): Blocker[] | null {
@@ -789,16 +809,18 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const graph = buildGraph(gh, issues, { inFlight: ticketsInFlight(runs), claimed, dryRun: input.dryRun ?? false }, log);
   if (graph === null) return degraded("the dependency graph could not be read for every open issue.");
 
+  const prdChildren = new Map<number, Blocker[]>();
   for (const issue of issues) {
-    const labels = (issue.labels ?? []).map((each) => each.name);
+    const labels = labelNames(issue);
     if (!labels.includes(PRD_LABEL)) continue;
 
-    const subIssueCount = fetchSubIssueCount(gh, issue.number);
-    if (subIssueCount === null) {
+    const children = fetchChildren(gh, issue.number);
+    if (children === null) {
       log(`could not read #${issue.number}'s sub-issues, so skipping its spec check this run.`);
       continue;
     }
-    if (subIssueCount < 1) continue;
+    prdChildren.set(issue.number, children);
+    if (children.length < 1) continue;
 
     if (input.dryRun) {
       log(`would evaluate #${issue.number}'s spec check.`);
@@ -812,7 +834,8 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
   }
 
-  const startable = startableNumbers(issues, admitToBuild(gh, issues, log, input.dryRun ?? false));
+  const started = new Set(graph.filter((state) => state.started).map((state) => state.number));
+  const startable = startableNumbers(issues, admitToBuild(gh, issues, started, log, input.dryRun ?? false));
   const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
 
   const readyStartable = readySlices(graph).filter((state) => startable.has(state.number));
@@ -820,7 +843,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
   const ready: SliceState[] = [];
   for (const state of readyStartable) {
-    const labels = (byNumber.get(state.number)?.labels ?? []).map((each) => each.name);
+    const labels = labelNames(byNumber.get(state.number) ?? { number: state.number, title: "", body: null });
     if (labels.includes(NEEDS_HUMAN_LABEL)) {
       log(`#${state.number}: not dispatching; it carries \`${NEEDS_HUMAN_LABEL}\` and waits for a human.`);
       continue;
@@ -865,15 +888,59 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       if (wants === "acceptance-wanted") {
         dispatchAcceptanceWanted(gh, state.number, true);
         authoring.push(state.number);
+        markLane(gh, state.number, ACCEPTING_LABEL);
+        dropToBuild(gh, byNumber.get(state.number), ACCEPTING_LABEL);
         log(`#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author first.`);
         continue;
       }
       if (rung === "mechanic") dispatchMechanicWanted(gh, state.number);
       else dispatchTicketReady(gh, state.number, rung === "fresh-eyes");
       dispatched.push(state.number);
+      markLane(gh, state.number, BUILDING_LABEL);
+      dropToBuild(gh, byNumber.get(state.number), BUILDING_LABEL);
       log(`#${state.number}: dispatched rung ${rung}.`);
     } catch (err) {
       log(`could not dispatch #${state.number}: ${reason(err)}`);
+    }
+  }
+
+  const touched = new Set([...dispatched, ...authoring, ...deciding]);
+  const readyNumbers = new Set(ready.map((state) => state.number));
+  for (const state of graph) {
+    if (!startable.has(state.number) || state.started || state.delivery !== "open") continue;
+    const issue = byNumber.get(state.number);
+    if (issue === undefined || touched.has(state.number)) continue;
+    const wanted = readyNumbers.has(state.number) ? QUEUED_LABEL : state.blockedBy.length > 0 ? WAITING_LABEL : undefined;
+    if (wanted === undefined || wearsLane(labelNames(issue), wanted)) continue;
+    if (input.dryRun) {
+      log(`would mark #${state.number} ${wanted}.`);
+      continue;
+    }
+    if (wanted === QUEUED_LABEL) markLane(gh, state.number, QUEUED_LABEL);
+    else markLane(gh, state.number, WAITING_LABEL);
+    issue.labels = [...(issue.labels ?? []).filter((label) => !isLaneLabel(label.name)), { name: wanted }];
+  }
+
+  for (const [prd, children] of prdChildren) {
+    const issue = byNumber.get(prd);
+    if (issue === undefined || children.length === 0) continue;
+    const line = rollupLine(
+      countRollup(
+        children.map((child) => ({
+          open: child.state.toLowerCase() === "open",
+          labels: labelNames(byNumber.get(child.number) ?? { number: child.number, title: "", body: null }),
+        })),
+      ),
+    );
+    if (readRollup(issue.body ?? "") === line) continue;
+    if (input.dryRun) {
+      log(`would rewrite #${prd}'s rollup: ${line}.`);
+      continue;
+    }
+    try {
+      writeRollup(gh, prd, issue.body ?? "", line);
+    } catch (err) {
+      log(`could not rewrite #${prd}'s rollup: ${reason(err)}`);
     }
   }
 
@@ -912,6 +979,12 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     unreachable: filed,
     note: `dispatched ticket-ready for #${dispatched.join(", #")}.`,
   };
+}
+
+function dropToBuild(gh: GhExec, issue: OpenIssue | undefined, label: StateLabel): void {
+  if (issue === undefined) return;
+  if (labelNames(issue).includes(TO_BUILD_LABEL)) unlabel(gh, issue.number, TO_BUILD_LABEL);
+  issue.labels = [...(issue.labels ?? []).filter((each) => !isLaneLabel(each.name) && each.name !== TO_BUILD_LABEL), { name: label }];
 }
 
 export function runRealSpecClose(number: number, range: string, targetWorkspace: string): CloseTicketResult {

@@ -1,8 +1,11 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
+import { FINDING_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { SignalIssueSchema } from "../shared/signal-issue-schema";
+
+export { FINDING_LABEL };
 
 export const GROW_THRESHOLD = 3;
 
@@ -10,8 +13,6 @@ export const DELETE_THRESHOLD = 20;
 
 export const FALSE_ALARM_EXPIRY_DAYS = 5;
 const FALSE_ALARM_EXPIRY_MS = FALSE_ALARM_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-
-export const FINDING_LABEL = "lane-07-finding";
 
 export interface FindingIssue {
   number: number;

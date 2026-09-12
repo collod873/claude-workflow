@@ -3,7 +3,8 @@ import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
 import { publishingGh } from "./issue-doors.fixture";
-import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
+import { QUESTIONS_OPEN_LABEL, SLICEABLE_LABEL } from "../shared/labels";
+import { SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import {
   PRD_LABEL,
   publishSpec,
@@ -167,8 +168,9 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
     expect(result).toMatchObject({ issueNumber: CREATED, gateCount: 1, outcome: "dispatched" });
     expect(calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(1);
 
-    const labelWrites = calls.filter((args) => args.includes(SLICEABLE_LABEL));
+    const labelWrites = calls.filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes(SLICEABLE_LABEL));
     expect(labelWrites).toHaveLength(1);
+    expect(calls.filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes(QUESTIONS_OPEN_LABEL))).toHaveLength(1);
 
     const comments = calls.filter((args) => args[0] === "issue" && args[1] === "comment");
     expect(comments).toHaveLength(0);

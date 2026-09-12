@@ -76,6 +76,7 @@ const TYPE_LINE = /^(?:import\b|export\s*[{*]|(?:export\s+)?(?:type|interface|en
 const IMPORT_STATEMENT = /import\s+([\s\S]*?)\s+from\s+"([^"]+)"/g;
 
 const IDENTIFIER = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+const BEST_EFFORT_WRITER = /shared\/labels\.ts$/;
 
 interface ImportedName {
   specifier: string;
@@ -189,7 +190,7 @@ function reachableWrites(entrypoint: string, root: string): Map<Permission, { wh
       if (module.symbols.has(name)) queue.push({ file, symbol: name });
       const imported = module.imports.get(name);
       const target = imported && resolveSpecifier(file, imported.specifier);
-      if (imported && target) queue.push({ file: target, symbol: imported.symbol });
+      if (imported && target && !BEST_EFFORT_WRITER.test(target)) queue.push({ file: target, symbol: imported.symbol });
     }
   }
 

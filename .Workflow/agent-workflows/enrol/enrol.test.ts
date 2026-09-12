@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh.ts";
-import { ENROLMENT_TOPIC, exitCodeFor, runEnrol, type RepositoryOutcome } from "./enrol.ts";
+import { NEEDS_HUMAN_LABEL } from "../shared/labels.ts";
+import { catalogueLabels, ENROLMENT_TOPIC, exitCodeFor, runEnrol, type RepositoryOutcome } from "./enrol.ts";
 import { labelPlan, type Label } from "./labels.ts";
 import { OUTWARD_CREDENTIAL, derivedSecretNames } from "./secrets.ts";
 import { SEEDED_DOC_NAMES, claudeMdPointerLine, pointerDoc, pointerDocPath } from "./seeded-docs.ts";
@@ -313,16 +314,12 @@ describe("a pass over a target that is already current", () => {
   it("writes no stub commit and no label, but still sets ADR-0093's setting and propagates secrets", () => {
     const dir = machineWorkflows(["verify", "audit"], ["FOO"]);
     const stubs = readStubSet(dir);
-    const own: Label[] = [{ name: "alpha", color: "111111", description: "first" }];
-    const wire = createWire(
-      {
-        "owner/current": {
-          files: stubs.map((stub) => ({ name: stub.name, sha: stub.sha })),
-          labels: own,
-        },
+    const wire = createWire({
+      "owner/current": {
+        files: stubs.map((stub) => ({ name: stub.name, sha: stub.sha })),
+        labels: catalogueLabels(),
       },
-      own,
-    );
+    });
 
     const outcomes = enrol(dir, wire, { FOO: "foo-value" });
     const outcome = outcomeFor(outcomes, "owner/current");
@@ -374,33 +371,30 @@ describe("a pass over a target that has drifted", () => {
 describe("labels, the ADR-0093 setting, and secrets ride every pass, independent of the stub outcome and of each other", () => {
   it("corrects a differing label, creates a missing one, and leaves the target's own label alone, while still setting ADR-0093 and both secrets", () => {
     const dir = machineWorkflows(["verify"], ["FOO", "BAR"]);
-    const own: Label[] = [
-      { name: "ticket", color: "111111", description: "kind: ticket" },
-      { name: "needs-human", color: "222222", description: "an agent stopped" },
-    ];
-    const wire = createWire(
-      {
-        "owner/target": {
-          files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })),
-          labels: [
-            { name: "ticket", color: "999999", description: "kind: ticket" },
-            { name: "bug", color: "abcdef", description: "GitHub's own stock label" },
-          ],
-        },
+    const own = catalogueLabels();
+    const ticket = own.find((label) => label.name === "ticket") as Label;
+    const needsHuman = own.find((label) => label.name === NEEDS_HUMAN_LABEL) as Label;
+    const wire = createWire({
+      "owner/target": {
+        files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })),
+        labels: [
+          ...own.filter((label) => label !== ticket && label !== needsHuman),
+          { ...ticket, color: "999999" },
+          { name: "theirs", color: "abcdef", description: "the target's own label" },
+        ],
       },
-      own,
-    );
+    });
 
     const outcomes = enrol(dir, wire, { FOO: "foo-value", BAR: "bar-value" });
     const outcome = outcomeFor(outcomes, "owner/target");
 
     expect(outcome.labelsFailure).toBeUndefined();
-    expect(outcome.labelsWritten).toEqual(["ticket", "needs-human"]);
+    expect(outcome.labelsWritten).toEqual(["needs-human", "ticket"]);
     expect(wire.labelWrites.get("owner/target")).toEqual([
-      { kind: "update", name: "ticket", color: "111111", description: "kind: ticket" },
-      { kind: "create", name: "needs-human", color: "222222", description: "an agent stopped" },
+      { kind: "create", ...needsHuman },
+      { kind: "update", ...ticket },
     ]);
-    expect(wire.labelWrites.get("owner/target")?.some((write) => write.name === "bug")).toBe(false);
+    expect(wire.labelWrites.get("owner/target")?.some((write) => write.name === "theirs")).toBe(false);
 
     expect(outcome.settingFailure).toBeUndefined();
     expect(wire.settingPut.has("owner/target")).toBe(true);

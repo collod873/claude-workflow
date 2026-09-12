@@ -1,7 +1,7 @@
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
-import { BY_HAND_LABEL, IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
+import { IMMUTABLE_SET, IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { CLAIM_TIMEOUT_MINUTES } from "./implementation-landing";
-import { NEEDS_HUMAN_LABEL } from "./needs-human";
+import { BY_HAND_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL, SHAPE_REFUSED_LABEL, SLICEABLE_LABEL, TO_BUILD_LABEL } from "./labels";
 import { RATIFICATION_DUE_DISPATCH_ACTION, RATIFIER_MERGED_DISPATCH_ACTION } from "./ratification-dispatch";
 import {
   ACCEPTANCE_WANTED_DISPATCH_ACTION,
@@ -19,15 +19,15 @@ import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
 export const LANE_OWNED = {
   sessionCaptured: "session-captured",
   prdSliceable: "prd-sliceable",
-  sliceable: "sliceable",
-  prd: "prd",
-  toBuild: "to-build",
+  sliceable: SLICEABLE_LABEL,
+  prd: PRD_LABEL,
+  toBuild: TO_BUILD_LABEL,
   closeStateReason: "completed",
   immutabilityJob: "Immutability",
   gateJob: "Verify",
   gateStep: "Gauntlet",
   knowledgeBaseDir: "knowledge-base",
-  shapeRefused: "shape-refused",
+  shapeRefused: SHAPE_REFUSED_LABEL,
 } as const;
 
 export const DEAD_RUN_WIRES = {

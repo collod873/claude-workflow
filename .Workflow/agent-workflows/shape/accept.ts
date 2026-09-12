@@ -2,6 +2,7 @@ import { withReversal } from "../shared/adr-frontmatter";
 import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
 import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
+import { DECIDE_LABEL, IDEA_LABEL } from "../shared/labels";
 import { acceptedMarker } from "../shared/marker";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { roundFor } from "./rounds";
@@ -212,7 +213,7 @@ ${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), 
 }
 
 function dropIdea(gh: GhExec, issueNumber: number): void {
-  gh(["issue", "edit", String(issueNumber), "--remove-label", "idea"]);
+  gh(["issue", "edit", String(issueNumber), "--remove-label", IDEA_LABEL, "--remove-label", DECIDE_LABEL]);
 }
 
 function handOffToSpec(gh: GhExec, issueNumber: number): void {

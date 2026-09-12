@@ -1,7 +1,8 @@
 import { isOwner, commaList } from "../shared/event-door";
+import { PRD_LABEL } from "../shared/labels";
 import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../shared/ready-set";
 
-export const PRD_LABEL = "prd";
+export { PRD_LABEL };
 
 export interface IssueEdit {
   eventName: string;

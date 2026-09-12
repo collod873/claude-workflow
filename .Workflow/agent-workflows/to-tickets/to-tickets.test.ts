@@ -110,6 +110,27 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     expect(createCalls).toHaveLength(1);
   });
 
+  it("#521: stamps 3-sliced on the PRD only after its children are published", async () => {
+    seedSlicedPlan();
+    const stage = createFakeStage(JSON.stringify({ notes: "", slices: [slice({ title: "Root" })] }));
+    const fake = createFakeGh();
+    const gh: GhExec = (args) => {
+      if (args[0] === "label" || (args[0] === "issue" && (args[1] === "edit" || args[1] === "view"))) {
+        fake.calls.push(args);
+        return "";
+      }
+      return fake.gh(args);
+    };
+
+    await runNamedStage("audit-and-publish", "13", stage.exec, gh);
+
+    const createdAt = fake.calls.findIndex((args) => args[0] === "issue" && args[1] === "create");
+    const slicedAt = fake.calls.findIndex((args) => args[0] === "issue" && args[1] === "edit" && args.includes("3-sliced"));
+    expect(createdAt).toBeGreaterThanOrEqual(0);
+    expect(slicedAt).toBeGreaterThan(createdAt);
+    expect(fake.calls[slicedAt]).toEqual(["issue", "edit", "13", "--add-label", "3-sliced"]);
+  });
+
   it("prints the auditor's grading notes and unapplied flags, the `notes` field of its answer, to stdout", async () => {
     const { plan: slicedPlan } = seedSlicedPlan();
     const notes = "Balance: nothing to flag.\nUnapplied flag: left slice 1's title as-is.";

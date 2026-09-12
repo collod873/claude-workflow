@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh.ts";
+import { LABEL_CATALOGUE } from "../shared/labels.ts";
 import { errorMessage, reason } from "../shared/reason.ts";
 import { labelPlan, type Label } from "./labels.ts";
 import { derivedSecretNames } from "./secrets.ts";
@@ -272,6 +273,10 @@ function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: s
   ].join("\n");
 }
 
+export function catalogueLabels(): Label[] {
+  return LABEL_CATALOGUE.map(({ name, color, description }) => ({ name, color, description }));
+}
+
 function readLabels(gh: GhExec, repository: string): Label[] {
   const raw = gh(["api", "--paginate", `repos/${repository}/labels`, "--jq", ".[] | {name, color, description}"]);
   const objects = raw
@@ -429,7 +434,7 @@ export function runEnrol(options: EnrolOptions): RepositoryOutcome[] {
     );
   }
 
-  const ownLabels = readLabels(options.gh, options.machineRepository);
+  const ownLabels = catalogueLabels();
   const secretNames = derivedSecretNames(options.workflowsDir);
 
   const outcomes: RepositoryOutcome[] = [];

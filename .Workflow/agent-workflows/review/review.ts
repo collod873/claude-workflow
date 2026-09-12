@@ -12,6 +12,7 @@ import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
 import { laneBudget } from "../shared/lane-budget";
+import { markLane, REVIEWING_LABEL } from "../shared/labels";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
@@ -199,6 +200,7 @@ function resolveSpecSafely(gh: GhExec, head: string): ResolvedSpec | undefined {
 export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
   const budgetMinutes = input.budgetMinutes ?? laneBudget("review");
   const spec = resolveSpecSafely(gh, input.head);
+  if (spec) markLane(gh, spec.ticketNumber, REVIEWING_LABEL);
   const ticket = spec ? { gh, ticket: spec.ticketNumber, run: currentLaneRun() } : undefined;
   const budget = startLaneBudget(budgetMinutes, ticket);
 

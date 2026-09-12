@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { NEEDS_HUMAN_LABEL } from "./labels";
 import { LANE_WIRING, type Gate, type LaneWiring } from "./lane-wiring";
 
 export const LANE_MAP_RELATIVE_PATH = "docs/agents/lane-map.md";
@@ -10,7 +11,6 @@ const DOCS_DIR = "docs/agents";
 const OWNER = "owner";
 const SESSION_END = "session-end";
 const MAIN = "main";
-const NEEDS_HUMAN_LABEL = "needs-human";
 const NOBODY = "nobody";
 
 export type NodeKind = "model" | "wire" | "source" | "sink" | "nobody";

@@ -24,9 +24,11 @@ describe("the lane map", () => {
   });
 
   it("sees a label written through a helper, a create, or the wire", () => {
-    expect(lane("shape").labelsApplied).toEqual(["needs-human", "running", "shape-refused"]);
+    expect(lane("shape").labelsApplied).toEqual(["1-decide", "1-shaping", "needs-human", "shape-refused"]);
     expect(lane("walk-home").labelsApplied).toEqual(["by-hand", "ticket", "to-build"]);
-    expect(lane("to-tickets").labelsApplied).toEqual(["slice-failed"]);
+    expect(lane("to-tickets").labelsApplied).toEqual(["3-sliced", "3-slicing", "slice-failed"]);
+    expect(lane("implement").labelsApplied).toEqual(["5-building", "needs-human"]);
+    expect(lane("dispatch-reconcile").labelsApplied).toEqual(["4-accepting", "5-building", "needs-human", "queued", "waiting"]);
   });
 
   it("joins every rung event to the lane that wakes on it", () => {

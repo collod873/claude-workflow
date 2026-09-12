@@ -8,6 +8,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { findJobByName } from "../shared/job-match";
+import { LANDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
 import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
@@ -399,7 +400,9 @@ function drainNextPr(gh: GhExec, judged: string): void {
 }
 
 export function runIntegrate(deps: IntegrateDeps): IntegrateOutcome {
-  const outcome = judge(deps, readPr(deps.gh, deps.pr));
+  const pullRequest = readPr(deps.gh, deps.pr);
+  if (pullRequest.ticket !== undefined) markLane(deps.gh, pullRequest.ticket, LANDING_LABEL);
+  const outcome = judge(deps, pullRequest);
   drainNextPr(deps.gh, deps.pr);
   return outcome;
 }

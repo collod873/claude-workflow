@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath, workflowRunsPath } from "../shared/gh-paths";
+import { SLICEABLE_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import {
   commentBody,
@@ -16,7 +17,7 @@ import {
 
 export const RUN_PAGE_SIZE = 30;
 
-export const SLICEABLE_LABEL = "sliceable";
+export { SLICEABLE_LABEL };
 
 const ApiRun = z.object({
   status: z.string(),

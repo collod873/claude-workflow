@@ -251,6 +251,7 @@ describe("runIntegrate when the rebase onto trunk conflicts", () => {
 
     expect(calls.filter((call) => call[0] === "pr" && call[1] === "edit")).toEqual([]);
     expect(calls.filter((call) => call[0] === "issue" && call[1] === "edit")).toEqual([
+      ["issue", "edit", String(TICKET), "--add-label", "8-landing"],
       ["issue", "edit", String(TICKET), "--add-label", "needs-human"],
       ["issue", "edit", String(TICKET), "--add-assignee", "collod873"],
     ]);

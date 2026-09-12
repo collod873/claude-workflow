@@ -1,10 +1,11 @@
 import immutableSetJson from "./immutable-set.json";
+import { BY_HAND_LABEL } from "./labels";
+
+export { BY_HAND_LABEL };
 
 export const IMMUTABLE_SET: readonly string[] = immutableSetJson;
 
 export const IMPLEMENTATION_PR_DISPATCH_ACTION = "implementation-opened";
-
-export const BY_HAND_LABEL = "by-hand";
 
 const WORKSTATION_PREFIXES = ["~/", ".claude/settings"];
 

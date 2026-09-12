@@ -26,6 +26,7 @@ import {
   type TicketRead,
 } from "../shared/ticket-shape";
 import { holdingClaim, releaseFailedClaim } from "../shared/claim";
+import { BUILDING_LABEL, markLane } from "../shared/labels";
 import { laneBudget } from "../shared/lane-budget";
 import {
   deriveAnswer,
@@ -203,6 +204,7 @@ export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("implement"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
   return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), (claim) => {
+    markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
     if (claim.tookOverStaleClaim) sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
     return buildAndOpen(deps, budget, branch, log);
   });

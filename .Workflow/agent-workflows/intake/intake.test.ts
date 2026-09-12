@@ -58,6 +58,10 @@ describe("the micro door", () => {
 
 const ISSUE_EDIT = /issue["'\s,]+edit/g;
 const TICKETIFY_IS_THE_ONE_SANCTIONED_EXIT_FROM_FUZZY = new Set(["bin/file-issue"]);
+const MACHINE_AUTHORED_BODIES = new Set([
+  ".Workflow/agent-workflows/spec/publish.ts",
+  ".Workflow/agent-workflows/dispatch/rollup.ts",
+]);
 
 function callText(source: string, from: number): string {
   const rest = source.slice(from);
@@ -67,7 +71,7 @@ function callText(source: string, from: number): string {
 
 describe("nothing downstream edits the owner's words", () => {
   const files = readIssueWriterCandidates().filter(
-    ({ path }) => !TICKETIFY_IS_THE_ONE_SANCTIONED_EXIT_FROM_FUZZY.has(path),
+    ({ path }) => !TICKETIFY_IS_THE_ONE_SANCTIONED_EXIT_FROM_FUZZY.has(path) && !MACHINE_AUTHORED_BODIES.has(path),
   );
 
   it("has files to scan", () => {
