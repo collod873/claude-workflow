@@ -36,7 +36,7 @@ function child(
 }
 
 function undelivered(children: unknown[]): string[] {
-  const { stdout } = inCloseTicket(`print(json.dumps(module.undelivered(payload)))`, children);
+  const { stdout } = inCloseTicket("print(json.dumps(module.undelivered(payload)))", children);
   return JSON.parse(stdout) as string[];
 }
 
@@ -229,7 +229,7 @@ describe("render_record's closing-pull-request line", () => {
 describe("fetch_closing_pr", () => {
   function fetchClosingPr(routes: Route[]): unknown {
     const { stdout } = inCloseTicket(
-      `print(json.dumps(module.fetch_closing_pr(payload["gh_path"], "acme/widgets", "999")))`,
+      "print(json.dumps(module.fetch_closing_pr(payload[\"gh_path\"], \"acme/widgets\", \"999\")))",
       { gh_path: trackerAnswering(routes).path },
     );
     return JSON.parse(stdout);

@@ -61,7 +61,7 @@ export function validateClaimsAreMutable(plan: Plan): void {
       problems.push(
         `slice ${index + 1} ("${slice.title}") claims ${claimed.map((path) => JSON.stringify(path)).join(", ")}, ` +
           `which no pull request may touch (${IMMUTABLE_SET.join(", ")}), and lane 06 would refuse the ` +
-          `implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.`,
+          "implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.",
       );
     }
   });
@@ -112,8 +112,8 @@ export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = 
     if (unrootedClaims.length > 0) {
       problems.push(
         `${label} claims ${unrootedClaims.map((path) => JSON.stringify(path)).join(", ")}, ` +
-          `which name no top-level entry of the repository, and a claim is what the ticket's prose is ` +
-          `rooted against, so it has to be the full path from the repository root.`,
+          "which name no top-level entry of the repository, and a claim is what the ticket's prose is " +
+          "rooted against, so it has to be the full path from the repository root.",
       );
     }
     const prose = [slice.whatToBuild, ...slice.acceptanceCriteria];
@@ -123,9 +123,9 @@ export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = 
     if (unresolvable.length > 0) {
       problems.push(
         `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. ` +
-          `Lane 04 and lane 05 read this ticket independently and cannot ask each other, so an unrooted path ` +
-          `is a decision handed to two blind readers (#272, #278). Spell it from the repository root, or claim ` +
-          `the full path in filesClaimed.`,
+          "Lane 04 and lane 05 read this ticket independently and cannot ask each other, so an unrooted path " +
+          "is a decision handed to two blind readers (#272, #278). Spell it from the repository root, or claim " +
+          "the full path in filesClaimed.",
       );
     }
   });

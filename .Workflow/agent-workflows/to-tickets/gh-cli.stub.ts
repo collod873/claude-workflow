@@ -54,5 +54,5 @@ exit 1
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }

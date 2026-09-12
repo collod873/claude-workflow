@@ -120,7 +120,7 @@ export function staleClaimTakeoverNote(branch: string): string {
   return [
     `Took over a stale claim on \`${branch}\`.`,
     "",
-    `The branch was already there when this run started, with no pull request, no commits, and older`,
+    "The branch was already there when this run started, with no pull request, no commits, and older",
     `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout, so a claim left behind by a run that`,
     "died rather than one a run is still holding. This run took it over and is building the ticket now.",
   ].join("\n");

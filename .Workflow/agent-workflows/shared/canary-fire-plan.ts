@@ -140,12 +140,12 @@ export function planFire(lane: string): FirePlan {
     const advice =
       upstreamLanes.length > 0
         ? `prove the upstream lane instead: ${upstreamLanes.map((id) => `--lane ${id}`).join(" or ")}`
-        : `no caller stub in this repo carries that name, so there is no upstream lane to prove either`;
+        : "no caller stub in this repo carries that name, so there is no upstream lane to prove either";
     return {
       kind: "refuse",
       reason:
         `lane '${lane}' wakes only on workflow_run from [${named}] completing, so there is no push, ` +
-        `dispatch, or label door bin/canary can ring directly, and firing an upstream ` +
+        "dispatch, or label door bin/canary can ring directly, and firing an upstream " +
         `lane's own run just to hope this one follows is not a fire, it's a guess. Refusing: ${advice}.`,
     };
   }

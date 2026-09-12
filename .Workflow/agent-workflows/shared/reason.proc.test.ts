@@ -42,7 +42,7 @@ describe("reason", () => {
 
 describe("errorMessage", () => {
   it("leaves the child's stdout out, so a classifier matches on the smallest haystack", () => {
-    const err = caughtExecFailure(`a='! [rejec'; b='ted] a hook quoting git'; echo "$a$b"; exit 1`);
+    const err = caughtExecFailure("a='! [rejec'; b='ted] a hook quoting git'; echo \"$a$b\"; exit 1");
 
     expect(reason(err)).toContain("! [rejected]");
     expect(errorMessage(err)).not.toContain("! [rejected]");

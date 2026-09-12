@@ -296,7 +296,7 @@ describe("the spent change-request budget", () => {
 describe("a change request", () => {
   it("reaches the sweep as an explicit target and the shaper as the ask", async () => {
     const tracker = createFakeTracker({
-      comments: new Map([[1, [`<!-- decision-sheet:v1 {"restatement":"r","priorArt":[],"decisions":[],"survivors":[],"route":"short","routeReason":"x","newTerms":[],"round":0} -->`]]]),
+      comments: new Map([[1, ["<!-- decision-sheet:v1 {\"restatement\":\"r\",\"priorArt\":[],\"decisions\":[],\"survivors\":[],\"route\":\"short\",\"routeReason\":\"x\",\"newTerms\":[],\"round\":0} -->"]]]),
     });
     const model = healthyModel();
 

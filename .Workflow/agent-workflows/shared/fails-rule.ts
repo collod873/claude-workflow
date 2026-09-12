@@ -32,7 +32,7 @@ export function judgeFailsEdits(diff: string, declaredPaths: Set<string> = new S
     ok: false,
     reason:
       `${offences.length} acceptance test(s) marked test.fails( were edited beyond removing .fails: ` +
-      `an implementer may turn one green, never rewrite or delete it:\n` +
+      "an implementer may turn one green, never rewrite or delete it:\n" +
       offences.map((offence) => `  ${offence}`).join("\n"),
   };
 }

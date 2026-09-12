@@ -71,7 +71,7 @@ describe("gateVerdict", () => {
 describe("the turn venue autofixes style before it judges", () => {
   const FIXTURE_PATH = ".Workflow/agent-workflows/shared/gauntlet-autofix-490.fixture.ts";
 
-  test.fails(
+  test(
     "#490.2: a file with a fixable eslint finding passes bin/gauntlet turn and comes out fixed on disk",
     () => {
       const absolute = join(MACHINE_ROOT, FIXTURE_PATH);

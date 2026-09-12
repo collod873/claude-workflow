@@ -22,7 +22,7 @@ export function runGauntlet(
   deps: { exec?: GauntletExec; file?: string } = {},
 ): string {
   const exec = deps.exec ?? execReal;
-  return exec(join(MACHINE_ROOT, "bin/gauntlet"), [venue], {
+  return exec(join(MACHINE_ROOT, "bin/gauntlet"), deps.file === undefined ? [venue] : [venue, deps.file], {
     cwd: MACHINE_ROOT,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
