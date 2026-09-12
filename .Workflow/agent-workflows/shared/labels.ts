@@ -10,6 +10,8 @@ export interface CatalogueLabel {
   family: LabelFamily;
 }
 
+export const DESCRIPTION_LIMIT = 100;
+
 export const FAMILY_COLORS: Record<LabelFamily, string> = {
   "in-flight": "0e8a16",
   machine: "1d76db",
@@ -108,7 +110,7 @@ export const LABEL_CATALOGUE: readonly CatalogueLabel[] = [
   owner(SLICE_FAILED_LABEL, "A to-tickets run refused or failed"),
   owner(SHAPE_REFUSED_LABEL, "Refused at lane 01 stage 1: the idea already exists, or an ADR ruled it"),
   owner(SPEC_GAP_LABEL, "The spec is silent, ambiguous or self-contradictory here"),
-  verb(TO_BUILD_LABEL, "The owner handing a ticket already written in full to the build; swapped for the lane label at dispatch"),
+  verb(TO_BUILD_LABEL, "The owner hands a finished ticket straight to the build; swapped for the lane label at dispatch"),
   verb(TO_SPEC_LABEL, "A closed Wayfinder Map the owner is handing to the spec author (ADR-0059)"),
   verb(APPROVED_LABEL, "The owner accepted a decision sheet; files its ADRs and dispatches"),
   verb(KILLED_LABEL, "Shaped and rejected. Becomes prior art the sweep refuses against"),

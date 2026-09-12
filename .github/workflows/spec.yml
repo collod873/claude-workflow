@@ -93,12 +93,11 @@ jobs:
           REPORT_REFUSED: "false"
         run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
 
-      - name: Unmark the source
+      - name: Hand the source to the owner if this run died
         if: always()
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.ISSUE_NUMBER }}
-          mode: "off"
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$ISSUE_NUMBER" --status "$JOB_STATUS"
 
   dispatch:
     name: Start lane 03

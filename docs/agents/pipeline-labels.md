@@ -66,7 +66,7 @@ count no longer holds the spec back (ADR-0112); the gate removes it the first ti
 | `slice-failed` | Waiting on the owner | `#d93f0b` | A to-tickets run refused or failed |
 | `shape-refused` | Waiting on the owner | `#d93f0b` | Refused at lane 01 stage 1: the idea already exists, or an ADR ruled it |
 | `spec/gap` | Waiting on the owner | `#d93f0b` | The spec is silent, ambiguous or self-contradictory here |
-| `to-build` | Verbs only the owner applies | `#5319e7` | The owner handing a ticket already written in full to the build; swapped for the lane label at dispatch |
+| `to-build` | Verbs only the owner applies | `#5319e7` | The owner hands a finished ticket straight to the build; swapped for the lane label at dispatch |
 | `to-spec` | Verbs only the owner applies | `#5319e7` | A closed Wayfinder Map the owner is handing to the spec author (ADR-0059) |
 | `approved` | Verbs only the owner applies | `#5319e7` | The owner accepted a decision sheet; files its ADRs and dispatches |
 | `killed` | Verbs only the owner applies | `#5319e7` | Shaped and rejected. Becomes prior art the sweep refuses against |

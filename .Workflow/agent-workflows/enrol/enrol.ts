@@ -4,9 +4,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh.ts";
-import { LABEL_CATALOGUE } from "../shared/labels.ts";
 import { errorMessage, reason } from "../shared/reason.ts";
-import { labelPlan, type Label } from "./labels.ts";
+import { catalogueLabels, syncLabels, type Label } from "../shared/label-sync.ts";
 import { derivedSecretNames } from "./secrets.ts";
 import { SEEDED_DOC_NAMES, pointerDoc, pointerDocPath, withAgentSkillsPointer } from "./seeded-docs.ts";
 import {
@@ -29,12 +28,6 @@ const SEARCH_PAGE_SIZE = 100;
 const NOT_FOUND = "HTTP 404";
 
 const RemoteFileSchema = z.object({ name: z.string(), sha: z.string() });
-
-const RemoteLabelSchema = z.object({
-  name: z.string(),
-  color: z.string(),
-  description: z.string().nullable().optional(),
-});
 
 export interface RepositoryOutcome {
   repository: string;
@@ -271,59 +264,6 @@ function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: s
     "",
     `Machine-Sha: ${machineSha}`,
   ].join("\n");
-}
-
-export function catalogueLabels(): Label[] {
-  return LABEL_CATALOGUE.map(({ name, color, description }) => ({ name, color, description }));
-}
-
-function readLabels(gh: GhExec, repository: string): Label[] {
-  const raw = gh(["api", "--paginate", `repos/${repository}/labels`, "--jq", ".[] | {name, color, description}"]);
-  const objects = raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) => JSON.parse(line));
-  return RemoteLabelSchema.array()
-    .parse(objects)
-    .map((label) => ({ name: label.name, color: label.color, description: label.description ?? "" }));
-}
-
-function createLabel(gh: GhExec, repository: string, label: Label): void {
-  gh([
-    "api",
-    "--method",
-    "POST",
-    `repos/${repository}/labels`,
-    "-f",
-    `name=${label.name}`,
-    "-f",
-    `color=${label.color}`,
-    "-f",
-    `description=${label.description}`,
-  ]);
-}
-
-function updateLabel(gh: GhExec, repository: string, label: Label): void {
-  gh([
-    "api",
-    "--method",
-    "PATCH",
-    `repos/${repository}/labels/${encodeURIComponent(label.name)}`,
-    "-f",
-    `color=${label.color}`,
-    "-f",
-    `description=${label.description}`,
-  ]);
-}
-
-function syncLabels(gh: GhExec, repository: string, own: Label[]): string[] {
-  const changes = labelPlan(own, readLabels(gh, repository));
-  for (const change of changes) {
-    if (change.exists) updateLabel(gh, repository, change.label);
-    else createLabel(gh, repository, change.label);
-  }
-  return changes.map((change) => change.label.name);
 }
 
 function setPullRequestApproval(gh: GhExec, repository: string): void {

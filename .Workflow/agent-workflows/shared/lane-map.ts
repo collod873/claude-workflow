@@ -29,6 +29,7 @@ export interface LaneNode {
   labelsCleared: string[];
   stops: string[];
   pushesMain: boolean;
+  handsOverOnRed: boolean;
 }
 
 export interface Edge {
@@ -81,6 +82,7 @@ const LABEL_FLAG_RE = /"--label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const HELPER_LABEL_RE = /--add-label",\s*[a-z]\w*\]/;
 const YAML_ADD_LABEL_RE = /--add-label\s+([\w-]+)/g;
 const YAML_EVENT_SEND_RE = /event_type=([\w-]+)/g;
+const YAML_HANDOVER_RE = /labels\.cli\.ts\s+fail\b/;
 const CONST_RE = /(?:^|\n)(?:export )?const ([A-Z][A-Z0-9_]+) = (?:"([\w-]+)"|([A-Z][A-Z0-9_]+));/g;
 const FUNCTION_RE = /(?:^|\n)(?:export )?(?:(?:async )?function (\w+)\(|const (\w+) = (?:async )?\()/g;
 const CALL_RE = /(?<![\w.])(\w+)\(/g;
@@ -304,6 +306,7 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
       labelsCleared: [...labelsCleared].sort(),
       stops,
       pushesMain: /HEAD:main|"pr",\s*"merge"/.test(code),
+      handsOverOnRed: YAML_HANDOVER_RE.test(yaml),
     });
   }
 
@@ -352,14 +355,14 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
   }
   byHand(MAIN, "push");
 
-  const blank = { shipsToCallers: false, wakesOn: [], rings: [], labelsApplied: [], labelsCleared: [], stops: [], pushesMain: false };
+  const blank = { shipsToCallers: false, wakesOn: [], rings: [], labelsApplied: [], labelsCleared: [], stops: [], pushesMain: false, handsOverOnRed: false };
   const fixed: LaneNode[] = [
     { id: SESSION_END, name: "session end hook", kind: "source", ...blank, rings: ["session-captured"] },
     { id: MAIN, name: "main", kind: "source", ...blank },
     ...[...pills].map(([id, doors]) => ({ id, name: pillName([...new Set(doors)]), kind: "source" as const, ...blank })),
   ];
   if (edges.some((edge) => edge.from === NOBODY)) {
-    fixed.push({ id: NOBODY, name: "nothing rings this", kind: "nobody", shipsToCallers: false, wakesOn: [], rings: [], labelsApplied: [], labelsCleared: [], stops: [], pushesMain: false });
+    fixed.push({ id: NOBODY, name: "nothing rings this", kind: "nobody", ...blank });
   }
 
   return {
@@ -924,6 +927,11 @@ export function findings(map: LaneMap): string[] {
   const readers = lanes.filter((node) => node.labelsCleared.includes(NEEDS_HUMAN_LABEL)).map((node) => node.name);
   if (writers.length > 0) {
     out.push(`**\`needs-human\` is written by ${writers.length} lanes (${writers.join(", ")}) and cleared by ${readers.length === 0 ? "none" : readers.join(", ")}.** Nothing else reads it; a ticket that carries it waits for you.`);
+  }
+
+  const handers = lanes.filter((node) => node.handsOverOnRed).map((node) => node.name);
+  if (handers.length > 0) {
+    out.push(`**${handers.length} lanes hand their issue to you when the runner dies (${handers.join(", ")}):** each ends in an \`if: always()\` step that runs \`labels.cli.ts fail\`, which swaps the lane label for \`needs-human\` whenever the job ended red or cancelled. A lane that ends green leaves its label for the next lane to replace, so a green label with no run behind it never outlives the run.`);
   }
 
   const refusals = lanes.flatMap((node) => node.stops.filter((stop) => !stop.includes(NEEDS_HUMAN_LABEL)).map((stop) => `${node.name} ${stop}`));

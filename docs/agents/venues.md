@@ -17,18 +17,25 @@ carry a slot as `null` to shrink the gate, never add one to grow it.
 | `push` | pre-push              | `typecheck`, `lint`, `test`, `clones`, once each                  | **Refuses the push**                |
 | CI     | `push: main`, dispatch | `npm run check`, which is the push venue against the target       | Red run; rings the fixer            |
 
+A lane's job is a venue of its own kind, and it fails closed toward the owner: each lane workflow ends
+in an `if: always()` step that runs `labels.cli.ts fail` with the job's status, which swaps the
+issue's lane label for `needs-human` whenever the job ended red or cancelled. A runner that dies
+mid-lane therefore never leaves a green label with no run behind it; a job that ends green leaves
+its label for the next lane to replace. The labels themselves are seeded by one thing, the
+catalogue sync the Enrol lane runs (`labels.cli.ts sync`), so no workflow creates a label by hand.
+
 Slots inside a venue run concurrently, so a venue's wall clock is its slowest slot's. A non-zero
 slot is red; there is no other verdict, and no venue refuses on a duration
 ([ADR-0148](../adr/0148-timing-is-recorded-never-judged.md)). One `push` gate runs per machine:
 `bin/gauntlet push` waits on `/tmp/gauntlet-push.lock` (`GAUNTLET_LOCK` overrides it) before it
-reads a contract, so N lanes are one gate running and N−1 queued, never N gates' workers at once
+reads a contract, so N lanes are one gate in progress and N−1 queued, never N gates' workers at once
 ([ADR-0162](../adr/0162-one-push-gate-runs-per-machine-so-lane-fan-out-queues-instea.md)). The
 wait is only wall-clock; a gate inside a gate runs straight through, and `turn` never waits.
 
 Only `push` and CI fail closed. The two in-session venues cannot refuse and are not meant to:
 PostToolUse fires after the edit has landed, and a venue that wedges every turn is worse than the
 defect it was catching. `.claude/hooks/gauntlet-hook.mjs` owns `turn`; the machine-global
-`stop-gate.py` owns `stop`, running the contract's `stop.cmd` with a breaker, a liveness deferral
+`stop-gate.py` owns `stop`, invoking the contract's `stop.cmd` with a breaker, a liveness deferral
 and its own run row, so nothing registered inside this checkout may run that suite a second time.
 `.husky/pre-push` and `.github/workflows/verify.yml` own `push` and CI.
 

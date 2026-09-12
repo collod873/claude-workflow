@@ -55,13 +55,6 @@ jobs:
           lane: to-tickets
           issue: ${{ env.PRD_NUMBER }}
 
-      - name: Ensure slice-failed label exists
-        run: |
-          gh label create slice-failed \
-            --color b60205 \
-            --description "A to-tickets run refused or failed" \
-            --force
-
       - name: Refuse, PRD already has sub-issues
         id: refuse-sub-issues
         run: |
@@ -111,12 +104,6 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      - name: Mark the PRD running
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.PRD_NUMBER }}
-          mode: "on"
-
       - name: Seam sweep
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
@@ -165,12 +152,11 @@ jobs:
           VERB: ""
         run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
 
-      - name: Unmark the PRD
+      - name: Hand the PRD to the owner if this run died
         if: always()
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.PRD_NUMBER }}
-          mode: "off"
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$PRD_NUMBER" --status "$JOB_STATUS"
 
   dispatch:
     name: Start lane 05

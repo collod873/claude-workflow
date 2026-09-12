@@ -66,8 +66,6 @@ export const ENDING_LANES = [
 
 const ticketRunName = (lane: string) => `${lane} #\${{ github.event.client_payload.issue }}`;
 
-export const SHAPE_VERBS = ["approved", "parked", "killed"] as const;
-
 export const SHAPE_LABELS_APPLIED = [LANE_OWNED.shapeRefused, NEEDS_HUMAN_LABEL];
 
 export const MACHINE_REPOSITORY = "collod873/claude-workflow";
@@ -178,10 +176,16 @@ function deadRunCaller(name: string, wire: string): CallerFacts {
   };
 }
 const CONFIGURES_COMMITTER: StepFact = { name: "Configure a committer", run: ["git config user.email"] };
+const HANDS_OVER_ON_RED = (noun: string, variable: string): StepFact => ({
+  name: `Hand the ${noun} to the owner if this run died`,
+  if: "always()",
+  env: { JOB_STATUS: "${{ job.status }}" },
+  run: [tsx("shared/labels.cli.ts"), `fail "$${variable}" --status "$JOB_STATUS"`],
+});
 const WAKES_RECONCILER: StepFact = {
   name: "Wake the reconciler, whatever ended this run",
   if: "always()",
-  after: "Unmark the ticket",
+  after: "Hand the ticket to the owner if this run died",
   run: [DISPATCH_SEND, ...ring(RUN_ENDED)],
 };
 const WAKES_RECONCILER_JOB: JobFacts = {
@@ -236,11 +240,9 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         },
         steps: [
           { name: "Mark the idea running", absent: true },
+          { name: "Ensure the lane's labels exist", absent: true },
           ...CHECKPOINTS("shape", "Shape", "Shape"),
-          {
-            name: "Ensure the lane's labels exist",
-            run: [...SHAPE_LABELS_APPLIED, ...SHAPE_VERBS, "go-long", "go-short"].map((label) => `gh label create ${label}`),
-          },
+          HANDS_OVER_ON_RED("idea", "IDEA_NUMBER"),
           { name: "Upload the refused raw response", absent: true },
         ],
       },
@@ -286,6 +288,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         steps: [
           { name: "Mark the source running", absent: true },
           { name: "Export the dispatch handoff path", run: [`${DISPATCH_REQUESTS_PATH_ENV}=$RUNNER_TEMP/dispatch-requests.jsonl`] },
+          HANDS_OVER_ON_RED("source", "ISSUE_NUMBER"),
         ],
       },
       dispatch: {
@@ -310,6 +313,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         checkout: "pair",
         env: { PRD_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
         steps: [
+          { name: "Ensure slice-failed label exists", absent: true },
           {
             name: "Refuse, PRD already has sub-issues",
             id: "refuse-sub-issues",
@@ -334,6 +338,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             if: "always()",
             runLacks: ["refused-raw-response"],
           },
+          HANDS_OVER_ON_RED("PRD", "PRD_NUMBER"),
           { name: "Upload the refused raw response", absent: true },
         ],
       },
@@ -374,6 +379,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_TARGET,
           { name: "Author acceptance tests for the published slice", runLacks: ["--refire"] },
           { id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION },
+          HANDS_OVER_ON_RED("ticket", "TICKET_NUMBER"),
         ],
       },
       land: {
@@ -421,6 +427,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
             run: ['echo "implementing #$TICKET_NUMBER"'],
           },
           { name: "Tell Recover this run failed", absent: true },
+          HANDS_OVER_ON_RED("ticket", "TICKET_NUMBER"),
           WAKES_RECONCILER,
         ],
       },
@@ -444,7 +451,12 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         runs: `${tsx("mechanic/mechanic.ts")} "$TICKET_NUMBER"`,
         checkout: "pair",
         env: { TICKET_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
-        steps: [INSTALLS_TARGET, { name: "Repair the ticket's cause", run: ['echo "mechanic on #$TICKET_NUMBER"'] }, WAKES_RECONCILER],
+        steps: [
+          INSTALLS_TARGET,
+          { name: "Repair the ticket's cause", run: ['echo "mechanic on #$TICKET_NUMBER"'] },
+          HANDS_OVER_ON_RED("ticket", "TICKET_NUMBER"),
+          WAKES_RECONCILER,
+        ],
       },
     },
   },

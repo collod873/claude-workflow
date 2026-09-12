@@ -67,12 +67,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Mark the ticket running
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.TICKET_NUMBER }}
-          mode: "on"
-
       - name: Implement the ticket
         id: implement
         env:
@@ -82,12 +76,11 @@ jobs:
           echo "implementing #$TICKET_NUMBER"
           npx tsx .Workflow/agent-workflows/implement/implement.ts "$TICKET_NUMBER"
 
-      - name: Unmark the ticket
+      - name: Hand the ticket to the owner if this run died
         if: always()
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.TICKET_NUMBER }}
-          mode: "off"
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS"
 
       - name: Wake the reconciler, whatever ended this run
         if: always()

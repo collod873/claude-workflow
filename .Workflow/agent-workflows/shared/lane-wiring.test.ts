@@ -279,8 +279,14 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     expect(Object.keys(LANE_WIRING.fixer.caller?.on ?? {})).not.toContain("workflow_run");
   });
 
-  it("shape.yml creates every label shape.ts applies", () => {
+  it("shape.ts applies exactly the labels LANE_WIRING says it does", () => {
     expect([...LABELS_APPLIED]).toEqual(SHAPE_LABELS_APPLIED);
+  });
+
+  it("no workflow seeds a label by hand; the catalogue sync is the one seeder", () => {
+    for (const { name, workflow } of estate) {
+      expect(JSON.stringify(workflow), `${name} runs gh label create`).not.toContain("gh label create");
+    }
   });
 
   it("to-tickets.yml invokes exactly the stages STAGES declares", () => {

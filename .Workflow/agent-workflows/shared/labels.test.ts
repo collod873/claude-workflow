@@ -5,6 +5,7 @@ import {
   BUILDING_LABEL,
   BY_HAND_LABEL,
   DECIDE_LABEL,
+  DESCRIPTION_LIMIT,
   FAMILY_COLORS,
   LABEL_CATALOGUE,
   labelsOf,
@@ -50,6 +51,10 @@ describe("the catalogue", () => {
     expect(numbered).toEqual([...numbered].sort());
     expect(numbered[0]).toBe("1-shaping");
     expect(numbered.at(-1)).toBe("8-landing");
+  });
+
+  it("keeps every description inside GitHub's limit, so the sync's PATCH is never refused with a 422", () => {
+    for (const label of LABEL_CATALOGUE) expect(label.description.length, label.name).toBeLessThanOrEqual(DESCRIPTION_LIMIT);
   });
 
   it("carries no `running`: that label leaves with the sibling by-hand ticket", () => {

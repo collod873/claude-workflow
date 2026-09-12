@@ -62,7 +62,7 @@ const FIXTURES: Record<string, CanaryFixture> = {
     ].join("\n"),
     comments: [],
     label: "canary-fire",
-    ensureLabels: ["canary-fire", "prd", "running"],
+    ensureLabels: ["canary-fire", "prd"],
     payload: { issue: "@issue" },
   },
   implement: {
@@ -72,7 +72,7 @@ const FIXTURES: Record<string, CanaryFixture> = {
       "One field, one file.",
     comments: [],
     label: "canary-fire",
-    ensureLabels: ["canary-fire", "ticket", "running"],
+    ensureLabels: ["canary-fire", "ticket"],
     payload: { issue: "@issue" },
   },
   "to-tickets": {
@@ -84,7 +84,7 @@ const FIXTURES: Record<string, CanaryFixture> = {
       "slice share no working directory and a relative path means nothing to them.",
     comments: [],
     label: "sliceable",
-    ensureLabels: ["sliceable", "prd", "running"],
+    ensureLabels: ["sliceable", "prd"],
     payload: { issue: "@issue" },
   },
   audit: {

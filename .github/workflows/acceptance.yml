@@ -130,12 +130,6 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      - name: Mark the ticket running
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.TICKET_NUMBER }}
-          mode: "on"
-
       - name: Author acceptance tests for the published slice
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
@@ -147,12 +141,11 @@ jobs:
         with:
           working-directory: target
 
-      - name: Unmark the ticket
+      - name: Hand the ticket to the owner if this run died
         if: always()
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.TICKET_NUMBER }}
-          mode: "off"
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS"
 
   land:
     name: Land on main
