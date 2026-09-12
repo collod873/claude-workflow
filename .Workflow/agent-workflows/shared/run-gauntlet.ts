@@ -16,7 +16,11 @@ export type GauntletExec = (
 
 const execReal: GauntletExec = (command, args, options) => execFileSync(command, args, options);
 
-export function runGauntlet(venue: GauntletVenue, targetRoot: string, deps: { exec?: GauntletExec } = {}): string {
+export function runGauntlet(
+  venue: GauntletVenue,
+  targetRoot: string,
+  deps: { exec?: GauntletExec; file?: string } = {},
+): string {
   const exec = deps.exec ?? execReal;
   return exec(join(MACHINE_ROOT, "bin/gauntlet"), [venue], {
     cwd: MACHINE_ROOT,

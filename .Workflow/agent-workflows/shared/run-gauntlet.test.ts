@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { gateVerdict, MACHINE_ROOT, runGauntlet } from "./run-gauntlet.ts";
 
 describe("MACHINE_ROOT", () => {
@@ -66,4 +66,25 @@ describe("gateVerdict", () => {
 
     expect(verdict).toEqual({ ok: false, output: "spawnSync bin/gauntlet ENOENT" });
   });
+});
+
+describe("the turn venue autofixes style before it judges", () => {
+  const FIXTURE_PATH = ".Workflow/agent-workflows/shared/gauntlet-autofix-490.fixture.ts";
+
+  test.fails(
+    "#490.2: a file with a fixable eslint finding passes bin/gauntlet turn and comes out fixed on disk",
+    () => {
+      const absolute = join(MACHINE_ROOT, FIXTURE_PATH);
+      writeFileSync(absolute, "export const gauntletAutofix490 = 'fixable'\n");
+
+      try {
+        runGauntlet("turn", MACHINE_ROOT, { file: FIXTURE_PATH });
+
+        expect(readFileSync(absolute, "utf8")).toContain('"fixable"');
+      } finally {
+        rmSync(absolute, { force: true });
+      }
+    },
+    600_000,
+  );
 });

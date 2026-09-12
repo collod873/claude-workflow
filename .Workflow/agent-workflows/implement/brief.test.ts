@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
 import {
   assembleBrief,
@@ -195,6 +195,15 @@ describe("assembleBrief: ticket comments, oldest first", () => {
     const brief = assembleBrief(baseInputs({ comments: [ownerSaidOn(1, big), ownerSaidOn(2, big), ownerSaidOn(3, big)] }));
 
     expect(brief).toContain("2 older comments dropped to fit the brief.");
+  });
+});
+
+describe("the brief states the style rules the gauntlet cannot fix", () => {
+  test.fails("#490.3: the rendered brief carries the no-prose rule, before the ticket text", () => {
+    const brief = assembleBrief(baseInputs({ ticketBody: "## What to build\nShip the slice." }));
+
+    expect(brief).toContain("carries no prose");
+    expect(brief.indexOf("carries no prose")).toBeLessThan(brief.indexOf("Ship the slice."));
   });
 });
 
