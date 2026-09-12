@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { planFire } from "./canary-fire-plan.ts";
+import { SLICEABLE_LABEL } from "../spec/open-questions";
+import { DECLARED_FIRE_LABELS, planFire } from "./canary-fire-plan.ts";
 import { laneIds } from "./read-workflow.ts";
 
 describe("planFire", () => {
@@ -107,4 +108,8 @@ describe("planFire", () => {
       expect(() => planFire(lane)).not.toThrow();
     }
   });
+});
+
+it("the label the canary fires a counter with is the one that counter's own lane acts on", () => {
+  expect(DECLARED_FIRE_LABELS["lost-dispatch-counter"]).toBe(SLICEABLE_LABEL);
 });

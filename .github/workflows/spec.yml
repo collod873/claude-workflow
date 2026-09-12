@@ -114,7 +114,7 @@ jobs:
   dispatch:
     name: Start lane 03
     needs: [spec]
-    if: needs.spec.outputs.dispatch-requests != ''
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:

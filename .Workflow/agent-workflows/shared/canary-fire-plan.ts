@@ -37,6 +37,10 @@ interface CallerYaml {
 }
 
 const LABEL_ADDED = /github\.event\.label\.name\s*==\s*'([^']*)'/;
+
+export const DECLARED_FIRE_LABELS: Record<string, string> = {
+  "lost-dispatch-counter": "sliceable",
+};
 const ISSUE_CARRIES = /(!?)\s*contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*'([^']*)'\s*\)/g;
 const CLOSED_AS = /github\.event\.issue\.state_reason\s*==\s*'([^']*)'/;
 
@@ -89,7 +93,7 @@ function demandsFor(lane: string, keys: (keyof FireDemands)[]): FireDemands | un
   const guards = guardsFor(lane);
   const demands: FireDemands = {};
   if (keys.includes("label")) {
-    const label = LABEL_ADDED.exec(guards)?.[1];
+    const label = DECLARED_FIRE_LABELS[lane] ?? LABEL_ADDED.exec(guards)?.[1];
     if (label !== undefined) demands.label = label;
   }
   if (keys.includes("issueLabels")) {

@@ -10,7 +10,6 @@ jobs:
       contents: read
       actions: read
       issues: write
-    if: github.event.label.name == 'sliceable'
     uses: collod873/claude-workflow/.github/workflows/lost-dispatch-counter.yml@main
     with:
       slicing_workflow: to-tickets-caller.yml

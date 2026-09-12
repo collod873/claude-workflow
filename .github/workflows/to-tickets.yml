@@ -175,7 +175,7 @@ jobs:
   dispatch:
     name: Start lane 05
     needs: [to-tickets]
-    if: needs.to-tickets.outputs.dispatch-requests != ''
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:

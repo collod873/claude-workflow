@@ -288,7 +288,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       },
       dispatch: {
         needs: ["spec"],
-        gate: { is: "needs.spec.outputs.dispatch-requests != ''" },
+        gate: { is: "always()" },
         permissions: { contents: "write" },
         checkout: "none",
         env: { GH_REPO: true, DISPATCH_REQUESTS: true },
@@ -337,7 +337,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       },
       dispatch: {
         needs: ["to-tickets"],
-        gate: { is: "needs.to-tickets.outputs.dispatch-requests != ''" },
+        gate: { is: "always()" },
         permissions: { contents: "write" },
         checkout: "none",
         steps: [{ name: "Send one dispatch per ready slice", run: [DISPATCH_SEND] }],
@@ -757,7 +757,6 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       name: "Bypass counter",
       on: VERIFY_COMPLETED,
       permissions: { contents: "read", actions: "read", issues: "write" },
-      gate: { is: "github.event.workflow_run.head_branch == 'main'" },
       with: NAMES_VERIFY_CALLER,
     },
     inputs: VERIFY_FILE_INPUT,
@@ -779,7 +778,6 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       name: "Lost-dispatch counter",
       on: { issues: ["labeled"] },
       permissions: { contents: "read", actions: "read", issues: "write" },
-      gate: { is: onLabel(LANE_OWNED.sliceable) },
       with: { slicing_workflow: "to-tickets-caller.yml" },
     },
     inputs: { slicing_workflow: { required: true } },
