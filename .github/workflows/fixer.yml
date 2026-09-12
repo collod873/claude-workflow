@@ -139,35 +139,25 @@ jobs:
           fi
 
       - name: Checkout machine
-        if: steps.target.outputs.mode != ''
         uses: actions/checkout@v4
         with:
           repository: collod873/claude-workflow
           ref: ${{ inputs.machine_ref }}
 
       - name: Checkout target
-        if: steps.target.outputs.mode == 'model'
         uses: actions/checkout@v4
         with:
           path: target
           ref: ${{ steps.target.outputs.branch }}
           fetch-depth: 0
 
-      - name: Checkout target at trunk to escalate
-        if: steps.target.outputs.mode == 'escalate'
-        uses: actions/checkout@v4
-        with:
-          path: target
-
       - name: Identify the committer
-        if: steps.target.outputs.mode == 'model'
         working-directory: target
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
-        if: steps.target.outputs.mode == 'model'
         run: |
           set -euo pipefail
           if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
@@ -176,58 +166,26 @@ jobs:
           fi
 
       - name: Set up Node and install dependencies
-        if: steps.target.outputs.mode != ''
         uses: ./.github/actions/node
 
       - name: Install target dependencies
-        if: steps.target.outputs.mode == 'model'
         uses: ./.github/actions/target-deps
         with:
           working-directory: target
 
       - name: Install Claude Code
-        if: steps.target.outputs.mode == 'model'
         run: npm install -g @anthropic-ai/claude-code@2.1.241
 
-      - name: Rebase onto trunk so trunk's fixer runs
-        id: rebase
-        if: steps.target.outputs.mode == 'model'
-        env:
-          ISSUE: ${{ steps.target.outputs.issue }}
-          PR_NUMBER: ${{ steps.target.outputs.pr }}
-        run: |
-          set -euo pipefail
-          git -C target fetch origin main
-          if ! git -C target rebase origin/main; then
-            paths=$(git -C target diff --name-only --diff-filter=U | tr '\n' ' ')
-            git -C target rebase --abort
-            npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "rebase onto trunk" "conflicts in: $paths"
-            echo "conflicted=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run the fixer
-        if: steps.target.outputs.mode == 'model' && steps.rebase.outputs.conflicted != 'true'
+      - name: React to the red run
+        if: always()
         timeout-minutes: 40
         env:
+          FIXER_MODE: ${{ steps.target.outputs.mode }}
           ISSUE: ${{ steps.target.outputs.issue }}
           PR_NUMBER: ${{ steps.target.outputs.pr }}
           BRANCH: ${{ steps.target.outputs.branch }}
-          TEST_DIR: ${{ inputs.test_dir }}
-          TARGET_WORKSPACE: ${{ github.workspace }}/target
-        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts "$ISSUE" "$PR_NUMBER" "$BRANCH" "$TEST_DIR"
-
-      - name: Escalate a fixer that died
-        if: failure() && steps.target.outputs.mode == 'model'
-        env:
-          ISSUE: ${{ steps.target.outputs.issue }}
-          PR_NUMBER: ${{ steps.target.outputs.pr }}
-        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "the fixer itself" "the attempt loop crashed or timed out before it could finish"
-
-      - name: Escalate to the owner
-        if: steps.target.outputs.mode == 'escalate'
-        env:
-          ISSUE: ${{ steps.target.outputs.issue }}
-          PR_NUMBER: ${{ steps.target.outputs.pr }}
           FAILED_JOB: ${{ steps.target.outputs.failed_job }}
           ERROR_LINE: ${{ steps.target.outputs.error_line }}
-        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts escalate "$ISSUE" "$PR_NUMBER" "$FAILED_JOB" "$ERROR_LINE"
+          TEST_DIR: ${{ inputs.test_dir }}
+          TARGET_WORKSPACE: ${{ github.workspace }}/target
+        run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts react

@@ -558,8 +558,8 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       fixer: {
         ungated: true,
-        runs: `${tsx("fixer/fixer.ts")} "$ISSUE"`,
-        checkout: { pair: true, targets: 2 },
+        runs: `${tsx("fixer/fixer.ts")} react`,
+        checkout: { pair: true, fetchDepth: 0 },
         env: { RUN_ID: "${{ inputs.run_id }}", SIGNAL_ASSIGNEE: true, CLAUDE_CODE_OAUTH_TOKEN: true },
         steps: [
           {

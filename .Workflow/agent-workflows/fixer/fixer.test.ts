@@ -13,12 +13,15 @@ import {
   MAX_ATTEMPTS,
   priorAttempts,
   runFixer,
+  reactToRun,
   runVitestJsonForFixer,
   signaturesEqual,
   unfixableComment,
   type FailureSignature,
   type FixerDeps,
   type FixerTestResult,
+  type FixerMode,
+  type ReactDeps,
 } from "./fixer";
 
 vi.mock("../shared/vitest-json", () => ({ runVitestReport: vi.fn() }));
@@ -508,4 +511,83 @@ test("#502.2: a fixer run whose lane budget elapses strikes the ticket with the 
 
   const struck = deps.ghCalls.some((call) => call.some((arg) => /timed out after \d+ minutes at fixer/.test(arg)));
   expect(struck).toBe(true);
+});
+
+describe("#519: the fixer decides what a red run deserves in TypeScript, not in a job condition", () => {
+  const refusesGit: GitExec = () => {
+    throw new Error("git ran when the mode should have skipped it");
+  };
+
+  function conflictingGit(paths: string[]): GitExec & { seen: string[][] } {
+    const seen: string[][] = [];
+    const git: GitExec = (args) => {
+      seen.push(args);
+      if (args[0] === "rebase" && args[1] !== "--abort") throw new Error("could not apply");
+      return args[0] === "diff" ? `${paths.join("\n")}\n` : "";
+    };
+    return Object.assign(git, { seen });
+  }
+
+  function reaction(mode: FixerMode, over: Partial<ReactDeps> = {}) {
+    const escalations: [string, string][] = [];
+    const logs: string[] = [];
+    const fixes: string[] = [];
+    const deps: ReactDeps = {
+      mode,
+      failedJob: "",
+      errorLine: "",
+      git: refusesGit,
+      trunk: "origin/main",
+      fix: async () => {
+        fixes.push("ran");
+      },
+      escalate: (failedJob, errorLine) => escalations.push([failedJob, errorLine]),
+      log: (line) => logs.push(line),
+      ...over,
+    };
+    return { escalations, logs, fixes, run: () => reactToRun(deps) };
+  }
+
+  it("runs nothing when the target step resolved no pull request to react to", async () => {
+    const heard = reaction("");
+    await heard.run();
+
+    expect(heard.fixes).toEqual([]);
+    expect(heard.escalations).toEqual([]);
+    expect(heard.logs.join("\n")).toContain("nothing to do");
+  });
+
+  it("escalates a run that died before the gate without rebasing anything", async () => {
+    const heard = reaction("escalate", { failedJob: "Gauntlet", errorLine: "::error::the runner vanished" });
+    await heard.run();
+
+    expect(heard.fixes).toEqual([]);
+    expect(heard.escalations).toEqual([["Gauntlet", "::error::the runner vanished"]]);
+  });
+
+  it("names the conflicted paths and never spends the model when the rebase cannot replay", async () => {
+    const git = conflictingGit(["src/a.ts", "src/b.ts"]);
+    const heard = reaction("model", { git });
+    await heard.run();
+
+    expect(heard.fixes).toEqual([]);
+    expect(heard.escalations).toEqual([["rebase onto trunk", "conflicts in: src/a.ts src/b.ts"]]);
+    expect(git.seen).toContainEqual(["rebase", "--abort"]);
+  });
+
+  it("spends the model once the rebase replays clean", async () => {
+    const heard = reaction("model", { git: () => "" });
+    await heard.run();
+
+    expect(heard.fixes).toEqual(["ran"]);
+    expect(heard.escalations).toEqual([]);
+  });
+
+  it("escalates a fixer that crashed mid-loop and still reports the run as failed", async () => {
+    const heard = reaction("model", { git: () => "", fix: () => Promise.reject(new Error("the attempt loop blew up")) });
+
+    await expect(heard.run()).rejects.toThrow("the attempt loop blew up");
+    expect(heard.escalations[0][0]).toBe("the fixer itself");
+    expect(heard.escalations[0][1]).toContain("the attempt loop blew up");
+  });
 });

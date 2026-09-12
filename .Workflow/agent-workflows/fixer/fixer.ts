@@ -310,6 +310,66 @@ function readAssignee(): string {
   return assignee;
 }
 
+export const FIXER_MODES = ["", "model", "escalate"] as const;
+
+export type FixerMode = (typeof FIXER_MODES)[number];
+
+export function isFixerMode(value: string): value is FixerMode {
+  return (FIXER_MODES as readonly string[]).includes(value);
+}
+
+export interface ReactDeps {
+  mode: FixerMode;
+  failedJob: string;
+  errorLine: string;
+  git: GitExec;
+  trunk: string;
+  fix: () => Promise<void>;
+  escalate: (failedJob: string, errorLine: string) => void;
+  log: (line: string) => void;
+}
+
+export function rebaseConflicts(git: GitExec, trunk: string): string | undefined {
+  git(["fetch", "origin", "main"]);
+  try {
+    git(["rebase", trunk]);
+    return undefined;
+  } catch {
+    const paths = git(["diff", "--name-only", "--diff-filter=U"])
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+      .join(" ");
+    git(["rebase", "--abort"]);
+    return paths;
+  }
+}
+
+export async function reactToRun(deps: ReactDeps): Promise<void> {
+  if (deps.mode === "") {
+    deps.log("no red run resolved a pull request to react to; nothing to do");
+    return;
+  }
+
+  if (deps.mode === "escalate") {
+    deps.escalate(deps.failedJob, deps.errorLine);
+    return;
+  }
+
+  const conflicts = rebaseConflicts(deps.git, deps.trunk);
+  if (conflicts !== undefined) {
+    deps.escalate("rebase onto trunk", `conflicts in: ${conflicts}`);
+    return;
+  }
+
+  try {
+    await deps.fix();
+  } catch (err) {
+    deps.escalate("the fixer itself", `the attempt loop stopped before it could finish: ${reason(err)}`);
+    throw err;
+  }
+}
+
 async function runEscalate(): Promise<void> {
   const [issueArg, prArg, failedJob, errorLine] = process.argv.slice(3);
   if (!issueArg || !prArg || !failedJob || !errorLine) {
@@ -327,42 +387,59 @@ async function runEscalate(): Promise<void> {
   }
 }
 
-async function runFix(): Promise<void> {
-  const [issueArg, prArg, branch, dir] = process.argv.slice(2);
-  if (!issueArg || !prArg || !branch || !dir) {
-    console.error("usage: fixer.ts <issue-number> <pr-number> <branch> <test-dir>");
+async function fixInCheckout(issueNumber: number, prNumber: number, branch: string, dir: string, repoDir: string): Promise<void> {
+  const targets = [dir];
+
+  const initialFailure = runVitestJsonForFixer(targets, repoDir).failures;
+  if (initialFailure.length === 0) {
+    console.log(`nothing to fix: no test under ${targets.join(" or ")} is failing in this checkout`);
+    return;
+  }
+
+  const outcome = await runFixer({
+    gh: execGh,
+    exec: execClaudeIn(repoDir),
+    git: (args) => execGit(["-C", repoDir, ...args]),
+    runTests: () => runVitestJsonForFixer(targets, repoDir),
+    initialFailure,
+    prNumber,
+    branch,
+    issueNumber,
+    assignee: readAssignee(),
+  });
+
+  if (outcome.verdict === "green") {
+    console.log(`green after ${outcome.attempts} attempt(s)`);
+  } else {
+    console.log(`blocked after ${outcome.attempts} attempt(s): ${outcome.stopReason}`);
+  }
+}
+
+async function runReact(): Promise<void> {
+  const mode = process.env.FIXER_MODE ?? "";
+  if (!isFixerMode(mode)) {
+    console.error(`fixer: ${JSON.stringify(mode)} is not a mode the target step can resolve`);
     process.exitCode = 1;
     return;
   }
 
+  const issueNumber = Number(process.env.ISSUE);
+  const prNumber = Number(process.env.PR_NUMBER);
+  const branch = process.env.BRANCH ?? "";
+  const dir = process.env.TEST_DIR ?? "";
+  const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
+
   try {
-    const targets = [dir];
-
-    const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
-
-    const initialFailure = runVitestJsonForFixer(targets, repoDir).failures;
-    if (initialFailure.length === 0) {
-      console.log(`nothing to fix: no test under ${targets.join(" or ")} is failing in this checkout`);
-      return;
-    }
-
-    const outcome = await runFixer({
-      gh: execGh,
-      exec: execClaudeIn(repoDir),
+    await reactToRun({
+      mode,
+      failedJob: process.env.FAILED_JOB ?? "",
+      errorLine: process.env.ERROR_LINE ?? "",
       git: (args) => execGit(["-C", repoDir, ...args]),
-      runTests: () => runVitestJsonForFixer(targets, repoDir),
-      initialFailure,
-      prNumber: Number(prArg),
-      branch,
-      issueNumber: Number(issueArg),
-      assignee: readAssignee(),
+      trunk: "origin/main",
+      fix: () => fixInCheckout(issueNumber, prNumber, branch, dir, repoDir),
+      escalate: (failedJob, errorLine) => applyUnfixable(execGh, issueNumber, prNumber, readAssignee(), failedJob, errorLine),
+      log: (line) => console.log(line),
     });
-
-    if (outcome.verdict === "green") {
-      console.log(`green after ${outcome.attempts} attempt(s)`);
-    } else {
-      console.log(`blocked after ${outcome.attempts} attempt(s): ${outcome.stopReason}`);
-    }
   } catch (err) {
     console.error(`fixer failed: ${reason(err)}`);
     process.exitCode = 1;
@@ -373,7 +450,7 @@ async function main(): Promise<void> {
   if (process.argv[2] === "escalate") {
     await runEscalate();
   } else {
-    await runFix();
+    await runReact();
   }
 }
 
