@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   checkoutReporting,
   githubHoldingClaims,
@@ -43,6 +43,10 @@ const BRANCH = implementationBranch(ISSUE);
 const silent = () => {};
 
 const standing = (claim: Omit<ExistingClaim, "branch"> = {}): ExistingClaim => ({ branch: BRANCH, ...claim });
+
+const ghTraffic = (host: ClaimHost): string => JSON.stringify({ calls: host.calls, dispatches: host.dispatches });
+
+const needsHumanCall = ["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL];
 
 const prListUnreachable = (args: string[]): string | undefined => {
   if (args[0] === "pr" && args[1] === "list") throw new Error("HTTP 502");
@@ -376,6 +380,39 @@ describe("landAnswer", () => {
       const { result } = await land(checkoutDiffing(rewritten), {}, { ...DECLARED_ANSWER, declaredEdits: [] });
 
       expect(result).toMatchObject({ outcome: "fails-rule-refused" });
+    });
+  });
+
+  describe("a refusal keeps the work and goes to the mechanic", () => {
+    const REWRITTEN = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
+
+    test.fails("#524.1: landAnswer pushes the branch before judgeFailsEdits judges the diff", async () => {
+      const { gitCalls } = await land();
+
+      const pushed = gitCalls.findIndex((call) => call[0] === "push");
+      const judged = gitCalls.findIndex((call) => call[0] === "diff" && call[1] === "--");
+
+      expect(pushed, "the answer is never pushed").toBeGreaterThanOrEqual(0);
+      expect(judged, "the fails rule never judges a diff").toBeGreaterThanOrEqual(0);
+      expect(pushed).toBeLessThan(judged);
+    });
+
+    test.fails("#524.2: a fails-rule-refused outcome dispatches mechanic-wanted for the ticket and adds no needs-human", async () => {
+      const { result, host } = await land(checkoutDiffing(REWRITTEN));
+
+      expect(result).toMatchObject({ outcome: "fails-rule-refused" });
+      expect(ghTraffic(host), "no mechanic-wanted dispatch for the ticket").toContain("mechanic-wanted");
+      expect(host.calls, "a refusal labelled the ticket for the owner").not.toContainEqual(needsHumanCall);
+    });
+
+    test.fails("#524.3: a fails rule refusal goes to the mechanic and does not discard the answer", async () => {
+      const { result, host, gitCalls } = await land(checkoutDiffing(REWRITTEN));
+
+      expect(result).toMatchObject({ outcome: "fails-rule-refused" });
+      expect(gitCalls.map((call) => call[0]), "the refused answer was never committed").toContain("commit");
+      expect(gitCalls.map((call) => call[0]), "the refused answer was never pushed").toContain("push");
+      expect(ghTraffic(host), "the refusal did not reach the mechanic").toContain("mechanic-wanted");
+      expect(host.calls, "the refusal went to the owner instead").not.toContainEqual(needsHumanCall);
     });
   });
 });
