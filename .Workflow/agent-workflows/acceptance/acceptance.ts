@@ -9,7 +9,7 @@ import {
   type ExistingTestCriterion,
   type SliceRef,
 } from "../shared/affected-tests";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
@@ -166,7 +166,7 @@ export interface AuthoredBatch {
 
 export async function authorAcceptanceTests(
   deps: AuthorDeps,
-  budget: LaneBudget = startLaneBudget(),
+  budget: LaneBudget = startLaneBudget(laneBudget("acceptance")),
 ): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
   if (criteria.length === 0) {
@@ -204,7 +204,7 @@ export async function repairAcceptanceTests(
   deps: AuthorDeps,
   sessionId: string,
   judgement: string,
-  budget: LaneBudget = startLaneBudget(),
+  budget: LaneBudget = startLaneBudget(laneBudget("acceptance")),
 ): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
   const round = await runStageSessionWithinBudget(
@@ -364,7 +364,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);
   const log = deps.log ?? ((line: string) => console.log(line));
-  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  const budget = startLaneBudget(laneBudget("acceptance"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
 
   const attempt = await authorWithOneRepair(
     { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite },

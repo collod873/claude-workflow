@@ -5,8 +5,6 @@ import { reason } from "./reason";
 
 export const CLAIM_TIMEOUT_MINUTES = 90;
 
-export const LANE_BUDGET_MINUTES = 85;
-
 function refPath(branch: string): string {
   return `${GIT_REFS_PATH}/heads/${branch}`;
 }

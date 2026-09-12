@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { BY_HAND_LABEL } from "../shared/immutable-set";
 import { reason } from "../shared/reason";
@@ -90,7 +90,7 @@ export async function runSpecAuthor(
     exec,
     SPEC_AUTHOR_OUTPUT,
     {
-      budget: startLaneBudget(LANE_BUDGET_MINUTES),
+      budget: startLaneBudget(laneBudget("spec")),
       model: SPEC_AUTHOR_MODEL,
       allowedTools: SPEC_AUTHOR_ALLOWED_TOOLS,
       promptViaStdin: true,

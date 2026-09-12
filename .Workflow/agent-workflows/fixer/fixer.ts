@@ -19,7 +19,7 @@ import {
 import { structuredOutput } from "../shared/structured-output";
 import { runVitestReport } from "../shared/vitest-json";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 
 export type StopReason = "no-progress" | "capped" | "gate-growth";
 
@@ -232,7 +232,7 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
     return { verdict: "blocked", attempts: 0, stopReason: "capped" };
   }
 
-  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  const budget = startLaneBudget(laneBudget("fixer"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS - already; attempt += 1) {
     const brief = assembleFixBrief(previousSignature, attempt, attemptSummaries);

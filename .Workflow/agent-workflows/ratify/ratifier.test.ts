@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type { GitExec } from "../shared/git";
+import { laneBudget } from "../shared/lane-budget";
 import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
 import { observation } from "../shared/observation.fixture";
@@ -230,11 +231,8 @@ type Settled =
   | { state: "resolved"; value: unknown }
   | { state: "rejected"; error: unknown };
 
-const PRD_LANE_BUDGET_MINUTES = 85;
-
 async function laneBudgetMinutes(): Promise<number> {
-  const claim = (await import("../shared/claim")) as { LANE_BUDGET_MINUTES?: number };
-  return claim.LANE_BUDGET_MINUTES ?? PRD_LANE_BUDGET_MINUTES;
+  return laneBudget("ratify");
 }
 
 function stalledExec(): StageExec {

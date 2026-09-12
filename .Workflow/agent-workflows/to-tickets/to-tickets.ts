@@ -13,7 +13,7 @@ import {
 } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import {
   checkpointPath,
   currentLaneRun,
@@ -53,7 +53,7 @@ async function runTypedStage<T>(
   exec: StageExec,
   gh: GhExec,
 ): Promise<T> {
-  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh, ticket: Number(issueNumber), run: currentLaneRun() });
+  const budget = startLaneBudget(laneBudget("to-tickets"), { gh, ticket: Number(issueNumber), run: currentLaneRun() });
   const { value } = await runStageSessionWithinBudget(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
     stage,
     budget,

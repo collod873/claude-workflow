@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { PATH_LINE_RE } from "../shared/ticket-shape";
 import { runStageSessionWithinBudget, startLaneBudget, type LaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
@@ -59,7 +59,7 @@ export async function runRefuter(
   greenGateChecks: GreenGateCheck[],
   budgetMinutes?: number,
 ): Promise<Finding[]> {
-  const budget = startLaneBudget(budgetMinutes ?? LANE_BUDGET_MINUTES);
+  const budget = startLaneBudget(budgetMinutes ?? laneBudget("review"));
   const survivors: Finding[] = [];
   for (const finding of findings) {
     const verdict = await runOne(exec, finding, diff, greenGateChecks, budget);

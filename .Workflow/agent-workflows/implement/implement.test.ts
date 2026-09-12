@@ -15,7 +15,7 @@ import {
 } from "../shared/claim-host.fixture";
 import { describeAttempt } from "../shared/changed-paths";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { declaredEditsNote, gateRedNote } from "../shared/implementation-landing";
 import { implementerAnswer, implementerReply } from "../shared/implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
@@ -470,9 +470,9 @@ describe("a claim does not outlive the run that made it", () => {
       () => "opened",
       (err: unknown) => errorMessage(err),
     );
-    await vi.advanceTimersByTimeAsync(LANE_BUDGET_MINUTES * 60_000);
+    await vi.advanceTimersByTimeAsync(laneBudget("implement") * 60_000);
 
-    expect(await running).toBe(`timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`);
+    expect(await running).toBe(`timed out after ${laneBudget("implement")} minutes at implementer`);
     expect(host.refs.has(BRANCH)).toBe(false);
     expect(refDeletesIn(host.calls)).toHaveLength(1);
   });

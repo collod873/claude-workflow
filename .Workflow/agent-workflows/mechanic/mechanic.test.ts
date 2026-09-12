@@ -1,3 +1,4 @@
+import { laneBudget } from "../shared/lane-budget";
 import { describe, expect, it, test, vi } from "vitest";
 import {
   checkoutChanged,
@@ -82,8 +83,7 @@ function repairRound() {
 }
 
 async function laneBudgetMinutes(): Promise<number> {
-  const claim = (await import("../shared/claim")) as unknown as { LANE_BUDGET_MINUTES?: number };
-  return claim.LANE_BUDGET_MINUTES ?? 85;
+  return laneBudget("mechanic");
 }
 
 async function underFakeClock(run: (budgetMinutes: number) => Promise<void>): Promise<void> {

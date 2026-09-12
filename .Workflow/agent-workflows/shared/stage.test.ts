@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { z } from "zod";
-import { LANE_BUDGET_MINUTES } from "./claim";
+import { laneBudget } from "./lane-budget";
 import type { GhExec } from "./gh";
 import { withHandoffDir } from "./handoff-dir.fixture";
 import { errorMessage } from "./reason";
@@ -382,8 +382,8 @@ describe("runStageSession", () => {
 describe("runStageSessionWithinBudget", () => {
   const TICKET = 494;
   const RUN: LaneRunRef = { id: 777, url: "https://github.com/o/r/actions/runs/777" };
-  const BUDGET_MS = LANE_BUDGET_MINUTES * 60_000;
-  const TIMED_OUT = `timed out after ${LANE_BUDGET_MINUTES} minutes at implementer`;
+  const BUDGET_MS = laneBudget("implement") * 60_000;
+  const TIMED_OUT = `timed out after ${laneBudget("implement")} minutes at implementer`;
 
   afterEach(() => {
     vi.useRealTimers();
@@ -429,7 +429,7 @@ describe("runStageSessionWithinBudget", () => {
     vi.useFakeTimers();
     const promptPath = writePrompt(`A prompt the budget runs out on at ${stage}.`);
     const model = modelThatNeverAnswers();
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, ticket);
+    const budget = startLaneBudget(laneBudget("implement"), ticket);
     const running = runStageSessionWithinBudget(promptPath, {}, model.exec, GREETING, { stage, budget });
     const before = await settledAfter(running, BUDGET_MS - 1);
     const after = await settledAfter(running, 1);
@@ -465,18 +465,10 @@ describe("runStageSessionWithinBudget", () => {
     expect(tracker.posted[0]).not.toContain("<!-- strike:v1");
   });
 
-  it("budgets a stage from its own start when no lane budget is handed in, and names that stage", async () => {
-    vi.useFakeTimers();
-    const promptPath = writePrompt("A prompt with no lane budget handed in.");
-    const running = runStageSessionWithinBudget(promptPath, {}, modelThatNeverAnswers().exec, GREETING, { stage: "ratifier" });
-
-    expect(await settledAfter(running, BUDGET_MS)).toBe(`timed out after ${LANE_BUDGET_MINUTES} minutes at ratifier`);
-  });
-
   it("returns the stage's answer and writes nothing when the model answers inside the budget", async () => {
     const promptPath = writePrompt("A prompt answered in time.");
     const tracker = trackerWith([]);
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN });
+    const budget = startLaneBudget(laneBudget("implement"), { gh: tracker.gh, ticket: TICKET, run: RUN });
 
     const answered = await runStageSessionWithinBudget(promptPath, {}, createFakeStage(RESPONSE).exec, GREETING, {
       stage: "in-budget",
@@ -490,7 +482,7 @@ describe("runStageSessionWithinBudget", () => {
   it("lets a stage's own failure through untouched while the budget still has time", async () => {
     const promptPath = writePrompt("A prompt whose model dies on its own.");
     const tracker = trackerWith([]);
-    const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: tracker.gh, ticket: TICKET, run: RUN });
+    const budget = startLaneBudget(laneBudget("implement"), { gh: tracker.gh, ticket: TICKET, run: RUN });
     const dies: StageExec = async () => {
       throw new Error("`claude` exited 1");
     };

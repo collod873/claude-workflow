@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STAGE_SESSION_VARS } from "./child-env";
-import { LANE_BUDGET_MINUTES } from "./claim";
 import { issueComments, type GhExec } from "./gh";
 import { handoffPath } from "./handoff-path";
 import { reason } from "./reason";
@@ -308,7 +307,7 @@ export interface LaneBudget {
   ticket?: LaneTicket;
 }
 
-export function startLaneBudget(minutes: number = LANE_BUDGET_MINUTES, ticket?: LaneTicket): LaneBudget {
+export function startLaneBudget(minutes: number, ticket?: LaneTicket): LaneBudget {
   const spent = new AbortController();
   setTimeout(() => spent.abort(), minutes * 60_000).unref();
   return { minutes, signal: spent.signal, ticket };
@@ -353,9 +352,9 @@ export async function runStageSessionWithinBudget<T>(
   vars: Record<string, string>,
   exec: StageExec,
   output: StructuredOutput<T>,
-  options: StageOptions & { budget?: LaneBudget },
+  options: StageOptions & { budget: LaneBudget },
 ): Promise<StageSessionResult<T>> {
-  const { budget = startLaneBudget(), ...stageOptions } = options;
+  const { budget, ...stageOptions } = options;
   const session = runStageSession(promptPath, vars, exec, output, { ...stageOptions, signal: budget.signal });
   session.catch(() => {});
   const { spent, release } = whenSpent(budget.signal);

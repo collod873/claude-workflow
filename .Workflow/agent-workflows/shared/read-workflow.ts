@@ -23,6 +23,7 @@ export interface WorkflowStep {
   name?: string;
   id?: string;
   if?: string;
+  "timeout-minutes"?: number;
   run?: string;
   uses?: string;
   with?: Record<string, unknown>;

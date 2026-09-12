@@ -13,7 +13,7 @@ import {
   type LaneBudget,
   type StageExec,
 } from "../shared/stage";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { REFUSAL_MARKER } from "../shared/marker";
 import {
   renderChangeRequest,
@@ -192,7 +192,7 @@ export async function runChain(
     return { kind: "capped" };
   }
 
-  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: issueNumber, run: currentLaneRun() });
+  const budget = startLaneBudget(laneBudget("shape"), { gh: deps.gh, ticket: issueNumber, run: currentLaneRun() });
 
   const idea = readIdea(deps.gh, issueNumber);
   let sweep = await runSweep(deps, budget, issueNumber, idea, firstPassFocus(changeRequest));

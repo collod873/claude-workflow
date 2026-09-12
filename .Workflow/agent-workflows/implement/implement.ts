@@ -25,7 +25,8 @@ import {
   sectionText,
   type TicketRead,
 } from "../shared/ticket-shape";
-import { holdingClaim, LANE_BUDGET_MINUTES, releaseFailedClaim } from "../shared/claim";
+import { holdingClaim, releaseFailedClaim } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import {
   deriveAnswer,
   ImplementerReply,
@@ -200,7 +201,7 @@ export interface ImplementDeps extends TargetCheckout {
 export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
-  const budget = startLaneBudget(LANE_BUDGET_MINUTES, { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  const budget = startLaneBudget(laneBudget("implement"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
   return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), (claim) => {
     if (claim.tookOverStaleClaim) sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
     return buildAndOpen(deps, budget, branch, log);

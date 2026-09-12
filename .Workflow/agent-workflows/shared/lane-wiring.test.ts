@@ -15,6 +15,7 @@ import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "../spec/open-question
 import { STAGES } from "../to-tickets/to-tickets";
 import { WATCHDOG_DISPATCH_ACTION } from "../watchdog/run-watchdog";
 import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
+import { BUDGETED_LANES, laneBudget } from "./lane-budget";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import {
   doors,
@@ -547,4 +548,20 @@ test("#493.4: the repo still typechecks", () => {
   const steps = job.find((member) => memberName(member) === "steps");
   expect(steps, "WorkflowJob declares no steps").toBeDefined();
   expect(carriesWorkflowStep(steps?.type), "WorkflowJob.steps carries WorkflowStep").toBe(true);
+});
+
+describe("#520: a lane's budget fits inside the cap that could kill it", () => {
+  it.each(BUDGETED_LANES)("%s stops itself before the runner stops it", (lane) => {
+    const { workflow } = readWorkflow<Workflow>(`${lane}.yml`);
+    const caps = Object.values(workflow.jobs ?? {}).flatMap((job) =>
+      (job.steps ?? [])
+        .filter((step) => step.run?.includes(`agent-workflows/${lane}/`))
+        .map((step) => Math.min(job["timeout-minutes"] ?? Infinity, step["timeout-minutes"] ?? Infinity)),
+    );
+    expect(caps.length, `${lane}.yml runs its own lane entry`).toBeGreaterThan(0);
+    for (const cap of caps) {
+      expect(cap, `${lane} declares a cap its budget can beat`).toBeLessThan(Infinity);
+      expect(laneBudget(lane), `${lane} budget under its ${cap}-minute cap`).toBeLessThan(cap);
+    }
+  });
 });

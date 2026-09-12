@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import type { GitExec } from "../shared/git";
+import { laneBudget } from "../shared/lane-budget";
 import { reason } from "../shared/reason";
 import { runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { VIOLATION_LENS, type Observation } from "../shared/observation-schema";
@@ -15,7 +16,7 @@ const RATIFIER_MODEL = "opus";
 
 export async function runRatifierStage(exec: StageExec, vars: Record<string, string>): Promise<RatifierVerdict> {
   const { value } = await runStageSessionWithinBudget(RATIFIER_PROMPT_PATH, vars, exec, RATIFIER_OUTPUT, {
-    budget: startLaneBudget(),
+    budget: startLaneBudget(laneBudget("ratify")),
     model: RATIFIER_MODEL,
     promptViaStdin: true,
     stage: "ratifier",

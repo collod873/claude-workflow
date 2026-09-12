@@ -11,7 +11,7 @@ import {
 import { structuredOutput } from "../shared/structured-output";
 import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
 import { fileSpecGap } from "../shared/spec-gap";
@@ -123,7 +123,7 @@ export async function runConformanceReview(
     exec,
     CONFORMANCE_REVIEWER_OUTPUT,
     {
-      budget: input.budget ?? startLaneBudget(LANE_BUDGET_MINUTES),
+      budget: input.budget ?? startLaneBudget(laneBudget("review")),
       model: CORRECTNESS_REVIEWER_MODEL,
       promptViaStdin: true,
       stage: "conformance",
@@ -197,7 +197,7 @@ function resolveSpecSafely(gh: GhExec, head: string): ResolvedSpec | undefined {
 }
 
 export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
-  const budgetMinutes = input.budgetMinutes ?? LANE_BUDGET_MINUTES;
+  const budgetMinutes = input.budgetMinutes ?? laneBudget("review");
   const spec = resolveSpecSafely(gh, input.head);
   const ticket = spec ? { gh, ticket: spec.ticketNumber, run: currentLaneRun() } : undefined;
   const budget = startLaneBudget(budgetMinutes, ticket);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LANE_BUDGET_MINUTES } from "../shared/claim";
+import { laneBudget } from "../shared/lane-budget";
 import { runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 
@@ -51,7 +51,7 @@ export async function runSpecCritic(
     exec,
     SPEC_CRITIC_OUTPUT,
     {
-      budget: startLaneBudget(LANE_BUDGET_MINUTES),
+      budget: startLaneBudget(laneBudget("spec")),
       model: SPEC_CRITIC_MODEL,
       promptViaStdin: true,
       stage: "critic",
