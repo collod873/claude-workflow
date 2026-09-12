@@ -679,9 +679,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "ratify-on-prd-close-${{ github.event.issue.number }}",
     jobs: {
       "ratify-on-prd-close": {
-        gate: {
-          is: `github.event.issue.state_reason == '${LANE_OWNED.closeStateReason}' && contains(github.event.issue.labels.*.name, '${LANE_OWNED.prd}')`,
-        },
+        ungated: true,
         runs: tsx("ratify/prd-close.ts"),
         checkout: { pair: true, workspace: false },
         env: { ISSUE_NUMBER: true, STATE_REASON: true, LABELS: true },

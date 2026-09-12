@@ -38,8 +38,9 @@ interface CallerYaml {
 
 const LABEL_ADDED = /github\.event\.label\.name\s*==\s*'([^']*)'/;
 
-export const DECLARED_FIRE_LABELS: Record<string, string> = {
-  "lost-dispatch-counter": "sliceable",
+export const DECLARED_FIRE_DEMANDS: Record<string, FireDemands> = {
+  "lost-dispatch-counter": { label: "sliceable" },
+  "ratify-on-prd-close": { issueLabels: ["prd"], stateReason: "completed" },
 };
 const ISSUE_CARRIES = /(!?)\s*contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*'([^']*)'\s*\)/g;
 const CLOSED_AS = /github\.event\.issue\.state_reason\s*==\s*'([^']*)'/;
@@ -91,12 +92,15 @@ function guardsFor(lane: string): string {
 
 function demandsFor(lane: string, keys: (keyof FireDemands)[]): FireDemands | undefined {
   const guards = guardsFor(lane);
+  const declared = DECLARED_FIRE_DEMANDS[lane] ?? {};
   const demands: FireDemands = {};
   if (keys.includes("label")) {
-    const label = DECLARED_FIRE_LABELS[lane] ?? LABEL_ADDED.exec(guards)?.[1];
+    const label = declared.label ?? LABEL_ADDED.exec(guards)?.[1];
     if (label !== undefined) demands.label = label;
   }
-  if (keys.includes("issueLabels")) {
+  if (keys.includes("issueLabels") && declared.issueLabels !== undefined) {
+    demands.issueLabels = declared.issueLabels;
+  } else if (keys.includes("issueLabels")) {
     const carried = [...guards.matchAll(ISSUE_CARRIES)]
       .filter(([, negated]) => negated !== "!")
       .map(([, , name]) => name);
@@ -104,7 +108,7 @@ function demandsFor(lane: string, keys: (keyof FireDemands)[]): FireDemands | un
     if (preapplied.length > 0) demands.issueLabels = preapplied;
   }
   if (keys.includes("stateReason")) {
-    const reason = CLOSED_AS.exec(guards)?.[1];
+    const reason = declared.stateReason ?? CLOSED_AS.exec(guards)?.[1];
     if (reason !== undefined) demands.stateReason = reason;
   }
   return Object.keys(demands).length > 0 ? demands : undefined;
