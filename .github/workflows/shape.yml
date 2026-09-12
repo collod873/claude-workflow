@@ -114,16 +114,15 @@ jobs:
           issue: ${{ env.IDEA_NUMBER }}
 
       - name: Report failure
-        if: failure()
-        run: |
-          reason="unknown stage"
-          if [ -f "$FAILURE_REASON_PATH" ]; then
-            reason=$(cat "$FAILURE_REASON_PATH")
-          fi
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          evidence="\n**Checkpoints:** the \`checkpoints-shape-${IDEA_NUMBER}\` artifact on that run.\n"
-          body=$(printf 'Shape run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
-          gh issue comment "$IDEA_NUMBER" --body "$body"
+        if: always()
+        env:
+          REPORT_LANE: shape
+          REPORT_ISSUE: ${{ env.IDEA_NUMBER }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERB: ""
+          REPORT_REFUSED: "false"
+        run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
 
       - name: Unmark the idea
         if: always()

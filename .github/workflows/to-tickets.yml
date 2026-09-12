@@ -155,17 +155,15 @@ jobs:
           issue: ${{ env.PRD_NUMBER }}
 
       - name: Report failure
-        if: failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'
-        run: |
-          reason="unknown stage"
-          if [ -f "$FAILURE_REASON_PATH" ]; then
-            reason=$(cat "$FAILURE_REASON_PATH")
-          fi
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          evidence="\n**Checkpoints:** the \`checkpoints-to-tickets-${PRD_NUMBER}\` artifact on that run.\n"
-          body=$(printf 'to-tickets run failed.\n\n**Reason:** %s\n\n**Workflow run:** %s\n%b' "$reason" "$run_url" "$evidence")
-          gh issue comment "$PRD_NUMBER" --body "$body"
-          gh issue edit "$PRD_NUMBER" --add-label slice-failed
+        if: always()
+        env:
+          REPORT_LANE: to-tickets
+          REPORT_ISSUE: ${{ env.PRD_NUMBER }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPORT_REFUSED: ${{ steps.refuse-sub-issues.outputs.refused == 'true' || steps.refuse-nested-prd.outputs.refused == 'true' }}
+          VERB: ""
+        run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
 
       - name: Unmark the PRD
         if: always()

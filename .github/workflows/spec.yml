@@ -94,12 +94,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Report failure
-        if: ${{ !success() }}
-        run: |
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
-          body=$(printf 'The spec lane did not finish.\n\nNothing here is automatic to recover: the run below says where it stopped, and re-applying `to-spec` starts it again.\n\n**Workflow run:** %s\n' "$run_url")
-          gh issue comment "$ISSUE_NUMBER" --body "$body"
+        if: always()
+        env:
+          REPORT_LANE: spec
+          REPORT_ISSUE: ${{ env.ISSUE_NUMBER }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERB: ""
+          REPORT_REFUSED: "false"
+        run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
 
       - name: Unmark the source
         if: always()

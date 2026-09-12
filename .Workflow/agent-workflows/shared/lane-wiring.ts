@@ -329,7 +329,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           { name: "Lift slice-failed, the PRD is split now", follows: "Audit and publish", run: ['gh issue edit "$PRD_NUMBER" --remove-label slice-failed'] },
           {
             name: "Report failure",
-            if: "failure() && steps.refuse-sub-issues.outputs.refused != 'true' && steps.refuse-nested-prd.outputs.refused != 'true'",
+            if: "always()",
             runLacks: ["refused-raw-response"],
           },
           { name: "Upload the refused raw response", absent: true },

@@ -62,9 +62,12 @@ jobs:
         run: npx tsx .Workflow/agent-workflows/shape/run-accept.ts --issue "$IDEA_NUMBER" --verb "$VERB"
 
       - name: Report failure
-        if: ${{ !success() }}
-        run: |
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          # shellcheck disable=SC2016  # the backticks are Markdown for the issue comment, not command substitution
-          body=$(printf 'The `%s` accept did not finish.\n\nNothing here is automatic to recover: check whether `docs/adr/` and `CONTEXT.md` took the writes before re-applying the label.\n\n**Workflow run:** %s\n' "$VERB" "$run_url")
-          gh issue comment "$IDEA_NUMBER" --body "$body"
+        if: always()
+        env:
+          REPORT_LANE: shape-accept
+          REPORT_ISSUE: ${{ env.IDEA_NUMBER }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERB: ${{ env.VERB }}
+          REPORT_REFUSED: "false"
+        run: npx tsx .Workflow/agent-workflows/shared/report-lane-failure.ts
