@@ -27,25 +27,15 @@ concurrency:
 
 jobs:
   reconcile:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'workflow_run' ||
-      github.event_name == 'push' ||
-      github.event.action == 'session-captured' ||
-      github.event.action == 'graph-changed' ||
-      github.event.action == 'run-ended' ||
-      (github.event_name == 'issues' &&
-       github.event.action == 'labeled' &&
-       github.event.label.name == 'to-build' &&
-       github.event.sender.login == github.repository_owner) ||
-      (github.event_name == 'issues' &&
-       github.event.action == 'unlabeled' &&
-       (github.event.label.name == 'needs-human' || github.event.label.name == 'by-hand') &&
-       github.event.sender.login == github.repository_owner)
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
       EVENT_ACTION: ${{ (github.event_name == 'repository_dispatch' && github.event.action) || (github.event_name == 'workflow_run' && 'run-ended') || (github.event_name == 'push' && 'main-moved') || (github.event_name == 'issues' && github.event.action == 'unlabeled' && 'graph-changed') || 'session-captured' }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_ISSUE_ACTION: ${{ github.event.action }}
+      EVENT_LABEL: ${{ github.event.label.name }}
+      EVENT_SENDER: ${{ github.event.sender.login }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERIFY_WORKFLOW: ${{ inputs.verify_workflow }}

@@ -957,7 +957,39 @@ function climbLadder(
   return rung;
 }
 
+export const WAKES_ON_LABELED: readonly string[] = [TO_BUILD_LABEL];
+
+export const WAKES_ON_UNLABELED: readonly string[] = [NEEDS_HUMAN_LABEL, BY_HAND_LABEL];
+
+export interface WakeEvent {
+  eventName: string;
+  action: string;
+  label: string;
+  senderIsOwner: boolean;
+}
+
+export function wakesReconciler(event: WakeEvent): boolean {
+  if (event.eventName !== "issues") return true;
+  if (!event.senderIsOwner) return false;
+  if (event.action === "labeled") return WAKES_ON_LABELED.includes(event.label);
+  if (event.action === "unlabeled") return WAKES_ON_UNLABELED.includes(event.label);
+  return false;
+}
+
 function main(): void {
+  const sender = process.env.EVENT_SENDER || "";
+  const owner = process.env.GITHUB_REPOSITORY_OWNER || "";
+  const wake: WakeEvent = {
+    eventName: process.env.EVENT_NAME || "",
+    action: process.env.EVENT_ISSUE_ACTION || "",
+    label: process.env.EVENT_LABEL || "",
+    senderIsOwner: sender !== "" && sender === owner,
+  };
+  if (!wakesReconciler(wake)) {
+    console.log(`a ${wake.eventName} ${wake.action} of \`${wake.label}\` is not the owner's ready-set edit; nothing to do.`);
+    return;
+  }
+
   const eventAction = process.env.EVENT_ACTION || "";
   if (!RECONCILE_ENDINGS.some((action) => action === eventAction)) {
     console.log(

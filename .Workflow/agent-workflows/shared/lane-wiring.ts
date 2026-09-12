@@ -620,19 +620,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "dispatch-reconcile",
     jobs: {
       reconcile: {
-        gate: {
-          actions: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED, "labeled", "unlabeled"],
-          has: [
-            "github.event_name == 'workflow_dispatch'",
-            "github.event_name == 'workflow_run'",
-            "github.event_name == 'push'",
-            "github.event_name == 'issues'",
-            onLabel(LANE_OWNED.toBuild),
-            onLabel(NEEDS_HUMAN_LABEL),
-            onLabel(BY_HAND_LABEL),
-            OWNER_GATE,
-          ],
-        },
+        gate: { is: "always()" },
         runs: tsx("dispatch/reconcile.ts"),
         checkout: "pair",
         env: {
