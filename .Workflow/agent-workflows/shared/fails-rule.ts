@@ -1,7 +1,7 @@
-const FAILS_CALL = /\b(test|it)\.fails\(/;
+const FAILS_CALL = /^(\s*)(test|it)\.fails\(/;
 
 function withoutFails(line: string): string {
-  return line.replace(FAILS_CALL, "$1(");
+  return line.replace(FAILS_CALL, "$1$2(");
 }
 
 export type FailsRuleVerdict = { ok: true } | { ok: false; reason: string };

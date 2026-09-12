@@ -61,6 +61,15 @@ describe("judgeFailsEdits", () => {
     expect(judgeFailsEdits(diff)).toEqual({ ok: true });
   });
 
+  it("ignores a line that only mentions test.fails( inside a string, such as a fixture an autofix requoted", () => {
+    const diff = diffOf("lib/thing.test.ts", [
+      "-  const SLICE = ['test.fails(\"#360: the gate is a constant\", () => {', \"});\"].join(\"\\n\");",
+      '+  const SLICE = ["test.fails(\\"#360: the gate is a constant\\", () => {", "});"].join("\\n");',
+    ]);
+
+    expect(judgeFailsEdits(diff)).toEqual({ ok: true });
+  });
+
   it("treats a rewrite on a declared path as not an offence", () => {
     const diff = diffOf("lib/thing.test.ts", [
       '-  test.fails("#360: the gate is a constant", () => {',
