@@ -193,7 +193,7 @@ describe("landAnswer", () => {
 
     expect(result).toEqual({ outcome: "opened", pr: PR_URL });
     expect(written).toEqual(["a/b.ts"]);
-    expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
+    expect(gitCalls.map((call) => call[0])).toEqual(["status", "checkout", "add", "commit", "push", "reset", "diff"]);
     expect(gitCalls).toContainEqual(["push", "origin", `HEAD:${BRANCH}`]);
     expect(prCreatesIn(host.calls)).toHaveLength(1);
     expect(host.dispatches.map((dispatch) => dispatch.payload.pr)).toEqual([PR_URL]);
@@ -225,7 +225,17 @@ describe("landAnswer", () => {
   it("rebases onto trunk between the commit and the push only when the caller opts in", async () => {
     const { gitCalls } = await land(checkoutReporting(), { rebaseOntoTrunk: true });
 
-    expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "fetch", "rebase", "push"]);
+    expect(gitCalls.map((call) => call[0])).toEqual([
+      "status",
+      "checkout",
+      "add",
+      "commit",
+      "fetch",
+      "rebase",
+      "push",
+      "reset",
+      "diff",
+    ]);
   });
 
   it("escalates a rebase conflict instead of pushing, releasing the claim and naming the paths", async () => {
@@ -328,8 +338,8 @@ describe("landAnswer", () => {
 
   const hunk = (lines: string[]) => ["--- a/a/b.ts", "+++ b/a/b.ts", "@@ -1,2 +1,2 @@", ...lines].join("\n");
 
-  describe("the test.fails( rule, judged on the answer's diff before the commit", () => {
-    it("refuses a rewritten test.fails( line: claim released, needs-human, the ticket says why, nothing committed or pushed", async () => {
+  describe("the test.fails( rule, judged on the pushed answer's diff", () => {
+    it("refuses a rewritten test.fails( line: the pushed branch is kept, the mechanic is sent for it, and the ticket says why", async () => {
       const rewritten = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
 
       const { result, host, gitCalls } = await land(checkoutDiffing(rewritten));
@@ -337,21 +347,23 @@ describe("landAnswer", () => {
       expect(result).toMatchObject({ outcome: "fails-rule-refused" });
       if (result.outcome !== "fails-rule-refused") throw new Error("unreachable");
       expect(result.reason).toContain("a/b.ts");
-      expect(host.refs.has(BRANCH), "a refusal must not keep the ticket claimed").toBe(false);
-      expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
+      expect(host.refs.has(BRANCH), "a refusal must not delete the branch it just pushed").toBe(true);
+      expect(host.calls).not.toContainEqual(needsHumanCall);
+      expect(ghTraffic(host)).toContain("mechanic-wanted");
       expect(ticketCommentsIn(host.calls)).toEqual([failsRuleNote(result.reason)]);
-      expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push"), "committed a refused answer").toBe(false);
+      expect(gitCalls.some((call) => call[0] === "commit"), "the answer was never committed").toBe(true);
+      expect(gitCalls.some((call) => call[0] === "push"), "the answer was never pushed").toBe(true);
       expect(prCreatesIn(host.calls)).toEqual([]);
     });
 
-    it("proceeds to the commit when the diff only drops .fails, the one edit an implementer may make", async () => {
+    it("proceeds to open a PR when the diff only drops .fails, the one edit an implementer may make", async () => {
       const turnedOn = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is a constant", () => {']);
 
       const { result, gitCalls } = await land(checkoutDiffing(turnedOn));
 
       expect(result).toEqual({ outcome: "opened", pr: PR_URL });
       expect(gitCalls).toContainEqual(["diff", "--", "a/b.ts"]);
-      expect(gitCalls.map((call) => call[0])).toEqual(["status", "diff", "checkout", "add", "commit", "push"]);
+      expect(gitCalls.map((call) => call[0])).toEqual(["status", "checkout", "add", "commit", "push", "reset", "diff"]);
     });
   });
 
@@ -386,7 +398,7 @@ describe("landAnswer", () => {
   describe("a refusal keeps the work and goes to the mechanic", () => {
     const REWRITTEN = hunk(['-test.fails("#167: the gate is a constant", () => {', '+test("#167: the gate is roughly a constant", () => {']);
 
-    test.fails("#524.1: landAnswer pushes the branch before judgeFailsEdits judges the diff", async () => {
+    test("#524.1: landAnswer pushes the branch before judgeFailsEdits judges the diff", async () => {
       const { gitCalls } = await land();
 
       const pushed = gitCalls.findIndex((call) => call[0] === "push");
@@ -397,7 +409,7 @@ describe("landAnswer", () => {
       expect(pushed).toBeLessThan(judged);
     });
 
-    test.fails("#524.2: a fails-rule-refused outcome dispatches mechanic-wanted for the ticket and adds no needs-human", async () => {
+    test("#524.2: a fails-rule-refused outcome dispatches mechanic-wanted for the ticket and adds no needs-human", async () => {
       const { result, host } = await land(checkoutDiffing(REWRITTEN));
 
       expect(result).toMatchObject({ outcome: "fails-rule-refused" });
@@ -405,7 +417,7 @@ describe("landAnswer", () => {
       expect(host.calls, "a refusal labelled the ticket for the owner").not.toContainEqual(needsHumanCall);
     });
 
-    test.fails("#524.3: a fails rule refusal goes to the mechanic and does not discard the answer", async () => {
+    test("#524.3: a fails rule refusal goes to the mechanic and does not discard the answer", async () => {
       const { result, host, gitCalls } = await land(checkoutDiffing(REWRITTEN));
 
       expect(result).toMatchObject({ outcome: "fails-rule-refused" });
