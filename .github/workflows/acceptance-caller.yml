@@ -12,5 +12,6 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: read
     uses: collod873/claude-workflow/.github/workflows/acceptance.yml@main
     secrets: inherit

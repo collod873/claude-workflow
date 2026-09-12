@@ -192,13 +192,18 @@ const WAKES_RECONCILER: StepFact = {
 };
 const WAKES_RECONCILER_JOB: JobFacts = {
   needs: ["refire", "author", "land"],
-  gate: { is: "always() && (needs.refire.result != 'skipped' || needs.author.result != 'skipped')" },
+  gate: { is: "always()" },
   permissions: { contents: "write" },
   checkout: "none",
   timeout: 5,
   steps: [{ name: WAKES_RECONCILER.name, run: WAKES_RECONCILER.run, env: { GH_REPO: "${{ github.repository }}" } }],
 };
-const LAND_CONFLICTED = "(steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true')";
+const READS_THE_DOOR: Readonly<Record<string, string>> = {
+  EVENT_NAME: "${{ github.event_name }}",
+  EVENT_ACTION: "${{ github.event.action }}",
+  EVENT_ISSUE_LABELS: "${{ join(github.event.issue.labels.*.name, ',') }}",
+  EVENT_SENDER: "${{ github.event.sender.login }}",
+};
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
 const NAMES_VERIFY_CALLER = { verify_workflow: "verify-caller.yml" };
@@ -351,23 +356,23 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       name: "Acceptance",
       runName: "Acceptance #${{ github.event.client_payload.issue || github.event.issue.number }}",
       on: { issues: ["edited"], repository_dispatch: [ACCEPTANCE_WANTED_DISPATCH_ACTION] },
-      permissions: { contents: "write", issues: "write" },
+      permissions: { contents: "write", issues: "write", actions: "read" },
     },
     permissions: { contents: "read", issues: "write" },
     concurrency: "acceptance-${{ github.event.issue.number || github.event.client_payload.issue }}",
     jobs: {
       refire: {
-        gate: { has: [`contains(github.event.issue.labels.*.name, '${LANE_OWNED.prd}')`, OWNER_GATE] },
+        ungated: true,
         runs: `${tsx("acceptance/acceptance.ts")} --refire`,
         checkout: "pair",
-        env: { ACCEPTANCE_LANDING: "commit" },
+        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DOOR },
         steps: [INSTALLS_TARGET, { id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION }],
       },
       author: {
-        gate: { is: onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION) },
+        ungated: true,
         runs: `${tsx("acceptance/acceptance.ts")} "$TICKET_NUMBER"`,
         checkout: "pair",
-        env: { ACCEPTANCE_LANDING: "commit" },
+        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DOOR },
         steps: [
           INSTALLS_TARGET,
           { name: "Author acceptance tests for the published slice", runLacks: ["--refire"] },
@@ -376,29 +381,20 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       },
       land: {
         needs: ["refire", "author"],
-        gate: { has: ["needs.refire.outputs.authored == 'true'", "needs.author.outputs.authored == 'true'"] },
-        permissions: { contents: "write", issues: "write" },
-        runs: "npm run check",
+        gate: { is: "always()" },
+        permissions: { contents: "write", issues: "write", actions: "read" },
+        runs: tsx("acceptance/land.ts"),
         checkout: { pair: true, fetchDepth: 0 },
-        steps: [
-          INSTALLS_TARGET,
-          { name: LANE_OWNED.gateStep, run: ["npm run check"] },
-          {
-            name: "Tell lane 05 this slice is ready",
-            if: `${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && github.event.client_payload.ready == '1'`,
-            run: [DISPATCH_SEND, `event_type=${TICKET_READY_DISPATCH_ACTION}`],
-          },
-          {
-            name: "Author again against the main that moved, once",
-            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && ${LAND_CONFLICTED} && github.event.client_payload.refire != '1'`,
-            run: [DISPATCH_SEND, `event_type=${ACCEPTANCE_WANTED_DISPATCH_ACTION}`, "client_payload[ready]=$READY", "client_payload[refire]=1"],
-          },
-          {
-            name: "Say on the ticket that landing failed, and wait for a human",
-            if: `failure() && ${onAction(ACCEPTANCE_WANTED_DISPATCH_ACTION)} && (github.event.client_payload.refire == '1' || !${LAND_CONFLICTED})`,
-            run: ["--add-label needs-human", "gh issue comment"],
-          },
-        ],
+        env: {
+          REFIRE_RESULT: "${{ needs.refire.result }}",
+          REFIRE_AUTHORED: "${{ needs.refire.outputs.authored }}",
+          AUTHOR_RESULT: "${{ needs.author.result }}",
+          AUTHOR_AUTHORED: "${{ needs.author.outputs.authored }}",
+          EVENT_ACTION: "${{ github.event.action }}",
+          READY: "${{ github.event.client_payload.ready }}",
+          REFIRED: "${{ github.event.client_payload.refire }}",
+        },
+        steps: [INSTALLS_TARGET, { name: "Land whatever the authoring jobs authored", run: [tsx("acceptance/land.ts")] }],
       },
       "wake-reconciler": WAKES_RECONCILER_JOB,
     },

@@ -35,10 +35,11 @@ export const GRAPH_CHANGED_DISPATCH_ACTION = "graph-changed";
 
 export const ACCEPTANCE_WANTED_DISPATCH_ACTION = "acceptance-wanted";
 
-export function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready: boolean): void {
+export function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready: boolean, refire = false): void {
+  const payload = { issue: issueNumber, ready: ready ? 1 : 0 };
   requestDispatch(gh, {
     event_type: ACCEPTANCE_WANTED_DISPATCH_ACTION,
-    client_payload: { issue: issueNumber, ready: ready ? 1 : 0 },
+    client_payload: refire ? { ...payload, refire: 1 } : payload,
   });
 }
 

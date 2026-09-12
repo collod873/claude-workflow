@@ -9,6 +9,7 @@ import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
 import { GATE_JOB, IMMUTABILITY_JOB } from "../integrate/integrate";
 import { BYPASS_STEP } from "../watchdog/bypass";
 import { AUDIT_DISPATCH_ACTION, KNOWLEDGE_BASE_CHECKOUT_DIR } from "../observations/run-audit";
+import { PRD_LABEL as ACCEPTANCE_PRD_LABEL } from "../acceptance/doors";
 import { CLOSE_STATE_REASON, PRD_LABEL } from "../ratify/prd-close";
 import { LABELS_APPLIED } from "../shape/shape";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "../spec/open-questions";
@@ -226,7 +227,7 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     ["session-captured", LANE_OWNED.sessionCaptured, [SESSION_CAPTURED_DISPATCH_ACTION, AUDIT_DISPATCH_ACTION, WATCHDOG_DISPATCH_ACTION]],
     ["prd-sliceable", LANE_OWNED.prdSliceable, [SPEC_DISPATCH_EVENT_TYPE]],
     ["sliceable", LANE_OWNED.sliceable, [SLICEABLE_LABEL]],
-    ["prd", LANE_OWNED.prd, [PRD_LABEL]],
+    ["prd", LANE_OWNED.prd, [PRD_LABEL, ACCEPTANCE_PRD_LABEL]],
     ["to-build", LANE_OWNED.toBuild, [TO_BUILD_LABEL]],
     ["close state reason", LANE_OWNED.closeStateReason, [CLOSE_STATE_REASON]],
     ["Immutability job", LANE_OWNED.immutabilityJob, [IMMUTABILITY_JOB]],

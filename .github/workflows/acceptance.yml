@@ -22,9 +22,6 @@ concurrency:
 
 jobs:
   refire:
-    if: >-
-      contains(github.event.issue.labels.*.name, 'prd') &&
-      github.event.sender.login == github.repository_owner
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
@@ -32,6 +29,10 @@ jobs:
     env:
       PRD_NUMBER: ${{ github.event.issue.number }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_ACTION: ${{ github.event.action }}
+      EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+      EVENT_SENDER: ${{ github.event.sender.login }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -81,7 +82,6 @@ jobs:
           working-directory: target
 
   author:
-    if: github.event.action == 'acceptance-wanted'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     outputs:
@@ -89,6 +89,10 @@ jobs:
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_ACTION: ${{ github.event.action }}
+      EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+      EVENT_SENDER: ${{ github.event.sender.login }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -153,10 +157,7 @@ jobs:
   land:
     name: Land on main
     needs: [refire, author]
-    if: >-
-      always() &&
-      ((needs.refire.result == 'success' && needs.refire.outputs.authored == 'true') ||
-      (needs.author.result == 'success' && needs.author.outputs.authored == 'true'))
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     concurrency:
@@ -165,6 +166,19 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: read
+    env:
+      REFIRE_RESULT: ${{ needs.refire.result }}
+      REFIRE_AUTHORED: ${{ needs.refire.outputs.authored }}
+      AUTHOR_RESULT: ${{ needs.author.result }}
+      AUTHOR_AUTHORED: ${{ needs.author.outputs.authored }}
+      EVENT_ACTION: ${{ github.event.action }}
+      TICKET_NUMBER: ${{ github.event.client_payload.issue }}
+      READY: ${{ github.event.client_payload.ready }}
+      REFIRED: ${{ github.event.client_payload.refire }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -193,90 +207,15 @@ jobs:
         with:
           working-directory: target
 
-      - name: Download the authored commits
-        uses: actions/download-artifact@v4
-        with:
-          name: acceptance-commits
-          path: ${{ runner.temp }}/acceptance-patches
-
-      - name: Replay them onto main
-        id: replay
-        working-directory: target
-        run: |
-          set -euo pipefail
-          conflicted() { echo "conflict=true" >> "$GITHUB_OUTPUT"; exit 1; }
-          git am --3way "$RUNNER_TEMP"/acceptance-patches/*.patch || conflicted
-          git fetch origin main
-          git rebase origin/main || conflicted
-
-      - name: Gauntlet
+      - name: Land whatever the authoring jobs authored
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
-        run: npm run check
-
-      - name: Push to main, refreshed against whatever landed during the gauntlet
-        id: push
-        working-directory: target
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main
-            git rebase origin/main || { echo "conflict=true" >> "$GITHUB_OUTPUT"; exit 1; }
-            if git push origin HEAD:main; then exit 0; fi
-            sleep $((attempt * 5))
-          done
-          exit 1
-
-      - name: Author again against the main that moved, once
-        if: >-
-          failure() && github.event.action == 'acceptance-wanted' &&
-          (steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true') &&
-          github.event.client_payload.refire != '1'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TICKET_NUMBER: ${{ github.event.client_payload.issue }}
-          READY: ${{ github.event.client_payload.ready }}
-        run: |
-          set -euo pipefail
-          gh issue comment "$TICKET_NUMBER" --body "The authored tests were judged green, but a sibling's batch landed on main first and replaying them conflicted, so the author runs once more against the main that moved. A second conflict waits for a human. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
-            -f event_type=acceptance-wanted \
-            -f "client_payload[issue]=$TICKET_NUMBER" \
-            -f "client_payload[ready]=$READY" \
-            -f "client_payload[refire]=1"
-
-      - name: Say on the ticket that landing failed, and wait for a human
-        if: >-
-          failure() && github.event.action == 'acceptance-wanted' &&
-          (github.event.client_payload.refire == '1' ||
-          !(steps.replay.outputs.conflict == 'true' || steps.push.outputs.conflict == 'true'))
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TICKET_NUMBER: ${{ github.event.client_payload.issue }}
-        run: |
-          set -euo pipefail
-          gh label create needs-human --color d93f0b \
-            --description "Ticket stalled; a human decision or action is required" --force
-          gh issue edit "$TICKET_NUMBER" --add-label needs-human
-          gh issue comment "$TICKET_NUMBER" --body "The authored tests were judged green in the author job, but landing them on main failed, so nothing landed and this ticket is waiting on a human. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-
-      - name: Tell lane 05 this slice is ready
-        if: github.event.action == 'acceptance-wanted' && github.event.client_payload.ready == '1'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
-            -f event_type=ticket-ready \
-            -f "client_payload[issue]=${{ github.event.client_payload.issue }}"
+        run: npx tsx .Workflow/agent-workflows/acceptance/land.ts
 
   wake-reconciler:
     name: Wake the reconciler
     needs: [refire, author, land]
-    if: always() && (needs.refire.result != 'skipped' || needs.author.result != 'skipped')
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:

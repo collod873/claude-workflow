@@ -37,6 +37,7 @@ import {
   type TicketRead,
 } from "../shared/ticket-shape";
 import { runVitestJson, type TestRunResult } from "../shared/vitest-json";
+import { authorsPublishedSlice, issueEditFrom, PRD_LABEL, refiresAffectedSlices } from "./doors";
 
 export const AUTHOR_MODEL = "claude-opus-5";
 
@@ -456,8 +457,23 @@ async function authorForSliceInProcess(sliceNumber: number): Promise<void> {
   if (outcome.verdict === "refused") throw new Error(`refused for #${sliceNumber}: ${outcome.reason}`);
 }
 
+function ownersPrdEdit(): boolean {
+  return refiresAffectedSlices(
+    issueEditFrom({
+      eventName: process.env.EVENT_NAME || "",
+      labels: process.env.EVENT_ISSUE_LABELS || "",
+      sender: process.env.EVENT_SENDER || "",
+      owner: process.env.GITHUB_REPOSITORY_OWNER || "",
+    }),
+  );
+}
+
 async function main(): Promise<void> {
   if (process.argv[2] === "--refire") {
+    if (!ownersPrdEdit()) {
+      console.log(`a ${process.env.EVENT_NAME} event is not the owner editing a \`${PRD_LABEL}\` issue; nothing to re-fire.`);
+      return;
+    }
     const prdArg = process.argv[3];
     if (!prdArg) {
       console.error("usage: acceptance.ts --refire <prd-issue-number>");
@@ -481,6 +497,12 @@ async function main(): Promise<void> {
       console.error(`acceptance re-entry failed: ${reason(err)}`);
       process.exitCode = 1;
     }
+    return;
+  }
+
+  const eventAction = process.env.EVENT_ACTION || "";
+  if (!authorsPublishedSlice(eventAction)) {
+    console.log(`a \`${eventAction}\` event publishes no slice to author; nothing to do.`);
     return;
   }
 
