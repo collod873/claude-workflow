@@ -22,7 +22,6 @@ concurrency:
 
 jobs:
   to-tickets:
-    if: github.event.action == 'prd-sliceable'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
     outputs:

@@ -180,7 +180,6 @@ function deadRunCaller(name: string, wire: string): CallerFacts {
     name,
     on: { repository_dispatch: [wire], workflow_dispatch: true },
     permissions: ACTS_ON_PULL_REQUEST,
-    gate: { actions: [wire], has: ["github.event_name == 'workflow_dispatch'"], lacks: ["workflow_run"] },
     with: { run_id: RESOLVED_RUN_ID },
   };
 }
@@ -304,7 +303,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "to-tickets-${{ github.event.client_payload.issue }}",
     jobs: {
       "to-tickets": {
-        gate: { is: onAction(LANE_OWNED.prdSliceable), lacks: [onLabel(LANE_OWNED.prd)] },
+        ungated: true,
         runs: `${tsx("to-tickets/to-tickets.ts")} --stage seam-sweep`,
         checkout: "pair",
         env: { PRD_NUMBER: "${{ github.event.client_payload.issue }}", CLAUDE_CODE_OAUTH_TOKEN: true },
@@ -416,7 +415,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "implement-${{ github.event.client_payload.issue }}",
     jobs: {
       implement: {
-        gate: { is: onAction(TICKET_READY_DISPATCH_ACTION), lacks: ["sender", "author_association"] },
+        ungated: true,
         timeout: CLAIM_TIMEOUT_MINUTES,
         runs: tsx("implement/implement.ts"),
         checkout: "pair",
@@ -447,7 +446,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "implement-${{ github.event.client_payload.issue }}",
     jobs: {
       mechanic: {
-        gate: { is: onAction(MECHANIC_WANTED_DISPATCH_ACTION), lacks: ["sender", "author_association"] },
+        ungated: true,
         timeout: CLAIM_TIMEOUT_MINUTES,
         runs: `${tsx("mechanic/mechanic.ts")} "$TICKET_NUMBER"`,
         checkout: "pair",
@@ -541,7 +540,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "integrate",
     jobs: {
       integrate: {
-        gate: { is: onAction(IMPLEMENTATION_PR_DISPATCH_ACTION) },
+        ungated: true,
         runs: `${tsx("integrate/integrate.ts")} "$PR" "$HEAD_SHA"`,
         checkout: { pair: true, fetchDepth: 0 },
         env: { HEAD_SHA: "${{ github.sha }}", VERIFY_WORKFLOW: "${{ inputs.verify_workflow }}", SIGNAL_ASSIGNEE: true },
@@ -587,7 +586,6 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       name: "Review",
       on: { repository_dispatch: [REVIEW_WANTED] },
       permissions: { contents: "read", issues: "write" },
-      gate: { is: onAction(REVIEW_WANTED) },
       with: { head_sha: "${{ github.event.client_payload.head_sha }}", base_sha: "${{ github.event.client_payload.base_sha }}" },
     },
     inputs: { head_sha: { required: true }, base_sha: { required: true } },
@@ -658,7 +656,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "audit",
     jobs: {
       audit: {
-        gate: { is: onAction(LANE_OWNED.sessionCaptured) },
+        ungated: true,
         runs: tsx("observations/run-audit.ts"),
         checkout: { pair: true, fetchDepth: 0 },
         env: { HEAD_SHA: true, EVENT_ACTION: true, CLAUDE_CODE_OAUTH_TOKEN: true, KNOWLEDGE_BASE_DEPLOY_KEY: true },
@@ -678,7 +676,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "ratify",
     jobs: {
       ratify: {
-        gate: { is: onAction(RATIFICATION_DUE_DISPATCH_ACTION) },
+        ungated: true,
         runs: tsx("ratify/run-ratify.ts"),
         checkout: { pair: true, fetchDepth: 0 },
         env: { HEAD_SHA: true, PRD_CLOSED: true, EVENT_ACTION: true, PR_BASE: true, CLAUDE_CODE_OAUTH_TOKEN: true },
@@ -712,7 +710,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     permissions: { contents: "write", "pull-requests": "read" },
     jobs: {
       "ratify-release": {
-        gate: { is: onAction(RATIFIER_MERGED_DISPATCH_ACTION) },
+        ungated: true,
         runs: tsx("observations/run-ratification.ts"),
         checkout: { pair: true, fetchDepth: 0 },
         env: { PR: "${{ github.event.client_payload.pr }}" },
@@ -745,7 +743,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "run-watchdog",
     jobs: {
       watch: {
-        gate: { is: onAction(LANE_OWNED.sessionCaptured) },
+        ungated: true,
         runs: tsx("watchdog/run-watchdog.ts"),
         checkout: { pair: true, workspace: false },
         env: { EVENT_ACTION: true, SIGNAL_ASSIGNEE: true },
@@ -847,7 +845,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "walk-home",
     jobs: {
       walk: {
-        gate: { is: onAction(LANE_OWNED.sessionCaptured) },
+        ungated: true,
         runs: tsx("watchdog/walk-home.ts"),
         checkout: "plain",
         env: { EVENT_ACTION: true, GH_TOKEN: "${{ secrets.ENROL_PAT }}" },

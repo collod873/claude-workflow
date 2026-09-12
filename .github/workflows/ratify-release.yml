@@ -18,7 +18,6 @@ permissions:
 
 jobs:
   ratify-release:
-    if: github.event.action == 'ratifier-merged'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     env:

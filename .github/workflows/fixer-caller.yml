@@ -17,9 +17,6 @@ jobs:
       pull-requests: write
       issues: write
       actions: read
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.action == 'fixer-needed'
     uses: collod873/claude-workflow/.github/workflows/fixer.yml@main
     with:
       run_id: ${{ github.event.client_payload.run_id || github.event.inputs.run_id }}

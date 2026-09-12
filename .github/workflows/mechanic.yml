@@ -24,7 +24,6 @@ concurrency:
 
 jobs:
   mechanic:
-    if: github.event.action == 'mechanic-wanted'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
     env:

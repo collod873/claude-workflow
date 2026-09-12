@@ -22,7 +22,6 @@ concurrency:
 
 jobs:
   audit:
-    if: github.event.action == 'session-captured'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 20
     env:

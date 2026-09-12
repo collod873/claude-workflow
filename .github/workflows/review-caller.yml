@@ -9,7 +9,6 @@ jobs:
     permissions:
       contents: read
       issues: write
-    if: github.event.action == 'review-wanted'
     uses: collod873/claude-workflow/.github/workflows/review.yml@main
     with:
       head_sha: ${{ github.event.client_payload.head_sha }}
