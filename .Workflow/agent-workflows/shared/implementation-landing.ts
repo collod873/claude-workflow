@@ -8,6 +8,7 @@ import { CLAIM_TIMEOUT_MINUTES, releaseClaim } from "./claim";
 export { CLAIM_TIMEOUT_MINUTES, claimImplementationBranch, releaseDeadClaim, releaseFailedClaim } from "./claim";
 import { touchesImmutableSet } from "./immutable-set";
 import { escalateToOwner } from "./needs-human";
+import { dispatchMechanicWanted } from "./ready-set";
 import { reason } from "./reason";
 import { gateOutputTail, type GateVerdict } from "./run-gauntlet";
 import { extractCriteria, type TicketRead } from "./ticket-shape";
@@ -86,19 +87,21 @@ function rebaseOntoTrunk(git: GitExec): void {
   }
 }
 
-function commitAndPushBranch(
+function commitPushAndDiff(
   git: GitExec,
   branch: string,
   paths: string[],
   commitMessage: string,
   rebaseFirst: boolean,
   skipPushHook: boolean,
-): void {
+): string {
   git(["checkout", "-b", branch]);
   git(["add", ...paths]);
   git(["commit", "-m", commitMessage]);
   if (rebaseFirst) rebaseOntoTrunk(git);
   git(skipPushHook ? ["push", "--no-verify", "origin", `HEAD:${branch}`] : ["push", "origin", `HEAD:${branch}`]);
+  git(["reset", "HEAD~1"]);
+  return git(["diff", "--", ...paths]);
 }
 
 export function worktreeChanges(git: GitExec, paths: string[]): string[] {
@@ -138,13 +141,13 @@ export function rebaseConflictNote(paths: string[]): string {
 
 export function failsRuleNote(reason: string): string {
   return [
-    "Refused to push this run's answer: it changed an acceptance test it is judged by.",
+    "This run's pushed answer changed an acceptance test it is judged by.",
     "",
     reason,
     "",
     "An implementer may turn a `test.fails(` test on by deleting `.fails` from that line, and may",
-    "not otherwise touch it. Nothing was committed. The claim has been released; whoever reads the",
-    "answer can re-dispatch this ticket afterwards.",
+    "not otherwise touch it. The answer is already on this ticket's branch, so nothing is lost; the",
+    "mechanic has been sent to decide whether the gate or the tree is wrong, and land it.",
   ].join("\n");
 }
 
@@ -265,23 +268,23 @@ export async function landAnswer(
     return { outcome: "immutable-refused", paths };
   }
 
-  const declaredPaths = new Set(answer.declaredEdits.map((edit) => edit.path));
-  const verdict = judgeFailsEdits(deps.git(["diff", "--", ...paths]), declaredPaths);
-  if (!verdict.ok) {
-    releaseClaim(deps.gh, branch, log);
-    escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
-    sayOnTicket(deps.gh, issueNumber, failsRuleNote(verdict.reason), log);
-    return { outcome: "fails-rule-refused", reason: verdict.reason };
-  }
-
+  let diff: string;
   try {
-    commitAndPushBranch(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false, options.skipPushHook ?? false);
+    diff = commitPushAndDiff(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false, options.skipPushHook ?? false);
   } catch (err) {
     if (!(err instanceof RebaseConflictError)) throw err;
     releaseClaim(deps.gh, branch, log);
     escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, issueNumber, rebaseConflictNote(err.paths), log);
     return { outcome: "rebase-conflict", paths: err.paths };
+  }
+
+  const declaredPaths = new Set(answer.declaredEdits.map((edit) => edit.path));
+  const verdict = judgeFailsEdits(diff, declaredPaths);
+  if (!verdict.ok) {
+    dispatchMechanicWanted(deps.gh, issueNumber);
+    sayOnTicket(deps.gh, issueNumber, failsRuleNote(verdict.reason), log);
+    return { outcome: "fails-rule-refused", reason: verdict.reason };
   }
 
   const bodySections = [answer.summary];
