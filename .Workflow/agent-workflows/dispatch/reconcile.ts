@@ -939,8 +939,9 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
     try {
       writeRollup(gh, prd, issue.body ?? "", line);
+      log(`#${prd}: rewrote its rollup:v1 line: ${line}`);
     } catch (err) {
-      log(`could not rewrite #${prd}'s rollup: ${reason(err)}`);
+      log(`could not rewrite #${prd}'s rollup:v1 line: ${reason(err)}`);
     }
   }
 
