@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ENROLMENT_TOPIC } from "../enrol/enrol";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathForMatcher } from "../shared/gh-paths";
-import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { BY_HAND_LABEL } from "../shared/immutable-set";
 import { extractCriteria, parseCheckMarker } from "../shared/ticket-shape";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import {
@@ -231,7 +231,7 @@ describe("walkHome", () => {
     expect(parseCheckMarker(criterion)).toBe("npx vitest run .Workflow/agent-workflows/watchdog/walk-home");
   });
 
-  it("files needs-human, not to-build, for a failing path inside the machine's own immutable set", () => {
+  it("files by-hand, not to-build and never needs-human, for a failing path inside the machine's own immutable set", () => {
     const fake = estateWith({
       repositories: ["owner/caller"],
       runs: { "owner/caller": [{ id: 560, path: ".github/workflows/verify-caller.yml" }] },
@@ -240,10 +240,13 @@ describe("walkHome", () => {
 
     const outcome = sweep(fake);
 
-    expect(outcome.filed).toEqual([{ repository: "owner/caller", runId: 560, routed: "needs-human", issue: 100 }]);
+    expect(outcome.filed).toEqual([{ repository: "owner/caller", runId: 560, routed: "by-hand", issue: 100 }]);
 
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;
-    expect(create[create.indexOf("--label") + 1]).toBe(NEEDS_HUMAN_LABEL);
+    const labels = create.flatMap((arg, index) => (arg === "--label" ? [create[index + 1]] : []));
+    expect(labels).toEqual(["ticket", BY_HAND_LABEL]);
+    expect(labels).not.toContain("needs-human");
+    expect(create).not.toContain("--assignee");
     const body = create[create.indexOf("--body") + 1];
     expect(body).toContain(".github/actions/node/action.test.ts");
     expect(body).not.toContain("## Acceptance criteria");

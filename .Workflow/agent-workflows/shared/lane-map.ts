@@ -76,7 +76,8 @@ const IMPORT_RE = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+"(\.[^"]+)"/g;
 const EVENT_SEND_RE = /event_type[:=]\s*\$?\{?\s*("[\w-]+"|[A-Z][A-Z0-9_]+)(?![\w.])/g;
 const ADD_LABEL_RE = /--add-label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const REMOVE_LABEL_RE = /--remove-label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
-const CREATE_LABEL_RE = /"create"[^\]]*?"--label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
+const CREATE_CALL_RE = /("create"[^\]]*)/g;
+const LABEL_FLAG_RE = /"--label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const HELPER_LABEL_RE = /--add-label",\s*[a-z]\w*\]/;
 const YAML_ADD_LABEL_RE = /--add-label\s+([\w-]+)/g;
 const YAML_EVENT_SEND_RE = /event_type=([\w-]+)/g;
@@ -170,7 +171,10 @@ function mentions(body: string, name: string): boolean {
 }
 
 function labelsAppliedBy(code: string, corpus: Corpus): string[] {
-  const raws = [...matches(ADD_LABEL_RE, code), ...matches(CREATE_LABEL_RE, code)];
+  const raws = [
+    ...matches(ADD_LABEL_RE, code),
+    ...matches(CREATE_CALL_RE, code).flatMap((call) => matches(LABEL_FLAG_RE, call)),
+  ];
   const helpers = new Set<string>();
   for (const file of corpus.files.values()) {
     for (const [name, body] of file.functions) if (HELPER_LABEL_RE.test(body)) helpers.add(name);

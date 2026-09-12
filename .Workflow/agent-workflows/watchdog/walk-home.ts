@@ -3,8 +3,7 @@ import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPathFor } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
-import { touchesImmutableSet } from "../shared/immutable-set";
-import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { BY_HAND_LABEL, touchesImmutableSet } from "../shared/immutable-set";
 import { reason } from "../shared/reason";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
@@ -49,7 +48,7 @@ export type WalkHomeAction = "skipped" | "swept";
 export interface FiledTicket {
   repository: string;
   runId: number;
-  routed: "machine" | "caller" | "needs-human";
+  routed: "machine" | "caller" | "by-hand";
   issue: number;
 }
 
@@ -147,6 +146,8 @@ function readWalkedHome(gh: GhExec, repository?: string): Set<string> {
 
 const TO_BUILD_LABEL = "to-build";
 
+const TICKET_LABEL = "ticket";
+
 function machineTicketTitle(repository: string, path: string): string {
   return `${repository}: ${path} failed inside the machine checkout`;
 }
@@ -203,8 +204,8 @@ function machineImmutableTicketBody(repository: string, run: RunSummary, machine
     `A run of \`${run.path}\` in \`${repository}\`, an enrolled repository (docs/agents/enrolment.md),`,
     `failed with its failing step naming \`${path}\`, a path inside the machine checkout's own`,
     "immutable set (`vitest.config.ts`, `.github/`). No pull request may edit",
-    "it (ADR-0053), so no implementer could ever build a ticket claiming it, so it is filed `needs-human`",
-    "here instead of `to-build`.",
+    "it (ADR-0053), so no implementer could ever build a ticket claiming it, so it is filed `by-hand`",
+    "here instead of `to-build`: the next workstation session builds it.",
     "",
     `- Run: ${run.htmlUrl}`,
     `- Machine SHA: \`${machineSha}\``,
@@ -276,9 +277,11 @@ function file(
       "--body",
       machineImmutableTicketBody(repository, run, machineSha, path, logTail),
       "--label",
-      NEEDS_HUMAN_LABEL,
+      TICKET_LABEL,
+      "--label",
+      BY_HAND_LABEL,
     ]).trim();
-    return { repository, runId: run.id, routed: "needs-human", issue: Number(url.split("/").pop()) };
+    return { repository, runId: run.id, routed: "by-hand", issue: Number(url.split("/").pop()) };
   }
 
   const url = gh([

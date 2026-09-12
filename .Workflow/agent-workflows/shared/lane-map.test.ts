@@ -25,7 +25,7 @@ describe("the lane map", () => {
 
   it("sees a label written through a helper, a create, or the wire", () => {
     expect(lane("shape").labelsApplied).toEqual(["needs-human", "running", "shape-refused"]);
-    expect(lane("walk-home").labelsApplied).toEqual(["needs-human", "to-build"]);
+    expect(lane("walk-home").labelsApplied).toEqual(["by-hand", "ticket", "to-build"]);
     expect(lane("to-tickets").labelsApplied).toEqual(["slice-failed"]);
   });
 
