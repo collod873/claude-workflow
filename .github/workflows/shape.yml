@@ -22,20 +22,17 @@ concurrency:
 
 jobs:
   shape:
-    if: >-
-      (github.event_name == 'issues' &&
-       github.event.label.name == 'idea' &&
-       github.event.sender.login == github.repository_owner) ||
-      (github.event_name == 'issue_comment' &&
-       !github.event.issue.pull_request &&
-       contains(github.event.issue.labels.*.name, 'idea') &&
-       github.event.comment.user.type != 'Bot' &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-                github.event.comment.author_association))
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     env:
       IDEA_NUMBER: ${{ github.event.issue.number }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_LABEL: ${{ github.event.label.name }}
+      EVENT_SENDER: ${{ github.event.sender.login }}
+      EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+      EVENT_ISSUE_PULL_REQUEST: ${{ github.event.issue.pull_request.url }}
+      EVENT_COMMENT_USER_TYPE: ${{ github.event.comment.user.type }}
+      EVENT_COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -93,12 +90,6 @@ jobs:
 
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.241
-
-      - name: Mark the idea running
-        uses: ./.github/actions/running-label
-        with:
-          issue: ${{ env.IDEA_NUMBER }}
-          mode: "on"
 
       - name: Shape
         env:

@@ -7,6 +7,8 @@ import { reason } from "../shared/reason";
 import { execClaudeIn, runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { readSheetMarker } from "../shared/marker";
+import { markRunning } from "../shared/running-label";
+import { specDoorFrom, specsSource } from "./doors";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext, type SpecAuthorOutput } from "./author-contract";
 import { runSpecCritic, type Resolution } from "./critic";
 import { collectMapContext } from "./collectors/map";
@@ -258,11 +260,29 @@ export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
   return { trigger, issueNumber };
 }
 
+function wokeThisLane(): boolean {
+  return specsSource(
+    specDoorFrom({
+      eventName: process.env.EVENT_NAME || "",
+      label: process.env.EVENT_LABEL || "",
+      sender: process.env.EVENT_SENDER || "",
+      owner: process.env.GITHUB_REPOSITORY_OWNER || "",
+      labels: process.env.EVENT_ISSUE_LABELS || "",
+    }),
+  );
+}
+
 async function main(): Promise<void> {
   const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
 
+  if (!wokeThisLane()) {
+    console.log(`a ${process.env.EVENT_NAME} event of \`${process.env.EVENT_LABEL}\` is not a source this lane specs; nothing to do.`);
+    return;
+  }
+
   try {
     const invocation = invocationFromEnv(process.env);
+    markRunning(execGh, invocation.issueNumber, console.error);
     const plan = planSpecRun(execGh, invocation, repoDir);
 
     if (plan.path === "critique") {

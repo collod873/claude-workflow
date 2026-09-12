@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLOSE_STATE_REASON, PRD_LABEL } from "../ratify/prd-close";
+import { VERBS } from "../shape/accept";
+import { IDEA_LABEL } from "../shape/doors";
 import { SLICEABLE_LABEL } from "../spec/open-questions";
 import { DECLARED_FIRE_DEMANDS, planFire } from "./canary-fire-plan.ts";
 import { laneIds } from "./read-workflow.ts";
@@ -113,6 +115,11 @@ describe("planFire", () => {
 
 it("the label the canary fires a counter with is the one that counter's own lane acts on", () => {
   expect(DECLARED_FIRE_DEMANDS["lost-dispatch-counter"].label).toBe(SLICEABLE_LABEL);
+});
+
+it("the labels the canary fires shape and its accept with are the ones those lanes' own doors open on", () => {
+  expect(DECLARED_FIRE_DEMANDS.shape.label).toBe(IDEA_LABEL);
+  expect(DECLARED_FIRE_DEMANDS["shape-accept"].label).toBe(VERBS[0]);
 });
 
 it("the close the canary fires ratification with is the one prd-close.ts acts on", () => {

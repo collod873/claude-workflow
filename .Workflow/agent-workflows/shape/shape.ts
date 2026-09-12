@@ -15,6 +15,8 @@ import {
 } from "../shared/stage";
 import { laneBudget } from "../shared/lane-budget";
 import { REFUSAL_MARKER } from "../shared/marker";
+import { markRunning } from "../shared/running-label";
+import { IDEA_LABEL, shapeDoorFrom, shapesIdea } from "./doors";
 import {
   renderChangeRequest,
   renderPriorArt,
@@ -289,16 +291,37 @@ function usage(): never {
   process.exit(1);
 }
 
+function wokeThisLane(): boolean {
+  return shapesIdea(
+    shapeDoorFrom({
+      eventName: process.env.EVENT_NAME || "",
+      label: process.env.EVENT_LABEL || "",
+      sender: process.env.EVENT_SENDER || "",
+      owner: process.env.GITHUB_REPOSITORY_OWNER || "",
+      pullRequestUrl: process.env.EVENT_ISSUE_PULL_REQUEST || "",
+      labels: process.env.EVENT_ISSUE_LABELS || "",
+      commentUserType: process.env.EVENT_COMMENT_USER_TYPE || "",
+      commentAuthorAssociation: process.env.EVENT_COMMENT_ASSOCIATION || "",
+    }),
+  );
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const issueFlagIndex = args.indexOf("--issue");
   const issueNumber = issueFlagIndex === -1 ? undefined : Number(args[issueFlagIndex + 1]);
+
+  if (!wokeThisLane()) {
+    console.log(`a ${process.env.EVENT_NAME} event neither labels an ${IDEA_LABEL} nor asks a change of one; nothing to shape.`);
+    return;
+  }
 
   if (issueNumber === undefined || !Number.isInteger(issueNumber)) {
     usage();
   }
 
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
+  markRunning(execGh, issueNumber, console.error);
   const deps: ChainDeps = { exec: execClaudeIn(targetWorkspace), gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
 
   try {

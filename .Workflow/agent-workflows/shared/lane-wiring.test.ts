@@ -25,7 +25,6 @@ import {
   LANE_WIRING,
   MACHINE_REPOSITORY,
   MAIN_MOVED,
-  OWNER_GATE,
   REVIEW_WANTED,
   RUN_ENDED,
   SHAPE_LABELS_APPLIED,
@@ -70,13 +69,6 @@ function expectGate(condition: string, gate: Gate): void {
   if (gate.actions) expect(condition.match(/github\.event\.action ==/g) ?? []).toHaveLength(gate.actions.length);
   for (const fragment of gate.has ?? []) expect(condition).toContain(fragment);
   for (const fragment of gate.lacks ?? []) expect(condition).not.toContain(fragment);
-  const branches = condition.split(") ||").map((branch) => branch.trim());
-  if (gate.doors !== undefined) expect(branches).toHaveLength(gate.doors);
-  if (gate.ownerGatesIssues) {
-    for (const branch of branches) {
-      expect(branch.includes(OWNER_GATE), `owner gate on: ${branch}`).toBe(branch.includes("github.event_name == 'issues'"));
-    }
-  }
 }
 
 function stepIndex(steps: WorkflowStep[], name: string): number {

@@ -22,16 +22,12 @@ concurrency:
 
 jobs:
   accept:
-    if: >-
-      (github.event.label.name == 'approved' ||
-       github.event.label.name == 'parked' ||
-       github.event.label.name == 'killed') &&
-      github.event.sender.login == github.repository_owner
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     env:
       IDEA_NUMBER: ${{ github.event.issue.number }}
       VERB: ${{ github.event.label.name }}
+      EVENT_SENDER: ${{ github.event.sender.login }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:

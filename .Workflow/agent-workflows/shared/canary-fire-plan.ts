@@ -39,6 +39,8 @@ interface CallerYaml {
 const LABEL_ADDED = /github\.event\.label\.name\s*==\s*'([^']*)'/;
 
 export const DECLARED_FIRE_DEMANDS: Record<string, FireDemands> = {
+  shape: { label: "idea" },
+  "shape-accept": { label: "approved" },
   "lost-dispatch-counter": { label: "sliceable" },
   "ratify-on-prd-close": { issueLabels: ["prd"], stateReason: "completed" },
 };

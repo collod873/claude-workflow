@@ -66,13 +66,9 @@ export const ENDING_LANES = [
 
 const ticketRunName = (lane: string) => `${lane} #\${{ github.event.client_payload.issue }}`;
 
-export const IDEA_LABEL = "idea";
-
 export const SHAPE_VERBS = ["approved", "parked", "killed"] as const;
 
 export const SHAPE_LABELS_APPLIED = [LANE_OWNED.shapeRefused, NEEDS_HUMAN_LABEL];
-
-export const OWNER_GATE = "github.event.sender.login == github.repository_owner";
 
 export const MACHINE_REPOSITORY = "collod873/claude-workflow";
 
@@ -101,8 +97,6 @@ export interface Gate {
   actions?: readonly string[];
   has?: readonly string[];
   lacks?: readonly string[];
-  doors?: number;
-  ownerGatesIssues?: true;
 }
 
 export type Checkout =
@@ -198,11 +192,21 @@ const WAKES_RECONCILER_JOB: JobFacts = {
   timeout: 5,
   steps: [{ name: WAKES_RECONCILER.name, run: WAKES_RECONCILER.run, env: { GH_REPO: "${{ github.repository }}" } }],
 };
-const READS_THE_DOOR: Readonly<Record<string, string>> = {
+const READS_THE_EVENT: Readonly<Record<string, string>> = {
   EVENT_NAME: "${{ github.event_name }}",
-  EVENT_ACTION: "${{ github.event.action }}",
-  EVENT_ISSUE_LABELS: "${{ join(github.event.issue.labels.*.name, ',') }}",
   EVENT_SENDER: "${{ github.event.sender.login }}",
+  EVENT_ISSUE_LABELS: "${{ join(github.event.issue.labels.*.name, ',') }}",
+};
+
+const READS_THE_DISPATCH_DOOR = { ...READS_THE_EVENT, EVENT_ACTION: "${{ github.event.action }}" };
+
+const READS_THE_LABEL_DOOR = { ...READS_THE_EVENT, EVENT_LABEL: "${{ github.event.label.name }}" };
+
+const READS_THE_COMMENT_DOOR = {
+  ...READS_THE_LABEL_DOOR,
+  EVENT_ISSUE_PULL_REQUEST: "${{ github.event.issue.pull_request.url }}",
+  EVENT_COMMENT_USER_TYPE: "${{ github.event.comment.user.type }}",
+  EVENT_COMMENT_ASSOCIATION: "${{ github.event.comment.author_association }}",
 };
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
@@ -215,24 +219,17 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "shape-${{ github.event.issue.number }}",
     jobs: {
       shape: {
-        gate: {
-          doors: 2,
-          ownerGatesIssues: true,
-          has: [
-            "github.event_name == 'issues'",
-            onLabel(IDEA_LABEL),
-            "github.event_name == 'issue_comment'",
-            "!github.event.issue.pull_request",
-            `contains(github.event.issue.labels.*.name, '${IDEA_LABEL}')`,
-            "github.event.comment.user.type != 'Bot'",
-            "contains(fromJSON('[\"OWNER\", \"MEMBER\", \"COLLABORATOR\"]')",
-            "github.event.comment.author_association",
-          ],
-        },
+        ungated: true,
         runs: tsx("shape/shape.ts"),
         checkout: "pair",
-        env: { IDEA_NUMBER: true, CHANGE_REQUEST: "${{ github.event.comment.body }}", CLAUDE_CODE_OAUTH_TOKEN: true },
+        env: {
+          IDEA_NUMBER: true,
+          CHANGE_REQUEST: "${{ github.event.comment.body }}",
+          CLAUDE_CODE_OAUTH_TOKEN: true,
+          ...READS_THE_COMMENT_DOOR,
+        },
         steps: [
+          { name: "Mark the idea running", absent: true },
           ...CHECKPOINTS("shape", "Shape", "Shape"),
           {
             name: "Ensure the lane's labels exist",
@@ -251,10 +248,10 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "shape-accept-${{ github.event.issue.number }}",
     jobs: {
       accept: {
-        gate: { has: SHAPE_VERBS.map(onLabel), lacks: ["'go-long'", "'go-short'"] },
+        ungated: true,
         runs: tsx("shape/run-accept.ts"),
         checkout: "pair",
-        env: { IDEA_NUMBER: true, VERB: "${{ github.event.label.name }}" },
+        env: { IDEA_NUMBER: true, VERB: "${{ github.event.label.name }}", EVENT_SENDER: READS_THE_EVENT.EVENT_SENDER },
         steps: [CONFIGURES_COMMITTER],
       },
     },
@@ -271,25 +268,19 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "spec-${{ github.event.issue.number || github.event.client_payload.issue }}",
     jobs: {
       spec: {
-        gate: {
-          doors: 3,
-          ownerGatesIssues: true,
-          has: [
-            "github.event_name == 'repository_dispatch'",
-            onLabel("to-spec"),
-            onLabel(LANE_OWNED.prd),
-            `!contains(github.event.issue.labels.*.name, '${LANE_OWNED.sliceable}')`,
-          ],
-          lacks: ["issue_comment", "github.event.comment", "author_association"],
-        },
+        ungated: true,
         runs: tsx("spec/spec.ts"),
         checkout: "pair",
         env: {
           ISSUE_NUMBER: "${{ github.event.issue.number || github.event.client_payload.issue }}",
           SPEC_TRIGGER: `\${{ (${onLabel(LANE_OWNED.prd)} && 'critique') || 'to-spec' }}`,
           CLAUDE_CODE_OAUTH_TOKEN: true,
+          ...READS_THE_LABEL_DOOR,
         },
-        steps: [{ name: "Export the dispatch handoff path", run: [`${DISPATCH_REQUESTS_PATH_ENV}=$RUNNER_TEMP/dispatch-requests.jsonl`] }],
+        steps: [
+          { name: "Mark the source running", absent: true },
+          { name: "Export the dispatch handoff path", run: [`${DISPATCH_REQUESTS_PATH_ENV}=$RUNNER_TEMP/dispatch-requests.jsonl`] },
+        ],
       },
       dispatch: {
         needs: ["spec"],
@@ -365,14 +356,14 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         ungated: true,
         runs: `${tsx("acceptance/acceptance.ts")} --refire`,
         checkout: "pair",
-        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DOOR },
+        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DISPATCH_DOOR },
         steps: [INSTALLS_TARGET, { id: "bundle", uses: ACCEPTANCE_BUNDLE_ACTION }],
       },
       author: {
         ungated: true,
         runs: `${tsx("acceptance/acceptance.ts")} "$TICKET_NUMBER"`,
         checkout: "pair",
-        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DOOR },
+        env: { ACCEPTANCE_LANDING: "commit", ...READS_THE_DISPATCH_DOOR },
         steps: [
           INSTALLS_TARGET,
           { name: "Author acceptance tests for the published slice", runLacks: ["--refire"] },

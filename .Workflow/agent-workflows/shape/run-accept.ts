@@ -6,15 +6,10 @@ import { childEnv } from "../shared/child-env";
 import { execGh } from "../shared/gh";
 import { execGit } from "../shared/git";
 import { reason } from "../shared/reason";
-import { accept, type AcceptDeps, type Verb } from "./accept";
+import { accept, type AcceptDeps } from "./accept";
+import { acceptsShapedIdea, isVerb } from "./doors";
 
 const MACHINE_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), "../../..");
-
-const VERBS = new Set<string>(["approved", "parked", "killed"]);
-
-function isVerb(value: string | undefined): value is Verb {
-  return value !== undefined && VERBS.has(value);
-}
 
 function newAdr(title: string, targetWorkspace: string): string {
   return execFileSync(join(MACHINE_ROOT, "bin/new-adr"), [title], {
@@ -57,6 +52,11 @@ function main(): void {
 
   const issueNumber = issueIndex === -1 ? undefined : Number(args[issueIndex + 1]);
   const verb = verbIndex === -1 ? undefined : args[verbIndex + 1];
+
+  if (!acceptsShapedIdea({ label: verb ?? "", sender: process.env.EVENT_SENDER || "", owner: process.env.GITHUB_REPOSITORY_OWNER || "" })) {
+    console.log(`\`${verb}\` is not a verb the owner applied to a shaped idea; nothing to accept.`);
+    return;
+  }
 
   if (issueNumber === undefined || !Number.isInteger(issueNumber) || !isVerb(verb)) {
     usage();

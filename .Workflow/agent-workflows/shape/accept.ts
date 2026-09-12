@@ -17,7 +17,9 @@ export interface AcceptDeps {
   writeFile: (path: string, content: string) => void;
 }
 
-export type Verb = "approved" | "parked" | "killed";
+export const VERBS = ["approved", "parked", "killed"] as const;
+
+export type Verb = (typeof VERBS)[number];
 
 export type AcceptOutcome =
   | { kind: "approved"; adrs: string[]; terms: string[]; route: "short" | "long" }
