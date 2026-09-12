@@ -565,10 +565,6 @@ describe("#520: a lane's budget fits inside the cap that could kill it", () => {
   });
 });
 
-const RESULT_GATES: Readonly<Record<string, string>> = {
-  "verify.yml › verify": "always() && needs.immutability.result != 'failure'",
-};
-
 describe("#519: the one if: a workflow may carry is always()", () => {
   const conditions = estate.flatMap(({ name, workflow }) =>
     Object.entries(workflow.jobs ?? {}).flatMap(([jobName, job]) => [
@@ -588,11 +584,7 @@ describe("#519: the one if: a workflow may carry is always()", () => {
       condition,
       `${where} carries a condition no venue but production evaluates; move it into the lane's own ` +
         "TypeScript with a case per branch, and leave always() behind",
-    ).toBe(RESULT_GATES[where] ?? "always()");
+    ).toBe("always()");
   });
 
-  it("names no exception the estate has since folded away", () => {
-    const carried = conditions.filter(({ condition }) => condition !== "always()").map(({ where }) => where);
-    expect(Object.keys(RESULT_GATES).sort()).toEqual(carried.sort());
-  });
 });

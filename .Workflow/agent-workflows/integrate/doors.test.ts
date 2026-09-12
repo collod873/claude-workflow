@@ -36,6 +36,10 @@ describe("#519: the signal jobs read the results of the run they end, instead of
     expect([signalsFixer(both), signalsReview(both)]).toEqual([true, true]);
   });
 
+  it("leaves the reviewer alone when the claim was refused, which used to skip the gate rather than pass it", () => {
+    expect(signalsReview(ending({ immutability: "failure" }))).toBe(false);
+  });
+
   it.each(["", "session-captured", "run-ended"])("rings nobody for a %s ending, which judges no pull request", (eventAction) => {
     const push = ending({ eventAction, immutability: "skipped" });
     expect([signalsFixer(push), signalsReview(push)]).toEqual([false, false]);

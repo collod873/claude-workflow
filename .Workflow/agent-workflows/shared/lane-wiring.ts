@@ -474,11 +474,12 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       verify: {
         name: LANE_OWNED.gateJob,
         needs: ["immutability"],
-        gate: { is: "always() && needs.immutability.result != 'failure'" },
+        gate: { is: "always()" },
         permissions: null,
-        runs: "npm run check",
+        runs: tsx("integrate/gate.ts"),
         checkout: "pair",
-        steps: [{ name: LANE_OWNED.gateStep, run: ["npm run check"] }],
+        env: { IMMUTABILITY_RESULT: "${{ needs.immutability.result }}" },
+        steps: [{ name: LANE_OWNED.gateStep, run: [tsx("integrate/gate.ts")] }],
       },
       "signal-fixer": {
         needs: ["immutability", "verify"],

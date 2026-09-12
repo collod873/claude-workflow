@@ -1,4 +1,5 @@
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
+import { gatesThisRun } from "./gate";
 
 export const RED_RESULTS = ["failure", "cancelled"];
 
@@ -18,5 +19,6 @@ export function signalsFixer(ending: RunEnding): boolean {
 }
 
 export function signalsReview(ending: RunEnding): boolean {
-  return judgesPullRequest(ending.eventAction) && ending.verify === "success";
+  if (!judgesPullRequest(ending.eventAction)) return false;
+  return gatesThisRun(ending.immutability) && ending.verify === "success";
 }

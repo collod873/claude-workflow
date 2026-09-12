@@ -46,9 +46,11 @@ jobs:
   verify:
     name: Verify
     needs: [immutability]
-    if: always() && needs.immutability.result != 'failure'
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
+    env:
+      IMMUTABILITY_RESULT: ${{ needs.immutability.result }}
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -77,7 +79,7 @@ jobs:
       - name: Gauntlet
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
-        run: npm run check
+        run: npx tsx .Workflow/agent-workflows/integrate/gate.ts
 
   signal-fixer:
     name: Signal the fixer
