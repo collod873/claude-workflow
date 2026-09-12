@@ -1,5 +1,8 @@
 import { requestDispatch } from "../shared/dispatch-request";
 import type { GhExec } from "../shared/gh";
+import { markLane, QUESTIONS_OPEN_LABEL, readIssueLabels, SLICEABLE_LABEL, unlabel } from "../shared/labels";
+
+export { SLICEABLE_LABEL };
 
 export interface MarkedDecision {
   mark: string;
@@ -23,16 +26,15 @@ export function gateCount(openQuestions: string[], decisions: MarkedDecision[] =
   return openQuestions.length + unfiledMarkGap(decisions, openQuestions);
 }
 
-export const SLICEABLE_LABEL = "sliceable";
-
 export const SPEC_DISPATCH_EVENT_TYPE = "prd-sliceable";
 
 export type GateOutcome = "dispatched";
 
-export function applyGate(gh: GhExec, issueNumber: number, count?: number): GateOutcome {
-  void count;
+export function applyGate(gh: GhExec, issueNumber: number, count = 0): GateOutcome {
+  if (count > 0) markLane(gh, issueNumber, QUESTIONS_OPEN_LABEL);
+  else if (readIssueLabels(gh, issueNumber).includes(QUESTIONS_OPEN_LABEL)) unlabel(gh, issueNumber, QUESTIONS_OPEN_LABEL);
 
-  gh(["issue", "edit", String(issueNumber), "--add-label", SLICEABLE_LABEL]);
+  markLane(gh, issueNumber, SLICEABLE_LABEL);
   requestDispatch(gh, {
     event_type: SPEC_DISPATCH_EVENT_TYPE,
     client_payload: { issue: issueNumber },

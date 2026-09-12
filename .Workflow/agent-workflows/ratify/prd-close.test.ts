@@ -21,7 +21,7 @@ describe("ratifyOnPrdClose: the gate", () => {
     });
 
     expect(outcome).toEqual({ sent: true });
-    expect(sent).toEqual([{ head: "headsha", prdClosed: true }]);
+    expect(sent).toEqual([{ head: "headsha", prdClosed: true, prd: 7 }]);
   });
 
   it("makes no call for a close that claims nothing was delivered", () => {

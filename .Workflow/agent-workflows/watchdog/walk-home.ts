@@ -3,7 +3,8 @@ import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { repoRunsPathFor } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
-import { BY_HAND_LABEL, touchesImmutableSet } from "../shared/immutable-set";
+import { touchesImmutableSet } from "../shared/immutable-set";
+import { BY_HAND_LABEL, TICKET_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
@@ -144,9 +145,6 @@ function readWalkedHome(gh: GhExec, repository?: string): Set<string> {
   return keys;
 }
 
-const TO_BUILD_LABEL = "to-build";
-
-const TICKET_LABEL = "ticket";
 
 function machineTicketTitle(repository: string, path: string): string {
   return `${repository}: ${path} failed inside the machine checkout`;

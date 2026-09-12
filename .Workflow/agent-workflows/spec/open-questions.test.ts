@@ -1,10 +1,10 @@
 import { createRecordingGh } from "../shared/gh.fake";
 import { describe, expect, it } from "vitest";
 import type { GhExec } from "../shared/gh";
+import { QUESTIONS_OPEN_LABEL, SLICEABLE_LABEL } from "../shared/labels";
 import {
   applyGate,
   gateCount,
-  SLICEABLE_LABEL,
   SPEC_DISPATCH_EVENT_TYPE,
   unfiledMarkGap,
   unfiledMarks,
@@ -94,6 +94,8 @@ describe("gateCount: how much a run left unresolved", () => {
   });
 });
 
+const edits = (calls: string[][]) => calls.filter((call) => call[0] === "issue" && call[1] === "edit");
+
 describe("applyGate: unconditional since #263", () => {
   it.each([
     ["called with no count at all", undefined],
@@ -104,10 +106,10 @@ describe("applyGate: unconditional since #263", () => {
     const outcome = count === undefined ? applyGate(gh, 42) : applyGate(gh, 42, count);
 
     expect(outcome).toBe("dispatched");
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual(["issue", "edit", "42", "--add-label", SLICEABLE_LABEL]);
-    expect(calls[1][0]).toBe("api");
-    expect(calls[1]).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
+    expect(edits(calls).at(-1)).toEqual(["issue", "edit", "42", "--add-label", SLICEABLE_LABEL]);
+    const dispatch = calls.at(-1) ?? [];
+    expect(dispatch[0]).toBe("api");
+    expect(dispatch).toContain(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`);
   });
 
   it("writes the label before it asks for the dispatch, whatever the count", () => {
@@ -117,7 +119,7 @@ describe("applyGate: unconditional since #263", () => {
       if (count === undefined) applyGate(gh, 42);
       else applyGate(gh, 42, count);
 
-      const labelAt = calls.findIndex((call) => call.includes(SLICEABLE_LABEL));
+      const labelAt = calls.findIndex((call) => call[0] === "issue" && call.includes(SLICEABLE_LABEL));
       const dispatchAt = calls.findIndex(
         (call) => call[0] === "api" && call.some((arg) => arg.includes(`event_type=${SPEC_DISPATCH_EVENT_TYPE}`)),
       );
@@ -125,5 +127,37 @@ describe("applyGate: unconditional since #263", () => {
       expect(dispatchAt, JSON.stringify({ count, calls })).toBeGreaterThanOrEqual(0);
       expect(labelAt).toBeLessThan(dispatchAt);
     }
+  });
+});
+
+describe("applyGate: the open-questions signal the owner reads (#521)", () => {
+  it("stamps 2-questions-open ahead of sliceable when the count is above zero, and the two stand together", () => {
+    const { gh, calls } = createRecordingGh();
+
+    applyGate(gh, 42, 2);
+
+    const [questions, sliceable] = edits(calls);
+    expect(questions).toEqual(["issue", "edit", "42", "--add-label", QUESTIONS_OPEN_LABEL]);
+    expect(sliceable).toEqual(["issue", "edit", "42", "--add-label", SLICEABLE_LABEL]);
+    expect(sliceable).not.toContain(QUESTIONS_OPEN_LABEL);
+  });
+
+  it("removes a standing 2-questions-open when it applies sliceable at a count of zero", () => {
+    const { gh, calls } = createRecordingGh();
+    const wearing: GhExec = (args) =>
+      args[0] === "issue" && args[1] === "view" ? JSON.stringify({ labels: [{ name: QUESTIONS_OPEN_LABEL }] }) : gh(args);
+
+    applyGate(gh === wearing ? gh : wearing, 42, 0);
+
+    expect(edits(calls)).toContainEqual(["issue", "edit", "42", "--remove-label", QUESTIONS_OPEN_LABEL]);
+    expect(edits(calls).at(-1)).toEqual(["issue", "edit", "42", "--add-label", SLICEABLE_LABEL]);
+  });
+
+  it("leaves a spec that never carried the signal alone at a count of zero", () => {
+    const { gh, calls } = createRecordingGh();
+
+    applyGate(gh, 42, 0);
+
+    expect(calls.some((call) => call.includes(QUESTIONS_OPEN_LABEL))).toBe(false);
   });
 });

@@ -112,7 +112,7 @@ describe("parked", () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
     expect(accept(deps, 1, "parked")).toEqual({ kind: "parked" });
-    expect(tracker.calls).toEqual([["issue", "edit", "1", "--remove-label", "idea"]]);
+    expect(tracker.calls).toEqual([["issue", "edit", "1", "--remove-label", "idea", "--remove-label", "1-decide"]]);
   });
 });
 

@@ -2,12 +2,11 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { laneBudget } from "../shared/lane-budget";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
-import { BY_HAND_LABEL } from "../shared/immutable-set";
+import { BY_HAND_LABEL, clearLane, markLane, PRD_LABEL, SLICEABLE_LABEL, SPECCING_LABEL, TO_SPEC_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { readSheetMarker } from "../shared/marker";
-import { markRunning } from "../shared/running-label";
 import { specDoorFrom, specsSource } from "./doors";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext, type SpecAuthorOutput } from "./author-contract";
 import { runSpecCritic, type Resolution } from "./critic";
@@ -16,13 +15,11 @@ import { collectSheetContext } from "./collectors/sheet";
 import {
   applyGate,
   gateCount,
-  SLICEABLE_LABEL,
   unfiledMarks,
   type GateOutcome,
   type MarkedDecision,
 } from "./open-questions";
 import {
-  PRD_LABEL,
   publishSpec,
   readPublishedSpec,
   readSourceMarker,
@@ -134,6 +131,7 @@ export async function runSpecPublication(
 
   const issueNumber = publishSpec(gh, draft, target, validate);
   const { count, outcome } = gateSpec(gh, issueNumber, draft.openQuestions);
+  clearLane(gh, target.issue);
 
   return { ...draft, issueNumber, gateCount: count, outcome };
 }
@@ -225,13 +223,15 @@ function alreadySliced(gh: GhExec, sourceIssue: number): boolean {
   });
 }
 
-export type SpecInvocation = { trigger: "to-spec"; issueNumber: number } | { trigger: "critique"; issueNumber: number };
+const CRITIQUE_TRIGGER = "critique";
 
-export type SpecPlan = { path: "author"; input: SpecTrigger; target: SpecSource } | { path: "critique"; issueNumber: number };
+export type SpecInvocation = { trigger: typeof TO_SPEC_LABEL; issueNumber: number } | { trigger: typeof CRITIQUE_TRIGGER; issueNumber: number };
+
+export type SpecPlan = { path: "author"; input: SpecTrigger; target: SpecSource } | { path: typeof CRITIQUE_TRIGGER; issueNumber: number };
 
 export function planSpecRun(gh: GhExec, invocation: SpecInvocation, repoRoot?: string): SpecPlan {
-  if (invocation.trigger === "critique") {
-    return { path: "critique", issueNumber: invocation.issueNumber };
+  if (invocation.trigger === CRITIQUE_TRIGGER) {
+    return { path: CRITIQUE_TRIGGER, issueNumber: invocation.issueNumber };
   }
 
   if (alreadySliced(gh, invocation.issueNumber)) {
@@ -250,8 +250,8 @@ export function invocationFromEnv(env: NodeJS.ProcessEnv): SpecInvocation {
   const trigger = env.SPEC_TRIGGER;
   const issueNumber = Number(env.ISSUE_NUMBER);
 
-  if (trigger !== "to-spec" && trigger !== "critique") {
-    throw new Error(`SPEC_TRIGGER must be one of to-spec, critique; got ${JSON.stringify(trigger)}`);
+  if (trigger !== TO_SPEC_LABEL && trigger !== CRITIQUE_TRIGGER) {
+    throw new Error(`SPEC_TRIGGER must be one of ${TO_SPEC_LABEL}, ${CRITIQUE_TRIGGER}; got ${JSON.stringify(trigger)}`);
   }
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
     throw new Error(`ISSUE_NUMBER must be a positive integer; got ${JSON.stringify(env.ISSUE_NUMBER)}`);
@@ -282,10 +282,10 @@ async function main(): Promise<void> {
 
   try {
     const invocation = invocationFromEnv(process.env);
-    markRunning(execGh, invocation.issueNumber, console.error);
+    markLane(execGh, invocation.issueNumber, SPECCING_LABEL);
     const plan = planSpecRun(execGh, invocation, repoDir);
 
-    if (plan.path === "critique") {
+    if (plan.path === CRITIQUE_TRIGGER) {
       const result = await runSpecCritique(execClaudeIn(repoDir), execGh, plan.issueNumber);
       console.log(
         `critiqued #${result.issueNumber}: ${result.outcome}` +

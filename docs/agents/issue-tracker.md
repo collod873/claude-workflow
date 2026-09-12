@@ -71,42 +71,38 @@ Unblocked = every blocker closed. Any skill splitting a parent into children (e.
 
 ## Labels
 
-The four pipeline labels (`fuzzy`, `needs-human`, `prd`, `wayfinder:*`) and their meanings live
-in `docs/agents/pipeline-labels.md`. They assert only where work sits, never a readiness verdict, and
-their **absence** is load-bearing: no pipeline label and no `## Acceptance criteria` in the body
-means not yet judged.
+Every label the pipeline reads or writes is in the catalogue at
+`.Workflow/agent-workflows/shared/labels.ts`, rendered as a table in
+`docs/agents/pipeline-labels.md`. Its colour says who holds the issue: green is a lane on it
+now (`1-shaping` … `8-landing`, `ratifying`, numbered so the label filter sorts in pipeline
+order), blue is waiting on the machine (`3-sliced`, `waiting`, `queued`, `sliceable`), red is
+waiting on the owner (`needs-human`, `fuzzy`, `by-hand`, `1-decide`, `2-questions-open`,
+`slice-failed`, `shape-refused`, `spec/gap`), purple is a verb only the owner applies, grey is a
+kind and amber is `ticket`. An open issue wears at most one green or blue **lane label**; the
+absence of a kind label and of `## Acceptance criteria` in the body still means not yet judged.
 
-The two hand-off labels are there too: `to-spec` and `to-build`, each applied only by the owner's
-own hand and each naming the lane it hands work to. `to-build` is the one worth knowing from here:
-put it on a ticket you wrote in a session (`~/bin/file-issue ticket`, then
-`gh issue edit <n> --add-label to-build`) and lane 04's next recompute starts it: no spec, no
-slicer, and every gate downstream unchanged. **It starts lane 04, not lane 06.** A ticket whose
-criteria no acceptance test names yet is handed to the acceptance author first, and lane 04
-rings lane 05 once those tests are on `main` (#201); otherwise the implementer's push gate
-and Verify's acceptance job both judge a slice against tests that do not exist, which is how
-#346 reached a pull request the acceptance job failed closed on. A ticket that already has one
-goes straight to lane 06, so a retry after a failed implementer re-authors nothing. It is read by
-`.Workflow/agent-workflows/dispatch/reconcile.ts`, which refuses a labelled issue missing
-`## Acceptance criteria` or `## Files claimed` in one comment rather than spending a run on it.
-Blockers must be native `dependencies/blocked_by` edges: the reconciler never reads a
-`## Blocked by` section, so prose alone will start the ticket immediately.
+`to-build` is the verb worth knowing from here: put it on a ticket you wrote in a session
+(`~/bin/file-issue ticket`, then `gh issue edit <n> --add-label to-build`) and lane 04's next
+recompute starts it: no spec, no slicer, and every gate downstream unchanged. **It starts lane 04,
+not lane 06.** A ticket whose criteria no acceptance test names yet is handed to the acceptance
+author first, and lane 04 rings lane 05 once those tests are on `main` (#201); otherwise the
+implementer's push gate and Verify's acceptance job both judge a slice against tests that do not
+exist, which is how #346 reached a pull request the acceptance job failed closed on. A ticket that
+already has one goes straight to lane 06, so a retry after a failed implementer re-authors nothing.
+It is read by `.Workflow/agent-workflows/dispatch/reconcile.ts`, which refuses a labelled issue
+missing `## Acceptance criteria` or `## Files claimed` in one comment rather than spending a run
+on it. When the reconciler dispatches the ticket it swaps `to-build` for the lane label
+(`4-accepting` or `5-building`) and admits the ticket on that label from then on, so nothing has
+to be re-applied after a dead run. Blockers must be native `dependencies/blocked_by` edges: the
+reconciler never reads a `## Blocked by` section, so prose alone will start the ticket immediately.
 
-This repo's own pipeline writes five more, which are state rather than position and which no
-pipeline step reads as a position:
+A PRD reads its build from the label filter: the reconciler writes `waiting` on every child behind
+an open blocker and `queued` on every ready child without a worker, and keeps one rollup line at
+the top of the PRD's body (`3 building · 2 queued · 13 waiting · 4 done`).
 
-| Label            | Written by                          | Means                                                              |
-| ---------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `ticket`         | `~/bin/file-issue ticket` / `ticketify` | The issue's **kind**, stated at filing rather than inferred later from its body. Nothing reads it as a position, and its absence on the 187 issues filed before it says nothing about them (#300), which is also why `bin/close-ticket` counts the range instead of trusting a kind |
-| `idea`           | `.github/ISSUE_TEMPLATE/idea.yml`   | An item filed through lane 00's micro door, in the owner's own words and never edited |
-| `slice-failed`   | `.github/workflows/to-tickets.yml`  | The latest slicing run refused or failed; the PRD was not split by it. Lifted by the same workflow the moment a later run publishes children (#446), so it is never worn alongside sub-issues |
-| `build-order`    | filed by hand                       | A move on the build order (ADR-0026)                                |
-| `standards-pass` | `/standards-pass`                   | One standards-authorship pass, one issue per run                    |
-| `spec/gap`       | lane 07's conformance reviewer; the fixer's no-progress stop | The contract is wrong rather than the diff. Filed at a PRD, read by lane 02's amendment path: ADR-0034, ADR-0038, ADR-0119 |
-
-GitHub's stock `bug` / `enhancement` / `question` / `wontfix` exist on the repo but are not
-pipeline labels; they were deleted from the vocabulary.
-Lane 00's second form applies stock `bug` at creation, which is intake, not a position: it records
-that the owner called it a break, and no step reads it as a verdict.
+GitHub's stock `enhancement` / `question` / `wontfix` exist on the repo but are not pipeline
+labels. Lane 00's second form applies stock `bug` at creation, which is intake, not a position: it
+records that the owner called it a break, and no step reads it as a verdict.
 
 ## When a skill says "publish to the issue tracker"
 

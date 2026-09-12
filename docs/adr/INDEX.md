@@ -99,6 +99,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0179 | [A judged run rings its readers by dispatch, because a workflow_run door never opens for a run the machine started](0179-a-judged-run-rings-its-readers-by-dispatch-because-a-workflo.md) |
 | 0180 | [A commit message carrying a GitHub closing keyword is refused before it can reach the remote](0180-a-commit-message-carrying-a-github-closing-keyword-is-refuse.md) |
 | 0181 | [A spec edit re-fires acceptance only for what the edit removed, never for every slice](0181-a-spec-edit-re-fires-acceptance-only-for-what-the-edit-remov.md) |
+| 0182 | [Every open issue wears one lane label, coloured by who holds it](0182-every-open-issue-wears-one-lane-label-coloured-by-who-holds.md) |
 
 ## Retired
 
@@ -196,4 +197,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-181 ADRs · 91 constraint · 44 note · 46 superseded · 18,774 words total.
+182 ADRs · 92 constraint · 44 note · 46 superseded · 18,922 words total.

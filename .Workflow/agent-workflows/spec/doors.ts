@@ -1,8 +1,7 @@
 import { isOwner, commaList } from "../shared/event-door";
-import { SLICEABLE_LABEL } from "./open-questions";
-import { PRD_LABEL } from "./publish";
+import { PRD_LABEL, SLICEABLE_LABEL, TO_SPEC_LABEL } from "../shared/labels";
 
-export const TO_SPEC_LABEL = "to-spec";
+export { TO_SPEC_LABEL };
 
 export interface SpecDoor {
   eventName: string;

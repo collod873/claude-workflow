@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { runEntrypoint } from "../shared/entrypoint";
 import { execGh, type GhExec } from "../shared/gh";
 import { writeFailure } from "../shared/handoff-path";
+import { markLane, SLICED_LABEL, SLICING_LABEL } from "../shared/labels";
 import {
   AUDIT_OUTPUT,
   Plan,
@@ -173,9 +174,9 @@ const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => 
   if (audited.notes) {
     console.log(audited.notes);
   }
-  const published = keepingPlan(audited.slices, () =>
-    sliceAndPublish(audited.slices, Number(issueNumber), gh),
-  );
+  const prd = Number(issueNumber);
+  const published = keepingPlan(audited.slices, () => sliceAndPublish(audited.slices, prd, gh));
+  markLane(gh, prd, SLICED_LABEL);
   console.log(
     `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,
   );
@@ -234,7 +235,9 @@ async function main(): Promise<void> {
       usage();
     }
 
+    const prd = Number(issueNumber);
     try {
+      markLane(execGh, prd, SLICING_LABEL);
       await runNamedStage(stageName, issueNumber, execClaudeIn(process.env.TARGET_WORKSPACE || process.cwd()), execGh);
     } catch (err) {
       const detail = reason(err);

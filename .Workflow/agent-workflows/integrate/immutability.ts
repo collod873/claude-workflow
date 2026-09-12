@@ -2,6 +2,8 @@ import { pathToFileURL } from "node:url";
 import { commaList } from "../shared/event-door";
 import { execGh, type GhExec } from "../shared/gh";
 import { touchesImmutableSet } from "../shared/immutable-set";
+import { markLane, VERIFYING_LABEL } from "../shared/labels";
+import { implementationBranchTicket } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { judgesPullRequest } from "./doors";
 
@@ -18,6 +20,8 @@ export function judgeChangedFiles(changedFiles: readonly string[]): Immutability
 
 export function namesPullRequest(gh: GhExec, pr: string): string {
   const branch = gh(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]).trim();
+  const ticket = implementationBranchTicket(branch);
+  if (ticket !== undefined) markLane(gh, ticket, VERIFYING_LABEL);
   return `judging ${pr} on ${branch}`;
 }
 

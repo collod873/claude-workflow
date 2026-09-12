@@ -5,6 +5,7 @@ import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import type { Sheet } from "../shared/sheet-schema";
 import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
 import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
+import { BY_HAND_LABEL } from "../shared/labels";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import { PRD_LABEL, sourceMarker } from "./publish";
 import { NO_VALIDATION } from "./validate-spec.fixture";
@@ -393,8 +394,6 @@ describe("runSpecCritique: the critic-only entry", () => {
 });
 
 describe("runSpecCritique: a spec the session slices by hand", () => {
-  const BY_HAND_LABEL = "by-hand";
-
   const HAND_SLICED = {
     title: "PRD: The merge journey",
     body: "## Problem\nIts children are hand-built, and one of them lives in another repo.",

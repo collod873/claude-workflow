@@ -4,6 +4,7 @@ import { describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
+import { ACCEPTING_LABEL } from "../shared/labels";
 import { createFakeGit } from "../shared/git.fake";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { SuiteLayout } from "../shared/suite-layout";
@@ -397,6 +398,17 @@ function trackerWith(
   subIssues: Record<number, SubIssueRef[]> = {},
   writes?: string[][],
 ): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
+  return trackerReading(issues, subIssues, writes);
+}
+
+const notALaneStamp = (args: string[]): boolean =>
+  args[0] !== "label" && !(args[0] === "issue" && args[1] === "edit" && args.includes(ACCEPTING_LABEL));
+
+function trackerReading(
+  issues: Record<number, TicketRead>,
+  subIssues: Record<number, SubIssueRef[]>,
+  writes?: string[][],
+): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
   const fake = createFakeGh();
   const reads: string[][] = [];
   const gh: GhExec = (args) => {
@@ -404,6 +416,11 @@ function trackerWith(
       writes.push(args);
       return "";
     }
+    if (args[0] === "label" || (args[0] === "issue" && args[1] === "edit")) {
+      fake.calls.push(args);
+      return "";
+    }
+    if (args[0] === "issue" && args[1] === "view" && args[args.indexOf("--json") + 1] === "labels") return "{}";
     if (args[0] === "issue" && args[1] === "view") {
       reads.push(args);
       const issue = issues[Number(args[2])];
@@ -450,7 +467,8 @@ describe("runAcceptanceAuthor", () => {
       ["issue", "view", String(ISSUE), "--json", "title,body"],
       ["issue", "view", String(PRD), "--json", "title,body"],
     ]);
-    expect(tracker.fake.calls, "no write reached gh; this lane never opens a pull request").toEqual([]);
+    expect(tracker.fake.calls.filter(notALaneStamp), "no write reached gh; this lane never opens a pull request").toEqual([]);
+    expect(tracker.fake.calls[0]).toEqual(expect.arrayContaining(["label", "create", ACCEPTING_LABEL]));
     expect(stage.stdins[0]).toContain(PRD_BODY);
   });
 
@@ -524,7 +542,8 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     expect(stage.stdins[1]).toContain(CLONE_REPORT);
     expect(written).toEqual([TEST_PATH, HELPER, TEST_PATH]);
     expect(git.calls.find((call) => call[0] === "add")).toEqual(["add", HELPER, TEST_PATH]);
-    expect(writes).toEqual([]);
+    expect(writes.filter(notALaneStamp)).toEqual([]);
+    expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", ACCEPTING_LABEL]);
   });
 
   it("stops after that one round when still red: needs-human, the judgement on the ticket, nothing committed", async () => {

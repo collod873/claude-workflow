@@ -6,6 +6,7 @@ import { execGh, ticketComments, type GhExec, type TicketComment } from "../shar
 import { gateGrowth } from "../shared/gate-files";
 import { deriveAnswer, ImplementerReply, landUnderGate, sayOnTicket, type ImplementOutcome } from "../shared/implementation-landing";
 import { IMMUTABLE_SET } from "../shared/immutable-set";
+import { BUILDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { implementationBranch } from "../shared/ready-set";
 import { reason } from "../shared/reason";
@@ -173,7 +174,10 @@ export function runMechanic(deps: MechanicDeps): Promise<MechanicOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("mechanic"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
-  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), () => repairAndOpen(deps, budget, branch, log));
+  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), () => {
+    markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
+    return repairAndOpen(deps, budget, branch, log);
+  });
 }
 
 async function repairAndOpen(deps: MechanicDeps, budget: LaneBudget, branch: string, log: (line: string) => void): Promise<MechanicOutcome> {

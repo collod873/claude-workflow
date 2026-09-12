@@ -10,6 +10,18 @@ export const RATIFIER_PR_TITLE = "Ratified: standards from this batch";
 export interface RatificationDueDispatch {
   head: string;
   prdClosed: boolean;
+  prd?: number;
+}
+
+export function prdClosedField(dispatch: RatificationDueDispatch): string {
+  if (dispatch.prd !== undefined) return String(dispatch.prd);
+  return String(dispatch.prdClosed);
+}
+
+export function readPrdClosedField(field: string | undefined): { prdClosed: boolean; prd?: number } {
+  const value = (field ?? "").trim();
+  if (/^\d+$/.test(value)) return { prdClosed: true, prd: Number(value) };
+  return { prdClosed: value === "true" };
 }
 
 export function dispatchRatificationDue(gh: GhExec, dispatch: RatificationDueDispatch): void {
@@ -21,7 +33,7 @@ export function dispatchRatificationDue(gh: GhExec, dispatch: RatificationDueDis
     "-f",
     `client_payload[head]=${dispatch.head}`,
     "-f",
-    `client_payload[prd_closed]=${dispatch.prdClosed}`,
+    `client_payload[prd_closed]=${prdClosedField(dispatch)}`,
   ]);
 }
 

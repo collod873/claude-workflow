@@ -15,8 +15,9 @@ import {
 } from "../shared/stage";
 import { laneBudget } from "../shared/lane-budget";
 import { REFUSAL_MARKER } from "../shared/marker";
-import { markRunning } from "../shared/running-label";
-import { IDEA_LABEL, shapeDoorFrom, shapesIdea } from "./doors";
+import { DECIDE_LABEL, IDEA_LABEL, markLane, NEEDS_HUMAN_LABEL, SHAPE_REFUSED_LABEL, SHAPING_LABEL } from "../shared/labels";
+import { escalateToOwner } from "../shared/needs-human";
+import { shapeDoorFrom, shapesIdea } from "./doors";
 import {
   renderChangeRequest,
   renderPriorArt,
@@ -62,9 +63,9 @@ export const SWEEP_DENIED_TOOLS = [
   "NotebookEdit",
 ];
 
-export const REFUSED_LABEL = "shape-refused";
+export const REFUSED_LABEL = SHAPE_REFUSED_LABEL;
 
-export const NEEDS_LIVE_SESSION_LABEL = "needs-human";
+export const NEEDS_LIVE_SESSION_LABEL = NEEDS_HUMAN_LABEL;
 
 export const LABELS_APPLIED = [REFUSED_LABEL, NEEDS_LIVE_SESSION_LABEL];
 
@@ -226,13 +227,14 @@ export async function runChain(
   const overflow = capDecisions(shaped);
   if (overflow) {
     comment(deps.gh, issueNumber, needsLiveSessionComment(overflow.count));
-    label(deps.gh, issueNumber, NEEDS_LIVE_SESSION_LABEL);
+    escalateToOwner(deps.gh, issueNumber, undefined);
     return { kind: "needs-live-session", decisions: overflow.count };
   }
 
   const refuted = await runRefuter(deps, budget, shaped);
   const sheet = applyGrammar(shaped, refuted, round.round);
   comment(deps.gh, issueNumber, renderSheet(sheet));
+  markLane(deps.gh, issueNumber, DECIDE_LABEL);
 
   console.log(checkProbation(deps.gh));
 
@@ -321,7 +323,7 @@ async function main(): Promise<void> {
   }
 
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
-  markRunning(execGh, issueNumber, console.error);
+  markLane(execGh, issueNumber, SHAPING_LABEL);
   const deps: ChainDeps = { exec: execClaudeIn(targetWorkspace), gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
 
   try {

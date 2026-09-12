@@ -3,13 +3,14 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
+import { clearLane, markLane, RATIFYING_LABEL } from "../shared/labels";
 import { syncNotesRef } from "../shared/notes-sync";
 import { reason } from "../shared/reason";
 import { execClaudeIn, type StageExec } from "../shared/stage";
 import { readObservations } from "../shared/notes";
 import { PROPOSED_LENS, type Observation } from "../shared/observation-schema";
 import { filterByRatificationMemory, readRatificationRecords, writeRatificationNote } from "../shared/ratification";
-import { RATIFICATION_DUE_DISPATCH_ACTION } from "../shared/ratification-dispatch";
+import { RATIFICATION_DUE_DISPATCH_ACTION, readPrdClosedField } from "../shared/ratification-dispatch";
 import {
   advanceRatifierRef,
   alignImmutableSetWithTrunk,
@@ -33,6 +34,7 @@ export interface RunRatifyOptions {
   repoDir: string;
   head: string;
   prdClosed: boolean;
+  prd?: number;
   prBase: string;
   eventAction: string | null | undefined;
   threshold?: number;
@@ -51,13 +53,22 @@ export interface RatifyOutcome {
 }
 
 export async function runRatify(options: RunRatifyOptions): Promise<RatifyOutcome> {
-  const { git, gh, exec, repoDir, head, prdClosed, prBase, eventAction, threshold } = options;
+  const { gh, eventAction } = options;
   const remote = options.remote ?? "origin";
   const log = options.log ?? ((line: string) => console.log(line));
 
   if (eventAction !== RATIFICATION_DUE_DISPATCH_ACTION) {
     return { action: "skipped", code: "not-a-ratification-dispatch", releasedCount: 0 };
   }
+
+  if (options.prd !== undefined) markLane(gh, options.prd, RATIFYING_LABEL);
+  const outcome = await ratify(options, remote, log);
+  if (options.prd !== undefined) clearLane(gh, options.prd);
+  return outcome;
+}
+
+async function ratify(options: RunRatifyOptions, remote: string, log: (line: string) => void): Promise<RatifyOutcome> {
+  const { git, gh, exec, repoDir, head, prdClosed, prBase, threshold } = options;
 
   const base = readRatifierBase(git, repoDir);
   const scope = computeRatificationScope({ git, repoDir, base, head, prdClosed, threshold });
@@ -163,7 +174,7 @@ async function main(): Promise<void> {
       exec: execClaudeIn(repoDir),
       repoDir,
       head,
-      prdClosed: process.env.PRD_CLOSED === "true",
+      ...readPrdClosedField(process.env.PRD_CLOSED),
       prBase: process.env.PR_BASE || "main",
       eventAction: process.env.EVENT_ACTION,
     });

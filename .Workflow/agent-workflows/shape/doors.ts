@@ -1,7 +1,8 @@
 import { isOwner, commaList } from "../shared/event-door";
+import { IDEA_LABEL } from "../shared/labels";
 import { VERBS, type Verb } from "./accept";
 
-export const IDEA_LABEL = "idea";
+export { IDEA_LABEL };
 
 export const SHAPE_COMMENT_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
 

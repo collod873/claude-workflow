@@ -2,8 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
-import { BY_HAND_LABEL } from "../shared/immutable-set";
-import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { ACCEPTING_LABEL, BUILDING_LABEL, BY_HAND_LABEL, NEEDS_HUMAN_LABEL, SLICED_LABEL } from "../shared/labels";
 import { TO_BUILD_LABEL } from "./reconcile";
 import {
   type FakeIssue,
@@ -206,6 +205,67 @@ describe("the to-build door refuses what bin/close-ticket would refuse", () => {
     expect(tracker.comments[0].issue).toBe(692);
     expect(tracker.comments[0].body).toContain(REFUSED_MARKER);
     expect(tracker.comments[0].body).toContain("check:");
+  });
+});
+
+describe("the to-build swap and the lane-label door (#521)", () => {
+  function targetNaming(ticket: number | undefined): string {
+    const dir = scratchDir("reconcile-swap");
+    const tests = join(dir, ".Workflow", "door");
+    mkdirSync(tests, { recursive: true });
+    if (ticket !== undefined) writeFileSync(join(tests, "door.test.ts"), `it.fails("#${ticket}: x", () => {});\n`);
+    return dir;
+  }
+
+  it("swaps to-build for 5-building the moment it dispatches, so the label is not permanent", () => {
+    const tracker = trackerWith({ open: [labelled(710)] });
+
+    reconcileOver(tracker, { targetWorkspace: targetNaming(710) });
+
+    expect(startedIssues(tracker)).toEqual([710]);
+    expect(tracker.labelsAdded).toContainEqual({ issue: 710, name: BUILDING_LABEL });
+    expect(tracker.labelsRemoved).toContainEqual({ issue: 710, name: TO_BUILD_LABEL });
+  });
+
+  it("swaps to-build for 4-accepting when it hands the ticket to the acceptance author first", () => {
+    const tracker = trackerWith({ open: [labelled(711)] });
+
+    reconcileOver(tracker, { targetWorkspace: targetNaming(undefined) });
+
+    expect(tracker.labelsAdded).toContainEqual({ issue: 711, name: ACCEPTING_LABEL });
+    expect(tracker.labelsRemoved).toContainEqual({ issue: 711, name: TO_BUILD_LABEL });
+  });
+
+  it("admits a ticket on its lane label once to-build is gone, so a dead run restarts without the owner", () => {
+    const tracker = trackerWith({ open: [{ ...labelled(720), labels: [BUILDING_LABEL] }] });
+
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker)).toEqual([720]);
+    expect(tracker.comments).toEqual([]);
+  });
+
+  it("never admits a spec or an idea on a lane label, whatever its body carries", () => {
+    const tracker = trackerWith({
+      open: [
+        { ...labelled(730), labels: ["prd", SLICED_LABEL] },
+        { ...labelled(731), labels: ["idea", "1-shaping"] },
+      ],
+    });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches).toEqual([]);
+  });
+
+  it("skips a started ticket at the door, so a running ticket is never re-commented", () => {
+    const malformed = "## Acceptance criteria\n\n- [ ] It works — check: `true`\n";
+    const tracker = trackerWith({ open: [labelled(740, malformed)], runs: [liveRun(940, "Implement #740")] });
+
+    reconcileOver(tracker);
+
+    expect(tracker.comments).toEqual([]);
+    expect(tracker.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
   });
 });
 

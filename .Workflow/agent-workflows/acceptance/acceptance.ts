@@ -14,6 +14,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
+import { ACCEPTING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
@@ -361,6 +362,7 @@ export interface RunAcceptanceDeps {
 }
 
 export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<LandOutcome> {
+  markLane(deps.gh, deps.issueNumber, ACCEPTING_LABEL);
   const ticket = readTicket(deps.gh, deps.issueNumber);
   const prdNumber = parentPrdNumber(ticket.body);
   const prd = prdNumber === undefined ? undefined : readTicket(deps.gh, prdNumber);

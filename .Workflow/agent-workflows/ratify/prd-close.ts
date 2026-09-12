@@ -1,10 +1,11 @@
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "../shared/gh";
+import { PRD_LABEL } from "../shared/labels";
 import { dispatchRatificationDue, type RatificationDueDispatch } from "../shared/ratification-dispatch";
 
 export const CLOSE_STATE_REASON = "completed";
 
-export const PRD_LABEL = "prd";
+export { PRD_LABEL };
 
 export interface EntrypointInput {
   issueNumber?: number;
@@ -34,7 +35,7 @@ export function ratifyOnPrdClose(input: EntrypointInput): EntrypointOutcome {
     return { sent: false };
   }
 
-  send(gh, { head: input.head, prdClosed: true });
+  send(gh, { head: input.head, prdClosed: true, prd: issueNumber });
   log(`#${issueNumber ?? "?"} closed as delivered; ratification is due at ${input.head}.`);
   return { sent: true };
 }

@@ -105,6 +105,18 @@ describe("the ordinary run", () => {
     expect(readSheetMarker(postedComments(tracker)[0])?.route).toBe("short");
   });
 
+  it("#521: stamps 1-decide once the sheet is posted, clearing the green 1-shaping it wore while the chain ran", async () => {
+    const model = healthyModel();
+    const tracker = createFakeTracker({ labels: new Map([[1, ["idea", "1-shaping"]]]) });
+
+    await runChain(depsFor(model, tracker), 1, "");
+
+    const sheetAt = tracker.calls.findIndex((call) => call[0] === "issue" && call[1] === "comment");
+    const decideAt = tracker.calls.findIndex((call) => call[1] === "edit" && call.includes("1-decide"));
+    expect(decideAt).toBeGreaterThan(sheetAt);
+    expect(tracker.calls[decideAt]).toEqual(["issue", "edit", "1", "--remove-label", "1-shaping", "--add-label", "1-decide"]);
+  });
+
   it("hands every stage a prompt with every placeholder substituted", async () => {
     const model = healthyModel();
 

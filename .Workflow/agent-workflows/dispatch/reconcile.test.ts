@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { ACCEPTING_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, QUEUED_LABEL, WAITING_LABEL } from "../shared/labels";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
@@ -26,8 +26,10 @@ import {
   HAND_WRITTEN_TICKET,
   liveRun,
   reconcileOver,
+  RUNNABLE_BODY,
   startedIssues,
   trackerWith,
+  type FakeIssue,
   type FakeRun,
   type Tracker,
   type TrackerOptions,
@@ -569,7 +571,7 @@ test("#437.2: the to-build door never admits a `by-hand` issue and stands it dow
   expect(standDown[0].body).toContain("by-hand");
   expect(standDown[0].body).not.toContain("to-build-refused:v1");
 
-  expect(tracker.labelsAdded.filter((label) => label.name === "needs-human")).toEqual([]);
+  expect(tracker.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
 });
 
 test("#437.3: a `by-hand` issue never reaches the dispatched set, even with every other precondition met", () => {
@@ -608,6 +610,92 @@ test("#472.2: the door's log line for a refusal names the needs-human hold it ap
 
   expect(refusal).toBeDefined();
   expect(refusal).toContain(NEEDS_HUMAN_LABEL);
+});
+
+describe("the labels a pass writes so the PRD reads from the filter (#521)", () => {
+  const prd = (children: number[], body = RUNNABLE_BODY): FakeIssue => ({
+    number: 145,
+    title: "PRD: the build",
+    body,
+    labels: ["prd"],
+    children,
+  });
+
+  it("writes waiting on an open child behind an open blocker, once", () => {
+    const first = trackerWith({ open: [prd([201, 202]), { number: 201, title: "Blocker" }, { number: 202, title: "Blocked", blockedBy: [201] }] });
+    reconcileOver(first);
+
+    expect(first.labelsAdded).toContainEqual({ issue: 202, name: WAITING_LABEL });
+    expect(first.labelsAdded.filter((label) => label.issue === 201 && label.name === WAITING_LABEL)).toEqual([]);
+
+    const second = trackerWith({
+      open: [prd([201, 202]), { number: 201, title: "Blocker", labels: [BUILDING_LABEL] }, { number: 202, title: "Blocked", blockedBy: [201], labels: [WAITING_LABEL] }],
+      runs: [liveRun(901, "Implement #201")],
+    });
+    reconcileOver(second);
+
+    expect(second.labelsAdded).toEqual([]);
+  });
+
+  it("writes queued on a ready child the pass could not dispatch, and nothing on one it did", () => {
+    const tracker = trackerWith({ open: [{ number: 301, title: "Sent" }, { number: 302, title: "Refused by the API" }] });
+    const gh = tracker.gh;
+    tracker.gh = (args) => {
+      if (args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches" && args.some((arg) => arg.endsWith("=302"))) {
+        throw new Error("HTTP 502");
+      }
+      return gh(args);
+    };
+
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker)).toEqual([301]);
+    expect(tracker.labelsAdded).toContainEqual({ issue: 301, name: ACCEPTING_LABEL });
+    expect(tracker.labelsAdded).toContainEqual({ issue: 302, name: QUEUED_LABEL });
+    expect(tracker.labelsAdded.filter((label) => label.issue === 301 && label.name === QUEUED_LABEL)).toEqual([]);
+  });
+
+  it("marks a needs-human child neither queued nor waiting: the owner holds it", () => {
+    const tracker = trackerWith({ open: [{ number: 311, title: "Held", labels: [NEEDS_HUMAN_LABEL] }] });
+
+    reconcileOver(tracker);
+
+    expect(tracker.labelsAdded).toEqual([]);
+  });
+
+  it("rewrites the PRD's rollup line from its children's families, and only when the counts change", () => {
+    const children = [401, 402, 403];
+    const open = [
+      prd(children),
+      { number: 401, title: "Building", labels: [BUILDING_LABEL] },
+      { number: 402, title: "Blocked", blockedBy: [401] },
+    ];
+    const closed = [{ number: 403, stateReason: "completed" as const }];
+
+    const first = trackerWith({ open, closed, runs: [liveRun(902, "Implement #401")] });
+    reconcileOver(first);
+
+    const line = "<!-- rollup:v1 --> 1 building · 0 queued · 1 waiting · 1 done";
+    expect(first.bodyEdits).toEqual([{ issue: 145, body: `${line}\n\n${RUNNABLE_BODY}` }]);
+
+    const second = trackerWith({
+      open: [prd(children, `${line}\n\n${RUNNABLE_BODY}`), open[1], { ...open[2], labels: [WAITING_LABEL] }],
+      closed,
+      runs: [liveRun(902, "Implement #401")],
+    });
+    reconcileOver(second);
+
+    expect(second.bodyEdits).toEqual([]);
+  });
+
+  it("writes no label and no rollup in a dry run", () => {
+    const tracker = trackerWith({ open: [prd([501, 502]), { number: 501, title: "Blocker" }, { number: 502, title: "Blocked", blockedBy: [501] }] });
+
+    reconcileOver(tracker, { dryRun: true });
+
+    expect(tracker.labelsAdded).toEqual([]);
+    expect(tracker.bodyEdits).toEqual([]);
+  });
 });
 
 test(
