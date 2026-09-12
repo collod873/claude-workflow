@@ -97,11 +97,11 @@ describe("runAuditor", () => {
 
   it("returns the sandboxed call's raw stdout unparsed", async () => {
     const fakeGit = createFakeGit(() => "");
-    const fakeStage = createFakeStage('A violation, in the lens\'s own prose.');
+    const fakeStage = createFakeStage("A violation, in the lens's own prose.");
     const options = baseOptions({ git: fakeGit.git, exec: fakeStage.exec });
 
     const result = await runAuditor(options);
 
-    expect(result).toBe('A violation, in the lens\'s own prose.');
+    expect(result).toBe("A violation, in the lens's own prose.");
   });
 });

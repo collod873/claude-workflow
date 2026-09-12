@@ -55,7 +55,7 @@ function eslintInvocations(venue: (typeof LANDING_VENUES)[number]): string[] {
     : [];
 }
 
-test.fails(
+test(
   "#490.1: bin/gauntlet runs the lint slot's eslint with --fix before reporting, in the turn, stop and push venues",
   () => {
     for (const venue of LANDING_VENUES) {

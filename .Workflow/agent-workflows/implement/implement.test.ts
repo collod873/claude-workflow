@@ -507,7 +507,7 @@ describe("a claim does not outlive the run that made it", () => {
 });
 
 describe("findFailingTestFiles finds the slice's test.fails( tests without running anything", () => {
-  const SLICE_TEST = ['// The gate is a constant', 'test.fails("#360: the gate is a constant", () => {', "  expect(1).toBe(2);", "});"].join("\n");
+  const SLICE_TEST = ["// The gate is a constant", 'test.fails("#360: the gate is a constant", () => {', "  expect(1).toBe(2);", "});"].join("\n");
 
   function checkoutWith(files: Array<[string, string]>): { root: string; readFile: (path: string) => string } {
     const root = scratchDir("implement-slice");

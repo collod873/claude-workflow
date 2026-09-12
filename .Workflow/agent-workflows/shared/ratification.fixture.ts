@@ -9,7 +9,7 @@ export function ratificationRecord(
 ): RatificationRecord {
   return {
     decision: "declined",
-    sites: [`a.ts:1`],
+    sites: ["a.ts:1"],
     reason: "not worth a rule",
     ...overrides,
   };

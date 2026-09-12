@@ -234,7 +234,7 @@ function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionRe
       throw new Error(
         `author wrote ${stub}, a stub for a subject the test runs as a process; house rule ` +
           `(${HOUSE_RULES_PATH}): a .claude/hooks/*.py or *.sh lifecycle hook gets no stub, ` +
-          `the test spawns it from a .proc.test.ts and the missing file is the honest failure`,
+          "the test spawns it from a .proc.test.ts and the missing file is the honest failure",
       );
     }
   }

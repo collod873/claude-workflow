@@ -65,6 +65,17 @@ function renderComments(comments: TicketComment[]): string {
     : `${dropped} older comment${dropped === 1 ? "" : "s"} dropped to fit the brief.\n\n${rendered}`;
 }
 
+export const STYLE_RULES_HEADING = "## Style rules the gauntlet enforces and cannot fix for you";
+
+export const STYLE_RULES = [
+  "- Code carries no prose: no comments, no docstrings, no explanatory headers, in any language, tests included (ADR-0151). The why goes in the commit message. The prose gate holds the count at zero.",
+  "- A test that drives a process is named `*.proc.test.ts`; every other test imports its subject and calls it.",
+  "- A test may not read tracked source, YAML or Markdown as text; import the constant the subject exports.",
+  "- One fake gh: import it from `shared/gh.fake.ts` or `shared/stub-gh.fixture.ts`, never define your own.",
+  "- Narrow an error with `reason(err)` or `errorMessage(err)` from `shared/reason.ts`, never inline `instanceof Error`.",
+  "- Quote style, spacing and other mechanical findings are autofixed by the gauntlet before it judges; do not spend turns on them.",
+].join("\n");
+
 export function assembleBrief(inputs: BriefInputs): string {
   const seams = inputs.seamManifestLines.length > 0 ? inputs.seamManifestLines.join("\n") : "(none)";
   const tests =
@@ -73,6 +84,8 @@ export function assembleBrief(inputs: BriefInputs): string {
       : "(none)";
 
   return [
+    STYLE_RULES_HEADING,
+    STYLE_RULES,
     "## Ticket",
     inputs.ticketBody,
     "## Ticket comments, oldest first",

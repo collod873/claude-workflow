@@ -354,7 +354,7 @@ function toBuildRefusalBody(refusal: string): string {
 function byHandStandDownBody(): string {
   return [
     `This is labelled \`${BY_HAND_LABEL}\`: its \`## Files claimed\` names a workstation or immutable-set`,
-    `path, which only a human can build. Lane 06 will not start against it, and this stand-down is not a`,
+    "path, which only a human can build. Lane 06 will not start against it, and this stand-down is not a",
     `\`${NEEDS_HUMAN_LABEL}\` hold — nobody needs to act on it.`,
     "",
     BY_HAND_STAND_DOWN_MARKER,

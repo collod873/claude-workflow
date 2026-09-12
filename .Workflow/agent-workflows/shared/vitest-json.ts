@@ -88,7 +88,7 @@ export function runVitestReport(targets: string[], repoDir: string): { report: V
     return {
       error:
         `${repoDir} has no vitest config of its own, and vitest would climb out of it and run ` +
-        `under whichever config sits above the checkout. Enrolment requires one; add it there.`,
+        "under whichever config sits above the checkout. Enrolment requires one; add it there.",
     };
   }
   let stdout: string;

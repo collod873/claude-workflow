@@ -38,7 +38,7 @@ export function twoAuthorRepo(taken: string): TempRepo {
   const origin = makeBareRepo("new-adr-origin");
 
   const seed = makeTempRepo("new-adr-seed", { origin });
-  seed.write(`docs/adr/${taken}-landed.md`, `# The other author got here first\n\nRecorded 2026-08-27.\n`);
+  seed.write(`docs/adr/${taken}-landed.md`, "# The other author got here first\n\nRecorded 2026-08-27.\n");
   seed.commit("seed");
   seed.git("push", "--quiet", "origin", "main");
 

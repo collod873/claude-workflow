@@ -58,7 +58,7 @@ describe("the spec-source marker", () => {
   });
 
   it("reads an unreadable marker as no source, so a rotted trailer does not strand the spec", () => {
-    expect(readSourceMarker(`prose\n\n<!-- spec-source:v1 {not json -->`)).toBeUndefined();
+    expect(readSourceMarker("prose\n\n<!-- spec-source:v1 {not json -->")).toBeUndefined();
   });
 
   it("reads a well-formed marker carrying the wrong shape as no source", () => {

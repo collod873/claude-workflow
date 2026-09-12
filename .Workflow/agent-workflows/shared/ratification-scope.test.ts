@@ -14,7 +14,7 @@ const FIELD_SEP = "\x1f";
 const RECORD_SEP = "\x1e";
 
 function logRecord(sha: string, subject: string, body: string): string {
-  return ["", sha, `Bot <bot@example.com>`, subject, body].slice(1).join(FIELD_SEP) + RECORD_SEP;
+  return ["", sha, "Bot <bot@example.com>", subject, body].slice(1).join(FIELD_SEP) + RECORD_SEP;
 }
 
 describe("countReleasedObservations", () => {

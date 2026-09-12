@@ -8,6 +8,8 @@ import {
   INLINE_BUDGET_BYTES,
   INLINE_FILE_CAP_BYTES,
   listAdrFiles,
+  STYLE_RULES,
+  STYLE_RULES_HEADING,
   walkSourceFiles,
   type BriefContextDeps,
   type BriefInputs,
@@ -56,6 +58,8 @@ describe("assembleBrief", () => {
     };
 
     const expected = [
+      STYLE_RULES_HEADING,
+      STYLE_RULES,
       "## Ticket",
       inputs.ticketBody,
       "## Ticket comments, oldest first",
@@ -98,6 +102,8 @@ describe("assembleBrief", () => {
 
     expect(brief).toBe(
       [
+        STYLE_RULES_HEADING,
+        STYLE_RULES,
         "## Ticket",
         "body",
         "## Ticket comments, oldest first",
@@ -199,7 +205,7 @@ describe("assembleBrief: ticket comments, oldest first", () => {
 });
 
 describe("the brief states the style rules the gauntlet cannot fix", () => {
-  test.fails("#490.3: the rendered brief carries the no-prose rule, before the ticket text", () => {
+  test("#490.3: the rendered brief carries the no-prose rule, before the ticket text", () => {
     const brief = assembleBrief(baseInputs({ ticketBody: "## What to build\nShip the slice." }));
 
     expect(brief).toContain("carries no prose");

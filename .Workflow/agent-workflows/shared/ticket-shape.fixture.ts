@@ -35,11 +35,11 @@ print(json.dumps(out))`,
 }
 
 export function pythonCheckMarkerDelim(): string {
-  return withTicketShape(`print(ticket_shape.CHECK_MARKER_DELIM)`).trim();
+  return withTicketShape("print(ticket_shape.CHECK_MARKER_DELIM)").trim();
 }
 
 export function pythonParseCheckMarker(criterion: string): string | null {
-  return JSON.parse(withTicketShape(`print(json.dumps(ticket_shape.parse_check_marker(sys.stdin.read())))`, criterion));
+  return JSON.parse(withTicketShape("print(json.dumps(ticket_shape.parse_check_marker(sys.stdin.read())))", criterion));
 }
 
 export type Verdict = { ok: true; warnings: string[] } | { ok: false; error: string };

@@ -42,6 +42,7 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
       "sonarjs/no-identical-functions": ["error", 3],
+      quotes: ["error", "double", { avoidEscape: true }],
 
       "no-restricted-syntax": ["error", INLINE_REASON_SELECTOR, ...REPO_PATH_SELECTORS],
     },

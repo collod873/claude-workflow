@@ -24,7 +24,7 @@ export function collectSheetContext(
   if (!payload) {
     throw new Error(
       `sheet collector: issue #${issueNumber} carries no accept payload, so reading the rendered ` +
-        `comment prose instead is exactly what the marker's payload exists to prevent (ADR-0058)`,
+        "comment prose instead is exactly what the marker's payload exists to prevent (ADR-0058)",
     );
   }
 
