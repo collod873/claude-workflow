@@ -208,6 +208,12 @@ const READS_THE_COMMENT_DOOR = {
   EVENT_COMMENT_USER_TYPE: "${{ github.event.comment.user.type }}",
   EVENT_COMMENT_ASSOCIATION: "${{ github.event.comment.author_association }}",
 };
+const READS_THE_RUN_ENDING: Readonly<Record<string, string>> = {
+  EVENT_ACTION: "${{ github.event.action }}",
+  IMMUTABILITY_RESULT: "${{ needs.immutability.result }}",
+  VERIFY_RESULT: "${{ needs.verify.result }}",
+  PR: "${{ github.event.client_payload.pr }}",
+};
 const VERIFY_COMPLETED = { workflow_run: { workflows: ["Verify"], types: ["completed"] } };
 const VERIFY_FILE_INPUT = { verify_workflow: { required: true } };
 const NAMES_VERIFY_CALLER = { verify_workflow: "verify-caller.yml" };
@@ -453,18 +459,17 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       permissions: { contents: "write", "pull-requests": "read" },
     },
     permissions: { contents: "read", "pull-requests": "read" },
+    concurrency: "verify-${{ github.event.client_payload.pr || github.sha }}",
     jobs: {
       immutability: {
         name: LANE_OWNED.immutabilityJob,
-        gate: { is: onAction(IMPLEMENTATION_PR_DISPATCH_ACTION) },
-        checkout: "none",
+        ungated: true,
+        runs: tsx("integrate/immutability.ts"),
+        checkout: "machine",
         permissions: null,
         secrets: false,
-        env: { IMMUTABLE_SET: IMMUTABLE_SET.join(","), CHANGED_FILES: true, PR: true },
-        steps: [
-          { name: "Name the pull request this run is judging", run: ['echo "judging $PR on $BRANCH"'] },
-          { name: "Refuse a change to the immutable set" },
-        ],
+        env: { EVENT_ACTION: "${{ github.event.action }}", CHANGED_FILES: true, PR: true },
+        steps: [{ name: "Refuse a change to the immutable set", run: [tsx("integrate/immutability.ts")] }],
       },
       verify: {
         name: LANE_OWNED.gateJob,
@@ -477,37 +482,25 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       },
       "signal-fixer": {
         needs: ["immutability", "verify"],
-        gate: {
-          has: [
-            "always()",
-            onAction(IMPLEMENTATION_PR_DISPATCH_ACTION),
-            "needs.immutability.result == 'failure'",
-            "needs.verify.result == 'failure'",
-            "needs.immutability.result == 'cancelled'",
-            "needs.verify.result == 'cancelled'",
-          ],
-        },
+        gate: { is: "always()" },
         permissions: { contents: "write" },
-        checkout: "none",
-        steps: [{ name: "Tell the Fixer this run went red", run: ring(DEAD_RUN_WIRES.fixerNeeded), env: { GH_REPO: "${{ github.repository }}" } }],
+        runs: tsx("integrate/signal.ts"),
+        checkout: "machine",
+        env: { SIGNAL: "fixer", ...READS_THE_RUN_ENDING },
+        steps: [{ name: "Tell the Fixer this run went red", run: [tsx("integrate/signal.ts")] }],
       },
       "signal-review": {
         needs: ["immutability", "verify"],
-        gate: { is: `${onAction(IMPLEMENTATION_PR_DISPATCH_ACTION)} && needs.verify.result == 'success'` },
+        gate: { is: "always()" },
         permissions: { contents: "write", "pull-requests": "read" },
-        checkout: "none",
+        runs: tsx("integrate/signal.ts"),
+        checkout: "machine",
         timeout: 5,
+        env: { SIGNAL: "review", ...READS_THE_RUN_ENDING },
         steps: [
           {
             name: "Tell Review this run went green, naming the commits it judged",
-            run: [
-              'gh pr view "$PR" --json headRefOid',
-              DISPATCH_SEND,
-              ...ring(REVIEW_WANTED),
-              "client_payload[head_sha]=$HEAD_SHA",
-              "client_payload[base_sha]=$GITHUB_SHA",
-            ],
-            env: { GH_REPO: "${{ github.repository }}", PR: "${{ github.event.client_payload.pr }}" },
+            run: [tsx("integrate/signal.ts")],
           },
         ],
       },

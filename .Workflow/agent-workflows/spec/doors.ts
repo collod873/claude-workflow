@@ -1,4 +1,4 @@
-import { isOwner, labelList } from "../shared/event-door";
+import { isOwner, commaList } from "../shared/event-door";
 import { SLICEABLE_LABEL } from "./open-questions";
 import { PRD_LABEL } from "./publish";
 
@@ -24,7 +24,7 @@ export function specDoorFrom(values: SpecDoorValues): SpecDoor {
     eventName: values.eventName,
     label: values.label,
     senderIsOwner: isOwner(values.sender, values.owner),
-    issueLabels: labelList(values.labels),
+    issueLabels: commaList(values.labels),
   };
 }
 

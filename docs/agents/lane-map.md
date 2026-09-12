@@ -16,193 +16,194 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 Every lane's ending also wakes **Dispatch reconcile**, as does any push to `main`: 21 arrows that would cross
 the whole page, so the box carries one short arrow marked "any lane ends · any push" instead.
 
-<div style="width:calc(100vw - 44px);max-width:1833px;position:relative;left:50%;transform:translateX(-50%);overflow-x:auto;margin:1.5rem 0">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1833 1536" width="100%" style="min-width:860px;font-family:system-ui,sans-serif;display:block">
+<div style="width:calc(100vw - 44px);max-width:1464px;position:relative;left:50%;transform:translateX(-50%);overflow-x:auto;margin:1.5rem 0">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1464 1684" width="100%" style="min-width:860px;font-family:system-ui,sans-serif;display:block">
 <style>
 .lm-box{stroke-width:1.5}.lm-model{fill:#fde68a;stroke:#b45309}.lm-wire{fill:#bfdbfe;stroke:#1d4ed8}.lm-source{fill:#e5e7eb;stroke:#4b5563}.lm-sink{fill:#fecaca;stroke:#b91c1c}.lm-nobody{fill:none;stroke:#b91c1c;stroke-dasharray:4 3}
 .lm-idle{opacity:.45;stroke-dasharray:5 3}.lm-text{fill:#111;font-size:12.5px;font-weight:600}.lm-pill{fill:#111;font-size:11px;font-weight:600}.lm-sub{fill:#444;font-size:10px}.lm-stopline{fill:#b91c1c;font-size:10px}.lm-edge{fill:none;stroke:#6b7280;stroke-width:1.2}.lm-stop{stroke:#b91c1c}.lm-back{stroke-dasharray:6 4}.lm-hub{stroke:#6b7280;stroke-width:1.6}.lm-label{font-size:10.5px;fill:#374151;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
 @media (prefers-color-scheme:dark){.lm-model{fill:#78350f;stroke:#fbbf24}.lm-wire{fill:#1e3a8a;stroke:#93c5fd}.lm-source{fill:#374151;stroke:#d1d5db}.lm-sink{fill:#7f1d1d;stroke:#fca5a5}.lm-text{fill:#f3f4f6}.lm-pill{fill:#f3f4f6}.lm-sub{fill:#d1d5db}.lm-stopline{fill:#fca5a5}.lm-edge{stroke:#9ca3af}.lm-hub{stroke:#9ca3af}.lm-label{fill:#e5e7eb;stroke:#111827}}
 </style>
 <defs><marker id="lm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker></defs>
-<path class="lm-edge" d="M1059.7,85.0 C1059.7,136.5 1078.0,136.5 1078.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M863.7,85.0 C863.7,136.5 882.0,136.5 882.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1274.0,233.0 C1274.0,284.5 1037.2,284.5 1037.2,336.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M906.0,244.0 C906.0,290.0 989.2,290.0 989.2,336.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1013.2,392.0 C1013.2,438.0 1116.0,438.0 1116.0,484.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1312.0,529.0 C1312.0,580.5 1325.7,580.5 1325.7,632.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1116.0,540.0 C1116.0,586.0 1289.7,586.0 1289.7,632.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M526.0,244.0 C526.0,304.0 892.2,304.0 892.2,364.0 C892.2,438.0 995.0,438.0 995.0,512.0 C995.0,572.0 1253.7,572.0 1253.7,632.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M454.0,244.0 C454.0,290.0 578.9,290.0 578.9,336.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M490.0,244.0 C490.0,304.0 699.9,304.0 699.9,364.0 C699.9,438.0 819.2,438.0 819.2,512.0 C819.2,586.0 862.3,586.0 862.3,660.0 C862.3,720.0 957.7,720.0 957.7,780.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1175.7,825.0 C1175.7,876.5 1027.6,876.5 1027.6,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M602.9,392.0 C602.9,452.0 865.2,452.0 865.2,512.0 C865.2,586.0 908.3,586.0 908.3,660.0 C908.3,734.0 1078.7,734.0 1078.7,808.0 C1078.7,868.0 998.8,868.0 998.8,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M981.7,836.0 C981.7,882.0 970.0,882.0 970.0,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M703.7407864342373,1280 V1328 Q703.7407864342373,1336 711.7407864342373,1336 H1793 Q1801,1336 1801,1328 V880 Q1801,872 1793,872 H1062.4461068727333 Q1054.4461068727333,872 1054.4461068727333,880 V928" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M749.012352704706,1132 V1170 Q749.012352704706,1178 757.012352704706,1178 H1809 Q1817,1178 1817,1170 V890 Q1817,882 1809,882 H1062.4461068727333 Q1054.4461068727333,882 1054.4461068727333,890 V928" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M785.7,836.0 C785.7,882.0 941.2,882.0 941.2,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M554.9,392.0 C554.9,452.0 410.0,452.0 410.0,512.0 C410.0,586.0 226.3,586.0 226.3,660.0 C226.3,734.0 57.0,734.0 57.0,808.0 C57.0,882.0 61.5,882.0 61.5,956.0 C61.5,1030.0 361.6,1030.0 361.6,1104.0 C361.6,1164.0 590.5,1164.0 590.5,1224.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M933.7,836.0 C933.7,896.0 863.4,896.0 863.4,956.0 C863.4,1030.0 800.0,1030.0 800.0,1104.0 C800.0,1164.0 676.9,1164.0 676.9,1224.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M679.0,1132.0 C679.0,1178.0 648.1,1178.0 648.1,1224.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M737.7,836.0 C737.7,896.0 425.4,896.0 425.4,956.0 C425.4,1030.0 516.0,1030.0 516.0,1104.0 C516.0,1164.0 619.3,1164.0 619.3,1224.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M948.4,984.0 C948.4,1030.0 703.0,1030.0 703.0,1076.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M546.4,973.0 C546.4,1024.5 655.0,1024.5 655.0,1076.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M984.4,984.0 C984.4,1030.0 921.0,1030.0 921.0,1076.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M477.6,85.0 C477.6,136.5 490.0,136.5 490.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M703.7407864342373,1280 V1328 Q703.7407864342373,1336 711.7407864342373,1336 H1825 Q1833,1336 1833,1328 V140 Q1833,132 1825,132 H568.0277883451101 Q560.0277883451101,132 560.0277883451101,140 V188" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M1359.702158442729,688 V726 Q1359.702158442729,734 1367.702158442729,734 H1841 Q1849,734 1849,726 V150 Q1849,142 1841,142 H568.0277883451101 Q560.0277883451101,142 560.0277883451101,150 V188" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M648.8854083045442,392 V440 Q648.8854083045442,448 656.8854083045442,448 H1857 Q1865,448 1865,440 V140 Q1865,132 1857,132 H568.0277883451101 Q560.0277883451101,132 560.0277883451101,140 V188" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M1027.6610454199838,836 V874 Q1027.6610454199838,882 1035.6610454199838,882 H1873 Q1881,882 1881,874 V150 Q1881,142 1873,142 H568.0277883451101 Q560.0277883451101,142 560.0277883451101,150 V188" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M420.0,85.0 C420.0,150.5 173.0,150.5 173.0,216.0 C173.0,290.0 346.0,290.0 346.0,364.0 C346.0,438.0 456.0,438.0 456.0,512.0 C456.0,572.0 545.3,572.0 545.3,632.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M545.3,688.0 C545.3,734.0 737.7,734.0 737.7,780.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M741.3,688.0 C741.3,734.0 785.7,734.0 785.7,780.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M698.2,529.0 C698.2,580.5 741.3,580.5 741.3,632.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M633.7,1280.0 C633.7,1326.0 659.8,1326.0 659.8,1372.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1223.7,825.0 C1223.7,876.5 1376.4,876.5 1376.4,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M448.8,85.0 C448.8,136.5 294.0,136.5 294.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1020.4,984.0 C1020.4,1030.0 1117.0,1030.0 1117.0,1076.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1363.5,85.0 C1363.5,136.5 1470.0,136.5 1470.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1247.7,825.0 C1247.7,876.5 1572.4,876.5 1572.4,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1199.7,825.0 C1199.7,876.5 1180.4,876.5 1180.4,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1151.7,825.0 C1151.7,876.5 766.4,876.5 766.4,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M565.7,825.0 C565.7,876.5 718.4,876.5 718.4,928.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M506.4,85.0 C506.4,136.5 686.0,136.5 686.0,188.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M858.0,244.0 C858.0,304.0 846.2,304.0 846.2,364.0 C846.2,438.0 924.1,438.0 924.1,512.0 C924.1,586.0 1168.7,586.0 1168.7,660.0 C1168.7,725.5 1199.7,725.5 1199.7,791.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1289.7,688.0 C1289.7,739.5 1235.7,739.5 1235.7,791.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M703.7407864342373,1280 V1328 Q703.7407864342373,1336 711.7407864342373,1336 H1889 Q1897,1336 1897,1328 V732 Q1897,724 1889,724 H1277.6610454199838 Q1269.6610454199838,724 1269.6610454199838,732 V791" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-back" d="M1250.4461068727333,984 V1022 Q1250.4461068727333,1030 1258.4461068727333,1030 H1905 Q1913,1030 1913,1022 V742 Q1913,734 1905,734 H1277.6610454199838 Q1269.6610454199838,734 1269.6610454199838,742 V791" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge" d="M1047.7,677.0 C1047.7,734.0 1163.7,734.0 1163.7,791.0" marker-end="url(#lm-arrow)"/>
-<path class="lm-edge lm-hub" d="M420.0277883451101,158 V188" marker-end="url(#lm-arrow)"/>
-<text class="lm-label" x="426.0" y="171.0" text-anchor="start">any lane ends · any push</text>
-<text class="lm-label" x="572.0" y="128.0" text-anchor="start">graph-changed</text>
-<text class="lm-label" x="572.0" y="148.7" text-anchor="start">run-ended</text>
-<text class="lm-label" x="353.0" y="139.7" text-anchor="middle">session-captured</text>
-<text class="lm-label" x="485.3" y="139.7" text-anchor="middle">session-captured</text>
-<text class="lm-label" x="617.6" y="167.7" text-anchor="middle">session-captured</text>
-<text class="lm-label" x="531.3" y="292.6" text-anchor="middle">ticket-ready</text>
-<text class="lm-label" x="957.5" y="292.6" text-anchor="middle">sheet-accepted</text>
-<text class="lm-label" x="1076.9" y="440.6" text-anchor="middle">prd-sliceable</text>
-<text class="lm-label" x="511.3" y="576.3" text-anchor="middle">session-captured</text>
-<text class="lm-label" x="1189.3" y="582.4" text-anchor="middle">acceptance-wanted</text>
-<text class="lm-label" x="921.3" y="724.3" text-anchor="middle">mechanic-wanted</text>
-<text class="lm-label" x="1281.7" y="725.0" text-anchor="start">lands on main</text>
-<text class="lm-label" x="716.6" y="736.6" text-anchor="middle">ratification-due</text>
-<text class="lm-label" x="1222.1" y="736.6" text-anchor="middle">lands on main</text>
-<text class="lm-label" x="1066.4" y="873.0" text-anchor="start">implementation-opened</text>
-<text class="lm-label" x="913.2" y="879.7" text-anchor="middle">push: .github/workflows/*-caller.yml</text>
-<text class="lm-label" x="1084.0" y="893.7" text-anchor="middle">push</text>
-<text class="lm-label" x="1187.8" y="893.7" text-anchor="middle">push: docs/adr/**…</text>
-<text class="lm-label" x="1318.2" y="879.7" text-anchor="middle">push: CODING_STANDARDS.md…</text>
-<text class="lm-label" x="1448.7" y="893.7" text-anchor="middle">push: docs/adr/**…</text>
-<text class="lm-label" x="961.9" y="894.5" text-anchor="middle">implementation-opened</text>
-<text class="lm-label" x="796.5" y="1032.6" text-anchor="middle">fixer-needed</text>
-<text class="lm-label" x="945.2" y="1032.6" text-anchor="middle">review-wanted</text>
-<text class="lm-label" x="1080.2" y="1032.6" text-anchor="middle">Verify ended</text>
-<text class="lm-label" x="616.7" y="1171.3" text-anchor="middle">implementation-opened</text>
-<text class="lm-label" x="649.9" y="1328.6" text-anchor="middle">ratifier-merged</text>
-<rect class="lm-box lm-source" x="379.1873524457773" y="51" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="463.1873524457773" y="72" text-anchor="middle">session end hook</text>
-<rect class="lm-box lm-source" x="779.7498524457773" y="51" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="863.7498524457773" y="72" text-anchor="middle">you: issue labeled</text>
-<rect class="lm-box lm-source" x="975.7498524457773" y="51" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1059.7498524457774" y="65" text-anchor="middle">you: issue</text>
-<text class="lm-pill" x="1059.7498524457774" y="77" text-anchor="middle">labeled · comment</text>
-<rect class="lm-box lm-source" x="1279.549852445777" y="51" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1363.549852445777" y="72" text-anchor="middle">you: issue labeled</text>
-<rect class="lm-box lm-wire lm-idle" x="210.02778834511014" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="294.02778834511014" y="206" text-anchor="middle">Run watchdog</text>
-<text class="lm-sub" x="294.02778834511014" y="221" text-anchor="middle">0 runs</text>
-<rect class="lm-box lm-wire" x="406.0277883451101" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="490.0277883451101" y="206" text-anchor="middle">04 · Dispatch reconcile</text>
-<text class="lm-sub" x="490.0277883451101" y="221" text-anchor="middle">498 ran · 18 skipped · 0 red</text>
-<text class="lm-stopline" x="490.0277883451101" y="235" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-wire lm-idle" x="602.0277883451101" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="686.0277883451101" y="206" text-anchor="middle">Walk home</text>
-<text class="lm-sub" x="686.0277883451101" y="221" text-anchor="middle">0 runs</text>
-<text class="lm-stopline" x="686.0277883451101" y="235" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-wire lm-idle" x="798.0277883451101" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="882.0277883451101" y="206" text-anchor="middle">01 · Shape — accept</text>
-<text class="lm-sub" x="882.0277883451101" y="221" text-anchor="middle">0 ran · 40 skipped · 0 red</text>
-<rect class="lm-box lm-model lm-idle" x="994.0277883451101" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1078.0277883451101" y="206" text-anchor="middle">01 · Shape</text>
-<text class="lm-sub" x="1078.0277883451101" y="221" text-anchor="middle">0 ran · 72 skipped · 0 red</text>
-<text class="lm-stopline" x="1078.0277883451101" y="235" text-anchor="middle">stops: needs-human, shape-refused</text>
-<rect class="lm-box lm-source" x="1190.0277883451101" y="199" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1274.0277883451101" y="220" text-anchor="middle">you: issue labeled</text>
-<rect class="lm-box lm-wire lm-idle" x="1386.0277883451101" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1470.0277883451101" y="206" text-anchor="middle">Lost-dispatch counter</text>
-<text class="lm-sub" x="1470.0277883451101" y="221" text-anchor="middle">0 ran · 40 skipped · 0 red</text>
-<rect class="lm-box lm-model lm-idle" x="494.8854083045441" y="336" width="168" height="56" rx="6"/>
-<text class="lm-text" x="578.8854083045442" y="354" text-anchor="middle">05 · Implement</text>
-<text class="lm-sub" x="578.8854083045442" y="369" text-anchor="middle">0 runs</text>
-<text class="lm-stopline" x="578.8854083045442" y="383" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-model" x="929.2455684899014" y="336" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1013.2455684899014" y="354" text-anchor="middle">02 · Spec</text>
-<text class="lm-sub" x="1013.2455684899014" y="369" text-anchor="middle">2 ran · 38 skipped · 0 red</text>
-<rect class="lm-box lm-source" x="614.2237448087027" y="495" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="698.2237448087027" y="516" text-anchor="middle">you: issue closed</text>
-<rect class="lm-box lm-model" x="1032.0391038079226" y="484" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1116.0391038079226" y="502" text-anchor="middle">03 · To-Tickets</text>
-<text class="lm-sub" x="1116.0391038079226" y="517" text-anchor="middle">3 ran · 0 skipped · 2 red</text>
-<text class="lm-stopline" x="1116.0391038079226" y="531" text-anchor="middle">stops: slice-failed</text>
-<rect class="lm-box lm-source" x="1228.0391038079226" y="495" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1312.0391038079226" y="516" text-anchor="middle">you: issue edited</text>
-<rect class="lm-box lm-model lm-idle" x="461.31536524283115" y="632" width="168" height="56" rx="6"/>
-<text class="lm-text" x="545.3153652428311" y="650" text-anchor="middle">Audit</text>
-<text class="lm-sub" x="545.3153652428311" y="665" text-anchor="middle">0 runs</text>
-<rect class="lm-box lm-wire" x="657.3153652428311" y="632" width="168" height="56" rx="6"/>
-<text class="lm-text" x="741.3153652428311" y="650" text-anchor="middle">Ratify on PRD close</text>
-<text class="lm-sub" x="741.3153652428311" y="665" text-anchor="middle">1 ran · 22 skipped · 0 red</text>
-<rect class="lm-box lm-source" x="963.7021584427288" y="643" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1047.702158442729" y="664" text-anchor="middle">you: push</text>
-<rect class="lm-box lm-wire lm-idle" x="1205.702158442729" y="632" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1289.702158442729" y="650" text-anchor="middle">04 · Acceptance</text>
-<text class="lm-sub" x="1289.702158442729" y="665" text-anchor="middle">0 runs</text>
-<text class="lm-stopline" x="1289.702158442729" y="679" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-source" x="481.6610454199838" y="791" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="565.6610454199838" y="812" text-anchor="middle">you: by hand</text>
-<rect class="lm-box lm-model" x="677.6610454199838" y="780" width="168" height="56" rx="6"/>
-<text class="lm-text" x="761.6610454199838" y="798" text-anchor="middle">Ratify</text>
-<text class="lm-sub" x="761.6610454199838" y="813" text-anchor="middle">1 ran · 0 skipped · 0 red</text>
-<rect class="lm-box lm-model lm-idle" x="873.6610454199838" y="780" width="168" height="56" rx="6"/>
-<text class="lm-text" x="957.6610454199838" y="798" text-anchor="middle">Mechanic</text>
-<text class="lm-sub" x="957.6610454199838" y="813" text-anchor="middle">0 runs</text>
-<text class="lm-stopline" x="957.6610454199838" y="827" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-source" x="1115.6610454199838" y="791" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="1199.6610454199838" y="812" text-anchor="middle">main</text>
-<rect class="lm-box lm-source" x="462.44610687273314" y="939" width="168" height="34" rx="17"/>
-<text class="lm-pill" x="546.4461068727331" y="960" text-anchor="middle">you: by hand</text>
-<rect class="lm-box lm-wire" x="658.4461068727331" y="928" width="168" height="56" rx="6"/>
-<text class="lm-text" x="742.4461068727331" y="946" text-anchor="middle">Enrol</text>
-<text class="lm-sub" x="742.4461068727331" y="961" text-anchor="middle">7 ran · 0 skipped · 0 red</text>
-<rect class="lm-box lm-wire" x="900.4461068727331" y="928" width="168" height="56" rx="6"/>
-<text class="lm-text" x="984.4461068727331" y="946" text-anchor="middle">06 · Verify</text>
-<text class="lm-sub" x="984.4461068727331" y="961" text-anchor="middle">67 ran · 0 skipped · 1 red</text>
-<rect class="lm-box lm-wire" x="1096.4461068727333" y="928" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1180.4461068727333" y="946" text-anchor="middle">Back-stamp</text>
-<text class="lm-sub" x="1180.4461068727333" y="961" text-anchor="middle">4 ran · 0 skipped · 0 red</text>
-<rect class="lm-box lm-wire lm-idle" x="1292.4461068727333" y="928" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1376.4461068727333" y="946" text-anchor="middle">Decline on revert</text>
-<text class="lm-sub" x="1376.4461068727333" y="961" text-anchor="middle">0 runs</text>
-<rect class="lm-box lm-wire" x="1488.4461068727333" y="928" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1572.4461068727333" y="946" text-anchor="middle">Missing-trailer counter</text>
-<text class="lm-sub" x="1572.4461068727333" y="961" text-anchor="middle">4 ran · 0 skipped · 0 red</text>
-<rect class="lm-box lm-model lm-idle" x="595.012352704706" y="1076" width="168" height="56" rx="6"/>
-<text class="lm-text" x="679.012352704706" y="1094" text-anchor="middle">07 · Fixer</text>
-<text class="lm-sub" x="679.012352704706" y="1109" text-anchor="middle">0 ran · 5 skipped · 0 red</text>
-<text class="lm-stopline" x="679.012352704706" y="1123" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-model" x="837.012352704706" y="1076" width="168" height="56" rx="6"/>
-<text class="lm-text" x="921.012352704706" y="1094" text-anchor="middle">07 · Review</text>
-<text class="lm-sub" x="921.012352704706" y="1109" text-anchor="middle">32 ran · 5 skipped · 0 red</text>
-<rect class="lm-box lm-wire" x="1033.012352704706" y="1076" width="168" height="56" rx="6"/>
-<text class="lm-text" x="1117.012352704706" y="1094" text-anchor="middle">Bypass counter</text>
-<text class="lm-sub" x="1117.012352704706" y="1109" text-anchor="middle">39 ran · 0 skipped · 0 red</text>
-<rect class="lm-box lm-wire" x="549.7407864342373" y="1224" width="168" height="56" rx="6"/>
-<text class="lm-text" x="633.7407864342373" y="1242" text-anchor="middle">08 · Integrate</text>
-<text class="lm-sub" x="633.7407864342373" y="1257" text-anchor="middle">33 ran · 0 skipped · 1 red</text>
-<text class="lm-stopline" x="633.7407864342373" y="1271" text-anchor="middle">stops: needs-human</text>
-<rect class="lm-box lm-wire" x="575.7794648784343" y="1372" width="168" height="56" rx="6"/>
-<text class="lm-text" x="659.7794648784343" y="1390" text-anchor="middle">Ratify release</text>
-<text class="lm-sub" x="659.7794648784343" y="1405" text-anchor="middle">1 ran · 0 skipped · 0 red</text>
+<path class="lm-edge" d="M939.1,85.0 C939.1,136.5 1008.0,136.5 1008.0,188.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M361.1,85.0 C361.1,136.5 328.0,136.5 328.0,188.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M132.0,233.0 C132.0,284.5 321.7,284.5 321.7,336.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M304.0,244.0 C304.0,290.0 369.7,290.0 369.7,336.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M345.7,392.0 C345.7,438.0 444.7,438.0 444.7,484.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M248.7,529.0 C248.7,580.5 405.6,580.5 405.6,632.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M444.7,540.0 C444.7,586.0 441.6,586.0 441.6,632.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M650.7,540.0 C650.7,586.0 477.6,586.0 477.6,632.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M465.6,688.0 C465.6,734.0 546.1,734.0 546.1,780.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M686.7,540.0 C686.7,600.0 608.6,600.0 608.6,660.0 C608.6,720.0 594.1,720.0 594.1,780.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M722.7,540.0 C722.7,600.0 663.6,600.0 663.6,660.0 C663.6,720.0 766.1,720.0 766.1,780.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M561.128437050361,1417 V1476 Q561.128437050361,1484 569.128437050361,1484 H1424 Q1432,1484 1432,1476 V880 Q1432,872 1424,872 H989.6336423309124 Q981.6336423309124,872 981.6336423309124,880 V928" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M594.1,836.0 C594.1,882.0 875.6,882.0 875.6,928.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M790.1,836.0 C790.1,882.0 911.6,882.0 911.6,928.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M726.0235099429615,1280 V1318 Q726.0235099429615,1326 734.0235099429615,1326 H1440 Q1448,1326 1448,1318 V890 Q1448,882 1440,882 H989.6336423309124 Q981.6336423309124,882 981.6336423309124,890 V928" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M680.6868526846315,1132 V1180 Q680.6868526846315,1188 688.6868526846315,1188 H1456 Q1464,1188 1464,1180 V880 Q1464,872 1456,872 H989.6336423309124 Q981.6336423309124,872 981.6336423309124,880 V928" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M986.1,836.0 C986.1,882.0 947.6,882.0 947.6,928.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M546.1,836.0 C546.1,896.0 498.3,896.0 498.3,956.0 C498.3,1030.0 481.8,1030.0 481.8,1104.0 C481.8,1164.0 612.8,1164.0 612.8,1224.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M742.1,836.0 C742.1,896.0 740.3,896.0 740.3,956.0 C740.3,1030.0 731.7,1030.0 731.7,1104.0 C731.7,1164.0 670.4,1164.0 670.4,1224.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M610.7,1132.0 C610.7,1178.0 641.6,1178.0 641.6,1224.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M938.1,836.0 C938.1,896.0 790.6,896.0 790.6,956.0 C790.6,1030.0 777.7,1030.0 777.7,1104.0 C777.7,1164.0 699.2,1164.0 699.2,1224.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M875.6,984.0 C875.6,1030.0 634.7,1030.0 634.7,1076.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M619.3,973.0 C619.3,1024.5 586.7,1024.5 586.7,1076.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M911.6,984.0 C911.6,1030.0 898.7,1030.0 898.7,1076.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M635.7,85.0 C635.7,150.5 645.0,150.5 645.0,216.0 C645.0,290.0 655.4,290.0 655.4,364.0 C655.4,424.0 686.7,424.0 686.7,484.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M726.0235099429615,1280 V1318 Q726.0235099429615,1326 734.0235099429615,1326 H1472 Q1480,1326 1480,1318 V446 Q1480,438 1472,438 H764.7070070657466 Q756.7070070657466,438 756.7070070657466,446 V484" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M511.5706417543429,688 V736 Q511.5706417543429,744 519.5706417543429,744 H1488 Q1496,744 1496,736 V436 Q1496,428 1488,428 H764.7070070657466 Q756.7070070657466,428 756.7070070657466,436 V484" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M640.0843176530421,836 V874 Q640.0843176530421,882 648.0843176530421,882 H1504 Q1512,882 1512,874 V446 Q1512,438 1504,438 H764.7070070657466 Q756.7070070657466,438 756.7070070657466,446 V484" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M836.0843176530421,836 V884 Q836.0843176530421,892 844.0843176530421,892 H1520 Q1528,892 1528,884 V436 Q1528,428 1520,428 H764.7070070657466 Q756.7070070657466,428 756.7070070657466,436 V484" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M664.5,85.0 C664.5,150.5 691.0,150.5 691.0,216.0 C691.0,290.0 726.4,290.0 726.4,364.0 C726.4,438.0 807.7,438.0 807.7,512.0 C807.7,572.0 798.3,572.0 798.3,632.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M798.3,688.0 C798.3,734.0 938.1,734.0 938.1,780.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M994.3,688.0 C994.3,734.0 986.1,734.0 986.1,780.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M928.7,529.0 C928.7,580.5 994.3,580.5 994.3,632.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M680.0,1280.0 C680.0,1326.0 687.1,1326.0 687.1,1372.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M505.5,1417.0 C505.5,1468.5 577.3,1468.5 577.3,1520.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M606.9,85.0 C606.9,136.5 524.0,136.5 524.0,188.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M947.6,984.0 C947.6,1030.0 1094.7,1030.0 1094.7,1076.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M1135.1,85.0 C1135.1,136.5 1204.0,136.5 1204.0,188.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M534.3,1417.0 C534.3,1468.5 773.3,1468.5 773.3,1520.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M476.7,1417.0 C476.7,1468.5 381.3,1468.5 381.3,1520.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M447.9,1417.0 C447.9,1468.5 209.3,1468.5 209.3,1520.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M227.3,1417.0 C227.3,1468.5 161.3,1468.5 161.3,1520.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M693.3,85.0 C693.3,136.5 812.0,136.5 812.0,188.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M352.0,244.0 C352.0,304.0 469.3,304.0 469.3,364.0 C469.3,438.0 565.7,438.0 565.7,512.0 C565.7,586.0 562.6,586.0 562.6,660.0 C562.6,734.0 449.1,734.0 449.1,808.0 C449.1,882.0 411.4,882.0 411.4,956.0 C411.4,1030.0 398.4,1030.0 398.4,1104.0 C398.4,1178.0 535.0,1178.0 535.0,1252.0 C535.0,1317.5 505.5,1317.5 505.5,1383.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M417.6,688.0 C417.6,748.0 376.2,748.0 376.2,808.0 C376.2,882.0 360.9,882.0 360.9,956.0 C360.9,1030.0 352.4,1030.0 352.4,1104.0 C352.4,1178.0 489.0,1178.0 489.0,1252.0 C489.0,1317.5 476.7,1317.5 476.7,1383.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M632.0,1280.0 C632.0,1331.5 534.3,1331.5 534.3,1383.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-back" d="M451.25593960521525,1576 V1614 Q451.25593960521525,1622 459.25593960521525,1622 H1536 Q1544,1622 1544,1614 V1334 Q1544,1326 1536,1326 H569.128437050361 Q561.128437050361,1326 561.128437050361,1334 V1383" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge" d="M368.0,1269.0 C368.0,1326.0 447.9,1326.0 447.9,1383.0" marker-end="url(#lm-arrow)"/>
+<path class="lm-edge lm-hub" d="M616.7070070657466,454 V484" marker-end="url(#lm-arrow)"/>
+<text class="lm-label" x="622.7" y="467.0" text-anchor="start">any lane ends · any push</text>
+<text class="lm-label" x="555.6" y="139.7" text-anchor="middle">session-captured</text>
+<text class="lm-label" x="766.8" y="139.7" text-anchor="middle">session-captured</text>
+<text class="lm-label" x="344.7" y="292.6" text-anchor="middle">sheet-accepted</text>
+<text class="lm-label" x="768.7" y="427.3" text-anchor="start">run-ended</text>
+<text class="lm-label" x="674.8" y="428.3" text-anchor="middle">session-captured</text>
+<text class="lm-label" x="768.7" y="448.0" text-anchor="start">graph-changed</text>
+<text class="lm-label" x="407.0" y="440.6" text-anchor="middle">prd-sliceable</text>
+<text class="lm-label" x="801.9" y="576.3" text-anchor="middle">session-captured</text>
+<text class="lm-label" x="493.2" y="588.6" text-anchor="middle">acceptance-wanted</text>
+<text class="lm-label" x="727.0" y="724.3" text-anchor="middle">mechanic-wanted</text>
+<text class="lm-label" x="557.5" y="730.4" text-anchor="middle">ticket-ready</text>
+<text class="lm-label" x="937.0" y="736.6" text-anchor="middle">ratification-due</text>
+<text class="lm-label" x="993.6" y="868.0" text-anchor="start">push</text>
+<text class="lm-label" x="993.6" y="887.0" text-anchor="start">implementation-opened</text>
+<text class="lm-label" x="865.3" y="884.6" text-anchor="middle">implementation-opened</text>
+<text class="lm-label" x="726.5" y="1032.6" text-anchor="middle">fixer-needed</text>
+<text class="lm-label" x="903.6" y="1032.6" text-anchor="middle">review-wanted</text>
+<text class="lm-label" x="1038.7" y="1032.6" text-anchor="middle">Verify ended</text>
+<text class="lm-label" x="653.9" y="1171.3" text-anchor="middle">implementation-opened</text>
+<text class="lm-label" x="573.1" y="1322.0" text-anchor="start">lands on main</text>
+<text class="lm-label" x="523.2" y="1326.5" text-anchor="middle">lands on main</text>
+<text class="lm-label" x="684.4" y="1342.6" text-anchor="middle">ratifier-merged</text>
+<text class="lm-label" x="300.2" y="1471.7" text-anchor="middle">push: .github/workflows/*-caller.yml</text>
+<text class="lm-label" x="417.6" y="1485.7" text-anchor="middle">push: docs/adr/**…</text>
+<text class="lm-label" x="549.9" y="1471.7" text-anchor="middle">push: CODING_STANDARDS.md…</text>
+<text class="lm-label" x="682.2" y="1485.7" text-anchor="middle">push: docs/adr/**…</text>
+<rect class="lm-box lm-source" x="277.14310515925973" y="51" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="361.14310515925973" y="72" text-anchor="middle">you: issue labeled</text>
+<rect class="lm-box lm-source" x="566.1431051592597" y="51" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="650.1431051592597" y="72" text-anchor="middle">session end hook</text>
+<rect class="lm-box lm-source" x="855.1431051592597" y="51" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="939.1431051592597" y="65" text-anchor="middle">you: issue</text>
+<text class="lm-pill" x="939.1431051592597" y="77" text-anchor="middle">labeled · comment</text>
+<rect class="lm-box lm-source" x="1051.1431051592597" y="51" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="1135.1431051592597" y="72" text-anchor="middle">you: issue labeled</text>
+<rect class="lm-box lm-source" x="48" y="199" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="132" y="220" text-anchor="middle">you: issue labeled</text>
+<rect class="lm-box lm-wire lm-idle" x="243.99999999999994" y="188" width="168" height="56" rx="6"/>
+<text class="lm-text" x="327.99999999999994" y="206" text-anchor="middle">01 · Shape — accept</text>
+<text class="lm-sub" x="327.99999999999994" y="221" text-anchor="middle">0 ran · 40 skipped · 0 red</text>
+<rect class="lm-box lm-wire lm-idle" x="439.99999999999994" y="188" width="168" height="56" rx="6"/>
+<text class="lm-text" x="524" y="206" text-anchor="middle">Run watchdog</text>
+<text class="lm-sub" x="524" y="221" text-anchor="middle">0 runs</text>
+<rect class="lm-box lm-wire lm-idle" x="728" y="188" width="168" height="56" rx="6"/>
+<text class="lm-text" x="812" y="206" text-anchor="middle">Walk home</text>
+<text class="lm-sub" x="812" y="221" text-anchor="middle">0 runs</text>
+<text class="lm-stopline" x="812" y="235" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-model lm-idle" x="924" y="188" width="168" height="56" rx="6"/>
+<text class="lm-text" x="1008" y="206" text-anchor="middle">01 · Shape</text>
+<text class="lm-sub" x="1008" y="221" text-anchor="middle">0 ran · 72 skipped · 0 red</text>
+<text class="lm-stopline" x="1008" y="235" text-anchor="middle">stops: needs-human, shape-refused</text>
+<rect class="lm-box lm-wire lm-idle" x="1120" y="188" width="168" height="56" rx="6"/>
+<text class="lm-text" x="1204" y="206" text-anchor="middle">Lost-dispatch counter</text>
+<text class="lm-sub" x="1204" y="221" text-anchor="middle">0 ran · 40 skipped · 0 red</text>
+<rect class="lm-box lm-model" x="261.7092771206063" y="336" width="168" height="56" rx="6"/>
+<text class="lm-text" x="345.7092771206063" y="354" text-anchor="middle">02 · Spec</text>
+<text class="lm-sub" x="345.7092771206063" y="369" text-anchor="middle">2 ran · 38 skipped · 0 red</text>
+<rect class="lm-box lm-source" x="164.70700706574655" y="495" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="248.70700706574655" y="516" text-anchor="middle">you: issue edited</text>
+<rect class="lm-box lm-model" x="360.70700706574655" y="484" width="168" height="56" rx="6"/>
+<text class="lm-text" x="444.70700706574655" y="502" text-anchor="middle">03 · To-Tickets</text>
+<text class="lm-sub" x="444.70700706574655" y="517" text-anchor="middle">3 ran · 0 skipped · 2 red</text>
+<text class="lm-stopline" x="444.70700706574655" y="531" text-anchor="middle">stops: slice-failed</text>
+<rect class="lm-box lm-wire" x="602.7070070657466" y="484" width="168" height="56" rx="6"/>
+<text class="lm-text" x="686.7070070657466" y="502" text-anchor="middle">04 · Dispatch reconcile</text>
+<text class="lm-sub" x="686.7070070657466" y="517" text-anchor="middle">500 ran · 18 skipped · 0 red</text>
+<text class="lm-stopline" x="686.7070070657466" y="531" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-source" x="844.7070070657466" y="495" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="928.7070070657466" y="516" text-anchor="middle">you: issue closed</text>
+<rect class="lm-box lm-wire lm-idle" x="357.5706417543429" y="632" width="168" height="56" rx="6"/>
+<text class="lm-text" x="441.5706417543429" y="650" text-anchor="middle">04 · Acceptance</text>
+<text class="lm-sub" x="441.5706417543429" y="665" text-anchor="middle">0 runs</text>
+<text class="lm-stopline" x="441.5706417543429" y="679" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-model lm-idle" x="714.3496896537683" y="632" width="168" height="56" rx="6"/>
+<text class="lm-text" x="798.3496896537683" y="650" text-anchor="middle">Audit</text>
+<text class="lm-sub" x="798.3496896537683" y="665" text-anchor="middle">0 runs</text>
+<rect class="lm-box lm-wire" x="910.3496896537683" y="632" width="168" height="56" rx="6"/>
+<text class="lm-text" x="994.3496896537683" y="650" text-anchor="middle">Ratify on PRD close</text>
+<text class="lm-sub" x="994.3496896537683" y="665" text-anchor="middle">1 ran · 22 skipped · 0 red</text>
+<rect class="lm-box lm-model lm-idle" x="486.08431765304215" y="780" width="168" height="56" rx="6"/>
+<text class="lm-text" x="570.0843176530421" y="798" text-anchor="middle">05 · Implement</text>
+<text class="lm-sub" x="570.0843176530421" y="813" text-anchor="middle">0 runs</text>
+<text class="lm-stopline" x="570.0843176530421" y="827" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-model lm-idle" x="682.0843176530421" y="780" width="168" height="56" rx="6"/>
+<text class="lm-text" x="766.0843176530421" y="798" text-anchor="middle">Mechanic</text>
+<text class="lm-sub" x="766.0843176530421" y="813" text-anchor="middle">0 runs</text>
+<text class="lm-stopline" x="766.0843176530421" y="827" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-model" x="878.0843176530421" y="780" width="168" height="56" rx="6"/>
+<text class="lm-text" x="962.0843176530421" y="798" text-anchor="middle">Ratify</text>
+<text class="lm-sub" x="962.0843176530421" y="813" text-anchor="middle">1 ran · 0 skipped · 0 red</text>
+<rect class="lm-box lm-source" x="535.2673240585592" y="939" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="619.2673240585592" y="960" text-anchor="middle">you: by hand</text>
+<rect class="lm-box lm-wire" x="827.6336423309124" y="928" width="168" height="56" rx="6"/>
+<text class="lm-text" x="911.6336423309124" y="946" text-anchor="middle">06 · Verify</text>
+<text class="lm-sub" x="911.6336423309124" y="961" text-anchor="middle">66 ran · 0 skipped · 1 red</text>
+<rect class="lm-box lm-model lm-idle" x="526.6868526846315" y="1076" width="168" height="56" rx="6"/>
+<text class="lm-text" x="610.6868526846315" y="1094" text-anchor="middle">07 · Fixer</text>
+<text class="lm-sub" x="610.6868526846315" y="1109" text-anchor="middle">0 ran · 5 skipped · 0 red</text>
+<text class="lm-stopline" x="610.6868526846315" y="1123" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-model" x="814.6868526846315" y="1076" width="168" height="56" rx="6"/>
+<text class="lm-text" x="898.6868526846315" y="1094" text-anchor="middle">07 · Review</text>
+<text class="lm-sub" x="898.6868526846315" y="1109" text-anchor="middle">32 ran · 5 skipped · 0 red</text>
+<rect class="lm-box lm-wire" x="1010.6868526846315" y="1076" width="168" height="56" rx="6"/>
+<text class="lm-text" x="1094.6868526846315" y="1094" text-anchor="middle">Bypass counter</text>
+<text class="lm-sub" x="1094.6868526846315" y="1109" text-anchor="middle">40 ran · 0 skipped · 0 red</text>
+<rect class="lm-box lm-source" x="284.0235099429615" y="1235" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="368.0235099429615" y="1256" text-anchor="middle">you: push</text>
+<rect class="lm-box lm-wire" x="572.0235099429615" y="1224" width="168" height="56" rx="6"/>
+<text class="lm-text" x="656.0235099429615" y="1242" text-anchor="middle">08 · Integrate</text>
+<text class="lm-sub" x="656.0235099429615" y="1257" text-anchor="middle">32 ran · 0 skipped · 1 red</text>
+<text class="lm-stopline" x="656.0235099429615" y="1271" text-anchor="middle">stops: needs-human</text>
+<rect class="lm-box lm-source" x="143.27759963035976" y="1383" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="227.27759963035976" y="1404" text-anchor="middle">you: by hand</text>
+<rect class="lm-box lm-source" x="407.12843705036096" y="1383" width="168" height="34" rx="17"/>
+<text class="lm-pill" x="491.12843705036096" y="1404" text-anchor="middle">main</text>
+<rect class="lm-box lm-wire" x="603.128437050361" y="1372" width="168" height="56" rx="6"/>
+<text class="lm-text" x="687.128437050361" y="1390" text-anchor="middle">Ratify release</text>
+<text class="lm-sub" x="687.128437050361" y="1405" text-anchor="middle">1 ran · 0 skipped · 0 red</text>
+<rect class="lm-box lm-wire" x="101.25593960521525" y="1520" width="168" height="56" rx="6"/>
+<text class="lm-text" x="185.25593960521525" y="1538" text-anchor="middle">Enrol</text>
+<text class="lm-sub" x="185.25593960521525" y="1553" text-anchor="middle">7 ran · 0 skipped · 0 red</text>
+<rect class="lm-box lm-wire" x="297.25593960521525" y="1520" width="168" height="56" rx="6"/>
+<text class="lm-text" x="381.25593960521525" y="1538" text-anchor="middle">Back-stamp</text>
+<text class="lm-sub" x="381.25593960521525" y="1553" text-anchor="middle">4 ran · 0 skipped · 0 red</text>
+<rect class="lm-box lm-wire lm-idle" x="493.25593960521525" y="1520" width="168" height="56" rx="6"/>
+<text class="lm-text" x="577.2559396052152" y="1538" text-anchor="middle">Decline on revert</text>
+<text class="lm-sub" x="577.2559396052152" y="1553" text-anchor="middle">0 runs</text>
+<rect class="lm-box lm-wire" x="689.2559396052152" y="1520" width="168" height="56" rx="6"/>
+<text class="lm-text" x="773.2559396052152" y="1538" text-anchor="middle">Missing-trailer counter</text>
+<text class="lm-sub" x="773.2559396052152" y="1553" text-anchor="middle">4 ran · 0 skipped · 0 red</text>
 </svg>
 </div>
 
@@ -222,16 +223,16 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 | 01 [Shape — accept](shape-lane-edges.md) | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 0 / 0 / 0 / 40 | `shape/run-accept.ts` |
 | 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `prd`, `running`, `sliceable` | 2 / 0 / 0 / 38 | `spec/spec.ts` |
 | 03 [To-Tickets](to-tickets-lane-edges.md) | model | `dispatch prd-sliceable` | `acceptance-wanted` | **`slice-failed`** (stop) | 0 / 2 / 1 / 0 | `to-tickets/to-tickets.ts` |
-| 04 [Acceptance](reconcile-lane-edges.md) | wire | `issue edited`, `dispatch acceptance-wanted` | `run-ended`, `push to main` | **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
-| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Ratify release completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `ticket-ready` | **`needs-human`** (stop) | 282 / 0 / 216 / 18 | `dispatch/reconcile.ts` |
+| 04 [Acceptance](reconcile-lane-edges.md) | wire | `issue edited`, `dispatch acceptance-wanted` | `acceptance-wanted`, `run-ended`, `ticket-ready`, `push to main` | **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
+| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Ratify release completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `ticket-ready` | **`needs-human`** (stop) | 284 / 0 / 216 / 18 | `dispatch/reconcile.ts` |
 | 05 [Implement](implement-lane-edges.md) | model | `dispatch ticket-ready` | `implementation-opened`, `run-ended` | **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `implement/implement.ts` |
-| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` |  | 66 / 1 / 0 / 0 |  |
+| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` |  | 65 / 1 / 0 / 0 | `integrate/immutability.ts` |
 | 07 [Fixer](review-lane-edges.md) | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | **`needs-human`** (stop) | 0 / 0 / 0 / 5 | `fixer/fixer.ts` |
 | 07 [Review](review-lane-edges.md) | model | `dispatch review-wanted` |  | `lane-07-finding` | 32 / 0 / 0 / 5 | `review/review.ts` |
-| 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | **`needs-human`** (stop) | 27 / 1 / 5 / 0 | `integrate/integrate.ts` |
+| 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | **`needs-human`** (stop) | 26 / 1 / 5 / 0 | `integrate/integrate.ts` |
 | [Audit](standards-lane-edges.md) | model | `dispatch session-captured` | `ratification-due` |  | 0 / 0 / 0 / 0 | `observations/run-audit.ts` |
 | [Back-stamp](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 4 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
-| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 39 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
+| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 40 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
 | [Decline on revert](standards-lane-edges.md) | wire | `push to main touching CODING_STANDARDS.md, eslint.config.js` |  |  | 0 / 0 / 0 / 0 | `ratify/run-revert-detector.ts` |
 | [Enrol](enrol-lane-edges.md) (machine only) | wire | `push to main touching .github/workflows/*-caller.yml`, `by hand` |  |  | 7 / 0 / 0 / 0 | `enrol/enrol.ts` |
 | [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 0 / 0 / 0 / 40 | `watchdog/lost-dispatch-counter.ts` |
@@ -247,7 +248,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 
 | Event | Rung by | Wakes |
 |---|---|---|
-| `acceptance-wanted` | to-tickets, dispatch-reconcile | acceptance |
+| `acceptance-wanted` | to-tickets, acceptance, dispatch-reconcile | acceptance |
 | `fixer-needed` | verify | fixer |
 | `graph-changed` | integrate | dispatch-reconcile |
 | `implementation-opened` | implement, mechanic, integrate, fixer, ratify | verify, integrate |
@@ -259,4 +260,4 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 | `run-ended` | acceptance, implement, mechanic | dispatch-reconcile |
 | `session-captured` | session-end | dispatch-reconcile, audit, run-watchdog, walk-home |
 | `sheet-accepted` | shape-accept | spec |
-| `ticket-ready` | dispatch-reconcile | implement |
+| `ticket-ready` | acceptance, dispatch-reconcile | implement |

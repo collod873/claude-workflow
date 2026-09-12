@@ -1,4 +1,4 @@
-import { isOwner, labelList } from "../shared/event-door";
+import { isOwner, commaList } from "../shared/event-door";
 import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../shared/ready-set";
 
 export const PRD_LABEL = "prd";
@@ -19,7 +19,7 @@ export interface IssueEditValues {
 export function issueEditFrom(values: IssueEditValues): IssueEdit {
   return {
     eventName: values.eventName,
-    issueLabels: labelList(values.labels),
+    issueLabels: commaList(values.labels),
     senderIsOwner: isOwner(values.sender, values.owner),
   };
 }

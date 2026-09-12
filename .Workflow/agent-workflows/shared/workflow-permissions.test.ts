@@ -388,7 +388,7 @@ describe("a checkout-less job that sends to gh's {owner}/{repo} sets GH_REPO", (
       placeholderJobsWithoutCheckout(workflow).map(([jobName]) => `${name}#${jobName}`),
     );
 
-    expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));
+    expect(sending).toEqual(expect.arrayContaining(["acceptance.yml#wake-reconciler", "spec.yml#dispatch"]));
   });
 });
 
@@ -453,5 +453,5 @@ test("#495.2: the suite still passes", () => {
   const sending = workflows.flatMap(({ name, workflow }) =>
     placeholderJobsWithoutCheckout(workflow).map(([jobName]) => `${name}#${jobName}`),
   );
-  expect(sending).toEqual(expect.arrayContaining(["verify.yml#signal-fixer", "spec.yml#dispatch"]));
+  expect(sending).toEqual(expect.arrayContaining(["acceptance.yml#wake-reconciler", "spec.yml#dispatch"]));
 });

@@ -16,48 +16,32 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: verify-${{ github.event.client_payload.pr || github.sha }}
+  cancel-in-progress: false
+
 jobs:
   immutability:
     name: Immutability
-    if: github.event.action == 'implementation-opened'
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     env:
-      IMMUTABLE_SET: "vitest.config.ts,.github/"
+      EVENT_ACTION: ${{ github.event.action }}
       CHANGED_FILES: ${{ github.event.client_payload.changed_files }}
       PR: ${{ github.event.client_payload.pr }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Name the pull request this run is judging
-        run: |
-          set -euo pipefail
-          BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
-          echo "judging $PR on $BRANCH"
+      - name: Checkout machine
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+          ref: ${{ inputs.machine_ref }}
+
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
 
       - name: Refuse a change to the immutable set
-        run: |
-          set -euo pipefail
-
-          if [ -z "${CHANGED_FILES:-}" ]; then
-            echo "::error::changed-files input is missing or empty; refusing"
-            exit 1
-          fi
-
-          IFS=',' read -r -a immutable_entries <<< "$IMMUTABLE_SET"
-          IFS=',' read -r -a changed_files <<< "$CHANGED_FILES"
-
-          for file in "${changed_files[@]}"; do
-            for entry in "${immutable_entries[@]}"; do
-              case "$file" in
-                "$entry"*)
-                  echo "::error::$file touches the immutable set ($entry)"
-                  exit 1
-                  ;;
-              esac
-            done
-          done
-
-          echo "no changed file touches the immutable set"
+        run: npx tsx .Workflow/agent-workflows/integrate/immutability.ts
 
   verify:
     name: Verify
@@ -98,47 +82,58 @@ jobs:
   signal-fixer:
     name: Signal the fixer
     needs: [immutability, verify]
-    if: >-
-      always() && github.event.action == 'implementation-opened' &&
-      (needs.immutability.result == 'failure' ||
-      needs.verify.result == 'failure' ||
-      needs.immutability.result == 'cancelled' ||
-      needs.verify.result == 'cancelled')
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:
       contents: write
+    env:
+      SIGNAL: fixer
+      EVENT_ACTION: ${{ github.event.action }}
+      IMMUTABILITY_RESULT: ${{ needs.immutability.result }}
+      VERIFY_RESULT: ${{ needs.verify.result }}
+      PR: ${{ github.event.client_payload.pr }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
+      - name: Checkout machine
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+          ref: ${{ inputs.machine_ref }}
+
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
+
       - name: Tell the Fixer this run went red
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh api "repos/{owner}/{repo}/dispatches" \
-            -f event_type=fixer-needed \
-            -f "client_payload[run_id]=$GITHUB_RUN_ID"
+        run: npx tsx .Workflow/agent-workflows/integrate/signal.ts
 
   signal-review:
     name: Signal the reviewer
     needs: [immutability, verify]
-    if: github.event.action == 'implementation-opened' && needs.verify.result == 'success'
+    if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: read
+    env:
+      SIGNAL: review
+      EVENT_ACTION: ${{ github.event.action }}
+      IMMUTABILITY_RESULT: ${{ needs.immutability.result }}
+      VERIFY_RESULT: ${{ needs.verify.result }}
+      PR: ${{ github.event.client_payload.pr }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
+      - name: Checkout machine
+        uses: actions/checkout@v4
+        with:
+          repository: collod873/claude-workflow
+          ref: ${{ inputs.machine_ref }}
+
+      - name: Set up Node and install dependencies
+        uses: ./.github/actions/node
+
       - name: Tell Review this run went green, naming the commits it judged
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.client_payload.pr }}
-        run: |
-          set -euo pipefail
-          HEAD_SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
-          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
-            -f event_type=review-wanted \
-            -f "client_payload[run_id]=$GITHUB_RUN_ID" \
-            -f "client_payload[head_sha]=$HEAD_SHA" \
-            -f "client_payload[base_sha]=$GITHUB_SHA"
+        run: npx tsx .Workflow/agent-workflows/integrate/signal.ts

@@ -6,7 +6,9 @@ import { describe, expect, it, test } from "vitest";
 import { RECONCILE_DISPATCH_ACTIONS, RECONCILE_ENDINGS, SESSION_CAPTURED_DISPATCH_ACTION, TO_BUILD_LABEL } from "../dispatch/reconcile";
 import { derivedSecretNames } from "../enrol/secrets";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
+import { signalsReview } from "../integrate/doors";
 import { GATE_JOB, IMMUTABILITY_JOB } from "../integrate/integrate";
+import { FIXER_NEEDED_WIRE, REVIEW_WANTED_WIRE } from "../integrate/signal";
 import { BYPASS_STEP } from "../watchdog/bypass";
 import { AUDIT_DISPATCH_ACTION, KNOWLEDGE_BASE_CHECKOUT_DIR } from "../observations/run-audit";
 import { PRD_LABEL as ACCEPTANCE_PRD_LABEL } from "../acceptance/doors";
@@ -20,6 +22,7 @@ import { BUDGETED_LANES, laneBudget } from "./lane-budget";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import {
   doors,
+  DEAD_RUN_WIRES,
   ENDING_LANES,
   LANE_OWNED,
   LANE_WIRING,
@@ -228,6 +231,8 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     ["knowledge-base dir", LANE_OWNED.knowledgeBaseDir, [KNOWLEDGE_BASE_CHECKOUT_DIR]],
     ["ticket-ready", TICKET_READY_DISPATCH_ACTION, [IMPLEMENT_DISPATCH_EVENT_TYPE]],
     ["implementation-opened", IMPLEMENTATION_PR_DISPATCH_ACTION, [VERIFY_DISPATCH_EVENT_TYPE]],
+    ["fixer-needed", DEAD_RUN_WIRES.fixerNeeded, [FIXER_NEEDED_WIRE]],
+    ["review-wanted", REVIEW_WANTED, [REVIEW_WANTED_WIRE]],
   ])("%s", (_what, spelled, owners) => {
     for (const owner of owners) expect(spelled).toBe(owner);
   });
@@ -266,8 +271,9 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
 
   it("a judged run rings its readers by dispatch, and neither reader keeps a workflow_run door, since one never opens for a bot-started Verify (#456)", () => {
     const signal = LANE_WIRING.verify.jobs["signal-review"];
-    expect(signal.gate?.is).toContain("needs.verify.result == 'success'");
-    expect(signal.steps?.some((step) => step.run?.includes(`event_type=${REVIEW_WANTED}`))).toBe(true);
+    expect(signal.gate?.is).toBe("always()");
+    expect(signalsReview({ eventAction: IMPLEMENTATION_PR_DISPATCH_ACTION, immutability: "success", verify: "success" })).toBe(true);
+    expect(signal.steps?.some((step) => step.run?.some((line) => line.includes("integrate/signal.ts")))).toBe(true);
     expect(LANE_WIRING.review.caller?.on).toEqual({ repository_dispatch: [REVIEW_WANTED] });
     for (const input of ["head_sha", "base_sha"]) expect(LANE_WIRING.review.caller?.with?.[input]).toContain(`client_payload.${input}`);
     expect(Object.keys(LANE_WIRING.fixer.caller?.on ?? {})).not.toContain("workflow_run");
@@ -556,5 +562,37 @@ describe("#520: a lane's budget fits inside the cap that could kill it", () => {
       expect(cap, `${lane} declares a cap its budget can beat`).toBeLessThan(Infinity);
       expect(laneBudget(lane), `${lane} budget under its ${cap}-minute cap`).toBeLessThan(cap);
     }
+  });
+});
+
+const RESULT_GATES: Readonly<Record<string, string>> = {
+  "verify.yml › verify": "always() && needs.immutability.result != 'failure'",
+};
+
+describe("#519: the one if: a workflow may carry is always()", () => {
+  const conditions = estate.flatMap(({ name, workflow }) =>
+    Object.entries(workflow.jobs ?? {}).flatMap(([jobName, job]) => [
+      ...(job.if === undefined ? [] : [{ where: `${name} › ${jobName}`, condition: job.if }]),
+      ...(job.steps ?? []).flatMap((step) =>
+        step.if === undefined ? [] : [{ where: `${name} › ${jobName} › ${step.name}`, condition: step.if }],
+      ),
+    ]),
+  );
+
+  it("finds the conditions the estate carries, so this sweep is not vacuous", () => {
+    expect(conditions.length).toBeGreaterThan(20);
+  });
+
+  it.each(conditions)("$where", ({ where, condition }) => {
+    expect(
+      condition,
+      `${where} carries a condition no venue but production evaluates; move it into the lane's own ` +
+        "TypeScript with a case per branch, and leave always() behind",
+    ).toBe(RESULT_GATES[where] ?? "always()");
+  });
+
+  it("names no exception the estate has since folded away", () => {
+    const carried = conditions.filter(({ condition }) => condition !== "always()").map(({ where }) => where);
+    expect(Object.keys(RESULT_GATES).sort()).toEqual(carried.sort());
   });
 });

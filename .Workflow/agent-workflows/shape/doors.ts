@@ -1,4 +1,4 @@
-import { isOwner, labelList } from "../shared/event-door";
+import { isOwner, commaList } from "../shared/event-door";
 import { VERBS, type Verb } from "./accept";
 
 export const IDEA_LABEL = "idea";
@@ -34,7 +34,7 @@ export function shapeDoorFrom(values: ShapeDoorValues): ShapeDoor {
     label: values.label,
     senderIsOwner: isOwner(values.sender, values.owner),
     issueIsPullRequest: values.pullRequestUrl !== "",
-    issueLabels: labelList(values.labels),
+    issueLabels: commaList(values.labels),
     commentUserType: values.commentUserType,
     commentAuthorAssociation: values.commentAuthorAssociation,
   };

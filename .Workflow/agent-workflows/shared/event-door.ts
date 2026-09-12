@@ -1,4 +1,4 @@
-export function labelList(joined: string): string[] {
+export function commaList(joined: string): string[] {
   return joined
     .split(",")
     .map((name) => name.trim())

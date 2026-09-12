@@ -267,8 +267,9 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
   const rawEdges: Edge[] = [];
 
   for (const [lane, wiring] of Object.entries(LANE_WIRING)) {
-    const entry = Object.values(wiring.jobs).map((job) => ENTRYPOINT_RE.exec(job.runs ?? "")?.[1]).find(Boolean);
-    const code = entry ? reachableBodies(corpus, join(root, AGENT_WORKFLOWS, entry)).join("\n") : "";
+    const entries = [...new Set(Object.values(wiring.jobs).flatMap((job) => ENTRYPOINT_RE.exec(job.runs ?? "")?.[1] ?? []))];
+    const entry = entries[0];
+    const code = entries.flatMap((each) => reachableBodies(corpus, join(root, AGENT_WORKFLOWS, each))).join("\n");
     const yaml = stepRuns(wiring).join("\n");
     const resolved = (raws: string[]) => raws.flatMap((raw) => resolveConstant(raw, corpus.constants) ?? []);
 
