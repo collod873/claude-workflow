@@ -20,12 +20,12 @@ import { testsForCriterion } from "../shared/affected-tests";
 import { commitPullsPath } from "../shared/gh-paths";
 import { implementationBranchTicket } from "../shared/ready-set";
 import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
-import { isStructurallyRefused, type Finding, type GreenGateCheck } from "./structural-refusal";
+import { isStructurallyRefused, type Finding } from "./structural-refusal";
 import { runRefuter } from "./refuter";
 import { publishFindings } from "./publish-findings";
 import { runCounter, type CounterOutcome, type RefuterTally } from "./counter";
 
-export type { Finding, GreenGateCheck } from "./structural-refusal";
+export type { Finding } from "./structural-refusal";
 
 const CORRECTNESS_REVIEWER_MODEL = "claude-opus-5";
 
@@ -37,15 +37,10 @@ export const CORRECTNESS_REVIEWER_OUTPUT = structuredOutput(
 
 export interface CorrectnessReviewInput {
   diff: string;
-  greenGateChecks: GreenGateCheck[];
 }
 
-export function keepSurvivingFindings(
-  findings: Finding[],
-  diff: string,
-  greenGateChecks: GreenGateCheck[],
-): Finding[] {
-  return findings.filter((finding) => !isStructurallyRefused(finding, diff, greenGateChecks));
+export function keepSurvivingFindings(findings: Finding[], diff: string): Finding[] {
+  return findings.filter((finding) => !isStructurallyRefused(finding, diff));
 }
 
 export async function runCorrectnessReview(
@@ -65,7 +60,7 @@ export async function runCorrectnessReview(
       stage: "correctness",
     },
   );
-  return keepSurvivingFindings(raw.findings, input.diff, input.greenGateChecks);
+  return keepSurvivingFindings(raw.findings, input.diff);
 }
 
 const CONFORMANCE_REVIEWER_PROMPT_PATH =
@@ -86,7 +81,6 @@ export interface ConformanceReviewInput {
   specText: string;
   diff: string;
   criteria: string[];
-  greenGateChecks: GreenGateCheck[];
   prdIssueNumber: number;
   ticketNumber: number;
   root?: string;
@@ -134,7 +128,7 @@ export async function runConformanceReview(
   const divergences = raw.items
     .filter((item) => item.classification === "divergence")
     .map((item) => ({ message: item.message }));
-  const findings = keepSurvivingFindings(divergences, input.diff, input.greenGateChecks);
+  const findings = keepSurvivingFindings(divergences, input.diff);
 
   const gapIssues = raw.items
     .filter((item) => item.classification === "gap")
@@ -145,7 +139,6 @@ export async function runConformanceReview(
 
 export interface RunReviewInput {
   diff: string;
-  greenGateChecks: GreenGateCheck[];
   assignee: string;
   head: string;
   root?: string;
@@ -204,15 +197,12 @@ export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInp
   const ticket = spec ? { gh, ticket: spec.ticketNumber, run: currentLaneRun() } : undefined;
   const budget = startLaneBudget(budgetMinutes, ticket);
 
-  const correctness = await runCorrectnessReview(exec, budget, {
-    diff: input.diff,
-    greenGateChecks: input.greenGateChecks,
-  });
+  const correctness = await runCorrectnessReview(exec, budget, { diff: input.diff });
 
   const conformance = await reviewConformance(exec, gh, input, spec, budget);
 
   const candidates = [...correctness, ...conformance];
-  const survivors = await runRefuter(exec, candidates, input.diff, input.greenGateChecks, budgetMinutes);
+  const survivors = await runRefuter(exec, candidates, input.diff, budgetMinutes);
   const tally: RefuterTally = { reached: candidates.length, refuted: candidates.length - survivors.length };
 
   const publishedIssues = publishFindings(gh, survivors, input.assignee);
@@ -234,7 +224,6 @@ async function reviewConformance(
     specText: spec.specText,
     diff: input.diff,
     criteria: spec.criteria,
-    greenGateChecks: input.greenGateChecks,
     prdIssueNumber: spec.prdIssueNumber,
     ticketNumber: spec.ticketNumber,
     root: input.root,
@@ -246,10 +235,9 @@ async function reviewConformance(
 async function main(): Promise<void> {
   const base = process.argv[2];
   const head = process.argv[3] ?? "HEAD";
-  const greenGateChecks = process.argv.slice(4);
 
   if (!base) {
-    console.error("usage: review.ts <base-ref> [head-ref] [green-gate-check...]");
+    console.error("usage: review.ts <base-ref> [head-ref]");
     process.exitCode = 1;
     return;
   }
@@ -265,7 +253,7 @@ async function main(): Promise<void> {
 
   try {
     const diff = execGit(["-C", repoDir, "diff", `${base}...${head}`]);
-    const result = await runReview(execClaudeIn(repoDir), execGh, { diff, greenGateChecks, assignee, head });
+    const result = await runReview(execClaudeIn(repoDir), execGh, { diff, assignee, head });
     console.log(
       JSON.stringify({ publishedIssues: result.publishedIssues, tally: result.tally }),
     );

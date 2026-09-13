@@ -4,8 +4,6 @@ export interface Finding {
   message: string;
 }
 
-export type GreenGateCheck = string;
-
 const PATH_LINE_RE_G = new RegExp(PATH_LINE_RE.source, "g");
 
 function citesLocationInDiff(finding: Finding, diff: string): boolean {
@@ -13,14 +11,6 @@ function citesLocationInDiff(finding: Finding, diff: string): boolean {
   return citations.some((citation) => diff.includes(citation));
 }
 
-function restatesAGreenCheck(finding: Finding, greenGateChecks: GreenGateCheck[]): boolean {
-  return greenGateChecks.some((check) => finding.message.includes(check));
-}
-
-export function isStructurallyRefused(
-  finding: Finding,
-  diff: string,
-  greenGateChecks: GreenGateCheck[],
-): boolean {
-  return !citesLocationInDiff(finding, diff) || restatesAGreenCheck(finding, greenGateChecks);
+export function isStructurallyRefused(finding: Finding, diff: string): boolean {
+  return !citesLocationInDiff(finding, diff);
 }

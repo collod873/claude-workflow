@@ -7,7 +7,7 @@ function adrText(): string {
   return execFileSync("cat", [ADR], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).toLowerCase();
 }
 
-test.fails(
+test(
   "#533.5: ADR-0036 states the green-gate half was never wired and is deleted, describing only the diff-citation filter that remains",
   () => {
     const text = adrText();
