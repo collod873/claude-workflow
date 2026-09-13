@@ -24,21 +24,18 @@ const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 `;
 
 describe("keepSurvivingFindings", () => {
-  it("drops a finding that fails either of ADR-0036's structural-refusal conditions", () => {
+  it("drops a finding that cites no path:line in the diff", () => {
     const noLocation: Finding = { message: "This function is confusing." };
-    const restatesGreen: Finding = {
-      message: "src/widget.ts:12 violates no-unused-vars, which eslint already flags",
-    };
 
-    expect(keepSurvivingFindings([noLocation, restatesGreen], DIFF, ["no-unused-vars"])).toEqual([]);
+    expect(keepSurvivingFindings([noLocation], DIFF)).toEqual([]);
   });
 
-  it("keeps a finding that fails neither condition", () => {
+  it("keeps a finding that cites a path:line the diff contains", () => {
     const survivor: Finding = {
       message: "src/widget.ts:12 returns undefined on the empty-cart path",
     };
 
-    expect(keepSurvivingFindings([survivor], DIFF, ["no-unused-vars"])).toEqual([survivor]);
+    expect(keepSurvivingFindings([survivor], DIFF)).toEqual([survivor]);
   });
 
   it("keeps only the survivors out of a mixed batch, in order", () => {
@@ -47,7 +44,7 @@ describe("keepSurvivingFindings", () => {
     const anotherSurvivor: Finding = { message: "src/widget.ts:12 also never checks for null" };
 
     expect(
-      keepSurvivingFindings([refusedNoLocation, survivor, anotherSurvivor], DIFF, []),
+      keepSurvivingFindings([refusedNoLocation, survivor, anotherSurvivor], DIFF),
     ).toEqual([survivor, anotherSurvivor]);
   });
 });
@@ -146,7 +143,6 @@ async function classified(items: unknown[], firstIssueNumber?: number) {
     specText: "the spec",
     diff: DIFF,
     criteria: [],
-    greenGateChecks: [],
     prdIssueNumber: 42,
     ticketNumber: 42,
   });
@@ -162,7 +158,6 @@ describe("runConformanceReview", () => {
       specText: "SPEC-MARKER-9f2",
       diff: "DIFF-MARKER-9f2",
       criteria: [],
-      greenGateChecks: [],
       prdIssueNumber: 1,
       ticketNumber: 1,
     });
@@ -181,7 +176,6 @@ describe("runConformanceReview", () => {
       specText: "the spec",
       diff: DIFF,
       criteria: [COVERED_CRITERION, UNTESTED_CRITERION],
-      greenGateChecks: [],
       prdIssueNumber: CONFORMANCE_ISSUE,
       ticketNumber: CONFORMANCE_ISSUE,
       root: checkoutCoveringIndex(1),
@@ -255,15 +249,11 @@ const CONFORMANCE_TICKETS = {
 
 const ASSIGNEE = "collod873";
 
-async function reviewRun(
-  responses: unknown[],
-  options: ReviewTrackerOptions = {},
-  greenGateChecks: string[] = [],
-) {
+async function reviewRun(responses: unknown[], options: ReviewTrackerOptions = {}) {
   const { exec, prompts } = fakeExec(...responses);
   const { gh, calls } = trackerForReview(options);
   const root = scratchDir("review-run");
-  const result = await runReview(exec, gh, { diff: DIFF, greenGateChecks, assignee: ASSIGNEE, head: HEAD_SHA, root });
+  const result = await runReview(exec, gh, { diff: DIFF, assignee: ASSIGNEE, head: HEAD_SHA, root });
   return {
     result,
     calls,
@@ -307,14 +297,10 @@ describe("runReview", () => {
   });
 
   it("counts a refuter refusal toward the tally without filing an issue for it", async () => {
-    const { result, calls } = await reviewRun(
-      [
-        { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
-        { refuted: true, reason: "no-unused-vars already covers this" },
-      ],
-      {},
-      ["no-unused-vars"],
-    );
+    const { result, calls } = await reviewRun([
+      { findings: [{ message: "src/widget.ts:12 returns undefined on the empty-cart path" }] },
+      { refuted: true, reason: "src/widget.ts:12 is already handled two lines above" },
+    ]);
 
     expect(result.survivors).toEqual([]);
     expect(result.publishedIssues).toEqual([]);
@@ -424,7 +410,6 @@ function overBudgetExec(response: unknown): StageExec {
 function budgetedReviewInput() {
   return {
     diff: DIFF,
-    greenGateChecks: [] as string[],
     assignee: ASSIGNEE,
     head: HEAD_SHA,
     root: scratchDir("review-budget"),
@@ -463,7 +448,7 @@ function gateFreeReviewInput(scratch: string): ReviewInput {
   return { diff: DIFF, assignee: ASSIGNEE, head: HEAD_SHA, root: scratch } as unknown as ReviewInput;
 }
 
-test.fails(
+test(
   "#533.1: no file under review/ names greenGateChecks or GreenGateCheck: no function still takes one",
   () => {
     expect(isStructurallyRefused.length).toBe(2);
@@ -472,7 +457,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#533.2: nothing reads a third argument: runReview runs on the two arguments review.yml passes",
   async () => {
     const { exec } = fakeExec(
@@ -489,7 +474,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#533.6: nothing is left unreachable once the type and its users are gone: the conformance half runs with no green-gate input",
   async () => {
     const divergence = "src/widget.ts:12 returns undefined instead of the cart total";
@@ -510,7 +495,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#533.7: the lane runs green end to end with the green-gate refusal deleted",
   async () => {
     const divergence = "src/widget.ts:12 never returns the cart total the spec asks for";

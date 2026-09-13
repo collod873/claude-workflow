@@ -197,4 +197,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-182 ADRs · 92 constraint · 44 note · 46 superseded · 18,929 words total.
+182 ADRs · 92 constraint · 44 note · 46 superseded · 19,011 words total.

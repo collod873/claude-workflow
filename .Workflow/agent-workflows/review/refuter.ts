@@ -3,7 +3,7 @@ import { laneBudget } from "../shared/lane-budget";
 import { PATH_LINE_RE } from "../shared/ticket-shape";
 import { runStageSessionWithinBudget, startLaneBudget, type LaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import type { Finding, GreenGateCheck } from "./structural-refusal";
+import type { Finding } from "./structural-refusal";
 
 export const REFUTER_MODEL = "claude-sonnet-5";
 
@@ -15,31 +15,18 @@ export const REFUTER_OUTPUT = structuredOutput(
 
 export type RefuterVerdict = z.infer<typeof REFUTER_OUTPUT.schema>;
 
-export function refusalNamesReason(reason: string, greenGateChecks: GreenGateCheck[]): boolean {
-  return PATH_LINE_RE.test(reason) || greenGateChecks.some((check) => reason.includes(check));
+export function refusalNamesReason(reason: string): boolean {
+  return PATH_LINE_RE.test(reason);
 }
 
-export function survivesRefutation(
-  verdict: RefuterVerdict,
-  greenGateChecks: GreenGateCheck[],
-): boolean {
-  return !verdict.refuted || !refusalNamesReason(verdict.reason, greenGateChecks);
+export function survivesRefutation(verdict: RefuterVerdict): boolean {
+  return !verdict.refuted || !refusalNamesReason(verdict.reason);
 }
 
-async function runOne(
-  exec: StageExec,
-  finding: Finding,
-  diff: string,
-  greenGateChecks: GreenGateCheck[],
-  budget: LaneBudget,
-): Promise<RefuterVerdict> {
+async function runOne(exec: StageExec, finding: Finding, diff: string, budget: LaneBudget): Promise<RefuterVerdict> {
   const { value } = await runStageSessionWithinBudget(
     PROMPT_PATH,
-    {
-      FINDING: finding.message,
-      DIFF: diff,
-      GREEN_GATE_CHECKS: greenGateChecks.length ? greenGateChecks.join(", ") : "(none)",
-    },
+    { FINDING: finding.message, DIFF: diff },
     exec,
     REFUTER_OUTPUT,
     {
@@ -56,14 +43,13 @@ export async function runRefuter(
   exec: StageExec,
   findings: Finding[],
   diff: string,
-  greenGateChecks: GreenGateCheck[],
-  budgetMinutes?: number,
+  budgetMinutes: number = laneBudget("review"),
 ): Promise<Finding[]> {
-  const budget = startLaneBudget(budgetMinutes ?? laneBudget("review"));
+  const budget = startLaneBudget(budgetMinutes);
   const survivors: Finding[] = [];
   for (const finding of findings) {
-    const verdict = await runOne(exec, finding, diff, greenGateChecks, budget);
-    if (survivesRefutation(verdict, greenGateChecks)) survivors.push(finding);
+    const verdict = await runOne(exec, finding, diff, budget);
+    if (survivesRefutation(verdict)) survivors.push(finding);
   }
   return survivors;
 }

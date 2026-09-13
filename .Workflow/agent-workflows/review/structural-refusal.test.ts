@@ -10,7 +10,7 @@ const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 
 type DiffOnlyRefusal = (finding: Finding, diff: string) => boolean;
 
-test.fails(
+test(
   "#533.3: isStructurallyRefused takes the finding and the diff only, and still refuses a finding citing no path:line in the diff",
   () => {
     const refused = isStructurallyRefused as DiffOnlyRefusal;
