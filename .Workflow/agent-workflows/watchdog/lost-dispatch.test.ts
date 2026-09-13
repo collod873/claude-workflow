@@ -1,7 +1,6 @@
-import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
+import { describe, expect, it, test } from "vitest";
 import { countLostDispatch, SLICEABLE_LABEL } from "./lost-dispatch-counter";
-import { answerTrackerOrThrow } from "./signal-tracker.fixture";
+import { historyWithRunSincePrd, slicingHistoryWith } from "./slicing-history.fixture";
 import {
   commentBody,
   entryLine,
@@ -69,36 +68,6 @@ describe("the signal", () => {
   });
 });
 
-function slicingHistoryWith(options: {
-  prd?: { title?: string; createdAt?: string; labels?: string[] };
-  subIssueCount?: number;
-  runs?: Array<{ status?: string; created_at?: string }>;
-  standing?: Array<{ number: number; state: string; body: string; comments?: Array<{ body: string }> }>;
-}): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const prdData = { title: "A spec", createdAt: "2026-08-20T00:00:00Z", labels: ["sliceable"], ...options.prd };
-  const standing = (options.standing ?? []).map((issue) => ({ ...issue, comments: issue.comments ?? [] }));
-
-  const gh: GhExec = (args) => {
-    calls.push(args);
-
-    if (args[0] === "issue" && args[1] === "view") {
-      return JSON.stringify({ ...prdData, labels: prdData.labels.map((name) => ({ name })) });
-    }
-    if (args[0] === "api" && (args[1] ?? "").includes("/sub_issues")) {
-      return `${options.subIssueCount ?? 0}\n`;
-    }
-    if (args[0] === "api" && (args[1] ?? "").includes("/runs")) {
-      return JSON.stringify((options.runs ?? []).map((run) => ({ status: run.status ?? "completed", created_at: run.created_at ?? "2026-08-21T00:00:00Z" })));
-    }
-    if (args[0] === "issue" && args[1] === "comment") return "";
-
-    return answerTrackerOrThrow(args, standing);
-  };
-
-  return { gh, calls };
-}
-
 function run(fake: ReturnType<typeof slicingHistoryWith>, labelName: string = SLICEABLE_LABEL): ReturnType<typeof countLostDispatch> {
   return countLostDispatch({ gh: fake.gh, labelName, prdNumber: 200, slicingWorkflow: "to-tickets-caller.yml", log: () => {} });
 }
@@ -160,4 +129,17 @@ describe("countLostDispatch", () => {
     expect(outcome).toEqual({ action: "already-named", issue: 55 });
     expect(fake.calls.some((call) => call[0] === "issue" && (call[1] === "create" || call[1] === "comment"))).toBe(false);
   });
+});
+
+test.fails("#532.4: PrdCandidate carries a field named for a successful slicing run, which the predicate reads", () => {
+  const successful = { ...prd(), hasSuccessfulSlicingRun: true };
+  expect(isLostDispatch(successful)).toBe(false);
+
+  const unsuccessful = { ...prd(), hasSuccessfulSlicingRun: false };
+  expect(isLostDispatch(unsuccessful)).toBe(true);
+});
+
+test.fails("#532.5: the whole gauntlet is green: counter and candidate agree end to end, so a crashed slicing run no longer proves a PRD was sliced", () => {
+  expect(run(historyWithRunSincePrd({ status: "completed", conclusion: "failure" }))).toEqual({ action: "opened", issue: 42 });
+  expect(run(historyWithRunSincePrd({ status: "completed", conclusion: "success" }))).toEqual({ action: "clean" });
 });
