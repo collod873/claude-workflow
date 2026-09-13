@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { scratchDir } from "./scratch.fixture";
 import {
+  assertTicketShape,
   CLAIM_LIMIT,
   countCriteria,
   extractCriteria,
@@ -8,7 +8,6 @@ import {
   parseCheckMarker,
   parentPrdNumber,
   TicketShapeError,
-  validateTicket,
 } from "./ticket-shape";
 
 const heading = "## Acceptance criteria";
@@ -130,11 +129,11 @@ describe("the claim ceiling", () => {
   }
 
   it("accepts a claim sitting exactly on the ceiling", () => {
-    expect(() => validateTicket(claiming(CLAIM_LIMIT), scratchDir("claim-ceiling"))).not.toThrow();
+    expect(() => assertTicketShape(claiming(CLAIM_LIMIT))).not.toThrow();
   });
 
   it("refuses one file past it, naming the lane budget the width would spend", () => {
-    expect(() => validateTicket(claiming(CLAIM_LIMIT + 1), scratchDir("claim-ceiling"))).toThrow(TicketShapeError);
-    expect(() => validateTicket(claiming(CLAIM_LIMIT + 1), scratchDir("claim-ceiling"))).toThrow(/author-repair/);
+    expect(() => assertTicketShape(claiming(CLAIM_LIMIT + 1))).toThrow(TicketShapeError);
+    expect(() => assertTicketShape(claiming(CLAIM_LIMIT + 1))).toThrow(/author-repair/);
   });
 })

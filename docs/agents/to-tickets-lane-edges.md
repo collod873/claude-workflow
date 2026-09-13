@@ -130,7 +130,7 @@ model draws a `Plan` — an array of `Slice`: `title`, `whatToBuild` (≤400 cha
 | Any `dependsOn` is a self-reference or an out-of-range index |
 | No slice has an empty `dependsOn` — **at least one** unblocked root, not exactly one, since [ADR-0113](../adr/0113-wave-0-may-hold-more-than-one-slice-so-validateplan-requires.md): wave 0 may hold more than one slice |
 | A dependency cycle exists (named, both slices) |
-| Any slice's own `renderBody()` would fail `validateTicket()` — missing `## Acceptance criteria`, no `- [ ]` items, missing `## Files claimed` |
+| Any slice's own `renderBody()` would fail `assertTicketShape()` — missing `## Acceptance criteria`, no `- [ ]` items, missing `## Files claimed` |
 
 ### edge — `Plan` (excerpt)
 
@@ -253,7 +253,7 @@ lines, one `repos/{owner}/{repo}/dispatches` POST per line.
 | free | preflight | `CLAUDE_CODE_OAUTH_TOKEN` empty |
 | free | `vocabulary()` / `ticketFormat()` | `vocabulary.md` empty below its `---`, or `ticket-format.md` has no `### Spec sub-issue` section |
 | 1 call | seam-sweep schema parse | Model's JSON fails `SeamManifest`'s schema |
-| 2 calls | slice schema parse + `validatePlan` | Malformed JSON, a dependency cycle, no unblocked root, or a shape `validateTicket()` would refuse |
+| 2 calls | slice schema parse + `validatePlan` | Malformed JSON, a dependency cycle, no unblocked root, or a shape `assertTicketShape()` would refuse |
 | 3 calls | audit publish rails | A remote-reading `check:` marker, an immutable-set claim, or an unrooted path |
 | 3 calls, mid-publish | `verifyBlockedByGraph` | The read-back graph is missing an edge the plan declared |
 | 30 min | `timeout-minutes: 30` | Job cancelled |

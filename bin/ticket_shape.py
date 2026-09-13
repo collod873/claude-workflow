@@ -9,11 +9,17 @@ from pathlib import Path
 
 KINDS = ("note", "question", "ticket", "spec")
 
-IMMUTABLE_SET_PATH = (
-    Path(__file__).resolve().parent.parent
-    / ".Workflow" / "agent-workflows" / "shared" / "immutable-set.json"
+SHARED_DIR = (
+    Path(__file__).resolve().parent.parent / ".Workflow" / "agent-workflows" / "shared"
 )
+
+IMMUTABLE_SET_PATH = SHARED_DIR / "immutable-set.json"
 IMMUTABLE_SET: tuple[str, ...] = tuple(json.loads(IMMUTABLE_SET_PATH.read_text()))
+
+RULES_PATH = SHARED_DIR / "ticket-shape.rules.json"
+RULES = json.loads(RULES_PATH.read_text())
+GRAMMAR = RULES["grammar"]
+REFUSALS = RULES["refusals"]
 
 
 def touches_immutable_set(paths: list[str]) -> list[str]:
@@ -45,10 +51,10 @@ def caller_repo_root(start: Path | None = None) -> Path:
     return here
 
 QUESTION_HEADING_RE = re.compile(r"^## Question\s*$", re.MULTILINE)
-CRITERIA_HEADING_RE = re.compile(r"^##\s+Acceptance criteria\s*$", re.MULTILINE)
-CRITERIA_ITEM_RE = re.compile(r"^[ \t]*-\s*\[[ xX]\]", re.MULTILINE)
-FILES_CLAIMED_HEADING_RE = re.compile(r"^## Files claimed\s*$", re.MULTILINE)
-NEXT_HEADING_RE = re.compile(r"^##\s", re.MULTILINE)
+CRITERIA_HEADING_RE = re.compile(GRAMMAR["criteriaHeading"], re.MULTILINE)
+CRITERIA_ITEM_RE = re.compile(GRAMMAR["criteriaItem"], re.MULTILINE)
+FILES_CLAIMED_HEADING_RE = re.compile(GRAMMAR["filesClaimedHeading"], re.MULTILINE)
+NEXT_HEADING_RE = re.compile(GRAMMAR["nextHeading"], re.MULTILINE)
 
 PATH_LINE_RE = re.compile(r"[\w./\-]*[/.][\w./\-]*:\d+")
 BACKTICK_RE = re.compile(r"`[^`\n]+`")
@@ -60,7 +66,7 @@ NO_EVIDENCE_WARNING = (
     "not seen the diff"
 )
 
-CHECK_MARKER_DELIM = r"(?:—|–|(?<=\s)-{1,2}(?=\s))"
+CHECK_MARKER_DELIM = GRAMMAR["checkMarkerDelim"]
 CHECK_MARKER_ATTEMPT_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:", re.IGNORECASE)
 CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$")
 
@@ -135,20 +141,19 @@ MIGRATION_NO_POST_STATE_WARNING = (
 
 _GLOB_CHAR_RE = re.compile(r"[*?\[]")
 
-NO_FILES_SENTINEL_RE = re.compile(r"^None\b.*no files", re.IGNORECASE)
+NO_FILES_SENTINEL_RE = re.compile(GRAMMAR["noFilesSentinel"], re.IGNORECASE)
 
 CATCH_ALL_PATTERNS = frozenset({"**", "*", "**/*", "./**", "**/**", ".", "/", "./*"})
 
 DEGENERATE_CLAIM_MESSAGE = "could not name the files this touches"
 
-CLAIM_LIMIT = 8
+CLAIM_LIMIT = RULES["claimLimit"]
 
-CLAIM_TOO_WIDE = (
-    "'## Files claimed' names {count} files; {limit} is the ceiling. Lane 04's author inlines "
-    "every claimed file into one prompt, so a claim this wide spends the whole lane budget on "
-    "its first pass and dies at author-repair with nothing authored (#539). Split it into "
-    "slices of one subject each."
-)
+CLAIM_TOO_WIDE = REFUSALS["claimTooWide"]
+
+MISSING_CRITERIA_HEADING = REFUSALS["missingCriteriaHeading"]
+CRITERIA_HEADING_WITHOUT_ITEMS = REFUSALS["criteriaHeadingWithoutItems"]
+MISSING_FILES_CLAIMED_HEADING = REFUSALS["missingFilesClaimedHeading"]
 
 
 class ValidationError(Exception):
@@ -267,18 +272,11 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
 
     if kind == "ticket":
         if not CRITERIA_HEADING_RE.search(body):
-            raise ValidationError(
-                "missing required '## Acceptance criteria' heading"
-            )
+            raise ValidationError(MISSING_CRITERIA_HEADING)
         if not CRITERIA_ITEM_RE.search(section_text(body, CRITERIA_HEADING_RE)):
-            raise ValidationError(
-                "'## Acceptance criteria' heading has no '- [ ]' items; plain '- ' bullets "
-                "don't count"
-            )
+            raise ValidationError(CRITERIA_HEADING_WITHOUT_ITEMS)
         if not FILES_CLAIMED_HEADING_RE.search(body):
-            raise ValidationError(
-                "missing required '## Files claimed' heading"
-            )
+            raise ValidationError(MISSING_FILES_CLAIMED_HEADING)
         claimed_count = len(claimed_paths(body))
         if claimed_count > CLAIM_LIMIT:
             raise ValidationError(

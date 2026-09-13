@@ -34,12 +34,37 @@ print(json.dumps(out))`,
   return JSON.parse(stdout) as (string | null)[];
 }
 
-export function pythonCheckMarkerDelim(): string {
-  return withTicketShape("print(ticket_shape.CHECK_MARKER_DELIM)").trim();
+export interface ShapeProbe {
+  refusal: string | null;
+  claimed: string[];
+  checks: (string | null)[];
 }
 
-export function pythonParseCheckMarker(criterion: string): string | null {
-  return JSON.parse(withTicketShape("print(json.dumps(ticket_shape.parse_check_marker(sys.stdin.read())))", criterion));
+export function pythonShapeProbes(bodies: string[], repoRoot: string): ShapeProbe[] {
+  const stdout = withTicketShape(
+    `from pathlib import Path
+root = Path(${JSON.stringify(repoRoot)})
+out = []
+for body in json.loads(sys.stdin.read()):
+    try:
+        ticket_shape.validate("ticket", body, repo_root=root)
+        refusal = None
+    except ticket_shape.ValidationError as e:
+        refusal = str(e)
+    checks = []
+    for block in ticket_shape.criteria_blocks(body) or []:
+        box = ticket_shape.CRITERIA_ITEM_RE.match(block)
+        text = block[box.end():].strip() if box else block
+        checks.append(ticket_shape.parse_check_marker(text))
+    out.append({
+        "refusal": refusal,
+        "claimed": ticket_shape.claimed_paths(body),
+        "checks": checks,
+    })
+print(json.dumps(out))`,
+    JSON.stringify(bodies),
+  );
+  return JSON.parse(stdout) as ShapeProbe[];
 }
 
 export type Verdict = { ok: true; warnings: string[] } | { ok: false; error: string };

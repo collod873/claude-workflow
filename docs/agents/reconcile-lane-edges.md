@@ -143,8 +143,10 @@ Every open issue carrying `to-build` is checked:
 | `assertTicketShape(body)` throws — missing `## Acceptance criteria` or its `- [ ]` items, or missing `## Files claimed` |
 | No acceptance criterion carries a `check:` marker — the same line `bin/close-ticket` draws at close |
 
-`assertTicketShape()` is the throwing half of `validateTicket()`: the door wants the verdict, not
-the warnings, and the warnings cost a disk stat per claimed path against the wrong repo root.
+`assertTicketShape()` raises the four refusals the rules source spells, the same four
+`bin/ticket_shape.py` raises at filing (claude-workflow/ADR-0184). The door wants that verdict and
+no warning: warnings are the Python's alone, and reaching for them here would cost a `python3`
+spawn per open issue.
 
 `recordToBuildShape()` posts **one standing comment per issue**, keyed by a hidden marker
 (`<!-- to-build-refused:v1 -->`), rather than commenting every run:
@@ -499,5 +501,5 @@ bug; this apparatus may simply not have been generalized past self-hosting yet.
 - [`ticket-format.md`](ticket-format.md)'s documented `## Parent`/`## Blocked by` headings don't
   match what lane 03's `renderBody()` actually publishes — see
   [`to-tickets-lane-edges.md`](to-tickets-lane-edges.md)'s own loose ends for the detail; it matters
-  here too, since `toBuildRefusal()` and `validateTicket()` both read the *actual* shape, not the
-  documented one.
+  here too, since `toBuildRefusal()` and `bin/ticket_shape.py`'s `validate()` both read the
+  *actual* shape, not the documented one.

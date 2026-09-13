@@ -9,6 +9,21 @@ Producers reference this doc rather than restate it; a restated copy is exactly 
 Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
 (`close-gate.py`).
 
+## Where these rules live
+
+Three places, and each rule below is in exactly one of them (claude-workflow/ADR-0184):
+
+- **`.Workflow/agent-workflows/shared/ticket-shape.rules.json`** — the claim ceiling, the four
+  refusals a malformed body earns, and the heading, checkbox, sentinel and check-marker grammars.
+  `bin/ticket_shape.py` reads it as JSON and `shared/ticket-shape.ts` imports it, so neither spells
+  a rule the other also spells. `ticket-shape.proc.test.ts` builds bodies from a grammar over that
+  file's variations and compares every verdict the TypeScript renders against the Python's.
+- **`bin/ticket_shape.py`** — every *warning*, and the whole `spec` verdict. It is the only
+  validator: `shared/ticket-shape.ts` renders refusals and parses bodies, and holds no opinion
+  about evidence, migrations, check-command resolution or `/bin/sh` parseability.
+- **This page** — the prose an author reads, and nothing mechanical reads back except its own
+  fenced examples, which `ticket-format-doc.proc.test.ts` runs through `validate()`.
+
 ## The core, gate-parsed
 
 Every ticket body carries two headings. `count_body_criteria`
@@ -35,8 +50,8 @@ that command itself instead of re-deriving what to check from prose:
 
 The delimiter is the same alternation (a space-delimited single/double hyphen, and an em or en
 dash still parses for bodies written under the older spelling) the closing-record grammar
-(`close-gate.py`) uses for its own trailing verdict slot; `bin/ticket_shape.py`'s
-`CHECK_MARKER_DELIM` is that shared alternation, so an author never
+(`close-gate.py`) uses for its own trailing verdict slot; the rules source's
+`grammar.checkMarkerDelim` is that shared alternation, so an author never
 learns two different dash rules for two different trailing markers. Writing one is optional: a
 criterion nobody can mechanise is still a legitimate criterion; it simply closes on a human
 reading the diff rather than a command's exit status. A marker that's attempted but doesn't
@@ -87,9 +102,9 @@ or missing section:
 A ticket missing this heading entirely was never shaped by a producer that computes claims;
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
-**Eight paths is the ceiling**, refused above that by `bin/ticket_shape.py`'s `CLAIM_LIMIT` at
-filing and by `shared/ticket-shape.ts`'s in every `/to-tickets` plan; a proc test drives both
-validators over the same bodies so the two cannot drift. At the `to-build` door the ceiling is not
+**Eight paths is the ceiling**, the rules source's `claimLimit`, refused above that by
+`bin/ticket_shape.py` at filing and by `shared/ticket-shape.ts` in every `/to-tickets` plan; one
+number, so the two cannot disagree about where it sits. At the `to-build` door the ceiling is not
 a refusal at all: a ticket claiming more than eight paths is not one ticket, and waiting on a human
 to notice never makes it one, so `reconcile.ts` relabels it `prd` + `sliceable`, rings lane 03, and
 lane 03 publishes the slices as sub-issues of it. Each slice is held to the same ceiling as it is

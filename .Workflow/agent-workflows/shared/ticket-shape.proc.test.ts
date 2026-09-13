@@ -1,111 +1,200 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
-import { CLAIM_LIMIT, TicketShapeError, validateTicket } from "./ticket-shape";
-import { pythonVerdict, type Verdict } from "./ticket-shape.fixture";
+import {
+  assertTicketShape,
+  CLAIM_LIMIT,
+  extractCriteria,
+  extractFilesClaimed,
+  parseCheckMarker,
+  TicketShapeError,
+} from "./ticket-shape";
+import { pythonShapeProbes, pythonVerdict, type ShapeProbe } from "./ticket-shape.fixture";
 
-const heading = "## Acceptance criteria";
-
-function scratchRepoRoot(existingPaths: string[]): string {
+function scratchRepoRoot(): string {
   const dir = scratchDir("ticket-shape-py");
-  mkdirSync(join(dir, ".git"));
-  for (const path of existingPaths) {
-    const full = join(dir, path);
-    mkdirSync(resolve(full, ".."), { recursive: true });
-    writeFileSync(full, "");
-  }
+  mkdirSync(join(dir, ".git"), { recursive: true });
   return dir;
 }
 
-function tsVerdict(body: string, repoRoot: string): Verdict {
-  try {
-    return { ok: true, warnings: validateTicket(body, repoRoot) };
-  } catch (err) {
-    if (err instanceof TicketShapeError) return { ok: false, error: err.message };
-    throw err;
+const CRITERIA_HEADINGS = [null, "## Acceptance criteria", "##  Acceptance criteria", "## Acceptance criteria\t"];
+
+const FILES_HEADINGS = [null, "## Files claimed", "##\tFiles claimed", "##  Files claimed "];
+
+const CHECK_MARKERS = [
+  "",
+  " — check: `make test`",
+  " – check: `make test`",
+  " - check: `make test`",
+  " -- check: `npm run lint`",
+  " — check: make test",
+  " — check: `a` `b`",
+  " — check: `make test` in the checkout",
+  " — check:",
+  " — check: `grep -q 'export function x' shared/x.ts`",
+  "—check: `make test`",
+];
+
+const CRITERIA_COUNTS = [0, 1, 2];
+
+const CLAIM_COUNTS = [0, 1, CLAIM_LIMIT - 1, CLAIM_LIMIT, CLAIM_LIMIT + 1];
+
+const SENTINELS = [
+  null,
+  "None — no files.",
+  "None, no files.",
+  "`None, no files.`",
+  "none, no files",
+  "None no files",
+  "Nonexistent, no files.",
+  "None of these, no files at all.",
+];
+
+const PATH_SPELLINGS: ((index: number) => string)[] = [
+  (index) => `src/m${index}.ts`,
+  (index) => `\`src/m${index}.ts\``,
+  (index) => `.github/workflows/w${index}.yml`,
+  (index) => `src/*${index}.ts`,
+  (index) => `ghost/m${index}.ts`,
+  (index) => `\`.claude/settings${index}.json\``,
+];
+
+const NEWLINES = ["\n", "\r\n"];
+
+interface Combo {
+  criteriaHeading: string | null;
+  filesHeading: string | null;
+  marker: string;
+  criteriaCount: number;
+  claimCount: number;
+  sentinel: string | null;
+  spelling: number;
+  newline: string;
+}
+
+function render(combo: Combo): string {
+  const lines: string[] = [];
+  if (combo.criteriaHeading !== null) {
+    lines.push(combo.criteriaHeading, "");
+    if (combo.criteriaCount === 0) lines.push("Prose, and not one checkbox.");
+    for (let index = 0; index < combo.criteriaCount; index++) {
+      lines.push(`- [ ] criterion ${index} lands src/m${index}.ts${combo.marker}`);
+    }
+    lines.push("");
   }
+  if (combo.filesHeading !== null) {
+    lines.push(combo.filesHeading, "");
+    if (combo.sentinel !== null) lines.push(`- ${combo.sentinel}`);
+    for (let index = 0; index < combo.claimCount; index++) {
+      lines.push(`- ${PATH_SPELLINGS[combo.spelling](index)}`);
+    }
+    lines.push("");
+  }
+  return lines.join(combo.newline);
 }
 
-function body(criteria: string[], claims: string[] = ["None — no files."]): string {
-  return [heading, "", ...criteria, "", "## Files claimed", ...claims.map((c) => `- ${c}`), ""].join("\n");
+function label(combo: Combo): string {
+  return [
+    combo.criteriaHeading === null ? "no criteria heading" : `criteria heading ${JSON.stringify(combo.criteriaHeading)}`,
+    `${combo.criteriaCount} criteria`,
+    `marker ${JSON.stringify(combo.marker)}`,
+    combo.filesHeading === null ? "no files heading" : `files heading ${JSON.stringify(combo.filesHeading)}`,
+    `sentinel ${JSON.stringify(combo.sentinel)}`,
+    `${combo.claimCount} claims as ${JSON.stringify(PATH_SPELLINGS[combo.spelling](0))}`,
+    combo.newline === "\n" ? "LF" : "CRLF",
+  ].join(", ");
 }
 
-describe("validateTicket, driven against the real bin/ticket_shape.py", () => {
-  const CASES: Array<{ label: string; body: string; existingPaths?: string[] }> = [
-    {
-      label: "a well-formed ticket with evidence and a resolvable claim",
-      body: body(["- [ ] `render` is exported from src/render.ts — check: `make test`"], ["src/render.ts"]),
-      existingPaths: ["src/render.ts"],
-    },
-    { label: "missing the Acceptance criteria heading", body: ["## Files claimed", "- src/render.ts", ""].join("\n") },
-    { label: "an Acceptance criteria heading with no checkbox items", body: body(["Some prose, no checkbox."]) },
-    { label: "missing the Files claimed heading", body: [heading, "", "- [ ] It works — check: `make test`", ""].join("\n") },
-    { label: "no criterion carries evidence", body: body(["- [ ] It works."]) },
-    { label: "a malformed check: marker (two commands)", body: body(["- [ ] It works — check: `make test` and `npm run lint`"]) },
-    { label: "a claimed path that doesn't resolve", body: body(["- [ ] It works — check: `make test`"], ["src/ghost.ts"]) },
-    {
-      label: "a migration-shaped body whose criteria are satisfied only by their own artifact",
-      body: body(
-        ["- [ ] The scrub script exists at scripts/scrub.ts — check: `npx vitest --run scripts/scrub.test.ts`"],
-        ["scripts/scrub.ts"],
-      ),
-      existingPaths: ["scripts/scrub.ts"],
-    },
-    {
-      label: "a claim sitting exactly on the ceiling",
-      body: body(
-        ["- [ ] It works — check: `make test`"],
-        Array.from({ length: CLAIM_LIMIT }, (_unused, i) => `src/m${i}.ts`),
-      ),
-      existingPaths: Array.from({ length: CLAIM_LIMIT }, (_unused, i) => `src/m${i}.ts`),
-    },
-    {
-      label: "a claim one file past the ceiling",
-      body: body(
-        ["- [ ] It works — check: `make test`"],
-        Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
-      ),
-      existingPaths: Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
-    },
-    {
-      label: "the no-files sentinel as ticket-format.md and /to-tickets spell it",
-      body: body(["- [ ] It works — check: `make test`"], ["None, no files."]),
-    },
-    {
-      label: "a claimed path written in backticks",
-      body: body(["- [ ] It works — check: `make test`"], ["`src/render.ts`"]),
-      existingPaths: ["src/render.ts"],
-    },
-    {
-      label: "a claim one file past the ceiling once the sentinel is not miscounted as a path",
-      body: body(
-        ["- [ ] It works — check: `make test`"],
-        ["None, no files.", ...Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`)],
-      ),
-      existingPaths: Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
-    },
-    {
-      label: "a migration-shaped body carrying real post-state evidence",
-      body: body([
-        "- [ ] `git rev-list --all --objects | grep -c legacy.txt` prints 0 — check: `git rev-list --all --objects | grep -c legacy.txt`",
-      ]),
-    },
+function draws(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+function grammar(count: number): Combo[] {
+  const next = draws(0x51_1c_7e_71);
+  const pick = <T,>(values: T[]): T => values[Math.floor(next() * values.length)];
+  const seen = new Set<string>();
+  const combos: Combo[] = [];
+  while (combos.length < count) {
+    const combo: Combo = {
+      criteriaHeading: pick(CRITERIA_HEADINGS),
+      filesHeading: pick(FILES_HEADINGS),
+      marker: pick(CHECK_MARKERS),
+      criteriaCount: pick(CRITERIA_COUNTS),
+      claimCount: pick(CLAIM_COUNTS),
+      sentinel: pick(SENTINELS),
+      spelling: Math.floor(next() * PATH_SPELLINGS.length),
+      newline: pick(NEWLINES),
+    };
+    const key = label(combo);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    combos.push(combo);
+  }
+  return combos;
+}
+
+function tsProbe(body: string): ShapeProbe {
+  let refusal: string | null = null;
+  try {
+    assertTicketShape(body);
+  } catch (err) {
+    if (!(err instanceof TicketShapeError)) throw err;
+    refusal = err.message;
+  }
+  return {
+    refusal,
+    claimed: extractFilesClaimed(body),
+    checks: extractCriteria(body).map((criterion) => parseCheckMarker(criterion) ?? null),
+  };
+}
+
+const GRAMMAR_ROOT = mkdtempSync(join(tmpdir(), "ticket-shape-grammar-"));
+afterAll(() => rmSync(GRAMMAR_ROOT, { recursive: true, force: true }));
+
+const COMBOS = grammar(300);
+const BODIES = COMBOS.map(render);
+const PYTHON = pythonShapeProbes(BODIES, GRAMMAR_ROOT);
+
+describe("every verdict shared/ticket-shape.ts still renders, rendered the same by bin/ticket_shape.py", () => {
+  const AXES: [axis: string, values: unknown[], of: (combo: Combo) => unknown][] = [
+    ["criteria headings", CRITERIA_HEADINGS, (combo) => combo.criteriaHeading],
+    ["files headings", FILES_HEADINGS, (combo) => combo.filesHeading],
+    ["check: markers", CHECK_MARKERS, (combo) => combo.marker],
+    ["criteria counts", CRITERIA_COUNTS, (combo) => combo.criteriaCount],
+    ["claim counts", CLAIM_COUNTS, (combo) => combo.claimCount],
+    ["sentinel spellings", SENTINELS, (combo) => combo.sentinel],
+    ["path spellings", PATH_SPELLINGS.map((_spelling, index) => index), (combo) => combo.spelling],
+    ["line endings", NEWLINES, (combo) => combo.newline],
   ];
 
-  it.each(CASES)("$label", ({ body: ticket, existingPaths }) => {
-    const repoRoot = scratchRepoRoot(existingPaths ?? []);
-    expect(tsVerdict(ticket, repoRoot)).toEqual(pythonVerdict("ticket", ticket, repoRoot));
+  it.each(AXES)("draws every one of the grammar's %s", (_axis, values, of) => {
+    const drawn = new Set(COMBOS.map(of));
+    expect(values.filter((value) => !drawn.has(value))).toEqual([]);
+  });
+
+  it.each(COMBOS.map((combo, index) => [label(combo), index] as const))("%s", (_label, index) => {
+    expect(tsProbe(BODIES[index])).toEqual(PYTHON[index]);
   });
 });
 
 describe("validate('spec', …), the red-at-publish branch only the Python decides", () => {
   function specBody(command: string): string {
-    return [heading, "", `- [ ] I'll know it works when I can see a verdict — check: \`${command}\``, ""].join("\n");
+    return [
+      "## Acceptance criteria",
+      "",
+      `- [ ] I'll know it works when I can see a verdict — check: \`${command}\``,
+      "",
+    ].join("\n");
   }
 
   it("refuses a spec whose one criterion's check already exits 0 before any work exists", () => {
-    const verdict = pythonVerdict("spec", specBody("true"), scratchRepoRoot([]));
+    const verdict = pythonVerdict("spec", specBody("true"), scratchRepoRoot());
 
     expect(verdict.ok).toBe(false);
     expect((verdict as { ok: false; error: string }).error).toContain("already true before any work exists");
@@ -113,11 +202,11 @@ describe("validate('spec', …), the red-at-publish branch only the Python decid
   });
 
   it("passes a spec whose criterion is honestly red at filing", () => {
-    expect(pythonVerdict("spec", specBody("false"), scratchRepoRoot([]))).toEqual({ ok: true, warnings: [] });
+    expect(pythonVerdict("spec", specBody("false"), scratchRepoRoot())).toEqual({ ok: true, warnings: [] });
   });
 
   it("warns rather than refuses when the check cannot be run to a verdict at all", () => {
-    const verdict = pythonVerdict("spec", specBody("sleep 3"), scratchRepoRoot([]), { timeoutSeconds: 1 });
+    const verdict = pythonVerdict("spec", specBody("sleep 3"), scratchRepoRoot(), { timeoutSeconds: 1 });
 
     expect(verdict.ok).toBe(true);
     expect((verdict as { ok: true; warnings: string[] }).warnings.join(" ")).toContain("did not finish within");

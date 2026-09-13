@@ -1,0 +1,17 @@
+{
+  "claimLimit": 8,
+  "grammar": {
+    "criteriaHeading": "^##[ \\t]+Acceptance criteria[ \\t\\r]*$",
+    "criteriaItem": "^[ \\t]*-[ \\t]*\\[[ xX]\\]",
+    "filesClaimedHeading": "^##[ \\t]+Files claimed[ \\t\\r]*$",
+    "nextHeading": "^##[ \\t]",
+    "noFilesSentinel": "^None(?![A-Za-z0-9_]).*no files",
+    "checkMarkerDelim": "(?:—|–|(?<=\\s)-{1,2}(?=\\s))"
+  },
+  "refusals": {
+    "missingCriteriaHeading": "missing required '## Acceptance criteria' heading",
+    "criteriaHeadingWithoutItems": "'## Acceptance criteria' heading has no '- [ ]' items; plain '- ' bullets don't count",
+    "missingFilesClaimedHeading": "missing required '## Files claimed' heading",
+    "claimTooWide": "'## Files claimed' names {count} files; {limit} is the ceiling. Lane 04's author inlines every claimed file into one prompt, so a claim this wide spends the whole lane budget on its first pass and dies at author-repair with nothing authored (#539). Split it into slices of one subject each."
+  }
+}

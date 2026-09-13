@@ -101,6 +101,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0181 | [A spec edit re-fires acceptance only for what the edit removed, never for every slice](0181-a-spec-edit-re-fires-acceptance-only-for-what-the-edit-remov.md) |
 | 0182 | [Every open issue wears one lane label, coloured by who holds it](0182-every-open-issue-wears-one-lane-label-coloured-by-who-holds.md) |
 | 0183 | [The acceptance author gets a second rung, and it is the strike it already earned](0183-the-acceptance-author-gets-a-second-rung-and-it-is-the-strik.md) |
+| 0184 | [One rules source spells the ticket shape both validators enforce, and the TypeScript warnings half is gone](0184-one-rules-source-spells-the-ticket-shape-both-validators-enf.md) |
 
 ## Retired
 
@@ -198,4 +199,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-183 ADRs · 93 constraint · 44 note · 46 superseded · 19,153 words total.
+184 ADRs · 94 constraint · 44 note · 46 superseded · 19,302 words total.
