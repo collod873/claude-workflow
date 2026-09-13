@@ -37,9 +37,9 @@ label `check:`, and a single backtick-quoted command naming the one thing that v
 - [ ] I'll know it works when I can see the nightly run post its own summary - check: `gh run list --workflow=nightly.yml --json conclusion --jq '.[0].conclusion == "success"'`
 ```
 
-The delimiter is the same alternation a ticket's marker uses (`bin/ticket_shape.py`'s
-`CHECK_MARKER_DELIM`, where an em or en dash still parses for bodies written under the older
-spelling), so an author never learns two dash rules for two kinds of body. A marker
+The delimiter is the same alternation a ticket's marker uses (`ticket-shape.rules.json`'s
+`fragments.checkMarkerDelim`, where an em or en dash still parses for bodies written under the
+older spelling), so an author never learns two dash rules for two kinds of body. A marker
 that is attempted but does not parse (a missing command, or prose trailing the closing backtick)
 is **refused** here, where a ticket's would only be warned about.
 

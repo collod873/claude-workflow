@@ -18,8 +18,22 @@ IMMUTABLE_SET: tuple[str, ...] = tuple(json.loads(IMMUTABLE_SET_PATH.read_text()
 
 RULES_PATH = SHARED_DIR / "ticket-shape.rules.json"
 RULES = json.loads(RULES_PATH.read_text())
+FRAGMENTS = RULES["fragments"]
 GRAMMAR = RULES["grammar"]
 REFUSALS = RULES["refusals"]
+
+FLAG_BITS = {"m": re.MULTILINE, "i": re.IGNORECASE}
+
+
+def compile_rule(name: str) -> re.Pattern:
+    rule = GRAMMAR[name]
+    source = rule["source"]
+    for fragment, spelling in FRAGMENTS.items():
+        source = source.replace("{" + fragment + "}", spelling)
+    flags = 0
+    for letter in rule["flags"]:
+        flags |= FLAG_BITS[letter]
+    return re.compile(source, flags)
 
 
 def touches_immutable_set(paths: list[str]) -> list[str]:
@@ -51,10 +65,10 @@ def caller_repo_root(start: Path | None = None) -> Path:
     return here
 
 QUESTION_HEADING_RE = re.compile(r"^## Question\s*$", re.MULTILINE)
-CRITERIA_HEADING_RE = re.compile(GRAMMAR["criteriaHeading"], re.MULTILINE)
-CRITERIA_ITEM_RE = re.compile(GRAMMAR["criteriaItem"], re.MULTILINE)
-FILES_CLAIMED_HEADING_RE = re.compile(GRAMMAR["filesClaimedHeading"], re.MULTILINE)
-NEXT_HEADING_RE = re.compile(GRAMMAR["nextHeading"], re.MULTILINE)
+CRITERIA_HEADING_RE = compile_rule("criteriaHeading")
+CRITERIA_ITEM_RE = compile_rule("criteriaItem")
+FILES_CLAIMED_HEADING_RE = compile_rule("filesClaimedHeading")
+NEXT_HEADING_RE = compile_rule("nextHeading")
 
 PATH_LINE_RE = re.compile(r"[\w./\-]*[/.][\w./\-]*:\d+")
 BACKTICK_RE = re.compile(r"`[^`\n]+`")
@@ -66,9 +80,8 @@ NO_EVIDENCE_WARNING = (
     "not seen the diff"
 )
 
-CHECK_MARKER_DELIM = GRAMMAR["checkMarkerDelim"]
-CHECK_MARKER_ATTEMPT_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:", re.IGNORECASE)
-CHECK_MARKER_RE = re.compile(rf"{CHECK_MARKER_DELIM}\s*check:\s*`([^`\n]+)`\s*$")
+CHECK_MARKER_ATTEMPT_RE = compile_rule("checkMarkerAttempt")
+CHECK_MARKER_RE = compile_rule("checkMarker")
 
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
 
@@ -141,7 +154,7 @@ MIGRATION_NO_POST_STATE_WARNING = (
 
 _GLOB_CHAR_RE = re.compile(r"[*?\[]")
 
-NO_FILES_SENTINEL_RE = re.compile(GRAMMAR["noFilesSentinel"], re.IGNORECASE)
+NO_FILES_SENTINEL_RE = compile_rule("noFilesSentinel")
 
 CATCH_ALL_PATTERNS = frozenset({"**", "*", "**/*", "./**", "**/**", ".", "/", "./*"})
 

@@ -14,10 +14,15 @@ Seeded here in `docs/agents/`, not beside the gate like the closing-record gramm
 Three places, and each rule below is in exactly one of them (claude-workflow/ADR-0184):
 
 - **`.Workflow/agent-workflows/shared/ticket-shape.rules.json`** — the claim ceiling, the four
-  refusals a malformed body earns, and the heading, checkbox, sentinel and check-marker grammars.
-  `bin/ticket_shape.py` reads it as JSON and `shared/ticket-shape.ts` imports it, so neither spells
-  a rule the other also spells. `ticket-shape.proc.test.ts` builds bodies from a grammar over that
-  file's variations and compares every verdict the TypeScript renders against the Python's.
+  refusals a malformed body earns, the heading, checkbox, sentinel and check-marker grammars, and
+  the flags each of those compiles under. `bin/ticket_shape.py` reads it as JSON and
+  `shared/ticket-shape.ts` imports it, and each compiles what the table says, so neither spells a
+  rule the other also spells. `ticket-shape.proc.test.ts` builds bodies from a grammar over that
+  file's variations and compares every verdict the TypeScript renders against the Python's; the
+  sample is drawn from a fixed seed (`TICKET_SHAPE_SEED` overrides it) and topped up until every
+  reachable pair of grammar axes is exercised. claude-workflow/ADR-0184 records the one divergence
+  no table reaches: JavaScript breaks lines at `\r`, `\u2028` and `\u2029` where Python breaks only
+  at `\n`.
 - **`bin/ticket_shape.py`** — every *warning*, and the whole `spec` verdict. It is the only
   validator: `shared/ticket-shape.ts` renders refusals and parses bodies, and holds no opinion
   about evidence, migrations, check-command resolution or `/bin/sh` parseability.
@@ -48,11 +53,10 @@ that command itself instead of re-deriving what to check from prose:
 - [ ] `bin/lint` reports zero findings on this file - check: `bin/lint path/to/file`
 ```
 
-The delimiter is the same alternation (a space-delimited single/double hyphen, and an em or en
-dash still parses for bodies written under the older spelling) the closing-record grammar
-(`close-gate.py`) uses for its own trailing verdict slot; the rules source's
-`grammar.checkMarkerDelim` is that shared alternation, so an author never
-learns two different dash rules for two different trailing markers. Writing one is optional: a
+The delimiter is one alternation, the rules source's `fragments.checkMarkerDelim`: a single or
+double hyphen with a space or tab on each side, or an em or en dash for bodies written under the
+older spelling. The whole marker pattern is composed from that fragment in the same file, so
+neither validator spells a dash rule of its own. Writing one is optional: a
 criterion nobody can mechanise is still a legitimate criterion; it simply closes on a human
 reading the diff rather than a command's exit status. A marker that's attempted but doesn't
 parse (a missing command, or prose trailing the closing backtick) is warned about by

@@ -1,12 +1,18 @@
 {
   "claimLimit": 8,
+  "fragments": {
+    "checkMarkerDelim": "(?:—|–|(?<=[ \\t])-{1,2}(?=[ \\t]))",
+    "criteriaItem": "^[ \\t]*-[ \\t]*\\[[ xX]\\]"
+  },
   "grammar": {
-    "criteriaHeading": "^##[ \\t]+Acceptance criteria[ \\t\\r]*$",
-    "criteriaItem": "^[ \\t]*-[ \\t]*\\[[ xX]\\]",
-    "filesClaimedHeading": "^##[ \\t]+Files claimed[ \\t\\r]*$",
-    "nextHeading": "^##[ \\t]",
-    "noFilesSentinel": "^None(?![A-Za-z0-9_]).*no files",
-    "checkMarkerDelim": "(?:—|–|(?<=\\s)-{1,2}(?=\\s))"
+    "criteriaHeading": { "source": "^##[ \\t]+Acceptance criteria[ \\t\\r]*$", "flags": "m" },
+    "criteriaItem": { "source": "{criteriaItem}", "flags": "m" },
+    "criteriaItemStrip": { "source": "{criteriaItem}[ \\t]*", "flags": "" },
+    "filesClaimedHeading": { "source": "^##[ \\t]+Files claimed[ \\t\\r]*$", "flags": "m" },
+    "nextHeading": { "source": "^##[ \\t]", "flags": "m" },
+    "noFilesSentinel": { "source": "^None(?![A-Za-z0-9_])[^\\n]*no files", "flags": "i" },
+    "checkMarkerAttempt": { "source": "{checkMarkerDelim}[ \\t]*check:", "flags": "i" },
+    "checkMarker": { "source": "{checkMarkerDelim}[ \\t]*check:[ \\t]*`([^`\\n]+)`[ \\t\\r]*$", "flags": "" }
   },
   "refusals": {
     "missingCriteriaHeading": "missing required '## Acceptance criteria' heading",

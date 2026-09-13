@@ -1,25 +1,31 @@
 import type { GhExec } from "./gh";
 import rules from "./ticket-shape.rules.json";
 
-const { grammar, refusals } = rules;
+const { fragments, grammar, refusals } = rules;
+
+function compile(rule: { source: string; flags: string }): RegExp {
+  let source = rule.source;
+  for (const [name, spelling] of Object.entries(fragments)) {
+    source = source.replaceAll(`{${name}}`, spelling);
+  }
+  return new RegExp(source, rule.flags);
+}
 
 export const CRITERIA_HEADING = "## Acceptance criteria";
 
-export const CRITERIA_HEADING_RE = new RegExp(grammar.criteriaHeading, "m");
+export const CRITERIA_HEADING_RE = compile(grammar.criteriaHeading);
 
-export const CRITERIA_ITEM_RE = new RegExp(grammar.criteriaItem, "m");
+export const CRITERIA_ITEM_RE = compile(grammar.criteriaItem);
+
+const CRITERIA_ITEM_STRIP_RE = compile(grammar.criteriaItemStrip);
 
 export const PATH_LINE_RE = /[\w./-]*[/.][\w./-]*:\d+/;
 
-const NEXT_HEADING_RE = new RegExp(grammar.nextHeading, "m");
+const NEXT_HEADING_RE = compile(grammar.nextHeading);
 
-export const CHECK_MARKER_DELIM = grammar.checkMarkerDelim;
+export const CHECK_MARKER_ATTEMPT_RE = compile(grammar.checkMarkerAttempt);
 
-export const CHECK_MARKER_ATTEMPT_RE = new RegExp(`${CHECK_MARKER_DELIM}\\s*check:`, "i");
-
-export const CHECK_MARKER_RE = new RegExp(
-  `${CHECK_MARKER_DELIM}\\s*check:\\s*\`([^\`\\n]+)\`\\s*$`,
-);
+export const CHECK_MARKER_RE = compile(grammar.checkMarker);
 
 export function parseCheckMarker(criterion: string): string | undefined {
   const match = CHECK_MARKER_RE.exec(criterion.trim());
@@ -56,9 +62,9 @@ export function parentPrdNumber(body: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-export const FILES_HEADING_RE = new RegExp(grammar.filesClaimedHeading, "m");
+export const FILES_HEADING_RE = compile(grammar.filesClaimedHeading);
 
-const NO_FILES_SENTINEL_RE = new RegExp(grammar.noFilesSentinel, "i");
+const NO_FILES_SENTINEL_RE = compile(grammar.noFilesSentinel);
 
 export function extractFilesClaimed(body: string): string[] {
   const paths: string[] = [];
@@ -83,7 +89,7 @@ export function readTicket(gh: GhExec, issueNumber: number): TicketRead {
 
 export function extractCriteria(body: string): string[] {
   return (criteriaBlocks(body) ?? []).map((block) =>
-    block.replace(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*/, "").trim(),
+    block.replace(CRITERIA_ITEM_STRIP_RE, "").trim(),
   );
 }
 

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
 import {
   assertTicketShape,
@@ -107,6 +107,120 @@ function label(combo: Combo): string {
   ].join(", ");
 }
 
+interface Axis {
+  name: string;
+  values: unknown[];
+  of: (combo: Combo) => unknown;
+  with: (combo: Combo, value: unknown) => Combo;
+  exercised: (combo: Combo) => boolean;
+}
+
+const AXES: Axis[] = [
+  {
+    name: "criteria headings",
+    values: CRITERIA_HEADINGS,
+    of: (combo) => combo.criteriaHeading,
+    with: (combo, value) => ({ ...combo, criteriaHeading: value as string | null }),
+    exercised: () => true,
+  },
+  {
+    name: "files headings",
+    values: FILES_HEADINGS,
+    of: (combo) => combo.filesHeading,
+    with: (combo, value) => ({ ...combo, filesHeading: value as string | null }),
+    exercised: () => true,
+  },
+  {
+    name: "check: markers",
+    values: CHECK_MARKERS,
+    of: (combo) => combo.marker,
+    with: (combo, value) => ({ ...combo, marker: value as string }),
+    exercised: (combo) => combo.criteriaHeading !== null && combo.criteriaCount > 0,
+  },
+  {
+    name: "criteria counts",
+    values: CRITERIA_COUNTS,
+    of: (combo) => combo.criteriaCount,
+    with: (combo, value) => ({ ...combo, criteriaCount: value as number }),
+    exercised: (combo) => combo.criteriaHeading !== null,
+  },
+  {
+    name: "claim counts",
+    values: CLAIM_COUNTS,
+    of: (combo) => combo.claimCount,
+    with: (combo, value) => ({ ...combo, claimCount: value as number }),
+    exercised: (combo) => combo.filesHeading !== null,
+  },
+  {
+    name: "sentinel spellings",
+    values: SENTINELS,
+    of: (combo) => combo.sentinel,
+    with: (combo, value) => ({ ...combo, sentinel: value as string | null }),
+    exercised: (combo) => combo.filesHeading !== null,
+  },
+  {
+    name: "path spellings",
+    values: PATH_SPELLINGS.map((_spelling, index) => index),
+    of: (combo) => combo.spelling,
+    with: (combo, value) => ({ ...combo, spelling: value as number }),
+    exercised: (combo) => combo.filesHeading !== null && combo.claimCount > 0,
+  },
+  {
+    name: "line endings",
+    values: NEWLINES,
+    of: (combo) => combo.newline,
+    with: (combo, value) => ({ ...combo, newline: value as string }),
+    exercised: (combo) => combo.criteriaHeading !== null || combo.filesHeading !== null,
+  },
+];
+
+const AXIS_PAIRS: [Axis, Axis][] = AXES.flatMap((a, index) =>
+  AXES.slice(index + 1).map((b): [Axis, Axis] => [a, b]),
+);
+
+const FREE_AXES = AXES.filter((axis) => !["criteria headings", "files headings", "criteria counts", "claim counts"].includes(axis.name));
+
+const ENABLERS: Combo[] = CRITERIA_HEADINGS.flatMap((criteriaHeading) =>
+  CRITERIA_COUNTS.flatMap((criteriaCount) =>
+    FILES_HEADINGS.flatMap((filesHeading) =>
+      CLAIM_COUNTS.map((claimCount): Combo => ({
+        criteriaHeading,
+        filesHeading,
+        marker: CHECK_MARKERS[0],
+        criteriaCount,
+        claimCount,
+        sentinel: SENTINELS[0],
+        spelling: 0,
+        newline: NEWLINES[0],
+      })),
+    ),
+  ),
+);
+
+function bothExercised(a: Axis, b: Axis, combo: Combo): boolean {
+  return a.exercised(combo) && b.exercised(combo);
+}
+
+function reachablePairs(a: Axis, b: Axis): [unknown, unknown][] {
+  const pairs: [unknown, unknown][] = [];
+  for (const va of a.values) {
+    for (const vb of b.values) {
+      if (ENABLERS.some((seed) => bothExercised(a, b, a.with(b.with(seed, vb), va)))) {
+        pairs.push([va, vb]);
+      }
+    }
+  }
+  return pairs;
+}
+
+function exercisedPairs(a: Axis, b: Axis, combos: Combo[]): Set<string> {
+  const seen = new Set<string>();
+  for (const combo of combos) {
+    if (bothExercised(a, b, combo)) seen.add(JSON.stringify([a.of(combo), b.of(combo)]));
+  }
+  return seen;
+}
+
 function draws(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -115,13 +229,24 @@ function draws(seed: number): () => number {
   };
 }
 
+const SEED = Number(process.env.TICKET_SHAPE_SEED ?? 0x51_1c_7e_71) >>> 0;
+
 function grammar(count: number): Combo[] {
-  const next = draws(0x51_1c_7e_71);
+  const next = draws(SEED);
   const pick = <T,>(values: T[]): T => values[Math.floor(next() * values.length)];
-  const seen = new Set<string>();
+  const bodies = new Set<string>();
   const combos: Combo[] = [];
+
+  const keep = (combo: Combo): boolean => {
+    const body = render(combo);
+    if (bodies.has(body)) return false;
+    bodies.add(body);
+    combos.push(combo);
+    return true;
+  };
+
   while (combos.length < count) {
-    const combo: Combo = {
+    keep({
       criteriaHeading: pick(CRITERIA_HEADINGS),
       filesHeading: pick(FILES_HEADINGS),
       marker: pick(CHECK_MARKERS),
@@ -130,14 +255,31 @@ function grammar(count: number): Combo[] {
       sentinel: pick(SENTINELS),
       spelling: Math.floor(next() * PATH_SPELLINGS.length),
       newline: pick(NEWLINES),
-    };
-    const key = label(combo);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    combos.push(combo);
+    });
   }
+
+  for (const [a, b] of AXIS_PAIRS) {
+    const covered = exercisedPairs(a, b, combos);
+    for (const pair of reachablePairs(a, b)) {
+      if (covered.has(JSON.stringify(pair))) continue;
+      for (const seed of ENABLERS) {
+        let candidate = a.with(b.with(seed, pair[1]), pair[0]);
+        if (!bothExercised(a, b, candidate)) continue;
+        for (const axis of FREE_AXES) {
+          if (axis === a || axis === b) continue;
+          candidate = axis.with(candidate, pick(axis.values));
+        }
+        if (keep(candidate)) break;
+      }
+      covered.add(JSON.stringify(pair));
+    }
+  }
+
   return combos;
 }
+
+const COMBOS = grammar(300);
+const BODIES = COMBOS.map(render);
 
 function tsProbe(body: string): ShapeProbe {
   let refusal: string | null = null;
@@ -154,32 +296,51 @@ function tsProbe(body: string): ShapeProbe {
   };
 }
 
-const GRAMMAR_ROOT = mkdtempSync(join(tmpdir(), "ticket-shape-grammar-"));
-afterAll(() => rmSync(GRAMMAR_ROOT, { recursive: true, force: true }));
+describe(`every verdict shared/ticket-shape.ts still renders, rendered the same by bin/ticket_shape.py (seed 0x${SEED.toString(16)}, TICKET_SHAPE_SEED overrides)`, () => {
+  let repoRoot = "";
+  let python: ShapeProbe[] = [];
 
-const COMBOS = grammar(300);
-const BODIES = COMBOS.map(render);
-const PYTHON = pythonShapeProbes(BODIES, GRAMMAR_ROOT);
-
-describe("every verdict shared/ticket-shape.ts still renders, rendered the same by bin/ticket_shape.py", () => {
-  const AXES: [axis: string, values: unknown[], of: (combo: Combo) => unknown][] = [
-    ["criteria headings", CRITERIA_HEADINGS, (combo) => combo.criteriaHeading],
-    ["files headings", FILES_HEADINGS, (combo) => combo.filesHeading],
-    ["check: markers", CHECK_MARKERS, (combo) => combo.marker],
-    ["criteria counts", CRITERIA_COUNTS, (combo) => combo.criteriaCount],
-    ["claim counts", CLAIM_COUNTS, (combo) => combo.claimCount],
-    ["sentinel spellings", SENTINELS, (combo) => combo.sentinel],
-    ["path spellings", PATH_SPELLINGS.map((_spelling, index) => index), (combo) => combo.spelling],
-    ["line endings", NEWLINES, (combo) => combo.newline],
-  ];
-
-  it.each(AXES)("draws every one of the grammar's %s", (_axis, values, of) => {
-    const drawn = new Set(COMBOS.map(of));
-    expect(values.filter((value) => !drawn.has(value))).toEqual([]);
+  beforeAll(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), "ticket-shape-grammar-"));
+    python = pythonShapeProbes(BODIES, repoRoot);
   });
 
-  it.each(COMBOS.map((combo, index) => [label(combo), index] as const))("%s", (_label, index) => {
-    expect(tsProbe(BODIES[index])).toEqual(PYTHON[index]);
+  afterAll(() => {
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  const AXIS_CASES: [name: string, axis: Axis][] = AXES.map((axis) => [axis.name, axis]);
+
+  it.each(AXIS_CASES)("%s change the rendered body exactly when this grammar calls them exercised", (_name, axis) => {
+    const disagreeing = COMBOS.filter((combo) => {
+      const body = render(combo);
+      const varies = axis.values.some((value) => render(axis.with(combo, value)) !== body);
+      return varies !== axis.exercised(combo);
+    });
+
+    expect(disagreeing.map(label)).toEqual([]);
+  });
+
+  const PAIR_CASES: [name: string, a: Axis, b: Axis][] = AXIS_PAIRS.map(([a, b]) => [
+    `${a.name} × ${b.name}`,
+    a,
+    b,
+  ]);
+
+  it.each(PAIR_CASES)("exercises every reachable %s pair", (_name, a, b) => {
+    const exercised = exercisedPairs(a, b, COMBOS);
+    const missing = reachablePairs(a, b).filter((pair) => !exercised.has(JSON.stringify(pair)));
+
+    expect(missing).toEqual([]);
+  });
+
+  const COMBO_CASES: [label: string, index: number][] = COMBOS.map((combo, index) => [
+    label(combo),
+    index,
+  ]);
+
+  it.each(COMBO_CASES)("%s", (_label, index) => {
+    expect(tsProbe(BODIES[index])).toEqual(python[index]);
   });
 });
 
