@@ -42,10 +42,12 @@ export function buildAcceptDeps(targetWorkspace: string): AcceptDeps {
     landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),
     readFile: (path) => readFileSync(resolveInTarget(path), "utf8"),
     writeFile: (path, content) => writeFileSync(resolveInTarget(path), content, "utf8"),
+    sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
+    log: (line) => console.log(line),
   };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const issueIndex = args.indexOf("--issue");
   const verbIndex = args.indexOf("--verb");
@@ -64,15 +66,13 @@ function main(): void {
 
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
 
-  console.log(`accept: ${JSON.stringify(accept(buildAcceptDeps(targetWorkspace), issueNumber, verb))}`);
+  console.log(`accept: ${JSON.stringify(await accept(buildAcceptDeps(targetWorkspace), issueNumber, verb))}`);
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error(`accept failed: ${reason(err)}`);
     process.exitCode = 1;
-  }
+  });
 }

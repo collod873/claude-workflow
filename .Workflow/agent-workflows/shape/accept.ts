@@ -4,6 +4,8 @@ import type { GhExec } from "../shared/gh";
 import type { GitExec } from "../shared/git";
 import { DECIDE_LABEL, IDEA_LABEL } from "../shared/labels";
 import { acceptedMarker } from "../shared/marker";
+import { pushToTrunk } from "../shared/push-to-trunk";
+import { reason } from "../shared/reason";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { roundFor } from "./rounds";
 
@@ -16,6 +18,8 @@ export interface AcceptDeps {
   landAdr: (draftPath: string) => string;
   readFile: (path: string) => string;
   writeFile: (path: string, content: string) => void;
+  sleep: (seconds: number) => Promise<void>;
+  log: (line: string) => void;
 }
 
 export const VERBS = ["approved", "parked", "killed"] as const;
@@ -29,7 +33,7 @@ export type AcceptOutcome =
   | { kind: "no-sheet"; verb: Verb }
   | { kind: "already-accepted" };
 
-export function accept(deps: AcceptDeps, issueNumber: number, verb: Verb): AcceptOutcome {
+export async function accept(deps: AcceptDeps, issueNumber: number, verb: Verb): Promise<AcceptOutcome> {
   if (verb === "parked") {
     dropIdea(deps.gh, issueNumber);
     return { kind: "parked" };
@@ -44,7 +48,7 @@ export function accept(deps: AcceptDeps, issueNumber: number, verb: Verb): Accep
   return approve(deps, issueNumber);
 }
 
-function approve(deps: AcceptDeps, issueNumber: number): AcceptOutcome {
+async function approve(deps: AcceptDeps, issueNumber: number): Promise<AcceptOutcome> {
   const round = roundFor(deps.gh, issueNumber);
 
   if (round.accepted) {
@@ -68,7 +72,7 @@ function approve(deps: AcceptDeps, issueNumber: number): AcceptOutcome {
   const terms = coinTerms(deps, sheet);
 
   if (adrs.length > 0 || terms.length > 0) {
-    commitAndPush(deps, issueNumber, adrs, terms);
+    await commitAndPush(deps, issueNumber, adrs, terms);
   }
 
   dropIdea(deps.gh, issueNumber);
@@ -161,14 +165,24 @@ export function insertTerm(contents: string, term: Term): string | undefined {
   return contents.slice(0, end) + entry + contents.slice(end);
 }
 
-function commitAndPush(deps: AcceptDeps, issueNumber: number, adrs: string[], terms: Term[]): void {
+async function commitAndPush(
+  deps: AcceptDeps,
+  issueNumber: number,
+  adrs: string[],
+  terms: Term[],
+): Promise<void> {
   const paths = [...adrs, ...(terms.length > 0 ? ["CONTEXT.md"] : [])];
 
   deps.git(["add", ...paths]);
   deps.git(["commit", "-m", commitMessage(issueNumber, adrs, terms)]);
-  deps.git(["fetch", "origin", "main"]);
-  deps.git(["rebase", "origin/main"]);
-  deps.git(["push", "origin", "HEAD:main"]);
+
+  try {
+    await pushToTrunk({ git: deps.git, sleep: deps.sleep, log: deps.log });
+  } catch (err) {
+    throw new Error(
+      `accept filed the ADRs and CONTEXT.md a decision sheet ruled, but landing them on trunk failed: ${reason(err)}`,
+    );
+  }
 }
 
 function commitMessage(issueNumber: number, adrs: string[], terms: Term[]): string {
