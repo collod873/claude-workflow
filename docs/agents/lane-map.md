@@ -113,7 +113,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-pill" x="1268.7454669626372" y="72" text-anchor="middle">you: issue labeled</text>
 <rect class="lm-box lm-wire" x="178.43171987385767" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="262.4317198738577" y="206" text-anchor="middle">01 · Shape — accept</text>
-<text class="lm-sub" x="262.4317198738577" y="221" text-anchor="middle">29 ran · 14 skipped · 0 red</text>
+<text class="lm-sub" x="262.4317198738577" y="221" text-anchor="middle">32 ran · 7 skipped · 0 red</text>
 <rect class="lm-box lm-source" x="374.4317198738577" y="199" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="458.4317198738577" y="220" text-anchor="middle">you: issue labeled</text>
 <rect class="lm-box lm-wire lm-idle" x="570.4317198738577" y="188" width="168" height="56" rx="6"/>
@@ -124,23 +124,23 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-sub" x="942.4317198738577" y="221" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-model" x="1054.4317198738577" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1138.4317198738577" y="206" text-anchor="middle">01 · Shape</text>
-<text class="lm-sub" x="1138.4317198738577" y="221" text-anchor="middle">40 ran · 27 skipped · 0 red</text>
+<text class="lm-sub" x="1138.4317198738577" y="221" text-anchor="middle">44 ran · 18 skipped · 0 red</text>
 <text class="lm-stopline" x="1138.4317198738577" y="235" text-anchor="middle">stops: needs-human, shape-refused</text>
 <rect class="lm-box lm-wire" x="1250.4317198738577" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1334.4317198738577" y="206" text-anchor="middle">Lost-dispatch counter</text>
-<text class="lm-sub" x="1334.4317198738577" y="221" text-anchor="middle">29 ran · 14 skipped · 0 red</text>
+<text class="lm-sub" x="1334.4317198738577" y="221" text-anchor="middle">32 ran · 7 skipped · 0 red</text>
 <rect class="lm-box lm-model" x="423.49311078821" y="336" width="168" height="56" rx="6"/>
 <text class="lm-text" x="507.49311078821" y="354" text-anchor="middle">02 · Spec</text>
-<text class="lm-sub" x="507.49311078821" y="369" text-anchor="middle">31 ran · 12 skipped · 0 red</text>
+<text class="lm-sub" x="507.49311078821" y="369" text-anchor="middle">33 ran · 6 skipped · 0 red</text>
 <rect class="lm-box lm-wire" x="766.9634832161364" y="336" width="168" height="56" rx="6"/>
 <text class="lm-text" x="850.9634832161364" y="354" text-anchor="middle">04 · Dispatch reconcile</text>
-<text class="lm-sub" x="850.9634832161364" y="369" text-anchor="middle">524 ran · 10 skipped · 0 red</text>
+<text class="lm-sub" x="850.9634832161364" y="369" text-anchor="middle">529 ran · 7 skipped · 0 red</text>
 <text class="lm-stopline" x="850.9634832161364" y="383" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-source" x="514.0731316452344" y="495" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="598.0731316452344" y="516" text-anchor="middle">you: issue edited</text>
 <rect class="lm-box lm-model" x="710.0731316452344" y="484" width="168" height="56" rx="6"/>
 <text class="lm-text" x="794.0731316452344" y="502" text-anchor="middle">03 · To-Tickets</text>
-<text class="lm-sub" x="794.0731316452344" y="517" text-anchor="middle">3 ran · 0 skipped · 2 red</text>
+<text class="lm-sub" x="794.0731316452344" y="517" text-anchor="middle">6 ran · 0 skipped · 5 red</text>
 <text class="lm-stopline" x="794.0731316452344" y="531" text-anchor="middle">stops: slice-failed</text>
 <rect class="lm-box lm-source" x="546.7372280957236" y="643" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="630.7372280957236" y="664" text-anchor="middle">you: issue closed</text>
@@ -150,7 +150,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-stopline" x="826.7372280957236" y="679" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-wire" x="581.4082363007219" y="780" width="168" height="56" rx="6"/>
 <text class="lm-text" x="665.4082363007219" y="798" text-anchor="middle">Ratify on PRD close</text>
-<text class="lm-sub" x="665.4082363007219" y="813" text-anchor="middle">12 ran · 12 skipped · 0 red</text>
+<text class="lm-sub" x="665.4082363007219" y="813" text-anchor="middle">13 ran · 10 skipped · 0 red</text>
 <rect class="lm-box lm-model lm-idle" x="777.4082363007219" y="780" width="168" height="56" rx="6"/>
 <text class="lm-text" x="861.4082363007219" y="798" text-anchor="middle">Audit</text>
 <text class="lm-sub" x="861.4082363007219" y="813" text-anchor="middle">0 runs</text>
@@ -169,22 +169,22 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-pill" x="777.3565613203324" y="1108" text-anchor="middle">you: by hand</text>
 <rect class="lm-box lm-wire" x="981.3565613203324" y="1076" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1065.3565613203323" y="1094" text-anchor="middle">06 · Verify</text>
-<text class="lm-sub" x="1065.3565613203323" y="1109" text-anchor="middle">66 ran · 0 skipped · 3 red</text>
+<text class="lm-sub" x="1065.3565613203323" y="1109" text-anchor="middle">71 ran · 0 skipped · 4 red</text>
 <rect class="lm-box lm-model" x="677.3888904596507" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="761.3888904596507" y="1242" text-anchor="middle">07 · Fixer</text>
-<text class="lm-sub" x="761.3888904596507" y="1257" text-anchor="middle">2 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="761.3888904596507" y="1257" text-anchor="middle">3 ran · 0 skipped · 0 red</text>
 <text class="lm-stopline" x="761.3888904596507" y="1271" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-model" x="965.3888904596506" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1049.3888904596506" y="1242" text-anchor="middle">07 · Review</text>
 <text class="lm-sub" x="1049.3888904596506" y="1257" text-anchor="middle">28 ran · 0 skipped · 1 red</text>
 <rect class="lm-box lm-wire" x="1161.3888904596506" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1245.3888904596506" y="1242" text-anchor="middle">Bypass counter</text>
-<text class="lm-sub" x="1245.3888904596506" y="1257" text-anchor="middle">49 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="1245.3888904596506" y="1257" text-anchor="middle">55 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-source" x="419.8494843404178" y="1383" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="503.8494843404178" y="1404" text-anchor="middle">you: push</text>
 <rect class="lm-box lm-wire" x="707.8494843404178" y="1372" width="168" height="56" rx="6"/>
 <text class="lm-text" x="791.8494843404178" y="1390" text-anchor="middle">08 · Integrate</text>
-<text class="lm-sub" x="791.8494843404178" y="1405" text-anchor="middle">30 ran · 0 skipped · 5 red</text>
+<text class="lm-sub" x="791.8494843404178" y="1405" text-anchor="middle">31 ran · 0 skipped · 7 red</text>
 <text class="lm-stopline" x="791.8494843404178" y="1419" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-source" x="286.30021551771813" y="1531" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="370.30021551771813" y="1552" text-anchor="middle">you: by hand</text>
@@ -198,13 +198,13 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-sub" x="327.8186735893881" y="1701" text-anchor="middle">6 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire" x="439.8186735893881" y="1668" width="168" height="56" rx="6"/>
 <text class="lm-text" x="523.818673589388" y="1686" text-anchor="middle">Back-stamp</text>
-<text class="lm-sub" x="523.818673589388" y="1701" text-anchor="middle">2 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="523.818673589388" y="1701" text-anchor="middle">3 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire lm-idle" x="635.818673589388" y="1668" width="168" height="56" rx="6"/>
 <text class="lm-text" x="719.818673589388" y="1686" text-anchor="middle">Decline on revert</text>
 <text class="lm-sub" x="719.818673589388" y="1701" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-wire" x="831.818673589388" y="1668" width="168" height="56" rx="6"/>
 <text class="lm-text" x="915.818673589388" y="1686" text-anchor="middle">Missing-trailer counter</text>
-<text class="lm-sub" x="915.818673589388" y="1701" text-anchor="middle">2 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="915.818673589388" y="1701" text-anchor="middle">3 ran · 0 skipped · 0 red</text>
 </svg>
 </div>
 
@@ -221,27 +221,27 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 
 | Lane | Kind | Wakes on | Rings | Labels it writes | Runs (green / red / cancelled / skipped) | Code |
 |---|---|---|---|---|---|---|
-| 01 [Shape](shape-lane-edges.md) | model | `issue labeled`, `issue_comment created` |  | `1-decide`, `1-shaping`, **`needs-human`** (stop), **`shape-refused`** (stop) | 40 / 0 / 0 / 27 | `shape/shape.ts` |
-| 01 [Shape — accept](shape-lane-edges.md) | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 29 / 0 / 0 / 14 | `shape/run-accept.ts` |
-| 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 31 / 0 / 0 / 12 | `spec/spec.ts` |
-| 03 [To-Tickets](to-tickets-lane-edges.md) | model | `dispatch prd-sliceable` | `acceptance-wanted` | `3-sliced`, `3-slicing`, **`slice-failed`** (stop) | 0 / 2 / 1 / 0 | `to-tickets/to-tickets.ts` |
+| 01 [Shape](shape-lane-edges.md) | model | `issue labeled`, `issue_comment created` |  | `1-decide`, `1-shaping`, **`needs-human`** (stop), **`shape-refused`** (stop) | 44 / 0 / 0 / 18 | `shape/shape.ts` |
+| 01 [Shape — accept](shape-lane-edges.md) | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 32 / 0 / 0 / 7 | `shape/run-accept.ts` |
+| 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 33 / 0 / 0 / 6 | `spec/spec.ts` |
+| 03 [To-Tickets](to-tickets-lane-edges.md) | model | `dispatch prd-sliceable` | `acceptance-wanted` | `3-sliced`, `3-slicing`, **`slice-failed`** (stop) | 0 / 5 / 1 / 0 | `to-tickets/to-tickets.ts` |
 | 04 [Acceptance](reconcile-lane-edges.md) | model | `issue edited`, `dispatch acceptance-wanted` | `acceptance-wanted`, `run-ended`, `ticket-ready`, `push to main` | `4-accepting`, **`needs-human`** (stop), `queued` | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
-| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Record ratifications completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `prd-sliceable`, `ticket-ready` | `4-accepting`, `5-building`, **`needs-human`** (stop), `prd`, `queued`, `sliceable`, `waiting` | 323 / 0 / 201 / 10 | `dispatch/reconcile.ts` |
+| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Record ratifications completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `prd-sliceable`, `ticket-ready` | `4-accepting`, `5-building`, `by-hand`, **`needs-human`** (stop), `prd`, `queued`, `sliceable`, `waiting` | 342 / 0 / 187 / 7 | `dispatch/reconcile.ts` |
 | 05 [Implement](implement-lane-edges.md) | model | `dispatch ticket-ready` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `implement/implement.ts` |
-| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 63 / 3 / 0 / 0 | `integrate/immutability.ts` |
-| 07 [Fixer](review-lane-edges.md) | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | `7-fixing`, **`needs-human`** (stop) | 2 / 0 / 0 / 0 | `fixer/fixer.ts` |
+| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 67 / 4 / 0 / 0 | `integrate/immutability.ts` |
+| 07 [Fixer](review-lane-edges.md) | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | `7-fixing`, **`needs-human`** (stop) | 3 / 0 / 0 / 0 | `fixer/fixer.ts` |
 | 07 [Review](review-lane-edges.md) | model | `dispatch review-wanted` |  | `7-reviewing`, `lane-07-finding` | 27 / 1 / 0 / 0 | `review/review.ts` |
-| 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | `8-landing`, **`needs-human`** (stop) | 20 / 5 / 5 / 0 | `integrate/integrate.ts` |
+| 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | `8-landing`, **`needs-human`** (stop) | 19 / 7 / 5 / 0 | `integrate/integrate.ts` |
 | [Audit](standards-lane-edges.md) | model | `dispatch session-captured` | `ratification-due` |  | 0 / 0 / 0 / 0 | `observations/run-audit.ts` |
-| [Back-stamp](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 2 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
-| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 49 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
+| [Back-stamp](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 3 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
+| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 55 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
 | [Decline on revert](standards-lane-edges.md) | wire | `push to main touching CODING_STANDARDS.md, eslint.config.js` |  |  | 0 / 0 / 0 / 0 | `ratify/run-revert-detector.ts` |
 | [Enrol](enrol-lane-edges.md) (machine only) | wire | `push to main touching .github/workflows/*-caller.yml`, `by hand` |  |  | 6 / 0 / 0 / 0 | `enrol/enrol.ts` |
-| [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 20 / 0 / 9 / 14 | `watchdog/lost-dispatch-counter.ts` |
+| [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 23 / 0 / 9 / 7 | `watchdog/lost-dispatch-counter.ts` |
 | [Mechanic](mechanic-lane-edges.md) | model | `dispatch mechanic-wanted` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `mechanic/mechanic.ts` |
-| [Missing-trailer counter](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` |  |  | 2 / 0 / 0 / 0 | `watchdog/missing-trailer-counter.ts` |
+| [Missing-trailer counter](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` |  |  | 3 / 0 / 0 / 0 | `watchdog/missing-trailer-counter.ts` |
 | [Ratify](standards-lane-edges.md) | model | `dispatch ratification-due` | `implementation-opened` | `ratifying` | 1 / 0 / 0 / 0 | `ratify/run-ratify.ts` |
-| [Ratify on PRD close](standards-lane-edges.md) | wire | `issue closed` | `ratification-due` |  | 12 / 0 / 0 / 12 | `ratify/prd-close.ts` |
+| [Ratify on PRD close](standards-lane-edges.md) | wire | `issue closed` | `ratification-due` |  | 13 / 0 / 0 / 10 | `ratify/prd-close.ts` |
 | [Record ratifications](standards-lane-edges.md) | wire | `dispatch ratifier-merged` |  |  | 0 / 0 / 0 / 0 | `observations/run-ratification.ts` |
 | [Run watchdog](recovery-lane-edges.md) | wire | `dispatch session-captured` |  |  | 0 / 0 / 0 / 0 | `watchdog/run-watchdog.ts` |
 | [Walk home](recovery-lane-edges.md) (machine only) | wire | `dispatch session-captured` |  | `by-hand`, `ticket`, `to-build` | 0 / 0 / 0 / 0 | `watchdog/walk-home.ts` |

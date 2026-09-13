@@ -140,8 +140,11 @@ Every open issue carrying `to-build` is checked:
 
 | Refuses when |
 |---|
-| `validateTicket(body)` throws — missing `## Acceptance criteria` or its `- [ ]` items, or missing `## Files claimed` |
-| Any `## Files claimed` path touches the immutable set |
+| `assertTicketShape(body)` throws — missing `## Acceptance criteria` or its `- [ ]` items, or missing `## Files claimed` |
+| No acceptance criterion carries a `check:` marker — the same line `bin/close-ticket` draws at close |
+
+`assertTicketShape()` is the throwing half of `validateTicket()`: the door wants the verdict, not
+the warnings, and the warnings cost a disk stat per claimed path against the wrong repo root.
 
 `recordToBuildShape()` posts **one standing comment per issue**, keyed by a hidden marker
 (`<!-- to-build-refused:v1 -->`), rather than commenting every run:
@@ -152,15 +155,23 @@ Every open issue carrying `to-build` is checked:
 This is labelled `to-build` and lane 06 will not start against it: <reason>.
 
 Refused here rather than three stages later: verify's Immutability job reads the same
-`## Files claimed` section this pass just did.
+`## Files claimed` section, so a run started against this body would spend an implementer and a
+pull request to arrive at the same answer.
 
-Add what is missing and the next session end starts it.
+Add what is missing and the next session end starts it. The `to-build` label stays
+where it is; nothing here has to be re-applied.
 
 <!-- to-build-refused:v1 -->
 ```
 
-Cleared → the same comment is rewritten to say so. Unchanged from last pass → no-op, so a
+Cleared → the same comment is rewritten to say so, **dropping the marker**, so a later re-refusal
+posts a fresh comment rather than editing the cleared one. Unchanged from last pass → no-op, so a
 persistently-refused ticket doesn't accumulate a comment per run.
+
+The comments are read only when there is something to say: a refusal now, or a `needs-human` the
+door itself may have to lift. A ticket that passes and holds no `needs-human` costs no API call
+here at all. An owner who lifts `needs-human` by hand without fixing the body leaves the standing
+refusal in place until the next refusal rewrites it, which is true either way.
 
 Every post or rewrite of the refused comment also calls `escalateToOwner()`, adding `needs-human`
 so the session brief's own `needs-human` section carries the ticket and a later recompute does not
@@ -170,6 +181,13 @@ body and lifts `needs-human` the same way node 02's spec pass does for its own e
 the ticket for another reason re-applies the label the same way they do after a strike decision.
 The by-hand stand-down (`recordByHandStandDown()`) is the deliberate exception: it never adds
 `needs-human` and is never dispatched, whatever its shape.
+
+A claim only a human can build never reaches that refusal either. `isByHandClaim()` — the same
+predicate lane 03's publisher labels a slice with, so the two cannot drift — is read first, and it
+covers both the immutable set and workstation paths (`~/`, `.claude/settings`), which a claim
+touching either of makes unbuildable by any pull request. The door applies `by-hand` itself and
+stands down. Nothing is missing from such a ticket, so asking the owner to repair it would spend a
+human on reading a comment and clicking the label the door already knew to apply.
 
 A claim wider than `CLAIM_LIMIT` never reaches that refusal at all. `overWideClaim()` is read
 before `toBuildRefusal()`, and `sendToSlicing()` sheds `ticket` and `to-build`, adds `prd` and

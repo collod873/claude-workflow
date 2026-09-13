@@ -239,7 +239,7 @@ function migrationWithoutPostState(body: string): string[] {
   return [MIGRATION_NO_POST_STATE_WARNING];
 }
 
-export function validateTicket(body: string, repoRoot: string = defaultRepoRoot()): string[] {
+export function assertTicketShape(body: string): void {
   const normalized = normalizeNewlines(body);
 
   if (!CRITERIA_HEADING_RE.test(normalized)) {
@@ -257,6 +257,11 @@ export function validateTicket(body: string, repoRoot: string = defaultRepoRoot(
   if (overWide !== undefined) {
     throw new TicketShapeError(claimTooWide(overWide));
   }
+}
+
+export function validateTicket(body: string, repoRoot: string = defaultRepoRoot()): string[] {
+  assertTicketShape(body);
+  const normalized = normalizeNewlines(body);
 
   const warnings: string[] = [];
   const lines = extractCriteria(normalized);

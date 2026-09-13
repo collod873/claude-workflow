@@ -1,6 +1,6 @@
 import type { Plan } from "./plan-schema";
 import { renderBody } from "./render-body";
-import { TicketShapeError, validateTicket } from "./ticket-shape";
+import { assertTicketShape, TicketShapeError } from "./ticket-shape";
 
 export function validatePlan(plan: Plan): void {
   const size = plan.length;
@@ -64,7 +64,7 @@ export function validatePlan(plan: Plan): void {
     const slice = plan[index];
     const position = index + 1;
     try {
-      validateTicket(renderBody(slice, 0));
+      assertTicketShape(renderBody(slice, 0));
     } catch (err) {
       if (err instanceof TicketShapeError) {
         throw new Error(`slice ${position} ("${slice.title}") would publish a ticket body ${err.message}`);

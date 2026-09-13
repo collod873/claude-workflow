@@ -10,13 +10,14 @@ import {
   matchingRefsPath,
   subIssuesPath,
 } from "../shared/gh-paths";
-import { touchesImmutableSet } from "../shared/immutable-set";
+import { isByHandClaim } from "../shared/immutable-set";
 import { releaseDeadClaim } from "../shared/claim";
 import {
   ACCEPTING_LABEL,
   BUILDING_LABEL,
   BY_HAND_LABEL,
   IDEA_LABEL,
+  ensureLabel,
   isLaneLabel,
   markLane,
   NEEDS_HUMAN_LABEL,
@@ -63,6 +64,7 @@ import {
   type Rung,
 } from "../shared/strikes";
 import {
+  assertTicketShape,
   CLAIM_LIMIT,
   countCriteria,
   extractCriteria,
@@ -71,7 +73,6 @@ import {
   overWideClaim,
   parseCheckMarker,
   TicketShapeError,
-  validateTicket,
 } from "../shared/ticket-shape";
 import {
   alreadyNamed,
@@ -341,15 +342,10 @@ function startableNumbers(issues: OpenIssue[], admitted: Set<number>): Set<numbe
 
 function toBuildRefusal(body: string): string | undefined {
   try {
-    validateTicket(body);
+    assertTicketShape(body);
   } catch (err) {
     if (err instanceof TicketShapeError) return err.message;
     throw err;
-  }
-
-  const claimed = extractFilesClaimed(body).filter((path) => touchesImmutableSet([path]));
-  if (claimed.length > 0) {
-    return `its \`## Files claimed\` touches paths no pull request may edit: ${claimed.join(", ")}`;
   }
 
   if (!extractCriteria(body).some((criterion) => parseCheckMarker(criterion) !== undefined)) {
@@ -406,7 +402,7 @@ function sendToSlicing(
     log(`could not read #${number}'s comments, so leaving it be rather than ringing lane 03 twice.`);
     return;
   }
-  if (markedComment(comments, SENT_TO_SLICING_MARKER) !== undefined) return;
+  if (!postOnce(gh, number, comments, SENT_TO_SLICING_MARKER, sentToSlicingBody(count))) return;
 
   const shed = [TICKET_LABEL, TO_BUILD_LABEL].filter((label) => labels.includes(label));
   gh([
@@ -418,29 +414,37 @@ function sendToSlicing(
     ...shed.flatMap((label) => ["--remove-label", label]),
   ]);
   markLane(gh, number, SLICEABLE_LABEL);
-  gh(["issue", "comment", String(number), "--body", sentToSlicingBody(count)]);
   dispatchPrdSliceable(gh, number);
   log(`#${number}: claims ${count} paths, past ${CLAIM_LIMIT}; relabelled \`${PRD_LABEL}\` and rang lane 03 to slice it.`);
 }
 
 function byHandStandDownBody(): string {
   return [
-    `This is labelled \`${BY_HAND_LABEL}\`: its \`## Files claimed\` names a workstation or immutable-set`,
-    "path, which only a human can build. Lane 06 will not start against it, and this stand-down is not a",
-    `\`${NEEDS_HUMAN_LABEL}\` hold — nobody needs to act on it.`,
+    "Its `## Files claimed` names a workstation or immutable-set path, which no pull request may",
+    `edit, so this ticket wears \`${BY_HAND_LABEL}\` and only a human can build it. Lane 06 will not`,
+    `start against it, and this stand-down is not a \`${NEEDS_HUMAN_LABEL}\` hold — nobody needs to act`,
+    "on it.",
     "",
     BY_HAND_STAND_DOWN_MARKER,
   ].join("\n");
 }
 
-function recordByHandStandDown(gh: GhExec, number: number, log: (line: string) => void): void {
+function recordByHandStandDown(
+  gh: GhExec,
+  number: number,
+  alreadyLabelled: boolean,
+  log: (line: string) => void,
+): void {
   const comments = fetchComments(gh, number);
   if (comments === null) {
     log(`could not read #${number}'s comments, so leaving whatever this door said last run standing.`);
     return;
   }
-  if (markedComment(comments, BY_HAND_STAND_DOWN_MARKER) !== undefined) return;
-  gh(["issue", "comment", String(number), "--body", byHandStandDownBody()]);
+  if (!alreadyLabelled) {
+    ensureLabel(gh, BY_HAND_LABEL);
+    gh(["issue", "edit", String(number), "--add-label", BY_HAND_LABEL]);
+  }
+  if (!postOnce(gh, number, comments, BY_HAND_STAND_DOWN_MARKER, byHandStandDownBody())) return;
   log(`#${number}: stood down at the ${TO_BUILD_LABEL} door: labelled \`${BY_HAND_LABEL}\`.`);
 }
 
@@ -461,9 +465,8 @@ function recordToBuildShape(
     log(`could not read #${number}'s comments, so leaving whatever this door said last run standing.`);
     return false;
   }
-  const standing = markedComment(comments, TO_BUILD_REFUSED_MARKER);
-
   if (refusal === undefined) {
+    const standing = markedComment(comments, TO_BUILD_REFUSED_MARKER);
     if (standing === undefined) return false;
     rewriteComment(gh, standing.id, TO_BUILD_CLEARED_BODY);
     if (hasNeedsHuman) gh(["issue", "edit", String(number), "--remove-label", NEEDS_HUMAN_LABEL]);
@@ -471,10 +474,7 @@ function recordToBuildShape(
     return hasNeedsHuman;
   }
 
-  const body = toBuildRefusalBody(refusal);
-  if (standing?.body === body) return false;
-  if (standing) rewriteComment(gh, standing.id, body);
-  else gh(["issue", "comment", String(number), "--body", body]);
+  if (!upsertMarked(gh, number, comments, TO_BUILD_REFUSED_MARKER, toBuildRefusalBody(refusal))) return false;
   escalateToOwner(gh, number, process.env.GITHUB_REPOSITORY_OWNER);
   log(`#${number}: refused at the ${TO_BUILD_LABEL} door: ${refusal}; holds ${NEEDS_HUMAN_LABEL}.`);
   return false;
@@ -487,7 +487,9 @@ function labelNames(issue: OpenIssue): string[] {
 function admittedByLaneLabel(issue: OpenIssue): boolean {
   const labels = labelNames(issue);
   if (!labels.some(isLaneLabel) || labels.some((label) => NEVER_BUILT.includes(label))) return false;
-  return toBuildRefusal(issue.body ?? "") === undefined;
+  const body = issue.body ?? "";
+  if (isByHandClaim(extractFilesClaimed(body))) return false;
+  return toBuildRefusal(body) === undefined;
 }
 
 function admitToBuild(
@@ -506,13 +508,14 @@ function admitToBuild(
       continue;
     }
 
-    if (labels.includes(BY_HAND_LABEL)) {
+    const labelledByHand = labels.includes(BY_HAND_LABEL);
+    if (labelledByHand || isByHandClaim(extractFilesClaimed(issue.body ?? ""))) {
       if (dryRun) {
-        log(`would stand down #${issue.number} at the ${TO_BUILD_LABEL} door: labelled \`${BY_HAND_LABEL}\`.`);
+        log(`would stand down #${issue.number} at the ${TO_BUILD_LABEL} door: only a human can build what it claims.`);
         continue;
       }
       try {
-        recordByHandStandDown(gh, issue.number, log);
+        recordByHandStandDown(gh, issue.number, labelledByHand, log);
       } catch (err) {
         log(`could not record #${issue.number}'s by-hand stand-down: ${reason(err)}`);
       }
@@ -540,8 +543,12 @@ function admitToBuild(
       if (refusal !== undefined) log(`would refuse #${issue.number} at the ${TO_BUILD_LABEL} door: ${refusal}.`);
       continue;
     }
+
+    const hasNeedsHuman = labels.includes(NEEDS_HUMAN_LABEL);
+    if (refusal === undefined && !hasNeedsHuman) continue;
+
     try {
-      const lifted = recordToBuildShape(gh, issue.number, refusal, labels.includes(NEEDS_HUMAN_LABEL), log);
+      const lifted = recordToBuildShape(gh, issue.number, refusal, hasNeedsHuman, log);
       if (lifted) issue.labels = (issue.labels ?? []).filter((label) => label.name !== NEEDS_HUMAN_LABEL);
     } catch (err) {
       log(`could not record #${issue.number}'s shape verdict: ${reason(err)}`);
@@ -574,6 +581,35 @@ function fetchComments(gh: GhExec, number: number): IssueComment[] | null {
 
 function markedComment(comments: IssueComment[], ...markers: string[]): IssueComment | undefined {
   return comments.find((comment) => markers.some((marker) => comment.body.includes(marker)));
+}
+
+function postOnce(
+  gh: GhExec,
+  number: number,
+  comments: IssueComment[],
+  marker: string,
+  body: string,
+): boolean {
+  if (markedComment(comments, marker) !== undefined) return false;
+  gh(["issue", "comment", String(number), "--body", body]);
+  return true;
+}
+
+function upsertMarked(
+  gh: GhExec,
+  number: number,
+  comments: IssueComment[],
+  marker: string,
+  body: string,
+): boolean {
+  const standing = markedComment(comments, marker);
+  if (standing === undefined) {
+    gh(["issue", "comment", String(number), "--body", body]);
+    return true;
+  }
+  if (standing.body === body) return false;
+  rewriteComment(gh, standing.id, body);
+  return true;
 }
 
 function fetchChildren(gh: GhExec, number: number): Blocker[] | null {

@@ -121,11 +121,6 @@ describe("the to-build door into lane 06 (#184)", () => {
       body: "## Acceptance criteria\n\n- [ ] It works — check: `true`\n",
       names: "Files claimed",
     },
-    {
-      what: "a ## Files claimed that touches the immutable set",
-      body: HAND_WRITTEN_TICKET.replace("- None — no files.", "- .github/workflows/integrate.yml"),
-      names: ".github/workflows/integrate.yml",
-    },
   ])("refuses a labelled ticket with $what, starting nothing and saying what is wrong", ({ body, names }) => {
     const tracker = passOverLabelled(630, body);
 
@@ -156,7 +151,13 @@ describe("the to-build door into lane 06 (#184)", () => {
 
   it("rewrites its standing refusal, and drops the marker, once the body validates and the ticket starts", () => {
     const stale = trackerWith({
-      open: [{ ...labelled(650), comments: [`Missing something.\n\n<!-- ${REFUSED_MARKER} -->`] }],
+      open: [
+        {
+          ...labelled(650),
+          labels: [TO_BUILD_LABEL, NEEDS_HUMAN_LABEL],
+          comments: [`Missing something.\n\n<!-- ${REFUSED_MARKER} -->`],
+        },
+      ],
     });
 
     reconcileOver(stale);
@@ -171,6 +172,17 @@ describe("the to-build door into lane 06 (#184)", () => {
 
     expect(tracker.comments).toEqual([]);
     expect(tracker.commentEdits).toEqual([]);
+  });
+
+  it("reads no comments at the door for a ticket it admits, since only its own refusal ever lives there", () => {
+    const tracker = trackerWith({
+      open: [{ number: 11, title: "Still building" }, labelled(661, HAND_WRITTEN_TICKET, [11])],
+    });
+
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker)).not.toContain(661);
+    expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/661/comments")))).toEqual([]);
   });
 
   it("refuses and comments on nothing in a dry run", () => {
@@ -324,6 +336,45 @@ test(
     expect(byHand.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
   },
 );
+
+describe("a claim only a human can build stands down, rather than being handed back as a repair", () => {
+  const claiming = (path: string): string => HAND_WRITTEN_TICKET.replace("- None — no files.", `- ${path}`);
+
+  it.each([
+    { what: "the immutable set", path: ".github/workflows/integrate.yml" },
+    { what: "the workstation", path: ".claude/settings.json" },
+  ])("labels a claim on $what by-hand itself, instead of spending the owner on a needs-human hold", ({ path }) => {
+    const tracker = passOverLabelled(630, claiming(path));
+
+    expect(tracker.dispatches).toEqual([]);
+    expect(tracker.labelsAdded).toContainEqual({ issue: 630, name: BY_HAND_LABEL });
+    expect(tracker.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
+    expect(tracker.comments).toHaveLength(1);
+    expect(tracker.comments[0].body).not.toContain(REFUSED_MARKER);
+    expect(tracker.comments[0].body).toContain(BY_HAND_LABEL);
+  });
+
+  it("leaves the label alone when the owner already applied it, and still says nothing is owed", () => {
+    const tracker = trackerWith({
+      open: [{ ...labelled(631, claiming(".claude/settings.json")), labels: [TO_BUILD_LABEL, BY_HAND_LABEL] }],
+    });
+
+    reconcileOver(tracker);
+
+    expect(tracker.labelsAdded.filter((label) => label.name === BY_HAND_LABEL)).toEqual([]);
+    expect(tracker.comments).toHaveLength(1);
+  });
+
+  it("never admits such a claim on a lane label either, once to-build is gone", () => {
+    const tracker = trackerWith({
+      open: [{ ...labelled(632, claiming(".github/workflows/integrate.yml")), labels: [BUILDING_LABEL] }],
+    });
+
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker)).toEqual([]);
+  });
+});
 
 describe("a claim too wide for lane 04 is sliced, not handed back", () => {
   const overWide = (count: number): string =>

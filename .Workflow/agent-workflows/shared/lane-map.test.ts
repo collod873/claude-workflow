@@ -36,6 +36,7 @@ describe("the lane map", () => {
     expect(lane("dispatch-reconcile").labelsApplied).toEqual([
       "4-accepting",
       "5-building",
+      "by-hand",
       "needs-human",
       "prd",
       "queued",

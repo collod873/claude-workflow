@@ -16,3 +16,7 @@ export function touchesImmutableSet(paths: string[]): boolean {
 export function touchesWorkstation(paths: string[]): boolean {
   return paths.some((path) => WORKSTATION_PREFIXES.some((prefix) => path.startsWith(prefix)));
 }
+
+export function isByHandClaim(paths: string[]): boolean {
+  return touchesWorkstation(paths) || touchesImmutableSet(paths);
+}
