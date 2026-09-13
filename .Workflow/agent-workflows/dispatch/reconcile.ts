@@ -59,6 +59,7 @@ import {
   strikesIn,
   ticketsInFlight,
   type LaneRun,
+  type Next,
   type Rung,
 } from "../shared/strikes";
 import {
@@ -946,17 +947,21 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       continue;
     }
     try {
-      const rung = climbLadder(gh, state.number, runs, logReads, log, wants === "acceptance-wanted" ? "author" : undefined);
+      const rung = climbLadder(gh, state.number, runs, logReads, log, wants === "acceptance-wanted" ? authorRung : undefined);
       if (rung === "decision") {
         deciding.push(state.number);
         continue;
       }
       if (wants === "acceptance-wanted") {
-        dispatchAcceptanceWanted(gh, state.number, true);
+        const freshEyes = authorRung(rung) === "author-fresh-eyes";
+        dispatchAcceptanceWanted(gh, state.number, true, false, freshEyes);
         authoring.push(state.number);
         markLane(gh, state.number, ACCEPTING_LABEL);
         dropToBuild(gh, byNumber.get(state.number), ACCEPTING_LABEL);
-        log(`#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author first.`);
+        log(
+          `#${state.number} has no acceptance test naming its criteria, so asked lane 04 to author ` +
+            `${freshEyes ? "again, handed every strike so far" : "first"}.`,
+        );
         continue;
       }
       if (rung === "mechanic") dispatchMechanicWanted(gh, state.number);
@@ -1058,13 +1063,17 @@ export function runRealSpecClose(number: number, range: string, targetWorkspace:
   return closeTicketProcess(["--spec", String(number), range, targetWorkspace]);
 }
 
+function authorRung(following: Rung): Next {
+  return following === "implementer" ? "author" : "author-fresh-eyes";
+}
+
 function climbLadder(
   gh: GhExec,
   ticket: number,
   runs: LaneRun[],
   logReads: { left: number },
   log: (line: string) => void,
-  next?: "author",
+  next?: (following: Rung) => Next,
 ): Rung {
   const comments = fetchComments(gh, ticket)?.map((comment) => comment.body);
   if (comments === undefined) {
@@ -1083,7 +1092,8 @@ function climbLadder(
     const strike = { runId: run.databaseId, conclusion, signature };
     strikes.push(strike);
     const following = rungFor(strikes.length);
-    gh(["issue", "comment", String(ticket), "--body", strikeBody(strike, run.url, following === "decision" ? following : (next ?? following))]);
+    const shown = following === "decision" ? following : (next?.(following) ?? following);
+    gh(["issue", "comment", String(ticket), "--body", strikeBody(strike, run.url, shown)]);
     log(`#${ticket}: strike ${strikes.length} from run ${run.databaseId}: ${signature}`);
   }
 

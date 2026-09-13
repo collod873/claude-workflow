@@ -25,7 +25,7 @@ export function ladderClimbs(lane: string): boolean {
   return LADDERED_LANES.some((each) => each === lane);
 }
 
-export type Next = Rung | "author";
+export type Next = Rung | "author" | "author-fresh-eyes";
 
 export interface Strike {
   runId: number;
@@ -60,6 +60,8 @@ function nextLine(next: Next): string {
   switch (next) {
     case "author":
       return "Next: the author starts again from the spec; the count climbs the same ladder.";
+    case "author-fresh-eyes":
+      return "Next: the author starts again with a clean context, handed every strike so far.";
     case "implementer":
       return "Next: the implementer starts again from the brief.";
     case "fresh-eyes":

@@ -10,13 +10,15 @@ import {
   type SliceRef,
 } from "../shared/affected-tests";
 import { laneBudget } from "../shared/lane-budget";
-import { execGh, type GhExec } from "../shared/gh";
+import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { pushToTrunk } from "../shared/push-to-trunk";
+import { FRESH_EYES_RUNG } from "../shared/ready-set";
+import { strikesIn } from "../shared/strikes";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
   currentLaneRun,
@@ -74,6 +76,20 @@ export interface AuthorDeps {
   readFile?: (path: string) => string | undefined;
   suite?: SuiteLayout;
   houseRules?: string;
+  priorAttempts?: string;
+}
+
+export const NO_EARLIER_ATTEMPT = "(none: this is the first run against this ticket)";
+
+export function priorAttemptsNote(comments: string[]): string {
+  const strikes = strikesIn(comments);
+  if (strikes.length === 0) return NO_EARLIER_ATTEMPT;
+  return [
+    "Earlier runs authored against this same ticket and died before landing a batch. What each one",
+    "ended on, oldest first:",
+    "",
+    ...strikes.map((strike, index) => `${index + 1}. ${strike.signature}`),
+  ].join("\n");
 }
 
 export const CLAIMED_FILE_ABSENT = "(does not exist yet; this ticket creates it)";
@@ -194,10 +210,16 @@ export async function authorAcceptanceTests(
       EXAMPLE_SUBJECT_PATH: example.subject,
       EXAMPLE_TEST_PATH: example.test,
       HOUSE_RULES: deps.houseRules ?? houseRules(),
+      PRIOR_ATTEMPTS: deps.priorAttempts ?? NO_EARLIER_ATTEMPT,
     },
     deps.exec,
     AUTHOR_OUTPUT,
-    { budget, model: AUTHOR_MODEL, promptViaStdin: true, stage: "author" },
+    {
+      budget,
+      model: AUTHOR_MODEL,
+      promptViaStdin: true,
+      stage: deps.priorAttempts === undefined ? "author" : "author-fresh-eyes",
+    },
   );
   return acceptRound(deps, criteria, round);
 }
@@ -374,6 +396,7 @@ export interface RunAcceptanceDeps {
   landing?: Landing;
   log?: (line: string) => void;
   suite?: SuiteLayout;
+  rung?: string;
 }
 
 export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<LandOutcome> {
@@ -384,8 +407,12 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const log = deps.log ?? ((line: string) => console.log(line));
   const budget = startLaneBudget(laneBudget("acceptance"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
 
+  const priorAttempts =
+    deps.rung === FRESH_EYES_RUNG ? priorAttemptsNote(issueComments(deps.gh, deps.issueNumber)) : undefined;
+  if (priorAttempts !== undefined) log("this ticket carries a strike, so the author is handed what the earlier runs died on");
+
   const attempt = await authorWithOneRepair(
-    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite },
+    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite, priorAttempts },
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
       gate: deps.gate ?? (() => gateVerdict(REPO_DIR)),
@@ -460,7 +487,7 @@ function fsWriteFile(path: string, content: string): void {
   writeFileSync(resolved, content, "utf8");
 }
 
-async function authorInProcess(issueNumber: number): Promise<LandOutcome> {
+async function authorInProcess(issueNumber: number, rung?: string): Promise<LandOutcome> {
   try {
     return await runAcceptanceAuthor({
       gh: execGh,
@@ -468,6 +495,7 @@ async function authorInProcess(issueNumber: number): Promise<LandOutcome> {
       writeFile: fsWriteFile,
       issueNumber,
       landing: landingFromEnv(),
+      rung,
     });
   } catch (err) {
     haltLoudly(execGh, issueNumber, authorDiedNote(reason(err)), console.error);
@@ -536,7 +564,7 @@ async function main(): Promise<void> {
     return;
   }
   try {
-    const outcome = await authorInProcess(Number(issueArg));
+    const outcome = await authorInProcess(Number(issueArg), process.env.RUNG || undefined);
     if (outcome.verdict === "refused") {
       console.error(`refused: ${outcome.reason}`);
       process.exitCode = 1;

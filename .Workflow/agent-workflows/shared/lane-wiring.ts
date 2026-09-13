@@ -93,6 +93,7 @@ const JOB_STATUS = "${{ job.status }}";
 const RUN_URL = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}";
 const ISSUE_NUMBER_DOOR = "${{ github.event.issue.number }}";
 const PAYLOAD_ISSUE = "${{ github.event.client_payload.issue }}";
+const PAYLOAD_RUNG = "${{ github.event.client_payload.rung }}";
 const EVENT_ACTION = "${{ github.event.action }}";
 const EVENT_NAME = "${{ github.event_name }}";
 const EVENT_LABEL = "${{ github.event.label.name }}";
@@ -596,7 +597,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       refire: {
         timeout: 30,
         outputs: { authored: "${{ steps.bundle.outputs.authored }}" },
-        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
+        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),
@@ -613,7 +614,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       author: {
         timeout: 30,
         outputs: { authored: "${{ steps.bundle.outputs.authored }}" },
-        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
+        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),

@@ -21,6 +21,7 @@ import {
   judgeAuthoredBatch,
   landingFromEnv,
   NO_CLAIMED_FILES,
+  NO_EARLIER_ATTEMPT,
   refireAcceptance,
   renderCriteria,
   renderFiles,
@@ -471,6 +472,52 @@ describe("runAcceptanceAuthor", () => {
     expect(tracker.fake.calls.filter(notALaneStamp), "no write reached gh; this lane never opens a pull request").toEqual([]);
     expect(tracker.fake.calls[0]).toEqual(expect.arrayContaining(["label", "create", ACCEPTING_LABEL]));
     expect(stage.stdins[0]).toContain(PRD_BODY);
+  });
+
+  const STRIKE_SIGNATURE = "author wrote no test.fails( naming #162.2";
+
+  function struck(tracker: { gh: GhExec }, bodies: string[]): GhExec {
+    return (args) =>
+      args[0] === "issue" && args[1] === "view" && args[args.indexOf("--json") + 1] === "comments"
+        ? JSON.stringify({ comments: bodies.map((body) => ({ body })) })
+        : tracker.gh(args);
+  }
+
+  function runAtRung(rung: string | undefined, bodies: string[]) {
+    const tracker = trackerWith(TRACKER);
+    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const outcome = runAcceptanceAuthor({
+      gh: struck(tracker, bodies),
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      gate: () => GATE_GREEN,
+      git: createFakeGit(() => "").git,
+      landing: "commit",
+      suite: SUITE,
+      rung,
+    });
+    return { outcome, stage };
+  }
+
+  it("hands the author what every earlier run died on when the reconciler sends it back at rung two", async () => {
+    const { outcome, stage } = runAtRung("fresh-eyes", [
+      `<!-- strike:v1 run=910 conclusion=failure -->\n<!-- strike-signature:${STRIKE_SIGNATURE} -->`,
+    ]);
+
+    expect(await outcome).toEqual({ verdict: "pushed" });
+    expect(stage.stdins[0]).toContain(STRIKE_SIGNATURE);
+  });
+
+  it("tells rung one there was no earlier attempt, so a first author reads no strike it has to answer", async () => {
+    const { outcome, stage } = runAtRung(undefined, [
+      `<!-- strike:v1 run=910 conclusion=failure -->\n<!-- strike-signature:${STRIKE_SIGNATURE} -->`,
+    ]);
+
+    await outcome;
+    expect(stage.stdins[0]).not.toContain(STRIKE_SIGNATURE);
+    expect(stage.stdins[0]).toContain(NO_EARLIER_ATTEMPT);
   });
 
   it("lands what it wrote with a commit message naming the ticket, and pushes", async () => {

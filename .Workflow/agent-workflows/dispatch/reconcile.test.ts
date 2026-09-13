@@ -508,14 +508,27 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     expect(outcome.note).not.toContain("wait on a decision");
   });
 
-  it("counts a dead Acceptance run as a strike and asks the author again, so a capped author is bounded rather than looped (#457)", () => {
+  it("asks the author blind on rung one, so a first authoring pass carries no strike it has to read", () => {
+    const { tracker } = ladderOver({ authored: false });
+
+    expect(rungOf(tracker)).toEqual(["acceptance-wanted"]);
+    expect(tracker.comments).toEqual([]);
+  });
+
+  it("counts a dead Acceptance run as a strike and asks the author again with fresh eyes, so rung two is not rung one repeated (#457)", () => {
     const { tracker } = ladderOver({ authored: false, runs: [deadAuthor(910)] });
 
     const strikes = commentsCarrying(tracker, "strike:v1 run=910");
     expect(strikes).toHaveLength(1);
     expect(strikes[0]).toContain("cancelled before answering");
-    expect(strikes[0]).toContain("the author starts again");
-    expect(rungOf(tracker)).toEqual(["acceptance-wanted"]);
+    expect(strikes[0]).toContain("the author starts again with a clean context");
+    expect(rungOf(tracker)).toEqual(["acceptance-wanted:fresh-eyes"]);
+  });
+
+  it("keeps asking with fresh eyes where the implementer's ladder would send the mechanic, which authors nothing", () => {
+    const { tracker } = ladderOver({ authored: false, runs: [deadAuthor(910), deadAuthor(911)] });
+
+    expect(rungOf(tracker)).toEqual(["acceptance-wanted:fresh-eyes"]);
   });
 
   it("stops asking the author after three dead Acceptance runs, the same decision the implementer's ladder ends on (#457)", () => {
