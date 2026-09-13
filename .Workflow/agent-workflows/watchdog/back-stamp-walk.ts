@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ADR_DIR, INDEX_RELATIVE_PATH, regenerateAdrIndex } from "../shared/adr-index";
 import { execGit, type GitExec } from "../shared/git";
+import { pushToTrunk } from "../shared/push-to-trunk";
 import { reason } from "../shared/reason";
 import { deriveBackStamps, type BackStampWrite, type DocFile } from "./back-stamp";
 
@@ -15,6 +16,7 @@ export interface WalkDeps {
   writeFile: (path: string, content: string) => void;
   regenerateIndex: () => boolean;
   git: GitExec;
+  sleep: (seconds: number) => Promise<void>;
   log?: (line: string) => void;
 }
 
@@ -39,7 +41,7 @@ function readCorpus(deps: Pick<WalkDeps, "repoRoot" | "readDir" | "readFile">): 
     .map((path) => ({ path, content: deps.readFile(join(deps.repoRoot, path)) }));
 }
 
-export function backStampWalk(deps: WalkDeps): WalkOutcome {
+export async function backStampWalk(deps: WalkDeps): Promise<WalkOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
 
   const writes = deriveBackStamps(readCorpus(deps));
@@ -49,14 +51,14 @@ export function backStampWalk(deps: WalkDeps): WalkOutcome {
   }
 
   for (const write of writes) deps.writeFile(join(deps.repoRoot, write.path), write.content);
-  commitAndPush(deps, writes);
+  await commitAndPush(deps, writes, log);
 
   const stamped = writes.map((write) => write.path);
   log(`stamped ${stamped.length}: ${stamped.join(", ")}`);
   return { action: "committed", stamped };
 }
 
-function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
+async function commitAndPush(deps: WalkDeps, writes: BackStampWrite[], log: (line: string) => void): Promise<void> {
   const { repoRoot } = deps;
   const paths = writes.map((write) => write.path);
 
@@ -64,9 +66,12 @@ function commitAndPush(deps: WalkDeps, writes: BackStampWrite[]): void {
 
   deps.git(["-C", repoRoot, "add", ...paths]);
   deps.git(["-C", repoRoot, "commit", "-m", commitMessage(writes)]);
-  deps.git(["-C", repoRoot, "fetch", "origin", "main"]);
-  deps.git(["-C", repoRoot, "rebase", "origin/main"]);
-  deps.git(["-C", repoRoot, "push", "origin", "HEAD:main"]);
+
+  try {
+    await pushToTrunk({ git: (args) => deps.git(["-C", repoRoot, ...args]), sleep: deps.sleep, log });
+  } catch (err) {
+    throw new Error(`back-stamp walk could not push its predecessors to trunk: ${reason(err)}`);
+  }
 }
 
 function commitMessage(writes: BackStampWrite[]): string {
@@ -81,13 +86,14 @@ its successor already wrote, so nobody has to remember: ${names}.`;
 async function main(): Promise<void> {
   try {
     const repoRoot = process.env.TARGET_WORKSPACE ?? process.env.GITHUB_WORKSPACE ?? process.cwd();
-    const outcome = backStampWalk({
+    const outcome = await backStampWalk({
       repoRoot,
       readDir: (dir) => readdirSync(dir),
       readFile: (path) => readFileSync(path, "utf8"),
       writeFile: (path, content) => writeFileSync(path, content),
       regenerateIndex: () => regenerateAdrIndex(repoRoot),
       git: execGit,
+      sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000)),
     });
     console.log(`${outcome.action}: ${outcome.stamped.length} stamped`);
   } catch (err) {

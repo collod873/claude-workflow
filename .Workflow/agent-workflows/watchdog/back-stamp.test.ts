@@ -220,6 +220,7 @@ function fakeDeps(
       return indexRegenerated;
     },
     git,
+    sleep: async () => {},
     log: () => {},
     writes,
     calls,
@@ -231,10 +232,10 @@ function verb(argv: string[]): string {
 }
 
 describe("backStampWalk", () => {
-  it("writes the derived back-stamps and commits them add-commit-fetch-rebase-push to main", () => {
+  it("writes the derived back-stamps and commits them add-commit-fetch-rebase-push to main", async () => {
     const deps = fakeDeps(CORPUS);
 
-    const outcome = backStampWalk(deps);
+    const outcome = await backStampWalk(deps);
 
     expect(outcome.action).toBe("committed");
     expect(outcome.stamped.sort()).toEqual(
@@ -255,52 +256,52 @@ describe("backStampWalk", () => {
     expect(deps.calls.find((argv) => verb(argv) === "push")).toEqual(["-C", deps.repoRoot, "push", "origin", "HEAD:main"]);
   });
 
-  it("regenerates docs/adr/INDEX.md before staging it, because a stamp rewrites the status: the index publishes", () => {
+  it("regenerates docs/adr/INDEX.md before staging it, because a stamp rewrites the status: the index publishes", async () => {
     const deps = fakeDeps(CORPUS);
 
-    backStampWalk(deps);
+    await backStampWalk(deps);
 
     const order = deps.calls.map(verb);
     expect(order.indexOf("regenerate-index")).toBeLessThan(order.indexOf("add"));
     expect(deps.calls.find((argv) => verb(argv) === "add")).toContain(INDEX_RELATIVE_PATH);
   });
 
-  it("stages no index on a target that carries none at all, which is the only case that stands down now the renderer needs nothing on $HOME", () => {
+  it("stages no index on a target that carries none at all, which is the only case that stands down now the renderer needs nothing on $HOME", async () => {
     const deps = fakeDeps(CORPUS, false);
 
-    expect(backStampWalk(deps).action).toBe("committed");
+    expect((await backStampWalk(deps)).action).toBe("committed");
 
     const add = deps.calls.find((argv) => verb(argv) === "add")!;
     expect(add).not.toContain(INDEX_RELATIVE_PATH);
   });
 
-  it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", () => {
+  it("regenerates nothing on a clean walk, so a run with no stamp to make stages no fixture churn", async () => {
     const deps = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
 
-    expect(backStampWalk(deps).action).toBe("clean");
+    expect((await backStampWalk(deps)).action).toBe("clean");
     expect(deps.calls).toEqual([]);
   });
 
-  it("a second run over the tree it just wrote makes zero further GitExec commit calls", () => {
+  it("a second run over the tree it just wrote makes zero further GitExec commit calls", async () => {
     const first = fakeDeps(CORPUS);
-    expect(backStampWalk(first).action).toBe("committed");
+    expect((await backStampWalk(first)).action).toBe("committed");
 
     const stamped = { ...CORPUS, ...first.writes };
     const second = fakeDeps(stamped);
 
-    expect(backStampWalk(second)).toEqual({ action: "clean", stamped: [] });
+    expect(await backStampWalk(second)).toEqual({ action: "clean", stamped: [] });
     expect(second.calls.filter((argv) => verb(argv) === "commit")).toEqual([]);
-    expect(second.calls).toEqual([]); 
+    expect(second.calls).toEqual([]);
   });
 
-  it("commits nothing over a corpus with no amends: declaration anywhere", () => {
+  it("commits nothing over a corpus with no amends: declaration anywhere", async () => {
     const deps = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
 
-    expect(backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
+    expect(await backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
     expect(deps.calls).toEqual([]);
   });
 
-  it("treats a docs/adr/ that cannot be read as an empty corpus rather than throwing", () => {
+  it("treats a docs/adr/ that cannot be read as an empty corpus rather than throwing", async () => {
     const deps: WalkDeps = {
       repoRoot: ".",
       readDir: () => {
@@ -318,10 +319,11 @@ describe("backStampWalk", () => {
       git: () => {
         throw new Error("should not be called");
       },
+      sleep: async () => {},
       log: () => {},
     };
 
-    expect(backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
+    expect(await backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
   });
 });
 
@@ -357,7 +359,7 @@ function productionSources(dir: string): string[] {
   });
 }
 
-test.fails("#544.1: commitAndPush reaches trunk through shared/push-to-trunk.ts instead of its own push origin HEAD:main", async () => {
+test("#544.1: commitAndPush reaches trunk through shared/push-to-trunk.ts instead of its own push origin HEAD:main", async () => {
   const deps = fakeDeps(CORPUS);
 
   const pending = backStampWalk(deps);
@@ -374,7 +376,7 @@ test.fails("#544.1: commitAndPush reaches trunk through shared/push-to-trunk.ts 
   expect(pushes[0].slice(0, 2)).toEqual(["-C", deps.repoRoot]);
 });
 
-test.fails(
+test(
   "#544.2: a push this walk loses is retried, and the walk reports its own sentence once the attempts are exhausted",
   async () => {
     const flaky = racingDeps(CORPUS, 1);
@@ -403,7 +405,7 @@ test.fails(
   60_000,
 );
 
-test.fails("#544.3: exactly one production module under agent-workflows carries a literal push to HEAD:main", () => {
+test("#544.3: exactly one production module under agent-workflows carries a literal push to HEAD:main", () => {
   const carriers = productionSources(AGENT_WORKFLOWS)
     .filter((path) => readFileSync(path, "utf8").includes("HEAD:main"))
     .map((path) => relative(AGENT_WORKFLOWS, path).split(sep).join("/"));
@@ -411,7 +413,7 @@ test.fails("#544.3: exactly one production module under agent-workflows carries 
   expect(carriers).toEqual(["shared/push-to-trunk.ts"]);
 });
 
-test.fails("#544.4: the whole check contract passes, so the async ripple reaches every caller in the walk", async () => {
+test("#544.4: the whole check contract passes, so the async ripple reaches every caller in the walk", async () => {
   const clean = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
 
   const pendingClean = backStampWalk(clean);
