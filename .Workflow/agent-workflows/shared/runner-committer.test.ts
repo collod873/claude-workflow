@@ -144,7 +144,7 @@ describe("every workflow that can reach `git notes add` configures a committer",
     const reaching = workflows.filter(({ source }) => entrypointsOf(source).some(writesAGitNote));
 
     expect(reaching.map(({ name }) => name).sort()).toEqual(
-      expect.arrayContaining(["audit.yml", "decline-on-revert.yml", "ratify-release.yml", "ratify.yml"]),
+      expect.arrayContaining(["audit.yml", "decline-on-revert.yml", "ratify.yml", "record-ratifications.yml"]),
     );
   });
 

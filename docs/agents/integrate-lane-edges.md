@@ -361,7 +361,7 @@ attempt, whichever way the close went.
 One more ring shares this node, and only for one kind of pull request. When the PR lane 08 merged
 carries the ratifier's title (`RATIFIER_PR_TITLE`, `shared/ratification-dispatch.ts`), it rings
 `ratifier-merged` with the same `{pr}` payload, right after the merge and before the close attempt.
-That ring is the only thing that wakes `ratify-release.yml`
+That ring is the only thing that wakes `record-ratifications.yml`
 ([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)). An
 implementation PR, like #501 here, rings nothing extra.
 

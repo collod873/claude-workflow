@@ -7,7 +7,7 @@ reversal: Reinstating the release-PR channel means rebuilding a deleted workflow
 
 # Findings land through the implementation door; the release-PR channel is deleted
 
-A finding that clears the audit lane's two-site gate goes to a ratifier: a full-tool stage turning it into a lint rule with every site it flags fixed in the same branch, a `CODING_STANDARDS.md` entry, or a reasoned rejection. The batch lands as one pull request through the `implementation-opened` dispatch every implementer uses. The release-PR channel it replaces, with its workflow, schema and bookmark, is deleted.
+A finding that clears the audit lane's two-site gate goes to a ratifier: a full-tool stage turning it into a lint rule with every site it flags fixed in the same branch, a `CODING_STANDARDS.md` entry, or a reasoned rejection. The batch lands as one pull request through the `implementation-opened` dispatch every implementer uses. The release-PR channel it replaces is deleted, with its schema and bookmark; its workflow survives as `record-ratifications.yml`, re-purposed by [ADR-0164](0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md).
 
 ADR-0017's triggers survive verbatim; its "released as one decision" does not. That channel produced 18 pull requests, ten merged inside fifteen minutes on a checklist whose mechanised half was empty, by a path the bypass counter could not see.
 

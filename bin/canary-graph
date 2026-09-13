@@ -80,7 +80,7 @@ issue_b_url="$(gh issue create -R "$REPO" --title "graph-noop: prd seed" --body 
 issue_b="${issue_b_url##*/}"
 gh issue close "$issue_b" -R "$REPO" >/dev/null
 
-log "opening and closing a pull request (Ratify release)"
+log "opening and closing a pull request"
 git -C "$OUT" checkout -q -b graph-noop-pr
 echo "pr seed" >> "$OUT/README.md" 2>/dev/null || echo "pr seed" > "$OUT/README.md"
 git -C "$OUT" -c user.email="graph-noop@local" -c user.name="graph-noop" add -A

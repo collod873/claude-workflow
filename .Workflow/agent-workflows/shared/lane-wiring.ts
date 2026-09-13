@@ -54,7 +54,7 @@ export const ENDING_LANES = [
   "Missing-trailer counter",
   "Ratify",
   "Ratify on PRD close",
-  "Ratify release",
+  "Record ratifications",
   "Review",
   "Run watchdog",
   "Shape",
@@ -680,15 +680,15 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     },
   },
 
-  "ratify-release": {
+  "record-ratifications": {
     caller: {
-      name: "Ratify release",
+      name: "Record ratifications",
       on: { repository_dispatch: [RATIFIER_MERGED_DISPATCH_ACTION] },
       permissions: { contents: "write", "pull-requests": "read" },
     },
     permissions: { contents: "write", "pull-requests": "read" },
     jobs: {
-      "ratify-release": {
+      "record-ratifications": {
         ungated: true,
         runs: tsx("observations/run-ratification.ts"),
         checkout: { pair: true, fetchDepth: 0 },

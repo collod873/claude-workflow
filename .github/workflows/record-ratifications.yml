@@ -1,4 +1,4 @@
-name: Ratify release (reusable)
+name: Record ratifications (reusable)
 
 "on":
   workflow_call:
@@ -17,7 +17,7 @@ permissions:
   pull-requests: read
 
 jobs:
-  ratify-release:
+  record-ratifications:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     env:

@@ -20,7 +20,7 @@ name: Dispatch reconcile
       - Missing-trailer counter
       - Ratify
       - Ratify on PRD close
-      - Ratify release
+      - Record ratifications
       - Review
       - Run watchdog
       - Shape

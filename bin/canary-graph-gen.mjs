@@ -54,7 +54,7 @@ const triggers = {
       - Missing-trailer counter
       - Ratify
       - Ratify on PRD close
-      - Ratify release
+      - Record ratifications
       - Review
       - Run watchdog
       - Shape
@@ -79,7 +79,7 @@ const triggers = {
     types: [ratification-due]`,
   "ratify-on-prd-close": `  issues:
     types: [closed]`,
-  "ratify-release": `  repository_dispatch:
+  "record-ratifications": `  repository_dispatch:
     types: [ratifier-merged]`,
   mechanic: `  repository_dispatch:
     types: [mechanic-wanted]`,
@@ -248,7 +248,7 @@ const displayNames = {
   "lost-dispatch-counter": "Lost-dispatch counter",
   ratify: "Ratify",
   "ratify-on-prd-close": "Ratify on PRD close",
-  "ratify-release": "Ratify release",
+  "record-ratifications": "Record ratifications",
   mechanic: "Mechanic",
   review: "Review",
   "run-watchdog": "Run watchdog",

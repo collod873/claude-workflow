@@ -12,8 +12,8 @@ The machines are [`.github/workflows/audit.yml`](../../.github/workflows/audit.y
 [`ratify-caller.yml`](../../.github/workflows/ratify-caller.yml)),
 [`.github/workflows/ratify-on-prd-close.yml`](../../.github/workflows/ratify-on-prd-close.yml)
 (caller [`ratify-on-prd-close-caller.yml`](../../.github/workflows/ratify-on-prd-close-caller.yml)),
-and [`.github/workflows/ratify-release.yml`](../../.github/workflows/ratify-release.yml) (caller
-[`ratify-release-caller.yml`](../../.github/workflows/ratify-release-caller.yml)). The state
+and [`.github/workflows/record-ratifications.yml`](../../.github/workflows/record-ratifications.yml) (caller
+[`record-ratifications-caller.yml`](../../.github/workflows/record-ratifications-caller.yml)). The state
 machines are
 [`.Workflow/agent-workflows/observations/run-audit.ts`](../../.Workflow/agent-workflows/observations/run-audit.ts)
 and [`observations/run-observations.ts`](../../.Workflow/agent-workflows/observations/run-observations.ts)
@@ -239,7 +239,7 @@ Sent via `gh api ... -f client_payload[prd_closed]=false` — a literal string, 
 
 Three workflows, one shared destination. `ratify-on-prd-close.yml` and `audit.yml` (Part one) are two
 independent doors that both end by sending the same `ratification-due` dispatch; `ratify.yml` is the
-one workflow that ever reads it; `ratify-release.yml` runs afterward, once the ratifier's own pull
+one workflow that ever reads it; `record-ratifications.yml` runs afterward, once the ratifier's own pull
 request has been judged and merged by the ordinary lane 06 / lane 08 machinery: lane 08 rings
 `ratifier-merged` when the pull request it merged carries the ratifier's title, and that ring is
 what wakes the recording of what survived.
@@ -489,14 +489,25 @@ nothing downstream reads it.
 
 ---
 
-## Node 15 — `ratify-release.yml`: recording what merged · [wire] [stop]
+## Node 15 — `record-ratifications.yml`: recording what merged · [wire] [stop]
 
-`ratify-release.yml` `jobs.ratify-release.if` · `observations/run-ratification.ts`
+`record-ratifications.yml` `jobs.record-ratifications.if` · `observations/run-ratification.ts`
 
 Wakes on the `ratifier-merged` dispatch lane 08 rings right after `gh pr merge`, and only when the
 pull request it merged carries `RATIFIER_PR_TITLE` (`integrate/integrate.ts`). It cannot wake on
 `pull_request: closed`
 ([ADR-0164](../adr/0164-the-ratifier-s-merge-is-announced-by-a-ring-from-lane-08-bec.md)).
+
+This lane was called `ratify-release.yml` until #535, which is the one thing to know when reading
+[ADR-0122](../adr/0122-findings-land-through-the-implementation-door-the-release-pr.md)'s "the
+release-PR channel … is deleted" against the tree. What 0122 deleted is the *behaviour*: nothing
+opens a release pull request, judges one, or reads a release bookmark. The file stayed, and ADR-0164
+gave it this job six days later. Two separate passes read 0122 as a claim about the file and went
+hunting dead scaffolding that was load-bearing (#385's open question, then #535), because
+`run-ratification.ts` is the tree's only producer of the `ratified` records
+[ADR-0123](../adr/0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md)'s detector
+compares against: deleting it as 0122 appeared to demand would have blinded revert detection without
+erroring.
 
 | | |
 |---|---|
@@ -547,7 +558,7 @@ from `CODING_STANDARDS.md`, this is the workflow that notices, on the very push 
 | audit's own dispatch (Node 06) | — | Observation notes in range | `refs/notes/observations` | One `repository_dispatch` |
 | ratifier (Node 11) | opus, **unrestricted tools** | `CODING_STANDARDS.md`, the checkout at large | The working tree (rule + fixes, or a `CODING_STANDARDS.md` entry) | — |
 | land (Nodes 13–14) | — | The batch's own commits, trunk's immutable set | Pushes a branch, opens a PR | Opens a PR, dispatches `implementation-opened` |
-| ratify-release (Node 15) | — | The merged PR's own body, read back by `gh pr view` | `refs/notes/ratifications` | — |
+| record-ratifications (Node 15) | — | The merged PR's own body, read back by `gh pr view` | `refs/notes/ratifications` | — |
 | decline-on-revert (Node 16) | — | `CODING_STANDARDS.md`, `eslint.config.js`, ratification notes | `refs/notes/ratifications` | — |
 
 Two single-job workflows here — `ratify.yml` and `implement.yml` — hold full `contents: write,
@@ -582,7 +593,7 @@ Ordered by how much has been spent when it fires.
 | 20 min | `audit.yml` job timeout | — |
 | 110 min / 120 min | `ratify.yml` step / job timeout | — |
 | 10 min | `ratify-on-prd-close.yml` / `decline-on-revert.yml` job timeout | — |
-| 15 min | `ratify-release.yml` job timeout | — |
+| 15 min | `record-ratifications.yml` job timeout | — |
 
 ---
 
@@ -606,7 +617,7 @@ written from three different workflows.** `runObservations()` calls `writeObserv
 locally, before `run-audit.ts` calls it again inside `syncNotesRef()`'s fetch-then-push loop — the
 first call is overwritten by the second before anything is pushed, so it does nothing observable
 (see *Loose ends*). `refs/notes/ratifications`, by contrast, gets real, distinct writers over time:
-the ratifier itself writes `declined` records inline during a batch (Node 11), `ratify-release.yml`
+the ratifier itself writes `declined` records inline during a batch (Node 11), `record-ratifications.yml`
 writes `ratified` records after a merge (Node 15), and `decline-on-revert.yml` writes further
 `declined` records after the owner reverts (Node 16) — all three going through the same
 `syncNotesRef()` retry shape, so two of them racing on the same push is a handled case, not a bug.
