@@ -2,7 +2,18 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
-import { ACCEPTING_LABEL, BUILDING_LABEL, BY_HAND_LABEL, NEEDS_HUMAN_LABEL, SLICED_LABEL } from "../shared/labels";
+import {
+  ACCEPTING_LABEL,
+  BUILDING_LABEL,
+  BY_HAND_LABEL,
+  NEEDS_HUMAN_LABEL,
+  PRD_LABEL,
+  SLICEABLE_LABEL,
+  SLICED_LABEL,
+  TICKET_LABEL,
+} from "../shared/labels";
+import { PRD_SLICEABLE_DISPATCH_ACTION } from "../shared/ready-set";
+import { CLAIM_LIMIT } from "../shared/ticket-shape";
 import { TO_BUILD_LABEL } from "./reconcile";
 import {
   type FakeIssue,
@@ -313,3 +324,96 @@ test(
     expect(byHand.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
   },
 );
+
+describe("a claim too wide for lane 04 is sliced, not handed back", () => {
+  const overWide = (count: number): string =>
+    [
+      "## Acceptance criteria",
+      "",
+      "- [ ] `make gate` exits 0 — check: `make gate`",
+      "",
+      "## Files claimed",
+      "",
+      ...Array.from({ length: count }, (_unused, at) => `- src/m${at}.ts`),
+      "",
+    ].join("\n");
+
+  const wide = () =>
+    trackerWith({ open: [{ ...labelled(800), body: overWide(CLAIM_LIMIT + 1), labels: [TO_BUILD_LABEL, TICKET_LABEL] }] });
+
+  it("rings lane 03 instead of stamping the owner's label", () => {
+    const tracker = wide();
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual([PRD_SLICEABLE_DISPATCH_ACTION]);
+    expect(tracker.labelsAdded.filter((label) => label.name === NEEDS_HUMAN_LABEL)).toEqual([]);
+  });
+
+  it("relabels it as the spec it turned out to be, so lane 03's own doors read it", () => {
+    const tracker = wide();
+
+    reconcileOver(tracker);
+
+    expect(tracker.labelsAdded).toContainEqual({ issue: 800, name: PRD_LABEL });
+    expect(tracker.labelsAdded).toContainEqual({ issue: 800, name: SLICEABLE_LABEL });
+    expect(tracker.labelsRemoved).toContainEqual({ issue: 800, name: TICKET_LABEL });
+    expect(tracker.labelsRemoved).toContainEqual({ issue: 800, name: TO_BUILD_LABEL });
+  });
+
+  it("says on the ticket that nobody owes it anything", () => {
+    const tracker = wide();
+
+    reconcileOver(tracker);
+
+    const said = tracker.comments.filter((comment) => comment.issue === 800);
+    expect(said).toHaveLength(1);
+    expect(said[0].body).toContain(String(CLAIM_LIMIT + 1));
+    expect(said[0].body).not.toContain(REFUSED_MARKER);
+  });
+
+  it("rings lane 03 once, however many times the reconciler reads the same issue", () => {
+    const tracker = trackerWith({
+      open: [
+        {
+          ...labelled(801),
+          body: overWide(CLAIM_LIMIT + 1),
+          labels: [TO_BUILD_LABEL, TICKET_LABEL],
+          comments: ["Already sent.\n\n<!-- sent-to-slicing:v1 -->"],
+        },
+      ],
+    });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches).toEqual([]);
+    expect(tracker.comments.filter((comment) => comment.issue === 801)).toEqual([]);
+  });
+
+  it("leaves a claim sitting on the ceiling alone", () => {
+    const tracker = trackerWith({
+      open: [{ ...labelled(802), body: overWide(CLAIM_LIMIT), labels: [TO_BUILD_LABEL, TICKET_LABEL] }],
+    });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).not.toContain(PRD_SLICEABLE_DISPATCH_ACTION);
+  });
+
+  it("lets a by-hand ticket stand down rather than slicing work no pull request may land", () => {
+    const tracker = trackerWith({
+      open: [
+        {
+          ...labelled(803),
+          body: overWide(CLAIM_LIMIT + 1),
+          labels: [TO_BUILD_LABEL, TICKET_LABEL, BY_HAND_LABEL],
+        },
+      ],
+    });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches).toEqual([]);
+    expect(tracker.labelsAdded.filter((label) => label.name === PRD_LABEL)).toEqual([]);
+  });
+});

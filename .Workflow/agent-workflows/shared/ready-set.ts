@@ -43,6 +43,15 @@ export function dispatchAcceptanceWanted(gh: GhExec, issueNumber: number, ready:
   });
 }
 
+export const PRD_SLICEABLE_DISPATCH_ACTION = "prd-sliceable";
+
+export function dispatchPrdSliceable(gh: GhExec, issueNumber: number): void {
+  requestDispatch(gh, {
+    event_type: PRD_SLICEABLE_DISPATCH_ACTION,
+    client_payload: { issue: issueNumber },
+  });
+}
+
 export const MECHANIC_WANTED_DISPATCH_ACTION = "mechanic-wanted";
 
 export const FRESH_EYES_RUNG = "fresh-eyes";

@@ -7,6 +7,7 @@ import {
   ACCEPTANCE_WANTED_DISPATCH_ACTION,
   GRAPH_CHANGED_DISPATCH_ACTION,
   MECHANIC_WANTED_DISPATCH_ACTION,
+  PRD_SLICEABLE_DISPATCH_ACTION,
   TICKET_READY_DISPATCH_ACTION,
 } from "./ready-set";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
@@ -15,7 +16,7 @@ import { printYaml, type YamlMap, type YamlValue } from "./workflow-yaml";
 
 export const LANE_OWNED = {
   sessionCaptured: "session-captured",
-  prdSliceable: "prd-sliceable",
+  prdSliceable: PRD_SLICEABLE_DISPATCH_ACTION,
   sliceable: SLICEABLE_LABEL,
   prd: PRD_LABEL,
   toBuild: TO_BUILD_LABEL,

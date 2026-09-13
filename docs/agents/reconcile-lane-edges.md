@@ -171,6 +171,19 @@ the ticket for another reason re-applies the label the same way they do after a 
 The by-hand stand-down (`recordByHandStandDown()`) is the deliberate exception: it never adds
 `needs-human` and is never dispatched, whatever its shape.
 
+A claim wider than `CLAIM_LIMIT` never reaches that refusal at all. `overWideClaim()` is read
+before `toBuildRefusal()`, and `sendToSlicing()` sheds `ticket` and `to-build`, adds `prd` and
+`sliceable`, says so in a `<!-- sent-to-slicing:v1 -->` comment, and requests `prd-sliceable`.
+Lane 03 then slices the issue into sub-issues of it, each held to the same ceiling by
+`validate-graph.ts` as it is written. The reasoning is the one this door exists to serve: every
+other refusal here names something a human adds in a minute — a missing heading, a missing
+`check:` marker — but a nine-file claim is not a body anyone repairs, it is the wrong number of
+tickets, and the machine already owns a lane that turns one of those into several. Handing it to
+the owner spends a human on work lane 03 does unattended. The marker makes it once-only; the
+by-hand stand-down still wins, because slicing work no pull request may land would only produce
+more of it. Lane 03's own two doors (a PRD with sub-issues, a PRD that is itself a sub-issue)
+stay the backstop, and say so on the issue under `slice-failed` rather than here.
+
 ---
 
 ## Node 04 — compute readiness and dispatch · [wire]

@@ -22,6 +22,8 @@ import {
   NEEDS_HUMAN_LABEL,
   PRD_LABEL,
   QUEUED_LABEL,
+  SLICEABLE_LABEL,
+  TICKET_LABEL,
   TO_BUILD_LABEL,
   unlabel,
   WAITING_LABEL,
@@ -34,6 +36,7 @@ import { testsForTicket } from "../shared/affected-tests";
 import {
   dispatchAcceptanceWanted,
   dispatchMechanicWanted,
+  dispatchPrdSliceable,
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
   implementationBranch,
@@ -59,10 +62,12 @@ import {
   type Rung,
 } from "../shared/strikes";
 import {
+  CLAIM_LIMIT,
   countCriteria,
   extractCriteria,
   extractFilesClaimed,
   isRunnableSpec,
+  overWideClaim,
   parseCheckMarker,
   TicketShapeError,
   validateTicket,
@@ -370,6 +375,53 @@ function toBuildRefusalBody(refusal: string): string {
   ].join("\n");
 }
 
+const SENT_TO_SLICING_MARKER = "<!-- sent-to-slicing:v1 -->";
+
+function sentToSlicingBody(count: number): string {
+  return [
+    `Its \`## Files claimed\` names ${count} paths, past the ${CLAIM_LIMIT} lane 04 can author against inside`,
+    "one lane budget, so this is not one ticket and no amount of waiting makes it one.",
+    "",
+    `Rather than hold it for the owner, this door relabelled it \`${PRD_LABEL}\` and rang lane 03, which`,
+    "slices it into tickets of one subject each and publishes them here as sub-issues. Each of those is",
+    "held to the same ceiling as it is written, so the split cannot hand the same problem back.",
+    "",
+    `Nobody needs to act on this, and it is not a \`${NEEDS_HUMAN_LABEL}\` hold. If lane 03 refuses — this`,
+    "issue already has sub-issues, or is itself a sub-issue — it says so here and wears `slice-failed`.",
+    "",
+    SENT_TO_SLICING_MARKER,
+  ].join("\n");
+}
+
+function sendToSlicing(
+  gh: GhExec,
+  number: number,
+  count: number,
+  labels: string[],
+  log: (line: string) => void,
+): void {
+  const comments = fetchComments(gh, number);
+  if (comments === null) {
+    log(`could not read #${number}'s comments, so leaving it be rather than ringing lane 03 twice.`);
+    return;
+  }
+  if (markedComment(comments, SENT_TO_SLICING_MARKER) !== undefined) return;
+
+  const shed = [TICKET_LABEL, TO_BUILD_LABEL].filter((label) => labels.includes(label));
+  gh([
+    "issue",
+    "edit",
+    String(number),
+    "--add-label",
+    PRD_LABEL,
+    ...shed.flatMap((label) => ["--remove-label", label]),
+  ]);
+  markLane(gh, number, SLICEABLE_LABEL);
+  gh(["issue", "comment", String(number), "--body", sentToSlicingBody(count)]);
+  dispatchPrdSliceable(gh, number);
+  log(`#${number}: claims ${count} paths, past ${CLAIM_LIMIT}; relabelled \`${PRD_LABEL}\` and rang lane 03 to slice it.`);
+}
+
 function byHandStandDownBody(): string {
   return [
     `This is labelled \`${BY_HAND_LABEL}\`: its \`## Files claimed\` names a workstation or immutable-set`,
@@ -462,6 +514,20 @@ function admitToBuild(
         recordByHandStandDown(gh, issue.number, log);
       } catch (err) {
         log(`could not record #${issue.number}'s by-hand stand-down: ${reason(err)}`);
+      }
+      continue;
+    }
+
+    const overWide = overWideClaim(issue.body ?? "");
+    if (overWide !== undefined) {
+      if (dryRun) {
+        log(`would ring lane 03 to slice #${issue.number}: it claims ${overWide} paths, past ${CLAIM_LIMIT}.`);
+        continue;
+      }
+      try {
+        sendToSlicing(gh, issue.number, overWide, labels, log);
+      } catch (err) {
+        log(`could not ring lane 03 for #${issue.number}: ${reason(err)}`);
       }
       continue;
     }

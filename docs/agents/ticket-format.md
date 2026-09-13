@@ -88,8 +88,13 @@ A ticket missing this heading entirely was never shaped by a producer that compu
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
 **Eight paths is the ceiling**, refused above that by `bin/ticket_shape.py`'s `CLAIM_LIMIT` at
-filing and by `shared/ticket-shape.ts`'s at the `to-build` door and in every `/to-tickets` plan;
-a proc test drives both validators over the same bodies so the two cannot drift. The ceiling is
+filing and by `shared/ticket-shape.ts`'s in every `/to-tickets` plan; a proc test drives both
+validators over the same bodies so the two cannot drift. At the `to-build` door the ceiling is not
+a refusal at all: a ticket claiming more than eight paths is not one ticket, and waiting on a human
+to notice never makes it one, so `reconcile.ts` relabels it `prd` + `sliceable`, rings lane 03, and
+lane 03 publishes the slices as sub-issues of it. Each slice is held to the same ceiling as it is
+written, so the split cannot hand the same body back. Nobody is asked for anything, and the
+ticket never wears `needs-human` for its width. The ceiling is
 lane 04's, not a taste: the acceptance author inlines the contents of every claimed file into one
 prompt, and the lane budget is a single wall clock covering that pass, the gate, and the one
 repair round. #539 claimed nine files across four lanes, handed the author 92 KiB, and spent 17.3

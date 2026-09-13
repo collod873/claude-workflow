@@ -107,6 +107,11 @@ export function claimTooWide(count: number): string {
   );
 }
 
+export function overWideClaim(body: string): number | undefined {
+  const count = extractFilesClaimed(normalizeNewlines(body)).length;
+  return count > CLAIM_LIMIT ? count : undefined;
+}
+
 export function criteriaBlocks(body: string): string[] | null {
   const normalized = normalizeNewlines(body);
   if (!CRITERIA_HEADING_RE.test(normalized)) {
@@ -248,9 +253,9 @@ export function validateTicket(body: string, repoRoot: string = defaultRepoRoot(
   if (!FILES_HEADING_RE.test(normalized)) {
     throw new TicketShapeError("missing required '## Files claimed' heading");
   }
-  const claimedCount = extractFilesClaimed(normalized).length;
-  if (claimedCount > CLAIM_LIMIT) {
-    throw new TicketShapeError(claimTooWide(claimedCount));
+  const overWide = overWideClaim(normalized);
+  if (overWide !== undefined) {
+    throw new TicketShapeError(claimTooWide(overWide));
   }
 
   const warnings: string[] = [];

@@ -14,7 +14,12 @@ describe("the lane map", () => {
   });
 
   it("reads what a lane rings from its own call path, not from every file it imports", () => {
-    expect(lane("dispatch-reconcile").rings).toEqual(["acceptance-wanted", "mechanic-wanted", "ticket-ready"]);
+    expect(lane("dispatch-reconcile").rings).toEqual([
+      "acceptance-wanted",
+      "mechanic-wanted",
+      "prd-sliceable",
+      "ticket-ready",
+    ]);
     expect(lane("review").rings).toEqual([]);
     expect(lane("implement").rings).toEqual(["implementation-opened", "mechanic-wanted", "run-ended"]);
   });
@@ -28,7 +33,15 @@ describe("the lane map", () => {
     expect(lane("walk-home").labelsApplied).toEqual(["by-hand", "ticket", "to-build"]);
     expect(lane("to-tickets").labelsApplied).toEqual(["3-sliced", "3-slicing", "slice-failed"]);
     expect(lane("implement").labelsApplied).toEqual(["5-building", "needs-human"]);
-    expect(lane("dispatch-reconcile").labelsApplied).toEqual(["4-accepting", "5-building", "needs-human", "queued", "waiting"]);
+    expect(lane("dispatch-reconcile").labelsApplied).toEqual([
+      "4-accepting",
+      "5-building",
+      "needs-human",
+      "prd",
+      "queued",
+      "sliceable",
+      "waiting",
+    ]);
   });
 
   it("joins every rung event to the lane that wakes on it", () => {
