@@ -3,7 +3,7 @@ import type { GhExec } from "./gh";
 
 export interface DispatchRequest {
   event_type: string;
-  client_payload: Record<string, string | number>;
+  client_payload: Record<string, string | number | string[]>;
 }
 
 export const DISPATCH_REQUESTS_PATH_ENV = "DISPATCH_REQUESTS_PATH";
@@ -11,6 +11,10 @@ export const DISPATCH_REQUESTS_PATH_ENV = "DISPATCH_REQUESTS_PATH";
 function dispatchArgs(request: DispatchRequest): string[] {
   const args = ["api", "repos/{owner}/{repo}/dispatches", "-f", `event_type=${request.event_type}`];
   for (const [key, value] of Object.entries(request.client_payload)) {
+    if (Array.isArray(value)) {
+      args.push(...value.flatMap((member) => ["-f", `client_payload[${key}][]=${member}`]));
+      continue;
+    }
     args.push("-f", `client_payload[${key}]=${value}`);
   }
   return args;

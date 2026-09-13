@@ -16,6 +16,6 @@ reaches. Rule 3 applies to every file: a cycle through a test is still a cycle.
 
 ## How it runs
 
-`npx depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows`, from `npm run lint`
-(the `lint` script's wiring is a separate change). Every rule is an error, so one violation fails
+`npx depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows`, from `npm run lint`.
+Every rule is an error, so one violation fails
 the run. There is no baseline and nothing to regenerate: a violation is fixed at its source.

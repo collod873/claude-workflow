@@ -25,16 +25,10 @@ export function readPrdClosedField(field: string | undefined): { prdClosed: bool
 }
 
 export function dispatchRatificationDue(gh: GhExec, dispatch: RatificationDueDispatch): void {
-  gh([
-    "api",
-    "repos/{owner}/{repo}/dispatches",
-    "-f",
-    `event_type=${RATIFICATION_DUE_DISPATCH_ACTION}`,
-    "-f",
-    `client_payload[head]=${dispatch.head}`,
-    "-f",
-    `client_payload[prd_closed]=${prdClosedField(dispatch)}`,
-  ]);
+  requestDispatch(gh, {
+    event_type: RATIFICATION_DUE_DISPATCH_ACTION,
+    client_payload: { head: dispatch.head, prd_closed: prdClosedField(dispatch) },
+  });
 }
 
 export function dispatchRatifierMerged(gh: GhExec, pr: string): void {
