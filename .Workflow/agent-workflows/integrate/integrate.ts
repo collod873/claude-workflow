@@ -122,11 +122,16 @@ function readJobs(gh: GhExec, runId: number): Array<z.infer<typeof ApiJob>> {
 }
 
 function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
+  let log: string;
   try {
-    return gh(["api", jobLogsPath(jobId)]).includes(`judging ${pr} on `);
-  } catch {
+    log = gh(["api", jobLogsPath(jobId)]);
+  } catch (err) {
+    console.error(`could not read job ${jobId}'s log to learn which pull request it judged: ${reason(err)}`);
     return false;
   }
+  if (log.includes(`judging ${pr} on `)) return true;
+  console.error(`job ${jobId} finished, but its log never says it was judging ${pr}`);
+  return false;
 }
 
 function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkflow: string): VerifyVerdict {
@@ -137,6 +142,9 @@ function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkfl
   const candidates = runs
     .filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT)
     .sort((a, b) => b.id - a.id);
+  if (candidates.length === 0) {
+    console.error(`no ${DISPATCH_EVENT} run of ${verifyWorkflow} reports head ${headSha}`);
+  }
   for (const run of candidates) {
     const jobs = readJobs(gh, run.id);
     const immutability = findJobByName(jobs, IMMUTABILITY_JOB);
