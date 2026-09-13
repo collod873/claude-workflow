@@ -193,8 +193,10 @@ _Avoid_: shim, wrapper, caller, vendored copy
 **Strike**:
 One dead run of a ticket, written to the ticket as one comment carrying the run, its conclusion
 and the first line that says why. The tracker holds the count, so no lane's artifact does, and a
-decision the owner posts resets it. Written only by the reconciler, which reads dead runs off the
-runs API rather than waiting to be told.
+decision the owner posts resets it. The reconciler writes one for every dead run it finds on the
+runs API rather than waiting to be told; a stage that runs out of budget writes its own first,
+because the run it is dying in is not dead on the API yet. The run id in the marker is what keeps
+those two from counting the same death twice.
 _Avoid_: attempt, failure record, retry count
 
 **Rung**:
