@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, test } from "vitest";
+import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
 import {
   adrNumber,
@@ -319,4 +323,107 @@ describe("backStampWalk", () => {
 
     expect(backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });
   });
+});
+
+const LOST_RACE = "! [rejected] main -> main (fetch first)";
+
+const AGENT_WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+function racingDeps(
+  files: Record<string, string>,
+  lostPushes: number,
+): WalkDeps & { writes: Record<string, string>; calls: string[][]; pushAttempts: () => number } {
+  const base = fakeDeps(files);
+  let pushAttempts = 0;
+
+  const git: GitExec = (argv) => {
+    if (verb(argv) !== "push") return base.git(argv);
+    pushAttempts += 1;
+    const result = base.git(argv);
+    if (pushAttempts <= lostPushes) throw new Error(LOST_RACE);
+    return result;
+  };
+
+  return { ...base, git, pushAttempts: () => pushAttempts };
+}
+
+function productionSources(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : productionSources(path);
+    if (!entry.name.endsWith(".ts")) return [];
+    if (entry.name.endsWith(".test.ts") || path.includes("fixture") || path.includes("fake")) return [];
+    return [path];
+  });
+}
+
+test.fails("#544.1: commitAndPush reaches trunk through shared/push-to-trunk.ts instead of its own push origin HEAD:main", async () => {
+  const deps = fakeDeps(CORPUS);
+
+  const pending = backStampWalk(deps);
+  expect(pending).toBeInstanceOf(Promise);
+
+  const outcome = await pending;
+  expect(outcome.action).toBe("committed");
+  expect(outcome.stamped.sort()).toEqual(
+    [PREDECESSOR_26.path, PREDECESSOR_32.path, PREDECESSOR_33.path].sort(),
+  );
+
+  const pushes = deps.calls.filter((argv) => verb(argv) === "push");
+  expect(pushes).toHaveLength(1);
+  expect(pushes[0].slice(0, 2)).toEqual(["-C", deps.repoRoot]);
+});
+
+test.fails(
+  "#544.2: a push this walk loses is retried, and the walk reports its own sentence once the attempts are exhausted",
+  async () => {
+    const flaky = racingDeps(CORPUS, 1);
+
+    const recovered = await backStampWalk(flaky);
+
+    expect(recovered.action).toBe("committed");
+    expect(recovered.stamped.sort()).toEqual(
+      [PREDECESSOR_26.path, PREDECESSOR_32.path, PREDECESSOR_33.path].sort(),
+    );
+    expect(flaky.writes[PREDECESSOR_32.path]).toContain("superseded_by: ADR-0053, ADR-0054");
+    expect(flaky.pushAttempts()).toBeGreaterThan(1);
+
+    const doomed = racingDeps(CORPUS, Number.POSITIVE_INFINITY);
+
+    const gaveUp = await Promise.resolve(backStampWalk(doomed)).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+
+    expect(gaveUp).toBeInstanceOf(Error);
+    expect((gaveUp as Error).message.trim()).not.toBe("");
+    expect((gaveUp as Error).message).not.toBe(LOST_RACE);
+    expect(doomed.pushAttempts()).toBeGreaterThan(1);
+  },
+  60_000,
+);
+
+test.fails("#544.3: exactly one production module under agent-workflows carries a literal push to HEAD:main", () => {
+  const carriers = productionSources(AGENT_WORKFLOWS)
+    .filter((path) => readFileSync(path, "utf8").includes("HEAD:main"))
+    .map((path) => relative(AGENT_WORKFLOWS, path).split(sep).join("/"));
+
+  expect(carriers).toEqual(["shared/push-to-trunk.ts"]);
+});
+
+test.fails("#544.4: the whole check contract passes, so the async ripple reaches every caller in the walk", async () => {
+  const clean = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
+
+  const pendingClean = backStampWalk(clean);
+  expect(pendingClean).toBeInstanceOf(Promise);
+  expect(await pendingClean).toEqual({ action: "clean", stamped: [] });
+  expect(clean.calls).toEqual([]);
+
+  const committed = fakeDeps(CORPUS);
+
+  const outcome = await backStampWalk(committed);
+
+  expect(outcome.action).toBe("committed");
+  expect(committed.calls.map(verb)).toContain("push");
+  expect(committed.calls.find((argv) => verb(argv) === "add")).toContain(INDEX_RELATIVE_PATH);
 });
