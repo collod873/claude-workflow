@@ -16,6 +16,7 @@ import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
+import { pushToTrunk } from "../shared/push-to-trunk";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
   currentLaneRun,
@@ -298,16 +299,31 @@ export interface CommitDeps {
   paths: string[];
   commitMessage: string;
   landing: Landing;
+  sleep?: (seconds: number) => Promise<void>;
+  log?: (line: string) => void;
 }
 
-export function commitAuthoredBatch(deps: CommitDeps): void {
+function realSleep(seconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+export async function commitAuthoredBatch(deps: CommitDeps): Promise<void> {
   deps.git(["add", ...deps.paths]);
   deps.git(["commit", "-m", deps.commitMessage]);
   if (deps.landing === "push") {
-    deps.git(["fetch", "origin", "main"]);
-    deps.git(["rebase", "origin/main"]);
-    deps.git(["push", "origin", "HEAD:main"]);
+    await pushToTrunk({
+      git: deps.git,
+      sleep: deps.sleep ?? realSleep,
+      log: deps.log ?? ((line) => console.log(line)),
+    });
   }
+}
+
+function pushExhaustedNote(): string {
+  return (
+    "The authored tests were judged green, but landing them on trunk kept losing the race even " +
+    "after every retry, so nothing landed. This run counts as a strike; the ladder says what runs next."
+  );
 }
 
 export function authorRedNote(judgement: string): string {
@@ -381,12 +397,18 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     return { verdict: "refused", reason: attempt.reason };
   }
 
-  commitAuthoredBatch({
-    git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
-    paths: attempt.paths,
-    commitMessage: authorCommitMessage(deps.issueNumber, attempt.paths),
-    landing: deps.landing ?? "push",
-  });
+  try {
+    await commitAuthoredBatch({
+      git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
+      paths: attempt.paths,
+      commitMessage: authorCommitMessage(deps.issueNumber, attempt.paths),
+      landing: deps.landing ?? "push",
+      log,
+    });
+  } catch (err) {
+    haltLoudly(deps.gh, deps.issueNumber, pushExhaustedNote(), log);
+    return { verdict: "refused", reason: reason(err) };
+  }
   return { verdict: "pushed" };
 }
 
