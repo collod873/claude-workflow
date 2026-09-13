@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { frontmatterBlock } from "../shared/adr-frontmatter";
+import { errorMessage } from "../shared/reason";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch";
-import { accept, insertTerm, type AcceptDeps } from "./accept";
+import { accept, insertTerm, type AcceptDeps, type AcceptOutcome } from "./accept";
 import { sheetMarker } from "../shared/marker";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
@@ -40,7 +41,7 @@ interface Harness {
   adrTitles: string[];
 }
 
-function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
+function harness(options: { sheet?: Sheet; labels?: string[]; losePushes?: number } = {}): Harness {
   const comments = options.sheet ? [`## Restatement\n\n…\n\n${sheetMarker(options.sheet)}`] : [];
   const tracker = createFakeTracker({
     comments: new Map([[1, comments]]),
@@ -51,10 +52,17 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
   const git: string[][] = [];
   const adrTitles: string[] = [];
   let nextAdr = 50;
+  let lostPushes = 0;
   const deps: AcceptDeps = {
     gh: tracker.gh,
     git: (args) => {
       git.push([...args]);
+      if (args[0] === "push" && lostPushes < (options.losePushes ?? 0)) {
+        lostPushes += 1;
+        throw new Error(
+          "! [rejected]        HEAD -> main (non-fast-forward)\nhint: Updates were rejected because the tip of your current branch is behind. fetch first",
+        );
+      }
       return "";
     },
     newAdr: (title) => {
@@ -85,6 +93,28 @@ function harness(options: { sheet?: Sheet; labels?: string[] } = {}): Harness {
 
 function harnessFor(over: Partial<Decision>): Harness {
   return harness({ sheet: sheet({ decisions: [decision(over)] }) });
+}
+
+const ADR_RULING: Partial<Decision> = { mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL };
+
+function pushAttempts(calls: string[][]): string[][] {
+  return calls.filter((call) => call[0] === "push");
+}
+
+async function outcomeOf(result: AcceptOutcome | Promise<AcceptOutcome>): Promise<AcceptOutcome> {
+  return await result;
+}
+
+async function reportOf(
+  run: () => AcceptOutcome | Promise<AcceptOutcome>,
+  tracker: FakeTracker,
+): Promise<string> {
+  try {
+    await run();
+  } catch (raised) {
+    return errorMessage(raised);
+  }
+  return postedComments(tracker).join("\n\n");
 }
 
 const CONTEXT_FIXTURE = `# Workflow
@@ -383,3 +413,75 @@ describe("re-applying a verb", () => {
     expect(posted).toContain('"route":"short"');
   });
 });
+
+test.fails(
+  "#543.1: commitAndPush reaches trunk through shared/push-to-trunk.ts instead of its own push origin HEAD:main",
+  async () => {
+    const { deps, git } = harness({ sheet: sheet({ decisions: [decision(ADR_RULING)] }), losePushes: 1 });
+
+    const pending = accept(deps, 1, "approved");
+    expect(pending).toBeInstanceOf(Promise);
+
+    const outcome = await outcomeOf(pending);
+
+    expect(outcome).toMatchObject({ kind: "approved", adrs: ["docs/adr/0051-slug.md"] });
+    expect(pushAttempts(git).length).toBeGreaterThan(1);
+  },
+  30_000,
+);
+
+test.fails(
+  "#543.2: a push this lane loses is retried, and the lane reports its own sentence when the attempts are exhausted",
+  async () => {
+    const lost = harness({ sheet: sheet({ decisions: [decision(ADR_RULING)] }), losePushes: 1 });
+
+    const landed = await outcomeOf(accept(lost.deps, 1, "approved"));
+
+    expect(landed).toMatchObject({ kind: "approved" });
+    expect(pushAttempts(lost.git).length).toBeGreaterThan(1);
+
+    const exhausted = harness({
+      sheet: sheet({ decisions: [decision(ADR_RULING)] }),
+      losePushes: Number.POSITIVE_INFINITY,
+    });
+
+    const reported = await reportOf(() => accept(exhausted.deps, 1, "approved"), exhausted.tracker);
+
+    expect(pushAttempts(exhausted.git).length).toBeGreaterThan(1);
+    expect(reported).toMatch(/accept|adr|context\.md|sheet|rul|land/i);
+  },
+  60_000,
+);
+
+test.fails(
+  "#543.3: the whole check contract passes: every verb of accept resolves through the async ripple, and insertTerm stays a plain function",
+  async () => {
+    const parked = harness({ sheet: sheet() });
+    const parkedResult = accept(parked.deps, 1, "parked");
+    expect(parkedResult).toBeInstanceOf(Promise);
+    expect(await outcomeOf(parkedResult)).toEqual({ kind: "parked" });
+
+    const killed = harness({ sheet: sheet() });
+    const killedResult = accept(killed.deps, 1, "killed");
+    expect(killedResult).toBeInstanceOf(Promise);
+    expect(await outcomeOf(killedResult)).toEqual({ kind: "killed" });
+
+    const missing = harness();
+    const missingResult = accept(missing.deps, 1, "approved");
+    expect(missingResult).toBeInstanceOf(Promise);
+    expect(await outcomeOf(missingResult)).toEqual({ kind: "no-sheet", verb: "approved" });
+
+    const approved = harness({ sheet: sheet({ decisions: [decision(ADR_RULING)] }) });
+    const approvedResult = accept(approved.deps, 1, "approved");
+    expect(approvedResult).toBeInstanceOf(Promise);
+    expect(await outcomeOf(approvedResult)).toMatchObject({
+      kind: "approved",
+      adrs: ["docs/adr/0051-slug.md"],
+    });
+    expect(pushAttempts(approved.git).length).toBeGreaterThanOrEqual(1);
+
+    const term: Term = { term: "X", definition: "d", avoid: [], section: "Mechanisms" };
+    expect(insertTerm(CONTEXT_FIXTURE, term)).toContain("**X**:");
+  },
+  30_000,
+);
