@@ -427,20 +427,41 @@ describe("runVitestJsonForFixer", () => {
       },
     });
 
-    expect(runVitestJsonForFixer([".Workflow"], "/somewhere")).toEqual({
+    expect(runVitestJsonForFixer("/somewhere")).toEqual({
       failures: [
         { testName: "adds two numbers", errorMessage: "AssertionError: expected 3, got 4" },
         { testName: "b.test.ts", errorMessage: "SyntaxError: unexpected token" },
       ],
     });
-    expect(runVitestReport).toHaveBeenCalledWith([".Workflow"], "/somewhere");
+    expect(runVitestReport).toHaveBeenCalledWith([], "/somewhere");
   });
 
-  it("reads a run that produced no report as one failure naming the targets, never as green", () => {
+  it("collects a failure outside .Workflow, passing no path filter so the target's own config decides the suite", () => {
+    vi.mocked(runVitestReport).mockReturnValue({
+      report: {
+        testResults: [
+          {
+            name: "src/router.test.ts",
+            status: "failed",
+            assertionResults: [
+              { fullName: "routes a request", status: "failed", failureMessages: ["AssertionError: expected 404"] },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(runVitestJsonForFixer("/target")).toEqual({
+      failures: [{ testName: "routes a request", errorMessage: "AssertionError: expected 404" }],
+    });
+    expect(runVitestReport).toHaveBeenCalledWith([], "/target");
+  });
+
+  it("reads a run that produced no report as one failure naming the checkout, never as green", () => {
     vi.mocked(runVitestReport).mockReturnValue({ error: "spawn npx ENOENT" });
 
-    expect(runVitestJsonForFixer([".Workflow", "x-"])).toEqual({
-      failures: [{ testName: ".Workflow x-", errorMessage: "spawn npx ENOENT" }],
+    expect(runVitestJsonForFixer("/target")).toEqual({
+      failures: [{ testName: "/target", errorMessage: "spawn npx ENOENT" }],
     });
   });
 });

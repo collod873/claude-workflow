@@ -283,9 +283,9 @@ export async function runFixer(deps: FixerDeps): Promise<FixerOutcome> {
   throw new Error("runFixer: exited its loop without a verdict");
 }
 
-export function runVitestJsonForFixer(targets: string[], repoDir: string = process.cwd()): FixerTestResult {
-  const ran = runVitestReport(targets, repoDir);
-  if ("error" in ran) return { failures: [{ testName: targets.join(" "), errorMessage: ran.error }] };
+export function runVitestJsonForFixer(repoDir: string = process.cwd()): FixerTestResult {
+  const ran = runVitestReport([], repoDir);
+  if ("error" in ran) return { failures: [{ testName: repoDir, errorMessage: ran.error }] };
 
   const failures: FixerFailure[] = [];
   for (const file of ran.report.testResults) {
@@ -388,13 +388,12 @@ async function runEscalate(): Promise<void> {
   }
 }
 
-async function fixInCheckout(issueNumber: number, prNumber: number, branch: string, dir: string, repoDir: string): Promise<void> {
-  const targets = [dir];
+async function fixInCheckout(issueNumber: number, prNumber: number, branch: string, repoDir: string): Promise<void> {
   markLane(execGh, issueNumber, FIXING_LABEL);
 
-  const initialFailure = runVitestJsonForFixer(targets, repoDir).failures;
+  const initialFailure = runVitestJsonForFixer(repoDir).failures;
   if (initialFailure.length === 0) {
-    console.log(`nothing to fix: no test under ${targets.join(" or ")} is failing in this checkout`);
+    console.log(`nothing to fix: no test in ${repoDir} is failing in this checkout`);
     return;
   }
 
@@ -402,7 +401,7 @@ async function fixInCheckout(issueNumber: number, prNumber: number, branch: stri
     gh: execGh,
     exec: execClaudeIn(repoDir),
     git: (args) => execGit(["-C", repoDir, ...args]),
-    runTests: () => runVitestJsonForFixer(targets, repoDir),
+    runTests: () => runVitestJsonForFixer(repoDir),
     initialFailure,
     prNumber,
     branch,
@@ -428,7 +427,6 @@ async function runReact(): Promise<void> {
   const issueNumber = Number(process.env.ISSUE);
   const prNumber = Number(process.env.PR_NUMBER);
   const branch = process.env.BRANCH ?? "";
-  const dir = process.env.TEST_DIR ?? "";
   const repoDir = process.env.TARGET_WORKSPACE || process.cwd();
 
   try {
@@ -438,7 +436,7 @@ async function runReact(): Promise<void> {
       errorLine: process.env.ERROR_LINE ?? "",
       git: (args) => execGit(["-C", repoDir, ...args]),
       trunk: "origin/main",
-      fix: () => fixInCheckout(issueNumber, prNumber, branch, dir, repoDir),
+      fix: () => fixInCheckout(issueNumber, prNumber, branch, repoDir),
       escalate: (failedJob, errorLine) => applyUnfixable(execGh, issueNumber, prNumber, readAssignee(), failedJob, errorLine),
       log: (line) => console.log(line),
     });

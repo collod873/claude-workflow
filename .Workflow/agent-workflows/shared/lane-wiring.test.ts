@@ -62,6 +62,8 @@ interface CallOn {
   workflow_call?: { inputs?: Record<string, { required?: boolean; default?: string }> };
 }
 
+const STANDARD_CALL_INPUTS = ["machine_ref", "runner"];
+
 const rows = Object.entries(LANE_WIRING).map(([lane, row]) => ({ lane, row, file: `${lane}.yml` }));
 const estate = readWorkflows<Workflow>();
 const stubOf = (lane: string) => `${lane}${STUB_SUFFIX}`;
@@ -178,12 +180,18 @@ describe.each(rows)("$lane", ({ lane, row, file }) => {
       expect(jobs[0].permissions).toEqual(caller.permissions);
       if (caller.gate) expectGate(jobs[0].if ?? "", caller.gate);
       else expect(jobs[0].if).toBeUndefined();
-      if (caller.with) expect(jobs[0].with).toMatchObject(caller.with);
+      if (caller.with) expect(jobs[0].with).toEqual(caller.with);
       else expect(jobs[0].with).toBeUndefined();
     });
 
     it("is reusable: its own on: is workflow_call and nothing else", () => {
       expect(Object.keys(on)).toEqual(["workflow_call"]);
+    });
+
+    it("declares no input beyond the row's own and the two every reusable takes", () => {
+      const inputs = (on as CallOn).workflow_call?.inputs ?? {};
+      const allowed = [...STANDARD_CALL_INPUTS, ...Object.keys(row.inputs ?? {})].sort();
+      expect(Object.keys(inputs).sort()).toEqual(allowed);
     });
   } else {
     it("is standalone: fires on exactly these doors and has no caller stub", () => {

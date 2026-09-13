@@ -7,9 +7,6 @@ name: Fixer (reusable)
         type: string
         required: false
         default: ""
-      test_dir:
-        type: string
-        required: true
       runner:
         type: string
         required: false
@@ -186,6 +183,5 @@ jobs:
           BRANCH: ${{ steps.target.outputs.branch }}
           FAILED_JOB: ${{ steps.target.outputs.failed_job }}
           ERROR_LINE: ${{ steps.target.outputs.error_line }}
-          TEST_DIR: ${{ inputs.test_dir }}
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/fixer/fixer.ts react

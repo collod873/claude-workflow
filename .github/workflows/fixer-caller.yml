@@ -20,5 +20,4 @@ jobs:
     uses: collod873/claude-workflow/.github/workflows/fixer.yml@main
     with:
       run_id: ${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
-      test_dir: .Workflow
     secrets: inherit
