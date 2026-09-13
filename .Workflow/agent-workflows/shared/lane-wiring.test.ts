@@ -1,8 +1,5 @@
-import { createRequire } from "node:module";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import type * as TypeScript from "typescript";
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { RECONCILE_DISPATCH_ACTIONS, RECONCILE_ENDINGS, SESSION_CAPTURED_DISPATCH_ACTION, TO_BUILD_LABEL } from "../dispatch/reconcile";
 import { derivedSecretNames } from "../enrol/secrets";
 import { IMPLEMENT_DISPATCH_EVENT_TYPE } from "../implement/implement";
@@ -17,215 +14,146 @@ import { LABELS_APPLIED } from "../shape/shape";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "../spec/open-questions";
 import { STAGES } from "../to-tickets/to-tickets";
 import { WATCHDOG_DISPATCH_ACTION } from "../watchdog/run-watchdog";
-import { expectMachineAndTargetCheckouts } from "./checkout-pair.fixture";
+import { NEEDS_HUMAN_LABEL } from "./labels";
 import { BUDGETED_LANES, laneBudget } from "./lane-budget";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import {
-  doors,
   DEAD_RUN_WIRES,
+  emitReusable,
+  emitStub,
   ENDING_LANES,
   LANE_OWNED,
   LANE_WIRING,
+  laneFacts,
+  lanesNamed,
   MACHINE_REPOSITORY,
   MAIN_MOVED,
   REVIEW_WANTED,
   RUN_ENDED,
   SHAPE_LABELS_APPLIED,
-  type Checkout,
-  type Gate,
-  type JobFacts,
-  type LaneWiring,
-  type StepFact,
+  stubName,
+  wiredLanes,
+  type JobWiring,
+  type StepWiring,
 } from "./lane-wiring";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
-import {
-  readWorkflow,
-  readWorkflows,
-  STUB_SUFFIX,
-  WORKFLOWS_DIR,
-  workflowNames,
-  type WorkflowJob,
-  type WorkflowStep,
-} from "./read-workflow";
+import { WORKFLOWS_DIR } from "./read-workflow";
 import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
-interface Workflow {
+interface EmittedStep {
+  name?: string;
+  id?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, unknown>;
+  "timeout-minutes"?: number;
+}
+interface EmittedJob {
+  name?: string;
+  needs?: string[];
+  if?: string;
+  "runs-on"?: string;
+  "timeout-minutes"?: number;
+  permissions?: Record<string, string>;
+  env?: Record<string, string>;
+  steps?: EmittedStep[];
+  uses?: string;
+  with?: Record<string, string>;
+  secrets?: string;
+}
+interface EmittedWorkflow {
   name?: string;
   "run-name"?: string;
-  on?: Record<string, unknown>;
+  on?: Record<string, { inputs?: Record<string, { type?: string; required?: boolean; default?: string }> }>;
   permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs?: Record<string, WorkflowJob>;
-}
-interface CallOn {
-  workflow_call?: { inputs?: Record<string, { required?: boolean; default?: string }> };
+  jobs?: Record<string, EmittedJob>;
 }
 
-const STANDARD_CALL_INPUTS = ["machine_ref", "runner"];
+const lanes = wiredLanes();
+const reusable = (lane: string) => parse(emitReusable(lane)) as EmittedWorkflow;
+const stub = (lane: string) => parse(emitStub(lane) ?? "{}") as EmittedWorkflow;
+const rows = lanes.map((lane) => ({ lane, row: LANE_WIRING[lane] }));
+const shipped = rows.filter(({ row }) => row.stub !== undefined);
+const jobsOf = (lane: string): [string, JobWiring][] => Object.entries(LANE_WIRING[lane].jobs);
+const stepsOf = (lane: string): StepWiring[] => jobsOf(lane).flatMap(([, job]) => [...job.steps]);
+const runText = (step: StepWiring) => (step.run ?? []).join("\n");
 
-const rows = Object.entries(LANE_WIRING).map(([lane, row]) => ({ lane, row, file: `${lane}.yml` }));
-const estate = readWorkflows<Workflow>();
-const stubOf = (lane: string) => `${lane}${STUB_SUFFIX}`;
-
-function expectGate(condition: string, gate: Gate): void {
-  if (gate.is !== undefined) expect(condition).toBe(gate.is);
-  for (const action of gate.actions ?? []) expect(condition).toContain(`github.event.action == '${action}'`);
-  if (gate.actions) expect(condition.match(/github\.event\.action ==/g) ?? []).toHaveLength(gate.actions.length);
-  for (const fragment of gate.has ?? []) expect(condition).toContain(fragment);
-  for (const fragment of gate.lacks ?? []) expect(condition).not.toContain(fragment);
-}
-
-function stepIndex(steps: WorkflowStep[], name: string): number {
-  const index = steps.findIndex((step) => step.name === name);
-  expect(index, `no step named "${name}"`).toBeGreaterThanOrEqual(0);
-  return index;
-}
-
-function expectStep(steps: WorkflowStep[], fact: StepFact): void {
-  const matches = steps.filter(
-    (step) =>
-      (fact.name === undefined || step.name === fact.name) &&
-      (fact.id === undefined || step.id === fact.id) &&
-      (fact.uses === undefined || step.uses === fact.uses) &&
-      (fact.with?.phase === undefined || step.with?.phase === fact.with.phase),
-  );
-  const label = fact.name ?? fact.id ?? `${fact.uses} ${fact.with?.phase ?? ""}`;
-  if (fact.absent) {
-    expect(matches, `${label} should not exist`).toEqual([]);
-    return;
-  }
-  const step = matches[0];
-  expect(step, `no step matches ${label}`).toBeDefined();
-  const at = steps.indexOf(step);
-
-  if (fact.if !== undefined) expect(step.if).toBe(fact.if);
-  for (const fragment of fact.run ?? []) expect(step.run, label).toContain(fragment);
-  for (const fragment of fact.runLacks ?? []) expect(step.run ?? "").not.toContain(fragment);
-  if (fact.env) expect(step.env).toMatchObject(fact.env);
-  if (fact.with) expect(step.with).toMatchObject(fact.with);
-  if (fact.workingDirectory !== undefined) expect(step["working-directory"]).toBe(fact.workingDirectory);
-  if (fact.index !== undefined) expect(at).toBe(fact.index);
-  if (fact.follows !== undefined) expect(at).toBe(stepIndex(steps, fact.follows) + 1);
-  if (fact.before !== undefined) expect(at).toBeLessThan(stepIndex(steps, fact.before));
-  if (fact.after !== undefined) expect(at).toBeGreaterThan(stepIndex(steps, fact.after));
-}
-
-function expectCheckout(file: string, jobName: string, facts: JobFacts, steps: WorkflowStep[]): void {
-  const shape: Checkout = facts.checkout ?? "none";
-  const checkouts = steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
-  const machine = steps.find((step) => step.name === "Checkout machine");
-
-  if (shape === "none") {
-    expect(checkouts).toEqual([]);
-  } else if (shape === "plain") {
-    expect(checkouts).toHaveLength(1);
-    expect(checkouts[0].with?.repository).toBeUndefined();
-  } else if (shape === "machine") {
-    expect(machine?.with?.repository).toBe(MACHINE_REPOSITORY);
-    expect(steps.some((step) => step.name?.startsWith("Checkout target"))).toBe(false);
-  } else {
-    const pair = shape === "pair" ? { pair: true as const } : shape;
-    expectMachineAndTargetCheckouts({
-      workflow: file,
-      job: jobName,
-      runs: pair.workspace === false ? undefined : facts.runs,
-      targets: pair.targets,
-      fetchDepth: pair.fetchDepth,
-    });
-  }
-}
-
-function expectJob(file: string, jobName: string, facts: JobFacts, job: WorkflowJob | undefined): void {
-  expect(job, `${file} has no job ${jobName}`).toBeDefined();
-  const steps = job?.steps ?? [];
-
-  if (facts.name !== undefined) expect(job?.name).toBe(facts.name);
-  if (facts.gate) expectGate(job?.if ?? "", facts.gate);
-  if (facts.ungated) expect(job?.if).toBeUndefined();
-  if (facts.needs) expect(job?.needs).toEqual(facts.needs);
-  if (facts.runs !== undefined) expect(steps.some((step) => step.run?.includes(facts.runs as string)), `runs ${facts.runs}`).toBe(true);
-  expectCheckout(file, jobName, facts, steps);
-  if (facts.permissions === null) expect(job?.permissions).toBeUndefined();
-  else if (facts.permissions) expect(job?.permissions).toEqual(facts.permissions);
-  for (const [name, value] of Object.entries(facts.env ?? {})) {
-    if (value === true) expect(job?.env, `${jobName} sets ${name}`).toHaveProperty(name);
-    else expect(job?.env?.[name]).toBe(value);
-  }
-  if (facts.timeout !== undefined) expect(job?.["timeout-minutes"]).toBe(facts.timeout);
-  if (facts.secrets === false) expect(JSON.stringify(job)).not.toMatch(/secrets\./);
-  for (const fact of facts.steps ?? []) expectStep(steps, fact);
-}
-
-describe("LANE_WIRING names every workflow file in the estate", () => {
-  it("has a row for every file, and a file for every row", () => {
-    const claimed = rows.flatMap(({ lane, row, file }) => [file, ...(row.caller ? [stubOf(lane)] : [])]);
-    expect([...claimed].sort()).toEqual(workflowNames().sort());
-  });
-});
-
-describe.each(rows)("$lane", ({ lane, row, file }) => {
-  const { workflow, source } = readWorkflow<Workflow>(file);
-  const on = workflow.on ?? {};
-
-  if (row.caller) {
-    const caller = row.caller;
-    it("has a caller stub carrying the plain name, exactly these doors, and this grant", () => {
-      const stub = readWorkflow<Workflow>(stubOf(lane)).workflow;
-      const jobs = Object.values(stub.jobs ?? {});
-      expect(stub.name).toBe(caller.name);
-      expect(stub["run-name"]).toBe(caller.runName);
-      expect(doors(stub.on)).toEqual(caller.on);
-      expect(jobs).toHaveLength(1);
-      expect(jobs[0].permissions).toEqual(caller.permissions);
-      if (caller.gate) expectGate(jobs[0].if ?? "", caller.gate);
-      else expect(jobs[0].if).toBeUndefined();
-      if (caller.with) expect(jobs[0].with).toEqual(caller.with);
-      else expect(jobs[0].with).toBeUndefined();
-    });
-
-    it("is reusable: its own on: is workflow_call and nothing else", () => {
-      expect(Object.keys(on)).toEqual(["workflow_call"]);
-    });
-
-    it("declares no input beyond the row's own and the two every reusable takes", () => {
-      const inputs = (on as CallOn).workflow_call?.inputs ?? {};
-      const allowed = [...STANDARD_CALL_INPUTS, ...Object.keys(row.inputs ?? {})].sort();
-      expect(Object.keys(inputs).sort()).toEqual(allowed);
-    });
-  } else {
-    it("is standalone: fires on exactly these doors and has no caller stub", () => {
-      expect(doors(on)).toEqual(row.on);
-      expect(workflowNames()).not.toContain(stubOf(lane));
-    });
-  }
-
-  it("declares the workflow_call inputs the row lists, required and defaulted as stated", () => {
-    const inputs = (on as CallOn).workflow_call?.inputs ?? {};
-    for (const [name, shape] of Object.entries(row.inputs ?? {})) {
-      expect(inputs[name], `${file} declares no input ${name}`).toBeDefined();
-      expect(inputs[name].required ?? false).toBe(shape.required);
-      expect(inputs[name].default).toBe(shape.default);
+describe("a reusable workflow is what the row declares", () => {
+  it.each(shipped.map(({ lane }) => lane))("%s takes the row's inputs plus the two every reusable takes", (lane) => {
+    const inputs = reusable(lane).on?.workflow_call?.inputs ?? {};
+    expect(Object.keys(inputs)).toEqual([...Object.keys(LANE_WIRING[lane].inputs ?? {}), "runner", "machine_ref"]);
+    expect(inputs.runner.default).toBe("ubuntu-latest");
+    expect(inputs.machine_ref.default).toBe("main");
+    for (const [name, declared] of Object.entries(LANE_WIRING[lane].inputs ?? {})) {
+      expect(inputs[name]).toEqual({ type: "string", required: declared.required, ...(declared.default === undefined ? {} : { default: declared.default }) });
     }
   });
 
-  it("holds exactly the token the row says, and queues rather than cancels", () => {
+  it.each(rows.map(({ lane }) => lane))("%s holds the grant the row names and queues rather than cancels", (lane) => {
+    const row = LANE_WIRING[lane];
+    const workflow = reusable(lane);
     expect(workflow.permissions).toEqual(row.permissions);
     if (row.concurrency === undefined) expect(workflow.concurrency).toBeUndefined();
     else expect(workflow.concurrency).toEqual({ group: row.concurrency, "cancel-in-progress": false });
   });
 
-  it.each(Object.entries(row.jobs))("job %s is wired as the row says", (jobName, facts) => {
-    expectJob(file, jobName, facts, workflow.jobs?.[jobName]);
+  it.each(rows.map(({ lane }) => lane))("%s runs every job on the runner the caller chose", (lane) => {
+    const standalone = LANE_WIRING[lane].stub === undefined;
+    for (const job of Object.values(reusable(lane).jobs ?? {})) {
+      expect(job["runs-on"]).toBe(standalone ? "ubuntu-latest" : "${{ inputs.runner }}");
+      expect(job["timeout-minutes"]).toBeGreaterThan(0);
+    }
   });
 
-  it("carries the spellings the row names and none it forbids", () => {
-    for (const fragment of row.source?.has ?? []) expect(source).toContain(fragment);
-    for (const fragment of row.source?.lacks ?? []) expect(source).not.toContain(fragment);
+  it.each(rows.map(({ lane }) => lane))("%s emits every step the row declares, in order", (lane) => {
+    const emitted = Object.values(reusable(lane).jobs ?? {}).flatMap((job) => job.steps ?? []);
+    expect(emitted.map((step) => step.name)).toEqual(stepsOf(lane).map((step) => step.name));
+    for (const [index, step] of stepsOf(lane).entries()) {
+      expect((emitted[index].run ?? "").replace(/\n$/, "")).toBe(runText(step));
+      expect(emitted[index].env).toEqual(step.env);
+    }
+  });
+
+  it("a standalone lane carries its own doors instead of workflow_call", () => {
+    expect(Object.keys(reusable("enrol").on ?? {})).toEqual(["push", "workflow_dispatch"]);
+    expect(emitStub("enrol")).toBeUndefined();
   });
 });
 
-describe("a name LANE_WIRING spells for a lane agrees with the lane's own export", () => {
+describe("a Stub is a call, carrying the plain name and the doors that wake the lane", () => {
+  it.each(shipped.map(({ lane }) => lane))("%s calls its reusable half at @main", (lane) => {
+    const workflow = stub(lane);
+    const [job] = Object.values(workflow.jobs ?? {});
+    expect(workflow.name).toBe(LANE_WIRING[lane].name);
+    expect(workflow["run-name"]).toBe(LANE_WIRING[lane].runName);
+    expect(job.uses).toBe(`${MACHINE_REPOSITORY}/.github/workflows/${lane}.yml@main`);
+    expect(job.permissions).toEqual(LANE_WIRING[lane].stub?.permissions);
+    expect(job.with).toEqual(LANE_WIRING[lane].stub?.with);
+  });
+
+  it.each(shipped.map(({ lane }) => lane))("%s inherits secrets exactly when its reusable half spends one", (lane) => {
+    const [job] = Object.values(stub(lane).jobs ?? {});
+    expect(job.secrets).toBe(emitReusable(lane).includes("${{ secrets.") ? "inherit" : undefined);
+  });
+
+  it.each(shipped.map(({ lane }) => lane))("%s passes on a file name only when that file is a Stub the registry emits", (lane) => {
+    for (const value of Object.values(LANE_WIRING[lane].stub?.with ?? {}).filter((each) => each.endsWith(".yml"))) {
+      expect(lanes.map(stubName)).toContain(value);
+    }
+  });
+
+  it("the job a Stub calls is the reusable's first, unless the row names another", () => {
+    expect(Object.keys(stub("shape").jobs ?? {})).toEqual([Object.keys(LANE_WIRING.shape.jobs)[0]]);
+    expect(Object.keys(stub("verify").jobs ?? {})).toEqual(["verify"]);
+    expect(Object.keys(stub("acceptance").jobs ?? {})).toEqual(["acceptance"]);
+  });
+});
+
+describe("a name the registry spells for a lane agrees with the lane's own export", () => {
   it.each([
     ["session-captured", LANE_OWNED.sessionCaptured, [SESSION_CAPTURED_DISPATCH_ACTION, AUDIT_DISPATCH_ACTION, WATCHDOG_DISPATCH_ACTION]],
     ["prd-sliceable", LANE_OWNED.prdSliceable, [SPEC_DISPATCH_EVENT_TYPE]],
@@ -245,24 +173,29 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     for (const owner of owners) expect(spelled).toBe(owner);
   });
 
-  it("the reconciler answers exactly the dispatch actions its caller listens for", () => {
-    expect([...RECONCILE_DISPATCH_ACTIONS]).toEqual(LANE_WIRING["dispatch-reconcile"].caller?.on.repository_dispatch);
+  it("the job names verify.yml gives its gates are the ones the registry owns", () => {
+    const jobs = reusable("verify").jobs ?? {};
+    expect(jobs.immutability.name).toBe(LANE_OWNED.immutabilityJob);
+    expect(jobs.verify.name).toBe(LANE_OWNED.gateJob);
+    expect((jobs.verify.steps ?? []).map((step) => step.name)).toContain(LANE_OWNED.gateStep);
+  });
+
+  it("the reconciler answers exactly the dispatch actions its Stub listens for", () => {
+    expect([...RECONCILE_DISPATCH_ACTIONS]).toEqual(LANE_WIRING["dispatch-reconcile"].stub?.on.repository_dispatch);
     expect([...RECONCILE_DISPATCH_ACTIONS]).toContain(RUN_ENDED);
   });
 
-  it("the reconciler hears every caller stub end except its own, so no lane's death goes unread (#384)", () => {
-    const callers = Object.values(LANE_WIRING)
-      .flatMap((row) => (row.caller ? [row.caller.name] : []))
-      .filter((name) => name !== LANE_WIRING["dispatch-reconcile"].caller?.name)
-      .sort();
-    expect([...ENDING_LANES].sort()).toEqual(callers);
+  it("the reconciler hears every Stub's end except its own, so no lane's death goes unread (#384)", () => {
+    const names = shipped.map(({ row }) => row.name).filter((name) => name !== LANE_WIRING["dispatch-reconcile"].name);
+    expect([...ENDING_LANES].sort()).toEqual(names.sort());
+    expect(LANE_WIRING["dispatch-reconcile"].stub?.on.workflow_run?.workflows).toEqual([...ENDING_LANES]);
     expect([...RECONCILE_ENDINGS]).toEqual([...RECONCILE_DISPATCH_ACTIONS, MAIN_MOVED]);
   });
 
   it("a lane that holds a claim says its own ending, since GitHub starts nothing from a bot-started run's completion (#445)", () => {
     for (const lane of ["implement", "mechanic"]) {
-      const steps = LANE_WIRING[lane].jobs[lane].steps ?? [];
-      const wake = steps.find((step) => step.run?.includes(`event_type=${RUN_ENDED}`));
+      expect(laneFacts(lane).rings).toContain(RUN_ENDED);
+      const wake = stepsOf(lane).find((step) => step.rings?.includes(RUN_ENDED));
       expect(wake?.if, `${lane} wakes the reconciler on every ending`).toBe("always()");
     }
   });
@@ -271,57 +204,82 @@ describe("a name LANE_WIRING spells for a lane agrees with the lane's own export
     const tail = LANE_WIRING.acceptance.jobs["wake-reconciler"];
     const modelJobs = ["refire", "author"];
     expect(tail.needs).toEqual(expect.arrayContaining(modelJobs));
-    expect(tail.gate?.is).toContain("always()");
+    expect(tail.if).toBe("always()");
     expect(tail.permissions).toEqual({ contents: "write" });
     for (const job of modelJobs) expect(LANE_WIRING.acceptance.jobs[job].permissions).toBeUndefined();
-    expect(tail.steps?.some((step) => step.run?.includes(`event_type=${RUN_ENDED}`))).toBe(true);
+    expect(tail.steps.some((step) => step.rings?.includes(RUN_ENDED))).toBe(true);
   });
 
   it("a judged run rings its readers by dispatch, and neither reader keeps a workflow_run door, since one never opens for a bot-started Verify (#456)", () => {
     const signal = LANE_WIRING.verify.jobs["signal-review"];
-    expect(signal.gate?.is).toBe("always()");
+    expect(signal.if).toBe("always()");
     expect(signalsReview({ eventAction: IMPLEMENTATION_PR_DISPATCH_ACTION, immutability: "success", verify: "success" })).toBe(true);
-    expect(signal.steps?.some((step) => step.run?.some((line) => line.includes("integrate/signal.ts")))).toBe(true);
-    expect(LANE_WIRING.review.caller?.on).toEqual({ repository_dispatch: [REVIEW_WANTED] });
-    for (const input of ["head_sha", "base_sha"]) expect(LANE_WIRING.review.caller?.with?.[input]).toContain(`client_payload.${input}`);
-    expect(Object.keys(LANE_WIRING.fixer.caller?.on ?? {})).not.toContain("workflow_run");
+    expect(signal.steps.some((step) => step.entrypoint === "integrate/signal.ts")).toBe(true);
+    expect(LANE_WIRING.review.stub?.on).toEqual({ repository_dispatch: [REVIEW_WANTED] });
+    for (const input of ["head_sha", "base_sha"]) expect(LANE_WIRING.review.stub?.with?.[input]).toContain(`client_payload.${input}`);
+    expect(Object.keys(LANE_WIRING.fixer.stub?.on ?? {})).not.toContain("workflow_run");
   });
 
-  it("shape.ts applies exactly the labels LANE_WIRING says it does", () => {
+  it("shape.ts applies exactly the labels the registry says it does", () => {
     expect([...LABELS_APPLIED]).toEqual(SHAPE_LABELS_APPLIED);
   });
 
-  it("no workflow seeds a label by hand; the catalogue sync is the one seeder", () => {
-    for (const { name, workflow } of estate) {
-      expect(JSON.stringify(workflow), `${name} runs gh label create`).not.toContain("gh label create");
-    }
-  });
-
-  it("to-tickets.yml invokes exactly the stages STAGES declares", () => {
-    const invoked = [...readWorkflow("to-tickets.yml").source.matchAll(/--stage\s+([a-z0-9-]+)/g)].map((match) => match[1]);
+  it("to-tickets invokes exactly the stages STAGES declares", () => {
+    const invoked = stepsOf("to-tickets").flatMap((step) => [...runText(step).matchAll(/--stage\s+([a-z0-9-]+)/g)].map((match) => match[1]));
     expect(new Set(invoked)).toEqual(new Set(Object.keys(STAGES)));
   });
 
-  it("enrol.yml hands enrol.ts every secret its own scan of the workflows derives (#327)", () => {
+  it("enrol hands enrol.ts every secret its own scan of the emitted estate derives (#327)", () => {
     const names = derivedSecretNames(WORKFLOWS_DIR);
     expect(names.length).toBeGreaterThan(0);
-    const { workflow } = readWorkflow<Workflow>("enrol.yml");
-    const bound = JSON.stringify(workflow.jobs?.enrol?.steps ?? []);
+    const bound = JSON.stringify(stepsOf("enrol").map((step) => step.env ?? {}));
     for (const name of names) expect(bound, `enrol.yml never binds secrets.${name}`).toContain(`secrets.${name}`);
   });
 
-  it("enrol.yml's push filter matches every caller stub it ships", () => {
-    const { workflow } = readWorkflow<{ on: { push: { paths: string[] } } }>("enrol.yml");
-    const matchers = workflow.on.push.paths.map(
+  it("enrol's push filter matches every Stub it ships", () => {
+    const matchers = (LANE_WIRING.enrol.on?.push?.paths ?? []).map(
       (glob) => new RegExp(`^${glob.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`),
     );
-    const stubs = workflowNames().filter((name) => name.endsWith(STUB_SUFFIX));
+    const stubs = shipped.map(({ lane }) => stubName(lane));
     expect(stubs.length).toBeGreaterThan(0);
-    for (const stub of stubs) expect(matchers.some((m) => m.test(`.github/workflows/${stub}`)), stub).toBe(true);
+    for (const name of stubs) expect(matchers.some((matcher) => matcher.test(`.github/workflows/${name}`)), name).toBe(true);
+  });
+
+  it("a lane the registry names is the lane a workflow_run door can be traced back to", () => {
+    expect(lanesNamed(LANE_OWNED.gateJob)).toEqual(["verify"]);
+    expect(lanesNamed("nothing carries this name")).toEqual([]);
   });
 });
 
-describe("bin/close-ticket's job names agree with the verify.yml jobs they are copies of", () => {
+const SPELLINGS: [string, { has?: readonly string[]; lacks?: readonly string[] }][] = [
+  ["shape", { lacks: ["refused-raw-response", "actions/upload-artifact@v4"] }],
+  ["shape-accept", { lacks: ["'go-long'", "'go-short'"] }],
+  ["to-tickets", { lacks: ["refused-raw-response", "actions/upload-artifact@v4"] }],
+  ["implement", { lacks: ["implementation-pr-opened", "implement-failed", "upload-artifact"] }],
+  ["verify", { lacks: ["implementation-pr-opened"] }],
+  ["integrate", { lacks: ["implementation-pr-opened"] }],
+  ["dispatch-reconcile", { lacks: ["@anthropic-ai/claude-code", "CLAUDE_CODE_OAUTH_TOKEN"] }],
+  ["audit", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["ratify", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["record-ratifications", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["decline-on-revert", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["run-watchdog", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["bypass-counter", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["lost-dispatch-counter", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["missing-trailer-counter", { lacks: [NEEDS_HUMAN_LABEL] }],
+  ["enrol", { has: ["secrets.ENROL_PAT"] }],
+  ["walk-home", { has: ["secrets.ENROL_PAT"] }],
+];
+
+describe("a lane's emitted half carries the spellings it must and none it must not", () => {
+  it.each(SPELLINGS)("%s", (lane, pins) => {
+    const emitted = emitReusable(lane);
+    for (const fragment of pins.has ?? []) expect(emitted, `${lane}.yml never spells ${fragment}`).toContain(fragment);
+    for (const fragment of pins.lacks ?? []) expect(emitted, `${lane}.yml spells ${fragment}`).not.toContain(fragment);
+  });
+});
+
+describe("bin/close-ticket's job names agree with the verify jobs they are copies of", () => {
   const source = binSources().find((file) => file.relative === "bin/close-ticket")?.source;
 
   it("finds the script, so this pin is not vacuous", () => expect(source).toBeDefined());
@@ -329,19 +287,18 @@ describe("bin/close-ticket's job names agree with the verify.yml jobs they are c
   it.each([
     ["IMMUTABILITY_JOB", LANE_OWNED.immutabilityJob],
     ["GATE_JOB", LANE_OWNED.gateJob],
-  ])("%s is the name verify.yml gives that job", (constant, owned) => {
+  ])("%s is the name the registry gives that job", (constant, owned) => {
     const spelled = new RegExp(`^${constant} = "([^"]+)"$`, "m").exec(source ?? "")?.[1];
     expect(spelled, `bin/close-ticket's ${constant}`).toBe(owned);
   });
 });
 
-describe("fixer.yml's jq job selects agree with the verify.yml jobs they are copies of", () => {
-  const jobSelects = readWorkflow("fixer.yml")
-    .source.split("\n")
-    .flatMap((line) => {
-      const match = /^\s*(\w+)=.*select\(\.name == "([^"]+)" or \(\.name \| endswith\(" \/ ([^"]+)"\)\)\)/.exec(line);
-      return match ? [{ variable: match[1], bare: match[2], throughCaller: match[3] }] : [];
-    });
+describe("the fixer's jq job selects agree with the verify jobs they are copies of", () => {
+  const source = stepsOf("fixer").map(runText).join("\n");
+  const jobSelects = source.split("\n").flatMap((line) => {
+    const match = /^\s*(\w+)=.*select\(\.name == "([^"]+)" or \(\.name \| endswith\(" \/ ([^"]+)"\)\)\)/.exec(line);
+    return match ? [{ variable: match[1], bare: match[2], throughCaller: match[3] }] : [];
+  });
 
   it("finds a select for each job the lane reads, so this pin is not vacuous", () => {
     expect(jobSelects.map((select) => select.variable)).toEqual(expect.arrayContaining(["GATE_CONCLUSION", "RESOLVE_JOB_ID"]));
@@ -350,66 +307,45 @@ describe("fixer.yml's jq job selects agree with the verify.yml jobs they are cop
   it.each([
     ["GATE_CONCLUSION", LANE_OWNED.gateJob],
     ["RESOLVE_JOB_ID", LANE_OWNED.immutabilityJob],
-  ])("%s selects the job verify.yml names", (variable, owned) => {
+  ])("%s selects the job the registry names", (variable, owned) => {
     const select = jobSelects.find((each) => each.variable === variable);
-    expect(select?.bare, `fixer.yml's ${variable} select`).toBe(owned);
-    expect(select?.throughCaller, `fixer.yml's ${variable} select, reached through uses:`).toBe(owned);
+    expect(select?.bare, `the fixer's ${variable} select`).toBe(owned);
+    expect(select?.throughCaller, `the fixer's ${variable} select, reached through uses:`).toBe(owned);
   });
 
-  it("restates no job name verify.yml does not own", () => {
+  it("restates no job name verify does not own", () => {
     for (const select of jobSelects) {
-      expect([LANE_OWNED.gateJob, LANE_OWNED.immutabilityJob], `fixer.yml selects a job named ${select.bare}`).toContain(select.bare);
-      expect(select.throughCaller, `fixer.yml's ${select.variable} select disagrees with itself`).toBe(select.bare);
+      expect([LANE_OWNED.gateJob, LANE_OWNED.immutabilityJob], `the fixer selects a job named ${select.bare}`).toContain(select.bare);
+      expect(select.throughCaller, `the fixer's ${select.variable} select disagrees with itself`).toBe(select.bare);
     }
+  });
+
+  it("greps for what the Immutability job prints", () => {
+    const grepped = /grep -oE '([^']+)'/.exec(source)?.[1];
+    expect(grepped).toBeDefined();
+    const pattern = new RegExp(grepped ?? "$^");
+    expect(pattern.test("judging https://github.com/collod873/claude-workflow/pull/250 on implement/issue-241")).toBe(true);
+    expect(pattern.test('echo "judging $PR on $BRANCH"')).toBe(false);
+    expect(pattern.test("judging https://github.com/collod873/claude-workflow/pull/250 on somebodys-branch")).toBe(false);
   });
 });
 
-describe("fixer.yml's resolve grep matches what verify.yml's Immutability job prints", () => {
-  const grepped = /grep -oE '([^']+)'/.exec(readWorkflow("fixer.yml").source)?.[1];
-  const pattern = new RegExp(grepped ?? "$^");
-
-  it("greps for a pattern at all", () => expect(grepped).toBeDefined());
-
-  it.each([
-    ["a real pull request on a claim branch", "judging https://github.com/collod873/claude-workflow/pull/250 on implement/issue-241", true],
-    ["the echoed command line itself, which carries the literal $PR", 'echo "judging $PR on $BRANCH"', false],
-    ["a branch that is not an implementation claim", "judging https://github.com/collod873/claude-workflow/pull/250 on somebodys-branch", false],
-  ])("%s", (_case, line, matches) => {
-    expect(pattern.test(line)).toBe(matches);
-  });
-});
-
-describe("every workflow file", () => {
-  it("parses, and resolves under .github/workflows by name alone", () => {
-    expect(estate.length).toBeGreaterThan(0);
-    for (const { name } of estate) expect(readWorkflow(name).path).toBe(join(WORKFLOWS_DIR, name));
-  });
-
-  it.each(estate.filter((w) => w.name.endsWith(STUB_SUFFIX)))(
-    "$name calls its reusable half at @main and inherits secrets exactly when that half spends one",
-    ({ name, workflow }) => {
-      const lane = name.slice(0, -STUB_SUFFIX.length);
-      const [job] = Object.values(workflow.jobs ?? {});
-      expect(job.uses).toBe(`${MACHINE_REPOSITORY}/.github/workflows/${lane}.yml@main`);
-      const bindsSecret = /\$\{\{ secrets\./.test(readWorkflow(`${lane}.yml`).source);
-      expect(job.secrets, `${name} secrets:`).toBe(bindsSecret ? "inherit" : undefined);
-      for (const value of Object.values(job.with ?? {}).filter((v) => v.endsWith(".yml"))) {
-        expect(value.endsWith(STUB_SUFFIX), `${name} passes ${value}`).toBe(true);
-        expect(workflowNames()).toContain(value);
-      }
-    },
-  );
-
-  it.each(estate)("$name runs entrypoints that exist, and creates labels idempotently", ({ name, workflow }) => {
-    for (const entrypoint of entrypointsOf(JSON.stringify(workflow))) {
-      expect(repoFileExists(entrypoint), `${name} runs ${entrypoint}`).toBe(true);
+describe("every lane the registry wires", () => {
+  it.each(rows.map(({ lane }) => lane))("%s runs entrypoints that exist, and creates labels idempotently", (lane) => {
+    for (const entrypoint of entrypointsOf(stepsOf(lane).map(runText).join("\n"))) {
+      expect(repoFileExists(entrypoint), `${lane} runs ${entrypoint}`).toBe(true);
     }
-    for (const job of Object.values(workflow.jobs ?? {})) {
-      for (const step of job.steps ?? []) {
-        const creates = step.run?.match(/gh label create/g)?.length ?? 0;
-        const forced = step.run?.match(/--force/g)?.length ?? 0;
-        expect(forced, `${name}: ${step.name} creates a label without --force`).toBeGreaterThanOrEqual(creates);
-      }
+    for (const step of stepsOf(lane)) {
+      const run = runText(step);
+      const creates = run.match(/gh label create/g)?.length ?? 0;
+      const forced = run.match(/--force/g)?.length ?? 0;
+      expect(forced, `${lane}: ${step.name} creates a label without --force`).toBeGreaterThanOrEqual(creates);
+    }
+  });
+
+  it("no lane seeds a label by hand; the catalogue sync is the one seeder", () => {
+    for (const { lane } of rows) {
+      expect(stepsOf(lane).map(runText).join("\n"), `${lane} runs gh label create`).not.toContain("gh label create");
     }
   });
 });
@@ -417,14 +353,9 @@ describe("every workflow file", () => {
 const AMBIENT = /^(GITHUB_|RUNNER_|HOME$|PATH$|CI$)/;
 
 describe("every variable an entrypoint reads is set by the job that runs it", () => {
-  const runs = estate.flatMap(({ name, workflow }) =>
-    Object.entries(workflow.jobs ?? {}).flatMap(([jobName, job]) =>
-      [...new Set((job.steps ?? []).flatMap((step) => entrypointsOf(step.run ?? "")))].map((entrypoint) => ({
-        name,
-        jobName,
-        job,
-        entrypoint,
-      })),
+  const runs = rows.flatMap(({ lane }) =>
+    jobsOf(lane).flatMap(([jobName, job]) =>
+      [...new Set(job.steps.flatMap((step) => entrypointsOf(runText(step))))].map((entrypoint) => ({ lane, jobName, job, entrypoint })),
     ),
   );
 
@@ -432,146 +363,24 @@ describe("every variable an entrypoint reads is set by the job that runs it", ()
     expect(runs.length).toBeGreaterThan(10);
   });
 
-  it.each(runs)("$name › $jobName sets what $entrypoint reads", ({ name, jobName, job, entrypoint }) => {
-    const steps = job.steps ?? [];
-    const exported = steps
-      .filter((each) => each.run?.includes("GITHUB_ENV"))
-      .flatMap((each) => [...(each.run ?? "").matchAll(/"?([A-Z_]+)=/g)].map((match) => match[1]));
-    const set = new Set([...Object.keys(job.env ?? {}), ...steps.flatMap((each) => Object.keys(each.env ?? {})), ...exported]);
+  it.each(runs)("$lane › $jobName sets what $entrypoint reads", ({ lane, jobName, job, entrypoint }) => {
+    const exported = job.steps
+      .filter((step) => runText(step).includes("GITHUB_ENV"))
+      .flatMap((step) => [...runText(step).matchAll(/"?([A-Z_]+)=/g)].map((match) => match[1]));
+    const set = new Set([...Object.keys(job.env ?? {}), ...job.steps.flatMap((step) => Object.keys(step.env ?? {})), ...exported]);
     for (const variable of envReadsOf(entrypoint)) {
       if (AMBIENT.test(variable)) continue;
-      expect(set.has(variable), `${name}#${jobName} runs ${entrypoint}, which reads ${variable}, and never sets it`).toBe(true);
+      expect(set.has(variable), `${lane}#${jobName} runs ${entrypoint}, which reads ${variable}, and never sets it`).toBe(true);
     }
   });
-});
-
-const ts = createRequire(import.meta.url)("typescript") as typeof TypeScript;
-const SHARED_TYPES = fileURLToPath(new URL("./read-workflow.ts", import.meta.url));
-const THIS_SUITE = fileURLToPath(import.meta.url);
-const WORKFLOW_STEP_MEMBERS = ["name", "id", "if", "run", "uses", "with", "env", "working-directory"];
-const WORKFLOW_JOB_MEMBERS = ["name", "if", "needs", "timeout-minutes", "permissions", "env", "steps", "uses", "with", "secrets"];
-const STEP_STRING_MEMBERS = ["name", "id", "if", "run", "uses", "working-directory"];
-
-function declarationsOf(path: string): TypeScript.SourceFile {
-  const program = ts.createProgram([path], { noResolve: true, noLib: true, target: ts.ScriptTarget.ESNext });
-  const source = program.getSourceFile(path);
-  expect(source, `no declarations at ${path}`).toBeDefined();
-  return source as TypeScript.SourceFile;
-}
-
-function exportedInterface(source: TypeScript.SourceFile, name: string): TypeScript.InterfaceDeclaration {
-  const found = source.statements.find(
-    (statement): statement is TypeScript.InterfaceDeclaration =>
-      ts.isInterfaceDeclaration(statement) &&
-      statement.name.text === name &&
-      (statement.modifiers ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
-  );
-  expect(found, `${source.fileName} exports no interface ${name}`).toBeDefined();
-  return found as TypeScript.InterfaceDeclaration;
-}
-
-function declaredInterfaceNames(source: TypeScript.SourceFile): string[] {
-  return source.statements
-    .filter((statement): statement is TypeScript.InterfaceDeclaration => ts.isInterfaceDeclaration(statement))
-    .map((declaration) => declaration.name.text);
-}
-
-function propertySignatures(declaration: TypeScript.InterfaceDeclaration): TypeScript.PropertySignature[] {
-  return declaration.members.filter((member): member is TypeScript.PropertySignature => ts.isPropertySignature(member));
-}
-
-function memberName(member: TypeScript.PropertySignature): string {
-  const name = member.name;
-  return ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : "";
-}
-
-function namedImportsFrom(source: TypeScript.SourceFile, specifier: string): string[] {
-  return source.statements.flatMap((statement) => {
-    if (!ts.isImportDeclaration(statement)) return [];
-    if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== specifier) return [];
-    const bindings = statement.importClause?.namedBindings;
-    return bindings !== undefined && ts.isNamedImports(bindings) ? bindings.elements.map((element) => element.name.text) : [];
-  });
-}
-
-function carriesWorkflowStep(node: TypeScript.TypeNode | undefined): boolean {
-  if (node === undefined) return false;
-  if (ts.isArrayTypeNode(node)) return carriesWorkflowStep(node.elementType);
-  if (ts.isTypeOperatorNode(node)) return carriesWorkflowStep(node.type);
-  if (ts.isParenthesizedTypeNode(node)) return carriesWorkflowStep(node.type);
-  if (ts.isUnionTypeNode(node)) return node.types.some((each) => carriesWorkflowStep(each));
-  if (ts.isTypeReferenceNode(node)) {
-    const named = ts.isIdentifier(node.typeName) && node.typeName.text === "WorkflowStep";
-    return named || (node.typeArguments ?? []).some((each) => carriesWorkflowStep(each));
-  }
-  return false;
-}
-
-test("#493.1: WorkflowStep and WorkflowJob are exported from read-workflow.ts", () => {
-  const source = declarationsOf(SHARED_TYPES);
-  const step = propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName);
-  const job = propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName);
-  expect(step, "WorkflowStep members").toEqual(expect.arrayContaining(WORKFLOW_STEP_MEMBERS));
-  expect(job, "WorkflowJob members").toEqual(expect.arrayContaining(WORKFLOW_JOB_MEMBERS));
-});
-
-test("#493.2: lane-wiring.test.ts imports WorkflowStep/WorkflowJob instead of declaring its own", () => {
-  const source = declarationsOf(THIS_SUITE);
-  expect(namedImportsFrom(source, "./read-workflow")).toEqual(expect.arrayContaining(["WorkflowStep", "WorkflowJob"]));
-  const declared = declaredInterfaceNames(source);
-  expect(declared, "a local Step is still declared here").not.toContain("Step");
-  expect(declared, "a local Job is still declared here").not.toContain("Job");
-});
-
-test("#493.3: the suite still passes with the shared types wired in", () => {
-  const source = declarationsOf(SHARED_TYPES);
-  expect(propertySignatures(exportedInterface(source, "WorkflowJob")).map(memberName)).toContain("steps");
-  expect(propertySignatures(exportedInterface(source, "WorkflowStep")).map(memberName)).toContain("run");
-
-  const named = estate.flatMap(({ name, workflow }) =>
-    Object.entries(workflow.jobs ?? {}).map(([jobName, job]) => ({ where: `${name} › ${jobName}`, job })),
-  );
-  expect(named.length, "the estate the suite reads").toBeGreaterThan(0);
-
-  let seen = 0;
-  for (const { where, job } of named) {
-    const read: Record<string, unknown> = { ...job };
-    if (read["timeout-minutes"] !== undefined) expect(typeof read["timeout-minutes"], `${where} › timeout-minutes`).toBe("number");
-    if (read.if !== undefined) expect(typeof read.if, `${where} › if`).toBe("string");
-    if (read.name !== undefined) expect(typeof read.name, `${where} › name`).toBe("string");
-    if (read.steps !== undefined) expect(Array.isArray(read.steps), `${where} › steps`).toBe(true);
-    for (const step of job.steps ?? []) {
-      seen += 1;
-      const readStep: Record<string, unknown> = { ...step };
-      for (const member of STEP_STRING_MEMBERS) {
-        if (readStep[member] !== undefined) expect(typeof readStep[member], `${where} › step ${member}`).toBe("string");
-      }
-    }
-  }
-  expect(seen, "the steps the suite reads").toBeGreaterThan(0);
-});
-
-test("#493.4: the repo still typechecks", () => {
-  const source = declarationsOf(SHARED_TYPES);
-  const step = propertySignatures(exportedInterface(source, "WorkflowStep"));
-  const job = propertySignatures(exportedInterface(source, "WorkflowJob"));
-  for (const member of [...step, ...job]) {
-    expect(member.questionToken, `${memberName(member)} is not optional`).toBeDefined();
-  }
-  const steps = job.find((member) => memberName(member) === "steps");
-  expect(steps, "WorkflowJob declares no steps").toBeDefined();
-  expect(carriesWorkflowStep(steps?.type), "WorkflowJob.steps carries WorkflowStep").toBe(true);
 });
 
 describe("#520: a lane's budget fits inside the cap that could kill it", () => {
   it.each(BUDGETED_LANES)("%s stops itself before the runner stops it", (lane) => {
-    const { workflow } = readWorkflow<Workflow>(`${lane}.yml`);
-    const caps = Object.values(workflow.jobs ?? {}).flatMap((job) =>
-      (job.steps ?? [])
-        .filter((step) => step.run?.includes(`agent-workflows/${lane}/`))
-        .map((step) => Math.min(job["timeout-minutes"] ?? Infinity, step["timeout-minutes"] ?? Infinity)),
+    const caps = jobsOf(lane).flatMap(([, job]) =>
+      job.steps.filter((step) => step.entrypoint?.startsWith(`${lane}/`)).map((step) => Math.min(job.timeout, step.timeout ?? Infinity)),
     );
-    expect(caps.length, `${lane}.yml runs its own lane entry`).toBeGreaterThan(0);
+    expect(caps.length, `${lane} runs its own lane entry`).toBeGreaterThan(0);
     for (const cap of caps) {
       expect(cap, `${lane} declares a cap its budget can beat`).toBeLessThan(Infinity);
       expect(laneBudget(lane), `${lane} budget under its ${cap}-minute cap`).toBeLessThan(cap);
@@ -580,16 +389,14 @@ describe("#520: a lane's budget fits inside the cap that could kill it", () => {
 });
 
 describe("#519: the one if: a workflow may carry is always()", () => {
-  const conditions = estate.flatMap(({ name, workflow }) =>
-    Object.entries(workflow.jobs ?? {}).flatMap(([jobName, job]) => [
-      ...(job.if === undefined ? [] : [{ where: `${name} › ${jobName}`, condition: job.if }]),
-      ...(job.steps ?? []).flatMap((step) =>
-        step.if === undefined ? [] : [{ where: `${name} › ${jobName} › ${step.name}`, condition: step.if }],
-      ),
+  const conditions = rows.flatMap(({ lane }) =>
+    jobsOf(lane).flatMap(([jobName, job]) => [
+      ...(job.if === undefined ? [] : [{ where: `${lane} › ${jobName}`, condition: job.if }]),
+      ...job.steps.flatMap((step) => (step.if === undefined ? [] : [{ where: `${lane} › ${jobName} › ${step.name}`, condition: step.if }])),
     ]),
   );
 
-  it("finds the conditions the estate carries, so this sweep is not vacuous", () => {
+  it("finds the conditions the registry carries, so this sweep is not vacuous", () => {
     expect(conditions.length).toBeGreaterThan(20);
   });
 
@@ -600,5 +407,4 @@ describe("#519: the one if: a workflow may carry is always()", () => {
         "TypeScript with a case per branch, and leave always() behind",
     ).toBe("always()");
   });
-
 });

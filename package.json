@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && knip && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows",
     "lane-map": "tsx .Workflow/agent-workflows/shared/lane-map.cli.ts",
+    "lane-wiring": "tsx .Workflow/agent-workflows/shared/lane-wiring.cli.ts",
     "labels-doc": "tsx .Workflow/agent-workflows/shared/labels-doc.cli.ts"
   },
   "dependencies": {

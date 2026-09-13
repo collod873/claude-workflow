@@ -32,8 +32,7 @@ jobs:
       EVENT_LABEL: ${{ github.event.label.name }}
       EVENT_SENDER: ${{ github.event.sender.login }}
       EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
-      SPEC_TRIGGER: >-
-        ${{ (github.event.label.name == 'prd' && 'critique') || 'to-spec' }}
+      SPEC_TRIGGER: ${{ (github.event.label.name == 'prd' && 'critique') || 'to-spec' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

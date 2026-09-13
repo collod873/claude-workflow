@@ -1,11 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { NEEDS_HUMAN_LABEL } from "./labels";
-import { LANE_WIRING, type Gate, type LaneWiring } from "./lane-wiring";
+import { type Doors, LANE_WIRING, laneFacts } from "./lane-wiring";
 
 export const LANE_MAP_RELATIVE_PATH = "docs/agents/lane-map.md";
 const AGENT_WORKFLOWS = ".Workflow/agent-workflows";
-const WORKFLOWS_DIR = ".github/workflows";
 const DOCS_DIR = "docs/agents";
 
 const OWNER = "owner";
@@ -80,14 +79,9 @@ const REMOVE_LABEL_RE = /--remove-label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const CREATE_CALL_RE = /("create"[^\]]*)/g;
 const LABEL_FLAG_RE = /"--label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const HELPER_LABEL_RE = /--add-label",\s*[a-z]\w*\]/;
-const YAML_ADD_LABEL_RE = /--add-label\s+([\w-]+)/g;
-const YAML_EVENT_SEND_RE = /event_type=([\w-]+)/g;
-const YAML_HANDOVER_RE = /labels\.cli\.ts\s+fail\b/;
 const CONST_RE = /(?:^|\n)(?:export )?const ([A-Z][A-Z0-9_]+) = (?:"([\w-]+)"|([A-Z][A-Z0-9_]+));/g;
 const FUNCTION_RE = /(?:^|\n)(?:export )?(?:(?:async )?function (\w+)\(|const (\w+) = (?:async )?\()/g;
 const CALL_RE = /(?<![\w.])(\w+)\(/g;
-const ENTRYPOINT_RE = /agent-workflows\/([\w/-]+\.ts)/;
-const LABEL_GATE_RE = /label\.name == '([^']+)'|labels\.\*\.name, '([^']+)'/g;
 
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -190,23 +184,6 @@ function labelsAppliedBy(code: string, corpus: Corpus): string[] {
   return raws.flatMap((raw) => resolveConstant(raw, corpus.constants) ?? []);
 }
 
-function gateLabels(gate: Gate | undefined): string[] {
-  const clauses = [...(gate?.has ?? []), ...(gate?.is ? [gate.is] : [])];
-  return [...new Set(clauses.flatMap((clause) => matches(LABEL_GATE_RE, clause)))];
-}
-
-function stepRuns(wiring: LaneWiring): string[] {
-  return Object.values(wiring.jobs).flatMap((job) => (job.steps ?? []).flatMap((step) => step.run ?? []));
-}
-
-function yamlName(root: string, lane: string): string | undefined {
-  const path = join(root, WORKFLOWS_DIR, `${lane}-caller.yml`);
-  const fallback = join(root, WORKFLOWS_DIR, `${lane}.yml`);
-  const file = existsSync(path) ? path : existsSync(fallback) ? fallback : undefined;
-  if (!file) return undefined;
-  return /^name:\s*(.+)$/m.exec(readFileSync(file, "utf8"))?.[1]?.trim();
-}
-
 function docFor(root: string, lane: string): { doc: string; number?: string } | undefined {
   const dir = join(root, DOCS_DIR);
   if (!existsSync(dir)) return undefined;
@@ -222,10 +199,8 @@ function docFor(root: string, lane: string): { doc: string; number?: string } | 
   return { doc, number };
 }
 
-function doorsOf(lane: string, wiring: LaneWiring): { wakesOn: string[]; edges: Edge[] } {
-  const on = (wiring.caller?.on ?? wiring.on ?? {}) as Record<string, unknown>;
-  const gate = { ...wiring.caller?.gate, ...Object.values(wiring.jobs)[0]?.gate };
-  const labels = gateLabels(gate).concat(gateLabels(wiring.caller?.gate));
+function doorsOf(lane: string, doors: Doors): { wakesOn: string[]; edges: Edge[] } {
+  const on = doors as Record<string, unknown>;
   const wakesOn: string[] = [];
   const edges: Edge[] = [];
   for (const [event, condition] of Object.entries(on)) {
@@ -249,16 +224,8 @@ function doorsOf(lane: string, wiring: LaneWiring): { wakesOn: string[]; edges: 
       edges.push({ from: OWNER, to: lane, label: "by hand", kind: "hand" });
     } else if (event === "issues") {
       const types = condition as string[];
-      const named = [...new Set(labels)];
-      if (types.includes("labeled") && named.length > 0) {
-        for (const label of named) {
-          wakesOn.push(`label ${label}`);
-          edges.push({ from: `label:${label}`, to: lane, label, kind: "label" });
-        }
-      } else {
-        wakesOn.push(`issue ${types.join("/")}${named.length ? ` (${named.join(", ")})` : ""}`);
-        edges.push({ from: OWNER, to: lane, label: `issue ${types.join("/")}`, kind: "hand" });
-      }
+      wakesOn.push(`issue ${types.join("/")}`);
+      edges.push({ from: OWNER, to: lane, label: `issue ${types.join("/")}`, kind: "hand" });
     } else {
       wakesOn.push(`${event} ${(condition as string[]).join("/")}`);
       edges.push({ from: OWNER, to: lane, label: `${event.replace("_", " ")} ${(condition as string[]).join("/")}`, kind: "hand" });
@@ -272,41 +239,40 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
   const nodes: LaneNode[] = [];
   const rawEdges: Edge[] = [];
 
-  for (const [lane, wiring] of Object.entries(LANE_WIRING)) {
-    const entries = [...new Set(Object.values(wiring.jobs).flatMap((job) => ENTRYPOINT_RE.exec(job.runs ?? "")?.[1] ?? []))];
+  for (const lane of Object.keys(LANE_WIRING)) {
+    const facts = laneFacts(lane);
+    const entries = facts.entrypoints;
     const entry = entries[0];
     const code = entries.flatMap((each) => reachableBodies(corpus, join(root, AGENT_WORKFLOWS, each))).join("\n");
-    const yaml = stepRuns(wiring).join("\n");
     const resolved = (raws: string[]) => raws.flatMap((raw) => resolveConstant(raw, corpus.constants) ?? []);
 
-    const rings = new Set<string>([...matches(YAML_EVENT_SEND_RE, yaml), ...resolved(matches(EVENT_SEND_RE, code))]);
-    const labelsApplied = new Set<string>([...matches(YAML_ADD_LABEL_RE, yaml), ...labelsAppliedBy(code, corpus)]);
+    const rings = new Set<string>([...facts.rings, ...resolved(matches(EVENT_SEND_RE, code))]);
+    const labelsApplied = new Set<string>([...facts.labelsApplied, ...labelsAppliedBy(code, corpus)]);
     const labelsCleared = new Set(resolved(matches(REMOVE_LABEL_RE, code)));
 
     const stops: string[] = [];
     if (labelsApplied.has(NEEDS_HUMAN_LABEL)) stops.push("labels needs-human");
     for (const refusal of [...labelsApplied].filter((label) => /refused|failed/.test(label))) stops.push(`labels ${refusal}`);
 
-    const hasModel = Object.values(wiring.jobs).some((job) => job.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
     const located = docFor(root, lane);
-    const { wakesOn, edges } = doorsOf(lane, wiring);
+    const { wakesOn, edges } = doorsOf(lane, facts.doors);
     rawEdges.push(...edges);
 
     nodes.push({
       id: lane,
-      name: wiring.caller?.name ?? yamlName(root, lane) ?? lane,
-      kind: hasModel ? "model" : "wire",
+      name: facts.name,
+      kind: facts.spendsModel ? "model" : "wire",
       number: located?.number,
       doc: located?.doc,
       entrypoint: entry,
-      shipsToCallers: wiring.caller !== undefined,
+      shipsToCallers: facts.shipsToCallers,
       wakesOn,
       rings: [...rings].sort(),
       labelsApplied: [...labelsApplied].sort(),
       labelsCleared: [...labelsCleared].sort(),
       stops,
       pushesMain: /HEAD:main|"pr",\s*"merge"/.test(code),
-      handsOverOnRed: YAML_HANDOVER_RE.test(yaml),
+      handsOverOnRed: facts.handsOverOnRed,
     });
   }
 

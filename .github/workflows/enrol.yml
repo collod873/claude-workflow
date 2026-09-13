@@ -26,8 +26,8 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Write the stub set into every enrolled repository
-        run: npx tsx .Workflow/agent-workflows/enrol/enrol.ts
         env:
           GH_TOKEN: ${{ secrets.ENROL_PAT }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           KNOWLEDGE_BASE_DEPLOY_KEY: ${{ secrets.KNOWLEDGE_BASE_DEPLOY_KEY }}
+        run: npx tsx .Workflow/agent-workflows/enrol/enrol.ts

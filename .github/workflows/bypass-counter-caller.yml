@@ -2,7 +2,8 @@ name: Bypass counter
 
 "on":
   workflow_run:
-    workflows: ["Verify"]
+    workflows:
+      - Verify
     types: [completed]
 
 jobs:
