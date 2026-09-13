@@ -5,16 +5,13 @@ import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { escalateToOwner } from "../shared/needs-human";
+import { PUSH_ATTEMPTS, pushToTrunk } from "../shared/push-to-trunk";
 import { dispatchAcceptanceWanted, dispatchTicketReady } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import { authorsPublishedSlice } from "./doors";
 
 export const PATCH_ARTIFACT = "acceptance-commits";
-
-export const PUSH_ATTEMPTS = 5;
-
-export const PUSH_BACKOFF_SECONDS = 5;
 
 const STALLED_OUTCOMES = new Set<LandingOutcome["outcome"]>(["needs-human", "unreported"]);
 
@@ -96,18 +93,14 @@ function replayOntoMain(git: GitExec, patches: string[]): void {
 }
 
 async function pushToMain(deps: LandDeps): Promise<void> {
-  for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt++) {
-    deps.git(["fetch", "origin", "main"]);
-    conflicting(() => deps.git(["rebase", "origin/main"]));
-    try {
-      deps.git(["push", "origin", "HEAD:main"]);
-      return;
-    } catch (err) {
-      deps.log(`push ${attempt} of ${PUSH_ATTEMPTS} lost the race: ${reason(err)}`);
-    }
-    await deps.sleep(attempt * PUSH_BACKOFF_SECONDS);
+  const conflictAwareGit: GitExec = (args) => (args[0] === "rebase" ? conflicting(() => deps.git(args)) : deps.git(args));
+
+  try {
+    await pushToTrunk({ git: conflictAwareGit, sleep: deps.sleep, log: deps.log });
+  } catch (err) {
+    if (err instanceof ReplayConflict) throw err;
+    throw new Error(`main moved under all ${PUSH_ATTEMPTS} push attempts`);
   }
-  throw new Error(`main moved under all ${PUSH_ATTEMPTS} push attempts`);
 }
 
 function reportLandingFailure(deps: LandDeps, request: LandRequest, err: unknown): LandingOutcome {
