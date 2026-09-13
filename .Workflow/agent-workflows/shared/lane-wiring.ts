@@ -306,7 +306,7 @@ function reportsFailure(lane: string, issue: string, extra: Env = {}): StepWirin
 function handsOver(lane: string, noun: string, variable: string): StepWiring {
   return {
     name: ladderClimbs(lane)
-      ? `Clear the ${noun}'s lane label if this run died, leaving the strike ladder to say what runs next`
+      ? `Queue the ${noun} again if this run died, leaving the strike ladder to say what runs next`
       : `Hand the ${noun} to the owner if this run died`,
     if: "always()",
     env: { JOB_STATUS },

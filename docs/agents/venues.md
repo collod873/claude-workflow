@@ -19,13 +19,14 @@ carry a slot as `null` to shrink the gate, never add one to grow it.
 
 A lane's job is a venue of its own kind, and a dead runner never leaves a green label with no run
 behind it: each lane workflow ends in an `if: always()` step that runs `labels.cli.ts fail --lane`
-with the job's status, which clears the issue's lane label whenever the job ended red or cancelled.
-Where it goes from there is the lane's own: for `acceptance`, `implement` and `mechanic` the step
-stops at clearing, because the strike ladder in the recompute
-([`reconcile-lane-edges.md`](reconcile-lane-edges.md)) is what decides whether a
-second model, the mechanic or the owner runs next, and stamping `needs-human` here would freeze the
-ticket before the ladder took its first step. Every other lane has no ladder behind it, so there
-the same step also adds `needs-human`. A job that ends green leaves
+with the job's status, which replaces the issue's lane label whenever the job ended red or
+cancelled. What it replaces it with is the lane's own. For `acceptance`, `implement` and `mechanic`
+it is `queued`, because the strike ladder in the recompute
+([`reconcile-lane-edges.md`](reconcile-lane-edges.md)) is what decides whether a second model, the
+mechanic or the owner runs next; `needs-human` here would freeze the ticket before the ladder took
+its first step, and clearing the label outright would drop a ticket with no `## Parent PRD` out of
+the recompute's startable set, which reads exactly a lane label. Every other lane has no ladder
+behind it, so there the label becomes `needs-human`. A job that ends green leaves
 its label for the next lane to replace. The labels themselves are seeded by one thing, the
 catalogue sync the Enrol lane runs (`labels.cli.ts sync`), so no workflow creates a label by hand.
 

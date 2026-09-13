@@ -14,7 +14,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
-import { ACCEPTING_LABEL, clearLane, markLane } from "../shared/labels";
+import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
@@ -325,7 +325,7 @@ function authorDiedNote(why: string): string {
 }
 
 function haltLoudly(gh: GhExec, issueNumber: number, note: string, log: (line: string) => void): void {
-  clearLane(gh, issueNumber);
+  markLane(gh, issueNumber, QUEUED_LABEL);
   sayOnTicket(gh, issueNumber, note, log);
 }
 

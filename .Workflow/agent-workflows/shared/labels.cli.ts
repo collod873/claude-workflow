@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "./gh.ts";
 import { catalogueDrift, syncLabels } from "./label-sync.ts";
-import { clearLane } from "./labels.ts";
+import { markLane, QUEUED_LABEL } from "./labels.ts";
 import { escalateToOwner } from "./needs-human.ts";
 import { errorMessage } from "./reason.ts";
 import { ladderClimbs } from "./strikes.ts";
@@ -17,8 +17,8 @@ export function failVerb(gh: GhExec, issue: number, status: string, lane: string
   if (status === FINISHED_CLEAN) return `#${issue}: the job ended green; the lane label stays for the next lane`;
   const ending = `the ${lane || "unnamed"} job ended ${status || "without a status"}`;
   if (ladderClimbs(lane)) {
-    clearLane(gh, issue);
-    return `#${issue}: ${ending}; cleared its lane label and left the strike ladder to say what runs next`;
+    markLane(gh, issue, QUEUED_LABEL);
+    return `#${issue}: ${ending}; back to ${QUEUED_LABEL} for the strike ladder to say what runs next`;
   }
   escalateToOwner(gh, issue, undefined);
   return `#${issue}: ${ending}; no ladder climbs for that lane, so swapped its lane label for needs-human`;

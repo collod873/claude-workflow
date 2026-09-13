@@ -7,6 +7,7 @@ import {
   DECIDE_LABEL,
   DESCRIPTION_LIMIT,
   FAMILY_COLORS,
+  isLaneLabel,
   LABEL_CATALOGUE,
   labelsOf,
   markLane,
@@ -140,16 +141,26 @@ describe("escalateToOwner", () => {
 });
 
 describe("failVerb", () => {
-  it("clears the lane label of a laddered lane's dead job and never reaches for needs-human", () => {
+  it("puts a laddered lane's dead job back in the queue rather than reaching for needs-human", () => {
     for (const lane of LADDERED_LANES) {
       const { gh, calls } = wearing([BUILDING_LABEL, TICKET_LABEL]);
 
       const said = failVerb(gh, 42, "failure", lane);
 
-      expect(edits(calls)).toEqual([["issue", "edit", "42", "--remove-label", BUILDING_LABEL]]);
+      expect(edits(calls)).toEqual([["issue", "edit", "42", "--remove-label", BUILDING_LABEL, "--add-label", QUEUED_LABEL]]);
       expect(calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
       expect(said).toContain("strike ladder");
     }
+  });
+
+  it("leaves a ticket with no parent PRD inside the recompute's startable set, which reads a lane label", () => {
+    const { gh, calls } = wearing([BUILDING_LABEL, TICKET_LABEL]);
+
+    failVerb(gh, 42, "failure", "acceptance");
+
+    const stamped = edits(calls)[0];
+    expect(stamped.slice(stamped.indexOf("--add-label"))).toEqual(["--add-label", QUEUED_LABEL]);
+    expect(isLaneLabel(QUEUED_LABEL)).toBe(true);
   });
 
   it("hands the issue to the owner when the dead job's lane has no ladder behind it", () => {

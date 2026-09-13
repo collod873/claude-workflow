@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { NEEDS_HUMAN_LABEL } from "./labels";
+import { NEEDS_HUMAN_LABEL, QUEUED_LABEL } from "./labels";
 import { type Doors, LANE_WIRING, laneFacts } from "./lane-wiring";
 import { LADDERED_LANES } from "./strikes";
 
@@ -898,7 +898,7 @@ export function findings(map: LaneMap): string[] {
 
   const handers = lanes.filter((node) => node.handsOverOnRed).map((node) => node.name);
   if (handers.length > 0) {
-    out.push(`**${handers.length} lanes clear their issue's lane label when the runner dies (${handers.join(", ")}):** each ends in an \`if: always()\` step that runs \`labels.cli.ts fail --lane\` whenever the job ended red or cancelled. For ${LADDERED_LANES.join(", ")} that is all it does, because the strike ladder in the recompute is what says whether a second model, the mechanic or you runs next; every other lane has no ladder behind it, so there the same step swaps the lane label for \`needs-human\`. A lane that ends green leaves its label for the next lane to replace, so a green label with no run behind it never outlives the run.`);
+    out.push(`**${handers.length} lanes replace their issue's lane label when the runner dies (${handers.join(", ")}):** each ends in an \`if: always()\` step that runs \`labels.cli.ts fail --lane\` whenever the job ended red or cancelled. For ${LADDERED_LANES.join(", ")} the label becomes \`${QUEUED_LABEL}\`, which keeps the ticket in the recompute's startable set so the strike ladder can say whether a second model, the mechanic or you runs next; every other lane has no ladder behind it, so there the label becomes \`${NEEDS_HUMAN_LABEL}\`. A lane that ends green leaves its label for the next lane to replace, so a green label with no run behind it never outlives the run.`);
   }
 
   const refusals = lanes.flatMap((node) => node.stops.filter((stop) => !stop.includes(NEEDS_HUMAN_LABEL)).map((stop) => `${node.name} ${stop}`));

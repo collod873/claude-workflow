@@ -127,10 +127,10 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-stopline" x="1057.367359865651" y="235" text-anchor="middle">stops: needs-human, shape-refused</text>
 <rect class="lm-box lm-wire" x="1169.367359865651" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1253.367359865651" y="206" text-anchor="middle">Lost-dispatch counter</text>
-<text class="lm-sub" x="1253.367359865651" y="221" text-anchor="middle">20 ran · 22 skipped · 0 red</text>
+<text class="lm-sub" x="1253.367359865651" y="221" text-anchor="middle">20 ran · 21 skipped · 0 red</text>
 <rect class="lm-box lm-model" x="383.6935708070735" y="336" width="168" height="56" rx="6"/>
 <text class="lm-text" x="467.6935708070735" y="354" text-anchor="middle">02 · Spec</text>
-<text class="lm-sub" x="467.6935708070735" y="369" text-anchor="middle">22 ran · 20 skipped · 0 red</text>
+<text class="lm-sub" x="467.6935708070735" y="369" text-anchor="middle">22 ran · 19 skipped · 0 red</text>
 <rect class="lm-box lm-source" x="468.5973922760455" y="495" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="552.5973922760455" y="516" text-anchor="middle">you: issue edited</text>
 <rect class="lm-box lm-model" x="664.5973922760455" y="484" width="168" height="56" rx="6"/>
@@ -168,7 +168,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-pill" x="681.7495375913093" y="1108" text-anchor="middle">you: by hand</text>
 <rect class="lm-box lm-wire" x="885.7495375913093" y="1076" width="168" height="56" rx="6"/>
 <text class="lm-text" x="969.7495375913093" y="1094" text-anchor="middle">06 · Verify</text>
-<text class="lm-sub" x="969.7495375913093" y="1109" text-anchor="middle">66 ran · 0 skipped · 3 red</text>
+<text class="lm-sub" x="969.7495375913093" y="1109" text-anchor="middle">67 ran · 0 skipped · 3 red</text>
 <rect class="lm-box lm-model" x="580.6712819026942" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="664.6712819026942" y="1242" text-anchor="middle">07 · Fixer</text>
 <text class="lm-sub" x="664.6712819026942" y="1257" text-anchor="middle">2 ran · 0 skipped · 0 red</text>
@@ -178,7 +178,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 <text class="lm-sub" x="952.6712819026942" y="1257" text-anchor="middle">28 ran · 0 skipped · 1 red</text>
 <rect class="lm-box lm-wire" x="1064.6712819026943" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1148.6712819026943" y="1242" text-anchor="middle">Bypass counter</text>
-<text class="lm-sub" x="1148.6712819026943" y="1257" text-anchor="middle">49 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="1148.6712819026943" y="1257" text-anchor="middle">50 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-source" x="322.2809893272475" y="1383" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="406.2809893272475" y="1404" text-anchor="middle">you: push</text>
 <rect class="lm-box lm-wire" x="610.2809893272474" y="1372" width="168" height="56" rx="6"/>
@@ -211,7 +211,7 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 
 - **8 lanes did no work in the window:** Acceptance (never fired); Implement (never fired); Mechanic (never fired); Audit (never fired); Record ratifications (never fired); Decline on revert (never fired); Run watchdog (never fired); Walk home (never fired).
 - **`needs-human` is written by 7 lanes (Shape, Acceptance, Implement, Mechanic, Integrate, Fixer, Dispatch reconcile) and cleared by Dispatch reconcile.** Nothing else reads it; a ticket that carries it waits for you.
-- **6 lanes clear their issue's lane label when the runner dies (Shape, Spec, To-Tickets, Acceptance, Implement, Mechanic):** each ends in an `if: always()` step that runs `labels.cli.ts fail --lane` whenever the job ended red or cancelled. For acceptance, implement, mechanic that is all it does, because the strike ladder in the recompute is what says whether a second model, the mechanic or you runs next; every other lane has no ladder behind it, so there the same step swaps the lane label for `needs-human`. A lane that ends green leaves its label for the next lane to replace, so a green label with no run behind it never outlives the run.
+- **6 lanes replace their issue's lane label when the runner dies (Shape, Spec, To-Tickets, Acceptance, Implement, Mechanic):** each ends in an `if: always()` step that runs `labels.cli.ts fail --lane` whenever the job ended red or cancelled. For acceptance, implement, mechanic the label becomes `queued`, which keeps the ticket in the recompute's startable set so the strike ladder can say whether a second model, the mechanic or you runs next; every other lane has no ladder behind it, so there the label becomes `needs-human`. A lane that ends green leaves its label for the next lane to replace, so a green label with no run behind it never outlives the run.
 - **Refusal labels no lane wakes on:** Shape labels shape-refused; To-Tickets labels slice-failed. Each is a stop with no reader.
 - **Lanes no other lane rings or hears:** Enrol, Walk home. They hang off you, the session hook, or a push alone.
 - **Machine-only, never shipped to an enrolled repository:** Enrol, Walk home.
@@ -222,21 +222,21 @@ the whole page, so the box carries one short arrow marked "any lane ends · any 
 |---|---|---|---|---|---|---|
 | 01 [Shape](shape-lane-edges.md) | model | `issue labeled`, `issue_comment created` |  | `1-decide`, `1-shaping`, **`needs-human`** (stop), **`shape-refused`** (stop) | 30 / 0 / 0 / 39 | `shape/shape.ts` |
 | 01 [Shape — accept](shape-lane-edges.md) | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 20 / 0 / 0 / 22 | `shape/run-accept.ts` |
-| 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 22 / 0 / 0 / 20 | `spec/spec.ts` |
+| 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 22 / 0 / 0 / 19 | `spec/spec.ts` |
 | 03 [To-Tickets](to-tickets-lane-edges.md) | model | `dispatch prd-sliceable` | `acceptance-wanted` | `3-sliced`, `3-slicing`, **`slice-failed`** (stop) | 0 / 2 / 1 / 0 | `to-tickets/to-tickets.ts` |
-| 04 [Acceptance](reconcile-lane-edges.md) | model | `issue edited`, `dispatch acceptance-wanted` | `acceptance-wanted`, `run-ended`, `ticket-ready`, `push to main` | `4-accepting`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
-| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Record ratifications completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `ticket-ready` | `4-accepting`, `5-building`, **`needs-human`** (stop), `queued`, `waiting` | 317 / 0 / 205 / 12 | `dispatch/reconcile.ts` |
+| 04 [Acceptance](reconcile-lane-edges.md) | model | `issue edited`, `dispatch acceptance-wanted` | `acceptance-wanted`, `run-ended`, `ticket-ready`, `push to main` | `4-accepting`, **`needs-human`** (stop), `queued` | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
+| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `Acceptance completed`, `Audit completed`, `Back-stamp completed`, `Bypass counter completed`, `Decline on revert completed`, `Fixer completed`, `Implement completed`, `Integrate completed`, `Lost-dispatch counter completed`, `Mechanic completed`, `Missing-trailer counter completed`, `Ratify completed`, `Ratify on PRD close completed`, `Record ratifications completed`, `Review completed`, `Run watchdog completed`, `Shape completed`, `Shape — accept completed`, `Spec completed`, `To-Tickets completed`, `Verify completed`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `ticket-ready` | `4-accepting`, `5-building`, **`needs-human`** (stop), `queued`, `waiting` | 321 / 0 / 201 / 12 | `dispatch/reconcile.ts` |
 | 05 [Implement](implement-lane-edges.md) | model | `dispatch ticket-ready` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `implement/implement.ts` |
-| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 63 / 3 / 0 / 0 | `integrate/immutability.ts` |
+| 06 [Verify](verify-lane-edges.md) | wire | `push to main`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 64 / 3 / 0 / 0 | `integrate/immutability.ts` |
 | 07 [Fixer](review-lane-edges.md) | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | `7-fixing`, **`needs-human`** (stop) | 2 / 0 / 0 / 0 | `fixer/fixer.ts` |
 | 07 [Review](review-lane-edges.md) | model | `dispatch review-wanted` |  | `7-reviewing`, `lane-07-finding` | 27 / 1 / 0 / 0 | `review/review.ts` |
 | 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | `8-landing`, **`needs-human`** (stop) | 21 / 4 / 5 / 0 | `integrate/integrate.ts` |
 | [Audit](standards-lane-edges.md) | model | `dispatch session-captured` | `ratification-due` |  | 0 / 0 / 0 / 0 | `observations/run-audit.ts` |
 | [Back-stamp](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 2 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
-| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 49 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
+| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 50 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
 | [Decline on revert](standards-lane-edges.md) | wire | `push to main touching CODING_STANDARDS.md, eslint.config.js` |  |  | 0 / 0 / 0 / 0 | `ratify/run-revert-detector.ts` |
 | [Enrol](enrol-lane-edges.md) (machine only) | wire | `push to main touching .github/workflows/*-caller.yml`, `by hand` |  |  | 6 / 0 / 0 / 0 | `enrol/enrol.ts` |
-| [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 15 / 0 / 5 / 22 | `watchdog/lost-dispatch-counter.ts` |
+| [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 15 / 0 / 5 / 21 | `watchdog/lost-dispatch-counter.ts` |
 | [Mechanic](mechanic-lane-edges.md) | model | `dispatch mechanic-wanted` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `mechanic/mechanic.ts` |
 | [Missing-trailer counter](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` |  |  | 2 / 0 / 0 / 0 | `watchdog/missing-trailer-counter.ts` |
 | [Ratify](standards-lane-edges.md) | model | `dispatch ratification-due` | `implementation-opened` | `ratifying` | 2 / 0 / 0 / 0 | `ratify/run-ratify.ts` |
