@@ -87,6 +87,17 @@ or missing section:
 A ticket missing this heading entirely was never shaped by a producer that computes claims;
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
 
+**Eight paths is the ceiling**, refused above that by `bin/ticket_shape.py`'s `CLAIM_LIMIT` at
+filing and by `shared/ticket-shape.ts`'s at the `to-build` door and in every `/to-tickets` plan;
+a proc test drives both validators over the same bodies so the two cannot drift. The ceiling is
+lane 04's, not a taste: the acceptance author inlines the contents of every claimed file into one
+prompt, and the lane budget is a single wall clock covering that pass, the gate, and the one
+repair round. #539 claimed nine files across four lanes, handed the author 92 KiB, and spent 17.3
+minutes and $3.79 on the first pass alone against a 24-minute budget — so its repair round had
+four minutes for a job that takes two to three, and all three attempts died in the same place
+with nothing authored. Typical is three to eight minutes and $0.60–1.50. A ticket wider than the
+ceiling is not one ticket; split it into slices of one subject each and chain them.
+
 Repo-relative means **from the repository root**, always: `src/router/index.ts`, never
 `router/index.ts`. The rest of the body may abbreviate a path this section spells in full, and may
 not name a path it does not: a ticket is read independently by whoever writes its acceptance

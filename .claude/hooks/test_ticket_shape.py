@@ -148,6 +148,26 @@ def test_check_marker_word_resolution():
           len(warnings) == 1 and "no-such-runner-9f3a" in warnings[0], warnings)
 
 
+def test_validate_ticket_claim_ceiling():
+    print("validate('ticket', ...) refuses a claim wider than the acceptance author can hold "
+          "in one prompt")
+
+    def claiming(count):
+        files = "".join(f"- src/m{i}.ts\n" for i in range(count))
+        return ("## Acceptance criteria\n\n- [ ] it works - check: `true`\n\n"
+                f"## Files claimed\n\n{files}")
+
+    at_ceiling = refusal(lambda: ticket_shape.validate(
+        "ticket", claiming(ticket_shape.CLAIM_LIMIT), repo_root=REPO))
+    check(f"a claim of exactly {ticket_shape.CLAIM_LIMIT} files is admitted",
+          at_ceiling is None, at_ceiling)
+
+    over = refusal(lambda: ticket_shape.validate(
+        "ticket", claiming(ticket_shape.CLAIM_LIMIT + 1), repo_root=REPO))
+    check("one file past the ceiling is refused, naming the stage the width would starve",
+          over is not None and "author-repair" in over, over)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="ticket-shape-test-"):
         test_immutable_set_pinned_to_shared_json()
@@ -159,6 +179,8 @@ def main():
         test_classify_venue_workstation_paths()
         print()
         test_check_marker_word_resolution()
+        print()
+        test_validate_ticket_claim_ceiling()
 
     finish("All ticket_shape checks passed.")
 

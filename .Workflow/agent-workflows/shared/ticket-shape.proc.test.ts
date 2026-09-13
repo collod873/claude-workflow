@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "./scratch.fixture";
-import { TicketShapeError, validateTicket } from "./ticket-shape";
+import { CLAIM_LIMIT, TicketShapeError, validateTicket } from "./ticket-shape";
 import { pythonVerdict, type Verdict } from "./ticket-shape.fixture";
 
 const heading = "## Acceptance criteria";
@@ -51,6 +51,22 @@ describe("validateTicket, driven against the real bin/ticket_shape.py", () => {
         ["scripts/scrub.ts"],
       ),
       existingPaths: ["scripts/scrub.ts"],
+    },
+    {
+      label: "a claim sitting exactly on the ceiling",
+      body: body(
+        ["- [ ] It works — check: `make test`"],
+        Array.from({ length: CLAIM_LIMIT }, (_unused, i) => `src/m${i}.ts`),
+      ),
+      existingPaths: Array.from({ length: CLAIM_LIMIT }, (_unused, i) => `src/m${i}.ts`),
+    },
+    {
+      label: "a claim one file past the ceiling",
+      body: body(
+        ["- [ ] It works — check: `make test`"],
+        Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
+      ),
+      existingPaths: Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
     },
     {
       label: "a migration-shaped body carrying real post-state evidence",

@@ -96,6 +96,17 @@ export function isRunnableSpec(body: string): boolean {
 
 export class TicketShapeError extends Error {}
 
+export const CLAIM_LIMIT = 8;
+
+export function claimTooWide(count: number): string {
+  return (
+    `'## Files claimed' names ${count} files; ${CLAIM_LIMIT} is the ceiling. Lane 04's author ` +
+    "inlines every claimed file into one prompt, so a claim this wide spends the whole lane " +
+    "budget on its first pass and dies at author-repair with nothing authored (#539). Split it " +
+    "into slices of one subject each."
+  );
+}
+
 export function criteriaBlocks(body: string): string[] | null {
   const normalized = normalizeNewlines(body);
   if (!CRITERIA_HEADING_RE.test(normalized)) {
@@ -236,6 +247,10 @@ export function validateTicket(body: string, repoRoot: string = defaultRepoRoot(
   }
   if (!FILES_HEADING_RE.test(normalized)) {
     throw new TicketShapeError("missing required '## Files claimed' heading");
+  }
+  const claimedCount = extractFilesClaimed(normalized).length;
+  if (claimedCount > CLAIM_LIMIT) {
+    throw new TicketShapeError(claimTooWide(claimedCount));
   }
 
   const warnings: string[] = [];

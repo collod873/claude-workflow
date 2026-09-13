@@ -141,6 +141,15 @@ CATCH_ALL_PATTERNS = frozenset({"**", "*", "**/*", "./**", "**/**", ".", "/", ".
 
 DEGENERATE_CLAIM_MESSAGE = "could not name the files this touches"
 
+CLAIM_LIMIT = 8
+
+CLAIM_TOO_WIDE = (
+    "'## Files claimed' names {count} files; {limit} is the ceiling. Lane 04's author inlines "
+    "every claimed file into one prompt, so a claim this wide spends the whole lane budget on "
+    "its first pass and dies at author-repair with nothing authored (#539). Split it into "
+    "slices of one subject each."
+)
+
 
 class ValidationError(Exception):
     pass
@@ -269,6 +278,11 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
         if not FILES_CLAIMED_HEADING_RE.search(body):
             raise ValidationError(
                 "missing required '## Files claimed' heading"
+            )
+        claimed_count = len(claimed_paths(body))
+        if claimed_count > CLAIM_LIMIT:
+            raise ValidationError(
+                CLAIM_TOO_WIDE.format(count=claimed_count, limit=CLAIM_LIMIT)
             )
         warnings = []
         lines = _criteria_lines(body)

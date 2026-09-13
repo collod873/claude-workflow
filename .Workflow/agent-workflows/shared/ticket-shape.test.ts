@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { countCriteria, extractCriteria, isRunnableSpec, parseCheckMarker, parentPrdNumber } from "./ticket-shape";
+import { scratchDir } from "./scratch.fixture";
+import {
+  CLAIM_LIMIT,
+  countCriteria,
+  extractCriteria,
+  isRunnableSpec,
+  parseCheckMarker,
+  parentPrdNumber,
+  TicketShapeError,
+  validateTicket,
+} from "./ticket-shape";
 
 const heading = "## Acceptance criteria";
 
@@ -105,3 +115,26 @@ describe("ticket-shape's existing grammar primitives, exercised so this file is 
     expect(parentPrdNumber("no parent here")).toBeUndefined();
   });
 });
+
+describe("the claim ceiling", () => {
+  function claiming(count: number): string {
+    return [
+      heading,
+      "",
+      "- [ ] It works - check: `make test`",
+      "",
+      "## Files claimed",
+      ...Array.from({ length: count }, (_unused, i) => `- src/m${i}.ts`),
+      "",
+    ].join("\n");
+  }
+
+  it("accepts a claim sitting exactly on the ceiling", () => {
+    expect(() => validateTicket(claiming(CLAIM_LIMIT), scratchDir("claim-ceiling"))).not.toThrow();
+  });
+
+  it("refuses one file past it, naming the lane budget the width would spend", () => {
+    expect(() => validateTicket(claiming(CLAIM_LIMIT + 1), scratchDir("claim-ceiling"))).toThrow(TicketShapeError);
+    expect(() => validateTicket(claiming(CLAIM_LIMIT + 1), scratchDir("claim-ceiling"))).toThrow(/author-repair/);
+  });
+})
