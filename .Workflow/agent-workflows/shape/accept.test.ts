@@ -86,6 +86,8 @@ function harness(options: { sheet?: Sheet; labels?: string[]; losePushes?: numbe
       return found;
     },
     writeFile: (path, content) => void files.set(path, content),
+    sleep: async () => {},
+    log: () => {},
   };
 
   return { deps, tracker, files, git, adrTitles };
@@ -138,40 +140,40 @@ A named group of edges.
 `;
 
 describe("parked", () => {
-  it("drops `idea` and does nothing else", () => {
+  it("drops `idea` and does nothing else", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    expect(accept(deps, 1, "parked")).toEqual({ kind: "parked" });
+    expect(await accept(deps, 1, "parked")).toEqual({ kind: "parked" });
     expect(tracker.calls).toEqual([["issue", "edit", "1", "--remove-label", "idea", "--remove-label", "1-decide"]]);
   });
 });
 
 describe("killed", () => {
-  it("closes the issue as not planned, so it becomes prior art with teeth", () => {
+  it("closes the issue as not planned, so it becomes prior art with teeth", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    expect(accept(deps, 1, "killed")).toEqual({ kind: "killed" });
+    expect(await accept(deps, 1, "killed")).toEqual({ kind: "killed" });
     expect(tracker.calls).toContainEqual(["issue", "close", "1", "--reason", "not planned"]);
   });
 
-  it("does not close as completed, which §6's fourth counter reads", () => {
+  it("does not close as completed, which §6's fourth counter reads", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "killed");
+    await accept(deps, 1, "killed");
 
     expect(tracker.calls.flat()).not.toContain("completed");
   });
 });
 
 describe("approved", () => {
-  it("files an ADR for a decision carrying both a mark and a title", () => {
+  it("files an ADR for a decision carrying both a mark and a title", async () => {
     const { deps, adrTitles, files } = harness({
       sheet: sheet({
         decisions: [decision({ mark: "ADR-0007's routing rule", adrTitle: "The ruling as a sentence", adrReversal: REVERSAL })],
       }),
     });
 
-    const outcome = accept(deps, 1, "approved");
+    const outcome = await accept(deps, 1, "approved");
 
     expect(adrTitles).toEqual(["The ruling as a sentence"]);
     expect(outcome).toMatchObject({ kind: "approved", adrs: ["docs/adr/0051-slug.md"] });
@@ -179,50 +181,50 @@ describe("approved", () => {
     expect(files.get("docs/adr/0051-slug.md")).toContain("ADR-0007's routing rule");
   });
 
-  it("files nothing for a title with no mark", () => {
+  it("files nothing for a title with no mark", async () => {
     const { deps, adrTitles } = harnessFor({ adrTitle: "A ruling" });
 
-    expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
+    expect(await accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
     expect(adrTitles).toEqual([]);
   });
 
-  it("files nothing for a mark with no title", () => {
+  it("files nothing for a mark with no title", async () => {
     const { deps, adrTitles } = harnessFor({ mark: "a file" });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
     expect(adrTitles).toEqual([]);
   });
 
-  it("files nothing for a title and mark with no reversal sentence", () => {
+  it("files nothing for a title and mark with no reversal sentence", async () => {
     const { deps, adrTitles } = harnessFor({ mark: "a file", adrTitle: "A ruling" });
 
-    expect(accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
+    expect(await accept(deps, 1, "approved")).toMatchObject({ adrs: [] });
     expect(adrTitles).toEqual([]);
   });
 
-  it("writes the reversal sentence into the landed ADR's frontmatter, not its body", () => {
+  it("writes the reversal sentence into the landed ADR's frontmatter, not its body", async () => {
     const { deps, files } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     const landed = files.get("docs/adr/0051-slug.md")!;
     expect(frontmatterOf(landed)).toContain(`reversal: ${REVERSAL}`);
     expect(landed.slice(landed.indexOf("\n---\n", 4))).not.toContain(REVERSAL);
   });
 
-  it("flattens a multi-line reversal sentence, which would otherwise end the key mid-value", () => {
+  it("flattens a multi-line reversal sentence, which would otherwise end the key mid-value", async () => {
     const { deps, files } = harness({
       sheet: sheet({
         decisions: [decision({ mark: "a file", adrTitle: "A ruling", adrReversal: "Undoing it costs\na second pass." })],
       }),
     });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(frontmatterOf(files.get("docs/adr/0051-slug.md")!)).toContain("reversal: Undoing it costs a second pass.");
   });
 
-  it("coins a term into its own section of CONTEXT.md", () => {
+  it("coins a term into its own section of CONTEXT.md", async () => {
     const term: Term = {
       term: "Sheet round",
       definition: "One pass of the shaper over an idea.",
@@ -231,17 +233,17 @@ describe("approved", () => {
     };
     const { deps, files } = harness({ sheet: sheet({ newTerms: [term] }) });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     const contents = files.get("CONTEXT.md")!;
     expect(contents).toContain("**Sheet round**:");
     expect(contents.indexOf("**Sheet round**:")).toBeGreaterThan(contents.indexOf("### The pipeline"));
   });
 
-  it("commits and pushes what it wrote, straight to main", () => {
+  it("commits and pushes what it wrote, straight to main", async () => {
     const { deps, git } = harnessFor({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(git.map((call) => call[0])).toEqual([
       "add",
@@ -253,7 +255,7 @@ describe("approved", () => {
     expect(git.at(-1)).toEqual(["push", "origin", "HEAD:main"]);
   });
 
-  it("stages only CONTEXT.md when the sheet coined a term but filed no ADR", () => {
+  it("stages only CONTEXT.md when the sheet coined a term but filed no ADR", async () => {
     const term: Term = {
       term: "Sheet round",
       section: "The pipeline",
@@ -262,51 +264,51 @@ describe("approved", () => {
     };
     const { deps, git } = harness({ sheet: sheet({ newTerms: [term] }) });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(git.find((call) => call[0] === "add")).toEqual(["add", "CONTEXT.md"]);
   });
 
-  it("writes no commit when the sheet decided nothing worth filing", () => {
+  it("writes no commit when the sheet decided nothing worth filing", async () => {
     const { deps, git } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(git).toEqual([]);
   });
 
-  it("records the sheet's route", () => {
+  it("records the sheet's route", async () => {
     const { deps } = harness({ sheet: sheet({ route: "long" }) });
 
-    expect(accept(deps, 1, "approved")).toMatchObject({ route: "long" });
+    expect(await accept(deps, 1, "approved")).toMatchObject({ route: "long" });
   });
 
-  it("takes ADR-0007's one-word override off the labels", () => {
+  it("takes ADR-0007's one-word override off the labels", async () => {
     const { deps, tracker } = harness({ sheet: sheet({ route: "short" }), labels: ["go-long"] });
 
-    expect(accept(deps, 1, "approved")).toMatchObject({ route: "long" });
+    expect(await accept(deps, 1, "approved")).toMatchObject({ route: "long" });
     expect(postedComments(tracker)[0]).toContain("overriding the sheet's `short`");
   });
 
-  it("takes the survivable route when both overrides are somehow present", () => {
+  it("takes the survivable route when both overrides are somehow present", async () => {
     const { deps } = harness({ sheet: sheet(), labels: ["go-long", "go-short"] });
 
-    expect(accept(deps, 1, "approved")).toMatchObject({ route: "long" });
+    expect(await accept(deps, 1, "approved")).toMatchObject({ route: "long" });
   });
 
-  it("dispatches lane 02, and says so on the issue", () => {
+  it("dispatches lane 02, and says so on the issue", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(postedComments(tracker)[0]).toContain("Dispatched to lane 02");
     expect(postedComments(tracker)[0]).not.toContain("Not dispatched");
   });
 
-  it("sends the dispatch after the comment carrying the marker the collector reads", () => {
+  it("sends the dispatch after the comment carrying the marker the collector reads", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     const commentIndex = tracker.calls.findIndex(
       (args) => args[0] === "issue" && args[1] === "comment",
@@ -320,10 +322,10 @@ describe("approved", () => {
     expect(tracker.calls[dispatchIndex]).toContain("client_payload[issue]=1");
   });
 
-  it("swaps the spent verb for the lane that is now owed", () => {
+  it("swaps the spent verb for the lane that is now owed", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     const swap = tracker.calls.find(
       (args) => args[0] === "issue" && args[1] === "edit" && args.includes("to-spec"),
@@ -335,10 +337,10 @@ describe("approved", () => {
     expect(swap).toContain("approved");
   });
 
-  it("refuses to invent a route when there is no sheet to read", () => {
+  it("refuses to invent a route when there is no sheet to read", async () => {
     const { deps, tracker, git } = harness();
 
-    expect(accept(deps, 1, "approved")).toEqual({ kind: "no-sheet", verb: "approved" });
+    expect(await accept(deps, 1, "approved")).toEqual({ kind: "no-sheet", verb: "approved" });
     expect(git).toEqual([]);
     expect(tracker.calls.flat()).not.toContain("--remove-label");
   });
@@ -351,11 +353,11 @@ describe("coining a term", () => {
     expect(insertTerm(CONTEXT_FIXTURE, term)).toBeUndefined();
   });
 
-  it("does not coin a term the file already carries", () => {
+  it("does not coin a term the file already carries", async () => {
     const term: Term = { term: "Gate", definition: "different", avoid: [], section: "Mechanisms" };
     const { deps, files } = harness({ sheet: sheet({ newTerms: [term] }) });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(files.get("CONTEXT.md")).not.toContain("different");
   });
@@ -369,11 +371,11 @@ describe("coining a term", () => {
 });
 
 describe("re-applying a verb", () => {
-  it("does not file a second copy of every ruling", () => {
+  it("does not file a second copy of every ruling", async () => {
     const shaped = sheet({ decisions: [decision({ mark: "a file", adrTitle: "A ruling", adrReversal: REVERSAL })] });
     const { deps, adrTitles, git } = harness({ sheet: shaped });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
     expect(adrTitles).toHaveLength(1);
 
     const second = harness({ sheet: shaped });
@@ -382,21 +384,21 @@ describe("re-applying a verb", () => {
       "## Accepted\n\n<!-- shape-accepted:v1 -->",
     ]);
 
-    expect(accept(second.deps, 1, "approved")).toEqual({ kind: "already-accepted" });
+    expect(await accept(second.deps, 1, "approved")).toEqual({ kind: "already-accepted" });
     expect(second.adrTitles).toEqual([]);
     expect(second.git).toEqual([]);
     expect(git).not.toEqual([]);
   });
 
-  it("marks its own comment, which is what makes that readable", () => {
+  it("marks its own comment, which is what makes that readable", async () => {
     const { deps, tracker } = harness({ sheet: sheet() });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     expect(postedComments(tracker)[0]).toContain("<!-- shape-accepted:v1");
   });
 
-  it("carries the ADR paths, coined terms and route in the marker's payload", () => {
+  it("carries the ADR paths, coined terms and route in the marker's payload", async () => {
     const term: Term = { term: "X", definition: "d", avoid: [], section: "Mechanisms" };
     const { deps, tracker } = harness({
       sheet: sheet({
@@ -405,7 +407,7 @@ describe("re-applying a verb", () => {
       }),
     });
 
-    accept(deps, 1, "approved");
+    await accept(deps, 1, "approved");
 
     const posted = postedComments(tracker)[0] ?? "";
     expect(posted).toContain('"adrPaths":["docs/adr/0051-slug.md"]');
@@ -414,7 +416,7 @@ describe("re-applying a verb", () => {
   });
 });
 
-test.fails(
+test(
   "#543.1: commitAndPush reaches trunk through shared/push-to-trunk.ts instead of its own push origin HEAD:main",
   async () => {
     const { deps, git } = harness({ sheet: sheet({ decisions: [decision(ADR_RULING)] }), losePushes: 1 });
@@ -430,7 +432,7 @@ test.fails(
   30_000,
 );
 
-test.fails(
+test(
   "#543.2: a push this lane loses is retried, and the lane reports its own sentence when the attempts are exhausted",
   async () => {
     const lost = harness({ sheet: sheet({ decisions: [decision(ADR_RULING)] }), losePushes: 1 });
@@ -453,7 +455,7 @@ test.fails(
   60_000,
 );
 
-test.fails(
+test(
   "#543.3: the whole check contract passes: every verb of accept resolves through the async ripple, and insertTerm stays a plain function",
   async () => {
     const parked = harness({ sheet: sheet() });
