@@ -59,6 +59,14 @@ jobs:
         working-directory: target
         run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." >&2
+            exit 1
+          fi
+
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node
 
@@ -118,6 +126,14 @@ jobs:
       - name: Note the commit this run starts from
         working-directory: target
         run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run." >&2
+            exit 1
+          fi
 
       - name: Set up Node and install dependencies
         uses: ./.github/actions/node

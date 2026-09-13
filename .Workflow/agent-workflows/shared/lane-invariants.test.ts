@@ -43,6 +43,35 @@ const workflows = readWorkflows<Workflow>().map(({ name, workflow, source }) => 
 
 const sourceFiles = () => [...laneSources(), ...binSources()];
 
+describe("a job that installs Claude Code preflights the credential it runs on", () => {
+  const INSTALLS_CLAUDE = /npm install -g @anthropic-ai\/claude-code/;
+  const PREFLIGHTS = /CLAUDE_CODE_OAUTH_TOKEN:-/;
+
+  const installers = workflows.flatMap(({ name, workflow }) =>
+    Object.entries(workflow.jobs ?? {})
+      .filter(([, job]) => (job.steps ?? []).some((step) => INSTALLS_CLAUDE.test(step.run ?? "")))
+      .map(([jobKey, job]) => ({ id: `${name}#${jobKey}`, job })),
+  );
+
+  it("finds the jobs that install it, so this sweep is not vacuous", () => {
+    const ids = installers.map(({ id }) => id);
+    expect(ids).toContain("ratify.yml#ratify");
+    expect(ids).toContain("acceptance.yml#author");
+    expect(ids).toContain("audit.yml#audit");
+  });
+
+  it.each(installers.map(({ id }) => id))("%s fails on an empty token before it spends a stage", (id) => {
+    const { job } = installers.find((each) => each.id === id)!;
+
+    expect(
+      (job.steps ?? []).some((step) => PREFLIGHTS.test(step.run ?? "")),
+      `${id} installs Claude Code and runs a stage, but never checks CLAUDE_CODE_OAUTH_TOKEN is set. ` +
+        "an empty secret makes the stage exit non-zero with the runner's own wording, not the lane's, " +
+        "and the lane reports a failed stage rather than a missing credential",
+    ).toBe(true);
+  });
+});
+
 describe("a lane that writes into a target installs that target's dependencies", () => {
   const WRITES_TARGET = /regenerateArtifacts|landAnswer|commitAndPushAttempt/;
 

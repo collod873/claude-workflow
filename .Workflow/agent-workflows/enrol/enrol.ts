@@ -453,9 +453,17 @@ async function main(): Promise<void> {
     const machineSha = process.env.GITHUB_SHA ?? "unknown";
 
     const secretValues: Record<string, string> = {};
+    const unset: string[] = [];
     for (const name of derivedSecretNames(WORKFLOWS_PATH)) {
       const value = process.env[name];
-      if (value !== undefined) secretValues[name] = value;
+      if (value === undefined || value === "") unset.push(name);
+      else secretValues[name] = value;
+    }
+    if (unset.length > 0) {
+      throw new Error(
+        `${unset.join(", ")} empty in this lane's environment: every enrolled repository would be ` +
+          "written a stub set whose lanes have no credential, and fail only when one next runs",
+      );
     }
 
     const outcomes = runEnrol({
