@@ -138,3 +138,26 @@ test("#499.2: refuter.ts calls the budget wrapper instead of runStage directly",
     /timed out after [\d.]+ minutes at refuter/,
   );
 });
+
+type GateFreeRefuter = (
+  exec: StageExec,
+  findings: Finding[],
+  diff: string,
+  budgetMinutes?: number,
+) => Promise<Finding[]>;
+
+test.fails(
+  "#533.4: the refuter prompt carries no GREEN_GATE_CHECKS placeholder and asks for no green-gate reasoning",
+  async () => {
+    const fake = fakeExec([verdict({ refuted: false, reason: "" })]);
+    const finding: Finding = { message: "src/widget.ts:12 returns undefined on the empty-cart path" };
+    const gateFree = runRefuter as unknown as GateFreeRefuter;
+
+    await gateFree(fake.exec, [finding], DIFF);
+
+    const prompt = fake.prompts[0];
+    expect(prompt).toContain(finding.message);
+    expect(prompt).not.toMatch(/GREEN_GATE_CHECKS/i);
+    expect(prompt).not.toMatch(/green[\s_-]*(gate|ci|check|run)/i);
+  },
+);

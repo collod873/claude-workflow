@@ -13,7 +13,8 @@ import {
   untestedCriteria,
 } from "./review";
 import { FINDING_LABEL } from "./counter";
-import type { Finding } from "./structural-refusal";
+import { runRefuter } from "./refuter";
+import { isStructurallyRefused, type Finding } from "./structural-refusal";
 
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 @@ -10,3 +10,4 @@ src/widget.ts:12
@@ -450,5 +451,85 @@ test(
     expect(strike).toBeDefined();
     expect(strike?.join(" ")).toContain(`${TICKET_NUMBER}`);
     expect(strike?.join(" ")).toMatch(TIMED_OUT_AT_CORRECTNESS);
+  },
+);
+
+const GATE_FREE_CORRECTNESS_FINDING = "src/widget.ts:12 returns undefined on the empty-cart path";
+
+type ReviewInput = Parameters<typeof runReview>[2];
+type ConformanceInput = Parameters<typeof runConformanceReview>[2];
+
+function gateFreeReviewInput(scratch: string): ReviewInput {
+  return { diff: DIFF, assignee: ASSIGNEE, head: HEAD_SHA, root: scratch } as unknown as ReviewInput;
+}
+
+test.fails(
+  "#533.1: no file under review/ names greenGateChecks or GreenGateCheck: no function still takes one",
+  () => {
+    expect(isStructurallyRefused.length).toBe(2);
+    expect(keepSurvivingFindings.length).toBe(2);
+    expect(runRefuter.length).toBe(3);
+  },
+);
+
+test.fails(
+  "#533.2: nothing reads a third argument: runReview runs on the two arguments review.yml passes",
+  async () => {
+    const { exec } = fakeExec(
+      { findings: [{ message: GATE_FREE_CORRECTNESS_FINDING }] },
+      { refuted: false, reason: "" },
+    );
+    const { gh, calls } = trackerForReview();
+
+    const result = await runReview(exec, gh, gateFreeReviewInput(scratchDir("review-two-arguments")));
+
+    expect(result.survivors).toEqual([{ message: GATE_FREE_CORRECTNESS_FINDING }]);
+    expect(result.tally).toEqual({ reached: 1, refuted: 0 });
+    expect(issueCreates(calls).length).toBe(1);
+  },
+);
+
+test.fails(
+  "#533.6: nothing is left unreachable once the type and its users are gone: the conformance half runs with no green-gate input",
+  async () => {
+    const divergence = "src/widget.ts:12 returns undefined instead of the cart total";
+    const fake = fakeExec({ items: [{ classification: "divergence", message: divergence }] });
+    const { gh } = trackerForReview();
+    const input = {
+      specText: "the spec",
+      diff: DIFF,
+      criteria: [],
+      prdIssueNumber: 42,
+      ticketNumber: 42,
+    } as unknown as ConformanceInput;
+
+    const result = await runConformanceReview(fake.exec, gh, input);
+
+    expect(result.findings).toEqual([{ message: divergence }]);
+    expect(result.gapIssues).toEqual([]);
+  },
+);
+
+test.fails(
+  "#533.7: the lane runs green end to end with the green-gate refusal deleted",
+  async () => {
+    const divergence = "src/widget.ts:12 never returns the cart total the spec asks for";
+    const { exec } = fakeExec(
+      { findings: [{ message: GATE_FREE_CORRECTNESS_FINDING }] },
+      { items: [{ classification: "divergence", message: divergence }] },
+      { refuted: false, reason: "" },
+      { refuted: false, reason: "" },
+    );
+    const { gh, calls } = trackerForReview({ pullsByCommit: claimedPulls(), tickets: CONFORMANCE_TICKETS });
+
+    const result = await runReview(exec, gh, gateFreeReviewInput(scratchDir("review-gauntlet")));
+
+    expect(result.survivors).toEqual([
+      { message: GATE_FREE_CORRECTNESS_FINDING },
+      { message: divergence },
+    ]);
+    expect(result.tally).toEqual({ reached: 2, refuted: 0 });
+    expect(result.publishedIssues.length).toBe(2);
+    expect(issueCreates(calls).length).toBe(2);
   },
 );
