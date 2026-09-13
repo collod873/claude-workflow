@@ -361,9 +361,9 @@ function committing(landing: CommitDeps["landing"]): { deps: CommitDeps; git: Re
 }
 
 describe("commitAuthoredBatch", () => {
-  it("adds, commits, rebases onto origin/main and pushes HEAD:main when landing is push", () => {
+  it("adds, commits, rebases onto origin/main and pushes HEAD:main when landing is push", async () => {
     const { deps, git } = committing("push");
-    commitAuthoredBatch(deps);
+    await commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
@@ -373,9 +373,9 @@ describe("commitAuthoredBatch", () => {
     ]);
   });
 
-  it("commits and stops when landing is commit, since the contents: write job pushes (ADR-0091)", () => {
+  it("commits and stops when landing is commit, since the contents: write job pushes (ADR-0091)", async () => {
     const { deps, git } = committing("commit");
-    commitAuthoredBatch(deps);
+    await commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
@@ -902,7 +902,7 @@ describe("the acceptance lane loses the race to trunk", () => {
     return { landed, git, writes };
   }
 
-  test.fails(
+  test(
     "#542.1: commitAuthoredBatch reaches trunk through the retrying push helper instead of its own one-shot push",
     async () => {
       const git = gitLosing(1);
@@ -922,7 +922,7 @@ describe("the acceptance lane loses the race to trunk", () => {
     },
   );
 
-  test.fails(
+  test(
     "#542.2: a push this lane loses is retried, and the lane says on the ticket what an exhausted push means",
     async () => {
       const won = await laneLanding(1);
@@ -942,7 +942,7 @@ describe("the acceptance lane loses the race to trunk", () => {
     },
   );
 
-  test.fails(
+  test(
     "#542.3: the async push travels to runAcceptanceAuthor, which reports pushed only once the retry has landed",
     async () => {
       const { landed } = await laneLanding(1);
