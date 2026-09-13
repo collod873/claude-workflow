@@ -20,7 +20,9 @@ import {
   wearsLane,
   withLabelsTable,
 } from "./labels";
+import { failVerb, FINISHED_CLEAN } from "./labels.cli.ts";
 import { escalateToOwner } from "./needs-human";
+import { LADDERED_LANES, LANE_RUN_TITLE_RE } from "./strikes";
 
 function wearing(labels: string[]): { gh: GhExec; calls: string[][] } {
   const { gh, calls } = createRecordingGh();
@@ -134,6 +136,43 @@ describe("escalateToOwner", () => {
     escalateToOwner(gh, 42, undefined);
 
     expect(edits(calls)).toEqual([["issue", "edit", "42", "--add-label", NEEDS_HUMAN_LABEL]]);
+  });
+});
+
+describe("failVerb", () => {
+  it("clears the lane label of a laddered lane's dead job and never reaches for needs-human", () => {
+    for (const lane of LADDERED_LANES) {
+      const { gh, calls } = wearing([BUILDING_LABEL, TICKET_LABEL]);
+
+      const said = failVerb(gh, 42, "failure", lane);
+
+      expect(edits(calls)).toEqual([["issue", "edit", "42", "--remove-label", BUILDING_LABEL]]);
+      expect(calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
+      expect(said).toContain("strike ladder");
+    }
+  });
+
+  it("hands the issue to the owner when the dead job's lane has no ladder behind it", () => {
+    const { gh, calls } = wearing([SLICEABLE_LABEL, TICKET_LABEL]);
+
+    failVerb(gh, 42, "failure", "spec");
+
+    expect(edits(calls)).toEqual([["issue", "edit", "42", "--remove-label", SLICEABLE_LABEL, "--add-label", NEEDS_HUMAN_LABEL]]);
+  });
+
+  it("leaves a green job's lane label alone for the lane that follows", () => {
+    const { gh, calls } = wearing([BUILDING_LABEL, TICKET_LABEL]);
+
+    failVerb(gh, 42, FINISHED_CLEAN, "implement");
+
+    expect(calls).toEqual([]);
+  });
+
+  it("names the same lanes the strike ladder reads off a run title, so the two cannot drift", () => {
+    for (const lane of LADDERED_LANES) {
+      expect(LANE_RUN_TITLE_RE.test(`${lane[0].toUpperCase()}${lane.slice(1)} #42`)).toBe(true);
+    }
+    expect(LADDERED_LANES).toHaveLength(LANE_RUN_TITLE_RE.source.split("|").length);
   });
 });
 

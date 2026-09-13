@@ -75,11 +75,11 @@ jobs:
           echo "mechanic on #$TICKET_NUMBER"
           npx tsx .Workflow/agent-workflows/mechanic/mechanic.ts "$TICKET_NUMBER"
 
-      - name: Hand the ticket to the owner if this run died
+      - name: Clear the ticket's lane label if this run died, leaving the strike ladder to say what runs next
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
-        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS"
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS" --lane mechanic
 
       - name: Wake the reconciler, whatever ended this run
         if: always()

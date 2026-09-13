@@ -14,8 +14,7 @@ import { execGh, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
-import { ACCEPTING_LABEL, markLane } from "../shared/labels";
-import { escalateToOwner } from "../shared/needs-human";
+import { ACCEPTING_LABEL, clearLane, markLane } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
@@ -313,7 +312,7 @@ export function commitAuthoredBatch(deps: CommitDeps): void {
 
 export function authorRedNote(judgement: string): string {
   return [
-    "The acceptance author's batch was still red after its one repair round, so nothing landed and this ticket is waiting on a human.",
+    "The acceptance author's batch was still red after its one repair round, so nothing landed. This run counts as a strike; the ladder says what runs next.",
     "",
     "```",
     gateOutputTail(judgement),
@@ -322,11 +321,11 @@ export function authorRedNote(judgement: string): string {
 }
 
 function authorDiedNote(why: string): string {
-  return `The acceptance author died before landing anything, so this ticket is waiting on a human: ${why}`;
+  return `The acceptance author died before landing anything, so this run counts as a strike and the ladder says what runs next: ${why}`;
 }
 
 function haltLoudly(gh: GhExec, issueNumber: number, note: string, log: (line: string) => void): void {
-  escalateToOwner(gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
+  clearLane(gh, issueNumber);
   sayOnTicket(gh, issueNumber, note, log);
 }
 

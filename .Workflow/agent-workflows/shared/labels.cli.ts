@@ -1,8 +1,10 @@
 import { pathToFileURL } from "node:url";
 import { execGh, type GhExec } from "./gh.ts";
 import { catalogueDrift, syncLabels } from "./label-sync.ts";
+import { clearLane } from "./labels.ts";
 import { escalateToOwner } from "./needs-human.ts";
 import { errorMessage } from "./reason.ts";
+import { ladderClimbs } from "./strikes.ts";
 
 export const FINISHED_CLEAN = "success";
 
@@ -11,10 +13,15 @@ function flagValue(args: string[], flag: string): string | undefined {
   return at === -1 ? undefined : args[at + 1];
 }
 
-export function failVerb(gh: GhExec, issue: number, status: string): string {
+export function failVerb(gh: GhExec, issue: number, status: string, lane: string): string {
   if (status === FINISHED_CLEAN) return `#${issue}: the job ended green; the lane label stays for the next lane`;
+  const ending = `the ${lane || "unnamed"} job ended ${status || "without a status"}`;
+  if (ladderClimbs(lane)) {
+    clearLane(gh, issue);
+    return `#${issue}: ${ending}; cleared its lane label and left the strike ladder to say what runs next`;
+  }
   escalateToOwner(gh, issue, undefined);
-  return `#${issue}: the job ended ${status || "without a status"}; swapped its lane label for needs-human`;
+  return `#${issue}: ${ending}; no ladder climbs for that lane, so swapped its lane label for needs-human`;
 }
 
 export function syncVerb(gh: GhExec, repository: string, check: boolean): { text: string; ok: boolean } {
@@ -40,7 +47,14 @@ function main(): void {
         console.log("labels fail: no issue number, nothing to hand over");
         return;
       }
-      console.log(failVerb(execGh, issue, flagValue(args, "--status") ?? process.env.JOB_STATUS ?? ""));
+      console.log(
+        failVerb(
+          execGh,
+          issue,
+          flagValue(args, "--status") ?? process.env.JOB_STATUS ?? "",
+          flagValue(args, "--lane") ?? "",
+        ),
+      );
       return;
     }
     if (verb === "sync") {

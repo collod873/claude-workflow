@@ -19,6 +19,12 @@ export const DEAD_CONCLUSIONS = ["failure", "cancelled", "timed_out"] as const;
 
 export const LANE_RUN_TITLE_RE = /^(Implement|Mechanic|Acceptance) #(\d+)$/;
 
+export const LADDERED_LANES = ["acceptance", "implement", "mechanic"] as const;
+
+export function ladderClimbs(lane: string): boolean {
+  return LADDERED_LANES.some((each) => each === lane);
+}
+
 export type Next = Rung | "author";
 
 export interface Strike {

@@ -10,6 +10,7 @@ import {
   TICKET_READY_DISPATCH_ACTION,
 } from "./ready-set";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "./spec-author-dispatch";
+import { ladderClimbs } from "./strikes";
 import { printYaml, type YamlMap, type YamlValue } from "./workflow-yaml";
 
 export const LANE_OWNED = {
@@ -302,12 +303,14 @@ function reportsFailure(lane: string, issue: string, extra: Env = {}): StepWirin
   };
 }
 
-function handsOver(noun: string, variable: string): StepWiring {
+function handsOver(lane: string, noun: string, variable: string): StepWiring {
   return {
-    name: `Hand the ${noun} to the owner if this run died`,
+    name: ladderClimbs(lane)
+      ? `Clear the ${noun}'s lane label if this run died, leaving the strike ladder to say what runs next`
+      : `Hand the ${noun} to the owner if this run died`,
     if: "always()",
     env: { JOB_STATUS },
-    run: [tsx("shared/labels.cli.ts", "fail", `"$${variable}"`, "--status", '"$JOB_STATUS"')],
+    run: [tsx("shared/labels.cli.ts", "fail", `"$${variable}"`, "--status", '"$JOB_STATUS"', "--lane", lane)],
     handsOver: true,
   };
 }
@@ -438,7 +441,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           stage({ name: "Shape", entrypoint: "shape/shape.ts", args: ["--issue", "\"$IDEA_NUMBER\""] }),
           CHECKPOINT_UPLOAD("shape", "IDEA_NUMBER"),
           reportsFailure("shape", "IDEA_NUMBER", { VERB: "", REPORT_REFUSED: "false" }),
-          handsOver("idea", "IDEA_NUMBER"),
+          handsOver("shape", "idea", "IDEA_NUMBER"),
         ],
       },
     },
@@ -491,7 +494,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           stage({ name: "Spec author", entrypoint: "spec/spec.ts" }),
           COLLECTS_DISPATCHES,
           reportsFailure("spec", "ISSUE_NUMBER", { VERB: "", REPORT_REFUSED: "false" }),
-          handsOver("source", "ISSUE_NUMBER"),
+          handsOver("spec", "source", "ISSUE_NUMBER"),
         ],
       },
       dispatch: {
@@ -561,7 +564,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           COLLECTS_DISPATCHES,
           CHECKPOINT_UPLOAD("to-tickets", "PRD_NUMBER"),
           reportsFailure("to-tickets", "PRD_NUMBER", { REPORT_REFUSED: "${{ steps.refuse-sub-issues.outputs.refused == 'true' || steps.refuse-nested-prd.outputs.refused == 'true' }}", VERB: "" }),
-          handsOver("PRD", "PRD_NUMBER"),
+          handsOver("to-tickets", "PRD", "PRD_NUMBER"),
         ],
       },
       dispatch: {
@@ -621,7 +624,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Author acceptance tests for the published slice", entrypoint: "acceptance/acceptance.ts", args: ["\"$TICKET_NUMBER\""] }),
           BUNDLES_AUTHORED_COMMITS,
-          handsOver("ticket", "TICKET_NUMBER"),
+          handsOver("acceptance", "ticket", "TICKET_NUMBER"),
         ],
       },
       land: {
@@ -676,7 +679,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_CLAUDE_CODE,
           IDENTIFIES_COMMITTER,
           stage({ name: "Implement the ticket", entrypoint: "implement/implement.ts", args: ["\"$TICKET_NUMBER\""], prelude: ["echo \"implementing #$TICKET_NUMBER\""], id: "implement", env: { RUNG: "${{ github.event.client_payload.rung }}" } }),
-          handsOver("ticket", "TICKET_NUMBER"),
+          handsOver("implement", "ticket", "TICKET_NUMBER"),
           wakesReconciler({ always: true }),
         ],
       },
@@ -705,7 +708,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_CLAUDE_CODE,
           IDENTIFIES_COMMITTER,
           stage({ name: "Repair the ticket's cause", entrypoint: "mechanic/mechanic.ts", args: ["\"$TICKET_NUMBER\""], prelude: ["echo \"mechanic on #$TICKET_NUMBER\""] }),
-          handsOver("ticket", "TICKET_NUMBER"),
+          handsOver("mechanic", "ticket", "TICKET_NUMBER"),
           wakesReconciler({ always: true }),
         ],
       },

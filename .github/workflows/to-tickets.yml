@@ -156,7 +156,7 @@ jobs:
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
-        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$PRD_NUMBER" --status "$JOB_STATUS"
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$PRD_NUMBER" --status "$JOB_STATUS" --lane to-tickets
 
   dispatch:
     name: Start lane 05

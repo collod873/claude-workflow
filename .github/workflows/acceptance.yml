@@ -157,11 +157,11 @@ jobs:
         with:
           working-directory: target
 
-      - name: Hand the ticket to the owner if this run died
+      - name: Clear the ticket's lane label if this run died, leaving the strike ladder to say what runs next
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
-        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS"
+        run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS" --lane acceptance
 
   land:
     name: Land on main

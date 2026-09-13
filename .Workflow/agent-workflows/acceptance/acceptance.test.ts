@@ -546,12 +546,12 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", ACCEPTING_LABEL]);
   });
 
-  it("stops after that one round when still red: needs-human, the judgement on the ticket, nothing committed", async () => {
+  it("stops after that one round when still red: the judgement on the ticket, no needs-human, nothing committed", async () => {
     const { outcome, stage, git, writes } = await repairRun([GATE_RED, GATE_RED]);
     expect(outcome.verdict).toBe("refused");
     expect(stage.calls).toHaveLength(2);
     expect(git.calls).toEqual([]);
-    expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", "needs-human"]);
+    expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
     const comment = writes.find((call) => call[0] === "issue" && call[1] === "comment");
     expect(comment?.[4]).toContain("one repair round");
     expect(comment?.[4]).toContain(CLONE_REPORT);
@@ -561,7 +561,8 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     const { outcome, stage, writes } = await repairRun([GATE_RED], {});
     expect(outcome.verdict).toBe("refused");
     expect(stage.calls).toHaveLength(1);
-    expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", "needs-human"]);
+    expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
+    expect(writes.find((call) => call[0] === "issue" && call[1] === "comment")?.[4]).toContain("one repair round");
   });
 });
 
