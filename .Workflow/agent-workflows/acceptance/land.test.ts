@@ -1,11 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { PUSH_ATTEMPTS, PUSH_BACKOFF_SECONDS, pushToTrunk } from "../shared/push-to-trunk";
 import { ACCEPTANCE_WANTED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "../shared/ready-set";
+import { reason } from "../shared/reason";
 import {
   authoredSomethingToLand,
   landAuthoredBatch,
   landingFailedNote,
-  PUSH_ATTEMPTS,
   siblingLandedFirstNote,
   type AuthoringResults,
   type LandDeps,
@@ -60,6 +61,21 @@ function refusing(refuse: (args: string[]) => boolean, over: Partial<LandDeps> =
     },
     ...over,
   });
+}
+
+interface PushRace extends Harness {
+  pushes: () => number;
+}
+
+function losingPushes(losses: number): PushRace {
+  let pushes = 0;
+  const raced = harness({
+    git: (args) => {
+      if (args[0] === "push" && ++pushes <= losses) throw new Error("rejected: non-fast-forward");
+      return "";
+    },
+  });
+  return { ...raced, pushes: () => pushes };
 }
 
 function results(over: Partial<AuthoringResults> = {}): AuthoringResults {
@@ -166,13 +182,7 @@ describe("#519: the land job's own steps are the lane's error path", () => {
   });
 
   it("retries a lost push race, and lands when one of the retries wins", async () => {
-    let pushes = 0;
-    const { deps, slept } = harness({
-      git: (args) => {
-        if (args[0] === "push" && ++pushes < 3) throw new Error("rejected: non-fast-forward");
-        return "";
-      },
-    });
+    const { deps, slept } = losingPushes(2);
     expect(await landAuthoredBatch(deps, request())).toEqual({ outcome: "landed" });
     expect(slept).toEqual([5, 10]);
   });
@@ -190,4 +200,38 @@ describe("#519: the land job's own steps are the lane's error path", () => {
     expect((await landAuthoredBatch(deps, refire)).outcome).toBe("unreported");
     expect(gh).toEqual([]);
   });
+});
+
+test.fails("#541.3: land reaches trunk through the shared module rather than a second copy of the loop", async () => {
+  const direct = losingPushes(Number.POSITIVE_INFINITY);
+  await expect(pushToTrunk(direct.deps)).rejects.toThrow();
+
+  const viaLand = losingPushes(Number.POSITIVE_INFINITY);
+  expect((await landAuthoredBatch(viaLand.deps, request())).outcome).toBe("needs-human");
+  expect(viaLand.pushes()).toBe(direct.pushes());
+  expect(viaLand.slept).toEqual(direct.slept);
+});
+
+test.fails("#541.4: land reports its own sentence when the push retries are exhausted, not the helper's", async () => {
+  const direct = losingPushes(Number.POSITIVE_INFINITY);
+  const helperWhy = await pushToTrunk(direct.deps).then(() => "", reason);
+  expect(direct.pushes()).toBe(PUSH_ATTEMPTS);
+  expect(helperWhy).not.toBe("");
+
+  const outcome = await landAuthoredBatch(refusing((args) => args[0] === "push").deps, request());
+  expect(outcome.outcome).toBe("needs-human");
+  const why = "why" in outcome ? outcome.why : "";
+  expect(why).not.toBe(helperWhy);
+  expect(why).toContain("main moved");
+});
+
+test.fails("#541.5: the whole check contract passes, land landing through the shared retry on the shared constants", async () => {
+  const direct = losingPushes(2);
+  await expect(pushToTrunk(direct.deps)).resolves.toBeUndefined();
+  expect(direct.slept).toEqual([PUSH_BACKOFF_SECONDS, 2 * PUSH_BACKOFF_SECONDS]);
+
+  const viaLand = losingPushes(2);
+  expect(await landAuthoredBatch(viaLand.deps, request())).toEqual({ outcome: "landed" });
+  expect(viaLand.pushes()).toBe(3);
+  expect(viaLand.slept).toEqual([PUSH_BACKOFF_SECONDS, 2 * PUSH_BACKOFF_SECONDS]);
 });
