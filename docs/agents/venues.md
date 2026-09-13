@@ -10,12 +10,14 @@ enrolled repository is checked by the same runner against its own contract
 ([ADR-0139](../adr/0139-an-enrolled-repository-is-checked-by-the-machine-s-gauntlet.md)), and may
 carry a slot as `null` to shrink the gate, never add one to grow it.
 
-| Venue  | Fires at              | Slots                                                              | On failure                          |
-| ------ | --------------------- | ------------------------------------------------------------------ | ----------------------------------- |
-| `turn` | PostToolUse, per edit | `typecheck`, `lint_one` and `test_related` on the edited file      | Hands the report back to Claude     |
-| `stop` | Stop, per turn end    | `typecheck`, `lint_one` and `test_related` on files changed since HEAD | Reports once, never holds the turn |
-| `push` | pre-push              | `typecheck`, `lint`, `test`, `clones`, once each                  | **Refuses the push**                |
-| CI     | `push: main`, dispatch | `npm run check`, which is the push venue against the target       | Red run; rings the fixer            |
+<!-- venues-table:v1 -->
+| Venue | Fires at | Slots | On failure |
+| --- | --- | --- | --- |
+| `turn` | PostToolUse, per edit | `typecheck`, `lint_one`, `test_related` | Hands the report back to Claude |
+| `stop` | Stop, per turn end | `typecheck`, `lint_one`, `test_related` | Reports once, never holds the turn |
+| `push` | pre-push | `typecheck`, `lint`, `test`, `clones`, `adrs` | **Refuses the push** |
+| CI | `push: main`, dispatch | `npm run check`, which is the push venue against the target | Red run; rings the fixer |
+<!-- /venues-table:v1 -->
 
 A lane's job is a venue of its own kind, and a dead runner never leaves a green label with no run
 behind it: each lane workflow ends in an `if: always()` step that runs `labels.cli.ts fail --lane`

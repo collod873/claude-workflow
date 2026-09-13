@@ -42,13 +42,10 @@ case "$venue" in
     ;;
 esac
 
-case "$venue" in
-  turn | stop) slots="typecheck lint_one test_related" ;;
-  push) slots="typecheck lint test clones adrs" ;;
-esac
-
 PATH="$PATH:$repo_root/node_modules/.bin"
 export PATH
+slots="$(tsx "$repo_root/.Workflow/agent-workflows/shared/venues-doc.cli.ts" --slots "$venue")" || exit 1
+
 case "$venue" in
   turn | stop) [ -n "$files" ] && (cd "$target_root" && bash -c "eslint --fix $files" >/dev/null 2>&1) ;;
   push) (cd "$target_root" && eslint --fix . >/dev/null 2>&1) ;;
