@@ -112,8 +112,16 @@ describe("what the brief is read from", () => {
     expect(extractFilesClaimed(body)).toEqual(["a/b.ts", "a/b.test.ts"]);
   });
 
-  it("extractFilesClaimed treats render-body.ts's 'None — no files.' sentinel as no files, never as a path", () => {
-    expect(extractFilesClaimed("## Files claimed\n- None — no files.\n")).toEqual([]);
+  it.each([
+    ["render-body.ts's em dash", "- None — no files."],
+    ["the spelling ticket-format.md and /to-tickets write", "- None, no files."],
+    ["a backticked sentinel", "- `None, no files.`"],
+  ])("extractFilesClaimed reads %s as no files, never as a path", (_label, sentinel) => {
+    expect(extractFilesClaimed(`## Files claimed\n${sentinel}\n`)).toEqual([]);
+  });
+
+  it("extractFilesClaimed strips the backticks a claimed path may be written in, so prefix gates see the bare path", () => {
+    expect(extractFilesClaimed("## Files claimed\n- `vitest.config.ts`\n")).toEqual(["vitest.config.ts"]);
   });
 
   it("moduleContextPath walks up from the first claimed file to the nearest CONTEXT.md", () => {

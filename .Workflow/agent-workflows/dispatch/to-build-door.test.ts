@@ -343,6 +343,8 @@ describe("a claim only a human can build stands down, rather than being handed b
   it.each([
     { what: "the immutable set", path: ".github/workflows/integrate.yml" },
     { what: "the workstation", path: ".claude/settings.json" },
+    { what: "the immutable set in backticks", path: "`.github/workflows/integrate.yml`" },
+    { what: "the workstation in backticks", path: "`.claude/settings.json`" },
   ])("labels a claim on $what by-hand itself, instead of spending the owner on a needs-human hold", ({ path }) => {
     const tracker = passOverLabelled(630, claiming(path));
 

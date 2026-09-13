@@ -69,6 +69,23 @@ describe("validateTicket, driven against the real bin/ticket_shape.py", () => {
       existingPaths: Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
     },
     {
+      label: "the no-files sentinel as ticket-format.md and /to-tickets spell it",
+      body: body(["- [ ] It works — check: `make test`"], ["None, no files."]),
+    },
+    {
+      label: "a claimed path written in backticks",
+      body: body(["- [ ] It works — check: `make test`"], ["`src/render.ts`"]),
+      existingPaths: ["src/render.ts"],
+    },
+    {
+      label: "a claim one file past the ceiling once the sentinel is not miscounted as a path",
+      body: body(
+        ["- [ ] It works — check: `make test`"],
+        ["None, no files.", ...Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`)],
+      ),
+      existingPaths: Array.from({ length: CLAIM_LIMIT + 1 }, (_unused, i) => `src/m${i}.ts`),
+    },
+    {
       label: "a migration-shaped body carrying real post-state evidence",
       body: body([
         "- [ ] `git rev-list --all --objects | grep -c legacy.txt` prints 0 — check: `git rev-list --all --objects | grep -c legacy.txt`",

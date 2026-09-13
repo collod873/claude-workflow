@@ -58,16 +58,15 @@ export function parentPrdNumber(body: string): number | undefined {
 
 export const FILES_HEADING_RE = /^##[ \t]+Files claimed[ \t]*$/m;
 
-const FILE_ITEM_RE = /^[ \t]*-[ \t]*(.+?)[ \t]*$/;
+const NO_FILES_SENTINEL_RE = /^None\b.*no files/i;
 
 export function extractFilesClaimed(body: string): string[] {
-  const section = sectionText(normalizeNewlines(body), FILES_HEADING_RE);
   const paths: string[] = [];
-  for (const line of section.split("\n")) {
-    const match = FILE_ITEM_RE.exec(line);
-    if (!match) continue;
-    const path = match[1].trim();
-    if (path.length > 0 && path !== "None — no files.") paths.push(path);
+  for (const line of sectionText(normalizeNewlines(body), FILES_HEADING_RE).split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) continue;
+    const item = trimmed.slice(1).trim().replace(/^`+|`+$/g, "").trim();
+    if (item.length > 0 && !NO_FILES_SENTINEL_RE.test(item)) paths.push(item);
   }
   return paths;
 }
@@ -155,20 +154,7 @@ function malformedCheckMarkerWarning(criterion: string): string {
   );
 }
 
-const NO_FILES_SENTINEL_RE = /^None\b.*no files/i;
-
 const GLOB_CHAR_RE = /[*?[]/;
-
-function claimedPaths(body: string): string[] {
-  const paths: string[] = [];
-  for (const line of sectionText(normalizeNewlines(body), FILES_HEADING_RE).split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("-")) continue;
-    const item = trimmed.slice(1).trim().replace(/^`+|`+$/g, "").trim();
-    if (item.length > 0 && !NO_FILES_SENTINEL_RE.test(item)) paths.push(item);
-  }
-  return paths;
-}
 
 function defaultRepoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -176,7 +162,7 @@ function defaultRepoRoot(): string {
 
 function unresolvedClaimedPaths(body: string, repoRoot: string): string[] {
   const warnings: string[] = [];
-  for (const path of claimedPaths(body)) {
+  for (const path of extractFilesClaimed(body)) {
     if (GLOB_CHAR_RE.test(path)) continue;
     if (existsSync(resolve(repoRoot, path))) continue;
     warnings.push(`claimed path \`${path}\` not found in the working tree`);
@@ -229,7 +215,7 @@ function migrationWithoutPostState(body: string): string[] {
   if (!MIGRATION_RE.test(body)) return [];
   const blocks = criteriaBlocks(body) ?? [];
   if (blocks.length === 0) return [];
-  const claimed = claimedPaths(body);
+  const claimed = extractFilesClaimed(body);
   for (const block of blocks) {
     if (TEST_MENTION_RE.test(block)) continue;
     const tokens = evidenceTokens(block);
