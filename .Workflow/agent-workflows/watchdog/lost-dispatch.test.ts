@@ -18,7 +18,7 @@ function prd(overrides: Partial<PrdCandidate> = {}): PrdCandidate {
     title: "PRD: a spec that should have sliced",
     labels: ["prd", "sliceable"],
     subIssueCount: 0,
-    hasCompletedSlicingRun: false,
+    hasSuccessfulSlicingRun: false,
     ...overrides,
   };
 }
@@ -33,7 +33,7 @@ describe("isLostDispatch", () => {
   });
 
   it("does not flag a PRD carrying sliceable with a completed slicing run, even with zero sub-issues", () => {
-    expect(isLostDispatch(prd({ hasCompletedSlicingRun: true }))).toBe(false);
+    expect(isLostDispatch(prd({ hasSuccessfulSlicingRun: true }))).toBe(false);
   });
 
   it("does not flag a PRD with no sliceable label at all", () => {
@@ -41,7 +41,7 @@ describe("isLostDispatch", () => {
   });
 
   it("does not flag a PRD with both a sub-issue and a completed run", () => {
-    expect(isLostDispatch(prd({ subIssueCount: 1, hasCompletedSlicingRun: true }))).toBe(false);
+    expect(isLostDispatch(prd({ subIssueCount: 1, hasSuccessfulSlicingRun: true }))).toBe(false);
   });
 });
 
@@ -131,7 +131,7 @@ describe("countLostDispatch", () => {
   });
 });
 
-test.fails("#532.4: PrdCandidate carries a field named for a successful slicing run, which the predicate reads", () => {
+test("#532.4: PrdCandidate carries a field named for a successful slicing run, which the predicate reads", () => {
   const successful = { ...prd(), hasSuccessfulSlicingRun: true };
   expect(isLostDispatch(successful)).toBe(false);
 
@@ -139,7 +139,7 @@ test.fails("#532.4: PrdCandidate carries a field named for a successful slicing 
   expect(isLostDispatch(unsuccessful)).toBe(true);
 });
 
-test.fails("#532.5: the whole gauntlet is green: counter and candidate agree end to end, so a crashed slicing run no longer proves a PRD was sliced", () => {
+test("#532.5: the whole gauntlet is green: counter and candidate agree end to end, so a crashed slicing run no longer proves a PRD was sliced", () => {
   expect(run(historyWithRunSincePrd({ status: "completed", conclusion: "failure" }))).toEqual({ action: "opened", issue: 42 });
   expect(run(historyWithRunSincePrd({ status: "completed", conclusion: "success" }))).toEqual({ action: "clean" });
 });

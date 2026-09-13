@@ -13,7 +13,7 @@ function runsProjection(calls: string[][]): string {
   return call![call!.indexOf("--jq") + 1] ?? "";
 }
 
-test.fails("#532.1: the run projection asks for conclusion alongside status, and only a successful run counts as proof a PRD was sliced", () => {
+test("#532.1: the run projection asks for conclusion alongside status, and only a successful run counts as proof a PRD was sliced", () => {
   const fake = historyWithRunSincePrd({ status: "completed", conclusion: "success" });
 
   expect(count(fake)).toEqual({ action: "clean" });
@@ -23,13 +23,13 @@ test.fails("#532.1: the run projection asks for conclusion alongside status, and
   expect(projection).toContain("conclusion");
 });
 
-test.fails("#532.2: a run created after the PRD reading status completed, conclusion failure leaves the finding standing", () => {
+test("#532.2: a run created after the PRD reading status completed, conclusion failure leaves the finding standing", () => {
   const crashed = historyWithRunSincePrd({ status: "completed", conclusion: "failure" });
 
   expect(count(crashed)).toEqual({ action: "opened", issue: 42 });
 });
 
-test.fails("#532.3: a run created after the PRD reading status in_progress, conclusion null leaves the finding standing too", () => {
+test("#532.3: a run created after the PRD reading status in_progress, conclusion null leaves the finding standing too", () => {
   const inFlight = historyWithRunSincePrd({ status: "in_progress", conclusion: null });
 
   expect(count(inFlight)).toEqual({ action: "opened", issue: 42 });
