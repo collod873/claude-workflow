@@ -5,6 +5,7 @@ import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { subIssuesPath } from "../shared/gh-paths";
 import { ACCEPTING_LABEL } from "../shared/labels";
+import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { SuiteLayout } from "../shared/suite-layout";
@@ -823,4 +824,134 @@ describe("the lane budget bounds the acceptance author's model session", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("the acceptance lane loses the race to trunk", () => {
+  const PUSH_LOST = [
+    "! [rejected]        HEAD -> main (fetch first)",
+    "error: failed to push some refs to 'origin'",
+    "hint: Updates were rejected because the remote contains work that you do not have locally.",
+  ].join("\n");
+
+  const EVERY_ATTEMPT = Number.MAX_SAFE_INTEGER;
+
+  function gitLosing(losses: number): { git: GitExec; calls: string[][]; pushes: () => string[][] } {
+    const calls: string[][] = [];
+    let lost = 0;
+    const git: GitExec = (args) => {
+      calls.push(args);
+      if (args[0] === "push" && lost < losses) {
+        lost += 1;
+        throw new Error(PUSH_LOST);
+      }
+      return "";
+    };
+    return { git, calls, pushes: () => calls.filter((call) => call[0] === "push") };
+  }
+
+  async function pastEveryBackoff<T>(start: () => Promise<T>): Promise<{ value?: T; failure?: string }> {
+    vi.useFakeTimers();
+    try {
+      let landed: { value?: T; failure?: string } | undefined;
+      void start().then(
+        (value) => {
+          landed = { value };
+        },
+        (thrown: unknown) => {
+          landed = { failure: String((thrown as Error)?.message ?? thrown) };
+        },
+      );
+      for (let turn = 0; turn < 40 && landed === undefined; turn += 1) {
+        await vi.advanceTimersByTimeAsync(15_000);
+        for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+      }
+      return landed ?? {};
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  function pushingBatch(git: GitExec): CommitDeps {
+    return {
+      git,
+      paths: BATCH,
+      commitMessage: `test: author acceptance tests for #${ISSUE} from the spec alone`,
+      landing: "push",
+    };
+  }
+
+  async function laneLanding(losses: number) {
+    const writes: string[][] = [];
+    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, writes);
+    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const git = gitLosing(losses);
+    const landed = await pastEveryBackoff(() =>
+      runAcceptanceAuthor({
+        gh: tracker.gh,
+        exec: stage.exec,
+        writeFile: () => {},
+        issueNumber: ISSUE,
+        runTests: () => GREEN,
+        gate: () => GATE_GREEN,
+        git: git.git,
+        landing: "push",
+        log: () => {},
+        suite: SUITE,
+      }).then((outcome) => ({ outcome, pushesWhenReported: git.pushes().length })),
+    );
+    return { landed, git, writes };
+  }
+
+  test.fails(
+    "#542.1: commitAuthoredBatch reaches trunk through the retrying push helper instead of its own one-shot push",
+    async () => {
+      const git = gitLosing(1);
+      const landed = await pastEveryBackoff(() => {
+        const returned: unknown = commitAuthoredBatch(pushingBatch(git.git));
+        expect(
+          typeof (returned as { then?: unknown })?.then,
+          "the helper awaits a backoff sleep, so commitAuthoredBatch is async",
+        ).toBe("function");
+        return returned as Promise<void>;
+      });
+
+      expect(landed.failure, `a push this lane lost was not retried: ${JSON.stringify(git.calls)}`).toBeUndefined();
+      expect(git.pushes().length, "the lost push is attempted again").toBeGreaterThan(1);
+      expect(git.calls.filter((call) => call[0] === "add"), "the retry is the push, not the whole batch").toHaveLength(1);
+      expect(git.calls.filter((call) => call[0] === "commit"), "one commit, however many pushes it takes").toHaveLength(1);
+    },
+  );
+
+  test.fails(
+    "#542.2: a push this lane loses is retried, and the lane says on the ticket what an exhausted push means",
+    async () => {
+      const won = await laneLanding(1);
+      expect(won.landed.failure, "one lost push is a retry, not a verdict").toBeUndefined();
+      expect(won.landed.value?.outcome).toEqual({ verdict: "pushed" });
+      expect(won.git.pushes().length).toBeGreaterThan(1);
+
+      const exhausted = await laneLanding(EVERY_ATTEMPT);
+      expect(exhausted.git.pushes().length, "every attempt loses, and there is more than one").toBeGreaterThan(1);
+      expect(exhausted.landed.value?.outcome, "a push that never landed is not a landing").not.toEqual({ verdict: "pushed" });
+
+      const said = exhausted.writes.find((call) => call[0] === "issue" && call[1] === "comment");
+      expect(said, `nothing reached the ticket: ${JSON.stringify(exhausted.writes)}`).toBeDefined();
+      expect(said?.[2], "the sentence lands on the ticket this lane was authoring for").toBe(String(ISSUE));
+      expect(said?.[4]).toMatch(/push|trunk|main/i);
+      expect(said?.[4], "the lane's own sentence, not the raw rejection it was handed").not.toBe(PUSH_LOST);
+    },
+  );
+
+  test.fails(
+    "#542.3: the async push travels to runAcceptanceAuthor, which reports pushed only once the retry has landed",
+    async () => {
+      const { landed } = await laneLanding(1);
+      expect(landed.failure, "the caller awaits the push instead of letting its rejection escape").toBeUndefined();
+      expect(landed.value?.outcome).toEqual({ verdict: "pushed" });
+      expect(
+        landed.value?.pushesWhenReported,
+        "the retry had already happened when the lane reported, so the caller awaited it",
+      ).toBeGreaterThan(1);
+    },
+  );
 });
