@@ -20,6 +20,7 @@ export interface BriefInputs {
   seamManifestLines: string[];
   moduleContext: string;
   standards: string;
+  checkContract: string;
   comments: TicketComment[];
   failingTests: FailingTestFile[];
   claimed: FileSnapshot[];
@@ -76,6 +77,15 @@ export const STYLE_RULES = [
   "- Quote style, spacing and other mechanical findings are autofixed by the gauntlet before it judges; do not spend turns on them.",
 ].join("\n");
 
+export const CHECK_CONTRACT_HEADING = "## What the gauntlet runs here, slot by slot";
+
+export const CHECK_CONTRACT_LEAD = [
+  "Iterate with `bin/gauntlet stop`, which runs the turn-venue slots on what you changed. The push",
+  "gate that judges this run is the `all` slot, run once by the wire after you answer; you do not run",
+  "it yourself. These commands are settled, so reach for this list rather than rediscovering it from",
+  "`.claude/contract.json`, `bin/gauntlet` or `package.json`.",
+].join("\n");
+
 export function assembleBrief(inputs: BriefInputs): string {
   const seams = inputs.seamManifestLines.length > 0 ? inputs.seamManifestLines.join("\n") : "(none)";
   const tests =
@@ -86,6 +96,8 @@ export function assembleBrief(inputs: BriefInputs): string {
   return [
     STYLE_RULES_HEADING,
     STYLE_RULES,
+    CHECK_CONTRACT_HEADING,
+    `${CHECK_CONTRACT_LEAD}\n\n${inputs.checkContract}`,
     "## Ticket",
     inputs.ticketBody,
     "## Ticket comments, oldest first",

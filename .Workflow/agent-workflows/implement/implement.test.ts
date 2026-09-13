@@ -86,6 +86,7 @@ function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }:
     issueNumber: ISSUE,
     failingTests: () => [],
     standards: () => "",
+    checkContract: () => undefined,
     comments: () => [],
     log: (line) => log.push(line),
     now: NOW,

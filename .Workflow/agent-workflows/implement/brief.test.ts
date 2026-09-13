@@ -4,6 +4,8 @@ import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
 import {
   assembleBrief,
+  CHECK_CONTRACT_HEADING,
+  CHECK_CONTRACT_LEAD,
   gatherBriefContext,
   INLINE_BUDGET_BYTES,
   INLINE_FILE_CAP_BYTES,
@@ -34,6 +36,7 @@ function baseInputs(overrides: Partial<BriefInputs> = {}): BriefInputs {
     seamManifestLines: [],
     moduleContext: "ctx",
     standards: "std",
+    checkContract: "- `all`: `npm run check`",
     comments: [],
     failingTests: [],
     claimed: [],
@@ -50,6 +53,7 @@ describe("assembleBrief", () => {
       seamManifestLines: ["Line one seam.", "Line two seam."],
       moduleContext: "# Module\n\nSome vocabulary.",
       standards: "- **Deep modules**: what.\n  Why: why.\n  Red flag: red.",
+      checkContract: "- `all`: `npm run check` — package.json#scripts.check",
       comments: [{ author: "collod873", createdAt: "2026-08-01T00:00:00Z", body: "Use the retry helper." }],
       failingTests: [{ path: "foo.test.ts", content: "describe('foo', () => {});" }],
       claimed: [{ path: "a/b.ts", content: "export const x = 1;" }],
@@ -60,6 +64,8 @@ describe("assembleBrief", () => {
     const expected = [
       STYLE_RULES_HEADING,
       STYLE_RULES,
+      CHECK_CONTRACT_HEADING,
+      `${CHECK_CONTRACT_LEAD}\n\n- \`all\`: \`npm run check\` — package.json#scripts.check`,
       "## Ticket",
       inputs.ticketBody,
       "## Ticket comments, oldest first",
@@ -104,6 +110,8 @@ describe("assembleBrief", () => {
       [
         STYLE_RULES_HEADING,
         STYLE_RULES,
+        CHECK_CONTRACT_HEADING,
+        `${CHECK_CONTRACT_LEAD}\n\n- \`all\`: \`npm run check\``,
         "## Ticket",
         "body",
         "## Ticket comments, oldest first",

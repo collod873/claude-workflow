@@ -16,6 +16,7 @@ import {
   type StageSessionResult,
 } from "../shared/stage";
 import { renderStandardsSection, readStandards } from "../shared/standards";
+import { readCheckContract, renderCheckContractSection } from "../shared/check-contract";
 import { structuredOutput } from "../shared/structured-output";
 import {
   extractFilesClaimed,
@@ -193,6 +194,7 @@ export interface ImplementDeps extends TargetCheckout {
   issueNumber: number;
   failingTests: () => FailingTestFile[];
   standards: () => string;
+  checkContract: () => string | undefined;
   comments: () => TicketComment[];
   rung?: string;
   log?: (line: string) => void;
@@ -253,6 +255,7 @@ async function buildAndOpen(
     seamManifestLines,
     moduleContext,
     standards: renderStandardsSection(deps.standards()),
+    checkContract: renderCheckContractSection(deps.checkContract()),
     comments: deps.comments(),
     failingTests,
     ...gatherBriefContext({
@@ -378,6 +381,7 @@ async function main(): Promise<void> {
       issueNumber,
       failingTests: () => findFailingTestFiles(issueNumber, checkout.readFile, repoDir),
       standards: () => readStandards(repoDir),
+      checkContract: () => readCheckContract(repoDir),
       comments: () => ticketComments(execGh, issueNumber),
       ...(process.env.RUNG ? { rung: process.env.RUNG } : {}),
     });

@@ -87,11 +87,12 @@ the owner might close #421 by hand between the dispatch firing and the runner st
 
 `implement.ts` `buildAndOpen` → `gatherBriefContext` → `assembleBrief` (both in `implement/brief.ts`)
 
-Nine reads, joined into one document. This is what the model at node 04 starts from; it can still
+Ten reads, joined into one document. This is what the model at node 04 starts from; it can still
 read anything else in the checkout, and says so in `outOfBriefReads` when it does.
 
 | | |
 |---|---|
+| **check contract** | `renderCheckContractSection(readCheckContract())` — every slot the target's `.claude/contract.json` names, with its command and the declaration site its `why` points at. The one read that is about the venue rather than the ticket, and the reason it is here is measured: across 53 runs the implementer read `.claude/contract.json` ten times, `bin/gauntlet` seven and `package.json` five, rediscovering a settled fact on its own turns. A nulled slot is dropped rather than reported as a command the runner will not run, and a target carrying no contract renders `(none)` |
 | **`ticketBody`** | `readTicket(421)` — the issue body, verbatim |
 | **ticket comments** | `ticketComments(421)` — every comment on the ticket, oldest first: a correction the owner left, or a needs-human ticket's own gate-red note, would otherwise never reach the implementer on re-dispatch. Capped at 30 KB, dropping the oldest first |
 | **seam manifest** | `extractSeamsConsumed()` — the ticket's `## Seams consumed` lines |

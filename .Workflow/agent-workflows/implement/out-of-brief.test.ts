@@ -35,6 +35,7 @@ function outOfBriefDeps(gh: ImplementDeps["gh"], git: ImplementDeps["git"], exec
     issueNumber: 167,
     failingTests: () => [],
     standards: () => "",
+    checkContract: () => undefined,
     comments: () => [],
   };
 }
