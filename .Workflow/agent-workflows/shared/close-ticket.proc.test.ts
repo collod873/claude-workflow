@@ -4,6 +4,7 @@ import {
   checkoutWithCommits,
   closeTicket,
   closingPrRoute,
+  guardedVerifyRoutes,
   inCloseTicket,
   issueViewRoute,
   loadAsModule,
@@ -12,6 +13,7 @@ import {
   REPO_ROOT,
   trackerAnswering,
   verifyRoutes,
+  type JobLogRefusal,
   type Route,
 } from "./close-ticket.fixture.ts";
 import { scratchDir } from "./scratch.fixture.ts";
@@ -286,6 +288,13 @@ print(json.dumps(module.fetch_verify_verdict(gh, payload["pr_url"])))`,
     const routes = verifyRoutes([PASSING_JOBS[0]], "https://github.com/acme/widgets/pull/999");
 
     expect(fetchVerifyVerdict(routes).verdict).toBe("unjudged");
+  });
+
+  it.each([
+    { gh: "refuses a log carrying terminal escape sequences unless asked to allow them", refusal: "escape-sequences" },
+    { gh: "is old enough that there is no flag to allow them", refusal: "unknown-flag" },
+  ] satisfies Array<{ gh: string; refusal: JobLogRefusal }>)("reads passed when gh $gh", ({ refusal }) => {
+    expect(fetchVerifyVerdict(guardedVerifyRoutes(PASSING_JOBS, PR_URL, refusal)).verdict).toBe("passed");
   });
 
   it("reads unjudged rather than throwing when gh itself fails", () => {

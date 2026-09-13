@@ -48,6 +48,7 @@ export function inCloseTicket(body: string, payload: unknown, env: Record<string
 export interface Route {
   contains: string[];
   respond: string;
+  refuse?: boolean;
 }
 
 export interface Tracker {
@@ -65,9 +66,12 @@ args = sys.argv[1:]
 with open(${JSON.stringify(log)}, "a") as f:
     f.write(json.dumps(args) + "\\n")
 joined = " ".join(args)
-routes = ${JSON.stringify(routes)}
+routes = json.loads(${JSON.stringify(JSON.stringify(routes))})
 for route in routes:
     if all(needle in joined for needle in route["contains"]):
+        if route.get("refuse"):
+            print(route["respond"], file=sys.stderr)
+            sys.exit(1)
         print(route["respond"])
         sys.exit(0)
 print("{}")
@@ -108,6 +112,23 @@ export function verifyRoutes(jobs: { name: string; status: string; conclusion: s
     { contains: ["actions/runs/555/jobs"], respond: JSON.stringify(jobs.map((j, i) => ({ id: i + 1, ...j }))) },
     { contains: ["api", "actions/jobs/1/logs"], respond: `judging ${prUrl} on implement/issue-999` },
   ];
+}
+
+export const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
+
+export type JobLogRefusal = "escape-sequences" | "unknown-flag";
+
+export function guardedVerifyRoutes(
+  jobs: { name: string; status: string; conclusion: string | null }[],
+  prUrl: string,
+  refusal: JobLogRefusal,
+): Route[] {
+  const [runs, runJobs, log] = verifyRoutes(jobs, prUrl);
+  const flagged = { ...log, contains: [...log.contains, ALLOW_ESCAPE_SEQUENCES] };
+  const refused = (route: Route, why: string): Route => ({ ...route, refuse: true, respond: why });
+  return refusal === "escape-sequences"
+    ? [runs, runJobs, flagged, refused(log, `the response contains terminal escape sequences; pass ${ALLOW_ESCAPE_SEQUENCES} to output it anyway`)]
+    : [runs, runJobs, refused(flagged, `unknown flag: ${ALLOW_ESCAPE_SEQUENCES}`), log];
 }
 
 export function checkoutWithCommits(commits: number): { checkout: string; shas: string[] } {

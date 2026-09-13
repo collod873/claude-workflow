@@ -243,6 +243,16 @@ def verify_workflow_file() -> str:
 
 VERIFY_RUN_PAGE_SIZE = 100
 
+ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences"
+
+
+def fetch_job_log(gh, job_id) -> str:
+    path = f"repos/{{owner}}/{{repo}}/actions/jobs/{job_id}/logs"
+    try:
+        return gh_support.run_gh(gh, "api", path, ALLOW_ESCAPE_SEQUENCES)
+    except gh_support.GhError:
+        return gh_support.run_gh(gh, "api", path)
+
 
 def fetch_verify_verdict(gh, pr_url: str) -> str:
     workflow_file = verify_workflow_file()
@@ -270,9 +280,7 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         if immutability is None or immutability.get("status") != "completed":
             continue
         try:
-            log = gh_support.run_gh(
-                gh, "api", f"repos/{{owner}}/{{repo}}/actions/jobs/{immutability['id']}/logs"
-            )
+            log = fetch_job_log(gh, immutability["id"])
         except gh_support.GhError:
             continue
         matches = JUDGING_LINE_RE.findall(log)

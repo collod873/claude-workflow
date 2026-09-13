@@ -83,6 +83,8 @@ export const GATE_JOB = "Verify";
 
 const DISPATCH_EVENT = "repository_dispatch";
 
+const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
+
 const VERIFY_RUN_PAGE_SIZE = 100;
 
 const ACCEPTANCE_POLL_ATTEMPTS = 40;
@@ -121,10 +123,18 @@ function readJobs(gh: GhExec, runId: number): Array<z.infer<typeof ApiJob>> {
   );
 }
 
+function readJobLog(gh: GhExec, jobId: number): string {
+  try {
+    return gh(["api", jobLogsPath(jobId), ALLOW_ESCAPE_SEQUENCES]);
+  } catch {
+    return gh(["api", jobLogsPath(jobId)]);
+  }
+}
+
 function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
   let log: string;
   try {
-    log = gh(["api", jobLogsPath(jobId)]);
+    log = readJobLog(gh, jobId);
   } catch (err) {
     console.error(`could not read job ${jobId}'s log to learn which pull request it judged: ${reason(err)}`);
     return false;

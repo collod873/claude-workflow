@@ -10,6 +10,7 @@ import {
   HEAD_SHA,
   integrateHarness,
   mergeCalls,
+  type JobLogRefusal,
   PR,
   prComments,
   TICKET,
@@ -161,6 +162,15 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     const logReads = calls.filter((call) => call[0] === "api" && jobLogsPathMatcher.test(call[1] ?? ""));
     expect(logReads).not.toEqual([]);
     expect(calls.filter((call) => call[0] === "run" && call[1] === "view")).toEqual([]);
+  });
+
+  it.each([
+    { gh: "refuses a log carrying terminal escape sequences unless asked to allow them", refusal: "escape-sequences" },
+    { gh: "is old enough that there is no flag to allow them", refusal: "unknown-flag" },
+  ] satisfies Array<{ gh: string; refusal: JobLogRefusal }>)("reads the judging log when gh $gh", ({ refusal }) => {
+    const { deps } = integrateHarness({ closeTicket: CLOSED, jobLogRefusal: refusal });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
   });
 
   it("merges on a verdict whose job finished while lane 06's run is still in flight", () => {

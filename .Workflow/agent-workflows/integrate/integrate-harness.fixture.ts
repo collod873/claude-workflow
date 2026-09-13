@@ -70,8 +70,13 @@ export const REFUSED: CloseTicketResult = {
   output: "error: 4 acceptance criteria and every criterion unverified",
 };
 
+export type JobLogRefusal = "escape-sequences" | "unknown-flag";
+
+export const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
+
 export interface HarnessOptions {
   gauntlet?: GauntletResult;
+  jobLogRefusal?: JobLogRefusal;
   closeTicket?: CloseTicketResult;
   body?: string;
   title?: string;
@@ -121,6 +126,7 @@ function scriptRuns(fixtures: VerifyRunFixture[]) {
 
 export function integrateHarness({
   gauntlet = { exitCode: 0 },
+  jobLogRefusal,
   closeTicket,
   body = PR_BODY,
   title = "Rebuild the thing",
@@ -158,6 +164,15 @@ export function integrateHarness({
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, title, body });
     const jobLogs = args[0] === "api" ? jobLogsPathMatcher.exec(args[1] ?? "") : null;
     if (jobLogs) {
+      const allowsEscapes = args.includes(ALLOW_ESCAPE_SEQUENCES);
+      if (jobLogRefusal === "escape-sequences" && !allowsEscapes) {
+        throw new Error(
+          `gh: the response contains terminal escape sequences; pass ${ALLOW_ESCAPE_SEQUENCES} to output it anyway`,
+        );
+      }
+      if (jobLogRefusal === "unknown-flag" && allowsEscapes) {
+        throw new Error(`gh: unknown flag: ${ALLOW_ESCAPE_SEQUENCES}`);
+      }
       const jobId = Number(jobLogs[1]);
       const run = currentRuns().find((each) => each.jobs.some((job) => job.id === jobId));
       const job = run?.jobs.find((each) => each.id === jobId);
