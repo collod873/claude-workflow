@@ -32,8 +32,10 @@ export function parseCheckMarker(criterion: string): string | undefined {
   return match ? match[1].trim() : undefined;
 }
 
+const LINE_TERMINATOR_RE = compile(grammar.lineTerminator);
+
 export function normalizeNewlines(text: string): string {
-  return text.replace(/\r\n?/g, "\n");
+  return text.replace(LINE_TERMINATOR_RE, "\n");
 }
 
 export function sectionText(body: string, headingRe: RegExp): string {

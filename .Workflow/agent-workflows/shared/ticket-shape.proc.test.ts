@@ -61,7 +61,38 @@ const PATH_SPELLINGS: ((index: number) => string)[] = [
   (index) => `\`.claude/settings${index}.json\``,
 ];
 
-const NEWLINES = ["\n", "\r\n"];
+const LINE_TERMINATORS: Record<string, string> = {
+  LF: "\n",
+  CRLF: "\r\n",
+  CR: "\r",
+  VT: "\v",
+  FF: "\f",
+  FS: "\u{1c}",
+  GS: "\u{1d}",
+  RS: "\u{1e}",
+  NEL: "\u{85}",
+  LS: "\u{2028}",
+  PS: "\u{2029}",
+};
+
+const MIXED = "mixed";
+
+const NEWLINES = [...Object.values(LINE_TERMINATORS), MIXED];
+
+function newlineName(newline: string): string {
+  return (
+    Object.entries(LINE_TERMINATORS).find(([, value]) => value === newline)?.[0] ?? MIXED
+  );
+}
+
+function joinLines(lines: string[], newline: string): string {
+  if (newline !== MIXED) return lines.join(newline);
+  const cycle = Object.values(LINE_TERMINATORS);
+  return lines.reduce(
+    (body, line, index) => (index === 0 ? line : body + cycle[index % cycle.length] + line),
+    "",
+  );
+}
 
 interface Combo {
   criteriaHeading: string | null;
@@ -92,7 +123,7 @@ function render(combo: Combo): string {
     }
     lines.push("");
   }
-  return lines.join(combo.newline);
+  return joinLines(lines, combo.newline);
 }
 
 function label(combo: Combo): string {
@@ -103,7 +134,7 @@ function label(combo: Combo): string {
     combo.filesHeading === null ? "no files heading" : `files heading ${JSON.stringify(combo.filesHeading)}`,
     `sentinel ${JSON.stringify(combo.sentinel)}`,
     `${combo.claimCount} claims as ${JSON.stringify(PATH_SPELLINGS[combo.spelling](0))}`,
-    combo.newline === "\n" ? "LF" : "CRLF",
+    newlineName(combo.newline),
   ].join(", ");
 }
 

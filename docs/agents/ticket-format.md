@@ -20,9 +20,11 @@ Three places, and each rule below is in exactly one of them (claude-workflow/ADR
   rule the other also spells. `ticket-shape.proc.test.ts` builds bodies from a grammar over that
   file's variations and compares every verdict the TypeScript renders against the Python's; the
   sample is drawn from a fixed seed (`TICKET_SHAPE_SEED` overrides it) and topped up until every
-  reachable pair of grammar axes is exercised. claude-workflow/ADR-0184 records the one divergence
-  no table reaches: JavaScript breaks lines at `\r`, `\u2028` and `\u2029` where Python breaks only
-  at `\n`.
+  reachable pair of grammar axes is exercised, including all eleven line terminators either
+  runtime can break on and a body that cycles them: `lineTerminator` in that table is the rule
+  both sides fold to `\n` before any pattern runs, so neither engine's own line-breaking default
+  decides a verdict. claude-workflow/ADR-0184 records what is still spelled twice \u2014 the evidence
+  grammar, where `\w` and `\d` are Unicode-wide in Python and ASCII in JavaScript.
 - **`bin/ticket_shape.py`** — every *warning*, and the whole `spec` verdict. It is the only
   validator: `shared/ticket-shape.ts` renders refusals and parses bodies, and holds no opinion
   about evidence, migrations, check-command resolution or `/bin/sh` parseability.

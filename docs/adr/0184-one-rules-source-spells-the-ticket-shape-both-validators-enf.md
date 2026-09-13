@@ -16,9 +16,9 @@ refusal strings, the regex sources, and the flags each compiles under. Every cla
 ASCII-explicit, so no source means two things.
 
 Still two copies: the evidence grammar, since `\w` and `\d` are Unicode-wide in Python and
-ASCII in JavaScript; and the branches Python decides alone. Residual:
-`^`/`$` under `m` break lines at `\r`, `\u2028` and `\u2029` in JavaScript, at `\n` alone in
-Python.
+ASCII in JavaScript; and the branches Python decides alone.
+`lineTerminator` tables all eleven terminators either engine breaks on, folded to `\n`
+first, so no engine default decides.
 
 **Rejected: a rules source alone, keeping `validateTicket`.** Warnings are control flow, not
 constants: a table collapses the cheap half and leaves what drifted in two languages.

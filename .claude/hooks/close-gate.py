@@ -171,7 +171,7 @@ def most_recent_record(comments: list) -> str | None:
 
 
 def count_body_criteria(body: str) -> int | None:
-    if not ticket_shape.CRITERIA_HEADING_RE.search(body):
+    if not ticket_shape.acceptance_criteria_present(body):
         return None
     section = ticket_shape.section_text(body, ticket_shape.CRITERIA_HEADING_RE)
     return len(ticket_shape.CRITERIA_ITEM_RE.findall(section))

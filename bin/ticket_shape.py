@@ -22,7 +22,7 @@ FRAGMENTS = RULES["fragments"]
 GRAMMAR = RULES["grammar"]
 REFUSALS = RULES["refusals"]
 
-FLAG_BITS = {"m": re.MULTILINE, "i": re.IGNORECASE}
+FLAG_BITS = {"m": re.MULTILINE, "i": re.IGNORECASE, "g": 0}
 
 
 def compile_rule(name: str) -> re.Pattern:
@@ -63,6 +63,13 @@ def caller_repo_root(start: Path | None = None) -> Path:
         if (d / ".git").exists():
             return d
     return here
+
+LINE_TERMINATOR_RE = compile_rule("lineTerminator")
+
+
+def normalize_newlines(text: str) -> str:
+    return LINE_TERMINATOR_RE.sub("\n", text)
+
 
 QUESTION_HEADING_RE = re.compile(r"^## Question\s*$", re.MULTILINE)
 CRITERIA_HEADING_RE = compile_rule("criteriaHeading")
@@ -175,7 +182,7 @@ class ValidationError(Exception):
 
 def _criteria_lines(body: str) -> list[str]:
     section = section_text(body, CRITERIA_HEADING_RE)
-    return [ln for ln in section.splitlines() if CRITERIA_ITEM_RE.match(ln)]
+    return [ln for ln in section.split("\n") if CRITERIA_ITEM_RE.match(ln)]
 
 
 def _has_evidence(line: str) -> bool:
@@ -273,6 +280,8 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
     if kind not in KINDS:
         raise ValidationError(f"unknown kind {kind!r}, expected one of {', '.join(KINDS)}")
 
+    body = normalize_newlines(body)
+
     if kind == "note":
         return []
 
@@ -340,10 +349,11 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
 
 
 def acceptance_criteria_present(body: str) -> bool:
-    return bool(CRITERIA_HEADING_RE.search(body))
+    return bool(CRITERIA_HEADING_RE.search(normalize_newlines(body)))
 
 
 def section_text(body: str, heading_re: re.Pattern) -> str:
+    body = normalize_newlines(body)
     m = heading_re.search(body)
     if not m:
         return ""
@@ -353,6 +363,7 @@ def section_text(body: str, heading_re: re.Pattern) -> str:
 
 
 def strip_section(body: str, heading_re: re.Pattern) -> str:
+    body = normalize_newlines(body)
     m = heading_re.search(body)
     if not m:
         return body
@@ -364,7 +375,7 @@ def strip_section(body: str, heading_re: re.Pattern) -> str:
 
 def claimed_paths(body: str) -> list[str]:
     paths = []
-    for ln in section_text(body, FILES_CLAIMED_HEADING_RE).splitlines():
+    for ln in section_text(body, FILES_CLAIMED_HEADING_RE).split("\n"):
         ln = ln.strip()
         if not ln.startswith("-"):
             continue
@@ -409,10 +420,11 @@ def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[s
 
 
 def criteria_blocks(body: str) -> list[str] | None:
+    body = normalize_newlines(body)
     if not CRITERIA_HEADING_RE.search(body):
         return None
     blocks: list[str] = []
-    for line in section_text(body, CRITERIA_HEADING_RE).splitlines():
+    for line in section_text(body, CRITERIA_HEADING_RE).split("\n"):
         if CRITERIA_ITEM_RE.match(line):
             blocks.append(line.strip())
         elif blocks and line.strip():
@@ -465,6 +477,7 @@ def _path_evidence_tokens(text: str) -> list[str]:
 
 
 def migration_without_post_state(body: str) -> list[str]:
+    body = normalize_newlines(body)
     if not MIGRATION_RE.search(body):
         return []
     blocks = criteria_blocks(body) or []

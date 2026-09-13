@@ -5,6 +5,7 @@
     "criteriaItem": "^[ \\t]*-[ \\t]*\\[[ xX]\\]"
   },
   "grammar": {
+    "lineTerminator": { "source": "\\r\\n|[\\r\\v\\f\\u001c\\u001d\\u001e\\u0085\\u2028\\u2029]", "flags": "g" },
     "criteriaHeading": { "source": "^##[ \\t]+Acceptance criteria[ \\t\\r]*$", "flags": "m" },
     "criteriaItem": { "source": "{criteriaItem}", "flags": "m" },
     "criteriaItemStrip": { "source": "{criteriaItem}[ \\t]*", "flags": "" },
