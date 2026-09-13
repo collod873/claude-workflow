@@ -3,11 +3,11 @@ export interface PrdCandidate {
   title: string;
   labels: string[];
   subIssueCount: number;
-  hasCompletedSlicingRun: boolean;
+  hasSuccessfulSlicingRun: boolean;
 }
 
 export function isLostDispatch(prd: PrdCandidate): boolean {
-  return prd.labels.includes("sliceable") && prd.subIssueCount === 0 && !prd.hasCompletedSlicingRun;
+  return prd.labels.includes("sliceable") && prd.subIssueCount === 0 && !prd.hasSuccessfulSlicingRun;
 }
 
 export interface LostDispatchFinding {

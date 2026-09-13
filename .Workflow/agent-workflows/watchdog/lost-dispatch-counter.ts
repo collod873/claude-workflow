@@ -21,6 +21,7 @@ export { SLICEABLE_LABEL };
 
 const ApiRun = z.object({
   status: z.string(),
+  conclusion: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -48,11 +49,11 @@ function readSubIssueCount(gh: GhExec, prdNumber: number): number {
   return Number(raw.trim());
 }
 
-function hasCompletedSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflow: string): boolean {
-  const projection = "[.workflow_runs[] | {status, created_at}]";
+function hasSuccessfulSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflow: string): boolean {
+  const projection = "[.workflow_runs[] | {status, conclusion, created_at}]";
   const raw = gh(["api", workflowRunsPath(slicingWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
   const runs = ApiRun.array().parse(JSON.parse(raw));
-  return runs.some((run) => run.status === "completed" && run.created_at >= prdCreatedAt);
+  return runs.some((run) => run.conclusion === "success" && run.created_at >= prdCreatedAt);
 }
 
 function readStandingIssue(gh: GhExec): z.infer<typeof StandingIssue> | undefined {
@@ -96,7 +97,7 @@ export function countLostDispatch(options: CounterOptions): CounterOutcome {
     title: prd.title,
     labels: prd.labels,
     subIssueCount: readSubIssueCount(gh, prdNumber),
-    hasCompletedSlicingRun: hasCompletedSlicingRun(gh, prd.createdAt, slicingWorkflow),
+    hasSuccessfulSlicingRun: hasSuccessfulSlicingRun(gh, prd.createdAt, slicingWorkflow),
   };
 
   if (!isLostDispatch(candidate)) {
