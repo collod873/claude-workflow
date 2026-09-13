@@ -21,7 +21,7 @@ function docAround(table: string): string {
   return `# Venues\n\n${leadingProse}\n\n${begin}\n${table}\n${end}\n\n${trailingProse}\n`;
 }
 
-test.fails(
+test(
   "#554.1: the venue-to-slot mapping is read from one place, not typed in both bin/gauntlet and the doc",
   () => {
     const byVenue = new Map(readVenueSlots().map((entry) => [entry.venue, entry.slots]));
@@ -50,7 +50,7 @@ test.fails(
   },
 );
 
-test.fails("#554.2: the venues table names `adrs` in the push row", () => {
+test("#554.2: the venues table names `adrs` in the push row", () => {
   const rows = renderVenuesTable()
     .split("\n")
     .filter((line) => line.includes("adrs"));
@@ -59,7 +59,7 @@ test.fails("#554.2: the venues table names `adrs` in the push row", () => {
   expect(rows[0]).toMatch(/push/);
 });
 
-test.fails(
+test(
   "#554.3: the table sits between regeneration markers and the prose around it survives a regeneration",
   () => {
     const { begin, end } = venuesTableMarkers();
@@ -85,7 +85,7 @@ test.fails(
   },
 );
 
-test.fails("#554.4: a stale table fails a --check run that names the fix", () => {
+test("#554.4: a stale table fails a --check run that names the fix", () => {
   const stale = docAround(
     "| Venue | Fires at | Slots | On failure |\n| --- | --- | --- | --- |\n| `push` | pre-push | `typecheck` | **Refuses the push** |",
   );
@@ -98,7 +98,7 @@ test.fails("#554.4: a stale table fails a --check run that names the fix", () =>
   expect(freshVerdict.ok).toBe(true);
 });
 
-test.fails(
+test(
   "#554.5: the whole check contract passes",
   () => {
     const packageJson = JSON.parse(
