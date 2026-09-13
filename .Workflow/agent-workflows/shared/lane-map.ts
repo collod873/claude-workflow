@@ -80,6 +80,7 @@ const REMOVE_LABEL_RE = /--remove-label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const CREATE_CALL_RE = /("create"[^\]]*)/g;
 const LABEL_FLAG_RE = /"--label",\s*("[\w-]+"|[A-Z][A-Z0-9_]+)/g;
 const HELPER_LABEL_RE = /--add-label",\s*[a-z]\w*\]/;
+const PUSH_TO_MAIN_REF = ["HEAD", "main"].join(":");
 const CONST_RE = /(?:^|\n)(?:export )?const ([A-Z][A-Z0-9_]+) = (?:"([\w-]+)"|([A-Z][A-Z0-9_]+));/g;
 const FUNCTION_RE = /(?:^|\n)(?:export )?(?:(?:async )?function (\w+)\(|const (\w+) = (?:async )?\()/g;
 const CALL_RE = /(?<![\w.])(\w+)\(/g;
@@ -272,7 +273,7 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
       labelsApplied: [...labelsApplied].sort(),
       labelsCleared: [...labelsCleared].sort(),
       stops,
-      pushesMain: /HEAD:main|"pr",\s*"merge"/.test(code),
+      pushesMain: code.includes(PUSH_TO_MAIN_REF) || /"pr",\s*"merge"/.test(code),
       handsOverOnRed: facts.handsOverOnRed,
     });
   }
