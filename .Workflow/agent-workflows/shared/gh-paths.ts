@@ -40,6 +40,7 @@ const subIssues = pathTemplate`repos/{owner}/{repo}/issues/${0}/sub_issues`;
 const blockedBy = pathTemplate`repos/{owner}/{repo}/issues/${0}/dependencies/blocked_by`;
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
+const jobLogs = pathTemplate`repos/{owner}/{repo}/actions/jobs/${0}/logs`;
 const runArtifacts = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/artifacts`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
@@ -84,6 +85,10 @@ export function workflowRunsPath(workflowFile: string, perPage: number): string 
 
 export function runJobsPath(runId: number): string {
   return runJobs.build(runId);
+}
+
+export function jobLogsPath(jobId: number): string {
+  return jobLogs.build(jobId);
 }
 
 export function runArtifactsPath(runId: number): string {
@@ -148,6 +153,8 @@ export const issueCommentPathMatcher: RegExp = issueComment.matcher;
 export const workflowRunsPathMatcher: RegExp = workflowRuns.matcher;
 
 export const runJobsPathMatcher: RegExp = runJobs.matcher;
+
+export const jobLogsPathMatcher: RegExp = jobLogs.matcher;
 
 export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
 

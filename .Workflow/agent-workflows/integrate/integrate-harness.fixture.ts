@@ -1,5 +1,5 @@
 import { createFakeGh, type FakeDispatch } from "../shared/gh.fake";
-import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
+import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
 import {
   GATE_JOB,
@@ -156,8 +156,9 @@ export function integrateHarness({
 
   const answer = (args: string[]): string | undefined => {
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, title, body });
-    if (args[0] === "run" && args[1] === "view" && args[2] === "--job" && args[4] === "--log") {
-      const jobId = Number(args[3]);
+    const jobLogs = args[0] === "api" ? jobLogsPathMatcher.exec(args[1] ?? "") : null;
+    if (jobLogs) {
+      const jobId = Number(jobLogs[1]);
       const run = currentRuns().find((each) => each.jobs.some((job) => job.id === jobId));
       const job = run?.jobs.find((each) => each.id === jobId);
       if (!run || !job) return "";

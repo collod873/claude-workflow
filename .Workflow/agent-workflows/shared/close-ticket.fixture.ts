@@ -106,7 +106,7 @@ export function verifyRoutes(jobs: { name: string; status: string; conclusion: s
   return [
     { contains: ["actions/workflows/verify-caller.yml/runs"], respond: JSON.stringify([{ id: 555, status: "completed" }]) },
     { contains: ["actions/runs/555/jobs"], respond: JSON.stringify(jobs.map((j, i) => ({ id: i + 1, ...j }))) },
-    { contains: ["run", "view", "--job", "1", "--log"], respond: `judging ${prUrl} on implement/issue-999` },
+    { contains: ["api", "actions/jobs/1/logs"], respond: `judging ${prUrl} on implement/issue-999` },
   ];
 }
 

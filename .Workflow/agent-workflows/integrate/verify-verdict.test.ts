@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
+import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
+import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
 import { GATE_JOB, IMMUTABILITY_JOB, runIntegrate } from "./integrate";
 import {
   BOTH_JOBS_GREEN,
@@ -152,14 +153,56 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(runIntegrate(deps)).toMatchObject({ merged: true });
   });
 
-  it("resolves the judging run by job, never by run, since a run-addressed log read cannot see one in flight", () => {
+  it("reads the judging log through the job-addressed API, which serves a finished job inside a run still in flight", () => {
     const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
 
     runIntegrate(deps);
 
-    const logReads = calls.filter((call) => call[0] === "run" && call[1] === "view");
+    const logReads = calls.filter((call) => call[0] === "api" && jobLogsPathMatcher.test(call[1] ?? ""));
     expect(logReads).not.toEqual([]);
-    for (const read of logReads) expect(read[2]).toBe("--job");
+    expect(calls.filter((call) => call[0] === "run" && call[1] === "view")).toEqual([]);
+  });
+
+  it("merges on a verdict whose job finished while lane 06's run is still in flight", () => {
+    const { deps } = integrateHarness({
+      closeTicket: CLOSED,
+      verifyRuns: [{ id: 903, status: "in_progress", jobs: BOTH_JOBS_GREEN }],
+    });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
+  });
+});
+
+describe("runIntegrate hands the ticket back on every refusal, not only a rebase conflict", () => {
+  const escalations = (calls: string[][]) =>
+    calls.filter((call) => call[0] === "issue" && call[1] === "edit" && call.includes(NEEDS_HUMAN_LABEL));
+
+  it("labels the ticket needs-human when lane 06 left no verdict, so it stops wearing a lane label", () => {
+    const { calls, deps } = integrateHarness({ verifyRuns: [] });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "unjudged" });
+    expect(escalations(calls)).not.toEqual([]);
+  });
+
+  it("labels the ticket needs-human when lane 06's gate job is red", () => {
+    const { calls, deps } = integrateHarness({ verifyRuns: [{ jobs: GATE_JOB_RED }] });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "gate" });
+    expect(escalations(calls)).not.toEqual([]);
+  });
+
+  it("labels the ticket needs-human when its own re-run gauntlet is red", () => {
+    const { calls, deps } = integrateHarness({ gauntlet: { exitCode: 1 } });
+
+    expect(runIntegrate(deps)).toEqual({ merged: false, reason: "red" });
+    expect(escalations(calls)).not.toEqual([]);
+  });
+
+  it("leaves the ticket alone when it merged", () => {
+    const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
+
+    expect(runIntegrate(deps)).toMatchObject({ merged: true });
+    expect(escalations(calls)).toEqual([]);
   });
 });
 

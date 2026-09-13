@@ -270,7 +270,9 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
         if immutability is None or immutability.get("status") != "completed":
             continue
         try:
-            log = gh_support.run_gh(gh, "run", "view", "--job", str(immutability["id"]), "--log")
+            log = gh_support.run_gh(
+                gh, "api", f"repos/{{owner}}/{{repo}}/actions/jobs/{immutability['id']}/logs"
+            )
         except gh_support.GhError:
             continue
         matches = JUDGING_LINE_RE.findall(log)

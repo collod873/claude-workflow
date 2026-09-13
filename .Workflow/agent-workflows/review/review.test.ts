@@ -449,7 +449,7 @@ function gateFreeReviewInput(scratch: string): ReviewInput {
 }
 
 test(
-  "#533.1: no file under review/ names greenGateChecks or GreenGateCheck: no function still takes one",
+  "#533.1: no file under review/ names the deleted green-gate check type or its parameter: no function still takes one",
   () => {
     expect(isStructurallyRefused.length).toBe(2);
     expect(keepSurvivingFindings.length).toBe(2);

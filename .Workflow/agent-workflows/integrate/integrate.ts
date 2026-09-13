@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
-import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
+import { jobLogsPath, runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { findJobByName } from "../shared/job-match";
 import { LANDING_LABEL, markLane } from "../shared/labels";
@@ -123,7 +123,7 @@ function readJobs(gh: GhExec, runId: number): Array<z.infer<typeof ApiJob>> {
 
 function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
   try {
-    return gh(["run", "view", "--job", String(jobId), "--log"]).includes(`judging ${pr} on `);
+    return gh(["api", jobLogsPath(jobId)]).includes(`judging ${pr} on `);
   } catch {
     return false;
   }
@@ -329,8 +329,12 @@ function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome 
   }
   const range = prCommitRange(deps.git);
   const rebasedHead = range.slice(range.indexOf("..") + 2);
+  const handBack = (): void => {
+    if (pullRequest.ticket !== undefined) escalateToOwner(deps.gh, pullRequest.ticket, deps.assignee);
+  };
   const refuse = (refusal: Exclude<Refusal, { reason: "conflict" | "gate" }>): Refusal => {
     noteSilentRefusal(deps.gh, deps.pr, SILENT_REFUSALS[refusal.reason], rebasedHead);
+    handBack();
     return refusal;
   };
 
@@ -343,10 +347,12 @@ function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome 
   if (verdict.immutability !== "passed") return refuse({ merged: false, reason: "unjudged" });
   if (verdict.acceptance === "failed") {
     noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance, refusedMarker(rebasedHead));
+    handBack();
     return { merged: false, reason: "gate" };
   }
   if (verdict.acceptance !== "passed") {
     noteAcceptanceRefusal(deps.gh, deps.pr, verdict.acceptance, refusedMarker(rebasedHead));
+    handBack();
     return { merged: false, reason: "unjudged" };
   }
 
