@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { commitsAhead } from "../shared/claim";
 import type { GhExec } from "../shared/gh";
-import { blockedByPath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
+import { blockedByPath, comparePath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
 import { isByHandClaim } from "../shared/immutable-set";
 import { BY_HAND_LABEL, IDEA_LABEL, isLaneLabel, NEEDS_HUMAN_LABEL, PRD_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import {
@@ -253,6 +252,11 @@ function fetchClaimedBranches(gh: GhExec): Set<string> | null {
   } catch {
     return null;
   }
+}
+
+function commitsAhead(gh: GhExec, branch: string, base: string): number {
+  const ahead = (JSON.parse(gh(["api", comparePath(base, branch)])) as { ahead_by?: unknown }).ahead_by;
+  return typeof ahead === "number" ? ahead : 1;
 }
 
 function fetchOpenPrBranches(gh: GhExec): Set<string> | null {

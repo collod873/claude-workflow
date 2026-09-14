@@ -1,6 +1,5 @@
 import { pathToFileURL } from "node:url";
 import { changedPaths } from "../shared/changed-paths";
-import { holdingClaim, releaseFailedClaim } from "../shared/claim";
 import { laneBudget } from "../shared/lane-budget";
 import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
 import { gateGrowth } from "../shared/gate-files";
@@ -174,17 +173,14 @@ export function runMechanic(deps: MechanicDeps): Promise<MechanicOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("mechanic"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
-  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), () => {
-    markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
-    return repairAndOpen(deps, budget, branch, log);
-  });
+  markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
+  return repairAndOpen(deps, budget, branch, log);
 }
 
 async function repairAndOpen(deps: MechanicDeps, budget: LaneBudget, branch: string, log: (line: string) => void): Promise<MechanicOutcome> {
   const state = JSON.parse(deps.gh(["issue", "view", String(deps.issueNumber), "--json", "state"])) as { state?: string };
   if (state.state === "CLOSED") {
     log(`refusing #${deps.issueNumber}: the ticket is already closed; a stale dispatch repairs nothing`);
-    releaseFailedClaim(deps.gh, branch, log);
     return { outcome: "ticket-closed" };
   }
 
@@ -235,13 +231,11 @@ async function repairAndOpen(deps: MechanicDeps, budget: LaneBudget, branch: str
   if (hits.length > 0) {
     escalateToOwner(deps.gh, deps.issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, deps.issueNumber, fenceNote(hits), log);
-    releaseFailedClaim(deps.gh, branch, log);
     return { outcome: "fence-refused", paths: hits };
   }
   if (skipsATest(deps.git(["diff"]))) {
     escalateToOwner(deps.gh, deps.issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, deps.issueNumber, SKIP_NOTE, log);
-    releaseFailedClaim(deps.gh, branch, log);
     return { outcome: "skip-refused" };
   }
 

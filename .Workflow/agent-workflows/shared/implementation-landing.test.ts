@@ -3,25 +3,21 @@ import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
   checkoutReporting,
-  githubHoldingClaims,
+  githubHostingLanes,
   HEAD_SHA,
-  minutesAgo,
   NOW,
   PR_URL,
   prCreatesIn,
   refDeletesIn,
   TICKET,
   ticketCommentsIn,
-  type ClaimHost,
-  type ExistingClaim,
-} from "./claim-host.fixture";
+  type LaneHost,
+} from "./lane-host.fixture";
 import type { GhExec } from "./gh";
 import { GIT_REFS_PATH } from "./gh-paths";
 import type { GitExec } from "./git";
 import { createFakeGit, type FakeGit } from "./git.fake";
 import {
-  claimImplementationBranch,
-  CLAIM_TIMEOUT_MINUTES,
   declaredEditsNote,
   deriveAnswer,
   failsRuleNote,
@@ -29,8 +25,6 @@ import {
   landAnswer,
   nothingToBuildNote,
   rebaseConflictNote,
-  releaseDeadClaim,
-  releaseFailedClaim,
   type ImplementerAnswer,
 } from "./implementation-landing";
 import { implementerAnswer, implementerReply } from "./implementation-landing.fixture";
@@ -42,9 +36,7 @@ const ISSUE = 167;
 const BRANCH = implementationBranch(ISSUE);
 const silent = () => {};
 
-const standing = (claim: Omit<ExistingClaim, "branch"> = {}): ExistingClaim => ({ branch: BRANCH, ...claim });
-
-const ghTraffic = (host: ClaimHost): string => JSON.stringify({ calls: host.calls, dispatches: host.dispatches });
+const ghTraffic = (host: LaneHost): string => JSON.stringify({ calls: host.calls, dispatches: host.dispatches });
 
 const needsHumanCall = ["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL];
 
@@ -52,111 +44,6 @@ const prListUnreachable = (args: string[]): string | undefined => {
   if (args[0] === "pr" && args[1] === "list") throw new Error("HTTP 502");
   return undefined;
 };
-
-function claim(host: ClaimHost, git: FakeGit = checkoutReporting()) {
-  return claimImplementationBranch(host.gh, git.git, BRANCH, silent, NOW);
-}
-
-describe("claimImplementationBranch", () => {
-  it("creates the ref at HEAD, atomically, and reports a fresh claim", () => {
-    const host = githubHoldingClaims();
-
-    expect(claim(host)).toEqual({ claimed: true, tookOverStaleClaim: false });
-    expect(host.calls).toEqual([["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${HEAD_SHA}`]]);
-    expect(host.refs.has(BRANCH)).toBe(true);
-  });
-
-  it("refuses a claim held by a run that is still going, so two dispatches cannot both build one ticket", () => {
-    const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(5) }) });
-
-    expect(claim(host)).toEqual({ claimed: false, tookOverStaleClaim: false });
-    expect(host.refs.has(BRANCH)).toBe(true);
-    expect(refDeletesIn(host.calls)).toEqual([]);
-  });
-
-  const notClearlyDebris: Array<[string, Omit<ExistingClaim, "branch">]> = [
-    ["the branch carries commits somebody may still want", { createdAt: minutesAgo(600), commitsAhead: 3 }],
-    ["a pull request already stands on the branch", { createdAt: minutesAgo(600), pullRequests: 1 }],
-    ["GitHub reports no creation time to age it by", { createdAt: null }],
-  ];
-
-  it.each(notClearlyDebris)("refuses a claim it cannot call debris: %s", (_case, existing) => {
-    const host = githubHoldingClaims({ existingClaim: standing(existing) });
-
-    expect(claim(host).claimed).toBe(false);
-    expect(host.refs.has(BRANCH)).toBe(true);
-  });
-
-  it("reads a claim it cannot inspect as held, since every uncertainty answers live", () => {
-    const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(600) }), answer: prListUnreachable });
-
-    expect(claim(host).claimed).toBe(false);
-    expect(host.refs.has(BRANCH)).toBe(true);
-  });
-
-  it("takes over a claim with no pull request, no commits and no live run, by a delete and the same atomic create", () => {
-    const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(CLAIM_TIMEOUT_MINUTES + 1) }) });
-
-    expect(claim(host)).toEqual({ claimed: true, tookOverStaleClaim: true });
-    expect(host.refs.has(BRANCH), "the claim is this run's now").toBe(true);
-
-    const creates = host.calls.filter((call) => call[0] === "api" && call[1] === GIT_REFS_PATH);
-    expect(creates).toHaveLength(2);
-    expect(host.calls.indexOf(refDeletesIn(host.calls)[0])).toBeLessThan(host.calls.indexOf(creates[1]));
-  });
-
-  it("does not take over a stale claim it loses the race to re-create", () => {
-    const host = githubHoldingClaims({ existingClaim: standing({ createdAt: minutesAgo(600) }) });
-    const raced: GhExec = (args) => {
-      const out = host.gh(args);
-      if (args[1] === "--method" && args[2] === "DELETE") host.refs.add(BRANCH);
-      return out;
-    };
-
-    expect(claimImplementationBranch(raced, checkoutReporting().git, BRANCH, silent, NOW).claimed).toBe(false);
-  });
-});
-
-describe("releaseFailedClaim", () => {
-  it("deletes the ref when no pull request names the branch", () => {
-    const host = githubHoldingClaims({ existingClaim: standing() });
-
-    releaseFailedClaim(host.gh, BRANCH, silent);
-
-    expect(host.refs.has(BRANCH)).toBe(false);
-  });
-
-  it("leaves the claim when a pull request stands on it, or when that cannot be told", () => {
-    const withPr = githubHoldingClaims({ existingClaim: standing({ pullRequests: 1 }) });
-    const unknowable = githubHoldingClaims({ existingClaim: standing(), answer: prListUnreachable });
-
-    releaseFailedClaim(withPr.gh, BRANCH, silent);
-    releaseFailedClaim(unknowable.gh, BRANCH, silent);
-
-    expect(withPr.refs.has(BRANCH)).toBe(true);
-    expect(unknowable.refs.has(BRANCH)).toBe(true);
-  });
-});
-
-describe("releaseDeadClaim", () => {
-  it("lets go of a young claim with no pull request and no commits", () => {
-    const host = githubHoldingClaims({ existingClaim: standing({ createdAt: NOW.toISOString() }) });
-
-    expect(releaseDeadClaim(host.gh, BRANCH, "main", silent)).toBe(true);
-    expect(host.refs.has(BRANCH)).toBe(false);
-  });
-
-  const somebodysWork: Array<[string, ClaimHost]> = [
-    ["a pull request stands on it", githubHoldingClaims({ existingClaim: standing({ pullRequests: 1 }) })],
-    ["it carries commits", githubHoldingClaims({ existingClaim: standing({ commitsAhead: 2 }) })],
-    ["it cannot be inspected", githubHoldingClaims({ existingClaim: standing(), answer: prListUnreachable })],
-  ];
-
-  it.each(somebodysWork)("leaves a claim alone when %s", (_case, host) => {
-    expect(releaseDeadClaim(host.gh, BRANCH, "main", silent)).toBe(false);
-    expect(host.refs.has(BRANCH)).toBe(true);
-  });
-});
 
 describe("landAnswer", () => {
   const ANSWER = implementerAnswer({ files: [{ path: "a/b.ts", content: "export const x = 1;\n" }], summary: "Built it." });
@@ -167,7 +54,7 @@ describe("landAnswer", () => {
     answer: ImplementerAnswer = ANSWER,
     hasIndex = false,
   ) {
-    const host = githubHoldingClaims({ existingClaim: standing() });
+    const host = githubHostingLanes();
     const written: string[] = [];
     const removed: string[] = [];
     let regenerated = 0;
@@ -250,20 +137,20 @@ describe("landAnswer", () => {
     const { result, host, gitCalls } = await land(git, { rebaseOntoTrunk: true });
 
     expect(result).toEqual({ outcome: "rebase-conflict", paths: ["a/b.ts"] });
-    expect(host.refs.has(BRANCH)).toBe(false);
+    expect(refDeletesIn(host.calls), "no lane may delete the branch acceptance wrote its test on").toEqual([]);
     expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
     expect(ticketCommentsIn(host.calls)).toEqual([rebaseConflictNote(["a/b.ts"])]);
     expect(gitCalls).toContainEqual(["rebase", "--abort"]);
     expect(gitCalls.some((call) => call[0] === "push"), "pushed a conflicted branch").toBe(false);
   });
 
-  it("exits nothing-to-build without a commit, releases its claim, and says so on the ticket when git reports the paths clean", async () => {
+  it("exits nothing-to-build without a commit, leaves the branch standing, and says so on the ticket when git reports the paths clean", async () => {
     const { result, host, gitCalls } = await land(checkoutReporting(() => ""));
 
     expect(result).toEqual({ outcome: "nothing-to-build" });
     expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
     expect(prCreatesIn(host.calls)).toEqual([]);
-    expect(host.refs.has(BRANCH), "a no-op keeps the ticket unbuildable if it keeps its claim").toBe(false);
+    expect(refDeletesIn(host.calls), "no lane may delete the branch acceptance wrote its test on").toEqual([]);
     expect(ticketCommentsIn(host.calls)).toEqual([nothingToBuildNote(ISSUE)]);
   });
 
@@ -306,11 +193,11 @@ describe("landAnswer", () => {
   describe("the immutable set", () => {
     const IMMUTABLE_ANSWER = implementerAnswer({ files: [{ path: "vitest.config.ts", content: "export default {};\n" }], summary: "Touched it." });
 
-    it("refuses before any commit, releasing the claim and posting the note", async () => {
+    it("refuses before any commit, leaving the branch standing and posting the note", async () => {
       const { result, host, gitCalls } = await land(checkoutReporting(), {}, IMMUTABLE_ANSWER);
 
       expect(result).toEqual({ outcome: "immutable-refused", paths: ["vitest.config.ts"] });
-      expect(host.refs.has(BRANCH)).toBe(false);
+      expect(refDeletesIn(host.calls), "no lane may delete the branch acceptance wrote its test on").toEqual([]);
       expect(host.calls).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", NEEDS_HUMAN_LABEL]);
       expect(ticketCommentsIn(host.calls)).toEqual([immutableSetNote(["vitest.config.ts"])]);
       expect(gitCalls.some((call) => call[0] === "commit" || call[0] === "push")).toBe(false);
@@ -347,7 +234,7 @@ describe("landAnswer", () => {
       expect(result).toMatchObject({ outcome: "fails-rule-refused" });
       if (result.outcome !== "fails-rule-refused") throw new Error("unreachable");
       expect(result.reason).toContain("a/b.ts");
-      expect(host.refs.has(BRANCH), "a refusal must not delete the branch it just pushed").toBe(true);
+      expect(refDeletesIn(host.calls), "no lane may delete the branch acceptance wrote its test on").toEqual([]);
       expect(host.calls).not.toContainEqual(needsHumanCall);
       expect(ghTraffic(host)).toContain("mechanic-wanted");
       expect(ticketCommentsIn(host.calls)).toEqual([failsRuleNote(result.reason)]);

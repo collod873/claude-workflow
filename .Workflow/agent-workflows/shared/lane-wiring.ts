@@ -1,6 +1,5 @@
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
-import { CLAIM_TIMEOUT_MINUTES } from "./implementation-landing";
 import { NEEDS_HUMAN_LABEL, PRD_LABEL, SHAPE_REFUSED_LABEL, SLICE_FAILED_LABEL, SLICEABLE_LABEL, TO_BUILD_LABEL } from "./labels";
 import { RATIFICATION_DUE_DISPATCH_ACTION, RATIFIER_MERGED_DISPATCH_ACTION } from "./ratification-dispatch";
 import {
@@ -65,6 +64,8 @@ export const ENDING_LANES = [
 export const SHAPE_LABELS_APPLIED = [LANE_OWNED.shapeRefused, NEEDS_HUMAN_LABEL];
 
 export const MACHINE_REPOSITORY = "collod873/claude-workflow";
+
+const BUILD_LANE_TIMEOUT_MINUTES = 90;
 
 export const TARGET_WORKSPACE = "${{ github.workspace }}/target";
 
@@ -636,7 +637,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "implement-${{ github.event.client_payload.issue }}",
     jobs: {
       implement: {
-        timeout: CLAIM_TIMEOUT_MINUTES,
+        timeout: BUILD_LANE_TIMEOUT_MINUTES,
         env: { TICKET_NUMBER: PAYLOAD_ISSUE, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
@@ -665,7 +666,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     concurrency: "implement-${{ github.event.client_payload.issue }}",
     jobs: {
       mechanic: {
-        timeout: CLAIM_TIMEOUT_MINUTES,
+        timeout: BUILD_LANE_TIMEOUT_MINUTES,
         env: { TICKET_NUMBER: PAYLOAD_ISSUE, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,

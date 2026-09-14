@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkoutChanged } from "../shared/claim-host.fixture";
+import { checkoutChanged } from "../shared/lane-host.fixture";
 import { implementerReply } from "../shared/implementation-landing.fixture";
 import { createFakeStage } from "../shared/stage.fake";
 import { runImplement, type ImplementDeps } from "./implement";

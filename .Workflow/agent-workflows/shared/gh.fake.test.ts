@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blockedByPath, GIT_REFS_PATH, issuePath, subIssuesPath } from "./gh-paths";
-import { createFakeGh, createRecordingGh, simulateClaimRef, type FakeGhOptions } from "./gh.fake";
+import { createFakeGh, createRecordingGh, type FakeGhOptions } from "./gh.fake";
 import { parseIssueNumber } from "./issue-url";
 
 const RECORDED = {
@@ -147,25 +147,3 @@ describe("createRecordingGh", () => {
   });
 });
 
-describe("simulateClaimRef", () => {
-  const post = (branch: string) => ["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${branch}`, "-f", "sha=abc"];
-  const del = (branch: string) => ["api", "--method", "DELETE", `${GIT_REFS_PATH}/heads/${branch}`];
-
-  it("creates a ref once, 422s on the second claim, and releases it on DELETE", () => {
-    const refs = new Set<string>();
-
-    expect(simulateClaimRef(post("implement/issue-9"), refs)).toBe("");
-    expect(() => simulateClaimRef(post("implement/issue-9"), refs)).toThrow(/HTTP 422/);
-    expect(simulateClaimRef(del("implement/issue-9"), refs)).toBe("");
-    expect(refs.has("implement/issue-9")).toBe(false);
-    expect(simulateClaimRef(post("implement/issue-9"), refs)).toBe("");
-  });
-
-  it("answers undefined for any other call, so a caller composes it with a plain if", () => {
-    const refs = new Set<string>(["implement/issue-9"]);
-
-    expect(simulateClaimRef(["issue", "view", "9"], refs)).toBeUndefined();
-    expect(simulateClaimRef(["api", issuePath(9)], refs)).toBeUndefined();
-    expect(refs).toEqual(new Set(["implement/issue-9"]));
-  });
-});

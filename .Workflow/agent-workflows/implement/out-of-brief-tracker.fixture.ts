@@ -1,4 +1,4 @@
-import { githubHoldingClaims, type ClaimHost } from "../shared/claim-host.fixture";
+import { githubHostingLanes, type LaneHost } from "../shared/lane-host.fixture";
 
 /**
  * @fixture Reached only from the suite, by design.
@@ -11,11 +11,11 @@ export interface TrackedIssue {
   comments: string[];
 }
 
-export function trackerWith(ticket?: { title: string; body: string }): ClaimHost & { issues: TrackedIssue[] } {
+export function trackerWith(ticket?: { title: string; body: string }): LaneHost & { issues: TrackedIssue[] } {
   const issues: TrackedIssue[] = [];
   let nextNumber = 1;
 
-  const host = githubHoldingClaims({
+  const host = githubHostingLanes({
     ticket,
     answer: (args) => {
       if (args[0] !== "issue") return undefined;

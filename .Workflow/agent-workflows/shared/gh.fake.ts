@@ -141,20 +141,6 @@ export function createFakeGh(options: FakeGhOptions = {}): FakeGh {
   return { gh, calls, subIssuesByParent, blockedByByNumber, dispatches };
 }
 
-export function simulateClaimRef(args: string[], refs: Set<string>): string | undefined {
-  if (args[0] === "api" && args[1] === GIT_REFS_PATH) {
-    const ref = (args.find((arg) => arg.startsWith("ref=refs/heads/")) ?? "").slice("ref=refs/heads/".length);
-    if (refs.has(ref)) throw new Error("HTTP 422: Reference already exists");
-    refs.add(ref);
-    return "";
-  }
-  if (args[0] === "api" && args[1] === "--method" && args[2] === "DELETE") {
-    refs.delete(args[3].slice(`${GIT_REFS_PATH}/heads/`.length));
-    return "";
-  }
-  return undefined;
-}
-
 export function createRecordingGh(): { gh: GhExec; calls: string[][] } {
   const calls: string[][] = [];
   const gh: GhExec = (args) => {

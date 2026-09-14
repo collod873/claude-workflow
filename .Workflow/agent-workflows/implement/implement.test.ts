@@ -3,16 +3,15 @@ import { join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   checkoutChanged,
-  githubHoldingClaims,
+  githubHostingLanes,
   HEAD_SHA,
-  minutesAgo,
   NOW,
   PR_URL,
   prCreatesIn,
   refDeletesIn,
   ticketCommentsIn,
-  type ClaimHostOptions,
-} from "../shared/claim-host.fixture";
+  type LaneHostOptions,
+} from "../shared/lane-host.fixture";
 import { describeAttempt } from "../shared/changed-paths";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
 import { laneBudget } from "../shared/lane-budget";
@@ -28,7 +27,6 @@ import type { StageReply } from "../shared/stage";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
-  CLAIM_TIMEOUT_MINUTES,
   extractSeamsConsumed,
   findFailingTestFiles,
   FRESH_EYES_MODEL,
@@ -36,7 +34,6 @@ import {
   moduleContextPath,
   runImplement,
   sessionsNote,
-  staleClaimTakeoverNote,
   VERIFY_DISPATCH_EVENT_TYPE,
   type ImplementDeps,
 } from "./implement";
@@ -47,7 +44,7 @@ const BUILDS = implementerReply();
 const BUILT: Record<string, string> = { "a/b.ts": "export const x = 1;" };
 
 interface Arrangement {
-  github?: ClaimHostOptions;
+  github?: LaneHostOptions;
   deps?: Partial<ImplementDeps>;
   built?: Record<string, string>;
   deleted?: string[];
@@ -57,7 +54,7 @@ function stagesEndingWith(...later: Array<string | StageReply>) {
   return createFakeStages([{ text: JSON.stringify(BUILDS), sessionId: "sess-1" }, JSON.stringify(BUILDS), ...later]);
 }
 
-async function buildThrough(stage: FakeStage, gate: ReturnType<typeof gateSaying>, github: ClaimHostOptions = {}) {
+async function buildThrough(stage: FakeStage, gate: ReturnType<typeof gateSaying>, github: LaneHostOptions = {}) {
   const arranged = arrange({ github, deps: { exec: stage.exec, runGate: gate.runGate } });
   const result = await runImplement(arranged.deps);
   expect(result).toEqual({ outcome: "opened", pr: PR_URL });
@@ -65,7 +62,7 @@ async function buildThrough(stage: FakeStage, gate: ReturnType<typeof gateSaying
 }
 
 function arrange({ github = {}, deps: extra = {}, built = BUILT, deleted = [] }: Arrangement = {}) {
-  const host = githubHoldingClaims(github);
+  const host = githubHostingLanes(github);
   const checkout = checkoutChanged(Object.keys(built), deleted);
   const stage = createFakeStage(JSON.stringify(BUILDS));
   const gate = gateSaying({ ok: true });
@@ -409,66 +406,49 @@ describe("instrumentation: a sessionsNote comment tells red gates from unrun one
   });
 });
 
-describe("runImplement claims its branch before it spends anything", () => {
-  it("creates the ref at HEAD as its very first call, and only then runs the model", async () => {
+describe("runImplement takes no lock, because the lane's concurrency group is the lock", () => {
+  it("creates no ref of its own before running the model", async () => {
     const { deps, host, stage } = arrange();
 
     await runImplement(deps);
 
-    expect(host.calls[0]).toEqual(["api", GIT_REFS_PATH, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${HEAD_SHA}`]);
+    const refWrites = host.calls.filter((call) => call[0] === "api" && call[1] === GIT_REFS_PATH);
+    expect(refWrites, "a git ref is a worse mutex than the one the workflow already has").toEqual([]);
     expect(stage.stdins).toHaveLength(1);
   });
 
-  it("refuses a closed ticket before the model: no stage call, claim released, said out loud", async () => {
+  it("refuses a closed ticket before the model: no stage call, nothing deleted, said out loud", async () => {
     const { deps, host, stage } = arrange({ github: { ticket: { title: "already merged", body: "", state: "CLOSED" } } });
 
     const result = await runImplement(deps);
 
     expect(result).toEqual({ outcome: "ticket-closed" });
     expect(stage.stdins, "the refusal fires before any model spend").toHaveLength(0);
-    expect(host.refs.size, "the claim does not outlive the refusal").toBe(0);
+    expect(refDeletesIn(host.calls), "a stale dispatch must not take the branch with it").toEqual([]);
     expect(prCreatesIn(host.calls)).toEqual([]);
   });
 
-  it("exits already-claimed without the model, the PR, the dispatch or the acceptance tests", async () => {
-    let resolved = 0;
-    const { deps, host, stage, log } = arrange({
-      github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } },
-      deps: { failingTests: () => { resolved += 1; return []; } },
-    });
+  it("builds a ticket whose branch already stands, since acceptance wrote its test there", async () => {
+    const { deps, host, stage } = arrange({});
 
     const result = await runImplement(deps);
 
-    expect(result, "a duplicate ticket-ready is an ordinary event, not a failure").toEqual({ outcome: "already-claimed" });
-    expect(stage.stdins).toHaveLength(0);
-    expect(prCreatesIn(host.calls)).toEqual([]);
-    expect(host.dispatches).toEqual([]);
-    expect(resolved, "the acceptance tests were read for a run that had nothing to do").toBe(0);
-    expect(log.join("\n")).toContain(BRANCH);
-  });
-
-  it("asks GitHub only whether the refused claim is still held, and changes nothing", async () => {
-    const { deps, host } = arrange({ github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(2) } } });
-
-    await runImplement(deps);
-
-    expect(host.calls.some((call) => call[0] === "issue")).toBe(false);
+    expect(result, "a standing branch is acceptance's handoff, not somebody else's claim").toEqual({ outcome: "opened", pr: PR_URL });
+    expect(stage.stdins, "the implementer ran").toHaveLength(1);
     expect(refDeletesIn(host.calls)).toEqual([]);
-    expect(host.refs).toEqual(new Set([BRANCH]));
   });
 });
 
-describe("a claim does not outlive the run that made it", () => {
-  it("releases the claim when the run fails before opening a pull request", async () => {
+describe("no lane deletes the branch its ticket's work sits on", () => {
+  it("leaves the branch standing when the run fails before opening a pull request", async () => {
     const { deps, host } = arrange({ github: { prCreate: new Error("GraphQL: GitHub Actions is not permitted to create pull requests") } });
 
     await expect(runImplement(deps)).rejects.toThrow(/not permitted to create pull requests/);
 
-    expect(host.refs.has(BRANCH), "the claim this run made outlived it").toBe(false);
-    expect(refDeletesIn(host.calls)).toHaveLength(1);
+    expect(refDeletesIn(host.calls), "deleting here destroys the acceptance test the ticket needs").toEqual([]);
   });
 
-  it("ends a run whose lane budget runs out at the implementer, and releases the claim it made", async () => {
+  it("leaves the branch standing when the lane budget runs out at the implementer", async () => {
     vi.useFakeTimers();
     onTestFinished(() => {
       vi.useRealTimers();
@@ -482,36 +462,7 @@ describe("a claim does not outlive the run that made it", () => {
     await vi.advanceTimersByTimeAsync(laneBudget("implement") * 60_000);
 
     expect(await running).toBe(`timed out after ${laneBudget("implement")} minutes at implementer`);
-    expect(host.refs.has(BRANCH)).toBe(false);
-    expect(refDeletesIn(host.calls)).toHaveLength(1);
-  });
-
-  it("leaves the claim alone when the failure came after a pull request was already open", async () => {
-    const { deps, host } = arrange({
-      github: {
-        existingClaim: { branch: BRANCH, pullRequests: 1 },
-        answer: (args) => {
-          if (args[1] === "repos/{owner}/{repo}/dispatches") throw new Error("HTTP 503");
-          return undefined;
-        },
-      },
-    });
-    host.refs.delete(BRANCH);
-
-    await expect(runImplement(deps)).rejects.toThrow(/503/);
-
-    expect(host.refs.has(BRANCH)).toBe(true);
     expect(refDeletesIn(host.calls)).toEqual([]);
-  });
-
-  it("takes over a stale claim, builds the ticket, and says so on the ticket", async () => {
-    const { deps, host, stage } = arrange({ github: { existingClaim: { branch: BRANCH, createdAt: minutesAgo(CLAIM_TIMEOUT_MINUTES + 1) } } });
-
-    const result = await runImplement(deps);
-
-    expect(result).toEqual({ outcome: "opened", pr: PR_URL });
-    expect(stage.stdins, "the implementer ran this time").toHaveLength(1);
-    expect(ticketCommentsIn(host.calls)).toEqual([staleClaimTakeoverNote(BRANCH)]);
   });
 });
 

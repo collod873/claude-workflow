@@ -26,7 +26,6 @@ import {
   sectionText,
   type TicketRead,
 } from "../shared/ticket-shape";
-import { holdingClaim, releaseFailedClaim } from "../shared/claim";
 import { BUILDING_LABEL, markLane } from "../shared/labels";
 import { laneBudget } from "../shared/lane-budget";
 import {
@@ -34,7 +33,6 @@ import {
   ImplementerReply,
   landUnderGate,
   sayOnTicket,
-  staleClaimTakeoverNote,
   type ImplementOutcome,
 } from "../shared/implementation-landing";
 import { targetCheckout, type TargetCheckout } from "../shared/target-checkout";
@@ -42,12 +40,7 @@ import { VERIFY_DISPATCH_EVENT_TYPE } from "../shared/verify-dispatch";
 import { assembleBrief, gatherBriefContext, listAdrFiles, walkSourceFiles, type FailingTestFile } from "./brief";
 import { recordOutOfBrief } from "./out-of-brief";
 
-export {
-  CLAIM_TIMEOUT_MINUTES,
-  staleClaimTakeoverNote,
-  worktreeChanges,
-  type ImplementOutcome,
-} from "../shared/implementation-landing";
+export { worktreeChanges, type ImplementOutcome } from "../shared/implementation-landing";
 export { type FailingTestFile } from "./brief";
 
 export const IMPLEMENTER_MODEL = "claude-sonnet-5";
@@ -205,11 +198,8 @@ export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("implement"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
-  return holdingClaim(deps.gh, deps.git, branch, log, deps.now ?? new Date(), (claim) => {
-    markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
-    if (claim.tookOverStaleClaim) sayOnTicket(deps.gh, deps.issueNumber, staleClaimTakeoverNote(branch), log);
-    return buildAndOpen(deps, budget, branch, log);
-  });
+  markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
+  return buildAndOpen(deps, budget, branch, log);
 }
 
 function gateOnChanges(deps: ImplementDeps, log: (line: string) => void): GateVerdict {
@@ -239,7 +229,6 @@ async function buildAndOpen(
   };
   if (stateRead.state === "CLOSED") {
     log(`refusing #${deps.issueNumber}: the ticket is already closed; a stale dispatch builds nothing`);
-    releaseFailedClaim(deps.gh, branch, log);
     return { outcome: "ticket-closed" };
   }
 
@@ -385,10 +374,6 @@ async function main(): Promise<void> {
       comments: () => ticketComments(execGh, issueNumber),
       ...(process.env.RUNG ? { rung: process.env.RUNG } : {}),
     });
-    if (result.outcome === "already-claimed") {
-      console.log(`#${issueNumber} is already claimed; nothing to do.`);
-      return;
-    }
     if (result.outcome === "ticket-closed") {
       console.log(`#${issueNumber} is already closed; refused the stale dispatch.`);
       return;

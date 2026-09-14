@@ -2,13 +2,13 @@ import { laneBudget } from "../shared/lane-budget";
 import { describe, expect, it, test, vi } from "vitest";
 import {
   checkoutChanged,
-  githubHoldingClaims,
+  githubHostingLanes,
   PR_URL,
   prCreatesIn,
   refDeletesIn,
   ticketCommentsIn,
-  type ClaimHostOptions,
-} from "../shared/claim-host.fixture";
+  type LaneHostOptions,
+} from "../shared/lane-host.fixture";
 import { createFakeGit } from "../shared/git.fake";
 import { implementerReply } from "../shared/implementation-landing.fixture";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
@@ -37,7 +37,7 @@ const STRIKES = [900, 901].map((runId) => ({
 const LOG = "step 1\nstep 2\nimplement failed: EISDIR: illegal operation on a directory, read bin/close-ticket\n";
 
 interface Arrangement {
-  github?: ClaimHostOptions;
+  github?: LaneHostOptions;
   deps?: Partial<MechanicDeps>;
   built?: Record<string, string>;
   diff?: string;
@@ -45,7 +45,7 @@ interface Arrangement {
 }
 
 function arrange({ github = {}, deps: extra = {}, built = { "a/b.ts": "export const x = 1;" }, diff = "", stage }: Arrangement = {}) {
-  const host = githubHoldingClaims(github);
+  const host = githubHostingLanes(github);
   const checkout = checkoutChanged(Object.keys(built));
   const git = createFakeGit((args) => (args[0] === "diff" ? diff : checkout.git(args))).git;
   const stages = stage ?? createFakeStages([JSON.stringify(implementerReply({ summary: "Found the cause." }))]);
@@ -184,14 +184,7 @@ describe("runMechanic", () => {
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(false);
   });
 
-  it("does nothing when the branch is already somebody's work", async () => {
-    const { deps, stage } = arrange({ github: { existingClaim: { branch: `implement/issue-${ISSUE}`, pullRequests: 1 } } });
-
-    expect(await runMechanic(deps)).toEqual({ outcome: "already-claimed" });
-    expect(stage.calls).toEqual([]);
-  });
-
-  it("refuses an answer that edits the fence, says so on the ticket, escalates, and releases the claim", async () => {
+  it("refuses an answer that edits the fence, says so on the ticket, escalates, and leaves the branch standing", async () => {
     const { deps, host } = arrange({ built: { "CODING_STANDARDS.md": "# looser", "a/b.ts": "x" } });
 
     const result = await runMechanic(deps);
@@ -200,7 +193,7 @@ describe("runMechanic", () => {
     expect(prCreatesIn(host.calls)).toEqual([]);
     expect(ticketCommentsIn(host.calls)[0]).toContain("`CODING_STANDARDS.md`");
     expect(host.calls.some((call) => call.includes(NEEDS_HUMAN_LABEL))).toBe(true);
-    expect(refDeletesIn(host.calls)).toHaveLength(1);
+    expect(refDeletesIn(host.calls)).toEqual([]);
   });
 
   it("refuses an answer whose diff skips a test", async () => {

@@ -4,8 +4,6 @@ import { changedPaths } from "./changed-paths";
 import { judgeFailsEdits } from "./fails-rule";
 import type { GhExec } from "./gh";
 import type { GitExec } from "./git";
-import { CLAIM_TIMEOUT_MINUTES, releaseClaim } from "./claim";
-export { CLAIM_TIMEOUT_MINUTES, claimImplementationBranch, releaseDeadClaim, releaseFailedClaim } from "./claim";
 import { touchesImmutableSet } from "./immutable-set";
 import { escalateToOwner } from "./needs-human";
 import { dispatchMechanicWanted } from "./ready-set";
@@ -119,22 +117,12 @@ export function sayOnTicket(gh: GhExec, issueNumber: number, body: string, log: 
   }
 }
 
-export function staleClaimTakeoverNote(branch: string): string {
-  return [
-    `Took over a stale claim on \`${branch}\`.`,
-    "",
-    "The branch was already there when this run started, with no pull request, no commits, and older",
-    `than this lane's own ${CLAIM_TIMEOUT_MINUTES}-minute timeout, so a claim left behind by a run that`,
-    "died rather than one a run is still holding. This run took it over and is building the ticket now.",
-  ].join("\n");
-}
-
 export function rebaseConflictNote(paths: string[]): string {
   return [
     `Could not rebase this run's branch onto trunk before pushing; conflicted in: ${paths.join(", ")}.`,
     "",
     "This is escalated rather than resolved automatically, the same reason `fixer.yml`'s own rebase",
-    "step stops instead of guessing at a merge. The claim has been released; whoever resolves the",
+    "step stops instead of guessing at a merge. Nothing was pushed; whoever resolves the",
     "conflict by hand can re-dispatch this ticket afterwards.",
   ].join("\n");
 }
@@ -157,7 +145,7 @@ export function nothingToBuildNote(issueNumber: number): string {
     "",
     "The implementer returned this ticket's files exactly as they already are on trunk, so there was",
     "no commit to make and no pull request to open. That is an outcome, not a failure: the ticket may",
-    "already be true. The claim has been released, so a later dispatch is free to try again.",
+    "already be true, and a later dispatch is free to try again.",
   ].join("\n");
 }
 
@@ -165,8 +153,8 @@ export function immutableSetNote(paths: string[]): string {
   return [
     `Refused to push this run's answer: it touches the immutable set: ${paths.join(", ")}.`,
     "",
-    "No pull request may change `vitest.config.ts` or `.github/`. Nothing was committed, the claim has",
-    "been released, and the ticket itself needs fixing before this can be re-dispatched.",
+    "No pull request may change `vitest.config.ts` or `.github/`. Nothing was committed, and the",
+    "ticket itself needs fixing before this can be re-dispatched.",
   ].join("\n");
 }
 
@@ -207,7 +195,6 @@ export function openPrAndDispatch(gh: GhExec, dispatch: PrDispatch): string {
 }
 export type ImplementOutcome =
   | { outcome: "opened"; pr: string }
-  | { outcome: "already-claimed" }
   | { outcome: "nothing-to-build" }
   | { outcome: "ticket-closed" }
   | { outcome: "rebase-conflict"; paths: string[] }
@@ -251,7 +238,6 @@ export async function landAnswer(
   const changing = worktreeChanges(deps.git, answeredPaths);
 
   if (changing.length === 0) {
-    releaseClaim(deps.gh, branch, log);
     sayOnTicket(deps.gh, issueNumber, nothingToBuildNote(issueNumber), log);
     return { outcome: "nothing-to-build" };
   }
@@ -262,7 +248,6 @@ export async function landAnswer(
   }
 
   if (touchesImmutableSet(paths)) {
-    releaseClaim(deps.gh, branch, log);
     escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, issueNumber, immutableSetNote(paths), log);
     return { outcome: "immutable-refused", paths };
@@ -273,7 +258,6 @@ export async function landAnswer(
     diff = commitPushAndDiff(deps.git, branch, paths, commitMessage, options.rebaseOntoTrunk ?? false, options.skipPushHook ?? false);
   } catch (err) {
     if (!(err instanceof RebaseConflictError)) throw err;
-    releaseClaim(deps.gh, branch, log);
     escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, issueNumber, rebaseConflictNote(err.paths), log);
     return { outcome: "rebase-conflict", paths: err.paths };
