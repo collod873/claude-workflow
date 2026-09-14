@@ -29,6 +29,7 @@ import {
   renderCheckContract,
   refireAcceptance,
   renderCriteria,
+  REPAIR_ROUNDS,
   renderFiles,
   runAcceptanceAuthor,
   shrinkingRewriteRefusal,
@@ -572,9 +573,12 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
   async function repairRun(gates: GateVerdict[], first: { sessionId?: string } = { sessionId: "author-1" }) {
     const writes: string[][] = [];
     const tracker = trackerWith(TRACKER, {}, writes);
+    const repaired = JSON.stringify({
+      files: [{ path: HELPER, content: "export const arrange = 1;\n" }, { path: TEST_PATH, content: failsTest() }],
+    });
     const stage = createFakeStages([
       { text: JSON.stringify({ files: [{ path: TEST_PATH, content: failsTest() }] }), ...first },
-      JSON.stringify({ files: [{ path: HELPER, content: "export const arrange = 1;\n" }, { path: TEST_PATH, content: failsTest() }] }),
+      ...Array.from({ length: REPAIR_ROUNDS }, () => ({ text: repaired, sessionId: "author-1" })),
     ]);
     const git = createFakeGit(() => "");
     const written: string[] = [];
@@ -606,14 +610,16 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", ACCEPTING_LABEL]);
   });
 
-  it("stops after that one round when still red: the judgement on the ticket, no needs-human, nothing committed", async () => {
-    const { outcome, stage, git, writes } = await repairRun([GATE_RED, GATE_RED]);
+  it("stops after the last repair round when still red: the judgement on the ticket, no needs-human, nothing committed", async () => {
+    const { outcome, stage, git, writes } = await repairRun(
+      Array.from({ length: REPAIR_ROUNDS + 1 }, (_unused, round) => ({ ok: false, output: `${CLONE_REPORT}\nround ${round}` })),
+    );
     expect(outcome.verdict).toBe("refused");
-    expect(stage.calls).toHaveLength(2);
+    expect(stage.calls, "one authoring call, then every repair round, and no more").toHaveLength(REPAIR_ROUNDS + 1);
     expect(git.calls).toEqual([]);
     expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
     const comment = writes.find((call) => call[0] === "issue" && call[1] === "comment");
-    expect(comment?.[4]).toContain("one repair round");
+    expect(comment?.[4]).toContain(`all ${REPAIR_ROUNDS} of its repair rounds`);
     expect(comment?.[4]).toContain(CLONE_REPORT);
   });
 
@@ -622,7 +628,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     expect(outcome.verdict).toBe("refused");
     expect(stage.calls).toHaveLength(1);
     expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
-    expect(writes.find((call) => call[0] === "issue" && call[1] === "comment")?.[4]).toContain("one repair round");
+    expect(writes.find((call) => call[0] === "issue" && call[1] === "comment")?.[4]).toContain(`all ${REPAIR_ROUNDS} of its repair rounds`);
   });
 });
 

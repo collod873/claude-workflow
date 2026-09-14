@@ -290,14 +290,18 @@ A slice is unreachable when it's transitively blocked on a blocker that closed w
 `acceptance-caller.yml` `on:` — `issues: [edited]` and `repository_dispatch: [acceptance-wanted]`.
 Concurrency: `acceptance-${{ issue.number || client_payload.issue }}`.
 
-Four jobs:
+Three jobs:
 
 | Job | Fires when | Does |
 |---|---|---|
-| `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body (a spec-gap amendment) | Checks out machine + target, notes `ACCEPTANCE_BASE = git rev-parse HEAD`, runs `acceptance.ts --refire "$PRD_NUMBER"` |
+| `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body (a spec-gap amendment) | Checks out machine + target, runs `acceptance.ts --refire "$PRD_NUMBER"`, committing each affected slice to that slice's own branch |
 | `author` | `action == 'acceptance-wanted'` — node 04's own dispatch door | Marks the ticket `running`, runs `acceptance.ts "$TICKET_NUMBER"`, unmarks on `always()` |
-| `land` | `needs: [refire, author]`, either upstream job set `authored == 'true'` | Holds `contents: write` to push — both upstream jobs run with the workflow's default `contents: read` |
-| `wake-reconciler` | `needs: [refire, author, land]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 5's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs. It is a job rather than a last step because a step inside `author` would hold that job's `contents: read` and could not send a dispatch ([ADR-0091](../adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md)); the same reason `land` is its own job |
+| `wake-reconciler` | `needs: [refire, author]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 5's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs |
+
+There is no `land` job. [ADR-0186](../adr/0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md)
+put the lane on `implement/issue-N`, the branch lane 05 already cuts, which deleted the patch-artifact
+replay onto `main` and the repo-wide `land-${{ github.repository }}` group that serialised every slice
+behind every other one.
 
 ---
 
@@ -356,20 +360,26 @@ Post-response wire checks, before anything is written:
 
 ---
 
-## Node 10 — `landAuthoredBatch()` · [wire] [stop]
+## Node 10 — judge, commit, push · [wire] [stop]
 
 `acceptance.ts`
 
-Runs just the newly written `.test.ts` files against the target's own `vitest.config.ts`:
+Runs just the newly written test files against the target's own `vitest.config.ts`, then the
+**stop** venue (`typecheck`, `lint_one`, `test_related`) on those files alone — not the full push
+gate, which a branch has nothing to protect from and the pull request's own CI runs once at merge:
 
 | Refuses when |
 |---|
 | The file fails to collect at all |
 | Any test is *red* under `test.fails` semantics — meaning it already passes: "a vacuous test or one about work already done" |
-| The authored files don't lint (`eslint`) |
+| A returned path exists on disk and was not shown to the author, so it would be rewritten from memory |
+| A shown file comes back with fewer test cases than it was given |
+| The stop venue is red on an authored file |
 
-Only then: `git add`, `git commit`. Landing mode (`ACCEPTANCE_LANDING` env, set to `"commit"` by
-both jobs) stops here with no push — this job holds `contents: read` only.
+A red batch is handed back to the same session with the judgement, up to `REPAIR_ROUNDS` times.
+Only then: `git checkout -B implement/issue-N` (off `origin/implement/issue-N` where a sibling run
+already pushed one), `git add`, `git commit`, `git push origin HEAD:implement/issue-N`, and a
+`ticket-ready` dispatch when the payload said `ready`.
 
 ### edge — the commit message
 
@@ -385,65 +395,6 @@ Part of #162
 
 ---
 
-## Node 11 — bundle · [wire]
-
-[`.github/actions/acceptance-bundle`](../../.github/actions/acceptance-bundle) (run by both
-`refire` and `author`)
-
-`git format-patch "$ACCEPTANCE_BASE..HEAD"`; a non-empty result is uploaded as the
-`acceptance-commits` artifact, `authored=true`. This is the mechanism that carries commits over a
-job boundary as a patch series rather than a push — the write-capable token lives only in `land`,
-so the model job's own commits are smuggled out as an artifact instead of pushed directly.
-
----
-
-## Node 12 — the `land` job · [wire] [stop]
-
-`acceptance.ts`, `land` job
-
-Checks out the target **fresh** at `main` (not the worktree the author job used), downloads the
-patch artifact, replays it: `git am --3way`, `git fetch origin main && git rebase origin/main`,
-then re-runs the **full gauntlet** (`npm run check` — the same command every other venue runs)
-against the replayed tree, and only then `git push origin HEAD:main`, itself a rebase-and-push
-loop of five attempts.
-
-### edge — when the replay conflicts, author again once
-
-Siblings are authored in parallel from one base; `concurrency: land-${{ github.repository }}`
-serialises only the landings. Two slices with no existing test file for a shared subject both
-*create* it, and the second to land hits `CONFLICT (add/add)` on a file that is now on `main`
-(#438 and #439, 2026-09-10). A fresh author against current `main` would simply append to it.
-
-| | |
-|---|---|
-| **The signal** | `git am` or either `git rebase origin/main` fails: the step writes `conflict=true` to its own output (`steps.replay`, `steps.push`) and exits 1. Any other failure leaves it unset |
-| **First conflict** | `Author again against the main that moved, once` fires on `failure() && acceptance-wanted && conflict && client_payload.refire != '1'`: comments the ticket, then dispatches `acceptance-wanted` for the same ticket, carrying the **same `ready` flag the original dispatch had** and `refire: 1`. The author job starts over on the `main` that moved |
-| **Second conflict** | The re-fired run arrives with `refire: 1`, so a conflict now falls through to the `needs-human` step below; the one-re-fire bound rides the payload, not the tracker |
-| **Not a conflict** | A red gauntlet, a failed download, a push that never wins after five tries: `conflict` is unset, straight to `needs-human` as before |
-
-```json
-{"event_type": "acceptance-wanted", "client_payload": {"issue": 439, "ready": "1", "refire": "1"}}
-```
-
-The `ready` flag is carried rather than forced to `1` on purpose: a slice authored while still
-blocked (`ready: 0`) must not become a `ticket-ready` ring to lane 05 because a sibling happened
-to land first.
-
-### edge — the final ring to lane 05
-
-```
-if: github.event.action == 'acceptance-wanted' && github.event.client_payload.ready == '1'
-gh api --method POST repos/{owner}/{repo}/dispatches -f event_type=ticket-ready -f 'client_payload[issue]=...'
-```
-
-Fires only on the `acceptance-wanted` door — never on `refire` — and only when the *original*
-dispatch already said `ready: 1`. A slice authored while still blocked (#421, at publish time)
-lands its test on `main` but isn't told to lane 05 yet; node 04's own next pass finds the
-now-existing test via `testsForCriteria` and dispatches `ticket-ready` directly, once #420
-delivers.
-
----
-
 ## What each stage may touch
 
 | Stage | Model | Reads the target | Writes | Can act on the tracker |
@@ -452,8 +403,7 @@ delivers.
 | PRD self-close (node 02) | — | Runs the spec's own `check:` command | Closes the PRD via `bin/close-ticket` | Comments verdict/disagreement |
 | `to-build` admission (node 03) | — | Ticket body | — | One standing comment per ticket |
 | readiness + dispatch (node 04) | — | `.test.ts` files under `SUITE_ROOTS` | — | Two dispatch types |
-| `refire`/`author` (nodes 08–10) | opus-5, no tools | Prompt-inlined claimed files only, plus the tests it just wrote | Commits (not pushed) | Marks `running` |
-| `land` (node 12) | — | Replays a patch bundle onto fresh `main` | Pushes to `main` after a full gauntlet | Dispatches `ticket-ready`; on a first replay conflict, `acceptance-wanted` back to its own author; `needs-human` otherwise |
+| `refire`/`author` (nodes 08–10) | sonnet-5, no tools | Prompt-inlined claimed files and the tests beside them, plus the tests it just wrote | Pushes `implement/issue-N` | Marks `running`; dispatches `ticket-ready` |
 
 ---
 
@@ -465,11 +415,10 @@ delivers.
 | free, no comment | Node 01's fetch phase | Tracker reads fail → `degraded`, silent to the tracker |
 | free, standing comment | `toBuildRefusal()` | Malformed shape or an immutable-set claim on a `to-build` issue |
 | 0 model calls | `evaluateSpecCheck` | An unrunnable spec — comments and adds `needs-human` |
-| 1 opus call | `authorAcceptanceTests` post-response checks | Bad JSON; a file outside the suite roots; a `.test.ts` missing its `#N` marker; no test file returned at all |
-| after the model, before commit | `landAuthoredBatch` | Collection failure, an accidentally-green test, or a lint failure |
-| after commit, in `land` | `git am --3way` / rebase | The patch doesn't apply or the rebase conflicts. The first time on a ticket this re-fires `acceptance-wanted` (`refire: 1`, same `ready`); a conflict on the re-fired run is the `needs-human` |
-| after replay | `land`'s `npm run check` | Any gauntlet slot red against the replayed tree |
-| 10 min / 30 min | job `timeout-minutes` | `dispatch-reconcile`: 10 min; `acceptance.yml`'s `refire`/`author`/`land`: 30 each, and its `wake-reconciler` tail 5. A cap death here is a strike on the ticket (node 04's ladder), so the wake it rings starts the author again at most twice |
+| 1 model call | `authorAcceptanceTests` post-response checks | Bad JSON; a file outside the suite roots; a `.test.ts` missing its `#N` marker; no test file returned at all; a path that exists and was never shown; a shown file returned with fewer test cases |
+| after the model, before commit | `judgeAuthoredBatch` | Collection failure, an accidentally-green test, or a red stop venue on an authored file. Handed back to the same session up to `REPAIR_ROUNDS` times before it is a strike |
+| after commit | `git push origin HEAD:implement/issue-N` | The push fails; the ticket takes a strike and the ladder says what runs next |
+| 10 min / 30 min | job `timeout-minutes` | `dispatch-reconcile`: 10 min; `acceptance.yml`'s `refire`/`author`: 30 each, and its `wake-reconciler` tail 5. A cap death here is a strike on the ticket (node 04's ladder), so the wake it rings starts the author again at most twice |
 
 ---
 

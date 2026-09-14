@@ -42,7 +42,7 @@ import {
 import { runVitestJson, type TestRunResult } from "../shared/vitest-json";
 import { authorsPublishedSlice, issueEditFrom, PRD_LABEL, refiresAffectedSlices } from "./doors";
 
-export const AUTHOR_MODEL = "claude-opus-5";
+export const AUTHOR_MODEL = "claude-sonnet-5";
 
 export const AUTHOR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/author/prompt.md";
 
@@ -432,9 +432,11 @@ function pushFailedNote(branch: string): string {
   );
 }
 
+export const REPAIR_ROUNDS = 3;
+
 export function authorRedNote(judgement: string): string {
   return [
-    "The acceptance author's batch was still red after its one repair round, so nothing landed. This run counts as a strike; the ladder says what runs next.",
+    `The acceptance author's batch was still red after all ${REPAIR_ROUNDS} of its repair rounds, so nothing landed. This run counts as a strike; the ladder says what runs next.`,
     "",
     "```",
     gateOutputTail(judgement),
@@ -457,16 +459,24 @@ function batchPaths(batch: AuthoredBatch): string[] {
   return batch.files.map((file) => file.path);
 }
 
-async function authorWithOneRepair(deps: AuthorDeps, judge: JudgeDeps, budget: LaneBudget): Promise<Attempt> {
+async function authorWithRepairs(
+  deps: AuthorDeps,
+  judge: JudgeDeps,
+  budget: LaneBudget,
+  rounds = REPAIR_ROUNDS,
+): Promise<Attempt> {
   const { suffixes } = suiteOf(deps);
-  const first = await authorAcceptanceTests(deps, budget);
-  const verdict = judgeAuthoredBatch(judge, batchPaths(first), suffixes);
-  if (verdict.ok) return { ok: true, paths: batchPaths(first) };
-  if (first.sessionId === undefined) return { ok: false, reason: verdict.reason };
+  let batch = await authorAcceptanceTests(deps, budget);
+  let verdict = judgeAuthoredBatch(judge, batchPaths(batch), suffixes);
 
-  const repaired = await repairAcceptanceTests(deps, first.sessionId, verdict.reason, budget);
-  const again = judgeAuthoredBatch(judge, batchPaths(repaired), suffixes);
-  return again.ok ? { ok: true, paths: batchPaths(repaired) } : { ok: false, reason: again.reason };
+  for (let round = 0; round < rounds && !verdict.ok; round++) {
+    const sessionId = batch.sessionId;
+    if (sessionId === undefined) break;
+    batch = await repairAcceptanceTests(deps, sessionId, verdict.reason, budget);
+    verdict = judgeAuthoredBatch(judge, batchPaths(batch), suffixes);
+  }
+
+  return verdict.ok ? { ok: true, paths: batchPaths(batch) } : { ok: false, reason: verdict.reason };
 }
 
 export interface RunAcceptanceDeps {
@@ -495,7 +505,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     deps.rung === FRESH_EYES_RUNG ? priorAttemptsNote(issueComments(deps.gh, deps.issueNumber)) : undefined;
   if (priorAttempts !== undefined) log("this ticket carries a strike, so the author is handed what the earlier runs died on");
 
-  const attempt = await authorWithOneRepair(
+  const attempt = await authorWithRepairs(
     { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite, priorAttempts },
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),

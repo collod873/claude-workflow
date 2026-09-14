@@ -25,7 +25,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0043 | [Write-on-surprise does not ship: the transcript auditor already carries W6](0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md) |
 | 0044 | [An unread document cannot be detected, so the backwards question back-stamps prose instead of deleting it](0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) |
 | 0047 | [The shape of the machine is an owner point: agents do not judge whether a mechanism should exist](0047-the-shape-of-the-machine-is-an-owner-point-agents-do-not-jud.md) |
-| 0053 | [The acceptance lane pushes to main, so the immutability rule has no exemption and needs no second identity](0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md) |
 | 0054 | [An implementation PR's checks fire by repository_dispatch, so the workflow that judges it is always trunk's](0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md) |
 | 0060 | [The spec author reads the repo through an allow list and cannot reach a second source of intent](0060-the-spec-author-reads-the-repo-through-an-allow-list-and-can.md) |
 | 0064 | [A counter names an event, a count, an issue and an action, and is measured against the history it would have read](0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) |
@@ -103,6 +102,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0183 | [The acceptance author gets a second rung, and it is the strike it already earned](0183-the-acceptance-author-gets-a-second-rung-and-it-is-the-strik.md) |
 | 0184 | [One rules source spells the ticket shape both validators enforce, and the TypeScript warnings half is gone](0184-one-rules-source-spells-the-ticket-shape-both-validators-enf.md) |
 | 0185 | [PATH_LINE_RE, the canary-graph trigger stubs, and gh_support.py stay split on purpose](0185-path-line-re-canary-graph-triggers-and-gh-support-stay-split.md) |
+| 0186 | [Acceptance lands on the ticket's branch, because ADR-0150 deleted the rule its push to main avoided](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) |
 
 ## Retired
 
@@ -145,6 +145,7 @@ demotion; nothing here binds later work.
 - [0050](0050-the-sweep-reads-this-repo-only-the-cross-repo-title-sweep-wa.md) note
 - [0051](0051-the-accept-commits-its-rulings-straight-to-main-because-a-pu.md) note
 - [0052](0052-a-comment-clears-a-stage-1-refusal-because-the-change-reques.md) note
+- [0053](0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md) superseded
 - [0055](0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md) superseded
 - [0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) superseded
 - [0057](0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) superseded
@@ -200,4 +201,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-185 ADRs · 95 constraint · 44 note · 46 superseded · 19,476 words total.
+186 ADRs · 95 constraint · 44 note · 47 superseded · 19,625 words total.

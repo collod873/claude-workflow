@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-26
+superseded_by: ADR-0186
 amends: ADR-0032, ADR-0033
 reversal: Reversing it means re-opening lane 04 on pull requests, restoring an exemption to the immutability refusal and buying an identity to authenticate it — a GitHub App or machine account, a stored credential and its renewal — plus edits to `immutable-set.ts`, `land-gate.ts`, `push-gate.ts`, `verify.yml` and `acceptance.yml`, and every repo the pipeline is installed into acquires that credential too.
 ---
