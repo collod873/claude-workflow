@@ -98,12 +98,17 @@ export interface TrackerOptions {
   fail?: "issues" | "refs" | "edges" | "runs" | "pulls";
 }
 
+function matchingRefsPrefix(path: string): string | undefined {
+  for (const prefix of ["implement/", "accept/"]) {
+    if (path === matchingRefsPath(prefix)) return prefix;
+  }
+  return undefined;
+}
+
 export function authoredOn(options: TrackerOptions, tickets: number[]): TrackerOptions {
-  const branches = tickets.map((ticket) => `implement/issue-${ticket}`);
   return {
     ...options,
-    claimed: [...(options.claimed ?? []), ...branches],
-    withCommits: [...(options.withCommits ?? []), ...branches],
+    claimed: [...(options.claimed ?? []), ...tickets.map((ticket) => `accept/issue-${ticket}`)],
   };
 }
 
@@ -162,9 +167,11 @@ export function trackerWith(options: TrackerOptions): Tracker {
 
   const answerApi = (args: string[]): string | undefined => {
     const path = args[1] ?? "";
-    if (path === matchingRefsPath("implement/")) {
+    const prefix = matchingRefsPrefix(path);
+    if (prefix !== undefined) {
       if (options.fail === "refs") throw new Error("gh: 403");
-      return JSON.stringify((options.claimed ?? []).map((branch) => `refs/heads/${branch}`));
+      const under = (options.claimed ?? []).filter((branch) => branch.startsWith(prefix));
+      return JSON.stringify(under.map((branch) => `refs/heads/${branch}`));
     }
     const compared = comparePathMatcher.exec(path)?.[2];
     if (compared !== undefined) {

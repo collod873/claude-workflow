@@ -3,7 +3,7 @@ import { changedPaths } from "../shared/changed-paths";
 import { laneBudget } from "../shared/lane-budget";
 import { execGh, ticketComments, type GhExec, type TicketComment } from "../shared/gh";
 import { gateGrowth } from "../shared/gate-files";
-import { deriveAnswer, ImplementerReply, landUnderGate, sayOnTicket, type ImplementOutcome } from "../shared/implementation-landing";
+import { baseOnTicketBranch, deriveAnswer, ImplementerReply, landUnderGate, sayOnTicket, type ImplementOutcome } from "../shared/implementation-landing";
 import { IMMUTABLE_SET } from "../shared/immutable-set";
 import { BUILDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
@@ -173,6 +173,7 @@ export function runMechanic(deps: MechanicDeps): Promise<MechanicOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("mechanic"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  baseOnTicketBranch(deps.git, deps.issueNumber, log);
   markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
   return repairAndOpen(deps, budget, branch, log);
 }

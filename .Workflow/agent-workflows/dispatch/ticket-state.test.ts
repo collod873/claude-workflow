@@ -181,7 +181,7 @@ describe("what the record does not go back to the tracker for", () => {
 describe("a read it cannot finish is said once, not half-answered", () => {
   it.each([
     { what: "the open issues", fail: "issues" as const, names: "readable list of open issues" },
-    { what: "the implement refs", fail: "refs" as const, names: "reads as unstarted" },
+    { what: "the accept refs", fail: "refs" as const, names: "still wanting it" },
     { what: "the dependency graph", fail: "edges" as const, names: "dependency graph" },
   ])("says the pass is degraded when it cannot read $what", ({ fail, names }) => {
     const states = stateOver({ open: [{ number: 20, title: "A slice" }], fail });

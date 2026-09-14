@@ -6,7 +6,7 @@ import type { GhExec } from "./gh";
 import type { GitExec } from "./git";
 import { touchesImmutableSet } from "./immutable-set";
 import { escalateToOwner } from "./needs-human";
-import { dispatchMechanicWanted } from "./ready-set";
+import { acceptanceBranch, dispatchMechanicWanted, implementationBranch } from "./ready-set";
 import { reason } from "./reason";
 import { gateOutputTail, type GateVerdict } from "./run-gauntlet";
 import { extractCriteria, type TicketRead } from "./ticket-shape";
@@ -93,13 +93,28 @@ function commitPushAndDiff(
   rebaseFirst: boolean,
   skipPushHook: boolean,
 ): string {
-  git(["checkout", "-b", branch]);
+  git(["checkout", "-B", branch]);
   git(["add", ...paths]);
   git(["commit", "-m", commitMessage]);
   if (rebaseFirst) rebaseOntoTrunk(git);
   git(skipPushHook ? ["push", "--no-verify", "origin", `HEAD:${branch}`] : ["push", "origin", `HEAD:${branch}`]);
   git(["reset", "HEAD~1"]);
   return git(["diff", "--", ...paths]);
+}
+
+export function baseOnTicketBranch(git: GitExec, issueNumber: number, log: (line: string) => void): void {
+  const work = implementationBranch(issueNumber);
+  for (const branch of [work, acceptanceBranch(issueNumber)]) {
+    try {
+      git(["fetch", "origin", branch]);
+      git(["checkout", "-B", work, "FETCH_HEAD"]);
+      log(`this run builds on \`${branch}\``);
+      return;
+    } catch {
+      continue;
+    }
+  }
+  log(`no branch stands for #${issueNumber}, so this run starts from trunk and its acceptance test is missing.`);
 }
 
 export function worktreeChanges(git: GitExec, paths: string[]): string[] {

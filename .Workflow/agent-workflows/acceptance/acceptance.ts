@@ -17,7 +17,7 @@ import { AUTHOR_CHECK_CONTRACT_LEAD } from "../shared/house-style";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
-import { FRESH_EYES_RUNG, implementationBranch } from "../shared/ready-set";
+import { acceptanceBranch, FRESH_EYES_RUNG } from "../shared/ready-set";
 import { strikesIn } from "../shared/strikes";
 import { gateOutputTail, stopVenueVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
@@ -533,7 +533,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     return { verdict: "refused", reason: attempt.reason };
   }
 
-  const branch = implementationBranch(deps.issueNumber);
+  const branch = acceptanceBranch(deps.issueNumber);
   try {
     commitAuthoredBatch({
       git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),

@@ -5,13 +5,13 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
-import { jobLogsPath, runJobsPath, workflowRunsPath } from "../shared/gh-paths";
+import { GIT_REFS_PATH, jobLogsPath, runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { findJobByName } from "../shared/job-match";
 import { LANDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
-import { announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
+import { acceptanceBranch, announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
 import { dispatchVerify } from "../shared/verify-dispatch";
@@ -259,8 +259,15 @@ function blockOnConflict(
   gh(["pr", "comment", pr, "--body", body]);
 }
 
-function mergePr(gh: GhExec, pr: string): void {
+function mergePr(gh: GhExec, pr: string, ticket: number | undefined): void {
   gh(["pr", "merge", pr, "--merge", "--delete-branch"]);
+  if (ticket === undefined) return;
+  const authored = acceptanceBranch(ticket);
+  try {
+    gh(["api", "--method", "DELETE", `${GIT_REFS_PATH}/heads/${authored}`]);
+  } catch (err) {
+    console.error(`merged #${ticket} but could not retire \`${authored}\`: ${reason(err)}`);
+  }
 }
 
 const TRUNK_CI_WORKFLOW = "ci.yml";
@@ -374,7 +381,7 @@ function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome 
     return { merged: false, reason: "unjudged" };
   }
 
-  mergePr(deps.gh, deps.pr);
+  mergePr(deps.gh, deps.pr, pullRequest.ticket);
   ringTrunkCi(deps.gh, deps.repoDir);
   if (pullRequest.title === RATIFIER_PR_TITLE) dispatchRatifierMerged(deps.gh, deps.pr);
   const closing = closeMergedTicket(deps, pullRequest.ticket, range);

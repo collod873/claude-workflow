@@ -183,8 +183,8 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     expect(outcome.action).toBe("clear");
   });
 
-  it("rings lane 05 for a slice whose implement/issue-<n> ref carries commits and no pull request, since that is an authored test nobody has built", () => {
-    const tracker = leftBehind({ withCommits: ["implement/issue-20"] });
+  it("rings lane 05 for a slice whose accept/issue-<n> ref stands and whose implement ref has no pull request, since that is an authored test nobody has built", () => {
+    const tracker = leftBehind({ claimed: ["accept/issue-20"] });
 
     const outcome = reconcileOver(tracker);
 
@@ -193,7 +193,7 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
     expect(outcome.action).toBe("dispatched");
   });
 
-  it("rings lane 04 for a bare implement/issue-<n> ref, since a claim carrying nothing is a ticket still wanting a test", () => {
+  it("rings lane 04 when no accept/issue-<n> ref stands, however many implement refs do", () => {
     const tracker = leftBehind();
 
     const outcome = reconcileOver(tracker);
@@ -930,3 +930,36 @@ test(
     expect(wiredEdges(tracker)).toEqual([81]);
   },
 );
+
+describe("one writer per ref, so no reader has to guess who wrote it", () => {
+  const readyTicket = (held: Partial<TrackerOptions> = {}) =>
+    trackerWith({
+      open: [{ number: 20, title: "A slice", blockedBy: [10] }],
+      closed: [{ number: 10, stateReason: "completed", merged: true }],
+      ...held,
+    });
+
+  it("reads a ticket whose accept ref stands as one wanting a build, whatever implement refs are lying around", () => {
+    const tracker = readyTicket({ claimed: ["accept/issue-20", "implement/issue-20"] });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual(["ticket-ready"]);
+  });
+
+  it("reads a ticket with only an implement ref as one still wanting a test, since implement never writes the acceptance test", () => {
+    const tracker = readyTicket({ claimed: ["implement/issue-20"] });
+
+    reconcileOver(tracker);
+
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual(["acceptance-wanted"]);
+  });
+
+  it("asks for no compare, since a ref either stands or it does not", () => {
+    const tracker = readyTicket({ claimed: ["accept/issue-20"] });
+
+    reconcileOver(tracker);
+
+    expect(tracker.calls.filter((call) => call.join(" ").includes("/compare/"))).toEqual([]);
+  });
+});

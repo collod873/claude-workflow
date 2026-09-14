@@ -105,6 +105,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0188 | [The reconciler is the only sender of acceptance-wanted and ticket-ready, so a ticket that misses a ring is picked up by the next recompute](0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md) |
 | 0189 | [A ticket's stage is read from its artifacts; a standing branch is not a claim](0189-a-ticket-s-stage-is-read-from-its-artifacts-a-standing-branc.md) |
 | 0190 | [A lane's concurrency group is its lock; no lane claims a git ref](0190-a-lane-s-concurrency-group-is-its-lock-no-lane-claims-a-git.md) |
+| 0191 | [Every ref has one writer: acceptance lands on `accept/issue-N` and implement branches from it](0191-every-ref-has-one-writer-acceptance-lands-on-accept-issue-n.md) |
 
 ## Retired
 
@@ -205,4 +206,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-190 ADRs · 97 constraint · 44 note · 49 superseded · 20,180 words total.
+191 ADRs · 98 constraint · 44 note · 49 superseded · 20,292 words total.

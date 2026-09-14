@@ -219,13 +219,13 @@ describe("runImplement builds the ticket and hands the pull request to Verify", 
     await runImplement(deps);
 
     const order = gitCalls.map((call) => call[0]);
+    const trunkFetch = gitCalls.findIndex((call) => call.join(" ") === "fetch origin main");
     expect(order.indexOf("commit")).toBeGreaterThanOrEqual(0);
-    expect(order.indexOf("fetch")).toBeGreaterThan(order.indexOf("commit"));
-    expect(order.indexOf("rebase")).toBeGreaterThan(order.indexOf("fetch"));
-    expect(order.indexOf("push")).toBeGreaterThan(order.indexOf("rebase"));
-    expect(gitCalls[order.indexOf("fetch")]).toEqual(["fetch", "origin", "main"]);
+    expect(trunkFetch).toBeGreaterThan(order.indexOf("commit"));
+    expect(order.indexOf("rebase")).toBeGreaterThan(trunkFetch);
+    expect(order.lastIndexOf("push")).toBeGreaterThan(order.indexOf("rebase"));
     expect(gitCalls[order.indexOf("rebase")]).toEqual(["rebase", "origin/main"]);
-    expect(gitCalls[order.indexOf("push")]).toEqual(["push", "--no-verify", "origin", `HEAD:${BRANCH}`]);
+    expect(gitCalls[order.lastIndexOf("push")]).toEqual(["push", "--no-verify", "origin", `HEAD:${BRANCH}`]);
   });
 });
 

@@ -29,6 +29,7 @@ import {
 import { BUILDING_LABEL, markLane } from "../shared/labels";
 import { laneBudget } from "../shared/lane-budget";
 import {
+  baseOnTicketBranch,
   deriveAnswer,
   ImplementerReply,
   landUnderGate,
@@ -198,6 +199,7 @@ export function runImplement(deps: ImplementDeps): Promise<ImplementOutcome> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const branch = implementationBranch(deps.issueNumber);
   const budget = startLaneBudget(laneBudget("implement"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
+  baseOnTicketBranch(deps.git, deps.issueNumber, log);
   markLane(deps.gh, deps.issueNumber, BUILDING_LABEL);
   return buildAndOpen(deps, budget, branch, log);
 }

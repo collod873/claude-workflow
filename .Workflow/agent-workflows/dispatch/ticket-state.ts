@@ -1,11 +1,12 @@
 import { z } from "zod";
 import type { GhExec } from "../shared/gh";
-import { blockedByPath, comparePath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
+import { blockedByPath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
 import { isByHandClaim } from "../shared/immutable-set";
 import { BY_HAND_LABEL, IDEA_LABEL, isLaneLabel, NEEDS_HUMAN_LABEL, PRD_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import {
+  acceptanceBranch,
+  ACCEPTANCE_BRANCH_PREFIX,
   implementationBranch,
-  IMPLEMENTATION_BRANCH_PREFIX,
   readySlices,
   unreachableSlices,
   type Delivery,
@@ -243,20 +244,15 @@ function prIsMerged(gh: GhExec, pr: number): boolean {
   }
 }
 
-function fetchClaimedBranches(gh: GhExec): Set<string> | null {
+function fetchBranchesUnder(gh: GhExec, prefix: string): Set<string> | null {
   try {
-    const raw = gh(["api", matchingRefsPath(IMPLEMENTATION_BRANCH_PREFIX), "--jq", "[.[].ref]"]);
+    const raw = gh(["api", matchingRefsPath(prefix), "--jq", "[.[].ref]"]);
     const parsed = Refs.safeParse(JSON.parse(raw));
     if (!parsed.success) return null;
     return new Set(parsed.data.map((ref) => ref.replace(/^refs\/heads\//, "")));
   } catch {
     return null;
   }
-}
-
-function commitsAhead(gh: GhExec, branch: string, base: string): number {
-  const ahead = (JSON.parse(gh(["api", comparePath(base, branch)])) as { ahead_by?: unknown }).ahead_by;
-  return typeof ahead === "number" ? ahead : 1;
 }
 
 function fetchOpenPrBranches(gh: GhExec): Set<string> | null {
@@ -278,23 +274,14 @@ export function deliveryOf(blocker: Blocker, shipped: () => boolean): Delivery {
 
 interface Progress {
   inFlight: Set<number>;
-  claimed: Set<string>;
+  authored: Set<string>;
   openPrBranches: Set<string>;
 }
 
-function stageOf(gh: GhExec, number: number, progress: Progress, log: (line: string) => void): Stage {
+function stageOf(number: number, progress: Progress): Stage {
   if (progress.inFlight.has(number)) return "busy";
-  const branch = implementationBranch(number);
-  if (!progress.claimed.has(branch)) return "needs-test";
-  if (progress.openPrBranches.has(branch)) return "in-review";
-  try {
-    if (commitsAhead(gh, branch, "main") > 0) return "needs-build";
-  } catch (err) {
-    log(`#${number}: could not read what \`${branch}\` carries, so it is left alone this pass: ${reason(err)}`);
-    return "busy";
-  }
-  log(`#${number}: \`${branch}\` stands with nothing on it, so it is a bare claim and the ticket still wants a test.`);
-  return "needs-test";
+  if (progress.openPrBranches.has(implementationBranch(number))) return "in-review";
+  return progress.authored.has(acceptanceBranch(number)) ? "needs-build" : "needs-test";
 }
 
 function startedTicket(stage: Stage): boolean {
@@ -414,11 +401,11 @@ export function ticketState(input: TicketStateInput): TicketStates {
   const issues = fetchOpenIssues(gh, log);
   if (issues === null) return unreadable("the tracker did not return a readable list of open issues.");
 
-  const claimed = fetchClaimedBranches(gh);
-  if (claimed === null) {
+  const authored = fetchBranchesUnder(gh, ACCEPTANCE_BRANCH_PREFIX);
+  if (authored === null) {
     return unreadable(
-      `the refs API did not return a readable list under \`${IMPLEMENTATION_BRANCH_PREFIX}\`, and ` +
-        "without it every slice reads as unstarted.",
+      `the refs API did not return a readable list under \`${ACCEPTANCE_BRANCH_PREFIX}\`, and ` +
+        "without it a ticket whose acceptance test is already written reads as one still wanting it.",
     );
   }
 
@@ -436,8 +423,8 @@ export function ticketState(input: TicketStateInput): TicketStates {
   }
   const runs = fetchedRuns ?? [];
 
-  const progress: Progress = { inFlight: ticketsInFlight(runs), claimed, openPrBranches };
-  const stages = new Map(issues.map((issue) => [issue.number, stageOf(gh, issue.number, progress, log)]));
+  const progress: Progress = { inFlight: ticketsInFlight(runs), authored, openPrBranches };
+  const stages = new Map(issues.map((issue) => [issue.number, stageOf(issue.number, progress)]));
 
   const graph = buildGraph(gh, issues, stages, log);
   if (graph === null) return unreadable("the dependency graph could not be read for every open issue.");

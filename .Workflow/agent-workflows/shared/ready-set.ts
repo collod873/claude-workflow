@@ -19,6 +19,12 @@ export function implementationBranch(issueNumber: number): string {
 
 export const IMPLEMENTATION_BRANCH_PREFIX = "implement/";
 
+export function acceptanceBranch(issueNumber: number): string {
+  return `accept/issue-${issueNumber}`;
+}
+
+export const ACCEPTANCE_BRANCH_PREFIX = "accept/";
+
 const IMPLEMENTATION_BRANCH_RE = (() => {
   const [prefix, suffix] = implementationBranch(0).split("0");
   return new RegExp(`^${prefix}(\\d+)${suffix}$`);

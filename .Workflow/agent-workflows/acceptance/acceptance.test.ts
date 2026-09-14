@@ -391,14 +391,14 @@ describe("judgeAuthoredBatch", () => {
 
 function committing(onOrigin: boolean): { deps: CommitDeps; git: ReturnType<typeof createFakeGit> } {
   const git = createFakeGit((args) =>
-    args[0] === "ls-remote" ? (onOrigin ? "abc123\trefs/heads/implement/issue-162\n" : "") : "",
+    args[0] === "ls-remote" ? (onOrigin ? "abc123\trefs/heads/accept/issue-162\n" : "") : "",
   );
   return {
     deps: {
       git: git.git,
       paths: BATCH,
       commitMessage: "test: author acceptance tests for #162 from the spec alone",
-      branch: "implement/issue-162",
+      branch: "accept/issue-162",
       log: () => {},
     },
     git,
@@ -410,11 +410,11 @@ describe("commitAuthoredBatch", () => {
     const { deps, git } = committing(false);
     commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
-      ["ls-remote", "--heads", "origin", "implement/issue-162"],
-      ["checkout", "-B", "implement/issue-162"],
+      ["ls-remote", "--heads", "origin", "accept/issue-162"],
+      ["checkout", "-B", "accept/issue-162"],
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
-      ["push", "--no-verify", "origin", "HEAD:implement/issue-162"],
+      ["push", "--no-verify", "origin", "HEAD:accept/issue-162"],
     ]);
     expect(git.calls.flat()).not.toContain("HEAD:main");
   });
@@ -429,12 +429,12 @@ describe("commitAuthoredBatch", () => {
     const { deps, git } = committing(true);
     commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
-      ["ls-remote", "--heads", "origin", "implement/issue-162"],
-      ["fetch", "origin", "implement/issue-162"],
-      ["checkout", "-B", "implement/issue-162", "origin/implement/issue-162"],
+      ["ls-remote", "--heads", "origin", "accept/issue-162"],
+      ["fetch", "origin", "accept/issue-162"],
+      ["checkout", "-B", "accept/issue-162", "origin/accept/issue-162"],
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
-      ["push", "--no-verify", "origin", "HEAD:implement/issue-162"],
+      ["push", "--no-verify", "origin", "HEAD:accept/issue-162"],
     ]);
   });
 });
@@ -572,7 +572,7 @@ describe("runAcceptanceAuthor", () => {
     expect(commit?.[2]).toContain(`#${ISSUE}`);
     expect(commit?.[2]).toContain(TEST_PATH);
     expect(git.calls.filter((call) => call[0] === "push")).toEqual([
-      ["push", "--no-verify", "origin", `HEAD:implement/issue-${ISSUE}`],
+      ["push", "--no-verify", "origin", `HEAD:accept/issue-${ISSUE}`],
     ]);
   });
 
@@ -960,7 +960,7 @@ describe("the acceptance lane never reaches trunk", () => {
     expect(outcome).toEqual({ verdict: "pushed" });
 
     const pushes = git.calls.filter((call) => call[0] === "push");
-    expect(pushes).toEqual([["push", "--no-verify", "origin", `HEAD:implement/issue-${ISSUE}`]]);
+    expect(pushes).toEqual([["push", "--no-verify", "origin", `HEAD:accept/issue-${ISSUE}`]]);
     expect(git.calls.flat()).not.toContain("main");
     expect(git.calls.filter((call) => call[0] === "rebase"), "a branch push races nobody").toHaveLength(0);
   });
