@@ -1,5 +1,8 @@
 {
   "claimLimit": 8,
+  "notes": {
+    "evidenceGrammar": "PATH_LINE_RE stays two hand-typed regexes, one per validator, because \\w and \\d are Unicode-wide in Python and ASCII-only in JavaScript; a shared source would compile the same pattern into two different meanings. ADR-0185."
+  },
   "fragments": {
     "checkMarkerDelim": "(?:—|–|(?<=[ \\t])-{1,2}(?=[ \\t]))",
     "criteriaItem": "^[ \\t]*-[ \\t]*\\[[ xX]\\]"

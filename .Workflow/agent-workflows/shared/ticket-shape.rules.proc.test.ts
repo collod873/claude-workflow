@@ -65,7 +65,7 @@ function namesNeedle(file: string, needle: string): boolean {
   }
 }
 
-test.fails("#552.4: both validators still compile their shared grammar from that one file", () => {
+test("#552.4: both validators still compile their shared grammar from that one file", () => {
   const rules = readRules();
   expect(JSON.stringify(rules)).toMatch(/ADR-\d{4}/);
 
@@ -76,7 +76,7 @@ test.fails("#552.4: both validators still compile their shared grammar from that
   expect(pythonVerdicts(HEADING_PROBES.map((probe) => probe.text))).toEqual(fromRulesFile);
 });
 
-test.fails("#552.5: the whole check contract holds - the recorded ADR number resolves to that landed ADR and the grammar still expands", () => {
+test("#552.5: the whole check contract holds - the recorded ADR number resolves to that landed ADR and the grammar still expands", () => {
   const rules = readRules();
   const referenced = [...JSON.stringify(rules).matchAll(/ADR-(\d{4})/g)].map((match) => match[1]);
   expect(referenced.length).toBeGreaterThan(0);
