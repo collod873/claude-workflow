@@ -8,7 +8,7 @@ function wake(over: Partial<WakeEvent> = {}): WakeEvent {
 }
 
 describe("#519: the reconciler reads the label edit that woke it instead of a job condition", () => {
-  it.each(["workflow_dispatch", "workflow_run", "push", "repository_dispatch"])("wakes for a %s ending whoever sent it", (eventName) => {
+  it.each(["workflow_dispatch", "push", "repository_dispatch"])("wakes for a %s ending whoever sent it", (eventName) => {
     expect(wakesReconciler(wake({ eventName, senderIsOwner: false, label: "" }))).toBe(true);
   });
 

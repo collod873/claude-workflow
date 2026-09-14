@@ -30,13 +30,12 @@ shell · **[stop]** can refuse and end the run.
 
 ## Part one — the recompute (`dispatch-reconcile.yml`)
 
-## Node 00 — the eight doors · [stop]
+## Node 00 — the seven doors · [stop]
 
 `dispatch-reconcile.yml` `jobs.reconcile.if`
 
 ```
 github.event_name == 'workflow_dispatch' ||
-github.event_name == 'workflow_run' ||
 github.event_name == 'push' ||
 github.event.action == 'session-captured' ||
 github.event.action == 'graph-changed' ||
@@ -56,10 +55,10 @@ github.event.action == 'run-ended' ||
 | **Door 3 — graph-changed** | Sent by lane 08 (`integrate.ts`, `announceGraphChanged`) once it merges — "a merge announces without interpreting" |
 | **Door 4 — to-build label** | `issues:labeled`, `label.name == 'to-build'`, sender must be the repo owner — the hand-off door ([`pipeline-labels.md`](pipeline-labels.md)) |
 | **Door 4b — hold lifted** | `issues:unlabeled`, `label.name` is `needs-human` or `by-hand`, sender must be the repo owner, arriving as `graph-changed`. Lifting a hold is the owner's whole recovery gesture after a strike decision and a to-build refusal; before this door the recompute heard a label added and never one removed, so a lifted hold waited for whatever event happened next (#471's `by-hand`, lifted 2026-09-11 10:51, dispatched only when #473's label rang a minute later) |
-| **Door 5 — a lane you started ended** | `workflow_run: completed` on every caller stub in the estate except this one (`ENDING_LANES`, `shared/lane-wiring.ts`, pinned to the caller set by test). GitHub fires it for every conclusion, `cancelled` included, **but starts a run from it only when the ended run's actor is a person**: a push-triggered Verify, a label you applied, a hand `workflow_dispatch`. A run the machine itself started with `repository_dispatch` under `GITHUB_TOKEN` (`actor: github-actions[bot]`, which is every Implement, Mechanic, Acceptance and To-Tickets run) completes without waking anything here; see *why the completed event was missed* below |
+| **Door 5 — deleted (#575)** | Was `workflow_run: completed` on every other caller stub in the estate. GitHub fired it for every conclusion, `cancelled` included, **but started a run from it only when the ended run's actor was a person**, so one identical failure read as bad luck on the run a human began and as a missing wire on the run the machine began; see *why the completed event was missed* below. The numbers below are left as they were, because other pages cite door 7 by number |
 | **Door 6 — main moved** | `push` to `main`, no paths filter: a docs-only commit that says `Closes #421` changes the graph as much as a code one |
-| **Door 7 — a lane the machine started says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml` and `mechanic.yml` under `if: always()`, and by `acceptance.yml`'s own `wake-reconciler` job (node 07), carrying only `run_id`. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step or job runs after the cap cancels the work (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
-| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 5, 6 and 7 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
+| **Door 7 — a lane that holds a claim says it ended** | `repository_dispatch: run-ended`, sent by the last step of `implement.yml`, `mechanic.yml` and `to-tickets.yml` under `if: always()`, and by `acceptance.yml`'s own `wake-reconciler` job (node 07), carrying only `run_id`. Those four are the lanes that hold a claim — a branch ref, a running label, a ticket half-published — and so the only ones whose death leaves state for the recompute to clear; a lane that holds nothing (Verify, Integrate, Review, the counters) rings its reader directly and its ending is nobody's business. Since #575 deleted door 5, this is the whole of how an ending reaches here, and it reaches here identically whoever started the run. This is the door a run killed at `timeout-minutes` actually arrives through: an `always()` step or job runs after the cap cancels the work (the running-label comes off the same way), and a `repository_dispatch` is the one bot-originated event GitHub honours. It says nothing about how the run ended; the recompute reads the run off the API as it always did ([ADR-0165](../adr/0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md), as amended by [ADR-0177](../adr/0177-a-run-the-machine-started-says-its-own-ending-because-github.md)) |
+| **Concurrency** | `dispatch-reconcile`, global, one at a time, `cancel-in-progress: false` — no per-issue key, because one run reconciles the whole tracker at once. Doors 6 and 7 make this the most-fired lane in the estate; each firing is a wire that reads and, usually, does nothing |
 
 ### Why the completed event was missed before #445
 
@@ -75,12 +74,17 @@ causes under `GITHUB_TOKEN` starts no workflow, `workflow_dispatch` and `reposit
 excepted, and a bot-started run's own completion counts as such an event. Door 5's claim that
 "every ending" reaches here was true only of endings a person had set in motion.
 
+#445 answered that by adding door 7 alongside door 5. #575 finished the job by deleting door 5:
+a door that opens on who started the chain rather than on what happened makes one failure read two
+different ways, which is worse than no door at all, and every ending that leaves state behind
+already arrives through door 7.
+
 ### edge — `EVENT_ACTION`, a collapse worth reading carefully
 
 ```
 EVENT_ACTION = (github.event_name == 'repository_dispatch' && github.event.action)
-            || (github.event_name == 'workflow_run' && 'run-ended')
             || (github.event_name == 'push' && 'main-moved')
+            || (github.event_name == 'issues' && github.event.action == 'unlabeled' && 'graph-changed')
             || 'session-captured'
 ```
 
@@ -88,7 +92,7 @@ EVENT_ACTION = (github.event_name == 'repository_dispatch' && github.event.actio
 `[session-captured, graph-changed, run-ended, main-moved]`. On doors 1 and 4 — the manual door and
 the label door — `EVENT_ACTION` is synthesized as the literal string `'session-captured'`, because
 neither is actually a `repository_dispatch` event and the expression falls through to its last
-right-hand side. The guard passes for all six doors, but not because the label and manual doors
+right-hand side. The guard passes for all seven doors, but not because the label and manual doors
 are secretly session-captured events; they simply never reach the branch that would read a real
 one. Reading `main()`'s guard alone, without this, makes it look like doors 1 and 4 shouldn't pass
 it at all. Nothing downstream reads which door opened: every door runs the same recompute.
@@ -296,7 +300,7 @@ Three jobs:
 |---|---|---|
 | `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body (a spec-gap amendment) | Checks out machine + target, runs `acceptance.ts --refire "$PRD_NUMBER"`, committing each affected slice to that slice's own branch |
 | `author` | `action == 'acceptance-wanted'` — node 04's own dispatch door | Marks the ticket `running`, runs `acceptance.ts "$TICKET_NUMBER"`, unmarks on `always()` |
-| `wake-reconciler` | `needs: [refire, author]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 5's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs |
+| `wake-reconciler` | `needs: [refire, author]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 7's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs |
 
 There is no `land` job. [ADR-0186](../adr/0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md)
 put the lane on `implement/issue-N`, the branch lane 05 already cuts, which deleted the patch-artifact

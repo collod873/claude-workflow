@@ -37,30 +37,6 @@ export const RUN_ENDED = "run-ended";
 
 export const MAIN_MOVED = "main-moved";
 
-export const ENDING_LANES = [
-  "Acceptance",
-  "Audit",
-  "Back-stamp",
-  "Bypass counter",
-  "Decline on revert",
-  "Fixer",
-  "Implement",
-  "Integrate",
-  "Lost-dispatch counter",
-  "Mechanic",
-  "Missing-trailer counter",
-  "Ratify",
-  "Ratify on PRD close",
-  "Record ratifications",
-  "Review",
-  "Run watchdog",
-  "Shape",
-  "Shape — accept",
-  "Spec",
-  "To-Tickets",
-  "Verify",
-] as const;
-
 export const SHAPE_LABELS_APPLIED = [LANE_OWNED.shapeRefused, NEEDS_HUMAN_LABEL];
 
 export const MACHINE_REPOSITORY = "collod873/claude-workflow";
@@ -371,7 +347,6 @@ const DISPATCH_REQUESTS_FILE = "$RUNNER_TEMP/dispatch-requests.jsonl";
 
 const RESOLVES_THE_ENDING = [
   "${{ (github.event_name == 'repository_dispatch' && github.event.action)",
-  `|| (github.event_name == 'workflow_run' && '${RUN_ENDED}')`,
   `|| (github.event_name == 'push' && '${MAIN_MOVED}')`,
   `|| (github.event_name == 'issues' && github.event.action == 'unlabeled' && '${GRAPH_CHANGED_DISPATCH_ACTION}')`,
   `|| '${LANE_OWNED.sessionCaptured}' }}`,
@@ -927,7 +902,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
   "dispatch-reconcile": {
     name: "Dispatch reconcile",
     stub: {
-      on: { repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED], issues: ["labeled", "unlabeled"], workflow_run: { workflows: [...ENDING_LANES], types: ["completed"] }, push: { branches: ["main"] }, workflow_dispatch: true },
+      on: { repository_dispatch: [LANE_OWNED.sessionCaptured, GRAPH_CHANGED_DISPATCH_ACTION, RUN_ENDED], issues: ["labeled", "unlabeled"], push: { branches: ["main"] }, workflow_dispatch: true },
       permissions: { contents: "write", issues: "write", actions: "read", "pull-requests": "read" },
       with: { verify_workflow: "verify-caller.yml" },
     },

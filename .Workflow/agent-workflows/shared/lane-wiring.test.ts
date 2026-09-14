@@ -21,7 +21,6 @@ import {
   DEAD_RUN_WIRES,
   emitReusable,
   emitStub,
-  ENDING_LANES,
   LANE_OWNED,
   LANE_WIRING,
   laneFacts,
@@ -185,11 +184,18 @@ describe("a name the registry spells for a lane agrees with the lane's own expor
     expect([...RECONCILE_DISPATCH_ACTIONS]).toContain(RUN_ENDED);
   });
 
-  it("the reconciler hears every Stub's end except its own, so no lane's death goes unread (#384)", () => {
-    const names = shipped.map(({ row }) => row.name).filter((name) => name !== LANE_WIRING["dispatch-reconcile"].name);
-    expect([...ENDING_LANES].sort()).toEqual(names.sort());
-    expect(LANE_WIRING["dispatch-reconcile"].stub?.on.workflow_run?.workflows).toEqual([...ENDING_LANES]);
+  it("neither half of the reconciler mentions workflow_run, a door that opens only when a person started the chain (#575)", () => {
+    expect(LANE_WIRING["dispatch-reconcile"].stub?.on.workflow_run).toBeUndefined();
+    expect(emitStub("dispatch-reconcile")).not.toContain("workflow_run");
+    expect(emitReusable("dispatch-reconcile")).not.toContain("workflow_run");
     expect([...RECONCILE_ENDINGS]).toEqual([...RECONCILE_DISPATCH_ACTIONS, MAIN_MOVED]);
+  });
+
+  it("every lane holding a claim reaches the reconciler by dispatch, the one wire a bot-started run may pull (#575)", () => {
+    const claimants = ["acceptance", "implement", "mechanic", "to-tickets"];
+    for (const { lane } of shipped) {
+      expect(laneFacts(lane).rings?.includes(RUN_ENDED) ?? false, lane).toBe(claimants.includes(lane));
+    }
   });
 
   it("a lane that holds a claim says its own ending, since GitHub starts nothing from a bot-started run's completion (#445)", () => {
