@@ -284,11 +284,8 @@ def main() -> None:
         check("the number is claimed at the land", landed.is_file(), list(
             (repo / "docs/adr").iterdir()))
         check("the draft is gone", not draft.is_file(), "draft survived")
-        check("the index is written by the land",
-              (repo / "docs/adr/INDEX.md").is_file(), "no index")
-        check("the index carries the ruling",
-              "Triage labels are positions, not verdicts"
-              in (repo / "docs/adr/INDEX.md").read_text(), "ruling missing")
+        check("the land writes no index; that is the adrs slot's job",
+              not (repo / "docs/adr/INDEX.md").exists(), "index written")
 
         r2 = run([BIN / "new-adr", "A second ruling that binds later work"], repo)
         d2 = repo / "docs/adr/draft-a-second-ruling-that-binds-later-work.md"
@@ -336,27 +333,17 @@ def main() -> None:
         r = run([BIN / "adr-check"], repo)
         check("a clean corpus exits 0", r.returncode == 0, r.stdout + r.stderr)
         check("the tally is printed", "2 ADRs" in r.stdout, r.stdout)
+        check("adr-check never mentions the index it no longer owns",
+              "INDEX.md" not in (r.stdout + r.stderr), r.stdout + r.stderr)
 
-        landed.write_text(landed.read_text().replace("status: constraint", "status: note"))
-        r = run([BIN / "adr-check"], repo)
-        check("a stale index is a finding", r.returncode == 1, r.stdout + r.stderr)
-        check("the finding names the repair", "--fix" in r.stderr, r.stderr)
         r = run([BIN / "adr-check", "--fix"], repo)
-        check("--fix re-renders and clears the finding", r.returncode == 0, r.stderr)
-        index = (repo / "docs/adr/INDEX.md").read_text()
-        title = "Triage labels are positions, not verdicts"
-        check("a demoted entry leaves the table", title not in index, index)
-        check("the demoted entry is still reachable by number",
-              f"- [0001]({landed.name}) note" in index, index)
-        check("the constraint is still in the table", "| 0002 | [" in index, index)
-        for a in adr_shape.load_corpus(repo):
-            check(f"{a.ident} appears somewhere in the index", a.path.name in index, index)
+        check("--fix is accepted for compatibility and writes no index",
+              r.returncode == 0 and not (repo / "docs/adr/INDEX.md").exists(), r.stderr)
 
         (repo / "notes.md").write_text("this cites ADR-0002 and ADR-0001\n")
         r = run([BIN / "adr-check"], repo)
         check("live citations are not findings", r.returncode == 0, r.stderr)
         landed.unlink()
-        run([BIN / "adr-check", "--fix"], repo)
         (repo / "notes.md").write_text("this cites ADR-0001 and ADR-0002\n")
         r = run([BIN / "adr-check"], repo)
         check("a citation to a number the corpus has a gap at is a finding",
@@ -381,7 +368,6 @@ def main() -> None:
         write_adr(blast, 2, "A ruling only an old issue still names")
         write_adr(blast, 3, "A ruling nothing anywhere cites at all")
         (blast / "notes.md").write_text("the hook implements ADR-0001\n")
-        run([BIN / "adr-check", "--fix"], blast)
         env = fake_gh(stack, [
             {"number": 7, "title": "ADR-0002 is named in a title", "body": "", "comments": []},
             {"number": 8, "title": "", "body": "closing record: ADR-0001",
@@ -427,7 +413,6 @@ def main() -> None:
                      "A feature ruling that binds later work")
         write_adr_in(two_corpora / "node_modules" / "vendored" / "docs" / "adr", 1,
                      "A vendored ruling nothing here is bound by")
-        run([BIN / "adr-check", "--fix"], two_corpora)
         r = run([BIN / "adr-check"], two_corpora)
         check("a clean multi-corpus tree exits 0", r.returncode == 0, r.stdout + r.stderr)
         check("the vendored corpus under node_modules is not counted",
@@ -441,7 +426,6 @@ def main() -> None:
         write_adr_in(adr_shape.adr_dir(clash), 1, "A root ruling that binds later work")
         write_adr_in(clash / "src" / "features" / "crm" / "docs" / "adr", 1,
                      "A second ruling filed under the same number")
-        run([BIN / "adr-check", "--fix"], clash)
         r = run([BIN / "adr-check"], clash)
         check("the same number claimed by two corpora is a finding",
               r.returncode == 1, r.stdout + r.stderr)
@@ -456,7 +440,6 @@ def main() -> None:
             "---\nstatus: constraint\ndate: 2020-01-01\n---\n\n"
             "# An old ruling written before the bar\n\n" + ("word " * 200).strip() + "\n"
         )
-        run([BIN / "adr-check", "--fix", "--bar-from", "2026-01-01"], barred)
         r = run([BIN / "adr-check", "--bar-from", "2026-01-01"], barred)
         check("a record dated before the bar is exempt from the body cap and reversal",
               r.returncode == 0 and "finding:" not in r.stderr, r.stderr)

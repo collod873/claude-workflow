@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""The ADR corpus's one checker: shape, index freshness, citation integrity, size.
+"""The ADR corpus's one checker: shape, citation integrity, size.
 
     adr-check              # check; print findings
-    adr-check --fix        # regenerate the index rather than failing on it
     adr-check --blast      # add the GitHub reach measurement (slow, needs `gh`)
+
+The index itself is the `adrs` slot's job (`npm run adrs`, `shared/adr-index.ts`); this
+checker no longer reads or writes docs/adr/INDEX.md.
 
 Exit is three-valued, and the third value is the point (claude-workflow/ADR-0087: a
 contract slot published as a hook path reported 255 consecutive clean turn-end runs
@@ -117,7 +119,9 @@ def tier(in_repo: int, issues: int) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="adr-check", description=__doc__.splitlines()[0])
-    p.add_argument("--fix", action="store_true", help="regenerate the index instead of failing")
+    p.add_argument("--fix", action="store_true",
+                   help="accepted for compatibility; the index no longer lives here, "
+                        "see `npm run adrs -- --fix`")
     p.add_argument("--blast", action="store_true", help="measure GitHub reach per ADR")
     p.add_argument("--bar-from", metavar="YYYY-MM-DD",
                    help="exempt records dated before this day from the body cap and the "
@@ -155,20 +159,6 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as e:
             print(f"adr-check: cannot read {a.path}: {e}", file=sys.stderr)
             return CANNOT_RUN
-
-    for d in corpora:
-        local = [a for a in corpus if a.corpus == d]
-        want = adr_shape.render_index(local)
-        index = d / adr_shape.INDEX_NAME
-        have = index.read_text(encoding="utf-8", errors="replace") if index.exists() else ""
-        if want != have:
-            if args.fix:
-                index.write_text(want, encoding="utf-8")
-                print(f"adr-check: regenerated {index.relative_to(root)}")
-            else:
-                findings.append(
-                    f"{index.relative_to(root)} is stale; run `adr-check --fix`."
-                )
 
     by_number: dict[int, list[adr_shape.Adr]] = {}
     for a in corpus:

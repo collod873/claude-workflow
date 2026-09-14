@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-import re
 from pathlib import Path
 
 import _hook
 import adr_shape
-
-LANDED_RE = re.compile(r"^\d{4}-.+\.md$")
-INDEX_NAME = "INDEX.md"
+from adr_shape import INDEX_NAME, LANDED_RE
 
 HAND_NUMBERED = (
     'File it with `~/bin/new-adr "<the ruling as a sentence>"`, then '
@@ -19,7 +16,7 @@ HAND_NUMBERED = (
 
 GENERATED_INDEX = (
     "docs/adr/INDEX.md is generated from the corpus, so a hand-edit is overwritten on "
-    "the next run. Change the ADR itself, then `~/bin/adr-check --fix` to re-render."
+    "the next run. Change the ADR itself, then `npm run adrs -- --fix` to re-render."
 )
 
 

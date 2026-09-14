@@ -55,7 +55,7 @@ const FIXTURE: AdrFile[] = [
   adr("0002-a-ruling-that-was-demoted-later.md", "A ruling that was demoted later", "note"),
 ];
 
-test.fails(
+test(
   "#553.4: the generated-by line in adr-index.ts, the rendered INDEX.md and adr-gate.py's advice all name the TypeScript tool",
   () => {
     const rendered = renderAdrIndex(FIXTURE);
@@ -81,14 +81,14 @@ test.fails(
   180000,
 );
 
-test.fails(
+test(
   "#553.5: shared/adr-index.proc.test.ts is gone, because it compared TypeScript to $HOME/bin/adr-check under skipIf",
   () => {
     expect(existsSync(join(HERE, "adr-index.proc.test.ts"))).toBe(false);
   },
 );
 
-test.fails(
+test(
   "#553.6: npm run adrs still renders this repo's corpus byte-identically to what is committed",
   () => {
     const slot = spawnSync("npm", ["run", "adrs"], {
