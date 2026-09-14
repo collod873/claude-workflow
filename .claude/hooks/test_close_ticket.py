@@ -328,17 +328,17 @@ def test_record_satisfies_close_gate_grammar(tmp: Path):
     check("grammar: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
 
     record = r.stdout
-    range_match = close_gate.RANGE_LINE_RE.search(record)
+    range_match = close_gate.CLOSING_RANGE_RE.search(record)
     check("grammar: RANGE_LINE_RE finds the range line",
           bool(range_match) and range_match.group(1) == "aaa1111" and range_match.group(2) == "bbb2222",
           record)
 
-    bullets = close_gate.BULLET_RE.findall(record)
+    bullets = close_gate.CLOSING_BULLET_RE.findall(record)
     check("grammar: BULLET_RE finds exactly one bullet per criterion", len(bullets) == 2, bullets)
 
     summary_line = next(ln for ln in record.splitlines() if "criteria verified" in ln)
     check("grammar: the summary line does not itself match BULLET_RE",
-          not close_gate.BULLET_RE.match(summary_line), summary_line)
+          not close_gate.CLOSING_BULLET_RE.match(summary_line), summary_line)
 
 
 def test_check_runs_in_checkout(tmp: Path):
@@ -398,7 +398,7 @@ def test_superseded_by_open_successor(tmp: Path):
     )
     check("superseded-open: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
     check("superseded-open: SUPERSEDED_RE finds the successor line",
-          close_gate.SUPERSEDED_RE.search(r.stdout) is not None, r.stdout)
+          close_gate.CLOSING_SUPERSEDED_RE.search(r.stdout) is not None, r.stdout)
 
     bullets = [ln for ln in r.stdout.splitlines() if ln.startswith("- ")]
     check("superseded-open: one bullet per criterion", len(bullets) == 2, bullets)
@@ -638,7 +638,7 @@ def test_spec_closes_when_every_child_delivered(tmp: Path):
     check("spec-green: the record carries what the check printed, not only what it ran",
           "> deploy-271-green" in r.stdout, r.stdout)
     check("spec-green: the quoted output cannot be read as a second bullet",
-          len(close_gate.BULLET_RE.findall(r.stdout)) == 1, r.stdout)
+          len(close_gate.CLOSING_BULLET_RE.findall(r.stdout)) == 1, r.stdout)
     check("spec-green: commented and closed",
           [a[:2] for a in argvs][-2:] == [["issue", "comment"], ["issue", "close"]], argvs)
 

@@ -113,7 +113,7 @@ function reading(): GateReading {
   return JSON.parse(out) as GateReading;
 }
 
-test.fails("#556.2: close-gate.py compiles its parser from the rules source, not its own patterns", () => {
+test("#556.2: close-gate.py compiles its parser from the rules source, not its own patterns", () => {
   const read = reading();
   expect(read.heading).toBe(true);
   expect(read.otherHeading).toBe(false);
@@ -127,7 +127,7 @@ test.fails("#556.2: close-gate.py compiles its parser from the rules source, not
   }
 });
 
-test.fails("#556.5: the gate refuses a close with no record and admits No diff. and Superseded by #n", () => {
+test("#556.5: the gate refuses a close with no record and admits No diff. and Superseded by #n", () => {
   const read = reading();
   expect(read.markers).toEqual([null, null]);
   expect(read.noDiff).toEqual(["allow", "no-diff"]);

@@ -4,7 +4,8 @@
 Closes a ticket in seconds and dispatches nothing (spec #160, #165). Fetches `<issue>`'s body,
 runs each `## Acceptance criteria` item's own `check:` marker (`bin/ticket_shape.py`'s
 `criteria_blocks`/`parse_check_marker`, #166) in `<checkout>`, records the exit status it
-observed, renders the `## Closing record`, posts it, and closes the ticket.
+observed, renders the closing record (its heading spelled once, in `closing-record.rules.json`),
+posts it, and closes the ticket.
 
 A criterion with no marker is prose (today's filing-time behaviour is unchanged) and is
 recorded `UNVERIFIED`, never `MET`: a script has no way to judge prose, so it doesn't try. A
@@ -76,7 +77,7 @@ all-or-nothing contract. What `--spec` adds is a **precondition** and a stricter
 The precondition is checked before any check command runs: every sub-issue must be **delivered**,
 meaning closed by a *merged* pull request, or delivered by its own closing record when that link
 is missing: a child this same script closed after its own pull request merged carries no
-`closedByPullRequestsReferences` of its own, so the newest `## Closing record` comment on the
+`closedByPullRequestsReferences` of its own, so the newest closing record comment on the
 child is read instead, and its backticked `base..head` range is delivered when
 `repos/{child}/compare/{default branch}...{head}` reports `behind` or `identical`, that is, the
 record's head is on the child's own default branch. A child closed as `not planned` is refused
@@ -125,7 +126,14 @@ except ImportError:
     run_log = None
 import ticket_shape
 
-NO_DIFF_RECORD = "## Closing record\n\nNo diff.\n"
+CLOSING_RECORD_RULES_PATH = (
+    Path(__file__).resolve().parent.parent / ".Workflow" / "agent-workflows" / "shared" / "closing-record.rules.json"
+)
+CLOSING_RECORD_RULES = json.loads(CLOSING_RECORD_RULES_PATH.read_text(encoding="utf-8"))
+
+CLOSING_RECORD_HEADING = CLOSING_RECORD_RULES["heading"]
+
+NO_DIFF_RECORD = f"{CLOSING_RECORD_HEADING}\n\n{CLOSING_RECORD_RULES['noDiff']}\n"
 
 UNPARSEABLE_CHECK_RE = re.compile(r"\bcheck:", re.IGNORECASE)
 
@@ -308,7 +316,6 @@ def fetch_verify_verdict(gh, pr_url: str) -> str:
     return "unjudged"
 
 
-CLOSING_RECORD_HEADING = "## Closing record"
 CLOSING_RECORD_RANGE_RE = re.compile(r"^`([^`\s]+)\.\.([^`\s]+)`$")
 
 
@@ -547,7 +554,7 @@ def render_record(range_spec: str, blocks: list[str] | None,
     if closing_pr is not None:
         header.append(render_closing_pr_line(closing_pr, verify))
     body = "\n".join([*header, "", summary, "", *lines])
-    return f"## Closing record\n\n{body}\n", True
+    return f"{CLOSING_RECORD_HEADING}\n\n{body}\n", True
 
 
 def render_closing_pr_line(closing_pr: dict, verify: str | None) -> str:
@@ -571,7 +578,7 @@ def render_superseded_record(successor: int, blocks: list[str] | None,
     lines = [f"Superseded by #{successor}"]
     if bullets:
         lines += ["", *bullets]
-    return "## Closing record\n\n" + "\n".join(lines) + "\n", None
+    return f"{CLOSING_RECORD_HEADING}\n\n" + "\n".join(lines) + "\n", None
 
 
 class DispositionAction(argparse.Action):

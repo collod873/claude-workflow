@@ -114,7 +114,7 @@ function admitted(records: Array<{ text: string; criteria: number | null }>): Ga
   return JSON.parse(python(GATE, [HOOKS, JSON.stringify({ records })])) as GateVerdict[];
 }
 
-test.fails("#556.4: every record either writer produces is one the gate admits", () => {
+test("#556.4: every record either writer produces is one the gate admits", () => {
   const source = writerReading();
   const restarted = deadLaneRetirementBody(RESTARTED_LANE, restartedRun());
   const all: WrittenRecord[] = [

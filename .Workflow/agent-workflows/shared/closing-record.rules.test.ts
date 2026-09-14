@@ -79,7 +79,7 @@ function recordLines(body: string): string[] {
   return body.split("\n").filter((line) => line.trim() !== "");
 }
 
-test.fails("#556.1: the rules source spells the heading, No diff. sentinel and three ASCII-explicit grammars", () => {
+test("#556.1: the rules source spells the heading, No diff. sentinel and three ASCII-explicit grammars", () => {
   const source = rules();
   expect(source.heading).toContain("Closing record");
   expect(source.noDiff).toContain("No diff.");
@@ -97,7 +97,7 @@ test.fails("#556.1: the rules source spells the heading, No diff. sentinel and t
   }
 });
 
-test.fails("#556.3: the writers read the heading and No diff. sentinel from the rules source", () => {
+test("#556.3: the writers read the heading and No diff. sentinel from the rules source", () => {
   const source = rules();
   const written = [unreachableRetirementBody(), deadLaneRetirementBody(LANE, LIVE_RUN)];
   expect(written.length).toBe(2);
@@ -108,7 +108,7 @@ test.fails("#556.3: the writers read the heading and No diff. sentinel from the 
   }
 });
 
-test.fails("#556.6: the check contract holds: every grammar compiles and no line means two things", () => {
+test("#556.6: the check contract holds: every grammar compiles and no line means two things", () => {
   const source = rules();
   const all = grammars(source.grammar);
   expect(all.length).toBeGreaterThanOrEqual(3);

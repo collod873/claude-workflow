@@ -1,3 +1,5 @@
+import closingRecordRules from "../shared/closing-record.rules.json";
+
 const STUB_SUFFIX = "-caller.yml";
 
 export interface RunSummary {
@@ -156,9 +158,9 @@ export function stillDeadBody(fresh: RunSummary[]): string {
 
 export function retirementBody(lane: string, live: RunSummary): string {
   return [
-    "## Closing record",
+    closingRecordRules.heading,
     "",
-    "No diff.",
+    closingRecordRules.noDiff,
     "",
     `\`${lane}\` starts again: [run ${live.id}](${live.htmlUrl}) on \`${live.headBranch}\` executed jobs`,
     `(${live.createdAt}), and nothing in the last ${LOOKBACK_DAYS} days executed zero. The signal has`,
