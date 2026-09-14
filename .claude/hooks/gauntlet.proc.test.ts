@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 
 const HOOKS = dirname(fileURLToPath(import.meta.url));
 
-test.fails("#555.3: gauntlet.sh no longer answers to stop", () => {
+test("#555.3: gauntlet.sh no longer answers to stop", () => {
   const script = readFileSync(join(HOOKS, "gauntlet.sh"), "utf8");
 
   expect(script.match(/= "stop"/g) ?? []).toEqual([]);

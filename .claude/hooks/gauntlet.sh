@@ -2,8 +2,6 @@
 
 set -uo pipefail
 
-[ "${1:-}" = "stop" ] && exit 0
-
 here="${BASH_SOURCE[0]%/*}"
 [ "$here" = "${BASH_SOURCE[0]}" ] && here="."
 repo_root="$(cd "$here/../.." && pwd)"

@@ -1,7 +1,7 @@
 {
   "stop": {
     "cmd": "bin/gauntlet stop",
-    "why": ".claude/hooks/gauntlet.sh#check-command, wired at .claude/settings.json#hooks.Stop"
+    "why": "read and run by .claude/hooks/stop-gate.py, dispatched via ~/.claude/settings.json's Stop hook through .claude/hooks/dispatch.py to .claude/hooks/roster.json's Stop entry"
   },
   "test": {
     "cmd": "npm test",
