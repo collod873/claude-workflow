@@ -39,6 +39,9 @@ const shape = (label: CatalogueLabel) => ({
 
 const rowsOf = (table: string) => table.split("\n").slice(3, -1);
 
+const tableOf = (doc: string) =>
+  doc.slice(doc.indexOf(LABELS_TABLE_OPEN), doc.indexOf(LABELS_TABLE_CLOSE) + LABELS_TABLE_CLOSE.length);
+
 test("#557.1: one JSON file carries the label catalogue — name, colour, description and family per label", () => {
   expect(Array.isArray(rawCatalogue)).toBe(true);
   expect(catalogue.length).toBeGreaterThan(0);
@@ -60,7 +63,7 @@ test("#557.2: shared/labels.ts builds LABEL_CATALOGUE from that file rather than
   expect(LABEL_CATALOGUE.map(shape)).toEqual(catalogue.map(shape));
 });
 
-test.fails("#557.5: docs/agents/pipeline-labels.md still regenerates byte-identically from the catalogue", () => {
+test("#557.5: docs/agents/pipeline-labels.md still regenerates byte-identically from the catalogue", () => {
   const doc = `# Pipeline labels\n\n${LABELS_TABLE_OPEN}\nstale\n${LABELS_TABLE_CLOSE}\n\ntail\n`;
   const once = withLabelsTable(doc);
   expect(withLabelsTable(once)).toBe(once);
@@ -73,7 +76,7 @@ test.fails("#557.5: docs/agents/pipeline-labels.md still regenerates byte-identi
       `| \`${label.name}\` | ${FAMILY_HOLDERS[label.family]} | \`#${label.color}\` | ${label.description} |`,
     );
   }
-  expect(rowsOf(withLabelsTable(once))).toEqual(rows);
+  expect(rowsOf(tableOf(withLabelsTable(once)))).toEqual(rows);
 });
 
 test("#557.6: the whole check contract passes", () => {
