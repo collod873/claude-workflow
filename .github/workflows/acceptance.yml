@@ -13,7 +13,7 @@ name: Acceptance (reusable)
         default: main
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -24,12 +24,11 @@ jobs:
   refire:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
-    outputs:
-      authored: ${{ steps.bundle.outputs.authored }}
     env:
       PRD_NUMBER: ${{ github.event.issue.number }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       RUNG: ${{ github.event.client_payload.rung }}
+      READY: "0"
       EVENT_NAME: ${{ github.event_name }}
       EVENT_ACTION: ${{ github.event.action }}
       EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
@@ -37,7 +36,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ACCEPTANCE_LANDING: commit
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -55,10 +53,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Note the commit this run starts from
-        working-directory: target
-        run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
@@ -84,21 +78,14 @@ jobs:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts --refire "$PRD_NUMBER"
 
-      - name: Bundle the authored commits
-        id: bundle
-        uses: ./.github/actions/acceptance-bundle
-        with:
-          working-directory: target
-
   author:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
-    outputs:
-      authored: ${{ steps.bundle.outputs.authored }}
     env:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       RUNG: ${{ github.event.client_payload.rung }}
+      READY: ${{ github.event.client_payload.ready }}
       EVENT_NAME: ${{ github.event_name }}
       EVENT_ACTION: ${{ github.event.action }}
       EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
@@ -106,7 +93,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ACCEPTANCE_LANDING: commit
     steps:
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -124,10 +110,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Note the commit this run starts from
-        working-directory: target
-        run: echo "ACCEPTANCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Preflight, CLAUDE_CODE_OAUTH_TOKEN is set
         run: |
@@ -153,79 +135,15 @@ jobs:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts "$TICKET_NUMBER"
 
-      - name: Bundle the authored commits
-        id: bundle
-        uses: ./.github/actions/acceptance-bundle
-        with:
-          working-directory: target
-
       - name: Queue the ticket again if this run died, leaving the strike ladder to say what runs next
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
         run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$TICKET_NUMBER" --status "$JOB_STATUS" --lane acceptance
 
-  land:
-    name: Land on main
-    needs: [refire, author]
-    if: always()
-    runs-on: ${{ inputs.runner }}
-    timeout-minutes: 30
-    concurrency:
-      group: land-${{ github.repository }}
-      cancel-in-progress: false
-    permissions:
-      contents: write
-      issues: write
-      actions: read
-    env:
-      REFIRE_RESULT: ${{ needs.refire.result }}
-      REFIRE_AUTHORED: ${{ needs.refire.outputs.authored }}
-      AUTHOR_RESULT: ${{ needs.author.result }}
-      AUTHOR_AUTHORED: ${{ needs.author.outputs.authored }}
-      EVENT_ACTION: ${{ github.event.action }}
-      TICKET_NUMBER: ${{ github.event.client_payload.issue }}
-      READY: ${{ github.event.client_payload.ready }}
-      REFIRED: ${{ github.event.client_payload.refire }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - name: Checkout machine
-        uses: actions/checkout@v4
-        with:
-          repository: collod873/claude-workflow
-          ref: ${{ inputs.machine_ref }}
-
-      - name: Checkout target
-        uses: actions/checkout@v4
-        with:
-          path: target
-          ref: main
-          fetch-depth: 0
-
-      - name: Identify the committer
-        working-directory: target
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Set up Node and install dependencies
-        uses: ./.github/actions/node
-
-      - name: Install target dependencies
-        uses: ./.github/actions/target-deps
-        with:
-          working-directory: target
-
-      - name: Land whatever the authoring jobs authored
-        env:
-          TARGET_WORKSPACE: ${{ github.workspace }}/target
-        run: npx tsx .Workflow/agent-workflows/acceptance/land.ts
-
   wake-reconciler:
     name: Wake the reconciler
-    needs: [refire, author, land]
+    needs: [refire, author]
     if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5

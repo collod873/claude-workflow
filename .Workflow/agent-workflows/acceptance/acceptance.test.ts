@@ -19,7 +19,6 @@ import {
   commitAuthoredBatch,
   exampleSubject,
   judgeAuthoredBatch,
-  landingFromEnv,
   NO_CLAIMED_FILES,
   NO_EARLIER_ATTEMPT,
   refireAcceptance,
@@ -356,40 +355,47 @@ describe("judgeAuthoredBatch", () => {
   });
 });
 
-function committing(landing: CommitDeps["landing"]): { deps: CommitDeps; git: ReturnType<typeof createFakeGit> } {
-  const git = createFakeGit(() => "");
-  return { deps: { git: git.git, paths: BATCH, commitMessage: "test: author acceptance tests for #162 from the spec alone", landing }, git };
+function committing(onOrigin: boolean): { deps: CommitDeps; git: ReturnType<typeof createFakeGit> } {
+  const git = createFakeGit((args) =>
+    args[0] === "ls-remote" ? (onOrigin ? "abc123\trefs/heads/implement/issue-162\n" : "") : "",
+  );
+  return {
+    deps: {
+      git: git.git,
+      paths: BATCH,
+      commitMessage: "test: author acceptance tests for #162 from the spec alone",
+      branch: "implement/issue-162",
+      log: () => {},
+    },
+    git,
+  };
 }
 
 describe("commitAuthoredBatch", () => {
-  it("adds, commits, rebases onto origin/main and pushes HEAD:main when landing is push", async () => {
-    const { deps, git } = committing("push");
-    await commitAuthoredBatch(deps);
+  it("cuts the ticket's branch off the checked-out trunk and pushes it, never touching main", () => {
+    const { deps, git } = committing(false);
+    commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
+      ["ls-remote", "--heads", "origin", "implement/issue-162"],
+      ["checkout", "-B", "implement/issue-162"],
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
-      ["fetch", "origin", "main"],
-      ["rebase", "origin/main"],
-      ["push", "origin", "HEAD:main"],
+      ["push", "origin", "HEAD:implement/issue-162"],
     ]);
+    expect(git.calls.flat()).not.toContain("HEAD:main");
   });
 
-  it("commits and stops when landing is commit, since the contents: write job pushes (ADR-0091)", async () => {
-    const { deps, git } = committing("commit");
-    await commitAuthoredBatch(deps);
+  it("commits on top of the branch a sibling run already pushed, rather than replacing it", () => {
+    const { deps, git } = committing(true);
+    commitAuthoredBatch(deps);
     expect(git.calls).toEqual([
+      ["ls-remote", "--heads", "origin", "implement/issue-162"],
+      ["fetch", "origin", "implement/issue-162"],
+      ["checkout", "-B", "implement/issue-162", "origin/implement/issue-162"],
       ["add", TEST_PATH, SUBJECT],
       ["commit", "-m", deps.commitMessage],
+      ["push", "origin", "HEAD:implement/issue-162"],
     ]);
-  });
-});
-
-describe("landingFromEnv", () => {
-  it("is commit only when ACCEPTANCE_LANDING says so, and push otherwise", () => {
-    expect(landingFromEnv({ ACCEPTANCE_LANDING: "commit" })).toBe("commit");
-    expect(landingFromEnv({ ACCEPTANCE_LANDING: "push" })).toBe("push");
-    expect(landingFromEnv({ ACCEPTANCE_LANDING: "" })).toBe("push");
-    expect(landingFromEnv({})).toBe("push");
   });
 });
 
@@ -443,7 +449,7 @@ function trackerReading(
 describe("runAcceptanceAuthor", () => {
   const TRACKER = { [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } };
 
-  function run(landingMode: "push" | "commit" = "push") {
+  function run() {
     const tracker = trackerWith(TRACKER);
     const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
     const git = createFakeGit(() => "");
@@ -456,7 +462,7 @@ describe("runAcceptanceAuthor", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: git.git,
-      landing: landingMode,
+      ready: false,
       suite: SUITE,
     });
     return { outcome, tracker, stage, git, written };
@@ -494,7 +500,7 @@ describe("runAcceptanceAuthor", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      landing: "commit",
+      ready: false,
       suite: SUITE,
       rung,
     });
@@ -527,13 +533,9 @@ describe("runAcceptanceAuthor", () => {
     const commit = git.calls.find((call) => call[0] === "commit");
     expect(commit?.[2]).toContain(`#${ISSUE}`);
     expect(commit?.[2]).toContain(TEST_PATH);
-    expect(git.calls.filter((call) => call[0] === "push")).toEqual([["push", "origin", "HEAD:main"]]);
-  });
-
-  it("passes the landing mode through: commit means no push", async () => {
-    const { outcome, git } = run("commit");
-    await outcome;
-    expect(git.calls.map((call) => call[0])).toEqual(["add", "commit"]);
+    expect(git.calls.filter((call) => call[0] === "push")).toEqual([
+      ["push", "origin", `HEAD:implement/issue-${ISSUE}`],
+    ]);
   });
 
   it("reads only the ticket when it names no parent PRD", async () => {
@@ -576,6 +578,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
       runTests: () => GREEN,
       gate: () => verdicts.shift() ?? GATE_RED,
       git: git.git,
+      ready: false,
       log: () => {},
       suite: SUITE,
     });
@@ -760,7 +763,7 @@ describe("acceptRound: a subject the test runs as a process gets no stub", () =>
       },
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      landing: "commit",
+      ready: false,
       log: () => {},
       suite: SUITE,
     });
@@ -819,7 +822,7 @@ describe("the lane budget bounds the acceptance author's model session", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      landing: "commit",
+      ready: false,
       log: () => {},
       suite: SUITE,
     }).then(
@@ -873,132 +876,55 @@ describe("the lane budget bounds the acceptance author's model session", () => {
   });
 });
 
-describe("the acceptance lane loses the race to trunk", () => {
-  const PUSH_LOST = [
-    "! [rejected]        HEAD -> main (fetch first)",
-    "error: failed to push some refs to 'origin'",
-    "hint: Updates were rejected because the remote contains work that you do not have locally.",
-  ].join("\n");
-
-  const EVERY_ATTEMPT = Number.MAX_SAFE_INTEGER;
-
-  function gitLosing(losses: number): { git: GitExec; calls: string[][]; pushes: () => string[][] } {
-    const calls: string[][] = [];
-    let lost = 0;
-    const git: GitExec = (args) => {
-      calls.push(args);
-      if (args[0] === "push" && lost < losses) {
-        lost += 1;
-        throw new Error(PUSH_LOST);
-      }
-      return "";
-    };
-    return { git, calls, pushes: () => calls.filter((call) => call[0] === "push") };
-  }
-
-  async function pastEveryBackoff<T>(start: () => Promise<T>): Promise<{ value?: T; failure?: string }> {
-    vi.useFakeTimers();
-    try {
-      let landed: { value?: T; failure?: string } | undefined;
-      void start().then(
-        (value) => {
-          landed = { value };
-        },
-        (thrown: unknown) => {
-          landed = { failure: String((thrown as Error)?.message ?? thrown) };
-        },
-      );
-      for (let turn = 0; turn < 40 && landed === undefined; turn += 1) {
-        await vi.advanceTimersByTimeAsync(15_000);
-        for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
-      }
-      return landed ?? {};
-    } finally {
-      vi.useRealTimers();
-    }
-  }
-
-  function pushingBatch(git: GitExec): CommitDeps {
-    return {
-      git,
-      paths: BATCH,
-      commitMessage: `test: author acceptance tests for #${ISSUE} from the spec alone`,
-      landing: "push",
-    };
-  }
-
-  async function laneLanding(losses: number) {
+describe("the acceptance lane hands off to implement itself", () => {
+  test("a pushed batch dispatches ticket-ready, the handoff the deleted land job used to make", async () => {
     const writes: string[][] = [];
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, writes);
     const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
-    const git = gitLosing(losses);
-    const landed = await pastEveryBackoff(() =>
-      runAcceptanceAuthor({
-        gh: tracker.gh,
-        exec: stage.exec,
-        writeFile: () => {},
-        issueNumber: ISSUE,
-        runTests: () => GREEN,
-        gate: () => GATE_GREEN,
-        git: git.git,
-        landing: "push",
-        log: () => {},
-        suite: SUITE,
-      }).then((outcome) => ({ outcome, pushesWhenReported: git.pushes().length })),
-    );
-    return { landed, git, writes };
-  }
 
-  test(
-    "#542.1: commitAuthoredBatch reaches trunk through the retrying push helper instead of its own one-shot push",
-    async () => {
-      const git = gitLosing(1);
-      const landed = await pastEveryBackoff(() => {
-        const returned: unknown = commitAuthoredBatch(pushingBatch(git.git));
-        expect(
-          typeof (returned as { then?: unknown })?.then,
-          "the helper awaits a backoff sleep, so commitAuthoredBatch is async",
-        ).toBe("function");
-        return returned as Promise<void>;
-      });
+    await runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      gate: () => GATE_GREEN,
+      git: createFakeGit(() => "").git,
+      ready: true,
+      log: () => {},
+      suite: SUITE,
+    });
 
-      expect(landed.failure, `a push this lane lost was not retried: ${JSON.stringify(git.calls)}`).toBeUndefined();
-      expect(git.pushes().length, "the lost push is attempted again").toBeGreaterThan(1);
-      expect(git.calls.filter((call) => call[0] === "add"), "the retry is the push, not the whole batch").toHaveLength(1);
-      expect(git.calls.filter((call) => call[0] === "commit"), "one commit, however many pushes it takes").toHaveLength(1);
-    },
-  );
+    const dispatched = writes.find((call) => call.join(" ").includes("ticket-ready"));
+    expect(dispatched, `no ticket-ready dispatch in ${JSON.stringify(writes)}`).toBeDefined();
+    expect(dispatched?.join(" ")).toContain(String(ISSUE));
+  });
+});
 
-  test(
-    "#542.2: a push this lane loses is retried, and the lane says on the ticket what an exhausted push means",
-    async () => {
-      const won = await laneLanding(1);
-      expect(won.landed.failure, "one lost push is a retry, not a verdict").toBeUndefined();
-      expect(won.landed.value?.outcome).toEqual({ verdict: "pushed" });
-      expect(won.git.pushes().length).toBeGreaterThan(1);
+describe("the acceptance lane never reaches trunk", () => {
+  test("the authored batch is pushed to the ticket's branch, and no call in the lane targets main", async () => {
+    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } });
+    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const git = createFakeGit(() => "");
 
-      const exhausted = await laneLanding(EVERY_ATTEMPT);
-      expect(exhausted.git.pushes().length, "every attempt loses, and there is more than one").toBeGreaterThan(1);
-      expect(exhausted.landed.value?.outcome, "a push that never landed is not a landing").not.toEqual({ verdict: "pushed" });
+    const outcome = await runAcceptanceAuthor({
+      gh: tracker.gh,
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      runTests: () => GREEN,
+      gate: () => GATE_GREEN,
+      git: git.git,
+      ready: false,
+      log: () => {},
+      suite: SUITE,
+    });
 
-      const said = exhausted.writes.find((call) => call[0] === "issue" && call[1] === "comment");
-      expect(said, `nothing reached the ticket: ${JSON.stringify(exhausted.writes)}`).toBeDefined();
-      expect(said?.[2], "the sentence lands on the ticket this lane was authoring for").toBe(String(ISSUE));
-      expect(said?.[4]).toMatch(/push|trunk|main/i);
-      expect(said?.[4], "the lane's own sentence, not the raw rejection it was handed").not.toBe(PUSH_LOST);
-    },
-  );
+    expect(outcome).toEqual({ verdict: "pushed" });
 
-  test(
-    "#542.3: the async push travels to runAcceptanceAuthor, which reports pushed only once the retry has landed",
-    async () => {
-      const { landed } = await laneLanding(1);
-      expect(landed.failure, "the caller awaits the push instead of letting its rejection escape").toBeUndefined();
-      expect(landed.value?.outcome).toEqual({ verdict: "pushed" });
-      expect(
-        landed.value?.pushesWhenReported,
-        "the retry had already happened when the lane reported, so the caller awaited it",
-      ).toBeGreaterThan(1);
-    },
-  );
+    const pushes = git.calls.filter((call) => call[0] === "push");
+    expect(pushes).toEqual([["push", "origin", `HEAD:implement/issue-${ISSUE}`]]);
+    expect(git.calls.flat()).not.toContain("main");
+    expect(git.calls.filter((call) => call[0] === "rebase"), "a branch push races nobody").toHaveLength(0);
+  });
 });

@@ -16,10 +16,9 @@ import { execGit, type GitExec } from "../shared/git";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
-import { pushToTrunk } from "../shared/push-to-trunk";
-import { FRESH_EYES_RUNG } from "../shared/ready-set";
+import { dispatchTicketReady, FRESH_EYES_RUNG, implementationBranch } from "../shared/ready-set";
 import { strikesIn } from "../shared/strikes";
-import { gateOutputTail, gateVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { gateOutputTail, stopVenueVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
   currentLaneRun,
   execClaudeIn,
@@ -284,7 +283,7 @@ function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionRe
 
 export interface JudgeDeps {
   runTests: (paths: string[]) => TestRunResult;
-  gate: () => GateVerdict;
+  gate: (paths: string[]) => GateVerdict;
 }
 
 export type BatchVerdict = { ok: true } | { ok: false; reason: string };
@@ -304,47 +303,52 @@ export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[], suffixes: s
         `a vacuous test or one about work already done: ${names}`,
     };
   }
-  const gate = deps.gate();
+  const gate = deps.gate(paths);
   return gate.ok ? { ok: true } : { ok: false, reason: `the gate is red on the authored batch:\n${gate.output}` };
 }
 
-export type LandOutcome = { verdict: "pushed" } | { verdict: "refused"; reason: string };
-
-export type Landing = "push" | "commit";
-
-export function landingFromEnv(env: NodeJS.ProcessEnv = process.env): Landing {
-  return env.ACCEPTANCE_LANDING === "commit" ? "commit" : "push";
+export function turnVenueVerdict(paths: string[], root: string = REPO_DIR): GateVerdict {
+  for (const path of paths) {
+    const verdict = stopVenueVerdict(root, path);
+    if (!verdict.ok) return verdict;
+  }
+  return { ok: true };
 }
+
+export type LandOutcome = { verdict: "pushed" } | { verdict: "refused"; reason: string };
 
 export interface CommitDeps {
   git: GitExec;
   paths: string[];
   commitMessage: string;
-  landing: Landing;
-  sleep?: (seconds: number) => Promise<void>;
+  branch: string;
   log?: (line: string) => void;
 }
 
-function realSleep(seconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+function branchExistsOnOrigin(git: GitExec, branch: string): boolean {
+  return git(["ls-remote", "--heads", "origin", branch]).trim().length > 0;
 }
 
-export async function commitAuthoredBatch(deps: CommitDeps): Promise<void> {
+export function commitAuthoredBatch(deps: CommitDeps): void {
+  const log = deps.log ?? ((line: string) => console.log(line));
+
+  if (branchExistsOnOrigin(deps.git, deps.branch)) {
+    log(`${deps.branch} is already on origin, so this batch is committed on top of it`);
+    deps.git(["fetch", "origin", deps.branch]);
+    deps.git(["checkout", "-B", deps.branch, `origin/${deps.branch}`]);
+  } else {
+    deps.git(["checkout", "-B", deps.branch]);
+  }
+
   deps.git(["add", ...deps.paths]);
   deps.git(["commit", "-m", deps.commitMessage]);
-  if (deps.landing === "push") {
-    await pushToTrunk({
-      git: deps.git,
-      sleep: deps.sleep ?? realSleep,
-      log: deps.log ?? ((line) => console.log(line)),
-    });
-  }
+  deps.git(["push", "origin", `HEAD:${deps.branch}`]);
 }
 
-function pushExhaustedNote(): string {
+function pushFailedNote(branch: string): string {
   return (
-    "The authored tests were judged green, but landing them on trunk kept losing the race even " +
-    "after every retry, so nothing landed. This run counts as a strike; the ladder says what runs next."
+    `The authored tests were judged green, but pushing them to \`${branch}\` failed, so nothing ` +
+    "landed. This run counts as a strike; the ladder says what runs next."
   );
 }
 
@@ -391,9 +395,9 @@ export interface RunAcceptanceDeps {
   writeFile: (path: string, content: string) => void;
   issueNumber: number;
   runTests?: (paths: string[]) => TestRunResult;
-  gate?: () => GateVerdict;
+  gate?: (paths: string[]) => GateVerdict;
   git?: GitExec;
-  landing?: Landing;
+  ready?: boolean;
   log?: (line: string) => void;
   suite?: SuiteLayout;
   rung?: string;
@@ -415,7 +419,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite, priorAttempts },
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
-      gate: deps.gate ?? (() => gateVerdict(REPO_DIR)),
+      gate: deps.gate ?? ((paths) => turnVenueVerdict(paths, REPO_DIR)),
     },
     budget,
   );
@@ -424,18 +428,21 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     return { verdict: "refused", reason: attempt.reason };
   }
 
+  const branch = implementationBranch(deps.issueNumber);
   try {
-    await commitAuthoredBatch({
+    commitAuthoredBatch({
       git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
       paths: attempt.paths,
       commitMessage: authorCommitMessage(deps.issueNumber, attempt.paths),
-      landing: deps.landing ?? "push",
+      branch,
       log,
     });
   } catch (err) {
-    haltLoudly(deps.gh, deps.issueNumber, pushExhaustedNote(), log);
+    haltLoudly(deps.gh, deps.issueNumber, pushFailedNote(branch), log);
     return { verdict: "refused", reason: reason(err) };
   }
+
+  if (deps.ready ?? true) dispatchTicketReady(deps.gh, deps.issueNumber);
   return { verdict: "pushed" };
 }
 
@@ -494,7 +501,7 @@ async function authorInProcess(issueNumber: number, rung?: string): Promise<Land
       exec: execClaudeIn(REPO_DIR),
       writeFile: fsWriteFile,
       issueNumber,
-      landing: landingFromEnv(),
+      ready: process.env.READY === "1",
       rung,
     });
   } catch (err) {
@@ -570,7 +577,7 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    console.log(landingFromEnv() === "commit" ? "committed" : "pushed");
+    console.log("pushed");
   } catch (err) {
     console.error(`acceptance authoring failed: ${reason(err)}`);
     process.exitCode = 1;

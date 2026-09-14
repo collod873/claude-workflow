@@ -38,9 +38,25 @@ export function gateOutputTail(output: string): string {
   return output.length > GATE_OUTPUT_TAIL_CHARS ? output.slice(-GATE_OUTPUT_TAIL_CHARS) : output;
 }
 
+export function stopVenueVerdict(
+  targetRoot: string,
+  file: string,
+  deps: { exec?: GauntletExec } = {},
+): GateVerdict {
+  return venueVerdict("stop", targetRoot, { ...deps, file });
+}
+
 export function gateVerdict(targetRoot: string, deps: { exec?: GauntletExec } = {}): GateVerdict {
+  return venueVerdict("push", targetRoot, deps);
+}
+
+function venueVerdict(
+  venue: GauntletVenue,
+  targetRoot: string,
+  deps: { exec?: GauntletExec; file?: string } = {},
+): GateVerdict {
   try {
-    runGauntlet("push", targetRoot, deps);
+    runGauntlet(venue, targetRoot, deps);
     return { ok: true };
   } catch (err) {
     const withOutput = err as { stdout?: unknown; stderr?: unknown };

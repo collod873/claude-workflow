@@ -69,7 +69,6 @@ export const MACHINE_REPOSITORY = "collod873/claude-workflow";
 export const TARGET_WORKSPACE = "${{ github.workspace }}/target";
 
 export const CHECKPOINTS_ACTION = "./.github/actions/checkpoints";
-export const ACCEPTANCE_BUNDLE_ACTION = "./.github/actions/acceptance-bundle";
 export const TARGET_DEPS_ACTION = "./.github/actions/target-deps";
 export const NODE_ACTION = "./.github/actions/node";
 export const CHECKOUT_ACTION = "actions/checkout@v4";
@@ -258,13 +257,6 @@ const INSTALLS_TARGET: StepWiring = {
 const INSTALLS_CLAUDE_CODE: StepWiring = {
   name: "Install Claude Code",
   run: [`npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`],
-};
-
-const BUNDLES_AUTHORED_COMMITS: StepWiring = {
-  name: "Bundle the authored commits",
-  id: "bundle",
-  uses: ACCEPTANCE_BUNDLE_ACTION,
-  with: { "working-directory": "target" },
 };
 
 function exportsHandoff(name: string, paths: Readonly<Record<string, string>>): StepWiring {
@@ -591,64 +583,41 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       on: { issues: ["edited"], repository_dispatch: [ACCEPTANCE_WANTED_DISPATCH_ACTION] },
       permissions: { contents: "write", issues: "write", actions: "read" },
     },
-    permissions: { contents: "read", issues: "write" },
+    permissions: { contents: "write", issues: "write" },
     concurrency: "acceptance-${{ github.event.issue.number || github.event.client_payload.issue }}",
     jobs: {
       refire: {
         timeout: 30,
-        outputs: { authored: "${{ steps.bundle.outputs.authored }}" },
-        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
+        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, READY: "0", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),
           IDENTIFIES_COMMITTER,
-          { name: "Note the commit this run starts from", workingDirectory: "target", run: ["echo \"ACCEPTANCE_BASE=$(git rev-parse HEAD)\" >> \"$GITHUB_ENV\""] },
           preflight("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run."),
           SETS_UP_NODE,
           INSTALLS_TARGET,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Re-fire acceptance for affected slices", entrypoint: "acceptance/acceptance.ts", args: ["--refire", "\"$PRD_NUMBER\""] }),
-          BUNDLES_AUTHORED_COMMITS,
         ],
       },
       author: {
         timeout: 30,
-        outputs: { authored: "${{ steps.bundle.outputs.authored }}" },
-        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN, ACCEPTANCE_LANDING: "commit" },
+        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, READY: "${{ github.event.client_payload.ready }}", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),
           IDENTIFIES_COMMITTER,
-          { name: "Note the commit this run starts from", workingDirectory: "target", run: ["echo \"ACCEPTANCE_BASE=$(git rev-parse HEAD)\" >> \"$GITHUB_ENV\""] },
           preflight("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before a stage can run."),
           SETS_UP_NODE,
           INSTALLS_TARGET,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Author acceptance tests for the published slice", entrypoint: "acceptance/acceptance.ts", args: ["\"$TICKET_NUMBER\""] }),
-          BUNDLES_AUTHORED_COMMITS,
           handsOver("acceptance", "ticket", "TICKET_NUMBER"),
-        ],
-      },
-      land: {
-        name: "Land on main",
-        needs: ["refire", "author"],
-        if: "always()",
-        timeout: 30,
-        concurrency: "land-${{ github.repository }}",
-        permissions: { contents: "write", issues: "write", actions: "read" },
-        env: { REFIRE_RESULT: "${{ needs.refire.result }}", REFIRE_AUTHORED: "${{ needs.refire.outputs.authored }}", AUTHOR_RESULT: "${{ needs.author.result }}", AUTHOR_AUTHORED: "${{ needs.author.outputs.authored }}", EVENT_ACTION, TICKET_NUMBER: PAYLOAD_ISSUE, READY: "${{ github.event.client_payload.ready }}", REFIRED: "${{ github.event.client_payload.refire }}", RUN_URL, ...GH },
-        steps: [
-          CHECKOUT_MACHINE,
-          checkoutTarget({ ref: "main", fetchDepth: 0 }),
-          IDENTIFIES_COMMITTER,
-          SETS_UP_NODE,
-          INSTALLS_TARGET,
-          stage({ name: "Land whatever the authoring jobs authored", entrypoint: "acceptance/land.ts" }),
         ],
       },
       "wake-reconciler": {
         name: "Wake the reconciler",
-        needs: ["refire", "author", "land"],
+        needs: ["refire", "author"],
         if: "always()",
         timeout: 5,
         permissions: { contents: "write" },
