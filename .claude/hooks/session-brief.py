@@ -12,17 +12,15 @@ NEEDS_HUMAN_LABEL = "needs-human"
 BY_HAND_LABEL = "by-hand"
 PRD_LABEL = "prd"
 
-OWNER_LABELS = (
-    NEEDS_HUMAN_LABEL,
-    "fuzzy",
-    BY_HAND_LABEL,
-    "1-decide",
-    "2-questions-open",
-    "slice-failed",
-    "shape-refused",
-    "spec/gap",
-)
-LISTED_OWNER_LABELS = tuple(label for label in OWNER_LABELS if label != BY_HAND_LABEL)
+LABELS_JSON_PATH = Path(__file__).resolve().parent.parent.parent / ".Workflow" / "agent-workflows" / "shared" / "labels.json"
+
+
+def owner_label_names() -> tuple[str, ...]:
+    catalogue = json.loads(LABELS_JSON_PATH.read_text())
+    return tuple(label["name"] for label in catalogue if label.get("family") == "owner")
+
+
+LISTED_OWNER_LABELS = tuple(label for label in owner_label_names() if label != BY_HAND_LABEL)
 
 SNAPSHOT_PREFIX = "session-snapshot-"
 TRACKED_LABELS = (PRD_LABEL, NEEDS_HUMAN_LABEL, BY_HAND_LABEL)

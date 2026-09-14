@@ -57,7 +57,7 @@ function sandboxCarrying(entries: CatalogueLabel[]): string {
   return root;
 }
 
-test.fails("#557.3: .claude/hooks/session-brief.py derives its owner labels by reading that file", () => {
+test("#557.3: .claude/hooks/session-brief.py derives its owner labels by reading that file", () => {
   const root = sandboxCarrying([...LABEL_CATALOGUE, NINTH]);
   expect(ownerLabelsSeenBy(root, [NINTH.name, "needs-human", "5-building"])).toEqual([
     NINTH.name,
@@ -66,7 +66,7 @@ test.fails("#557.3: .claude/hooks/session-brief.py derives its owner labels by r
   ]);
 });
 
-test.fails(
+test(
   "#557.4: a label added to the catalogue reaches both the generated doc and the session brief with no second edit",
   () => {
     const rows = renderLabelsTable().split("\n").slice(3, -1);
