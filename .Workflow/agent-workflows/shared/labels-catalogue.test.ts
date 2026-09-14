@@ -39,7 +39,7 @@ const shape = (label: CatalogueLabel) => ({
 
 const rowsOf = (table: string) => table.split("\n").slice(3, -1);
 
-test.fails("#557.1: one JSON file carries the label catalogue — name, colour, description and family per label", () => {
+test("#557.1: one JSON file carries the label catalogue — name, colour, description and family per label", () => {
   expect(Array.isArray(rawCatalogue)).toBe(true);
   expect(catalogue.length).toBeGreaterThan(0);
   for (const label of catalogue) {
@@ -55,7 +55,7 @@ test.fails("#557.1: one JSON file carries the label catalogue — name, colour, 
   expect(new Set(names).size).toBe(names.length);
 });
 
-test.fails("#557.2: shared/labels.ts builds LABEL_CATALOGUE from that file rather than listing the labels", () => {
+test("#557.2: shared/labels.ts builds LABEL_CATALOGUE from that file rather than listing the labels", () => {
   expect(catalogue.length).toBe(LABEL_CATALOGUE.length);
   expect(LABEL_CATALOGUE.map(shape)).toEqual(catalogue.map(shape));
 });
@@ -76,7 +76,7 @@ test.fails("#557.5: docs/agents/pipeline-labels.md still regenerates byte-identi
   expect(rowsOf(withLabelsTable(once))).toEqual(rows);
 });
 
-test.fails("#557.6: the whole check contract passes", () => {
+test("#557.6: the whole check contract passes", () => {
   expect(names.length).toBeGreaterThan(0);
   expect(new Set(names).size).toBe(names.length);
   for (const label of catalogue) {
