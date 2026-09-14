@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""file-issue <kind> --title TITLE [--body-file PATH] [--test PATH ...] [-R owner/repo]
-file-issue ticketify <n> [--body-file PATH] [--replace] [--test PATH ...] [-R owner/repo]
+"""file-issue <kind> --title TITLE [--body-file PATH] [--test PATH ...] [--ack WHY] [-R owner/repo]
+file-issue ticketify <n> [--body-file PATH] [--replace] [--test PATH ...] [--ack WHY] [-R owner/repo]
 
 Files a GitHub issue shaped and labelled for its **kind**: the one filing verb every producer
 (`/to-spec`, `/wayfinder`, `/standards-pass`, and any ad-hoc session) uses instead of freehand
@@ -25,9 +25,18 @@ one place that knows each kind's required shape, shared with `hooks/test_ticket_
 so a producer's documented example and this tool can never silently drift apart.
 
 A body that doesn't fit its kind is refused: this prints what's missing to stderr and exits
-nonzero without ever calling `gh`. A `ticket` whose acceptance criteria carry no verifiable
-evidence (a `path:line`, a backtick-quoted command, or a file/artifact reference) is not
-refused; it's a warning on stderr, and filing still proceeds.
+nonzero without ever calling `gh`. A softer defect is a warning rather than a refusal, because
+the shape is sometimes right and only the author can say so: a `ticket` whose acceptance criteria
+carry no verifiable evidence (a `path:line`, a backtick-quoted command, or a file/artifact
+reference), a migration worded as its artifact, a `check:` marker that doesn't parse, a claimed
+path that isn't in the tree.
+
+A warning still stops the filing. `--ack "<why this is acceptable>"` files anyway and appends the
+reason and every warning to the issue body under `## Warnings acknowledged`, where the next reader
+meets them instead of having to have watched this run's stderr. That is how #573 was filed:
+the warning naming its defect was printed, and printed is not read. Filing rough stays possible
+(a ticket also names work still to be scoped, claude-workflow/ADR-0076); filing rough by accident
+does not.
 
 `file-issue ticket` and `ticketify` reach the same `wire_collisions` loop, one filing-time fast
 fail for both routes a ticket's claim can be published through: once a ticket's own number and
@@ -201,6 +210,46 @@ def no_test_handoff_hint_applies() -> bool:
     return (ticket_shape.caller_repo_root() / ".Workflow").is_dir()
 
 
+ACK_HEADING = "## Warnings acknowledged"
+
+ACK_HEADING_RE = re.compile(r"^##[ \t]+Warnings acknowledged[ \t\r]*$", re.MULTILINE)
+
+ACK_HELP = (
+    "file despite warnings, saying why they are acceptable; the reason and every warning "
+    "are appended to the issue body"
+)
+
+UNACKNOWLEDGED_WARNINGS = (
+    "{n} warning(s) above, and nothing was filed. Fix them, or re-run with "
+    '--ack "<why this is acceptable>" to file anyway, which records the reason and the '
+    "warnings in the issue body."
+)
+
+
+def blocking_warnings(warnings: list[str], body: str, repo_root=None) -> list[str]:
+    advisory = set(ticket_shape.advisory_warnings(body, repo_root))
+    return [w for w in warnings if w not in advisory]
+
+
+def report_warnings(warnings: list[str], blocking: list[str], ack: str | None) -> bool:
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    if not blocking:
+        return True
+    ROW["warnings"] = len(blocking)
+    if not ack:
+        print(f"error: {UNACKNOWLEDGED_WARNINGS.format(n=len(blocking))}", file=sys.stderr)
+        return False
+    ROW["ack"] = ack
+    return True
+
+
+def ack_section(reason: str, warnings: list[str]) -> str:
+    return "\n".join(
+        [ACK_HEADING, "", f"Filed with `--ack`: {reason}", "", *(f"- {w}" for w in warnings)]
+    )
+
+
 def resolve_gh() -> str:
     found = gh_support.gh_bin()
     if not found:
@@ -336,9 +385,6 @@ def run_ticketify(args) -> int:
     except ticket_shape.ValidationError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    for w in warnings:
-        print(f"warning: {w}", file=sys.stderr)
-
     claim = ticket_shape.claimed_paths(supplied)
     if ticket_shape.is_degenerate_claim(claim):
         print(
@@ -354,6 +400,10 @@ def run_ticketify(args) -> int:
         except TestHandoffError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
+
+    blocking = blocking_warnings(warnings, supplied)
+    if not report_warnings(warnings, blocking, args.ack):
+        return 1
 
     gh_path = resolve_gh()
     gh = gh_support.bind_gh(gh_path, args.repo)
@@ -378,8 +428,11 @@ def run_ticketify(args) -> int:
     if had_criteria:
         base_body = ticket_shape.strip_section(base_body, ticket_shape.CRITERIA_HEADING_RE)
         base_body = ticket_shape.strip_section(base_body, ticket_shape.FILES_CLAIMED_HEADING_RE)
+        base_body = ticket_shape.strip_section(base_body, ACK_HEADING_RE)
 
     new_body = _append_section(base_body, supplied)
+    if blocking:
+        new_body = _append_section(new_body, ack_section(args.ack, blocking))
 
     label_names = {lbl.get("name") for lbl in target.get("labels", []) if isinstance(lbl, dict)}
     remove_fuzzy = "fuzzy" in label_names
@@ -417,6 +470,8 @@ def parse_args(argv):
         kp.add_argument("--title", required=True)
         kp.add_argument("--body-file")
         kp.add_argument("-R", "--repo")
+        if kind in ("ticket", "spec"):
+            kp.add_argument("--ack", help=ACK_HELP)
         if kind == "ticket":
             kp.add_argument(
                 "--test", action="append", default=[],
@@ -434,6 +489,7 @@ def parse_args(argv):
     tp.add_argument("n", type=int)
     tp.add_argument("--body-file")
     tp.add_argument("--replace", action="store_true")
+    tp.add_argument("--ack", help=ACK_HELP)
     tp.add_argument(
         "--test", action="append", default=[],
         help="path to an acceptance-test file titled '#?.<i>: <claim>' per criterion "
@@ -474,9 +530,6 @@ def run(argv=None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 1
 
-    for w in warnings:
-        print(f"warning: {w}", file=sys.stderr)
-
     test_paths = getattr(args, "test", None) or []
     if test_paths:
         try:
@@ -484,6 +537,13 @@ def run(argv=None) -> int:
         except TestHandoffError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
+
+    ack = getattr(args, "ack", None)
+    blocking = blocking_warnings(warnings, body)
+    if not report_warnings(warnings, blocking, ack):
+        return 1
+    if blocking:
+        body = _append_section(body, ack_section(ack, blocking))
 
     gh_path = resolve_gh()
     gh = gh_support.bind_gh(gh_path, args.repo)

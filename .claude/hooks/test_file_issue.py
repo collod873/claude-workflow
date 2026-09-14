@@ -401,21 +401,22 @@ def test_cli(tmp):
     body = write_body(tmp, "ticket-no-evidence.md", TICKET_BODY_NO_EVIDENCE)
     r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
                 body_file=body)
-    check("ticket/no-evidence: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
+    check("ticket/no-evidence: exits nonzero", r.returncode != 0,
+          f"rc={r.returncode} stderr={r.stderr}")
     check("ticket/no-evidence: warning on stderr", "warning:" in r.stderr, r.stderr)
+    check("ticket/no-evidence: never called gh", read_argv_log(log) == [], read_argv_log(log))
 
     log = tmp / "log2c.jsonl"
     body = write_body(tmp, "ticket-malformed-check-marker.md", TICKET_BODY_CHECK_MARKER_NO_COMMAND)
     r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
                 body_file=body)
-    check("ticket/malformed-check-marker: exits 0", r.returncode == 0,
+    check("ticket/malformed-check-marker: exits nonzero", r.returncode != 0,
           f"rc={r.returncode} stderr={r.stderr}")
     check("ticket/malformed-check-marker: named warning on stderr",
           "warning:" in r.stderr and "check:" in r.stderr and "doesn't parse" in r.stderr,
           r.stderr)
-    check("ticket/malformed-check-marker: still filed (label create, then issue create)",
-          [c[:2] for c in read_argv_log(log)] == [["label", "create"], ["issue", "create"]],
-          read_argv_log(log))
+    check("ticket/malformed-check-marker: never called gh",
+          read_argv_log(log) == [], read_argv_log(log))
 
     log = tmp / "log2d.jsonl"
     body = write_body(tmp, "ticket-check-marker-ok.md", TICKET_BODY_CHECK_MARKER_OK)
@@ -566,6 +567,93 @@ def run_ticketify(n, extra_args, issues, body_text, log):
 def body_file_content(argv):
     idx = argv.index("--body-file") + 1 if "--body-file" in argv else None
     return Path(argv[idx]).read_text() if idx is not None else None
+
+
+def body_arg(argv):
+    return argv[argv.index("--body") + 1] if "--body" in argv else None
+
+
+TICKET_BODY_WARNS_WITH_CLAIM = (
+    "## Acceptance criteria\n\n- [ ] it works well\n\n"
+    "## Files claimed\n\n- bin/file-issue\n"
+)
+
+TICKET_BODY_CLAIMS_A_FILE_NOT_YET_BUILT = (
+    "## Acceptance criteria\n\n- [ ] `bin/not-built-yet` exists and exits 0\n\n"
+    "## Files claimed\n\n- bin/not-built-yet\n"
+)
+
+ACK_REASON = "scoping ticket; the criteria firm up once #573 is answered"
+
+
+def test_warning_acknowledgment(tmp):
+    print("#573: a warning stops the filing unless --ack says why it is acceptable")
+
+    log = tmp / "ack1.jsonl"
+    body = write_body(tmp, "ack-warns.md", TICKET_BODY_WARNS_WITH_CLAIM)
+    r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
+                body_file=body)
+    check("warned/no --ack: exits nonzero", r.returncode != 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    check("warned/no --ack: stderr names the flag that would file it anyway",
+          "--ack" in r.stderr, r.stderr)
+    check("warned/no --ack: never called gh", read_argv_log(log) == [], read_argv_log(log))
+
+    log = tmp / "ack2.jsonl"
+    r = run_cli(["ticket", "--title", "A ticket", "--ack", ACK_REASON],
+                env_extra={"STUB_ARGV_LOG": str(log)}, body_file=body)
+    check("warned/--ack: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
+    created = next((body_arg(c) for c in read_argv_log(log) if c[:2] == ["issue", "create"]), "")
+    check("warned/--ack: the filed body carries the acknowledgment heading",
+          "## Warnings acknowledged" in created, created)
+    check("warned/--ack: the filed body carries the reason given",
+          ACK_REASON in created, created)
+    check("warned/--ack: the filed body carries the warning itself, not just the reason",
+          ticket_shape.NO_EVIDENCE_WARNING in created, created)
+    check("warned/--ack: the claim still parses out of the filed body",
+          ticket_shape.claimed_paths(created) == ["bin/file-issue"],
+          ticket_shape.claimed_paths(created))
+    check("warned/--ack: the acknowledgment adds no acceptance criterion",
+          len(ticket_shape.criteria_blocks(created) or []) == 1,
+          ticket_shape.criteria_blocks(created))
+
+    log = tmp / "ack3.jsonl"
+    body = write_body(tmp, "ack-advisory.md", TICKET_BODY_CLAIMS_A_FILE_NOT_YET_BUILT)
+    r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
+                body_file=body)
+    check("claims a file this ticket will create: exits 0 with no --ack",
+          r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
+    check("claims a file this ticket will create: still warned on stderr",
+          "warning:" in r.stderr, r.stderr)
+    created = next((body_arg(c) for c in read_argv_log(log) if c[:2] == ["issue", "create"]), "")
+    check("claims a file this ticket will create: no acknowledgment section in the body",
+          "## Warnings acknowledged" not in created, created)
+
+    log = tmp / "ack4.jsonl"
+    issues = [issue_obj(20, 2020, "Some fuzzy description.\n", labels=["fuzzy"])]
+    r, calls = run_ticketify(20, [], issues, TICKET_BODY_WARNS_WITH_CLAIM, log)
+    check("ticketify/warned/no --ack: exits nonzero", r.returncode != 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    check("ticketify/warned/no --ack: never edits the issue",
+          all(c[:2] != ["issue", "edit"] for c in calls), calls)
+
+    log = tmp / "ack5.jsonl"
+    r, calls = run_ticketify(20, ["--ack", ACK_REASON], issues, TICKET_BODY_WARNS_WITH_CLAIM, log)
+    check("ticketify/warned/--ack: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    edited = next((body_file_content(c) or "" for c in calls if c[:2] == ["issue", "edit"]), "")
+    check("ticketify/warned/--ack: the edited body carries the acknowledgment",
+          "## Warnings acknowledged" in edited and ACK_REASON in edited, edited)
+
+    log = tmp / "ack6.jsonl"
+    already_acked = [issue_obj(21, 2121, edited, labels=["ticket"])]
+    r, calls = run_ticketify(21, ["--replace", "--ack", ACK_REASON], already_acked,
+                             TICKET_BODY_WARNS_WITH_CLAIM, log)
+    check("ticketify/--replace: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    replaced = next((body_file_content(c) or "" for c in calls if c[:2] == ["issue", "edit"]), "")
+    check("ticketify/--replace: one acknowledgment section, not a second one stacked",
+          replaced.count("## Warnings acknowledged") == 1, replaced)
 
 
 def test_ticketify(tmp):
@@ -1118,6 +1206,8 @@ def main():
         test_cli(tmp)
         print()
         test_ticketify(tmp)
+        print()
+        test_warning_acknowledgment(tmp)
         print()
         test_by_hand_label(tmp)
         print()

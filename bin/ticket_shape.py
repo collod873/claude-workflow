@@ -423,23 +423,32 @@ def _similar_existing_path(path: str, repo_root: Path) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[str]:
-    root = repo_root or caller_repo_root()
+def _claimed_path_warnings(body: str, root: Path) -> list[tuple[str, bool]]:
     warnings = []
     for path in claimed_paths(body):
-        if _GLOB_CHAR_RE.search(path):
+        if _GLOB_CHAR_RE.search(path) or is_workstation_path(path):
             continue
         if (root / path).exists():
             continue
         suggestion = _similar_existing_path(path, root)
         if suggestion:
-            warnings.append(
+            warnings.append((
                 f"claimed path `{path}` not found in the working tree; did you mean "
-                f"`{suggestion}`?"
-            )
+                f"`{suggestion}`?",
+                False,
+            ))
         else:
-            warnings.append(f"claimed path `{path}` not found in the working tree")
+            warnings.append((f"claimed path `{path}` not found in the working tree", True))
     return warnings
+
+
+def unresolved_claimed_paths(body: str, repo_root: Path | None = None) -> list[str]:
+    return [w for w, _ in _claimed_path_warnings(body, repo_root or caller_repo_root())]
+
+
+def advisory_warnings(body: str, repo_root: Path | None = None) -> list[str]:
+    root = repo_root or caller_repo_root()
+    return [w for w, advisory in _claimed_path_warnings(body, root) if advisory]
 
 
 def criteria_blocks(body: str) -> list[str] | None:

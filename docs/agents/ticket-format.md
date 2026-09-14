@@ -31,6 +31,32 @@ Three places, and each rule below is in exactly one of them (claude-workflow/ADR
 - **This page** — the prose an author reads, and nothing mechanical reads back except its own
   fenced examples, which `ticket-format-doc.proc.test.ts` runs through `validate()`.
 
+## Refusals, warnings, and `--ack`
+
+A body that breaks a rule the parser can settle alone — a missing heading, a claim over the
+ceiling, a spec with two criteria — is **refused**: `~/bin/file-issue` prints what is missing and
+exits nonzero without ever calling `gh`.
+
+Everything below that only an author can settle is a **warning**: criteria with no verifiable
+evidence, a migration worded as its artifact, a `check:` marker that doesn't parse, a claimed path
+whose spelling looks like a typo. A warning does not decide the ticket is wrong; it decides the
+author has to say. So it also stops the filing, and `--ack "<why this is acceptable>"` files
+anyway, appending the reason and every warning to the issue body under `## Warnings acknowledged`,
+where the next reader meets them:
+
+```bash
+~/bin/file-issue ticket --title "..." --body-file body.md \
+  --ack "scoping ticket; the post-state criterion lands once the target repo is enrolled"
+```
+
+Warnings used to print to stderr and file regardless. #570 was filed carrying the
+migration warning, and #573 is the gap that shipped because printed is not read. Filing rough
+stays possible — a ticket also names work still to be scoped — but not by accident.
+
+One warning is advisory and never stops a filing: a claimed path that isn't in the working tree
+and looks like nothing else there. Claiming a file the ticket is about to create is the normal
+case, and a gate that fires on most tickets would only teach everyone to type `--ack` by reflex.
+
 ## The core, gate-parsed
 
 Every ticket body carries two headings. `count_body_criteria`
@@ -70,7 +96,7 @@ red-at-publish check both run every marker command with `shell=True`, which is `
 the workstation and on every Ubuntu runner. A command that only bash understands — process
 substitution (`comm -12 <(ls) <(ls)`), arrays — is a syntax error under dash, not a red result, so
 a spec carrying one is refused at filing rather than discovered when the ticket closes; a ticket
-carrying one is warned about instead, since a ticket also names work still to be scoped. Wrap a
+carrying one earns a warning instead, which stops the filing until `--ack` says why. Wrap a
 bash-only command in `bash -c '...'`:
 
 ```markdown
@@ -84,7 +110,8 @@ what is being migrated**, checkable against the real target rather than against 
 ticket's own test builds: `git rev-list --all --objects | grep -c <path>` prints 0, not `npm test
 -- scrub.test.ts` exits 0. A suite passing proves the script works; it never proves the script ran.
 `bin/ticket_shape.py` warns, never refuses, when a migration-shaped body's
-every criterion is satisfied by a test passing or by a path the ticket itself claims. See claude-workflow/ADR-0076,
+every criterion is satisfied by a test passing or by a path the ticket itself claims — and a
+warning stops the filing until `--ack` names why it stands. See claude-workflow/ADR-0076,
 recorded in `collod873/claude-workflow`.
 
 ```markdown
