@@ -641,7 +641,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { TICKET_NUMBER: PAYLOAD_ISSUE, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
-          checkoutTarget(),
+          checkoutTarget({ fetchDepth: 0 }),
           preflight("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before the implementer can run."),
           SETS_UP_NODE,
           INSTALLS_TARGET,
@@ -670,7 +670,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
         env: { TICKET_NUMBER: PAYLOAD_ISSUE, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
-          checkoutTarget(),
+          checkoutTarget({ fetchDepth: 0 }),
           preflight("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN is empty: set the repository secret before the mechanic can run."),
           SETS_UP_NODE,
           INSTALLS_TARGET,
