@@ -3,6 +3,16 @@ import { resolve, sep } from "node:path";
 
 export const STDOUT_TAIL = 4000;
 
+export const EDIT_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+
+export function editedPath(toolInput) {
+  for (const key of ["file_path", "notebook_path"]) {
+    const value = toolInput?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
 export function inScope(file, repoRoot) {
   if (typeof file !== "string" || !/\.[cm]?ts$/.test(file)) return false;
   const abs = resolve(file);

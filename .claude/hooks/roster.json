@@ -10,7 +10,8 @@
     "checklist-reminder.py",
     "post-edit-validate.py",
     "md-html-refresh.py",
-    "circuit-breaker.py"
+    "circuit-breaker.py",
+    "gauntlet.sh"
   ],
   "PostToolUseFailure": [
     "circuit-breaker.py"

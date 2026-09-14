@@ -13,10 +13,10 @@ from _harness import check, finish
 HOOKS_DIR = Path(__file__).resolve().parent
 DISPATCH = HOOKS_DIR / "dispatch.py"
 ROSTER = json.loads((HOOKS_DIR / "roster.json").read_text())
+SETTINGS = HOOKS_DIR.parent / "settings.json"
 
 NOT_A_LIFECYCLE_HOOK = {
     "_hook.py", "_harness.py", "stub_gh.py", "conftest.py", "dispatch.py",
-    "gauntlet.sh",
 }
 
 
@@ -37,6 +37,19 @@ def check_roster_matches_tree() -> None:
     missing_on_disk = sorted(n for n in rostered if not (HOOKS_DIR / n).is_file())
     check("every roster entry names a file that exists",
           not missing_on_disk, missing_on_disk)
+
+
+def check_settings_registers_no_hooks() -> None:
+    registered = json.loads(SETTINGS.read_text()).get("hooks") or {}
+    named = sorted(
+        entry.get("command", "")
+        for group in registered.values() if isinstance(group, list)
+        for matcher in group if isinstance(matcher, dict)
+        for entry in matcher.get("hooks", []) if isinstance(entry, dict)
+    )
+    check("this checkout's settings.json registers no hooks of its own, so roster.json is the "
+          "only wiring and a second one cannot fire unobserved",
+          not registered, named or sorted(registered))
 
 
 def write_script(path: Path, body: str) -> Path:
@@ -276,6 +289,7 @@ def check_real_hooks_per_event() -> None:
 
 def main() -> None:
     check_roster_matches_tree()
+    check_settings_registers_no_hooks()
     check_merge_semantics()
     check_real_hooks_per_event()
     finish("All dispatch checks passed.")

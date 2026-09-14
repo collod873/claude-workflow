@@ -26,7 +26,7 @@ Five axes fix what a hook can do. Pin all five before writing a line.
   4. **Halt**: `continue: false` ends the turn. Any event.
   5. **Gate**: the action never happens, or is rewritten: `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `PreCompact`.
   Choosing a rung above the event's ceiling is the #1 design error.
-- **Matcher**: which occurrences fire it, a tool name for tool events, a source for others. Narrowest match that does the job; an empty matcher runs on *everything*. Case-sensitive; non-plain patterns are unanchored regex; MCP tools are `mcp__<server>__<tool>`; the edit tools are `_hook.EDIT_TOOL_MATCHER`. The **`if`** field narrows by argument and fails open on shell it can't parse: scoping, never safety.
+- **Matcher**: which occurrences fire it, a tool name for tool events, a source for others. Narrowest match that does the job; an empty matcher runs on *everything*. Case-sensitive; non-plain patterns are unanchored regex; MCP tools are `mcp__<server>__<tool>`. In this repo there is no matcher to write: `~/.claude/settings.json` routes every event at `*` into `dispatch.py`, so a hook selects its own occurrences in code — the edit tools by membership in `_hook.EDIT_TOOLS` (ADR-0170). The **`if`** field narrows by argument and fails open on shell it can't parse: scoping, never safety.
 - **Contract**: stdin JSON in (`_hook.read_payload()`), two channels out. A refusal is `_hook.deny()`: exit 0, `permissionDecision: deny`, the same text on `systemMessage`, because `permissionDecisionReason` is a raced single slot under contention and `systemMessage` is the one per-hook channel that reaches the human (ADR-0166). The docs' `exit 2` + stderr block is silent to the human and discards any JSON. `hookSpecificOutput` needs `hookEventName` or the block is dropped.
 - **Failure mode**: what happens when the hook itself errors, missing tool, bad input, a bug, a timeout. **Fail open** or **fail closed**, a deliberate choice (*Authoring* step 3).
 - **Type**: `command` (everything here assumes it), or `prompt` / `agent` when the decision needs judgment rather than a regex (`REFERENCE.md` § Hook types).
@@ -37,7 +37,7 @@ Common pattern → event:
 
 | Want to… | Event | Caveat |
 |---|---|---|
-| Auto-format / lint after an edit | `PostToolUse` (`EDIT_TOOL_MATCHER`) | Changes a file Claude just read; the next Edit re-reads. Expected. |
+| Auto-format / lint after an edit | `PostToolUse`, filtered on `_hook.EDIT_TOOLS` | Changes a file Claude just read; the next Edit re-reads. Expected. |
 | Block a dangerous command or protect a file | `PreToolUse` (Bash / edits) | Back with a permission `deny` rule. |
 | Refuse to stop until a check passes | `Stop` | Fires every turn, Claude's questions to you included, and before delegated work is done (`background_tasks` on the payload says when); runs only the contract's `stop` slot (ADR-0167). |
 | Inject context at session start | `SessionStart` | Match `startup\|resume`, or it fires on every compact. |

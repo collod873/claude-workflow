@@ -10,4 +10,4 @@ repo_root="$(cd "$here/../.." && pwd)"
 
 node_on_path || exit 0
 
-exec node "$repo_root/.claude/hooks/gauntlet-hook.mjs" "$@"
+exec node "$repo_root/.claude/hooks/gauntlet-hook.mjs" turn

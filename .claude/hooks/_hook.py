@@ -114,8 +114,6 @@ def _prune_old_logs(hook: str) -> None:
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 EDIT_TOOL_RE = re.compile(rb'"name"\s*:\s*"(?:Edit|Write|MultiEdit|NotebookEdit)"')
 
-EDIT_TOOL_MATCHER = "|".join(EDIT_TOOLS)
-
 
 def edited_path(tool_input: dict) -> str:
     if not isinstance(tool_input, dict):
