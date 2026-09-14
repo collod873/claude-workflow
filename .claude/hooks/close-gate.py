@@ -64,14 +64,16 @@ COMMENT_DQUOTE_RE = re.compile(r'--comment\s+"((?:[^"\\]|\\.)*)"', re.DOTALL)
 COMMENT_SQUOTE_RE = re.compile(r"--comment\s+'((?:[^'\\])*)'", re.DOTALL)
 
 
-RECORD_HEADING = "## Closing record"
-REVSPEC = r"[A-Za-z0-9._/@{}~^+-]+"
-RANGE_LINE_RE = re.compile(rf"^[ \t]*`?({REVSPEC})\.\.({REVSPEC})`?[ \t]*$", re.MULTILINE)
-BULLET_RE = re.compile(r"^[ \t]*-\s+(.*)$", re.MULTILINE)
+CLOSING_RECORD_RULES_PATH = (
+    _hook.BIN.parent / ".Workflow" / "agent-workflows" / "shared" / "closing-record.rules.json"
+)
+CLOSING_RECORD_RULES = json.loads(CLOSING_RECORD_RULES_PATH.read_text(encoding="utf-8"))
 
-REPO_REF = r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*"
-SUPERSEDED_RE = re.compile(
-    rf"^[ \t]*`?Superseded by (?:({REPO_REF}))?#(\d+)`?[ \t]*\.?[ \t]*$", re.MULTILINE)
+CLOSING_HEADING = CLOSING_RECORD_RULES["heading"]
+CLOSING_NO_DIFF = CLOSING_RECORD_RULES["noDiff"]
+CLOSING_RANGE_RE = re.compile(CLOSING_RECORD_RULES["grammar"]["range"], re.MULTILINE)
+CLOSING_BULLET_RE = re.compile(CLOSING_RECORD_RULES["grammar"]["bullet"], re.MULTILINE)
+CLOSING_SUPERSEDED_RE = re.compile(CLOSING_RECORD_RULES["grammar"]["superseded"], re.MULTILINE)
 
 
 
@@ -156,9 +158,9 @@ def find_marker_text(text: str | None) -> str | None:
     if text is None:
         return None
     stripped = text.strip()
-    if not stripped.startswith(RECORD_HEADING):
+    if not stripped.startswith(CLOSING_HEADING):
         return None
-    return stripped[len(RECORD_HEADING):].lstrip("\n")
+    return stripped[len(CLOSING_HEADING):].lstrip("\n")
 
 
 def most_recent_record(comments: list) -> str | None:
@@ -189,7 +191,7 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
             f"{write_criteria_hint()}, then run "
             f"`{close_ticket_stub_text}` to close it.",
         ), []
-    bullets = [b.strip() for b in BULLET_RE.findall(record_text) if b.strip()]
+    bullets = [b.strip() for b in CLOSING_BULLET_RE.findall(record_text) if b.strip()]
     if len(bullets) != criteria_count:
         return (
             "deny",
@@ -204,8 +206,8 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
 
 def evaluate_record(record_text: str, criteria_count: int | None,
                     close_ticket_stub_text: str = "close-ticket") -> tuple[str, str, str]:
-    declares_no_diff = record_text.lstrip().startswith("No diff.")
-    superseded = SUPERSEDED_RE.search(record_text)
+    declares_no_diff = record_text.lstrip().startswith(CLOSING_NO_DIFF)
+    superseded = CLOSING_SUPERSEDED_RE.search(record_text)
 
     if superseded is not None:
         number = int(superseded.group(2))
@@ -238,7 +240,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "carried criteria. Run `close-ticket` to verify and record them.",
         )
 
-    if not RANGE_LINE_RE.search(record_text):
+    if not CLOSING_RANGE_RE.search(record_text):
         return (
             "deny",
             "no-range-or-no-diff",

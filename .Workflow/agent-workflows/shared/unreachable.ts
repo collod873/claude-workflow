@@ -1,3 +1,5 @@
+import closingRecordRules from "./closing-record.rules.json";
+
 export interface UnreachableFinding {
   number: number;
   title: string;
@@ -42,9 +44,9 @@ export function commentBody(entries: UnreachableFinding[]): string {
 
 export function retirementBody(): string {
   return [
-    "## Closing record",
+    closingRecordRules.heading,
     "",
-    "No diff.",
+    closingRecordRules.noDiff,
     "",
     "Nothing is unreachable. Every slice named above has since been re-sliced, had its blocker",
     "re-opened and delivered, or had its edge cut, so the standing count has nothing left to",
