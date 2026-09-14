@@ -40,7 +40,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0084 | [Readiness is recomputed rather than pushed, so a merge announces without interpreting and an unsatisfiable edge is a counter finding rather than a park](0084-readiness-is-recomputed-rather-than-pushed-so-a-merge-announ.md) |
 | 0086 | [A test importing a thing is not evidence anything runs it, so the push gate measures reachability from lanes instead](0086-a-test-importing-a-thing-is-not-evidence-anything-runs-it-so.md) |
 | 0088 | [The close gate fires in the agent's turn at both venues, so the tracker-side gate and its reconciler retire](0088-the-close-gate-fires-in-the-agent-s-turn-at-both-venues-so-t.md) |
-| 0091 | [The token that spends a model and the token that starts the next lane are separate, so a lane needing both is two jobs](0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md) |
 | 0093 | [A lane that opens a pull request depends on a repository setting no file records, so the record is here and the installer sets it](0093-a-lane-that-opens-a-pull-request-depends-on-a-repository-set.md) |
 | 0097 | [Machine-global agent machinery lives in one dedicated clone, symlinked, never vendored into a consumer](0097-machine-global-agent-machinery-lives-in-the-agent-skills-rep.md) |
 | 0102 | [A lint rule that points at an import the boundary forbids does not apply inside that boundary](0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md) |
@@ -168,6 +167,7 @@ demotion; nothing here binds later work.
 - [0087](0087-a-contract-slot-names-a-check-a-reader-can-run-never-a-hook.md) note
 - [0089](0089-the-clone-gate-runs-beside-the-gauntlet-not-inside-it-so-the.md) note
 - [0090](0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md) note
+- [0091](0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md) superseded
 - [0094](0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md) superseded
 - [0095](0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md) superseded
 - [0096](0096-a-check-marker-is-refused-for-reading-the-tracker-instead-of.md) superseded
@@ -201,4 +201,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-186 ADRs · 95 constraint · 44 note · 47 superseded · 19,625 words total.
+186 ADRs · 94 constraint · 44 note · 48 superseded · 19,625 words total.

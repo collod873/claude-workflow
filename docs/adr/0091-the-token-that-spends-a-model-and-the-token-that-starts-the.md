@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-28
+superseded_by: ADR-0186
 reversal: Reversing means collapsing each lane's model job and dispatch job back into one, which either grants `contents: write` to a job that runs a model — against ADR-0053 — or reinstates the 403 that silently dropped two lanes' hand-offs, and unwinds `shared/dispatch-request.ts` along with lane 04's format-patch replay.
 ---
 
