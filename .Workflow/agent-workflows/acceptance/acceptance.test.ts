@@ -304,6 +304,29 @@ function redReason(verdict: BatchVerdict): string {
 }
 
 describe("judgeAuthoredBatch", () => {
+  it("says which phase it is in and what each cost, so a run stuck here is not silence", () => {
+    const lines: string[] = [];
+    judgeAuthoredBatch(judging({ log: (line) => lines.push(line) }), BATCH, SUITE.suffixes);
+    const said = lines.join("\n");
+    expect(said).toContain("running the authored batch");
+    expect(said).toContain("batch ran in");
+    expect(said).toContain("gating");
+    expect(said).toContain("turn venue answered in");
+  });
+
+  it("says the batch ran even when it comes back red, so the slow phase is named either way", () => {
+    const lines: string[] = [];
+    judgeAuthoredBatch(
+      judging({
+        log: (line) => lines.push(line),
+        runTests: () => ({ collected: false, collectionError: "no module", failures: [] }),
+      }),
+      BATCH,
+      SUITE.suffixes,
+    );
+    expect(lines.join("\n")).toContain("batch ran in");
+  });
+
   it("is red, before the gate runs, when a test file did not collect", () => {
     let gateRan = false;
     const verdict = judgeAuthoredBatch(

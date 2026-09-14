@@ -365,13 +365,24 @@ function acceptRound(
 export interface JudgeDeps {
   runTests: (paths: string[]) => TestRunResult;
   gate: (paths: string[]) => GateVerdict;
+  log?: (line: string) => void;
 }
 
 export type BatchVerdict = { ok: true } | { ok: false; reason: string };
 
+function since(started: number): string {
+  return `${((Date.now() - started) / 1000).toFixed(1)}s`;
+}
+
 export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[], suffixes: string[]): BatchVerdict {
+  const log = deps.log ?? ((line: string) => console.log(line));
   const tests = paths.filter((path) => isTestPath(path, suffixes));
+
+  log(`· running the authored batch (${tests.length} test file(s))`);
+  const testsStarted = Date.now();
   const result = deps.runTests(tests);
+  log(`· batch ran in ${since(testsStarted)}`);
+
   if (!result.collected) {
     return { ok: false, reason: `a test file failed to collect: ${result.collectionError ?? "no detail reported"}` };
   }
@@ -384,7 +395,10 @@ export function judgeAuthoredBatch(deps: JudgeDeps, paths: string[], suffixes: s
         `a vacuous test or one about work already done: ${names}`,
     };
   }
+  log(`· gating ${paths.length} authored file(s) through the turn venue`);
+  const gateStarted = Date.now();
   const gate = deps.gate(paths);
+  log(`· turn venue answered in ${since(gateStarted)}`);
   return gate.ok ? { ok: true } : { ok: false, reason: `the gate is red on the authored batch:\n${gate.output}` };
 }
 
@@ -511,6 +525,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
       gate: deps.gate ?? ((paths) => turnVenueVerdict(paths, REPO_DIR)),
+      log,
     },
     budget,
   );
