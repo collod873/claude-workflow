@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
+import { PATH_LINE_RE } from "../shared/ticket-shape";
 import { isStructurallyRefused, type Finding } from "./structural-refusal";
 
 const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
@@ -7,6 +8,28 @@ const DIFF = `diff --git a/src/widget.ts b/src/widget.ts
 +  return undefined;
 +}
 `;
+
+function finding(over: Partial<Finding> = {}): Finding {
+  return { message: "src/widget.ts:12 returns undefined on the empty-cart path", ...over };
+}
+
+describe("isStructurallyRefused", () => {
+  it("refuses a finding that names no path:line at all", () => {
+    expect(isStructurallyRefused(finding({ message: "This function is confusing." }), DIFF)).toBe(true);
+  });
+
+  it("refuses a finding whose cited path:line is not in the diff under review", () => {
+    expect(isStructurallyRefused(finding({ message: "src/other.ts:99 has the same bug" }), DIFF)).toBe(true);
+  });
+
+  it("survives and reaches the refuter when its path:line is in the diff", () => {
+    expect(isStructurallyRefused(finding(), DIFF)).toBe(false);
+  });
+
+  it("reuses shared/ticket-shape's PATH_LINE_RE rather than a local copy", () => {
+    expect(PATH_LINE_RE.test("src/widget.ts:12")).toBe(true);
+  });
+});
 
 type DiffOnlyRefusal = (finding: Finding, diff: string) => boolean;
 
