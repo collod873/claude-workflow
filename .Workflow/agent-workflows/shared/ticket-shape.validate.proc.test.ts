@@ -72,7 +72,7 @@ const ISSUE_538_BODY = [
   "",
 ].join("\n");
 
-test.fails(
+test(
   "#579.1: validate refuses a Files claimed entry containing * or ?, naming the entry and saying a claim is one file",
   () => {
     const asterisk = runValidateProbe(ASTERISK_BODY);
@@ -89,7 +89,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#579.3: #538's own claim list is refused by the validator, since it is the body that produced the deadlock",
   () => {
     const result = runValidateProbe(ISSUE_538_BODY);

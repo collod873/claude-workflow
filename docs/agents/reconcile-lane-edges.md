@@ -146,10 +146,10 @@ Every open issue carrying `to-build` is checked:
 
 | Refuses when |
 |---|
-| `assertTicketShape(body)` throws — missing `## Acceptance criteria` or its `- [ ]` items, or missing `## Files claimed` |
+| `assertTicketShape(body)` throws — missing `## Acceptance criteria` or its `- [ ]` items, missing `## Files claimed`, or a claimed entry that is a glob rather than one file |
 | No acceptance criterion carries a `check:` marker — the same line `bin/close-ticket` draws at close |
 
-`assertTicketShape()` raises the four refusals the rules source spells, the same four
+`assertTicketShape()` raises the five refusals the rules source spells, the same five
 `bin/ticket_shape.py` raises at filing (claude-workflow/ADR-0184). The door wants that verdict and
 no warning: warnings are the Python's alone, and reaching for them here would cost a `python3`
 spawn per open issue.

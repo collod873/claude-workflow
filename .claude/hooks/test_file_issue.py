@@ -759,7 +759,7 @@ def test_ticketify(tmp):
         check("intersection: unrelated #30 never appears", "30" not in by_blocked, post_calls)
 
     log = tmp / "tk6.jsonl"
-    degenerate = "## Acceptance criteria\n\n- [ ] x\n\n## Files claimed\n\n- **\n"
+    degenerate = "## Acceptance criteria\n\n- [ ] x\n\n## Files claimed\n\n- .\n"
     r, calls = run_ticketify(16, [], [], degenerate, log)
     check("degenerate: exits nonzero", r.returncode != 0, r.returncode)
     check("degenerate: names the canonical degenerate-claim message",

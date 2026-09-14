@@ -192,6 +192,8 @@ DEGENERATE_CLAIM_MESSAGE = "could not name the files this touches"
 
 CLAIM_LIMIT = RULES["claimLimit"]
 
+CLAIM_IS_GLOB = REFUSALS["claimIsGlob"]
+
 CLAIM_TOO_WIDE = REFUSALS["claimTooWide"]
 
 MISSING_CRITERIA_HEADING = REFUSALS["missingCriteriaHeading"]
@@ -322,10 +324,13 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
             raise ValidationError(CRITERIA_HEADING_WITHOUT_ITEMS)
         if not FILES_CLAIMED_HEADING_RE.search(body):
             raise ValidationError(MISSING_FILES_CLAIMED_HEADING)
-        claimed_count = len(claimed_paths(body))
-        if claimed_count > CLAIM_LIMIT:
+        claimed = claimed_paths(body)
+        for entry in claimed:
+            if _GLOB_CHAR_RE.search(entry):
+                raise ValidationError(CLAIM_IS_GLOB.format(entry=entry))
+        if len(claimed) > CLAIM_LIMIT:
             raise ValidationError(
-                CLAIM_TOO_WIDE.format(count=claimed_count, limit=CLAIM_LIMIT)
+                CLAIM_TOO_WIDE.format(count=len(claimed), limit=CLAIM_LIMIT)
             )
         warnings = []
         lines = _criteria_lines(body)

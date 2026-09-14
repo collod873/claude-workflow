@@ -14,7 +14,7 @@ test("#552.3: ticket-shape.rules.json carries that ADR's number against the evid
   expect(JSON.stringify(rules)).toMatch(/ADR-\d{4}/);
 });
 
-test.fails(
+test(
   "#579.2: the Files claimed glob refusal string lives in ticket-shape.rules.json's refusals, beside the others, not inline",
   () => {
     const rules = JSON.parse(readFileSync(rulesPath, "utf8"));

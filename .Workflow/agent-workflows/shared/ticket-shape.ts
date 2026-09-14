@@ -160,6 +160,16 @@ export class TicketShapeError extends Error {}
 
 export const CLAIM_LIMIT = rules.claimLimit;
 
+const CLAIM_GLOB_CHAR_RE = /[*?[]/;
+
+function claimIsGlob(entry: string): string {
+  return refusals.claimIsGlob.replaceAll("{entry}", entry);
+}
+
+function globClaim(body: string): string | undefined {
+  return extractFilesClaimed(body).find((entry) => CLAIM_GLOB_CHAR_RE.test(entry));
+}
+
 export function claimTooWide(count: number): string {
   return refusals.claimTooWide
     .replaceAll("{count}", String(count))
@@ -198,6 +208,10 @@ export function assertTicketShape(body: string): void {
   }
   if (!FILES_HEADING_RE.test(normalized)) {
     throw new TicketShapeError(refusals.missingFilesClaimedHeading);
+  }
+  const glob = globClaim(normalized);
+  if (glob !== undefined) {
+    throw new TicketShapeError(claimIsGlob(glob));
   }
   const overWide = overWideClaim(normalized);
   if (overWide !== undefined) {
