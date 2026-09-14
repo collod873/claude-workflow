@@ -181,8 +181,10 @@ Once all four pass:
 3. `verifyBlockedByGraph` — reads the graph back from GitHub and throws if any declared edge is
    missing. A write-then-verify rail, distinct from the four validators above, which all run
    *before* anything is written.
-4. `dispatchReadySlices` — for **every** published slice, not only the ready ones, dispatches
-   `acceptance-wanted` with a `ready` flag.
+4. The publish step dispatches nothing itself and names no successor.
+   [ADR-0188](../adr/0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md) made the
+   reconciler's own recompute the only sender of `acceptance-wanted`: a published slice is picked
+   up the next time the reconciler reads the graph, not by anything this lane fires.
 5. Back in `to-tickets.yml`, the step after this one succeeds, `Lift slice-failed, the PRD is
    split now`, runs `gh issue edit "$PRD_NUMBER" --remove-label slice-failed`. It runs only when
    the publish stage exited 0, and is a no-op on a PRD that never wore the label. Without it a
@@ -207,17 +209,19 @@ Once all four pass:
 - scripts/canary-summary.ts
 ```
 
-### edge — `acceptance-wanted` dispatch · one per published slice
+### edge — `run-ended` poke
 
 ```json
-{"event_type": "acceptance-wanted", "client_payload": {"issue": 420, "ready": 1}}
-{"event_type": "acceptance-wanted", "client_payload": {"issue": 421, "ready": 0}}
+{"event_type": "run-ended", "client_payload": {"run_id": 123456789}}
 ```
 
-This is this lane's only edge into lane 04: the whole batch is handed to lane 04's author
-immediately, whether or not a slice can actually start yet. `ready` is the only thing that varies
-— see [`reconcile-lane-edges.md`](reconcile-lane-edges.md)'s node 06 onward for what each value
-does once it lands there.
+This is this lane's only outbound edge, and it names no successor. The `wake-reconciler` job,
+`needs: [to-tickets]` and gated `if: always()`, sends it once the `to-tickets` job finishes —
+published, refused, or cancelled by its cap alike — carrying only the run's own id. The
+reconciler's own recompute is what decides what a published slice's graph state means next, not
+anything this lane carries in the payload. See
+[ADR-0188](../adr/0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md)
+and [`reconcile-lane-edges.md`](reconcile-lane-edges.md) door 7.
 
 ---
 

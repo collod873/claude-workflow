@@ -8,7 +8,7 @@ const docPath = path.join(
   "../../../docs/agents/to-tickets-lane-edges.md",
 );
 
-test.fails(
+test(
   "#570.1: the page names no dispatchReadySlices step and no ready flag on an acceptance-wanted payload",
   async () => {
     const doc = await readFile(docPath, "utf-8");
@@ -17,7 +17,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#570.2: the page's outbound edge section names the run-ended event the wake-reconciler job sends",
   async () => {
     const doc = await readFile(docPath, "utf-8");
