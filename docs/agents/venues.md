@@ -55,10 +55,15 @@ next thing downstream is `main`. The hook is one line: `npm run check`, the `all
 remembering a setup step; that is the whole reason a venue here is worth having, since it makes an
 agent's pushes meet the gate the owner's do. `--no-verify` still skips it, and that gap is accepted
 rather than open: branch protection would close it and the purchase is declined
-([ADR-0071](../adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)). Lane 05
-is the one caller that uses it on purpose: its wire has already run the same gate on the same tree
-and decided to push red work anyway rather than lose it
-([ADR-0157](../adr/0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md)).
+([ADR-0071](../adr/0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md)). Three
+lanes use it on purpose, and every one of them pushes to `implement/issue-N`, never `main`. Lane 05
+and the mechanic share a landing whose wire has already run the same gate on the same tree and
+decided to push red work anyway rather than lose it
+([ADR-0157](../adr/0157-the-implementer-s-checkout-is-its-answer-and-the-push-gate-r.md)). Lane 04
+never runs this venue at all: its verdict is the authored batch plus the `stop` venue over the files
+it wrote, and the tree it pushes is re-gated in full by lane 05 on that same branch before any pull
+request opens
+([ADR-0187](../adr/0187-acceptance-pushes-past-the-pre-push-hook-because-the-impleme.md)).
 
 The gate is a constant: `.claude/gate-size.test.ts` sums the line count of the files above and fails
 when it grows past the total recorded there (#360).
