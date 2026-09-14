@@ -23,6 +23,7 @@ import {
   commentsCarrying,
   deadRun,
   HAND_WRITTEN_TICKET,
+  issueIdOf,
   liveRun,
   reconcileOver,
   RUNNABLE_BODY,
@@ -758,15 +759,37 @@ function claimingBody(paths: string[]): string {
   ].join("\n");
 }
 
-const BLOCKED_BY_PATH_RE = /\/issues\/(\d+)\/dependencies\/blocked_by$/;
-
 function wiredEdges(tracker: Tracker): number[] {
-  return tracker.calls
-    .filter((call) => call.includes("POST") || call.includes("-F") || call.includes("-f"))
-    .flatMap((call) => call.filter((arg) => BLOCKED_BY_PATH_RE.test(arg)))
-    .map((arg) => Number(BLOCKED_BY_PATH_RE.exec(arg)![1]))
-    .sort((left, right) => left - right);
+  return tracker.edges.map((edge) => edge.blocked).sort((left, right) => left - right);
 }
+
+test(
+  "#559.8: a blocked_by write the tracker refuses costs the pass that one edge and nothing else: the run reaches its verdict and the refusal is logged against both numbers",
+  () => {
+    const lines: string[] = [];
+    const tracker = trackerWith({
+      open: [
+        { number: 60, title: "One slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
+        { number: 61, title: "Another slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
+      ],
+    });
+    const refusing: GhExec = (args) => {
+      if (args.includes("-F") && args.some((arg) => arg.endsWith("/dependencies/blocked_by"))) {
+        throw new Error("gh: Not Found (HTTP 404)");
+      }
+      return tracker.gh(args);
+    };
+
+    const outcome = reconcileOver(tracker, { gh: refusing, log: (line) => lines.push(line) });
+
+    expect(outcome.action).not.toBe("degraded");
+    expect(tracker.edges).toEqual([]);
+
+    const refused = lines.find((line) => line.includes("#60") && line.includes("#61"));
+    expect(refused).toBeDefined();
+    expect(refused).toContain("404");
+  },
+);
 
 test(
   "#559.2: a reconcile pass over two dispatchable open tickets whose claims collide with no ordering between them wires the edge itself, lower number blocking higher, and logs both numbers and the overlapping path",
@@ -782,6 +805,7 @@ test(
     reconcileOver(tracker, { log: (line) => lines.push(line) });
 
     expect(wiredEdges(tracker)).toEqual([21]);
+    expect(tracker.edges).toEqual([{ blocked: 21, blockerId: issueIdOf(20) }]);
 
     const wired = lines.find((line) => line.includes("#20") && line.includes("#21"));
     expect(wired).toBeDefined();

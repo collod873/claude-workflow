@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
-import { execGh, type GhExec } from "../shared/gh";
+import { execGh, fetchIssueId, type GhExec } from "../shared/gh";
 import { blockedByPath, issueCommentPath } from "../shared/gh-paths";
 import {
   ACCEPTING_LABEL,
@@ -594,6 +594,14 @@ function findCollidingPath(claim: readonly string[], other: readonly string[]): 
   return undefined;
 }
 
+function issueIdOf(gh: GhExec, known: Map<number, number>, number: number): number {
+  const seen = known.get(number);
+  if (seen !== undefined) return seen;
+  const id = fetchIssueId(gh, number);
+  known.set(number, id);
+  return id;
+}
+
 function wireClaimCollisions(
   gh: GhExec,
   tickets: TicketState[],
@@ -602,6 +610,7 @@ function wireClaimCollisions(
   dryRun: boolean,
 ): void {
   const dispatchable = tickets.filter((ticket) => !neverDispatched(ticket.labels)).sort((a, b) => a.number - b.number);
+  const issueIds = new Map<number, number>();
 
   for (let i = 0; i < dispatchable.length; i++) {
     const lower = dispatchable[i];
@@ -616,7 +625,12 @@ function wireClaimCollisions(
         log(`would wire #${lower.number} blocking #${higher.number}: both claim ${overlap}.`);
         continue;
       }
-      gh(["api", blockedByPath(higher.number), "-F", `issue_id=${lower.number}`]);
+      try {
+        gh(["api", blockedByPath(higher.number), "-F", `issue_id=${issueIdOf(gh, issueIds, lower.number)}`]);
+      } catch (err) {
+        log(`could not wire #${lower.number} blocking #${higher.number} over ${overlap}: ${reason(err)}`);
+        continue;
+      }
       log(`#${lower.number} blocks #${higher.number}: both claim ${overlap}.`);
     }
   }

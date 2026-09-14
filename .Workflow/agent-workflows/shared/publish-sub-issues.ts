@@ -1,5 +1,5 @@
-import type { GhExec } from "./gh";
-import { blockedByPath, issuePath, subIssuesPath } from "./gh-paths";
+import { fetchIssueId, type GhExec } from "./gh";
+import { blockedByPath, subIssuesPath } from "./gh-paths";
 import { BY_HAND_LABEL, isByHandClaim } from "./immutable-set";
 import { parseIssueNumber } from "./issue-url";
 import type { Plan } from "./plan-schema";
@@ -23,15 +23,6 @@ export function publishSubIssues(plan: Plan, prdNumber: number, gh: GhExec): Pub
     attachUnderPrd(gh, prdNumber, id);
     return { position: index + 1, title: slice.title, number, id };
   });
-}
-
-function fetchIssueId(gh: GhExec, number: number): number {
-  const raw = gh(["api", issuePath(number), "--jq", ".id"]);
-  const id = Number(raw.trim());
-  if (!Number.isInteger(id)) {
-    throw new Error(`could not parse a numeric id for issue #${number} from: ${JSON.stringify(raw)}`);
-  }
-  return id;
 }
 
 const ID_FIELD_FLAG = "-F";

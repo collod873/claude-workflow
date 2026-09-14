@@ -6,6 +6,7 @@ import {
   comparePathMatcher,
   issueCommentPathMatcher,
   issueCommentsPathMatcher,
+  issuePathMatcher,
   matchingRefsPath,
   subIssuesPathMatcher,
 } from "../shared/gh-paths";
@@ -97,9 +98,19 @@ export interface TrackerOptions {
   fail?: "issues" | "refs" | "edges" | "runs";
 }
 
+export function issueIdOf(number: number): number {
+  return number * 1000 + 7;
+}
+
+function issueNumberOf(id: number): number | undefined {
+  const number = (id - 7) / 1000;
+  return Number.isInteger(number) ? number : undefined;
+}
+
 export interface Tracker {
   gh: GhExec;
   calls: string[][];
+  edges: Array<{ blocked: number; blockerId: number }>;
   dispatches: FakeDispatch[];
   comments: Array<{ issue: number; body: string }>;
   created: Array<{ title: string; body: string }>;
@@ -117,6 +128,7 @@ function flagValues(args: string[], flag: string): string[] {
 
 export function trackerWith(options: TrackerOptions): Tracker {
   const calls: string[][] = [];
+  const edges: Tracker["edges"] = [];
   const comments: Tracker["comments"] = [];
   const created: Tracker["created"] = [];
   const closedByRun: Tracker["closedByRun"] = [];
@@ -165,13 +177,26 @@ export function trackerWith(options: TrackerOptions): Tracker {
       const bodies = open.get(Number(commentsList[1]))?.comments ?? [];
       return JSON.stringify(bodies.map((body, index) => ({ id: Number(commentsList[1]) * 1000 + index, body })));
     }
-    const edges = blockedByPathMatcher.exec(path);
-    if (edges) {
+    const edge = blockedByPathMatcher.exec(path);
+    if (edge) {
       if (options.fail === "edges") throw new Error("gh: 403");
-      return issueRefs(open.get(Number(edges[1]))?.blockedBy ?? []);
+      const blocked = Number(edge[1]);
+      const field = flagValues(args, "-F").concat(flagValues(args, "-f")).find((value) => value.startsWith("issue_id="));
+      if (field === undefined) return issueRefs(open.get(blocked)?.blockedBy ?? []);
+      const blockerId = Number(field.slice("issue_id=".length));
+      const blocker = issueNumberOf(blockerId);
+      if (blocker === undefined || !open.has(blocker)) {
+        throw new Error(`gh: Not Found (HTTP 404): issue_id=${blockerId} is no issue id this tracker knows`);
+      }
+      edges.push({ blocked, blockerId });
+      const record = open.get(blocked);
+      if (record) record.blockedBy = [...(record.blockedBy ?? []), blocker];
+      return "";
     }
     const subIssues = subIssuesPathMatcher.exec(path);
     if (subIssues) return issueRefs(open.get(Number(subIssues[1]))?.children ?? []);
+    const issue = issuePathMatcher.exec(path);
+    if (issue && args[args.indexOf("--jq") + 1] === ".id") return `${issueIdOf(Number(issue[1]))}\n`;
     return undefined;
   };
 
@@ -272,7 +297,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
     return answer(args) ?? sender.gh(args);
   };
 
-  return { gh, calls, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved, bodyEdits, released };
+  return { gh, calls, edges, dispatches: sender.dispatches, comments, created, closedByRun, commentEdits, labelsAdded, labelsRemoved, bodyEdits, released };
 }
 
 export const silent = () => {};
