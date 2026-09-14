@@ -315,7 +315,7 @@ if [ "$cmd" = "sweep" ]; then
   declare -A sweep_door=()
   for sweep_lane in "${sweep_lanes[@]}"; do
     [ -n "$sweep_lane" ] || continue
-    sweep_kind="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$sweep_lane" | jq -r .kind)"
+    sweep_kind="$(npx --no-install tsx "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$sweep_lane" | jq -r .kind)"
     case "$sweep_kind" in
       issues_labeled | issues_closed) sweep_group="issues" ;;
       push) sweep_group="push" ;;
@@ -369,7 +369,7 @@ log "id=$id  branch=$branch → $canary_branch  target=$canary_repo  lane=$lane"
 
 stub_path=".github/workflows/$lane-caller.yml"
 [ -f "$repo_root/$stub_path" ] || die "no $stub_path in the machine; lane '$lane' has no caller stub"
-plan_json="$(node "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$lane")" \
+plan_json="$(npx --no-install tsx "$repo_root/.Workflow/agent-workflows/shared/canary-fire-plan.ts" "$lane")" \
   || die "could not derive a fire for lane '$lane'; see above"
 fire_kind="$(jq -r .kind <<<"$plan_json")"
 [ "$fire_kind" != "refuse" ] || die "$(jq -r .reason <<<"$plan_json")"
