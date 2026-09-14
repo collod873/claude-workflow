@@ -516,10 +516,9 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       "to-tickets": {
         timeout: 90,
-        outputs: { "dispatch-requests": "${{ steps.collect-dispatch.outputs.requests }}" },
         env: { PRD_NUMBER: PAYLOAD_ISSUE, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
-          exportsHandoff("Export the handoff path", { FAILURE_REASON_PATH, [DISPATCH_REQUESTS_PATH_ENV]: DISPATCH_REQUESTS_FILE }),
+          exportsHandoff("Export the handoff path", { FAILURE_REASON_PATH }),
           CHECKOUT_MACHINE,
           checkoutTarget(),
           CHECKPOINT_RESTORE("to-tickets", "PRD_NUMBER"),
@@ -555,21 +554,19 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           stage({ name: "Slice", entrypoint: "to-tickets/to-tickets.ts", args: ["--stage", "slice", "--issue", "\"$PRD_NUMBER\""] }),
           stage({ name: "Audit and publish", entrypoint: "to-tickets/to-tickets.ts", args: ["--stage", "audit-and-publish", "--issue", "\"$PRD_NUMBER\""] }),
           LIFTS_SLICE_FAILED,
-          COLLECTS_DISPATCHES,
           CHECKPOINT_UPLOAD("to-tickets", "PRD_NUMBER"),
           reportsFailure("to-tickets", "PRD_NUMBER", { REPORT_REFUSED: "${{ steps.refuse-sub-issues.outputs.refused == 'true' || steps.refuse-nested-prd.outputs.refused == 'true' }}", VERB: "" }),
           handsOver("to-tickets", "PRD", "PRD_NUMBER"),
         ],
       },
-      dispatch: {
-        name: "Start lane 05",
+      "wake-reconciler": {
+        name: "Wake the reconciler",
         needs: ["to-tickets"],
         if: "always()",
         timeout: 5,
         permissions: { contents: "write" },
-        env: { ...GH, DISPATCH_REQUESTS: "${{ needs.to-tickets.outputs.dispatch-requests }}" },
         steps: [
-          sendsDispatches("Send one dispatch per ready slice"),
+          wakesReconciler({ env: { ...GH } }),
         ],
       },
     },
@@ -588,7 +585,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     jobs: {
       refire: {
         timeout: 30,
-        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, READY: "0", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
+        env: { PRD_NUMBER: ISSUE_NUMBER_DOOR, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),
@@ -602,7 +599,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
       },
       author: {
         timeout: 30,
-        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, READY: "${{ github.event.client_payload.ready }}", ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
+        env: { TICKET_NUMBER: PAYLOAD_ISSUE, PRD_BODY_BEFORE: "${{ github.event.changes.body.from }}", RUNG: PAYLOAD_RUNG, ...READS_THE_DISPATCH_DOOR, ...GH, CLAUDE_CODE_OAUTH_TOKEN },
         steps: [
           CHECKOUT_MACHINE,
           checkoutTarget(),

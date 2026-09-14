@@ -3,8 +3,6 @@ import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
-import { readySlices, type SliceState } from "../shared/ready-set";
-import { ACCEPTANCE_WANTED_DISPATCH_ACTION } from "../shared/ready-set";
 import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
@@ -210,8 +208,9 @@ describe("sliceAndPublish", () => {
   });
 });
 
-describe("sliceAndPublish asks lane 04 to author acceptance tests for every published slice", () => {
-  it("sends one acceptance-wanted dispatch per published slice, naming its issue", () => {
+
+describe("sliceAndPublish rings no lane, leaving the recompute to notice the published slices", () => {
+  it("publishes every slice and dispatches nothing", () => {
     const plan = [
       slice({ title: "Root" }),
       slice({ title: "Also depends on root", dependsOn: [1] }),
@@ -221,76 +220,14 @@ describe("sliceAndPublish asks lane 04 to author acceptance tests for every publ
 
     const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
 
-    expect(fake.dispatches.map((d) => d.eventType)).toEqual([
-      ACCEPTANCE_WANTED_DISPATCH_ACTION,
-      ACCEPTANCE_WANTED_DISPATCH_ACTION,
-      ACCEPTANCE_WANTED_DISPATCH_ACTION,
-    ]);
-    expect(fake.dispatches.map((d) => d.payload.issue)).toEqual([
-      String(published[0].number),
-      String(published[1].number),
-      String(published[2].number),
-    ]);
+    expect(published).toHaveLength(plan.length);
+    expect(fake.dispatches).toEqual([]);
   });
 
-  it("flags a slice with no blocked-by edges as ready, and a blocked one as not", () => {
-    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
-    const fake = createFakeGh();
-
-    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    expect(fake.dispatches).toHaveLength(2);
-    expect(fake.dispatches[0].payload).toEqual({ issue: String(published[0].number), ready: "1" });
-    expect(fake.dispatches[1].payload).toEqual({ issue: String(published[1].number), ready: "0" });
-  });
-
-  it("dispatches only after the blocked-by read-back has verified the graph", () => {
-    const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
-    const fake = createFakeGh();
-
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    const readBacks = fake.calls
-      .map((args, index) => ({ args, index }))
-      .filter(({ args }) => args[0] === "api" && args[1]?.endsWith("dependencies/blocked_by") && !args.includes("-F"));
-    const lastReadBack = readBacks.length === 0 ? -1 : readBacks[readBacks.length - 1].index;
-    const firstDispatch = fake.calls.findIndex(
-      (args) => args[0] === "api" && args[1] === "repos/{owner}/{repo}/dispatches",
-    );
-    expect(lastReadBack).toBeGreaterThan(-1);
-    expect(firstDispatch).toBeGreaterThan(lastReadBack);
-  });
-
-  it("gives the same answer the predicate gives for the state a publish is in", () => {
-    const plan = [
-      slice({ title: "Root" }),
-      slice({ title: "Blocked", dependsOn: [1] }),
-      slice({ title: "Also blocked", dependsOn: [1] }),
-    ];
-    const fake = createFakeGh();
-
-    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
-
-    const states: SliceState[] = [
-      { number: published[0].number, blockedBy: [], delivery: "open", started: false },
-      { number: published[1].number, blockedBy: [published[0].number], delivery: "open", started: false },
-      { number: published[2].number, blockedBy: [published[0].number], delivery: "open", started: false },
-    ];
-
-    const readyNumbers = new Set(readySlices(states).map((state) => state.number));
-    expect(fake.dispatches.map((dispatch) => Number(dispatch.payload.issue))).toEqual(
-      published.map((issue) => issue.number),
-    );
-    expect(fake.dispatches.map((dispatch) => dispatch.payload.ready)).toEqual(
-      published.map((issue) => (readyNumbers.has(issue.number) ? "1" : "0")),
-    );
-  });
-
-  it("throws before dispatching anything when the graph fails its read-back", () => {
+  it("throws when the graph fails its read-back", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
     const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
     expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow();
-    expect(fake.dispatches).toEqual([]);
   });
 });

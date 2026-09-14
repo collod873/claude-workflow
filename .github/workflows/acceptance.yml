@@ -28,7 +28,6 @@ jobs:
       PRD_NUMBER: ${{ github.event.issue.number }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       RUNG: ${{ github.event.client_payload.rung }}
-      READY: "0"
       EVENT_NAME: ${{ github.event_name }}
       EVENT_ACTION: ${{ github.event.action }}
       EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
@@ -85,7 +84,6 @@ jobs:
       TICKET_NUMBER: ${{ github.event.client_payload.issue }}
       PRD_BODY_BEFORE: ${{ github.event.changes.body.from }}
       RUNG: ${{ github.event.client_payload.rung }}
-      READY: ${{ github.event.client_payload.ready }}
       EVENT_NAME: ${{ github.event_name }}
       EVENT_ACTION: ${{ github.event.action }}
       EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}

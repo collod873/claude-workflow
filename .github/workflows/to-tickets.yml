@@ -24,8 +24,6 @@ jobs:
   to-tickets:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 90
-    outputs:
-      dispatch-requests: ${{ steps.collect-dispatch.outputs.requests }}
     env:
       PRD_NUMBER: ${{ github.event.client_payload.issue }}
       GH_TOKEN: ${{ github.token }}
@@ -33,9 +31,7 @@ jobs:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
       - name: Export the handoff path
-        run: |
-          echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
-          echo "DISPATCH_REQUESTS_PATH=$RUNNER_TEMP/dispatch-requests.jsonl" >> "$GITHUB_ENV"
+        run: echo "FAILURE_REASON_PATH=$RUNNER_TEMP/failure_reason.txt" >> "$GITHUB_ENV"
 
       - name: Checkout machine
         uses: actions/checkout@v4
@@ -122,17 +118,6 @@ jobs:
       - name: Lift slice-failed, the PRD is split now
         run: gh issue edit "$PRD_NUMBER" --remove-label slice-failed
 
-      - name: Collect the dispatches this run asked for
-        id: collect-dispatch
-        run: |
-          set -euo pipefail
-          [ -s "$DISPATCH_REQUESTS_PATH" ] || exit 0
-          {
-            echo "requests<<DISPATCH_REQUESTS_EOF"
-            cat "$DISPATCH_REQUESTS_PATH"
-            echo "DISPATCH_REQUESTS_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Upload checkpoints
         if: always()
         uses: ./.github/actions/checkpoints
@@ -158,23 +143,21 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: npx tsx .Workflow/agent-workflows/shared/labels.cli.ts fail "$PRD_NUMBER" --status "$JOB_STATUS" --lane to-tickets
 
-  dispatch:
-    name: Start lane 05
+  wake-reconciler:
+    name: Wake the reconciler
     needs: [to-tickets]
     if: always()
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 5
     permissions:
       contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      DISPATCH_REQUESTS: ${{ needs.to-tickets.outputs.dispatch-requests }}
     steps:
-      - name: Send one dispatch per ready slice
+      - name: Wake the reconciler, whatever ended this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          printf '%s\n' "$DISPATCH_REQUESTS" | while IFS= read -r request; do
-            [ -n "$request" ] || continue
-            printf '%s' "$request" | gh api --method POST 'repos/{owner}/{repo}/dispatches' --input -
-          done
+          gh api --method POST 'repos/{owner}/{repo}/dispatches' \
+            -f event_type=run-ended \
+            -f "client_payload[run_id]=$GITHUB_RUN_ID"

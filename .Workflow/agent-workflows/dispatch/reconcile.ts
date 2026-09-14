@@ -721,7 +721,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       }
       if (!ticket.authored) {
         const freshEyes = authorRung(rung) === "author-fresh-eyes";
-        dispatchAcceptanceWanted(gh, ticket.number, true, false, freshEyes);
+        dispatchAcceptanceWanted(gh, ticket.number, false, freshEyes);
         authoring.push(ticket.number);
         markLane(gh, ticket.number, ACCEPTING_LABEL, ticket.labels);
         stamp(stamps, ticket.number, ACCEPTING_LABEL);

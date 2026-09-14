@@ -502,7 +502,6 @@ describe("runAcceptanceAuthor", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: git.git,
-      ready: false,
       suite: SUITE,
     });
     return { outcome, tracker, stage, git, written };
@@ -540,7 +539,6 @@ describe("runAcceptanceAuthor", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      ready: false,
       suite: SUITE,
       rung,
     });
@@ -621,7 +619,6 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
       runTests: () => GREEN,
       gate: () => verdicts.shift() ?? GATE_RED,
       git: git.git,
-      ready: false,
       log: () => {},
       suite: SUITE,
     });
@@ -808,7 +805,6 @@ describe("acceptRound: a subject the test runs as a process gets no stub", () =>
       },
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      ready: false,
       log: () => {},
       suite: SUITE,
     });
@@ -867,7 +863,6 @@ describe("the lane budget bounds the acceptance author's model session", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      ready: false,
       log: () => {},
       suite: SUITE,
     }).then(
@@ -921,8 +916,8 @@ describe("the lane budget bounds the acceptance author's model session", () => {
   });
 });
 
-describe("the acceptance lane hands off to implement itself", () => {
-  test("a pushed batch dispatches ticket-ready, the handoff the deleted land job used to make", async () => {
+describe("the acceptance lane rings no lane, leaving the handoff to the reconciler", () => {
+  test("a pushed batch dispatches nothing, so a ticket reaches implement only by recompute", async () => {
     const writes: string[][] = [];
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, writes);
     const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
@@ -935,14 +930,12 @@ describe("the acceptance lane hands off to implement itself", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: createFakeGit(() => "").git,
-      ready: true,
       log: () => {},
       suite: SUITE,
     });
 
-    const dispatched = writes.find((call) => call.join(" ").includes("ticket-ready"));
-    expect(dispatched, `no ticket-ready dispatch in ${JSON.stringify(writes)}`).toBeDefined();
-    expect(dispatched?.join(" ")).toContain(String(ISSUE));
+    const dispatched = writes.filter((call) => call.join(" ").includes("dispatches"));
+    expect(dispatched, `acceptance rang a lane: ${JSON.stringify(dispatched)}`).toEqual([]);
   });
 });
 
@@ -960,7 +953,6 @@ describe("the acceptance lane never reaches trunk", () => {
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: git.git,
-      ready: false,
       log: () => {},
       suite: SUITE,
     });

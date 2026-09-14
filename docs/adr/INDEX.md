@@ -103,6 +103,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0185 | [PATH_LINE_RE, the canary-graph trigger stubs, and gh_support.py stay split on purpose](0185-path-line-re-canary-graph-triggers-and-gh-support-stay-split.md) |
 | 0186 | [Acceptance lands on the ticket's branch, because ADR-0150 deleted the rule its push to main avoided](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) |
 | 0187 | [Acceptance pushes past the pre-push hook, because the implementer re-gates that same branch](0187-acceptance-pushes-past-the-pre-push-hook-because-the-impleme.md) |
+| 0188 | [The reconciler is the only sender of acceptance-wanted and ticket-ready, so a ticket that misses a ring is picked up by the next recompute](0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md) |
 
 ## Retired
 
@@ -202,4 +203,4 @@ demotion; nothing here binds later work.
 - [0160](0160-a-vendored-copy-is-pinned-to-its-source-by-digest-and-the-pr.md) superseded
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 
-187 ADRs · 95 constraint · 44 note · 48 superseded · 19,748 words total.
+188 ADRs · 96 constraint · 44 note · 48 superseded · 19,896 words total.

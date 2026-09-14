@@ -17,7 +17,7 @@ import { AUTHOR_CHECK_CONTRACT_LEAD } from "../shared/house-style";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
-import { dispatchTicketReady, FRESH_EYES_RUNG, implementationBranch } from "../shared/ready-set";
+import { FRESH_EYES_RUNG, implementationBranch } from "../shared/ready-set";
 import { strikesIn } from "../shared/strikes";
 import { gateOutputTail, stopVenueVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
@@ -502,7 +502,6 @@ export interface RunAcceptanceDeps {
   runTests?: (paths: string[]) => TestRunResult;
   gate?: (paths: string[]) => GateVerdict;
   git?: GitExec;
-  ready?: boolean;
   log?: (line: string) => void;
   suite?: SuiteLayout;
   rung?: string;
@@ -548,7 +547,6 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
     return { verdict: "refused", reason: reason(err) };
   }
 
-  if (deps.ready ?? true) dispatchTicketReady(deps.gh, deps.issueNumber);
   return { verdict: "pushed" };
 }
 
@@ -607,7 +605,6 @@ async function authorInProcess(issueNumber: number, rung?: string): Promise<Land
       exec: execClaudeIn(REPO_DIR),
       writeFile: fsWriteFile,
       issueNumber,
-      ready: process.env.READY === "1",
       rung,
     });
   } catch (err) {
