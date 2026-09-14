@@ -456,7 +456,7 @@ function verdictLines(pairs: [string[], string[]][], verdicts: boolean[]): strin
   return pairs.map(([left, right], index) => `[${left.join(" ")}] × [${right.join(" ")}] → ${verdicts[index]}`);
 }
 
-test.fails("#559.1: claimsCollide returns the same verdict as bin/ticket_shape.py's claims_collide for every claim pair the differential test generates", () => {
+test("#559.1: claimsCollide returns the same verdict as bin/ticket_shape.py's claims_collide for every claim pair the differential test generates", () => {
   const ours = CLAIM_PAIRS.map(([left, right]) => claimsCollide(left, right));
   const theirs = pythonClaimsCollide(CLAIM_PAIRS);
 
