@@ -29,6 +29,7 @@ import {
   renderCheckContract,
   refireAcceptance,
   renderCriteria,
+  repairAcceptanceTests,
   REPAIR_ROUNDS,
   renderFiles,
   runAcceptanceAuthor,
@@ -1014,6 +1015,28 @@ describe("the author's write scope", () => {
     );
 
     expect(refusal).toBe("");
+  });
+
+  it("lets the repair round rewrite the file the author itself wrote a moment earlier", async () => {
+    const stage = answer([{ path: UNSEEN, content: `${TWO_CASES}${failsTest()}` }]);
+
+    const batch = await repairAcceptanceTests(
+      {
+        exec: stage.exec,
+        writeFile: () => {},
+        issueNumber: ISSUE,
+        ticket: TICKET,
+        readFile: onDisk({ [UNSEEN]: TWO_CASES }),
+        suite: SUITE,
+        houseRules: "",
+        checkContract: "",
+      },
+      "session-1",
+      "the gate went red",
+      [UNSEEN],
+    );
+
+    expect(batch.files.map((file) => file.path)).toEqual([UNSEEN]);
   });
 });
 

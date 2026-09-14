@@ -271,6 +271,7 @@ export async function repairAcceptanceTests(
   deps: AuthorDeps,
   sessionId: string,
   judgement: string,
+  authored: readonly string[],
   budget: LaneBudget = startLaneBudget(laneBudget("acceptance")),
 ): Promise<AuthoredBatch> {
   const criteria = extractCriteria(deps.ticket.body);
@@ -287,7 +288,7 @@ export async function repairAcceptanceTests(
   );
   const suite = suiteOf(deps);
   const claimed = extractFilesClaimed(deps.ticket.body);
-  return acceptRound(deps, criteria, round, new Set([...claimed, ...colocatedTests(claimed, suite)]));
+  return acceptRound(deps, criteria, round, new Set([...claimed, ...colocatedTests(claimed, suite), ...authored]));
 }
 
 export function unshownRewriteRefusal(path: string): string {
@@ -472,7 +473,7 @@ async function authorWithRepairs(
   for (let round = 0; round < rounds && !verdict.ok; round++) {
     const sessionId = batch.sessionId;
     if (sessionId === undefined) break;
-    batch = await repairAcceptanceTests(deps, sessionId, verdict.reason, budget);
+    batch = await repairAcceptanceTests(deps, sessionId, verdict.reason, batchPaths(batch), budget);
     verdict = judgeAuthoredBatch(judge, batchPaths(batch), suffixes);
   }
 
