@@ -167,7 +167,7 @@ function cmdProblems(slot: { name: string; cmd: string }): string[] {
   return existsSync(join(REPO_ROOT, runner)) ? [] : [`${slot.name}.cmd runs ${runner}, which does not exist`];
 }
 
-test.fails("#555.1: the stop slot's why names stop-gate.py as the reader and the dispatch route as the wiring", () => {
+test("#555.1: the stop slot's why names stop-gate.py as the reader and the dispatch route as the wiring", () => {
   const stop = parseCheckSlots(readCheckContract()).find((slot) => slot.name === "stop");
   const why = stop?.why ?? "";
 
@@ -176,7 +176,7 @@ test.fails("#555.1: the stop slot's why names stop-gate.py as the reader and the
   expect(why).toMatch(/dispatch|roster/i);
 });
 
-test.fails("#555.2: every check slot's why names a file that exists and an event roster.json carries", () => {
+test("#555.2: every check slot's why names a file that exists and an event roster.json carries", () => {
   const slots = parseCheckSlots(readCheckContract());
   const carried = rosterEvents();
 
@@ -184,7 +184,7 @@ test.fails("#555.2: every check slot's why names a file that exists and an event
   expect(slots.flatMap((slot) => whyProblems(slot, carried))).toEqual([]);
 });
 
-test.fails("#555.5: the whole check contract resolves, every slot's command and why pointing at something real", () => {
+test("#555.5: the whole check contract resolves, every slot's command and why pointing at something real", () => {
   const slots = parseCheckSlots(readCheckContract());
   const carried = rosterEvents();
 

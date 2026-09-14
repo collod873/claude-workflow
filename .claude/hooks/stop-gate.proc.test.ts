@@ -17,7 +17,7 @@ const PROBE = [
   "print(json.dumps({'slot': mod.SLOT, 'cmd': cmd, 'err': err}))",
 ].join("\n");
 
-test.fails("#555.4: the stop venue still runs and still reports through stop-gate.py", () => {
+test("#555.4: the stop venue still runs and still reports through stop-gate.py", () => {
   const contract = readFileSync(join(HOOKS, "..", "contract.json"), "utf8");
   const printed = execFileSync("python3", ["-c", PROBE, HOOKS], { input: contract, encoding: "utf8" });
   const lines = printed.split("\n").filter((line) => line.trim().length > 0);
