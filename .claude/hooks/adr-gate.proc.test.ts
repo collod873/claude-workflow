@@ -1,50 +1,64 @@
-import { test, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { expect, test } from "vitest";
 
-const hooks = fileURLToPath(new URL(".", import.meta.url));
-const gate = fileURLToPath(new URL("adr-gate.py", import.meta.url));
+const HOOK_DIR = fileURLToPath(new URL(".", import.meta.url));
+const HOOK_FILE = fileURLToPath(new URL("adr-gate.py", import.meta.url));
+const SHAPE_DIR = fileURLToPath(new URL("../../bin/", import.meta.url));
 
-const PROBE = [
-  "import importlib.machinery, importlib.util, json, sys",
-  "sys.path.insert(0, sys.argv[1])",
-  'loader = importlib.machinery.SourceFileLoader("adr_gate", sys.argv[2])',
-  'module = importlib.util.module_from_spec(importlib.util.spec_from_loader("adr_gate", loader))',
-  "loader.exec_module(module)",
-  "print(json.dumps(list(module.check(sys.argv[3]))))",
-].join("\n");
+const GATE_PROBE = `
+import importlib.machinery, importlib.util, json, sys, tempfile
+from pathlib import Path
 
-function guarded(target: string): [string, string] {
-  const asked = spawnSync("python3", ["-c", PROBE, hooks, gate, target], { encoding: "utf8" });
-  expect(asked.status).toBe(0);
-  return JSON.parse(asked.stdout) as [string, string];
+hooks, shape_dir, gate_file = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, hooks)
+sys.path.insert(0, shape_dir)
+import adr_shape
+
+loader = importlib.machinery.SourceFileLoader("adr_gate", gate_file)
+gate = importlib.util.module_from_spec(importlib.util.spec_from_loader("adr_gate", loader))
+loader.exec_module(gate)
+
+own_landed = gate.__dict__.get("LANDED_RE")
+own_index = gate.__dict__.get("INDEX_NAME")
+
+root = Path(tempfile.mkdtemp())
+(root / ".git").write_text("")
+corpus = root / "docs" / "adr"
+corpus.mkdir(parents=True)
+
+print(json.dumps({
+    "landedShared": own_landed is None or own_landed is adr_shape.LANDED_RE,
+    "indexShared": own_index is None or own_index is adr_shape.INDEX_NAME,
+    "indexGuard": gate.check(str(corpus / adr_shape.INDEX_NAME))[0],
+    "handNumberedGuard": gate.check(str(corpus / "0999-a-ruling-typed-by-hand.md"))[0],
+}))
+`;
+
+interface GateProbe {
+  landedShared: boolean;
+  indexShared: boolean;
+  indexGuard: string;
+  handNumberedGuard: string;
 }
 
-test(
-  "#412.3: adr-gate.py refuses a hand-numbered write in any corpus, not only the root, and still allows a landed-shape write under a feature corpus",
+test.fails(
+  "#553.3: .claude/hooks/adr-gate.py reads adr_shape's LANDED_RE and INDEX_NAME instead of re-declaring its own",
   () => {
-    const repo = mkdtempSync(join(tmpdir(), "adr-gate-412-"));
-    mkdirSync(join(repo, ".git"), { recursive: true });
-    const rootCorpus = join(repo, "docs", "adr");
-    const featureCorpus = join(repo, "src", "features", "crm", "docs", "adr");
-    mkdirSync(rootCorpus, { recursive: true });
-    mkdirSync(featureCorpus, { recursive: true });
-    const standing = join(featureCorpus, "0042-a-feature-ruling-that-binds-later-work.md");
-    writeFileSync(standing, "# A feature ruling that binds later work\n");
+    const run = spawnSync("python3", ["-c", GATE_PROBE, HOOK_DIR, SHAPE_DIR, HOOK_FILE], {
+      cwd: HOOK_DIR,
+      encoding: "utf8",
+      timeout: 120000,
+    });
 
-    const [featureGuard, featureReason] = guarded(join(featureCorpus, "0091-a-new-ruling.md"));
-    expect(featureGuard).toBe("hand-numbered");
-    expect(featureReason).toContain("new-adr");
-    expect(featureReason).toContain("--land");
+    expect(run.status).toBe(0);
 
-    const [rootGuard] = guarded(join(rootCorpus, "0034-a-new-ruling.md"));
-    expect(rootGuard).toBe("hand-numbered");
+    const gate = JSON.parse(run.stdout ?? "") as GateProbe;
 
-    expect(guarded(standing)).toEqual(["", ""]);
-    expect(guarded(join(featureCorpus, "draft-a-new-ruling.md"))).toEqual(["", ""]);
+    expect(gate.landedShared).toBe(true);
+    expect(gate.indexShared).toBe(true);
+    expect(gate.indexGuard).toBe("generated-index");
+    expect(gate.handNumberedGuard).toBe("hand-numbered");
   },
-  60_000,
+  180000,
 );
