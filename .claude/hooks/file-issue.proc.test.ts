@@ -52,7 +52,7 @@ const OPEN_ISSUES = [
 
 const BLOCKED_BY_RE = /\/issues\/(\d+)\/dependencies\/blocked_by$/;
 
-test.fails("#559.5: `file-issue ticket` wires the same blocked_by edges at filing that ticketify wires, from one loop both kinds reach", () => {
+test("#559.5: `file-issue ticket` wires the same blocked_by edges at filing that ticketify wires, from one loop both kinds reach", () => {
   const dir = mkdtempSync(join(tmpdir(), "file-issue-collision-"));
   try {
     const gh = join(dir, "fake-gh.py");

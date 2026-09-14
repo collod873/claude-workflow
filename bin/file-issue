@@ -29,6 +29,13 @@ nonzero without ever calling `gh`. A `ticket` whose acceptance criteria carry no
 evidence (a `path:line`, a backtick-quoted command, or a file/artifact reference) is not
 refused; it's a warning on stderr, and filing still proceeds.
 
+`file-issue ticket` and `ticketify` reach the same `wire_collisions` loop, one filing-time fast
+fail for both routes a ticket's claim can be published through: once a ticket's own number and
+`## Files claimed` are known, its claim is checked against every other open issue's, and an
+unordered colliding pair earns a native `blockedBy` edge, lower issue number blocking higher
+(ADR-0007). `reconcile.ts`'s own pass over the tracker is what still catches a claim edited after
+filing; this loop is only ever the first word on it, not the last.
+
 `ticketify <n>` is the one exit from `fuzzy` (ADR-0024, #79): whichever session reached a
 decision (grilling, `/wayfinder`, or a bare conversation) pipes the criteria and file claim
 (a `## Acceptance criteria` / `## Files claimed` block, on stdin or via `--body-file`, in the
@@ -288,6 +295,23 @@ def wire_blocked_by(gh, blocked_n: int, blocker_id) -> None:
     ])
 
 
+def wire_collisions(gh, number: int, claim: list[str], issues: list[dict]) -> None:
+    own_id = next((i.get("id") for i in issues if i.get("number") == number), None)
+    for other in issues:
+        other_n = other.get("number")
+        if other_n is None or other_n == number:
+            continue
+        other_claim = ticket_shape.claimed_paths(other.get("body") or "")
+        if not other_claim or not ticket_shape.claims_collide(claim, other_claim):
+            continue
+        if other_n > number:
+            if own_id is None:
+                continue
+            wire_blocked_by(gh, other_n, own_id)
+        else:
+            wire_blocked_by(gh, number, other.get("id"))
+
+
 def _append_section(body: str, addition: str) -> str:
     base = body.rstrip("\n")
     addition = addition.strip("\n")
@@ -364,18 +388,7 @@ def run_ticketify(args) -> int:
     if had_criteria and args.replace and target.get("assignees"):
         comment_issue(gh, args.n, REPLACE_COMMENT)
 
-    target_id = target.get("id")
-    for other in issues:
-        other_n = other.get("number")
-        if other_n is None or other_n == args.n:
-            continue
-        other_claim = ticket_shape.claimed_paths(other.get("body") or "")
-        if not other_claim or not ticket_shape.claims_collide(claim, other_claim):
-            continue
-        if other_n > args.n:
-            wire_blocked_by(gh, other_n, target_id)
-        else:
-            wire_blocked_by(gh, args.n, other.get("id"))
+    wire_collisions(gh, args.n, claim, issues)
 
     if test_paths:
         rewrite_test_placeholders(test_paths, args.n)
@@ -492,6 +505,10 @@ def run(argv=None) -> int:
     if kind != "ticket":
         sys.stdout.write(out)
         return 0
+
+    claim = ticket_shape.claimed_paths(body)
+    if n is not None and claim:
+        wire_collisions(gh, n, claim, fetch_open_issues(gh))
 
     if not test_paths:
         if no_test_handoff_hint_applies():

@@ -79,8 +79,59 @@ export function extractFilesClaimed(body: string): string[] {
   return paths;
 }
 
-export function claimsCollide(_claim: string[], _other: string[]): boolean {
-  throw new Error("#559: not built");
+function fnmatchRegExp(pattern: string): RegExp {
+  let result = "";
+  let i = 0;
+  const n = pattern.length;
+  while (i < n) {
+    const c = pattern[i];
+    i += 1;
+    if (c === "*") {
+      result += ".*";
+    } else if (c === "?") {
+      result += ".";
+    } else if (c === "[") {
+      let j = i;
+      if (j < n && pattern[j] === "!") j += 1;
+      if (j < n && pattern[j] === "]") j += 1;
+      while (j < n && pattern[j] !== "]") j += 1;
+      if (j >= n) {
+        result += "\\[";
+      } else {
+        let stuff = pattern.slice(i, j).replaceAll("\\", "\\\\");
+        i = j + 1;
+        if (stuff.startsWith("!")) {
+          stuff = `^${stuff.slice(1)}`;
+        } else if (stuff.startsWith("^")) {
+          stuff = `\\${stuff}`;
+        }
+        result += `[${stuff}]`;
+      }
+    } else {
+      result += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^(?:${result})$`);
+}
+
+function fnmatch(name: string, pattern: string): boolean {
+  return fnmatchRegExp(pattern).test(name);
+}
+
+function asDir(path: string): string {
+  return `${path.replace(/\/+$/, "")}/`;
+}
+
+export function claimsCollide(claim: readonly string[], other: readonly string[]): boolean {
+  for (const a of claim) {
+    const aDir = asDir(a);
+    for (const b of other) {
+      const bDir = asDir(b);
+      if (a === b || fnmatch(b, a) || fnmatch(a, b)) return true;
+      if (b.startsWith(aDir) || a.startsWith(bDir)) return true;
+    }
+  }
+  return false;
 }
 
 export interface TicketRead {

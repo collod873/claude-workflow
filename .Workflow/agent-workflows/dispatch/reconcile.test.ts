@@ -768,7 +768,7 @@ function wiredEdges(tracker: Tracker): number[] {
     .sort((left, right) => left - right);
 }
 
-test.fails(
+test(
   "#559.2: a reconcile pass over two dispatchable open tickets whose claims collide with no ordering between them wires the edge itself, lower number blocking higher, and logs both numbers and the overlapping path",
   () => {
     const lines: string[] = [];
@@ -789,7 +789,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#559.3: a colliding pair already ordered by the transitive closure of blockedBy is left untouched, while an unordered pair in the same pass is still edged",
   () => {
     const chained = ".Workflow/agent-workflows/dispatch/reconcile.ts";
@@ -809,7 +809,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#559.4: a colliding pair where either side is never dispatched (`prd`, `idea`) earns no edge, while an ordinary unordered pair still does",
   () => {
     const tracker = trackerWith({
@@ -847,7 +847,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#559.6: docs/agents/ticket-format.md names the reconciler as where claim disjointness is enforced, not `file-issue ticketify`",
   async () => {
     const doc = await readFile(new URL("../../../docs/agents/ticket-format.md", import.meta.url), "utf8");
@@ -861,7 +861,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#559.7: each of the four unordered colliding pairs open today is ordered by a reconcile pass, lower number blocking higher",
   () => {
     const pairs = [
@@ -886,7 +886,7 @@ test.fails(
   },
 );
 
-test.fails(
+test(
   "#559.8: the whole check contract passes: the ported predicate answers instead of throwing, and a reconcile pass over a colliding tracker is not degraded",
   () => {
     expect(claimsCollide([".claude/contract.json"], [".claude/contract.json"])).toBe(true);

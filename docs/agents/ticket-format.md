@@ -35,7 +35,8 @@ Three places, and each rule below is in exactly one of them (claude-workflow/ADR
 
 Every ticket body carries two headings. `count_body_criteria`
 (`close-gate.py`) parses the first mechanically to decide whether a ticket can
-close; `/drain`'s frontier filter and `file-issue ticketify`'s collision check both read the
+close; `/drain`'s frontier filter, `file-issue`'s filing-time collision check (reached by both
+`ticket` and `ticketify`), and `reconcile.ts`'s continuous disjointness pass all read the
 second.
 
 ### `## Acceptance criteria`
@@ -107,6 +108,17 @@ or missing section:
 
 A ticket missing this heading entirely was never shaped by a producer that computes claims;
 `file-issue ticket` and `file-issue ticketify` both refuse a body without one.
+
+Two tickets claiming the same file **collide** only when neither already orders the other: a
+chain of slices over one file, each `blockedBy` the one before it, is not a collision. The
+reconciler is where this is enforced continuously, not `file-issue`: every `reconcile.ts` pass
+checks every open, dispatchable ticket's claim against every other, wires the missing edge itself
+the moment it finds an unordered colliding pair — lower issue number blocking higher — and logs
+both numbers and the overlapping path. A pair where either side wears `prd` or `idea` earns no
+edge, since neither is ever dispatched. `file-issue ticket` and `file-issue ticketify` still run
+the same check once, at filing, as a fast fail; the reconciler is what still catches a claim
+edited afterward, since a `## Files claimed` section changing after filing is a normal thing to
+happen to a ticket.
 
 **Eight paths is the ceiling**, the rules source's `claimLimit`, refused above that by
 `bin/ticket_shape.py` at filing and by `shared/ticket-shape.ts` in every `/to-tickets` plan; one

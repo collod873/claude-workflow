@@ -3,12 +3,13 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
-import { issueCommentPath } from "../shared/gh-paths";
+import { blockedByPath, issueCommentPath } from "../shared/gh-paths";
 import {
   ACCEPTING_LABEL,
   BUILDING_LABEL,
   BY_HAND_LABEL,
   ensureLabel,
+  IDEA_LABEL,
   markLane,
   NEEDS_HUMAN_LABEL,
   PRD_LABEL,
@@ -45,8 +46,10 @@ import {
 } from "../shared/strikes";
 import {
   CLAIM_LIMIT,
+  claimsCollide,
   countCriteria,
   extractCriteria,
+  extractFilesClaimed,
   isRunnableSpec,
   parseCheckMarker,
 } from "../shared/ticket-shape";
@@ -561,6 +564,64 @@ function reportUnreachable(
   return naming.map((finding) => finding.number);
 }
 
+function neverDispatched(labels: readonly string[]): boolean {
+  return labels.includes(PRD_LABEL) || labels.includes(IDEA_LABEL);
+}
+
+function blockedByTransitively(byNumber: Map<number, TicketState>, from: number, target: number): boolean {
+  const seen = new Set<number>();
+  const stack = [...(byNumber.get(from)?.blockedBy ?? [])];
+  while (stack.length > 0) {
+    const current = stack.pop() as number;
+    if (current === target) return true;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    stack.push(...(byNumber.get(current)?.blockedBy ?? []));
+  }
+  return false;
+}
+
+function alreadyOrdered(byNumber: Map<number, TicketState>, a: number, b: number): boolean {
+  return blockedByTransitively(byNumber, a, b) || blockedByTransitively(byNumber, b, a);
+}
+
+function findCollidingPath(claim: readonly string[], other: readonly string[]): string | undefined {
+  for (const path of claim) {
+    for (const otherPath of other) {
+      if (claimsCollide([path], [otherPath])) return path;
+    }
+  }
+  return undefined;
+}
+
+function wireClaimCollisions(
+  gh: GhExec,
+  tickets: TicketState[],
+  byNumber: Map<number, TicketState>,
+  log: (line: string) => void,
+  dryRun: boolean,
+): void {
+  const dispatchable = tickets.filter((ticket) => !neverDispatched(ticket.labels)).sort((a, b) => a.number - b.number);
+
+  for (let i = 0; i < dispatchable.length; i++) {
+    const lower = dispatchable[i];
+    const lowerClaim = extractFilesClaimed(lower.body);
+    if (lowerClaim.length === 0) continue;
+    for (let j = i + 1; j < dispatchable.length; j++) {
+      const higher = dispatchable[j];
+      if (alreadyOrdered(byNumber, lower.number, higher.number)) continue;
+      const overlap = findCollidingPath(lowerClaim, extractFilesClaimed(higher.body));
+      if (overlap === undefined) continue;
+      if (dryRun) {
+        log(`would wire #${lower.number} blocking #${higher.number}: both claim ${overlap}.`);
+        continue;
+      }
+      gh(["api", blockedByPath(higher.number), "-F", `issue_id=${lower.number}`]);
+      log(`#${lower.number} blocks #${higher.number}: both claim ${overlap}.`);
+    }
+  }
+}
+
 export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const gh = input.gh ?? execGh;
   const log = input.log ?? ((line: string) => console.log(line));
@@ -576,6 +637,8 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   }
 
   const { tickets, byNumber } = states;
+
+  wireClaimCollisions(gh, tickets, byNumber, log, dryRun);
 
   for (const ticket of tickets) {
     if (!ticket.isSpec) continue;
