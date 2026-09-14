@@ -239,8 +239,15 @@ def create_issue(gh, title: str, body: str, labels: list[str]) -> str:
     return run_gh(gh, args)
 
 
+def targets_another_repo(repo: str | None) -> bool:
+    if not repo:
+        return False
+    here = ticket_shape.current_repo_slug()
+    return here is None or repo.casefold() != here.casefold()
+
+
 def by_hand_classification(paths: list[str], repo: str | None) -> bool:
-    return bool(repo) or ticket_shape.classify_venue(paths) is not None
+    return targets_another_repo(repo) or ticket_shape.classify_venue(paths) is not None
 
 
 

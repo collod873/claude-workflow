@@ -336,6 +336,13 @@ def run_cli(args, env_extra=None, body_file=None, cwd=None):
     return subprocess.run(argv, capture_output=True, text=True, env=env, cwd=cwd)
 
 
+def own_repo_slug():
+    url = subprocess.run(["git", "-C", str(REPO), "remote", "get-url", "origin"],
+                         capture_output=True, text=True).stdout.strip()
+    owner, _, name = url.rstrip("/").removesuffix(".git").rpartition("/")
+    return f"{owner.rpartition(':')[2].rpartition('/')[2]}/{name}"
+
+
 def issue_obj(number, id_, body, labels=None, assignees=None):
     return {
         "number": number,
@@ -728,6 +735,16 @@ def test_by_hand_label(tmp):
     check("ticket/-R cross-repo: labelled ticket and by-hand",
           {"ticket", "by-hand"} <= labels, labels)
 
+    log = tmp / "bh2b.jsonl"
+    body = write_body(tmp, "ticket-own-repo.md", TICKET_BODY_OK)
+    r = run_cli(["ticket", "--title", "A ticket", "-R", own_repo_slug()],
+                env_extra={"STUB_ARGV_LOG": str(log)}, body_file=body)
+    check("ticket/-R naming the repo the caller stands in: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(read_argv_log(log))
+    check("ticket/-R naming the repo the caller stands in: labelled ticket, not by-hand",
+          "ticket" in labels and "by-hand" not in labels, labels)
+
     log = tmp / "bh3.jsonl"
     body = write_body(tmp, "ticket-ordinary.md", TICKET_BODY_OK)
     r = run_cli(["ticket", "--title", "A ticket"], env_extra={"STUB_ARGV_LOG": str(log)},
@@ -759,6 +776,15 @@ def test_by_hand_label(tmp):
     labels = all_labels(calls)
     check("ticketify/-R cross-repo: labelled ticket and by-hand",
           {"ticket", "by-hand"} <= labels, labels)
+
+    log = tmp / "bh5b.jsonl"
+    issues = [issue_obj(63, 6363, "Some fuzzy description.\n", labels=["fuzzy"])]
+    r, calls = run_ticketify(63, ["-R", own_repo_slug()], issues, NEW_CRITERIA_BODY, log)
+    check("ticketify/-R naming the repo the caller stands in: exits 0", r.returncode == 0,
+          f"rc={r.returncode} stderr={r.stderr}")
+    labels = all_labels(calls)
+    check("ticketify/-R naming the repo the caller stands in: labelled ticket, not by-hand",
+          "ticket" in labels and "by-hand" not in labels, labels)
 
     log = tmp / "bh6.jsonl"
     issues = [issue_obj(62, 6262, "Some fuzzy description.\n", labels=["fuzzy"])]

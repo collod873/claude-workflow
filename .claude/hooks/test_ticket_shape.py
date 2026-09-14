@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -110,6 +111,48 @@ def test_classify_venue_workstation_paths():
           ticket_shape.classify_venue([ordinary]) is None)
 
 
+def test_repo_slug_from_url():
+    print("repo_slug_from_url: every spelling of an origin URL reduces to owner/name")
+
+    check("https with .git",
+          ticket_shape.repo_slug_from_url("https://github.com/collod873/claude-workflow.git")
+          == "collod873/claude-workflow")
+    check("https without .git",
+          ticket_shape.repo_slug_from_url("https://github.com/collod873/claude-workflow")
+          == "collod873/claude-workflow")
+    check("https with a trailing slash",
+          ticket_shape.repo_slug_from_url("https://github.com/collod873/claude-workflow/")
+          == "collod873/claude-workflow")
+    check("ssh scp form",
+          ticket_shape.repo_slug_from_url("git@github.com:collod873/claude-workflow.git")
+          == "collod873/claude-workflow")
+    check("ssh url form",
+          ticket_shape.repo_slug_from_url("ssh://git@github.com/collod873/claude-workflow.git")
+          == "collod873/claude-workflow")
+    check("a url naming a host and nothing else reduces to nothing",
+          ticket_shape.repo_slug_from_url("https://github.com/") is None)
+    check("an empty url reduces to nothing",
+          ticket_shape.repo_slug_from_url("") is None)
+
+
+def test_current_repo_slug_reads_origin():
+    print("current_repo_slug: the origin of the checkout the caller stands in, or None")
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        check("a checkout with no origin has no slug",
+              ticket_shape.current_repo_slug(root) is None)
+        subprocess.run(["git", "-C", str(root), "remote", "add", "origin",
+                        "git@github.com:acme/widgets.git"], check=True)
+        check("origin names the slug",
+              ticket_shape.current_repo_slug(root) == "acme/widgets")
+
+    with tempfile.TemporaryDirectory() as d:
+        check("a directory that is no checkout has no slug",
+              ticket_shape.current_repo_slug(Path(d)) is None)
+
+
 def test_check_marker_word_resolution():
     print("validate('ticket', ...): a check: marker's first word must resolve on PATH or as "
           "an executable file")
@@ -177,6 +220,10 @@ def main():
         test_validate_ticket_admits_immutable_claim_for_by_hand()
         print()
         test_classify_venue_workstation_paths()
+        print()
+        test_repo_slug_from_url()
+        print()
+        test_current_repo_slug_reads_origin()
         print()
         test_check_marker_word_resolution()
         print()

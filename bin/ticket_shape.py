@@ -64,6 +64,29 @@ def caller_repo_root(start: Path | None = None) -> Path:
             return d
     return here
 
+
+GIT_REMOTE_TIMEOUT_SECONDS = 10
+
+
+def repo_slug_from_url(url: str) -> str | None:
+    owner, _, name = url.strip().rstrip("/").removesuffix(".git").rpartition("/")
+    owner = owner.rpartition(":")[2].rpartition("/")[2]
+    return f"{owner}/{name}" if owner and name else None
+
+
+def current_repo_slug(start: Path | None = None) -> str | None:
+    root = caller_repo_root(start)
+    if not (root / ".git").exists():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=GIT_REMOTE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return repo_slug_from_url(result.stdout) if result.returncode == 0 else None
+
 LINE_TERMINATOR_RE = compile_rule("lineTerminator")
 
 
