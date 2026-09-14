@@ -1,7 +1,7 @@
 ---
 status: superseded
 date: 2026-09-13
-superseded_by: ADR-0188
+superseded_by: ADR-0188, ADR-0191
 amends: ADR-0053, ADR-0091
 reversal: Reversing means putting lane 04 back on `main`: reinstating `acceptance/land.ts`, the `acceptance-bundle` action, the `format-patch`/`git am` replay, the rebase-onto-a-moving-`main` retry, the sibling-landed-first re-author path and the repo-wide `land-${repository}` group — and re-acquiring the reason to, which is a `tests/acceptance/` directory in the immutable set that ADR-0150 deleted.
 ---

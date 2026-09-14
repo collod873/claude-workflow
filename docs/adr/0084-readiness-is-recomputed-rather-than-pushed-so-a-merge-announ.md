@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-28
+superseded_by: ADR-0190
 reversal: Reversing means rebuilding fan-out as edge-triggered promotion in lane 08 — a second lane reasoning about the graph, against ADR-0069 — plus durable readiness state that can drift, and re-accepting dependents parked forever behind blockers that closed without delivering; the branch-ref-as-claim that makes duplicate dispatch harmless would have to be replaced by a global lock.
 ---
 

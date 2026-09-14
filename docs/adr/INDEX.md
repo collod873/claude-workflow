@@ -37,7 +37,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0081 | [A stage's answer is a structured-output tool call, not a block it hand-types](0081-a-stage-s-answer-is-a-structured-output-tool-call-not-a-bloc.md) |
 | 0082 | [A lane carries the vocabulary it works in rather than reading the repo's](0082-a-lane-carries-the-vocabulary-it-works-in-rather-than-readin.md) |
 | 0083 | [The accept dispatches lane 02 rather than lane 02 firing on the approved label, because the collector reads what the accept writes](0083-the-accept-dispatches-lane-02-rather-than-lane-02-firing-on.md) |
-| 0084 | [Readiness is recomputed rather than pushed, so a merge announces without interpreting and an unsatisfiable edge is a counter finding rather than a park](0084-readiness-is-recomputed-rather-than-pushed-so-a-merge-announ.md) |
 | 0086 | [A test importing a thing is not evidence anything runs it, so the push gate measures reachability from lanes instead](0086-a-test-importing-a-thing-is-not-evidence-anything-runs-it-so.md) |
 | 0088 | [The close gate fires in the agent's turn at both venues, so the tracker-side gate and its reconciler retire](0088-the-close-gate-fires-in-the-agent-s-turn-at-both-venues-so-t.md) |
 | 0093 | [A lane that opens a pull request depends on a repository setting no file records, so the record is here and the installer sets it](0093-a-lane-that-opens-a-pull-request-depends-on-a-repository-set.md) |
@@ -167,6 +166,7 @@ demotion; nothing here binds later work.
 - [0077](0077-a-checkpoint-resumes-only-on-an-exact-match-of-its-stage-s-r.md) note
 - [0078](0078-checkpoints-ride-an-always-uploaded-artifact-rather-than-the.md) note
 - [0079](0079-a-spec-gap-amendment-clarifies-an-existing-criterion-and-nev.md) superseded
+- [0084](0084-readiness-is-recomputed-rather-than-pushed-so-a-merge-announ.md) superseded
 - [0085](0085-a-spec-that-arrives-already-written-enters-lane-02-at-the-cr.md) superseded
 - [0087](0087-a-contract-slot-names-a-check-a-reader-can-run-never-a-hook.md) note
 - [0089](0089-the-clone-gate-runs-beside-the-gauntlet-not-inside-it-so-the.md) note
@@ -206,4 +206,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-191 ADRs · 98 constraint · 44 note · 49 superseded · 20,292 words total.
+191 ADRs · 97 constraint · 44 note · 50 superseded · 20,292 words total.
