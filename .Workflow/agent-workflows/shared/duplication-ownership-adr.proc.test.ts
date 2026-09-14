@@ -35,11 +35,11 @@ function adrsNamingAll(needles: string[]): string[] {
 
 const THREE_PAIRS = ["PATH_LINE_RE", "canary-graph", "gh_support"];
 
-test.fails("#552.1: a landed ADR names PATH_LINE_RE, the canary-graph trigger stubs and gh_support.py as three pairs kept split on purpose", () => {
+test("#552.1: a landed ADR names PATH_LINE_RE, the canary-graph trigger stubs and gh_support.py as three pairs kept split on purpose", () => {
   expect(adrsNamingAll(THREE_PAIRS).length).toBeGreaterThanOrEqual(1);
 });
 
-test.fails("#552.2: that ADR names canary-graph-triggers.proc.test.ts as the worked example of a guard that asserts the axis it claims", () => {
+test("#552.2: that ADR names canary-graph-triggers.proc.test.ts as the worked example of a guard that asserts the axis it claims", () => {
   expect(
     adrsNamingAll([...THREE_PAIRS, "canary-graph-triggers.proc.test.ts"]).length,
   ).toBeGreaterThanOrEqual(1);
