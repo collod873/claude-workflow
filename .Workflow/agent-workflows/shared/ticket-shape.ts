@@ -79,6 +79,10 @@ export function extractFilesClaimed(body: string): string[] {
   return paths;
 }
 
+export function claimsCollide(_claim: string[], _other: string[]): boolean {
+  throw new Error("#559: not built");
+}
+
 export interface TicketRead {
   title: string;
   body: string;
