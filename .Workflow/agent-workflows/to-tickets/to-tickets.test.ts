@@ -12,6 +12,7 @@ import { scratchDir } from "../shared/scratch.fixture";
 import { checkpointPath, type StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
 import { seamSweepResponse, seedCheckpoint, sliceResponse, unreachableGh } from "./checkpoint.fixture";
+import { sliceAndPublish } from "./slice-and-publish";
 import { runStageCli, stageCliFailure } from "./stage-cli.fixture";
 import { runNamedStage } from "./to-tickets";
 
@@ -430,6 +431,44 @@ describe("the lane budget wrapper, against a model call that never returns", () 
       );
       expect(strike).toBeDefined();
       expect(JSON.stringify(strike)).toContain("13");
+    },
+  );
+});
+
+describe("#577: the slice stage's validate runs all four plan gates", () => {
+  test.fails(
+    "#577.1: the slice stage's validate runs validateCriteriaShape, validateClaimsAreMutable and validatePathsAreRooted alongside validatePlan, so the stage is judged before it answers",
+    async () => {
+      withHandoffDir();
+      seedCheckpoint("seam-sweep", seamSweepResponse(["a seam"]));
+      const unrootedPlan = [slice({ title: "Escapes the repo", filesClaimed: ["../outside-the-repo.ts"] })];
+      const fake = createFakeStage(sliceResponse(unrootedPlan));
+
+      await expect(runNamedStage("slice", "13", fake.exec, unreachableGh)).rejects.toThrow();
+    },
+  );
+
+  test.fails(
+    "#577.2: a plan carrying an unrooted path is refused inside the slice stage and the refusal reaches the model as its own error, not as a dead run",
+    () => {
+      const seamSweepCheckpoint = { stage: "seam-sweep", response: seamSweepResponse(["a seam"]) };
+      const unrootedPlan = [slice({ title: "Escapes the repo", filesClaimed: ["../outside-the-repo.ts"] })];
+
+      const failureReason = stageCliFailure("slice", { structured: { slices: unrootedPlan } }, seamSweepCheckpoint);
+
+      expect(failureReason).toMatch(/^slice: /);
+    },
+  );
+
+  test.fails(
+    "#577.3: sliceAndPublish still runs all four, so a plan reaching publish by any other route is judged the same",
+    async () => {
+      const fake = createFakeGh();
+      const unrootedPlan = [slice({ title: "Escapes the repo", filesClaimed: ["../outside-the-repo.ts"] })];
+
+      await expect(sliceAndPublish(unrootedPlan, 13, fake.gh)).rejects.toThrow();
+
+      expect(fake.calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(0);
     },
   );
 });
