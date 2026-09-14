@@ -26,7 +26,7 @@ import {
 } from "../shared/stage";
 import type { StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
-import { sliceAndPublish } from "./slice-and-publish";
+import { sliceAndPublish, validateSlicePlan } from "./slice-and-publish";
 import { SEAM_SWEEP_OUTPUT, type SeamManifest } from "./seam-sweep/schema";
 
 export function validatePlanFile(filePath: string): Plan {
@@ -132,7 +132,7 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
     TICKET_FORMAT: ticketFormat(),
     SEAM_MANIFEST: readPriorHandoff("seam-sweep", SEAM_SWEEP_OUTPUT),
   }),
-  validate: validatePlan,
+  validate: validateSlicePlan,
   measure: measurePlan,
 };
 

@@ -436,7 +436,7 @@ describe("the lane budget wrapper, against a model call that never returns", () 
 });
 
 describe("#577: the slice stage's validate runs all four plan gates", () => {
-  test.fails(
+  test(
     "#577.1: the slice stage's validate runs validateCriteriaShape, validateClaimsAreMutable and validatePathsAreRooted alongside validatePlan, so the stage is judged before it answers",
     async () => {
       withHandoffDir();
@@ -448,7 +448,7 @@ describe("#577: the slice stage's validate runs all four plan gates", () => {
     },
   );
 
-  test.fails(
+  test(
     "#577.2: a plan carrying an unrooted path is refused inside the slice stage and the refusal reaches the model as its own error, not as a dead run",
     () => {
       const seamSweepCheckpoint = { stage: "seam-sweep", response: seamSweepResponse(["a seam"]) };
@@ -460,13 +460,13 @@ describe("#577: the slice stage's validate runs all four plan gates", () => {
     },
   );
 
-  test.fails(
+  test(
     "#577.3: sliceAndPublish still runs all four, so a plan reaching publish by any other route is judged the same",
-    async () => {
+    () => {
       const fake = createFakeGh();
       const unrootedPlan = [slice({ title: "Escapes the repo", filesClaimed: ["../outside-the-repo.ts"] })];
 
-      await expect(sliceAndPublish(unrootedPlan, 13, fake.gh)).rejects.toThrow();
+      expect(() => sliceAndPublish(unrootedPlan, 13, fake.gh)).toThrow(/no top-level entry/);
 
       expect(fake.calls.filter((args) => args[0] === "issue" && args[1] === "create")).toHaveLength(0);
     },
