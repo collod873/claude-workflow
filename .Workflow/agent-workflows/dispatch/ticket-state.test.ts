@@ -1,29 +1,12 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BY_HAND_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL } from "../shared/labels";
-import { scratchDir } from "../shared/scratch.fixture";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
-import { deadRun, HAND_WRITTEN_TICKET, liveRun, silent, trackerWith, type TrackerOptions } from "./tracker.fixture";
+import { authoredOn, deadRun, HAND_WRITTEN_TICKET, liveRun, silent, trackerWith, type TrackerOptions } from "./tracker.fixture";
 import { ticketState, TO_BUILD_REFUSED_MARKER, type TicketState, type TicketStates } from "./ticket-state";
 import { TO_BUILD_LABEL } from "./reconcile";
 
-function workspaceNaming(...tickets: number[]): string {
-  const dir = scratchDir(`ticket-state-${tickets.join("-") || "bare"}`);
-  mkdirSync(join(dir, ".Workflow", "authored"), { recursive: true });
-  for (const ticket of tickets) {
-    writeFileSync(join(dir, ".Workflow", "authored", `t${ticket}.test.ts`), `it.fails("#${ticket}: x", () => {});\n`);
-  }
-  return dir;
-}
-
 function stateOver(options: TrackerOptions, authored: number[] = [], dryRun = false): TicketStates {
-  return ticketState({
-    gh: trackerWith(options).gh,
-    log: silent,
-    dryRun,
-    targetWorkspace: workspaceNaming(...authored),
-  });
+  return ticketState({ gh: trackerWith(authoredOn(options, authored)).gh, log: silent, dryRun });
 }
 
 const record = (states: TicketStates, number: number): TicketState => states.byNumber.get(number) as TicketState;
@@ -35,7 +18,7 @@ const overWide = (count: number): string =>
   );
 
 describe("one record per open ticket, read once", () => {
-  it("carries each open ticket's labels, delivery, started-ness and whether an acceptance test is authored", () => {
+  it("carries each open ticket's labels, delivery, started-ness and the stage its artifacts put it at", () => {
     const states = stateOver(
       {
         open: [
@@ -57,9 +40,9 @@ describe("one record per open ticket, read once", () => {
       blockedBy: [10],
       started: false,
       ready: true,
-      authored: true,
+      stage: "needs-build",
     });
-    expect(record(states, 21)).toMatchObject({ started: true, ready: false, authored: false });
+    expect(record(states, 21)).toMatchObject({ started: true, ready: false, stage: "busy" });
   });
 
   it("reads a ticket behind an open blocker as neither ready nor unreachable, and one behind an abandoned blocker as unreachable", () => {
@@ -160,18 +143,23 @@ describe("what the record does not go back to the tracker for", () => {
       ],
     });
 
-    ticketState({ gh: tracker.gh, log: silent, dryRun: false, targetWorkspace: workspaceNaming() });
+    ticketState({ gh: tracker.gh, log: silent, dryRun: false });
 
     expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/12/comments")))).toEqual([]);
   });
 
   it("asks each ticket for its comments at most once, however many decisions read them", () => {
-    const tracker = trackerWith({
-      open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL] }],
-      runs: [deadRun(900, 77, "implement failed: x\n")],
-    });
+    const tracker = trackerWith(
+      authoredOn(
+        {
+          open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL] }],
+          runs: [deadRun(900, 77, "implement failed: x\n")],
+        },
+        [77],
+      ),
+    );
 
-    ticketState({ gh: tracker.gh, log: silent, dryRun: false, targetWorkspace: workspaceNaming(77) });
+    ticketState({ gh: tracker.gh, log: silent, dryRun: false });
 
     expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/77/comments")))).toHaveLength(1);
   });

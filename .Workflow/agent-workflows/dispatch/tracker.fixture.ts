@@ -95,7 +95,16 @@ export interface TrackerOptions {
   withCommits?: string[];
   runs?: FakeRun[];
   standing?: { number: number; body: string; comments?: string[] };
-  fail?: "issues" | "refs" | "edges" | "runs";
+  fail?: "issues" | "refs" | "edges" | "runs" | "pulls";
+}
+
+export function authoredOn(options: TrackerOptions, tickets: number[]): TrackerOptions {
+  const branches = tickets.map((ticket) => `implement/issue-${ticket}`);
+  return {
+    ...options,
+    claimed: [...(options.claimed ?? []), ...branches],
+    withCommits: [...(options.withCommits ?? []), ...branches],
+  };
 }
 
 export function issueIdOf(number: number): number {
@@ -219,6 +228,10 @@ export function trackerWith(options: TrackerOptions): Tracker {
       return runs.find((run) => run.id === Number(args[2]))?.failedLog ?? "";
     }
     if (args[0] === "pr" && args[1] === "list") {
+      if ((args[args.indexOf("--json") + 1] ?? "") === "headRefName") {
+        if (options.fail === "pulls") throw new Error("gh: 403");
+        return JSON.stringify((options.withPullRequest ?? []).map((headRefName) => ({ headRefName })));
+      }
       const head = args[args.indexOf("--head") + 1];
       return JSON.stringify((options.withPullRequest ?? []).includes(head) ? [{ number: 1 }] : []);
     }

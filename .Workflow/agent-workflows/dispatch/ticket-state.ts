@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { testsForTicket } from "../shared/affected-tests";
-import { releaseDeadClaim } from "../shared/claim";
+import { commitsAhead } from "../shared/claim";
 import type { GhExec } from "../shared/gh";
 import { blockedByPath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
 import { isByHandClaim } from "../shared/immutable-set";
@@ -13,6 +12,7 @@ import {
   type Delivery,
   type SliceState,
 } from "../shared/ready-set";
+import { reason } from "../shared/reason";
 import {
   deadRunsOf,
   fetchLaneRuns,
@@ -84,6 +84,8 @@ export type IssueComment = z.infer<typeof IssueCommentSchema>;
 
 const Refs = z.array(z.string());
 
+const PrHeads = z.array(z.object({ headRefName: z.string() }));
+
 export type Door =
   | { verdict: "none" }
   | { verdict: "admit" }
@@ -94,6 +96,8 @@ export type Door =
 
 export type Hold = "needs-human" | "by-hand";
 
+export type Stage = "busy" | "in-review" | "needs-build" | "needs-test";
+
 export interface TicketState extends SliceState {
   title: string;
   body: string;
@@ -103,7 +107,7 @@ export interface TicketState extends SliceState {
   startable: boolean;
   ready: boolean;
   unreachable: boolean;
-  authored: boolean;
+  stage: Stage;
   landedPr: number | undefined;
   isSpec: boolean;
   children: Blocker[] | undefined;
@@ -116,7 +120,6 @@ export interface TicketStateInput {
   gh: GhExec;
   log: (line: string) => void;
   dryRun: boolean;
-  targetWorkspace: string;
 }
 
 export interface TicketStates {
@@ -252,6 +255,17 @@ function fetchClaimedBranches(gh: GhExec): Set<string> | null {
   }
 }
 
+function fetchOpenPrBranches(gh: GhExec): Set<string> | null {
+  try {
+    const raw = gh(["pr", "list", "--state", "open", "--limit", String(ISSUE_PAGE_SIZE), "--json", "headRefName"]);
+    const parsed = PrHeads.safeParse(JSON.parse(raw));
+    if (!parsed.success) return null;
+    return new Set(parsed.data.map((pr) => pr.headRefName));
+  } catch {
+    return null;
+  }
+}
+
 export function deliveryOf(blocker: Blocker, shipped: () => boolean): Delivery {
   if (blocker.state.toLowerCase() === "open") return "open";
   if ((blocker.state_reason ?? "").toLowerCase() !== COMPLETED) return "undelivered";
@@ -261,26 +275,32 @@ export function deliveryOf(blocker: Blocker, shipped: () => boolean): Delivery {
 interface Progress {
   inFlight: Set<number>;
   claimed: Set<string>;
-  dryRun: boolean;
+  openPrBranches: Set<string>;
 }
 
-function startedTicket(gh: GhExec, number: number, progress: Progress, log: (line: string) => void): boolean {
-  if (progress.inFlight.has(number)) return true;
+function stageOf(gh: GhExec, number: number, progress: Progress, log: (line: string) => void): Stage {
+  if (progress.inFlight.has(number)) return "busy";
   const branch = implementationBranch(number);
-  if (!progress.claimed.has(branch)) return false;
-  if (progress.dryRun) {
-    log(`#${number}: \`${branch}\` stands and no run carries the ticket; a live run would ask whether the claim is dead.`);
-    return true;
+  if (!progress.claimed.has(branch)) return "needs-test";
+  if (progress.openPrBranches.has(branch)) return "in-review";
+  try {
+    if (commitsAhead(gh, branch, "main") > 0) return "needs-build";
+  } catch (err) {
+    log(`#${number}: could not read what \`${branch}\` carries, so it is left alone this pass: ${reason(err)}`);
+    return "busy";
   }
-  const released = releaseDeadClaim(gh, branch, "main", log);
-  if (released) log(`#${number}: \`${branch}\` was a claim no run was holding, so it is released and the ticket reads as unstarted.`);
-  return !released;
+  log(`#${number}: \`${branch}\` stands with nothing on it, so it is a bare claim and the ticket still wants a test.`);
+  return "needs-test";
+}
+
+function startedTicket(stage: Stage): boolean {
+  return stage === "busy" || stage === "in-review";
 }
 
 function buildGraph(
   gh: GhExec,
   issues: OpenIssue[],
-  progress: Progress,
+  stages: Map<number, Stage>,
   log: (line: string) => void,
 ): SliceState[] | null {
   const states = new Map<number, SliceState>();
@@ -296,7 +316,7 @@ function buildGraph(
       number: issue.number,
       blockedBy: blockers.map((blocker) => blocker.number),
       delivery: "open",
-      started: startedTicket(gh, issue.number, progress, log),
+      started: startedTicket(stages.get(issue.number) ?? "needs-test"),
     });
     for (const blocker of blockers) {
       if (deliveryCache.has(blocker.number)) continue;
@@ -385,7 +405,7 @@ function unreadable(note: string): TicketStates {
 }
 
 export function ticketState(input: TicketStateInput): TicketStates {
-  const { gh, log, dryRun, targetWorkspace } = input;
+  const { gh, log, dryRun } = input;
 
   const issues = fetchOpenIssues(gh, log);
   if (issues === null) return unreadable("the tracker did not return a readable list of open issues.");
@@ -398,13 +418,24 @@ export function ticketState(input: TicketStateInput): TicketStates {
     );
   }
 
+  const openPrBranches = fetchOpenPrBranches(gh);
+  if (openPrBranches === null) {
+    return unreadable(
+      "the pull request list could not be read, and without it a ticket already in review reads as one " +
+        "waiting to be built.",
+    );
+  }
+
   const fetchedRuns = fetchLaneRuns(gh);
   if (fetchedRuns === null) {
     log("the runs API did not return a readable list, so every ticket in flight reads as unstarted this pass.");
   }
   const runs = fetchedRuns ?? [];
 
-  const graph = buildGraph(gh, issues, { inFlight: ticketsInFlight(runs), claimed, dryRun }, log);
+  const progress: Progress = { inFlight: ticketsInFlight(runs), claimed, openPrBranches };
+  const stages = new Map(issues.map((issue) => [issue.number, stageOf(gh, issue.number, progress, log)]));
+
+  const graph = buildGraph(gh, issues, stages, log);
   if (graph === null) return unreadable("the dependency graph could not be read for every open issue.");
 
   const slices = new Map(graph.map((slice) => [slice.number, slice]));
@@ -415,7 +446,8 @@ export function ticketState(input: TicketStateInput): TicketStates {
     const labels = labelNames(issue);
     const body = issue.body ?? "";
     const slice = slices.get(issue.number) as SliceState;
-    const door = doorOf(labels, body, slice.started);
+    const stage = stages.get(issue.number) ?? "needs-test";
+    const door = doorOf(labels, body, startedTicket(stage));
     const admitted = door.verdict === "admit" || door.verdict === "clear";
     return {
       ...slice,
@@ -427,7 +459,7 @@ export function ticketState(input: TicketStateInput): TicketStates {
       startable: PARENT_PRD_HEADING.test(body) || admitted,
       ready: ready.has(issue.number),
       unreachable: unreached.has(issue.number),
-      authored: false,
+      stage,
       landedPr: undefined,
       isSpec: labels.includes(PRD_LABEL),
       children: undefined,
@@ -439,7 +471,6 @@ export function ticketState(input: TicketStateInput): TicketStates {
 
   for (const ticket of tickets) {
     if (ticket.isSpec) ticket.children = fetchChildren(gh, ticket.number) ?? undefined;
-    if (ticket.startable) ticket.authored = testsForTicket(ticket.number, targetWorkspace).length > 0;
     if (ticket.ready && ticket.startable && !heldBeforeTheDoorSpoke(ticket)) {
       ticket.landedPr = mergedCloser(gh, ticket.number);
     }

@@ -5,6 +5,7 @@ import { runReconcile } from "./reconcile";
 function ghWithUnreadableRuns(): GhExec {
   const gh: GhExec = (args) => {
     if (args[0] === "issue" && args[1] === "list") return "[]";
+    if (args[0] === "pr" && args[1] === "list") return "[]";
     if (args.join(" ").includes("matching-refs")) return "[]";
     throw new Error("HTTP 403: Resource not accessible by integration");
   };

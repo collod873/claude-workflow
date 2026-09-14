@@ -20,6 +20,7 @@ import {
 } from "./reconcile";
 import { carriesVerifiedClosingRecord, closedByMergedPr, deliveryOf } from "./ticket-state";
 import {
+  authoredOn,
   commentsCarrying,
   deadRun,
   HAND_WRITTEN_TICKET,
@@ -172,35 +173,42 @@ describe("runReconcile dispatches the wave nothing was sending", () => {
       ...held,
     });
 
-  it("does not start a slice whose implement/issue-<n> ref has a pull request or commits, since that is somebody's work", () => {
-    for (const held of [{ withPullRequest: ["implement/issue-20"] }, { withCommits: ["implement/issue-20"] }]) {
-      const tracker = leftBehind(held);
+  it("does not start a slice whose implement/issue-<n> ref carries an open pull request, since that work is out for review", () => {
+    const tracker = leftBehind({ withPullRequest: ["implement/issue-20"] });
 
-      const outcome = reconcileOver(tracker);
+    const outcome = reconcileOver(tracker);
 
-      expect(startedIssues(tracker)).toEqual([]);
-      expect(tracker.released).toEqual([]);
-      expect(outcome.action).toBe("clear");
-    }
+    expect(startedIssues(tracker)).toEqual([]);
+    expect(tracker.released).toEqual([]);
+    expect(outcome.action).toBe("clear");
   });
 
-  it("releases a bare implement/issue-<n> ref no run is holding and starts the slice, since a claim with no run is a dead run's leftover (#384)", () => {
+  it("rings lane 05 for a slice whose implement/issue-<n> ref carries commits and no pull request, since that is an authored test nobody has built", () => {
+    const tracker = leftBehind({ withCommits: ["implement/issue-20"] });
+
+    const outcome = reconcileOver(tracker);
+
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual(["ticket-ready"]);
+    expect(tracker.released).toEqual([]);
+    expect(outcome.action).toBe("dispatched");
+  });
+
+  it("rings lane 04 for a bare implement/issue-<n> ref, since a claim carrying nothing is a ticket still wanting a test", () => {
     const tracker = leftBehind();
 
     const outcome = reconcileOver(tracker);
 
-    expect(tracker.released).toEqual(["implement/issue-20"]);
-    expect(startedIssues(tracker)).toEqual([20]);
+    expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual(["acceptance-wanted"]);
     expect(outcome.action).toBe("dispatched");
   });
 
-  it("leaves a bare ref alone in a dry run and reads the slice as started", () => {
+  it("reads a standing ref the same way in a dry run as in a live one, since asking where a ticket is no longer deletes anything", () => {
     const tracker = leftBehind();
 
-    reconcileOver(tracker, { dryRun: true });
+    const outcome = reconcileOver(tracker, { dryRun: true });
 
-    expect(tracker.released).toEqual([]);
-    expect(startedIssues(tracker)).toEqual([]);
+    expect(tracker.released, "a rehearsal that deletes a ref is not a rehearsal").toEqual([]);
+    expect(outcome.dispatched).toEqual([20]);
   });
 
   it("never starts an issue that is neither a published slice nor labelled to-build", () => {
@@ -399,21 +407,14 @@ describe("runReconcile refuses to answer when it cannot read its own inputs", ()
 describe("the ladder: a dead run is a strike on its ticket, and the count picks the rung (#384)", () => {
   const TICKET = 77;
 
-  function targetNamingTheTicket(): string {
-    const dir = scratchDir("reconcile-ladder");
-    mkdirSync(join(dir, ".Workflow", "ladder"), { recursive: true });
-    writeFileSync(join(dir, ".Workflow", "ladder", "ladder.test.ts"), `it.fails("#${TICKET}: x", () => {});\n`);
-    return dir;
-  }
-
   function ladderOver(options: Omit<TrackerOptions, "open"> & { comments?: string[]; labels?: string[]; authored?: false }) {
     const { comments, labels, authored, ...rest } = options;
-    const tracker = trackerWith({
+    const untested: TrackerOptions = {
       open: [{ number: TICKET, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: labels ?? [TO_BUILD_LABEL], comments }],
       ...rest,
-    });
-    const outcome = reconcileOver(tracker, { targetWorkspace: authored === false ? scratchDir("reconcile-ladder-untested") : targetNamingTheTicket() });
-    return { tracker, outcome };
+    };
+    const tracker = trackerWith(authored === false ? untested : authoredOn(untested, [TICKET]));
+    return { tracker, outcome: reconcileOver(tracker) };
   }
 
   const deadAuthor = (id: number, conclusion: FakeRun["conclusion"] = "cancelled"): FakeRun => ({ id, title: `Acceptance #${TICKET}`, conclusion });

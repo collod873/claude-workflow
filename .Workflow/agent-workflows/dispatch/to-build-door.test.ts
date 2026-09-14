@@ -16,6 +16,7 @@ import { PRD_SLICEABLE_DISPATCH_ACTION } from "../shared/ready-set";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
 import { TO_BUILD_LABEL } from "./reconcile";
 import {
+  authoredOn,
   type FakeIssue,
   HAND_WRITTEN_TICKET,
   liveRun,
@@ -23,6 +24,7 @@ import {
   startedIssues,
   type Tracker,
   trackerWith,
+  type TrackerOptions,
 } from "./tracker.fixture";
 
 const REFUSED_MARKER = "to-build-refused:v1";
@@ -45,20 +47,14 @@ describe("the to-build door goes through lane 04, not straight to lane 05", () =
   const CRITERION = "The door asks lane 04 first";
   const body = `## Acceptance criteria\n\n- [ ] ${CRITERION} - check: \`true\`\n\n## Files claimed\n\n- src/a.ts\n`;
 
-  function target(withTest: boolean): string {
-    const dir = scratchDir("reconcile-door");
-    const tests = join(dir, ".Workflow", "door");
-    mkdirSync(tests, { recursive: true });
-    if (withTest) writeFileSync(join(tests, "door.test.ts"), 'it.fails("#77: x", () => {});\n');
-    return dir;
-  }
+  const atTheDoor = (): TrackerOptions => ({ open: [{ number: 77, title: "Door", body, labels: [TO_BUILD_LABEL] }] });
 
   const events = (tracker: Tracker) => tracker.dispatches.map((dispatch) => dispatch.eventType);
 
   it("asks lane 04 to author when no acceptance test names the ticket's criteria", () => {
-    const tracker = trackerWith({ open: [{ number: 77, title: "Door", body, labels: [TO_BUILD_LABEL] }] });
+    const tracker = trackerWith(atTheDoor());
 
-    const outcome = reconcileOver(tracker, { targetWorkspace: target(false) });
+    const outcome = reconcileOver(tracker);
 
     expect(events(tracker)).toContain("acceptance-wanted");
     expect(events(tracker), "lane 05 must not be rung before the tests exist").not.toContain("ticket-ready");
@@ -66,9 +62,9 @@ describe("the to-build door goes through lane 04, not straight to lane 05", () =
   });
 
   it("rings lane 05 directly once an acceptance test names one of them, so a retry authors nothing new", () => {
-    const tracker = trackerWith({ open: [{ number: 77, title: "Door", body, labels: [TO_BUILD_LABEL] }] });
+    const tracker = trackerWith(authoredOn(atTheDoor(), [77]));
 
-    reconcileOver(tracker, { targetWorkspace: target(true) });
+    reconcileOver(tracker);
 
     expect(events(tracker)).toContain("ticket-ready");
     expect(events(tracker), "re-authoring costs a model run for nothing").not.toContain("acceptance-wanted");
@@ -232,18 +228,10 @@ describe("the to-build door refuses what bin/close-ticket would refuse", () => {
 });
 
 describe("the to-build swap and the lane-label door (#521)", () => {
-  function targetNaming(ticket: number | undefined): string {
-    const dir = scratchDir("reconcile-swap");
-    const tests = join(dir, ".Workflow", "door");
-    mkdirSync(tests, { recursive: true });
-    if (ticket !== undefined) writeFileSync(join(tests, "door.test.ts"), `it.fails("#${ticket}: x", () => {});\n`);
-    return dir;
-  }
-
   it("swaps to-build for 5-building the moment it dispatches, so the label is not permanent", () => {
-    const tracker = trackerWith({ open: [labelled(710)] });
+    const tracker = trackerWith(authoredOn({ open: [labelled(710)] }, [710]));
 
-    reconcileOver(tracker, { targetWorkspace: targetNaming(710) });
+    reconcileOver(tracker);
 
     expect(startedIssues(tracker)).toEqual([710]);
     expect(tracker.labelsAdded).toContainEqual({ issue: 710, name: BUILDING_LABEL });
@@ -253,7 +241,7 @@ describe("the to-build swap and the lane-label door (#521)", () => {
   it("swaps to-build for 4-accepting when it hands the ticket to the acceptance author first", () => {
     const tracker = trackerWith({ open: [labelled(711)] });
 
-    reconcileOver(tracker, { targetWorkspace: targetNaming(undefined) });
+    reconcileOver(tracker);
 
     expect(tracker.labelsAdded).toContainEqual({ issue: 711, name: ACCEPTING_LABEL });
     expect(tracker.labelsRemoved).toContainEqual({ issue: 711, name: TO_BUILD_LABEL });

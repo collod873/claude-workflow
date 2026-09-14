@@ -645,7 +645,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
 
   const stamps: Stamps = { lane: new Map(), relabelled: new Set() };
 
-  const states = ticketState({ gh, log, dryRun, targetWorkspace });
+  const states = ticketState({ gh, log, dryRun });
   if (states.degraded !== undefined) {
     return { action: "degraded", checked: 0, dispatched: [], unreachable: [], note: states.degraded };
   }
@@ -706,7 +706,8 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const deciding: number[] = [];
   const logReads = { left: MAX_STRIKE_LOG_READS };
   for (const ticket of ready) {
-    const wants = ticket.authored ? "ticket-ready" : "acceptance-wanted";
+    const authored = ticket.stage === "needs-build";
+    const wants = authored ? "ticket-ready" : "acceptance-wanted";
 
     if (dryRun) {
       log(`would dispatch ${wants} for #${ticket.number}.`);
@@ -714,12 +715,12 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       continue;
     }
     try {
-      const rung = climbLadder(gh, ticket, states.runs, logReads, log, stamps, ticket.authored ? undefined : authorRung);
+      const rung = climbLadder(gh, ticket, states.runs, logReads, log, stamps, authored ? undefined : authorRung);
       if (rung === "decision") {
         deciding.push(ticket.number);
         continue;
       }
-      if (!ticket.authored) {
+      if (!authored) {
         const freshEyes = authorRung(rung) === "author-fresh-eyes";
         dispatchAcceptanceWanted(gh, ticket.number, false, freshEyes);
         authoring.push(ticket.number);

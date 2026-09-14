@@ -51,7 +51,7 @@ function hasPullRequest(gh: GhExec, branch: string): boolean {
   return (JSON.parse(raw) as unknown[]).length > 0;
 }
 
-function commitsAhead(gh: GhExec, branch: string, base: string): number {
+export function commitsAhead(gh: GhExec, branch: string, base: string): number {
   const raw = gh(["api", comparePath(base, branch)]);
   const ahead = (JSON.parse(raw) as { ahead_by?: unknown }).ahead_by;
   return typeof ahead === "number" ? ahead : 1;
