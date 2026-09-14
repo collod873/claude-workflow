@@ -22,6 +22,7 @@
     "missingCriteriaHeading": "missing required '## Acceptance criteria' heading",
     "criteriaHeadingWithoutItems": "'## Acceptance criteria' heading has no '- [ ]' items; plain '- ' bullets don't count",
     "missingFilesClaimedHeading": "missing required '## Files claimed' heading",
+    "claimIsGlob": "'## Files claimed' names `{entry}`, which is a glob rather than a path. A claim is one file: it is what one implementer edits, and it is what the collision loop wires blockedBy edges from, so a pattern standing for a whole lane blocks every future ticket touching that lane behind this one and deadlocks the ticket filed to reshape it (#538). Name each file the work edits, one per line.",
     "claimTooWide": "'## Files claimed' names {count} files; {limit} is the ceiling. Lane 04's author inlines every claimed file into one prompt, so a claim this wide spends the whole lane budget on its first pass and dies at author-repair with nothing authored (#539). Split it into slices of one subject each."
   }
 }

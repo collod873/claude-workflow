@@ -211,6 +211,46 @@ def test_validate_ticket_claim_ceiling():
           over is not None and "author-repair" in over, over)
 
 
+def test_validate_ticket_refuses_a_glob_claim():
+    print("validate('ticket', ...) refuses a '## Files claimed' entry that is a glob, "
+          "naming the entry and saying a claim is one file")
+
+    def claiming(*paths):
+        files = "".join(f"- {p}\n" for p in paths)
+        return ("## Acceptance criteria\n\n- [ ] it works - check: `true`\n\n"
+                f"## Files claimed\n\n{files}")
+
+    for entry in ("src/*.ts", "src/router?.ts", ".Workflow/agent-workflows/to-tickets/*.ts"):
+        msg = refusal(lambda: ticket_shape.validate("ticket", claiming(entry), repo_root=REPO))
+        check(f"`{entry}` is refused, naming the entry and saying a claim is one file",
+              msg is not None and entry in msg and "one file" in msg, msg)
+
+    plain = refusal(lambda: ticket_shape.validate(
+        "ticket", claiming("bin/ticket_shape.py"), repo_root=REPO))
+    check("a path naming one file is admitted", plain is None, plain)
+
+    deadlock = refusal(lambda: ticket_shape.validate("ticket", claiming(
+        ".Workflow/agent-workflows/dispatch/*.ts",
+        ".Workflow/agent-workflows/spec/**/*.ts",
+        ".Workflow/agent-workflows/shape/*.ts",
+        ".Workflow/agent-workflows/watchdog/*.ts",
+        ".Workflow/agent-workflows/integrate/*.ts",
+        ".Workflow/agent-workflows/acceptance/*.ts",
+        ".Workflow/agent-workflows/review/*.ts",
+        ".Workflow/agent-workflows/to-tickets/*.ts",
+    ), repo_root=REPO))
+    check("#538's own claim list is refused, at the ceiling rather than past it",
+          deadlock is not None and "one file" in deadlock, deadlock)
+
+    catch_all = refusal(lambda: ticket_shape.validate("ticket", claiming("**"), repo_root=REPO))
+    check("a catch-all pattern is refused as the glob it is",
+          catch_all is not None and "one file" in catch_all, catch_all)
+
+    unpatterned = refusal(lambda: ticket_shape.validate("ticket", claiming("."), repo_root=REPO))
+    check("a claim naming no pattern is left to the degenerate-claim refusal ticketify raises",
+          unpatterned is None and ticket_shape.is_degenerate_claim(["."]), unpatterned)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="ticket-shape-test-"):
         test_immutable_set_pinned_to_shared_json()
@@ -228,6 +268,8 @@ def main():
         test_check_marker_word_resolution()
         print()
         test_validate_ticket_claim_ceiling()
+        print()
+        test_validate_ticket_refuses_a_glob_claim()
 
     finish("All ticket_shape checks passed.")
 
