@@ -179,8 +179,11 @@ function labelsAppliedBy(code: string, corpus: Corpus): string[] {
   }
   for (const helper of helpers) {
     for (const call of code.matchAll(new RegExp(`(?<![\\w.])${helper}\\(([^()]*)\\)`, "g"))) {
-      const last = call[1].split(",").pop()?.trim() ?? "";
-      if (/^("[\w-]+"|[A-Z][A-Z0-9_]+)$/.test(last)) raws.push(last);
+      const named = call[1]
+        .split(",")
+        .map((argument) => argument.trim())
+        .filter((argument) => /^("[\w-]+"|[A-Z][A-Z0-9_]+)$/.test(argument));
+      if (named.length > 0) raws.push(named[named.length - 1]);
     }
   }
   return raws.flatMap((raw) => resolveConstant(raw, corpus.constants) ?? []);

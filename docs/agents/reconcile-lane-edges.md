@@ -97,7 +97,13 @@ it at all. Nothing downstream reads which door opened: every door runs the same 
 
 ## Node 01 — fetch state · [wire] [stop-if-degraded]
 
-`runReconcile()`, `reconcile.ts`
+`ticketState()`, `ticket-state.ts`
+
+Every tracker read the pass makes happens here, once per ticket, before any decision is taken:
+`ticketState()` returns one `TicketState` per open issue carrying its labels, blockers and their
+delivery, started-ness, door verdict, strikes and whether an acceptance test is authored.
+`runReconcile()` decides and writes against those records and never reads a ticket back — which is
+why nothing downstream has to keep a private copy of the labels it just wrote ([#550](https://github.com/collod873/claude-workflow/issues/550)).
 
 Three reads, each of which can **degrade** the whole run — `{action: "degraded", ...}`, exit 1,
 **no comment posted anywhere**. This is a distinct failure mode from every refusal elsewhere in
@@ -134,7 +140,7 @@ For every open `prd`-labelled issue with at least one sub-issue:
 
 ## Node 03 — `to-build` shape admission · [wire] [stop-per-issue]
 
-`admitToBuild()` / `toBuildRefusal()`, `reconcile.ts`
+`doorOf()` / `toBuildRefusal()`, `ticket-state.ts`; the writes are `recordDoor()`, `reconcile.ts`
 
 Every open issue carrying `to-build` is checked:
 
@@ -211,10 +217,10 @@ stay the backstop, and say so on the issue under `slice-failed` rather than here
 `reconcile.ts`
 
 ```ts
-const startable = startableNumbers(issues, admitted);
-// a published slice (## Parent PRD heading, lane 03's own output) OR the to-build label —
-// intent to build is asserted, never inferred from shape alone
-const ready = readySlices(graph).filter(s => startable.has(s.number));
+// startable: a published slice (## Parent PRD heading, lane 03's own output) OR admitted at the
+// to-build door — intent to build is asserted, never inferred from shape alone. Both are already
+// on the record, computed once by ticketState().
+const ready = tickets.filter(t => t.startable && t.ready && t.hold === undefined && t.landedPr === undefined);
 ```
 
 For each `ready` slice, `testsForCriteria(criteriaOf(slice), targetWorkspace)` greps every

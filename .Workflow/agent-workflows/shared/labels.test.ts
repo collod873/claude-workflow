@@ -110,6 +110,17 @@ describe("markLane", () => {
     expect(edits(calls)).toEqual([["issue", "edit", "7", "--remove-label", "1-shaping", "--add-label", DECIDE_LABEL]]);
   });
 
+  it("acts on the labels it is handed and reads none back, so a pass holding them asks the tracker once", () => {
+    const { gh, calls } = wearing([TICKET_LABEL, WAITING_LABEL, SLICEABLE_LABEL]);
+
+    markLane(gh, 42, BUILDING_LABEL, [TICKET_LABEL, QUEUED_LABEL]);
+
+    expect(calls.filter((call) => call[0] === "issue" && call[1] === "view")).toEqual([]);
+    expect(edits(calls)).toEqual([
+      ["issue", "edit", "42", "--remove-label", QUEUED_LABEL, "--add-label", BUILDING_LABEL],
+    ]);
+  });
+
   it("swallows a tracker that refuses, so a label is never what ends a lane", () => {
     const refusing: GhExec = () => {
       throw new Error("HTTP 403");

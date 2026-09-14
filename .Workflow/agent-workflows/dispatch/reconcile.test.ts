@@ -12,14 +12,12 @@ import BOT_CLOSED from "./closing-prs.fixtures/issue-493-comments.json";
 import OWNER_CLOSED from "./closing-prs.fixtures/issue-494-comments.json";
 import { scratchDir } from "../shared/scratch.fixture";
 import {
-  carriesVerifiedClosingRecord,
-  closedByMergedPr,
-  deliveryOf,
   RECONCILE_DISPATCH_ACTIONS,
   RUN_ENDED_ACTION,
   SESSION_CAPTURED_DISPATCH_ACTION,
   TO_BUILD_LABEL,
 } from "./reconcile";
+import { carriesVerifiedClosingRecord, closedByMergedPr, deliveryOf } from "./ticket-state";
 import {
   commentsCarrying,
   deadRun,
@@ -709,6 +707,24 @@ describe("the labels a pass writes so the PRD reads from the filter (#521)", () 
     expect(tracker.labelsAdded).toEqual([]);
     expect(tracker.bodyEdits).toEqual([]);
   });
+});
+
+test("#550: one pass reads each ticket's labels once, so no label write is decided against a second read", () => {
+  const tracker = trackerWith({
+    open: [
+      { number: 11, title: "Still building" },
+      { number: 20, title: "Dispatched", blockedBy: [10] },
+      { number: 21, title: "Waiting", blockedBy: [11] },
+      { number: 22, title: "Refused at the door", body: "## Acceptance criteria\n\n- [ ] It works\n", labels: [TO_BUILD_LABEL] },
+    ],
+    closed: [{ number: 10, stateReason: "completed", merged: true }],
+  });
+
+  reconcileOver(tracker);
+
+  expect(tracker.labelsAdded.map((label) => label.name)).toContain(WAITING_LABEL);
+  expect(tracker.labelsAdded.map((label) => label.name)).toContain(NEEDS_HUMAN_LABEL);
+  expect(tracker.calls.filter((call) => call[0] === "issue" && call[1] === "view" && call.includes("labels"))).toEqual([]);
 });
 
 test(

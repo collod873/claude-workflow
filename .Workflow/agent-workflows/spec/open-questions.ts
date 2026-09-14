@@ -31,10 +31,12 @@ export const SPEC_DISPATCH_EVENT_TYPE = "prd-sliceable";
 export type GateOutcome = "dispatched";
 
 export function applyGate(gh: GhExec, issueNumber: number, count = 0): GateOutcome {
-  if (count > 0) markLane(gh, issueNumber, QUESTIONS_OPEN_LABEL);
-  else if (readIssueLabels(gh, issueNumber).includes(QUESTIONS_OPEN_LABEL)) unlabel(gh, issueNumber, QUESTIONS_OPEN_LABEL);
+  const wearing = readIssueLabels(gh, issueNumber);
+  const laneCleared = count > 0;
+  if (laneCleared) markLane(gh, issueNumber, QUESTIONS_OPEN_LABEL, wearing);
+  else if (wearing.includes(QUESTIONS_OPEN_LABEL)) unlabel(gh, issueNumber, QUESTIONS_OPEN_LABEL);
 
-  markLane(gh, issueNumber, SLICEABLE_LABEL);
+  markLane(gh, issueNumber, SLICEABLE_LABEL, laneCleared ? [] : wearing);
   requestDispatch(gh, {
     event_type: SPEC_DISPATCH_EVENT_TYPE,
     client_payload: { issue: issueNumber },

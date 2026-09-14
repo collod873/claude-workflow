@@ -1,0 +1,204 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { BY_HAND_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL } from "../shared/labels";
+import { scratchDir } from "../shared/scratch.fixture";
+import { CLAIM_LIMIT } from "../shared/ticket-shape";
+import { deadRun, HAND_WRITTEN_TICKET, liveRun, silent, trackerWith, type TrackerOptions } from "./tracker.fixture";
+import { ticketState, TO_BUILD_REFUSED_MARKER, type TicketState, type TicketStates } from "./ticket-state";
+import { TO_BUILD_LABEL } from "./reconcile";
+
+function workspaceNaming(...tickets: number[]): string {
+  const dir = scratchDir(`ticket-state-${tickets.join("-") || "bare"}`);
+  mkdirSync(join(dir, ".Workflow", "authored"), { recursive: true });
+  for (const ticket of tickets) {
+    writeFileSync(join(dir, ".Workflow", "authored", `t${ticket}.test.ts`), `it.fails("#${ticket}: x", () => {});\n`);
+  }
+  return dir;
+}
+
+function stateOver(options: TrackerOptions, authored: number[] = [], dryRun = false): TicketStates {
+  return ticketState({
+    gh: trackerWith(options).gh,
+    log: silent,
+    dryRun,
+    targetWorkspace: workspaceNaming(...authored),
+  });
+}
+
+const record = (states: TicketStates, number: number): TicketState => states.byNumber.get(number) as TicketState;
+
+const overWide = (count: number): string =>
+  HAND_WRITTEN_TICKET.replace(
+    "- None — no files.",
+    Array.from({ length: count }, (_unused, at) => `- src/m${at}.ts`).join("\n"),
+  );
+
+describe("one record per open ticket, read once", () => {
+  it("carries each open ticket's labels, delivery, started-ness and whether an acceptance test is authored", () => {
+    const states = stateOver(
+      {
+        open: [
+          { number: 20, title: "Ready", blockedBy: [10], labels: [TO_BUILD_LABEL] },
+          { number: 21, title: "Running", labels: [BUILDING_LABEL] },
+        ],
+        closed: [{ number: 10, stateReason: "completed", merged: true }],
+        runs: [liveRun(900, "Implement #21")],
+      },
+      [20],
+    );
+
+    expect(states.degraded).toBeUndefined();
+    expect(states.tickets.map((ticket) => ticket.number)).toEqual([20, 21]);
+
+    expect(record(states, 20)).toMatchObject({
+      labels: [TO_BUILD_LABEL],
+      delivery: "open",
+      blockedBy: [10],
+      started: false,
+      ready: true,
+      authored: true,
+    });
+    expect(record(states, 21)).toMatchObject({ started: true, ready: false, authored: false });
+  });
+
+  it("reads a ticket behind an open blocker as neither ready nor unreachable, and one behind an abandoned blocker as unreachable", () => {
+    const states = stateOver({
+      open: [
+        { number: 11, title: "Still building" },
+        { number: 20, title: "Waiting", blockedBy: [11] },
+        { number: 30, title: "Behind the abandoned one", blockedBy: [10] },
+      ],
+      closed: [{ number: 10, stateReason: "not_planned" }],
+    });
+
+    expect(record(states, 20)).toMatchObject({ ready: false, unreachable: false });
+    expect(record(states, 30)).toMatchObject({ ready: false, unreachable: true });
+  });
+
+  it("carries the strikes already standing on a ready ticket and the dead runs nothing has struck yet", () => {
+    const standing = [
+      "<!-- strike:v1 run=900 conclusion=failure -->\n<!-- strike-signature:EISDIR -->\nStrike.",
+    ];
+    const states = stateOver(
+      {
+        open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL], comments: standing }],
+        runs: [deadRun(900, 77, "implement failed: x\n"), deadRun(901, 77, "implement failed: y\n")],
+      },
+      [77],
+    );
+
+    expect(record(states, 77).strikes.map((strike) => strike.runId)).toEqual([900]);
+    expect(record(states, 77).unstruck.map((run) => run.databaseId)).toEqual([901]);
+  });
+});
+
+describe("the record says what the door decided, so the pass never asks the body twice", () => {
+  const door = (issue: Partial<TrackerOptions["open"][number]>, dryRun = false) =>
+    record(
+      stateOver(
+        { open: [{ number: 42, title: "At the door", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL], ...issue }] },
+        [],
+        dryRun,
+      ),
+      42,
+    );
+
+  it("admits a well-shaped claim", () => {
+    expect(door({}).door).toEqual({ verdict: "admit" });
+    expect(door({}).startable).toBe(true);
+  });
+
+  it("stands a claim only a human can build down, whoever applied the label", () => {
+    expect(door({ body: HAND_WRITTEN_TICKET.replace("- None — no files.", "- .claude/settings.json") }).door).toEqual({
+      verdict: "stand-down",
+      labelled: false,
+    });
+    expect(door({ labels: [TO_BUILD_LABEL, BY_HAND_LABEL] }).door).toEqual({ verdict: "stand-down", labelled: true });
+  });
+
+  it("holds a stood-down claim by hand before the label the door is about to apply exists", () => {
+    expect(door({ body: HAND_WRITTEN_TICKET.replace("- None — no files.", "- .claude/settings.json") }).hold).toBe(
+      "by-hand",
+    );
+  });
+
+  it("sends a claim wider than lane 04's budget to slicing, naming the count", () => {
+    expect(door({ body: overWide(CLAIM_LIMIT + 1) }).door).toEqual({ verdict: "slice", claimed: CLAIM_LIMIT + 1 });
+  });
+
+  it("refuses a body with no check: marker, and does not make it startable", () => {
+    const refused = door({ body: "## Acceptance criteria\n\n- [ ] It works\n\n## Files claimed\n\n- src/a.ts\n" });
+
+    expect(refused.door.verdict).toBe("refuse");
+    expect(refused.startable).toBe(false);
+  });
+
+  it("holds a needs-human ticket until its own standing refusal is the thing being cleared", () => {
+    const held = door({ labels: [TO_BUILD_LABEL, NEEDS_HUMAN_LABEL] });
+    expect(held.door).toEqual({ verdict: "clear" });
+    expect(held.hold, "nothing standing to clear, so the hold stays").toBe("needs-human");
+
+    const clearing = door({
+      labels: [TO_BUILD_LABEL, NEEDS_HUMAN_LABEL],
+      comments: [`Missing something.\n\n${TO_BUILD_REFUSED_MARKER}`],
+    });
+    expect(clearing.hold, "the door lifts what it wrote, so the same pass may dispatch it").toBeUndefined();
+  });
+
+  it("reads nothing at the door in a dry run, which writes nothing to clear", () => {
+    expect(door({ labels: [TO_BUILD_LABEL, NEEDS_HUMAN_LABEL] }, true).comments).toBeUndefined();
+  });
+});
+
+describe("what the record does not go back to the tracker for", () => {
+  it("reads no comments for a ticket it admits and cannot dispatch yet", () => {
+    const tracker = trackerWith({
+      open: [
+        { number: 11, title: "Still building" },
+        { number: 12, title: "Admitted, blocked", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL], blockedBy: [11] },
+      ],
+    });
+
+    ticketState({ gh: tracker.gh, log: silent, dryRun: false, targetWorkspace: workspaceNaming() });
+
+    expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/12/comments")))).toEqual([]);
+  });
+
+  it("asks each ticket for its comments at most once, however many decisions read them", () => {
+    const tracker = trackerWith({
+      open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL] }],
+      runs: [deadRun(900, 77, "implement failed: x\n")],
+    });
+
+    ticketState({ gh: tracker.gh, log: silent, dryRun: false, targetWorkspace: workspaceNaming(77) });
+
+    expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/77/comments")))).toHaveLength(1);
+  });
+
+  it("names a spec's sub-issues on the record, so the rollup and the closing attempt share one read", () => {
+    const states = stateOver({
+      open: [
+        { number: 145, title: "A spec", labels: [PRD_LABEL], children: [201], body: "## Acceptance criteria\n\n- [ ] It works — check: `true`\n" },
+        { number: 201, title: "Its child" },
+      ],
+    });
+
+    expect(record(states, 145).isSpec).toBe(true);
+    expect(record(states, 145).children?.map((child) => child.number)).toEqual([201]);
+    expect(record(states, 201).isSpec).toBe(false);
+  });
+});
+
+describe("a read it cannot finish is said once, not half-answered", () => {
+  it.each([
+    { what: "the open issues", fail: "issues" as const, names: "readable list of open issues" },
+    { what: "the implement refs", fail: "refs" as const, names: "reads as unstarted" },
+    { what: "the dependency graph", fail: "edges" as const, names: "dependency graph" },
+  ])("says the pass is degraded when it cannot read $what", ({ fail, names }) => {
+    const states = stateOver({ open: [{ number: 20, title: "A slice" }], fail });
+
+    expect(states.degraded).toContain(names);
+    expect(states.tickets).toEqual([]);
+  });
+});

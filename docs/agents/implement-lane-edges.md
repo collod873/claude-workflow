@@ -34,7 +34,7 @@ This lane has one way in — no push door, no critique door, unlike lanes 02 and
 | **Passes when** | `github.event.action == 'ticket-ready'` |
 | **Who sends it** | Exactly one caller: `dispatchTicketReady()`, called from [`dispatch/reconcile.ts`](../../.Workflow/agent-workflows/dispatch/reconcile.ts) — lane 04's own recompute — and only for a ticket that is *ready* (every blocker delivered) **and** already carries an authored acceptance test. A ready ticket with no test dispatches `acceptance-wanted` instead, to lane 04's own author; this lane never sees it. |
 | **Concurrency** | `implement-${{ issue }}`, `cancel-in-progress: false` — grouped per ticket, not per run. A second `ticket-ready` for #421 queues rather than racing this one. |
-| **Refused a stage earlier still** | `reconcile.ts`'s own `toBuildRefusal()` checks the ticket's shape and its `## Files claimed` against the immutable set *before* ever dispatching — the same refusal lane 06's Immutability job would eventually produce, caught here so an implementer and a pull request are never spent to arrive at it. |
+| **Refused a stage earlier still** | `ticket-state.ts`'s own `toBuildRefusal()` checks the ticket's shape and its `## Files claimed` against the immutable set *before* ever dispatching — the same refusal lane 06's Immutability job would eventually produce, caught here so an implementer and a pull request are never spent to arrive at it. |
 
 ### edge — `client_payload` · one field
 
@@ -340,7 +340,7 @@ Ordered by how much has been spent when it fires.
 
 | Cost | Where | Fires when |
 |---|---|---|
-| free | `reconcile.ts`'s `toBuildRefusal()` | Malformed ticket shape, or `## Files claimed` touches the immutable set — refused before this lane is ever dispatched |
+| free | `ticket-state.ts`'s `toBuildRefusal()` | Malformed ticket shape, or `## Files claimed` touches the immutable set — refused before this lane is ever dispatched |
 | free | `implement.yml`'s `if:` | Not a `ticket-ready` dispatch |
 | one runner, no checkout | preflight | `CLAUDE_CODE_OAUTH_TOKEN` is empty |
 | one runner, before the model | node 01 | The branch's claim is live elsewhere |

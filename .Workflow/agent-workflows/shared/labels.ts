@@ -198,11 +198,11 @@ function removals(labels: readonly string[]): string[] {
   return labels.flatMap((each) => ["--remove-label", each]);
 }
 
-export function markLane(gh: GhExec, issueNumber: number, label: StateLabel): void {
+export function markLane(gh: GhExec, issueNumber: number, label: StateLabel, wearing?: readonly string[]): void {
   try {
     if (!STATE_LABELS.has(label)) throw new Error(`${label} is not a lane label`);
     ensureLabel(gh, label);
-    const stale = staleLaneLabels(readIssueLabels(gh, issueNumber), label);
+    const stale = staleLaneLabels(wearing ?? readIssueLabels(gh, issueNumber), label);
     gh(["issue", "edit", String(issueNumber), ...removals(stale), "--add-label", label]);
   } catch (err) {
     console.error(`could not mark #${issueNumber} as ${label}: ${reason(err)}`);
@@ -215,8 +215,8 @@ export function clearLane(gh: GhExec, issueNumber: number): void {
   gh(["issue", "edit", String(issueNumber), ...removals(stale)]);
 }
 
-export function laneRemovals(gh: GhExec, issueNumber: number): string[] {
-  return removals(staleLaneLabels(readIssueLabels(gh, issueNumber), ""));
+export function laneRemovals(gh: GhExec, issueNumber: number, wearing?: readonly string[]): string[] {
+  return removals(staleLaneLabels(wearing ?? readIssueLabels(gh, issueNumber), ""));
 }
 
 export function unlabel(gh: GhExec, issueNumber: number, label: string): void {
