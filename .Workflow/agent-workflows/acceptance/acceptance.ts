@@ -13,6 +13,7 @@ import { laneBudget } from "../shared/lane-budget";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
+import { AUTHOR_CHECK_CONTRACT_LEAD } from "../shared/house-style";
 import { sayOnTicket } from "../shared/implementation-landing";
 import { ACCEPTING_LABEL, markLane, QUEUED_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
@@ -75,6 +76,7 @@ export interface AuthorDeps {
   readFile?: (path: string) => string | undefined;
   suite?: SuiteLayout;
   houseRules?: string;
+  checkContract?: string;
   priorAttempts?: string;
 }
 
@@ -95,19 +97,42 @@ export const CLAIMED_FILE_ABSENT = "(does not exist yet; this ticket creates it)
 
 export const NO_CLAIMED_FILES = "(this ticket claims no files)";
 
+export const NO_TARGET_TESTS = "(no test file sits beside a claimed subject yet; every test here is a new file)";
+
+export const INLINE_FILE_CAP_BYTES = 40_000;
+
+export const INLINE_BUDGET_BYTES = 150_000;
+
+export const FILE_OVER_BUDGET = "(not inlined: over the prompt's file budget)";
+
 export function renderFiles(
   paths: string[],
   readFile: (path: string) => string | undefined,
   whenEmpty: string,
+  budget: { remaining: number } = { remaining: INLINE_BUDGET_BYTES },
 ): string {
   if (paths.length === 0) return whenEmpty;
   return paths
     .map((path) => {
       const content = readFile(path);
       if (content === undefined) return `### ${path}\n\n${CLAIMED_FILE_ABSENT}`;
+      const size = Buffer.byteLength(content, "utf8");
+      if (size > INLINE_FILE_CAP_BYTES || size > budget.remaining) return `### ${path}\n\n${FILE_OVER_BUDGET}`;
+      budget.remaining -= size;
       return `### ${path}\n\n\`\`\`\n${content}\n\`\`\``;
     })
     .join("\n\n");
+}
+
+const TEST_CASE_RE = /^[ \t]*(?:it|test)(?:\.[A-Za-z]+)*[ \t]*\(/gm;
+
+export function testCaseCount(source: string): number {
+  return source.match(TEST_CASE_RE)?.length ?? 0;
+}
+
+export function colocatedTests(claimed: string[], suite: SuiteLayout): string[] {
+  const stems = claimed.map((path) => path.replace(/\.[^./]+$/, ""));
+  return suite.files.filter((file) => stems.some((stem) => file.startsWith(`${stem}.`)));
 }
 
 export function renderCriteria(criteria: string[]): string {
@@ -168,11 +193,24 @@ export function exampleSubject(suite: SuiteLayout, name = "gate-size"): { subjec
 }
 
 function houseRules(): string {
-  if (resolve(REPO_DIR) !== MACHINE_ROOT) return "";
   try {
-    return readFileSync(join(MACHINE_ROOT, HOUSE_RULES_PATH), "utf8");
+    return readFileSync(join(REPO_DIR, HOUSE_RULES_PATH), "utf8");
   } catch {
     return "";
+  }
+}
+
+export function renderCheckContract(contract: Record<string, { cmd?: string; why?: string }>): string {
+  const slots = Object.entries(contract).filter(([, slot]) => typeof slot?.cmd === "string");
+  if (slots.length === 0) return "(this repository names no check contract)";
+  return ["| Slot | Command |", "| --- | --- |", ...slots.map(([name, slot]) => `| \`${name}\` | \`${slot.cmd}\` |`)].join("\n");
+}
+
+function checkContractTable(): string {
+  try {
+    return renderCheckContract(JSON.parse(readFileSync(join(REPO_DIR, ".claude/contract.json"), "utf8")));
+  } catch {
+    return "(this repository names no check contract)";
   }
 }
 
@@ -194,6 +232,10 @@ export async function authorAcceptanceTests(
 
   const suite = suiteOf(deps);
   const example = exampleSubject(suite);
+  const readFile = deps.readFile ?? readIfPresent;
+  const claimed = extractFilesClaimed(deps.ticket.body);
+  const targets = colocatedTests(claimed, suite);
+  const budgetBytes = { remaining: INLINE_BUDGET_BYTES };
   const round = await runStageSessionWithinBudget(
     AUTHOR_PROMPT_PATH,
     {
@@ -203,11 +245,13 @@ export async function authorAcceptanceTests(
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
       CRITERIA: renderCriteria(criteria),
       CRITERIA_COUNT: String(criteria.length),
-      CLAIMED_FILES: renderFiles(extractFilesClaimed(deps.ticket.body), deps.readFile ?? readIfPresent, NO_CLAIMED_FILES),
+      TARGET_TESTS: renderFiles(targets, readFile, NO_TARGET_TESTS, budgetBytes),
+      CLAIMED_FILES: renderFiles(claimed, readFile, NO_CLAIMED_FILES, budgetBytes),
       SUITE_ROOTS: suite.roots.map((root) => `\`${root}/**\``).join(", "),
       TEST_SUFFIXES: suite.suffixes.map((suffix) => `\`${suffix}\``).join(", "),
       EXAMPLE_SUBJECT_PATH: example.subject,
       EXAMPLE_TEST_PATH: example.test,
+      CHECK_CONTRACT: `${AUTHOR_CHECK_CONTRACT_LEAD}\n\n${deps.checkContract ?? checkContractTable()}`,
       HOUSE_RULES: deps.houseRules ?? houseRules(),
       PRIOR_ATTEMPTS: deps.priorAttempts ?? NO_EARLIER_ATTEMPT,
     },
@@ -220,7 +264,7 @@ export async function authorAcceptanceTests(
       stage: deps.priorAttempts === undefined ? "author" : "author-fresh-eyes",
     },
   );
-  return acceptRound(deps, criteria, round);
+  return acceptRound(deps, criteria, round, new Set([...claimed, ...targets]));
 }
 
 export async function repairAcceptanceTests(
@@ -241,10 +285,44 @@ export async function repairAcceptanceTests(
     AUTHOR_OUTPUT,
     { budget, model: AUTHOR_MODEL, promptViaStdin: true, resume: sessionId, stage: "author-repair" },
   );
-  return acceptRound(deps, criteria, round);
+  const suite = suiteOf(deps);
+  const claimed = extractFilesClaimed(deps.ticket.body);
+  return acceptRound(deps, criteria, round, new Set([...claimed, ...colocatedTests(claimed, suite)]));
 }
 
-function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionResult<AuthorAnswer>): AuthoredBatch {
+export function unshownRewriteRefusal(path: string): string {
+  return (
+    `author returned ${path}, a file that already exists and was not shown to it. A file it cannot ` +
+    "see is a file it rewrites from memory, and the batch replaces the whole file: that is how four " +
+    "earlier runs deleted 69 passing tests. Write beside a claimed subject, or create a new file."
+  );
+}
+
+export function shrinkingRewriteRefusal(path: string, before: number, after: number): string {
+  return (
+    `author returned ${path} carrying ${after} test case(s) where the file on disk has ${before}. ` +
+    "An acceptance batch adds tests; it never returns a shown file with fewer than it was given."
+  );
+}
+
+function refuseLostCoverage(files: AuthoredFile[], shown: Set<string>, readFile: (path: string) => string | undefined): void {
+  for (const file of files) {
+    const existing = readFile(file.path);
+    if (existing === undefined) continue;
+    if (!shown.has(file.path)) throw new Error(unshownRewriteRefusal(file.path));
+
+    const before = testCaseCount(existing);
+    const after = testCaseCount(file.content);
+    if (after < before) throw new Error(shrinkingRewriteRefusal(file.path, before, after));
+  }
+}
+
+function acceptRound(
+  deps: AuthorDeps,
+  criteria: string[],
+  round: StageSessionResult<AuthorAnswer>,
+  shown: Set<string>,
+): AuthoredBatch {
   const answer = round.value;
   const { roots, suffixes } = suiteOf(deps);
   for (const file of answer.files) {
@@ -265,6 +343,8 @@ function acceptRound(deps: AuthorDeps, criteria: string[], round: StageSessionRe
       `author wrote no test file for #${deps.issueNumber}: looked for a path ending in ${suffixes.join(", ")}`,
     );
   }
+
+  refuseLostCoverage(answer.files, shown, deps.readFile ?? readIfPresent);
 
   const combined = answer.files.map((file) => file.content).join("\n");
   const missing = criteria

@@ -4,18 +4,20 @@ import { describe, expect, it, test } from "vitest";
 import { scratchDir } from "../shared/scratch.fixture";
 import {
   assembleBrief,
-  CHECK_CONTRACT_HEADING,
-  CHECK_CONTRACT_LEAD,
   gatherBriefContext,
   INLINE_BUDGET_BYTES,
   INLINE_FILE_CAP_BYTES,
   listAdrFiles,
-  STYLE_RULES,
-  STYLE_RULES_HEADING,
   walkSourceFiles,
   type BriefContextDeps,
   type BriefInputs,
 } from "./brief";
+import {
+  CHECK_CONTRACT_HEADING,
+  CHECK_CONTRACT_LEAD,
+  STYLE_RULES,
+  STYLE_RULES_HEADING,
+} from "../shared/house-style";
 
 function fakeDeps(overrides: Partial<BriefContextDeps> = {}): BriefContextDeps {
   return {

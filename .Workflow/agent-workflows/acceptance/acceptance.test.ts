@@ -7,6 +7,7 @@ import { subIssuesPath } from "../shared/gh-paths";
 import { ACCEPTING_LABEL } from "../shared/labels";
 import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
+import { reason } from "../shared/reason";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { SuiteLayout } from "../shared/suite-layout";
 import type { GateVerdict } from "../shared/run-gauntlet";
@@ -16,16 +17,24 @@ import type { TestRunResult } from "../shared/vitest-json";
 import {
   authorAcceptanceTests,
   CLAIMED_FILE_ABSENT,
+  colocatedTests,
   commitAuthoredBatch,
   exampleSubject,
   judgeAuthoredBatch,
+  FILE_OVER_BUDGET,
+  INLINE_FILE_CAP_BYTES,
   NO_CLAIMED_FILES,
   NO_EARLIER_ATTEMPT,
+  NO_TARGET_TESTS,
+  renderCheckContract,
   refireAcceptance,
   renderCriteria,
   renderFiles,
   runAcceptanceAuthor,
+  shrinkingRewriteRefusal,
   suiteOf,
+  testCaseCount,
+  unshownRewriteRefusal,
   type AuthoredBatch,
   type AuthoredFile,
   type BatchVerdict,
@@ -926,5 +935,160 @@ describe("the acceptance lane never reaches trunk", () => {
     expect(pushes).toEqual([["push", "origin", `HEAD:implement/issue-${ISSUE}`]]);
     expect(git.calls.flat()).not.toContain("main");
     expect(git.calls.filter((call) => call[0] === "rebase"), "a branch push races nobody").toHaveLength(0);
+  });
+});
+
+describe("the author's write scope", () => {
+  const EXISTING = ".Workflow/agent-workflows/shared/widget.test.ts";
+  const UNSEEN = ".Workflow/agent-workflows/shared/elsewhere.test.ts";
+
+  const TWO_CASES = [
+    'import { expect, test } from "vitest";',
+    'test("one", () => { expect(1).toBe(1); });',
+    'test("two", () => { expect(2).toBe(2); });',
+    "",
+  ].join("\n");
+
+  function onDisk(files: Record<string, string>) {
+    return (path: string): string | undefined => files[path];
+  }
+
+  async function refusalFrom(files: AuthoredFile[], disk: Record<string, string>): Promise<string> {
+    const stage = answer(files);
+    try {
+      await authorAcceptanceTests({
+        exec: stage.exec,
+        writeFile: () => {},
+        issueNumber: ISSUE,
+        ticket: TICKET,
+        readFile: onDisk(disk),
+        suite: SUITE,
+        houseRules: "",
+        checkContract: "",
+      });
+    } catch (err) {
+      return reason(err);
+    }
+    return "";
+  }
+
+  it("refuses a file that exists on disk and was never shown to the author", async () => {
+    const refusal = await refusalFrom(
+      [{ path: EXISTING, content: failsTest() }, { path: UNSEEN, content: "export const x = 1;\n" }],
+      { [UNSEEN]: TWO_CASES },
+    );
+
+    expect(refusal).toBe(unshownRewriteRefusal(UNSEEN));
+  });
+
+  it("admits a path that does not exist yet, since a new file deletes nothing", async () => {
+    expect(await refusalFrom([{ path: EXISTING, content: failsTest() }], {})).toBe("");
+  });
+
+  it("refuses a shown file returned with fewer test cases than it was given", async () => {
+    const onDiskNow = [
+      TWO_CASES,
+      'test("three", () => { expect(3).toBe(3); });',
+      'test("four", () => { expect(4).toBe(4); });',
+      'test("five", () => { expect(5).toBe(5); });',
+      "",
+    ].join("\n");
+
+    const refusal = await refusalFrom([{ path: EXISTING, content: failsTest() }], { [EXISTING]: onDiskNow });
+
+    expect(testCaseCount(onDiskNow)).toBe(5);
+    expect(testCaseCount(failsTest())).toBe(2);
+    expect(refusal).toBe(shrinkingRewriteRefusal(EXISTING, 5, 2));
+  });
+
+  it("admits a shown file that keeps every case it was given and adds the criteria", async () => {
+    const refusal = await refusalFrom(
+      [{ path: EXISTING, content: `${TWO_CASES}${failsTest()}` }],
+      { [EXISTING]: TWO_CASES },
+    );
+
+    expect(refusal).toBe("");
+  });
+});
+
+describe("testCaseCount", () => {
+  it("counts it, test and their modifiers, and nothing that merely mentions them", () => {
+    const source = [
+      'import { expect, it, test } from "vitest";',
+      'test("a", () => {});',
+      '  it("b", () => {});',
+      '  test.fails("c", () => {});',
+      '  it.each([1])("d", () => {});',
+      'const latest = "the latest test(" + "run";',
+      "// test(",
+    ].join("\n");
+
+    expect(testCaseCount(source)).toBe(4);
+    expect(testCaseCount("")).toBe(0);
+  });
+});
+
+describe("colocatedTests", () => {
+  it("finds the suite's tests sitting beside a claimed subject, whatever the subject's extension", () => {
+    const suite: SuiteLayout = {
+      files: [
+        ".claude/hooks/close-gate.proc.test.ts",
+        ".Workflow/agent-workflows/shared/widget.test.ts",
+        ".Workflow/agent-workflows/shared/widget-other.test.ts",
+      ],
+      roots: [".Workflow", ".claude"],
+      suffixes: [".test.ts"],
+    };
+
+    expect(colocatedTests([".claude/hooks/close-gate.py", ".Workflow/agent-workflows/shared/widget.ts"], suite)).toEqual([
+      ".claude/hooks/close-gate.proc.test.ts",
+      ".Workflow/agent-workflows/shared/widget.test.ts",
+    ]);
+    expect(colocatedTests([], suite)).toEqual([]);
+  });
+});
+
+describe("what the author is shown", () => {
+  it("inlines the tests beside a claimed subject, so it adds to them rather than inventing them", async () => {
+    const target = ".Workflow/agent-workflows/shared/widget.test.ts";
+    const stage = answer([{ path: target, content: failsTest() }]);
+
+    await authorAcceptanceTests({
+      exec: stage.exec,
+      writeFile: () => {},
+      issueNumber: ISSUE,
+      ticket: TICKET,
+      readFile: (path) => (path === target ? "test(\"already here\", () => {});\n" : undefined),
+      suite: SUITE,
+      houseRules: "",
+      checkContract: "",
+    });
+
+    expect(stage.stdins[0]).toContain("already here");
+    expect(stage.stdins[0]).not.toContain(NO_TARGET_TESTS);
+  });
+
+  it("says so plainly when no test sits beside a claimed subject yet", () => {
+    expect(renderFiles([], () => undefined, NO_TARGET_TESTS)).toBe(NO_TARGET_TESTS);
+  });
+
+  it("leaves a file over the cap out rather than spending the prompt on it", () => {
+    const huge = "x".repeat(INLINE_FILE_CAP_BYTES + 1);
+    const rendered = renderFiles(["big.ts"], () => huge, NO_CLAIMED_FILES);
+
+    expect(rendered).toContain(FILE_OVER_BUDGET);
+    expect(rendered).not.toContain(huge);
+  });
+});
+
+describe("renderCheckContract", () => {
+  it("tabulates the target's own slots, so an enrolled repo is judged by its contract and not this one's", () => {
+    const table = renderCheckContract({ test: { cmd: "npm test" }, lint: { cmd: "npm run lint" }, absent: {} });
+
+    expect(table).toContain("`test`");
+    expect(table).toContain("`npm test`");
+    expect(table).toContain("`npm run lint`");
+    expect(table).not.toContain("absent");
+    expect(renderCheckContract({})).toContain("names no check contract");
   });
 });

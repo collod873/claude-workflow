@@ -29,10 +29,18 @@ it claims.
 
 **Beside its subject.** A criterion about `<dir>/foo.ts` is proved by `<dir>/foo.test.ts`: the same
 directory, the subject's name, and one of the test suffixes this repository already uses, which are
-{{TEST_SUFFIXES}}. If that test file already exists (it is shown below when the ticket claims it),
-return the **whole file** with your tests added; never a fragment. A criterion about a script or a
-hook is proved from the nearest test that already drives it, or a new test beside it whose name
-carries `.proc.` before the suffix.
+{{TEST_SUFFIXES}}. A criterion about a script or a hook is proved from the nearest test that already
+drives it, or a new test beside it whose name carries `.proc.` before the suffix.
+
+**You may only write a file you have been shown, or one that does not exist yet.** Every test file
+that already sits beside a claimed subject is reproduced in full under "The test files you are
+writing into" below. Returning a path that exists on disk and is *not* in that section is refused
+whole, because a file you cannot see is a file you would rewrite from memory.
+
+**A file you were shown comes back whole, with your tests added and every existing one intact.**
+The batch replaces the file, so anything you leave out is deleted. A returned file carrying fewer
+test cases than the copy you were shown is refused, and the run counts as a strike. Add to the end;
+do not reorganise, rename, condense or "clean up" what is already there.
 
 Only {{SUITE_ROOTS}} are collected by this repository's suite. A test anywhere else never runs, and
 a batch writing a file outside those trees is refused whole.
@@ -68,6 +76,8 @@ For each criterion:
 
 {{HOUSE_RULES}}
 
+{{CHECK_CONTRACT}}
+
 ## The failure that looks honest
 
 A test that can pass **before** #{{ISSUE_NUMBER}} is implemented (an assertion so loose it is
@@ -94,6 +104,14 @@ attempt, nothing here applies to you.
 ## Its parent PRD, for context on the larger feature this ticket is one slice of
 
 {{PRD_BODY}}
+
+## The test files you are writing into, as they stand today
+
+These already exist beside a claimed subject. Return each one you touch **whole**: your new tests
+plus every test already here, unchanged. These paths and the claimed paths below are the only
+existing files this batch may return.
+
+{{TARGET_TESTS}}
 
 ## The files this ticket claims, as they stand today
 

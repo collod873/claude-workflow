@@ -1,3 +1,9 @@
+## Code carries no prose
+
+No comments, no docstrings, no explanatory headers, in any language, tests included (ADR-0151).
+The prose gate holds the count at zero and will redden your batch. The test's title carries the
+criterion; name things so the code says the rest.
+
 ## Fixtures
 
 Use the shared ones rather than writing your own: `shared/gh.fake.ts` (`createFakeGh`,
