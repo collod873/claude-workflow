@@ -160,7 +160,12 @@ export function nothingToBuildNote(issueNumber: number): string {
     "",
     "The implementer returned this ticket's files exactly as they already are on trunk, so there was",
     "no commit to make and no pull request to open. That is an outcome, not a failure: the ticket may",
-    "already be true, and a later dispatch is free to try again.",
+    "already be true.",
+    "",
+    "It is held for a human rather than left to be dispatched again, because nothing about the tracker",
+    "changed: the next recompute would read the same state, ring the same lane, and land here again.",
+    "Close the ticket if it is already true, or sharpen what it asks for and lift `needs-human` to",
+    "re-dispatch it.",
   ].join("\n");
 }
 
@@ -253,6 +258,7 @@ export async function landAnswer(
   const changing = worktreeChanges(deps.git, answeredPaths);
 
   if (changing.length === 0) {
+    escalateToOwner(deps.gh, issueNumber, process.env.GITHUB_REPOSITORY_OWNER);
     sayOnTicket(deps.gh, issueNumber, nothingToBuildNote(issueNumber), log);
     return { outcome: "nothing-to-build" };
   }

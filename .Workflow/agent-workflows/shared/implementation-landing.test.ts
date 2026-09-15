@@ -154,6 +154,13 @@ describe("landAnswer", () => {
     expect(ticketCommentsIn(host.calls)).toEqual([nothingToBuildNote(ISSUE)]);
   });
 
+  test("#574.1: nothing-to-build holds the ticket, because the run changed nothing the next recompute reads", async () => {
+    const { host } = await land(checkoutReporting(() => ""));
+
+    expect(host.calls).toContainEqual(needsHumanCall);
+    expect(ticketCommentsIn(host.calls)[0]).toContain(NEEDS_HUMAN_LABEL);
+  });
+
   it.each([
     ["a tracked file the implementer edited in place", " M a/b.ts"],
     ["a file the implementer created, which a diff against HEAD alone would not show", "?? a/b.ts"],

@@ -349,6 +349,23 @@ export function findFailingTestFiles(
   return files;
 }
 
+export function reportOutcome(issueNumber: number, result: ImplementOutcome): { line: string; failed: boolean } {
+  switch (result.outcome) {
+    case "opened":
+      return { line: `opened ${result.pr}`, failed: false };
+    case "ticket-closed":
+      return { line: `#${issueNumber} is already closed; refused the stale dispatch.`, failed: false };
+    case "nothing-to-build":
+      return { line: `#${issueNumber} needed no changes; held for a human rather than left to be rung again.`, failed: false };
+    case "rebase-conflict":
+      return { line: `#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")}; escalated.`, failed: false };
+    case "immutable-refused":
+      return { line: `#${issueNumber} touched the immutable set: ${result.paths.join(", ")}; escalated.`, failed: false };
+    case "fails-rule-refused":
+      return { line: `#${issueNumber} was refused before its push: ${result.reason}`, failed: true };
+  }
+}
+
 async function main(): Promise<void> {
   const issueArg = process.argv[2];
   if (!issueArg) {
@@ -376,28 +393,13 @@ async function main(): Promise<void> {
       comments: () => ticketComments(execGh, issueNumber),
       ...(process.env.RUNG ? { rung: process.env.RUNG } : {}),
     });
-    if (result.outcome === "ticket-closed") {
-      console.log(`#${issueNumber} is already closed; refused the stale dispatch.`);
-      return;
-    }
-    if (result.outcome === "nothing-to-build") {
-      console.log(`#${issueNumber} needed no changes; nothing to build.`);
-      return;
-    }
-    if (result.outcome === "rebase-conflict") {
-      console.log(`#${issueNumber} conflicted rebasing onto trunk: ${result.paths.join(", ")}; escalated.`);
-      return;
-    }
-    if (result.outcome === "immutable-refused") {
-      console.log(`#${issueNumber} touched the immutable set: ${result.paths.join(", ")}; escalated.`);
-      return;
-    }
-    if (result.outcome === "fails-rule-refused") {
-      console.error(`#${issueNumber} was refused before its push: ${result.reason}`);
+    const report = reportOutcome(issueNumber, result);
+    if (report.failed) {
+      console.error(report.line);
       process.exitCode = 1;
       return;
     }
-    console.log(`opened ${result.pr}`);
+    console.log(report.line);
   } catch (err) {
     console.error(`implement failed: ${reason(err)}`);
     process.exitCode = 1;

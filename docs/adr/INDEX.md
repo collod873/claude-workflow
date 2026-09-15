@@ -105,6 +105,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0189 | [A ticket's stage is read from its artifacts; a standing branch is not a claim](0189-a-ticket-s-stage-is-read-from-its-artifacts-a-standing-branc.md) |
 | 0190 | [A lane's concurrency group is its lock; no lane claims a git ref](0190-a-lane-s-concurrency-group-is-its-lock-no-lane-claims-a-git.md) |
 | 0191 | [Every ref has one writer: acceptance lands on `accept/issue-N` and implement branches from it](0191-every-ref-has-one-writer-acceptance-lands-on-accept-issue-n.md) |
+| 0192 | [A run that produces no pull request holds its ticket, because only a failure reaches the strike ladder](0192-a-run-that-produces-no-pull-request-holds-its-ticket-because.md) |
 
 ## Retired
 
@@ -206,4 +207,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-191 ADRs · 97 constraint · 44 note · 50 superseded · 20,292 words total.
+192 ADRs · 98 constraint · 44 note · 50 superseded · 20,433 words total.

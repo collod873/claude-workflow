@@ -14,6 +14,7 @@ import {
 } from "../shared/lane-host.fixture";
 import { describeAttempt } from "../shared/changed-paths";
 import { GIT_REFS_PATH } from "../shared/gh-paths";
+import type { GitExec } from "../shared/git";
 import { laneBudget } from "../shared/lane-budget";
 import { declaredEditsNote, gateRedNote } from "../shared/implementation-landing";
 import { implementerAnswer, implementerReply } from "../shared/implementation-landing.fixture";
@@ -32,10 +33,12 @@ import {
   FRESH_EYES_MODEL,
   IMPLEMENTER_DENIED_TOOLS,
   moduleContextPath,
+  reportOutcome,
   runImplement,
   sessionsNote,
   VERIFY_DISPATCH_EVENT_TYPE,
   type ImplementDeps,
+  type ImplementOutcome,
 } from "./implement";
 
 const ISSUE = 167;
@@ -547,5 +550,69 @@ describe("rung two: a ticket dispatched with rung=fresh-eyes skips the implement
 
     expect(stage.calls).toHaveLength(1);
     expect(stage.calls[0]).not.toContain(FRESH_EYES_MODEL);
+  });
+});
+
+describe("#574.3: what every outcome leaves behind, since the recompute re-rings whatever it can still read as dispatchable", () => {
+  type Disposition = "opens a pull request" | "holds the ticket" | "exits non-zero" | "closed to the recompute" | "still dispatchable";
+
+  const OVERLAY = (handler: (args: string[]) => string | undefined): GitExec => {
+    const base = checkoutChanged(Object.keys(BUILT));
+    return (args) => handler(args) ?? base.git(args);
+  };
+
+  const CONFLICTING = OVERLAY((args) => {
+    if (args[0] === "rebase" && args[1] !== "--abort") throw new Error("CONFLICT (content): Merge conflict in a/b.ts");
+    if (args.includes("--diff-filter=U")) return "a/b.ts\n";
+    return undefined;
+  });
+
+  const REWRITING_A_FAILS_TEST = OVERLAY((args) =>
+    args[0] === "diff"
+      ? [
+          "--- a/a/b.ts",
+          "+++ b/a/b.ts",
+          "@@ -1,2 +1,2 @@",
+          '-test.fails("#167: the gate is a constant", () => {',
+          '+test("#167: the gate is roughly a constant", () => {',
+        ].join("\n")
+      : undefined,
+  );
+
+  const drivers: Record<ImplementOutcome["outcome"], () => ReturnType<typeof arrange>> = {
+    opened: () => arrange(),
+    "nothing-to-build": () => arrange({ built: {} }),
+    "ticket-closed": () => arrange({ github: { ticket: { title: "already merged", body: "", state: "CLOSED" } } }),
+    "rebase-conflict": () => arrange({ deps: { git: CONFLICTING } }),
+    "immutable-refused": () => arrange({ built: { "vitest.config.ts": "export default {};\n" } }),
+    "fails-rule-refused": () => arrange({ deps: { git: REWRITING_A_FAILS_TEST } }),
+  };
+
+  const expected: Record<ImplementOutcome["outcome"], Disposition> = {
+    opened: "opens a pull request",
+    "nothing-to-build": "holds the ticket",
+    "ticket-closed": "closed to the recompute",
+    "rebase-conflict": "holds the ticket",
+    "immutable-refused": "holds the ticket",
+    "fails-rule-refused": "exits non-zero",
+  };
+
+  function dispositionOf(calls: string[][], state: string | undefined, result: ImplementOutcome): Disposition {
+    if (state === "CLOSED") return "closed to the recompute";
+    if (prCreatesIn(calls).length > 0) return "opens a pull request";
+    if (calls.some((call) => call.includes("--add-label") && call.includes(NEEDS_HUMAN_LABEL))) return "holds the ticket";
+    if (reportOutcome(ISSUE, result).failed) return "exits non-zero";
+    return "still dispatchable";
+  }
+
+  it.each(Object.keys(drivers) as Array<ImplementOutcome["outcome"]>)("a run ending %s never leaves the ticket dispatchable", async (outcome) => {
+    const { deps, host } = drivers[outcome]();
+
+    const result = await runImplement(deps);
+    const calls = [...host.calls];
+    const { state } = JSON.parse(host.gh(["issue", "view", String(ISSUE), "--json", "state"])) as { state?: string };
+
+    expect(result.outcome).toBe(outcome);
+    expect(dispositionOf(calls, state, result)).toBe(expected[outcome]);
   });
 });

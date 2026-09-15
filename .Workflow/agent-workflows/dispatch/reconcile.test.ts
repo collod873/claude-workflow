@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { ACCEPTING_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, QUEUED_LABEL, WAITING_LABEL } from "../shared/labels";
+import { escalateToOwner } from "../shared/needs-human";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { claimsCollide } from "../shared/ticket-shape";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
@@ -553,6 +554,17 @@ describe("the ladder: a dead run is a strike on its ticket, and the count picks 
     const { tracker } = ladderOver({ labels: [TO_BUILD_LABEL, "needs-human"] });
 
     expect(rungOf(tracker)).toEqual([]);
+  });
+
+  test("#574.2: a run that produced nothing leaves a tracker the next pass rings nothing on", () => {
+    const { tracker } = ladderOver({});
+    expect(rungOf(tracker)).toEqual(["ticket-ready"]);
+
+    escalateToOwner(tracker.gh, TICKET, undefined);
+    const second = reconcileOver(tracker);
+
+    expect(rungOf(tracker)).toEqual(["ticket-ready"]);
+    expect(second.dispatched).toEqual([]);
   });
 
   it("reads every ticket as unstarted, with no strikes, when the runs API cannot be read (#390)", () => {
