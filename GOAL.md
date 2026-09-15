@@ -194,7 +194,7 @@ Ordered. Nothing further up the list is optional for anything below it.
      declined memory that keeps the finding from coming back.
 4. ~~**No session-time capture.**~~ Retired 2026-08-25 by spec #36 slices 1–2. ADR-0018, ADR-0020.
 5. **The pre-merge gate: mostly retired, and the rest is accepted.** Retired by the gauntlet and its
-   four venues; `bin/gauntlet` and [ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)
+   four venues; `bin/gauntlet` and [ADR-0193](docs/adr/0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md)
    carry the contract, and
    [`docs/research/actions-billing-2026-08.md`](docs/research/actions-billing-2026-08.md) carries the
    regression that justified it.
