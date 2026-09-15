@@ -663,7 +663,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
     name: "Verify",
     stub: {
       job: "verify",
-      on: { push: { branches: ["main"], pathsIgnore: ["**.md", "docs/**", "LICENSE"] }, repository_dispatch: [IMPLEMENTATION_PR_DISPATCH_ACTION] },
+      on: { push: { branches: ["main"], paths: ["**", "!**.md", "!docs/**", "!LICENSE", "docs/adr/**"] }, repository_dispatch: [IMPLEMENTATION_PR_DISPATCH_ACTION] },
       permissions: { contents: "write", "pull-requests": "read" },
     },
     permissions: { contents: "read", "pull-requests": "read" },

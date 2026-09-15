@@ -11,10 +11,12 @@ mkdirSync(join(outDir, ".github/workflows"), { recursive: true });
 const triggers = {
   verify: `  push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!LICENSE"
+      - "docs/adr/**"
   repository_dispatch:
     types: [implementation-opened]`,
   "back-stamp": `  push:

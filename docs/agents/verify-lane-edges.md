@@ -31,7 +31,7 @@ itself — nothing has been dispatched, there is no pull request, no ticket, no 
 
 | | |
 |---|---|
-| **Door 1 — push** | `branches: [main]`, `paths-ignore: **.md, docs/**, LICENSE` — prose-only commits never allocate a runner |
+| **Door 1 — push** | `branches: [main]`, `paths: ** minus **.md, docs/**, LICENSE, plus docs/adr/** back` — prose-only commits never allocate a runner, but `docs/adr/**` is not prose to this lane: the gauntlet's `adrs` slot renders that corpus and compares it to the committed `INDEX.md`, so an ADR edit is a checked input |
 | **Door 2 — dispatch** | `repository_dispatch: implementation-opened` |
 | **Who sends door 2** | Four callers, all through the same `dispatchVerify()`: lane 05's implementer opening a PR ([`implementation-landing.ts`](../../.Workflow/agent-workflows/shared/implementation-landing.ts)), the fixer re-dispatching after a repair ([`fixer.ts`](../../.Workflow/agent-workflows/fixer/fixer.ts)), the ratifier landing a batch ([`ratify/land.ts`](../../.Workflow/agent-workflows/ratify/land.ts)), and lane 08 draining the next open PR after each run ([`integrate.ts`](../../.Workflow/agent-workflows/integrate/integrate.ts)) |
 | **Same event, two workflows** | `integrate-caller.yml` listens for the identical `implementation-opened` dispatch and starts in parallel — see node 04. Nothing here tells it to wait |

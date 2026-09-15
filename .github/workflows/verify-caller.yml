@@ -3,10 +3,12 @@ name: Verify
 "on":
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!LICENSE"
+      - "docs/adr/**"
   repository_dispatch:
     types: [implementation-opened]
 
