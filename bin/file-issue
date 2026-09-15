@@ -31,7 +31,12 @@ carry no verifiable evidence (a `path:line`, a backtick-quoted command, or a fil
 reference), a migration worded as its artifact, a `check:` marker that doesn't parse, a claimed
 path that isn't in the tree.
 
-A warning still stops the filing. `--ack "<why this is acceptable>"` files anyway and appends the
+A warning stops the filing, with one carve-out. A claimed path the tree doesn't have is advisory
+when nothing in the tree resembles it, because that is what a file the ticket will create looks
+like; the same path blocks when a near neighbour exists, since that is what a typo looks like, and
+the warning names the neighbour. Every other warning blocks.
+
+`--ack "<why this is acceptable>"` files anyway and appends the
 reason and every warning to the issue body under `## Warnings acknowledged`, where the next reader
 meets them instead of having to have watched this run's stderr. That is how #573 was filed:
 the warning naming its defect was printed, and printed is not read. Filing rough stays possible
