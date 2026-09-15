@@ -81,7 +81,7 @@ const LEDGER_DRAFT = [
   "",
 ].join("\n");
 
-test.fails(
+test(
   "#553.1: bin/adr_shape.py no longer renders an index: render_index, INDEX_HEADER and RETIRED_HEADER are gone",
   () => {
     const shape = probeShape();
@@ -95,7 +95,7 @@ test.fails(
   180000,
 );
 
-test.fails(
+test(
   "#553.2: no Python writes docs/adr/INDEX.md; bin/adr-check and bin/new-adr leave it to the adrs slot",
   () => {
     const repo = mkdtempSync(join(tmpdir(), "adr-python-index-"));
@@ -152,7 +152,7 @@ test.fails(
   240000,
 );
 
-test.fails(
+test(
   "#553.7: the whole check contract passes",
   () => {
     expect(probeShape().renderIndex).toBe(false);

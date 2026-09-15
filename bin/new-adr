@@ -110,24 +110,17 @@ def corpus_dir_for(target_root: Path, corpus_arg: str | None) -> Path:
     return adr_shape.adr_dir(base)
 
 
-def write_index(corpus_dir: Path) -> Path:
-    corpus = adr_shape.load_corpus_dir(corpus_dir)
-    path = corpus_dir / adr_shape.INDEX_NAME
-    path.write_text(adr_shape.render_index(corpus), encoding="utf-8")
-    return path
-
-
 def run_index_renderer(machine_root: Path, target_root: Path, corpus_dir: Path) -> Path:
+    index = corpus_dir / adr_shape.INDEX_NAME
     renderer = machine_root / ".Workflow" / "agent-workflows" / "shared" / "adr-index.cli.ts"
     tsx = machine_root / "node_modules" / ".bin" / "tsx"
-    if corpus_dir != adr_shape.adr_dir(target_root) or not renderer.is_file() \
-            or not os.access(tsx, os.X_OK):
-        return write_index(corpus_dir)
-    subprocess.run(
-        [str(tsx), str(renderer), "--fix", str(target_root)],
-        cwd=machine_root, capture_output=True,
-    )
-    return corpus_dir / adr_shape.INDEX_NAME
+    if corpus_dir == adr_shape.adr_dir(target_root) and renderer.is_file() \
+            and os.access(tsx, os.X_OK):
+        subprocess.run(
+            [str(tsx), str(renderer), "--fix", str(target_root)],
+            cwd=machine_root, capture_output=True,
+        )
+    return index
 
 
 def draft(machine_root: Path, target_root: Path, title: str, amends: int | None,

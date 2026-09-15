@@ -42,7 +42,7 @@ interface GateProbe {
   handNumberedGuard: string;
 }
 
-test.fails(
+test(
   "#553.3: .claude/hooks/adr-gate.py reads adr_shape's LANDED_RE and INDEX_NAME instead of re-declaring its own",
   () => {
     const run = spawnSync("python3", ["-c", GATE_PROBE, HOOK_DIR, SHAPE_DIR, HOOK_FILE], {
