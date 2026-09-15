@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,7 +42,10 @@ const editOf = (filePath: string) =>
 const STOP = JSON.stringify({ hook_event_name: "Stop" });
 
 function expectTurnBlockedByTypecheck(payload: string, env: Record<string, string> = {}): void {
-  const blocked = runHook("turn", payload, { GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\n"), ...env });
+  const blocked = runHook("turn", payload, {
+    GAUNTLET_BIN: stubGauntlet(1, "--- typecheck ---\nerror TS2322: nope\ngauntlet: FAILED at typecheck\n"),
+    ...env,
+  });
 
   expect(blocked.status).toBe(0);
   expect(JSON.parse(blocked.stdout).decision).toBe("block");
@@ -295,6 +298,30 @@ describe("the runner", () => {
 
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("usage:");
+  });
+
+  it("resolves its slots from a checkout carrying no node_modules, the way the workstation clone does", () => {
+    const thin = scratchDir("gauntlet-thin-checkout");
+    const carried = ["bin/gauntlet", "bin/node-on-path.sh", ".Workflow/agent-workflows/shared/venue-slots.json"];
+    for (const rel of carried) {
+      mkdirSync(join(thin, dirname(rel)), { recursive: true });
+      copyFileSync(join(REPO_ROOT, rel), join(thin, rel));
+    }
+    chmodSync(join(thin, "bin/gauntlet"), 0o755);
+
+    const run = spawnSync(join(thin, "bin/gauntlet"), ["push"], {
+      encoding: "utf8",
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        TARGET_WORKSPACE: REPO_ROOT,
+        GAUNTLET_CONTRACT: contractOf({ typecheck: "true", lint: "true", test: "true", clones: "true" }),
+        GAUNTLET_LOCK: join(scratchDir("gauntlet-lock"), "thin.lock"),
+      },
+    });
+
+    expect(run.stderr).not.toContain("command not found");
+    expect(run.status).toBe(0);
   });
 });
 

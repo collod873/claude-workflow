@@ -27,17 +27,23 @@ export function failedChecks(stdout) {
     .join(", ");
 }
 
+export function reachedVerdict(output) {
+  return /^gauntlet: FAILED at /m.test(output);
+}
+
 export function captured(stdout) {
   const text = stdout.trim();
   return text.length > STDOUT_TAIL ? `…\n${text.slice(-STDOUT_TAIL)}` : text;
 }
 
-export function report(venue, stdout, file) {
-  const checks = failedChecks(stdout);
+export function report(venue, output, file) {
+  const checks = failedChecks(output);
   const next = venue === "turn" ? `Fix, then re-run: \`bin/gauntlet turn ${file}\`` : "Fix, then re-run: `bin/gauntlet stop`.";
+  const headline = reachedVerdict(output)
+    ? `[gauntlet] The ${venue} venue's checks failed${checks ? `: ${checks}` : ""}.`
+    : `[gauntlet] The ${venue} venue exited non-zero without reaching a verdict, so nothing was checked. Suspect the runner, not the edit.`;
   return (
-    `[gauntlet] The ${venue} venue's checks failed${checks ? `: ${checks}` : ""}.\n\n` +
-    `${next}\n\n` +
-    `Captured output from \`bin/gauntlet\`, quoted as data:\n\n~~~\n${captured(stdout)}\n~~~`
+    `${headline}\n\n${next}\n\n` +
+    `Captured output from \`bin/gauntlet\`, quoted as data:\n\n~~~\n${captured(output) || "(the run wrote nothing to stdout or stderr)"}\n~~~`
   );
 }

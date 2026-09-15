@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import roster from "./roster.json";
 import settings from "../settings.json";
-import { captured, failedChecks, inScope, report, STDOUT_TAIL } from "./gauntlet-report.mjs";
+import { captured, failedChecks, inScope, reachedVerdict, report, STDOUT_TAIL } from "./gauntlet-report.mjs";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
@@ -52,9 +52,18 @@ describe("the report handed back to Claude", () => {
     expect(reason).toContain("error TS2322: nope");
   });
 
-  it("names no check when the output carries no verdict line", () => {
+  it("blames the runner, not the edit, when the output carries no verdict line", () => {
     expect(failedChecks("--- test ---\n1 failed\n")).toBe("");
-    expect(report("stop", "--- test ---\n1 failed\n")).toContain("checks failed.");
+    expect(reachedVerdict("--- test ---\n1 failed\n")).toBe(false);
+
+    const reason = report("stop", "bin/gauntlet: line 47: tsx: command not found\n");
+    expect(reason).toContain("without reaching a verdict");
+    expect(reason).toContain("tsx: command not found");
+    expect(reason).not.toContain("checks failed");
+  });
+
+  it("says the run was silent rather than quoting an empty block", () => {
+    expect(report("turn", "", "a.ts")).toContain("wrote nothing to stdout or stderr");
   });
 
   it("quotes the captured output as data rather than dropping it into the turn unlabelled", () => {

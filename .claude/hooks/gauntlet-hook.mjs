@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captured, EDIT_TOOLS, editedPath, failedChecks, inScope, report } from "./gauntlet-report.mjs";
+import { captured, EDIT_TOOLS, editedPath, failedChecks, inScope, reachedVerdict, report } from "./gauntlet-report.mjs";
 import { appendLog, runRow } from "./lib/_hook.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -47,8 +47,9 @@ const run = spawnSync(GAUNTLET, [venue, file], {
 if (run.error || run.status === null) silent("could-not-run");
 if (run.status === 0) silent("clean");
 
-const stdout = run.stdout || "";
-appendLog(runRow(payload, "failed", { venue: venue ?? "", checks: failedChecks(stdout), chars: captured(stdout).length }));
+const output = (run.stdout || "") + (run.stderr || "");
+const verdict = reachedVerdict(output) ? "failed" : "broken";
+appendLog(runRow(payload, verdict, { venue: venue ?? "", checks: failedChecks(output), chars: captured(output).length }));
 
-process.stdout.write(JSON.stringify({ decision: "block", reason: report(venue, stdout, file) }));
+process.stdout.write(JSON.stringify({ decision: "block", reason: report(venue, output, file) }));
 process.exit(0);

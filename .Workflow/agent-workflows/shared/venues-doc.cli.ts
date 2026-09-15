@@ -5,11 +5,9 @@ import { runRegenerator } from "./regenerate-cli";
 
 export type VenueSlots = { venue: string; slots: string[] };
 
-const VENUE_SLOTS: VenueSlots[] = [
-  { venue: "turn", slots: ["typecheck", "lint_one", "test_related"] },
-  { venue: "stop", slots: ["typecheck", "lint_one", "test_related"] },
-  { venue: "push", slots: ["typecheck", "lint", "test", "clones", "adrs"] },
-];
+export const VENUE_SLOTS_PATH = new URL("./venue-slots.json", import.meta.url);
+
+const VENUE_SLOTS: VenueSlots[] = JSON.parse(readFileSync(VENUE_SLOTS_PATH, "utf8"));
 
 const VENUE_META: Record<string, { firesAt: string; onFailure: string }> = {
   turn: { firesAt: "PostToolUse, per edit", onFailure: "Hands the report back to Claude" },
