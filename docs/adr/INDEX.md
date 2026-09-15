@@ -106,6 +106,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0190 | [A lane's concurrency group is its lock; no lane claims a git ref](0190-a-lane-s-concurrency-group-is-its-lock-no-lane-claims-a-git.md) |
 | 0191 | [Every ref has one writer: acceptance lands on `accept/issue-N` and implement branches from it](0191-every-ref-has-one-writer-acceptance-lands-on-accept-issue-n.md) |
 | 0192 | [A run that produces no pull request holds its ticket, because only a failure reaches the strike ladder](0192-a-run-that-produces-no-pull-request-holds-its-ticket-because.md) |
+| 0193 | [A rule is placed at the highest rung that can hold it and the earliest venue that can see enough, and the change that places it deletes every restatement](0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md) |
 
 ## Retired
 
@@ -207,4 +208,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-192 ADRs · 98 constraint · 44 note · 50 superseded · 20,433 words total.
+193 ADRs · 99 constraint · 44 note · 50 superseded · 20,576 words total.
