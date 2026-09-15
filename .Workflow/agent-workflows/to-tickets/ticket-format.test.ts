@@ -29,7 +29,8 @@ describe("the claim ceiling the publisher enforces is the one the prompts state"
   it.each(["slice", "audit"])("%s names CLAIM_LIMIT rather than a number of its own", (stage) => {
     const prompt = readFileSync(promptPath(stage), "utf8");
 
-    expect(prompt).toContain(`at most ${CLAIM_LIMIT} paths`);
+    expect(prompt).toContain("claimLimit");
+    expect(prompt).not.toContain(`at most ${CLAIM_LIMIT} paths`);
     expect(
       prompt,
       "a prompt telling the model there is no ceiling is what published #538's ten-file slice",
