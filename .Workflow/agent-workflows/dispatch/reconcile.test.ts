@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { ACCEPTING_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, QUEUED_LABEL, WAITING_LABEL } from "../shared/labels";
+import { ACCEPTING_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, QUEUED_LABEL, TO_SPEC_LABEL, WAITING_LABEL } from "../shared/labels";
+import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch";
 import { escalateToOwner } from "../shared/needs-human";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
-import { claimsCollide } from "../shared/ticket-shape";
+import { CLAIM_LIMIT, claimsCollide } from "../shared/ticket-shape";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
 import PR_STATE from "./closing-prs.fixtures/pr-244-state.json";
@@ -974,4 +975,93 @@ describe("one writer per ref, so no reader has to guess who wrote it", () => {
 
     expect(tracker.calls.filter((call) => call.join(" ").includes("/compare/"))).toEqual([]);
   });
+});
+
+function overWideClaimBody(): string {
+  const paths = Array.from({ length: CLAIM_LIMIT + 3 }, (_, index) => `.Workflow/agent-workflows/shared/claimed-file-${index}.ts`);
+  return claimingBody(paths);
+}
+
+test("#578.1: an over-wide claim rings `to-spec` against the issue instead of adding `prd` and ringing lane 03", () => {
+  const tracker = trackerWith({
+    open: [{ number: 538, title: "A ticket sliced too wide", body: overWideClaimBody(), labels: [TO_BUILD_LABEL] }],
+  });
+
+  reconcileOver(tracker);
+
+  expect(tracker.dispatches.map((dispatch) => dispatch.eventType)).toEqual([SPEC_AUTHOR_DISPATCH_EVENT_TYPE]);
+  expect(tracker.labelsAdded).toContainEqual({ issue: 538, name: TO_SPEC_LABEL });
+  expect(tracker.labelsAdded.filter((label) => label.name === "prd" || label.name === "sliceable")).toEqual([]);
+});
+
+test("#578.2: reconcile applies no `prd` label of its own, so the label follows the body rewrite rather than preceding it", () => {
+  const body = overWideClaimBody();
+  const tracker = trackerWith({
+    open: [{ number: 538, title: "A ticket sliced too wide", body, labels: [TO_BUILD_LABEL] }],
+  });
+
+  reconcileOver(tracker);
+  reconcileOver(tracker);
+  reconcileOver(tracker);
+
+  expect(tracker.labelsAdded.filter((label) => label.name === "prd")).toEqual([]);
+});
+
+test("#578.3: the issue keeps its number and its owner-written text, and the ring is posted once per issue", () => {
+  const body = overWideClaimBody();
+  const first = trackerWith({
+    open: [{ number: 538, title: "A ticket sliced too wide", body, labels: [TO_BUILD_LABEL] }],
+  });
+
+  reconcileOver(first);
+
+  const rung = first.comments.filter((comment) => comment.issue === 538 && comment.body.includes("sent-to-spec"));
+  expect(rung).toHaveLength(1);
+  expect(first.bodyEdits.filter((edit) => edit.issue === 538)).toEqual([]);
+
+  const second = trackerWith({
+    open: [
+      {
+        number: 538,
+        title: "A ticket sliced too wide",
+        body,
+        labels: [TO_BUILD_LABEL],
+        comments: first.comments.map((comment) => comment.body),
+      },
+    ],
+  });
+
+  reconcileOver(second);
+
+  expect(second.comments.filter((comment) => comment.issue === 538)).toEqual([]);
+  expect(second.dispatches).toEqual([]);
+});
+
+test("#578.4: #538, the issue this was measured on, is rung to `to-spec` by the changed door and loses the `prd` label reconcile applied", () => {
+  const tracker = trackerWith({
+    open: [
+      {
+        number: 538,
+        title: "A ticket sliced too wide",
+        body: overWideClaimBody(),
+        labels: [TO_BUILD_LABEL, "prd", "sliceable"],
+      },
+    ],
+  });
+
+  reconcileOver(tracker);
+
+  const removedPrd = tracker.calls.some(
+    (call) =>
+      call[0] === "issue" &&
+      call[1] === "edit" &&
+      call.includes("538") &&
+      call.includes("--remove-label") &&
+      call.includes("prd"),
+  );
+  expect(removedPrd).toBe(true);
+
+  const rung = tracker.comments.some((comment) => comment.issue === 538 && comment.body.includes("sent-to-spec"));
+  expect(rung).toBe(true);
+  expect(tracker.labelsAdded).toContainEqual({ issue: 538, name: TO_SPEC_LABEL });
 });

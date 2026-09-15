@@ -202,17 +202,20 @@ stands down. Nothing is missing from such a ticket, so asking the owner to repai
 human on reading a comment and clicking the label the door already knew to apply.
 
 A claim wider than `CLAIM_LIMIT` never reaches that refusal at all. `overWideClaim()` is read
-before `toBuildRefusal()`, and `sendToSlicing()` sheds `ticket` and `to-build`, adds `prd` and
-`sliceable`, says so in a `<!-- sent-to-slicing:v1 -->` comment, and requests `prd-sliceable`.
-Lane 03 then slices the issue into sub-issues of it, each held to the same ceiling by
-`validate-graph.ts` as it is written. The reasoning is the one this door exists to serve: every
-other refusal here names something a human adds in a minute — a missing heading, a missing
-`check:` marker — but a nine-file claim is not a body anyone repairs, it is the wrong number of
-tickets, and the machine already owns a lane that turns one of those into several. Handing it to
-the owner spends a human on work lane 03 does unattended. The marker makes it once-only; the
-by-hand stand-down still wins, because slicing work no pull request may land would only produce
-more of it. Lane 03's own two doors (a PRD with sub-issues, a PRD that is itself a sub-issue)
-stay the backstop, and say so on the issue under `slice-failed` rather than here.
+before `toBuildRefusal()`, and `sendToSpec()` says so in a `<!-- sent-to-spec:v1 -->` comment,
+sheds `ticket` and `to-build` (and any `prd` or `sliceable` an earlier era of this door stamped),
+adds `to-spec`, and rings lane 02 with `sheet-accepted`. Lane 02 rewrites the body in place from
+ticket-shape to spec-shape, keeping the owner's wording and the number the issue is filed under,
+and whatever earns `prd` is that lane, never this door: ADR-0137 rules that intent is asserted by
+a label and never inferred from a ticket's shape, and a claim count is a shape check. The
+reasoning for acting at all is the one this door exists to serve: every other refusal here names
+something a human adds in a minute — a missing heading, a missing `check:` marker — but a
+nine-file claim is not a body anyone repairs, it is the wrong number of tickets, and the machine
+already owns the lanes that turn one of those into several. Handing it to the owner spends a human
+on work lanes 02 and 03 do unattended. The marker makes it once-only; the by-hand stand-down still
+wins, because respecifying work no pull request may land would only produce more of it. Lane 03's
+own two doors (a PRD with sub-issues, a PRD that is itself a sub-issue) stay the backstop
+downstream, and say so on the issue under `slice-failed` rather than here.
 
 ---
 

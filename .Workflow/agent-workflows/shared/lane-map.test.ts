@@ -17,7 +17,7 @@ describe("the lane map", () => {
     expect(lane("dispatch-reconcile").rings).toEqual([
       "acceptance-wanted",
       "mechanic-wanted",
-      "prd-sliceable",
+      "sheet-accepted",
       "ticket-ready",
     ]);
     expect(lane("review").rings).toEqual([]);
@@ -38,9 +38,8 @@ describe("the lane map", () => {
       "5-building",
       "by-hand",
       "needs-human",
-      "prd",
       "queued",
-      "sliceable",
+      "to-spec",
       "waiting",
     ]);
   });

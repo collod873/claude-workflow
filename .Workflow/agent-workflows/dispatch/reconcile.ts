@@ -17,6 +17,7 @@ import {
   SLICEABLE_LABEL,
   TICKET_LABEL,
   TO_BUILD_LABEL,
+  TO_SPEC_LABEL,
   unlabel,
   WAITING_LABEL,
   wearsLane,
@@ -24,10 +25,10 @@ import {
 } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { countRollup, readRollup, rollupLine, writeRollup } from "./rollup";
+import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
 import {
   dispatchAcceptanceWanted,
   dispatchMechanicWanted,
-  dispatchPrdSliceable,
   dispatchTicketReady,
   GRAPH_CHANGED_DISPATCH_ACTION,
   IMPLEMENTATION_BRANCH_PREFIX,
@@ -136,25 +137,27 @@ function toBuildRefusalBody(refusal: string): string {
   ].join("\n");
 }
 
-const SENT_TO_SLICING_MARKER = "<!-- sent-to-slicing:v1 -->";
+const SENT_TO_SPEC_MARKER = "<!-- sent-to-spec:v1 -->";
 
-function sentToSlicingBody(count: number): string {
+const SHED_ON_SEND_TO_SPEC = [PRD_LABEL, SLICEABLE_LABEL, TICKET_LABEL, TO_BUILD_LABEL];
+
+function sentToSpecBody(count: number): string {
   return [
     `Its \`## Files claimed\` names ${count} paths, past the ${CLAIM_LIMIT} lane 04 can author against inside`,
     "one lane budget, so this is not one ticket and no amount of waiting makes it one.",
     "",
-    `Rather than hold it for the owner, this door relabelled it \`${PRD_LABEL}\` and rang lane 03, which`,
-    "slices it into tickets of one subject each and publishes them here as sub-issues. Each of those is",
-    "held to the same ceiling as it is written, so the split cannot hand the same problem back.",
+    "That is a fact about this body's shape, not an assertion that it is a spec, so this door wears",
+    `\`${TO_SPEC_LABEL}\` on it and rings lane 02 rather than labelling it \`${PRD_LABEL}\` itself. Lane 02`,
+    "rewrites this body in place from ticket-shape to spec-shape, keeping the wording already here and",
+    `the number it is filed under, and \`${PRD_LABEL}\` is applied by the lane that rewrote the body.`,
     "",
-    `Nobody needs to act on this, and it is not a \`${NEEDS_HUMAN_LABEL}\` hold. If lane 03 refuses — this`,
-    "issue already has sub-issues, or is itself a sub-issue — it says so here and wears `slice-failed`.",
+    `Nobody needs to act on this, and it is not a \`${NEEDS_HUMAN_LABEL}\` hold.`,
     "",
-    SENT_TO_SLICING_MARKER,
+    SENT_TO_SPEC_MARKER,
   ].join("\n");
 }
 
-function sendToSlicing(
+function sendToSpec(
   gh: GhExec,
   ticket: TicketState,
   count: number,
@@ -162,25 +165,25 @@ function sendToSlicing(
   stamps: Stamps,
 ): void {
   if (ticket.comments === undefined) {
-    log(`could not read #${ticket.number}'s comments, so leaving it be rather than ringing lane 03 twice.`);
+    log(`could not read #${ticket.number}'s comments, so leaving it be rather than ringing lane 02 twice.`);
     return;
   }
-  if (!postOnce(gh, ticket.number, ticket.comments, SENT_TO_SLICING_MARKER, sentToSlicingBody(count))) return;
+  if (!postOnce(gh, ticket.number, ticket.comments, SENT_TO_SPEC_MARKER, sentToSpecBody(count))) return;
 
-  const shed = [TICKET_LABEL, TO_BUILD_LABEL].filter((label) => ticket.labels.includes(label));
+  const shed = SHED_ON_SEND_TO_SPEC.filter((label) => ticket.labels.includes(label));
+  ensureLabel(gh, TO_SPEC_LABEL);
   gh([
     "issue",
     "edit",
     String(ticket.number),
     "--add-label",
-    PRD_LABEL,
+    TO_SPEC_LABEL,
     ...shed.flatMap((label) => ["--remove-label", label]),
   ]);
-  markLane(gh, ticket.number, SLICEABLE_LABEL, ticket.labels);
-  stamp(stamps, ticket.number, SLICEABLE_LABEL);
-  dispatchPrdSliceable(gh, ticket.number);
+  stamp(stamps, ticket.number);
+  dispatchSpecAuthor(gh, ticket.number);
   log(
-    `#${ticket.number}: claims ${count} paths, past ${CLAIM_LIMIT}; relabelled \`${PRD_LABEL}\` and rang lane 03 to slice it.`,
+    `#${ticket.number}: claims ${count} paths, past ${CLAIM_LIMIT}; wears \`${TO_SPEC_LABEL}\` and lane 02 was rung to reshape it.`,
   );
 }
 
@@ -266,13 +269,13 @@ function recordDoor(
   }
   if (door.verdict === "slice") {
     if (dryRun) {
-      log(`would ring lane 03 to slice #${ticket.number}: it claims ${door.claimed} paths, past ${CLAIM_LIMIT}.`);
+      log(`would ring lane 02 against #${ticket.number}: it claims ${door.claimed} paths, past ${CLAIM_LIMIT}.`);
       return;
     }
     try {
-      sendToSlicing(gh, ticket, door.claimed, log, stamps);
+      sendToSpec(gh, ticket, door.claimed, log, stamps);
     } catch (err) {
-      log(`could not ring lane 03 for #${ticket.number}: ${reason(err)}`);
+      log(`could not ring lane 02 for #${ticket.number}: ${reason(err)}`);
     }
     return;
   }
