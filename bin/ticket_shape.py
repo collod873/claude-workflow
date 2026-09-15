@@ -158,11 +158,15 @@ UNPARSEABLE_CHECK_COMMAND_SH_PREFIX = (
 
 MIGRATION_RE = re.compile(
     r"\b(?:migrat(?:e|es|ed|ing|ion|ions)|backfill(?:s|ed|ing)?|scrub(?:s|bed|bing)?"
-    r"|purg(?:e|es|ed|ing)|rewrit(?:e|es|ing|ten)|reindex(?:es|ed|ing)?|one-off)\b",
+    r"|purg(?:e|es|ed|ing)|reindex(?:es|ed|ing)?|one-off)\b",
     re.IGNORECASE,
 )
 
-TEST_MENTION_RE = re.compile(r"\btests?\b|\bvitest\b|\bpytest\b|\bjest\b", re.IGNORECASE)
+TEST_MENTION_RE = re.compile(
+    r"(?<![A-Za-z0-9])tests?(?![A-Za-z0-9])|(?<![A-Za-z0-9])vitest(?![A-Za-z0-9])"
+    r"|(?<![A-Za-z0-9])pytest(?![A-Za-z0-9])|(?<![A-Za-z0-9])jest(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 
 BASENAME_RE = re.compile(r"\b[\w\-]+(?:\.[\w\-]+)+\b")
 

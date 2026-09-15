@@ -122,7 +122,7 @@ def test_claims_resolve_against_the_callers_repo():
 
 
 TICKET_BODY_MIGRATION_TEST_ONLY = (
-    "## What to build\n\nA script that runs one `git filter-repo` history-rewrite pass over a "
+    "## What to build\n\nA script that runs one `git filter-repo` history-scrub pass over a "
     "target git repository.\n\n"
     "## Acceptance criteria\n\n"
     "- [ ] `npm test -- scrub-corpus-history.test.ts` exits 0 both on a machine carrying "
@@ -142,7 +142,7 @@ TICKET_BODY_MIGRATION_CLAIMED_PATH_ONLY = (
 )
 
 TICKET_BODY_MIGRATION_POST_STATE = (
-    "## What to build\n\nRewrite this repository's history to drop the exposed blobs.\n\n"
+    "## What to build\n\nScrub this repository's history to drop the exposed blobs.\n\n"
     "## Acceptance criteria\n\n"
     "- [ ] `npm test -- scrub-corpus-history.test.ts` exits 0\n"
     "- [ ] `git rev-list --all --objects | grep -c session-prompts-2026-08.md` prints 0 against "
@@ -155,6 +155,15 @@ TICKET_BODY_FEATURE_TEST_ONLY = (
     "## Acceptance criteria\n\n"
     "- [ ] `npm test -- lint-json.test.ts` exits 0\n\n"
     "## Files claimed\n\n- bin/lint\n"
+)
+
+TICKET_BODY_DOC_REWRITE = (
+    "## What to build\n\nRewrite docs/agents/venues.md so it names the current timing "
+    "baseline instead of the one the retired era shipped.\n\n"
+    "## Acceptance criteria\n\n"
+    "- [ ] `grep -c 'Timing baseline' docs/agents/venues.md` prints a number greater than "
+    "zero\n\n"
+    "## Files claimed\n\n- docs/agents/venues.md\n"
 )
 
 
@@ -173,6 +182,8 @@ def test_migration_without_post_state():
            TICKET_BODY_MIGRATION_POST_STATE, False)
     warned("an ordinary feature ticket with test-only criteria warns nothing",
            TICKET_BODY_FEATURE_TEST_ONLY, False)
+    warned("a documentation rewrite naming only the file it claims warns nothing",
+           TICKET_BODY_DOC_REWRITE, False)
 
     body = TICKET_BODY_MIGRATION_CLAIMED_PATH_ONLY.replace(
         "bin/rewrite-session-notes.py", "bin/ticket_shape.py"

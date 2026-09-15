@@ -135,7 +135,7 @@ result = subprocess.run(["python3", str(target)])
 sys.exit(result.returncode)
 `;
 
-test.fails(
+test(
   "#576.1: MIGRATION_RE no longer matches rewrite and its inflections",
   () => {
     execFileSync("python3", ["-c", MIGRATION_RE_PROBE, process.cwd()], { encoding: "utf8" });
@@ -143,7 +143,7 @@ test.fails(
   30000,
 );
 
-test.fails(
+test(
   "#576.2: a criterion whose check runs an underscore-named test file counts as a test mention",
   () => {
     execFileSync("python3", ["-c", TEST_MENTION_RE_PROBE, process.cwd()], { encoding: "utf8" });
@@ -151,7 +151,7 @@ test.fails(
   30000,
 );
 
-test.fails(
+test(
   "#576.3: the suite carries a doc-rewrite case shaped like #570 that draws no warning, a migration case whose wording survives rewrite leaving the vocabulary, and passes",
   () => {
     execFileSync("python3", ["-c", DOC_REWRITE_SUITE_PROBE, process.cwd()], { encoding: "utf8" });
