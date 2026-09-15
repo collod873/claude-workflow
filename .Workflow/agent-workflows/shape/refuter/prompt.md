@@ -36,7 +36,7 @@ What does **not** survive: that a decision is hard, that more information would 
 Return your answer by calling the `StructuredOutput` tool:
 
 ```structured-output
-{"survivors":["Decision 2 cites ADR-0010 as placing the check in Actions; ADR-0010 rules the opposite, namely the earliest venue that can run it, which is the pre-push hook here."]}
+{"survivors":["Decision 2 cites ADR-0193 as placing the check in Actions; ADR-0193 rules the opposite, namely the highest rung and earliest venue that can hold it, which is the pre-push hook here."]}
 ```
 
 Or, when you agree:

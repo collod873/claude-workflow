@@ -1,9 +1,9 @@
 # Venues
 
-A venue is a place a check can run. A check sits at the earliest venue that can afford it
-([ADR-0010](../adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)), because what
-"earliest" buys is the cost of the *repair*: a type error caught in the turn that caused it is fixed
-with the context still hot. `bin/gauntlet <venue>` is the one runner for the three local venues, and
+A venue is a place a check can run, named by what a repair costs there rather than by what a
+violation costs — that half of the placement is the rung, and [ADR-0193](../adr/0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md)
+rules both together: a rule sits at the highest rung that can hold it and the earliest venue that
+can see enough. `bin/gauntlet <venue>` is the one runner for the three local venues, and
 what it runs is whatever `.claude/contract.json` names
 ([ADR-0056](../adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)): an
 enrolled repository is checked by the same runner against its own contract

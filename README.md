@@ -35,8 +35,9 @@ open issue. The roadmap is [the `build-order` label](https://github.com/collod87
 ## The gauntlet
 
 `bin/gauntlet <turn|stop|push>` runs typecheck, lint and the unit suite, and every venue calls it:
-a Claude Code `PostToolUse` hook, a `Stop` hook, `.husky/pre-push`, and `verify.yml`. A check sits
-at the earliest venue whose budget it fits ([ADR-0010](docs/adr/0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md)),
+a Claude Code `PostToolUse` hook, a `Stop` hook, `.husky/pre-push`, and `verify.yml`. A rule sits
+at the highest rung that can hold it and the earliest venue that can see enough
+([ADR-0193](docs/adr/0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md)),
 because what earliest buys is a cheap *repair*, not a cheap check.
 
 It installs itself: `npm ci` runs `prepare`, which installs the git hooks. Nothing to remember.
