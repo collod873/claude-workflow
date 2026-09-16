@@ -1,11 +1,13 @@
 import { describe, expect, it, test } from "vitest";
 import { frontmatterBlock } from "../shared/adr-frontmatter";
+import type { GhExec } from "../shared/gh";
 import { errorMessage } from "../shared/reason";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch";
 import { accept, insertTerm, type AcceptDeps, type AcceptOutcome } from "./accept";
 import { sheetMarker } from "../shared/marker";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
+import { trackerMemory } from "../shared/tracker-memory";
 
 function frontmatterOf(content: string): string {
   const block = frontmatterBlock(content);
@@ -487,3 +489,18 @@ test(
   },
   30_000,
 );
+
+test.fails("#618.3: accept reads round state through a Tracker built by trackerMemory, not a raw GhExec", async () => {
+  const deps: AcceptDeps = {
+    gh: trackerMemory() as unknown as GhExec,
+    git: () => "",
+    newAdr: () => "",
+    landAdr: () => "",
+    readFile: () => "",
+    writeFile: () => {},
+    sleep: async () => {},
+    log: () => {},
+  };
+
+  await expect(accept(deps, 1, "approved")).resolves.toEqual({ kind: "no-sheet", verb: "approved" });
+});

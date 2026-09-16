@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { sheetMarker, REFUSAL_MARKER } from "../shared/marker";
 import { roundFor } from "./rounds";
 import type { Sheet } from "../shared/sheet-schema";
 import { createFakeTracker } from "./tracker.fake";
+import { trackerMemory } from "../shared/tracker-memory";
 
 function sheetComment(round: number, survivors: string[] = []): string {
   const sheet: Sheet = {
@@ -75,4 +78,10 @@ describe("the stage-1 refusal only fires on the first run", () => {
   it("stands down once the owner has commented past it", () => {
     expect(roundFor(trackerWith(`refused\n\n${REFUSAL_MARKER}`).gh, 1).refusalApplies).toBe(false);
   });
+});
+
+test.fails("#618.5: roundFor reads through a Tracker built by trackerMemory, not a raw GhExec", () => {
+  const round = roundFor(trackerMemory() as unknown as GhExec, 1);
+
+  expect(round).toMatchObject({ round: 0, refusalApplies: true, capped: false });
 });

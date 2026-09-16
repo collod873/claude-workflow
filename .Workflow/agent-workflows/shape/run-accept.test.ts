@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { test } from "vitest";
 
 const gitCalls: string[][] = [];
+const trackerGhCalls: unknown[] = [];
+
+vi.mock("../shared/tracker-gh", () => ({
+  trackerGh: (gh: unknown) => {
+    trackerGhCalls.push(gh);
+    return { workflowRuns: () => [], jobs: () => [], blockedBy: () => [] };
+  },
+}));
 
 vi.mock("../shared/git", () => ({
   execGit: (args: string[]) => {
@@ -14,6 +23,15 @@ vi.mock("../shared/gh", () => ({
 }));
 
 const { buildAcceptDeps } = await import("./run-accept");
+const { execGh } = await import("../shared/gh");
+
+test.fails("#618.4: buildAcceptDeps builds its tracker via trackerGh(execGh) instead of handing out a raw GhExec", () => {
+  trackerGhCalls.length = 0;
+
+  buildAcceptDeps("/some/target/checkout");
+
+  expect(trackerGhCalls).toEqual([execGh]);
+});
 
 describe("buildAcceptDeps", () => {
   it("binds every git call to the target checkout, not the process's own cwd", () => {
