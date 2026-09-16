@@ -17,7 +17,6 @@ import {
   type VerifyRun,
 } from "./bypass";
 import { MAX_JOB_READS, runBypassCounter } from "./bypass-counter";
-import { answerTrackerOrThrow } from "./signal-tracker.fixture";
 import evidence from "./verify-runs.evidence.json";
 
 interface EvidenceRun {
@@ -196,7 +195,9 @@ function historyWith(options: {
       });
     }
 
-    return answerTrackerOrThrow(args, options.issues ?? []);
+    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
+    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
+    throw new Error(`unexpected gh call: ${args.join(" ")}`);
   };
 
   return { gh, calls };
