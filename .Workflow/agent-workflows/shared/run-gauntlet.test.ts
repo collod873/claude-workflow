@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import { gateVerdict, MACHINE_ROOT, runGauntlet } from "./run-gauntlet.ts";
@@ -69,20 +70,27 @@ describe("gateVerdict", () => {
 });
 
 describe("the turn venue autofixes style before it judges", () => {
-  const FIXTURE_PATH = ".Workflow/agent-workflows/shared/gauntlet-autofix-490.fixture.ts";
+  const JUDGE_ONLY_CONTRACT = JSON.stringify({ lint_one: { cmd: "npx eslint <file>" } });
+  const DOUBLE_QUOTES = 'export default [{ files: ["**/*.ts"], rules: { quotes: ["error", "double"] } }];\n';
+  const FIXTURE_NAME = "gauntlet-autofix-490.fixture.ts";
 
   test(
     "#490.2: a file with a fixable eslint finding passes bin/gauntlet turn and comes out fixed on disk",
     () => {
-      const absolute = join(MACHINE_ROOT, FIXTURE_PATH);
-      writeFileSync(absolute, "export const gauntletAutofix490 = 'fixable'\n");
+      const targetRoot = mkdtempSync(join(tmpdir(), "gauntlet-autofix-490-"));
+      const fixture = join(targetRoot, FIXTURE_NAME);
 
       try {
-        runGauntlet("turn", MACHINE_ROOT, { file: FIXTURE_PATH });
+        mkdirSync(join(targetRoot, ".claude"));
+        writeFileSync(join(targetRoot, ".claude/contract.json"), JUDGE_ONLY_CONTRACT);
+        writeFileSync(join(targetRoot, "eslint.config.mjs"), DOUBLE_QUOTES);
+        writeFileSync(fixture, "export const gauntletAutofix490 = 'fixable'\n");
 
-        expect(readFileSync(absolute, "utf8")).toContain('"fixable"');
+        runGauntlet("turn", targetRoot, { file: FIXTURE_NAME });
+
+        expect(readFileSync(fixture, "utf8")).toContain('"fixable"');
       } finally {
-        rmSync(absolute, { force: true });
+        rmSync(targetRoot, { recursive: true, force: true });
       }
     },
     600_000,
