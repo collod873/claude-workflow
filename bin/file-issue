@@ -43,21 +43,12 @@ the warning naming its defect was printed, and printed is not read. Filing rough
 (a ticket also names work still to be scoped, claude-workflow/ADR-0076); filing rough by accident
 does not.
 
-`file-issue ticket` and `ticketify` reach the same `wire_collisions` loop, one filing-time fast
-fail for both routes a ticket's claim can be published through: once a ticket's own number and
-`## Files claimed` are known, its claim is checked against every other open issue's, and an
-unordered colliding pair earns a native `blockedBy` edge, lower issue number blocking higher
-(agent-skills/ADR-0007). `reconcile.ts`'s own pass over the tracker is what still catches a claim edited after
-filing; this loop is only ever the first word on it, not the last.
-
 `ticketify <n>` is the one exit from `fuzzy` (agent-skills/ADR-0024, #79): whichever session reached a
 decision (grilling, `/wayfinder`, or a bare conversation) pipes the criteria and file claim
 (a `## Acceptance criteria` / `## Files claimed` block, on stdin or via `--body-file`, in the
 same shape `ticket_shape.validate("ticket", ...)` already enforces) into this verb rather than
-authoring the sections into the issue by hand. It appends the two canonical headings, lifts
-`fuzzy` if the issue carries it, and intersects the new claim against every other open issue's
-`## Files claimed` to wire native `blockedBy` edges (agent-skills/ADR-0007): lower issue number blocks
-higher, regardless of which side is being ticketified. A body that already has
+authoring the sections into the issue by hand. It appends the two canonical headings and lifts
+`fuzzy` if the issue carries it. A body that already has
 `## Acceptance criteria` is refused unless `--replace` is given, which substitutes the two
 sections instead of appending a second copy, and, on an issue with an assignee, also posts a
 comment noting the criteria were revised after work started. A claim that excludes nothing real
@@ -348,31 +339,6 @@ def comment_issue(gh, n: int, text: str) -> None:
     run_gh(gh, ["issue", "comment", str(n), "--body", text])
 
 
-def wire_blocked_by(gh, blocked_n: int, blocker_id) -> None:
-    run_gh(gh, [
-        "api", "-X", "POST",
-        f"repos/{{owner}}/{{repo}}/issues/{blocked_n}/dependencies/blocked_by",
-        "-F", f"issue_id={blocker_id}",
-    ])
-
-
-def wire_collisions(gh, number: int, claim: list[str], issues: list[dict]) -> None:
-    own_id = next((i.get("id") for i in issues if i.get("number") == number), None)
-    for other in issues:
-        other_n = other.get("number")
-        if other_n is None or other_n == number:
-            continue
-        other_claim = ticket_shape.claimed_paths(other.get("body") or "")
-        if not other_claim or not ticket_shape.claims_collide(claim, other_claim):
-            continue
-        if other_n > number:
-            if own_id is None:
-                continue
-            wire_blocked_by(gh, other_n, own_id)
-        else:
-            wire_blocked_by(gh, number, other.get("id"))
-
-
 def _append_section(body: str, addition: str) -> str:
     base = body.rstrip("\n")
     addition = addition.strip("\n")
@@ -452,8 +418,6 @@ def run_ticketify(args) -> int:
 
     if had_criteria and args.replace and target.get("assignees"):
         comment_issue(gh, args.n, REPLACE_COMMENT)
-
-    wire_collisions(gh, args.n, claim, issues)
 
     if test_paths:
         rewrite_test_placeholders(test_paths, args.n)
@@ -577,10 +541,6 @@ def run(argv=None) -> int:
     if kind != "ticket":
         sys.stdout.write(out)
         return 0
-
-    claim = ticket_shape.claimed_paths(body)
-    if n is not None and claim:
-        wire_collisions(gh, n, claim, fetch_open_issues(gh))
 
     if not test_paths:
         if no_test_handoff_hint_applies():

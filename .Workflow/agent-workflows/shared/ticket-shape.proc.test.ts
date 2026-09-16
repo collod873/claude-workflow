@@ -1,14 +1,11 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
 import { scratchDir } from "./scratch.fixture";
 import {
   assertTicketShape,
   CLAIM_LIMIT,
-  claimsCollide,
   extractCriteria,
   extractFilesClaimed,
   parseCheckMarker,
@@ -406,60 +403,4 @@ describe("validate('spec', …), the red-at-publish branch only the Python decid
     expect(verdict.ok).toBe(true);
     expect((verdict as { ok: true; warnings: string[] }).warnings.join(" ")).toContain("did not finish within");
   });
-});
-
-const CLAIM_LISTS: string[][] = [
-  [],
-  ["bin/file-issue"],
-  ["bin/file-issue", "docs/agents/ticket-format.md"],
-  [".Workflow/agent-workflows/dispatch/reconcile.ts"],
-  [".Workflow/agent-workflows/dispatch/*.ts"],
-  [".Workflow/agent-workflows/dispatch/"],
-  [".Workflow/agent-workflows/shared/labels.ts"],
-  [".Workflow/agent-workflows/shared/ticket-shape.ts", "bin/ticket_shape.py"],
-  ["docs/adr/"],
-  ["docs/adr/0151-code-carries-no-prose.md"],
-  ["docs/**/*.md"],
-  ["**"],
-];
-
-const CLAIM_PAIRS: [string[], string[]][] = CLAIM_LISTS.flatMap((left) =>
-  CLAIM_LISTS.map((right): [string[], string[]] => [left, right]),
-);
-
-const CLAIMS_COLLIDE_DRIVER = [
-  "import importlib.util, json, sys",
-  "spec = importlib.util.spec_from_file_location('ticket_shape', sys.argv[1])",
-  "module = importlib.util.module_from_spec(spec)",
-  "spec.loader.exec_module(module)",
-  "pairs = json.loads(open(sys.argv[2]).read())",
-  "print(json.dumps([bool(module.claims_collide(left, right)) for left, right in pairs]))",
-].join("\n");
-
-function pythonClaimsCollide(pairs: [string[], string[]][]): boolean[] {
-  const dir = mkdtempSync(join(tmpdir(), "claims-collide-"));
-  try {
-    const pairsFile = join(dir, "pairs.json");
-    writeFileSync(pairsFile, JSON.stringify(pairs));
-    const shape = fileURLToPath(new URL("../../../bin/ticket_shape.py", import.meta.url));
-    const run = spawnSync("python3", ["-c", CLAIMS_COLLIDE_DRIVER, shape, pairsFile], { encoding: "utf8" });
-    if (run.status !== 0) {
-      throw new Error(`bin/ticket_shape.py claims_collide exited ${run.status}: ${run.stderr}`);
-    }
-    return JSON.parse(run.stdout) as boolean[];
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-function verdictLines(pairs: [string[], string[]][], verdicts: boolean[]): string[] {
-  return pairs.map(([left, right], index) => `[${left.join(" ")}] × [${right.join(" ")}] → ${verdicts[index]}`);
-}
-
-test("#559.1: claimsCollide returns the same verdict as bin/ticket_shape.py's claims_collide for every claim pair the differential test generates", () => {
-  const ours = CLAIM_PAIRS.map(([left, right]) => claimsCollide(left, right));
-  const theirs = pythonClaimsCollide(CLAIM_PAIRS);
-
-  expect(theirs).toHaveLength(CLAIM_PAIRS.length);
-  expect(verdictLines(CLAIM_PAIRS, ours)).toEqual(verdictLines(CLAIM_PAIRS, theirs));
 });

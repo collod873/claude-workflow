@@ -533,15 +533,3 @@ def migration_without_post_state(body: str) -> list[str]:
             continue
         return []
     return [MIGRATION_NO_POST_STATE_WARNING]
-
-
-def claims_collide(a_paths: list[str], b_paths: list[str]) -> bool:
-    for a in a_paths:
-        a_dir = a.rstrip("/") + "/"
-        for b in b_paths:
-            b_dir = b.rstrip("/") + "/"
-            if a == b or fnmatch.fnmatch(b, a) or fnmatch.fnmatch(a, b):
-                return True
-            if b.startswith(a_dir) or a.startswith(b_dir):
-                return True
-    return False

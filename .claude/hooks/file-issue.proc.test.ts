@@ -145,7 +145,7 @@ const CLAIMED = ".Workflow/agent-workflows/shared/labels.ts";
 const TICKET_BODY = [
   "## Acceptance criteria",
   "",
-  `- [ ] \`${CLAIMED}\` is edged at filing - check: \`true\``,
+  `- [ ] \`${CLAIMED}\` is claimed at filing - check: \`true\``,
   "",
   "## Files claimed",
   "",
@@ -170,10 +170,12 @@ const OPEN_ISSUES = [
   },
 ];
 
-const BLOCKED_BY_RE = /\/issues\/(\d+)\/dependencies\/blocked_by$/;
+const BLOCKED_BY_RE = /\/dependencies\/blocked_by/;
 
-test("#559.5: `file-issue ticket` wires the same blocked_by edges at filing that ticketify wires, from one loop both kinds reach", () => {
-  const dir = mkdtempSync(join(tmpdir(), "file-issue-collision-"));
+const UNSHAPED = { number: 42, id: 4242, body: "Nothing shaped here yet.\n", labels: [], assignees: [] };
+
+function callsFiling(args: string[]): string[][] {
+  const dir = mkdtempSync(join(tmpdir(), "file-issue-overlap-"));
   try {
     const gh = join(dir, "fake-gh.py");
     writeFileSync(gh, FAKE_GH);
@@ -183,35 +185,35 @@ test("#559.5: `file-issue ticket` wires the same blocked_by edges at filing that
     const bodyFile = join(dir, "ticket.md");
     writeFileSync(bodyFile, TICKET_BODY);
 
-    const run = spawnSync(
-      "python3",
-      [FILE_ISSUE, "ticket", "--title", "A colliding ticket", "--body-file", bodyFile],
-      {
-        cwd: dir,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          AGENT_SKILLS_GH: gh,
-          FAKE_GH_LOG: log,
-          FAKE_GH_ISSUES: JSON.stringify(OPEN_ISSUES),
-          FAKE_GH_ISSUE_URL: "https://github.com/acme/widgets/issues/100\n",
-        },
+    const run = spawnSync("python3", [FILE_ISSUE, ...args, "--body-file", bodyFile], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AGENT_SKILLS_GH: gh,
+        FAKE_GH_LOG: log,
+        FAKE_GH_ISSUES: JSON.stringify([...OPEN_ISSUES, UNSHAPED]),
+        FAKE_GH_ISSUE_URL: "https://github.com/acme/widgets/issues/100\n",
       },
-    );
+    });
 
     expect(run.status, `${run.stdout}${run.stderr}`).toBe(0);
 
-    const calls: string[][] = readFileSync(log, "utf8")
+    return readFileSync(log, "utf8")
       .split("\n")
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line) as string[]);
-
-    const edges = calls.filter((call) => call.some((arg) => BLOCKED_BY_RE.test(arg)));
-
-    expect(edges).toHaveLength(1);
-    expect(edges[0].flatMap((arg) => BLOCKED_BY_RE.exec(arg)?.[1] ?? [])).toEqual(["100"]);
-    expect(edges[0].join(" ")).toContain("issue_id=4040");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+test.each([
+  { verb: "ticket", args: ["ticket", "--title", "An overlapping ticket"] },
+  { verb: "ticketify", args: ["ticketify", "42"] },
+])("#602: `file-issue $verb` files a ticket whose claim overlaps an open issue's without touching a blocked_by path", ({ args }) => {
+  const calls = callsFiling(args);
+
+  expect(calls.some((call) => call[0] === "issue" && (call[1] === "create" || call[1] === "edit"))).toBe(true);
+  expect(calls.filter((call) => call[0] === "api" && call.some((arg) => BLOCKED_BY_RE.test(arg)))).toEqual([]);
 });

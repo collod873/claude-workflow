@@ -741,22 +741,8 @@ def test_ticketify(tmp):
     )
     r, calls = run_ticketify(20, [], issues, supplied, log)
     check("intersection: exits 0", r.returncode == 0, f"rc={r.returncode} stderr={r.stderr}")
-    post_calls = [c for c in calls if c[:3] == ["api", "-X", "POST"]]
-    check("intersection: exactly two blocked_by POSTs", len(post_calls) == 2, calls)
-
-    def post_target(c):
-        return c[3].split("/issues/")[1].split("/dependencies")[0]
-
-    def post_issue_id(c):
-        return c[c.index("-F") + 1].split("=", 1)[1]
-
-    if len(post_calls) == 2:
-        by_blocked = {post_target(c): post_issue_id(c) for c in post_calls}
-        check("intersection: #20 blocked by lower #15 (POST on #20, issue_id=#15's db id)",
-              by_blocked.get("20") == "1515", post_calls)
-        check("intersection: #25 blocked by lower #20 (POST on #25, issue_id=#20's db id)",
-              by_blocked.get("25") == "2020", post_calls)
-        check("intersection: unrelated #30 never appears", "30" not in by_blocked, post_calls)
+    edge_calls = [c for c in calls if any("dependencies/blocked_by" in arg for arg in c)]
+    check("intersection: overlapping claims touch no blocked_by path", edge_calls == [], calls)
 
     log = tmp / "tk6.jsonl"
     degenerate = "## Acceptance criteria\n\n- [ ] x\n\n## Files claimed\n\n- .\n"
