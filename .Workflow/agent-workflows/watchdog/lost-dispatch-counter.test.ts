@@ -13,13 +13,12 @@ function runsProjection(calls: string[][]): string {
   return call![call!.indexOf("--jq") + 1] ?? "";
 }
 
-test("#532.1: the run projection asks for conclusion alongside status, and only a successful run counts as proof a PRD was sliced", () => {
+test("#532.1: the run projection asks for conclusion, and only a successful run counts as proof a PRD was sliced", () => {
   const fake = historyWithRunSincePrd({ status: "completed", conclusion: "success" });
 
   expect(count(fake)).toEqual({ action: "clean" });
 
   const projection = runsProjection(fake.calls);
-  expect(projection).toContain("status");
   expect(projection).toContain("conclusion");
 });
 
@@ -36,7 +35,7 @@ test("#532.3: a run created after the PRD reading status in_progress, conclusion
   expect(runsProjection(inFlight.calls)).toContain("conclusion");
 });
 
-test.fails("#620.1: the run projection lost-dispatch-counter sends is trackerGh's own query, since it now reads runs through Tracker instead of building the query itself", () => {
+test("#620.1: the run projection lost-dispatch-counter sends is trackerGh's own query, since it now reads runs through Tracker instead of building the query itself", () => {
   const fake = historyWithRunSincePrd({ status: "completed", conclusion: "success" });
 
   count(fake);
