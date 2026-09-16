@@ -1,6 +1,6 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).
+description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker with native blocking links.
 disable-model-invocation: true
 ---
 
@@ -68,7 +68,7 @@ Blocking edges point **inward only**: every edge names another ticket in this sa
 
 Acceptance criteria point **inward too**: every criterion is provable from this repo's checkout and the ticket's own `## Files claimed`. A criterion about another project's config, a machine's dotfiles, or a fork someone else maintains is one the worker can't satisfy, and `close-ticket` has no `check:` marker it could run against it, so it records `UNVERIFIED`, not `MET`, so the debt stays visible on the ticket forever instead of being proven; name that follow-up in the ticket's notes instead.
 
-**Headless is not the same question as answerable.** A criterion's `check:` command has to read the tree `close-ticket` hands it, not the tracker. `gh api`, `gh issue`, `gh pr`, `gh run`, `curl` and `wget` all read GitHub or the network rather than the working directory, so they return the same verdict whether or not the diff exists; `gh api repos/…/contents/tests/acceptance` parses fine, runs headlessly, and still cannot be answered by any implementation. This is not a ban on reaching outside the repository: a criterion may grep an absolute path that lives elsewhere on the machine (`grep -q '…' /home/collin/.agents/workflow/.claude/skills/drain/SKILL.md`) when the artifact under test genuinely lives there, because that still reads local disk and can observe what the ticket's own work produced. If the fact you want to assert is that something **ran in production** rather than that a diff produced it, it does not belong in a ticket at all: that is a spec's one criterion, closed by observing the running system, and the asymmetry between the two is deliberate.
+Every criterion's `check:` command follows the criteria rules in `docs/agents/ticket-format.md`: red today, narrow, read from the checkout, parsed by `/bin/sh`.
 
 **Wide refactors are the exception to vertical slicing.** A **wide refactor** is one mechanical change (rename a column, retype a shared symbol) whose **blast radius** fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Don't force it into a tracer bullet; sequence it as **expand–contract**. First expand: add the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius (per package, per directory), each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract: delete the old form once no caller remains, in a ticket blocked by every migrate batch. When even the batches can't stay green alone, keep the sequence but let them share an integration branch that all block a final integrate-and-verify ticket; green is promised only there.
 
@@ -97,7 +97,6 @@ Every concern the audit raises is written as a **flag** in its report, decided t
 
 Publish the approved tickets. **How** depends on which tracker `docs/agents/issue-tracker.md` names; the tickets are the same either way, only the shape of the blocking edges changes:
 
-- **Local files** → write one file per ticket under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first). Each file's "Blocked by" lists the numbers/titles it depends on. Use the local-file template in `docs/agents/ticket-format.md`: one ticket per file, never a single combined file. It carries the same `## Acceptance criteria` heading as the issue template: one body shape on every tracker, only the edge encoding differs.
 - **GitHub** → do NOT publish issue-by-issue. Write the whole approved breakdown as one graph JSON file (in the scratchpad), then run `~/bin/publish-issue-graph <graph.json>` in a single command. It creates all issues in parallel, wires sub-issue links to `parent` and `blockedBy` edges natively, verifies the graph on read-back (exits nonzero with the exact missing edges if not), and prints the verified table; paste that table in your report. `blockedBy` references sibling tickets by their `key`, so you never need to publish in dependency order or look up IDs. Run `~/bin/publish-issue-graph` with no args (or read its docstring) for the JSON shape. Each issue's `body` uses the spec sub-issue template in `docs/agents/ticket-format.md`; the helper injects the `Part of #<parent>` breadcrumb automatically (omit the template's `## Parent` and `## Blocked by` sections, since the helper's native edges carry them). Leave the helper's top-level `labels` field unset: no label at all is applied to any issue; `ready-for-agent` is dead, and `## Acceptance criteria` plus `## Files claimed` in the body are the artifacts that matter, not a label. Publishing is done when the helper exits 0; do not re-verify by hand.
 - **Any other real issue tracker (Linear, …)** → publish one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers, using the same spec sub-issue template. Use the platform's native blocking / sub-issue relationship where it has one; otherwise set each ticket's "Blocked by" to the blocking issues. Apply no pipeline label: `/to-tickets` output is judged but deliberately unlabelled; it carries `## Acceptance criteria` and `## Files claimed` instead. Native edges **are** the graph, so after wiring, **read it back** (every child under the parent, every edge present); done on the read-back, not the write.
 
@@ -113,10 +112,10 @@ agent now makes. An edit on the tracker, made there before `/drain` starts, is t
 
 Report the seam manifest from step 2 when you finish: every seam this batch found reusable or built, so a later `/to-tickets` or `/drain` run over related work doesn't repeat the search.
 
-The local-file and spec sub-issue templates, and the core `## Acceptance criteria` / `## Files
-claimed` shape both carry, live in [`docs/agents/ticket-format.md`](../docs/agents/ticket-format.md),
+The spec sub-issue template, and the core `## Acceptance criteria` / `## Files claimed` shape it
+carries, live in [`docs/agents/ticket-format.md`](../docs/agents/ticket-format.md),
 not here.
 
-In either form, avoid specific file paths or code snippets; they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts: not a working demo, just the important bits.
+In `## What to build`, avoid specific file paths or code snippets; they go stale fast. Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it and note briefly that it came from a prototype. Trim to the decision-rich parts: not a working demo, just the important bits.
 
 Work the frontier one ticket at a time with `/implement`, clearing context between tickets.

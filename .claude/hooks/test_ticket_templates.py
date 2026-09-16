@@ -24,7 +24,6 @@ _shape_spec.loader.exec_module(ticket_shape)
 
 VARIANT_KIND = [
     ("Spec sub-issue", "ticket"),
-    ("Local-file ticket", None),
     ("Wayfinder decision", "question"),
     ("Question (file-issue question", "question"),
 ]

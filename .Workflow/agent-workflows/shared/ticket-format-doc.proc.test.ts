@@ -9,7 +9,6 @@ const TICKET_FORMAT_DOC = join(REPO_ROOT, "docs/agents/ticket-format.md");
 
 const VARIANT_KIND: [prefix: string, kind: Kind | null][] = [
   ["Spec sub-issue", "ticket"],
-  ["Local-file ticket", null],
   ["Wayfinder decision", "question"],
   ["Question (file-issue question", "question"],
 ];

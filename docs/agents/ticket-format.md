@@ -1,133 +1,81 @@
 # Ticket format
 
-The one shape a ticket body takes in this pipeline, read by every producer (`/to-tickets`,
-`/wayfinder`, `~/bin/file-issue`) and parsed by the close gate (`close-gate.py`, the machine-global hook, or the repo's own
-`.claude/hooks/` copy where it ships one; the same file either way).
-Producers reference this doc rather than restate it; a restated copy is exactly what let
-`/wayfinder`'s template drift out of sync with the parser it feeds.
+The shape every ticket body takes, whoever writes it: `/to-tickets`, `/wayfinder`, or a session
+filing with `~/bin/file-issue`. The rules machines enforce are spelled once, in
+`.Workflow/agent-workflows/shared/ticket-shape.rules.json` and `bin/ticket_shape.py`
+(claude-workflow/ADR-0184); this page is the author's reading of them. A spec's shape is
+`docs/agents/spec-format.md`.
 
-Seeded here in `docs/agents/`, not beside the gate like the closing-record grammar
-(`close-gate.py`).
+## Refused and held
 
-## Where these rules live
+`file-issue` **refuses** a body it can judge alone (a missing heading, a glob or more than
+`claimLimit` paths in the claim, a check that reads the tracker) and files nothing: fix it.
 
-Three places, and each rule below is in exactly one of them (claude-workflow/ADR-0184):
-
-- **`.Workflow/agent-workflows/shared/ticket-shape.rules.json`** — the claim ceiling, the four
-  refusals a malformed body earns, the heading, checkbox, sentinel and check-marker grammars, and
-  the flags each of those compiles under. `bin/ticket_shape.py` reads it as JSON and
-  `shared/ticket-shape.ts` imports it, and each compiles what the table says, so neither spells a
-  rule the other also spells. `ticket-shape.proc.test.ts` builds bodies from a grammar over that
-  file's variations and compares every verdict the TypeScript renders against the Python's; the
-  sample is drawn from a fixed seed (`TICKET_SHAPE_SEED` overrides it) and topped up until every
-  reachable pair of grammar axes is exercised, including all eleven line terminators either
-  runtime can break on and a body that cycles them: `lineTerminator` in that table is the rule
-  both sides fold to `\n` before any pattern runs, so neither engine's own line-breaking default
-  decides a verdict. claude-workflow/ADR-0184 records what is still spelled twice \u2014 the evidence
-  grammar, where `\w` and `\d` are Unicode-wide in Python and ASCII in JavaScript.
-- **`bin/ticket_shape.py`** — every *warning*, and the whole `spec` verdict. It is the only
-  validator: `shared/ticket-shape.ts` renders refusals and parses bodies, and holds no opinion
-  about evidence, migrations, check-command resolution or `/bin/sh` parseability.
-- **This page** — the prose an author reads, and nothing mechanical reads back except its own
-  fenced examples, which `ticket-format-doc.proc.test.ts` runs through `validate()`.
-
-## Refusals, warnings, and `--ack`
-
-A body that breaks a rule the parser can settle alone — a missing heading, a claim over the
-ceiling, a spec with two criteria — is **refused**: `~/bin/file-issue` prints what is missing and
-exits nonzero without ever calling `gh`.
-
-Everything below that only an author can settle is a **warning**: criteria with no verifiable
-evidence, a migration worded as its artifact, a `check:` marker that doesn't parse, a claimed path
-whose spelling looks like a typo. A warning does not decide the ticket is wrong; it decides the
-author has to say. So it also stops the filing, and `--ack "<why this is acceptable>"` files
-anyway, appending the reason and every warning to the issue body under `## Warnings acknowledged`,
-where the next reader meets them:
+It **holds** a body when only the author can judge: fix it, or re-run with
+`--ack "<why this stands>"`, which files it and records the reason and every warning under
+`## Warnings acknowledged`, where the next reader meets them.
 
 ```bash
 ~/bin/file-issue ticket --title "..." --body-file body.md \
   --ack "scoping ticket; the post-state criterion lands once the target repo is enrolled"
 ```
 
-Warnings used to print to stderr and file regardless. #570 was filed carrying the
-migration warning, and #573 is the gap that shipped because printed is not read. Filing rough
-stays possible — a ticket also names work still to be scoped — but not by accident.
+One warning never holds a filing: a claimed path the tree lacks and nothing in it resembles, which
+is what a file the ticket creates looks like. A claimed path with a near neighbour holds it, since
+that is what a typo looks like.
 
-One warning is advisory and never stops a filing: a claimed path that isn't in the working tree
-and looks like nothing else there. Claiming a file the ticket is about to create is the normal
-case, and a gate that fires on most tickets would only teach everyone to type `--ack` by reflex.
+## `## Acceptance criteria`
 
-## The core, gate-parsed
+One `- [ ]` item per claim about the finished work, written before the work starts. The acceptance
+author turns each into a test without seeing the diff, and `bin/close-ticket` closes the ticket by
+running each item's check. Every criterion is:
 
-Every ticket body carries two headings. `count_body_criteria`
-(`close-gate.py`) parses the first mechanically to decide whether a ticket can
-close; `/drain`'s frontier filter and `reconcile.ts`'s live-run hold both read the second.
+- **Red today.** It names what this ticket's work makes true, so its check fails before the work
+  exists. What must stay true ("X is unchanged") belongs to the tests that already hold it.
+  `file-issue` runs each check at filing and holds a ticket whose check already passes, skipping a
+  command that names a path the ticket claims or hands over with `--test`.
+- **Checked by one command.** It ends in a check marker: a space-delimited hyphen, `check:`, and one
+  backtick-quoted command, with nothing after it.
 
-### `## Acceptance criteria`
+  ```markdown
+  - [ ] `bin/lint` reports zero findings - check: `bin/lint`
+  ```
 
-One `- [ ]` item per checkable claim about the finished work, written before the work starts. See
-this repo's `CONTEXT.md`, "Ticket" entry, for why. Each item must be verifiable
-by a fresh context that has not seen the diff: a `path:line`, a command's exit status, an artifact
-that exists. A `path:line` needs a `/` or `.` somewhere in the path (`src/router:12`,
-`f.py:1`); a bare word before the colon (`foo:12`) isn't shaped like a repo path and doesn't
-count as evidence, in `bin/ticket_shape.py`'s validator or the close gate.
+  The command is the narrowest one that fails before the work and passes after it: the test file
+  proving this claim, or a `grep` against the checkout. It runs exactly as written, so it takes only
+  arguments the tool honours (`bin/lint` lints the whole tree whatever it is handed). `/drain` skips a
+  ticket carrying an item without a marker, and `close-ticket` records that item `UNVERIFIED` and
+  closes nothing when every item is. `file-issue` holds a missing or unparseable marker.
+- **Narrow.** The gate runs every check `.claude/contract.json` names on every change, so
+  `npm run check`, `npm test` and their kin prove nothing this diff turned from red to green.
+  `file-issue` holds them.
+- **Read from the checkout.** `gh`, `curl` and `wget` read GitHub or the network and answer the same
+  whether or not the diff exists, so `file-issue` and the slicer's publisher both refuse them. A
+  command may read an absolute path elsewhere on the machine when the artifact under test lives
+  there. A fact about production belongs to a spec's one criterion.
+- **Parsed by `/bin/sh`.** `bin/close-ticket` runs every check with `shell=True`, which is dash on the
+  workstation and on every Ubuntu runner. Wrap a bash-only command (process substitution, arrays)
+  in `bash -c '...'`:
 
-A criterion may end with a trailing check marker: a space-delimited hyphen, the label `check:`, and a single
-backtick-quoted command naming the one thing that verifies it, so a mechanical closer can run
-that command itself instead of re-deriving what to check from prose:
-
-```markdown
-- [ ] `bin/lint` reports zero findings - check: `bin/lint`
-```
-
-The command is run exactly as written, with nothing appended, so it has to be one the tool really
-takes: `bin/lint` lints the whole tree and ignores any path handed to it, and a marker spelling one
-anyway reads as a per-file check that isn't one.
-
-The delimiter is one alternation, the rules source's `fragments.checkMarkerDelim`: a single or
-double hyphen with a space or tab on each side, or an em or en dash for bodies written under the
-older spelling. The whole marker pattern is composed from that fragment in the same file, so
-neither validator spells a dash rule of its own. Writing one is optional: a
-criterion nobody can mechanise is still a legitimate criterion; it simply closes on a human
-reading the diff rather than a command's exit status. A marker that's attempted but doesn't
-parse (a missing command, or prose trailing the closing backtick) is warned about by
-`bin/ticket_shape.py`'s validator rather than silently read as plain prose.
-
-A check runs under `/bin/sh`, not bash: `bin/close-ticket` and `bin/ticket_shape.py`'s
-red-at-publish check both run every marker command with `shell=True`, which is `/bin/sh`, dash on
-the workstation and on every Ubuntu runner. A command that only bash understands — process
-substitution (`comm -12 <(ls) <(ls)`), arrays — is a syntax error under dash, not a red result, so
-a spec carrying one is refused at filing rather than discovered when the ticket closes; a ticket
-carrying one earns a warning instead, which stops the filing until `--ack` says why. Wrap a
-bash-only command in `bash -c '...'`:
-
-```markdown
-- [ ] the two sets have no members in common - check: `bash -c '! comm -12 <(sort a) <(sort b)'`
-```
+  ```markdown
+  - [ ] the two sets share no member - check: `bash -c '! comm -12 <(sort a) <(sort b)'`
+  ```
 
 A ticket whose deliverable is a **migration** (a history rewrite, a schema backfill, a one-off
-scrub) is worded as **the run**, never as the artifact. "Ship a script that scrubs X" is satisfied
-the moment the file exists; "Scrub X" isn't. At least one criterion must assert the **post-state of
-what is being migrated**, checkable against the real target rather than against a fixture the
-ticket's own test builds: `git rev-list --all --objects | grep -c <path>` prints 0, not `npm test
--- scrub.test.ts` exits 0. A suite passing proves the script works; it never proves the script ran.
-`bin/ticket_shape.py` warns, never refuses, when a migration-shaped body's
-every criterion is satisfied by a test passing or by a path the ticket itself claims — and a
-warning stops the filing until `--ack` names why it stands. See claude-workflow/ADR-0076,
-recorded in `collod873/claude-workflow`.
+scrub) is worded as the run: "Scrub X", which only the scrub satisfies, where "Ship a script that
+scrubs X" is satisfied the moment the file exists. At least one criterion asserts the post-state of
+the real target, such as `git rev-list --all --objects` no longer listing the path: a suite passing
+proves the script works, and only the post-state proves it ran. `file-issue` holds a
+migration-shaped body whose every criterion is a test passing or a path it claims
+(claude-workflow/ADR-0076).
 
-```markdown
-## Acceptance criteria
+## `## Files claimed`
 
-- [ ] Criterion 1
-- [ ] Criterion 2
-```
-
-### `## Files claimed`
-
-The repo-relative paths (globs permitted) this ticket expects to touch, biased coarse. See
-this repo's `CONTEXT.md`, "Ticket" entry, for why the claim exists at all. A ticket that touches no files writes the sentinel, never an empty
-or missing section:
+Each file this ticket edits, one per line, spelled in full from the repository root:
+`src/router/index.ts`. The acceptance author and the implementer read the ticket independently and
+cannot ask each other, so a shortened path is one decision answered twice; the rest of the body
+abbreviates only a path this section spells in full (claude-workflow/ADR-0118). A ticket that edits
+no files writes the sentinel:
 
 ```markdown
 ## Files claimed
@@ -135,117 +83,62 @@ or missing section:
 - None, no files.
 ```
 
-A ticket missing this heading entirely was never shaped by a producer that computes claims;
-`file-issue ticket` and `file-issue ticketify` both refuse a body without one.
+- **One file per line.** A glob is refused: the reconciler holds each claim against every live run,
+  so a pattern standing for a whole lane stalls that lane.
+- **At most `claimLimit` paths**, refused above it. Lane 04's acceptance author inlines every claimed
+  file into one prompt inside one wall-clock budget, and #539's nine files spent that whole budget on
+  the first pass. Wider work is several tickets: slice it by subject and chain them. A ticket that
+  reaches `reconcile.ts`'s `to-build` door wider than that is labelled `to-spec`, and lane 02 rewrites
+  it as a spec under the same number.
+- **The immutable set** (`vitest.config.ts` and paths under `.github/`, listed in
+  `.Workflow/agent-workflows/shared/immutable-set.json`) is work no pull request may land.
+  `file-issue` labels a ticket claiming it `by-hand` beside `ticket`, as it does a workstation or
+  cross-repo claim; the `to-build` door stands it down, and `session-brief` hands it to the next
+  session. Work needing both kinds is two tickets.
 
-Two tickets claiming the same file **collide** only while one of them is being worked. A file is
-held by a live run, never by a ticket
-([ADR-0199](../adr/0199-a-file-is-held-by-a-live-run-never-by-a-ticket-and-the-block.md)), and the
-reconciler is where that is enforced: every `reconcile.ts` pass skips, for that pass, a ready ticket
-whose claim overlaps the claim of a ticket with a live lane run, or of a ticket it dispatched earlier
-in the same pass, and logs both numbers and the overlapping path. Nothing is written to the tracker;
-the next reconcile fires the moment a run ends, and the skipped ticket goes then. A ticket that is
-stuck, parked, or waiting holds nothing, since it has no live run, and neither does one wearing
-`prd` or `idea`. A collision is never a `blockedBy` edge: the graph has one writer, lane 03, and
-lane 08's rebase-and-gauntlet catches whatever two claims failed to predict.
-
-**Eight paths is the ceiling**, the rules source's `claimLimit`, refused above that by
-`bin/ticket_shape.py` at filing and by `shared/ticket-shape.ts` in every `/to-tickets` plan; one
-number, so the two cannot disagree about where it sits. At the `to-build` door the ceiling is not
-a refusal at all: a ticket claiming more than `claimLimit` paths is not one ticket, and waiting on a human
-to notice never makes it one, so `reconcile.ts` relabels it `prd` + `sliceable`, rings lane 03, and
-lane 03 publishes the slices as sub-issues of it. Each slice is held to the same ceiling as it is
-written, so the split cannot hand the same body back. Nobody is asked for anything, and the
-ticket never wears `needs-human` for its width. The ceiling is
-lane 04's, not a taste: the acceptance author inlines the contents of every claimed file into one
-prompt, and the lane budget is a single wall clock covering that pass, the gate, and the one
-repair round. #539 claimed nine files across four lanes, handed the author 92 KiB, and spent 17.3
-minutes and $3.79 on the first pass alone against a 24-minute budget — so its repair round had
-four minutes for a job that takes two to three, and all three attempts died in the same place
-with nothing authored. Typical is three to eight minutes and $0.60–1.50. A ticket wider than the
-ceiling is not one ticket; split it into slices of one subject each and chain them.
-
-Repo-relative means **from the repository root**, always: `src/router/index.ts`, never
-`router/index.ts`. The rest of the body may abbreviate a path this section spells in full, and may
-not name a path it does not: a ticket is read independently by whoever writes its acceptance
-check and whoever implements it, neither of whom can ask the other, so an unrooted path is one
-decision answered twice. A producer that publishes a plan refuses one breaking this before it
-files anything, rather than leaving it for a reader to trip over. See claude-workflow/ADR-0118, recorded in
-`collod873/claude-workflow`.
-
-A claim that touches the **immutable set** — `vitest.config.ts` or a path under `.github/`
-(`shared/immutable-set.ts`, mirrored for the Python side by
-`.Workflow/agent-workflows/shared/immutable-set.json`) — is work no pull request may land, so a
-session builds it. `bin/ticket_shape.py`'s `classify_venue`, used by both `file-issue ticket` and
-`ticketify`, files such a ticket with `by-hand` beside `ticket`, the same label a workstation or
-cross-repo claim gets; `reconcile.ts`'s `to-build` door stands a `by-hand` ticket down, and
-`session-brief` hands it to the next session. A ticket that needs both kinds of work is two
-tickets: the half a pull request may touch, and the `by-hand` half.
+Two tickets claiming the same file collide only while one of them has a live run: a file is held
+by a live run, never by a ticket (ADR-0199). Each `reconcile.ts` pass skips a ready ticket whose
+claim overlaps a live run's, or that of a ticket it dispatched earlier in the pass, logs both numbers
+and the path, and starts it on the pass after that run ends. A collision is never a `blockedBy` edge.
 
 ## Variants
 
-Each producer's body is the core above plus its own framing. These are complete, verbatim
-examples, each run through `count_body_criteria` as a test case, so a producer whose actual
-output drifts from what's below fails a test rather than a denied close.
+Each producer's body is the core above plus its own framing. Every example below runs through the
+real validator as a test case, so an example that drifts from the rules fails a test.
 
-### Spec sub-issue (`/to-tickets`, real tracker)
+### Spec sub-issue (`/to-tickets`)
 
-Published one per ticket. On GitHub, via `~/bin/publish-issue-graph`; the helper injects the
-`Part of #<parent>` breadcrumb and the `## Parent` / `## Blocked by` sections below are omitted
-there, carried instead by native sub-issue and dependency edges. On a tracker without a graph
-helper, both sections stay in the body.
+Published one per ticket. On GitHub the parent and blockers are native sub-issue and dependency
+edges, so `~/bin/publish-issue-graph` omits `## Parent` and `## Blocked by` and adds a
+`Part of #<parent>` line; a tracker without native edges keeps both sections.
 
 ```markdown
 ## Parent
 
-A reference to the parent issue on the tracker (if the source was an existing issue, otherwise omit this section).
+#<parent issue>
 
 ## What to build
 
-The end-to-end behaviour this ticket makes work, from the user's perspective, not layer-by-layer implementation.
+The end-to-end behaviour this ticket makes work, from the user's side, not layer by layer.
 
 ## Acceptance criteria
 
-- [ ] Criterion 1
-- [ ] Criterion 2 - check: `<command that verifies this>`
+- [ ] <what is observably true once the work lands> - check: `<the narrowest command that fails today>`
 
 ## Files claimed
 
-- The repo-relative paths (globs permitted) this ticket expects to touch; a ticket that touches no files writes `- None, no files.`
+- <each file this ticket edits, in full from the repository root>
 
 ## Blocked by
 
-- A reference to each blocking ticket, or "None, can start immediately".
-```
-
-### Local-file ticket (`/to-tickets`, local tracker)
-
-One ticket per file under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. One body shape on every
-tracker; only the edge encoding differs: a local ticket names its blockers by number/title
-directly in prose instead of a native dependency link.
-
-```markdown
-# <NN>: <Ticket title>
-
-**What to build:** the end-to-end behaviour this ticket makes work, from the user's perspective, not a layer-by-layer implementation list.
-
-**Blocked by:** the numbers/titles of the tickets that gate this one, or "None, can start immediately".
-
-**Files claimed:**
-
-- The repo-relative paths (globs permitted) this ticket expects to touch, or `- None, no files.`
-
-## Acceptance criteria
-
-- [ ] Acceptance criterion 1
-- [ ] Acceptance criterion 2
+- <each blocking ticket, or: None, can start immediately.>
 ```
 
 ### Wayfinder decision
 
-No `## Files claimed`. Decisions arrive labelled `wayfinder:*`, with criteria already written by
-the wayfinder session that created them, and nothing downstream computes a claim for one, so no
-file claim is ever computed or written for a decision.
+A child issue of a Wayfinder map, labelled `wayfinder:<type>`. It carries no `## Files claimed`,
+since nothing downstream builds from it; `.claude/skills/wayfinder/SKILL.md` owns the rest of its
+shape.
 
 ```markdown
 ## Question
@@ -257,15 +150,10 @@ file claim is ever computed or written for a decision.
 - [ ] <one checkable claim per item, written before the work: what proves this ticket is resolved>
 ```
 
-Those two headings are a minimum, not a maximum; a ticket may also carry the evidence that makes
-its question answerable (a reproduction, a table, links), just never the answer itself.
-
 ### Question (file-issue question)
 
-Filed by `~/bin/file-issue question` (#83): an issue undecided enough that no criteria can be
-written yet. Labelled `fuzzy`. The trailing line naming `file-issue ticketify` is required, not
-decorative; it's how a reader learns the way out of `fuzzy` from the issue itself, without
-consulting any skill.
+An issue too undecided for criteria yet, labelled `fuzzy`. `file-issue question` appends the line
+naming its way out when the body lacks it.
 
 ```markdown
 ## Question
