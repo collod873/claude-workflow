@@ -1097,3 +1097,29 @@ describe("renderCheckContract", () => {
     expect(renderCheckContract({})).toContain("names no check contract");
   });
 });
+
+describe("refireAcceptance reaches the tracker without building an api argv of its own", () => {
+  test.fails("#624.1: reading which slices are still open sends gh no api argv", async () => {
+    const prdNumber = 301;
+    let sawApiArgv = false;
+    const gh: GhExec = (args) => {
+      if (args[0] === "api") {
+        sawApiArgv = true;
+        return "[]";
+      }
+      if (args[0] === "issue" && args[1] === "view") {
+        return JSON.stringify({ title: "PRD", body: "## What to build\nsomething\n" });
+      }
+      return "";
+    };
+
+    await refireAcceptance({
+      gh,
+      prdNumber,
+      bodyBeforeEdit: "## What to build\nold\n",
+      authorForSlice: () => {},
+    });
+
+    expect(sawApiArgv).toBe(false);
+  });
+});
