@@ -10,6 +10,7 @@ import {
   BY_HAND_LABEL,
   ensureLabel,
   IDEA_LABEL,
+  PARKED_LABEL,
   markLane,
   NEEDS_HUMAN_LABEL,
   PRD_LABEL,
@@ -570,7 +571,7 @@ function reportUnreachable(
 }
 
 function neverDispatched(labels: readonly string[]): boolean {
-  return labels.includes(PRD_LABEL) || labels.includes(IDEA_LABEL);
+  return labels.includes(PRD_LABEL) || labels.includes(IDEA_LABEL) || labels.includes(PARKED_LABEL);
 }
 
 function blockedByTransitively(byNumber: Map<number, TicketState>, from: number, target: number): boolean {
@@ -691,6 +692,10 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
     if (ticket.hold === "by-hand") {
       log(`#${ticket.number}: not dispatching; it carries \`${BY_HAND_LABEL}\` and only a human can build it.`);
+      continue;
+    }
+    if (ticket.hold === "parked") {
+      log(`#${ticket.number}: not dispatching; it carries \`${PARKED_LABEL}\` and was set down on purpose.`);
       continue;
     }
     if (ticket.landedPr === undefined) {

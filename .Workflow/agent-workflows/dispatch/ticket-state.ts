@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { GhExec } from "../shared/gh";
 import { blockedByPath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
 import { isByHandClaim } from "../shared/immutable-set";
-import { BY_HAND_LABEL, IDEA_LABEL, isLaneLabel, NEEDS_HUMAN_LABEL, PRD_LABEL, TO_BUILD_LABEL } from "../shared/labels";
+import { BY_HAND_LABEL, IDEA_LABEL, isLaneLabel, NEEDS_HUMAN_LABEL, PARKED_LABEL, PRD_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import {
   acceptanceBranch,
   ACCEPTANCE_BRANCH_PREFIX,
@@ -47,7 +47,7 @@ const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
 const LANE_BOT = "github-actions[bot]";
 
-const NEVER_BUILT = [PRD_LABEL, IDEA_LABEL];
+const NEVER_BUILT = [PRD_LABEL, IDEA_LABEL, PARKED_LABEL];
 
 const PARENT_PRD_HEADING = /^##[ \t]+Parent PRD[ \t]*$/m;
 
@@ -94,7 +94,7 @@ export type Door =
   | { verdict: "refuse"; refusal: string }
   | { verdict: "clear" };
 
-export type Hold = "needs-human" | "by-hand";
+export type Hold = "needs-human" | "by-hand" | "parked";
 
 export type Stage = "busy" | "in-review" | "needs-build" | "needs-test";
 
@@ -371,7 +371,7 @@ const DOOR_SPEAKS: ReadonlySet<Door["verdict"]> = new Set(["stand-down", "slice"
 
 function heldBeforeTheDoorSpoke(ticket: TicketState): boolean {
   if (ticket.labels.includes(NEEDS_HUMAN_LABEL) && ticket.door.verdict !== "clear") return true;
-  return ticket.labels.includes(BY_HAND_LABEL);
+  return ticket.labels.includes(BY_HAND_LABEL) || ticket.labels.includes(PARKED_LABEL);
 }
 
 function wantsComments(ticket: TicketState, dryRun: boolean): boolean {
@@ -386,6 +386,7 @@ function holdOf(ticket: TicketState): Hold | undefined {
     ticket.door.verdict === "clear" &&
     ticket.comments !== undefined &&
     markedComment(ticket.comments, TO_BUILD_REFUSED_MARKER) !== undefined;
+  if (ticket.labels.includes(PARKED_LABEL)) return "parked";
   if (ticket.labels.includes(NEEDS_HUMAN_LABEL) && !lifted) return "needs-human";
   if (ticket.labels.includes(BY_HAND_LABEL) || ticket.door.verdict === "stand-down") return "by-hand";
   return undefined;

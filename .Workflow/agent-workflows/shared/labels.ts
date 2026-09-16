@@ -57,6 +57,7 @@ export const SPEC_GAP_LABEL = "spec/gap";
 
 export const TO_BUILD_LABEL = "to-build";
 export const TO_SPEC_LABEL = "to-spec";
+export const PARKED_LABEL = "parked";
 
 export const PRD_LABEL = "prd";
 export const IDEA_LABEL = "idea";

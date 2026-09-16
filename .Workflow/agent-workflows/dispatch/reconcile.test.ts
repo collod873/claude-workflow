@@ -616,6 +616,21 @@ test("#437.3: a `by-hand` issue never reaches the dispatched set, even with ever
   expect(outcome.dispatched).not.toContain(20);
 });
 
+test("a `parked` ticket is never dispatched, which is what its own catalogue entry already promised", () => {
+  const tracker = trackerWith({
+    open: [
+      { number: 22, title: "Shaped and set down", labels: ["ticket", "parked", "waiting"], blockedBy: [10] },
+      { number: 23, title: "An ordinary slice", blockedBy: [10] },
+    ],
+    closed: [{ number: 10, stateReason: "completed", merged: true }],
+  });
+
+  const outcome = reconcileOver(tracker);
+
+  expect(startedIssues(tracker)).toEqual([23]);
+  expect(outcome.dispatched).not.toContain(22);
+});
+
 test("#472.2: the door's log line for a refusal names the needs-human hold it applied", () => {
   const lines: string[] = [];
   const tracker = trackerWith({
@@ -884,6 +899,26 @@ test(
     expect(wiredEdges(tracker)).toEqual([45]);
   },
 );
+
+test("a `parked` ticket wires no edge, so setting one down stops it gating everything its claim touches", () => {
+  const tracker = trackerWith({
+    open: [
+      {
+        number: 50,
+        title: "A ticket set down for now",
+        body: claimingBody(["docs/adr/"]),
+        labels: ["ticket", "parked"],
+      },
+      { number: 51, title: "A ticket touching one ADR", body: claimingBody(["docs/adr/0174-a-standard.md"]) },
+      { number: 52, title: "One gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
+      { number: 53, title: "Another gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
+    ],
+  });
+
+  reconcileOver(tracker);
+
+  expect(wiredEdges(tracker)).toEqual([53]);
+});
 
 test(
   "#559.6: docs/agents/ticket-format.md names the reconciler as where claim disjointness is enforced, not `file-issue ticketify`",
