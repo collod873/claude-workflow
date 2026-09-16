@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { ACCEPTING_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, QUEUED_LABEL, TO_SPEC_LABEL, WAITING_LABEL } from "../shared/labels";
@@ -1008,6 +1010,18 @@ test("#578.4: #538, the issue this was measured on, is rung to `to-spec` by the 
   const rung = tracker.comments.some((comment) => comment.issue === 538 && comment.body.includes("sent-to-spec"));
   expect(rung).toBe(true);
   expect(tracker.labelsAdded).toContainEqual({ issue: 538, name: TO_SPEC_LABEL });
+});
+
+describe("#611: dispatch's tests move onto trackerMemory and adr0106Payloads", () => {
+  test.fails("#611.1: tracker.fixture.ts is deleted", () => {
+    expect(existsSync(fileURLToPath(new URL("./tracker.fixture.ts", import.meta.url)))).toBe(false);
+  });
+
+  test.fails("#611.2: the per-fixture JSON payloads are gone", () => {
+    const dir = fileURLToPath(new URL("./closing-prs.fixtures", import.meta.url));
+    const files = existsSync(dir) ? readdirSync(dir) : [];
+    expect(files).toHaveLength(0);
+  });
 });
 
 test("#585.3: the by-hand stand-down states the immutable-set rule from the set's own source, naming that file and the commit that changes it", () => {
