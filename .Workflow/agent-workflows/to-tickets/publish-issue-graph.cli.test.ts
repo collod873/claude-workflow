@@ -1,9 +1,12 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
+import type { CreateIssueInput } from "../shared/tracker";
+import { trackerMemory } from "../shared/tracker-memory";
 import { runPublishIssueGraphCli } from "./publish-issue-graph.cli";
 
 function writeGraph(parent: number, plan: unknown): string {
@@ -90,5 +93,20 @@ describe("publish-issue-graph.cli", () => {
     expect(overlapLines).toHaveLength(1);
     expect(overlapLines[0]).toContain("1");
     expect(overlapLines[0]).toContain("2");
+  });
+
+  test("#613.6: runPublishIssueGraphCli publishes through a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
+    const createdIssues: CreateIssueInput[] = [];
+    const tracker = trackerMemory({ firstIssueNumber: 999, issueIds: { 1000: 555000 }, createdIssues });
+    const plan = [slice({ title: "Root" })];
+    const file = writeGraph(42, plan);
+
+    const table = runPublishIssueGraphCli([file], tracker as unknown as GhExec);
+
+    expect(createdIssues).toHaveLength(1);
+    expect(createdIssues[0].title).toBe("Root");
+    const rootRow = table.split("\n").find((line) => line.includes("Root"));
+    expect(rootRow).toContain("1");
+    expect(rootRow).toContain("1000");
   });
 });

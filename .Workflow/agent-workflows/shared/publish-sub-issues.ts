@@ -1,10 +1,8 @@
 import { fetchIssueId, type GhExec } from "./gh";
 import { BY_HAND_LABEL, isByHandClaim } from "./immutable-set";
-import { parseIssueNumber } from "./issue-url";
 import type { Plan } from "./plan-schema";
 import { renderBody } from "./render-body";
-import { trackerGh } from "./tracker-gh";
-import type { Tracker } from "./tracker";
+import type { CreateIssueInput, Tracker } from "./tracker";
 
 export interface PublishedIssue {
   position: number;
@@ -13,14 +11,12 @@ export interface PublishedIssue {
   id: number;
 }
 
-export function publishSubIssues(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
-  const tracker = trackerGh(gh);
+export function publishSubIssues(plan: Plan, prdNumber: number, tracker: Tracker): PublishedIssue[] {
   return plan.map((slice, index) => {
     const body = renderBody(slice, prdNumber);
-    const createArgs = ["issue", "create", "--title", slice.title, "--body", body];
-    if (isByHandClaim(slice.filesClaimed)) createArgs.push("--label", BY_HAND_LABEL);
-    const createOutput = gh(createArgs);
-    const number = parseIssueNumber(createOutput, slice.title);
+    const input: CreateIssueInput = { title: slice.title, body, assignee: "" };
+    if (isByHandClaim(slice.filesClaimed)) input.label = BY_HAND_LABEL;
+    const number = tracker.createIssue(input);
     const id = fetchIssueId(tracker, number);
     tracker.addSubIssue(prdNumber, id);
     return { position: index + 1, title: slice.title, number, id };

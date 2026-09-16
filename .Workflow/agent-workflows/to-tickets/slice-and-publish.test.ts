@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
+import type { CreateIssueInput } from "../shared/tracker";
+import { trackerMemory } from "../shared/tracker-memory";
 import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
@@ -229,6 +232,20 @@ describe("sliceAndPublish rings no lane, leaving the recompute to notice the pub
     const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
     expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow();
+  });
+});
+
+describe("sliceAndPublish is driven off a Tracker rather than a raw GhExec", () => {
+  test("#613.2: sliceAndPublish drives the whole publish off a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
+    const createdIssues: CreateIssueInput[] = [];
+    const tracker = trackerMemory({ firstIssueNumber: 999, issueIds: { 1000: 555000 }, createdIssues });
+    const plan = [slice({ title: "Root" })];
+
+    const published = sliceAndPublish(plan, PRD_NUMBER, tracker as unknown as GhExec);
+
+    expect(published).toEqual([{ position: 1, title: "Root", number: 1000, id: 555000 }]);
+    expect(createdIssues).toHaveLength(1);
+    expect(createdIssues[0].title).toBe("Root");
   });
 });
 
