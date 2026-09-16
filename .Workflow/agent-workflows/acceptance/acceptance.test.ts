@@ -413,7 +413,7 @@ describe("commitAuthoredBatch", () => {
       ["ls-remote", "--heads", "origin", "accept/issue-162"],
       ["checkout", "-B", "accept/issue-162"],
       ["add", TEST_PATH, SUBJECT],
-      ["commit", "-m", deps.commitMessage],
+      ["commit", "--allow-empty", "-m", deps.commitMessage],
       ["push", "--no-verify", "origin", "HEAD:accept/issue-162"],
     ]);
     expect(git.calls.flat()).not.toContain("HEAD:main");
@@ -425,6 +425,12 @@ describe("commitAuthoredBatch", () => {
     expect(git.calls.at(-1)).toContain("--no-verify");
   });
 
+  it("commits a batch that adds nothing the tree did not already have, rather than dying on an empty index", () => {
+    const { deps, git } = committing(false);
+    commitAuthoredBatch(deps);
+    expect(git.calls.find((call) => call[0] === "commit")).toContain("--allow-empty");
+  });
+
   it("commits on top of the branch a sibling run already pushed, rather than replacing it", () => {
     const { deps, git } = committing(true);
     commitAuthoredBatch(deps);
@@ -433,7 +439,7 @@ describe("commitAuthoredBatch", () => {
       ["fetch", "origin", "accept/issue-162"],
       ["checkout", "-B", "accept/issue-162", "origin/accept/issue-162"],
       ["add", TEST_PATH, SUBJECT],
-      ["commit", "-m", deps.commitMessage],
+      ["commit", "--allow-empty", "-m", deps.commitMessage],
       ["push", "--no-verify", "origin", "HEAD:accept/issue-162"],
     ]);
   });
@@ -569,8 +575,8 @@ describe("runAcceptanceAuthor", () => {
     await outcome;
     expect(written).toEqual([TEST_PATH]);
     const commit = git.calls.find((call) => call[0] === "commit");
-    expect(commit?.[2]).toContain(`#${ISSUE}`);
-    expect(commit?.[2]).toContain(TEST_PATH);
+    expect(commit?.at(-1)).toContain(`#${ISSUE}`);
+    expect(commit?.at(-1)).toContain(TEST_PATH);
     expect(git.calls.filter((call) => call[0] === "push")).toEqual([
       ["push", "--no-verify", "origin", `HEAD:accept/issue-${ISSUE}`],
     ]);
