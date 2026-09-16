@@ -3,6 +3,8 @@ import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/
 import { sheet } from "../../shared/sheet.fixture";
 import { collectSheetContext } from "./sheet";
 import { fakeSheetGh } from "./sheet-gh.fixture";
+import { test } from "vitest";
+import { trackerMemory } from "../../shared/tracker-memory";
 
 describe("collectSheetContext", () => {
   it("reads adrPaths, coinedTerms and route from the accept's marker payload", () => {
@@ -95,4 +97,21 @@ describe("collectSheetContext", () => {
     expect(context.rulings).toContain("docs/adr/0002-new.md");
     expect(context.rulings).not.toContain("docs/adr/0001-old.md");
   });
+});
+
+test.fails("#616.2: collectSheetContext reads through a Tracker built from trackerMemory, not a bare GhExec", () => {
+  const payload: AcceptedPayload = { adrPaths: ["docs/adr/0070-slug.md"], coinedTerms: [], route: "short" };
+  const tracker = trackerMemory({
+    issues: {
+      1: {
+        body: "the owner's words",
+        comments: [sheetMarker(sheet()), acceptedMarker(payload)],
+      },
+    },
+  });
+
+  const { context } = collectSheetContext(tracker as unknown as Parameters<typeof collectSheetContext>[0], 1);
+
+  expect(context.ownerWords).toBe("the owner's words");
+  expect(context.rulings).toBe("- docs/adr/0070-slug.md");
 });

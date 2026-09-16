@@ -86,3 +86,20 @@ test("#615.5: collectMapContext still produces the five-field Decided-context sh
 
   expect(Object.keys(context).sort()).toEqual(DECIDED_CONTEXT_KEYS);
 });
+
+test.fails(
+  "#616.3: collectSheetContext, migrated onto Tracker, still produces the five-field Decided-context shape when read through trackerMemory",
+  () => {
+    const payload: AcceptedPayload = { adrPaths: ["docs/adr/0061-slug.md"], coinedTerms: ["Gate"], route: "short" };
+    const tracker = trackerMemory({
+      issues: {
+        1: { body: "the owner's words", comments: [sheetMarker(sheet()), acceptedMarker(payload)] },
+      },
+    });
+
+    const { context } = collectSheetContext(tracker as unknown as Parameters<typeof collectSheetContext>[0], 1);
+
+    expect(Object.keys(context).sort()).toEqual(DECIDED_CONTEXT_KEYS);
+    expect(context.ownerWords).toBe("the owner's words");
+  },
+);

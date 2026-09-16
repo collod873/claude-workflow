@@ -4,6 +4,8 @@ import { fakeSheetGh } from "../spec/collectors/sheet-gh.fixture";
 import { invocationFromEnv } from "../spec/spec";
 import { fixtureFor } from "./canary-fixture.ts";
 import { planFire } from "./canary-fire-plan.ts";
+import { test } from "vitest";
+import { trackerMemory } from "./tracker-memory";
 
 describe("fixtureFor", () => {
   it("has nothing to say about a lane whose fire carries no issue", () => {
@@ -42,4 +44,15 @@ describe("fixtureFor", () => {
       issueNumber: 7,
     });
   });
+});
+
+test.fails("#616.4: satisfies the collector reading the sheet-accepted fire through a Tracker built from trackerMemory", () => {
+  const seeded = fixtureFor("spec")!;
+  const tracker = trackerMemory({ issues: { 1: { body: seeded.body, comments: seeded.comments } } });
+
+  const { context, decisions } = collectSheetContext(tracker as unknown as Parameters<typeof collectSheetContext>[0], 1);
+
+  expect(context.ownerWords).toBe(seeded.body);
+  expect(context.boundaries).toContain("short");
+  expect(decisions.length).toBeGreaterThan(0);
 });
