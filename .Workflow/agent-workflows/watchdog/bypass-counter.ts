@@ -1,59 +1,18 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
 import { SignalIssueSchema } from "../shared/signal-issue-schema";
+import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type VerifyRun } from "./bypass";
-
-const ApiRun = z.object({
-  id: z.number(),
-  conclusion: z.string().nullable(),
-  html_url: z.string(),
-  head_branch: z.string().nullable(),
-  created_at: z.string(),
-  event: z.string(),
-});
-
-const JobsResponse = z.object({
-  jobs: z.array(
-    z.object({
-      steps: z.array(
-        z.object({
-          name: z.string(),
-          conclusion: z.string().nullable(),
-        }),
-      ),
-    }),
-  ),
-});
 
 export const RUN_PAGE_SIZE = 100;
 
 export const MAX_JOB_READS = 60;
 
-function readRuns(
-  gh: GhExec,
-  verifyWorkflow: string,
-): Array<{ id: number; conclusion: string; htmlUrl: string; headBranch: string; createdAt: string; event: string }> {
-  const projection = "[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at, event}]";
-  const raw = gh(["api", workflowRunsPath(verifyWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
-  return ApiRun.array()
-    .parse(JSON.parse(raw))
-    .map((run) => ({
-      id: run.id,
-      conclusion: run.conclusion ?? "",
-      htmlUrl: run.html_url,
-      headBranch: run.head_branch ?? "",
-      createdAt: run.created_at,
-      event: run.event,
-    }));
-}
-
-function failedStepName(gh: GhExec, runId: number): string | undefined {
-  const raw = gh(["api", runJobsPath(runId)]);
-  const parsed = JobsResponse.parse(JSON.parse(raw));
-  for (const job of parsed.jobs) {
+function failedStepName(tracker: Tracker, runId: number): string | undefined {
+  for (const job of tracker.jobs(runId)) {
     const failed = job.steps.find((step) => step.conclusion === "failure");
     if (failed) return failed.name;
   }
@@ -98,8 +57,9 @@ export interface BypassCounterOutcome {
 export function runBypassCounter(options: BypassCounterOptions): BypassCounterOutcome {
   const { gh, assignee, verifyWorkflow } = options;
   const log = options.log ?? ((line: string) => console.log(line));
+  const tracker = trackerGh(gh);
 
-  const runs = readRuns(gh, verifyWorkflow);
+  const runs = tracker.workflowRuns(verifyWorkflow, RUN_PAGE_SIZE);
   const failed = runs.filter((run) => run.conclusion === "failure");
 
   const read = failed.slice(0, MAX_JOB_READS);
@@ -113,7 +73,7 @@ export function runBypassCounter(options: BypassCounterOptions): BypassCounterOu
     createdAt: run.createdAt,
     htmlUrl: run.htmlUrl,
     conclusion: run.conclusion,
-    failedStep: failedStepName(gh, run.id),
+    failedStep: failedStepName(tracker, run.id),
     event: run.event,
   }));
 

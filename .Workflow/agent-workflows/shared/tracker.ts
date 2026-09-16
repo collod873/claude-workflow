@@ -16,7 +16,14 @@ export interface TrackerJob {
   steps: TrackerJobStep[];
 }
 
+export interface TrackerBlocker {
+  number: number;
+  state: string;
+  stateReason: string | null;
+}
+
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   jobs(runId: number): TrackerJob[];
+  blockedBy(number: number): TrackerBlocker[];
 }

@@ -36,14 +36,14 @@ function ghStub(): GhExec {
   };
 }
 
-test.fails("#607.2: the memory adapter answers workflowRuns and jobs from its seeded Map", () => {
+test("#607.2: the memory adapter answers workflowRuns and jobs from its seeded Map", () => {
   const tracker = trackerMemory({ runs: [RUN], jobs: { [RUN.id]: [JOB] } });
 
   expect(tracker.workflowRuns("verify.yml", 5)).toEqual([RUN]);
   expect(tracker.jobs(RUN.id)).toEqual([JOB]);
 });
 
-test.fails("#607.2: the gh adapter answers workflowRuns and jobs the same as the memory adapter, from a stub GhExec", () => {
+test("#607.2: the gh adapter answers workflowRuns and jobs the same as the memory adapter, from a stub GhExec", () => {
   const tracker = trackerGh(ghStub());
 
   expect(tracker.workflowRuns("verify.yml", 5)).toEqual([RUN]);
