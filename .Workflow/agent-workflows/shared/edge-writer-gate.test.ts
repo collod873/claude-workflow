@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import { binSources, laneSources } from "./repo-sources";
 
 const GH_PATHS_IMPORT = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["'][^"']*\/gh-paths["']/g;
@@ -43,4 +44,18 @@ describe("the blocked-by graph has one writer, lane 03 (ADR-0069, #601)", () => 
 
     expect(spellers).toEqual([]);
   });
+});
+
+test.fails("#607.7: tracker-gh.ts joins ticket-state.ts and publish-sub-issues.ts as importers of blockedByPath", () => {
+  const modules = laneSources().filter((file) => file.relative.endsWith(".ts") && !NOT_A_MODULE.test(file.relative));
+  const importers = modules
+    .filter((file) => importsBlockedByPath(file.source))
+    .map((file) => file.relative)
+    .sort();
+
+  expect(importers).toEqual([
+    ".Workflow/agent-workflows/dispatch/ticket-state.ts",
+    ".Workflow/agent-workflows/shared/publish-sub-issues.ts",
+    ".Workflow/agent-workflows/shared/tracker-gh.ts",
+  ]);
 });
