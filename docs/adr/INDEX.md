@@ -118,6 +118,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0196 | [A machine repairs a violation only where the fix is uniquely determined, reports it, and never touches prose a human signed](0196-a-repairer-resolves-a-claim-only-when-exactly-one-candidate.md) |
 | 0197 | [A rule earns impossible only when its set is closed by deliberate act and a wrong exclusion fails at authoring time](0197-a-rule-is-made-impossible-only-when-the-forbidden-space-is-c.md) |
 | 0198 | [A stage carries a resolution to the next stage and leaves it to rediscover a judgment](0198-a-stage-carries-a-resolution-to-the-next-stage-and-leaves-it.md) |
+| 0199 | [A file is held by a live run, never by a ticket, and the blocked-by graph has one writer, lane 03](0199-a-file-is-held-by-a-live-run-never-by-a-ticket-and-the-block.md) |
 
 ## Retired
 
@@ -213,4 +214,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-198 ADRs · 110 constraint · 43 note · 45 superseded · 22,447 words total.
+199 ADRs · 111 constraint · 43 note · 45 superseded · 22,586 words total.

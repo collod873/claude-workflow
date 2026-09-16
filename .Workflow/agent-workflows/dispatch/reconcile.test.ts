@@ -26,7 +26,6 @@ import {
   commentsCarrying,
   deadRun,
   HAND_WRITTEN_TICKET,
-  issueIdOf,
   liveRun,
   reconcileOver,
   RUNNABLE_BODY,
@@ -771,136 +770,87 @@ function claimingBody(paths: string[]): string {
   ].join("\n");
 }
 
-function wiredEdges(tracker: Tracker): number[] {
-  return tracker.edges.map((edge) => edge.blocked).sort((left, right) => left - right);
+function readyClaiming(number: number, paths: string[]): FakeIssue {
+  return { number, title: `Ready over ${paths.join(", ")}`, body: `## Parent PRD\n#145\n\n${claimingBody(paths)}` };
 }
 
-test(
-  "#559.8: a blocked_by write the tracker refuses costs the pass that one edge and nothing else: the run reaches its verdict and the refusal is logged against both numbers",
-  () => {
+const LABELS_FAMILY = ".Workflow/agent-workflows/shared/labels.ts";
+
+function edgeWrites(tracker: Tracker): string[][] {
+  return tracker.calls.filter(
+    (call) => call[0] === "api" && call.some((arg) => arg.includes("dependencies/blocked_by")) && (call.includes("-F") || call.includes("-f")),
+  );
+}
+
+describe("#601: a file is held by a live run, never by a ticket", () => {
+  it("skips a ready ticket whose claim overlaps a live run's ticket, names both numbers and the path, and writes no edge", () => {
     const lines: string[] = [];
     const tracker = trackerWith({
-      open: [
-        { number: 60, title: "One slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-        { number: 61, title: "Another slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-      ],
+      open: [{ number: 20, title: "Building the labels family", body: claimingBody([LABELS_FAMILY]) }, readyClaiming(21, [LABELS_FAMILY])],
+      runs: [liveRun(900, "Implement #20")],
     });
-    const refusing: GhExec = (args) => {
-      if (args.includes("-F") && args.some((arg) => arg.endsWith("/dependencies/blocked_by"))) {
-        throw new Error("gh: Not Found (HTTP 404)");
-      }
-      return tracker.gh(args);
-    };
 
-    const outcome = reconcileOver(tracker, { gh: refusing, log: (line) => lines.push(line) });
+    const outcome = reconcileOver(tracker, { log: (line) => lines.push(line) });
 
-    expect(outcome.action).not.toBe("degraded");
-    expect(tracker.edges).toEqual([]);
+    expect(startedIssues(tracker)).toEqual([]);
+    expect(outcome.dispatched).toEqual([]);
+    const held = lines.find((line) => line.includes("#21") && line.includes("#20"));
+    expect(held).toBeDefined();
+    expect(held).toContain(LABELS_FAMILY);
+    expect(edgeWrites(tracker)).toEqual([]);
+  });
 
-    const refused = lines.find((line) => line.includes("#60") && line.includes("#61"));
-    expect(refused).toBeDefined();
-    expect(refused).toContain("404");
-  },
-);
-
-test(
-  "#559.2: a reconcile pass over two dispatchable open tickets whose claims collide with no ordering between them wires the edge itself, lower number blocking higher, and logs both numbers and the overlapping path",
-  () => {
+  it("dispatches exactly one of two ready tickets that overlap only each other, and the other's line names the one that went", () => {
     const lines: string[] = [];
-    const tracker = trackerWith({
-      open: [
-        { number: 20, title: "One slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-        { number: 21, title: "Another slice of the labels family", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-      ],
-    });
+    const tracker = trackerWith({ open: [readyClaiming(30, [LABELS_FAMILY]), readyClaiming(31, [LABELS_FAMILY])] });
 
     reconcileOver(tracker, { log: (line) => lines.push(line) });
 
-    expect(wiredEdges(tracker)).toEqual([21]);
-    expect(tracker.edges).toEqual([{ blocked: 21, blockerId: issueIdOf(20) }]);
-
-    const wired = lines.find((line) => line.includes("#20") && line.includes("#21"));
-    expect(wired).toBeDefined();
-    expect(wired).toContain("shared/labels.ts");
-  },
-);
-
-test(
-  "#559.3: a colliding pair already ordered by the transitive closure of blockedBy is left untouched, while an unordered pair in the same pass is still edged",
-  () => {
-    const chained = ".Workflow/agent-workflows/dispatch/reconcile.ts";
-    const tracker = trackerWith({
-      open: [
-        { number: 30, title: "First slice over one file", body: claimingBody([chained]) },
-        { number: 31, title: "Second slice over one file", body: claimingBody([chained]), blockedBy: [30] },
-        { number: 32, title: "Third slice over one file", body: claimingBody([chained]), blockedBy: [31] },
-        { number: 33, title: "One unordered slice", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-        { number: 34, title: "The other unordered slice", body: claimingBody([".Workflow/agent-workflows/shared/labels.ts"]) },
-      ],
-    });
-
-    reconcileOver(tracker);
-
-    expect(wiredEdges(tracker)).toEqual([34]);
-  },
-);
-
-test(
-  "#559.4: a colliding pair where either side is never dispatched (`prd`, `idea`) earns no edge, while an ordinary unordered pair still does",
-  () => {
-    const tracker = trackerWith({
-      open: [
-        {
-          number: 40,
-          title: "PRD: the dispatch lane",
-          body: claimingBody([".Workflow/agent-workflows/dispatch/*.ts"]),
-          labels: ["prd"],
-        },
-        {
-          number: 41,
-          title: "A slice of the dispatch lane",
-          body: claimingBody([".Workflow/agent-workflows/dispatch/reconcile.ts"]),
-        },
-        {
-          number: 42,
-          title: "An idea about the shape family",
-          body: claimingBody([".Workflow/agent-workflows/shared/ticket-shape.ts"]),
-          labels: ["idea"],
-        },
-        {
-          number: 43,
-          title: "A slice of the shape family",
-          body: claimingBody([".Workflow/agent-workflows/shared/ticket-shape.ts"]),
-        },
-        { number: 44, title: "One gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
-        { number: 45, title: "Another gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
-      ],
-    });
-
-    reconcileOver(tracker);
-
-    expect(wiredEdges(tracker)).toEqual([45]);
-  },
-);
-
-test("a `parked` ticket wires no edge, so setting one down stops it gating everything its claim touches", () => {
-  const tracker = trackerWith({
-    open: [
-      {
-        number: 50,
-        title: "A ticket set down for now",
-        body: claimingBody(["docs/adr/"]),
-        labels: ["ticket", "parked"],
-      },
-      { number: 51, title: "A ticket touching one ADR", body: claimingBody(["docs/adr/0174-a-standard.md"]) },
-      { number: 52, title: "One gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
-      { number: 53, title: "Another gh slice", body: claimingBody([".Workflow/agent-workflows/shared/gh.ts"]) },
-    ],
+    const started = startedIssues(tracker);
+    expect(started).toHaveLength(1);
+    const [went] = started;
+    const other = went === 30 ? 31 : 30;
+    const held = lines.find((line) => line.includes(`#${other}`) && line.includes(`#${went}`));
+    expect(held).toBeDefined();
+    expect(held).toContain(LABELS_FAMILY);
+    expect(edgeWrites(tracker)).toEqual([]);
   });
 
-  reconcileOver(tracker);
+  it("dispatches the skipped ticket on the next pass, once the run it overlapped has completed", () => {
+    const run = liveRun(900, "Implement #20");
+    const tracker = trackerWith({
+      open: [{ number: 20, title: "Building the labels family", body: claimingBody([LABELS_FAMILY]) }, readyClaiming(21, [LABELS_FAMILY])],
+      runs: [run],
+    });
 
-  expect(wiredEdges(tracker)).toEqual([53]);
+    reconcileOver(tracker);
+    expect(startedIssues(tracker)).toEqual([]);
+
+    run.status = "completed";
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker)).toEqual([21]);
+  });
+
+  it("dispatches a ready ticket whose claim overlaps only a `prd`, an `idea`, or a ticket with no live run", () => {
+    const shape = ".Workflow/agent-workflows/shared/ticket-shape.ts";
+    const gh = ".Workflow/agent-workflows/shared/gh.ts";
+    const tracker = trackerWith({
+      open: [
+        { number: 40, title: "PRD: the dispatch lane", body: claimingBody([".Workflow/agent-workflows/dispatch/*.ts"]), labels: ["prd"] },
+        readyClaiming(41, [".Workflow/agent-workflows/dispatch/reconcile.ts"]),
+        { number: 42, title: "An idea about the shape family", body: claimingBody([shape]), labels: ["idea"] },
+        readyClaiming(43, [shape]),
+        { number: 44, title: "Open, with nothing running", body: claimingBody([gh]) },
+        readyClaiming(45, [gh]),
+      ],
+      runs: [liveRun(900, "Implement #40"), liveRun(901, "Acceptance #42")],
+    });
+
+    reconcileOver(tracker);
+
+    expect(startedIssues(tracker).sort((left, right) => left - right)).toEqual([41, 43, 45]);
+  });
 });
 
 test(
@@ -914,31 +864,6 @@ test(
 
     expect(paragraphs.length).toBeGreaterThan(0);
     expect(paragraphs.some((paragraph) => paragraph.includes("reconcile"))).toBe(true);
-  },
-);
-
-test(
-  "#559.7: each of the four unordered colliding pairs open today is ordered by a reconcile pass, lower number blocking higher",
-  () => {
-    const pairs = [
-      { lower: 397, higher: 401, path: "drain/SKILL.md" },
-      { lower: 410, higher: 555, path: ".claude/contract.json" },
-      { lower: 550, higher: 556, path: "dispatch/reconcile.ts" },
-      { lower: 550, higher: 557, path: "shared/labels.ts" },
-    ];
-
-    for (const pair of pairs) {
-      const tracker = trackerWith({
-        open: [
-          { number: pair.lower, title: `Claims ${pair.path}`, body: claimingBody([pair.path]) },
-          { number: pair.higher, title: `Also claims ${pair.path}`, body: claimingBody([pair.path]) },
-        ],
-      });
-
-      reconcileOver(tracker);
-
-      expect(wiredEdges(tracker), `#${pair.lower} should block #${pair.higher} over ${pair.path}`).toEqual([pair.higher]);
-    }
   },
 );
 
@@ -958,7 +883,7 @@ test(
     const outcome = reconcileOver(tracker);
 
     expect(outcome.action).not.toBe("degraded");
-    expect(wiredEdges(tracker)).toEqual([81]);
+    expect(edgeWrites(tracker)).toEqual([]);
   },
 );
 

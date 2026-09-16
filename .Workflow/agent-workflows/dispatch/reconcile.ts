@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
-import { execGh, fetchIssueId, type GhExec } from "../shared/gh";
-import { blockedByPath, issueCommentPath } from "../shared/gh-paths";
+import { execGh, type GhExec } from "../shared/gh";
+import { issueCommentPath } from "../shared/gh-paths";
 import {
   ACCEPTING_LABEL,
   BUILDING_LABEL,
@@ -42,6 +42,7 @@ import {
   rungFor,
   signatureFromLog,
   strikeBody,
+  ticketsInFlight,
   type LaneRun,
   type Next,
   type Rung,
@@ -570,76 +571,40 @@ function reportUnreachable(
   return naming.map((finding) => finding.number);
 }
 
-function neverDispatched(labels: readonly string[]): boolean {
-  return labels.includes(PRD_LABEL) || labels.includes(IDEA_LABEL) || labels.includes(PARKED_LABEL);
+function neverBuilt(labels: readonly string[]): boolean {
+  return labels.includes(PRD_LABEL) || labels.includes(IDEA_LABEL);
 }
 
-function blockedByTransitively(byNumber: Map<number, TicketState>, from: number, target: number): boolean {
-  const seen = new Set<number>();
-  const stack = [...(byNumber.get(from)?.blockedBy ?? [])];
-  while (stack.length > 0) {
-    const current = stack.pop() as number;
-    if (current === target) return true;
-    if (seen.has(current)) continue;
-    seen.add(current);
-    stack.push(...(byNumber.get(current)?.blockedBy ?? []));
-  }
-  return false;
+interface Holder {
+  number: number;
+  claim: string[];
+  wentThisPass: boolean;
 }
 
-function alreadyOrdered(byNumber: Map<number, TicketState>, a: number, b: number): boolean {
-  return blockedByTransitively(byNumber, a, b) || blockedByTransitively(byNumber, b, a);
+interface Held {
+  holder: Holder;
+  path: string;
 }
 
-function findCollidingPath(claim: readonly string[], other: readonly string[]): string | undefined {
-  for (const path of claim) {
-    for (const otherPath of other) {
-      if (claimsCollide([path], [otherPath])) return path;
-    }
+function liveRunHolders(tickets: TicketState[], inFlight: Set<number>): Holder[] {
+  return tickets
+    .filter((ticket) => inFlight.has(ticket.number) && !neverBuilt(ticket.labels))
+    .map((ticket) => ({ number: ticket.number, claim: extractFilesClaimed(ticket.body), wentThisPass: false }));
+}
+
+function heldBy(claim: readonly string[], holders: readonly Holder[]): Held | undefined {
+  for (const holder of holders) {
+    const path = claim.find((each) => claimsCollide([each], holder.claim));
+    if (path !== undefined) return { holder, path };
   }
   return undefined;
 }
 
-function issueIdOf(gh: GhExec, known: Map<number, number>, number: number): number {
-  const seen = known.get(number);
-  if (seen !== undefined) return seen;
-  const id = fetchIssueId(gh, number);
-  known.set(number, id);
-  return id;
-}
-
-function wireClaimCollisions(
-  gh: GhExec,
-  tickets: TicketState[],
-  byNumber: Map<number, TicketState>,
-  log: (line: string) => void,
-  dryRun: boolean,
-): void {
-  const dispatchable = tickets.filter((ticket) => !neverDispatched(ticket.labels)).sort((a, b) => a.number - b.number);
-  const issueIds = new Map<number, number>();
-
-  for (let i = 0; i < dispatchable.length; i++) {
-    const lower = dispatchable[i];
-    const lowerClaim = extractFilesClaimed(lower.body);
-    if (lowerClaim.length === 0) continue;
-    for (let j = i + 1; j < dispatchable.length; j++) {
-      const higher = dispatchable[j];
-      if (alreadyOrdered(byNumber, lower.number, higher.number)) continue;
-      const overlap = findCollidingPath(lowerClaim, extractFilesClaimed(higher.body));
-      if (overlap === undefined) continue;
-      if (dryRun) {
-        log(`would wire #${lower.number} blocking #${higher.number}: both claim ${overlap}.`);
-        continue;
-      }
-      try {
-        gh(["api", blockedByPath(higher.number), "-F", `issue_id=${issueIdOf(gh, issueIds, lower.number)}`]);
-      } catch (err) {
-        log(`could not wire #${lower.number} blocking #${higher.number} over ${overlap}: ${reason(err)}`);
-        continue;
-      }
-      log(`#${lower.number} blocks #${higher.number}: both claim ${overlap}.`);
-    }
-  }
+function heldLine(number: number, held: Held): string {
+  const by = held.holder.wentThisPass
+    ? `#${held.holder.number} went earlier in this pass`
+    : `#${held.holder.number} has a live run`;
+  return `#${number}: not dispatching this pass; ${by} and both claim ${held.path}.`;
 }
 
 export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
@@ -657,8 +622,6 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   }
 
   const { tickets, byNumber } = states;
-
-  wireClaimCollisions(gh, tickets, byNumber, log, dryRun);
 
   for (const ticket of tickets) {
     if (!ticket.isSpec) continue;
@@ -715,13 +678,22 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const authoring: number[] = [];
   const deciding: number[] = [];
   const logReads = { left: MAX_STRIKE_LOG_READS };
+  const holders = liveRunHolders(tickets, ticketsInFlight(states.runs));
   for (const ticket of ready) {
     const authored = ticket.stage === "needs-build";
     const wants = authored ? "ticket-ready" : "acceptance-wanted";
+    const claim = extractFilesClaimed(ticket.body);
+    const held = heldBy(claim, holders);
+    if (held !== undefined) {
+      log(heldLine(ticket.number, held));
+      continue;
+    }
+    const went = () => holders.push({ number: ticket.number, claim, wentThisPass: true });
 
     if (dryRun) {
       log(`would dispatch ${wants} for #${ticket.number}.`);
       dispatched.push(ticket.number);
+      went();
       continue;
     }
     try {
@@ -734,6 +706,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
         const freshEyes = authorRung(rung) === "author-fresh-eyes";
         dispatchAcceptanceWanted(gh, ticket.number, false, freshEyes);
         authoring.push(ticket.number);
+        went();
         markLane(gh, ticket.number, ACCEPTING_LABEL, ticket.labels);
         stamp(stamps, ticket.number, ACCEPTING_LABEL);
         dropToBuild(gh, ticket);
@@ -746,6 +719,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       if (rung === "mechanic") dispatchMechanicWanted(gh, ticket.number);
       else dispatchTicketReady(gh, ticket.number, rung === "fresh-eyes");
       dispatched.push(ticket.number);
+      went();
       markLane(gh, ticket.number, BUILDING_LABEL, ticket.labels);
       stamp(stamps, ticket.number, BUILDING_LABEL);
       dropToBuild(gh, ticket);
