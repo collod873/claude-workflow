@@ -1,14 +1,144 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { issueCommentsPath, subIssuesPath } from "../shared/gh-paths";
 import { BY_HAND_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL } from "../shared/labels";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
-import { authoredOn, deadRun, HAND_WRITTEN_TICKET, liveRun, silent, trackerWith, type TrackerOptions } from "./tracker.fixture";
+import type { Tracker, TrackerBlocker } from "../shared/tracker";
+import { openIssuesAnswer, runListAnswer } from "../shared/gh-list-answers.fixture";
 import { ticketState, TO_BUILD_REFUSED_MARKER, type TicketState, type TicketStates } from "./ticket-state";
 import { TO_BUILD_LABEL } from "./reconcile";
 
-function stateOver(options: TrackerOptions, authored: number[] = [], dryRun = false): TicketStates {
-  return ticketState({ gh: trackerWith(authoredOn(options, authored)).gh, log: silent, dryRun });
+export const silent = () => {};
+
+export const HAND_WRITTEN_TICKET = [
+  "## What to build",
+  "",
+  "Something the owner could already write in full.",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] `make gate` exits 0 — check: `make gate`",
+  "",
+  "## Files claimed",
+  "",
+  "- None — no files.",
+  "",
+].join("\n");
+
+function defaultBody(): string {
+  return "## Parent PRD\n#145\n\n## What to build\nSomething.\n";
+}
+
+interface FakeIssue {
+  number: number;
+  title: string;
+  body?: string;
+  blockedBy?: number[];
+  labels?: string[];
+  comments?: string[];
+  children?: number[];
+}
+
+interface FakeClosed {
+  number: number;
+  stateReason: "completed" | "not_planned";
+  merged?: boolean;
+}
+
+interface FakeRun {
+  id: number;
+  title: string;
+  status?: "completed" | "in_progress" | "queued";
+  conclusion?: "success" | "failure" | "cancelled" | "timed_out";
+}
+
+export function deadRun(id: number, ticket: number, failedLog?: string, conclusion: FakeRun["conclusion"] = "failure"): FakeRun {
+  return { id, title: `Implement #${ticket}`, conclusion };
+}
+
+export function liveRun(id: number, title: string): FakeRun {
+  return { id, title, status: "in_progress" };
+}
+
+interface Options {
+  open: FakeIssue[];
+  closed?: FakeClosed[];
+  runs?: FakeRun[];
+  branches?: string[];
+  fail?: "issues" | "refs" | "edges";
+}
+
+function authoredOn(options: Options, tickets: number[]): Options {
+  return { ...options, branches: [...(options.branches ?? []), ...tickets.map((ticket) => `accept/issue-${ticket}`)] };
+}
+
+function trackerWith(options: Options): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  const runs = options.runs ?? [];
+
+  const gh: GhExec = (args) => {
+    calls.push([...args]);
+
+    if (args[0] === "issue" && args[1] === "list") {
+      if (options.fail === "issues") throw new Error("gh: 403");
+      return openIssuesAnswer(options.open, defaultBody);
+    }
+    if (args[0] === "pr" && args[1] === "list") {
+      return JSON.stringify([]);
+    }
+    if (args[0] === "run" && args[1] === "list") {
+      return runListAnswer(runs);
+    }
+    if (args[0] === "run" && args[1] === "view") return "";
+    throw new Error(`unexpected gh call: ${JSON.stringify(args)}`);
+  };
+
+  return { gh, calls };
+}
+
+function blockerRef(number: number, options: Options): TrackerBlocker {
+  const record = (options.closed ?? []).find((closed) => closed.number === number);
+  return record ? { number, state: "closed", stateReason: record.stateReason } : { number, state: "open", stateReason: null };
+}
+
+function trackerFor(options: Options): { tracker: Tracker; commentCalls: number[] } {
+  const open = new Map(options.open.map((issue) => [issue.number, issue]));
+  const closed = new Map((options.closed ?? []).map((issue) => [issue.number, issue]));
+  const branches = options.branches ?? [];
+  const commentCalls: number[] = [];
+
+  const tracker: Tracker = {
+    workflowRuns: () => [],
+    jobs: () => [],
+    blockedBy(number) {
+      if (options.fail === "edges") throw new Error("gh: 403");
+      return (open.get(number)?.blockedBy ?? []).map((blocker) => blockerRef(blocker, options));
+    },
+    children(number) {
+      return (open.get(number)?.children ?? []).map((child) => blockerRef(child, options));
+    },
+    comments(number) {
+      commentCalls.push(number);
+      return (open.get(number)?.comments ?? []).map((body, index) => ({ id: number * 1000 + index, body }));
+    },
+    recordComments: () => [],
+    branchesUnder(prefix) {
+      if (options.fail === "refs") throw new Error("gh: 403");
+      return branches.filter((branch) => branch.startsWith(prefix));
+    },
+    mergedCloser(number) {
+      const record = closed.get(number);
+      return record?.merged ? number * 10 + 4 : undefined;
+    },
+  };
+
+  return { tracker, commentCalls };
+}
+
+function stateOver(options: Options, authored: number[] = [], dryRun = false): TicketStates {
+  const withBranches = authoredOn(options, authored);
+  return ticketState({ gh: trackerWith(withBranches).gh, tracker: trackerFor(withBranches).tracker, log: silent, dryRun });
 }
 
 const record = (states: TicketStates, number: number): TicketState => states.byNumber.get(number) as TicketState;
@@ -79,7 +209,7 @@ describe("one record per open ticket, read once", () => {
 });
 
 describe("the record says what the door decided, so the pass never asks the body twice", () => {
-  const door = (issue: Partial<TrackerOptions["open"][number]>, dryRun = false) =>
+  const door = (issue: Partial<FakeIssue>, dryRun = false) =>
     record(
       stateOver(
         { open: [{ number: 42, title: "At the door", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL], ...issue }] },
@@ -138,32 +268,32 @@ describe("the record says what the door decided, so the pass never asks the body
 
 describe("what the record does not go back to the tracker for", () => {
   it("reads no comments for a ticket it admits and cannot dispatch yet", () => {
-    const tracker = trackerWith({
+    const options: Options = {
       open: [
         { number: 11, title: "Still building" },
         { number: 12, title: "Admitted, blocked", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL], blockedBy: [11] },
       ],
-    });
+    };
+    const { tracker, commentCalls } = trackerFor(options);
 
-    ticketState({ gh: tracker.gh, log: silent, dryRun: false });
+    ticketState({ gh: trackerWith(options).gh, tracker, log: silent, dryRun: false });
 
-    expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/12/comments")))).toEqual([]);
+    expect(commentCalls).not.toContain(12);
   });
 
   it("asks each ticket for its comments at most once, however many decisions read them", () => {
-    const tracker = trackerWith(
-      authoredOn(
-        {
-          open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL] }],
-          runs: [deadRun(900, 77, "implement failed: x\n")],
-        },
-        [77],
-      ),
+    const options = authoredOn(
+      {
+        open: [{ number: 77, title: "A ticket", body: HAND_WRITTEN_TICKET, labels: [TO_BUILD_LABEL] }],
+        runs: [deadRun(900, 77, "implement failed: x\n")],
+      },
+      [77],
     );
+    const { tracker, commentCalls } = trackerFor(options);
 
-    ticketState({ gh: tracker.gh, log: silent, dryRun: false });
+    ticketState({ gh: trackerWith(options).gh, tracker, log: silent, dryRun: false });
 
-    expect(tracker.calls.filter((call) => call.some((arg) => arg.includes("/issues/77/comments")))).toHaveLength(1);
+    expect(commentCalls.filter((number) => number === 77)).toHaveLength(1);
   });
 
   it("names a spec's sub-issues on the record, so the rollup and the closing attempt share one read", () => {
@@ -194,7 +324,7 @@ describe("a read it cannot finish is said once, not half-answered", () => {
 });
 
 describe("a spec's children and comments come from the tracker, not a gh api argv ticket-state builds itself", () => {
-  test.fails("#609.1: fetchChildren and fetchComments answer without ticket-state.ts building a gh api argv", () => {
+  test("#609.1: fetchChildren and fetchComments answer without ticket-state.ts building a gh api argv", () => {
     const fixture = trackerWith({
       open: [
         {

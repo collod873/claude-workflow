@@ -10,6 +10,7 @@ import {
   matchingRefsPath,
   subIssuesPathMatcher,
 } from "../shared/gh-paths";
+import { openIssuesAnswer, runListAnswer } from "../shared/gh-list-answers.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
 import { runReconcile, type ReconcileInput, type ReconcileOutcome } from "./reconcile";
 
@@ -221,15 +222,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
 
     if (args[0] === "run" && args[1] === "list") {
       if (options.fail === "runs") throw new Error("gh: 403");
-      return JSON.stringify(
-        runs.map((run) => ({
-          databaseId: run.id,
-          displayTitle: run.title,
-          status: run.status ?? "completed",
-          conclusion: run.status === undefined || run.status === "completed" ? (run.conclusion ?? "success") : null,
-          url: `https://github.com/owner/repo/actions/runs/${run.id}`,
-        })),
-      );
+      return runListAnswer(runs);
     }
     if (args[0] === "run" && args[1] === "view") {
       return runs.find((run) => run.id === Number(args[2]))?.failedLog ?? "";
@@ -254,14 +247,7 @@ export function trackerWith(options: TrackerOptions): Tracker {
         );
       }
       if (options.fail === "issues") throw new Error("gh: 403");
-      return JSON.stringify(
-        options.open.map((issue) => ({
-          number: issue.number,
-          title: issue.title,
-          body: issue.body ?? sliceBody(),
-          labels: (issue.labels ?? []).map((name) => ({ name })),
-        })),
-      );
+      return openIssuesAnswer(options.open, sliceBody);
     }
     if (args[0] === "issue" && args[1] === "view") {
       const number = Number(args[2]);

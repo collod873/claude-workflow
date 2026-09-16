@@ -22,14 +22,24 @@ export interface TrackerBlocker {
   stateReason: string | null;
 }
 
-export interface TrackerSubIssue {
-  number: number;
-  state: string;
+export interface TrackerComment {
+  id: number;
+  body: string;
+}
+
+export interface TrackerRecordComment {
+  body: string;
+  authorAssociation: string;
+  login: string | null;
 }
 
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   jobs(runId: number): TrackerJob[];
   blockedBy(number: number): TrackerBlocker[];
-  subIssues(prdNumber: number): TrackerSubIssue[];
+  children(number: number): TrackerBlocker[];
+  comments(number: number): TrackerComment[];
+  recordComments(number: number): TrackerRecordComment[];
+  branchesUnder(prefix: string): string[];
+  mergedCloser(number: number): number | undefined;
 }

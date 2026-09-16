@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GhExec } from "./gh";
-import { blockedByPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
-import type { Tracker, TrackerBlocker, TrackerSubIssue, WorkflowRun } from "./tracker";
+import { blockedByPath, issueCommentsPath, matchingRefsPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import type { Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
 
 const ApiRun = z.object({
   id: z.number(),
@@ -31,10 +31,21 @@ const ApiBlocker = z.object({
   state_reason: z.string().nullable().optional(),
 });
 
-const ApiSubIssue = z.object({
-  number: z.number(),
-  state: z.string(),
+const ApiComment = z.object({ id: z.number(), body: z.string() });
+
+const ApiRecordComment = z.object({
+  body: z.string(),
+  author_association: z.string(),
+  user: z.object({ login: z.string() }).nullable(),
 });
+
+const ApiRecordCommentPages = z.array(z.array(ApiRecordComment));
+
+const ApiRefs = z.array(z.string());
+
+const ClosingPrNumbers = z.array(z.number());
+
+const MERGED = "MERGED";
 
 function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
   return {
@@ -51,8 +62,16 @@ function toBlocker(blocker: z.infer<typeof ApiBlocker>): TrackerBlocker {
   return { number: blocker.number, state: blocker.state, stateReason: blocker.state_reason ?? null };
 }
 
-function toSubIssue(issue: z.infer<typeof ApiSubIssue>): TrackerSubIssue {
-  return { number: issue.number, state: issue.state };
+function toRecordComment(comment: z.infer<typeof ApiRecordComment>): TrackerRecordComment {
+  return { body: comment.body, authorAssociation: comment.author_association, login: comment.user?.login ?? null };
+}
+
+function prIsMerged(gh: GhExec, pr: number): boolean {
+  try {
+    return gh(["pr", "view", String(pr), "--json", "state", "--jq", ".state"]).trim() === MERGED;
+  } catch {
+    return false;
+  }
 }
 
 export function trackerGh(gh: GhExec): Tracker {
@@ -74,11 +93,45 @@ export function trackerGh(gh: GhExec): Tracker {
         .parse(JSON.parse(raw))
         .map(toBlocker);
     },
-    subIssues(prdNumber) {
-      const raw = gh(["api", subIssuesPath(prdNumber), "--jq", "[.[] | {number, state}]"]);
-      return ApiSubIssue.array()
+    children(number) {
+      const raw = gh(["api", subIssuesPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
+      return ApiBlocker.array()
         .parse(JSON.parse(raw))
-        .map(toSubIssue);
+        .map(toBlocker);
+    },
+    comments(number): TrackerComment[] {
+      const raw = gh(["api", issueCommentsPath(number)]);
+      return ApiComment.array().parse(JSON.parse(raw));
+    },
+    recordComments(number) {
+      const raw = gh(["api", issueCommentsPath(number), "--paginate", "--slurp"]);
+      return ApiRecordCommentPages.parse(JSON.parse(raw))
+        .flat()
+        .map(toRecordComment);
+    },
+    branchesUnder(prefix) {
+      const raw = gh(["api", matchingRefsPath(prefix), "--jq", "[.[].ref]"]);
+      return ApiRefs.parse(JSON.parse(raw)).map((ref) => ref.replace(/^refs\/heads\//, ""));
+    },
+    mergedCloser(number) {
+      let closers: number[];
+      try {
+        const raw = gh([
+          "issue",
+          "view",
+          String(number),
+          "--json",
+          "closedByPullRequestsReferences",
+          "--jq",
+          "[.closedByPullRequestsReferences[].number]",
+        ]);
+        const parsed = ClosingPrNumbers.safeParse(JSON.parse(raw));
+        if (!parsed.success) return undefined;
+        closers = parsed.data;
+      } catch {
+        return undefined;
+      }
+      return closers.find((pr) => prIsMerged(gh, pr));
     },
   };
 }
