@@ -42,7 +42,7 @@ function ghAnsweringOnlyPlainLists(): GhExec {
   };
 }
 
-test.fails("#610.3: runReconcile takes a tracker directly instead of always building trackerGh(gh) itself, so a tracker call never has to survive an unreadable gh answer underneath it", () => {
+test("#610.3: runReconcile takes a tracker directly instead of always building trackerGh(gh) itself, so a tracker call never has to survive an unreadable gh answer underneath it", () => {
   const input = { gh: ghAnsweringOnlyPlainLists(), tracker: trackerMemory(), log: () => {}, dryRun: true };
 
   const outcome = runReconcile(input);
