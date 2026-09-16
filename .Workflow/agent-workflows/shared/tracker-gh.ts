@@ -1,14 +1,16 @@
 import { z } from "zod";
-import { blockedByPath, issueCommentsPath, issuePath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
 
 const ApiRun = z.object({
   id: z.number(),
+  status: z.string(),
   conclusion: z.string().nullable(),
   html_url: z.string(),
   head_branch: z.string().nullable(),
+  head_sha: z.string(),
   created_at: z.string(),
   event: z.string(),
 });
@@ -27,6 +29,10 @@ const ApiRepoRun = z.object({
 const JobsResponse = z.object({
   jobs: z.array(
     z.object({
+      id: z.number(),
+      name: z.string(),
+      status: z.string(),
+      conclusion: z.string().nullable(),
       steps: z.array(
         z.object({
           name: z.string(),
@@ -58,13 +64,16 @@ const ApiRefs = z.array(z.string());
 const ClosingPrNumbers = z.array(z.number());
 
 const MERGED = "MERGED";
+const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
 
 function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
   return {
     id: run.id,
+    status: run.status,
     conclusion: run.conclusion ?? "",
     htmlUrl: run.html_url,
     headBranch: run.head_branch ?? "",
+    headSha: run.head_sha,
     createdAt: run.created_at,
     event: run.event,
   };
@@ -120,7 +129,8 @@ function toRepoRun(run: z.infer<typeof ApiRepoRun>): RepoRun {
 export function trackerGh(gh: GhExec): Tracker {
   return {
     workflowRuns(workflow, perPage) {
-      const projection = "[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at, event}]";
+      const projection =
+        "[.workflow_runs[] | {id, status, conclusion, html_url, head_branch, head_sha, created_at, event}]";
       const raw = gh(["api", workflowRunsPath(workflow, perPage), "--jq", projection]);
       return ApiRun.array()
         .parse(JSON.parse(raw))
@@ -137,6 +147,13 @@ export function trackerGh(gh: GhExec): Tracker {
     jobs(runId) {
       const raw = gh(["api", runJobsPath(runId)]);
       return JobsResponse.parse(JSON.parse(raw)).jobs;
+    },
+    jobLog(jobId) {
+      try {
+        return gh(["api", jobLogsPath(jobId), ALLOW_ESCAPE_SEQUENCES]);
+      } catch {
+        return gh(["api", jobLogsPath(jobId)]);
+      }
     },
     blockedBy(number) {
       const raw = gh(["api", blockedByPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);

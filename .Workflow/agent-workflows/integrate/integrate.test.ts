@@ -490,7 +490,7 @@ describe("runIntegrate never drains a PR it refused", () => {
 });
 
 describe("runIntegrate reads lane 06's run history through an injected tracker", () => {
-  test.fails("#623.5: an empty tracker leaves the head commit unjudged even though gh's own api answers describe a green run", () => {
+  test("#623.5: an empty tracker leaves the head commit unjudged even though gh's own api answers describe a green run", () => {
     const { deps } = integrateHarness({ closeTicket: CLOSED });
     const withEmptyTracker = { ...deps, tracker: trackerMemory({ runs: [] }) };
 

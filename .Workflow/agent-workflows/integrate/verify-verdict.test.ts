@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
-import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import type { Tracker } from "../shared/tracker";
 import { trackerMemory } from "../shared/tracker-memory";
 import { GATE_JOB, IMMUTABILITY_JOB, runIntegrate } from "./integrate";
 import {
@@ -19,7 +19,38 @@ import {
   type VerifyRunFixture,
 } from "./integrate-harness.fixture";
 
-const runsRead = (call: string[]) => workflowRunsPathMatcher.test((call[1] ?? "").split("?")[0]);
+interface TrackerSpy {
+  tracker: Tracker;
+  workflowsRead: string[];
+  jobsRead: number[];
+  jobLogsRead: number[];
+}
+
+function spyOnTracker(tracker: Tracker): TrackerSpy {
+  const workflowsRead: string[] = [];
+  const jobsRead: number[] = [];
+  const jobLogsRead: number[] = [];
+  return {
+    workflowsRead,
+    jobsRead,
+    jobLogsRead,
+    tracker: {
+      ...tracker,
+      workflowRuns: (workflow, perPage) => {
+        workflowsRead.push(workflow);
+        return tracker.workflowRuns(workflow, perPage);
+      },
+      jobs: (runId) => {
+        jobsRead.push(runId);
+        return tracker.jobs(runId);
+      },
+      jobLog: (jobId) => {
+        jobLogsRead.push(jobId);
+        return tracker.jobLog(jobId);
+      },
+    },
+  };
+}
 
 describe("runIntegrate reads lane 06's immutability verdict before merging", () => {
   it("refuses to merge when lane 06's immutability job failed for this head commit, whatever its own gauntlet said", () => {
@@ -36,21 +67,21 @@ describe("runIntegrate reads lane 06's immutability verdict before merging", () 
   });
 
   it("reads the verdict against the workflow file it was handed, and that run's jobs by id", () => {
-    const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
+    const { deps } = integrateHarness({ closeTicket: CLOSED });
+    const spy = spyOnTracker(deps.tracker);
 
-    runIntegrate(deps);
+    runIntegrate({ ...deps, tracker: spy.tracker });
 
-    const read = calls.find(runsRead);
-    expect(read, "no read of the Verify workflow's own run history").toBeDefined();
-    expect((read ?? [])[1]).toContain("verify-caller.yml");
-    expect(calls.some((call) => runJobsPathMatcher.test(call[1] ?? ""))).toBe(true);
+    expect(spy.workflowsRead, "no read of the Verify workflow's own run history").toContain(deps.verifyWorkflow);
+    expect(spy.jobsRead.length).toBeGreaterThan(0);
   });
 
   it("spends nothing on the lookup until its own gauntlet has reported green", () => {
     const lookups = ([1, 2] as const).flatMap((exitCode) => {
-      const { calls, deps } = integrateHarness({ gauntlet: { exitCode } });
-      runIntegrate(deps);
-      return calls.filter(runsRead);
+      const { deps } = integrateHarness({ gauntlet: { exitCode } });
+      const spy = spyOnTracker(deps.tracker);
+      runIntegrate({ ...deps, tracker: spy.tracker });
+      return spy.workflowsRead;
     });
 
     expect(lookups, "lane 06's run history was read on a run that was never going to merge").toEqual([]);
@@ -70,7 +101,7 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(outcome).not.toEqual({ merged: false, reason: "immutable-set" });
   });
 
-  test.fails("#623.6: refuses the same way when an injected tracker, rather than the verifyRuns fixture, carries no run of the Verify workflow", () => {
+  test("#623.6: refuses the same way when an injected tracker, rather than the verifyRuns fixture, carries no run of the Verify workflow", () => {
     const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
     const withEmptyTracker = { ...deps, tracker: trackerMemory({ runs: [] }) };
 
@@ -168,11 +199,11 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
 
   it("reads the judging log through the job-addressed API, which serves a finished job inside a run still in flight", () => {
     const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
+    const spy = spyOnTracker(deps.tracker);
 
-    runIntegrate(deps);
+    runIntegrate({ ...deps, tracker: spy.tracker });
 
-    const logReads = calls.filter((call) => call[0] === "api" && jobLogsPathMatcher.test(call[1] ?? ""));
-    expect(logReads).not.toEqual([]);
+    expect(spy.jobLogsRead).not.toEqual([]);
     expect(calls.filter((call) => call[0] === "run" && call[1] === "view")).toEqual([]);
   });
 

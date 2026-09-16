@@ -26,13 +26,19 @@ export interface Adr0106Payloads {
   citation: "ADR-0106";
   workflowRun: {
     id: number;
+    status: string;
     conclusion: string | null;
     html_url: string;
     head_branch: string | null;
+    head_sha: string;
     created_at: string;
     event: string;
   };
   job: {
+    id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
     steps: Array<{ name: string; conclusion: string | null }>;
   };
   closedByIssue: { closedByPullRequestsReferences: ClosedByReference[] };
@@ -324,13 +330,19 @@ const RECORDED: Adr0106Payloads = {
   citation: "ADR-0106",
   workflowRun: {
     "id": 501,
+    "status": "completed",
     "conclusion": "failure",
     "html_url": "https://github.com/owner/repo/actions/runs/501",
     "head_branch": "main",
+    "head_sha": "2222222222222222222222222222222222222222",
     "created_at": "2026-08-26T12:00:00Z",
     "event": "push"
   },
   job: {
+    "id": 5010,
+    "name": "Gauntlet",
+    "status": "completed",
+    "conclusion": "failure",
     "steps": [
       {
         "name": "Gauntlet",

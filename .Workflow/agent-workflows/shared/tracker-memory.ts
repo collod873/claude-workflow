@@ -9,6 +9,7 @@ export interface TrackerMemorySeed {
   runs?: WorkflowRun[];
   recentRuns?: RepoRun[];
   jobs?: Record<number, TrackerJob[]>;
+  jobLogs?: Record<number, string>;
   blockers?: Record<number, TrackerBlocker[]>;
   children?: Record<number, TrackerBlocker[]>;
   comments?: Record<number, TrackerComment[]>;
@@ -24,6 +25,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
   const runs = seed.runs ?? [];
   const recentRuns = seed.recentRuns ?? [];
   const jobs = new Map(Object.entries(seed.jobs ?? {}).map(([id, list]) => [Number(id), list]));
+  const jobLogs = new Map(Object.entries(seed.jobLogs ?? {}).map(([id, log]) => [Number(id), log]));
   const blockers = new Map(Object.entries(seed.blockers ?? {}).map(([id, list]) => [Number(id), list]));
   const children = new Map(Object.entries(seed.children ?? {}).map(([id, list]) => [Number(id), list]));
   const comments = new Map(Object.entries(seed.comments ?? {}).map(([id, list]) => [Number(id), list]));
@@ -40,6 +42,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
     workflowRuns: (_workflow, perPage) => runs.slice(0, perPage),
     recentRuns: (perPage) => recentRuns.slice(0, perPage),
     jobs: (runId) => jobs.get(runId) ?? [],
+    jobLog: (jobId) => jobLogs.get(jobId) ?? "",
     blockedBy: (number) => blockers.get(number) ?? [],
     children: (number) => children.get(number) ?? [],
     comments: (number) => comments.get(number) ?? [],

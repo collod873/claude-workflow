@@ -52,7 +52,7 @@ function historyWith(options: {
     if (args[0] === "api" && jobs) {
       if (options.jobsRaw !== undefined) return options.jobsRaw;
       const count = runs.find((run) => run.id === Number(jobs[1]))?.jobs ?? 1;
-      return JSON.stringify({ jobs: Array.from({ length: count }, () => ({ steps: [] })) });
+      return JSON.stringify({ jobs: Array.from({ length: count }, (_unused, index) => ({ id: index + 1, name: "job", status: "completed", conclusion: "success", steps: [] })) });
     }
 
     const answered = answerIssueQueue(args, options.issues ?? []);

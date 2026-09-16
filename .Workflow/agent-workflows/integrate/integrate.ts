@@ -5,15 +5,16 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
-import { GIT_REFS_PATH, jobLogsPath, runJobsPath, workflowRunsPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { findJobByName } from "../shared/job-match";
 import { LANDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
-import { acceptanceBranch, announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
+import { acceptanceBranch, announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION, retireBranch } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
+import type { Tracker, TrackerJob } from "../shared/tracker";
+import { trackerGh } from "../shared/tracker-gh";
 import { dispatchVerify } from "../shared/verify-dispatch";
 
 export { GRAPH_CHANGED_DISPATCH_ACTION };
@@ -41,6 +42,7 @@ export type IntegrateOutcome =
 export interface IntegrateDeps {
   git: GitExec;
   gh: GhExec;
+  tracker: Tracker;
   pr: string;
   headSha: string;
   runGauntlet: () => GauntletResult;
@@ -83,8 +85,6 @@ export const GATE_JOB = "Verify";
 
 const DISPATCH_EVENT = "repository_dispatch";
 
-const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
-
 const VERIFY_RUN_PAGE_SIZE = 100;
 
 const ACCEPTANCE_POLL_ATTEMPTS = 40;
@@ -94,20 +94,7 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-const ApiRun = z.object({
-  id: z.number(),
-  head_sha: z.string(),
-  event: z.string(),
-  status: z.string(),
-});
-const ApiJob = z.object({
-  id: z.number(),
-  name: z.string(),
-  status: z.string(),
-  conclusion: z.string().nullable(),
-});
-
-function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdict {
+function jobVerdict(jobs: TrackerJob[], name: string): JobVerdict {
   const job = findJobByName(jobs, name);
   if (!job || job.status !== "completed") return "unjudged";
   if (job.conclusion === "success") return "passed";
@@ -117,24 +104,10 @@ function jobVerdict(jobs: Array<z.infer<typeof ApiJob>>, name: string): JobVerdi
 
 const NOT_JUDGED: VerifyVerdict = { immutability: "unjudged", acceptance: "unjudged" };
 
-function readJobs(gh: GhExec, runId: number): Array<z.infer<typeof ApiJob>> {
-  return ApiJob.array().parse(
-    JSON.parse(gh(["api", runJobsPath(runId), "--jq", "[.jobs[] | {id, name, status, conclusion}]"])),
-  );
-}
-
-function readJobLog(gh: GhExec, jobId: number): string {
-  try {
-    return gh(["api", jobLogsPath(jobId), ALLOW_ESCAPE_SEQUENCES]);
-  } catch {
-    return gh(["api", jobLogsPath(jobId)]);
-  }
-}
-
-function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
+function jobJudged(tracker: Tracker, jobId: number, pr: string): boolean {
   let log: string;
   try {
-    log = readJobLog(gh, jobId);
+    log = tracker.jobLog(jobId);
   } catch (err) {
     console.error(`could not read job ${jobId}'s log to learn which pull request it judged: ${reason(err)}`);
     return false;
@@ -144,25 +117,22 @@ function jobJudged(gh: GhExec, jobId: number, pr: string): boolean {
   return false;
 }
 
-function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkflow: string): VerifyVerdict {
-  const runsPath = workflowRunsPath(verifyWorkflow, VERIFY_RUN_PAGE_SIZE);
-  const runs = ApiRun.array().parse(
-    JSON.parse(gh(["api", runsPath, "--jq", "[.workflow_runs[] | {id, head_sha, event, status}]"])),
-  );
+function readVerifyVerdict(tracker: Tracker, headSha: string, pr: string, verifyWorkflow: string): VerifyVerdict {
+  const runs = tracker.workflowRuns(verifyWorkflow, VERIFY_RUN_PAGE_SIZE);
   const candidates = runs
-    .filter((run) => run.head_sha === headSha && run.event === DISPATCH_EVENT)
+    .filter((run) => run.headSha === headSha && run.event === DISPATCH_EVENT)
     .sort((a, b) => b.id - a.id);
   if (candidates.length === 0) {
     console.error(`no ${DISPATCH_EVENT} run of ${verifyWorkflow} reports head ${headSha}`);
   }
   for (const run of candidates) {
-    const jobs = readJobs(gh, run.id);
+    const jobs = tracker.jobs(run.id);
     const immutability = findJobByName(jobs, IMMUTABILITY_JOB);
     if (immutability === undefined || immutability.status !== "completed") {
       if (run.status !== "completed") return NOT_JUDGED;
       continue;
     }
-    if (!jobJudged(gh, immutability.id, pr)) continue;
+    if (!jobJudged(tracker, immutability.id, pr)) continue;
     return {
       immutability: jobVerdict(jobs, IMMUTABILITY_JOB),
       acceptance: jobVerdict(jobs, GATE_JOB),
@@ -172,16 +142,16 @@ function readVerifyVerdict(gh: GhExec, headSha: string, pr: string, verifyWorkfl
 }
 
 function awaitVerifyVerdict(
-  gh: GhExec,
+  tracker: Tracker,
   headSha: string,
   pr: string,
   verifyWorkflow: string,
   sleep: (ms: number) => void,
 ): VerifyVerdict {
-  let verdict = readVerifyVerdict(gh, headSha, pr, verifyWorkflow);
+  let verdict = readVerifyVerdict(tracker, headSha, pr, verifyWorkflow);
   for (let attempt = 0; verdict.acceptance === "unjudged" && attempt < ACCEPTANCE_POLL_ATTEMPTS; attempt++) {
     sleep(ACCEPTANCE_POLL_MS);
-    verdict = readVerifyVerdict(gh, headSha, pr, verifyWorkflow);
+    verdict = readVerifyVerdict(tracker, headSha, pr, verifyWorkflow);
   }
   return verdict;
 }
@@ -264,7 +234,7 @@ function mergePr(gh: GhExec, pr: string, ticket: number | undefined): void {
   if (ticket === undefined) return;
   const authored = acceptanceBranch(ticket);
   try {
-    gh(["api", "--method", "DELETE", `${GIT_REFS_PATH}/heads/${authored}`]);
+    retireBranch(gh, authored);
   } catch (err) {
     console.error(`merged #${ticket} but could not retire \`${authored}\`: ${reason(err)}`);
   }
@@ -367,7 +337,7 @@ function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome 
   if (result.exitCode === 1) return refuse({ merged: false, reason: "red" });
   if (result.exitCode !== 0) return refuse({ merged: false, reason: "no-run" });
 
-  const verdict = awaitVerifyVerdict(deps.gh, deps.headSha, deps.pr, deps.verifyWorkflow, deps.sleep ?? sleepSync);
+  const verdict = awaitVerifyVerdict(deps.tracker, deps.headSha, deps.pr, deps.verifyWorkflow, deps.sleep ?? sleepSync);
   if (verdict.immutability === "failed") return refuse({ merged: false, reason: "immutable-set" });
   if (verdict.immutability !== "passed") return refuse({ merged: false, reason: "unjudged" });
   if (verdict.acceptance === "failed") {
@@ -481,6 +451,7 @@ async function main(): Promise<void> {
     const outcome = runIntegrate({
       git,
       gh: execGh,
+      tracker: trackerGh(execGh),
       pr,
       headSha,
       runGauntlet: () => runRealGauntlet(repoDir),

@@ -1,6 +1,7 @@
 import { createFakeGh, type FakeDispatch } from "../shared/gh.fake";
 import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
+import { trackerGh } from "../shared/tracker-gh";
 import {
   GATE_JOB,
   IMMUTABILITY_JOB,
@@ -199,12 +200,25 @@ export function integrateHarness({
     }
     if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
       return JSON.stringify(
-        currentRuns().map(({ id, head_sha, event, status }) => ({ id, head_sha, event, status })),
+        currentRuns().map(({ id, head_sha, event, status }) => ({
+          id,
+          head_sha,
+          event,
+          status,
+          conclusion: "success",
+          html_url: `https://github.com/owner/repo/actions/runs/${id}`,
+          head_branch: BRANCH,
+          created_at: "2026-01-01T00:00:00Z",
+        })),
       );
     }
     const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
     if (args[0] === "api" && jobsMatch) {
-      return JSON.stringify(currentRuns().find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []);
+      const jobs = (currentRuns().find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []).map((job) => ({
+        ...job,
+        steps: [],
+      }));
+      return JSON.stringify({ jobs });
     }
     if (args[0] === "issue" && args[1] === "comment") {
       if (commentThrows) throw new Error("gh: could not comment");
@@ -231,6 +245,7 @@ export function integrateHarness({
     deps: {
       git: fakeGit.git,
       gh,
+      tracker: trackerGh(gh),
       pr: PR,
       headSha: TRUNK_SHA,
       verifyWorkflow: "verify-caller.yml",

@@ -1,5 +1,6 @@
 import { requestDispatch } from "./dispatch-request";
 import type { GhExec } from "./gh";
+import { GIT_REFS_PATH } from "./gh-paths";
 
 export type Delivery =
   | "open"
@@ -24,6 +25,10 @@ export function acceptanceBranch(issueNumber: number): string {
 }
 
 export const ACCEPTANCE_BRANCH_PREFIX = "accept/";
+
+export function retireBranch(gh: GhExec, branch: string): void {
+  gh(["api", "--method", "DELETE", `${GIT_REFS_PATH}/heads/${branch}`]);
+}
 
 const IMPLEMENTATION_BRANCH_RE = (() => {
   const [prefix, suffix] = implementationBranch(0).split("0");

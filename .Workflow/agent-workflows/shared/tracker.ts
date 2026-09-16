@@ -1,8 +1,10 @@
 export interface WorkflowRun {
   id: number;
+  status: string;
   conclusion: string;
   htmlUrl: string;
   headBranch: string;
+  headSha: string;
   createdAt: string;
   event: string;
 }
@@ -24,6 +26,10 @@ export interface TrackerJobStep {
 }
 
 export interface TrackerJob {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
   steps: TrackerJobStep[];
 }
 
@@ -48,6 +54,7 @@ export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   recentRuns(perPage: number, repository?: string): RepoRun[];
   jobs(runId: number): TrackerJob[];
+  jobLog(jobId: number): string;
   blockedBy(number: number): TrackerBlocker[];
   children(number: number): TrackerBlocker[];
   comments(number: number): TrackerComment[];

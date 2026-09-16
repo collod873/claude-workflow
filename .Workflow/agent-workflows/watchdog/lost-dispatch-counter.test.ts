@@ -40,5 +40,5 @@ test("#620.1: the run projection lost-dispatch-counter sends is trackerGh's own 
 
   count(fake);
 
-  expect(runsProjection(fake.calls)).toBe("[.workflow_runs[] | {id, conclusion, html_url, head_branch, created_at, event}]");
+  expect(runsProjection(fake.calls)).toBe("[.workflow_runs[] | {id, status, conclusion, html_url, head_branch, head_sha, created_at, event}]");
 });
