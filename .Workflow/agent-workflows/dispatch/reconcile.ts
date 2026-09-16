@@ -3,7 +3,6 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { closeTicketProcess, type CloseTicketResult } from "../shared/close-ticket";
 import { execGh, type GhExec } from "../shared/gh";
-import { issueCommentPath } from "../shared/gh-paths";
 import {
   ACCEPTING_LABEL,
   BUILDING_LABEL,
@@ -104,6 +103,7 @@ export { TO_BUILD_LABEL };
 
 export interface ReconcileInput {
   gh?: GhExec;
+  tracker?: Tracker;
   log?: (line: string) => void;
   dryRun?: boolean;
   closeSpec?: (number: number, range: string) => CloseTicketResult;
@@ -225,6 +225,7 @@ const TO_BUILD_CLEARED_BODY = [
 
 function recordRefusal(
   gh: GhExec,
+  tracker: Tracker,
   ticket: TicketState,
   refusal: string,
   log: (line: string) => void,
@@ -234,26 +235,28 @@ function recordRefusal(
     log(`could not read #${ticket.number}'s comments, so leaving whatever this door said last run standing.`);
     return;
   }
-  if (!upsertMarked(gh, ticket.number, ticket.comments, TO_BUILD_REFUSED_MARKER, toBuildRefusalBody(refusal))) return;
+  if (!upsertMarked(gh, tracker, ticket.number, ticket.comments, TO_BUILD_REFUSED_MARKER, toBuildRefusalBody(refusal)))
+    return;
   escalateToOwner(gh, ticket.number, process.env.GITHUB_REPOSITORY_OWNER, ticket.labels);
   stamp(stamps, ticket.number);
   log(`#${ticket.number}: refused at the ${TO_BUILD_LABEL} door: ${refusal}; holds ${NEEDS_HUMAN_LABEL}.`);
 }
 
-function recordCleared(gh: GhExec, ticket: TicketState, log: (line: string) => void): void {
+function recordCleared(gh: GhExec, tracker: Tracker, ticket: TicketState, log: (line: string) => void): void {
   if (ticket.comments === undefined) {
     log(`could not read #${ticket.number}'s comments, so leaving whatever this door said last run standing.`);
     return;
   }
   const standing = markedComment(ticket.comments, TO_BUILD_REFUSED_MARKER);
   if (standing === undefined) return;
-  rewriteComment(gh, standing.id, TO_BUILD_CLEARED_BODY);
+  rewriteComment(tracker, standing.id, TO_BUILD_CLEARED_BODY);
   gh(["issue", "edit", String(ticket.number), "--remove-label", NEEDS_HUMAN_LABEL]);
   log(`#${ticket.number}: its shape is no longer refused at the ${TO_BUILD_LABEL} door; ${NEEDS_HUMAN_LABEL} lifted.`);
 }
 
 function recordDoor(
   gh: GhExec,
+  tracker: Tracker,
   ticket: TicketState,
   log: (line: string) => void,
   dryRun: boolean,
@@ -290,7 +293,7 @@ function recordDoor(
       return;
     }
     try {
-      recordRefusal(gh, ticket, door.refusal, log, stamps);
+      recordRefusal(gh, tracker, ticket, door.refusal, log, stamps);
     } catch (err) {
       log(`could not record #${ticket.number}'s shape verdict: ${reason(err)}`);
     }
@@ -298,7 +301,7 @@ function recordDoor(
   }
   if (door.verdict !== "clear" || dryRun) return;
   try {
-    recordCleared(gh, ticket, log);
+    recordCleared(gh, tracker, ticket, log);
   } catch (err) {
     log(`could not record #${ticket.number}'s shape verdict: ${reason(err)}`);
   }
@@ -308,8 +311,8 @@ const PRD_CHECK_MARKER = "<!-- prd-check:v1 -->";
 
 const PRD_UNRUNNABLE_MARKER = "<!-- prd-unrunnable:v1 -->";
 
-function rewriteComment(gh: GhExec, id: number, body: string): void {
-  gh(["api", issueCommentPath(id), "-X", "PATCH", "-f", `body=${body}`]);
+function rewriteComment(tracker: Tracker, id: number, body: string): void {
+  tracker.updateComment(id, body);
 }
 
 function postOnce(gh: GhExec, number: number, comments: IssueComment[], marker: string, body: string): boolean {
@@ -318,14 +321,21 @@ function postOnce(gh: GhExec, number: number, comments: IssueComment[], marker: 
   return true;
 }
 
-function upsertMarked(gh: GhExec, number: number, comments: IssueComment[], marker: string, body: string): boolean {
+function upsertMarked(
+  gh: GhExec,
+  tracker: Tracker,
+  number: number,
+  comments: IssueComment[],
+  marker: string,
+  body: string,
+): boolean {
   const standing = markedComment(comments, marker);
   if (standing === undefined) {
     gh(["issue", "comment", String(number), "--body", body]);
     return true;
   }
   if (standing.body === body) return false;
-  rewriteComment(gh, standing.id, body);
+  rewriteComment(tracker, standing.id, body);
   return true;
 }
 
@@ -431,10 +441,10 @@ function runCheckCommand(command: string, cwd: string): { code: number; output: 
   return { code: result.status ?? 1, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 
-function upsertPrdComment(gh: GhExec, number: number, comments: IssueComment[], body: string): void {
+function upsertPrdComment(gh: GhExec, tracker: Tracker, number: number, comments: IssueComment[], body: string): void {
   const existing = markedComment(comments, PRD_CHECK_MARKER, PRD_UNRUNNABLE_MARKER);
   if (existing) {
-    rewriteComment(gh, existing.id, body);
+    rewriteComment(tracker, existing.id, body);
   } else {
     gh(["issue", "comment", String(number), "--body", body]);
   }
@@ -459,7 +469,7 @@ function evaluateSpecCheck(
   const hasNeedsHuman = prd.labels.includes(NEEDS_HUMAN_LABEL);
 
   if (!isRunnableSpec(prd.body)) {
-    upsertPrdComment(gh, prd.number, comments, refusalCommentBody(prd.body));
+    upsertPrdComment(gh, tracker, prd.number, comments, refusalCommentBody(prd.body));
     if (!hasNeedsHuman) gh(["issue", "edit", String(prd.number), "--add-label", NEEDS_HUMAN_LABEL]);
     log(`#${prd.number}: refused: ${unrunnableReason(prd.body)}.`);
     return;
@@ -475,7 +485,7 @@ function evaluateSpecCheck(
   const closing = run.code === 0 ? attemptSpecClose(gh, tracker, prd.number, children, closeSpec, log) : undefined;
 
   if (closing?.disagreement) {
-    upsertPrdComment(gh, prd.number, comments, disagreementCommentBody(command, run, closing.result));
+    upsertPrdComment(gh, tracker, prd.number, comments, disagreementCommentBody(command, run, closing.result));
     log(
       `#${prd.number}: pass/closer disagreement: ran \`${command}\` exit ${run.code}, ` +
         `bin/close-ticket --spec exited ${closing.result.exitCode}.`,
@@ -483,7 +493,7 @@ function evaluateSpecCheck(
     return;
   }
 
-  upsertPrdComment(gh, prd.number, comments, verdictCommentBody(command, run));
+  upsertPrdComment(gh, tracker, prd.number, comments, verdictCommentBody(command, run));
   if (hasOwnRefusal && hasNeedsHuman) {
     gh(["issue", "edit", String(prd.number), "--remove-label", NEEDS_HUMAN_LABEL]);
   }
@@ -618,7 +628,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const dryRun = input.dryRun ?? false;
 
   const stamps: Stamps = { lane: new Map(), relabelled: new Set() };
-  const tracker = trackerGh(gh);
+  const tracker = input.tracker ?? trackerGh(gh);
 
   const states = ticketState({ gh, tracker, log, dryRun });
   if (states.degraded !== undefined) {
@@ -645,7 +655,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
     }
   }
 
-  for (const ticket of tickets) recordDoor(gh, ticket, log, dryRun, stamps);
+  for (const ticket of tickets) recordDoor(gh, tracker, ticket, log, dryRun, stamps);
 
   const startable = tickets.filter((ticket) => ticket.startable);
   const unreachable = startable.filter((ticket) => ticket.unreachable);

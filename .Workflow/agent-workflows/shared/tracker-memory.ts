@@ -107,6 +107,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
     children: (number) => children.get(number) ?? [],
     comments: (number) => comments.get(number) ?? [],
     recordComments: (number) => recordComments.get(number) ?? [],
+    updateComment: () => undefined,
     branchesUnder: (prefix) => branches.filter((branch) => branch.startsWith(prefix)),
     mergedCloser: (number) => mergedClosers.get(number),
     blockedByIds: (number) => blockedByIds.get(number) ?? [],

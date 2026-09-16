@@ -111,6 +111,7 @@ export interface Tracker {
   children(number: number): TrackerBlocker[];
   comments(number: number): TrackerComment[];
   recordComments(number: number): TrackerRecordComment[];
+  updateComment(id: number, body: string): void;
   branchesUnder(prefix: string): string[];
   mergedCloser(number: number): number | undefined;
   blockedByIds(number: number): number[];

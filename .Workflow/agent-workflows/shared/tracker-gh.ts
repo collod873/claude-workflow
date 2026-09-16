@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { blockedByPath, commitPullsPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerDispatchRequest, TrackerFindingIssue, TrackerRecordComment, TrackerRunSummary, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
@@ -267,6 +267,9 @@ export function trackerGh(gh: GhExec): Tracker {
       return ApiRecordCommentPages.parse(JSON.parse(raw))
         .flat()
         .map(toRecordComment);
+    },
+    updateComment(id, body) {
+      gh(["api", issueCommentPath(id), "-X", "PATCH", "-f", `body=${body}`]);
     },
     branchesUnder(prefix) {
       const raw = gh(["api", matchingRefsPath(prefix), "--jq", "[.[].ref]"]);
