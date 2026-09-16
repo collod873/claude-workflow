@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
+import { trackerMemory } from "../shared/tracker-memory";
 import { GATE_JOB, IMMUTABILITY_JOB, runIntegrate } from "./integrate";
 import {
   BOTH_JOBS_GREEN,
@@ -66,6 +68,16 @@ describe("runIntegrate refuses a head commit lane 06 has not judged", () => {
     expect(outcome).toEqual(UNJUDGED);
     expect(mergeCalls(calls)).toEqual([]);
     expect(outcome).not.toEqual({ merged: false, reason: "immutable-set" });
+  });
+
+  test.fails("#623.6: refuses the same way when an injected tracker, rather than the verifyRuns fixture, carries no run of the Verify workflow", () => {
+    const { calls, deps } = integrateHarness({ closeTicket: CLOSED });
+    const withEmptyTracker = { ...deps, tracker: trackerMemory({ runs: [] }) };
+
+    const outcome = runIntegrate(withEmptyTracker);
+
+    expect(outcome).toEqual(UNJUDGED);
+    expect(mergeCalls(calls)).toEqual([]);
   });
 
   it.each([

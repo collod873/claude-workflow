@@ -6,6 +6,7 @@ import { RATIFIER_MERGED_DISPATCH_ACTION, RATIFIER_PR_TITLE } from "../shared/ra
 import { GATE_JOB, GRAPH_CHANGED_DISPATCH_ACTION, IMMUTABILITY_JOB, type IntegrateDeps, runIntegrate } from "./integrate";
 import type { FakeDispatch } from "../shared/gh.fake";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "../shared/immutable-set";
+import { trackerMemory } from "../shared/tracker-memory";
 import {
   BOTH_JOBS_GREEN,
   BRANCH,
@@ -485,5 +486,16 @@ describe("runIntegrate never drains a PR it refused", () => {
 
     expect(comment).toContain("re-run gauntlet was red");
     expect(comment).toContain("re-dispatch");
+  });
+});
+
+describe("runIntegrate reads lane 06's run history through an injected tracker", () => {
+  test.fails("#623.5: an empty tracker leaves the head commit unjudged even though gh's own api answers describe a green run", () => {
+    const { deps } = integrateHarness({ closeTicket: CLOSED });
+    const withEmptyTracker = { ...deps, tracker: trackerMemory({ runs: [] }) };
+
+    const outcome = runIntegrate(withEmptyTracker);
+
+    expect(outcome).toEqual({ merged: false, reason: "unjudged" });
   });
 });
