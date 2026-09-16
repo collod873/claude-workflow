@@ -51,7 +51,7 @@ test("#607.2: the gh adapter answers workflowRuns and jobs the same as the memor
   expect(tracker.jobs(RUN.id)).toEqual([JOB]);
 });
 
-test.fails("#608.2: the gh-adapter case replays its run and job payloads from shared/tracker-payloads.ts instead of an inline literal", () => {
+test("#608.2: the gh-adapter case replays its run and job payloads from shared/tracker-payloads.ts instead of an inline literal", () => {
   const payloads = adr0106Payloads();
   const ghFromPayloads: GhExec = (args: string[]): string => {
     if (args[0] === "api" && args[1] === workflowRunsPath("verify.yml", 5)) {
