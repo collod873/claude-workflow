@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
-import { subIssuesPath } from "../shared/gh-paths";
 import { ACCEPTING_LABEL } from "../shared/labels";
 import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
@@ -14,6 +13,7 @@ import type { GateVerdict } from "../shared/run-gauntlet";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { extractCriteria, type TicketRead } from "../shared/ticket-shape";
+import { trackerMemory } from "../shared/tracker-memory";
 import type { TestRunResult } from "../shared/vitest-json";
 import {
   additiveRefusal,
@@ -534,14 +534,11 @@ describe("commitAuthoredBatch", () => {
   });
 });
 
-type SubIssueRef = number | { number: number; state: string };
-
 function trackerWith(
   issues: Record<number, TicketRead>,
-  subIssues: Record<number, SubIssueRef[]> = {},
   writes?: string[][],
 ): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
-  return trackerReading(issues, subIssues, writes);
+  return trackerReading(issues, writes);
 }
 
 const notALaneStamp = (args: string[]): boolean =>
@@ -549,7 +546,6 @@ const notALaneStamp = (args: string[]): boolean =>
 
 function trackerReading(
   issues: Record<number, TicketRead>,
-  subIssues: Record<number, SubIssueRef[]>,
   writes?: string[][],
 ): { gh: GhExec; reads: string[][]; fake: ReturnType<typeof createFakeGh> } {
   const fake = createFakeGh();
@@ -569,12 +565,6 @@ function trackerReading(
       const issue = issues[Number(args[2])];
       if (!issue) throw new Error(`no issue #${args[2]} in this test's tracker`);
       return JSON.stringify(issue);
-    }
-    for (const [parent, numbers] of Object.entries(subIssues)) {
-      if (args[0] === "api" && args[1] === subIssuesPath(Number(parent)) && !args.includes("-F")) {
-        reads.push(args);
-        return JSON.stringify(numbers.map((ref) => (typeof ref === "number" ? { number: ref, state: "open" } : ref)));
-      }
     }
     return fake.gh(args);
   };
@@ -692,7 +682,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
 
   async function repairRun(gates: GateVerdict[], first: { sessionId?: string } = { sessionId: "author-1" }) {
     const writes: string[][] = [];
-    const tracker = trackerWith(TRACKER, {}, writes);
+    const tracker = trackerWith(TRACKER, writes);
     const stage = createFakeStages([
       { text: SUMMARY, ...first },
       ...Array.from({ length: REPAIR_ROUNDS }, () => ({ text: SUMMARY, sessionId: "author-1" })),
@@ -755,7 +745,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
       { text: SUMMARY, sessionId: "author-1" },
     ]);
     const outcome = await runAcceptanceAuthor({
-      gh: trackerWith(TRACKER, {}, writes).gh,
+      gh: trackerWith(TRACKER, writes).gh,
       exec: stage.exec,
       issueNumber: ISSUE,
       runTests: () => {
@@ -807,17 +797,18 @@ describe("refireAcceptance", () => {
     { noEarlierBody = false, closed = [] as number[] } = {},
   ) {
     const calledFor: number[] = [];
-    const tracker = trackerWith(
-      { [PRD_NUMBER]: { title: "PRD", body: prdBody }, ...slices },
-      {
+    const tracker = trackerWith({ [PRD_NUMBER]: { title: "PRD", body: prdBody }, ...slices });
+    const subIssues = trackerMemory({
+      subIssues: {
         [PRD_NUMBER]: Object.keys(slices)
           .map(Number)
           .reverse()
           .map((number) => ({ number, state: closed.includes(number) ? "closed" : "open" })),
       },
-    );
+    });
     const affected = await refireAcceptance({
       gh: tracker.gh,
+      tracker: subIssues,
       prdNumber: PRD_NUMBER,
       bodyBeforeEdit: noEarlierBody ? undefined : SPEC_BEFORE,
       authorForSlice: (sliceNumber) => {
@@ -901,7 +892,7 @@ describe("a subject the test runs as a process gets no stub", () => {
   const HARNESS = ".claude/hooks/test_session_brief.py";
 
   test("#448.2: the lane refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
-    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, []);
+    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, []);
     let testsRan = false;
     const outcome = await runAcceptanceAuthor({
       gh: tracker.gh,
@@ -944,7 +935,7 @@ describe("the lane budget bounds the acceptance author's model session", () => {
 
   function sessionThatNeverReturns() {
     const writes: string[][] = [];
-    const tracker = trackerWith(TRACKER, {}, writes);
+    const tracker = trackerWith(TRACKER, writes);
     const hangingExec = (() => new Promise(() => {})) as unknown as FakeStage["exec"];
     let settlement: string | undefined;
     void runAcceptanceAuthor({
@@ -1010,7 +1001,7 @@ describe("the lane budget bounds the acceptance author's model session", () => {
 describe("the acceptance lane rings no lane, leaving the handoff to the reconciler", () => {
   test("a pushed batch dispatches nothing, so a ticket reaches implement only by recompute", async () => {
     const writes: string[][] = [];
-    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, writes);
+    const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, writes);
 
     await runAcceptanceAuthor({
       gh: tracker.gh,
@@ -1099,7 +1090,7 @@ describe("renderCheckContract", () => {
 });
 
 describe("refireAcceptance reaches the tracker without building an api argv of its own", () => {
-  test.fails("#624.1: reading which slices are still open sends gh no api argv", async () => {
+  test("#624.1: reading which slices are still open sends gh no api argv", async () => {
     const prdNumber = 301;
     let sawApiArgv = false;
     const gh: GhExec = (args) => {

@@ -5,7 +5,6 @@ import { z } from "zod";
 import { affectedSlices, authoredTicketTitleRe, testsForCriterion, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
 import { laneBudget } from "../shared/lane-budget";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
-import { subIssuesPath } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { AUTHOR_CHECK_CONTRACT_LEAD } from "../shared/house-style";
 import { sayOnTicket } from "../shared/implementation-landing";
@@ -14,6 +13,9 @@ import { reason } from "../shared/reason";
 import { acceptanceBranch, FRESH_EYES_RUNG } from "../shared/ready-set";
 import { strikesIn } from "../shared/strikes";
 import { gateOutputTail, stopVenueVerdict, type GateVerdict } from "../shared/run-gauntlet";
+import { trackerGh } from "../shared/tracker-gh";
+import { trackerMemory } from "../shared/tracker-memory";
+import type { Tracker } from "../shared/tracker";
 import {
   CHECKOUT_SESSION_DENIED_TOOLS,
   currentLaneRun,
@@ -489,14 +491,16 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   return { verdict: "pushed" };
 }
 
-function readOpenSliceNumbers(gh: GhExec, prdNumber: number): number[] {
-  const raw = gh(["api", subIssuesPath(prdNumber)]);
-  const issues = JSON.parse(raw) as Array<{ number: number; state?: string }>;
-  return issues.filter((issue) => issue.state !== "closed").map((issue) => issue.number);
+function readOpenSliceNumbers(tracker: Tracker, prdNumber: number): number[] {
+  return tracker
+    .subIssues(prdNumber)
+    .filter((issue) => issue.state !== "closed")
+    .map((issue) => issue.number);
 }
 
 export interface RefireDeps {
   gh: GhExec;
+  tracker?: Tracker;
   prdNumber: number;
   bodyBeforeEdit: string | undefined;
   authorForSlice: (sliceNumber: number) => void | Promise<void>;
@@ -506,7 +510,7 @@ export interface RefireDeps {
 export async function refireAcceptance(deps: RefireDeps): Promise<SliceRef[]> {
   if (deps.bodyBeforeEdit === undefined) return [];
   const prd = readTicket(deps.gh, deps.prdNumber);
-  const sliceNumbers = readOpenSliceNumbers(deps.gh, deps.prdNumber);
+  const sliceNumbers = readOpenSliceNumbers(deps.tracker ?? trackerMemory(), deps.prdNumber);
 
   const existingTests: ExistingTestCriterion[] = [];
   for (const sliceNumber of sliceNumbers) {
@@ -576,6 +580,7 @@ async function main(): Promise<void> {
     try {
       const affected = await refireAcceptance({
         gh: execGh,
+        tracker: trackerGh(execGh),
         prdNumber: Number(prdArg),
         bodyBeforeEdit: process.env.PRD_BODY_BEFORE || undefined,
         authorForSlice: authorForSliceInProcess,
