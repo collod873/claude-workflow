@@ -30,7 +30,7 @@
   { "name": "prd", "color": "c2c2c2", "description": "A spec issue, filed by file-issue spec", "family": "kind" },
   { "name": "idea", "color": "c2c2c2", "description": "The owner's own words about work that might be worth doing, never edited", "family": "kind" },
   { "name": "bug", "color": "c2c2c2", "description": "The owner called it a break; intake, never a verdict", "family": "kind" },
-  { "name": "build-order", "color": "c2c2c2", "description": "A move on the build order (ADR-0026)", "family": "kind" },
+  { "name": "build-order", "color": "c2c2c2", "description": "A move on the build order", "family": "kind" },
   { "name": "standards-pass", "color": "c2c2c2", "description": "A standards-authorship pass, one per run", "family": "kind" },
   { "name": "lane-07-finding", "color": "c2c2c2", "description": "A lane 07 finding that survived the refuter", "family": "kind" },
   { "name": "wayfinder:map", "color": "c2c2c2", "description": "A Wayfinder map: Notes, Decisions-so-far and Fog", "family": "kind" },

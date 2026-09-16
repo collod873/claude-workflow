@@ -36,5 +36,6 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 
 > _Contradicts ADR-0007 (the shaper routes every item), but worth reopening because…_
 
-Never edit an old ADR to reflect a new decision. Write a new one that says what it amends; a
-superseded ADR is named by a trailer its successor writes (ADR-0045).
+When a decision changes part of an ADR, edit that ADR. File a new one only when the ruling reverses
+whole, with `supersedes: ADR-NNNN`, and rewrite every live line that cited the old one; `npm run drift`
+lists them.

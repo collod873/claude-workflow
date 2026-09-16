@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-01
-amends: ADR-0055
+supersedes: ADR-0055
 reversal: Reversing it means minting a fine-grained PAT again, storing it as a secret in every enrolled repository, and building the rotation and revocation path that credential needs — plus rewriting the enrol lane (this ADR's sibling) to provision that secret alongside the stubs it already writes.
 ---
 

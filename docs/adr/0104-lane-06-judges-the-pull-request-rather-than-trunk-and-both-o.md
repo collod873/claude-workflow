@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-29
-amends: ADR-0095
+supersedes: ADR-0095
 reversal: Reversing means lane 08 merging again without lane 06's acceptance verdict and pointing the verify job's checkout back at the default branch, which grades trunk rather than the diff — wrong in both directions at once — and the merge that motivated this ruling landed with the gate deciding nothing.
 ---
 

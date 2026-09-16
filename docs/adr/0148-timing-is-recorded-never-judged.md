@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-03
-amends: ADR-0147
+supersedes: ADR-0145, ADR-0147
 reversal: Reversing it means a wall-clock number measured in one place again refuses a push in another — the shape of 2026-09-03, when one unchanged venue measured 57.5s where it was recorded and 88.3s and 89.4s where it was judged, and three landings in a row went red on nothing their diffs had done.
 ---
 

@@ -8,7 +8,7 @@ Six entries, copied verbatim from `CONTEXT.md`. They are the pipeline chain this
 **Lane** is made of **Stages**; a **Spec** is cut into **Slices** that publish as **Tickets**; a
 **Seam manifest** crosses them. They are the only entries any of the three stages uses. The
 other twenty-nine are the vocabulary for arguing about the machine's design: Era, Failure, Owner
-point, Binds, Counter, Immutable set. None of them ever appears in a ticket.
+point, Counter, Immutable set. None of them ever appears in a ticket.
 
 The copy is pinned rather than trusted: `vocabulary.test.ts` asserts every entry below is
 byte-for-byte the entry `CONTEXT.md` holds, so renaming a term there reddens the gauntlet here. The

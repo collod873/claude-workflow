@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-31
-amends: ADR-0006
+supersedes: ADR-0006
 reversal: Putting a signature surface back means re-adding an approval step no lane now has and replacing the tree-versus-memory detector that writes `declined` records, and abandoning revert rate as the measurement ADR-0006 promised — while every standard landed under this model has already merged with no one asked to approve it.
 ---
 

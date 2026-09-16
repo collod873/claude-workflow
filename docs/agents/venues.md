@@ -15,7 +15,7 @@ carry a slot as `null` to shrink the gate, never add one to grow it.
 | --- | --- | --- | --- |
 | `turn` | PostToolUse, per edit | `typecheck`, `lint_one`, `test_related` | Hands the report back to Claude |
 | `stop` | Stop, per turn end | `typecheck`, `lint_one`, `test_related` | Reports once, never holds the turn |
-| `push` | pre-push | `typecheck`, `lint`, `rules`, `test`, `clones`, `adrs` | **Refuses the push** |
+| `push` | pre-push | `typecheck`, `lint`, `rules`, `test`, `clones`, `adrs`, `drift` | **Refuses the push** |
 | CI | `push: main`, dispatch | `npm run check`, which is the push venue against the target | Red run; rings the fixer |
 <!-- /venues-table:v1 -->
 
@@ -23,8 +23,7 @@ A lane's job is a venue of its own kind, and a dead runner never leaves a green 
 behind it: each lane workflow ends in an `if: always()` step that runs `labels.cli.ts fail --lane`
 with the job's status, which replaces the issue's lane label whenever the job ended red or
 cancelled. What it replaces it with is the lane's own. For `acceptance`, `implement` and `mechanic`
-it is `queued`, because the strike ladder in the recompute
-([`reconcile-lane-edges.md`](reconcile-lane-edges.md)) is what decides whether a second model, the
+it is `queued`, because the strike ladder in the recompute (`dispatch/reconcile.ts`) is what decides whether a second model, the
 mechanic or the owner runs next; `needs-human` here would freeze the ticket before the ladder took
 its first step, and clearing the label outright would drop a ticket with no `## Parent PRD` out of
 the recompute's startable set, which reads exactly a lane label. Every other lane has no ladder

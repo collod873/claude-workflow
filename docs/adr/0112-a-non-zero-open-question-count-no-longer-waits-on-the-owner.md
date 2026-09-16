@@ -1,7 +1,6 @@
 ---
 status: note
 date: 2026-08-30
-amends: ADR-0061, ADR-0100
 reversal: Re-establishing the owner as the reader of a non-zero open-question count means putting the gate back into lane 02's runner and re-editing the `Amends:` trailers and the CONTEXT.md glossary entry this record moved; nothing in the mechanism ever required him as a reader, so what is undone is prose plus a conditional.
 ---
 

@@ -100,21 +100,12 @@ same logic is a different mechanism in a different venue: what a venue costs is 
 the repair it makes possible, and the earliest venue is always the cheapest repair.
 _Avoid_: layer, stage, tier, level, hook point
 
-**Binds**:
-What one lane forces on the design of another: a venue's budget, a bypassability, a cap. The
-sixth field of a shipped lane's contract, and the only one that is not about the lane's own
-behaviour. It exists because a fact can be load-bearing on a lane that does not exist yet without
-being that lane's trigger, refusal, cost or coverage, and a collapse that kept only those four
-would delete it. See [ADR-0025](docs/adr/0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md).
-_Avoid_: constraint (reserved for C1–C7), requirement, dependency, contract
-
 **Gate bypass**:
 A commit that reached `main` carrying a tree the gauntlet refuses. Defined by where the red *landed*,
 not by how it got past: `--no-verify`, a clone that never ran `npm ci`, and a commit made outside a
 session are one event, because they are indistinguishable from trunk's side and identical in
 consequence. A red tree inside a session is **not** one: mid-task red is a legitimate state, and only
-survival to trunk is harm. See
-[ADR-0063](docs/adr/0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md).
+survival to trunk is harm.
 _Avoid_: skipped gate, `--no-verify`, gate evasion, routing around
 
 **Back-stamp**:
@@ -163,11 +154,10 @@ _Avoid_: number to watch, metric, KPI, health check
 **Immutable set**:
 The files a pull request may never change: the test runner's config and `.github/`. Closed rather
 than approximate: each entry is there because omitting it reopens the same hole one level up, where
-the thing that judges becomes reachable from the thing being judged. It carries **no exemption**,
-which is what leaves nothing for an identity to authenticate. An acceptance test is not in it: since
+the thing that judges becomes reachable from the thing being judged. It carries **no exemption**. An acceptance test is not in it: since
 #360 it lives beside its subject, and what a pull request may do to one is a rule on the line
 (`test.fails(` may lose its `.fails`, nothing else) rather than a path. See
-[ADR-0053](docs/adr/0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md).
+[ADR-0054](docs/adr/0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md).
 _Avoid_: protected paths, frozen files, locked directory, path filter
 
 **Check contract**:
@@ -182,8 +172,7 @@ _Avoid_: the contract (bare), manifest, config, gate definition
 **Stub**:
 The six lines a second repo carries in place of a lane: a trigger and a `uses:` pointing at the
 reusable workflow here. Defined by what it lacks: a stub has no content, which is the whole reason
-it cannot drift and the reason installing is a call rather than a copy. See
-[ADR-0055](docs/adr/0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md).
+it cannot drift and the reason installing is a call rather than a copy.
 _Avoid_: shim, wrapper, caller, vendored copy
 
 **Strike**:
@@ -255,15 +244,12 @@ that lives in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
 **Open question**:
-A numbered question in a spec, naming something specifying could not settle: intent it would
-otherwise have invented, a ruling it was handed that is wrong or conflicts with another, or a guess
-the sheet marked and no ruling ever recorded. It is the only form those three take, and the count of
-unanswered ones is what holds work back: at zero the spec dispatches, and a non-zero count holds it
-back the same way, with nothing routed to the owner about it
-([ADR-0112](docs/adr/0112-a-non-zero-open-question-count-no-longer-waits-on-the-owner.md)). Distinct
+A numbered question in a spec, naming intent the author would otherwise have invented. A non-zero
+count adds `questions-open` beside `sliceable` and holds nothing: the spec dispatches either way,
+because nothing summons anyone to answer
+([ADR-0062](docs/adr/0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md)). Distinct
 from an **Assumption mark**, which lives on a sheet and is the shaper's own flag on its own
-recommendation; a mark *becomes* one of these only when it crosses into a spec with no ruling behind
-it.
+recommendation; what the critic settles lands under the spec's `## Assumptions`, not here.
 _Avoid_: assumption mark, TODO, caveat, clarification
 
 **Slice**:

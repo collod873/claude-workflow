@@ -17,7 +17,7 @@ TEMPLATE = (
     '---\n'
     'status: constraint\n'
     'date: {date}\n'
-    'reversal:{amends}\n'
+    'reversal:{supersedes}\n'
     '---\n'
     '\n'
     '# {title}\n'
@@ -123,7 +123,7 @@ def run_index_renderer(machine_root: Path, target_root: Path, corpus_dir: Path) 
     return index
 
 
-def draft(machine_root: Path, target_root: Path, title: str, amends: int | None,
+def draft(machine_root: Path, target_root: Path, title: str, supersedes: int | None,
           corpus_arg: str | None) -> int:
     d = corpus_dir_for(target_root, corpus_arg)
     d.mkdir(parents=True, exist_ok=True)
@@ -131,9 +131,9 @@ def draft(machine_root: Path, target_root: Path, title: str, amends: int | None,
     if path.exists():
         print(f"error: already exists: {path}", file=sys.stderr)
         return 1
-    amends_line = f"\namends: ADR-{amends:04d}" if amends is not None else ""
+    supersedes_line = f"\nsupersedes: ADR-{supersedes:04d}" if supersedes is not None else ""
     path.write_text(
-        TEMPLATE.format(date=date.today().isoformat(), title=title, amends=amends_line)
+        TEMPLATE.format(date=date.today().isoformat(), title=title, supersedes=supersedes_line)
         + BODY_PROMPT.format(cap=adr_shape.WORD_CAP),
         encoding="utf-8",
     )
@@ -207,9 +207,9 @@ def main(argv: list[str] | None = None) -> int:
         description="File an ADR as a draft; claim its number when it lands.",
     )
     p.add_argument("--land", metavar="DRAFT", help="land a draft: validate, number, index")
-    p.add_argument("--amends", type=int, metavar="NNNN",
-                   help="this ruling replaces ADR-NNNN (rare; correct in place instead "
-                        "unless the constraint itself reverses)")
+    p.add_argument("--supersedes", type=int, metavar="NNNN",
+                   help="this ruling retires ADR-NNNN whole (rare; a partial change is an "
+                        "edit to ADR-NNNN itself)")
     p.add_argument("--corpus", metavar="DIR",
                    help="draft under DIR/docs/adr instead of the root corpus; --land "
                         "ignores this and uses the draft's own directory")
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.title:
         p.error("give the ruling as a sentence, e.g. "
                 'new-adr "Triage labels are positions, not verdicts"')
-    return draft(root, target_root, " ".join(args.title), args.amends, args.corpus)
+    return draft(root, target_root, " ".join(args.title), args.supersedes, args.corpus)
 
 
 if __name__ == "__main__":

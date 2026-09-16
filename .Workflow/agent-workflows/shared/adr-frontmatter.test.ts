@@ -35,10 +35,10 @@ describe("withReversal", () => {
     );
   });
 
-  it("keeps the other keys in place, so `amends:` survives the write", () => {
-    const drafted = "---\nstatus: constraint\ndate: 2026-09-02\namends: ADR-0008\nreversal:\n---\n\n# A ruling\n";
+  it("keeps the other keys in place, so `supersedes:` survives the write", () => {
+    const drafted = "---\nstatus: constraint\ndate: 2026-09-02\nsupersedes: ADR-0008\nreversal:\n---\n\n# A ruling\n";
 
-    expect(withReversal(drafted, "A cost.")).toContain("amends: ADR-0008\nreversal: A cost.");
+    expect(withReversal(drafted, "A cost.")).toContain("supersedes: ADR-0008\nreversal: A cost.");
   });
 
   it("throws rather than silently writing nothing when there is no frontmatter", () => {

@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-04
-amends: ADR-0133
+supersedes: ADR-0133
 reversal: Reversing it means teaching the acceptance and fixer lanes to read a runner out of
   `.claude/contract.json` and report failures per runner. Getting back means rediscovering, from a
   target whose tests never ran, that the machine writes the tests it then has to run.

@@ -1,6 +1,7 @@
 ---
 status: constraint
 date: 2026-09-03
+supersedes: ADR-0102, ADR-0127
 reversal: Undoing it means a `tests/acceptance/` directory red on `main` again, restored from trunk's tip by a Verify job of its own, with its own push gate, land gate, clone baseline and immutable-set entry — and a gate whose size is bounded by nothing but who owns each file.
 ---
 

@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-26
-amends: ADR-0008
+supersedes: ADR-0008
 reversal: Shipping write-on-surprise now means inventing a per-module CONTEXT.md convention this repo has no modules for, and every brief assembled afterwards would carry whatever an uncalibrated surprise bar wrote into the file that is loaded into all of them; ADR-0008's ruling is already struck and the coverage ledger's class-4 row rewritten to name the transcript lens alone.
 ---
 

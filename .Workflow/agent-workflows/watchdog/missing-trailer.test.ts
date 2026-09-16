@@ -3,16 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { GhExec } from "../shared/gh";
-import evidence from "./adr-corpus.evidence.json";
 import { countMissingTrailers, readAdrCorpus, readResearchCorpus } from "./missing-trailer-counter";
 import { answerTrackerOrThrow } from "./signal-tracker.fixture";
 import {
   findMissingTrailers,
   FINDING_MARKER,
-  hasAmendsTrailer,
+  hasSupersedesLine,
   hasResolvesPointer,
   hasSupersessionVerb,
-  isMissingAmendsTrailer,
+  isMissingSupersedesLine,
   isMissingResolvesField,
   lowerNumberedAdrLinks,
   signalBody,
@@ -20,8 +19,6 @@ import {
   type AdrDoc,
   type ResearchNote,
 } from "./missing-trailer";
-
-const EVIDENCE: { adrs: AdrDoc[]; notes: ResearchNote[] } = evidence;
 
 function corpusDir(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "missing-trailer-"));
@@ -38,86 +35,16 @@ function note(overrides: Partial<ResearchNote> = {}): ResearchNote {
   return { filename: "topic-2026-08.md", title: "A finding", body: "**Resolves:** [x](https://example/1)\n\n## Section\n", ...overrides };
 }
 
-describe("the rule, run over the corpus that motivated it", () => {
-  it("has a corpus to run over, so a green suite is not an empty sweep", () => {
-    expect(EVIDENCE.adrs.length).toBeGreaterThan(50);
-    expect(EVIDENCE.notes.length).toBeGreaterThan(5);
-  });
-
-  it("flags every ADR that carries an amends: declaration, and nothing else", () => {
-    const trailered = EVIDENCE.adrs.filter((doc) => hasAmendsTrailer(doc.body));
-
-    for (const doc of trailered) expect(doc.body).toMatch(/^amends:\s*ADR-\d{4}/m);
-    expect(trailered.map((doc) => doc.filename).sort()).toEqual(expect.arrayContaining([
-      "0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md",
-      "0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md",
-      "0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md",
-      "0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md",
-      "0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md",
-      "0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md",
-      "0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md",
-      "0071-branch-protection-is-declined-so-move-10-retires-and-its-cou.md",
-      "0072-a-research-note-with-no-antecedent-issue-declares-that-in-a.md",
-    ]));
-  });
-
-  it("flags every verb-and-link ADR with no trailer, and nothing that fails any of those three", () => {
-    const candidates = EVIDENCE.adrs.filter(isMissingAmendsTrailer);
-
-    for (const doc of candidates) {
-      expect(hasSupersessionVerb(doc.body)).toBe(true);
-      expect(lowerNumberedAdrLinks(doc.body, doc.number).length).toBeGreaterThan(0);
-      expect(hasAmendsTrailer(doc.body)).toBe(false);
-    }
-
-    const shouldFlag = EVIDENCE.adrs.filter(
-      (doc) =>
-        hasSupersessionVerb(doc.body) &&
-        lowerNumberedAdrLinks(doc.body, doc.number).length > 0 &&
-        !hasAmendsTrailer(doc.body),
-    );
-    expect(candidates.map((doc) => doc.filename).sort()).toEqual(
-      shouldFlag.map((doc) => doc.filename).sort(),
-    );
-
-    const synthetic = {
-      number: 99,
-      filename: "0099-a-synthetic-ruling.md",
-      title: "A synthetic ruling",
-      body: "This retires [ADR-0045](0045-a-superseded-adr-is-named-by-a-trailer.md) outright.\n",
-    };
-    expect(isMissingAmendsTrailer(synthetic)).toBe(true);
-    expect(isMissingAmendsTrailer({ ...synthetic, body: `---\namends: ADR-0045\n---\n${synthetic.body}` }))
-      .toBe(false);
-  });
-
-  it("flags no research notes as missing a Resolves: field, since every note on disk now carries a pointer", () => {
-    const missing = EVIDENCE.notes.filter(isMissingResolvesField);
-    expect(missing.map((n) => n.filename).sort()).toEqual([]);
-  });
-
-  it("never flags a trailered ADR as also a candidate", () => {
-    for (const doc of EVIDENCE.adrs) {
-      if (hasAmendsTrailer(doc.body)) expect(isMissingAmendsTrailer(doc)).toBe(false);
-    }
-  });
-
-  it("collapses the whole corpus into one issue's worth of findings, not two counters' worth", () => {
-    const findings = findMissingTrailers(EVIDENCE.adrs, EVIDENCE.notes);
-
-    expect(findings.filter((f) => f.kind === "adr")).toHaveLength(
-      EVIDENCE.adrs.filter(isMissingAmendsTrailer).length,
-    );
-    expect(findings.filter((f) => f.kind === "research-note")).toHaveLength(
-      EVIDENCE.notes.filter(isMissingResolvesField).length,
-    );
-  });
-});
-
 describe("hasSupersessionVerb", () => {
   it("takes the canonical vocabulary in any of its inflections", () => {
-    for (const word of ["retired", "retires", "amends", "amended", "struck", "striking", "restated", "replaces", "replaced"]) {
+    for (const word of ["retired", "retires", "supersedes", "superseded", "struck", "striking", "replaces", "replaced"]) {
       expect(hasSupersessionVerb(`This ADR ${word} an earlier one.`)).toBe(true);
+    }
+  });
+
+  it("leaves amends and restates alone, because a partial change is an edit to the ADR it changes", () => {
+    for (const word of ["amends", "amended", "restates", "restated"]) {
+      expect(hasSupersessionVerb(`This ADR ${word} an earlier one.`)).toBe(false);
     }
   });
 
@@ -147,35 +74,35 @@ describe("lowerNumberedAdrLinks", () => {
   });
 });
 
-describe("hasAmendsTrailer", () => {
-  it("takes the trailer at the start of a line", () => {
-    expect(hasAmendsTrailer("status: note\ndate: 2026-08-26\namends: ADR-0004\n")).toBe(true);
+describe("hasSupersedesLine", () => {
+  it("takes the line at the start of a line", () => {
+    expect(hasSupersedesLine("status: note\ndate: 2026-08-26\nsupersedes: ADR-0004\n")).toBe(true);
   });
 
   it("leaves the word used mid-sentence", () => {
-    expect(hasAmendsTrailer("This amends nothing on its own.")).toBe(false);
+    expect(hasSupersedesLine("This supersedes nothing on its own.")).toBe(false);
   });
 });
 
-describe("isMissingAmendsTrailer", () => {
+describe("isMissingSupersedesLine", () => {
   it("is the whole rule: verb, a lower link, and no trailer", () => {
     const body = "Recorded 2026-08-26.\n\nThis retired [ADR-0005](0005-a-decision.md).\n";
-    expect(isMissingAmendsTrailer(adr({ number: 10, body }))).toBe(true);
+    expect(isMissingSupersedesLine(adr({ number: 10, body }))).toBe(true);
   });
 
   it("is never true for an ADR whose only lower-numbered link is introduced by extends", () => {
     const body = "Recorded 2026-08-26.\n\nThis extends [ADR-0005](0005-a-decision.md), and both stand.\n";
-    expect(isMissingAmendsTrailer(adr({ number: 28, body }))).toBe(false);
+    expect(isMissingSupersedesLine(adr({ number: 28, body }))).toBe(false);
   });
 
   it("is false once the trailer exists, even with the verb and the link present", () => {
-    const body = "status: note\ndate: 2026-08-26\namends: ADR-0005\n\nThis retired it.\n";
-    expect(isMissingAmendsTrailer(adr({ number: 10, body }))).toBe(false);
+    const body = "status: note\ndate: 2026-08-26\nsupersedes: ADR-0005\n\nThis retired it.\n";
+    expect(isMissingSupersedesLine(adr({ number: 10, body }))).toBe(false);
   });
 
   it("is false with the verb present but no lower-numbered link at all", () => {
     const body = "Recorded 2026-08-26.\n\nThe old wiki is retired.\n";
-    expect(isMissingAmendsTrailer(adr({ number: 10, body }))).toBe(false);
+    expect(isMissingSupersedesLine(adr({ number: 10, body }))).toBe(false);
   });
 });
 

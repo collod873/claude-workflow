@@ -13,19 +13,25 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0003 | [A lint rule is asked whether it ever fired only when standards-pass runs next, and leaves the config the moment the answer is no](0003-a-lint-rule-is-asked-whether-it-ever-fired-only-when-standar.md) |
 | 0004 | [A clock may release a batch, but may never originate work](0004-a-clock-may-release-a-batch-but-may-never-originate-work.md) |
 | 0005 | [Accepting a shaped idea is what files its ADRs](0005-accepting-a-shaped-idea-is-what-files-its-adrs.md) |
+| 0007 | [The shaper routes every item, so the short path is not defects-only](0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md) |
 | 0009 | [The machine may file defects against itself but never features](0009-the-machine-may-file-defects-against-itself-but-never-featur.md) |
 | 0013 | [The close gate judges only a close marked completed](0013-the-close-gate-judges-only-a-close-marked-completed.md) |
 | 0014 | [A model may translate evidence into a gate's grammar but never render the gate's verdict](0014-a-model-may-translate-evidence-into-a-gate-s-grammar-but-nev.md) |
 | 0018 | [Capture runs globally; the auditor and the release run in this repo only](0018-capture-runs-globally-the-auditor-and-the-release-run-in-thi.md) |
-| 0025 | [DESIGN.md carries no lane status; a shipped lane collapses to its six-field contract](0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md) |
 | 0028 | [An assumption mark names what it moves, or it is not a mark](0028-an-assumption-mark-names-what-it-moves-or-it-is-not-a-mark.md) |
+| 0030 | [The shaper is given a prepared context and no search tools](0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md) |
 | 0031 | [A probation held to an event that may never happen becomes a count](0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) |
+| 0039 | [The governor does not ship: concurrency is bounded by ready disjoint slices and a serialised merge](0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md) |
 | 0040 | [Lane 08 merges without a model, and the semantic-conflict class goes to the proposed lens](0040-lane-08-merges-without-a-model-and-the-semantic-conflict-cla.md) |
+| 0042 | [A seam question does not block: the implementer reads on and leaves a countable trace](0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md) |
 | 0043 | [Write-on-surprise does not ship: the transcript auditor already carries W6](0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md) |
 | 0044 | [An unread document cannot be detected, so the backwards question back-stamps prose instead of deleting it](0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) |
+| 0045 | [A superseded ADR is named by a trailer its successor writes, and the first thing the counter catches is a missing trailer](0045-a-superseded-adr-is-named-by-a-trailer-its-successor-writes.md) |
 | 0047 | [The shape of the machine is an owner point: agents do not judge whether a mechanism should exist](0047-the-shape-of-the-machine-is-an-owner-point-agents-do-not-jud.md) |
 | 0054 | [An implementation PR's checks fire by repository_dispatch, so the workflow that judges it is always trunk's](0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md) |
+| 0056 | [bin/gauntlet runs the check contract instead of three hardcoded tools](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) |
 | 0060 | [The spec author reads the repo through an allow list and cannot reach a second source of intent](0060-the-spec-author-reads-the-repo-through-an-allow-list-and-can.md) |
+| 0062 | [The prd label fires the critic, and the slicer is dispatched whatever the open-question count](0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md) |
 | 0064 | [A counter names an event, a count, an issue and an action, and is measured against the history it would have read](0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md) |
 | 0068 | [A discovery widens a run by landing on trunk, and the trigger is the compiler rather than a count](0068-a-discovery-widens-a-run-by-landing-on-trunk-and-the-trigger.md) |
 | 0069 | [The dependency graph is lane 03's output and read-only downstream, and a concurrent claim collision is detected at the merge and diagnoses the slicer](0069-the-dependency-graph-is-lane-03-s-output-and-read-only-downs.md) |
@@ -39,8 +45,11 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0086 | [A test importing a thing is not evidence anything runs it, so the push gate measures reachability from lanes instead](0086-a-test-importing-a-thing-is-not-evidence-anything-runs-it-so.md) |
 | 0088 | [The close gate fires in the agent's turn at both venues, so the tracker-side gate and its reconciler retire](0088-the-close-gate-fires-in-the-agent-s-turn-at-both-venues-so-t.md) |
 | 0093 | [A lane that opens a pull request depends on a repository setting no file records, so the record is here and the installer sets it](0093-a-lane-that-opens-a-pull-request-depends-on-a-repository-set.md) |
+| 0094 | [Lane 08 closes the ticket it merged, and a ticket that will not close never reddens the merge](0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md) |
+| 0096 | [A ticket's check is refused for reading the tracker instead of the tree, never for reaching outside the repo, and a spec's check reads the world](0096-a-check-marker-is-refused-for-reading-the-tracker-instead-of.md) |
 | 0097 | [Machine-global agent machinery lives in one dedicated clone, symlinked, never vendored into a consumer](0097-machine-global-agent-machinery-lives-in-the-agent-skills-rep.md) |
-| 0102 | [A lint rule that points at an import the boundary forbids does not apply inside that boundary](0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md) |
+| 0099 | [A recomputing counter closes its standing issue when its count reaches zero](0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md) |
+| 0100 | [Lane 02 re-authors the spec body from what the critic resolved before the gate applies sliceable](0100-the-critique-door-re-authors-the-spec-body-from-the-answered.md) |
 | 0104 | [Lane 06 judges the pull request rather than trunk, and both of its jobs now bind on lane 08's merge](0104-lane-06-judges-the-pull-request-rather-than-trunk-and-both-o.md) |
 | 0106 | [A reader is proved against a payload the API actually served, never against a fake that agrees with it](0106-a-reader-is-proved-against-a-payload-the-api-actually-served.md) |
 | 0110 | [Files claimed bound what a run decides, not what it repairs](0110-files-claimed-bound-what-a-run-decides-not-what-it-repairs.md) |
@@ -51,7 +60,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0122 | [Findings land through the implementation door; the release-PR channel is deleted](0122-findings-land-through-the-implementation-door-the-release-pr.md) |
 | 0123 | [The owner signs by not reverting, and a revert writes declined memory](0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md) |
 | 0124 | [A lint rule is ratified only by reproducing its own evidence](0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md) |
-| 0127 | [The immutable-set refusal reads an acceptance test's code, not its comments](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) |
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) |
 | 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) |
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) |
@@ -63,7 +71,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0139 | [An enrolled repository is checked by the machine's gauntlet running from the machine checkout, never by a copy of it](0139-an-enrolled-repository-is-checked-by-the-machine-s-gauntlet.md) |
 | 0141 | [An unrecognised failing path routes to the caller, and the machine checkout is matched positively against its own tree](0141-an-unrecognised-failing-path-routes-to-the-caller-and-the-ma.md) |
 | 0143 | [A machine schema change may not invalidate a file an enrolled repository has already committed](0143-a-machine-schema-change-may-not-invalidate-a-file-an-enrolle.md) |
-| 0145 | [The committed venue half is written by lane 05's push-venue run on the runner](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) |
 | 0148 | [Timing is recorded, never judged](0148-timing-is-recorded-never-judged.md) |
 | 0149 | [A workflow_run-only lane refuses a canary fire and names its upstream lane, rather than bin/canary firing that upstream itself](0149-a-workflow-run-only-lane-refuses-a-canary-fire-and-names-its.md) |
 | 0150 | [An acceptance test is colocated and marked test.fails, and the gate is fenced by size](0150-an-acceptance-test-is-colocated-and-marked-test-fails-and-th.md) |
@@ -107,6 +114,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0192 | [A run that produces no pull request holds its ticket, because only a failure reaches the strike ladder](0192-a-run-that-produces-no-pull-request-holds-its-ticket-because.md) |
 | 0193 | [A rule is placed at the highest rung that can hold it and the earliest venue that can see enough, and the change that places it deletes every restatement](0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md) |
 | 0194 | [An unclear spec reaches the owner on the pull request and no label routes it, because a route needs a reader that runs](0194-an-unclear-spec-reaches-the-owner-on-the-pull-request-and-no.md) |
+| 0195 | [Only a whole reversal files a successor ADR, and a retirement or a deletion lands with every live line that names it](0195-only-a-whole-reversal-files-a-successor-adr-and-a-retirement.md) |
 
 ## Retired
 
@@ -115,7 +123,6 @@ demotion; nothing here binds later work.
 
 - [0000](0000-template.md) note
 - [0006](0006-agents-draft-vocabulary-and-rulings-the-owner-signs-them.md) superseded
-- [0007](0007-the-shaper-routes-every-item-so-the-short-path-is-not-defect.md) superseded
 - [0008](0008-a-run-ends-by-writing-what-surprised-it-into-the-module-s-co.md) superseded
 - [0010](0010-every-gate-fires-at-the-earliest-venue-that-can-run-it.md) superseded
 - [0011](0011-a-refusal-ships-only-once-something-can-clear-it.md) superseded
@@ -129,10 +136,10 @@ demotion; nothing here binds later work.
 - [0022](0022-no-diff-excuses-the-range-and-nothing-else.md) note
 - [0023](0023-the-close-refused-label-is-state-not-history-a-passing-re-cl.md) superseded
 - [0024](0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md) superseded
+- [0025](0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md) note
 - [0026](0026-the-build-order-and-the-filed-open-questions-live-as-issues.md) superseded
 - [0027](0027-six-of-era-6-s-eleven-verbs-do-not-survive-the-map-and-two-s.md) note
 - [0029](0029-marks-route-an-item-the-five-decision-cap-is-what-refuses-it.md) note
-- [0030](0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md) superseded
 - [0032](0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md) superseded
 - [0033](0033-a-spec-edit-re-fires-acceptance-for-every-slice-whose-test-n.md) superseded
 - [0034](0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md) superseded
@@ -140,10 +147,7 @@ demotion; nothing here binds later work.
 - [0036](0036-a-finding-a-green-gate-already-covers-is-refused-before-any.md) note
 - [0037](0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md) note
 - [0038](0038-lane-07-s-conformance-reviewer-files-spec-gap-where-the-spec.md) superseded
-- [0039](0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md) superseded
 - [0041](0041-the-fixer-stops-when-it-stops-making-progress-with-three-att.md) note
-- [0042](0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md) superseded
-- [0045](0045-a-superseded-adr-is-named-by-a-trailer-its-successor-writes.md) superseded
 - [0046](0046-the-backwards-question-writes-rather-than-reports-so-it-need.md) note
 - [0048](0048-the-close-gate-s-reconciler-rides-session-end-because-a-cron.md) superseded
 - [0049](0049-the-run-watchdog-sweeps-on-session-end-because-workflow-run.md) note
@@ -152,12 +156,10 @@ demotion; nothing here binds later work.
 - [0052](0052-a-comment-clears-a-stage-1-refusal-because-the-change-reques.md) note
 - [0053](0053-the-acceptance-lane-pushes-to-main-so-the-immutability-rule.md) superseded
 - [0055](0055-a-lane-ships-as-a-reusable-workflow-and-a-second-repo-carrie.md) superseded
-- [0056](0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md) superseded
 - [0057](0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) superseded
 - [0058](0058-lane-02-is-one-prompt-with-a-collector-per-trigger-and-a-pay.md) superseded
 - [0059](0059-a-closed-map-reaches-lane-02-by-its-to-spec-label-never-by-b.md) note
 - [0061](0061-everything-lane-02-cannot-settle-becomes-a-numbered-open-que.md) superseded
-- [0062](0062-the-prd-label-fires-the-critic-and-a-zero-open-question-coun.md) superseded
 - [0063](0063-a-gate-bypass-is-a-red-tree-reaching-main-counted-from-run-m.md) superseded
 - [0065](0065-parity-and-correction-do-not-survive-their-own-history-so-se.md) note
 - [0066](0066-a-number-lives-in-an-adr-or-in-a-counter-row-never-in-the-op.md) note
@@ -175,13 +177,10 @@ demotion; nothing here binds later work.
 - [0089](0089-the-clone-gate-runs-beside-the-gauntlet-not-inside-it-so-the.md) note
 - [0090](0090-a-repository-dispatch-trigger-names-its-own-event-types-so-a.md) note
 - [0091](0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md) superseded
-- [0094](0094-lane-08-closes-the-ticket-it-merged-and-a-ticket-that-will-n.md) superseded
 - [0095](0095-lane-08-blocks-on-lane-06-s-immutability-job-and-only-warns.md) superseded
-- [0096](0096-a-check-marker-is-refused-for-reading-the-tracker-instead-of.md) superseded
 - [0098](0098-the-acceptance-author-is-shown-the-files-its-ticket-claims-r.md) superseded
-- [0099](0099-a-recomputing-counter-closes-its-standing-issue-when-its-cou.md) superseded
-- [0100](0100-the-critique-door-re-authors-the-spec-body-from-the-answered.md) superseded
 - [0101](0101-an-expected-red-acceptance-test-is-not-a-local-finding-so-th.md) note
+- [0102](0102-a-lint-rule-that-points-at-an-import-the-boundary-forbids-do.md) superseded
 - [0103](0103-what-a-lane-05-run-built-is-a-question-only-git-can-answer-s.md) note
 - [0105](0105-the-push-venue-lints-workflow-files-and-only-the-ones-that-d.md) note
 - [0107](0107-a-stage-runs-the-gate-its-output-will-be-judged-by-before-it.md) superseded
@@ -196,12 +195,14 @@ demotion; nothing here binds later work.
 - [0121](0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md) note
 - [0125](0125-checkpoint-isolation-is-a-setupfiles-entry-that-every-test-g.md) note
 - [0126](0126-no-diff-counts-the-range-it-was-handed-and-refuses-a-range-i.md) note
+- [0127](0127-the-immutable-set-refusal-reads-an-acceptance-test-s-code-no.md) superseded
 - [0128](0128-the-acceptance-author-is-handed-its-criteria-as-extracted-an.md) superseded
 - [0133](0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md) superseded
 - [0135](0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) superseded
 - [0140](0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md) superseded
 - [0142](0142-a-venue-budget-is-written-only-by-a-venue-run-and-only-the-c.md) superseded
 - [0144](0144-a-machine-change-is-run-against-the-local-checkout-of-an-enr.md) superseded
+- [0145](0145-the-committed-venue-half-is-written-by-lane-05-s-push-venue.md) superseded
 - [0146](0146-a-machine-change-is-proven-on-a-canary-target-before-it-land.md) superseded
 - [0147](0147-the-timing-deadband-is-50-because-it-spans-a-runner-pool-rat.md) superseded
 - [0152](0152-a-canary-fire-carries-the-fixture-the-lane-reads-because-a-l.md) superseded
@@ -209,4 +210,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-194 ADRs · 99 constraint · 42 note · 53 superseded · 20,726 words total.
+195 ADRs · 107 constraint · 43 note · 45 superseded · 22,004 words total.

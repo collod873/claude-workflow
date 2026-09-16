@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-29
-amends: ADR-0107
+supersedes: ADR-0107
 reversal: Undoing it strips `implement.ts` of its post-answer regeneration, re-narrows the implementer prompt, deletes the generated-artifact list held level between `bin/gauntlet` and `regenerate-artifacts.ts` and the test pinning the wiring-baseline exclusion — and returns the estate to discarding whole paid runs whose work was correct, which it did twice in one day at roughly $6 each.
 ---
 

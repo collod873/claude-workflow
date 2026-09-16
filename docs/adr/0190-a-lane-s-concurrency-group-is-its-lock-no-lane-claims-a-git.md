@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-14
-amends: ADR-0084
+supersedes: ADR-0084
 reversal: a hand-rolled lease comes back — creation timestamps, a 90-minute timeout, takeover and release — to duplicate what `concurrency` already enforces, and the branch goes back to meaning two things at once
 ---
 

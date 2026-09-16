@@ -75,7 +75,7 @@ count no longer holds the spec back (ADR-0112); the gate removes it the first ti
 | `prd` | Kind, never state | `#c2c2c2` | A spec issue, filed by file-issue spec |
 | `idea` | Kind, never state | `#c2c2c2` | The owner's own words about work that might be worth doing, never edited |
 | `bug` | Kind, never state | `#c2c2c2` | The owner called it a break; intake, never a verdict |
-| `build-order` | Kind, never state | `#c2c2c2` | A move on the build order (ADR-0026) |
+| `build-order` | Kind, never state | `#c2c2c2` | A move on the build order |
 | `standards-pass` | Kind, never state | `#c2c2c2` | A standards-authorship pass, one per run |
 | `lane-07-finding` | Kind, never state | `#c2c2c2` | A lane 07 finding that survived the refuter |
 | `wayfinder:map` | Kind, never state | `#c2c2c2` | A Wayfinder map: Notes, Decisions-so-far and Fog |

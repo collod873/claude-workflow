@@ -2,8 +2,7 @@
 
 Enrolment is a repository topic, not a command. Tag a repository with the topic
 `claude-workflow-enrolled` and the next enrol pass (a push to this repository's `main` that
-changes the stub set, or a `workflow_dispatch` run) brings it up to date. There is no `bin/install`
-([ADR-0133](../adr/0133-enrolment-is-a-repository-topic-and-an-enrol-lane-writes-stu.md)): a command
+changes the stub set, or a `workflow_dispatch` run) brings it up to date. There is no `bin/install`: a command
 has to be remembered per repository and per lane change, and the topic-driven pass does not.
 
 `.github/workflows/enrol.yml` is the one lane with no caller stub of its own (every enrolled
@@ -30,8 +29,7 @@ state rather than enumerated anywhere:
    set, and deleting it is not this lane's business. Nothing here is a hard-coded list: the
    vocabulary is prose in `docs/agents/pipeline-labels.md` and `docs/agents/issue-tracker.md`,
    describing labels that already exist on this repository, and a second copy in code would be
-   exactly the enumerated manifest that
-   [ADR-0057](../adr/0057-the-installer-derives-every-list-it-acts-on-and-overwrites-o.md) rejected.
+   exactly an enumerated manifest, which drifts from what it lists.
 
 3. **The ADR-0093 repository setting.** `PUT /repos/{owner}/{repo}/actions/permissions/workflow`
    with `can_approve_pull_request_reviews: true`, read back and verified rather than trusted, because
@@ -133,10 +131,9 @@ no way to see, so the very first enrolment of a newly-topicked repository is not
 An enrolled repository runs lanes it does not own and may not edit in place
 ([ADR-0009](../adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md)), so a red
 run there has two possible authors and only the run itself can tell them apart.
-[ADR-0135](../adr/0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) makes the
+[ADR-0141](../adr/0141-an-unrecognised-failing-path-routes-to-the-caller-and-the-ma.md) makes the
 failing path the answer: a path the machine checkout tracks (`git ls-files`) is this repository's
-own defect, and any other path, bare or under `target/`, routes to the caller
-([ADR-0141](../adr/0141-an-unrecognised-failing-path-routes-to-the-caller-and-the-ma.md)).
+own defect, and any other path, bare or under `target/`, routes to the caller.
 
 `.github/workflows/walk-home.yml` is what acts on that routing. Like `enrol.yml`, it is the other
 lane with no caller stub: it runs only here, walking every repository the enrolment topic

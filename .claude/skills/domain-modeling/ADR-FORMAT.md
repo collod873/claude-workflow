@@ -58,8 +58,9 @@ the constraint. The issue is provenance, never content.
 
 ## Living with them
 
-**Correct a landed ADR in place.** File a new one only when the constraint itself
-reverses; set `amends:` on the successor when it does.
+**Correct a landed ADR in place.** A change to part of a ruling is an edit to that ADR.
+File a new one only when the ruling reverses whole; set `supersedes:` on the successor,
+then rewrite or delete every live line that cited the old one.
 
 **Never rename or delete one.** Numbers and filenames are quoted in issue bodies and
 permalinks that cannot be edited from here. Retire an entry by setting `status:

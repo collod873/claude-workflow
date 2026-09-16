@@ -1,7 +1,8 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-01
-amends: ADR-0120
+superseded_by: ADR-0150
+supersedes: ADR-0120
 reversal: Reversing re-admits the collision this removed — lane 04's author is required to quote its criterion verbatim and forbidden to name an immovable path, so a criterion whose own check marker names a workflow file makes both rules unsatisfiable at once, the batch is refused, the run dies, and no wording of the prompt can rescue it.
 ---
 

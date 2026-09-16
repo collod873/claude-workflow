@@ -1,5 +1,5 @@
 ---
-status: constraint
+status: note
 date: 2026-08-26
 reversal: Reversing it cannot restore the argument prose the collapse deletes from `DESIGN.md`, `README.md`'s status paragraph and `GOAL.md` §4, and its no-renumbering corollary is load-bearing for section citations in `close-gate.ts`, `verify.yml`, `gauntlet-hook.mjs` and several ADRs that would all silently resolve to the wrong section.
 ---

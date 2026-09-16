@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-03
-amends: ADR-0152
+supersedes: ADR-0152
 reversal: every guarded lane goes back to answering a canary fire with a skipped job, and a reader who sees that red has to re-derive, lane by lane, that the machine was never at fault.
 ---
 

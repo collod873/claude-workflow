@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-04
-amends: ADR-0146
+supersedes: ADR-0146
 reversal: Reversing it means letting `prove` pick a candidate again and accepting that a canary can
   report green about a run it did not light. Getting back means noticing, from a lane that passed
   on somebody else's work, that a verdict was never tied to a fire.

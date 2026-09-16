@@ -1,7 +1,6 @@
 ---
 status: constraint
 date: 2026-08-31
-amends: ADR-0099
 reversal: Undoing it removes the novelty check and the recovery-evidence retirement from `run-watchdog.ts`, restores its early return ahead of `gh issue list`, and re-licenses every standing counter — `lost-dispatch-counter.ts`, `unreachable.ts` — to re-assert what its own issue already cites, which is the per-mechanism re-derivation this ruling exists to end.
 ---
 

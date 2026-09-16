@@ -1,7 +1,6 @@
 ---
 status: note
 date: 2026-08-29
-amends: ADR-0096
 reversal: The refusal list already lives in `validateCriteriaShape`; permitting or re-refusing `gh`/`curl` inside a spec's closing check is an edit to that checker and the spec-check tests, and ADR-0096 still carries the ticket-side rule this only names the other half of.
 ---
 

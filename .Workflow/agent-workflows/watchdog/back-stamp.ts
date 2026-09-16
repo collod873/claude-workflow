@@ -15,14 +15,14 @@ export function adrNumber(path: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-function amendsDeclaration(content: string): string | undefined {
+function supersedesDeclaration(content: string): string | undefined {
   const block = frontmatterBlock(content);
   if (block === undefined) return undefined;
-  return block.split("\n").find((line) => line.startsWith("amends:"));
+  return block.split("\n").find((line) => line.startsWith("supersedes:"));
 }
 
-export function amendedAdrNumbers(content: string): number[] {
-  const declaration = amendsDeclaration(content);
+export function supersededAdrNumbers(content: string): number[] {
+  const declaration = supersedesDeclaration(content);
   if (!declaration) return [];
   return [...declaration.matchAll(/ADR-(\d{4})/g)].map((match) => Number(match[1]));
 }
@@ -34,7 +34,7 @@ export function trailerGraph(files: DocFile[]): Map<number, number[]> {
     const successor = adrNumber(file.path);
     if (successor === undefined) continue;
 
-    for (const predecessor of amendedAdrNumbers(file.content)) {
+    for (const predecessor of supersededAdrNumbers(file.content)) {
       if (predecessor === successor) continue; 
       const set = bySuccessor.get(predecessor) ?? new Set<number>();
       set.add(successor);

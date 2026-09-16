@@ -31,10 +31,10 @@ function repoWithAdrDir(prefix: string, index?: string): string {
 }
 
 describe("bin/new-adr", () => {
-  it("--amends 8 writes the amends: ADR-0008 key into the created file's frontmatter", () => {
-    const root = newAdrRepo("new-adr-amends").dir;
+  it("--supersedes 8 writes the supersedes: ADR-0008 key into the created file's frontmatter", () => {
+    const root = newAdrRepo("new-adr-supersedes").dir;
 
-    expect(frontmatterOf(draftContents(root, ["--amends", "8", "a title"]))).toContain("amends: ADR-0008");
+    expect(frontmatterOf(draftContents(root, ["--supersedes", "8", "a title"]))).toContain("supersedes: ADR-0008");
   });
 
   it("opens with the three keys adr_shape.py requires, and a reversal the author has to write", () => {
@@ -64,9 +64,9 @@ describe("bin/new-adr", () => {
   it("drafts a file the retired-grammar gate accepts once landed", () => {
     const root = repoWithAdrDir("new-adr-grammar");
 
-    const landed = draftAndLand(root, ["--amends", "8", RULING]);
+    const landed = draftAndLand(root, ["--supersedes", "8", RULING]);
 
-    expect(readFileSync(landed, "utf8")).toContain("amends: ADR-0008");
+    expect(readFileSync(landed, "utf8")).toContain("supersedes: ADR-0008");
   });
 });
 
@@ -104,10 +104,10 @@ describe("bin/new-adr, drafting and landing", () => {
     expect(basename(draftAndLand(root, [RULING]))).toBe(`0005-${SLUG}.md`);
   });
 
-  it("carries the amends: key written at draft time through the land", () => {
-    const landed = draftAndLand(repoWithAdrDir("new-adr-amends-land"), ["--amends", "8", RULING]);
+  it("carries the supersedes: key written at draft time through the land", () => {
+    const landed = draftAndLand(repoWithAdrDir("new-adr-supersedes-land"), ["--supersedes", "8", RULING]);
 
-    expect(frontmatterOf(readFileSync(landed, "utf8"))).toContain("amends: ADR-0008");
+    expect(frontmatterOf(readFileSync(landed, "utf8"))).toContain("supersedes: ADR-0008");
   });
 
   it("refuses a path that is not a draft, so a landed ADR cannot be renumbered by a second land", () => {

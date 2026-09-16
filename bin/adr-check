@@ -28,7 +28,7 @@ the corpus partitioned into cited nowhere, cited only from issues, and cited fro
 code, which is the sort. Report only — it moves, renames and edits nothing.
 
 **What this never does is move a file.** 107 permalinks of the form
-`.../blob/main/docs/adr/0008-<slug>.md` sit in GitHub issue bodies, and 32 issues
+`.../blob/main/docs/adr/NNNN-<slug>.md` sit in GitHub issue bodies, and 32 issues
 carry machine-written closing records naming ADR numbers. Renaming an ADR 404s them
 and nothing here can retract a comment, so a demotion is a `status:` change and the
 filename is frozen for good.

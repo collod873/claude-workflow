@@ -1,7 +1,6 @@
 ---
 status: note
 date: 2026-08-28
-amends: ADR-0056
 reversal: Undoing it means republishing `stop.cmd` in the contract slot and dropping the `# check-command:` line plus the certification test that runs the published slot against a failing tree; the slot semantics live in ADR-0056, which this correction belonged inside, and the 0.020s-vs-6.070s measurement stays true either way.
 ---
 

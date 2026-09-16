@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-03
-amends: ADR-0146
+supersedes: ADR-0146
 reversal: Reversing it means bin/canary provisions a second caller stub (the upstream lane's) into
   every canary target just to reach a workflow_run-only one — a stub whose `with:` merge and job
   `if:` both have to be replayed correctly, and a summary that now has to say which of two runs'

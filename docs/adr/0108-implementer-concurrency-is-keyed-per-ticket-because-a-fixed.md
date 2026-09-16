@@ -1,7 +1,6 @@
 ---
 status: note
 date: 2026-08-29
-amends: ADR-0039
 reversal: Restoring a fixed `implement` group means changing the concurrency key in `implement.yml` and the assertion in `implement.test.ts`; the standing rule is ADR-0039's, which this record only re-establishes after an undocumented drift, and the platform fact about `cancel-in-progress` it states is true whatever this repo does.
 ---
 

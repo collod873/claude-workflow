@@ -39,6 +39,10 @@
     "cmd": "npm run adrs",
     "why": "package.json#scripts.adrs (tsx .Workflow/agent-workflows/shared/adr-index.cli.ts .)"
   },
+  "drift": {
+    "cmd": "npm run drift",
+    "why": "package.json#scripts.drift (tsx .Workflow/agent-workflows/shared/prose-drift.cli.ts .)"
+  },
   "all": {
     "cmd": "npm run check",
     "why": "package.json#scripts.check (bin/gauntlet push)"

@@ -1,7 +1,7 @@
 ---
 status: note
 date: 2026-08-26
-amends: ADR-0026
+supersedes: ADR-0026
 reversal: Its binding half is a sentence added to ADR-0064's measurement clause and a list struck from `DESIGN.md` §11; the rest is a table of pointers into ADRs that already state the numbers it places, so nothing downstream reads it.
 ---
 

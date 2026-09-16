@@ -1,6 +1,7 @@
 ---
 status: constraint
 date: 2026-09-15
+supersedes: ADR-0010
 reversal: Reverting returns placement to venue alone, as ADR-0010 had it: the rung question goes unasked, so a rule a machine could have repaired is filed as a gate that refuses, and the prose that taught it is left standing beside the gate. That is how the rooting rule came to be written out five times and `claimLimit`'s value spelled out in two lane prompts while the rules file that owns it goes unread.
 ---
 

@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-10
 reversal: Dropping the `run-ended` tail puts every bot-started lane's death back on a `workflow_run` door GitHub never opens for it, so a capped Implement run's claim waits for a push or a hand label again.
-amends: ADR-0165
+supersedes: ADR-0165
 ---
 
 # A run the machine started says its own ending, because GitHub starts nothing from a bot-started run's completion

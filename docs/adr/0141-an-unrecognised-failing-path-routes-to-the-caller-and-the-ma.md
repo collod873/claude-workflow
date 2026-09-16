@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-02
-amends: ADR-0135
+supersedes: ADR-0135
 reversal: Every ticket the sweep filed under the old default would have to be re-triaged by hand to find the caller-side ones among them, and the machine's own tracker would again be the destination a sweep reaches when it understands nothing — which is the state that put five of Lumaria's test failures on `to-build` and started ten implementer runs against them.
 ---
 

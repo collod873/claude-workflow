@@ -1,14 +1,22 @@
 ---
-status: superseded
+status: constraint
 date: 2026-08-26
-superseded_by: ADR-0087
-reversal: Superseded by ADR-0087, which re-rules what a contract slot may name; the generated contract and its runner are live in `shared/generate-contract.ts`, `shared/check-contract.ts` and `bin/gauntlet`, so the mechanism outlives the record.
+reversal: Hardcoding the checks again means `bin/gauntlet` naming `tsc`, `eslint` and `vitest` itself, every enrolled repository with another linter or no Node suite falling out of the gate, and `.claude/contract.json` losing the only reader that proves its commands still run.
 ---
 
-# bin/gauntlet runs the check contract instead of three hardcoded tools, and the contract is generated rather than written
+# bin/gauntlet runs the check contract instead of three hardcoded tools
 
-Superseded by ADR-0087. Re-admitted 2026-08-31: the ruling this file carried no longer
-governs, and the successor states what replaced it.
+`bin/gauntlet <venue>` runs the slots `venue-slots.json` names for that venue, and each slot's
+command is whatever the target's `.claude/contract.json` says. The gauntlet names no tool of its
+own. A slot the contract lacks is skipped, so a repository can shrink its gate but never grow it.
 
-The number and filename are kept unchanged because they are cited from issues and
-permalinks that cannot be edited from this repo.
+The third hardcoded tool was a vendor choice, not a check category: a TypeScript repository linting
+with biome could never pass. Running the contract also gives the file its reader, since a slot
+naming a dead command fails at every venue that runs it.
+
+A slot names a check a reader can run, never a hook entry point: a hook takes its payload on stdin,
+so run bare it exits 0 having checked nothing. `why` names a declaration site, such as
+`package.json#scripts.test`, never a measurement that rots.
+
+**Rejected: hardcoding `tsc`, `eslint` and `vitest`.** One of nine surveyed repositories could run
+the gauntlet at all.

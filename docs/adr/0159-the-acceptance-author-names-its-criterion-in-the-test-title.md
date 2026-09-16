@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-04
 reversal: Reversing means putting the criterion back in a comment and teaching `shared/affected-tests.ts` to grep test source again, which restores the drift the prose gate exists to refuse — a comment quoting a criterion verbatim is exactly what `prose-gate.test.ts` holds at zero.
-amends: ADR-0128
+supersedes: ADR-0128
 ---
 
 # The acceptance author names its criterion in the test title, not a comment above it

@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-16
-amends: ADR-0034, ADR-0038, ADR-0119
+supersedes: ADR-0034, ADR-0038, ADR-0119
 reversal: Restoring a gap route means building the reader first — a lane that wakes on the label, amends a PRD that is still open, and re-fires acceptance on the slices left — and then a second classification in lane 07's review and a second stop route in the fixer, all for a case that, measured, arrives after its PRD has already closed.
 ---
 

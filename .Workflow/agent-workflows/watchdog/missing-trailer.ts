@@ -12,7 +12,7 @@ export interface ResearchNote {
 }
 
 const SUPERSESSION_VERB_RE =
-  /\b(retire|retires|retired|retiring|amend|amends|amended|amending|struck|strike|strikes|striking|restate|restates|restated|restating|replace|replaces|replaced|replacing)\b/i;
+  /\b(retire|retires|retired|retiring|supersede|supersedes|superseded|superseding|struck|strike|strikes|striking|replace|replaces|replaced|replacing)\b/i;
 
 export function hasSupersessionVerb(body: string): boolean {
   return SUPERSESSION_VERB_RE.test(body);
@@ -29,14 +29,14 @@ export function lowerNumberedAdrLinks(body: string, number: number): number[] {
   return [...found].sort((a, b) => a - b);
 }
 
-const AMENDS_TRAILER_RE = /^amends:\s*ADR-\d{4}/m;
+const SUPERSEDES_LINE_RE = /^supersedes:\s*ADR-\d{4}/m;
 
-export function hasAmendsTrailer(body: string): boolean {
-  return AMENDS_TRAILER_RE.test(body);
+export function hasSupersedesLine(body: string): boolean {
+  return SUPERSEDES_LINE_RE.test(body);
 }
 
-export function isMissingAmendsTrailer(adr: AdrDoc): boolean {
-  if (hasAmendsTrailer(adr.body)) return false;
+export function isMissingSupersedesLine(adr: AdrDoc): boolean {
+  if (hasSupersedesLine(adr.body)) return false;
   if (!hasSupersessionVerb(adr.body)) return false;
   return lowerNumberedAdrLinks(adr.body, adr.number).length > 0;
 }
@@ -64,7 +64,7 @@ export interface TrailerFinding {
 
 export function findMissingTrailers(adrs: AdrDoc[], notes: ResearchNote[]): TrailerFinding[] {
   const adrFindings: TrailerFinding[] = adrs
-    .filter(isMissingAmendsTrailer)
+    .filter(isMissingSupersedesLine)
     .sort((a, b) => a.number - b.number)
     .map((adr) => ({ kind: "adr" as const, filename: adr.filename, title: adr.title }));
 
@@ -90,19 +90,19 @@ export function signalTitle(findings: TrailerFinding[]): string {
 export function signalBody(findings: TrailerFinding[]): string {
   const adrLines = findings
     .filter((f) => f.kind === "adr")
-    .map((f) => `- [ ] \`${f.filename}\` carries a supersession verb and a lower-numbered ADR link, but no \`Amends:\` trailer`);
+    .map((f) => `- [ ] \`${f.filename}\` carries a supersession verb and a lower-numbered ADR link, but no \`supersedes:\` line`);
   const noteLines = findings
     .filter((f) => f.kind === "research-note")
     .map((f) => `- [ ] \`${f.filename}\` carries no \`Resolves:\` field`);
 
   return [
-    "This repo's record can't say its own mind changed until the trailer exists to read",
-    "(`docs/adr/0045-a-superseded-adr-is-named-by-a-trailer-its-successor-writes.md`).",
+    "This repo's record can't say its own mind changed until the successor names what it retires",
+    "(`docs/adr/README.md`). A change that only corrects part of a ruling is an edit to that ADR, not a successor.",
     "",
-    ...(adrLines.length > 0 ? ["**ADRs missing an `Amends:` trailer:**", "", ...adrLines, ""] : []),
+    ...(adrLines.length > 0 ? ["**ADRs missing a `supersedes:` line:**", "", ...adrLines, ""] : []),
     ...(noteLines.length > 0 ? ["**Research notes missing a `Resolves:` field:**", "", ...noteLines, ""] : []),
-    "**To clear a line:** write the trailer (or the field), or reply here saying it is not a",
-    "supersession; this is a known-noisy heuristic (ADR-0045) and a false positive is an expected",
+    "**To clear a line:** write the `supersedes:` line (or the field), or reply here saying it is not a",
+    "supersession; this is a known-noisy heuristic and a false positive is an expected",
     "outcome here, not a bug.",
     "",
     FINDING_MARKER,

@@ -36,7 +36,7 @@ re-decide it) and by having had a **real alternative** that was weighed and reje
 ---
 status: constraint          # or `note`, or `superseded`
 date: 2026-08-31
-amends: ADR-0056            # optional; the successor declares the edge
+supersedes: ADR-0056        # optional; only when this ruling reverses that one whole
 superseded_by: ADR-0087     # derived by the back-stamp, never hand-written
 reversal: what undoing this would cost, in a sentence
 ---
@@ -51,11 +51,14 @@ The issue is provenance, never content.
 
 ## Living with them
 
-**Correct a landed ADR in place.** File a new one only when the constraint itself reverses, and set
-`amends:` on the successor when it does; `missing-trailer.ts` reads that key, and `back-stamp.ts`
-derives the predecessor's `superseded_by:` from it. Neither is hand-written, because three
-hand-written trailers once shipped without their colon and left three predecessors unstamped for
-months.
+**Correct a landed ADR in place.** A change to part of a ruling is an edit to that ADR. File a new
+one only when the ruling reverses whole, and set `supersedes:` on the successor; `back-stamp.ts`
+derives the predecessor's `superseded_by:` from it. There is no `amends:`: an edge that meant
+"changes part of" retired whole rulings, because the only thing that reads an edge retires.
+
+**A retirement lands with its citers.** `npm run drift` refuses the push while any live document
+cites a retired ADR or names a file the change deleted, and lists each line. Rewrite or delete the
+sentence; a restated rule repointed to the new number is still the old rule.
 
 **Never rename or delete one.** Numbers and filenames are quoted in issue bodies and permalinks
 that cannot be edited from here. Retire an entry by setting `status: note`, which keeps its

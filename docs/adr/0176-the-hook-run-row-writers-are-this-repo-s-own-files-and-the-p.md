@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-09
-amends: ADR-0160
+supersedes: ADR-0160
 reversal: Re-vendoring means re-introducing a digest pin and a `vendored.fixture.ts`, and the prose gate would need a carve-out again the moment upstream's comments came back with it.
 ---
 

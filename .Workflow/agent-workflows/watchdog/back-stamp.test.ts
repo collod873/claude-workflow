@@ -6,7 +6,7 @@ import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
 import {
   adrNumber,
-  amendedAdrNumbers,
+  supersededAdrNumbers,
   deriveBackStamps,
   statusLine,
   trailerGraph,
@@ -15,9 +15,9 @@ import {
 } from "./back-stamp";
 import { backStampWalk, INDEX_RELATIVE_PATH, type WalkDeps } from "./back-stamp-walk";
 
-function adr(number: number, title: string, body: string, amends?: string): DocFile {
+function adr(number: number, title: string, body: string, supersedes?: string): DocFile {
   const padded = String(number).padStart(4, "0");
-  const trailer = amends ? `\n\n${amends}` : "";
+  const trailer = supersedes ? `\n\n${supersedes}` : "";
   return {
     path: `docs/adr/${padded}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.md`,
     content: `---\nstatus: constraint\ndate: 2026-08-26${trailer}\nreversal: stated in the fixture\n---\n\n# ${title}\n\n${body}\n`,
@@ -33,19 +33,19 @@ const SUCCESSOR_53 = adr(
   53,
   "The acceptance lane pushes to main",
   "Lane 04 commits its tests directly to main.",
-  "\namends: ADR-0032, ADR-0033",
+  "\nsupersedes: ADR-0032, ADR-0033",
 );
 const SUCCESSOR_54 = adr(
   54,
   "An implementation PR's checks fire by dispatch",
   "Lane 05's implementer opens its pull request.",
-  "\namends: ADR-0032",
+  "\nsupersedes: ADR-0032",
 );
 const SUCCESSOR_66 = adr(
   66,
   "A number lives in an ADR or a counter row",
   "Every number this design carries is a counter or a sizing measurement.",
-  "\namends: ADR-0026",
+  "\nsupersedes: ADR-0026",
 );
 
 const FIXTURE: DocFile[] = [
@@ -59,7 +59,7 @@ const FIXTURE: DocFile[] = [
 ];
 
 describe("the judgement, run over a fixture trailer graph", () => {
-  it("derives one back-stamp write per predecessor an amends: declaration names, and nothing else", () => {
+  it("derives one back-stamp write per predecessor a supersedes: declaration names, and nothing else", () => {
     const writes = deriveBackStamps(FIXTURE);
 
     expect(writes.map((write) => write.path).sort()).toEqual([PREDECESSOR_26.path, PREDECESSOR_32.path, PREDECESSOR_33.path].sort());
@@ -123,36 +123,36 @@ describe("adrNumber", () => {
   });
 });
 
-describe("amendedAdrNumbers", () => {
-  it("reads bin/new-adr --amends's plain trailer form", () => {
-    expect(amendedAdrNumbers("---\nstatus: note\ndate: 2026-08-26\namends: ADR-0008\nreversal: x\n---\n\n# Title\n\nBody.\n")).toEqual([8]);
+describe("supersededAdrNumbers", () => {
+  it("reads bin/new-adr --supersedes's plain trailer form", () => {
+    expect(supersededAdrNumbers("---\nstatus: note\ndate: 2026-08-26\nsupersedes: ADR-0008\nreversal: x\n---\n\n# Title\n\nBody.\n")).toEqual([8]);
   });
 
   it("reads a hand-written markdown-link trailer, including a second target wrapped onto the next line", () => {
-    expect(amendedAdrNumbers(SUCCESSOR_53.content)).toEqual([32, 33]);
+    expect(supersededAdrNumbers(SUCCESSOR_53.content)).toEqual([32, 33]);
   });
 
   it("reads a trailer that trails prose after the link, on the same paragraph", () => {
-    expect(amendedAdrNumbers(SUCCESSOR_66.content)).toEqual([26]);
+    expect(supersededAdrNumbers(SUCCESSOR_66.content)).toEqual([26]);
   });
 
-  it("is empty when the file carries no amends: declaration at all", () => {
-    expect(amendedAdrNumbers(PREDECESSOR_32.content)).toEqual([]);
+  it("is empty when the file carries no supersedes: declaration at all", () => {
+    expect(supersededAdrNumbers(PREDECESSOR_32.content)).toEqual([]);
   });
 
-  it("stops at the trailer's own paragraph, so an unrelated ADR-NNNN mentioned later in the body is not read as amended", () => {
-    const content = "---\nstatus: note\ndate: 2026-08-26\namends: ADR-0008\nreversal: x\n---\n\n# Title\n\nSee also ADR-0099 for context.\n";
-    expect(amendedAdrNumbers(content)).toEqual([8]);
+  it("stops at the trailer's own paragraph, so an unrelated ADR-NNNN mentioned later in the body is not read as superseded", () => {
+    const content = "---\nstatus: note\ndate: 2026-08-26\nsupersedes: ADR-0008\nreversal: x\n---\n\n# Title\n\nSee also ADR-0099 for context.\n";
+    expect(supersededAdrNumbers(content)).toEqual([8]);
   });
 });
 
 describe("trailerGraph", () => {
   it("ignores a trailer naming its own file, since an ADR cannot supersede itself", () => {
-    const selfReferencing = adr(9, "Self-referencing", "body", "\namends: ADR-0009");
+    const selfReferencing = adr(9, "Self-referencing", "body", "\nsupersedes: ADR-0009");
     expect(trailerGraph([selfReferencing]).get(9)).toBeUndefined();
   });
 
-  it("is empty over a corpus with no amends: declaration anywhere", () => {
+  it("is empty over a corpus with no supersedes: declaration anywhere", () => {
     expect(trailerGraph([PREDECESSOR_32, PREDECESSOR_33, UNRELATED]).size).toBe(0);
   });
 });
@@ -294,7 +294,7 @@ describe("backStampWalk", () => {
     expect(second.calls).toEqual([]);
   });
 
-  it("commits nothing over a corpus with no amends: declaration anywhere", async () => {
+  it("commits nothing over a corpus with no supersedes: declaration anywhere", async () => {
     const deps = fakeDeps({ [PREDECESSOR_32.path]: PREDECESSOR_32.content, [UNRELATED.path]: UNRELATED.content });
 
     expect(await backStampWalk(deps)).toEqual({ action: "clean", stamped: [] });

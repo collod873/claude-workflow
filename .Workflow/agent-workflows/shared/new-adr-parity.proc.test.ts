@@ -77,10 +77,10 @@ describe("bin/new-adr and the skills new-adr", () => {
   );
 
   it.skipIf(!existsSync(SKILLS_NEW_ADR))(
-    "stamp the same amends: draft byte for byte, so a successor carries its predecessor in one place in both",
+    "stamp the same supersedes: draft byte for byte, so a successor carries its predecessor in one place in both",
     () => {
-      const args = ["--amends", "8", RULING];
-      const [fromSkills, fromWorkflow] = skillsAndWorkflow("new-adr-parity-amends").map((repo, index) =>
+      const args = ["--supersedes", "8", RULING];
+      const [fromSkills, fromWorkflow] = skillsAndWorkflow("new-adr-parity-supersedes").map((repo, index) =>
         run(binIn(repo, index), repo.dir, args),
       );
 

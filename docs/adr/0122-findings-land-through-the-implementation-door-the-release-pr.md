@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-31
-amends: ADR-0017
+supersedes: ADR-0017
 reversal: Reinstating the release-PR channel means rebuilding a deleted workflow, schema and bookmark, unwiring the ratifier from the `implementation-opened` dispatch that gets it judged by lane 06 and merged by lane 08, and giving up the `Machinery-Commit: true` stamp and immutable-set refusal that keep audit landings out of the next audit's scope and inside the bypass counter's sight.
 ---
 

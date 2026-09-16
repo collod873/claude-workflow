@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-11
 reversal: Reversing it means re-authoring from the body alone again, which cannot tell a criterion the owner just deleted from one the spec never carried, so every edit pays a model call per slice; the edit-aware comparison also has to be unwired from `acceptance.yml`'s `PRD_BODY_BEFORE` and `affected-tests.ts`.
-amends: ADR-0079
+supersedes: ADR-0079
 ---
 
 # A spec edit re-fires acceptance only for what the edit removed, never for every slice

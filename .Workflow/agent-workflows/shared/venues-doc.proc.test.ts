@@ -36,9 +36,9 @@ test(
 
     const push = byVenue.get("push") ?? [];
     expect(push).toEqual(
-      expect.arrayContaining(["typecheck", "lint", "rules", "test", "clones", "adrs"]),
+      expect.arrayContaining(["typecheck", "lint", "rules", "test", "clones", "adrs", "drift"]),
     );
-    expect(push).toHaveLength(6);
+    expect(push).toHaveLength(7);
 
     const rows = renderVenuesTable().split("\n");
     for (const [venue, slots] of byVenue) {

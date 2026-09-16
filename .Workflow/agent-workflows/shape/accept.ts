@@ -195,7 +195,7 @@ function commitMessage(issueNumber: number, adrs: string[], terms: Term[]): stri
 
   return `docs: land ${what} #${issueNumber}'s sheet decided, before a spec can re-decide them
 
-The accept is the signature (ADR-0006), and ADR-0005 files at accept precisely so lane 02
+The owner signs by not reverting (ADR-0123), and ADR-0005 files at accept precisely so lane 02
 cites these rather than restating them. Written from the decision sheet on #${issueNumber}.`;
 }
 

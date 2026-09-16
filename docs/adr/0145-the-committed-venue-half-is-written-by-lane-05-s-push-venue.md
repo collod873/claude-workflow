@@ -1,7 +1,8 @@
 ---
-status: constraint
+status: superseded
 date: 2026-09-03
-amends: ADR-0140, ADR-0142
+superseded_by: ADR-0148
+supersedes: ADR-0140, ADR-0142
 reversal: Reversing it means lane 05's regenerate step goes back to a solo `writeSuiteTiming` measurement or to nothing at all, and the committed `venues` half stays `{}` forever — every push venue on every runner refusing on a number that was never written, exactly the state this closes.
 ---
 

@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-04
-amends: ADR-0146
+supersedes: ADR-0146
 reversal: Reversing it means deleting the re-exec and the follower from `bin/canary sweep` and
   accepting that every sweep dies with the terminal that started it. Getting back means
   rediscovering, from a run that vanished mid-fan-out, that the caller was never the thing doing

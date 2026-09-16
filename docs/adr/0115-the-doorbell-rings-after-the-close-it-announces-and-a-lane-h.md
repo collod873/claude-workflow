@@ -1,7 +1,6 @@
 ---
 status: constraint
 date: 2026-08-30
-amends: ADR-0094
 reversal: Putting the doorbell back before the close means reordering lane 08's merge tail, deleting lane 05's post-claim state read and the fakes that answer it, and accepting again that every merge re-dispatches the ticket it just merged, withholds that ticket's successors and exits green, so the stalled wave is invisible in the run list.
 ---
 

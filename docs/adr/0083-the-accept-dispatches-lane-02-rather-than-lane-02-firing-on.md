@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-27
-amends: ADR-0058
+supersedes: ADR-0058
 reversal: Reversing means moving lane 02's trigger back onto the `approved` label and teaching `collectSheetContext` to survive a missing accept payload with a poll that has no correct timeout, re-opening a race that lane 01's ADR-filing push wins by seconds every time.
 ---
 

@@ -1,7 +1,6 @@
 ---
 status: note
 date: 2026-08-27
-amends: ADR-0045
 reversal: It adds a field name plus a regex branch in `watchdog/missing-trailer.ts` and a mode to `bin/new-research`; dropping or renaming `Unprompted:` means re-stamping the research notes carrying it and leaving ADR-0045's gap unanswered again.
 ---
 

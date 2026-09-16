@@ -260,7 +260,7 @@ function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: s
     "",
     "Written by the enrol lane, not by hand: this repository carries the enrolment topic, so the",
     "stubs under .github/workflows/*-caller.yml are the machine's and are overwritten from it",
-    "(ADR-0133). Edit them there, never here.",
+    "Edit them there, never here.",
     "",
     `Machine-Sha: ${machineSha}`,
   ].join("\n");

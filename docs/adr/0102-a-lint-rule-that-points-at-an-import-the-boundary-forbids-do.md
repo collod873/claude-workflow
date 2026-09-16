@@ -1,7 +1,8 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-29
-amends: ADR-0032
+superseded_by: ADR-0150
+supersedes: ADR-0032
 reversal: Reversing means restoring the unsatisfiable eslint pair over `tests/acceptance/**`, so any acceptance test that catches an unknown error must violate one rule or the other; and withdrawing the immutability clause leaves no sanctioned way to remove a batch the landing gate should have refused, which is what left `eslint .` red repository-wide for a ticket nobody had started.
 ---
 

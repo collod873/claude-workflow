@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-28
-amends: ADR-0021, ADR-0023, ADR-0048
+supersedes: ADR-0021, ADR-0023, ADR-0048
 reversal: Reversing means rebuilding `close-gate.yml`, its session-end reconciler and the `close-refused` label state, un-retiring ADR-0021/0023/0048, and re-accepting that a refused close is repaired in a session that has already ended.
 ---
 

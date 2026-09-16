@@ -86,7 +86,7 @@ export function countMissingTrailers(options: CounterOptions): CounterOutcome {
   if (findings.length === 0) {
     if (standing) {
       gh(["issue", "comment", String(standing.number),
-          "--body", "Recovered: every supersession carries an `amends:` declaration and every " +
+          "--body", "Recovered: every supersession carries a `supersedes:` line and every " +
                     "research note carries a pointer. Closing; this counter recomputes the whole " +
                     "corpus each run, so it will reopen if the count returns."]);
       gh(["issue", "close", String(standing.number)]);

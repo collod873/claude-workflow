@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-26
-amends: ADR-0032
+supersedes: ADR-0032
 reversal: Reversing it puts verification back on `pull_request`, which re-opens the hole it closed — a PR deletes the acceptance job from its own copy of the workflow and goes green in silence — and touches the dispatch senders in `implement.ts`, `fixer.ts`, `ratify/dispatch.ts` plus `verify.yml`, `review.yml` and `ratify.yml`, along with `.github/`'s place in the immutable set.
 ---
 

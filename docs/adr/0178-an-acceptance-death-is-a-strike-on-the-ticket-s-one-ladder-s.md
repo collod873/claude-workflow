@@ -11,8 +11,7 @@ out of #445 because nothing bounded its re-fire: the reconciler sends `acceptanc
 ready ticket with no test, a cap death leaves nothing on the ticket, and a dead `Acceptance #n`
 run was not a strike. Heard, it would have restarted the author at once, forever (#457).
 
-So the author rings from a `contents: write` tail job, since its model jobs hold `contents: read`
-(ADR-0091), and a dead Acceptance run is a strike on the ladder every other death climbs. Three
+So the author rings from a tail job, and a dead Acceptance run is a strike on the ladder every other death climbs. Three
 deaths of any lane end in the one decision. Short of it, a ticket with no test goes to the author
 again; the strike bounds, it does not route.
 

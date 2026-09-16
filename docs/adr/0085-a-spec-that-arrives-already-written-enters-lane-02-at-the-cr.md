@@ -1,8 +1,8 @@
 ---
 status: superseded
 date: 2026-08-28
-amends: ADR-0058, ADR-0062
 superseded_by: ADR-0100
+supersedes: ADR-0058
 reversal: Superseded by ADR-0100, which kept the warm door but added the re-authoring stage this one left out; reviving this version means deleting that stage and letting lane 03 slice a body the critique rounds already argued down.
 ---
 
