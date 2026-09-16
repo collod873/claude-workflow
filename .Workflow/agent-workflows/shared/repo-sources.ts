@@ -28,13 +28,38 @@ function skipDir(name: string): boolean {
   return skipGenerated(name) || name.endsWith(".fixtures");
 }
 
+const GONE = "GONE";
+
+function vanished(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+function kindOf(path: string): "dir" | "file" | typeof GONE {
+  try {
+    return statSync(path).isDirectory() ? "dir" : "file";
+  } catch (err) {
+    if (vanished(err)) return GONE;
+    throw err;
+  }
+}
+
+function sourceOf(path: string): string | typeof GONE {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (err) {
+    if (vanished(err)) return GONE;
+    throw err;
+  }
+}
+
 function walk(dir: string, skip: (name: string) => boolean): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
-    if (statSync(path).isDirectory()) {
+    const kind = kindOf(path);
+    if (kind === "dir") {
       if (!skip(entry)) out.push(...walk(path, skip));
-    } else {
+    } else if (kind === "file") {
       out.push(path);
     }
   }
@@ -47,11 +72,10 @@ function filesUnder(dir: string, skip: (name: string) => boolean = skipDir): Rep
   const key = `${dir}\0${skip.name}`;
   let files = walked.get(key);
   if (files === undefined) {
-    files = walk(dir, skip).map((path) => ({
-      path,
-      relative: relative(REPO_ROOT, path),
-      source: readFileSync(path, "utf8"),
-    }));
+    files = walk(dir, skip).flatMap((path) => {
+      const source = sourceOf(path);
+      return source === GONE ? [] : [{ path, relative: relative(REPO_ROOT, path), source }];
+    });
     walked.set(key, files);
   }
   return files;
