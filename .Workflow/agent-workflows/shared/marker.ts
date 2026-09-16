@@ -6,6 +6,8 @@ const SHEET_CLOSE = " -->";
 
 export const REFUSAL_MARKER = "<!-- shape-refused:v1 -->";
 
+export const SENT_TO_SPEC_MARKER = "<!-- sent-to-spec:v1 -->";
+
 export const ACCEPTED_MARKER = "<!-- shape-accepted:v1";
 const ACCEPTED_OPEN = `${ACCEPTED_MARKER} `;
 const ACCEPTED_CLOSE = " -->";

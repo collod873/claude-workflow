@@ -8,7 +8,7 @@ import { validateSpecBody, type SpecBodyValidator } from "./validate-spec";
 export { PRD_LABEL };
 
 export const SpecSource = z.object({
-  kind: z.enum(["sheet", "map"]),
+  kind: z.enum(["sheet", "map", "widened"]),
   issue: z.number(),
 });
 

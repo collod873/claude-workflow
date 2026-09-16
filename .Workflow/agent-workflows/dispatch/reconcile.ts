@@ -25,6 +25,7 @@ import {
   type StateLabel,
 } from "../shared/labels";
 import { IMMUTABLE_SET_SOURCE } from "../shared/immutable-set";
+import { SENT_TO_SPEC_MARKER } from "../shared/marker";
 import { escalateToOwner } from "../shared/needs-human";
 import { countRollup, readRollup, rollupLine, writeRollup } from "./rollup";
 import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
@@ -139,8 +140,6 @@ function toBuildRefusalBody(refusal: string): string {
     TO_BUILD_REFUSED_MARKER,
   ].join("\n");
 }
-
-const SENT_TO_SPEC_MARKER = "<!-- sent-to-spec:v1 -->";
 
 const SHED_ON_SEND_TO_SPEC = [PRD_LABEL, SLICEABLE_LABEL, TICKET_LABEL, TO_BUILD_LABEL];
 
