@@ -1,8 +1,22 @@
-import type { CommitPull, CreateIssueInput, RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerJob, TrackerRecordComment, TrackerSignal, WorkflowRun } from "./tracker";
+import type { CommitPull, CreateIssueInput, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerJob, TrackerRecordComment, TrackerSignal, WorkflowRun } from "./tracker";
 
 export interface TrackerMemoryIssue {
   body?: string;
   comments?: string[];
+}
+
+export interface TrackerMemoryRepository {
+  defaultBranch?: string;
+  headCommit?: string;
+  directories?: Record<string, RepositoryFile[]>;
+  files?: Record<string, string>;
+  labels?: Label[];
+  workflowApprovalReadBack?: string;
+  refuses?: string;
+  refusesLabels?: string;
+  refusesSetting?: string;
+  refusesSecrets?: string;
+  refusesDocs?: string;
 }
 
 export interface TrackerMemorySeed {
@@ -24,9 +38,32 @@ export interface TrackerMemorySeed {
   signals?: TrackerSignal[];
   createdIssues?: CreateIssueInput[];
   firstIssueNumber?: number;
+  repositoriesByTopic?: string[];
+  repositories?: Record<string, TrackerMemoryRepository>;
 }
 
-export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
+export interface TrackerMemoryCommit {
+  repository: string;
+  branch: string;
+  headSha: string;
+  changes: FileChange[];
+  message: string;
+}
+
+export interface TrackerMemoryLabelWrite {
+  kind: "create" | "update";
+  repository: string;
+  label: Label;
+}
+
+export interface TrackerMemory extends Tracker {
+  commits: TrackerMemoryCommit[];
+  labelWrites: TrackerMemoryLabelWrite[];
+  workflowApprovalsSet: string[];
+  secretsSet: Record<string, Record<string, string>>;
+}
+
+export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
   const runs = seed.runs ?? [];
   const recentRuns = seed.recentRuns ?? [];
   const jobs = new Map(Object.entries(seed.jobs ?? {}).map(([id, list]) => [Number(id), list]));
@@ -47,6 +84,19 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
   const signals = seed.signals ?? [];
   const createdIssues = seed.createdIssues ?? [];
   let nextIssueNumber = seed.firstIssueNumber ?? 1000;
+  const repositories = new Map(Object.entries(seed.repositories ?? {}));
+  const commits: TrackerMemoryCommit[] = [];
+  const labelWrites: TrackerMemoryLabelWrite[] = [];
+  const workflowApprovalsSet: string[] = [];
+  const secretsSet: Record<string, Record<string, string>> = {};
+  let commitCounter = 0;
+
+  function repositoryOf(name: string): TrackerMemoryRepository {
+    const repository = repositories.get(name);
+    if (repository === undefined) throw new Error(`tracker memory: no repository seeded for ${name}`);
+    if (repository.refuses) throw new Error(repository.refuses);
+    return repository;
+  }
 
   return {
     workflowRuns: (_workflow, perPage) => runs.slice(0, perPage),
@@ -79,5 +129,48 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
       nextIssueNumber += 1;
       return nextIssueNumber;
     },
+    repositoriesByTopic: () => seed.repositoriesByTopic ?? [],
+    defaultBranch: (name) => repositoryOf(name).defaultBranch ?? "main",
+    headCommit: (name) => repositoryOf(name).headCommit,
+    directoryFiles: (name, path) => repositoryOf(name).directories?.[path] ?? [],
+    fileContent: (name, path) => {
+      const repository = repositoryOf(name);
+      if (repository.refusesDocs) throw new Error(repository.refusesDocs);
+      return repository.files?.[path];
+    },
+    commitFiles: (name, branch, headSha, changes, message) => {
+      repositoryOf(name);
+      commitCounter += 1;
+      commits.push({ repository: name, branch, headSha, changes, message });
+      return `memory-commit-${commitCounter}`;
+    },
+    repositoryLabels: (name) => repositoryOf(name).labels ?? [],
+    createLabel: (name, label) => {
+      const repository = repositoryOf(name);
+      if (repository.refusesLabels) throw new Error(repository.refusesLabels);
+      repository.labels = [...(repository.labels ?? []), label];
+      labelWrites.push({ kind: "create", repository: name, label });
+    },
+    updateLabel: (name, label) => {
+      const repository = repositoryOf(name);
+      if (repository.refusesLabels) throw new Error(repository.refusesLabels);
+      repository.labels = (repository.labels ?? []).map((existing) => (existing.name === label.name ? label : existing));
+      labelWrites.push({ kind: "update", repository: name, label });
+    },
+    setWorkflowApproval: (name) => {
+      const repository = repositoryOf(name);
+      if (repository.refusesSetting) throw new Error(repository.refusesSetting);
+      workflowApprovalsSet.push(name);
+      return (repository.workflowApprovalReadBack ?? "true") === "true";
+    },
+    setSecret: (name, secretName, value) => {
+      const repository = repositoryOf(name);
+      if (repository.refusesSecrets) throw new Error(repository.refusesSecrets);
+      secretsSet[name] = { ...(secretsSet[name] ?? {}), [secretName]: value };
+    },
+    commits,
+    labelWrites,
+    workflowApprovalsSet,
+    secretsSet,
   };
 }

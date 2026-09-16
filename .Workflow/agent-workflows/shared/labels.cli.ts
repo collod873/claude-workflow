@@ -5,6 +5,7 @@ import { markLane, QUEUED_LABEL } from "./labels.ts";
 import { escalateToOwner } from "./needs-human.ts";
 import { errorMessage } from "./reason.ts";
 import { ladderClimbs } from "./strikes.ts";
+import { trackerGh } from "./tracker-gh.ts";
 
 export const FINISHED_CLEAN = "success";
 
@@ -60,7 +61,7 @@ function main(): void {
     if (verb === "sync") {
       const repository = flagValue(args, "-R") ?? process.env.GH_REPO;
       if (!repository) throw new Error("sync needs -R owner/repo or GH_REPO");
-      const outcome = syncVerb(execGh, repository, args.includes("--check"));
+      const outcome = syncVerb(trackerGh(execGh) as unknown as GhExec, repository, args.includes("--check"));
       console.log(outcome.text);
       if (!outcome.ok) process.exitCode = 1;
       return;

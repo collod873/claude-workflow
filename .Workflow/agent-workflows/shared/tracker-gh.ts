@@ -1,10 +1,14 @@
 import { z } from "zod";
 import { blockedByPath, commitPullsPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
-import type { CommitPull, RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerRecordComment, WorkflowRun } from "./tracker";
+import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerRecordComment, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
 import { parseIssueNumber } from "./issue-url";
 import { SignalIssueSchema } from "./signal-issue-schema";
+import { errorMessage } from "./reason";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ApiRun = z.object({
   id: z.number(),
@@ -77,6 +81,40 @@ const ApiFindingIssue = z.object({
   stateReason: z.string().nullable().optional(),
   createdAt: z.string(),
 });
+const ApiContentFile = z.object({ name: z.string(), sha: z.string() });
+
+const ApiLabel = z.object({
+  name: z.string(),
+  color: z.string(),
+  description: z.string().nullable().optional(),
+});
+
+const SEARCH_PAGE_SIZE = 100;
+
+const FILE_MODE = "100644";
+
+const NOT_FOUND = "HTTP 404";
+
+function postJson(gh: GhExec, path: string, body: unknown, jq: string): string {
+  const file = join(mkdtempSync(join(tmpdir(), "tracker-gh-")), "body.json");
+  writeFileSync(file, JSON.stringify(body));
+  return gh(["api", "--method", "POST", path, "--input", file, "--jq", jq]).trim();
+}
+
+function createBlob(gh: GhExec, repository: string, content: string): string {
+  return gh([
+    "api",
+    "--method",
+    "POST",
+    `repos/${repository}/git/blobs`,
+    "-f",
+    `content=${Buffer.from(content, "utf8").toString("base64")}`,
+    "-f",
+    "encoding=base64",
+    "--jq",
+    ".sha",
+  ]).trim();
+}
 
 function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
   return {
@@ -273,6 +311,129 @@ export function trackerGh(gh: GhExec): Tracker {
       if (input.label) args.push("--label", input.label);
       const url = gh(args);
       return parseIssueNumber(url, input.title);
+    },
+    repositoriesByTopic(topic) {
+      const raw = gh([
+        "api",
+        "--paginate",
+        `search/repositories?q=topic:${topic}&per_page=${SEARCH_PAGE_SIZE}`,
+        "--jq",
+        ".items[].full_name",
+      ]);
+      return raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "");
+    },
+    defaultBranch(repository) {
+      return gh(["api", `repos/${repository}`, "--jq", ".default_branch"]).trim();
+    },
+    headCommit(repository, branch) {
+      try {
+        return gh(["api", `repos/${repository}/git/ref/heads/${branch}`, "--jq", ".object.sha"]).trim();
+      } catch (err) {
+        if (errorMessage(err).includes(NOT_FOUND)) return undefined;
+        throw err;
+      }
+    },
+    directoryFiles(repository, path, branch): RepositoryFile[] {
+      let raw: string;
+      try {
+        raw = gh([
+          "api",
+          `repos/${repository}/contents/${path}?ref=${branch}`,
+          "--jq",
+          '[.[] | select(.type == "file") | {name, sha}]',
+        ]);
+      } catch (err) {
+        if (errorMessage(err).includes(NOT_FOUND)) return [];
+        throw err;
+      }
+      return ApiContentFile.array().parse(JSON.parse(raw));
+    },
+    fileContent(repository, path, branch) {
+      try {
+        const raw = gh(["api", `repos/${repository}/contents/${path}?ref=${branch}`, "--jq", ".content"]).trim();
+        return Buffer.from(raw, "base64").toString("utf8");
+      } catch (err) {
+        if (errorMessage(err).includes(NOT_FOUND)) return undefined;
+        throw err;
+      }
+    },
+    commitFiles(repository, branch, headSha, changes: FileChange[], message) {
+      const baseTree = gh(["api", `repos/${repository}/git/commits/${headSha}`, "--jq", ".tree.sha"]).trim();
+      const tree = changes.map((change) => ({
+        path: change.path,
+        mode: FILE_MODE,
+        type: "blob" as const,
+        sha: change.content === null ? null : createBlob(gh, repository, change.content),
+      }));
+      const treeSha = postJson(gh, `repos/${repository}/git/trees`, { base_tree: baseTree, tree }, ".sha");
+      const commitSha = postJson(
+        gh,
+        `repos/${repository}/git/commits`,
+        { message, tree: treeSha, parents: [headSha] },
+        ".sha",
+      );
+      gh(["api", "--method", "PATCH", `repos/${repository}/git/refs/heads/${branch}`, "-f", `sha=${commitSha}`]);
+      return commitSha;
+    },
+    repositoryLabels(repository): Label[] {
+      const raw = gh(["api", "--paginate", `repos/${repository}/labels`, "--jq", ".[] | {name, color, description}"]);
+      const objects = raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .map((line) => JSON.parse(line));
+      return ApiLabel.array()
+        .parse(objects)
+        .map((label) => ({ name: label.name, color: label.color, description: label.description ?? "" }));
+    },
+    createLabel(repository, label) {
+      gh([
+        "api",
+        "--method",
+        "POST",
+        `repos/${repository}/labels`,
+        "-f",
+        `name=${label.name}`,
+        "-f",
+        `color=${label.color}`,
+        "-f",
+        `description=${label.description}`,
+      ]);
+    },
+    updateLabel(repository, label) {
+      gh([
+        "api",
+        "--method",
+        "PATCH",
+        `repos/${repository}/labels/${encodeURIComponent(label.name)}`,
+        "-f",
+        `color=${label.color}`,
+        "-f",
+        `description=${label.description}`,
+      ]);
+    },
+    setWorkflowApproval(repository) {
+      gh([
+        "api",
+        "--method",
+        "PUT",
+        `repos/${repository}/actions/permissions/workflow`,
+        "-F",
+        "can_approve_pull_request_reviews=true",
+      ]);
+      const readBack = gh([
+        "api",
+        `repos/${repository}/actions/permissions/workflow`,
+        "--jq",
+        ".can_approve_pull_request_reviews",
+      ]).trim();
+      return readBack === "true";
+    },
+    setSecret(repository, name, value) {
+      gh(["secret", "set", name, "-R", repository, "--body", value]);
     },
   };
 }

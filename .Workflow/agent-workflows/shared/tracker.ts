@@ -76,6 +76,22 @@ export interface CreateIssueInput {
   label?: string;
 }
 
+export interface RepositoryFile {
+  name: string;
+  sha: string;
+}
+
+export interface Label {
+  name: string;
+  color: string;
+  description: string;
+}
+
+export interface FileChange {
+  path: string;
+  content: string | null;
+}
+
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   recentRuns(perPage: number, repository?: string): RepoRun[];
@@ -97,4 +113,15 @@ export interface Tracker {
   findingIssues(label: string): TrackerFindingIssue[];
   signals(): TrackerSignal[];
   createIssue(input: CreateIssueInput): number;
+  repositoriesByTopic(topic: string): string[];
+  defaultBranch(repository: string): string;
+  headCommit(repository: string, branch: string): string | undefined;
+  directoryFiles(repository: string, path: string, branch: string): RepositoryFile[];
+  fileContent(repository: string, path: string, branch: string): string | undefined;
+  commitFiles(repository: string, branch: string, headSha: string, changes: FileChange[], message: string): string;
+  repositoryLabels(repository: string): Label[];
+  createLabel(repository: string, label: Label): void;
+  updateLabel(repository: string, label: Label): void;
+  setWorkflowApproval(repository: string): boolean;
+  setSecret(repository: string, name: string, value: string): void;
 }

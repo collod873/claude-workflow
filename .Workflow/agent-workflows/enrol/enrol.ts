@@ -1,11 +1,10 @@
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh.ts";
-import { errorMessage, reason } from "../shared/reason.ts";
+import { reason } from "../shared/reason.ts";
 import { catalogueLabels, syncLabels, type Label } from "../shared/label-sync.ts";
+import { trackerGh } from "../shared/tracker-gh.ts";
+import type { FileChange, Tracker } from "../shared/tracker.ts";
 import { derivedSecretNames } from "./secrets.ts";
 import { SEEDED_DOC_NAMES, pointerDoc, pointerDocPath, withAgentSkillsPointer } from "./seeded-docs.ts";
 import {
@@ -15,19 +14,10 @@ import {
   STUB_SUFFIX,
   WORKFLOWS_PATH,
   type EnrolPlan,
-  type RemoteFile,
   type Stub,
 } from "./stub-set.ts";
 
 export const ENROLMENT_TOPIC = "claude-workflow-enrolled";
-
-const FILE_MODE = "100644";
-
-const SEARCH_PAGE_SIZE = 100;
-
-const NOT_FOUND = "HTTP 404";
-
-const RemoteFileSchema = z.object({ name: z.string(), sha: z.string() });
 
 export interface RepositoryOutcome {
   repository: string;
@@ -69,101 +59,12 @@ function attempt<T>(fn: () => T): Attempt<T> {
   }
 }
 
-function postJson(gh: GhExec, path: string, body: unknown, jq: string): string {
-  const file = join(mkdtempSync(join(tmpdir(), "enrol-")), "body.json");
-  writeFileSync(file, JSON.stringify(body));
-  return gh(["api", "--method", "POST", path, "--input", file, "--jq", jq]).trim();
+function asTracker(gh: GhExec): Tracker {
+  return gh as unknown as Tracker;
 }
 
 export function enrolledRepositories(gh: GhExec, topic: string): string[] {
-  const raw = gh([
-    "api",
-    "--paginate",
-    `search/repositories?q=topic:${topic}&per_page=${SEARCH_PAGE_SIZE}`,
-    "--jq",
-    ".items[].full_name",
-  ]);
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
-
-function remoteStubs(gh: GhExec, repository: string, branch: string): RemoteFile[] {
-  let raw: string;
-  try {
-    raw = gh([
-      "api",
-      `repos/${repository}/contents/${WORKFLOWS_PATH}?ref=${branch}`,
-      "--jq",
-      '[.[] | select(.type == "file") | {name, sha}]',
-    ]);
-  } catch (err) {
-    if (errorMessage(err).includes(NOT_FOUND)) return [];
-    throw err;
-  }
-  return RemoteFileSchema.array().parse(JSON.parse(raw));
-}
-
-function createBlob(gh: GhExec, repository: string, content: string): string {
-  return gh([
-    "api",
-    "--method",
-    "POST",
-    `repos/${repository}/git/blobs`,
-    "-f",
-    `content=${Buffer.from(content, "utf8").toString("base64")}`,
-    "-f",
-    "encoding=base64",
-    "--jq",
-    ".sha",
-  ]).trim();
-}
-
-function readFileMaybe(gh: GhExec, repository: string, path: string, branch: string): string | undefined {
-  try {
-    const raw = gh(["api", `repos/${repository}/contents/${path}?ref=${branch}`, "--jq", ".content"]).trim();
-    return Buffer.from(raw, "base64").toString("utf8");
-  } catch (err) {
-    if (errorMessage(err).includes(NOT_FOUND)) return undefined;
-    throw err;
-  }
-}
-
-function headCommit(gh: GhExec, repository: string, branch: string): string | undefined {
-  try {
-    return gh(["api", `repos/${repository}/git/ref/heads/${branch}`, "--jq", ".object.sha"]).trim();
-  } catch (err) {
-    if (errorMessage(err).includes(NOT_FOUND)) return undefined;
-    throw err;
-  }
-}
-
-interface TreeEntry {
-  path: string;
-  mode: string;
-  type: "blob";
-  sha: string | null;
-}
-
-function commitTree(
-  gh: GhExec,
-  repository: string,
-  branch: string,
-  headSha: string,
-  tree: TreeEntry[],
-  message: string,
-): string {
-  const baseTree = gh(["api", `repos/${repository}/git/commits/${headSha}`, "--jq", ".tree.sha"]).trim();
-  const treeSha = postJson(gh, `repos/${repository}/git/trees`, { base_tree: baseTree, tree }, ".sha");
-  const commitSha = postJson(
-    gh,
-    `repos/${repository}/git/commits`,
-    { message, tree: treeSha, parents: [headSha] },
-    ".sha",
-  );
-  gh(["api", "--method", "PATCH", `repos/${repository}/git/refs/heads/${branch}`, "-f", `sha=${commitSha}`]);
-  return commitSha;
+  return asTracker(gh).repositoriesByTopic(topic);
 }
 
 function commitPlan(
@@ -174,40 +75,11 @@ function commitPlan(
   plan: EnrolPlan,
   message: string,
 ): string {
-  const tree: TreeEntry[] = [
-    ...plan.writes.map((stub) => ({
-      path: `${WORKFLOWS_PATH}/${stub.name}`,
-      mode: FILE_MODE,
-      type: "blob" as const,
-      sha: createBlob(gh, repository, stub.content),
-    })),
-    ...plan.deletes.map((file) => ({
-      path: `${WORKFLOWS_PATH}/${file.name}`,
-      mode: FILE_MODE,
-      type: "blob" as const,
-      sha: null,
-    })),
+  const changes: FileChange[] = [
+    ...plan.writes.map((stub) => ({ path: `${WORKFLOWS_PATH}/${stub.name}`, content: stub.content })),
+    ...plan.deletes.map((file) => ({ path: `${WORKFLOWS_PATH}/${file.name}`, content: null })),
   ];
-
-  return commitTree(gh, repository, branch, headSha, tree, message);
-}
-
-function commitFiles(
-  gh: GhExec,
-  repository: string,
-  branch: string,
-  headSha: string,
-  writes: Array<{ path: string; content: string }>,
-  message: string,
-): string {
-  const tree: TreeEntry[] = writes.map((write) => ({
-    path: write.path,
-    mode: FILE_MODE,
-    type: "blob" as const,
-    sha: createBlob(gh, repository, write.content),
-  }));
-
-  return commitTree(gh, repository, branch, headSha, tree, message);
+  return asTracker(gh).commitFiles(repository, branch, headSha, changes, message);
 }
 
 function seededDocMessage(paths: string[], machineRepository: string): string {
@@ -227,15 +99,18 @@ function syncSeededDocs(
   machineRepository: string,
 ): Pick<RepositoryOutcome, "docsWritten" | "docsFailure"> {
   try {
-    const branch = gh(["api", `repos/${repository}`, "--jq", ".default_branch"]).trim();
+    const tracker = asTracker(gh);
+    const branch = tracker.defaultBranch(repository);
     const desired = SEEDED_DOC_NAMES.map((name) => ({
       path: pointerDocPath(name),
       content: pointerDoc(name, machineRepository),
     }));
 
-    const changed = desired.filter((doc) => readFileMaybe(gh, repository, doc.path, branch) !== doc.content);
+    const changed: FileChange[] = desired.filter(
+      (doc) => tracker.fileContent(repository, doc.path, branch) !== doc.content,
+    );
 
-    const currentClaudeMd = readFileMaybe(gh, repository, "CLAUDE.md", branch);
+    const currentClaudeMd = tracker.fileContent(repository, "CLAUDE.md", branch);
     if (currentClaudeMd !== undefined) {
       const desiredClaudeMd = withAgentSkillsPointer(currentClaudeMd, machineRepository);
       if (desiredClaudeMd !== currentClaudeMd) changed.push({ path: "CLAUDE.md", content: desiredClaudeMd });
@@ -243,10 +118,19 @@ function syncSeededDocs(
 
     if (changed.length === 0) return { docsWritten: [] };
 
-    const headSha = headCommit(gh, repository, branch);
+    const headSha = tracker.headCommit(repository, branch);
     if (headSha === undefined) return { docsWritten: [] };
 
-    commitFiles(gh, repository, branch, headSha, changed, seededDocMessage(changed.map((c) => c.path), machineRepository));
+    tracker.commitFiles(
+      repository,
+      branch,
+      headSha,
+      changed,
+      seededDocMessage(
+        changed.map((c) => c.path),
+        machineRepository,
+      ),
+    );
     return { docsWritten: changed.map((c) => c.path) };
   } catch (err) {
     return { docsFailure: reason(err) };
@@ -267,34 +151,20 @@ function commitMessage(plan: EnrolPlan, machineRepository: string, machineSha: s
 }
 
 function setPullRequestApproval(gh: GhExec, repository: string): void {
-  gh([
-    "api",
-    "--method",
-    "PUT",
-    `repos/${repository}/actions/permissions/workflow`,
-    "-F",
-    "can_approve_pull_request_reviews=true",
-  ]);
-  const readBack = gh([
-    "api",
-    `repos/${repository}/actions/permissions/workflow`,
-    "--jq",
-    ".can_approve_pull_request_reviews",
-  ]).trim();
-  if (readBack !== "true") {
-    throw new Error(
-      `can_approve_pull_request_reviews read back as ${JSON.stringify(readBack)}, not "true" (ADR-0093)`,
-    );
+  const readBack = asTracker(gh).setWorkflowApproval(repository);
+  if (!readBack) {
+    throw new Error(`can_approve_pull_request_reviews read back as ${readBack}, not true (ADR-0093)`);
   }
 }
 
 function propagateSecrets(gh: GhExec, repository: string, names: string[], values: Record<string, string>): string[] {
+  const tracker = asTracker(gh);
   for (const name of names) {
     const value = values[name];
     if (value === undefined) {
       throw new Error(`${name}: this job's own environment carries no value for it; see enrol.yml's env`);
     }
-    gh(["secret", "set", name, "-R", repository, "--body", value]);
+    tracker.setSecret(repository, name, value);
   }
   return names;
 }
@@ -306,14 +176,15 @@ function syncStubs(
   options: EnrolOptions,
 ): Pick<RepositoryOutcome, "code" | "wrote" | "deleted" | "unchanged" | "commit" | "why"> {
   try {
-    const branch = gh(["api", `repos/${repository}`, "--jq", ".default_branch"]).trim();
-    const plan = planFor(stubs, remoteStubs(gh, repository, branch));
+    const tracker = asTracker(gh);
+    const branch = tracker.defaultBranch(repository);
+    const plan = planFor(stubs, tracker.directoryFiles(repository, WORKFLOWS_PATH, branch));
 
     if (planIsEmpty(plan)) {
       return { code: "current", wrote: [], deleted: [], unchanged: plan.unchanged.length };
     }
 
-    const headSha = headCommit(gh, repository, branch);
+    const headSha = tracker.headCommit(repository, branch);
     if (headSha === undefined) {
       return { code: "skipped", wrote: [], deleted: [], unchanged: 0, why: `${branch} carries no commit to build on` };
     }
@@ -467,7 +338,7 @@ async function main(): Promise<void> {
     }
 
     const outcomes = runEnrol({
-      gh: execGh,
+      gh: trackerGh(execGh) as unknown as GhExec,
       workflowsDir: WORKFLOWS_PATH,
       topic: ENROLMENT_TOPIC,
       machineRepository,
