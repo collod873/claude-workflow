@@ -107,9 +107,9 @@ export function ticketFormat(): string {
     throw new Error(`the ticket contract at ${TICKET_FORMAT_PATH} could not be read: ${reason(err)}`);
   }
 
-  const sections = page.split(/^### /m);
-  const core = sections[0]?.trim();
-  const specSubIssue = sections.find((section) => section.startsWith("Spec sub-issue"));
+  const [head, variants = ""] = page.split(/^## Variants[ \t]*$/m);
+  const core = head?.trim();
+  const specSubIssue = variants.split(/^### /m).find((section) => section.startsWith("Spec sub-issue"));
   if (!core || !specSubIssue) {
     throw new Error(
       `${TICKET_FORMAT_PATH} has no "### Spec sub-issue" variant, so the slicer's ticket contract would be empty`,

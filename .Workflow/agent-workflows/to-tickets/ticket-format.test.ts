@@ -15,6 +15,11 @@ describe("the slicer takes the ticket contract by injection", () => {
     expect(format).not.toContain("Wayfinder decision");
   });
 
+  it("carries the core's criteria and claim rules, not only the text above its first subheading", () => {
+    expect(ticketFormat()).toContain("claimLimit");
+    expect(ticketFormat()).toContain("bash -c");
+  });
+
   it("hands the slicer the contract itself, with no placeholder left unrendered", async () => {
     const prompt = await promptHandedTo("slice");
 
