@@ -8,7 +8,6 @@ import { execGit, type GitExec } from "../shared/git";
 import { FIXING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { reason } from "../shared/reason";
-import { fileSpecGap } from "../shared/spec-gap";
 import {
   currentLaneRun,
   execClaudeIn,
@@ -19,7 +18,7 @@ import {
 } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { runVitestReport } from "../shared/vitest-json";
-import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
+import { extractCriteria, readTicket } from "../shared/ticket-shape";
 import { laneBudget } from "../shared/lane-budget";
 
 export type StopReason = "no-progress" | "capped" | "gate-growth";
@@ -106,8 +105,8 @@ function commitAndPushAttempt(
 export function blockedComment(
   stopReason: StopReason,
   attemptSummaries: string[],
-  gapIssue?: number,
   gateFiles: string[] = [],
+  stillRed: FailureSignature = [],
 ): string {
   const why = {
     "no-progress":
@@ -117,38 +116,12 @@ export function blockedComment(
   }[stopReason];
 
   const tried = attemptSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n");
-  const routed =
-    gapIssue === undefined
+  const red =
+    stillRed.length === 0
       ? ""
-      : `\n\nFiled as \`spec/gap\` #${gapIssue}: an immovable test is a defect in the contract, not in this diff (ADR-0119).`;
+      : `\n\nWhat stayed red, unchanged:\n\n${stillRed.map((failure) => `### ${failure.testName}\n\n${failure.errorMessage}`).join("\n\n")}`;
 
-  return `**Blocked.** ${why}\n\nWhat was tried:\n\n${tried}${routed}`;
-}
-
-export function immovableGapReport(
-  ticketNumber: number,
-  signature: FailureSignature,
-  attemptSummaries: string[],
-): string {
-  const failing = signature.map((failure) => `### ${failure.testName}\n\n${failure.errorMessage}`).join("\n\n");
-  const tried = attemptSummaries.map((summary, index) => `${index + 1}. ${summary}`).join("\n");
-
-  return [
-    `The fixer made ${MAX_ATTEMPTS === attemptSummaries.length ? "every" : `${attemptSummaries.length}`} attempt(s) at #${ticketNumber} and two consecutive ones left the identical tests failing with the identical errors.`,
-    "",
-    "An acceptance test that does not move under two independent attempts is not being failed by the",
-    "diff: it is asking for something the ticket did not decide, and ADR-0034 rules that the spec,",
-    "not the test, is what settles that. The reading the test encodes is below; the criterion it was",
-    "authored from is the one to clarify.",
-    "",
-    "## What stayed red, unchanged",
-    "",
-    failing,
-    "",
-    "## What the fixer tried",
-    "",
-    tried,
-  ].join("\n");
+  return `**Blocked.** ${why}\n\nWhat was tried:\n\n${tried}${red}`;
 }
 
 export function unfixableComment(failedJob: string, errorLine: string): string {
@@ -166,21 +139,7 @@ function applyBlocked(
   gateFiles: string[] = [],
 ): void {
   escalateToOwner(gh, issueNumber, assignee);
-
-  let gapIssue: number | undefined;
-  if (stopReason === "no-progress" && immovable) {
-    const prd = parentPrdNumber(readTicket(gh, issueNumber).body);
-    if (prd !== undefined) {
-      gapIssue = fileSpecGap(
-        gh,
-        prd,
-        `spec/gap: #${issueNumber}'s acceptance test does not move under any fix`,
-        immovableGapReport(issueNumber, immovable, attemptSummaries),
-      );
-    }
-  }
-
-  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries, gapIssue, gateFiles)]);
+  gh(["pr", "comment", String(prNumber), "--body", blockedComment(stopReason, attemptSummaries, gateFiles, immovable)]);
 }
 
 export function applyUnfixable(gh: GhExec, issueNumber: number, prNumber: number, assignee: string, failedJob: string, errorLine: string): void {

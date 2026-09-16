@@ -22,8 +22,8 @@ reasoning is read; make it point at a real line.
   an acceptance criterion already checked off. It already ran and already passed; arguing with a
   verdict on the record is noise.
 - A style preference, a naming quibble, a "this could be simpler" with no defect behind it.
-- Anything about whether the diff satisfies its ticket's intent, which is the conformance
-  reviewer's reading, not yours.
+- Anything about whether the diff satisfies its ticket's intent, which its acceptance tests
+  already decide.
 
 Write nothing when you find nothing. A quiet, defect-free diff produces an empty list.
 

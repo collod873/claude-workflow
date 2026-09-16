@@ -301,7 +301,7 @@ Three jobs:
 
 | Job | Fires when | Does |
 |---|---|---|
-| `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body (a spec-gap amendment) | Checks out machine + target, runs `acceptance.ts --refire "$PRD_NUMBER"`, committing each affected slice to that slice's own branch |
+| `refire` | `issues:edited`, PRD labelled, sender is the repo owner — the owner hand-edited a PRD body | Checks out machine + target, runs `acceptance.ts --refire "$PRD_NUMBER"`, committing each affected slice to that slice's own branch |
 | `author` | `action == 'acceptance-wanted'` — node 04's own dispatch door | Marks the ticket `running`, runs `acceptance.ts "$TICKET_NUMBER"`, unmarks on `always()` |
 | `wake-reconciler` | `needs: [refire, author]`, `always()`, and at least one of `refire`/`author` was not skipped — so an issue edit that opened no job rings nobody | Rings door 7's `run-ended` with this run's own id, whatever ended it: a cap at `timeout-minutes` cancels `author` but this job still runs |
 

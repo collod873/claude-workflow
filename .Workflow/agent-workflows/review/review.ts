@@ -13,13 +13,9 @@ import { execGit } from "../shared/git";
 import { execGh, type GhExec } from "../shared/gh";
 import { laneBudget } from "../shared/lane-budget";
 import { markLane, REVIEWING_LABEL } from "../shared/labels";
-import { parseIssueNumber } from "../shared/issue-url";
 import { reason } from "../shared/reason";
-import { fileSpecGap } from "../shared/spec-gap";
-import { testsForCriterion } from "../shared/affected-tests";
 import { commitPullsPath } from "../shared/gh-paths";
 import { implementationBranchTicket } from "../shared/ready-set";
-import { extractCriteria, parentPrdNumber, readTicket } from "../shared/ticket-shape";
 import { isStructurallyRefused, type Finding } from "./structural-refusal";
 import { runRefuter } from "./refuter";
 import { publishFindings } from "./publish-findings";
@@ -63,80 +59,6 @@ export async function runCorrectnessReview(
   return keepSurvivingFindings(raw.findings, input.diff);
 }
 
-const CONFORMANCE_REVIEWER_PROMPT_PATH =
-  ".Workflow/agent-workflows/review/conformance-reviewer/prompt.md";
-
-export const CONFORMANCE_REVIEWER_OUTPUT = structuredOutput(
-  z.object({
-    items: z.array(
-      z.object({
-        classification: z.enum(["divergence", "gap"]),
-        message: z.string().min(1),
-      }),
-    ),
-  }),
-);
-
-export interface ConformanceReviewInput {
-  specText: string;
-  diff: string;
-  criteria: string[];
-  prdIssueNumber: number;
-  ticketNumber: number;
-  root?: string;
-  budget?: LaneBudget;
-}
-
-export interface ConformanceReviewResult {
-  findings: Finding[];
-  gapIssues: number[];
-}
-
-export function untestedCriteria(issue: number, criteria: string[], root?: string): string[] {
-  return criteria.filter((_criterion, index) => testsForCriterion(issue, index + 1, root).length === 0);
-}
-
-function fileConformanceGap(gh: GhExec, prdIssueNumber: number, report: string): number {
-  return fileSpecGap(
-    gh,
-    prdIssueNumber,
-    `spec/gap: #${prdIssueNumber}'s spec is silent on part of this diff`,
-    `Filed by lane 07's conformance reviewer (ADR-0038).\n\n${report}`,
-  );
-}
-
-export async function runConformanceReview(
-  exec: StageExec,
-  gh: GhExec,
-  input: ConformanceReviewInput,
-): Promise<ConformanceReviewResult> {
-  const scope = untestedCriteria(input.ticketNumber, input.criteria, input.root);
-
-  const { value: raw } = await runStageSessionWithinBudget(
-    CONFORMANCE_REVIEWER_PROMPT_PATH,
-    { SPEC: input.specText, SCOPE: scope.join("\n"), DIFF: input.diff },
-    exec,
-    CONFORMANCE_REVIEWER_OUTPUT,
-    {
-      budget: input.budget ?? startLaneBudget(laneBudget("review")),
-      model: CORRECTNESS_REVIEWER_MODEL,
-      promptViaStdin: true,
-      stage: "conformance",
-    },
-  );
-
-  const divergences = raw.items
-    .filter((item) => item.classification === "divergence")
-    .map((item) => ({ message: item.message }));
-  const findings = keepSurvivingFindings(divergences, input.diff);
-
-  const gapIssues = raw.items
-    .filter((item) => item.classification === "gap")
-    .map((item) => fileConformanceGap(gh, input.prdIssueNumber, item.message));
-
-  return { findings, gapIssues };
-}
-
 export interface RunReviewInput {
   diff: string;
   assignee: string;
@@ -145,13 +67,11 @@ export interface RunReviewInput {
   budgetMinutes?: number;
 }
 
-type ResolvedSpec = Pick<ConformanceReviewInput, "specText" | "criteria" | "prdIssueNumber" | "ticketNumber">;
-
 interface CommitPull {
   head?: { sha?: string; ref?: string };
 }
 
-function resolveSpec(gh: GhExec, head: string): ResolvedSpec {
+function resolveTicket(gh: GhExec, head: string): number {
   const pulls = JSON.parse(gh(["api", commitPullsPath(head)])) as CommitPull[];
 
   const pull = pulls.find((candidate) => candidate.head?.sha === head);
@@ -162,16 +82,7 @@ function resolveSpec(gh: GhExec, head: string): ResolvedSpec {
   if (ticketNumber === undefined) {
     throw new Error(`head branch \`${branch}\` is not an implementation claim, so it names no ticket`);
   }
-
-  const ticket = readTicket(gh, ticketNumber);
-  const criteria = extractCriteria(ticket.body);
-
-  const prdNumber = parentPrdNumber(ticket.body);
-  if (prdNumber === undefined) {
-    return { specText: ticket.body, criteria, prdIssueNumber: ticketNumber, ticketNumber };
-  }
-
-  return { specText: readTicket(gh, prdNumber).body, criteria, prdIssueNumber: prdNumber, ticketNumber };
+  return ticketNumber;
 }
 
 export interface RunReviewResult {
@@ -181,27 +92,23 @@ export interface RunReviewResult {
   counter: CounterOutcome;
 }
 
-function resolveSpecSafely(gh: GhExec, head: string): ResolvedSpec | undefined {
+function resolveTicketSafely(gh: GhExec, head: string): number | undefined {
   try {
-    return resolveSpec(gh, head);
+    return resolveTicket(gh, head);
   } catch (err) {
-    console.error(`conformance review skipped: ${reason(err)}`);
+    console.error(`review runs unmarked: ${reason(err)}`);
     return undefined;
   }
 }
 
 export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInput): Promise<RunReviewResult> {
   const budgetMinutes = input.budgetMinutes ?? laneBudget("review");
-  const spec = resolveSpecSafely(gh, input.head);
-  if (spec) markLane(gh, spec.ticketNumber, REVIEWING_LABEL);
-  const ticket = spec ? { gh, ticket: spec.ticketNumber, run: currentLaneRun() } : undefined;
+  const ticketNumber = resolveTicketSafely(gh, input.head);
+  if (ticketNumber !== undefined) markLane(gh, ticketNumber, REVIEWING_LABEL);
+  const ticket = ticketNumber === undefined ? undefined : { gh, ticket: ticketNumber, run: currentLaneRun() };
   const budget = startLaneBudget(budgetMinutes, ticket);
 
-  const correctness = await runCorrectnessReview(exec, budget, { diff: input.diff });
-
-  const conformance = await reviewConformance(exec, gh, input, spec, budget);
-
-  const candidates = [...correctness, ...conformance];
+  const candidates = await runCorrectnessReview(exec, budget, { diff: input.diff });
   const survivors = await runRefuter(exec, candidates, input.diff, budgetMinutes);
   const tally: RefuterTally = { reached: candidates.length, refuted: candidates.length - survivors.length };
 
@@ -209,27 +116,6 @@ export async function runReview(exec: StageExec, gh: GhExec, input: RunReviewInp
   const counter = runCounter({ gh, tally, assignee: input.assignee });
 
   return { survivors, publishedIssues, tally, counter };
-}
-
-async function reviewConformance(
-  exec: StageExec,
-  gh: GhExec,
-  input: RunReviewInput,
-  spec: ResolvedSpec | undefined,
-  budget: LaneBudget,
-): Promise<Finding[]> {
-  if (spec === undefined) return [];
-
-  const result = await runConformanceReview(exec, gh, {
-    specText: spec.specText,
-    diff: input.diff,
-    criteria: spec.criteria,
-    prdIssueNumber: spec.prdIssueNumber,
-    ticketNumber: spec.ticketNumber,
-    root: input.root,
-    budget,
-  });
-  return result.findings;
 }
 
 async function main(): Promise<void> {

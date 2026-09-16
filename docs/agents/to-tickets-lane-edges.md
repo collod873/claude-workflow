@@ -209,31 +209,25 @@ Once all four pass:
 - scripts/canary-summary.ts
 ```
 
+---
+
+## Node 05 — the `wake-reconciler` job · [wire]
+
+`to-tickets.yml` `jobs.wake-reconciler`, `needs: [to-tickets]`, `if: always()`
+
+The lane's second and last job, and its only outbound edge. It runs once the `to-tickets` job
+finishes — published, refused, or cancelled by its cap alike — holds `contents: write`, and sends
+one `repos/{owner}/{repo}/dispatches` POST carrying only the run's own id. It names no successor:
+the reconciler's own recompute decides what a published slice's graph state means next, not
+anything this lane carries in the payload. See
+[ADR-0188](../adr/0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md)
+and [`reconcile-lane-edges.md`](reconcile-lane-edges.md) door 7.
+
 ### edge — `run-ended` poke
 
 ```json
 {"event_type": "run-ended", "client_payload": {"run_id": 123456789}}
 ```
-
-This is this lane's only outbound edge, and it names no successor. The `wake-reconciler` job,
-`needs: [to-tickets]` and gated `if: always()`, sends it once the `to-tickets` job finishes —
-published, refused, or cancelled by its cap alike — carrying only the run's own id. The
-reconciler's own recompute is what decides what a published slice's graph state means next, not
-anything this lane carries in the payload. See
-[ADR-0188](../adr/0188-the-reconciler-is-the-only-sender-of-acceptance-wanted-and-t.md)
-and [`reconcile-lane-edges.md`](reconcile-lane-edges.md) door 7.
-
----
-
-## Node 05 — the dispatch job · [wire]
-
-`to-tickets.yml` `jobs.dispatch`, `needs: [to-tickets]`, `if: needs.to-tickets.outputs.dispatch-requests != ''`
-
-The same two-job split as lane 02's own gate
-([ADR-0091](../adr/0091-the-token-that-spends-a-model-and-the-token-that-starts-the.md)): the
-model-spending job holds `contents: read` throughout; this job holds `contents: write` and does
-nothing else. It collects the run's `DISPATCH_REQUESTS_PATH` file as a job output and loops its
-lines, one `repos/{owner}/{repo}/dispatches` POST per line.
 
 ---
 
@@ -243,7 +237,7 @@ lines, one `repos/{owner}/{repo}/dispatches` POST per line.
 |---|---|---|---|---|
 | seam-sweep | unpinned (CLI default) | unrestricted (Bash, `gh`, everything) | yes, artifact-persisted | no |
 | slice | unpinned | unrestricted | yes | no |
-| audit-and-publish | unpinned | unrestricted | yes | files issues, wires blocked-by, dispatches |
+| audit-and-publish | unpinned | unrestricted | yes | files issues, wires blocked-by |
 
 ---
 
@@ -260,7 +254,7 @@ lines, one `repos/{owner}/{repo}/dispatches` POST per line.
 | 2 calls | slice schema parse + `validatePlan` | Malformed JSON, a dependency cycle, no unblocked root, or a shape `assertTicketShape()` would refuse |
 | 3 calls | audit publish rails | A remote-reading `check:` marker, an immutable-set claim, or an unrooted path |
 | 3 calls, mid-publish | `verifyBlockedByGraph` | The read-back graph is missing an edge the plan declared |
-| 30 min | `timeout-minutes: 30` | Job cancelled |
+| 90 min | `timeout-minutes: 90` | Job cancelled |
 
 All refusals past the two nested-sub-issue guards post one comment (`to-tickets run failed.\n\n
 **Reason:** <reason>\n\n**Workflow run:** <url>\n**Checkpoints:** the

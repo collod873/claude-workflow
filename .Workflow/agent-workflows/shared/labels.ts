@@ -53,7 +53,6 @@ export const DECIDE_LABEL = "1-decide";
 export const QUESTIONS_OPEN_LABEL = "2-questions-open";
 export const SLICE_FAILED_LABEL = "slice-failed";
 export const SHAPE_REFUSED_LABEL = "shape-refused";
-export const SPEC_GAP_LABEL = "spec/gap";
 
 export const TO_BUILD_LABEL = "to-build";
 export const TO_SPEC_LABEL = "to-spec";

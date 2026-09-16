@@ -77,7 +77,7 @@ Every label the pipeline reads or writes is in the catalogue at
 now (`1-shaping` … `8-landing`, `ratifying`, numbered so the label filter sorts in pipeline
 order), blue is waiting on the machine (`3-sliced`, `waiting`, `queued`, `sliceable`), red is
 waiting on the owner (`needs-human`, `fuzzy`, `by-hand`, `1-decide`, `2-questions-open`,
-`slice-failed`, `shape-refused`, `spec/gap`), purple is a verb only the owner applies, grey is a
+`slice-failed`, `shape-refused`), purple is a verb only the owner applies, grey is a
 kind and amber is `ticket`. An open issue wears at most one green or blue **lane label**; the
 absence of a kind label and of `## Acceptance criteria` in the body still means not yet judged.
 

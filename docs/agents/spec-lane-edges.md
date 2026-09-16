@@ -513,6 +513,4 @@ contract: bigger than the owner's words plus every decision combined.
 
 ## Loose ends in the tree
 
-- `.Workflow/agent-workflows/spec/amend/prompt.md` exists but nothing references it; there is no
-  `amend.ts`.
 - `gateCount()` / `unfiledMarkGap()` are computed and logged, but `applyGate` discards the count.

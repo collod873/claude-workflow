@@ -3,7 +3,6 @@ import type { GhExec } from "../shared/gh";
 import { createRecordingGh } from "../shared/gh.fake";
 import type { GitExec } from "../shared/git";
 import { NEEDS_HUMAN_LABEL } from "../shared/needs-human";
-import { SPEC_GAP_LABEL } from "../shared/spec-gap";
 import { createFakeStages } from "../shared/stage.fake";
 import { runVitestReport } from "../shared/vitest-json";
 import {
@@ -78,20 +77,14 @@ function expectEscalatedToOwner(calls: string[][], issueNumber: string, assignee
 
 const prCommentIn = (calls: string[][]): string | undefined => calls.find((call) => call[0] === "pr" && call[1] === "comment")?.[4];
 
-function ticketBody(parentPrd: number | undefined): string {
-  const parent = parentPrd === undefined ? "" : `## Parent PRD\n#${parentPrd}\n\n`;
-  return `${parent}## Acceptance criteria\n\n- [ ] It adds two numbers — check: \`make test\`\n`;
-}
+const TICKET_BODY = "## Parent PRD\n#41\n\n## Acceptance criteria\n\n- [ ] It adds two numbers — check: `make test`\n";
 
-function recordingGhWithTicket(parentPrd: number | undefined): { gh: GhExec; calls: string[][] } {
+function recordingGhWithTicket(): { gh: GhExec; calls: string[][] } {
   const { gh: recording, calls } = createRecordingGh();
   const gh: GhExec = (args) => {
     recording(args);
     if (args[0] === "issue" && args[1] === "view") {
-      return JSON.stringify({ title: "Adds two numbers", body: ticketBody(parentPrd) });
-    }
-    if (args[0] === "issue" && args[1] === "create") {
-      return "https://github.com/owner/repo/issues/500\n";
+      return JSON.stringify({ title: "Adds two numbers", body: TICKET_BODY });
     }
     return "";
   };
@@ -99,16 +92,15 @@ function recordingGhWithTicket(parentPrd: number | undefined): { gh: GhExec; cal
 }
 
 function baseDeps(
-  overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestResult[]; parentPrd?: number },
+  overrides: Partial<FixerDeps> & { runTestsSequence: FixerTestResult[] },
 ): FixerDeps & {
   ghCalls: string[][];
   gitCalls: string[][];
 } {
-  const { parentPrd, ...withoutPrd } = overrides;
-  const { gh, calls: ghCalls } = recordingGhWithTicket("parentPrd" in overrides ? parentPrd : 41);
+  const { gh, calls: ghCalls } = recordingGhWithTicket();
   const { git, calls: gitCalls } = fakeGit();
   let testCall = 0;
-  const { runTestsSequence, ...rest } = withoutPrd;
+  const { runTestsSequence, ...rest } = overrides;
 
   return {
     gh,
@@ -174,15 +166,16 @@ describe("assembleFixBrief", () => {
 });
 
 describe("blockedComment", () => {
-  it("says why the loop stopped, numbers what every attempt tried, and names the spec/gap when one was filed", () => {
-    const noProgress = blockedComment("no-progress", ["tried X", "tried Y"], 500);
+  it("says why the loop stopped, numbers what every attempt tried, and shows what stayed red when it never moved", () => {
+    const noProgress = blockedComment("no-progress", ["tried X", "tried Y"], [], IDENTICAL_A);
     expect(noProgress).toContain("identical tests failing");
     expect(noProgress).toContain("1. tried X\n2. tried Y");
-    expect(noProgress).toContain("`spec/gap` #500");
+    expect(noProgress).toContain("What stayed red, unchanged");
+    expect(noProgress).toContain("### adds two numbers\n\nexpected 3, got 4");
 
     const capped = blockedComment("capped", ["tried X"]);
     expect(capped).toContain(`${MAX_ATTEMPTS} attempts`);
-    expect(capped).not.toContain("spec/gap");
+    expect(capped).not.toContain("stayed red");
   });
 });
 
@@ -237,47 +230,29 @@ describe("runFixer: no-progress stop", () => {
 });
 
 describe("runFixer: where a stop is routed", () => {
-  function specGapCall(calls: string[][]): string[] | undefined {
-    return calls.find((call) => call[0] === "issue" && call[1] === "create" && call.includes(SPEC_GAP_LABEL));
-  }
+  const issueCreates = (calls: string[][]) => calls.filter((call) => call[0] === "issue" && call[1] === "create");
 
-  async function stoppedWithNoProgress(parentPrd: number | null = 41) {
+  async function stoppedWithNoProgress() {
     const deps = baseDeps({
       exec: attempts(2).exec,
       runTestsSequence: [{ failures: IDENTICAL_A }, { failures: IDENTICAL_B }],
-      parentPrd: parentPrd ?? undefined,
     });
     const outcome = await runFixer(deps);
     return { deps, outcome };
   }
 
-  it("files a spec/gap at the parent PRD when the signature never moved", async () => {
+  it("files no issue on a no-progress stop: the owner and the PR are the whole route", async () => {
     const { deps } = await stoppedWithNoProgress();
 
-    const filed = specGapCall(deps.ghCalls);
-    expect(filed).toBeDefined();
-
-    const body = filed![filed!.indexOf("--body") + 1];
-    expect(body).toContain("#41");
-    expect(body).toContain("adds two numbers");
-    expect(body).toContain("expected 3, got 4");
-
-    const labelCreate = deps.ghCalls.findIndex((call) => call[0] === "label" && call[1] === "create" && call[2] === SPEC_GAP_LABEL);
-    expect(labelCreate).toBeGreaterThanOrEqual(0);
-    expect(labelCreate).toBeLessThan(deps.ghCalls.indexOf(filed!));
-  });
-
-  it("still labels the ticket needs-human, because a spec/gap may refuse", async () => {
-    const { deps } = await stoppedWithNoProgress();
-
+    expect(issueCreates(deps.ghCalls)).toEqual([]);
     expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
   });
 
-  it("names the filed gap in the comment, so the PR says where the stop went", async () => {
+  it("puts the failures that never moved on the PR, so the owner sees what the test asks for", async () => {
     const { deps } = await stoppedWithNoProgress();
 
-    expect(prCommentIn(deps.ghCalls)).toContain("#500");
-    expect(prCommentIn(deps.ghCalls)).toContain("spec/gap");
+    expect(prCommentIn(deps.ghCalls)).toContain("adds two numbers");
+    expect(prCommentIn(deps.ghCalls)).toContain("expected 3, got 4");
   });
 
   it("files nothing on a capped stop, where every attempt moved the failure", async () => {
@@ -289,14 +264,7 @@ describe("runFixer: where a stop is routed", () => {
     const outcome = await runFixer(deps);
 
     expect(outcome).toEqual({ verdict: "blocked", attempts: 3, stopReason: "capped" });
-    expect(specGapCall(deps.ghCalls)).toBeUndefined();
-    expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
-  });
-
-  it("files nothing for a ticket with no parent PRD, which has no spec to amend", async () => {
-    const { deps } = await stoppedWithNoProgress(null);
-
-    expect(specGapCall(deps.ghCalls)).toBeUndefined();
+    expect(issueCreates(deps.ghCalls)).toEqual([]);
     expectEscalatedToOwner(deps.ghCalls, "42", "collod873");
   });
 });

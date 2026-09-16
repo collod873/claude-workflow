@@ -19,7 +19,7 @@ What is structurally unusual here, twice over. First: unlike lane 08's `integrat
 lane 06 by waking on the *same* `implementation-opened` dispatch verify-lane-edges.md's node 00
 describes, both halves of this lane wake only once lane 06's judging jobs have *finished*, and each
 is rung by a `repository_dispatch` that run's own tail jobs send: `review-wanted` when `Verify` is
-green (node 00), `fixer-needed` when it is red (node 08), both documented in
+green (node 00), `fixer-needed` when it is red (node 06), both documented in
 [`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire). Second: neither
 half listens on `workflow_run: [Verify]`, and the reason is worth keeping. A Verify run a dispatch
 started has `actor: github-actions[bot]`, and GitHub's recursion guard starts no workflow from a
@@ -33,8 +33,8 @@ Payload contents below are a worked example built to the real shapes and rules, 
 [`verify-lane-edges.md`](verify-lane-edges.md)'s own thread: **PR #501** on branch
 `implement/issue-421`, implementing **ticket #421** (sliced from **PRD #419**), changing
 `scripts/canary-summary.ts` and `scripts/canary-summary.test.ts`. This document shows both ways
-lane 06's verdict on that commit can go: nodes 00–07 follow the run where `Verify` passed and
-review reads the diff; nodes 08–12 follow the run where it failed on the exact test
+lane 06's verdict on that commit can go: nodes 00–05 follow the run where `Verify` passed and
+review reads the diff; nodes 06–10 follow the run where it failed on the exact test
 verify-lane-edges.md's own worked example names —
 `scripts/canary-summary.test.ts > writes a job summary that quotes the run's own conclusion` — and
 the fixer takes over. The clean path lets [`integrate-lane-edges.md`](integrate-lane-edges.md)
@@ -108,7 +108,7 @@ index 3a1c9de..7b02f41 100644
 +}
 ```
 
-Everything downstream in the review half — both reviewers, the refuter — reads this string and
+Everything downstream in the review half — the reviewer, the refuter — reads this string and
 nothing else off the target's tree; there is no second checkout, no `gh pr diff`, no file list.
 
 ---
@@ -125,8 +125,8 @@ Reads one diff, hunts defects, nothing else.
 | **Tools** | unrestricted — `runCorrectnessReview` passes neither `allowedTools` nor `disallowedTools` to `runStage`. It does not need any: the diff arrives inline in the prompt, so there is nothing to read that isn't already there |
 | **Sees** | `{{DIFF}}` only |
 | **Hunts** | A defect the diff introduces that lint, typecheck, the suite, and the ticket's own acceptance tests — already green before this reviewer ever runs — did not exercise |
-| **Refuses to write** | A restatement of a rule a green gate already covers; a style preference; anything about whether the diff matches its ticket's *intent* (the conformance reviewer's question, not this one's) |
-| **Mechanical filter** | A finding naming no `path:line` is refused before its reasoning is read — enforced downstream at node 05, not here |
+| **Refuses to write** | A restatement of a rule a green gate already covers; a style preference; anything about whether the diff matches its ticket's *intent*, which its acceptance tests already decide |
+| **Mechanical filter** | A finding naming no `path:line` is refused before its reasoning is read — enforced downstream at node 04, not here |
 | **Empty is legal** | Nothing found, `findings: []` |
 
 ### edge — `CorrectnessReviewerOutput` · schema-validated JSON
@@ -139,104 +139,29 @@ Reads one diff, hunts defects, nothing else.
 
 ---
 
-## Node 03 — resolving the ticket, for conformance · [wire]
+## Node 03 — resolving the ticket · [wire]
 
-`review/review.ts` `resolveSpec`
+`review/review.ts` `resolveTicket`
 
-Only the conformance reviewer needs to know which ticket this diff answers to; the correctness
-reviewer at node 02 never asked.
+The reviewer never asks which ticket this diff answers to; the lane does, to mark it `7-reviewing`
+and to have a ticket to strike if the budget runs out.
 
 | | |
 |---|---|
 | **Finds the pull request** | `gh api repos/{owner}/{repo}/commits/HEAD_SHA/pulls` (`commitPullsPath`), matched to the one whose `head.sha` equals `HEAD_SHA` exactly |
 | **Names the ticket** | `implementationBranchTicket(branch)` — parses `implement/issue-421` back into `421`, the same pattern `shared/ready-set.ts` builds |
-| **Reads the spec** | `parentPrdNumber(ticket.body)` — if the ticket names a `## Parent PRD`, that PRD's body is `specText`, `prdIssueNumber`; otherwise the ticket's own body stands in for both |
-| **Refuses (caught)** | No pull request has that head commit; the branch isn't `implement/issue-*` shaped; the ticket read fails. None of these end the run — `reviewConformance` catches the throw, logs it, and returns `findings: []`. Correctness review still stands |
-| **The concrete case this excludes** | A ratifier's pull request ([ADR-0122](../adr/0122-findings-land-through-the-implementation-door-the-release-pr.md)) opens on a branch of its own naming, not `implement/issue-N` — so `implementationBranchTicket` returns `undefined` and conformance review never runs against one. Only the correctness reviewer reads a ratifier's diff |
+| **Refuses (caught)** | No pull request has that head commit, or the branch isn't `implement/issue-*` shaped. Neither ends the run — `resolveTicketSafely` logs it and the review runs unmarked, with no ticket to strike |
+| **The concrete case this excludes** | A ratifier's pull request ([ADR-0122](../adr/0122-findings-land-through-the-implementation-door-the-release-pr.md)) opens on a branch of its own naming, not `implement/issue-N` — so `implementationBranchTicket` returns `undefined` and the review of its diff marks no ticket |
 
-### edge — `ResolvedSpec` · in-process object
+### edge — the ticket number · in-process
 
 ```ts
-{ specText: "<PRD #419's body>", criteria: ["I'll know it works when I can open the last nightly run and read its own summary without clicking into a job - check: `gh run list --workflow=nightly.yml --json conclusion --jq '.[0].conclusion == \"success\"'`"],
-  prdIssueNumber: 419, ticketNumber: 421 }
+421
 ```
 
 ---
 
-## Node 04 — the conformance reviewer's scope · [wire]
-
-`review/review.ts` `untestedCriteria` → `shared/affected-tests.ts` `testsForCriterion`
-
-Not every criterion is this reviewer's to re-decide — only the part no acceptance test already
-encodes.
-
-| | |
-|---|---|
-| **Per criterion** | `testsForCriterion(421, index+1)` greps every suite file for a title matching `` #421.<index>: `` — the acceptance lane's own authoring grammar (`shared/affected-tests.ts` `authoredCriterionTitleRe`), never the looser ticket-wide `` #421: `` form |
-| **In scope** | Only a criterion with no matching test file — the residue no machine verdict already covers |
-| **This ticket's own case** | Ticket #421 carries exactly one criterion, and lane 04's acceptance author titled its test to that grammar (`#421.1: writes a job summary that quotes the run's own conclusion`) before lane 05 ever ran. `testsForCriterion(421, 1)` finds it, so the one criterion this ticket has is **excluded** — `SCOPE` renders as the empty string |
-
-### edge — `SCOPE` · the empty string
-
-Passed to `{{SCOPE}}` unchanged — not the sentinel `"(none)"` other lanes render for an empty
-section, just `""`. The conformance reviewer's own prompt still runs; it is simply told, correctly,
-that nothing here is left for it to judge.
-
----
-
-## Node 05 — conformance reviewer · [model]
-
-`review/conformance-reviewer/prompt.md` · `review/review.ts` `runConformanceReview`
-
-Reads the spec **before** the diff — "an anchored reading rationalises whatever the diff already
-does instead of checking it" — then decides, for whatever node 04 left in scope, which side is
-wrong when the two disagree.
-
-| | |
-|---|---|
-| **Model** | `claude-opus-5` — the same constant, `CORRECTNESS_REVIEWER_MODEL`, node 02 uses; conformance never defines one of its own |
-| **Tools** | unrestricted, same as node 02 |
-| **Sees** | `{{SPEC}}`, `{{SCOPE}}`, `{{DIFF}}` |
-| **`divergence`** | The spec is clear and the diff does something else — an ordinary finding, `path:line` required, refused mechanically without one |
-| **`gap`** | The spec is silent, ambiguous, or self-contradicts, and no clear reading exists to diverge from — **not** a finding against this diff. Filed as `spec/gap` against the PRD instead (node 06) |
-| **The rule** | Never both for the same observation. If the spec is clear, `divergence`; if it isn't, `gap` |
-| **This run's case** | `SCOPE` is empty, so there is nothing in scope to classify either way: `items: []` |
-
-### edge — `ConformanceReviewerOutput` · schema-validated JSON
-
-```json
-{"items": []}
-```
-
-The shape the prompt itself illustrates, for a run where `SCOPE` is not empty:
-
-```json
-{"items":[
-  {"classification":"gap","message":"The spec never says what happens when the nightly run has no conclusion yet (still in progress) — the diff's own summary prints \"did not pass\" for that case, and nothing here says whether that's right."}
-]}
-```
-
-### edge — `fileConformanceGap` · a `spec/gap` issue, when `classification` is `gap`
-
-```
-gh issue create --title "spec/gap: #419's spec is silent on part of this diff" \
-  --body "Filed against #419 (ADR-0034).
-
-Filed by lane 07's conformance reviewer (ADR-0038).
-
-The spec never says what happens when the nightly run has no conclusion yet..." \
-  --label spec/gap
-```
-
-This is the routing the task at hand called out: the diff is not wrong here — the contract is
-silent — so nothing is filed against the pull request. `spec/gap` lands on the PRD and is read by
-lane 02's own amendment path ([ADR-0034](../adr/0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md)),
-never by whoever wrote this diff. See [`pipeline-labels.md`](pipeline-labels.md) and
-[`issue-tracker.md`](issue-tracker.md) for the label itself.
-
----
-
-## Node 06 — structural refusal · [wire]
+## Node 04 — structural refusal · [wire]
 
 `review/structural-refusal.ts` `isStructurallyRefused`
 
@@ -246,7 +171,7 @@ names no real place in the diff, never spends a Sonnet call to be told so.
 | | |
 |---|---|
 | **Refuses when** | The finding cites no `path:line` that appears verbatim in the diff text (`citesLocationInDiff`); **or** its message includes one of `greenGateChecks` (`restatesAGreenCheck`) |
-| **Applies to** | The pooled output of both reviewers — `candidates = [...correctness, ...conformance]` — `gap` items excluded, since those never reach this filter at all |
+| **Applies to** | The correctness reviewer's findings, inside `runCorrectnessReview`, before any reach the refuter |
 | **`greenGateChecks` in production** | `review.ts`'s own `main()` reads it from `process.argv.slice(4)`; `review.yml`'s invocation passes exactly two arguments (`origin/main`, the head sha) and no more. See *Loose ends* |
 
 ### edge — `Finding[]` · survivors passed to the refuter
@@ -257,7 +182,7 @@ names no real place in the diff, never spends a Sonnet call to be told so.
 
 ---
 
-## Node 07 — refuter, then publish, then count · [model] [stop] [wire]
+## Node 05 — refuter, then publish, then count · [model] [stop] [wire]
 
 `review/refuter.ts` `runRefuter` · `review/publish-findings.ts` · `review/counter.ts` `runCounter`
 
@@ -268,7 +193,7 @@ survived.
 |---|---|
 | **Model** | `claude-sonnet-5` — cheaper than the reviewers, since judging one already-filtered finding is a narrower question than reading the whole diff |
 | **The question** | Not "is this good code" — "is this finding actually wrong" |
-| **The bar** | A refusal must name the gate that already covers the finding, or a `path:line` by which it is unreachable (`refusalNamesReason` — checked the same two ways as node 06). A refusal naming neither does not count as one: the finding stands regardless of what else the model wrote ([ADR-0035](../adr/0035-lane-07-ships-with-one-refuter-and-a-refusal-that-names-no-r.md)) |
+| **The bar** | A refusal must name the gate that already covers the finding, or a `path:line` by which it is unreachable (`refusalNamesReason` — checked the same two ways as node 04). A refusal naming neither does not count as one: the finding stands regardless of what else the model wrote ([ADR-0035](../adr/0035-lane-07-ships-with-one-refuter-and-a-refusal-that-names-no-r.md)) |
 | **Serial, not parallel** | `runRefuter` loops `for (const finding of findings)`, one `claude` invocation per finding |
 | **Publish** | Every survivor becomes its own issue: `gh issue create --label lane-07-finding --assignee <owner>`, title `` lane-07 finding: <first line, ≤80 chars> `` |
 | **Count** | `runCounter` always runs after, in-process — its own CLI `main()` (reading `REFUTER_TALLY_REACHED`/`REFUTED` from the environment) has no caller; nothing invokes it that way |
@@ -310,7 +235,7 @@ prompt edit."
 
 ---
 
-## Node 08 — the fixer's doors, and the dedup · [stop]
+## Node 06 — the fixer's doors, and the dedup · [stop]
 
 `fixer-caller.yml` `on:` / `fixer.yml` `jobs.fixer.if`
 
@@ -320,13 +245,13 @@ The mirror image of node 00: wakes on lane 06's own run going the other way.
 |---|---|
 | **Door 1** | `repository_dispatch: fixer-needed` — sent by `verify.yml`'s own `signal-fixer` job, carrying `client_payload.run_id`, documented at [`verify-lane-edges.md`](verify-lane-edges.md#node-03-the-signal-fixer-job-wire) |
 | **Door 2** | `workflow_dispatch`, `run_id` optional — empty resolves no pull request and exits |
-| **The door that is gone** | This stub used to carry `workflow_run: [Verify]` beside door 1, gated on `conclusion` red and `event != 'push'`. It opened only for push-started runs, which that gate excluded, so door 1 was the one wake that ever arrived; the door came off with #456. Node 09's marker still deduplicates a hand re-dispatch of a run already reacted to |
+| **The door that is gone** | This stub used to carry `workflow_run: [Verify]` beside door 1, gated on `conclusion` red and `event != 'push'`. It opened only for push-started runs, which that gate excluded, so door 1 was the one wake that ever arrived; the door came off with #456. Node 07's marker still deduplicates a hand re-dispatch of a run already reacted to |
 | **Concurrency** | `fixer-${{ inputs.run_id \|\| github.run_id }}`, `cancel-in-progress: false` |
 | **Permissions** | `contents: write`, `pull-requests: write`, `issues: write`, `actions: read` |
 
 ---
 
-## Node 09 — resolving the run: model, escalate, or nothing · [wire] [stop]
+## Node 07 — resolving the run: model, escalate, or nothing · [wire] [stop]
 
 `fixer.yml` "Resolve the pull request that Verify run was judging" step
 
@@ -338,7 +263,7 @@ in a workflow step rather than a `.ts` file.
 | **Polls** | `gh run view $RUN_ID --json status`, up to 30 times / 10s, for `status == completed`. Still not completed after 5 minutes → `::error::` and the job fails outright — the one wake in this node that is a real failure, not a silent no-op |
 | **No-op exits (code 0, nothing done)** | `RUN_ID` empty; the run carries no `Immutability` job; the Immutability job's own log names no `judging <pr> on implement/issue-<n>` line (the same rendezvous key node 04 of `verify-lane-edges.md` reads — reused here verbatim); the named pull request's `state` isn't `OPEN`; a comment on the PR already carries `` <!-- fixer-run:$RUN_ID --> `` — the mark this exact step leaves a few lines later, and the mechanism that lets doors 1 and 2 both fire on the same run without double-reacting |
 | **`MODE=model`** | The `Verify` job's own conclusion (job named `Verify` or `* / Verify` — the same caller-stub renaming `verify-lane-edges.md`'s "Two things worth knowing" describes, re-implemented here in `jq` rather than imported from `shared/job-match.ts`) is `failure` — a real red gate, something the fixer can try against |
-| **`MODE=escalate`** | Anything else red on the run — most often `Immutability` itself, which the fixer is never allowed to touch (see node 11's own rule) |
+| **`MODE=escalate`** | Anything else red on the run — most often `Immutability` itself, which the fixer is never allowed to touch (see node 09's own rule) |
 | **Escalate's own reads** | The first job with `conclusion == failure`, and the first `::error::` line in its log, or `(no ::error:: line found in the <job> log)` |
 | **The marker, posted either way** | `` <!-- fixer-run:$RUN_ID --> `` plus a one-line comment naming the run, posted once regardless of which mode follows |
 
@@ -360,7 +285,7 @@ issue=421
 
 ---
 
-## Node 10 — rebase onto trunk, or escalate the conflict · [wire] [stop]
+## Node 08 — rebase onto trunk, or escalate the conflict · [wire] [stop]
 
 `fixer.yml` "Rebase onto trunk so trunk's fixer runs" step · `fixer/fixer.ts` `runEscalate`
 
@@ -382,11 +307,11 @@ conflicts in: scripts/canary-summary.ts
 
 `escalateToOwner(gh, 421, assignee)` runs first — `needs-human` on the ticket, the owner assigned —
 then this same comment shape lands whether the escalation came from a rebase conflict, a pre-gate
-job failure (node 09's own `MODE=escalate`), or the fixer's own crash (node 12).
+job failure (node 07's own `MODE=escalate`), or the fixer's own crash (node 10).
 
 ---
 
-## Node 11 — the fixer stage, attempt by attempt · [model]
+## Node 09 — the fixer stage, attempt by attempt · [model]
 
 `fixer/prompt.md` · `fixer/fixer.ts` `runFixer`
 
@@ -429,27 +354,24 @@ expected job summary to include "success" but got undefined
 
 ---
 
-## Node 12 — how the loop ends · [wire] [stop]
+## Node 10 — how the loop ends · [wire] [stop]
 
-`fixer/fixer.ts` `runFixer` (continued) · `escalateToOwner` · `shared/spec-gap.ts` `fileSpecGap`
+`fixer/fixer.ts` `runFixer` (continued) · `escalateToOwner` · `blockedComment`
 
 Four ways out, checked in this order after each attempt's tests run.
 
-| Outcome | Fires when | Files `spec/gap`? |
-|---|---|---|
-| **green** | `result.failures.length === 0` | no |
-| **no-progress** | `attempt >= 2` and this attempt's failures are byte-identical (order-independent) to the previous attempt's | only this one — and only if the ticket names a `## Parent PRD` |
-| **capped** | The attempt budget (`MAX_ATTEMPTS = 3`, minus any already spent on this branch by earlier fixer runs) is exhausted without landing green or repeating a failure | no |
-| **gate-growth** | Already caught mid-attempt at node 11, before any commit | no |
+| Outcome | Fires when |
+|---|---|
+| **green** | `result.failures.length === 0` |
+| **no-progress** | `attempt >= 2` and this attempt's failures are byte-identical (order-independent) to the previous attempt's |
+| **capped** | The attempt budget (`MAX_ATTEMPTS = 3`, minus any already spent on this branch by earlier fixer runs) is exhausted without landing green or repeating a failure |
+| **gate-growth** | Already caught mid-attempt at node 09, before any commit |
 
-`no-progress` is [ADR-0119](../adr/0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md)'s
-own case: an acceptance test that will not move under two independent attempts is not being failed
-by the diff — it is asking for something the ticket never decided, and the spec, not the test,
-settles that ([ADR-0034](../adr/0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md)).
-This is the distinction the task at hand asked
-this document to draw sharply: a `divergence` (node 05) says the diff is wrong; `no-progress` here
-says the same thing about a test the fixer cannot make pass, and both routes end at the same place —
-`spec/gap`, filed against the PRD, read by lane 02's amendment path — never at the pull request.
+Every blocked outcome ends the same way: `needs-human` on the ticket, the owner assigned, and a
+comment on the pull request. `no-progress` adds the tests that never moved, because a test that
+will not move under two independent attempts is usually asking for something the ticket never
+decided — and settling that is the owner's call, not the fixer's
+([ADR-0194](../adr/0194-an-unclear-spec-reaches-the-owner-on-the-pull-request-and-no.md)).
 
 ### edge — `blockedComment` · posted on the pull request, `no-progress`
 
@@ -461,31 +383,11 @@ What was tried:
 1. Guarded `writeStepSummary` against a run whose conclusion hasn't landed yet by reading it from the run object instead of a stale cache.
 2. Read the conclusion from the workflow run's own polling loop instead of the cache file.
 
-Filed as `spec/gap` #423: an immovable test is a defect in the contract, not in this diff (ADR-0119).
-```
+What stayed red, unchanged:
 
-### edge — `fileSpecGap` · the issue `no-progress` files
-
-```
-gh issue create --title "spec/gap: #421's acceptance test does not move under any fix" \
-  --body "Filed against #419 (ADR-0034).
-
-The fixer made 2 attempt(s) at #421 and two consecutive ones left the identical tests failing with the identical errors.
-
-An acceptance test that does not move under two independent attempts is not being failed by the
-diff: it is asking for something the ticket did not decide, and ADR-0034 rules that the spec,
-not the test, is what settles that...
-
-## What stayed red, unchanged
 ### #421.1: writes a job summary that quotes the run's own conclusion
 
-expected job summary to include \"success\" but got undefined
-
-## What the fixer tried
-
-1. Guarded `writeStepSummary`...
-2. Read the conclusion from the workflow run's own polling loop..." \
-  --label spec/gap
+expected job summary to include "success" but got undefined
 ```
 
 ### edge — green: `rejudge` · a fresh `implementation-opened` dispatch
@@ -511,14 +413,13 @@ any other pull request reaching that door.
 |---|---|---|---|---|
 | the diff (node 01) | — | machine + target, `origin/main...head_sha` | — | no |
 | correctness reviewer (node 02) | opus-5, unrestricted | the diff text only | — | no |
-| resolve ticket / scope (nodes 03–04) | — | the tracker, the suite tree | — | no |
-| conformance reviewer (node 05) | opus-5, unrestricted | spec text, scope, diff | files `spec/gap` on a `gap` | issues only |
-| structural refusal (node 06) | — | the diff text, `greenGateChecks` | — | no |
-| refuter (node 07) | sonnet-5, unrestricted | one finding + the diff | publishes findings, proposes fleet changes | issues only |
-| resolve the run (node 09) | — | the run's own jobs and logs | posts the marker comment | PR comment |
-| rebase (node 10) | — | the target checkout | rebases, force-pushes the branch | escalates on conflict |
-| fixer stage (node 11) | sonnet-5, unrestricted | the checkout, the failing tests, prior summaries | edits the worktree; the lane commits and pushes what it left | no |
-| loop's end (node 12) | — | — | commits already pushed; on green, re-dispatches Verify; on any blocked outcome, `needs-human` + PR comment, and `no-progress` files `spec/gap` | ticket label/assignee, PR comment |
+| resolve ticket (node 03) | — | the tracker | marks the ticket `7-reviewing` | ticket label |
+| structural refusal (node 04) | — | the diff text, `greenGateChecks` | — | no |
+| refuter (node 05) | sonnet-5, unrestricted | one finding + the diff | publishes findings, proposes fleet changes | issues only |
+| resolve the run (node 07) | — | the run's own jobs and logs | posts the marker comment | PR comment |
+| rebase (node 08) | — | the target checkout | rebases, force-pushes the branch | escalates on conflict |
+| fixer stage (node 09) | sonnet-5, unrestricted | the checkout, the failing tests, prior summaries | edits the worktree; the lane commits and pushes what it left | no |
+| loop's end (node 10) | — | — | commits already pushed; on green, re-dispatches Verify; on any blocked outcome, `needs-human` + PR comment | ticket label/assignee, PR comment |
 
 ---
 
@@ -530,22 +431,22 @@ Ordered by how much has been spent when it fires.
 |---|---|---|
 | free | `review-caller.yml` `on:` | No `review-wanted` arrived — lane 06 rings it only when a dispatch-started run's `Verify` job is green |
 | free | `fixer-caller.yml` `on:` | Neither door's condition holds |
-| one runner, before any model | node 09's no-op exits | Empty `RUN_ID`; no `Immutability` job; the log names no pull request; the PR isn't `OPEN`; the marker is already there |
-| one runner, real failure | node 09's poll | The named run is still not `completed` five minutes in |
-| one runner, no model | node 10 | Rebase onto trunk conflicts |
-| 1 opus call (node 02), or 2 (node 02 then 05) | node 02 / node 05 | Either reviewer's JSON fails its schema — the whole run dies uncaught, unlike node 03's own throw a few lines later, which `reviewConformance` catches. The raw response is saved either way, same as every other stage in this repository |
-| 1 model call | node 09's escalate path | A job other than `Verify` failed first — nothing here for the fixer to reproduce |
-| up to `MAX_ATTEMPTS` (3) sonnet calls | node 12 | `capped`, `no-progress`, or `gate-growth` — none of the three ever un-does a commit already pushed |
-| — | node 07's refuter | Never a run-level stop: it vetoes one finding at a time, and a refusal that names no gate or `path:line` does not count as one |
+| one runner, before any model | node 07's no-op exits | Empty `RUN_ID`; no `Immutability` job; the log names no pull request; the PR isn't `OPEN`; the marker is already there |
+| one runner, real failure | node 07's poll | The named run is still not `completed` five minutes in |
+| one runner, no model | node 08 | Rebase onto trunk conflicts |
+| 1 opus call | node 02 | The reviewer's JSON fails its schema — the whole run dies uncaught, unlike node 03's own throw, which `resolveTicketSafely` catches. The raw response is saved, same as every other stage in this repository |
+| 1 model call | node 07's escalate path | A job other than `Verify` failed first — nothing here for the fixer to reproduce |
+| up to `MAX_ATTEMPTS` (3) sonnet calls | node 10 | `capped`, `no-progress`, or `gate-growth` — none of the three ever un-does a commit already pushed |
+| — | node 05's refuter | Never a run-level stop: it vetoes one finding at a time, and a refusal that names no gate or `path:line` does not count as one |
 
 ---
 
 ## Two things worth knowing
 
-**Silence is the passing case in three different places here.** A correctness/conformance run that
+**Silence is the passing case in three different places here.** A review run that
 finds nothing publishes nothing. A refuter that finds a finding sound lets it stand without
 comment. A fixer attempt that goes green re-dispatches Verify and says nothing on the pull
-request. The only things this lane ever writes back are a finding, a `spec/gap`, a blocked comment,
+request. The only things this lane ever writes back are a finding, a blocked comment,
 or `needs-human` — every quiet outcome is invisible by design, same as lane 06's own gate and lane
 08's own merge.
 
@@ -561,14 +462,14 @@ discipline lane 05's node 01 uses for who owns `implement/issue-421` at all.
 
 - `review.ts`'s `main()` reads `greenGateChecks` from `process.argv.slice(4)`. `review.yml`'s own
   invocation supplies exactly two arguments (`origin/main`, the head sha) — no third. In production
-  this list is always empty, so `restatesAGreenCheck` (node 06) and the matching half of
-  `refusalNamesReason` (node 07) never have anything to match against; only the `path:line`
+  this list is always empty, so `restatesAGreenCheck` (node 04) and the matching half of
+  `refusalNamesReason` (node 05) never have anything to match against; only the `path:line`
   citation half of either check ever fires.
 - `structural-refusal.test.ts`'s own fixture diff embeds `src/widget.ts:12` as a fabricated
   trailing context on an `@@ ... @@` hunk header to give `citesLocationInDiff` a literal
   `path:line` substring to find. A real `git diff` does not print `path:line` anywhere in its own
   text — file paths appear on `+++`/`---` lines, line numbers appear as `@@ -a,b +c,d @@` ranges,
-  never joined by a colon. What a real correctness or conformance finding would have to say for
+  never joined by a colon. What a real correctness finding would have to say for
   its citation to land inside a real diff's text is not established by anything this lane's tests
   exercise.
 - `signal-review` reads the pull request's head when lane 06 goes green, not when it was
@@ -591,5 +492,5 @@ discipline lane 05's node 01 uses for who owns `implement/issue-421` at all.
   `` test.fails("#421: writes a job summary...", ...) `` — the ticket-wide grammar
   (`ticketTitleRe`), not the per-criterion `` #421.1: `` grammar the acceptance author's own prompt
   is pinned to (`acceptance/author-prompt-pin.test.ts`). This document uses the per-criterion form,
-  since that is what `testsForCriterion` (node 04) actually requires to count a criterion as
-  tested; the two documents disagree on that one string.
+  since that is what the acceptance lane actually writes; the two documents disagree on that one
+  string.

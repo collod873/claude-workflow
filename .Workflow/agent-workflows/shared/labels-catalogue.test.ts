@@ -27,7 +27,6 @@ const OWNER_ROSTER = [
   "2-questions-open",
   "slice-failed",
   "shape-refused",
-  "spec/gap",
 ];
 
 const shape = (label: CatalogueLabel) => ({

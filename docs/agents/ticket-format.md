@@ -154,7 +154,7 @@ happen to a ticket.
 **Eight paths is the ceiling**, the rules source's `claimLimit`, refused above that by
 `bin/ticket_shape.py` at filing and by `shared/ticket-shape.ts` in every `/to-tickets` plan; one
 number, so the two cannot disagree about where it sits. At the `to-build` door the ceiling is not
-a refusal at all: a ticket claiming more than eight paths is not one ticket, and waiting on a human
+a refusal at all: a ticket claiming more than `claimLimit` paths is not one ticket, and waiting on a human
 to notice never makes it one, so `reconcile.ts` relabels it `prd` + `sliceable`, rings lane 03, and
 lane 03 publishes the slices as sub-issues of it. Each slice is held to the same ceiling as it is
 written, so the split cannot hand the same body back. Nobody is asked for anything, and the
