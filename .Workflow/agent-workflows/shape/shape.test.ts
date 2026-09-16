@@ -3,6 +3,8 @@ import type { StageExec } from "../shared/stage";
 import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
 import { LABELS_APPLIED, runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
 import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
+import { sheetMarker } from "../shared/marker";
+import { trackerMemory } from "../shared/tracker-memory";
 
 function stageOf(argv: string[]): "sweep" | "shaper" | "refuter" | "unknown" {
   const model = argv[argv.indexOf("--model") + 1] ?? "";
@@ -401,4 +403,38 @@ test("#498.2: an elapsed budget strikes the ticket", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+function stubGhForRound619(): ChainDeps["gh"] {
+  return (args) => {
+    if (args[0] === "issue" && args[1] === "view") return JSON.stringify({ title: "Idea: x", body: "y" });
+    if (args[0] === "search") return "[]";
+    if (args[0] === "repo" && args[1] === "view") return JSON.stringify({ nameWithOwner: "collod873/claude-workflow" });
+    return "";
+  };
+}
+
+test.fails("#619.1: shape.ts hands roundFor the Tracker already sitting in ChainDeps rather than re-deriving one from deps.gh argv, so shape.test.ts can seed rounds through trackerMemory instead of tracker.fake", async () => {
+  const model = healthyModel();
+  const priorSheet = sheetMarker({
+    restatement: "r",
+    priorArt: [],
+    decisions: [],
+    survivors: [],
+    route: "short",
+    routeReason: "x",
+    newTerms: [],
+    round: 0,
+  });
+  const tracker = trackerMemory({ issues: { 1: { comments: [priorSheet] } } });
+  const deps = {
+    exec: model.exec,
+    gh: stubGhForRound619(),
+    fetch: () => "injected file",
+    tracker,
+  } as unknown as ChainDeps;
+
+  const outcome = await runChain(deps, 1, "");
+
+  expect(outcome).toMatchObject({ kind: "posted", round: 1 });
 });

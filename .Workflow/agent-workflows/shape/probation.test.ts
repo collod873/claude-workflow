@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import { sheetMarker } from "../shared/marker";
 import { checkProbation, countSilentSheets, SILENT_SHEET_THRESHOLD } from "./probation";
 import type { Sheet } from "../shared/sheet-schema";
 import { createFakeTracker } from "./tracker.fake";
+import type { GhExec } from "../shared/gh";
+import { trackerMemory } from "../shared/tracker-memory";
 
 function sheetComment(survivors: string[]): string {
   const sheet: Sheet = {
@@ -112,4 +115,17 @@ describe("the probation", () => {
     expect(search).toContain("body");
     expect(search).not.toContain("--state");
   });
+});
+
+test.fails("#619.2: countSilentSheets counts sheets via the Tracker handed to it (trackerMemory's signals() and issueComments()), not by re-deriving one from a raw GhExec search argv", () => {
+  const tracker = trackerMemory({
+    signals: [1, 2, 3].map((number) => ({ number, body: null, state: "OPEN", stateReason: null })),
+    issues: {
+      1: { comments: [sheetComment([])] },
+      2: { comments: [sheetComment([])] },
+      3: { comments: [sheetComment(["a"])] },
+    },
+  });
+
+  expect(countSilentSheets(tracker as unknown as GhExec)).toBe(2);
 });
