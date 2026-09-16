@@ -15,7 +15,7 @@ carry a slot as `null` to shrink the gate, never add one to grow it.
 | --- | --- | --- | --- |
 | `turn` | PostToolUse, per edit | `typecheck`, `lint_one`, `test_related` | Hands the report back to Claude |
 | `stop` | Stop, per turn end | `typecheck`, `lint_one`, `test_related` | Reports once, never holds the turn |
-| `push` | pre-push | `typecheck`, `lint`, `test`, `clones`, `adrs` | **Refuses the push** |
+| `push` | pre-push | `typecheck`, `lint`, `rules`, `test`, `clones`, `adrs` | **Refuses the push** |
 | CI | `push: main`, dispatch | `npm run check`, which is the push venue against the target | Red run; rings the fixer |
 <!-- /venues-table:v1 -->
 

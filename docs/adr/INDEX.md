@@ -208,4 +208,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-193 ADRs · 99 constraint · 44 note · 50 superseded · 20,576 words total.
+193 ADRs · 99 constraint · 44 note · 50 superseded · 20,590 words total.
