@@ -37,13 +37,13 @@ function note(overrides: Partial<ResearchNote> = {}): ResearchNote {
 
 describe("hasSupersessionVerb", () => {
   it("takes the canonical vocabulary in any of its inflections", () => {
-    for (const word of ["retired", "retires", "supersedes", "superseded", "struck", "striking", "replaces", "replaced"]) {
+    for (const word of ["retired", "retires", "supersedes", "superseded", "replaces", "replaced"]) {
       expect(hasSupersessionVerb(`This ADR ${word} an earlier one.`)).toBe(true);
     }
   });
 
-  it("leaves amends and restates alone, because a partial change is an edit to the ADR it changes", () => {
-    for (const word of ["amends", "amended", "restates", "restated"]) {
+  it("leaves amends, restates and strike alone: a partial change is an edit, and a strike is a dead run", () => {
+    for (const word of ["amends", "amended", "restates", "restated", "strike", "struck"]) {
       expect(hasSupersessionVerb(`This ADR ${word} an earlier one.`)).toBe(false);
     }
   });

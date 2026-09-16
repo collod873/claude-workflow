@@ -12,7 +12,7 @@ export interface ResearchNote {
 }
 
 const SUPERSESSION_VERB_RE =
-  /\b(retire|retires|retired|retiring|supersede|supersedes|superseded|superseding|struck|strike|strikes|striking|replace|replaces|replaced|replacing)\b/i;
+  /\b(retire|retires|retired|retiring|supersede|supersedes|superseded|superseding|replace|replaces|replaced|replacing)\b/i;
 
 export function hasSupersessionVerb(body: string): boolean {
   return SUPERSESSION_VERB_RE.test(body);
