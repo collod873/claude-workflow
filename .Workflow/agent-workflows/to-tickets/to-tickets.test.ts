@@ -511,3 +511,9 @@ describe("what the slicer is handed instead of asked to guess (#586)", () => {
     }
   });
 });
+
+describe("#614: checkpoint.fixture.ts is retired once its helpers are inlined", () => {
+  test.fails("#614.1: checkpoint.fixture.ts no longer exists beside this suite", () => {
+    expect(existsSync(join(__dirname, "checkpoint.fixture.ts"))).toBe(false);
+  });
+});
