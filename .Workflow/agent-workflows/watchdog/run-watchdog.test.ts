@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathMatcher, runJobsPathMatcher } from "../shared/gh-paths";
+import { runJobsPath } from "../shared/gh-paths";
 import { runWatchdog, WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { MAX_JOB_READS, MAX_SIGNALS, signalMarker } from "./dead-lanes";
 import { answerTracker } from "./signal-tracker.fixture";
@@ -311,5 +313,45 @@ describe("runWatchdog", () => {
     const fake = historyWith({ runs: [DEAD], jobsRaw: "" });
 
     expect(() => sweep(fake)).toThrow(/returned no count/);
+  });
+});
+
+describe("#621: runWatchdog reads a run's jobs through the tracker's shape", () => {
+  const RUN = {
+    id: 90050,
+    name: ".github/workflows/example.yml",
+    path: ".github/workflows/example.yml",
+    status: "completed",
+    conclusion: "failure",
+    html_url: "https://github.com/owner/repo/actions/runs/90050",
+    head_branch: "main",
+    created_at: "2026-08-26T11:00:00Z",
+  };
+
+  function trackerShapedFake(): { gh: GhExec; calls: string[][] } {
+    const calls: string[][] = [];
+    const gh: GhExec = (args) => {
+      calls.push(args);
+      if (args[0] === "api" && repoRunsPathMatcher.test(args[1] ?? "")) {
+        return JSON.stringify([RUN]);
+      }
+      if (args[0] === "api" && args[1] === runJobsPath(RUN.id) && !args.includes("--jq")) {
+        return JSON.stringify({ jobs: [] });
+      }
+      if (args[0] === "issue" && args[1] === "list") return JSON.stringify([]);
+      throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+    };
+    return { gh, calls };
+  }
+
+  test.fails("#621.1: run-watchdog.ts builds no api argv itself - it counts a run's jobs by asking the tracker's jobs shape, not a raw --jq .total_count query", () => {
+    const fake = trackerShapedFake();
+
+    const outcome = sweep(fake);
+
+    expect(outcome.deadCount).toBe(1);
+    expect(fake.calls.some((argv) => argv[0] === "api" && argv.includes("--jq") && argv.includes(".total_count"))).toBe(
+      false,
+    );
   });
 });
