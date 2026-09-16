@@ -27,9 +27,9 @@ How this doc stays small:
 - **Exemptions say why, in place**: an exemption from a reachability or dead-code gate carries its reason as prose at the exempted export itself (knip's `@shell` / `@fixture` tags), never as a bare name in a config's ignore list.
   Why: a silent name in an ignore list is indistinguishable from the dead code the gate exists to find, so the gate quietly stops answering its own question.
   Red flag: a name added to an `ignore` / `ignoreUnresolved` array or a baseline file with no prose at the site it exempts.
-- **Cite, don't restate**: the why behind a shared helper lives once, in the helper's docstring (or the ADR); a call site, test, or lint comment names the helper and at most the ticket or ADR number.
+- **Cite, don't restate**: the why behind a shared helper lives once, in the ADR or `CONTEXT.md` entry that owns it (ADR-0151); a call site, test title, or commit message names the helper and at most the ticket or ADR number.
   Why: a rationale pasted at N sites is N edits when the reason changes, and the copies drift into telling different halves of the story.
-  Red flag: a comment outside the helper's home that explains what the helper used to do, what the two copies used to disagree on, or why sharing fixed it; a cited ticket number should carry a naming clause and nothing more.
+  Red flag: a test title, commit message, or doc outside the helper's home that explains what the helper used to do, what the two copies used to disagree on, or why sharing fixed it; a cited ticket number should carry a naming clause and nothing more.
 - **Fixtures through one builder**: a test builds a schema-typed fixture through one exported builder, never a hand-rolled literal; the builder lives beside the zod schema it constructs and takes `Partial<T>` plus whichever field the test is actually about.
   Why: a field added to `Slice` breaks one place instead of eight, and a test that names seven fields to exercise one hides which field it is about.
   Red flag: an object literal in a test that spells out every field of a schema exported from `shared/`.
