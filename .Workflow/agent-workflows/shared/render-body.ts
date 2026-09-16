@@ -124,10 +124,10 @@ export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = 
     );
     if (unresolvable.length > 0) {
       problems.push(
-        `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. " +
+        `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. ` +
           "Lane 04 and lane 05 read this ticket independently and cannot ask each other, so an unrooted path " +
           "is a decision handed to two blind readers (#272, #278). Spell it from the repository root, or claim " +
-          "the full path in filesClaimed.`,
+          "the full path in filesClaimed.",
       );
     }
   });

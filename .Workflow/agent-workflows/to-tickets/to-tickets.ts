@@ -27,7 +27,7 @@ import {
 } from "../shared/stage";
 import type { StructuredOutput } from "../shared/structured-output";
 import { validatePlan } from "../shared/validate-graph";
-import { sliceAndPublish, validateSlicePlan } from "./slice-and-publish";
+import { checkSlicePlan, sliceAndPublish } from "./slice-and-publish";
 import { SEAM_SWEEP_OUTPUT, type SeamManifest } from "./seam-sweep/schema";
 
 export function validatePlanFile(filePath: string): Plan {
@@ -56,15 +56,38 @@ async function runTypedStage<T>(
   gh: GhExec,
 ): Promise<T> {
   const budget = startLaneBudget(laneBudget("to-tickets"), { gh, ticket: Number(issueNumber), run: currentLaneRun() });
-  const { value } = await runStageSessionWithinBudget(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
+  const first = await runStageSessionWithinBudget(config.promptPath, config.buildVars(issueNumber), exec, config.output, {
     stage,
     budget,
   });
-  config.validate?.(value);
+  let value = first.value;
+  const refusal = refusalOf(config, value);
+  if (refusal !== undefined) {
+    if (first.sessionId === undefined) throw refusal;
+    console.log(`${stage}: the plan gate refused the answer; resuming session ${first.sessionId} for the one repair round`);
+    const repaired = await runStageSessionWithinBudget(REPAIR_PROMPT_PATH, { REFUSAL: reason(refusal) }, exec, config.output, {
+      stage,
+      budget,
+      resume: first.sessionId,
+    });
+    value = repaired.value;
+    config.validate?.(value);
+  }
   if (config.measure) {
     console.log(`${stage}: ${config.measure(value)}`);
   }
   return value;
+}
+
+const REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/to-tickets/repair/prompt.md";
+
+function refusalOf<T>(config: TypedStageConfig<T>, value: T): unknown {
+  try {
+    config.validate?.(value);
+    return undefined;
+  } catch (err) {
+    return err;
+  }
 }
 
 function typedStage<T>(name: string, config: TypedStageConfig<T>): StageDef {
@@ -137,7 +160,9 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
       .map((entry) => `\`${entry}\``)
       .join(", "),
   }),
-  validate: validateSlicePlan,
+  validate: (plan) => {
+    checkSlicePlan(plan);
+  },
   measure: measurePlan,
 };
 
@@ -171,6 +196,9 @@ const AUDIT_CONFIG: TypedStageConfig<AuditOutput> = {
     VOCABULARY: vocabulary(),
     PLAN: readPriorHandoff("slice", SLICE_OUTPUT),
   }),
+  validate: (audited) => {
+    checkSlicePlan(audited.slices);
+  },
   measure: (audited) => measurePlan(audited.slices),
 };
 
