@@ -6,6 +6,8 @@ import { Plan, type Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { errorMessage } from "../shared/reason";
 import { repairUnrootedClaims, validateCriteriaShape } from "../shared/render-body";
+import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 import { sliceAndPublish, validateSlicePlan } from "./slice-and-publish";
 
 const Graph = z.object({
@@ -48,7 +50,7 @@ function renderTable(published: readonly PublishedIssue[]): string {
   return ["| Position | Number | Title |", "|---|---|---|", ...rows].join("\n");
 }
 
-export function runPublishIssueGraphCli(argv: readonly string[], gh: GhExec): string {
+export function runPublishIssueGraphCli(argv: readonly string[], gh: GhExec | Tracker): string {
   const [path] = argv;
   if (!path) {
     throw new Error("usage: publish-issue-graph <graph.json>");
@@ -68,7 +70,7 @@ export function runPublishIssueGraphCli(argv: readonly string[], gh: GhExec): st
 
 function main(): void {
   try {
-    runPublishIssueGraphCli(process.argv.slice(2), execGh);
+    runPublishIssueGraphCli(process.argv.slice(2), trackerGh(execGh));
   } catch (error) {
     console.error(`publish-issue-graph: ${errorMessage(error)}`);
     process.exitCode = 1;

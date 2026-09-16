@@ -1,22 +1,17 @@
 import { expect, test } from "vitest";
 import type { GhExec } from "./gh";
+import { BY_HAND_LABEL } from "./immutable-set";
 import type { Plan } from "./plan-schema";
 import { publishSubIssues } from "./publish-sub-issues";
+import type { CreateIssueInput } from "./tracker";
+import { trackerMemory } from "./tracker-memory";
 
 const PRD_NUMBER = 434;
 
-const CREATED_ISSUE_URL = "https://github.com/owner/repo/issues/501";
-
-function recordingGh(): { calls: string[][]; gh: GhExec } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-    if (args[0] === "issue" && args[1] === "create") return `${CREATED_ISSUE_URL}\n`;
-    if (args[0] === "api" && args[args.indexOf("--jq") + 1] === ".id") return "9001\n";
-    if (args[0] === "api") return "[]";
-    return "";
-  };
-  return { calls, gh };
+function recordingTracker(): { createdIssues: CreateIssueInput[]; tracker: ReturnType<typeof trackerMemory> } {
+  const createdIssues: CreateIssueInput[] = [];
+  const tracker = trackerMemory({ firstIssueNumber: 500, issueIds: { 501: 9001 }, createdIssues });
+  return { createdIssues, tracker };
 }
 
 function planClaiming(title: string, filesClaimed: string[]): Plan {
@@ -39,28 +34,26 @@ function planClaiming(title: string, filesClaimed: string[]): Plan {
   ] as unknown as Plan;
 }
 
-function mentionsByHand(calls: string[][]): boolean {
-  return calls.some((call) => call.some((arg) => arg.includes("by-hand")));
-}
-
 test("#437.1: publishSubIssues labels `by-hand` when the claim names a workstation or immutable-set path, and labels nothing when it does not", () => {
   for (const claimed of [["vitest.config.ts"], ["~/.claude/settings.json"]]) {
-    const workstation = recordingGh();
+    const workstation = recordingTracker();
 
-    publishSubIssues(planClaiming("Rewire the workstation", claimed), PRD_NUMBER, workstation.gh);
+    publishSubIssues(planClaiming("Rewire the workstation", claimed), PRD_NUMBER, workstation.tracker);
 
-    expect(mentionsByHand(workstation.calls), `${claimed[0]} is a claim only a human can build`).toBe(true);
+    expect(workstation.createdIssues[0]?.label, `${claimed[0]} is a claim only a human can build`).toBe(
+      BY_HAND_LABEL,
+    );
   }
 
-  const ordinary = recordingGh();
+  const ordinary = recordingTracker();
 
   publishSubIssues(
     planClaiming("An ordinary slice", [".Workflow/agent-workflows/shared/gh.ts"]),
     PRD_NUMBER,
-    ordinary.gh,
+    ordinary.tracker,
   );
 
-  expect(mentionsByHand(ordinary.calls)).toBe(false);
+  expect(ordinary.createdIssues[0]?.label).toBeUndefined();
 });
 
 import { wireBlockedByEdges } from "./publish-sub-issues";

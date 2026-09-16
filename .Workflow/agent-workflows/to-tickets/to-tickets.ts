@@ -15,6 +15,7 @@ import {
 } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
+import { trackerGh } from "../shared/tracker-gh";
 import { laneBudget } from "../shared/lane-budget";
 import {
   checkpointPath,
@@ -208,7 +209,8 @@ const AUDIT_AND_PUBLISH_RUN: StageDef["run"] = async (issueNumber, exec, gh) => 
     console.log(audited.notes);
   }
   const prd = Number(issueNumber);
-  const published = keepingPlan(audited.slices, () => sliceAndPublish(audited.slices, prd, gh));
+  const tracker = trackerGh(gh);
+  const published = keepingPlan(audited.slices, () => sliceAndPublish(audited.slices, prd, tracker));
   markLane(gh, prd, SLICED_LABEL);
   console.log(
     `audit-and-publish: published ${published.length} sub-issue${published.length === 1 ? "" : "s"} under #${issueNumber}`,

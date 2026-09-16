@@ -343,7 +343,8 @@ export function trackerGh(gh: GhExec): Tracker {
       return SignalIssueSchema.array().parse(JSON.parse(raw));
     },
     createIssue(input) {
-      const args = ["issue", "create", "--title", input.title, "--body", input.body, "--assignee", input.assignee];
+      const args = ["issue", "create", "--title", input.title, "--body", input.body];
+      if (input.assignee) args.push("--assignee", input.assignee);
       if (input.label) args.push("--label", input.label);
       const url = gh(args);
       return parseIssueNumber(url, input.title);

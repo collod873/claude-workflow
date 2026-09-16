@@ -95,7 +95,7 @@ describe("publish-issue-graph.cli", () => {
     expect(overlapLines[0]).toContain("2");
   });
 
-  test.fails("#613.6: runPublishIssueGraphCli publishes through a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
+  test("#613.6: runPublishIssueGraphCli publishes through a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
     const createdIssues: CreateIssueInput[] = [];
     const tracker = trackerMemory({ firstIssueNumber: 999, issueIds: { 1000: 555000 }, createdIssues });
     const plan = [slice({ title: "Root" })];

@@ -236,7 +236,7 @@ describe("sliceAndPublish rings no lane, leaving the recompute to notice the pub
 });
 
 describe("sliceAndPublish is driven off a Tracker rather than a raw GhExec", () => {
-  test.fails("#613.2: sliceAndPublish drives the whole publish off a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
+  test("#613.2: sliceAndPublish drives the whole publish off a Tracker built by trackerMemory, with no callable GhExec anywhere in its dependencies", () => {
     const createdIssues: CreateIssueInput[] = [];
     const tracker = trackerMemory({ firstIssueNumber: 999, issueIds: { 1000: 555000 }, createdIssues });
     const plan = [slice({ title: "Root" })];

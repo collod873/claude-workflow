@@ -8,6 +8,7 @@ import {
 } from "../shared/publish-sub-issues";
 import { reason } from "../shared/reason";
 import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 import {
   repairUnrootedClaims,
   validateClaimsAreMutable,
@@ -53,13 +54,17 @@ export function checkSlicePlan(plan: Plan): RootedPlan {
   return rooted;
 }
 
-export function sliceAndPublish(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
+function trackerFrom(gh: GhExec | Tracker): Tracker {
+  return typeof gh === "function" ? trackerGh(gh) : gh;
+}
+
+export function sliceAndPublish(plan: Plan, prdNumber: number, gh: GhExec | Tracker): PublishedIssue[] {
   const { plan: rooted, repairs } = checkSlicePlan(plan);
   for (const repair of repairs) {
     console.log(`slice ${repair.slice}: rooted ${repair.from} as ${repair.to}`);
   }
-  const tracker = trackerGh(gh);
-  const published = publishSubIssues(rooted, prdNumber, gh);
+  const tracker = trackerFrom(gh);
+  const published = publishSubIssues(rooted, prdNumber, tracker);
   wireBlockedByEdges(rooted, published, tracker);
   verifyBlockedByGraph(rooted, published, tracker);
   return published;
