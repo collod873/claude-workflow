@@ -237,7 +237,7 @@ describe("a repair the publisher makes is a repair it reports", () => {
     vi.restoreAllMocks();
   });
 
-  test.fails("#584.5: sliceAndPublish prints one line per rooted claim, naming the path as written and as rooted, before it creates anything", () => {
+  test("#584.5: sliceAndPublish prints one line per rooted claim, naming the path as written and as rooted, before it creates anything", () => {
     const fake = createFakeGh();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const plan = [slice({ title: "Rooted for me", filesClaimed: ["agent-workflows/shared/render-body.ts"] })];

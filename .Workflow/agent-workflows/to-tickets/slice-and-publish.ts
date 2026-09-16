@@ -6,7 +6,12 @@ import {
   wireBlockedByEdges,
   type PublishedIssue,
 } from "../shared/publish-sub-issues";
-import { validateClaimsAreMutable, validateCriteriaShape, validatePathsAreRooted } from "../shared/render-body";
+import {
+  repairUnrootedClaims,
+  validateClaimsAreMutable,
+  validateCriteriaShape,
+  validatePathsAreRooted,
+} from "../shared/render-body";
 import { validatePlan } from "../shared/validate-graph";
 
 export function validateSlicePlan(plan: Plan): void {
@@ -17,9 +22,13 @@ export function validateSlicePlan(plan: Plan): void {
 }
 
 export function sliceAndPublish(plan: Plan, prdNumber: number, gh: GhExec): PublishedIssue[] {
-  validateSlicePlan(plan);
-  const published = publishSubIssues(plan, prdNumber, gh);
-  wireBlockedByEdges(plan, published, gh);
-  verifyBlockedByGraph(plan, published, gh);
+  const { plan: rooted, repairs } = repairUnrootedClaims(plan);
+  for (const repair of repairs) {
+    console.log(`slice ${repair.slice}: rooted ${repair.from} as ${repair.to}`);
+  }
+  validateSlicePlan(rooted);
+  const published = publishSubIssues(rooted, prdNumber, gh);
+  wireBlockedByEdges(rooted, published, gh);
+  verifyBlockedByGraph(rooted, published, gh);
   return published;
 }
