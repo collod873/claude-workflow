@@ -22,7 +22,7 @@ describe("publish-issue-graph.cli", () => {
     vi.restoreAllMocks();
   });
 
-  test.fails("#603.2: publishes through sliceAndPublish and prints one table row per slice with position, number and title", () => {
+  test("#603.2: publishes through sliceAndPublish and prints one table row per slice with position, number and title", () => {
     const fake = createFakeGh();
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
     const file = writeGraph(42, plan);
@@ -40,7 +40,7 @@ describe("publish-issue-graph.cli", () => {
     expect(dependentRow).toContain("101");
   });
 
-  test.fails("#603.3: an out-of-range dependsOn exits nonzero, naming the slice position and the rule, with zero gh calls", () => {
+  test("#603.3: an out-of-range dependsOn exits nonzero, naming the slice position and the rule, with zero gh calls", () => {
     const fake = createFakeGh();
     const plan = [slice({ title: "Root" }), slice({ title: "Off the end", dependsOn: [9] })];
     const file = writeGraph(42, plan);
@@ -49,7 +49,7 @@ describe("publish-issue-graph.cli", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  test.fails("#603.3: a dependsOn cycle exits nonzero, naming the slice positions and the rule, with zero gh calls", () => {
+  test("#603.3: a dependsOn cycle exits nonzero, naming the slice positions and the rule, with zero gh calls", () => {
     const fake = createFakeGh();
     const plan = [
       slice({ title: "Root" }),
@@ -62,7 +62,7 @@ describe("publish-issue-graph.cli", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  test.fails("#603.3: a criterion with no check: marker exits nonzero, naming the slice position and the rule, with zero gh calls", () => {
+  test("#603.3: a criterion with no check: marker exits nonzero, naming the slice position and the rule, with zero gh calls", () => {
     const fake = createFakeGh();
     const plan = [slice({ title: "No marker", acceptanceCriteria: ["Just prose, no marker at all"] })];
     const file = writeGraph(42, plan);
@@ -71,7 +71,7 @@ describe("publish-issue-graph.cli", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  test.fails("#603.4: two slices with no edge between them whose filesClaimed overlap are published, with one stderr line naming both positions and the overlapping path", () => {
+  test("#603.4: two slices with no edge between them whose filesClaimed overlap are published, with one stderr line naming both positions and the overlapping path", () => {
     const fake = createFakeGh();
     const plan = [
       slice({ title: "First", filesClaimed: ["bin/shared.ts"] }),
