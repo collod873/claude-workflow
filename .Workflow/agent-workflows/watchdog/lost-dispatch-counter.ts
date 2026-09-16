@@ -1,9 +1,10 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { execGh, type GhExec } from "../shared/gh";
-import { subIssuesPath, workflowRunsPath } from "../shared/gh-paths";
+import { execGh, fetchSubIssueCount, type GhExec } from "../shared/gh";
 import { SLICEABLE_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
+import type { Tracker } from "../shared/tracker";
+import { trackerGh } from "../shared/tracker-gh";
 import {
   commentBody,
   entryLine,
@@ -18,12 +19,6 @@ import {
 export const RUN_PAGE_SIZE = 30;
 
 export { SLICEABLE_LABEL };
-
-const ApiRun = z.object({
-  status: z.string(),
-  conclusion: z.string().nullable(),
-  created_at: z.string(),
-});
 
 const PrdIssue = z.object({
   title: z.string(),
@@ -44,16 +39,9 @@ function readPrd(gh: GhExec, prdNumber: number): { title: string; createdAt: str
   return { title: parsed.title, createdAt: parsed.createdAt, labels: parsed.labels.map((label) => label.name) };
 }
 
-function readSubIssueCount(gh: GhExec, prdNumber: number): number {
-  const raw = gh(["api", subIssuesPath(prdNumber), "--jq", "length"]);
-  return Number(raw.trim());
-}
-
-function hasSuccessfulSlicingRun(gh: GhExec, prdCreatedAt: string, slicingWorkflow: string): boolean {
-  const projection = "[.workflow_runs[] | {status, conclusion, created_at}]";
-  const raw = gh(["api", workflowRunsPath(slicingWorkflow, RUN_PAGE_SIZE), "--jq", projection]);
-  const runs = ApiRun.array().parse(JSON.parse(raw));
-  return runs.some((run) => run.conclusion === "success" && run.created_at >= prdCreatedAt);
+function hasSuccessfulSlicingRun(tracker: Tracker, prdCreatedAt: string, slicingWorkflow: string): boolean {
+  const runs = tracker.workflowRuns(slicingWorkflow, RUN_PAGE_SIZE);
+  return runs.some((run) => run.conclusion === "success" && run.createdAt >= prdCreatedAt);
 }
 
 function readStandingIssue(gh: GhExec): z.infer<typeof StandingIssue> | undefined {
@@ -91,13 +79,14 @@ export function countLostDispatch(options: CounterOptions): CounterOutcome {
     return { action: "skipped" };
   }
 
+  const tracker = trackerGh(gh);
   const prd = readPrd(gh, prdNumber);
   const candidate: PrdCandidate = {
     number: prdNumber,
     title: prd.title,
     labels: prd.labels,
-    subIssueCount: readSubIssueCount(gh, prdNumber),
-    hasSuccessfulSlicingRun: hasSuccessfulSlicingRun(gh, prd.createdAt, slicingWorkflow),
+    subIssueCount: fetchSubIssueCount(gh, prdNumber),
+    hasSuccessfulSlicingRun: hasSuccessfulSlicingRun(tracker, prd.createdAt, slicingWorkflow),
   };
 
   if (!isLostDispatch(candidate)) {

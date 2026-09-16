@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { childEnv } from "./child-env.ts";
-import { issuePath } from "./gh-paths.ts";
+import { issuePath, subIssuesPath } from "./gh-paths.ts";
 
 export type GhExec = (args: string[]) => string;
 
@@ -14,6 +14,15 @@ export function fetchIssueId(gh: GhExec, number: number): number {
     throw new Error(`could not parse a numeric id for issue #${number} from: ${JSON.stringify(raw)}`);
   }
   return id;
+}
+
+export function fetchSubIssueCount(gh: GhExec, prdNumber: number): number {
+  const raw = gh(["api", subIssuesPath(prdNumber), "--jq", "length"]);
+  const count = Number(raw.trim());
+  if (!Number.isInteger(count)) {
+    throw new Error(`could not parse a numeric sub-issue count for issue #${prdNumber} from: ${JSON.stringify(raw)}`);
+  }
+  return count;
 }
 
 interface RawComment {
