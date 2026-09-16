@@ -27,6 +27,8 @@ export const CHECK_MARKER_ATTEMPT_RE = compile(grammar.checkMarkerAttempt);
 
 export const CHECK_MARKER_RE = compile(grammar.checkMarker);
 
+export const CHECK_READS_TRACKER_RE = compile(grammar.checkReadsTracker);
+
 export function parseCheckMarker(criterion: string): string | undefined {
   const match = CHECK_MARKER_RE.exec(criterion.trim());
   return match ? match[1].trim() : undefined;

@@ -4,13 +4,11 @@ import { fileURLToPath } from "node:url";
 import { IMMUTABLE_SET, IMMUTABLE_SET_SOURCE, touchesImmutableSet } from "./immutable-set";
 import type { Plan, Slice } from "./plan-schema";
 import { reason } from "./reason";
-import { CHECK_MARKER_ATTEMPT_RE, CRITERIA_HEADING, parseCheckMarker } from "./ticket-shape";
+import { CHECK_MARKER_ATTEMPT_RE, CHECK_READS_TRACKER_RE, CRITERIA_HEADING, parseCheckMarker } from "./ticket-shape";
 
 const CRITERION_SHAPE =
   "a statement of what is observably true, then ` - check: ` and one backtick-quoted command, " +
   "on one line (e.g. ``- [ ] `foo` is exported - check: `npx vitest run bar.test.ts` ``)";
-
-const REMOTE_TRACKER_RE = /\bgh\s+(?:api|issue|pr|run)\b|\bcurl\b|\bwget\b/i;
 
 function criterionProblem(criterion: string): string | undefined {
   if (/\n/.test(criterion)) {
@@ -22,7 +20,7 @@ function criterionProblem(criterion: string): string | undefined {
       ? "carries a `check:` marker that does not parse"
       : "names no `check:` marker";
   }
-  if (REMOTE_TRACKER_RE.test(command)) {
+  if (CHECK_READS_TRACKER_RE.test(command)) {
     return "checks the tracker instead of the tree; it can never be answered by a diff";
   }
   return undefined;

@@ -45,12 +45,12 @@ def variant_cases():
 
 
 TICKET_BODY_CLAIM_RESOLVES = (
-    "## Acceptance criteria\n\n- [ ] `.claude/hooks/_hook.py` still exists\n\n"
+    "## Acceptance criteria\n\n- [ ] `.claude/hooks/_hook.py` still exists - check: `test -f .claude/hooks/_hook.py`\n\n"
     "## Files claimed\n\n- .claude/hooks/_hook.py\n"
 )
 
 TICKET_BODY_CLAIM_WRONG_PREFIX = (
-    "## Acceptance criteria\n\n- [ ] `skills/.claude/hooks/_hook.py` still exists\n\n"
+    "## Acceptance criteria\n\n- [ ] `skills/.claude/hooks/_hook.py` still exists - check: `test -f skills/.claude/hooks/_hook.py`\n\n"
     "## Files claimed\n\n- skills/.claude/hooks/_hook.py\n"
 )
 
@@ -82,12 +82,12 @@ def test_unresolved_claimed_paths():
 
 
 TICKET_BODY_OUTSIDE_CLAIM = (
-    "## Acceptance criteria\n\n- [ ] `src/spine.ts` still exists\n\n"
+    "## Acceptance criteria\n\n- [ ] `src/spine.ts` still exists - check: `test -f src/spine.ts`\n\n"
     "## Files claimed\n\n- src/spine.ts\n"
 )
 
 TICKET_BODY_OUTSIDE_TYPO = (
-    "## Acceptance criteria\n\n- [ ] `app/src/spine.ts` still exists\n\n"
+    "## Acceptance criteria\n\n- [ ] `app/src/spine.ts` still exists - check: `test -f app/src/spine.ts`\n\n"
     "## Files claimed\n\n- app/src/spine.ts\n"
 )
 
@@ -137,7 +137,7 @@ TICKET_BODY_MIGRATION_CLAIMED_PATH_ONLY = (
     "## What to build\n\nA script that rewrites every record on `refs/notes/sessions` to the "
     "new schema, backfilling `corpusPath`.\n\n"
     "## Acceptance criteria\n\n"
-    "- [ ] `grep -n 'collod873' bin/rewrite-session-notes.py` exits nonzero\n\n"
+    "- [ ] `grep -n 'collod873' bin/rewrite-session-notes.py` exits nonzero - check: `test -f bin/rewrite-session-notes.py`\n\n"
     "## Files claimed\n\n- bin/rewrite-session-notes.py\n"
 )
 

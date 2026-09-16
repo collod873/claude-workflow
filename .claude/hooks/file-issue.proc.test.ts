@@ -12,7 +12,7 @@ const REPO = existsSync(path.join(CLAUDE_DIR, "bin"))
   : path.resolve(CLAUDE_DIR, "..");
 
 function ticketBody(claim: string): string {
-  return `## Acceptance criteria\n\n- [ ] it works - check: \`true\`\n\n## Files claimed\n\n- ${claim}\n`;
+  return `## Acceptance criteria\n\n- [ ] it works - check: \`false\`\n\n## Files claimed\n\n- ${claim}\n`;
 }
 
 function specBody(): string {
@@ -145,7 +145,7 @@ const CLAIMED = ".Workflow/agent-workflows/shared/labels.ts";
 const TICKET_BODY = [
   "## Acceptance criteria",
   "",
-  `- [ ] \`${CLAIMED}\` is claimed at filing - check: \`true\``,
+  `- [ ] \`${CLAIMED}\` is claimed at filing - check: \`false\``,
   "",
   "## Files claimed",
   "",

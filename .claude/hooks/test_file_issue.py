@@ -38,7 +38,7 @@ TICKET_BODY_MISSING_FILES = (
 )
 
 TICKET_BODY_OK = (
-    "## Acceptance criteria\n\n- [ ] `hooks/test_file_issue.py` exists and exits 0\n\n"
+    "## Acceptance criteria\n\n- [ ] `bin/file-issue` is executable - check: `test -x bin/file-issue`\n\n"
     "## Files claimed\n\n- bin/file-issue\n"
 )
 
@@ -77,12 +77,12 @@ TICKET_BODY_CHECK_MARKER_MULTIPLE_SPANS = (
 )
 
 TICKET_BODY_CLAIMS_CI = (
-    "## Acceptance criteria\n\n- [ ] the lane runs green - check: `true`\n\n"
+    "## Acceptance criteria\n\n- [ ] the lane runs green - check: `false`\n\n"
     "## Files claimed\n\n- .github/workflows/ci.yml\n"
 )
 
 TICKET_BODY_WORKSTATION_CLAIM = (
-    "## Acceptance criteria\n\n- [ ] the workstation settings are correct - check: `true`\n\n"
+    "## Acceptance criteria\n\n- [ ] the workstation settings are correct - check: `false`\n\n"
     "## Files claimed\n\n- ~/.claude/settings.json\n"
 )
 
@@ -101,63 +101,54 @@ def refusal(call) -> str | None:
 
 
 
-TICKET_BODY_CONFIG_ONLY_EVIDENCE = (
-    "## Acceptance criteria\n\n- [ ] the value in `config/settings.yml` is 5\n\n"
+TICKET_BODY_CHECK_READS_TRACKER = (
+    "## Acceptance criteria\n\n"
+    "- [ ] the lane went green - check: `gh run list -L 1 --json conclusion`\n\n"
     "## Files claimed\n\n- None, no files.\n"
 )
 
-TICKET_BODY_CONFIG_EVIDENCE_WITH_CHECK = (
-    "## Acceptance criteria\n\n"
-    "- [ ] the value in `config/settings.yml` is 5 - check: `jq .value config/settings.yml`\n\n"
+TICKET_BODY_WHOLE_REPO_CHECK = (
+    "## Acceptance criteria\n\n- [ ] the whole check contract passes - check: `npm run check`\n\n"
     "## Files claimed\n\n- None, no files.\n"
 )
 
-TICKET_BODY_MIXED_EVIDENCE = (
+TICKET_BODY_ALREADY_TRUE = (
     "## Acceptance criteria\n\n"
-    "- [ ] `src/router.ts` reads `config/settings.yml` correctly\n\n"
-    "## Files claimed\n\n- src/router.ts\n"
-)
-
-TICKET_BODY_CONFIG_CLAIMED_STILL_WARNS = (
-    "## Acceptance criteria\n\n- [ ] `.claude/settings.json` carries no Stop entry\n\n"
-    "## Files claimed\n\n- .claude/settings.json\n"
+    "- [ ] the close-gate stays as it is - check: `test -f .claude/hooks/close-gate.py`\n"
+    "- [ ] the new thing exists - check: `test -f .claude/hooks/not-built-yet.py`\n"
+    "- [ ] the claimed file changes - check: `test -f bin/file-issue`\n\n"
+    "## Files claimed\n\n- bin/file-issue\n"
 )
 
 
-TICKET_BODY_MD_NAMES_A_SCRIPT = (
-    "## Acceptance criteria\n\n"
-    "- [ ] `docs/research/verification-boundaries-2026-08.md` names `stop-gate.py` as this "
-    "repo's single turn-end owner.\n\n"
-    "## Files claimed\n\n- None, no files.\n"
-)
+def test_every_criterion_carries_a_check():
+    print("#600: every criterion carries a check that fails today and reads the checkout")
 
+    unmarked = ticket_shape.validate("ticket", TICKET_BODY_NO_EVIDENCE, repo_root=REPO)
+    check("a criterion with no check: warns once, naming the missing command",
+          len(unmarked) == 1 and unmarked[0].startswith(ticket_shape.UNMARKED_CRITERION_PREFIX),
+          unmarked)
 
-def test_config_or_md_evidence():
-    print("config_or_md_evidence: a config/Markdown-only criterion warns unless checked")
+    msg = refusal(lambda: ticket_shape.validate("ticket", TICKET_BODY_CHECK_READS_TRACKER,
+                                                repo_root=REPO))
+    check("a ticket check that reads the tracker is refused, not warned",
+          msg is not None and "gh run list" in msg, msg)
 
-    warnings = ticket_shape.config_or_md_evidence(TICKET_BODY_CONFIG_ONLY_EVIDENCE)
-    check("config-only, no check: warns exactly once, naming a check: or a code fact",
-          len(warnings) == 1 and "check:" in warnings[0] and "config" in warnings[0].lower(),
-          warnings)
+    whole = ticket_shape.validate("ticket", TICKET_BODY_WHOLE_REPO_CHECK, repo_root=REPO)
+    check("a check .claude/contract.json already runs on every change warns once",
+          len(whole) == 1 and whole[0].startswith(ticket_shape.WHOLE_REPO_CHECK_PREFIX), whole)
 
-    check("config-only, with a check: marker: no warning",
-          ticket_shape.config_or_md_evidence(TICKET_BODY_CONFIG_EVIDENCE_WITH_CHECK) == [])
+    already = ticket_shape.already_true_checks(TICKET_BODY_ALREADY_TRUE, repo_root=REPO)
+    check("only the unclaimed check that passes today warns: the red one and the claimed one do not",
+          len(already) == 1 and "close-gate.py" in already[0]
+          and already[0].startswith(ticket_shape.ALREADY_TRUE_CHECK_PREFIX), already)
 
-    check("mixed evidence (a code path alongside the config path): no warning",
-          ticket_shape.config_or_md_evidence(TICKET_BODY_MIXED_EVIDENCE) == [])
+    exempted = ticket_shape.already_true_checks(
+        TICKET_BODY_ALREADY_TRUE, repo_root=REPO, exempt_paths=[".claude/hooks/close-gate.py"])
+    check("a path handed over as exempt (a --test file) is not run", exempted == [], exempted)
 
-    claimed_warnings = ticket_shape.config_or_md_evidence(TICKET_BODY_CONFIG_CLAIMED_STILL_WARNS)
-    check("claiming the config path does not exempt it: still warns exactly once",
-          len(claimed_warnings) == 1, claimed_warnings)
-
-    named_inside = ticket_shape.config_or_md_evidence(TICKET_BODY_MD_NAMES_A_SCRIPT)
-    check("a bare filename the Markdown file mentions is not evidence of its own: still warns",
-          len(named_inside) == 1, named_inside)
-
-    check("validate('ticket', ...) surfaces the same warning",
-          warnings == ticket_shape.validate("ticket", TICKET_BODY_CONFIG_ONLY_EVIDENCE,
-                                             repo_root=REPO),
-          warnings)
+    check("a whole-repo check is never run at filing",
+          ticket_shape.already_true_checks(TICKET_BODY_WHOLE_REPO_CHECK, repo_root=REPO) == [])
 
 
 def test_validator():
@@ -192,7 +183,7 @@ def test_validator():
           ticket_shape.validate("ticket", TICKET_BODY_OK, repo_root=REPO) == [])
 
     warnings = ticket_shape.validate("ticket", TICKET_BODY_NO_EVIDENCE)
-    check("ticket: warns (not refuses) when no criterion carries evidence",
+    check("ticket: warns (not refuses) when a criterion carries no check",
           len(warnings) == 1, warnings)
 
     bare_word_warnings = ticket_shape.validate("ticket", TICKET_BODY_BARE_WORD_COLON_NUMBER)
@@ -213,7 +204,7 @@ def test_validator():
           msg is not None and "exactly one" in msg, msg)
 
     two = ("## Acceptance criteria\n\n"
-           "- [ ] first - check: `true`\n- [ ] second - check: `true`\n")
+           "- [ ] first - check: `false`\n- [ ] second - check: `false`\n")
     msg = refusal(lambda: ticket_shape.validate("spec", two))
     check("spec: refuses two criteria: exactly one, not at least one",
           msg is not None and "not 2" in msg, msg)
@@ -267,8 +258,10 @@ def test_check_marker():
         "ticket", TICKET_BODY_CHECK_MARKER_UNRELATED_BACKTICKS, repo_root=REPO)
     check("parse: unrelated backticks with no `check:` label returns None",
           ticket_shape.parse_check_marker("- [ ] the `foo.py` thing passes") is None, None)
-    check("validate: unrelated backticks (no `check:` label) warn about nothing",
-          unrelated_warnings == [], unrelated_warnings)
+    check("validate: unrelated backticks (no `check:` label) warn once, as a missing check",
+          len(unrelated_warnings) == 1
+          and ticket_shape.UNMARKED_CRITERION_PREFIX in unrelated_warnings[0],
+          unrelated_warnings)
 
     multi_span_warnings = ticket_shape.validate(
         "ticket", TICKET_BODY_CHECK_MARKER_MULTIPLE_SPANS, repo_root=REPO)
@@ -549,7 +542,7 @@ def test_cli(tmp):
 
 
 NEW_CRITERIA_BODY = (
-    "## Acceptance criteria\n\n- [ ] `hooks/test_file_issue.py` covers ticketify\n\n"
+    "## Acceptance criteria\n\n- [ ] `hooks/test_file_issue.py` covers ticketify - check: `false`\n\n"
     "## Files claimed\n\n- bin/file-issue\n"
 )
 
@@ -579,7 +572,7 @@ TICKET_BODY_WARNS_WITH_CLAIM = (
 )
 
 TICKET_BODY_CLAIMS_A_FILE_NOT_YET_BUILT = (
-    "## Acceptance criteria\n\n- [ ] `bin/not-built-yet` exists and exits 0\n\n"
+    "## Acceptance criteria\n\n- [ ] `bin/not-built-yet` is executable - check: `test -x bin/not-built-yet`\n\n"
     "## Files claimed\n\n- bin/not-built-yet\n"
 )
 
@@ -609,7 +602,7 @@ def test_warning_acknowledgment(tmp):
     check("warned/--ack: the filed body carries the reason given",
           ACK_REASON in created, created)
     check("warned/--ack: the filed body carries the warning itself, not just the reason",
-          ticket_shape.NO_EVIDENCE_WARNING in created, created)
+          ticket_shape.UNMARKED_CRITERION_PREFIX in created, created)
     check("warned/--ack: the claim still parses out of the filed body",
           ticket_shape.claimed_paths(created) == ["bin/file-issue"],
           ticket_shape.claimed_paths(created))
@@ -736,7 +729,7 @@ def test_ticketify(tmp):
         issue_obj(30, 3030, "## Files claimed\n\n- unrelated/path\n"),
     ]
     supplied = (
-        "## Acceptance criteria\n\n- [ ] evidence at `bin/file-issue`\n\n"
+        "## Acceptance criteria\n\n- [ ] evidence at `bin/file-issue` - check: `false`\n\n"
         "## Files claimed\n\n- bin/file-issue\n"
     )
     r, calls = run_ticketify(20, [], issues, supplied, log)
@@ -832,7 +825,7 @@ def test_by_hand_label(tmp):
     log = tmp / "bh4.jsonl"
     issues = [issue_obj(60, 6060, "Some fuzzy description.\n", labels=["fuzzy"])]
     workstation_supplied = (
-        "## Acceptance criteria\n\n- [ ] the workstation is wired - check: `true`\n\n"
+        "## Acceptance criteria\n\n- [ ] the workstation is wired - check: `false`\n\n"
         "## Files claimed\n\n- ~/.claude/settings.json\n"
     )
     r, calls = run_ticketify(60, [], issues, workstation_supplied, log)
@@ -898,8 +891,8 @@ TEST_FILE_TWO_TITLES = (
 
 TICKET_BODY_TWO_CRITERIA = (
     "## Acceptance criteria\n\n"
-    "- [ ] the first thing works - check: `true`\n"
-    "- [ ] the second thing works - check: `true`\n\n"
+    "- [ ] the first thing works - check: `false`\n"
+    "- [ ] the second thing works - check: `false`\n\n"
     "## Files claimed\n\n- tests/acceptance.test.ts\n"
 )
 
@@ -989,7 +982,7 @@ def test_test_handoff(tmp):
     no_hint_repo = tmp / "th-hint-none"
     (no_hint_repo / ".git").mkdir(parents=True)
     ticket_body_no_warnings = (
-        "## Acceptance criteria\n\n- [ ] `npm test` exits 0\n\n"
+        "## Acceptance criteria\n\n- [ ] `npm test` exits 0 - check: `false`\n\n"
         "## Files claimed\n\n- None, no files.\n"
     )
     log = tmp / "th-no-test-no-marker.jsonl"
@@ -1088,7 +1081,7 @@ def test_test_handoff(tmp):
     test_file3 = repo3 / "tests" / "acceptance.test.ts"
     test_file3.parent.mkdir(parents=True, exist_ok=True)
     test_file3.write_text('test.fails("#?.1: does the first thing", () => {})\n')
-    supplied = ("## Acceptance criteria\n\n- [ ] the first thing works - check: `true`\n\n"
+    supplied = ("## Acceptance criteria\n\n- [ ] the first thing works - check: `false`\n\n"
                 "## Files claimed\n\n- tests/acceptance.test.ts\n")
     log = tmp / "th-ticketify.jsonl"
     env = {"STUB_ARGV_LOG": str(log), "STUB_JSON": json.dumps(
@@ -1185,7 +1178,7 @@ def main():
         print()
         test_check_marker()
         print()
-        test_config_or_md_evidence()
+        test_every_criterion_carries_a_check()
         print()
         test_bind_gh_repo_binding(tmp)
         print()

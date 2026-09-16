@@ -101,17 +101,20 @@ FILES_CLAIMED_HEADING_RE = compile_rule("filesClaimedHeading")
 NEXT_HEADING_RE = compile_rule("nextHeading")
 
 PATH_LINE_RE = re.compile(r"[\w./\-]*[/.][\w./\-]*:\d+")
-BACKTICK_RE = re.compile(r"`[^`\n]+`")
 FILE_PATH_RE = re.compile(r"\b[\w.\-]+(?:/[\w.\-]+)+\b")
-
-NO_EVIDENCE_WARNING = (
-    "no acceptance criterion names a path:line, a backtick-quoted command, or a "
-    "file/artifact reference; criteria should be verifiable by a fresh context that has "
-    "not seen the diff"
-)
 
 CHECK_MARKER_ATTEMPT_RE = compile_rule("checkMarkerAttempt")
 CHECK_MARKER_RE = compile_rule("checkMarker")
+CHECK_READS_TRACKER_RE = compile_rule("checkReadsTracker")
+CHECK_READS_TRACKER = REFUSALS["checkReadsTracker"]
+
+UNMARKED_CRITERION_PREFIX = "acceptance criterion carries no check: command"
+
+WHOLE_REPO_CHECK_PREFIX = "acceptance criterion's check: runs a whole-repo check"
+
+ALREADY_TRUE_CHECK_PREFIX = "acceptance criterion is already true before any work exists"
+
+CONTRACT_PATH = Path(".claude") / "contract.json"
 
 MALFORMED_CHECK_MARKER_PREFIX = "acceptance criterion carries a `check:` marker that doesn't parse"
 
@@ -170,12 +173,21 @@ TEST_MENTION_RE = re.compile(
 
 BASENAME_RE = re.compile(r"\b[\w\-]+(?:\.[\w\-]+)+\b")
 
-CONFIG_MD_EXTENSIONS = (".json", ".yml", ".yaml", ".toml", ".md")
+UNMARKED_CRITERION_REASON = (
+    "Every criterion ends in - check: `<command>`, the narrowest command that fails before this "
+    "ticket's work and passes after it: /drain skips a ticket carrying a criterion without one, "
+    "and close-ticket can only record it UNVERIFIED"
+)
 
-CONFIG_OR_MD_EVIDENCE_WARNING = (
-    "acceptance criterion's only evidence is a config or Markdown file's content, which a "
-    "test cannot read as text and verify: add a `check:` command, or point at a fact "
-    "exported from code instead: {criterion}"
+WHOLE_REPO_CHECK_REASON = (
+    "The gate already runs every check .claude/contract.json names on every change, so this "
+    "criterion adds nothing a diff can turn from red to green. Name the one test or grep that "
+    "proves this ticket's own claim"
+)
+
+ALREADY_TRUE_CHECK_REASON = (
+    "A criterion names what this ticket's work makes true, so its check fails today. What must "
+    "stay true belongs to the tests that already hold it, not to a new criterion"
 )
 
 MIGRATION_NO_POST_STATE_WARNING = (
@@ -207,15 +219,6 @@ MISSING_FILES_CLAIMED_HEADING = REFUSALS["missingFilesClaimedHeading"]
 
 class ValidationError(Exception):
     pass
-
-
-def _criteria_lines(body: str) -> list[str]:
-    section = section_text(body, CRITERIA_HEADING_RE)
-    return [ln for ln in section.split("\n") if CRITERIA_ITEM_RE.match(ln)]
-
-
-def _has_evidence(line: str) -> bool:
-    return bool(PATH_LINE_RE.search(line) or BACKTICK_RE.search(line) or FILE_PATH_RE.search(line))
 
 
 def parse_check_marker(criterion: str) -> str | None:
@@ -337,24 +340,27 @@ def validate(kind: str, body: str, repo_root: Path | None = None) -> list[str]:
                 CLAIM_TOO_WIDE.format(count=len(claimed), limit=CLAIM_LIMIT)
             )
         warnings = []
-        lines = _criteria_lines(body)
-        if lines and not any(_has_evidence(ln) for ln in lines):
-            warnings.append(NO_EVIDENCE_WARNING)
+        whole_repo = whole_repo_commands(repo_root or caller_repo_root())
         for block in criteria_blocks(body) or []:
             if _malformed_check_marker(block):
                 warnings.append(_malformed_check_marker_warning(block))
                 continue
             command = parse_check_marker(block)
-            if command is not None:
-                word = _check_command_word(command)
-                if word and not _check_command_word_resolves(word, repo_root):
-                    warnings.append(_unresolved_check_command_word_warning(block, word))
-                parseable, sh_error = _check_sh_parseable(command)
-                if not parseable:
-                    warnings.append(_unparseable_by_sh_warning(block, sh_error))
+            if command is None:
+                warnings.append(f"{UNMARKED_CRITERION_PREFIX}: {block}. {UNMARKED_CRITERION_REASON}")
+                continue
+            if CHECK_READS_TRACKER_RE.search(command):
+                raise ValidationError(CHECK_READS_TRACKER.format(command=command))
+            if command in whole_repo:
+                warnings.append(f"{WHOLE_REPO_CHECK_PREFIX}: {block}. {WHOLE_REPO_CHECK_REASON}")
+            word = _check_command_word(command)
+            if word and not _check_command_word_resolves(word, repo_root):
+                warnings.append(_unresolved_check_command_word_warning(block, word))
+            parseable, sh_error = _check_sh_parseable(command)
+            if not parseable:
+                warnings.append(_unparseable_by_sh_warning(block, sh_error))
         warnings.extend(unresolved_claimed_paths(body, repo_root))
         warnings.extend(migration_without_post_state(body))
-        warnings.extend(config_or_md_evidence(body))
         return warnings
 
     if not CRITERIA_HEADING_RE.search(body):
@@ -492,29 +498,43 @@ def _is_claimed(token: str, claimed: list[str]) -> bool:
     return False
 
 
-def _is_config_or_md_path(token: str) -> bool:
-    stripped = token.strip("`")
-    if ".github/" in stripped or stripped.startswith("github/"):
-        return True
-    return stripped.lower().endswith(CONFIG_MD_EXTENSIONS)
+def whole_repo_commands(repo_root: Path) -> set[str]:
+    try:
+        slots = json.loads((repo_root / CONTRACT_PATH).read_text())
+    except (OSError, ValueError):
+        return set()
+    commands = {slot.get("cmd") for slot in slots.values() if isinstance(slot, dict)}
+    return {c.strip() for c in commands if isinstance(c, str) and "<" not in c}
 
 
-def config_or_md_evidence(body: str) -> list[str]:
+def already_true_checks(
+    body: str, repo_root: Path | None = None, exempt_paths: list[str] | None = None
+) -> list[str]:
+    body = normalize_newlines(body)
+    root = repo_root or caller_repo_root()
+    exempt = [p.strip("`") for p in claimed_paths(body) + (exempt_paths or [])]
+    whole_repo = whole_repo_commands(root)
     warnings = []
     for block in criteria_blocks(body) or []:
-        if CHECK_MARKER_ATTEMPT_RE.search(block):
+        command = parse_check_marker(block)
+        if command is None or command in whole_repo or CHECK_READS_TRACKER_RE.search(command):
             continue
-        tokens = _path_evidence_tokens(block)
-        if tokens and all(_is_config_or_md_path(t) for t in tokens):
-            warnings.append(CONFIG_OR_MD_EVIDENCE_WARNING.format(criterion=block))
+        if any(path and path in command for path in exempt):
+            continue
+        word = _check_command_word(command)
+        if not word or not _check_command_word_resolves(word, root):
+            continue
+        if not _check_sh_parseable(command)[0]:
+            continue
+        green, unrunnable = _check_already_green(command, root)
+        if green:
+            warnings.append(
+                f"{ALREADY_TRUE_CHECK_PREFIX}: `{command}` exited 0 against this tree right now: "
+                f"{block}. {ALREADY_TRUE_CHECK_REASON}"
+            )
+        elif unrunnable:
+            warnings.append(f"{unrunnable}: {block}")
     return warnings
-
-
-def _path_evidence_tokens(text: str) -> list[str]:
-    paths = [m.rsplit(":", 1)[0] for m in PATH_LINE_RE.findall(text)]
-    paths += FILE_PATH_RE.findall(text)
-    paths = [t for t in paths if t]
-    return paths or _evidence_tokens(text)
 
 
 def migration_without_post_state(body: str) -> list[str]:

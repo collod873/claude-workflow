@@ -26,10 +26,11 @@ so a producer's documented example and this tool can never silently drift apart.
 
 A body that doesn't fit its kind is refused: this prints what's missing to stderr and exits
 nonzero without ever calling `gh`. A softer defect is a warning rather than a refusal, because
-the shape is sometimes right and only the author can say so: a `ticket` whose acceptance criteria
-carry no verifiable evidence (a `path:line`, a backtick-quoted command, or a file/artifact
-reference), a migration worded as its artifact, a `check:` marker that doesn't parse, a claimed
-path that isn't in the tree.
+the shape is sometimes right and only the author can say so: a `ticket` criterion with no
+`check:` command, a check that already passes before the work exists or re-runs a whole-repo
+check `.claude/contract.json` names, a migration worded as its artifact, a `check:` marker that
+doesn't parse, a claimed path that isn't in the tree. A check that reads GitHub or the network is
+refused outright. docs/agents/ticket-format.md is the author's reading of every rule.
 
 A warning stops the filing, with one carve-out. A claimed path the tree doesn't have is advisory
 when nothing in the tree resembles it, because that is what a file the ticket will create looks
@@ -372,6 +373,9 @@ def run_ticketify(args) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
 
+    if not targets_another_repo(args.repo):
+        warnings += ticket_shape.already_true_checks(supplied, exempt_paths=test_paths)
+
     blocking = blocking_warnings(warnings, supplied)
     if not report_warnings(warnings, blocking, args.ack):
         return 1
@@ -506,6 +510,9 @@ def run(argv=None) -> int:
         except TestHandoffError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
+
+    if kind == "ticket" and not targets_another_repo(args.repo):
+        warnings += ticket_shape.already_true_checks(body, exempt_paths=test_paths)
 
     ack = getattr(args, "ack", None)
     blocking = blocking_warnings(warnings, body)
