@@ -27,6 +27,10 @@
     "cmd": "npx eslint <file>",
     "why": "eslint's per-file form; no package.json script for it"
   },
+  "rules": {
+    "cmd": "bin/lint",
+    "why": "bin/lint, the grep rules ratified under docs/adr/0174-a-ratified-standard-must-be-expressible-as-a-sub-second-grep.md"
+  },
   "clones": {
     "cmd": "npm run clones",
     "why": "package.json#scripts.clones (jscpd, configured under package.json#jscpd)"

@@ -79,8 +79,12 @@ backtick-quoted command naming the one thing that verifies it, so a mechanical c
 that command itself instead of re-deriving what to check from prose:
 
 ```markdown
-- [ ] `bin/lint` reports zero findings on this file - check: `bin/lint path/to/file`
+- [ ] `bin/lint` reports zero findings - check: `bin/lint`
 ```
+
+The command is run exactly as written, with nothing appended, so it has to be one the tool really
+takes: `bin/lint` lints the whole tree and ignores any path handed to it, and a marker spelling one
+anyway reads as a per-file check that isn't one.
 
 The delimiter is one alternation, the rules source's `fragments.checkMarkerDelim`: a single or
 double hyphen with a space or tab on each side, or an em or en dash for bodies written under the

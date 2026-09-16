@@ -17,9 +17,9 @@ RULE = "[lint] bare-bin-path"
 ROWLOG = _harness.RowLog("lint-log-")
 
 TRIP_FILE = HOOKS / "_lint_trip_fixture.py"
-TRIP_SLUG = "duplicated-code/hook-name-constant"
-TRIP_BODY = '#!/usr/bin/env python3\n"""Fixture for test_lint.py, removed in a finally."""\n' \
-            + "HOOK_NAME" + ' = "restated-literal"\n'
+TRIP_SLUG = "duplicated-code/stdin-payload-read"
+TRIP_BODY = "#!/usr/bin/env python3\nimport json\nimport sys\n\n" \
+            + "PAYLOAD = json.load(sys." + "stdin)\n"
 
 
 def run_lint_on(files: dict[str, str]) -> tuple[int, str]:
@@ -87,22 +87,32 @@ def check_bare_bin_path() -> None:
     check("rule silent on fixtures", RULE not in out, out)
 
 
+def slugs_on_stdout(out: str) -> list[str]:
+    return [line[len("[lint] "):] for line in out.splitlines() if line.startswith("[lint] ")]
+
+
 def check_run_row() -> None:
-    print("\nrun row: a clean run")
+    print("\nrun row: the tree as it stands, whatever verdict it earns")
     proc, rows = run_lint()
-    check("clean lint exits 0", proc.returncode == 0, proc.stdout[-400:])
+    standing = slugs_on_stdout(proc.stdout)
     check("one row per invocation", len(rows) == 1, str(rows))
     row = rows[0] if rows else {}
-    check("verdict is clean", row.get("verdict") == "clean", row)
-    check("hits is an empty map, not a missing field", row.get("hits") == {}, row)
+    check("verdict follows the exit code",
+          row.get("verdict") == ("clean" if proc.returncode == 0 else "hit"),
+          f"rc={proc.returncode} row={row}")
+    check("hits is a map, not a missing field", isinstance(row.get("hits"), dict), row)
+    check("only nonzero rules appear; this is what makes a zero-fire slug findable",
+          sorted(row.get("hits", {})) == sorted(set(standing)), f"{row} stdout={standing}")
     check("row names the tool, not a hook",
           row.get("tool") == "lint" and "hook" not in row, row)
     check("event is bin", row.get("event") == "bin", row)
     check("row carries lint's own wall time, not the shim's",
           isinstance(row.get("seconds"), float) and row["seconds"] > 0.001, row)
     check("row names the repo it linted", row.get("project") == REPO.name, row)
+    standing_rc = proc.returncode
+    standing_hits = dict(row.get("hits", {}))
 
-    print("\nrun row: a run with one violation")
+    print("\nrun row: a violation planted in the tree")
     try:
         TRIP_FILE.write_text(TRIP_BODY)
         proc, rows = run_lint()
@@ -112,17 +122,18 @@ def check_run_row() -> None:
         check("one row per invocation, still", len(rows) == 1, str(rows))
         row = rows[0] if rows else {}
         check("verdict is hit", row.get("verdict") == "hit", row)
-        check("hits maps the slug to its count",
-              row.get("hits", {}).get(TRIP_SLUG) == 1, row)
-        check("only nonzero rules appear; this is what makes a zero-fire slug findable",
-              list(row.get("hits", {})) == [TRIP_SLUG], row)
+        check("hits counts the planted violation on top of whatever stood",
+              row.get("hits", {}).get(TRIP_SLUG, 0) == standing_hits.get(TRIP_SLUG, 0) + 1, row)
+        check("only nonzero rules appear, still",
+              sorted(row.get("hits", {})) == sorted(set(slugs_on_stdout(proc.stdout))), row)
     finally:
         TRIP_FILE.unlink(missing_ok=True)
 
-    print("\nrun row: the round trip back to a clean tree")
+    print("\nrun row: the round trip back to where the tree stood")
     proc, rows = run_lint()
-    check("the fixture is gone and lint is clean again",
-          proc.returncode == 0 and rows and rows[0].get("hits") == {},
+    check("the fixture is gone and its slug is back to its standing count",
+          proc.returncode == standing_rc
+          and rows and rows[0].get("hits", {}).get(TRIP_SLUG, 0) == standing_hits.get(TRIP_SLUG, 0),
           f"rc={proc.returncode} rows={rows}")
 
     print("\nrun row: bin/log-row is silent and harmless whatever it is handed")
@@ -154,7 +165,8 @@ def check_run_row() -> None:
     proc = subprocess.run([str(LINT)], capture_output=True, text=True, cwd=str(REPO),
                           env=dict(ROWLOG.env(), STOP_GATE_LOG_DIR="/dev/null/nope"))
     check("lint's exit code and output are unchanged when the row cannot be written",
-          proc.returncode == 0 and not proc.stderr, f"rc={proc.returncode} err={proc.stderr!r}")
+          proc.returncode == standing_rc and not proc.stderr,
+          f"rc={proc.returncode} err={proc.stderr!r}")
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

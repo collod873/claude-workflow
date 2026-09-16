@@ -39,7 +39,7 @@ function repoText(relativePath: string): string {
   return readRepoText(join(REPO_ROOT, relativePath));
 }
 
-test.fails("#587.1: a venue runs bin/lint: a contract slot names it and the push venue lists that slot", () => {
+test("#587.1: a venue runs bin/lint: a contract slot names it and the push venue lists that slot", () => {
   const contract = JSON.parse(repoText(".claude/contract.json")) as Record<string, ContractSlot | null>;
   const venues = JSON.parse(repoText(".Workflow/agent-workflows/shared/venue-slots.json")) as VenueSlots[];
 
@@ -52,7 +52,7 @@ test.fails("#587.1: a venue runs bin/lint: a contract slot names it and the push
   expect(running.some((name) => push.includes(name))).toBe(true);
 });
 
-test.fails("#587.2: a violation in the tree fails the venue slot while test_lint.py stays green, so the gate reports as a lint finding", () => {
+test("#587.2: a violation in the tree fails the venue slot while test_lint.py stays green, so the gate reports as a lint finding", () => {
   const trip = join(HOOKS, "_lint_venue_trip.py");
   writeFileSync(trip, '#!/usr/bin/env python3\nPAYLOAD = {"permissionDecision": "deny"}\n', "utf8");
   try {
@@ -66,17 +66,17 @@ test.fails("#587.2: a violation in the tree fails the venue slot while test_lint
   }
 });
 
-test.fails("#587.3: bin/lint carries only the slugs with a recorded fire or an ADR naming them as its enforcement", () => {
+test("#587.3: bin/lint carries only the slugs with a recorded fire or an ADR naming them as its enforcement", () => {
   const slugs = [...repoText("bin/lint").matchAll(/rule "([^"]+)"/g)].map((match) => match[1]);
 
   expect([...new Set(slugs)].sort()).toEqual([...LIVE_SLUGS].sort());
 });
 
-test.fails("#587.4: the ticket-format check-marker example no longer hands a path to bin/lint, which ignores its arguments", () => {
+test("#587.4: the ticket-format check-marker example no longer hands a path to bin/lint, which ignores its arguments", () => {
   expect(repoText("docs/agents/ticket-format.md")).not.toContain("bin/lint path/to/file");
 });
 
-test.fails("#587.5: ADR-0174 no longer claims bin/lint holds every ratified standard while no venue runs it", () => {
+test("#587.5: ADR-0174 no longer claims bin/lint holds every ratified standard while no venue runs it", () => {
   const adr = repoText("docs/adr/0174-a-ratified-standard-must-be-expressible-as-a-sub-second-grep.md");
 
   expect(adr).not.toContain("holds every standard this repo ratified");
