@@ -472,3 +472,42 @@ describe("#577: the slice stage's validate runs all four plan gates", () => {
     },
   );
 });
+
+describe("what the slicer is handed instead of asked to guess (#586)", () => {
+  async function renderedSlicePrompt(): Promise<string> {
+    withHandoffDir();
+    seedCheckpoint("seam-sweep", seamSweepResponse(["a seam"]));
+    const fake = createFakeStage(sliceResponse([slice({ title: "One slice" })]));
+
+    await runNamedStage("slice", "13", fake.exec, unreachableGh);
+
+    return fake.calls[0][1];
+  }
+
+  test.fails("#586.1: the slice prompt carries the repository's real top-level entries, read at run time", async () => {
+    const prompt = await renderedSlicePrompt();
+
+    for (const entry of ["knip.config.ts", "package-lock.json", "eslint.config.js"]) {
+      expect(prompt).toContain(entry);
+    }
+  });
+
+  test.fails("#586.2: the slice prompt no longer spells a top-level entry of its own as an example", async () => {
+    const prompt = await renderedSlicePrompt();
+
+    expect(prompt).not.toContain("(`.Workflow`, `docs`, `bin`, `.github`");
+  });
+
+  test.fails("#586.3: one exported function supplies both the list the slicer is handed and the set the publisher validates against", async () => {
+    const loaded = (await import("../shared/render-body")) as Record<string, unknown>;
+    const roots = loaded.repoTopLevel;
+    if (typeof roots !== "function") {
+      throw new Error("shared/render-body.ts exports no repoTopLevel");
+    }
+    const prompt = await renderedSlicePrompt();
+
+    for (const entry of (roots as () => ReadonlySet<string>)()) {
+      expect(prompt).toContain(entry);
+    }
+  });
+});
