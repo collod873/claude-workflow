@@ -24,12 +24,12 @@ function ticketTitleRe(issue: number): RegExp {
   return titleRe(RED_OR_TURNED_ON, issue, "(?:\\.\\d+)?");
 }
 
-export function existingCriterionTitleRe(issue: number, index: number): RegExp {
+function existingCriterionTitleRe(issue: number, index: number): RegExp {
   return titleRe(RED_OR_TURNED_ON, issue, `\\.${index}`);
 }
 
-export function authoredCriterionTitleRe(issue: number, index: number): RegExp {
-  return titleRe(STILL_RED, issue, `\\.${index}`);
+export function authoredTicketTitleRe(issue: number): RegExp {
+  return titleRe(STILL_RED, issue, "(?:\\.\\d+)?");
 }
 
 export function testsForTicket(issue: number, root: string = REPO_ROOT): string[] {

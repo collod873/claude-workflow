@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { authoredCriterionTitleRe } from "../shared/affected-tests";
+import { authoredTicketTitleRe } from "../shared/affected-tests";
 import { promptSource } from "../shared/prompts.fixture";
 import { HOUSE_RULES_PATH } from "./acceptance";
 
@@ -22,9 +22,7 @@ function mandatedTitles(): string[] {
 }
 
 function workedExample(): string {
-  const fenced = [...PROMPT.matchAll(/^```structured-output\n([\s\S]*?)\n```$/gm)];
-  const files = fenced.flatMap((match) => (JSON.parse(match[1]) as { files: Array<{ content: string }> }).files);
-  return files.map((file) => file.content).join("\n");
+  return [...PROMPT.matchAll(/^```ts\n([\s\S]*?)\n```$/gm)].map((match) => match[1]).join("\n");
 }
 
 function houseRulesSource(): string {
@@ -36,7 +34,10 @@ describe("the criterion title grammar the author prompt mandates", () => {
     const titles = mandatedTitles();
 
     expect(titles.length).toBeGreaterThan(0);
-    for (const title of titles) expect(authoredCriterionTitleRe(ISSUE, INDEX).test(title)).toBe(true);
+    for (const title of titles) {
+      expect(authoredTicketTitleRe(ISSUE).test(title)).toBe(true);
+      expect(NUMBERED_RE.exec(title)?.slice(1)).toEqual([String(ISSUE), String(INDEX)]);
+    }
   });
 
   it("is what the prompt's own worked example writes", () => {
@@ -45,7 +46,8 @@ describe("the criterion title grammar the author prompt mandates", () => {
 
     expect(numbered).not.toBeNull();
     const [, issue, index] = numbered as RegExpExecArray;
-    expect(authoredCriterionTitleRe(Number(issue), Number(index)).test(example)).toBe(true);
+    expect(authoredTicketTitleRe(Number(issue)).test(example)).toBe(true);
+    expect(Number(index)).toBeGreaterThan(0);
   });
 });
 

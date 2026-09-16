@@ -8,6 +8,7 @@ import { reason } from "../shared/reason";
 import { gateOutputTail, type GateVerdict } from "../shared/run-gauntlet";
 import {
   currentLaneRun,
+  CHECKOUT_SESSION_DENIED_TOOLS,
   execClaudeIn,
   runStageSessionWithinBudget,
   startLaneBudget,
@@ -54,25 +55,6 @@ export const REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/implement/implement
 
 export const FRESH_EYES_PROMPT_PATH = ".Workflow/agent-workflows/implement/implementer/fresh-eyes.md";
 
-export const IMPLEMENTER_DENIED_TOOLS = [
-  "Bash(git stash:*)",
-  "Bash(git checkout:*)",
-  "Bash(git switch:*)",
-  "Bash(git restore:*)",
-  "Bash(git reset:*)",
-  "Bash(git commit:*)",
-  "Bash(git push:*)",
-  "Bash(git rebase:*)",
-  "Bash(git clean:*)",
-  "Bash(git mv:*)",
-  "Bash(gh:*)",
-  "WebFetch",
-  "WebSearch",
-  "Agent",
-  "Task",
-  "ScheduleWakeup",
-];
-
 export const IMPLEMENT_DISPATCH_EVENT_TYPE = TICKET_READY_DISPATCH_ACTION;
 
 export { VERIFY_DISPATCH_EVENT_TYPE };
@@ -111,7 +93,7 @@ export function runImplementer(
     budget,
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
-    disallowedTools: IMPLEMENTER_DENIED_TOOLS,
+    disallowedTools: CHECKOUT_SESSION_DENIED_TOOLS,
     stage: "implementer",
   });
 }
@@ -126,7 +108,7 @@ export function runRepair(
     budget,
     model: IMPLEMENTER_MODEL,
     promptViaStdin: true,
-    disallowedTools: IMPLEMENTER_DENIED_TOOLS,
+    disallowedTools: CHECKOUT_SESSION_DENIED_TOOLS,
     resume: sessionId,
     stage: "implementer-repair",
   });
@@ -148,7 +130,7 @@ export function runFreshEyes(
       budget,
       model: FRESH_EYES_MODEL,
       promptViaStdin: true,
-      disallowedTools: IMPLEMENTER_DENIED_TOOLS,
+      disallowedTools: CHECKOUT_SESSION_DENIED_TOOLS,
       stage: "implementer-fresh-eyes",
     },
   );

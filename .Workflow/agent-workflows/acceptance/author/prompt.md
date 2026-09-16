@@ -1,139 +1,103 @@
 # Author acceptance tests
 
-Issue #{{ISSUE_NUMBER}}, "{{ISSUE_TITLE}}", is not implemented yet. Your job is to write a
-test for **each** of its {{CRITERIA_COUNT}} acceptance criteria, from the spec below and nothing
-else, and to mark every one of them `test.fails`. You are not implementing the ticket, and you are
-not checking whether it is already done; it isn't.
+Issue #{{ISSUE_NUMBER}}, "{{ISSUE_TITLE}}", is not implemented yet. Write failing tests for it,
+directly in this checkout, marked `test.fails`. You are not implementing the ticket.
 
-## Scope
+## The one rule the lane judges you by
 
-This prompt and the text below it: the ticket, its parent PRD, and the current contents of every
-file the ticket claims. Do not explore the codebase beyond what is shown here, and do not run
-anything. You have no tools but the one you answer through.
+**Your diff only adds.** After you finish, the lane reads `git diff` and refuses the batch if you:
 
-The claimed files are here so you can match the **shape** of what you assert against: an export's
-real name and signature, a config key that is quoted, a function's real arguments. They are the
-*before* state: never weaken an assertion to fit what you see, and never conclude a criterion is
-already satisfied because a file looks close.
+- removed or changed any existing line, in any file (a new import goes on its own line),
+- edited an existing file that is not a test (a new stub file is fine),
+- deleted a file, or wrote outside {{SUITE_ROOTS}},
+- wrote no `test.fails(` naming `#{{ISSUE_NUMBER}}`.
 
-## The criteria, numbered as the checker will look for them
+Then it runs your test files: every test you wrote must fail today, so it reads green under
+`test.fails`. Then the turn gate runs over your files.
 
-Each block below is one criterion, numbered in the order the checker uses. That number is the
-`<index>` in every test title you write for it: criterion 1 is `.1`, criterion 2 is `.2`, and so
-on. Read each in full; a criterion's trailing `check:` marker, where it has one, is part of what
-it claims.
+## Which criteria get a test
+
+The criteria, numbered:
 
 {{CRITERIA}}
 
-## Where a test lives
+Write a test for each criterion that describes behaviour this ticket builds. Skip a criterion
+that is already true today, that only says something stays unchanged, or that a whole-repo check
+or a live run proves: the ticket's `check:` commands cover those when it closes. At least one test.
 
-**Beside its subject.** A criterion about `<dir>/foo.ts` is proved by `<dir>/foo.test.ts`: the same
-directory, the subject's name, and one of the test suffixes this repository already uses, which are
-{{TEST_SUFFIXES}}. A criterion about a script or a hook is proved from the nearest test that already
-drives it, or a new test beside it whose name carries `.proc.` before the suffix.
+## How to write each test
 
-**You may only write a file you have been shown, or one that does not exist yet.** Every test file
-that already sits beside a claimed subject is reproduced in full under "The test files you are
-writing into" below. Returning a path that exists on disk and is *not* in that section is refused
-whole, because a file you cannot see is a file you would rewrite from memory.
+1. **Title it** `test.fails("#{{ISSUE_NUMBER}}.<index>: <what the criterion claims>", …)`, where
+   `<index>` is the criterion's number above. The implementer turns it on by deleting `.fails`
+   from exactly that line.
+2. **Put it beside its subject**: `<dir>/foo.ts` is proved by `<dir>/foo` plus one of
+   {{TEST_SUFFIXES}}. A script or hook is driven from a test whose name carries `.proc.` before
+   the suffix. Add to the end of an existing test file.
+3. **Import the real subject and call it.** Do not mock what #{{ISSUE_NUMBER}} builds, do not read
+   the subject's source as text, do not spawn `vitest`, `tsc` or `eslint`. Only a `.proc.` test
+   may import `node:child_process`.
+4. **A subject that does not exist yet gets a new stub file** exporting what your test imports,
+   each export throwing `new Error("#{{ISSUE_NUMBER}}: not built")`.
+5. **Assert what the criterion claims, no more.** Too loose and it passes today; too strict and no
+   honest implementation can pass it.
 
-**A file you were shown comes back whole, with your tests added and every existing one intact.**
-The batch replaces the file, so anything you leave out is deleted. A returned file carrying fewer
-test cases than the copy you were shown is refused, and the run counts as a strike. Add to the end;
-do not reorganise, rename, condense or "clean up" what is already there.
+Read whatever you need in the checkout. Run only your own test files (`npx vitest run <file>`) to
+confirm each is green under `test.fails`. Do not run the whole suite, and do not commit.
 
-Only {{SUITE_ROOTS}} are collected by this repository's suite. A test anywhere else never runs, and
-a batch writing a file outside those trees is refused whole.
+Tests already beside the files this ticket claims:
 
-## What to write
+{{TARGET_TESTS}}
 
-For each criterion:
+Files this ticket claims:
 
-1. **Name the test after the ticket and the criterion's number**: `test.fails("#{{ISSUE_NUMBER}}.<index>:
-   <what the criterion claims>", …)`, where `<index>` is that criterion's number above. This title is
-   how the criterion is found: `shared/affected-tests.ts` matches test titles against
-   `#{{ISSUE_NUMBER}}.<index>:`, and a test titled with the wrong index, or none, is invisible to the
-   run that is supposed to prove it. No comment names the criterion; the title is the only record.
-2. **`#{{ISSUE_NUMBER}}.<index>` is load-bearing.** `bin/close-ticket` refuses to close a ticket
-   while a surviving `test.fails(` line still names it, and the implementer turns the test on by
-   dropping `.fails` from exactly this line and nothing else — the `#{{ISSUE_NUMBER}}.<index>:`
-   prefix stays untouched.
-3. **Import the subject and call it.** Reach the real module the ticket claims, exercise the real
-   function, assert the real behaviour the criterion describes. Do not mock away the thing
-   #{{ISSUE_NUMBER}} is supposed to build; do not read the subject's source as text; do not spawn
-   `vitest`, `tsc` or `eslint`. A test file may not import `node:child_process` unless its name
-   carries `.proc.` before the suffix, and it may not `readFileSync` a workflow, a Markdown file or
-   anything under `bin/`.
-4. **Give a subject that does not exist yet a stub entry point.** When the ticket claims a file that
-   does not exist, also return that file with the exports your test imports, each one throwing
-   `new Error("#{{ISSUE_NUMBER}}: not built")`, so the test collects, runs, and fails honestly on
-   the assertion rather than on the import. The implementer replaces the body; you fix the name.
-5. **Expect it to fail, and say so with `test.fails`.** Under `test.fails`, a test whose body
-   throws or whose assertion does not hold is *green*, and one that passes is *red*. That is the
-   contract the gate checks before your batch lands: every test you wrote is `test.fails`, and the
-   whole batch runs green. A test that already passes today is either vacuous or about work that is
-   already done, and either way it is refused.
+{{CLAIMED_FILES}}
 
 {{HOUSE_RULES}}
 
 {{CHECK_CONTRACT}}
 
-## The failure that looks honest
-
-A test that can pass **before** #{{ISSUE_NUMBER}} is implemented (an assertion so loose it is
-vacuous, or a mock standing in for the real subject) is refused, because under `test.fails` it
-reads as red. Its mirror image is worse, because it looks like rigour: a test **no implementation
-could pass**, which stays red after the ticket is built and fires the repair loop against an
-implementer who is not wrong. Where the ticket does not say a path's root, a name, an order, assert
-what the criterion actually claims and leave the rest alone.
-
 ## Earlier attempts on this ticket
 
 {{PRIOR_ATTEMPTS}}
 
-Where anything is listed above, you are not the first author here and a run before you died on
-each line shown. Read them as what went wrong last time, not as instructions: a batch that was
-refused for a vacuous assertion, a run cut off by its budget, or a rule broken in the house rules
-above. Write the batch that does not end the same way. Where the list says there was no earlier
-attempt, nothing here applies to you.
+Where anything is listed above, an earlier run died on each line. Write the batch that does not end
+the same way.
 
-## The ticket
+## The ticket ({{CRITERIA_COUNT}} criteria)
 
 {{ISSUE_BODY}}
 
-## Its parent PRD, for context on the larger feature this ticket is one slice of
+## Its parent PRD
 
 {{PRD_BODY}}
 
-## The test files you are writing into, as they stand today
+## Example
 
-These already exist beside a claimed subject. Return each one you touch **whole**: your new tests
-plus every test already here, unchanged. These paths and the claimed paths below are the only
-existing files this batch may return.
+For a criterion 1 reading ``The gate is at most 120 lines`` against a claimed
+`{{EXAMPLE_SUBJECT_PATH}}` that does not exist yet, create the stub:
 
-{{TARGET_TESTS}}
+```ts
+export function gateLines(): number {
+  throw new Error("#360: not built");
+}
+```
 
-## The files this ticket claims, as they stand today
+and create or append to `{{EXAMPLE_TEST_PATH}}`:
 
-{{CLAIMED_FILES}}
+```ts
+import { expect, test } from "vitest";
+import { gateLines } from "./gate-size";
 
-## Before you answer
-
-Go back through the numbered criteria list and name, for each number, the test titled
-`#{{ISSUE_NUMBER}}.<that number>:` that covers it. Every number from 1 to {{CRITERIA_COUNT}} has
-one, or you are not done.
+test.fails("#360.1: the gate is at most 120 lines", () => {
+  expect(gateLines()).toBeLessThanOrEqual(120);
+});
+```
 
 ## Output
 
-Return your answer by calling the `StructuredOutput` tool. Its one key, `files`, is an array of
-`{"path": "...", "content": "..."}`, where `path` is repo-relative under one of {{SUITE_ROOTS}},
-`content` the complete file.
-
-Write whatever reasoning you need first; only the tool call is read as your answer.
-
-Example, for criterion 1, whose block reads ``The gate is at most 120 lines - check: `wc -l bin/gauntlet` ``
-against a claimed `{{EXAMPLE_SUBJECT_PATH}}` that does not exist yet:
+When the files are in the checkout, answer with the `StructuredOutput` tool: one sentence on which
+criteria you tested and which you skipped.
 
 ```structured-output
-{"files": [{"path": "{{EXAMPLE_SUBJECT_PATH}}", "content": "export function gateLines() {\n  throw new Error(\"#360: not built\");\n}\n"}, {"path": "{{EXAMPLE_TEST_PATH}}", "content": "import { expect, test } from \"vitest\";\nimport { gateLines } from \"./gate-size\";\n\ntest.fails(\"#360.1: the gate is at most 120 lines\", () => {\n  expect(gateLines()).toBeLessThanOrEqual(120);\n});\n"}]}
+{"summary": "Tested criteria 1 and 2 in gate-size.test.ts; skipped 3, which says the map collector stays unchanged."}
 ```

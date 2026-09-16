@@ -207,6 +207,25 @@ async function preservingRaw<R>(stage: string, work: () => Promise<R>): Promise<
   }
 }
 
+export const CHECKOUT_SESSION_DENIED_TOOLS = [
+  "Bash(git stash:*)",
+  "Bash(git checkout:*)",
+  "Bash(git switch:*)",
+  "Bash(git restore:*)",
+  "Bash(git reset:*)",
+  "Bash(git commit:*)",
+  "Bash(git push:*)",
+  "Bash(git rebase:*)",
+  "Bash(git clean:*)",
+  "Bash(git mv:*)",
+  "Bash(gh:*)",
+  "WebFetch",
+  "WebSearch",
+  "Agent",
+  "Task",
+  "ScheduleWakeup",
+];
+
 export interface StageOptions {
   model?: string;
   disallowedTools?: string[];

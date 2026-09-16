@@ -1,15 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import {
-  affectedSlices,
-  authoredCriterionTitleRe,
-  existingCriterionTitleRe,
-  testsForCriterion,
-  type ExistingTestCriterion,
-  type SliceRef,
-} from "../shared/affected-tests";
+import { affectedSlices, authoredTicketTitleRe, testsForCriterion, type ExistingTestCriterion, type SliceRef } from "../shared/affected-tests";
 import { laneBudget } from "../shared/lane-budget";
 import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { subIssuesPath } from "../shared/gh-paths";
@@ -22,13 +15,13 @@ import { acceptanceBranch, FRESH_EYES_RUNG } from "../shared/ready-set";
 import { strikesIn } from "../shared/strikes";
 import { gateOutputTail, stopVenueVerdict, type GateVerdict } from "../shared/run-gauntlet";
 import {
+  CHECKOUT_SESSION_DENIED_TOOLS,
   currentLaneRun,
   execClaudeIn,
   runStageSessionWithinBudget,
   startLaneBudget,
   type LaneBudget,
   type StageExec,
-  type StageSessionResult,
 } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
 import { suiteLayout, type SuiteLayout } from "../shared/suite-layout";
@@ -51,30 +44,20 @@ export const AUTHOR_REPAIR_PROMPT_PATH = ".Workflow/agent-workflows/acceptance/a
 
 const REPO_DIR = process.env.TARGET_WORKSPACE || process.cwd();
 
-const MACHINE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
 export const HOUSE_RULES_PATH = ".Workflow/agent-workflows/acceptance/author/house-rules.md";
 
-const AuthoredFile = z.object({
-  path: z.string().min(1),
-  content: z.string().min(1),
-});
-export type AuthoredFile = z.infer<typeof AuthoredFile>;
-
 const AuthorAnswer = z.object({
-  files: z.array(AuthoredFile).min(1),
+  summary: z.string(),
 });
-type AuthorAnswer = z.infer<typeof AuthorAnswer>;
 
 export const AUTHOR_OUTPUT = structuredOutput(AuthorAnswer);
 
 export interface AuthorDeps {
   exec: StageExec;
-  writeFile: (path: string, content: string) => void;
+  git: GitExec;
   issueNumber: number;
   ticket: TicketRead;
   prdBody?: string;
-  readFile?: (path: string) => string | undefined;
   suite?: SuiteLayout;
   houseRules?: string;
   checkContract?: string;
@@ -94,42 +77,9 @@ export function priorAttemptsNote(comments: string[]): string {
   ].join("\n");
 }
 
-export const CLAIMED_FILE_ABSENT = "(does not exist yet; this ticket creates it)";
-
 export const NO_CLAIMED_FILES = "(this ticket claims no files)";
 
-export const NO_TARGET_TESTS = "(no test file sits beside a claimed subject yet; every test here is a new file)";
-
-export const INLINE_FILE_CAP_BYTES = 40_000;
-
-export const INLINE_BUDGET_BYTES = 150_000;
-
-export const FILE_OVER_BUDGET = "(not inlined: over the prompt's file budget)";
-
-export function renderFiles(
-  paths: string[],
-  readFile: (path: string) => string | undefined,
-  whenEmpty: string,
-  budget: { remaining: number } = { remaining: INLINE_BUDGET_BYTES },
-): string {
-  if (paths.length === 0) return whenEmpty;
-  return paths
-    .map((path) => {
-      const content = readFile(path);
-      if (content === undefined) return `### ${path}\n\n${CLAIMED_FILE_ABSENT}`;
-      const size = Buffer.byteLength(content, "utf8");
-      if (size > INLINE_FILE_CAP_BYTES || size > budget.remaining) return `### ${path}\n\n${FILE_OVER_BUDGET}`;
-      budget.remaining -= size;
-      return `### ${path}\n\n\`\`\`\n${content}\n\`\`\``;
-    })
-    .join("\n\n");
-}
-
-const TEST_CASE_RE = /^[ \t]*(?:it|test)(?:\.[A-Za-z]+)*[ \t]*\(/gm;
-
-export function testCaseCount(source: string): number {
-  return source.match(TEST_CASE_RE)?.length ?? 0;
-}
+export const NO_TARGET_TESTS = "(no test file sits beside a claimed subject yet)";
 
 export function colocatedTests(claimed: string[], suite: SuiteLayout): string[] {
   const stems = claimed.map((path) => path.replace(/\.[^./]+$/, ""));
@@ -142,12 +92,8 @@ export function renderCriteria(criteria: string[]): string {
     .join("\n\n");
 }
 
-function readIfPresent(path: string): string | undefined {
-  try {
-    return readFileSync(join(REPO_DIR, path), "utf8");
-  } catch {
-    return undefined;
-  }
+function bulleted(paths: string[], whenEmpty: string): string {
+  return paths.length === 0 ? whenEmpty : paths.map((path) => `- \`${path}\``).join("\n");
 }
 
 export function suiteOf(deps: Pick<AuthorDeps, "suite">): SuiteLayout {
@@ -215,9 +161,81 @@ function checkContractTable(): string {
   }
 }
 
+export interface ChangedFile {
+  path: string;
+  created: boolean;
+  deleted: boolean;
+  added: string[];
+  removed: string[];
+}
+
+const DIFF_HEADER_RE = /^diff --git a\/.+ b\/(.+)$/;
+
+export function changedFiles(diff: string): ChangedFile[] {
+  const files: ChangedFile[] = [];
+  let current: ChangedFile | undefined;
+  for (const line of diff.split("\n")) {
+    const header = DIFF_HEADER_RE.exec(line);
+    if (header) {
+      current = { path: header[1], created: false, deleted: false, added: [], removed: [] };
+      files.push(current);
+      continue;
+    }
+    if (current === undefined) continue;
+    if (line.startsWith("new file mode")) current.created = true;
+    else if (line.startsWith("deleted file mode")) current.deleted = true;
+    else if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+    else if (line.startsWith("+")) current.added.push(line.slice(1));
+    else if (line.startsWith("-")) current.removed.push(line.slice(1));
+  }
+  return files;
+}
+
+export function readAuthoredChanges(git: GitExec): ChangedFile[] {
+  git(["add", "--intent-to-add", "."]);
+  return changedFiles(git(["diff", "HEAD", "--no-renames", "--unified=0"]));
+}
+
+export function additiveRefusal(issueNumber: number, files: ChangedFile[], suite: SuiteLayout): string | undefined {
+  const { roots, suffixes } = suite;
+  if (files.length === 0) return "author changed nothing in the checkout";
+  for (const file of files) {
+    if (!roots.some((root) => file.path.startsWith(`${root}/`))) {
+      return `author wrote outside ${roots.join("/, ")}/: ${file.path}`;
+    }
+    if (lifecycleHookStub(file.path) !== undefined) {
+      return (
+        `author wrote ${file.path}, a stub for a subject the test runs as a process; house rule ` +
+        `(${HOUSE_RULES_PATH}): a .claude/hooks/*.py or *.sh lifecycle hook gets no stub, ` +
+        "the test spawns it from a .proc.test.ts and the missing file is the honest failure"
+      );
+    }
+    if (file.deleted) return `author deleted ${file.path}; an acceptance batch only adds`;
+    if (!file.created && !isTestPath(file.path, suffixes)) {
+      return `author edited ${file.path}, an existing file that is not a test; only a new stub may sit beside the tests`;
+    }
+    if (file.removed.length > 0) {
+      return (
+        `author removed ${file.removed.length} existing line(s) from ${file.path}; an acceptance batch only ` +
+        "adds lines, so a new import goes on its own line and no existing test is touched"
+      );
+    }
+  }
+  const title = authoredTicketTitleRe(issueNumber);
+  const named = files.some((file) => isTestPath(file.path, suffixes) && file.added.some((line) => title.test(line)));
+  if (!named) {
+    return `author wrote no test file carrying a test.fails( naming #${issueNumber}: looked for a path ending in ${suffixes.join(", ")}`;
+  }
+  return undefined;
+}
+
 export interface AuthoredBatch {
-  files: AuthoredFile[];
+  files: ChangedFile[];
   sessionId?: string;
+}
+
+function sessionOptions(stage: string, budget: LaneBudget) {
+  return { budget, model: AUTHOR_MODEL, promptViaStdin: true, disallowedTools: CHECKOUT_SESSION_DENIED_TOOLS, stage };
 }
 
 export async function authorAcceptanceTests(
@@ -233,10 +251,7 @@ export async function authorAcceptanceTests(
 
   const suite = suiteOf(deps);
   const example = exampleSubject(suite);
-  const readFile = deps.readFile ?? readIfPresent;
   const claimed = extractFilesClaimed(deps.ticket.body);
-  const targets = colocatedTests(claimed, suite);
-  const budgetBytes = { remaining: INLINE_BUDGET_BYTES };
   const round = await runStageSessionWithinBudget(
     AUTHOR_PROMPT_PATH,
     {
@@ -246,8 +261,8 @@ export async function authorAcceptanceTests(
       PRD_BODY: deps.prdBody ?? "(no parent PRD)",
       CRITERIA: renderCriteria(criteria),
       CRITERIA_COUNT: String(criteria.length),
-      TARGET_TESTS: renderFiles(targets, readFile, NO_TARGET_TESTS, budgetBytes),
-      CLAIMED_FILES: renderFiles(claimed, readFile, NO_CLAIMED_FILES, budgetBytes),
+      TARGET_TESTS: bulleted(colocatedTests(claimed, suite), NO_TARGET_TESTS),
+      CLAIMED_FILES: bulleted(claimed, NO_CLAIMED_FILES),
       SUITE_ROOTS: suite.roots.map((root) => `\`${root}/**\``).join(", "),
       TEST_SUFFIXES: suite.suffixes.map((suffix) => `\`${suffix}\``).join(", "),
       EXAMPLE_SUBJECT_PATH: example.subject,
@@ -258,128 +273,25 @@ export async function authorAcceptanceTests(
     },
     deps.exec,
     AUTHOR_OUTPUT,
-    {
-      budget,
-      model: AUTHOR_MODEL,
-      promptViaStdin: true,
-      stage: deps.priorAttempts === undefined ? "author" : "author-fresh-eyes",
-    },
+    sessionOptions(deps.priorAttempts === undefined ? "author" : "author-fresh-eyes", budget),
   );
-  return acceptRound(deps, criteria, round, new Set([...claimed, ...targets]));
+  return { files: readAuthoredChanges(deps.git), sessionId: round.sessionId };
 }
 
 export async function repairAcceptanceTests(
   deps: AuthorDeps,
   sessionId: string,
   judgement: string,
-  authored: readonly string[],
   budget: LaneBudget = startLaneBudget(laneBudget("acceptance")),
 ): Promise<AuthoredBatch> {
-  const criteria = extractCriteria(deps.ticket.body);
   const round = await runStageSessionWithinBudget(
     AUTHOR_REPAIR_PROMPT_PATH,
-    {
-      ISSUE_NUMBER: String(deps.issueNumber),
-      CRITERIA_COUNT: String(criteria.length),
-      JUDGEMENT: gateOutputTail(judgement),
-    },
+    { JUDGEMENT: gateOutputTail(judgement) },
     deps.exec,
     AUTHOR_OUTPUT,
-    { budget, model: AUTHOR_MODEL, promptViaStdin: true, resume: sessionId, stage: "author-repair" },
+    { ...sessionOptions("author-repair", budget), resume: sessionId },
   );
-  const suite = suiteOf(deps);
-  const claimed = extractFilesClaimed(deps.ticket.body);
-  return acceptRound(deps, criteria, round, new Set([...claimed, ...colocatedTests(claimed, suite), ...authored]));
-}
-
-export function unshownRewriteRefusal(path: string): string {
-  return (
-    `author returned ${path}, a file that already exists and was not shown to it. A file it cannot ` +
-    "see is a file it rewrites from memory, and the batch replaces the whole file: that is how four " +
-    "earlier runs deleted 69 passing tests. Write beside a claimed subject, or create a new file."
-  );
-}
-
-export function shrinkingRewriteRefusal(path: string, before: number, after: number): string {
-  return (
-    `author returned ${path} carrying ${after} test case(s) where the file on disk has ${before}. ` +
-    "An acceptance batch adds tests; it never returns a shown file with fewer than it was given."
-  );
-}
-
-function refuseLostCoverage(files: AuthoredFile[], shown: Set<string>, readFile: (path: string) => string | undefined): void {
-  for (const file of files) {
-    const existing = readFile(file.path);
-    if (existing === undefined) continue;
-    if (!shown.has(file.path)) throw new Error(unshownRewriteRefusal(file.path));
-
-    const before = testCaseCount(existing);
-    const after = testCaseCount(file.content);
-    if (after < before) throw new Error(shrinkingRewriteRefusal(file.path, before, after));
-  }
-}
-
-function criteriaStandingInTree(deps: AuthorDeps, count: number, authored: AuthoredFile[]): Set<number> {
-  const readFile = deps.readFile ?? readIfPresent;
-  const returned = new Set(authored.map((file) => file.path));
-  const standing = new Set<number>();
-  for (const path of suiteOf(deps).files) {
-    if (returned.has(path)) continue;
-    const content = readFile(path);
-    if (content === undefined) continue;
-    for (let index = 1; index <= count; index++) {
-      if (existingCriterionTitleRe(deps.issueNumber, index).test(content)) standing.add(index);
-    }
-  }
-  return standing;
-}
-
-function acceptRound(
-  deps: AuthorDeps,
-  criteria: string[],
-  round: StageSessionResult<AuthorAnswer>,
-  shown: Set<string>,
-): AuthoredBatch {
-  const answer = round.value;
-  const { roots, suffixes } = suiteOf(deps);
-  for (const file of answer.files) {
-    if (!roots.some((root) => file.path.startsWith(`${root}/`))) {
-      throw new Error(`author wrote outside ${roots.join("/, ")}/: ${file.path}`);
-    }
-    const stub = lifecycleHookStub(file.path);
-    if (stub !== undefined) {
-      throw new Error(
-        `author wrote ${stub}, a stub for a subject the test runs as a process; house rule ` +
-          `(${HOUSE_RULES_PATH}): a .claude/hooks/*.py or *.sh lifecycle hook gets no stub, ` +
-          "the test spawns it from a .proc.test.ts and the missing file is the honest failure",
-      );
-    }
-  }
-  if (!answer.files.some((file) => isTestPath(file.path, suffixes))) {
-    throw new Error(
-      `author wrote no test file for #${deps.issueNumber}: looked for a path ending in ${suffixes.join(", ")}`,
-    );
-  }
-
-  refuseLostCoverage(answer.files, shown, deps.readFile ?? readIfPresent);
-
-  const combined = answer.files.map((file) => file.content).join("\n");
-  const standing = criteriaStandingInTree(deps, criteria.length, answer.files);
-  const missing = criteria
-    .map((_criterion, i) => i + 1)
-    .filter(
-      (index) =>
-        !authoredCriterionTitleRe(deps.issueNumber, index).test(combined) && !standing.has(index),
-    );
-  if (missing.length > 0) {
-    throw new Error(
-      `author wrote no test.fails( naming #${deps.issueNumber}.${missing.join(`, #${deps.issueNumber}.`)}: ` +
-        `missing criteri${missing.length === 1 ? "on" : "a"} ${missing.join(", ")} of ${criteria.length}`,
-    );
-  }
-
-  for (const file of answer.files) deps.writeFile(file.path, file.content);
-  return { files: answer.files, sessionId: round.sessionId };
+  return { files: readAuthoredChanges(deps.git), sessionId: round.sessionId ?? sessionId };
 }
 
 export interface JudgeDeps {
@@ -491,7 +403,14 @@ function haltLoudly(gh: GhExec, issueNumber: number, note: string, log: (line: s
 type Attempt = { ok: true; paths: string[] } | { ok: false; reason: string };
 
 function batchPaths(batch: AuthoredBatch): string[] {
-  return batch.files.map((file) => file.path);
+  return batch.files.filter((file) => !file.deleted).map((file) => file.path);
+}
+
+function judgeBatch(deps: AuthorDeps, judge: JudgeDeps, batch: AuthoredBatch): BatchVerdict {
+  const suite = suiteOf(deps);
+  const refusal = additiveRefusal(deps.issueNumber, batch.files, suite);
+  if (refusal !== undefined) return { ok: false, reason: refusal };
+  return judgeAuthoredBatch(judge, batchPaths(batch), suite.suffixes);
 }
 
 async function authorWithRepairs(
@@ -500,15 +419,14 @@ async function authorWithRepairs(
   budget: LaneBudget,
   rounds = REPAIR_ROUNDS,
 ): Promise<Attempt> {
-  const { suffixes } = suiteOf(deps);
   let batch = await authorAcceptanceTests(deps, budget);
-  let verdict = judgeAuthoredBatch(judge, batchPaths(batch), suffixes);
+  let verdict = judgeBatch(deps, judge, batch);
 
   for (let round = 0; round < rounds && !verdict.ok; round++) {
     const sessionId = batch.sessionId;
     if (sessionId === undefined) break;
-    batch = await repairAcceptanceTests(deps, sessionId, verdict.reason, batchPaths(batch), budget);
-    verdict = judgeAuthoredBatch(judge, batchPaths(batch), suffixes);
+    batch = await repairAcceptanceTests(deps, sessionId, verdict.reason, budget);
+    verdict = judgeBatch(deps, judge, batch);
   }
 
   return verdict.ok ? { ok: true, paths: batchPaths(batch) } : { ok: false, reason: verdict.reason };
@@ -517,7 +435,6 @@ async function authorWithRepairs(
 export interface RunAcceptanceDeps {
   gh: GhExec;
   exec: StageExec;
-  writeFile: (path: string, content: string) => void;
   issueNumber: number;
   runTests?: (paths: string[]) => TestRunResult;
   gate?: (paths: string[]) => GateVerdict;
@@ -535,12 +452,14 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const log = deps.log ?? ((line: string) => console.log(line));
   const budget = startLaneBudget(laneBudget("acceptance"), { gh: deps.gh, ticket: deps.issueNumber, run: currentLaneRun() });
 
+  const git = deps.git ?? ((args: string[]) => execGit(["-C", REPO_DIR, ...args]));
+
   const priorAttempts =
     deps.rung === FRESH_EYES_RUNG ? priorAttemptsNote(issueComments(deps.gh, deps.issueNumber)) : undefined;
   if (priorAttempts !== undefined) log("this ticket carries a strike, so the author is handed what the earlier runs died on");
 
   const attempt = await authorWithRepairs(
-    { exec: deps.exec, writeFile: deps.writeFile, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite, priorAttempts },
+    { exec: deps.exec, git, issueNumber: deps.issueNumber, ticket, prdBody: prd?.body, suite: deps.suite, priorAttempts },
     {
       runTests: deps.runTests ?? ((tests) => runVitestJson(tests.join(" "), REPO_DIR)),
       gate: deps.gate ?? ((paths) => turnVenueVerdict(paths, REPO_DIR)),
@@ -556,7 +475,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
   const branch = acceptanceBranch(deps.issueNumber);
   try {
     commitAuthoredBatch({
-      git: deps.git ?? ((args) => execGit(["-C", REPO_DIR, ...args])),
+      git,
       paths: attempt.paths,
       commitMessage: authorCommitMessage(deps.issueNumber, attempt.paths),
       branch,
@@ -612,18 +531,11 @@ ${paths.map((path) => `- ${path}`).join("\n")}
 Part of #162`;
 }
 
-function fsWriteFile(path: string, content: string): void {
-  const resolved = join(REPO_DIR, path);
-  mkdirSync(dirname(resolved), { recursive: true });
-  writeFileSync(resolved, content, "utf8");
-}
-
 async function authorInProcess(issueNumber: number, rung?: string): Promise<LandOutcome> {
   try {
     return await runAcceptanceAuthor({
       gh: execGh,
       exec: execClaudeIn(REPO_DIR),
-      writeFile: fsWriteFile,
       issueNumber,
       rung,
     });

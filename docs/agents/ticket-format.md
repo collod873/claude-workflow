@@ -85,9 +85,9 @@ no files writes the sentinel:
 
 - **One file per line.** A glob is refused: the reconciler holds each claim against every live run,
   so a pattern standing for a whole lane stalls that lane.
-- **At most `claimLimit` paths**, refused above it. Lane 04's acceptance author inlines every claimed
-  file into one prompt inside one wall-clock budget, and #539's nine files spent that whole budget on
-  the first pass. Wider work is several tickets: slice it by subject and chain them. A ticket that
+- **At most `claimLimit` paths**, refused above it. The implementer's brief inlines every claimed file
+  into one prompt inside one wall-clock budget, and #539's nine files spent that whole budget on the
+  first pass. Wider work is several tickets: slice it by subject and chain them. A ticket that
   reaches `reconcile.ts`'s `to-build` door wider than that is labelled `to-spec`, and lane 02 rewrites
   it as a spec under the same number.
 - **The immutable set** (`vitest.config.ts` and paths under `.github/`, listed in

@@ -24,14 +24,13 @@ import { errorMessage } from "../shared/reason";
 import type { GateVerdict } from "../shared/run-gauntlet";
 import { gateSaying } from "../shared/gate.fixture";
 import { scratchDir } from "../shared/scratch.fixture";
-import type { StageReply } from "../shared/stage";
+import { CHECKOUT_SESSION_DENIED_TOOLS, type StageReply } from "../shared/stage";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
 import { extractFilesClaimed, parentPrdNumber } from "../shared/ticket-shape";
 import {
   extractSeamsConsumed,
   findFailingTestFiles,
   FRESH_EYES_MODEL,
-  IMPLEMENTER_DENIED_TOOLS,
   moduleContextPath,
   reportOutcome,
   runImplement,
@@ -299,10 +298,10 @@ describe("the push gate runs in the wire, once, with one repair round", () => {
     await runImplement(deps);
 
     const argv = stage.calls[0];
-    expect(argv[argv.indexOf("--disallowedTools") + 1]).toBe(IMPLEMENTER_DENIED_TOOLS.join(","));
-    expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(git stash:*)");
-    expect(IMPLEMENTER_DENIED_TOOLS).toContain("Bash(gh:*)");
-    expect(IMPLEMENTER_DENIED_TOOLS).not.toContain("Bash(git:*)");
+    expect(argv[argv.indexOf("--disallowedTools") + 1]).toBe(CHECKOUT_SESSION_DENIED_TOOLS.join(","));
+    expect(CHECKOUT_SESSION_DENIED_TOOLS).toContain("Bash(git stash:*)");
+    expect(CHECKOUT_SESSION_DENIED_TOOLS).toContain("Bash(gh:*)");
+    expect(CHECKOUT_SESSION_DENIED_TOOLS).not.toContain("Bash(git:*)");
   });
 });
 

@@ -7,39 +7,35 @@ import { subIssuesPath } from "../shared/gh-paths";
 import { ACCEPTING_LABEL } from "../shared/labels";
 import type { GitExec } from "../shared/git";
 import { createFakeGit } from "../shared/git.fake";
-import { reason } from "../shared/reason";
 import { scratchDir } from "../shared/scratch.fixture";
+import { CHECKOUT_SESSION_DENIED_TOOLS } from "../shared/stage";
 import type { SuiteLayout } from "../shared/suite-layout";
 import type { GateVerdict } from "../shared/run-gauntlet";
 import { createFakeStage, createFakeStages, type FakeStage } from "../shared/stage.fake";
+import { makeTempRepo } from "../shared/temp-repo.fixture";
 import { extractCriteria, type TicketRead } from "../shared/ticket-shape";
 import type { TestRunResult } from "../shared/vitest-json";
 import {
+  additiveRefusal,
   authorAcceptanceTests,
-  CLAIMED_FILE_ABSENT,
+  changedFiles,
   colocatedTests,
   commitAuthoredBatch,
   exampleSubject,
   judgeAuthoredBatch,
-  FILE_OVER_BUDGET,
-  INLINE_FILE_CAP_BYTES,
   NO_CLAIMED_FILES,
   NO_EARLIER_ATTEMPT,
   NO_TARGET_TESTS,
+  readAuthoredChanges,
   renderCheckContract,
   refireAcceptance,
   renderCriteria,
-  repairAcceptanceTests,
   REPAIR_ROUNDS,
-  renderFiles,
   runAcceptanceAuthor,
-  shrinkingRewriteRefusal,
   suiteOf,
-  testCaseCount,
-  unshownRewriteRefusal,
   type AuthoredBatch,
-  type AuthoredFile,
   type BatchVerdict,
+  type ChangedFile,
   type CommitDeps,
   type JudgeDeps,
 } from "./acceptance";
@@ -71,6 +67,8 @@ The larger feature #${ISSUE} is one slice of.
 
 const TICKET: TicketRead = { title: "Author acceptance tests", body: TICKET_BODY };
 
+const SUMMARY = JSON.stringify({ summary: "tested both criteria" });
+
 function failsTest(issue: number = ISSUE): string {
   const bodies = extractCriteria(TICKET_BODY)
     .map(
@@ -81,30 +79,53 @@ function failsTest(issue: number = ISSUE): string {
   return `import { expect, test } from "vitest";\n${bodies}\n`;
 }
 
-function answer(files: AuthoredFile[]): FakeStage {
-  return createFakeStage(JSON.stringify({ files }));
+function created(path: string, content: string): ChangedFile {
+  return { path, created: true, deleted: false, added: content.split("\n"), removed: [] };
 }
 
+function diffOf(files: ChangedFile[]): string {
+  return files
+    .map((file) =>
+      [
+        `diff --git a/${file.path} b/${file.path}`,
+        ...(file.created ? ["new file mode 100644"] : []),
+        ...(file.deleted ? ["deleted file mode 100644"] : []),
+        `--- ${file.created ? "/dev/null" : `a/${file.path}`}`,
+        `+++ ${file.deleted ? "/dev/null" : `b/${file.path}`}`,
+        "@@ -1 +1 @@",
+        ...file.removed.map((line) => `-${line}`),
+        ...file.added.map((line) => `+${line}`),
+      ].join("\n"),
+    )
+    .join("\n");
+}
+
+function checkoutShowing(...rounds: ChangedFile[][]): ReturnType<typeof createFakeGit> {
+  const diffs = rounds.map(diffOf);
+  return createFakeGit((args) => (args[0] === "diff" ? (diffs.length > 1 ? diffs.shift() : diffs[0]) ?? "" : ""));
+}
+
+const AUTHORED = [created(TEST_PATH, failsTest())];
+
 function authoring(
-  files: AuthoredFile[],
-  options: { ticket?: TicketRead; readFile?: (path: string) => string | undefined; prdBody?: string } = {},
-): { attempt: Promise<AuthoredBatch>; written: string[]; stage: FakeStage } {
-  const stage = answer(files);
-  const written: string[] = [];
+  files: ChangedFile[],
+  options: { ticket?: TicketRead; prdBody?: string } = {},
+): { attempt: Promise<AuthoredBatch>; stage: FakeStage; git: ReturnType<typeof createFakeGit> } {
+  const stage = createFakeStage(SUMMARY);
+  const git = checkoutShowing(files);
   const attempt = authorAcceptanceTests({
     exec: stage.exec,
-    writeFile: (path) => written.push(path),
+    git: git.git,
     issueNumber: ISSUE,
     ticket: options.ticket ?? TICKET,
     prdBody: options.prdBody,
-    readFile: options.readFile ?? (() => undefined),
     suite: SUITE,
   });
-  return { attempt, written, stage };
+  return { attempt, stage, git };
 }
 
 async function promptFor(options: Parameters<typeof authoring>[1] = {}): Promise<string> {
-  const { attempt, stage } = authoring([{ path: TEST_PATH, content: failsTest() }], options);
+  const { attempt, stage } = authoring(AUTHORED, options);
   await attempt;
   expect(stage.stdins[0], "the author's prompt goes over stdin").toBeDefined();
   return stage.stdins[0] as string;
@@ -114,17 +135,11 @@ describe("authorAcceptanceTests", () => {
   it("hands the author each criterion verbatim, fenced, with the count", async () => {
     const prompt = await promptFor();
     for (const criterion of extractCriteria(TICKET_BODY)) expect(prompt).toContain(`~~~\n${criterion}\n~~~`);
-    expect(prompt).toContain("2 acceptance criteria");
+    expect(prompt).toContain("2 criteria");
   });
 
-  it("shows the author the text of every file the ticket claims, not just its path", async () => {
-    const prompt = await promptFor({ readFile: (path) => (path === SUBJECT ? '"on": quoted\n' : undefined) });
-    expect(prompt).toContain(SUBJECT);
-    expect(prompt).toContain('"on": quoted');
-  });
-
-  it("says a claimed file does not exist yet rather than showing it empty", async () => {
-    expect(await promptFor()).toContain(CLAIMED_FILE_ABSENT);
+  it("names every file the ticket claims, leaving the author to read it from the checkout", async () => {
+    expect(await promptFor()).toContain(`- \`${SUBJECT}\``);
   });
 
   it("hands the author the parent PRD, and says when there is none", async () => {
@@ -138,10 +153,10 @@ describe("authorAcceptanceTests", () => {
       roots: ["scripts", "src"],
       suffixes: [".test.mjs", ".test.tsx"],
     };
-    const stage = answer([{ path: "src/widget.test.tsx", content: failsTest() }]);
+    const stage = createFakeStage(SUMMARY);
     await authorAcceptanceTests({
       exec: stage.exec,
-      writeFile: () => {},
+      git: checkoutShowing([]).git,
       issueNumber: ISSUE,
       ticket: TICKET,
       suite: foreign,
@@ -158,10 +173,10 @@ describe("authorAcceptanceTests", () => {
     const here = await promptFor();
     expect(here).toContain("shared/gh.fake.ts");
 
-    const stage = answer([{ path: "src/widget.test.tsx", content: failsTest() }]);
+    const stage = createFakeStage(SUMMARY);
     await authorAcceptanceTests({
       exec: stage.exec,
-      writeFile: () => {},
+      git: checkoutShowing([]).git,
       issueNumber: ISSUE,
       ticket: TICKET,
       suite: { files: ["src/a.test.tsx"], roots: ["src"], suffixes: [".test.tsx"] },
@@ -171,57 +186,147 @@ describe("authorAcceptanceTests", () => {
     expect(stage.stdins[0]).not.toMatch(/\{\{\w+\}\}/);
   });
 
-  it("gives the author no tools to read anything else with", async () => {
-    const { attempt, stage } = authoring([{ path: TEST_PATH, content: failsTest() }]);
+  it("works the checkout like the implementer does, denied only history rewrites, the tracker and the web", async () => {
+    const { attempt, stage } = authoring(AUTHORED);
     await attempt;
-    expect(stage.calls[0]).not.toContain("--allowedTools");
+    const argv = stage.calls[0];
+    expect(argv[argv.indexOf("--disallowedTools") + 1]).toBe(CHECKOUT_SESSION_DENIED_TOOLS.join(","));
+    expect(argv).not.toContain("--allowedTools");
   });
 
-  it("writes every file the model returned, in the model's order, stubs included", async () => {
-    const stub = { path: SUBJECT, content: `export function widget(): never {\n  throw new Error("#${ISSUE}: not built");\n}\n` };
-    const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, stub]);
+  it("reads back what the author changed from the checkout's own diff, new files included", async () => {
+    const stub = created(SUBJECT, `export function widget(): never {\n  throw new Error("#${ISSUE}: not built");\n}`);
+    const { attempt, git } = authoring([...AUTHORED, stub]);
     const { files } = await attempt;
     expect(files.map((file) => file.path)).toEqual([TEST_PATH, SUBJECT]);
-    expect(written).toEqual([TEST_PATH, SUBJECT]);
+    expect(git.calls).toEqual([
+      ["add", "--intent-to-add", "."],
+      ["diff", "HEAD", "--no-renames", "--unified=0"],
+    ]);
   });
 
-  it("accepts it.fails( as the marker too", async () => {
-    const content = failsTest().replace("test.fails(", "it.fails(");
-    const { attempt, written } = authoring([{ path: TEST_PATH, content }]);
-    await attempt;
-    expect(written).toEqual([TEST_PATH]);
-  });
-
-  it("throws, writing nothing, when the ticket declares no acceptance criteria", async () => {
+  it("throws, touching nothing, when the ticket declares no acceptance criteria", async () => {
     const ticket = { title: "No criteria", body: "## What to build\nnothing declared\n" };
-    const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }], { ticket });
+    const { attempt, stage, git } = authoring(AUTHORED, { ticket });
     await expect(attempt).rejects.toThrow(/no acceptance criteria/);
-    expect(written).toEqual([]);
+    expect(stage.calls).toEqual([]);
+    expect(git.calls).toEqual([]);
+  });
+});
+
+describe("readAuthoredChanges", () => {
+  it("sees a line appended to a committed test and a file nothing has added yet, against a real checkout", () => {
+    const repo = makeTempRepo("acceptance-changes");
+    repo.write(TEST_PATH, 'test("kept", () => {});\n');
+    repo.commit("seed");
+    repo.write(TEST_PATH, `test("kept", () => {});\n${failsTest()}`);
+    repo.write(SUBJECT, "export const widget = 1;\n");
+
+    const files = readAuthoredChanges((args) => repo.git(...args));
+
+    expect(files.map((file) => [file.path, file.created, file.removed])).toEqual([
+      [TEST_PATH, false, []],
+      [SUBJECT, true, []],
+    ]);
+    expect(files[0].added).toContain('test.fails("#162.1: criterion 1", () => {');
+  });
+});
+
+describe("changedFiles", () => {
+  it("reads a deleted file and the lines an edit removed", () => {
+    const diff = [
+      "diff --git a/.Workflow/gone.test.ts b/.Workflow/gone.test.ts",
+      "deleted file mode 100644",
+      "--- a/.Workflow/gone.test.ts",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      '-test("gone", () => {});',
+      "diff --git a/.Workflow/kept.test.ts b/.Workflow/kept.test.ts",
+      "--- a/.Workflow/kept.test.ts",
+      "+++ b/.Workflow/kept.test.ts",
+      "@@ -2 +2 @@",
+      '-test("before", () => {});',
+      '+test("after", () => {});',
+    ].join("\n");
+
+    expect(changedFiles(diff)).toEqual([
+      { path: ".Workflow/gone.test.ts", created: false, deleted: true, added: [], removed: ['test("gone", () => {});'] },
+      {
+        path: ".Workflow/kept.test.ts",
+        created: false,
+        deleted: false,
+        added: ['test("after", () => {});'],
+        removed: ['test("before", () => {});'],
+      },
+    ]);
+  });
+});
+
+describe("additiveRefusal", () => {
+  const edited = (path: string, added: string[], removed: string[] = []): ChangedFile => ({
+    path,
+    created: false,
+    deleted: false,
+    added,
+    removed,
+  });
+
+  it("admits a new test file naming the ticket, and a new stub beside it", () => {
+    expect(additiveRefusal(ISSUE, [...AUTHORED, created(SUBJECT, "export const widget = 1;")], SUITE)).toBeUndefined();
+  });
+
+  it("admits tests appended to an existing test file, with their import on its own line", () => {
+    const appended = edited(TEST_PATH, ['import { widget } from "./widget";', ...failsTest().split("\n")]);
+    expect(additiveRefusal(ISSUE, [appended], SUITE)).toBeUndefined();
+  });
+
+  it("accepts it.fails( as the marker too", () => {
+    expect(additiveRefusal(ISSUE, [created(TEST_PATH, failsTest().replace("test.fails(", "it.fails("))], SUITE)).toBeUndefined();
+  });
+
+  it("refuses a line removed from an existing test file, naming the file and the count", () => {
+    const rewritten = edited(TEST_PATH, failsTest().split("\n"), ['test("one", () => {});', 'test("two", () => {});']);
+    expect(additiveRefusal(ISSUE, [rewritten], SUITE)).toBe(
+      `author removed 2 existing line(s) from ${TEST_PATH}; an acceptance batch only adds lines, so a new import goes on its own line and no existing test is touched`,
+    );
+  });
+
+  it("refuses an edit to an existing file that is not a test, even one that only adds", () => {
+    expect(additiveRefusal(ISSUE, [...AUTHORED, edited(SUBJECT, ["export const more = 2;"])], SUITE)).toMatch(
+      new RegExp(`author edited ${SUBJECT}, an existing file that is not a test`),
+    );
+  });
+
+  it("refuses a deleted file", () => {
+    const gone = { ...edited(".Workflow/agent-workflows/shared/old.test.ts", [], ["x"]), deleted: true };
+    expect(additiveRefusal(ISSUE, [...AUTHORED, gone], SUITE)).toMatch(/author deleted .*old\.test\.ts/);
+  });
+
+  it("refuses a checkout the author left untouched", () => {
+    expect(additiveRefusal(ISSUE, [], SUITE)).toBe("author changed nothing in the checkout");
   });
 
   it.each(["tests/acceptance/162-x.test.ts", "src/widget.test.ts", ".Workflowish/x.test.ts"])(
-    "throws, writing nothing, when a path is outside the suite's trees (%s)",
-    async (path) => {
-      const { attempt, written } = authoring([{ path: TEST_PATH, content: failsTest() }, { path, content: failsTest() }]);
-      await expect(attempt).rejects.toThrow(new RegExp(`outside ${SUITE.roots.join("/, ")}/`));
-      expect(written).toEqual([]);
+    "refuses a path outside the suite's trees (%s)",
+    (path) => {
+      expect(additiveRefusal(ISSUE, [...AUTHORED, created(path, failsTest())], SUITE)).toBe(
+        `author wrote outside ${SUITE.roots.join("/, ")}/: ${path}`,
+      );
     },
   );
 
   it.each([
-    ["a plain test(", failsTest().replace("test.fails(", "test(")],
+    ["a plain test(", failsTest().replace(/test\.fails\(/g, "test(")],
     ["a test.fails( naming another ticket", failsTest(999)],
-    ["no test at all", "export const nothing = 1;\n"],
-  ])("throws, writing nothing, when a test file carries %s", async (_shape, content) => {
-    const { attempt, written } = authoring([{ path: TEST_PATH, content }]);
-    await expect(attempt).rejects.toThrow(new RegExp(`no test.fails\\( naming #${ISSUE}`));
-    expect(written).toEqual([]);
+    ["no test at all", "export const nothing = 1;"],
+  ])("refuses a test file carrying %s", (_shape, content) => {
+    expect(additiveRefusal(ISSUE, [created(TEST_PATH, content)], SUITE)).toMatch(
+      new RegExp(`no test file carrying a test.fails\\( naming #${ISSUE}`),
+    );
   });
 
-  it("throws, writing nothing, when the model returned only stubs and no test", async () => {
-    const { attempt, written } = authoring([{ path: SUBJECT, content: "export const widget = 1;\n" }]);
-    await expect(attempt).rejects.toThrow(/no test file/);
-    expect(written).toEqual([]);
+  it("refuses a batch of stubs and no test", () => {
+    expect(additiveRefusal(ISSUE, [created(SUBJECT, "export const widget = 1;")], SUITE)).toMatch(/no test file/);
   });
 });
 
@@ -265,22 +370,6 @@ describe("renderCriteria", () => {
     expect(renderCriteria(["`make test` exits 0 — check: `make test`"])).toContain(
       "~~~\n`make test` exits 0 — check: `make test`\n~~~",
     );
-  });
-});
-
-describe("renderFiles", () => {
-  it("renders each file's contents under its own path, in the order given", () => {
-    const rendered = renderFiles(["a/one.ts", "b/two.ts"], (path) => `contents of ${path}`, NO_CLAIMED_FILES);
-    expect(rendered.indexOf("a/one.ts")).toBeLessThan(rendered.indexOf("b/two.ts"));
-    expect(rendered).toContain("```\ncontents of a/one.ts\n```");
-  });
-
-  it("says a file is absent rather than showing an empty block", () => {
-    expect(renderFiles(["not/yet.ts"], () => undefined, NO_CLAIMED_FILES)).toContain(CLAIMED_FILE_ABSENT);
-  });
-
-  it("stands the caller's own sentence in for an empty list", () => {
-    expect(renderFiles([], () => "unused", NO_CLAIMED_FILES)).toBe(NO_CLAIMED_FILES);
   });
 });
 
@@ -497,20 +586,18 @@ describe("runAcceptanceAuthor", () => {
 
   function run() {
     const tracker = trackerWith(TRACKER);
-    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
-    const git = createFakeGit(() => "");
-    const written: string[] = [];
+    const stage = createFakeStage(SUMMARY);
+    const git = checkoutShowing(AUTHORED);
     const outcome = runAcceptanceAuthor({
       gh: tracker.gh,
       exec: stage.exec,
-      writeFile: (path) => written.push(path),
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
       git: git.git,
       suite: SUITE,
     });
-    return { outcome, tracker, stage, git, written };
+    return { outcome, tracker, stage, git };
   }
 
   it("reads the ticket and its parent PRD, and sends the tracker nothing else", async () => {
@@ -525,7 +612,7 @@ describe("runAcceptanceAuthor", () => {
     expect(stage.stdins[0]).toContain(PRD_BODY);
   });
 
-  const STRIKE_SIGNATURE = "author wrote no test.fails( naming #162.2";
+  const STRIKE_SIGNATURE = "author wrote no test file carrying a test.fails( naming #162";
 
   function struck(tracker: { gh: GhExec }, bodies: string[]): GhExec {
     return (args) =>
@@ -536,15 +623,14 @@ describe("runAcceptanceAuthor", () => {
 
   function runAtRung(rung: string | undefined, bodies: string[]) {
     const tracker = trackerWith(TRACKER);
-    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const stage = createFakeStage(SUMMARY);
     const outcome = runAcceptanceAuthor({
       gh: struck(tracker, bodies),
       exec: stage.exec,
-      writeFile: () => {},
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
-      git: createFakeGit(() => "").git,
+      git: checkoutShowing(AUTHORED).git,
       suite: SUITE,
       rung,
     });
@@ -570,10 +656,10 @@ describe("runAcceptanceAuthor", () => {
     expect(stage.stdins[0]).toContain(NO_EARLIER_ATTEMPT);
   });
 
-  it("lands what it wrote with a commit message naming the ticket, and pushes", async () => {
-    const { outcome, git, written } = run();
+  it("lands what the author changed with a commit message naming the ticket, and pushes", async () => {
+    const { outcome, git } = run();
     await outcome;
-    expect(written).toEqual([TEST_PATH]);
+    expect(git.calls).toContainEqual(["add", TEST_PATH]);
     const commit = git.calls.find((call) => call[0] === "commit");
     expect(commit?.at(-1)).toContain(`#${ISSUE}`);
     expect(commit?.at(-1)).toContain(TEST_PATH);
@@ -584,15 +670,14 @@ describe("runAcceptanceAuthor", () => {
 
   it("reads only the ticket when it names no parent PRD", async () => {
     const tracker = trackerWith({ [ISSUE]: { title: "t", body: TICKET_BODY.replace(`## Parent PRD\n#${PRD}\n\n`, "") } });
-    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
+    const stage = createFakeStage(SUMMARY);
     await runAcceptanceAuthor({
       gh: tracker.gh,
       exec: stage.exec,
-      writeFile: () => {},
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
-      git: createFakeGit(() => "").git,
+      git: checkoutShowing(AUTHORED).git,
       suite: SUITE,
     });
     expect(tracker.reads).toHaveLength(1);
@@ -603,24 +688,20 @@ describe("runAcceptanceAuthor", () => {
 describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", () => {
   const TRACKER = { [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } };
   const HELPER = ".Workflow/agent-workflows/shared/widget.fixture.ts";
+  const REPAIRED = [created(HELPER, "export const arrange = 1;"), ...AUTHORED];
 
   async function repairRun(gates: GateVerdict[], first: { sessionId?: string } = { sessionId: "author-1" }) {
     const writes: string[][] = [];
     const tracker = trackerWith(TRACKER, {}, writes);
-    const repaired = JSON.stringify({
-      files: [{ path: HELPER, content: "export const arrange = 1;\n" }, { path: TEST_PATH, content: failsTest() }],
-    });
     const stage = createFakeStages([
-      { text: JSON.stringify({ files: [{ path: TEST_PATH, content: failsTest() }] }), ...first },
-      ...Array.from({ length: REPAIR_ROUNDS }, () => ({ text: repaired, sessionId: "author-1" })),
+      { text: SUMMARY, ...first },
+      ...Array.from({ length: REPAIR_ROUNDS }, () => ({ text: SUMMARY, sessionId: "author-1" })),
     ]);
-    const git = createFakeGit(() => "");
-    const written: string[] = [];
+    const git = checkoutShowing(AUTHORED, REPAIRED);
     const verdicts = [...gates];
     const outcome = await runAcceptanceAuthor({
       gh: tracker.gh,
       exec: stage.exec,
-      writeFile: (path) => written.push(path),
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => verdicts.shift() ?? GATE_RED,
@@ -628,17 +709,18 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
       log: () => {},
       suite: SUITE,
     });
-    return { outcome, stage, git, written, writes };
+    return { outcome, stage, git, writes };
   }
 
-  it("resumes the author's session with the judgement, rewrites the files, and lands the repaired batch", async () => {
-    const { outcome, stage, git, written, writes } = await repairRun([GATE_RED, GATE_GREEN]);
+  const landed = (git: ReturnType<typeof createFakeGit>) => git.calls.filter((call) => call[0] === "commit" || call[0] === "push");
+
+  it("resumes the author's session with the judgement, rereads the checkout, and lands the repaired batch", async () => {
+    const { outcome, stage, git, writes } = await repairRun([GATE_RED, GATE_GREEN]);
     expect(outcome).toEqual({ verdict: "pushed" });
     expect(stage.calls[1]).toContain("--resume");
     expect(stage.calls[1]).toContain("author-1");
     expect(stage.stdins[1]).toContain(CLONE_REPORT);
-    expect(written).toEqual([TEST_PATH, HELPER, TEST_PATH]);
-    expect(git.calls.find((call) => call[0] === "add")).toEqual(["add", HELPER, TEST_PATH]);
+    expect(git.calls).toContainEqual(["add", HELPER, TEST_PATH]);
     expect(writes.filter(notALaneStamp)).toEqual([]);
     expect(writes).toContainEqual(["issue", "edit", String(ISSUE), "--add-label", ACCEPTING_LABEL]);
   });
@@ -649,7 +731,7 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     );
     expect(outcome.verdict).toBe("refused");
     expect(stage.calls, "one authoring call, then every repair round, and no more").toHaveLength(REPAIR_ROUNDS + 1);
-    expect(git.calls).toEqual([]);
+    expect(landed(git)).toEqual([]);
     expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
     const comment = writes.find((call) => call[0] === "issue" && call[1] === "comment");
     expect(comment?.[4]).toContain(`all ${REPAIR_ROUNDS} of its repair rounds`);
@@ -662,6 +744,32 @@ describe("runAcceptanceAuthor: a red batch is one repair turn, not a verdict", (
     expect(stage.calls).toHaveLength(1);
     expect(writes.some((call) => call.includes("needs-human"))).toBe(false);
     expect(writes.find((call) => call[0] === "issue" && call[1] === "comment")?.[4]).toContain(`all ${REPAIR_ROUNDS} of its repair rounds`);
+  });
+
+  it("hands a diff that removed a line to the repair round rather than to the tests", async () => {
+    const writes: string[][] = [];
+    const rewrote: ChangedFile = { path: TEST_PATH, created: false, deleted: false, added: failsTest().split("\n"), removed: ["x"] };
+    let testsRan = 0;
+    const stage = createFakeStages([
+      { text: SUMMARY, sessionId: "author-1" },
+      { text: SUMMARY, sessionId: "author-1" },
+    ]);
+    const outcome = await runAcceptanceAuthor({
+      gh: trackerWith(TRACKER, {}, writes).gh,
+      exec: stage.exec,
+      issueNumber: ISSUE,
+      runTests: () => {
+        testsRan += 1;
+        return GREEN;
+      },
+      gate: () => GATE_GREEN,
+      git: checkoutShowing([rewrote], AUTHORED).git,
+      log: () => {},
+      suite: SUITE,
+    });
+    expect(outcome).toEqual({ verdict: "pushed" });
+    expect(stage.stdins[1]).toContain(`author removed 1 existing line(s) from ${TEST_PATH}`);
+    expect(testsRan).toBe(1);
   });
 });
 
@@ -788,66 +896,44 @@ describe("refireAcceptance", () => {
   });
 });
 
-describe("acceptRound: a subject the test runs as a process gets no stub", () => {
+describe("a subject the test runs as a process gets no stub", () => {
   const HOOK = ".claude/hooks/session-brief.py";
   const HARNESS = ".claude/hooks/test_session_brief.py";
 
-  test("#448.2: acceptRound refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
+  test("#448.2: the lane refuses a non-test .py under .claude/hooks/, naming it, before any test runs", async () => {
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, []);
-    const stage = answer([
-      { path: TEST_PATH, content: failsTest() },
-      { path: HOOK, content: `raise SystemExit("#${ISSUE}: not built")\n` },
-    ]);
-    const written: string[] = [];
     let testsRan = false;
-    const outcome = runAcceptanceAuthor({
+    const outcome = await runAcceptanceAuthor({
       gh: tracker.gh,
-      exec: stage.exec,
-      writeFile: (path) => written.push(path),
+      exec: createFakeStage(SUMMARY).exec,
       issueNumber: ISSUE,
       runTests: () => {
         testsRan = true;
         return GREEN;
       },
       gate: () => GATE_GREEN,
-      git: createFakeGit(() => "").git,
+      git: checkoutShowing([...AUTHORED, created(HOOK, `raise SystemExit("#${ISSUE}: not built")`)]).git,
       log: () => {},
       suite: SUITE,
     });
 
-    const refusal = await outcome.then(
-      () => "",
-      (thrown: unknown) => (thrown as Error).message,
-    );
+    const refusal = outcome.verdict === "refused" ? outcome.reason : "";
     expect(refusal).toContain(HOOK);
     expect(refusal).toMatch(/stub|\.proc\.test\.ts/i);
     expect(testsRan).toBe(false);
-    expect(written).toEqual([]);
   });
 
-  test("#448.3: the no-test-file refusal names the suffixes it looked for", async () => {
+  test("#448.3: the no-test-file refusal names the suffixes it looked for", () => {
     const suite: SuiteLayout = {
       files: [".claude/hooks/ticket-shape.test.tsx"],
       roots: [".claude"],
       suffixes: [".test.mjs", ".test.tsx"],
     };
-    const stage = answer([{ path: HARNESS, content: "def test_brief():\n    assert False\n" }]);
-    const written: string[] = [];
-    const attempt = authorAcceptanceTests({
-      exec: stage.exec,
-      writeFile: (path) => written.push(path),
-      issueNumber: ISSUE,
-      ticket: TICKET,
-      suite,
-    });
 
-    const refusal = await attempt.then(
-      () => "",
-      (thrown: unknown) => (thrown as Error).message,
-    );
+    const refusal = additiveRefusal(ISSUE, [created(HARNESS, "def test_brief():\n    assert False")], suite) ?? "";
+
     expect(refusal).toContain("no test file");
     for (const suffix of suite.suffixes) expect(refusal).toContain(suffix);
-    expect(written).toEqual([]);
   });
 });
 
@@ -864,11 +950,10 @@ describe("the lane budget bounds the acceptance author's model session", () => {
     void runAcceptanceAuthor({
       gh: tracker.gh,
       exec: hangingExec,
-      writeFile: () => {},
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
-      git: createFakeGit(() => "").git,
+      git: checkoutShowing(AUTHORED).git,
       log: () => {},
       suite: SUITE,
     }).then(
@@ -926,16 +1011,14 @@ describe("the acceptance lane rings no lane, leaving the handoff to the reconcil
   test("a pushed batch dispatches nothing, so a ticket reaches implement only by recompute", async () => {
     const writes: string[][] = [];
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } }, {}, writes);
-    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
 
     await runAcceptanceAuthor({
       gh: tracker.gh,
-      exec: stage.exec,
-      writeFile: () => {},
+      exec: createFakeStage(SUMMARY).exec,
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
-      git: createFakeGit(() => "").git,
+      git: checkoutShowing(AUTHORED).git,
       log: () => {},
       suite: SUITE,
     });
@@ -948,13 +1031,11 @@ describe("the acceptance lane rings no lane, leaving the handoff to the reconcil
 describe("the acceptance lane never reaches trunk", () => {
   test("the authored batch is pushed to the ticket's branch, and no call in the lane targets main", async () => {
     const tracker = trackerWith({ [ISSUE]: TICKET, [PRD]: { title: "PRD", body: PRD_BODY } });
-    const stage = answer([{ path: TEST_PATH, content: failsTest() }]);
-    const git = createFakeGit(() => "");
+    const git = checkoutShowing(AUTHORED);
 
     const outcome = await runAcceptanceAuthor({
       gh: tracker.gh,
-      exec: stage.exec,
-      writeFile: () => {},
+      exec: createFakeStage(SUMMARY).exec,
       issueNumber: ISSUE,
       runTests: () => GREEN,
       gate: () => GATE_GREEN,
@@ -969,172 +1050,6 @@ describe("the acceptance lane never reaches trunk", () => {
     expect(pushes).toEqual([["push", "--no-verify", "origin", `HEAD:accept/issue-${ISSUE}`]]);
     expect(git.calls.flat()).not.toContain("main");
     expect(git.calls.filter((call) => call[0] === "rebase"), "a branch push races nobody").toHaveLength(0);
-  });
-});
-
-describe("the author's write scope", () => {
-  const EXISTING = ".Workflow/agent-workflows/shared/widget.test.ts";
-  const UNSEEN = ".Workflow/agent-workflows/shared/elsewhere.test.ts";
-
-  const TWO_CASES = [
-    'import { expect, test } from "vitest";',
-    'test("one", () => { expect(1).toBe(1); });',
-    'test("two", () => { expect(2).toBe(2); });',
-    "",
-  ].join("\n");
-
-  function onDisk(files: Record<string, string>) {
-    return (path: string): string | undefined => files[path];
-  }
-
-  async function refusalFrom(files: AuthoredFile[], disk: Record<string, string>): Promise<string> {
-    const stage = answer(files);
-    try {
-      await authorAcceptanceTests({
-        exec: stage.exec,
-        writeFile: () => {},
-        issueNumber: ISSUE,
-        ticket: TICKET,
-        readFile: onDisk(disk),
-        suite: SUITE,
-        houseRules: "",
-        checkContract: "",
-      });
-    } catch (err) {
-      return reason(err);
-    }
-    return "";
-  }
-
-  it("refuses a file that exists on disk and was never shown to the author", async () => {
-    const refusal = await refusalFrom(
-      [{ path: EXISTING, content: failsTest() }, { path: UNSEEN, content: "export const x = 1;\n" }],
-      { [UNSEEN]: TWO_CASES },
-    );
-
-    expect(refusal).toBe(unshownRewriteRefusal(UNSEEN));
-  });
-
-  it("admits a path that does not exist yet, since a new file deletes nothing", async () => {
-    expect(await refusalFrom([{ path: EXISTING, content: failsTest() }], {})).toBe("");
-  });
-
-  it("refuses a shown file returned with fewer test cases than it was given", async () => {
-    const onDiskNow = [
-      TWO_CASES,
-      'test("three", () => { expect(3).toBe(3); });',
-      'test("four", () => { expect(4).toBe(4); });',
-      'test("five", () => { expect(5).toBe(5); });',
-      "",
-    ].join("\n");
-
-    const refusal = await refusalFrom([{ path: EXISTING, content: failsTest() }], { [EXISTING]: onDiskNow });
-
-    expect(testCaseCount(onDiskNow)).toBe(5);
-    expect(testCaseCount(failsTest())).toBe(2);
-    expect(refusal).toBe(shrinkingRewriteRefusal(EXISTING, 5, 2));
-  });
-
-  it("admits a shown file that keeps every case it was given and adds the criteria", async () => {
-    const refusal = await refusalFrom(
-      [{ path: EXISTING, content: `${TWO_CASES}${failsTest()}` }],
-      { [EXISTING]: TWO_CASES },
-    );
-
-    expect(refusal).toBe("");
-  });
-
-  it("lets the repair round rewrite the file the author itself wrote a moment earlier", async () => {
-    const stage = answer([{ path: UNSEEN, content: `${TWO_CASES}${failsTest()}` }]);
-
-    const batch = await repairAcceptanceTests(
-      {
-        exec: stage.exec,
-        writeFile: () => {},
-        issueNumber: ISSUE,
-        ticket: TICKET,
-        readFile: onDisk({ [UNSEEN]: TWO_CASES }),
-        suite: SUITE,
-        houseRules: "",
-        checkContract: "",
-      },
-      "session-1",
-      "the gate went red",
-      [UNSEEN],
-    );
-
-    expect(batch.files.map((file) => file.path)).toEqual([UNSEEN]);
-  });
-});
-
-describe("criteria the filing already handed over", () => {
-  const HANDOFF = ".Workflow/agent-workflows/shared/handoff.test.ts";
-  const SUITE_WITH_HANDOFF: SuiteLayout = {
-    files: [TEST_PATH, HANDOFF],
-    roots: [".Workflow", ".claude"],
-    suffixes: [".test.ts"],
-  };
-
-  function criterionTest(index: number, fails = ".fails"): string {
-    return `import { expect, test } from "vitest";\ntest${fails}("#${ISSUE}.${index}: criterion ${index}", () => {\n  expect(1).toBe(2);\n});\n`;
-  }
-
-  async function refusalFrom(files: AuthoredFile[], disk: Record<string, string>): Promise<string> {
-    const stage = answer(files);
-    try {
-      await authorAcceptanceTests({
-        exec: stage.exec,
-        writeFile: () => {},
-        issueNumber: ISSUE,
-        ticket: TICKET,
-        readFile: (path) => disk[path],
-        suite: SUITE_WITH_HANDOFF,
-        houseRules: "",
-        checkContract: "",
-      });
-    } catch (err) {
-      return reason(err);
-    }
-    return "";
-  }
-
-  it("counts a criterion whose test is already in the tree, so the author writes only what is missing", async () => {
-    expect(await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [HANDOFF]: criterionTest(1) })).toBe("");
-  });
-
-  it("counts a criterion an implementer already turned on, not only one still under test.fails", async () => {
-    expect(
-      await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [HANDOFF]: criterionTest(1, "") }),
-    ).toBe("");
-  });
-
-  it("still refuses a criterion no test covers, in the tree or in the batch", async () => {
-    expect(await refusalFrom([{ path: TEST_PATH, content: criterionTest(1) }], {})).toBe(
-      `author wrote no test.fails( naming #${ISSUE}.2: missing criterion 2 of 2`,
-    );
-  });
-
-  it("does not count a criterion standing in a file this batch returns without it", async () => {
-    expect(
-      await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [TEST_PATH]: criterionTest(1) }),
-    ).toBe(`author wrote no test.fails( naming #${ISSUE}.1: missing criterion 1 of 2`);
-  });
-});
-
-describe("testCaseCount", () => {
-  it("counts it, test and their modifiers, and nothing that merely mentions them", () => {
-    const source = [
-      'import { expect, it, test } from "vitest";',
-      'test("a", () => {});',
-      '  it("b", () => {});',
-      '  test.fails("c", () => {});',
-      '  it.each([1])("d", () => {});',
-      'const latest = "the latest test(" + "run";',
-      "// test(",
-    ].join("\n");
-
-    expect(testCaseCount(source)).toBe(4);
-    expect(testCaseCount("")).toBe(0);
   });
 });
 
@@ -1158,36 +1073,16 @@ describe("colocatedTests", () => {
   });
 });
 
-describe("what the author is shown", () => {
-  it("inlines the tests beside a claimed subject, so it adds to them rather than inventing them", async () => {
-    const target = ".Workflow/agent-workflows/shared/widget.test.ts";
-    const stage = answer([{ path: target, content: failsTest() }]);
-
-    await authorAcceptanceTests({
-      exec: stage.exec,
-      writeFile: () => {},
-      issueNumber: ISSUE,
-      ticket: TICKET,
-      readFile: (path) => (path === target ? "test(\"already here\", () => {});\n" : undefined),
-      suite: SUITE,
-      houseRules: "",
-      checkContract: "",
-    });
-
-    expect(stage.stdins[0]).toContain("already here");
-    expect(stage.stdins[0]).not.toContain(NO_TARGET_TESTS);
+describe("what the author is pointed at", () => {
+  it("lists the tests beside a claimed subject by path, so it appends to them rather than inventing them", async () => {
+    expect(await promptFor()).toContain(`- \`${TEST_PATH}\``);
   });
 
-  it("says so plainly when no test sits beside a claimed subject yet", () => {
-    expect(renderFiles([], () => undefined, NO_TARGET_TESTS)).toBe(NO_TARGET_TESTS);
-  });
-
-  it("leaves a file over the cap out rather than spending the prompt on it", () => {
-    const huge = "x".repeat(INLINE_FILE_CAP_BYTES + 1);
-    const rendered = renderFiles(["big.ts"], () => huge, NO_CLAIMED_FILES);
-
-    expect(rendered).toContain(FILE_OVER_BUDGET);
-    expect(rendered).not.toContain(huge);
+  it("says so plainly when the ticket claims nothing and no test sits beside anything", async () => {
+    const ticket = { title: "t", body: TICKET_BODY.replace(`## Files claimed\n- ${SUBJECT}\n`, "") };
+    const prompt = await promptFor({ ticket });
+    expect(prompt).toContain(NO_TARGET_TESTS);
+    expect(prompt).toContain(NO_CLAIMED_FILES);
   });
 });
 
