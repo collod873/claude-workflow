@@ -22,8 +22,14 @@ export interface TrackerBlocker {
   stateReason: string | null;
 }
 
+export interface TrackerSubIssue {
+  number: number;
+  state: string;
+}
+
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   jobs(runId: number): TrackerJob[];
   blockedBy(number: number): TrackerBlocker[];
+  subIssues(prdNumber: number): TrackerSubIssue[];
 }

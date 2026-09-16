@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GhExec } from "./gh";
-import { blockedByPath, runJobsPath, workflowRunsPath } from "./gh-paths";
-import type { Tracker, TrackerBlocker, WorkflowRun } from "./tracker";
+import { blockedByPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import type { Tracker, TrackerBlocker, TrackerSubIssue, WorkflowRun } from "./tracker";
 
 const ApiRun = z.object({
   id: z.number(),
@@ -31,6 +31,11 @@ const ApiBlocker = z.object({
   state_reason: z.string().nullable().optional(),
 });
 
+const ApiSubIssue = z.object({
+  number: z.number(),
+  state: z.string(),
+});
+
 function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
   return {
     id: run.id,
@@ -44,6 +49,10 @@ function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
 
 function toBlocker(blocker: z.infer<typeof ApiBlocker>): TrackerBlocker {
   return { number: blocker.number, state: blocker.state, stateReason: blocker.state_reason ?? null };
+}
+
+function toSubIssue(issue: z.infer<typeof ApiSubIssue>): TrackerSubIssue {
+  return { number: issue.number, state: issue.state };
 }
 
 export function trackerGh(gh: GhExec): Tracker {
@@ -64,6 +73,12 @@ export function trackerGh(gh: GhExec): Tracker {
       return ApiBlocker.array()
         .parse(JSON.parse(raw))
         .map(toBlocker);
+    },
+    subIssues(prdNumber) {
+      const raw = gh(["api", subIssuesPath(prdNumber), "--jq", "[.[] | {number, state}]"]);
+      return ApiSubIssue.array()
+        .parse(JSON.parse(raw))
+        .map(toSubIssue);
     },
   };
 }
