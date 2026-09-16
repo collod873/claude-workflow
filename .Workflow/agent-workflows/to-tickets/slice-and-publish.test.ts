@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
 import { blockedByPath } from "../shared/gh-paths";
 import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
@@ -229,5 +229,28 @@ describe("sliceAndPublish rings no lane, leaving the recompute to notice the pub
     const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
     expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow();
+  });
+});
+
+describe("a repair the publisher makes is a repair it reports", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test.fails("#584.5: sliceAndPublish prints one line per rooted claim, naming the path as written and as rooted, before it creates anything", () => {
+    const fake = createFakeGh();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const plan = [slice({ title: "Rooted for me", filesClaimed: ["agent-workflows/shared/render-body.ts"] })];
+
+    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+
+    const printed = logSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      printed.some(
+        (line) =>
+          line.includes("agent-workflows/shared/render-body.ts") &&
+          line.includes(".Workflow/agent-workflows/shared/render-body.ts"),
+      ),
+    ).toBe(true);
   });
 });
