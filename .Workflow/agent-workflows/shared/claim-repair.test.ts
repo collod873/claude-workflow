@@ -72,13 +72,13 @@ test.fails("#584.4: only filesClaimed is repaired: an unrooted token in whatToBu
   const planned = [
     slice({
       title: "Prose is the author's",
-      whatToBuild: "Extend shared/gh.ts with a tracker port.",
+      whatToBuild: "See shared/unrelated.ts for context.",
       filesClaimed: ["agent-workflows/shared/gh.ts"],
     }),
   ];
 
   const { plan } = repair(planned, root);
 
-  expect(plan[0].whatToBuild).toBe("Extend shared/gh.ts with a tracker port.");
-  expect(() => validatePathsAreRooted(plan)).toThrow(/shared\/gh\.ts/);
+  expect(plan[0].whatToBuild).toBe("See shared/unrelated.ts for context.");
+  expect(() => validatePathsAreRooted(plan)).toThrow(/shared\/unrelated\.ts/);
 });
