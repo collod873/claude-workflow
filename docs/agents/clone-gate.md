@@ -70,8 +70,8 @@ refuse to guess. A seeder that guesses well once cannot substitute for them.
    One growth is permitted, and only for a clone whose every location sits in the repo's
    **immutable set**: files a lane is forbidden to edit. No lane may ever dedupe them, and a
    ratchet nobody can turn is not a ratchet: it is a red `main` that whichever lane pushed last
-   gets blamed for. In `collod873/claude-workflow` that set is `tests/acceptance/`, and the growth
-   is permitted only to the acceptance lane at its push to `main` (claude-workflow/ADR-0114).
+   gets blamed for. In `collod873/claude-workflow` that set is
+   `.Workflow/agent-workflows/shared/immutable-set.json`.
 
    **A ratchet also needs a door for an entry that moved.** An entry is a fingerprint of the
    duplicated text, and that text is not the same thing as the clone: a detector reports a span of

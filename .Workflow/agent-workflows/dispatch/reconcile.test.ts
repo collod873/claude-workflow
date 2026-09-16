@@ -758,23 +758,6 @@ test("#550: one pass reads each ticket's labels once, so no label write is decid
   expect(tracker.calls.filter((call) => call[0] === "issue" && call[1] === "view" && call.includes("labels"))).toEqual([]);
 });
 
-test(
-  "#472.3: the to-build door section of the reconcile lane's edge walkthrough says a refusal escalates and a clear lifts the label",
-  async () => {
-    const doc = await readFile(new URL("../../../docs/agents/reconcile-lane-edges.md", import.meta.url), "utf8");
-    const lines = doc.split("\n");
-
-    const opens = lines.findIndex((line) => line.includes("toBuildRefusal"));
-    expect(opens).toBeGreaterThanOrEqual(0);
-
-    const rest = lines.slice(opens + 1);
-    const closes = rest.findIndex((line) => line.startsWith("## "));
-    const section = rest.slice(0, closes === -1 ? rest.length : closes).join("\n");
-
-    expect(section).toContain(NEEDS_HUMAN_LABEL);
-  },
-);
-
 function claimingBody(paths: string[]): string {
   return [
     "## Acceptance criteria",

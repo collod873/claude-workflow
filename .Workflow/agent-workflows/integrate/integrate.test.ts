@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
@@ -354,23 +353,6 @@ describe("runIntegrate rings the merged trunk's own CI", () => {
     for (const arg of rings[0]) expect(arg).not.toMatch(/\s/);
     expect(calls.filter((call) => call.some((arg) => /workflow\s+run/.test(arg)))).toEqual([]);
   });
-
-  test(
-    "#474.3: docs/agents/integrate-lane-edges.md names the ring between mergePr() and announceGraphChanged() and says why a bot merge needs it",
-    async () => {
-      const doc = await readFile(new URL("../../../docs/agents/integrate-lane-edges.md", import.meta.url), "utf8");
-
-      expect(doc).toMatch(/workflow_dispatch/i);
-
-      const merge = doc.indexOf("mergePr()");
-      const bell = doc.lastIndexOf("announceGraphChanged()");
-      const ring = doc.indexOf("ci.yml", merge);
-      expect(merge).toBeGreaterThan(-1);
-      expect(bell).toBeGreaterThan(merge);
-      expect(ring).toBeGreaterThan(merge);
-      expect(ring).toBeLessThan(bell);
-    },
-  );
 });
 
 const resends = (dispatches: FakeDispatch[]) =>

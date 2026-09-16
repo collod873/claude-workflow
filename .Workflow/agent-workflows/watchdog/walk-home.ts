@@ -225,9 +225,9 @@ function callerIssueTitle(path: string): string {
 
 function callerIssueBody(repository: string, run: RunSummary, path: string, logTail: string): string {
   return [
-    `A run of \`${run.path}\` failed with its failing step naming \`${path}\`, a path inside this`,
-    "repository's own tree rather than the claude-workflow machine checkout, so this is this",
-    "repository's own defect, not the machine's (ADR-0135). Filed by claude-workflow's walk-home",
+    `A run of \`${run.path}\` failed with its failing step naming \`${path}\`, a path the`,
+    "claude-workflow machine checkout does not track, so it is routed here as this repository's",
+    "defect rather than the machine's (ADR-0141). Filed by claude-workflow's walk-home",
     "sweep (ADR-0136), which runs there under a credential scoped to write here, and nowhere else.",
     "",
     `- Run: ${run.htmlUrl}`,

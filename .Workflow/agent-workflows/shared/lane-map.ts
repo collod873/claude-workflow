@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { NEEDS_HUMAN_LABEL, QUEUED_LABEL } from "./labels";
 import { type Doors, LANE_WIRING, laneFacts } from "./lane-wiring";
@@ -6,7 +6,6 @@ import { LADDERED_LANES } from "./strikes";
 
 export const LANE_MAP_RELATIVE_PATH = "docs/agents/lane-map.md";
 const AGENT_WORKFLOWS = ".Workflow/agent-workflows";
-const DOCS_DIR = "docs/agents";
 
 const OWNER = "owner";
 const SESSION_END = "session-end";
@@ -20,7 +19,6 @@ export interface LaneNode {
   name: string;
   kind: NodeKind;
   number?: string;
-  doc?: string;
   entrypoint?: string;
   shipsToCallers: boolean;
   wakesOn: string[];
@@ -189,19 +187,9 @@ function labelsAppliedBy(code: string, corpus: Corpus): string[] {
   return raws.flatMap((raw) => resolveConstant(raw, corpus.constants) ?? []);
 }
 
-function docFor(root: string, lane: string): { doc: string; number?: string } | undefined {
-  const dir = join(root, DOCS_DIR);
-  if (!existsSync(dir)) return undefined;
-  const docs = readdirSync(dir).filter((name) => name.endsWith("-lane-edges.md"));
-  const byName = docs.find((name) => name.startsWith(`${lane}-`)) ?? docs.find((name) => name.startsWith(lane.slice(0, 5)) || lane.includes(name.replace("-lane-edges.md", "")));
-  const byMention = docs
-    .map((name) => ({ name, hits: readFileSync(join(dir, name), "utf8").split(`${lane}.yml`).length - 1 }))
-    .filter((entry) => entry.hits > 0)
-    .sort((a, b) => b.hits - a.hits)[0]?.name;
-  const doc = byName ?? byMention;
-  if (!doc) return undefined;
-  const number = /Lane (\d\d), followed end to end/.exec(readFileSync(join(dir, doc), "utf8"))?.[1];
-  return { doc, number };
+function laneNumber(labels: Iterable<string>): string | undefined {
+  const numbers = [...labels].flatMap((label) => /^(\d)-/.exec(label)?.[1] ?? []).sort();
+  return numbers.length > 0 ? `0${numbers[0]}` : undefined;
 }
 
 function doorsOf(lane: string, doors: Doors): { wakesOn: string[]; edges: Edge[] } {
@@ -259,7 +247,6 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
     if (labelsApplied.has(NEEDS_HUMAN_LABEL)) stops.push("labels needs-human");
     for (const refusal of [...labelsApplied].filter((label) => /refused|failed/.test(label))) stops.push(`labels ${refusal}`);
 
-    const located = docFor(root, lane);
     const { wakesOn, edges } = doorsOf(lane, facts.doors);
     rawEdges.push(...edges);
 
@@ -267,8 +254,7 @@ export function buildLaneMap(root: string, runs: Map<string, RunTally> = new Map
       id: lane,
       name: facts.name,
       kind: facts.spendsModel ? "model" : "wire",
-      number: located?.number,
-      doc: located?.doc,
+      number: laneNumber(labelsApplied),
       entrypoint: entry,
       shipsToCallers: facts.shipsToCallers,
       wakesOn,
@@ -866,10 +852,6 @@ function cell(items: string[]): string {
   return items.length === 0 ? "" : items.map((item) => `\`${item}\``).join(", ");
 }
 
-function link(node: LaneNode): string {
-  return node.doc ? `[${node.name}](${node.doc})` : node.name;
-}
-
 export function findings(map: LaneMap): string[] {
   const lanes = map.nodes.filter((node) => node.kind === "model" || node.kind === "wire");
   const out: string[] = [];
@@ -963,7 +945,7 @@ export function renderLaneMap(map: LaneMap): string {
   for (const node of sorted) {
     const tally = map.runs.get(node.id);
     const runs = map.window ? (tally ? `${tally.worked} / ${tally.red} / ${tally.cancelled} / ${tally.skipped}` : "0 / 0 / 0 / 0") : "";
-    const name = `${node.number ? `${node.number} ` : ""}${link(node)}${node.shipsToCallers ? "" : " (machine only)"}`;
+    const name = `${node.number ? `${node.number} ` : ""}${node.name}${node.shipsToCallers ? "" : " (machine only)"}`;
     const labels = node.labelsApplied.map((label) => (node.stops.includes(`labels ${label}`) ? `**\`${label}\`** (stop)` : `\`${label}\``)).join(", ");
     lines.push(`| ${name} | ${node.kind} | ${cell(node.wakesOn)} | ${cell([...node.rings, ...(node.pushesMain ? ["push to main"] : [])])} | ${labels} | ${runs} | ${node.entrypoint ? `\`${node.entrypoint}\`` : ""} |`);
   }

@@ -117,10 +117,10 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 <text class="lm-sub" x="328" y="221" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-wire" x="440" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="524" y="206" text-anchor="middle">04 · Dispatch reconcile</text>
-<text class="lm-sub" x="524" y="221" text-anchor="middle">463 ran · 0 skipped · 5 red</text>
+<text class="lm-sub" x="524" y="221" text-anchor="middle">457 ran · 0 skipped · 5 red</text>
 <text class="lm-stopline" x="524" y="235" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-wire" x="636" y="188" width="168" height="56" rx="6"/>
-<text class="lm-text" x="720" y="206" text-anchor="middle">01 · Shape — accept</text>
+<text class="lm-text" x="720" y="206" text-anchor="middle">Shape — accept</text>
 <text class="lm-sub" x="720" y="221" text-anchor="middle">65 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire lm-idle" x="878" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="962" y="206" text-anchor="middle">Walk home</text>
@@ -129,7 +129,7 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 <text class="lm-pill" x="1158" y="220" text-anchor="middle">you: issue closed</text>
 <rect class="lm-box lm-model" x="1270" y="188" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1354" y="206" text-anchor="middle">01 · Shape</text>
-<text class="lm-sub" x="1354" y="221" text-anchor="middle">85 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="1354" y="221" text-anchor="middle">88 ran · 0 skipped · 0 red</text>
 <text class="lm-stopline" x="1354" y="235" text-anchor="middle">stops: needs-human, shape-refused</text>
 <rect class="lm-box lm-source" x="1466" y="199" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="1550" y="220" text-anchor="middle">you: issue edited</text>
@@ -148,12 +148,12 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 <text class="lm-sub" x="891.9310233687197" y="369" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-wire" x="1003.9310233687197" y="336" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1087.9310233687197" y="354" text-anchor="middle">Ratify on PRD close</text>
-<text class="lm-sub" x="1087.9310233687197" y="369" text-anchor="middle">11 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="1087.9310233687197" y="369" text-anchor="middle">15 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-model lm-idle" x="1199.9310233687197" y="336" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1283.9310233687197" y="354" text-anchor="middle">04 · Acceptance</text>
 <text class="lm-sub" x="1283.9310233687197" y="369" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-model lm-idle" x="412.13717193018965" y="484" width="168" height="56" rx="6"/>
-<text class="lm-text" x="496.13717193018965" y="502" text-anchor="middle">Mechanic</text>
+<text class="lm-text" x="496.13717193018965" y="502" text-anchor="middle">05 · Mechanic</text>
 <text class="lm-sub" x="496.13717193018965" y="517" text-anchor="middle">0 runs</text>
 <text class="lm-stopline" x="496.13717193018965" y="531" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-model" x="608.1371719301897" y="484" width="168" height="56" rx="6"/>
@@ -167,20 +167,20 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 <text class="lm-pill" x="684.2382701596276" y="664" text-anchor="middle">you: by hand</text>
 <rect class="lm-box lm-wire" x="908.7882701596276" y="632" width="168" height="56" rx="6"/>
 <text class="lm-text" x="992.7882701596276" y="650" text-anchor="middle">06 · Verify</text>
-<text class="lm-sub" x="992.7882701596276" y="665" text-anchor="middle">58 ran · 0 skipped · 1 red</text>
+<text class="lm-sub" x="992.7882701596276" y="665" text-anchor="middle">57 ran · 0 skipped · 1 red</text>
 <rect class="lm-box lm-model lm-idle" x="624.4264626770755" y="780" width="168" height="56" rx="6"/>
 <text class="lm-text" x="708.4264626770755" y="798" text-anchor="middle">07 · Fixer</text>
 <text class="lm-sub" x="708.4264626770755" y="813" text-anchor="middle">0 runs</text>
 <text class="lm-stopline" x="708.4264626770755" y="827" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-model" x="912.4264626770754" y="780" width="168" height="56" rx="6"/>
 <text class="lm-text" x="996.4264626770754" y="798" text-anchor="middle">07 · Review</text>
-<text class="lm-sub" x="996.4264626770754" y="813" text-anchor="middle">24 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="996.4264626770754" y="813" text-anchor="middle">23 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire" x="1108.4264626770755" y="780" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1192.4264626770755" y="798" text-anchor="middle">Bypass counter</text>
 <text class="lm-sub" x="1192.4264626770755" y="813" text-anchor="middle">35 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire" x="596.7858757540578" y="928" width="168" height="56" rx="6"/>
 <text class="lm-text" x="680.7858757540578" y="946" text-anchor="middle">08 · Integrate</text>
-<text class="lm-sub" x="680.7858757540578" y="961" text-anchor="middle">24 ran · 0 skipped · 2 red</text>
+<text class="lm-sub" x="680.7858757540578" y="961" text-anchor="middle">23 ran · 0 skipped · 1 red</text>
 <text class="lm-stopline" x="680.7858757540578" y="975" text-anchor="middle">stops: needs-human</text>
 <rect class="lm-box lm-source" x="792.7858757540578" y="939" width="168" height="34" rx="17"/>
 <text class="lm-pill" x="876.7858757540578" y="960" text-anchor="middle">you: push</text>
@@ -196,13 +196,13 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 <text class="lm-sub" x="582.5580082804754" y="1257" text-anchor="middle">2 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire" x="694.5580082804754" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="778.5580082804754" y="1242" text-anchor="middle">Back-stamp</text>
-<text class="lm-sub" x="778.5580082804754" y="1257" text-anchor="middle">11 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="778.5580082804754" y="1257" text-anchor="middle">12 ran · 0 skipped · 0 red</text>
 <rect class="lm-box lm-wire lm-idle" x="890.5580082804754" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="974.5580082804754" y="1242" text-anchor="middle">Decline on revert</text>
 <text class="lm-sub" x="974.5580082804754" y="1257" text-anchor="middle">0 runs</text>
 <rect class="lm-box lm-wire" x="1086.5580082804754" y="1224" width="168" height="56" rx="6"/>
 <text class="lm-text" x="1170.5580082804754" y="1242" text-anchor="middle">Missing-trailer counter</text>
-<text class="lm-sub" x="1170.5580082804754" y="1257" text-anchor="middle">11 ran · 0 skipped · 0 red</text>
+<text class="lm-sub" x="1170.5580082804754" y="1257" text-anchor="middle">12 ran · 0 skipped · 0 red</text>
 </svg>
 </div>
 
@@ -219,30 +219,30 @@ waits for you. A dashed arrow is a ring back up the page, routed along the margi
 
 | Lane | Kind | Wakes on | Rings | Labels it writes | Runs (green / red / cancelled / skipped) | Code |
 |---|---|---|---|---|---|---|
-| 01 [Shape](shape-lane-edges.md) | model | `issue labeled`, `issue_comment created` |  | `1-decide`, `1-shaping`, **`needs-human`** (stop), **`shape-refused`** (stop) | 85 / 0 / 0 / 0 | `shape/shape.ts` |
-| 01 [Shape — accept](shape-lane-edges.md) | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 65 / 0 / 0 / 0 | `shape/run-accept.ts` |
-| 02 [Spec](spec-lane-edges.md) | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 65 / 0 / 0 / 0 | `spec/spec.ts` |
-| 03 [To-Tickets](to-tickets-lane-edges.md) | model | `dispatch prd-sliceable` | `run-ended` | `3-sliced`, `3-slicing`, **`slice-failed`** (stop) | 0 / 2 / 0 / 0 | `to-tickets/to-tickets.ts` |
-| 04 [Acceptance](reconcile-lane-edges.md) | model | `issue edited`, `dispatch acceptance-wanted` | `run-ended` | `4-accepting`, `queued` | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
-| 04 [Dispatch reconcile](reconcile-lane-edges.md) | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `sheet-accepted`, `ticket-ready` | `4-accepting`, `5-building`, `by-hand`, **`needs-human`** (stop), `queued`, `to-spec`, `waiting` | 301 / 5 / 157 / 0 | `dispatch/reconcile.ts` |
-| 05 [Implement](implement-lane-edges.md) | model | `dispatch ticket-ready` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `implement/implement.ts` |
-| 06 [Verify](verify-lane-edges.md) | wire | `push to main touching **, !**.md, !docs/**, !LICENSE, docs/adr/**`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 57 / 1 / 0 / 0 | `integrate/immutability.ts` |
-| 07 [Fixer](review-lane-edges.md) | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | `7-fixing`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `fixer/fixer.ts` |
-| 07 [Review](review-lane-edges.md) | model | `dispatch review-wanted` |  | `7-reviewing`, `lane-07-finding` | 24 / 0 / 0 / 0 | `review/review.ts` |
-| 08 [Integrate](integrate-lane-edges.md) | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | `8-landing`, **`needs-human`** (stop) | 21 / 2 / 1 / 0 | `integrate/integrate.ts` |
-| [Audit](standards-lane-edges.md) | model | `dispatch session-captured` | `ratification-due` |  | 0 / 0 / 0 / 0 | `observations/run-audit.ts` |
-| [Back-stamp](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 11 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
-| [Bypass counter](bookkeeping-lane-edges.md) | wire | `Verify completed` |  |  | 35 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
-| [Decline on revert](standards-lane-edges.md) | wire | `push to main touching CODING_STANDARDS.md, eslint.config.js` |  |  | 0 / 0 / 0 / 0 | `ratify/run-revert-detector.ts` |
-| [Enrol](enrol-lane-edges.md) (machine only) | wire | `push to main touching .github/workflows/*-caller.yml`, `by hand` |  |  | 2 / 0 / 0 / 0 | `enrol/enrol.ts` |
-| [Lost-dispatch counter](bookkeeping-lane-edges.md) | wire | `issue labeled` |  |  | 56 / 0 / 9 / 0 | `watchdog/lost-dispatch-counter.ts` |
-| [Mechanic](mechanic-lane-edges.md) | model | `dispatch mechanic-wanted` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `mechanic/mechanic.ts` |
-| [Missing-trailer counter](bookkeeping-lane-edges.md) | wire | `push to main touching docs/adr/**, docs/research/**` |  |  | 11 / 0 / 0 / 0 | `watchdog/missing-trailer-counter.ts` |
-| [Ratify](standards-lane-edges.md) | model | `dispatch ratification-due` | `implementation-opened` | `ratifying` | 0 / 0 / 0 / 0 | `ratify/run-ratify.ts` |
-| [Ratify on PRD close](standards-lane-edges.md) | wire | `issue closed` | `ratification-due` |  | 11 / 0 / 0 / 0 | `ratify/prd-close.ts` |
-| [Record ratifications](standards-lane-edges.md) | wire | `dispatch ratifier-merged` |  |  | 0 / 0 / 0 / 0 | `observations/run-ratification.ts` |
-| [Run watchdog](recovery-lane-edges.md) | wire | `dispatch session-captured` |  |  | 0 / 0 / 0 / 0 | `watchdog/run-watchdog.ts` |
-| [Walk home](recovery-lane-edges.md) (machine only) | wire | `dispatch session-captured` |  | `by-hand`, `ticket`, `to-build` | 0 / 0 / 0 / 0 | `watchdog/walk-home.ts` |
+| 01 Shape | model | `issue labeled`, `issue_comment created` |  | `1-decide`, `1-shaping`, **`needs-human`** (stop), **`shape-refused`** (stop) | 88 / 0 / 0 / 0 | `shape/shape.ts` |
+| 02 Spec | model | `issue labeled`, `dispatch sheet-accepted` | `prd-sliceable` | `2-questions-open`, `2-speccing`, `prd`, `sliceable` | 65 / 0 / 0 / 0 | `spec/spec.ts` |
+| 03 To-Tickets | model | `dispatch prd-sliceable` | `run-ended` | `3-sliced`, `3-slicing`, **`slice-failed`** (stop) | 0 / 2 / 0 / 0 | `to-tickets/to-tickets.ts` |
+| 04 Acceptance | model | `issue edited`, `dispatch acceptance-wanted` | `run-ended` | `4-accepting`, `queued` | 0 / 0 / 0 / 0 | `acceptance/acceptance.ts` |
+| 04 Dispatch reconcile | wire | `dispatch session-captured`, `dispatch graph-changed`, `dispatch run-ended`, `issue labeled/unlabeled`, `push to main`, `by hand` | `acceptance-wanted`, `mechanic-wanted`, `sheet-accepted`, `ticket-ready` | `4-accepting`, `5-building`, `by-hand`, **`needs-human`** (stop), `queued`, `to-spec`, `waiting` | 295 / 5 / 157 / 0 | `dispatch/reconcile.ts` |
+| 05 Implement | model | `dispatch ticket-ready` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `implement/implement.ts` |
+| 05 Mechanic | model | `dispatch mechanic-wanted` | `implementation-opened`, `mechanic-wanted`, `run-ended` | `5-building`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `mechanic/mechanic.ts` |
+| 06 Verify | wire | `push to main touching **, !**.md, !docs/**, !LICENSE, docs/adr/**`, `dispatch implementation-opened` | `fixer-needed`, `review-wanted` | `6-verifying` | 56 / 1 / 0 / 0 | `integrate/immutability.ts` |
+| 07 Fixer | model | `dispatch fixer-needed`, `by hand` | `implementation-opened` | `7-fixing`, **`needs-human`** (stop) | 0 / 0 / 0 / 0 | `fixer/fixer.ts` |
+| 07 Review | model | `dispatch review-wanted` |  | `7-reviewing`, `lane-07-finding` | 23 / 0 / 0 / 0 | `review/review.ts` |
+| 08 Integrate | wire | `dispatch implementation-opened` | `graph-changed`, `implementation-opened`, `ratifier-merged`, `push to main` | `8-landing`, **`needs-human`** (stop) | 21 / 1 / 1 / 0 | `integrate/integrate.ts` |
+| Audit | model | `dispatch session-captured` | `ratification-due` |  | 0 / 0 / 0 / 0 | `observations/run-audit.ts` |
+| Back-stamp | wire | `push to main touching docs/adr/**, docs/research/**` | `push to main` |  | 12 / 0 / 0 / 0 | `watchdog/back-stamp-walk.ts` |
+| Bypass counter | wire | `Verify completed` |  |  | 35 / 0 / 0 / 0 | `watchdog/bypass-counter.ts` |
+| Decline on revert | wire | `push to main touching CODING_STANDARDS.md, eslint.config.js` |  |  | 0 / 0 / 0 / 0 | `ratify/run-revert-detector.ts` |
+| Enrol (machine only) | wire | `push to main touching .github/workflows/*-caller.yml`, `by hand` |  |  | 2 / 0 / 0 / 0 | `enrol/enrol.ts` |
+| Lost-dispatch counter | wire | `issue labeled` |  |  | 56 / 0 / 9 / 0 | `watchdog/lost-dispatch-counter.ts` |
+| Missing-trailer counter | wire | `push to main touching docs/adr/**, docs/research/**` |  |  | 12 / 0 / 0 / 0 | `watchdog/missing-trailer-counter.ts` |
+| Ratify | model | `dispatch ratification-due` | `implementation-opened` | `ratifying` | 0 / 0 / 0 / 0 | `ratify/run-ratify.ts` |
+| Ratify on PRD close | wire | `issue closed` | `ratification-due` |  | 15 / 0 / 0 / 0 | `ratify/prd-close.ts` |
+| Record ratifications | wire | `dispatch ratifier-merged` |  |  | 0 / 0 / 0 / 0 | `observations/run-ratification.ts` |
+| Run watchdog | wire | `dispatch session-captured` |  |  | 0 / 0 / 0 / 0 | `watchdog/run-watchdog.ts` |
+| Shape — accept | wire | `issue labeled` | `sheet-accepted`, `push to main` | `to-spec` | 65 / 0 / 0 / 0 | `shape/run-accept.ts` |
+| Walk home (machine only) | wire | `dispatch session-captured` |  | `by-hand`, `ticket`, `to-build` | 0 / 0 / 0 / 0 | `watchdog/walk-home.ts` |
 
 ## Events
 

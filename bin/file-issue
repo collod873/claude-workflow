@@ -47,21 +47,21 @@ does not.
 fail for both routes a ticket's claim can be published through: once a ticket's own number and
 `## Files claimed` are known, its claim is checked against every other open issue's, and an
 unordered colliding pair earns a native `blockedBy` edge, lower issue number blocking higher
-(ADR-0007). `reconcile.ts`'s own pass over the tracker is what still catches a claim edited after
+(agent-skills/ADR-0007). `reconcile.ts`'s own pass over the tracker is what still catches a claim edited after
 filing; this loop is only ever the first word on it, not the last.
 
-`ticketify <n>` is the one exit from `fuzzy` (ADR-0024, #79): whichever session reached a
+`ticketify <n>` is the one exit from `fuzzy` (agent-skills/ADR-0024, #79): whichever session reached a
 decision (grilling, `/wayfinder`, or a bare conversation) pipes the criteria and file claim
 (a `## Acceptance criteria` / `## Files claimed` block, on stdin or via `--body-file`, in the
 same shape `ticket_shape.validate("ticket", ...)` already enforces) into this verb rather than
 authoring the sections into the issue by hand. It appends the two canonical headings, lifts
 `fuzzy` if the issue carries it, and intersects the new claim against every other open issue's
-`## Files claimed` to wire native `blockedBy` edges (ADR-0007): lower issue number blocks
+`## Files claimed` to wire native `blockedBy` edges (agent-skills/ADR-0007): lower issue number blocks
 higher, regardless of which side is being ticketified. A body that already has
 `## Acceptance criteria` is refused unless `--replace` is given, which substitutes the two
 sections instead of appending a second copy, and, on an issue with an assignee, also posts a
 comment noting the criteria were revised after work started. A claim that excludes nothing real
-(`**`, or the like) is refused with the canonical degenerate-claim message (ADR-0007).
+(`**`, or the like) is refused with the canonical degenerate-claim message (agent-skills/ADR-0007).
 
 `gh` is resolved by `gh_support.gh_bin()` (#102): `AGENT_SKILLS_GH` when set (tests point it
 at `hooks/stub_gh.py` so no test here ever calls GitHub for real), else the shared ADR-0005

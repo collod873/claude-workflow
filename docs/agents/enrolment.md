@@ -103,12 +103,9 @@ Nothing from the target's own CI reaches a contract slot. The machine's Verify r
 runner sized by a constant in its config runs that wide on a two-core runner; Lumaria's ran twelve
 workers there and manufactured two timeouts out of contention (#333, #343).
 
-What the gauntlet does say is the box: every slot runs with `GAUNTLET_CORES` set to the core
-count the gauntlet itself scheduled by ([ADR-0140](../adr/0140-a-venue-s-budget-is-its-own-last-green-time-plus-a-margin-ne.md)).
-A target maps that to its runner's width in its own config, as a fallback before any constant and
-after any override its own CI sets, and the number is then true wherever the suite runs. The
-machine never sets a tool's own variable: a slot is a command the contract names, never a tool the
-machine knows ([ADR-0056](../adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
+The gauntlet sets no core count either, so a target sizes its runner from the box it finds, in its
+own config. The machine never sets a tool's own variable: a slot is a command the contract names,
+never a tool the machine knows ([ADR-0056](../adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md)).
 
 A target owes no timing numbers at all, before or after its first lane 05 run: durations are
 recorded and never judged
@@ -137,11 +134,9 @@ An enrolled repository runs lanes it does not own and may not edit in place
 ([ADR-0009](../adr/0009-the-machine-may-file-defects-against-itself-but-never-featur.md)), so a red
 run there has two possible authors and only the run itself can tell them apart.
 [ADR-0135](../adr/0135-a-red-run-in-a-caller-is-routed-by-its-failing-path-the-mach.md) makes the
-failing path the answer: every reusable lane here checks the machine out at the workspace root and
-the calling repository's own tree at `target/`
-([`shared/checkout-pair.fixture.ts`](../../.Workflow/agent-workflows/shared/checkout-pair.fixture.ts)),
-so a failing step whose log names a path inside the machine checkout is this repository's own
-defect, and a failing path inside `target/` is the caller's.
+failing path the answer: a path the machine checkout tracks (`git ls-files`) is this repository's
+own defect, and any other path, bare or under `target/`, routes to the caller
+([ADR-0141](../adr/0141-an-unrecognised-failing-path-routes-to-the-caller-and-the-ma.md)).
 
 `.github/workflows/walk-home.yml` is what acts on that routing. Like `enrol.yml`, it is the other
 lane with no caller stub: it runs only here, walking every repository the enrolment topic

@@ -19,7 +19,7 @@ Look for anything already on the record that bears on it:
   prior art there is.
 - Rulings in `docs/adr/INDEX.md`: every ruling this repo has ever made, one line each, with its
   status. Open a body only for the *why*.
-- `CONTEXT.md`, `GOAL.md`, `CODING_STANDARDS.md`, and `docs/`
+- `CONTEXT.md`, `CODING_STANDARDS.md`, and `docs/`
 
 Every hit gets a `verdict`, and **two of the three stop the chain here**:
 
