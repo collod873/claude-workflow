@@ -115,6 +115,9 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0193 | [A rule is placed at the highest rung that can hold it and the earliest venue that can see enough, and the change that places it deletes every restatement](0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md) |
 | 0194 | [An unclear spec reaches the owner on the pull request and no label routes it, because a route needs a reader that runs](0194-an-unclear-spec-reaches-the-owner-on-the-pull-request-and-no.md) |
 | 0195 | [Only a whole reversal files a successor ADR, and a retirement or a deletion lands with every live line that names it](0195-only-a-whole-reversal-files-a-successor-adr-and-a-retirement.md) |
+| 0196 | [A machine repairs a violation only where the fix is uniquely determined, reports it, and never touches prose a human signed](0196-a-repairer-resolves-a-claim-only-when-exactly-one-candidate.md) |
+| 0197 | [A rule earns impossible only when its set is closed by deliberate act and a wrong exclusion fails at authoring time](0197-a-rule-is-made-impossible-only-when-the-forbidden-space-is-c.md) |
+| 0198 | [A stage carries a resolution to the next stage and leaves it to rediscover a judgment](0198-a-stage-carries-a-resolution-to-the-next-stage-and-leaves-it.md) |
 
 ## Retired
 
@@ -210,4 +213,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-195 ADRs · 107 constraint · 43 note · 45 superseded · 22,004 words total.
+198 ADRs · 110 constraint · 43 note · 45 superseded · 22,447 words total.
