@@ -189,7 +189,7 @@ function sendToSpec(
 
 const BY_HAND_STAND_DOWN_MARKER = "<!-- by-hand-stand-down:v1 -->";
 
-function byHandStandDownBody(): string {
+export function byHandStandDownBody(): string {
   return [
     "Its `## Files claimed` names a workstation or immutable-set path, which no pull request may",
     `edit, so this ticket wears \`${BY_HAND_LABEL}\` and only a human can build it. Lane 06 will not`,
