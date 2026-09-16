@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/marker";
 import { sheet } from "../../shared/sheet.fixture";
+import { trackerMemory } from "../../shared/tracker-memory";
 import { collectSheetContext } from "./sheet";
-import { fakeSheetGh } from "./sheet-gh.fixture";
+
+function fakeSheetTracker(body: string, comments: string[]) {
+  return trackerMemory({ issues: { 1: { body, comments } } });
+}
 
 describe("collectSheetContext", () => {
   it("reads adrPaths, coinedTerms and route from the accept's marker payload", () => {
@@ -11,12 +15,12 @@ describe("collectSheetContext", () => {
       coinedTerms: ["Gate", "Lane"],
       route: "long",
     };
-    const gh = fakeSheetGh("the owner's words", [
+    const tracker = fakeSheetTracker("the owner's words", [
       `## Restatement\n\n…\n\n${sheetMarker(sheet({ routeReason: "Long: five decisions." }))}`,
       `## Accepted\n\n${acceptedMarker(payload)}`,
     ]);
 
-    const { context } = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(tracker, 1);
 
     expect(context.ownerWords).toBe("the owner's words");
     expect(context.rulings).toContain("docs/adr/0051-slug.md");
@@ -32,12 +36,12 @@ describe("collectSheetContext", () => {
       { question: "q2", recommendation: "r2", rejected: "x2", mark: "sheet.ts", adrTitle: "A ruling", adrReversal: "Undoing it costs a re-route" },
     ];
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
-    const gh = fakeSheetGh("the owner's words", [
+    const tracker = fakeSheetTracker("the owner's words", [
       sheetMarker(sheet({ decisions, survivors: ["nobody checked the cap"] })),
       acceptedMarker(payload),
     ]);
 
-    const collected = collectSheetContext(gh, 1);
+    const collected = collectSheetContext(tracker, 1);
 
     expect(collected.decisions).toEqual(decisions);
     expect(collected.context).toEqual({
@@ -51,48 +55,65 @@ describe("collectSheetContext", () => {
 
   it("cites the rulings by path rather than restating the decision", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: [], route: "short" };
-    const gh = fakeSheetGh("words", [sheetMarker(sheet()), acceptedMarker(payload)]);
+    const tracker = fakeSheetTracker("words", [sheetMarker(sheet()), acceptedMarker(payload)]);
 
-    const { context } = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(tracker, 1);
 
     expect(context.rulings).toBe("- docs/adr/0060-slug.md");
   });
 
   it("throws rather than falling back to prose-parsing when the payload is absent", () => {
-    const gh = fakeSheetGh("words", [sheetMarker(sheet())]);
+    const tracker = fakeSheetTracker("words", [sheetMarker(sheet())]);
 
-    expect(() => collectSheetContext(gh, 1)).toThrow();
+    expect(() => collectSheetContext(tracker, 1)).toThrow();
   });
 
   it("throws on an old bare accept marker, which carries no payload to read", () => {
-    const gh = fakeSheetGh("words", [
+    const tracker = fakeSheetTracker("words", [
       sheetMarker(sheet()),
       "## Accepted\n\n<!-- shape-accepted:v1 -->",
     ]);
 
-    expect(() => collectSheetContext(gh, 1)).toThrow();
+    expect(() => collectSheetContext(tracker, 1)).toThrow();
   });
 
   it("throws when the issue carries no decision sheet", () => {
     const payload: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
-    const gh = fakeSheetGh("words", [acceptedMarker(payload)]);
+    const tracker = fakeSheetTracker("words", [acceptedMarker(payload)]);
 
-    expect(() => collectSheetContext(gh, 1)).toThrow();
+    expect(() => collectSheetContext(tracker, 1)).toThrow();
   });
 
   it("reads the latest sheet and the latest accept when either repeats", () => {
     const first: AcceptedPayload = { adrPaths: ["docs/adr/0001-old.md"], coinedTerms: [], route: "short" };
     const second: AcceptedPayload = { adrPaths: ["docs/adr/0002-new.md"], coinedTerms: [], route: "short" };
-    const gh = fakeSheetGh("words", [
+    const tracker = fakeSheetTracker("words", [
       sheetMarker(sheet({ round: 0 })),
       sheetMarker(sheet({ round: 1 })),
       acceptedMarker(first),
       acceptedMarker(second),
     ]);
 
-    const { context } = collectSheetContext(gh, 1);
+    const { context } = collectSheetContext(tracker, 1);
 
     expect(context.rulings).toContain("docs/adr/0002-new.md");
     expect(context.rulings).not.toContain("docs/adr/0001-old.md");
   });
+});
+
+test("#616.2: collectSheetContext reads through a Tracker built from trackerMemory, not a bare GhExec", () => {
+  const payload: AcceptedPayload = { adrPaths: ["docs/adr/0070-slug.md"], coinedTerms: [], route: "short" };
+  const tracker = trackerMemory({
+    issues: {
+      1: {
+        body: "the owner's words",
+        comments: [sheetMarker(sheet()), acceptedMarker(payload)],
+      },
+    },
+  });
+
+  const { context } = collectSheetContext(tracker as unknown as Parameters<typeof collectSheetContext>[0], 1);
+
+  expect(context.ownerWords).toBe("the owner's words");
+  expect(context.rulings).toBe("- docs/adr/0070-slug.md");
 });

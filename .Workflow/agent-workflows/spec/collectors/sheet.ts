@@ -1,15 +1,14 @@
-import { issueComments, type GhExec } from "../../shared/gh";
-import { issueBody } from "../../shared/issue-body";
 import { readAcceptedMarker, readSheetMarker, type AcceptedPayload } from "../../shared/marker";
 import type { Decision, Sheet } from "../../shared/sheet-schema";
+import type { Tracker } from "../../shared/tracker";
 import type { MarkedDecision } from "../open-questions";
 import type { DecidedContext } from "../author-contract";
 
 export function collectSheetContext(
-  gh: GhExec,
+  tracker: Tracker,
   issueNumber: number,
 ): { context: DecidedContext; decisions: MarkedDecision[] } {
-  const bodies = issueComments(gh, issueNumber);
+  const bodies = tracker.issueComments(issueNumber);
 
   const sheets = bodies.map(readSheetMarker).filter((each): each is Sheet => each !== undefined);
   const sheet = sheets.at(-1);
@@ -30,7 +29,7 @@ export function collectSheetContext(
 
   return {
     context: {
-      ownerWords: issueBody(gh, issueNumber),
+      ownerWords: tracker.issueBody(issueNumber),
       decisions: formatDecisions(sheet.decisions),
       rulings: formatRulings(payload),
       boundaries: `Route: \`${payload.route}\`, ${sheet.routeReason}`,
