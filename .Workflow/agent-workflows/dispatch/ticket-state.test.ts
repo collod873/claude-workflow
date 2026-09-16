@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
+import { issueCommentsPath, subIssuesPath } from "../shared/gh-paths";
 import { BY_HAND_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL } from "../shared/labels";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
 import { authoredOn, deadRun, HAND_WRITTEN_TICKET, liveRun, silent, trackerWith, type TrackerOptions } from "./tracker.fixture";
@@ -188,5 +190,32 @@ describe("a read it cannot finish is said once, not half-answered", () => {
 
     expect(states.degraded).toContain(names);
     expect(states.tickets).toEqual([]);
+  });
+});
+
+describe("a spec's children and comments come from the tracker, not a gh api argv ticket-state builds itself", () => {
+  test.fails("#609.1: fetchChildren and fetchComments answer without ticket-state.ts building a gh api argv", () => {
+    const fixture = trackerWith({
+      open: [
+        {
+          number: 145,
+          title: "A spec",
+          labels: [PRD_LABEL],
+          children: [201],
+          body: "## Acceptance criteria\n\n- [ ] It works — check: `true`\n",
+          comments: ["a comment"],
+        },
+        { number: 201, title: "Its child" },
+      ],
+    });
+    const tracker = new Proxy({}, { get: () => () => [] }) as never;
+    const input = { gh: fixture.gh, tracker, log: silent, dryRun: false };
+
+    ticketState(input);
+
+    const built = (path: string): boolean => fixture.calls.some((call) => call[0] === "api" && call[1] === path);
+
+    expect(built(subIssuesPath(145)), "fetchChildren still asked gh for the sub_issues path directly").toBe(false);
+    expect(built(issueCommentsPath(145)), "fetchComments still asked gh for the comments path directly").toBe(false);
   });
 });
