@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { collectSheetContext } from "../spec/collectors/sheet";
-import { fakeSheetGh } from "../spec/collectors/sheet-gh.fixture";
 import { invocationFromEnv } from "../spec/spec";
 import { fixtureFor } from "./canary-fixture.ts";
 import { planFire } from "./canary-fire-plan.ts";
@@ -20,9 +19,9 @@ describe("fixtureFor", () => {
 
   it("satisfies the collector the spec lane actually runs on a sheet-accepted fire", () => {
     const seeded = fixtureFor("spec")!;
-    const gh = fakeSheetGh(seeded.body, seeded.comments);
+    const tracker = trackerMemory({ issues: { 1: { body: seeded.body, comments: seeded.comments } } });
 
-    const { context, decisions } = collectSheetContext(gh, 1);
+    const { context, decisions } = collectSheetContext(tracker, 1);
 
     expect(context.ownerWords).toBe(seeded.body);
     expect(context.boundaries).toContain("short");
@@ -46,7 +45,7 @@ describe("fixtureFor", () => {
   });
 });
 
-test.fails("#616.4: satisfies the collector reading the sheet-accepted fire through a Tracker built from trackerMemory", () => {
+test("#616.4: satisfies the collector reading the sheet-accepted fire through a Tracker built from trackerMemory", () => {
   const seeded = fixtureFor("spec")!;
   const tracker = trackerMemory({ issues: { 1: { body: seeded.body, comments: seeded.comments } } });
 

@@ -5,7 +5,6 @@ import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../../shared/
 import { scratchDir } from "../../shared/scratch.fixture";
 import { sheet } from "../../shared/sheet.fixture";
 import { collectMapContext } from "./map";
-import { fakeSheetGh } from "./sheet-gh.fixture";
 import { collectSheetContext } from "./sheet";
 import { test } from "vitest";
 import { trackerGh } from "../../shared/tracker-gh";
@@ -17,8 +16,10 @@ const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries"
 describe("both collectors normalize into the same Decided-context shape", () => {
   it("produces the identical five-field shape from a sheet and from a map", () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0060-slug.md"], coinedTerms: ["Gate"], route: "short" };
-    const sheetGh = fakeSheetGh("the owner's words", [sheetMarker(sheet()), acceptedMarker(payload)]);
-    const { context: sheetContext } = collectSheetContext(sheetGh, 1);
+    const sheetTracker = trackerMemory({
+      issues: { 1: { body: "the owner's words", comments: [sheetMarker(sheet()), acceptedMarker(payload)] } },
+    });
+    const { context: sheetContext } = collectSheetContext(sheetTracker, 1);
 
     const repoRoot = scratchDir("shape-parity");
     mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
@@ -87,7 +88,7 @@ test("#615.5: collectMapContext still produces the five-field Decided-context sh
   expect(Object.keys(context).sort()).toEqual(DECIDED_CONTEXT_KEYS);
 });
 
-test.fails(
+test(
   "#616.3: collectSheetContext, migrated onto Tracker, still produces the five-field Decided-context shape when read through trackerMemory",
   () => {
     const payload: AcceptedPayload = { adrPaths: ["docs/adr/0061-slug.md"], coinedTerms: ["Gate"], route: "short" };
