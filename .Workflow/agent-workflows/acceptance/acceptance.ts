@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   affectedSlices,
   authoredCriterionTitleRe,
+  existingCriterionTitleRe,
   testsForCriterion,
   type ExistingTestCriterion,
   type SliceRef,
@@ -318,6 +319,21 @@ function refuseLostCoverage(files: AuthoredFile[], shown: Set<string>, readFile:
   }
 }
 
+function criteriaStandingInTree(deps: AuthorDeps, count: number, authored: AuthoredFile[]): Set<number> {
+  const readFile = deps.readFile ?? readIfPresent;
+  const returned = new Set(authored.map((file) => file.path));
+  const standing = new Set<number>();
+  for (const path of suiteOf(deps).files) {
+    if (returned.has(path)) continue;
+    const content = readFile(path);
+    if (content === undefined) continue;
+    for (let index = 1; index <= count; index++) {
+      if (existingCriterionTitleRe(deps.issueNumber, index).test(content)) standing.add(index);
+    }
+  }
+  return standing;
+}
+
 function acceptRound(
   deps: AuthorDeps,
   criteria: string[],
@@ -348,9 +364,13 @@ function acceptRound(
   refuseLostCoverage(answer.files, shown, deps.readFile ?? readIfPresent);
 
   const combined = answer.files.map((file) => file.content).join("\n");
+  const standing = criteriaStandingInTree(deps, criteria.length, answer.files);
   const missing = criteria
     .map((_criterion, i) => i + 1)
-    .filter((index) => !authoredCriterionTitleRe(deps.issueNumber, index).test(combined));
+    .filter(
+      (index) =>
+        !authoredCriterionTitleRe(deps.issueNumber, index).test(combined) && !standing.has(index),
+    );
   if (missing.length > 0) {
     throw new Error(
       `author wrote no test.fails( naming #${deps.issueNumber}.${missing.join(`, #${deps.issueNumber}.`)}: ` +

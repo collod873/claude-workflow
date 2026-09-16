@@ -24,7 +24,7 @@ function ticketTitleRe(issue: number): RegExp {
   return titleRe(RED_OR_TURNED_ON, issue, "(?:\\.\\d+)?");
 }
 
-function criterionTitleRe(issue: number, index: number): RegExp {
+export function existingCriterionTitleRe(issue: number, index: number): RegExp {
   return titleRe(RED_OR_TURNED_ON, issue, `\\.${index}`);
 }
 
@@ -38,7 +38,7 @@ export function testsForTicket(issue: number, root: string = REPO_ROOT): string[
 }
 
 export function testsForCriterion(issue: number, index: number, root: string = REPO_ROOT): string[] {
-  const matcher = criterionTitleRe(issue, index);
+  const matcher = existingCriterionTitleRe(issue, index);
   return suiteTestFiles(root).filter((path) => matcher.test(readFileSync(path, "utf8")));
 }
 

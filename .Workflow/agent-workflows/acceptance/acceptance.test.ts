@@ -1061,6 +1061,60 @@ describe("the author's write scope", () => {
   });
 });
 
+describe("criteria the filing already handed over", () => {
+  const HANDOFF = ".Workflow/agent-workflows/shared/handoff.test.ts";
+  const SUITE_WITH_HANDOFF: SuiteLayout = {
+    files: [TEST_PATH, HANDOFF],
+    roots: [".Workflow", ".claude"],
+    suffixes: [".test.ts"],
+  };
+
+  function criterionTest(index: number, fails = ".fails"): string {
+    return `import { expect, test } from "vitest";\ntest${fails}("#${ISSUE}.${index}: criterion ${index}", () => {\n  expect(1).toBe(2);\n});\n`;
+  }
+
+  async function refusalFrom(files: AuthoredFile[], disk: Record<string, string>): Promise<string> {
+    const stage = answer(files);
+    try {
+      await authorAcceptanceTests({
+        exec: stage.exec,
+        writeFile: () => {},
+        issueNumber: ISSUE,
+        ticket: TICKET,
+        readFile: (path) => disk[path],
+        suite: SUITE_WITH_HANDOFF,
+        houseRules: "",
+        checkContract: "",
+      });
+    } catch (err) {
+      return reason(err);
+    }
+    return "";
+  }
+
+  it("counts a criterion whose test is already in the tree, so the author writes only what is missing", async () => {
+    expect(await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [HANDOFF]: criterionTest(1) })).toBe("");
+  });
+
+  it("counts a criterion an implementer already turned on, not only one still under test.fails", async () => {
+    expect(
+      await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [HANDOFF]: criterionTest(1, "") }),
+    ).toBe("");
+  });
+
+  it("still refuses a criterion no test covers, in the tree or in the batch", async () => {
+    expect(await refusalFrom([{ path: TEST_PATH, content: criterionTest(1) }], {})).toBe(
+      `author wrote no test.fails( naming #${ISSUE}.2: missing criterion 2 of 2`,
+    );
+  });
+
+  it("does not count a criterion standing in a file this batch returns without it", async () => {
+    expect(
+      await refusalFrom([{ path: TEST_PATH, content: criterionTest(2) }], { [TEST_PATH]: criterionTest(1) }),
+    ).toBe(`author wrote no test.fails( naming #${ISSUE}.1: missing criterion 1 of 2`);
+  });
+});
+
 describe("testCaseCount", () => {
   it("counts it, test and their modifiers, and nothing that merely mentions them", () => {
     const source = [
