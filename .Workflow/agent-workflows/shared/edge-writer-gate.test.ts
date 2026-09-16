@@ -36,11 +36,11 @@ describe("the blocked-by graph has one writer, lane 03 (ADR-0069, #601)", () => 
     ]);
   });
 
-  it("spells the blocked-by endpoint in exactly one file under bin/, the issue-graph publisher", () => {
+  it("spells the blocked-by endpoint in no file under bin/: publish-issue-graph is a shim onto lane 03 (#603)", () => {
     const spellers = binSources()
       .filter((file) => file.source.includes("dependencies/blocked_by"))
       .map((file) => file.relative);
 
-    expect(spellers).toEqual(["bin/publish-issue-graph"]);
+    expect(spellers).toEqual([]);
   });
 });
