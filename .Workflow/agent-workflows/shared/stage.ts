@@ -1,8 +1,9 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STAGE_SESSION_VARS } from "./child-env";
+import { claudeStreamPath } from "./claude-streams";
 import { issueComments, type GhExec } from "./gh";
 import { handoffPath } from "./handoff-path";
 import { reason } from "./reason";
@@ -21,7 +22,9 @@ export type StageExec = (argv: string[], stdin?: string, signal?: AbortSignal) =
 
 const MAX_ARG_STRLEN = 32 * 4096;
 
-const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose"];
+const STREAM_FLAGS = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"];
+
+const PULSE_INTERVAL_MS = 60_000;
 
 function stageEnv(): NodeJS.ProcessEnv {
   return { ...process.env, [STAGE_SESSION_VARS[0]]: "1" };
@@ -46,8 +49,16 @@ export const execClaudeIn =
 
     child.stdin.end(stdin ?? "", "utf8");
 
+    const rawStream = claudeStreamPath(process.env);
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => parser.push(chunk));
+    child.stdout.on("data", (chunk: string) => {
+      if (rawStream !== undefined) appendFileSync(rawStream, chunk, "utf8");
+      parser.push(chunk);
+    });
+
+    const startedAt = Date.now();
+    const pulse = setInterval(() => process.stderr.write(`${parser.pulse(startedAt)}\n`), PULSE_INTERVAL_MS);
+    pulse.unref();
 
     let stderr = "";
     child.stderr.setEncoding("utf8");
@@ -56,9 +67,13 @@ export const execClaudeIn =
       process.stderr.write(chunk);
     });
 
-    child.on("error", (err) => reject(new Error(`could not spawn \`claude\`: ${err.message}`)));
+    child.on("error", (err) => {
+      clearInterval(pulse);
+      reject(new Error(`could not spawn \`claude\`: ${err.message}`));
+    });
 
     child.on("close", (code) => {
+      clearInterval(pulse);
       const { text, isError, missingResult, sessionId, turns, gauntletRuns } = parser.end();
       const prompt = stdinError === undefined ? "" : ` (the prompt never reached it: ${stdinError.message})`;
       if (code !== 0) {

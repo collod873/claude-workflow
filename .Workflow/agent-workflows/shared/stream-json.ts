@@ -13,10 +13,11 @@ export interface StreamResult {
 
 export interface StreamJsonParser {
   push(chunk: string): void;
+  pulse(startedAt: number): string;
   end(): StreamResult;
 }
 
-export function createStreamJsonParser(onProgress: (line: string) => void): StreamJsonParser {
+export function createStreamJsonParser(onProgress: (line: string) => void, clock: () => number = Date.now): StreamJsonParser {
   let pending = "";
   let text = "";
   let isError = false;
@@ -24,6 +25,9 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
   let sessionId: string | undefined;
   let turns: number | undefined;
   let gauntletRuns = 0;
+  let events = 0;
+  let written = 0;
+  let lastEventAt: number | undefined;
 
   function consume(line: string): void {
     const trimmed = line.trim();
@@ -36,6 +40,10 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
       onProgress(trimmed);
       return;
     }
+
+    events += 1;
+    lastEventAt = clock();
+    written += deltaLength(event);
 
     if (isRecord(event) && event.type === RESULT_EVENT) {
       sawResult = true;
@@ -63,6 +71,12 @@ export function createStreamJsonParser(onProgress: (line: string) => void): Stre
       pending = lines.pop() ?? "";
       for (const line of lines) consume(line);
     },
+    pulse(startedAt) {
+      const now = clock();
+      const running = `· still running after ${minutesAndSeconds(now - startedAt)}`;
+      if (lastEventAt === undefined) return `${running}: no stream events yet`;
+      return `${running}: ${events} stream events, ${written.toLocaleString("en-US")} characters, last event ${minutesAndSeconds(now - lastEventAt)} ago`;
+    },
     end() {
       if (pending !== "") {
         consume(pending);
@@ -86,7 +100,11 @@ export function progressLine(event: unknown): string | null {
 
   switch (event.type) {
     case "system":
-      return event.subtype === "init" ? `· session started${modelSuffix(event)}` : null;
+      if (event.subtype === "init") return `· session started${modelSuffix(event)}`;
+      return event.subtype === "api_retry" ? retryLine(event) : null;
+
+    case "rate_limit_event":
+      return rateLimitLine(event.rate_limit_info);
 
     case "assistant":
       return assistantLine(event);
@@ -102,6 +120,29 @@ export function progressLine(event: unknown): string | null {
     default:
       return null;
   }
+}
+
+function retryLine(event: Record<string, unknown>): string {
+  const delay = typeof event.retry_delay_ms === "number" ? ` in ${(event.retry_delay_ms / 1000).toFixed(1)}s` : "";
+  const status = typeof event.error_status === "number" ? ` (${event.error_status})` : "";
+  return `· API retry ${String(event.attempt)}/${String(event.max_retries)}${delay}: ${String(event.error)}${status}`;
+}
+
+function rateLimitLine(info: unknown): string | null {
+  if (!isRecord(info) || info.status === "allowed") return null;
+  return `· rate limit ${String(info.status)} (${String(info.rateLimitType)})`;
+}
+
+function deltaLength(event: unknown): number {
+  if (!isRecord(event) || event.type !== "stream_event" || !isRecord(event.event) || !isRecord(event.event.delta)) return 0;
+  const delta = event.event.delta;
+  const written = delta.text ?? delta.thinking ?? delta.partial_json;
+  return typeof written === "string" ? written.length : 0;
+}
+
+function minutesAndSeconds(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 function assistantBlocks(event: Record<string, unknown>): Record<string, unknown>[] {

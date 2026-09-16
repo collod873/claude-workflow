@@ -71,12 +71,23 @@ jobs:
         uses: ./.github/actions/node
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.241
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.241
+          echo "CLAUDE_STREAMS_DIR=$RUNNER_TEMP/claude-streams" >> "$GITHUB_ENV"
 
       - name: Shape
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/shape/shape.ts --issue "$IDEA_NUMBER"
+
+      - name: Keep the raw Claude stream, whatever ended this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-streams-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claude-streams
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload checkpoints
         if: always()

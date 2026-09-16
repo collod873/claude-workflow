@@ -273,10 +273,62 @@ describe("progress lines", () => {
     expect(line).toBe("· failed");
   });
 
+  it("names each API retry, so a stalled session is not silent", () => {
+    const line = progressLine({
+      type: "system",
+      subtype: "api_retry",
+      attempt: 3,
+      max_retries: 10,
+      retry_delay_ms: 8000,
+      error_status: 529,
+      error: "overloaded",
+    });
+
+    expect(line).toBe("· API retry 3/10 in 8.0s: overloaded (529)");
+  });
+
+  it("names an API retry that never got a status back", () => {
+    const line = progressLine({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 10, retry_delay_ms: 500, error_status: null, error: "unknown" });
+
+    expect(line).toBe("· API retry 1/10 in 0.5s: unknown");
+  });
+
+  it("names a rate limit the account is warned or refused on, and not one it is allowed", () => {
+    const limited = (status: string) => ({ type: "rate_limit_event", rate_limit_info: { status, rateLimitType: "five_hour" } });
+
+    expect(progressLine(limited("rejected"))).toBe("· rate limit rejected (five_hour)");
+    expect(progressLine(limited("allowed_warning"))).toBe("· rate limit allowed_warning (five_hour)");
+    expect(progressLine(limited("allowed"))).toBeNull();
+  });
+
   it("says nothing for an event type it does not render", () => {
     expect(progressLine({ type: "stream_event" })).toBeNull();
     expect(progressLine("not an object")).toBeNull();
     expect(progressLine(null)).toBeNull();
+  });
+});
+
+describe("the pulse", () => {
+  function delta(delta: Record<string, unknown>) {
+    return `${JSON.stringify({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta } })}\n`;
+  }
+
+  function parserAt(times: number[]) {
+    const clock = () => times.shift() ?? Number.NaN;
+    return createStreamJsonParser(() => undefined, clock);
+  }
+
+  it("says how long the session has run, how much it has written, and how long since it last said anything", () => {
+    const parser = parserAt([1_000, 2_000, 3_000, 366_000]);
+    parser.push(delta({ type: "thinking_delta", thinking: "abc" }));
+    parser.push(delta({ type: "text_delta", text: "x".repeat(1_500) }));
+    parser.push(delta({ type: "input_json_delta", partial_json: '{"a":1}' }));
+
+    expect(parser.pulse(0)).toBe("· still running after 6m 6s: 3 stream events, 1,510 characters, last event 6m 3s ago");
+  });
+
+  it("says no event has arrived yet, which is what a stuck request looks like", () => {
+    expect(parserAt([125_000]).pulse(5_000)).toBe("· still running after 2m 0s: no stream events yet");
   });
 });
 

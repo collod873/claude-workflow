@@ -70,12 +70,23 @@ jobs:
           working-directory: target
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.241
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.241
+          echo "CLAUDE_STREAMS_DIR=$RUNNER_TEMP/claude-streams" >> "$GITHUB_ENV"
 
       - name: Re-fire acceptance for affected slices
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts --refire "$PRD_NUMBER"
+
+      - name: Keep the raw Claude stream, whatever ended this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-streams-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claude-streams
+          if-no-files-found: ignore
+          retention-days: 14
 
   author:
     runs-on: ${{ inputs.runner }}
@@ -126,12 +137,23 @@ jobs:
           working-directory: target
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.241
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.241
+          echo "CLAUDE_STREAMS_DIR=$RUNNER_TEMP/claude-streams" >> "$GITHUB_ENV"
 
       - name: Author acceptance tests for the published slice
         env:
           TARGET_WORKSPACE: ${{ github.workspace }}/target
         run: npx tsx .Workflow/agent-workflows/acceptance/acceptance.ts "$TICKET_NUMBER"
+
+      - name: Keep the raw Claude stream, whatever ended this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-streams-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claude-streams
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Queue the ticket again if this run died, leaving the strike ladder to say what runs next
         if: always()

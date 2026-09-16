@@ -257,11 +257,28 @@ describe("a name the registry spells for a lane agrees with the lane's own expor
   });
 });
 
+describe("every job that runs Claude keeps its raw stream", () => {
+  const claudeJobs = lanes.flatMap((lane) =>
+    jobsOf(lane)
+      .filter(([, job]) => job.steps.some((step) => step.name === "Install Claude Code"))
+      .map(([key, job]) => [`${lane} › ${key}`, job] as const),
+  );
+
+  it("finds the jobs that install Claude, so this pin is not vacuous", () => expect(claudeJobs.length).toBeGreaterThan(5));
+
+  it.each(claudeJobs)("%s uploads the stream once Claude is installed, whatever ended the run", (_, job) => {
+    const names = job.steps.map((step) => step.name);
+    const kept = job.steps.find((step) => step.uses === "actions/upload-artifact@v4" && String(step.with?.path).includes("claude-streams"));
+    expect(kept?.if).toBe("always()");
+    expect(names.indexOf(kept?.name ?? "")).toBeGreaterThan(names.indexOf("Install Claude Code"));
+  });
+});
+
 const SPELLINGS: [string, { has?: readonly string[]; lacks?: readonly string[] }][] = [
-  ["shape", { lacks: ["refused-raw-response", "actions/upload-artifact@v4"] }],
+  ["shape", { lacks: ["refused-raw-response"] }],
   ["shape-accept", { lacks: ["'go-long'", "'go-short'"] }],
-  ["to-tickets", { lacks: ["refused-raw-response", "actions/upload-artifact@v4"] }],
-  ["implement", { lacks: ["implementation-pr-opened", "implement-failed", "upload-artifact"] }],
+  ["to-tickets", { lacks: ["refused-raw-response"] }],
+  ["implement", { lacks: ["implementation-pr-opened", "implement-failed", "implementer-answer"] }],
   ["verify", { lacks: ["implementation-pr-opened"] }],
   ["integrate", { lacks: ["implementation-pr-opened"] }],
   ["dispatch-reconcile", { lacks: ["@anthropic-ai/claude-code", "CLAUDE_CODE_OAUTH_TOKEN"] }],

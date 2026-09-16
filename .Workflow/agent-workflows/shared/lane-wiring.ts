@@ -1,3 +1,4 @@
+import { CLAUDE_STREAMS_DIR_ENV } from "./claude-streams";
 import { DISPATCH_REQUESTS_PATH_ENV } from "./dispatch-request";
 import { IMPLEMENTATION_PR_DISPATCH_ACTION } from "./immutable-set";
 import { NEEDS_HUMAN_LABEL, PRD_LABEL, SHAPE_REFUSED_LABEL, SLICE_FAILED_LABEL, SLICEABLE_LABEL, TO_BUILD_LABEL } from "./labels";
@@ -49,6 +50,7 @@ export const CHECKPOINTS_ACTION = "./.github/actions/checkpoints";
 export const TARGET_DEPS_ACTION = "./.github/actions/target-deps";
 export const NODE_ACTION = "./.github/actions/node";
 export const CHECKOUT_ACTION = "actions/checkout@v4";
+const UPLOAD_ARTIFACT_ACTION = "actions/upload-artifact@v4";
 export const ACTIONLINT_ACTION = "docker://rhysd/actionlint:1.7.7";
 
 export const DISPATCH_SEND = "gh api --method POST 'repos/{owner}/{repo}/dispatches'";
@@ -233,7 +235,19 @@ const INSTALLS_TARGET: StepWiring = {
 
 const INSTALLS_CLAUDE_CODE: StepWiring = {
   name: "Install Claude Code",
-  run: [`npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`],
+  run: [`npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}`, exportsEnv(CLAUDE_STREAMS_DIR_ENV, "$RUNNER_TEMP/claude-streams")],
+};
+
+const KEEPS_CLAUDE_STREAMS: StepWiring = {
+  name: "Keep the raw Claude stream, whatever ended this run",
+  if: "always()",
+  uses: UPLOAD_ARTIFACT_ACTION,
+  with: {
+    name: "claude-streams-${{ github.job }}-${{ github.run_attempt }}",
+    path: "${{ runner.temp }}/claude-streams",
+    "if-no-files-found": "ignore",
+    "retention-days": 14,
+  },
 };
 
 function exportsHandoff(name: string, paths: Readonly<Record<string, string>>): StepWiring {
@@ -409,6 +423,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           SETS_UP_NODE,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Shape", entrypoint: "shape/shape.ts", args: ["--issue", "\"$IDEA_NUMBER\""] }),
+          KEEPS_CLAUDE_STREAMS,
           CHECKPOINT_UPLOAD("shape", "IDEA_NUMBER"),
           reportsFailure("shape", "IDEA_NUMBER", { VERB: "", REPORT_REFUSED: "false" }),
           handsOver("shape", "idea", "IDEA_NUMBER"),
@@ -462,6 +477,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           SETS_UP_NODE,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Spec author", entrypoint: "spec/spec.ts" }),
+          KEEPS_CLAUDE_STREAMS,
           COLLECTS_DISPATCHES,
           reportsFailure("spec", "ISSUE_NUMBER", { VERB: "", REPORT_REFUSED: "false" }),
           handsOver("spec", "source", "ISSUE_NUMBER"),
@@ -529,6 +545,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           stage({ name: "Seam sweep", entrypoint: "to-tickets/to-tickets.ts", args: ["--stage", "seam-sweep", "--issue", "\"$PRD_NUMBER\""] }),
           stage({ name: "Slice", entrypoint: "to-tickets/to-tickets.ts", args: ["--stage", "slice", "--issue", "\"$PRD_NUMBER\""] }),
           stage({ name: "Audit and publish", entrypoint: "to-tickets/to-tickets.ts", args: ["--stage", "audit-and-publish", "--issue", "\"$PRD_NUMBER\""] }),
+          KEEPS_CLAUDE_STREAMS,
           LIFTS_SLICE_FAILED,
           CHECKPOINT_UPLOAD("to-tickets", "PRD_NUMBER"),
           reportsFailure("to-tickets", "PRD_NUMBER", { REPORT_REFUSED: "${{ steps.refuse-sub-issues.outputs.refused == 'true' || steps.refuse-nested-prd.outputs.refused == 'true' }}", VERB: "" }),
@@ -571,6 +588,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_TARGET,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Re-fire acceptance for affected slices", entrypoint: "acceptance/acceptance.ts", args: ["--refire", "\"$PRD_NUMBER\""] }),
+          KEEPS_CLAUDE_STREAMS,
         ],
       },
       author: {
@@ -585,6 +603,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_TARGET,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Author acceptance tests for the published slice", entrypoint: "acceptance/acceptance.ts", args: ["\"$TICKET_NUMBER\""] }),
+          KEEPS_CLAUDE_STREAMS,
           handsOver("acceptance", "ticket", "TICKET_NUMBER"),
         ],
       },
@@ -623,6 +642,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_CLAUDE_CODE,
           IDENTIFIES_COMMITTER,
           stage({ name: "Implement the ticket", entrypoint: "implement/implement.ts", args: ["\"$TICKET_NUMBER\""], prelude: ["echo \"implementing #$TICKET_NUMBER\""], id: "implement", env: { RUNG: "${{ github.event.client_payload.rung }}" } }),
+          KEEPS_CLAUDE_STREAMS,
           handsOver("implement", "ticket", "TICKET_NUMBER"),
           wakesReconciler({ always: true }),
         ],
@@ -652,6 +672,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_CLAUDE_CODE,
           IDENTIFIES_COMMITTER,
           stage({ name: "Repair the ticket's cause", entrypoint: "mechanic/mechanic.ts", args: ["\"$TICKET_NUMBER\""], prelude: ["echo \"mechanic on #$TICKET_NUMBER\""] }),
+          KEEPS_CLAUDE_STREAMS,
           handsOver("mechanic", "ticket", "TICKET_NUMBER"),
           wakesReconciler({ always: true }),
         ],
@@ -868,6 +889,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           INSTALLS_TARGET,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "React to the red run", entrypoint: "fixer/fixer.ts", args: ["react"], if: "always()", timeout: 40, env: { FIXER_MODE: "${{ steps.target.outputs.mode }}", ISSUE: "${{ steps.target.outputs.issue }}", PR_NUMBER: "${{ steps.target.outputs.pr }}", BRANCH: "${{ steps.target.outputs.branch }}", FAILED_JOB: "${{ steps.target.outputs.failed_job }}", ERROR_LINE: "${{ steps.target.outputs.error_line }}" } }),
+          KEEPS_CLAUDE_STREAMS,
         ],
       },
     },
@@ -894,6 +916,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           SETS_UP_NODE,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Run the correctness reviewer", entrypoint: "review/review.ts", args: ["\"${{ inputs.base_sha }}\"", "\"${{ inputs.head_sha }}\""] }),
+          KEEPS_CLAUDE_STREAMS,
         ],
       },
     },
@@ -946,6 +969,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           SETS_UP_NODE,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Run the audit", entrypoint: "observations/run-audit.ts" }),
+          KEEPS_CLAUDE_STREAMS,
         ],
       },
     },
@@ -977,6 +1001,7 @@ export const LANE_WIRING: Readonly<Record<string, LaneWiring>> = {
           SETS_UP_NODE,
           INSTALLS_CLAUDE_CODE,
           stage({ name: "Ratify this batch", entrypoint: "ratify/run-ratify.ts", timeout: 110 }),
+          KEEPS_CLAUDE_STREAMS,
           { name: "Publish the advanced bookmark", workingDirectory: "target", run: [
             "set -euo pipefail",
             "if git rev-parse --verify --quiet refs/ratifier/last >/dev/null; then",

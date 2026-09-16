@@ -1,7 +1,8 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { CLAUDE_STREAMS_DIR_ENV } from "./claude-streams";
 import { execClaudeIn } from "./stage";
 
 const execClaude = execClaudeIn();
@@ -56,6 +57,28 @@ describe("execClaude", () => {
       turns: 1,
       gauntletRuns: 0,
     });
+  });
+
+  it("keeps every byte of the stream under the streams directory it is given", async () => {
+    stubClaudeOnPath(`printf '%s\\n' '{"type":"system","subtype":"init"}'\n${resultEvent("kept")}`);
+    const streams = mkdtempSync(join(tmpdir(), "claude-streams-"));
+    process.env[CLAUDE_STREAMS_DIR_ENV] = streams;
+    onTestFinished(() => {
+      delete process.env[CLAUDE_STREAMS_DIR_ENV];
+      rmSync(streams, { recursive: true, force: true });
+    });
+
+    await execClaude(["-p", "a prompt on argv"]);
+
+    const kept = readdirSync(streams).map((file) => readFileSync(join(streams, file), "utf8"));
+    expect(kept).toHaveLength(1);
+    expect(kept[0].trim().split("\n").map((line) => JSON.parse(line).type)).toEqual(["system", "result"]);
+  });
+
+  it("asks the CLI for partial messages, so a long reply shows it is still writing", async () => {
+    stubClaudeOnPath(resultEvent('"$*"'));
+
+    await expect(execClaude(["-p", "a prompt on argv"])).resolves.toMatchObject({ text: expect.stringContaining("--include-partial-messages") });
   });
 
   it("resolves the session id the stream carried on its result event", async () => {
