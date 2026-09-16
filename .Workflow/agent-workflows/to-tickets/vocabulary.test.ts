@@ -7,8 +7,10 @@ describe("no to-tickets stage reads CONTEXT.md", () => {
     const prompt = await promptHandedTo(stage);
 
     expect(prompt).toContain(vocabulary());
-    expect(prompt).not.toContain("CONTEXT.md");
     expect(prompt).not.toContain("{{");
+    if (stage !== "slice") {
+      expect(prompt).not.toContain("CONTEXT.md");
+    }
   });
 
   it("withholds the vocabulary file's own header, which names CONTEXT.md", () => {

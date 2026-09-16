@@ -484,7 +484,7 @@ describe("what the slicer is handed instead of asked to guess (#586)", () => {
     return fake.calls[0][1];
   }
 
-  test.fails("#586.1: the slice prompt carries the repository's real top-level entries, read at run time", async () => {
+  test("#586.1: the slice prompt carries the repository's real top-level entries, read at run time", async () => {
     const prompt = await renderedSlicePrompt();
 
     for (const entry of ["knip.config.ts", "package-lock.json", "eslint.config.js"]) {
@@ -492,13 +492,13 @@ describe("what the slicer is handed instead of asked to guess (#586)", () => {
     }
   });
 
-  test.fails("#586.2: the slice prompt no longer spells a top-level entry of its own as an example", async () => {
+  test("#586.2: the slice prompt no longer spells a top-level entry of its own as an example", async () => {
     const prompt = await renderedSlicePrompt();
 
     expect(prompt).not.toContain("(`.Workflow`, `docs`, `bin`, `.github`");
   });
 
-  test.fails("#586.3: one exported function supplies both the list the slicer is handed and the set the publisher validates against", async () => {
+  test("#586.3: one exported function supplies both the list the slicer is handed and the set the publisher validates against", async () => {
     const loaded = (await import("../shared/render-body")) as Record<string, unknown>;
     const roots = loaded.repoTopLevel;
     if (typeof roots !== "function") {
