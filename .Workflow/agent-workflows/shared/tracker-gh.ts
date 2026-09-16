@@ -1,7 +1,8 @@
 import { z } from "zod";
-import type { GhExec } from "./gh";
 import { blockedByPath, issueCommentsPath, issuePath, matchingRefsPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
+import { issueComments, type GhExec } from "./gh";
+import { issueBody } from "./issue-body";
 
 const ApiRun = z.object({
   id: z.number(),
@@ -164,6 +165,12 @@ export function trackerGh(gh: GhExec): Tracker {
     },
     addBlockedBy(number, blockerId) {
       gh(["api", blockedByPath(number), ID_FIELD_FLAG, `issue_id=${blockerId}`]);
+    },
+    issueBody(number) {
+      return issueBody(gh, number);
+    },
+    issueComments(number) {
+      return issueComments(gh, number);
     },
   };
 }

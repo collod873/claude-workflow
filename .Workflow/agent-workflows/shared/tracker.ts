@@ -46,4 +46,6 @@ export interface Tracker {
   issueId(number: number): number;
   addSubIssue(parentNumber: number, childId: number): void;
   addBlockedBy(number: number, blockerId: number): void;
+  issueBody(number: number): string;
+  issueComments(number: number): string[];
 }

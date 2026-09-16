@@ -1,5 +1,10 @@
 import type { Tracker, TrackerBlocker, TrackerComment, TrackerJob, TrackerRecordComment, WorkflowRun } from "./tracker";
 
+export interface TrackerMemoryIssue {
+  body?: string;
+  comments?: string[];
+}
+
 export interface TrackerMemorySeed {
   runs?: WorkflowRun[];
   jobs?: Record<number, TrackerJob[]>;
@@ -11,6 +16,7 @@ export interface TrackerMemorySeed {
   mergedClosers?: Record<number, number>;
   blockedByIds?: Record<number, number[]>;
   issueIds?: Record<number, number>;
+  issues?: Record<number, TrackerMemoryIssue>;
 }
 
 export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
@@ -26,6 +32,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
     Object.entries(seed.blockedByIds ?? {}).map(([number, ids]) => [Number(number), ids]),
   );
   const issueIds = new Map(Object.entries(seed.issueIds ?? {}).map(([number, id]) => [Number(number), id]));
+  const issues = new Map(Object.entries(seed.issues ?? {}).map(([id, issue]) => [Number(id), issue]));
 
   return {
     workflowRuns: (_workflow, perPage) => runs.slice(0, perPage),
@@ -46,5 +53,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
     },
     addSubIssue: () => undefined,
     addBlockedBy: () => undefined,
+    issueBody: (number) => issues.get(number)?.body ?? "",
+    issueComments: (number) => issues.get(number)?.comments ?? [],
   };
 }

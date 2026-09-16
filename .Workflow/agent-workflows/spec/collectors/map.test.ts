@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scratchDir } from "../../shared/scratch.fixture";
 import { collectMapContext } from "./map";
-import { mapTrackerGh } from "./map-gh.fixture";
 import { test } from "vitest";
 import { trackerGh } from "../../shared/tracker-gh";
+import { trackerMemory } from "../../shared/tracker-memory";
 import { createIssueGh } from "../gh.fake";
 
 function mapBody(over: { decisions?: string; outOfScope?: string; notYetSpecified?: string } = {}): string {
@@ -43,11 +43,14 @@ describe("collectMapContext", () => {
       decisions:
         "- [The thing ticket](https://github.com/o/r/issues/42): filed as [ADR-0099](docs/adr/0099-the-thing-is-decided.md)",
     });
-    const gh = mapTrackerGh(1, body, {
-      42: ["A resolution comment nobody should have to read once the ADR exists."],
+    const tracker = trackerMemory({
+      issues: {
+        1: { body },
+        42: { comments: ["A resolution comment nobody should have to read once the ADR exists."] },
+      },
     });
 
-    const context = collectMapContext(gh, 1, repoRoot);
+    const context = collectMapContext(tracker, 1, repoRoot);
 
     expect(context.rulings).toContain("The durable ruling, in full.");
     expect(context.rulings).not.toContain("A resolution comment nobody should have to read");
@@ -57,18 +60,20 @@ describe("collectMapContext", () => {
     const body = mapBody({
       decisions: "- [Another ticket](https://github.com/o/r/issues/7): decided to do it the plain way",
     });
-    const gh = mapTrackerGh(1, body, { 7: ["The resolution comment, since no ADR was filed."] });
+    const tracker = trackerMemory({
+      issues: { 1: { body }, 7: { comments: ["The resolution comment, since no ADR was filed."] } },
+    });
 
-    const context = collectMapContext(gh, 1, "/nonexistent");
+    const context = collectMapContext(tracker, 1, "/nonexistent");
 
     expect(context.rulings).toContain("The resolution comment, since no ADR was filed.");
   });
 
   it("reads the map body verbatim as ownerWords", () => {
     const body = mapBody({ decisions: "- [A ticket](https://github.com/o/r/issues/1): the gist" });
-    const gh = mapTrackerGh(5, body, { 1: ["resolution"] });
+    const tracker = trackerMemory({ issues: { 5: { body }, 1: { comments: ["resolution"] } } });
 
-    const context = collectMapContext(gh, 5, "/nonexistent");
+    const context = collectMapContext(tracker, 5, "/nonexistent");
 
     expect(context.ownerWords).toBe(body);
   });
@@ -79,22 +84,22 @@ describe("collectMapContext", () => {
       outOfScope: "- Billing: real work, filed elsewhere (filed)",
       notYetSpecified: "- Whether the retry policy needs a cap",
     });
-    const gh = mapTrackerGh(5, body, { 1: ["resolution"] });
+    const tracker = trackerMemory({ issues: { 5: { body }, 1: { comments: ["resolution"] } } });
 
-    const context = collectMapContext(gh, 5, "/nonexistent");
+    const context = collectMapContext(tracker, 5, "/nonexistent");
 
     expect(context.boundaries).toContain("Billing");
     expect(context.openGuesses).toContain("retry policy");
   });
 
   it("throws when the map carries no Decisions so far entries", () => {
-    const gh = mapTrackerGh(1, mapBody());
+    const tracker = trackerMemory({ issues: { 1: { body: mapBody() } } });
 
-    expect(() => collectMapContext(gh, 1, "/nonexistent")).toThrow();
+    expect(() => collectMapContext(tracker, 1, "/nonexistent")).toThrow();
   });
 });
 
-test.fails("#615.3: collectMapContext resolves a durable ruling when read through a Tracker built over trackerGh", () => {
+test("#615.3: collectMapContext resolves a durable ruling when read through a Tracker built over trackerGh", () => {
   const repoRoot = scratchDir("map-collector-tracker");
   mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
   writeFileSync(

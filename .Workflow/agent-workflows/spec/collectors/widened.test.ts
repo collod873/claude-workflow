@@ -1,16 +1,17 @@
 import { expect, test } from "vitest";
-import { coldDoorGh } from "../issue-doors.fixture";
 import { readSourceMarker, sourceMarker, type SpecSource } from "../publish";
 import { planSpecRun } from "../spec";
-import { mapTrackerGh } from "./map-gh.fixture";
 import { collectWidenedContext } from "./widened";
 import { trackerGh } from "../../shared/tracker-gh";
+import { trackerMemory } from "../../shared/tracker-memory";
 import { createIssueGh } from "../gh.fake";
 
 test(
   "#600.1: planSpecRun returns a widened author plan for an issue carrying the sent-to-spec marker and no decision sheet",
   () => {
-    const { gh } = coldDoorGh({ comments: ["<!-- sent-to-spec:v1 -->"] });
+    const { gh } = createIssueGh((fields) =>
+      fields === "comments" ? JSON.stringify({ comments: [{ body: "<!-- sent-to-spec:v1 -->" }] }) : undefined,
+    );
 
     const plan = planSpecRun(gh, { trigger: "to-spec", issueNumber: 538 });
 
@@ -26,9 +27,9 @@ test(
   "#600.2: the widened collector returns the issue body as ownerWords and does not throw with no Decisions so far section",
   () => {
     const body = "Its `## Files claimed` names more paths than lane 04 can author against in one budget.";
-    const gh = mapTrackerGh(538, body);
+    const tracker = trackerMemory({ issues: { 538: { body } } });
 
-    const context = collectWidenedContext(gh, 538);
+    const context = collectWidenedContext(tracker, 538);
 
     expect(context.ownerWords).toBe(body);
   },
@@ -40,7 +41,7 @@ test("#600.3: readSourceMarker round-trips a widened source", () => {
   expect(readSourceMarker(sourceMarker(widenedSource))).toEqual({ kind: "widened", issue: 538 });
 });
 
-test.fails("#615.4: the widened collector reads the issue body through a Tracker built over trackerGh, not a bare GhExec", () => {
+test("#615.4: the widened collector reads the issue body through a Tracker built over trackerGh, not a bare GhExec", () => {
   const body = "Its `## Files claimed` names more paths than lane 04 can author against in one budget.";
   const { gh } = createIssueGh((fields) => (fields === "body" ? JSON.stringify({ body }) : undefined));
   const tracker = trackerGh(gh) as unknown as Parameters<typeof collectWidenedContext>[0];
