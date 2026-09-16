@@ -1,6 +1,7 @@
 ---
-status: note
+status: superseded
 date: 2026-08-31
+superseded_by: ADR-0194
 reversal: Sending a `no-progress` stop back to `needs-human` alone means changing the routing in `runFixer` and retiring `shared/spec-gap.ts`'s second caller; the `FailureSignature` comparison that discriminates the two stops was already computed and stays either way.
 ---
 

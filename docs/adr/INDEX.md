@@ -20,7 +20,6 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0025 | [DESIGN.md carries no lane status; a shipped lane collapses to its six-field contract](0025-design-md-carries-no-lane-status-a-shipped-lane-collapses-to.md) |
 | 0028 | [An assumption mark names what it moves, or it is not a mark](0028-an-assumption-mark-names-what-it-moves-or-it-is-not-a-mark.md) |
 | 0031 | [A probation held to an event that may never happen becomes a count](0031-a-probation-held-to-an-event-that-may-never-happen-becomes-a.md) |
-| 0034 | [spec/gap fires the spec author, and an acceptance test an implementer cannot pass is an ordinary red](0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md) |
 | 0040 | [Lane 08 merges without a model, and the semantic-conflict class goes to the proposed lens](0040-lane-08-merges-without-a-model-and-the-semantic-conflict-cla.md) |
 | 0043 | [Write-on-surprise does not ship: the transcript auditor already carries W6](0043-write-on-surprise-does-not-ship-the-transcript-auditor-alrea.md) |
 | 0044 | [An unread document cannot be detected, so the backwards question back-stamps prose instead of deleting it](0044-an-unread-document-cannot-be-detected-so-the-backwards-quest.md) |
@@ -136,10 +135,11 @@ demotion; nothing here binds later work.
 - [0030](0030-the-shaper-is-given-a-prepared-context-and-no-search-tools.md) superseded
 - [0032](0032-an-acceptance-test-is-immutable-because-ci-runs-trunk-s-copy.md) superseded
 - [0033](0033-a-spec-edit-re-fires-acceptance-for-every-slice-whose-test-n.md) superseded
+- [0034](0034-spec-gap-fires-the-spec-author-and-an-acceptance-test-an-imp.md) superseded
 - [0035](0035-lane-07-ships-with-one-refuter-and-a-refusal-that-names-no-r.md) note
 - [0036](0036-a-finding-a-green-gate-already-covers-is-refused-before-any.md) note
 - [0037](0037-the-refuter-fleet-is-sized-by-what-the-owner-does-with-survi.md) note
-- [0038](0038-lane-07-s-conformance-reviewer-files-spec-gap-where-the-spec.md) note
+- [0038](0038-lane-07-s-conformance-reviewer-files-spec-gap-where-the-spec.md) superseded
 - [0039](0039-the-governor-does-not-ship-concurrency-is-bounded-by-ready-d.md) superseded
 - [0041](0041-the-fixer-stops-when-it-stops-making-progress-with-three-att.md) note
 - [0042](0042-a-seam-question-does-not-block-the-implementer-reads-on-and.md) superseded
@@ -191,7 +191,7 @@ demotion; nothing here binds later work.
 - [0113](0113-wave-0-may-hold-more-than-one-slice-so-validateplan-requires.md) note
 - [0114](0114-a-red-lane-05-run-is-recovered-from-its-own-artifact-and-han.md) superseded
 - [0116](0116-a-clone-the-detector-re-cut-is-carried-across-not-deleted-an.md) note
-- [0119](0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md) note
+- [0119](0119-a-fixer-that-stops-making-no-progress-files-spec-gap-rather.md) superseded
 - [0120](0120-an-acceptance-test-may-not-turn-on-a-file-no-pull-request-ma.md) superseded
 - [0121](0121-the-fixer-s-fix-is-the-working-tree-it-edited-not-a-file-lis.md) note
 - [0125](0125-checkpoint-isolation-is-a-setupfiles-entry-that-every-test-g.md) note
@@ -209,4 +209,4 @@ demotion; nothing here binds later work.
 - [0165](0165-reconcile-is-the-only-connector-that-starts-work-and-it-fire.md) superseded
 - [0186](0186-acceptance-lands-on-the-ticket-s-branch-because-adr-0150-del.md) superseded
 
-194 ADRs · 100 constraint · 44 note · 50 superseded · 20,734 words total.
+194 ADRs · 99 constraint · 42 note · 53 superseded · 20,734 words total.

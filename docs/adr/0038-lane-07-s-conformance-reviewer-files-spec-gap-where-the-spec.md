@@ -1,6 +1,7 @@
 ---
-status: note
+status: superseded
 date: 2026-08-26
+superseded_by: ADR-0194
 reversal: Widening the conformance reviewer back to the whole spec is a change to its prompt plus one routing branch; the spec/gap route it feeds and the spec-wins rule behind it belong to ADR-0034, not to this record.
 ---
 

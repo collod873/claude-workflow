@@ -1,6 +1,7 @@
 ---
-status: constraint
+status: superseded
 date: 2026-08-26
+superseded_by: ADR-0194
 reversal: Reversing "the spec wins by construction" hands ambiguity resolution back to implementers and reviewers, which means re-scoping lane 05's and lane 07's prompts, giving spec/gap a different reader than lane 02's spec author, and rebuilding the second escalation budget this ADR collapsed — a route ADR-0038 now also feeds.
 ---
 
