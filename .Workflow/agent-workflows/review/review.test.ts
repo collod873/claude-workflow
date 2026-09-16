@@ -3,6 +3,7 @@ import type { GhExec } from "../shared/gh";
 import { commitPullsPathMatcher } from "../shared/gh-paths";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { StageExec } from "../shared/stage";
+import { trackerMemory } from "../shared/tracker-memory";
 import { keepSurvivingFindings, runReview } from "./review";
 import { FINDING_LABEL } from "./counter";
 import { runRefuter } from "./refuter";
@@ -275,3 +276,19 @@ test(
     expect(issueCreates(calls).length).toBe(1);
   },
 );
+
+test.fails("#625.1: runReview completes end to end from a Tracker built by trackerMemory alone, with no callable GhExec anywhere in its dependencies", async () => {
+  const { exec } = fakeExec({ findings: [] });
+  const tracker = trackerMemory() as unknown as GhExec;
+
+  const result = await runReview(exec, tracker, {
+    diff: DIFF,
+    assignee: ASSIGNEE,
+    head: HEAD_SHA,
+    root: scratchDir("review-tracker-only"),
+  });
+
+  expect(result.survivors).toEqual([]);
+  expect(result.publishedIssues).toEqual([]);
+  expect(result.tally).toEqual({ reached: 0, refuted: 0 });
+});
