@@ -5,6 +5,7 @@ import { runEntrypoint } from "../shared/entrypoint";
 import { execGh, type GhExec } from "../shared/gh";
 import { writeFailure } from "../shared/handoff-path";
 import { markLane, SLICED_LABEL, SLICING_LABEL } from "../shared/labels";
+import { repoTopLevel } from "../shared/render-body";
 import {
   AUDIT_OUTPUT,
   Plan,
@@ -131,6 +132,10 @@ const SLICE_CONFIG: TypedStageConfig<Plan> = {
     VOCABULARY: vocabulary(),
     TICKET_FORMAT: ticketFormat(),
     SEAM_MANIFEST: readPriorHandoff("seam-sweep", SEAM_SWEEP_OUTPUT),
+    TOP_LEVEL_ENTRIES: [...repoTopLevel()]
+      .sort()
+      .map((entry) => `\`${entry}\``)
+      .join(", "),
   }),
   validate: validateSlicePlan,
   measure: measurePlan,

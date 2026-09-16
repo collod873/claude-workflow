@@ -75,7 +75,7 @@ export function validateClaimsAreMutable(plan: Plan): void {
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 let topLevelCache: ReadonlySet<string> | undefined;
-function repoTopLevel(): ReadonlySet<string> {
+export function repoTopLevel(): ReadonlySet<string> {
   topLevelCache ??= new Set(readdirSync(REPO_ROOT));
   return topLevelCache;
 }
