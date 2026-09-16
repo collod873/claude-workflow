@@ -87,7 +87,7 @@ describe("requestDispatch with a handoff path: the caller is inside a model job"
   });
 });
 
-test.fails("#627.1: requestDispatch sends a live dispatch through trackerGh rather than building the dispatch argv itself", () => {
+test("#627.1: requestDispatch sends a live dispatch through trackerGh rather than building the dispatch argv itself", () => {
   const trackerGhSpy = vi.spyOn(trackerGhModule, "trackerGh");
   const { gh } = createRecordingGh();
 

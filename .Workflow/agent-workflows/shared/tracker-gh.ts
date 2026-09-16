@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { blockedByPath, commitPullsPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
-import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerRecordComment, WorkflowRun } from "./tracker";
+import { blockedByPath, commitPullsPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerDispatchRequest, TrackerFindingIssue, TrackerRecordComment, TrackerRunSummary, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
 import { parseIssueNumber } from "./issue-url";
@@ -184,7 +184,24 @@ function toFindingIssue(issue: z.infer<typeof ApiFindingIssue>): TrackerFindingI
   return { ...issue, stateReason: issue.stateReason ?? undefined };
 }
 
-export function trackerGh(gh: GhExec): Tracker {
+const ApiRunSummary = z.object({
+  name: z.string(),
+  conclusion: z.string().nullable(),
+});
+
+function dispatchArgs(request: TrackerDispatchRequest): string[] {
+  const args = ["api", "repos/{owner}/{repo}/dispatches", "-f", `event_type=${request.event_type}`];
+  for (const [key, value] of Object.entries(request.client_payload)) {
+    if (Array.isArray(value)) {
+      args.push(...value.flatMap((member) => ["-f", `client_payload[${key}][]=${member}`]));
+      continue;
+    }
+    args.push("-f", `client_payload[${key}]=${value}`);
+  }
+  return args;
+}
+
+export function trackerReadsGh(gh: GhExec): Pick<Tracker, "workflowRuns" | "jobs" | "blockedBy" | "runsSince"> {
   return {
     workflowRuns(workflow, perPage) {
       const projection =
@@ -194,6 +211,32 @@ export function trackerGh(gh: GhExec): Tracker {
         .parse(JSON.parse(raw))
         .map(toWorkflowRun);
     },
+    jobs(runId) {
+      const raw = gh(["api", runJobsPath(runId)]);
+      return JobsResponse.parse(JSON.parse(raw)).jobs;
+    },
+    blockedBy(number) {
+      const raw = gh(["api", blockedByPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
+      return ApiBlocker.array()
+        .parse(JSON.parse(raw))
+        .map(toBlocker);
+    },
+    runsSince(repository, since) {
+      const raw = gh(["api", "--paginate", repoRunsSincePath(repository, since), "--jq", ".workflow_runs[] | {name, conclusion}"]);
+      return raw
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map((line): TrackerRunSummary => ApiRunSummary.parse(JSON.parse(line)));
+    },
+  };
+}
+
+export function trackerGh(gh: GhExec): Tracker {
+  return {
+    ...trackerReadsGh(gh),
+    dispatch(request) {
+      gh(dispatchArgs(request));
+    },
     recentRuns(perPage, repository) {
       const path = repository ? repoRunsPathFor(repository, perPage) : repoRunsPath(perPage);
       const projection = "[.workflow_runs[] | {id, name, path, status, conclusion, html_url, head_branch, created_at}]";
@@ -202,22 +245,12 @@ export function trackerGh(gh: GhExec): Tracker {
         .parse(JSON.parse(raw))
         .map(toRepoRun);
     },
-    jobs(runId) {
-      const raw = gh(["api", runJobsPath(runId)]);
-      return JobsResponse.parse(JSON.parse(raw)).jobs;
-    },
     jobLog(jobId) {
       try {
         return gh(["api", jobLogsPath(jobId), ALLOW_ESCAPE_SEQUENCES]);
       } catch {
         return gh(["api", jobLogsPath(jobId)]);
       }
-    },
-    blockedBy(number) {
-      const raw = gh(["api", blockedByPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
-      return ApiBlocker.array()
-        .parse(JSON.parse(raw))
-        .map(toBlocker);
     },
     children(number) {
       const raw = gh(["api", subIssuesPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);

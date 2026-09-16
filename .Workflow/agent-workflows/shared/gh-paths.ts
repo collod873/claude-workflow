@@ -103,6 +103,10 @@ export function repoRunsPathFor(repository: string, perPage: number): string {
   return `repos/${repository}/actions/runs?per_page=${perPage}`;
 }
 
+export function repoRunsSincePath(repository: string, since: string): string {
+  return `repos/${repository}/actions/runs?created=>=${since}&per_page=100`;
+}
+
 /**
  * @fixture No lane reads this; it exists so `watchdog/walk-home.test.ts`'s fake `gh` recognises
  * the path `repoRunsPathFor` sends, by the same segments, rather than restating the shape in a way

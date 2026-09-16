@@ -2,9 +2,11 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { GhExec } from "./gh";
 import { buildLaneMap, LANE_MAP_RELATIVE_PATH, type LaneMap, renderLaneMap, tallyRuns, type RunTally } from "./lane-map";
 import { MACHINE_REPOSITORY } from "./lane-wiring";
 import { errorMessage } from "./reason";
+import { trackerReadsGh } from "./tracker-gh";
 
 const DEFAULT_WINDOW_DAYS = 14;
 
@@ -19,16 +21,10 @@ function option(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+const gh: GhExec = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
 function fetchRuns(repository: string, since: string): { name: string; conclusion: string | null }[] {
-  const raw = execFileSync(
-    "gh",
-    ["api", "--paginate", `repos/${repository}/actions/runs?created=>=${since}&per_page=100`, "--jq", ".workflow_runs[] | {name, conclusion}"],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  return raw
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as { name: string; conclusion: string | null });
+  return trackerReadsGh(gh).runsSince(repository, since);
 }
 
 function main(): void {

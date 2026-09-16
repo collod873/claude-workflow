@@ -3,7 +3,7 @@ import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
 import { reason } from "../shared/reason";
 import { SignalIssueSchema } from "../shared/signal-issue-schema";
-import { trackerGh } from "../shared/tracker-gh";
+import { trackerReadsGh } from "../shared/tracker-gh";
 import type { Tracker } from "../shared/tracker";
 import { bypassCount, ISSUE_TITLE, issueBody, markedCount, shouldPropose, type VerifyRun } from "./bypass";
 
@@ -11,7 +11,7 @@ export const RUN_PAGE_SIZE = 100;
 
 export const MAX_JOB_READS = 60;
 
-function failedStepName(tracker: Tracker, runId: number): string | undefined {
+function failedStepName(tracker: Pick<Tracker, "jobs">, runId: number): string | undefined {
   for (const job of tracker.jobs(runId)) {
     const failed = job.steps.find((step) => step.conclusion === "failure");
     if (failed) return failed.name;
@@ -57,7 +57,7 @@ export interface BypassCounterOutcome {
 export function runBypassCounter(options: BypassCounterOptions): BypassCounterOutcome {
   const { gh, assignee, verifyWorkflow } = options;
   const log = options.log ?? ((line: string) => console.log(line));
-  const tracker = trackerGh(gh);
+  const tracker = trackerReadsGh(gh);
 
   const runs = tracker.workflowRuns(verifyWorkflow, RUN_PAGE_SIZE);
   const failed = runs.filter((run) => run.conclusion === "failure");

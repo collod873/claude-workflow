@@ -168,6 +168,8 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
       if (repository.refusesSecrets) throw new Error(repository.refusesSecrets);
       secretsSet[name] = { ...(secretsSet[name] ?? {}), [secretName]: value };
     },
+    dispatch: () => {},
+    runsSince: () => [],
     commits,
     labelWrites,
     workflowApprovalsSet,

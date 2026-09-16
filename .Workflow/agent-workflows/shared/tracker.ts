@@ -92,6 +92,16 @@ export interface FileChange {
   content: string | null;
 }
 
+export interface TrackerDispatchRequest {
+  event_type: string;
+  client_payload: Record<string, string | number | string[]>;
+}
+
+export interface TrackerRunSummary {
+  name: string;
+  conclusion: string | null;
+}
+
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   recentRuns(perPage: number, repository?: string): RepoRun[];
@@ -124,4 +134,6 @@ export interface Tracker {
   updateLabel(repository: string, label: Label): void;
   setWorkflowApproval(repository: string): boolean;
   setSecret(repository: string, name: string, value: string): void;
+  dispatch(request: TrackerDispatchRequest): void;
+  runsSince(repository: string, since: string): TrackerRunSummary[];
 }
