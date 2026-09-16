@@ -1,8 +1,10 @@
 import { z } from "zod";
-import { blockedByPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
-import type { RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
+import { blockedByPath, commitPullsPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import type { CommitPull, RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerRecordComment, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
+import { parseIssueNumber } from "./issue-url";
+import { SignalIssueSchema } from "./signal-issue-schema";
 
 const ApiRun = z.object({
   id: z.number(),
@@ -65,6 +67,16 @@ const ClosingPrNumbers = z.array(z.number());
 
 const MERGED = "MERGED";
 const ALLOW_ESCAPE_SEQUENCES = "--allow-escape-sequences";
+const ApiCommitPull = z.object({
+  head: z.object({ sha: z.string(), ref: z.string() }),
+});
+
+const ApiFindingIssue = z.object({
+  number: z.number(),
+  state: z.string(),
+  stateReason: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
 
 function toWorkflowRun(run: z.infer<typeof ApiRun>): WorkflowRun {
   return {
@@ -124,6 +136,14 @@ function toRepoRun(run: z.infer<typeof ApiRepoRun>): RepoRun {
     headBranch: run.head_branch ?? "",
     createdAt: run.created_at,
   };
+}
+
+function toCommitPull(pull: z.infer<typeof ApiCommitPull>): CommitPull {
+  return { headSha: pull.head.sha, headRef: pull.head.ref };
+}
+
+function toFindingIssue(issue: z.infer<typeof ApiFindingIssue>): TrackerFindingIssue {
+  return { ...issue, stateReason: issue.stateReason ?? undefined };
 }
 
 export function trackerGh(gh: GhExec): Tracker {
@@ -220,6 +240,39 @@ export function trackerGh(gh: GhExec): Tracker {
     },
     issueComments(number) {
       return issueComments(gh, number);
+    },
+    commitPulls(sha) {
+      const raw = gh(["api", commitPullsPath(sha)]);
+      return ApiCommitPull.array()
+        .parse(JSON.parse(raw))
+        .map(toCommitPull);
+    },
+    findingIssues(label) {
+      const raw = gh([
+        "issue",
+        "list",
+        "--state",
+        "all",
+        "--label",
+        label,
+        "--limit",
+        "200",
+        "--json",
+        "number,state,stateReason,createdAt",
+      ]);
+      return ApiFindingIssue.array()
+        .parse(JSON.parse(raw))
+        .map(toFindingIssue);
+    },
+    signals() {
+      const raw = gh(["issue", "list", "--state", "all", "--limit", "200", "--json", "number,body,state,stateReason"]);
+      return SignalIssueSchema.array().parse(JSON.parse(raw));
+    },
+    createIssue(input) {
+      const args = ["issue", "create", "--title", input.title, "--body", input.body, "--assignee", input.assignee];
+      if (input.label) args.push("--label", input.label);
+      const url = gh(args);
+      return parseIssueNumber(url, input.title);
     },
   };
 }

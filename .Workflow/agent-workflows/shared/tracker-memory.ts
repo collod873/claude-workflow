@@ -1,4 +1,4 @@
-import type { RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerJob, TrackerRecordComment, WorkflowRun } from "./tracker";
+import type { CommitPull, CreateIssueInput, RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerJob, TrackerRecordComment, TrackerSignal, WorkflowRun } from "./tracker";
 
 export interface TrackerMemoryIssue {
   body?: string;
@@ -19,6 +19,11 @@ export interface TrackerMemorySeed {
   blockedByIds?: Record<number, number[]>;
   issueIds?: Record<number, number>;
   issues?: Record<number, TrackerMemoryIssue>;
+  pulls?: Record<string, CommitPull[]>;
+  findingIssues?: Record<string, TrackerFindingIssue[]>;
+  signals?: TrackerSignal[];
+  createdIssues?: CreateIssueInput[];
+  firstIssueNumber?: number;
 }
 
 export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
@@ -37,6 +42,11 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
   );
   const issueIds = new Map(Object.entries(seed.issueIds ?? {}).map(([number, id]) => [Number(number), id]));
   const issues = new Map(Object.entries(seed.issues ?? {}).map(([id, issue]) => [Number(id), issue]));
+  const pulls = seed.pulls ?? {};
+  const findingIssues = seed.findingIssues ?? {};
+  const signals = seed.signals ?? [];
+  const createdIssues = seed.createdIssues ?? [];
+  let nextIssueNumber = seed.firstIssueNumber ?? 1000;
 
   return {
     workflowRuns: (_workflow, perPage) => runs.slice(0, perPage),
@@ -61,5 +71,13 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
     addBlockedBy: () => undefined,
     issueBody: (number) => issues.get(number)?.body ?? "",
     issueComments: (number) => issues.get(number)?.comments ?? [],
+    commitPulls: (sha) => pulls[sha] ?? [],
+    findingIssues: (label) => findingIssues[label] ?? [],
+    signals: () => signals,
+    createIssue: (input) => {
+      createdIssues.push(input);
+      nextIssueNumber += 1;
+      return nextIssueNumber;
+    },
   };
 }

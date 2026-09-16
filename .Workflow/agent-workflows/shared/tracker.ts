@@ -50,6 +50,32 @@ export interface TrackerRecordComment {
   login: string | null;
 }
 
+export interface CommitPull {
+  headSha: string;
+  headRef: string;
+}
+
+export interface TrackerFindingIssue {
+  number: number;
+  state: string;
+  stateReason?: string;
+  createdAt: string;
+}
+
+export interface TrackerSignal {
+  number: number;
+  body: string | null;
+  state: string;
+  stateReason?: string | null;
+}
+
+export interface CreateIssueInput {
+  title: string;
+  body: string;
+  assignee: string;
+  label?: string;
+}
+
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
   recentRuns(perPage: number, repository?: string): RepoRun[];
@@ -67,4 +93,8 @@ export interface Tracker {
   addBlockedBy(number: number, blockerId: number): void;
   issueBody(number: number): string;
   issueComments(number: number): string[];
+  commitPulls(sha: string): CommitPull[];
+  findingIssues(label: string): TrackerFindingIssue[];
+  signals(): TrackerSignal[];
+  createIssue(input: CreateIssueInput): number;
 }
