@@ -62,3 +62,25 @@ test("#437.1: publishSubIssues labels `by-hand` when the claim names a workstati
 
   expect(mentionsByHand(ordinary.calls)).toBe(false);
 });
+
+import { wireBlockedByEdges } from "./publish-sub-issues";
+
+const TWO_SLICE_PLAN = [{ dependsOn: [] }, { dependsOn: [1] }] as unknown as Plan;
+
+const TWO_PUBLISHED_ISSUES = [
+  { position: 1, title: "A", number: 501, id: 9001 },
+  { position: 2, title: "B", number: 502, id: 9002 },
+];
+
+test.fails("#612.1: wireBlockedByEdges wires each dependency through a Tracker instead of building gh api argv", () => {
+  const edges: Array<{ number: number; blockerId: number }> = [];
+  const tracker = {
+    addBlockedBy(number: number, blockerId: number) {
+      edges.push({ number, blockerId });
+    },
+  };
+
+  wireBlockedByEdges(TWO_SLICE_PLAN, TWO_PUBLISHED_ISSUES, tracker as unknown as GhExec);
+
+  expect(edges).toEqual([{ number: 502, blockerId: 9001 }]);
+});
