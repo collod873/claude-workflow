@@ -6,12 +6,13 @@ import { BY_HAND_LABEL, clearLane, markLane, PRD_LABEL, SLICEABLE_LABEL, SPECCIN
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
 import { structuredOutput } from "../shared/structured-output";
-import { readSheetMarker } from "../shared/marker";
+import { readSheetMarker, SENT_TO_SPEC_MARKER } from "../shared/marker";
 import { specDoorFrom, specsSource } from "./doors";
 import { SPEC_AUTHOR_ALLOWED_TOOLS, type DecidedContext, type SpecAuthorOutput } from "./author-contract";
 import { runSpecCritic, type Resolution } from "./critic";
 import { collectMapContext } from "./collectors/map";
 import { collectSheetContext } from "./collectors/sheet";
+import { collectWidenedContext } from "./collectors/widened";
 import {
   applyGate,
   gateCount,
@@ -49,7 +50,8 @@ export const SPEC_AUTHOR_OUTPUT = structuredOutput(
 
 export type SpecTrigger =
   | { kind: "sheet"; gh: GhExec; issueNumber: number }
-  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string };
+  | { kind: "map"; gh: GhExec; issueNumber: number; repoRoot?: string }
+  | { kind: "widened"; gh: GhExec; issueNumber: number };
 
 function isDecidedContext(input: DecidedContext | SpecTrigger): input is DecidedContext {
   return "ownerWords" in input;
@@ -62,6 +64,11 @@ function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: Ma
     case "map":
       return {
         context: collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot),
+        decisions: [],
+      };
+    case "widened":
+      return {
+        context: collectWidenedContext(trigger.gh, trigger.issueNumber),
         decisions: [],
       };
   }
@@ -203,8 +210,10 @@ async function reconcileSpec(
 }
 
 function detectSourceKind(gh: GhExec, issueNumber: number): SpecSource["kind"] {
-  const hasSheet = issueComments(gh, issueNumber).some((body) => readSheetMarker(body) !== undefined);
-  return hasSheet ? "sheet" : "map";
+  const comments = issueComments(gh, issueNumber);
+  if (comments.some((body) => readSheetMarker(body) !== undefined)) return "sheet";
+  if (comments.some((body) => body.includes(SENT_TO_SPEC_MARKER))) return "widened";
+  return "map";
 }
 
 interface RawSpecIssue {
