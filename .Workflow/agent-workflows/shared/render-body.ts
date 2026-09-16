@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
 import type { Plan, Slice } from "./plan-schema";
@@ -70,9 +70,11 @@ export function validateClaimsAreMutable(plan: Plan): void {
   }
 }
 
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
 let topLevelCache: ReadonlySet<string> | undefined;
 function repoTopLevel(): ReadonlySet<string> {
-  topLevelCache ??= new Set(readdirSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../..")));
+  topLevelCache ??= new Set(readdirSync(REPO_ROOT));
   return topLevelCache;
 }
 
@@ -122,10 +124,10 @@ export function validatePathsAreRooted(plan: Plan, roots: ReadonlySet<string> = 
     );
     if (unresolvable.length > 0) {
       problems.push(
-        `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. ` +
+        `${label} names ${unresolvable.map((token) => JSON.stringify(token)).join(", ")} without saying rooted where. " +
           "Lane 04 and lane 05 read this ticket independently and cannot ask each other, so an unrooted path " +
           "is a decision handed to two blind readers (#272, #278). Spell it from the repository root, or claim " +
-          "the full path in filesClaimed.",
+          "the full path in filesClaimed.`,
       );
     }
   });
@@ -161,4 +163,53 @@ ${criteria}
 ## Files claimed
 ${files}${seams}
 `;
+}
+
+interface ClaimRepair {
+  slice: number;
+  from: string;
+  to: string;
+}
+
+function rootingsThatResolve(claim: string, repoRoot: string, entries: string[]): string[] {
+  return entries.map((entry) => `${entry}/${claim}`).filter((rooted) => existsSync(join(repoRoot, rooted)));
+}
+
+export function repairUnrootedClaims(
+  plan: Plan,
+  repoRoot: string = REPO_ROOT,
+): { plan: Plan; repairs: ClaimRepair[] } {
+  const entries = readdirSync(repoRoot).sort();
+  const roots = new Set(entries);
+  const repairs: ClaimRepair[] = [];
+  const problems: string[] = [];
+
+  const repaired = plan.map((slice, index) => {
+    const label = `slice ${index + 1} ("${slice.title}")`;
+    const filesClaimed = slice.filesClaimed.map((claim) => {
+      if (roots.has(claim.split("/")[0])) {
+        return claim;
+      }
+      const candidates = rootingsThatResolve(claim, repoRoot, entries);
+      if (candidates.length === 1) {
+        repairs.push({ slice: index + 1, from: claim, to: candidates[0] });
+        return candidates[0];
+      }
+      problems.push(
+        candidates.length === 0
+          ? `${label} claims ${JSON.stringify(claim)}, which names no top-level entry of the repository and ` +
+              `resolves under none of the ${entries.length} tried (${entries.join(", ")}), so only its author ` +
+              "can say what it is the full path to."
+          : `${label} claims ${JSON.stringify(claim)}, which ${candidates.length} top-level entries each ` +
+              `resolve (${candidates.join(", ")}), so rooting it would be a guess; claim the one you mean in full.`,
+      );
+      return claim;
+    });
+    return { ...slice, filesClaimed };
+  });
+
+  if (problems.length > 0) {
+    throw new Error(problems.join("\n"));
+  }
+  return { plan: repaired, repairs };
 }

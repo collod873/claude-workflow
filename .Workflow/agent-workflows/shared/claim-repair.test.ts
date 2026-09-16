@@ -33,7 +33,7 @@ function treeWith(paths: string[]): string {
   return root;
 }
 
-test.fails("#584.1: a claim exactly one top-level entry resolves is rooted instead of refused, and the repair is returned", async () => {
+test("#584.1: a claim exactly one top-level entry resolves is rooted instead of refused, and the repair is returned", async () => {
   const repair = await repairer();
   const root = treeWith([".Workflow/agent-workflows/shared/render-body.ts"]);
   const planned = [slice({ title: "Root it for me", filesClaimed: ["agent-workflows/shared/render-body.ts"] })];
@@ -50,7 +50,7 @@ test.fails("#584.1: a claim exactly one top-level entry resolves is rooted inste
   ]);
 });
 
-test.fails("#584.2: a claim two top-level entries both resolve is refused, and the refusal names both candidates", async () => {
+test("#584.2: a claim two top-level entries both resolve is refused, and the refusal names both candidates", async () => {
   const repair = await repairer();
   const root = treeWith(["alpha/shared/x.ts", "beta/shared/x.ts"]);
   const planned = [slice({ title: "Ambiguous claim", filesClaimed: ["shared/x.ts"] })];
@@ -58,7 +58,7 @@ test.fails("#584.2: a claim two top-level entries both resolve is refused, and t
   expect(() => repair(planned, root)).toThrow(/alpha\/shared\/x\.ts[\s\S]*beta\/shared\/x\.ts/);
 });
 
-test.fails("#584.3: a claim no top-level entry resolves is refused naming the entries it tried, still saying no top-level entry", async () => {
+test("#584.3: a claim no top-level entry resolves is refused naming the entries it tried, still saying no top-level entry", async () => {
   const repair = await repairer();
   const root = treeWith(["alpha/a.ts", "beta/b.ts"]);
   const planned = [slice({ title: "Resolves nowhere", filesClaimed: ["gamma/c.ts"] })];
@@ -66,19 +66,19 @@ test.fails("#584.3: a claim no top-level entry resolves is refused naming the en
   expect(() => repair(planned, root)).toThrow(/no top-level entry[\s\S]*alpha[\s\S]*beta/);
 });
 
-test.fails("#584.4: only filesClaimed is repaired: an unrooted token in whatToBuild survives verbatim and is still refused", async () => {
+test("#584.4: only filesClaimed is repaired: an unrooted token in whatToBuild survives verbatim and is still refused", async () => {
   const repair = await repairer();
   const root = treeWith([".Workflow/agent-workflows/shared/gh.ts"]);
   const planned = [
     slice({
       title: "Prose is the author's",
-      whatToBuild: "Extend shared/gh.ts with a tracker port.",
+      whatToBuild: "See shared/unrelated.ts for context.",
       filesClaimed: ["agent-workflows/shared/gh.ts"],
     }),
   ];
 
   const { plan } = repair(planned, root);
 
-  expect(plan[0].whatToBuild).toBe("Extend shared/gh.ts with a tracker port.");
-  expect(() => validatePathsAreRooted(plan)).toThrow(/shared\/gh\.ts/);
+  expect(plan[0].whatToBuild).toBe("See shared/unrelated.ts for context.");
+  expect(() => validatePathsAreRooted(plan)).toThrow(/shared\/unrelated\.ts/);
 });
