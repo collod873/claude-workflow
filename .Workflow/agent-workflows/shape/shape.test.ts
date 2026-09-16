@@ -1,8 +1,11 @@
 import { describe, expect, it, test, vi } from "vitest";
 import type { StageExec } from "../shared/stage";
+import type { GhExec } from "../shared/gh";
 import { REFUSAL_MARKER, readSheetMarker } from "../shared/marker";
 import { LABELS_APPLIED, runChain, SHAPER_DENIED_TOOLS, SWEEP_DENIED_TOOLS, type ChainDeps } from "./shape";
-import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
+import { sheetMarker } from "../shared/marker";
+import { trackerMemory } from "../shared/tracker-memory";
+import type { Tracker } from "../shared/tracker";
 
 function stageOf(argv: string[]): "sweep" | "shaper" | "refuter" | "unknown" {
   const model = argv[argv.indexOf("--model") + 1] ?? "";
@@ -59,8 +62,49 @@ const ONE_DECISION_SHEET = shaperAnswer({
 
 const SILENT_REFUTER = block({ survivors: [] });
 
-function depsFor(model: FakeModel, tracker: FakeTracker): ChainDeps {
-  return { exec: model.exec, gh: tracker.gh, fetch: () => "injected file" };
+interface IssueGhOptions {
+  title?: string;
+  body?: string;
+  labels?: Map<number, string[]>;
+}
+
+function createIssueGh(options: IssueGhOptions = {}): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  const labels = options.labels ?? new Map<number, string[]>();
+
+  const gh: GhExec = (args) => {
+    calls.push([...args]);
+    const [command, sub] = args;
+
+    if (command === "issue" && sub === "list") return "[]";
+
+    if (command === "issue" && sub === "view") {
+      const number = Number(args[2]);
+      const fields = args[args.indexOf("--json") + 1] ?? "";
+      if (fields.includes("labels")) {
+        return JSON.stringify({ labels: (labels.get(number) ?? []).map((name) => ({ name })) });
+      }
+      return JSON.stringify({ title: options.title ?? "Idea: something", body: options.body ?? "the owner's words" });
+    }
+
+    return "";
+  };
+
+  return { gh, calls };
+}
+
+function postedComments(calls: string[][]): string[] {
+  return calls
+    .filter((call) => call[0] === "issue" && call[1] === "comment")
+    .map((call) => call[call.indexOf("--body") + 1]);
+}
+
+function depsFor(model: FakeModel, gh: GhExec, tracker: Tracker = trackerMemory()): ChainDeps {
+  return { exec: model.exec, gh, fetch: () => "injected file", tracker };
+}
+
+function trackerWithComments(comments: string[]): Tracker {
+  return trackerMemory({ issues: { 1: { comments } } });
 }
 
 function stagesSpawned(model: FakeModel): string[] {
@@ -87,40 +131,40 @@ function deniedIn(model: FakeModel, stage: string): string[] {
 describe("the ordinary run", () => {
   it("spends three stages and posts one sheet", async () => {
     const model = healthyModel();
-    const tracker = createFakeTracker();
+    const { gh, calls } = createIssueGh();
 
-    const outcome = await runChain(depsFor(model, tracker), 1, "");
+    const outcome = await runChain(depsFor(model, gh), 1, "");
 
     expect(outcome).toEqual({ kind: "posted", round: 0, route: "short", survivors: 0 });
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper", "refuter"]);
-    expect(postedComments(tracker)).toHaveLength(1);
+    expect(postedComments(calls)).toHaveLength(1);
   });
 
   it("posts a sheet whose trailer reads back as the sheet that was rendered", async () => {
     const model = healthyModel();
-    const tracker = createFakeTracker();
+    const { gh, calls } = createIssueGh();
 
-    await runChain(depsFor(model, tracker), 1, "");
+    await runChain(depsFor(model, gh), 1, "");
 
-    expect(readSheetMarker(postedComments(tracker)[0])?.route).toBe("short");
+    expect(readSheetMarker(postedComments(calls)[0])?.route).toBe("short");
   });
 
   it("#521: stamps 1-decide once the sheet is posted, clearing the green 1-shaping it wore while the chain ran", async () => {
     const model = healthyModel();
-    const tracker = createFakeTracker({ labels: new Map([[1, ["idea", "1-shaping"]]]) });
+    const { gh, calls } = createIssueGh({ labels: new Map([[1, ["idea", "1-shaping"]]]) });
 
-    await runChain(depsFor(model, tracker), 1, "");
+    await runChain(depsFor(model, gh), 1, "");
 
-    const sheetAt = tracker.calls.findIndex((call) => call[0] === "issue" && call[1] === "comment");
-    const decideAt = tracker.calls.findIndex((call) => call[1] === "edit" && call.includes("1-decide"));
+    const sheetAt = calls.findIndex((call) => call[0] === "issue" && call[1] === "comment");
+    const decideAt = calls.findIndex((call) => call[1] === "edit" && call.includes("1-decide"));
     expect(decideAt).toBeGreaterThan(sheetAt);
-    expect(tracker.calls[decideAt]).toEqual(["issue", "edit", "1", "--remove-label", "1-shaping", "--add-label", "1-decide"]);
+    expect(calls[decideAt]).toEqual(["issue", "edit", "1", "--remove-label", "1-shaping", "--add-label", "1-decide"]);
   });
 
   it("hands every stage a prompt with every placeholder substituted", async () => {
     const model = healthyModel();
 
-    await runChain(depsFor(model, createFakeTracker()), 1, "");
+    await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper", "refuter"]);
     for (const spawn of model.spawns) expect(spawn.prompt).not.toContain("{{");
@@ -131,7 +175,7 @@ describe("the shaper's toolbelt", () => {
   it("is emptied by the CLI, not by the prompt", async () => {
     const model = healthyModel();
 
-    await runChain(depsFor(model, createFakeTracker()), 1, "");
+    await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     const denied = deniedIn(model, "shaper");
 
@@ -144,7 +188,7 @@ describe("the sweep's toolbelt", () => {
   it("keeps what it searches with and loses every reach past this repo", async () => {
     const model = healthyModel();
 
-    await runChain(depsFor(model, createFakeTracker()), 1, "");
+    await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     const denied = deniedIn(model, "sweep");
 
@@ -155,9 +199,9 @@ describe("the sweep's toolbelt", () => {
 
   it("is handed the idea rather than sent to fetch it", async () => {
     const model = healthyModel();
-    const tracker = createFakeTracker({ title: "Idea: cap the corpus", body: "it is 52k words" });
+    const { gh } = createIssueGh({ title: "Idea: cap the corpus", body: "it is 52k words" });
 
-    await runChain(depsFor(model, tracker), 1, "");
+    await runChain(depsFor(model, gh), 1, "");
 
     const { prompt } = spawnOf(model, "sweep");
     expect(prompt).toContain("Idea: cap the corpus");
@@ -174,36 +218,35 @@ describe("the stage-1 refusal", () => {
 
   it("never spends the shaper", async () => {
     const model = createFakeModel({ sweep: [duplicate] });
-    const tracker = createFakeTracker();
+    const { gh } = createIssueGh();
 
-    const outcome = await runChain(depsFor(model, tracker), 1, "");
+    const outcome = await runChain(depsFor(model, gh), 1, "");
 
     expect(outcome).toEqual({ kind: "refused", cause: "already-exists" });
     expect(stagesSpawned(model)).toEqual(["sweep"]);
   });
 
   it("comments its evidence and labels the issue", async () => {
-    const tracker = createFakeTracker();
+    const { gh, calls } = createIssueGh();
 
-    await runChain(depsFor(createFakeModel({ sweep: [duplicate] }), tracker), 1, "");
+    await runChain(depsFor(createFakeModel({ sweep: [duplicate] }), gh), 1, "");
 
-    expect(postedComments(tracker)[0]).toContain("#42");
-    expect(postedComments(tracker)[0]).toContain(REFUSAL_MARKER);
-    expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "shape-refused"]);
+    expect(postedComments(calls)[0]).toContain("#42");
+    expect(postedComments(calls)[0]).toContain(REFUSAL_MARKER);
+    expect(calls).toContainEqual(["issue", "edit", "1", "--add-label", "shape-refused"]);
     expect(LABELS_APPLIED).toContain("shape-refused");
   });
 
   it("stands down on a re-run, so the owner's comment is what clears it", async () => {
-    const tracker = createFakeTracker({
-      comments: new Map([[1, [`refused\n\n${REFUSAL_MARKER}`]]]),
-    });
+    const { gh } = createIssueGh();
+    const tracker = trackerWithComments([`refused\n\n${REFUSAL_MARKER}`]);
     const model = createFakeModel({
       sweep: [duplicate],
       shaper: [ONE_DECISION_SHEET],
       refuter: [SILENT_REFUTER],
     });
 
-    const outcome = await runChain(depsFor(model, tracker), 1, "it is not the same idea");
+    const outcome = await runChain(depsFor(model, gh, tracker), 1, "it is not the same idea");
 
     expect(outcome.kind).toBe("posted");
   });
@@ -219,7 +262,7 @@ describe("the one re-sweep", () => {
       refuter: [SILENT_REFUTER],
     });
 
-    const outcome = await runChain(depsFor(model, createFakeTracker()), 1, "");
+    const outcome = await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     expect(outcome.kind).toBe("posted");
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper", "sweep", "shaper", "refuter"]);
@@ -232,7 +275,7 @@ describe("the one re-sweep", () => {
       refuter: [SILENT_REFUTER],
     });
 
-    await runChain(depsFor(model, createFakeTracker()), 1, "");
+    await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     const secondShaper = model.spawns.filter((spawn) => stageOf(spawn.argv) === "shaper")[1];
     expect(secondShaper.prompt).toContain("This is your last pass");
@@ -244,7 +287,7 @@ describe("the one re-sweep", () => {
       shaper: [reSweep, reSweep],
     });
 
-    await expect(runChain(depsFor(model, createFakeTracker()), 1, "")).rejects.toThrow(
+    await expect(runChain(depsFor(model, createIssueGh().gh), 1, "")).rejects.toThrow(
       /caps at one/,
     );
   });
@@ -268,14 +311,14 @@ describe("the refusal to shape", () => {
       newTerms: [],
     });
     const model = createFakeModel({ sweep: [EMPTY_SWEEP], shaper: [seven] });
-    const tracker = createFakeTracker();
+    const { gh, calls } = createIssueGh();
 
-    const outcome = await runChain(depsFor(model, tracker), 1, "");
+    const outcome = await runChain(depsFor(model, gh), 1, "");
 
     expect(outcome).toEqual({ kind: "needs-live-session", decisions: 7 });
     expect(stagesSpawned(model)).toEqual(["sweep", "shaper"]);
-    expect(postedComments(tracker)[0]).toContain("live session");
-    expect(tracker.calls).toContainEqual(["issue", "edit", "1", "--add-label", "needs-human"]);
+    expect(postedComments(calls)[0]).toContain("live session");
+    expect(calls).toContainEqual(["issue", "edit", "1", "--add-label", "needs-human"]);
     expect(LABELS_APPLIED).toContain("needs-human");
   });
 });
@@ -295,24 +338,25 @@ describe("the spent change-request budget", () => {
       })} -->`,
     );
     const model = createFakeModel({});
-    const tracker = createFakeTracker({ comments: new Map([[1, sheets]]) });
+    const { gh, calls } = createIssueGh();
+    const tracker = trackerWithComments(sheets);
 
-    const outcome = await runChain(depsFor(model, tracker), 1, "one more thing");
+    const outcome = await runChain(depsFor(model, gh, tracker), 1, "one more thing");
 
     expect(outcome).toEqual({ kind: "capped" });
     expect(model.spawns).toHaveLength(0);
-    expect(postedComments(tracker)[0]).toContain("approved");
+    expect(postedComments(calls)[0]).toContain("approved");
   });
 });
 
 describe("a change request", () => {
   it("reaches the sweep as an explicit target and the shaper as the ask", async () => {
-    const tracker = createFakeTracker({
-      comments: new Map([[1, ["<!-- decision-sheet:v1 {\"restatement\":\"r\",\"priorArt\":[],\"decisions\":[],\"survivors\":[],\"route\":\"short\",\"routeReason\":\"x\",\"newTerms\":[],\"round\":0} -->"]]]),
-    });
+    const tracker = trackerWithComments([
+      "<!-- decision-sheet:v1 {\"restatement\":\"r\",\"priorArt\":[],\"decisions\":[],\"survivors\":[],\"route\":\"short\",\"routeReason\":\"x\",\"newTerms\":[],\"round\":0} -->",
+    ]);
     const model = healthyModel();
 
-    await runChain(depsFor(model, tracker), 1, "you missed the close gate");
+    await runChain(depsFor(model, createIssueGh().gh, tracker), 1, "you missed the close gate");
 
     expect(spawnOf(model, "sweep").prompt).toContain("you missed the close gate");
     expect(spawnOf(model, "shaper").prompt).toContain("you missed the close gate");
@@ -321,7 +365,7 @@ describe("a change request", () => {
   it("is absent from a first-round prompt rather than empty in it", async () => {
     const model = healthyModel();
 
-    await runChain(depsFor(model, createFakeTracker()), 1, "");
+    await runChain(depsFor(model, createIssueGh().gh), 1, "");
 
     expect(spawnOf(model, "shaper").prompt).not.toContain("change request");
   });
@@ -348,15 +392,15 @@ interface BudgetRun {
   settled: boolean;
   failure: unknown;
   model: FakeModel;
-  tracker: FakeTracker;
+  calls: string[][];
 }
 
 async function runPastTheBudget(): Promise<BudgetRun> {
   const model = silentModel();
-  const tracker = createFakeTracker();
-  const run: BudgetRun = { settled: false, failure: undefined, model, tracker };
+  const { gh, calls } = createIssueGh();
+  const run: BudgetRun = { settled: false, failure: undefined, model, calls };
 
-  void runChain(depsFor(model, tracker), 1, "").then(
+  void runChain(depsFor(model, gh), 1, "").then(
     () => {
       run.settled = true;
     },
@@ -392,7 +436,7 @@ test("#498.2: an elapsed budget strikes the ticket", async () => {
 
     expect(run.settled).toBe(true);
 
-    const strikes = run.tracker.calls.filter(
+    const strikes = run.calls.filter(
       (call) => call[0] === "issue" && call.some((arg) => /timed out after \d+ minutes at /.test(arg)),
     );
 
@@ -401,4 +445,38 @@ test("#498.2: an elapsed budget strikes the ticket", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+function stubGhForRound619(): ChainDeps["gh"] {
+  return (args) => {
+    if (args[0] === "issue" && args[1] === "view") return JSON.stringify({ title: "Idea: x", body: "y" });
+    if (args[0] === "search") return "[]";
+    if (args[0] === "repo" && args[1] === "view") return JSON.stringify({ nameWithOwner: "collod873/claude-workflow" });
+    return "";
+  };
+}
+
+test("#619.1: shape.ts hands roundFor the Tracker already sitting in ChainDeps rather than re-deriving one from deps.gh argv, so shape.test.ts can seed rounds through trackerMemory instead of tracker.fake", async () => {
+  const model = healthyModel();
+  const priorSheet = sheetMarker({
+    restatement: "r",
+    priorArt: [],
+    decisions: [],
+    survivors: [],
+    route: "short",
+    routeReason: "x",
+    newTerms: [],
+    round: 0,
+  });
+  const tracker = trackerMemory({ issues: { 1: { comments: [priorSheet] } } });
+  const deps = {
+    exec: model.exec,
+    gh: stubGhForRound619(),
+    fetch: () => "injected file",
+    tracker,
+  } as unknown as ChainDeps;
+
+  const outcome = await runChain(deps, 1, "");
+
+  expect(outcome).toMatchObject({ kind: "posted", round: 1 });
 });

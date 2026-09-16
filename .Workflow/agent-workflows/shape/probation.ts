@@ -1,25 +1,22 @@
 import type { GhExec } from "../shared/gh";
 import { readSheetMarker } from "../shared/marker";
+import type { Tracker } from "../shared/tracker";
+import { trackerGh } from "../shared/tracker-gh";
 
 export const SILENT_SHEET_THRESHOLD = 20;
 
 const PROPOSAL_OPEN = "<!-- refuter-probation:v1 silent=";
 const PROPOSAL_CLOSE = " -->";
 
-const SHEET_SEARCH_TERM = "decision-sheet:v1";
-
-interface SearchResult {
-  number?: number;
+function trackerOf(source: GhExec | Tracker): Tracker {
+  return typeof source === "function" ? trackerGh(source) : source;
 }
 
-interface RawComment {
-  body?: string;
-}
-
-export function countSilentSheets(gh: GhExec): number {
+export function countSilentSheets(source: GhExec | Tracker): number {
+  const tracker = trackerOf(source);
   let silent = 0;
-  for (const issueNumber of issuesCarryingSheets(gh)) {
-    for (const body of commentBodies(gh, issueNumber)) {
+  for (const signal of tracker.signals()) {
+    for (const body of tracker.issueComments(signal.number)) {
       const sheet = readSheetMarker(body);
       if (sheet && sheet.survivors.length === 0) silent += 1;
     }
@@ -27,53 +24,12 @@ export function countSilentSheets(gh: GhExec): number {
   return silent;
 }
 
-function issuesCarryingSheets(gh: GhExec): number[] {
-  const raw = gh([
-    "search",
-    "issues",
-    SHEET_SEARCH_TERM,
-    "--match",
-    "comments",
-    "--repo",
-    repoSlug(gh),
-    "--limit",
-    "100",
-    "--json",
-    "number",
-  ]);
-  const results = JSON.parse(raw) as SearchResult[];
-  return results.map((result) => result.number).filter((n): n is number => n !== undefined);
-}
-
-function repoSlug(gh: GhExec): string {
-  return JSON.parse(gh(["repo", "view", "--json", "nameWithOwner"])).nameWithOwner as string;
-}
-
-function commentBodies(gh: GhExec, issueNumber: number): string[] {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
-  const parsed = JSON.parse(raw) as { comments?: RawComment[] };
-  return (parsed.comments ?? []).map((comment) => comment.body ?? "");
-}
-
-export function highestProposedAt(gh: GhExec): number {
-  const raw = gh([
-    "search",
-    "issues",
-    PROPOSAL_OPEN.trim(),
-    "--match",
-    "body",
-    "--repo",
-    repoSlug(gh),
-    "--limit",
-    "50",
-    "--json",
-    "body",
-  ]);
-  const results = JSON.parse(raw) as Array<{ body?: string }>;
+export function highestProposedAt(source: GhExec | Tracker): number {
+  const tracker = trackerOf(source);
 
   let highest = 0;
-  for (const result of results) {
-    const at = readProposalMarker(result.body ?? "");
+  for (const signal of tracker.signals()) {
+    const at = readProposalMarker(signal.body ?? "");
     if (at !== undefined && at > highest) highest = at;
   }
   return highest;
@@ -88,13 +44,14 @@ function readProposalMarker(body: string): number | undefined {
   return Number.isInteger(parsed) ? parsed : undefined;
 }
 
-export function checkProbation(gh: GhExec): string {
-  const silent = countSilentSheets(gh);
+export function checkProbation(source: GhExec | Tracker, gh: GhExec): string {
+  const tracker = trackerOf(source);
+  const silent = countSilentSheets(tracker);
   if (silent < SILENT_SHEET_THRESHOLD) {
     return `refuter probation: ${silent}/${SILENT_SHEET_THRESHOLD} silent sheets`;
   }
 
-  const proposedAt = highestProposedAt(gh);
+  const proposedAt = highestProposedAt(tracker);
   if (silent <= proposedAt) {
     return `refuter probation: ${silent} silent sheets, already proposed at ${proposedAt}, so not re-proposing until the count grows`;
   }

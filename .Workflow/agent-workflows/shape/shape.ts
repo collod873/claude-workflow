@@ -31,6 +31,7 @@ import { renderSheet } from "./render-sheet";
 import { applyGrammar, capDecisions, DECISION_CAP } from "./sheet";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, type ShaperSheet } from "../shared/sheet-schema";
 import { SWEEP_OUTPUT, type Sweep } from "../shared/sweep-schema";
+import type { Tracker } from "../shared/tracker";
 import { trackerGh } from "../shared/tracker-gh";
 import { cappedComment, roundFor } from "./rounds";
 
@@ -92,6 +93,7 @@ export interface ChainDeps {
   exec: StageExec;
   gh: GhExec;
   fetch: Fetch;
+  tracker: Tracker;
 }
 
 function readIdea(gh: GhExec, issueNumber: number): string {
@@ -189,7 +191,7 @@ export async function runChain(
   issueNumber: number,
   changeRequest: string,
 ): Promise<Outcome> {
-  const round = roundFor(trackerGh(deps.gh), issueNumber);
+  const round = roundFor(deps.tracker, issueNumber);
 
   if (round.capped) {
     comment(deps.gh, issueNumber, cappedComment());
@@ -237,7 +239,7 @@ export async function runChain(
   comment(deps.gh, issueNumber, renderSheet(sheet));
   markLane(deps.gh, issueNumber, DECIDE_LABEL);
 
-  console.log(checkProbation(deps.gh));
+  console.log(checkProbation(deps.tracker, deps.gh));
 
   return {
     kind: "posted",
@@ -325,7 +327,12 @@ async function main(): Promise<void> {
 
   const targetWorkspace = process.env.TARGET_WORKSPACE || process.cwd();
   markLane(execGh, issueNumber, SHAPING_LABEL);
-  const deps: ChainDeps = { exec: execClaudeIn(targetWorkspace), gh: execGh, fetch: fetchRef(execGh, targetWorkspace) };
+  const deps: ChainDeps = {
+    exec: execClaudeIn(targetWorkspace),
+    gh: execGh,
+    fetch: fetchRef(execGh, targetWorkspace),
+    tracker: trackerGh(execGh),
+  };
 
   try {
     const outcome = await runChain(deps, issueNumber, process.env.CHANGE_REQUEST ?? "");
