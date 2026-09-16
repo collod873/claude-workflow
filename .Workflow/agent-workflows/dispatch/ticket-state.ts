@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { GhExec } from "../shared/gh";
-import { blockedByPath, issueCommentsPath, matchingRefsPath, subIssuesPath } from "../shared/gh-paths";
 import { isByHandClaim } from "../shared/immutable-set";
 import { BY_HAND_LABEL, IDEA_LABEL, isLaneLabel, NEEDS_HUMAN_LABEL, PARKED_LABEL, PRD_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import {
@@ -30,14 +29,13 @@ import {
   parseCheckMarker,
   TicketShapeError,
 } from "../shared/ticket-shape";
+import type { Tracker, TrackerBlocker, TrackerComment } from "../shared/tracker";
 
 export const ISSUE_PAGE_SIZE = 100;
 
 export const TO_BUILD_REFUSED_MARKER = "<!-- to-build-refused:v1 -->";
 
 const COMPLETED = "completed";
-
-const MERGED = "MERGED";
 
 const CLOSING_RECORD_HEADING = "## Closing record";
 
@@ -60,29 +58,16 @@ const OpenIssue = z.object({
 const OpenIssues = z.array(OpenIssue);
 type OpenIssue = z.infer<typeof OpenIssue>;
 
-const BlockerSchema = z.object({
-  number: z.number(),
-  state: z.string(),
-  state_reason: z.string().nullable().optional(),
-});
-const Blockers = z.array(BlockerSchema);
-export type Blocker = z.infer<typeof BlockerSchema>;
-
-const ClosingPrNumbers = z.array(z.number());
+export type Blocker = TrackerBlocker;
 
 const RecordComment = z.object({
   body: z.string(),
   author_association: z.string(),
   user: z.object({ login: z.string() }).nullable(),
 });
-const CommentPages = z.array(z.array(RecordComment));
 type RecordComment = z.infer<typeof RecordComment>;
 
-const IssueCommentSchema = z.object({ id: z.number(), body: z.string() });
-const IssueComments = z.array(IssueCommentSchema);
-export type IssueComment = z.infer<typeof IssueCommentSchema>;
-
-const Refs = z.array(z.string());
+export type IssueComment = TrackerComment;
 
 const PrHeads = z.array(z.object({ headRefName: z.string() }));
 
@@ -118,6 +103,7 @@ export interface TicketState extends SliceState {
 
 export interface TicketStateInput {
   gh: GhExec;
+  tracker: Tracker;
   log: (line: string) => void;
   dryRun: boolean;
 }
@@ -163,59 +149,40 @@ function fetchOpenIssues(gh: GhExec, log: (line: string) => void): OpenIssue[] |
   }
 }
 
-function fetchBlockers(gh: GhExec, number: number): Blocker[] | null {
+function fetchBlockers(tracker: Tracker, number: number): Blocker[] | null {
   try {
-    const raw = gh(["api", blockedByPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
-    const parsed = Blockers.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return tracker.blockedBy(number);
   } catch {
     return null;
   }
 }
 
-export function fetchChildren(gh: GhExec, number: number): Blocker[] | null {
+export function fetchChildren(tracker: Tracker, number: number): Blocker[] | null {
   try {
-    const raw = gh(["api", subIssuesPath(number), "--jq", "[.[] | {number, state, state_reason}]"]);
-    const parsed = Blockers.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return tracker.children(number);
   } catch {
     return null;
   }
 }
 
-export function fetchComments(gh: GhExec, number: number): IssueComment[] | null {
+export function fetchComments(tracker: Tracker, number: number): IssueComment[] | null {
   try {
-    const raw = gh(["api", issueCommentsPath(number)]);
-    const parsed = IssueComments.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return tracker.comments(number);
   } catch {
     return null;
   }
 }
 
-export function closedByMergedPr(gh: GhExec, number: number): boolean {
-  return mergedCloser(gh, number) !== undefined;
+export function closedByMergedPr(tracker: Tracker, number: number): boolean {
+  return mergedCloser(tracker, number) !== undefined;
 }
 
-export function mergedCloser(gh: GhExec, number: number): number | undefined {
-  let closers: number[];
+export function mergedCloser(tracker: Tracker, number: number): number | undefined {
   try {
-    const raw = gh([
-      "issue",
-      "view",
-      String(number),
-      "--json",
-      "closedByPullRequestsReferences",
-      "--jq",
-      "[.closedByPullRequestsReferences[].number]",
-    ]);
-    const parsed = ClosingPrNumbers.safeParse(JSON.parse(raw));
-    if (!parsed.success) return undefined;
-    closers = parsed.data;
+    return tracker.mergedCloser(number);
   } catch {
     return undefined;
   }
-  return closers.find((pr) => prIsMerged(gh, pr));
 }
 
 export function carriesVerifiedClosingRecord(comments: RecordComment[]): boolean {
@@ -227,29 +194,24 @@ export function carriesVerifiedClosingRecord(comments: RecordComment[]): boolean
   );
 }
 
-function closedByVerifiedRecord(gh: GhExec, number: number): boolean {
+function closedByVerifiedRecord(tracker: Tracker, number: number): boolean {
   try {
-    const parsed = CommentPages.safeParse(JSON.parse(gh(["api", issueCommentsPath(number), "--paginate", "--slurp"])));
-    return parsed.success && carriesVerifiedClosingRecord(parsed.data.flat());
+    const comments = tracker.recordComments(number).map(
+      (comment): RecordComment => ({
+        body: comment.body,
+        author_association: comment.authorAssociation,
+        user: comment.login === null ? null : { login: comment.login },
+      }),
+    );
+    return carriesVerifiedClosingRecord(comments);
   } catch {
     return false;
   }
 }
 
-function prIsMerged(gh: GhExec, pr: number): boolean {
+function fetchBranchesUnder(tracker: Tracker, prefix: string): Set<string> | null {
   try {
-    return gh(["pr", "view", String(pr), "--json", "state", "--jq", ".state"]).trim() === MERGED;
-  } catch {
-    return false;
-  }
-}
-
-function fetchBranchesUnder(gh: GhExec, prefix: string): Set<string> | null {
-  try {
-    const raw = gh(["api", matchingRefsPath(prefix), "--jq", "[.[].ref]"]);
-    const parsed = Refs.safeParse(JSON.parse(raw));
-    if (!parsed.success) return null;
-    return new Set(parsed.data.map((ref) => ref.replace(/^refs\/heads\//, "")));
+    return new Set(tracker.branchesUnder(prefix));
   } catch {
     return null;
   }
@@ -268,7 +230,7 @@ function fetchOpenPrBranches(gh: GhExec): Set<string> | null {
 
 export function deliveryOf(blocker: Blocker, shipped: () => boolean): Delivery {
   if (blocker.state.toLowerCase() === "open") return "open";
-  if ((blocker.state_reason ?? "").toLowerCase() !== COMPLETED) return "undelivered";
+  if ((blocker.stateReason ?? "").toLowerCase() !== COMPLETED) return "undelivered";
   return shipped() ? "delivered" : "undelivered";
 }
 
@@ -289,7 +251,7 @@ function startedTicket(stage: Stage): boolean {
 }
 
 function buildGraph(
-  gh: GhExec,
+  tracker: Tracker,
   issues: OpenIssue[],
   stages: Map<number, Stage>,
   log: (line: string) => void,
@@ -298,7 +260,7 @@ function buildGraph(
   const deliveryCache = new Map<number, Delivery>();
 
   for (const issue of issues) {
-    const blockers = fetchBlockers(gh, issue.number);
+    const blockers = fetchBlockers(tracker, issue.number);
     if (blockers === null) {
       log(`could not read the blocked-by edges of #${issue.number}.`);
       return null;
@@ -313,7 +275,10 @@ function buildGraph(
       if (deliveryCache.has(blocker.number)) continue;
       deliveryCache.set(
         blocker.number,
-        deliveryOf(blocker, () => closedByMergedPr(gh, blocker.number) || closedByVerifiedRecord(gh, blocker.number)),
+        deliveryOf(
+          blocker,
+          () => closedByMergedPr(tracker, blocker.number) || closedByVerifiedRecord(tracker, blocker.number),
+        ),
       );
     }
   }
@@ -397,12 +362,12 @@ function unreadable(note: string): TicketStates {
 }
 
 export function ticketState(input: TicketStateInput): TicketStates {
-  const { gh, log, dryRun } = input;
+  const { gh, tracker, log, dryRun } = input;
 
   const issues = fetchOpenIssues(gh, log);
   if (issues === null) return unreadable("the tracker did not return a readable list of open issues.");
 
-  const authored = fetchBranchesUnder(gh, ACCEPTANCE_BRANCH_PREFIX);
+  const authored = fetchBranchesUnder(tracker, ACCEPTANCE_BRANCH_PREFIX);
   if (authored === null) {
     return unreadable(
       `the refs API did not return a readable list under \`${ACCEPTANCE_BRANCH_PREFIX}\`, and ` +
@@ -427,7 +392,7 @@ export function ticketState(input: TicketStateInput): TicketStates {
   const progress: Progress = { inFlight: ticketsInFlight(runs), authored, openPrBranches };
   const stages = new Map(issues.map((issue) => [issue.number, stageOf(issue.number, progress)]));
 
-  const graph = buildGraph(gh, issues, stages, log);
+  const graph = buildGraph(tracker, issues, stages, log);
   if (graph === null) return unreadable("the dependency graph could not be read for every open issue.");
 
   const slices = new Map(graph.map((slice) => [slice.number, slice]));
@@ -462,11 +427,11 @@ export function ticketState(input: TicketStateInput): TicketStates {
   });
 
   for (const ticket of tickets) {
-    if (ticket.isSpec) ticket.children = fetchChildren(gh, ticket.number) ?? undefined;
+    if (ticket.isSpec) ticket.children = fetchChildren(tracker, ticket.number) ?? undefined;
     if (ticket.ready && ticket.startable && !heldBeforeTheDoorSpoke(ticket)) {
-      ticket.landedPr = mergedCloser(gh, ticket.number);
+      ticket.landedPr = mergedCloser(tracker, ticket.number);
     }
-    if (wantsComments(ticket, dryRun)) ticket.comments = fetchComments(gh, ticket.number) ?? undefined;
+    if (wantsComments(ticket, dryRun)) ticket.comments = fetchComments(tracker, ticket.number) ?? undefined;
     ticket.hold = holdOf(ticket);
     if (ticket.comments === undefined) continue;
     const bodies = ticket.comments.map((comment) => comment.body);

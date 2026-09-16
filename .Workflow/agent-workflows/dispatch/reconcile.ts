@@ -27,6 +27,8 @@ import {
 import { IMMUTABLE_SET_SOURCE } from "../shared/immutable-set";
 import { SENT_TO_SPEC_MARKER } from "../shared/marker";
 import { escalateToOwner } from "../shared/needs-human";
+import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 import { countRollup, readRollup, rollupLine, writeRollup } from "./rollup";
 import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
 import {
@@ -361,6 +363,7 @@ interface SpecClosingAttempt {
 
 function attemptSpecClose(
   gh: GhExec,
+  tracker: Tracker,
   prdNumber: number,
   children: Blocker[],
   closeSpec: (number: number, range: string) => CloseTicketResult,
@@ -368,7 +371,7 @@ function attemptSpecClose(
 ): SpecClosingAttempt | undefined {
   const mergedPrs: number[] = [];
   for (const child of children) {
-    const pr = mergedCloser(gh, child.number);
+    const pr = mergedCloser(tracker, child.number);
     if (deliveryOf(child, () => pr !== undefined) !== "delivered") return undefined;
     mergedPrs.push(pr as number);
   }
@@ -439,6 +442,7 @@ function upsertPrdComment(gh: GhExec, number: number, comments: IssueComment[], 
 
 function evaluateSpecCheck(
   gh: GhExec,
+  tracker: Tracker,
   prd: TicketState,
   children: Blocker[],
   log: (line: string) => void,
@@ -468,7 +472,7 @@ function evaluateSpecCheck(
   }
 
   const run = runCheckCommand(command, targetWorkspace);
-  const closing = run.code === 0 ? attemptSpecClose(gh, prd.number, children, closeSpec, log) : undefined;
+  const closing = run.code === 0 ? attemptSpecClose(gh, tracker, prd.number, children, closeSpec, log) : undefined;
 
   if (closing?.disagreement) {
     upsertPrdComment(gh, prd.number, comments, disagreementCommentBody(command, run, closing.result));
@@ -614,8 +618,9 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
   const dryRun = input.dryRun ?? false;
 
   const stamps: Stamps = { lane: new Map(), relabelled: new Set() };
+  const tracker = trackerGh(gh);
 
-  const states = ticketState({ gh, log, dryRun });
+  const states = ticketState({ gh, tracker, log, dryRun });
   if (states.degraded !== undefined) {
     return { action: "degraded", checked: 0, dispatched: [], unreachable: [], note: states.degraded };
   }
@@ -634,7 +639,7 @@ export function runReconcile(input: ReconcileInput = {}): ReconcileOutcome {
       continue;
     }
     try {
-      evaluateSpecCheck(gh, ticket, ticket.children, log, closeSpec, targetWorkspace);
+      evaluateSpecCheck(gh, tracker, ticket, ticket.children, log, closeSpec, targetWorkspace);
     } catch (err) {
       log(`could not evaluate #${ticket.number}'s spec check: ${reason(err)}`);
     }

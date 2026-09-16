@@ -493,7 +493,7 @@ export async function runAcceptanceAuthor(deps: RunAcceptanceDeps): Promise<Land
 
 function readOpenSliceNumbers(tracker: Tracker, prdNumber: number): number[] {
   return tracker
-    .subIssues(prdNumber)
+    .children(prdNumber)
     .filter((issue) => issue.state !== "closed")
     .map((issue) => issue.number);
 }

@@ -799,11 +799,11 @@ describe("refireAcceptance", () => {
     const calledFor: number[] = [];
     const tracker = trackerWith({ [PRD_NUMBER]: { title: "PRD", body: prdBody }, ...slices });
     const subIssues = trackerMemory({
-      subIssues: {
+      children: {
         [PRD_NUMBER]: Object.keys(slices)
           .map(Number)
           .reverse()
-          .map((number) => ({ number, state: closed.includes(number) ? "closed" : "open" })),
+          .map((number) => ({ number, state: closed.includes(number) ? "closed" : "open", stateReason: null })),
       },
     });
     const affected = await refireAcceptance({

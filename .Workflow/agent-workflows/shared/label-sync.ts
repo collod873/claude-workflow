@@ -1,23 +1,17 @@
-import { z } from "zod";
 import type { GhExec } from "./gh.ts";
 import { LABEL_CATALOGUE } from "./labels.ts";
+import type { Label, Tracker } from "./tracker.ts";
 
-export interface Label {
-  name: string;
-  color: string;
-  description: string;
-}
+export type { Label } from "./tracker.ts";
 
 export interface LabelChange {
   label: Label;
   exists: boolean;
 }
 
-const RemoteLabelSchema = z.object({
-  name: z.string(),
-  color: z.string(),
-  description: z.string().nullable().optional(),
-});
+function asTracker(gh: GhExec): Tracker {
+  return gh as unknown as Tracker;
+}
 
 export function labelPlan(own: Label[], target: Label[]): LabelChange[] {
   const targetByName = new Map(target.map((label) => [label.name, label]));
@@ -38,43 +32,7 @@ export function catalogueLabels(): Label[] {
 }
 
 export function readLabels(gh: GhExec, repository: string): Label[] {
-  const raw = gh(["api", "--paginate", `repos/${repository}/labels`, "--jq", ".[] | {name, color, description}"]);
-  const objects = raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) => JSON.parse(line));
-  return RemoteLabelSchema.array()
-    .parse(objects)
-    .map((label) => ({ name: label.name, color: label.color, description: label.description ?? "" }));
-}
-
-function createLabel(gh: GhExec, repository: string, label: Label): void {
-  gh([
-    "api",
-    "--method",
-    "POST",
-    `repos/${repository}/labels`,
-    "-f",
-    `name=${label.name}`,
-    "-f",
-    `color=${label.color}`,
-    "-f",
-    `description=${label.description}`,
-  ]);
-}
-
-function updateLabel(gh: GhExec, repository: string, label: Label): void {
-  gh([
-    "api",
-    "--method",
-    "PATCH",
-    `repos/${repository}/labels/${encodeURIComponent(label.name)}`,
-    "-f",
-    `color=${label.color}`,
-    "-f",
-    `description=${label.description}`,
-  ]);
+  return asTracker(gh).repositoryLabels(repository);
 }
 
 export function catalogueDrift(gh: GhExec, repository: string): LabelChange[] {
@@ -82,10 +40,11 @@ export function catalogueDrift(gh: GhExec, repository: string): LabelChange[] {
 }
 
 export function syncLabels(gh: GhExec, repository: string, own: Label[] = catalogueLabels()): string[] {
+  const tracker = asTracker(gh);
   const changes = labelPlan(own, readLabels(gh, repository));
   for (const change of changes) {
-    if (change.exists) updateLabel(gh, repository, change.label);
-    else createLabel(gh, repository, change.label);
+    if (change.exists) tracker.updateLabel(repository, change.label);
+    else tracker.createLabel(repository, change.label);
   }
   return changes.map((change) => change.label.name);
 }

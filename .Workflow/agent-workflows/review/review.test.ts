@@ -1,8 +1,9 @@
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { commitPullsPathMatcher } from "../shared/gh-paths";
+import { commitPullsPath } from "../shared/gh-paths";
 import { scratchDir } from "../shared/scratch.fixture";
 import type { StageExec } from "../shared/stage";
+import { trackerMemory } from "../shared/tracker-memory";
 import { keepSurvivingFindings, runReview } from "./review";
 import { FINDING_LABEL } from "./counter";
 import { runRefuter } from "./refuter";
@@ -68,18 +69,15 @@ function trackerForReview(options: ReviewTrackerOptions = {}): { gh: GhExec; cal
     calls.push(args);
     if (args[0] === "issue" && args[1] === "list") return "[]";
 
-    if (args[0] === "api") {
-      const pullsMatch = (args[1] ?? "").match(commitPullsPathMatcher);
-      if (pullsMatch) {
-        const pulls = options.pullsByCommit?.[pullsMatch[1]] ?? [];
-        return JSON.stringify(
-          pulls.map((pull) => ({
-            state: pull.state ?? "open",
-            merged_at: pull.merged_at ?? null,
-            head: { sha: pull.headSha, ref: pull.headRef },
-          })),
-        );
-      }
+    if (args[0] === "api" && args[1] === commitPullsPath(HEAD_SHA)) {
+      const pulls = options.pullsByCommit?.[HEAD_SHA] ?? [];
+      return JSON.stringify(
+        pulls.map((pull) => ({
+          state: pull.state ?? "open",
+          merged_at: pull.merged_at ?? null,
+          head: { sha: pull.headSha, ref: pull.headRef },
+        })),
+      );
     }
 
     if (args[0] === "issue" && args[1] === "create") {
@@ -275,3 +273,19 @@ test(
     expect(issueCreates(calls).length).toBe(1);
   },
 );
+
+test("#625.1: runReview completes end to end from a Tracker built by trackerMemory alone, with no callable GhExec anywhere in its dependencies", async () => {
+  const { exec } = fakeExec({ findings: [] });
+  const tracker = trackerMemory() as unknown as GhExec;
+
+  const result = await runReview(exec, tracker, {
+    diff: DIFF,
+    assignee: ASSIGNEE,
+    head: HEAD_SHA,
+    root: scratchDir("review-tracker-only"),
+  });
+
+  expect(result.survivors).toEqual([]);
+  expect(result.publishedIssues).toEqual([]);
+  expect(result.tally).toEqual({ reached: 0, refuted: 0 });
+});

@@ -1,16 +1,58 @@
 import { describe, expect, it, test } from "vitest";
 import { frontmatterBlock } from "../shared/adr-frontmatter";
+import type { GhExec } from "../shared/gh";
 import { errorMessage } from "../shared/reason";
 import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch";
 import { accept, insertTerm, type AcceptDeps, type AcceptOutcome } from "./accept";
 import { sheetMarker } from "../shared/marker";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
-import { createFakeTracker, postedComments, type FakeTracker } from "./tracker.fake";
+import { trackerMemory } from "../shared/tracker-memory";
 
 function frontmatterOf(content: string): string {
   const block = frontmatterBlock(content);
   if (block === undefined) throw new Error(`no frontmatter block in:\n${content}`);
   return block;
+}
+
+interface IssueFake {
+  gh: GhExec;
+  calls: string[][];
+  comments: Map<number, string[]>;
+  labels: Map<number, string[]>;
+}
+
+function createIssueFake(options: { comments?: Map<number, string[]>; labels?: Map<number, string[]> } = {}): IssueFake {
+  const fake: IssueFake = {
+    gh: (args) => run(args),
+    calls: [],
+    comments: options.comments ?? new Map(),
+    labels: options.labels ?? new Map(),
+  };
+
+  function run(args: string[]): string {
+    fake.calls.push([...args]);
+
+    if (args[0] === "issue" && args[1] === "view") {
+      const number = Number(args[2]);
+      const fields = args[args.indexOf("--json") + 1] ?? "";
+      if (fields.includes("comments")) {
+        return JSON.stringify({ comments: (fake.comments.get(number) ?? []).map((body) => ({ body })) });
+      }
+      if (fields.includes("labels")) {
+        return JSON.stringify({ labels: (fake.labels.get(number) ?? []).map((name) => ({ name })) });
+      }
+    }
+
+    return "";
+  }
+
+  return fake;
+}
+
+function postedComments(fake: IssueFake): string[] {
+  return fake.calls
+    .filter((call) => call[0] === "issue" && call[1] === "comment")
+    .map((call) => call[call.indexOf("--body") + 1]);
 }
 
 const REVERSAL = "Undoing it means re-routing every item by hand, in every lane that reads the route.";
@@ -35,7 +77,7 @@ function sheet(over: Partial<Sheet> = {}): Sheet {
 
 interface Harness {
   deps: AcceptDeps;
-  tracker: FakeTracker;
+  tracker: IssueFake;
   files: Map<string, string>;
   git: string[][];
   adrTitles: string[];
@@ -43,7 +85,7 @@ interface Harness {
 
 function harness(options: { sheet?: Sheet; labels?: string[]; losePushes?: number } = {}): Harness {
   const comments = options.sheet ? [`## Restatement\n\n…\n\n${sheetMarker(options.sheet)}`] : [];
-  const tracker = createFakeTracker({
+  const tracker = createIssueFake({
     comments: new Map([[1, comments]]),
     labels: new Map([[1, options.labels ?? []]]),
   });
@@ -109,7 +151,7 @@ async function outcomeOf(result: AcceptOutcome | Promise<AcceptOutcome>): Promis
 
 async function reportOf(
   run: () => AcceptOutcome | Promise<AcceptOutcome>,
-  tracker: FakeTracker,
+  tracker: IssueFake,
 ): Promise<string> {
   try {
     await run();
@@ -487,3 +529,18 @@ test(
   },
   30_000,
 );
+
+test("#618.3: accept reads round state through a Tracker built by trackerMemory, not a raw GhExec", async () => {
+  const deps: AcceptDeps = {
+    gh: trackerMemory() as unknown as GhExec,
+    git: () => "",
+    newAdr: () => "",
+    landAdr: () => "",
+    readFile: () => "",
+    writeFile: () => {},
+    sleep: async () => {},
+    log: () => {},
+  };
+
+  await expect(accept(deps, 1, "approved")).resolves.toEqual({ kind: "no-sheet", verb: "approved" });
+});

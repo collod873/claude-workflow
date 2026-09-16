@@ -5,6 +5,7 @@ import { execGh, issueComments, type GhExec } from "../shared/gh";
 import { BY_HAND_LABEL, clearLane, markLane, PRD_LABEL, SLICEABLE_LABEL, SPECCING_LABEL, TO_SPEC_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import { execClaudeIn, runStageSessionWithinBudget, startLaneBudget, type StageExec } from "../shared/stage";
+import { trackerGh } from "../shared/tracker-gh";
 import { structuredOutput } from "../shared/structured-output";
 import { readSheetMarker, SENT_TO_SPEC_MARKER } from "../shared/marker";
 import { specDoorFrom, specsSource } from "./doors";
@@ -63,12 +64,12 @@ function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: Ma
       return collectSheetContext(trigger.gh, trigger.issueNumber);
     case "map":
       return {
-        context: collectMapContext(trigger.gh, trigger.issueNumber, trigger.repoRoot),
+        context: collectMapContext(trackerGh(trigger.gh), trigger.issueNumber, trigger.repoRoot),
         decisions: [],
       };
     case "widened":
       return {
-        context: collectWidenedContext(trigger.gh, trigger.issueNumber),
+        context: collectWidenedContext(trackerGh(trigger.gh), trigger.issueNumber),
         decisions: [],
       };
   }

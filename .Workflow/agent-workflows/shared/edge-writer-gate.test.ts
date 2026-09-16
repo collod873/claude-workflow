@@ -34,7 +34,7 @@ describe("the blocked-by graph has one writer, lane 03 (ADR-0069, #601)", () => 
   });
 });
 
-test("#607.7: tracker-gh.ts joins ticket-state.ts and publish-sub-issues.ts as importers of blockedByPath", () => {
+test("#612.3: publish-sub-issues.ts no longer imports blockedByPath itself, having moved its blocked-by argv onto tracker-gh.ts", () => {
   const modules = laneSources().filter((file) => file.relative.endsWith(".ts") && !NOT_A_MODULE.test(file.relative));
   const importers = modules
     .filter((file) => importsBlockedByPath(file.source))
@@ -42,8 +42,6 @@ test("#607.7: tracker-gh.ts joins ticket-state.ts and publish-sub-issues.ts as i
     .sort();
 
   expect(importers).toEqual([
-    ".Workflow/agent-workflows/dispatch/ticket-state.ts",
-    ".Workflow/agent-workflows/shared/publish-sub-issues.ts",
     ".Workflow/agent-workflows/shared/tracker-gh.ts",
   ]);
 });

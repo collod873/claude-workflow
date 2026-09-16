@@ -1,5 +1,4 @@
-import type { GhExec } from "../shared/gh";
-import { parseIssueNumber } from "../shared/issue-url";
+import type { Tracker } from "../shared/tracker";
 import { FINDING_LABEL } from "./counter";
 import type { Finding } from "./structural-refusal";
 
@@ -11,22 +10,15 @@ function titleFor(finding: Finding): string {
   return `lane-07 finding: ${truncated}`;
 }
 
-export function publishFinding(gh: GhExec, finding: Finding, assignee: string): number {
-  const created = gh([
-    "issue",
-    "create",
-    "--title",
-    titleFor(finding),
-    "--body",
-    finding.message,
-    "--label",
-    FINDING_LABEL,
-    "--assignee",
+export function publishFinding(tracker: Tracker, finding: Finding, assignee: string): number {
+  return tracker.createIssue({
+    title: titleFor(finding),
+    body: finding.message,
+    label: FINDING_LABEL,
     assignee,
-  ]);
-  return parseIssueNumber(created, titleFor(finding));
+  });
 }
 
-export function publishFindings(gh: GhExec, findings: Finding[], assignee: string): number[] {
-  return findings.map((finding) => publishFinding(gh, finding, assignee));
+export function publishFindings(tracker: Tracker, findings: Finding[], assignee: string): number[] {
+  return findings.map((finding) => publishFinding(tracker, finding, assignee));
 }

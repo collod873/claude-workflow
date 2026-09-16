@@ -10,9 +10,11 @@ function failedRunsOnMain(): string {
   return JSON.stringify(
     Array.from({ length: 48 }, (_, index) => ({
       id: 5000 + index,
+      status: "completed",
       conclusion: "failure",
       html_url: `https://github.com/collod873/claude-workflow/actions/runs/${5000 + index}`,
       head_branch: "main",
+      head_sha: "1111111111111111111111111111111111111111",
       created_at: new Date(now - index * 6 * HOUR).toISOString(),
       event: "push",
     })),
@@ -20,7 +22,15 @@ function failedRunsOnMain(): string {
 }
 
 const FAILED_JOB = JSON.stringify({
-  jobs: [{ steps: [{ name: BYPASS_STEP, conclusion: "failure" }] }],
+  jobs: [
+    {
+      id: 6000,
+      name: BYPASS_STEP,
+      status: "completed",
+      conclusion: "failure",
+      steps: [{ name: BYPASS_STEP, conclusion: "failure" }],
+    },
+  ],
 });
 
 const AGED_OUT_CARRIER = JSON.stringify([

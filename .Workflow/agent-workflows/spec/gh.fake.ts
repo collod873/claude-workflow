@@ -22,6 +22,7 @@ export function createIssueGh(read: (fields: string) => string | undefined): Fak
       return answer;
     }
     if (args[0] === "issue" && args[1] === "create") return FAKE_CREATED_ISSUE_URL;
+    if (args[0] === "issue" && args[1] === "list") return "[]";
     return "";
   };
   return { gh, calls };

@@ -8,6 +8,7 @@ import { SPEC_AUTHOR_DISPATCH_EVENT_TYPE } from "../shared/spec-author-dispatch"
 import { escalateToOwner } from "../shared/needs-human";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { CLAIM_LIMIT, claimsCollide } from "../shared/ticket-shape";
+import { trackerGh } from "../shared/tracker-gh";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
 import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
 import PR_STATE from "./closing-prs.fixtures/pr-244-state.json";
@@ -60,7 +61,7 @@ describe("the delivery question, against payloads GitHub actually served", () =>
   });
 
   it("reads #237 as delivered, which is what it is: merged as PR #244", () => {
-    expect(closedByMergedPr(replay, 237)).toBe(true);
+    expect(closedByMergedPr(trackerGh(replay), 237)).toBe(true);
   });
 
   it("asks the pull request for the state, never the issue", () => {
@@ -69,7 +70,7 @@ describe("the delivery question, against payloads GitHub actually served", () =>
       asked.push([...args]);
       return replay(args);
     };
-    closedByMergedPr(watched, 237);
+    closedByMergedPr(trackerGh(watched), 237);
     expect(asked[0].slice(0, 2)).toEqual(["issue", "view"]);
     expect(asked[1].slice(0, 3)).toEqual(["pr", "view", "244"]);
   });
@@ -99,20 +100,20 @@ describe("a closing record delivers what no linked pull request shows", () => {
 
 describe("deliveryOf", () => {
   it("reads an open blocker as open", () => {
-    expect(deliveryOf({ number: 1, state: "open", state_reason: null }, () => false)).toBe("open");
+    expect(deliveryOf({ number: 1, state: "open", stateReason: null }, () => false)).toBe("open");
   });
 
   it("reads a blocker closed as completed with a merged PR as delivered", () => {
-    expect(deliveryOf({ number: 1, state: "closed", state_reason: "completed" }, () => true)).toBe("delivered");
+    expect(deliveryOf({ number: 1, state: "closed", stateReason: "completed" }, () => true)).toBe("delivered");
   });
 
   it("reads a blocker closed as completed with nothing merged as undelivered", () => {
-    expect(deliveryOf({ number: 1, state: "closed", state_reason: "completed" }, () => false)).toBe("undelivered");
+    expect(deliveryOf({ number: 1, state: "closed", stateReason: "completed" }, () => false)).toBe("undelivered");
   });
 
   it("reads a blocker closed `not planned` as undelivered without asking about pull requests", () => {
     let asked = false;
-    const delivery = deliveryOf({ number: 1, state: "closed", state_reason: "not_planned" }, () => {
+    const delivery = deliveryOf({ number: 1, state: "closed", stateReason: "not_planned" }, () => {
       asked = true;
       return true;
     });

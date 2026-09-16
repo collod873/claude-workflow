@@ -1,5 +1,6 @@
 import { appendFileSync } from "node:fs";
 import type { GhExec } from "./gh";
+import { trackerGh } from "./tracker-gh";
 
 export interface DispatchRequest {
   event_type: string;
@@ -8,18 +9,6 @@ export interface DispatchRequest {
 
 export const DISPATCH_REQUESTS_PATH_ENV = "DISPATCH_REQUESTS_PATH";
 
-function dispatchArgs(request: DispatchRequest): string[] {
-  const args = ["api", "repos/{owner}/{repo}/dispatches", "-f", `event_type=${request.event_type}`];
-  for (const [key, value] of Object.entries(request.client_payload)) {
-    if (Array.isArray(value)) {
-      args.push(...value.flatMap((member) => ["-f", `client_payload[${key}][]=${member}`]));
-      continue;
-    }
-    args.push("-f", `client_payload[${key}]=${value}`);
-  }
-  return args;
-}
-
 export function requestDispatch(
   gh: GhExec,
   request: DispatchRequest,
@@ -27,7 +16,7 @@ export function requestDispatch(
 ): void {
   const path = env[DISPATCH_REQUESTS_PATH_ENV];
   if (!path) {
-    gh(dispatchArgs(request));
+    trackerGh(gh).dispatch(request);
     return;
   }
 

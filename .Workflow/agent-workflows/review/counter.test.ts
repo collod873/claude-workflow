@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { GhExec } from "../shared/gh";
+import { trackerMemory } from "../shared/tracker-memory";
+import type { CreateIssueInput, Tracker } from "../shared/tracker";
 import {
   countMarker,
   DELETE_ISSUE_TITLE,
@@ -110,22 +111,15 @@ interface Signal {
 function trackerWith(options: {
   findingIssues?: Array<{ number: number; state: string; stateReason?: string; createdAt: string }>;
   signals?: Signal[];
-}): { gh: GhExec; calls: string[][] } {
-  const calls: string[][] = [];
-  const gh: GhExec = (args) => {
-    calls.push(args);
-    if (args[0] === "issue" && args[1] === "list" && args.includes("--label")) {
-      return JSON.stringify(options.findingIssues ?? []);
-    }
-    if (args[0] === "issue" && args[1] === "list") {
-      return JSON.stringify(options.signals ?? []);
-    }
-    if (args[0] === "issue" && args[1] === "create") {
-      return "https://github.com/owner/repo/issues/42\n";
-    }
-    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
-  };
-  return { gh, calls };
+}): { tracker: Tracker; createdIssues: CreateIssueInput[] } {
+  const createdIssues: CreateIssueInput[] = [];
+  const tracker = trackerMemory({
+    findingIssues: { [FINDING_LABEL]: options.findingIssues ?? [] },
+    signals: options.signals ?? [],
+    createdIssues,
+    firstIssueNumber: 41,
+  });
+  return { tracker, createdIssues };
 }
 
 function findings(count: number, over: Partial<{ state: string; stateReason: string; createdAt: string }> = {}) {
@@ -140,8 +134,8 @@ function findings(count: number, over: Partial<{ state: string; stateReason: str
 
 const ZERO_TALLY = { reached: 0, refuted: 0 };
 
-function sweep(fake: { gh: GhExec }, tally: { reached: number; refuted: number }) {
-  return runCounter({ gh: fake.gh, tally, assignee: "collod873", now: NOW });
+function sweep(fake: { tracker: Tracker }, tally: { reached: number; refuted: number }) {
+  return runCounter({ tracker: fake.tracker, tally, assignee: "collod873", now: NOW });
 }
 
 function growSignal(said: string, state: string, stateReason?: string): Signal {
@@ -153,7 +147,7 @@ function sweepGrow(count: number, signal?: Signal) {
   return { fake, outcome: sweep(fake, ZERO_TALLY) };
 }
 
-const createdIssue = (calls: string[][]) => calls.some((argv) => argv[1] === "create");
+const createdIssue = (createdIssues: CreateIssueInput[]) => createdIssues.length > 0;
 
 describe("runCounter", () => {
   it("proposes neither direction below both thresholds", () => {
@@ -161,19 +155,17 @@ describe("runCounter", () => {
 
     expect(outcome.grow).toEqual({ code: "below-threshold" });
     expect(outcome.delete).toEqual({ code: "below-threshold" });
-    expect(createdIssue(fake.calls)).toBe(false);
+    expect(createdIssue(fake.createdIssues)).toBe(false);
   });
 
   it("proposes a second refuter at the grow threshold", () => {
     const { fake, outcome } = sweepGrow(GROW_THRESHOLD);
 
     expect(outcome.grow).toMatchObject({ code: "proposed", issue: 42 });
-    const create = fake.calls.find(
-      (argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes(GROW_ISSUE_TITLE),
-    )!;
+    const create = fake.createdIssues.find((issue) => issue.title === GROW_ISSUE_TITLE);
     expect(create).toBeDefined();
-    expect(create[create.indexOf("--assignee") + 1]).toBe("collod873");
-    expect(create[create.indexOf("--body") + 1]).toContain(countMarker("grow", GROW_THRESHOLD));
+    expect(create?.assignee).toBe("collod873");
+    expect(create?.body).toContain(countMarker("grow", GROW_THRESHOLD));
   });
 
   it("proposes the fleet's deletion at the delete threshold with zero ever refuted", () => {
@@ -182,11 +174,9 @@ describe("runCounter", () => {
     const outcome = sweep(fake, { reached: DELETE_THRESHOLD, refuted: 0 });
 
     expect(outcome.delete).toMatchObject({ code: "proposed", issue: 42 });
-    const create = fake.calls.find(
-      (argv) => argv[0] === "issue" && argv[1] === "create" && argv.includes(DELETE_ISSUE_TITLE),
-    )!;
+    const create = fake.createdIssues.find((issue) => issue.title === DELETE_ISSUE_TITLE);
     expect(create).toBeDefined();
-    expect(create[create.indexOf("--body") + 1]).toContain(countMarker("delete", DELETE_THRESHOLD));
+    expect(create?.body).toContain(countMarker("delete", DELETE_THRESHOLD));
   });
 
   it("does not propose deletion one below the delete threshold", () => {
@@ -205,21 +195,21 @@ describe("runCounter", () => {
     const { fake, outcome } = sweepGrow(GROW_THRESHOLD + 1, growSignal("earlier", "OPEN"));
 
     expect(outcome.grow).toMatchObject({ code: "already-proposed", issue: 7 });
-    expect(createdIssue(fake.calls)).toBe(false);
+    expect(createdIssue(fake.createdIssues)).toBe(false);
   });
 
   it("never re-proposes a grow declined not planned, however far the count grows", () => {
     const { fake, outcome } = sweepGrow(GROW_THRESHOLD + 10, growSignal("refused", "CLOSED", "NOT_PLANNED"));
 
     expect(outcome.grow).toMatchObject({ code: "declined-for-good", issue: 7 });
-    expect(createdIssue(fake.calls)).toBe(false);
+    expect(createdIssue(fake.createdIssues)).toBe(false);
   });
 
   it("does not re-propose a declined grow at the same count it was declined at", () => {
     const { fake, outcome } = sweepGrow(GROW_THRESHOLD, growSignal("declined", "CLOSED", "COMPLETED"));
 
     expect(outcome.grow).toEqual({ code: "declined-and-not-grown", declinedAt: GROW_THRESHOLD });
-    expect(createdIssue(fake.calls)).toBe(false);
+    expect(createdIssue(fake.createdIssues)).toBe(false);
   });
 
   it("re-proposes a declined grow once the count has grown past what it recorded", () => {
@@ -239,25 +229,21 @@ describe("runCounter", () => {
     expect(outcome.delete).toMatchObject({ code: "proposed", issue: 42 });
   });
 
-  it("only ever calls gh issue create, and never close or reopen, in either direction", () => {
+  it("only ever creates an issue for each direction that trips its threshold", () => {
     const fake = trackerWith({ findingIssues: findings(GROW_THRESHOLD + 5) });
 
     sweep(fake, { reached: DELETE_THRESHOLD + 5, refuted: 0 });
 
-    for (const argv of fake.calls) {
-      if (argv[0] !== "issue") continue;
-      expect(["list", "create"]).toContain(argv[1]);
-    }
-    expect(fake.calls.some((argv) => argv[0] === "issue" && argv[1] === "create")).toBe(true);
+    expect(fake.createdIssues.map((issue) => issue.title).sort()).toEqual(
+      [DELETE_ISSUE_TITLE, GROW_ISSUE_TITLE].sort(),
+    );
   });
 
   it("reads finding issues scoped to the finding label", () => {
-    const fake = trackerWith({ findingIssues: findings(1) });
+    const tracker = trackerMemory({ findingIssues: { "some-other-label": findings(5) } });
 
-    sweep(fake, ZERO_TALLY);
+    const outcome = runCounter({ tracker, tally: ZERO_TALLY, assignee: "collod873", now: NOW });
 
-    const list = fake.calls.find((argv) => argv.includes("--label"));
-    expect(list).toBeDefined();
-    expect(list![list!.indexOf("--label") + 1]).toBe(FINDING_LABEL);
+    expect(outcome.falseAlarmCount).toBe(0);
   });
 });

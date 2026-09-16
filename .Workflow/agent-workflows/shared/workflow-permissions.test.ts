@@ -76,6 +76,14 @@ const TYPE_LINE = /^(?:import\b|export\s*[{*]|(?:export\s+)?(?:type|interface|en
 const IMPORT_STATEMENT = /import\s+([\s\S]*?)\s+from\s+"([^"]+)"/g;
 
 const IDENTIFIER = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+
+const TRACKER_ADAPTER = /\):\s*(?:Tracker|Pick<Tracker,[^>]*>)\s*\{$/;
+
+const ADAPTER_OPERATION = /^ {4}([A-Za-z_$][\w$]*)(?:\(|:\s)/;
+
+const OPERATION_PREFIX = ".";
+
+const OPERATION_CALL = /\.([A-Za-z_$][\w$]*)\(/g;
 const BEST_EFFORT_WRITER = /shared\/labels\.ts$/;
 
 interface ImportedName {
@@ -91,11 +99,15 @@ interface Module {
 function splitSymbols(source: string): Map<string, string> {
   const symbols = new Map<string, string>();
   let current = MODULE_BODY;
+  let adapter: string | undefined;
 
   const append = (line: string) => symbols.set(current, `${symbols.get(current) ?? ""}\n${line}`);
 
   for (const line of source.split("\n")) {
     if (line === "" || /^[\s)}\]]/.test(line)) {
+      const operation = adapter === undefined ? null : ADAPTER_OPERATION.exec(line);
+      if (operation) current = `${OPERATION_PREFIX}${operation[1]}`;
+      else if (adapter !== undefined && /^\S|^ {2}\S/.test(line)) current = adapter;
       append(line);
       continue;
     }
@@ -103,6 +115,7 @@ function splitSymbols(source: string): Map<string, string> {
     if (declared) current = declared[1];
     else if (TYPE_LINE.test(line)) current = NO_RUNTIME;
     else current = MODULE_BODY;
+    adapter = declared && TRACKER_ADAPTER.test(line) ? declared[1] : undefined;
     append(line);
   }
 
@@ -155,6 +168,7 @@ function reachableWrites(entrypoint: string, root: string): Map<Permission, { wh
   const modules = new Map<string, Module>();
   const found = new Map<Permission, { what: string; evidence: string }>();
   const seen = new Set<string>();
+  const called = new Set<string>();
   const queue = [{ file: entrypoint, symbol: MODULE_BODY }];
 
   const load = (file: string): Module | undefined => {
@@ -183,6 +197,13 @@ function reachableWrites(entrypoint: string, root: string): Map<Permission, { wh
       if (hit !== undefined && !found.has(permission)) {
         const literal = hit.replace(/\s+/g, " ");
         found.set(permission, { what, evidence: `${relative(root, file)}: ${literal}` });
+      }
+    }
+
+    for (const [, operation] of body.matchAll(OPERATION_CALL)) called.add(operation);
+    for (const [loaded, { symbols }] of modules) {
+      for (const operation of called) {
+        if (symbols.has(`${OPERATION_PREFIX}${operation}`)) queue.push({ file: loaded, symbol: `${OPERATION_PREFIX}${operation}` });
       }
     }
 

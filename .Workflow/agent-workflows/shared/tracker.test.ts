@@ -1,20 +1,28 @@
 import { expect, test } from "vitest";
 import type { GhExec } from "./gh";
-import { runJobsPath, workflowRunsPath } from "./gh-paths";
+import { jobLogsPath, runJobsPath, workflowRunsPath } from "./gh-paths";
 import { adr0106Payloads } from "./tracker-payloads";
 import { trackerGh } from "./tracker-gh";
 import { trackerMemory } from "./tracker-memory";
 
 const RUN = {
   id: 501,
+  status: "completed",
   conclusion: "failure",
   htmlUrl: "https://github.com/owner/repo/actions/runs/501",
   headBranch: "main",
+  headSha: "2222222222222222222222222222222222222222",
   createdAt: "2026-08-26T12:00:00Z",
   event: "push",
 };
 
-const JOB = { steps: [{ name: "Gauntlet", conclusion: "failure" }] };
+const JOB = {
+  id: 5010,
+  name: "Gauntlet",
+  status: "completed",
+  conclusion: "failure",
+  steps: [{ name: "Gauntlet", conclusion: "failure" }],
+};
 
 function ghStub(): GhExec {
   return (args: string[]): string => {
@@ -22,9 +30,11 @@ function ghStub(): GhExec {
       return JSON.stringify([
         {
           id: RUN.id,
+          status: RUN.status,
           conclusion: RUN.conclusion,
           html_url: RUN.htmlUrl,
           head_branch: RUN.headBranch,
+          head_sha: RUN.headSha,
           created_at: RUN.createdAt,
           event: RUN.event,
         },
@@ -32,6 +42,9 @@ function ghStub(): GhExec {
     }
     if (args[0] === "api" && args[1] === runJobsPath(RUN.id)) {
       return JSON.stringify({ jobs: [JOB] });
+    }
+    if (args[0] === "api" && args[1] === jobLogsPath(JOB.id)) {
+      return "judging https://github.com/owner/repo/pull/1 on implement/issue-1\n";
     }
     throw new Error(`unexpected gh call: ${args.join(" ")}`);
   };
@@ -67,4 +80,10 @@ test("#608.2: the gh-adapter case replays its run and job payloads from shared/t
 
   expect(tracker.workflowRuns("verify.yml", 5)).toEqual([RUN]);
   expect(tracker.jobs(RUN.id)).toEqual([JOB]);
+});
+test("#623: the memory adapter answers jobLog from its seeded Map, and the gh adapter reads the same job's log", () => {
+  const memory = trackerMemory({ jobLogs: { [JOB.id]: "judging https://github.com/owner/repo/pull/1 on implement/issue-1\n" } });
+  const gh = trackerGh(ghStub());
+
+  expect(memory.jobLog(JOB.id)).toBe(gh.jobLog(JOB.id));
 });

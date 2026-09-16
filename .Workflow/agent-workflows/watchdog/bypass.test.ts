@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { answerIssueQueueOrThrow } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
 import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import {
@@ -177,9 +178,11 @@ function historyWith(options: {
       return JSON.stringify(
         runs.map((each) => ({
           id: each.id,
+          status: "completed",
           conclusion: each.conclusion,
           html_url: `https://github.com/owner/repo/actions/runs/${each.id}`,
           head_branch: each.headBranch ?? "main",
+          head_sha: "1111111111111111111111111111111111111111",
           created_at: each.createdAt ?? "2026-08-26T12:00:00Z",
           event: each.event ?? "push",
         })),
@@ -191,13 +194,19 @@ function historyWith(options: {
       const runId = Number(jobsMatch[1]);
       const stepName = runs.find((each) => each.id === runId)?.failedStep;
       return JSON.stringify({
-        jobs: [{ steps: stepName ? [{ name: stepName, conclusion: "failure" }] : [{ name: "Some other step", conclusion: "success" }] }],
+        jobs: [
+          {
+            id: runId * 10,
+            name: stepName ?? "Some other step",
+            status: "completed",
+            conclusion: stepName ? "failure" : "success",
+            steps: stepName ? [{ name: stepName, conclusion: "failure" }] : [{ name: "Some other step", conclusion: "success" }],
+          },
+        ],
       });
     }
 
-    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
-    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
-    throw new Error(`unexpected gh call: ${args.join(" ")}`);
+    return answerIssueQueueOrThrow(args, options.issues ?? []);
   };
 
   return { gh, calls };

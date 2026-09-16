@@ -1,8 +1,9 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { execGh, type GhExec } from "../shared/gh";
-import { repoRunsPath, runJobsPath } from "../shared/gh-paths";
 import { reason } from "../shared/reason";
+import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 import {
   callerHalf,
   citedRuns,
@@ -24,17 +25,6 @@ import {
 } from "./dead-lanes";
 
 export const WATCHDOG_DISPATCH_ACTION = "session-captured";
-
-const ApiRun = z.object({
-  id: z.number(),
-  name: z.string(),
-  path: z.string(),
-  status: z.string(),
-  conclusion: z.string().nullable(),
-  html_url: z.string(),
-  head_branch: z.string().nullable(),
-  created_at: z.string(),
-});
 
 const SignalIssue = z.object({
   number: z.number(),
@@ -60,30 +50,12 @@ export interface WatchdogOutcome {
   signals: Array<{ lane: string; issue: number; wrote: "opened" | "commented" | "retired" }>;
 }
 
-function readRuns(gh: GhExec): RunSummary[] {
-  const projection = "[.workflow_runs[] | {id, name, path, status, conclusion, html_url, head_branch, created_at}]";
-  const raw = gh(["api", repoRunsPath(RUN_PAGE_SIZE), "--jq", projection]);
-  return ApiRun.array()
-    .parse(JSON.parse(raw))
-    .map((run) => ({
-      id: run.id,
-      name: run.name,
-      path: run.path,
-      status: run.status,
-      conclusion: run.conclusion ?? "",
-      htmlUrl: run.html_url,
-      headBranch: run.head_branch ?? "",
-      createdAt: run.created_at,
-    }));
+function readRuns(tracker: Tracker): RunSummary[] {
+  return tracker.recentRuns(RUN_PAGE_SIZE);
 }
 
-function jobCount(gh: GhExec, runId: number): number {
-  const raw = gh(["api", runJobsPath(runId), "--jq", ".total_count"]);
-  const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(`jobs read for run ${runId} returned no count: ${JSON.stringify(raw)}`);
-  }
-  return Number(trimmed);
+function jobCount(tracker: Tracker, runId: number): number {
+  return tracker.jobs(runId).length;
 }
 
 function readSignals(gh: GhExec): Array<z.infer<typeof SignalIssue>> {
@@ -117,7 +89,8 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
     return { action: "skipped", code: "not-a-session-dispatch", deadCount: 0, signals: [] };
   }
 
-  const runs = readRuns(gh);
+  const tracker = trackerGh(gh);
+  const runs = readRuns(tracker);
   const candidates = runs.filter((run) => isCandidate(run, now));
 
   const oldest = runs[runs.length - 1];
@@ -131,7 +104,7 @@ export function runWatchdog(options: RunWatchdogOptions): WatchdogOutcome {
     log(`note: ${candidates.length - read.length} failed run(s) in the window went unread; the sweep spends at most ${MAX_JOB_READS} job counts`);
   }
 
-  const counted = read.map((run) => ({ ...run, jobCount: jobCount(gh, run.id) }));
+  const counted = read.map((run) => ({ ...run, jobCount: jobCount(tracker, run.id) }));
   const lanes = deadLanes(counted);
 
   const signals: WatchdogOutcome["signals"] = [];
@@ -220,9 +193,14 @@ function report(options: {
       return undefined;
     }
 
-    gh(["issue", "comment", String(standing.number), "--body", stillDeadBody(fresh)]);
-    log(`commented on #${standing.number}: ${lane.path} died in ${fresh.length} further run(s)`);
-    return { lane: lane.path, issue: standing.number, wrote: "commented" };
+    try {
+      gh(["issue", "comment", String(standing.number), "--body", stillDeadBody(fresh)]);
+      log(`commented on #${standing.number}: ${lane.path} died in ${fresh.length} further run(s)`);
+      return { lane: lane.path, issue: standing.number, wrote: "commented" };
+    } catch (err) {
+      log(`could not comment on #${standing.number}: ${reason(err)}`);
+      return undefined;
+    }
   }
 
   const newestClose = carriers
@@ -235,19 +213,24 @@ function report(options: {
     return undefined;
   }
 
-  const url = gh([
-    "issue",
-    "create",
-    "--title",
-    signalTitle(lane),
-    "--body",
-    signalBody(lane),
-    "--assignee",
-    assignee,
-  ]).trim();
-  const opened = Number(url.split("/").pop());
-  log(`opened #${opened}: ${lane.path} executed zero jobs in ${lane.runs.length} run(s)`);
-  return { lane: lane.path, issue: opened, wrote: "opened" };
+  try {
+    const url = gh([
+      "issue",
+      "create",
+      "--title",
+      signalTitle(lane),
+      "--body",
+      signalBody(lane),
+      "--assignee",
+      assignee,
+    ]).trim();
+    const opened = Number(url.split("/").pop());
+    log(`opened #${opened}: ${lane.path} executed zero jobs in ${lane.runs.length} run(s)`);
+    return { lane: lane.path, issue: opened, wrote: "opened" };
+  } catch (err) {
+    log(`could not open an issue for ${lane.path}: ${reason(err)}`);
+    return undefined;
+  }
 }
 
 async function main(): Promise<void> {

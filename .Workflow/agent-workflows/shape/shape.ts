@@ -31,6 +31,7 @@ import { renderSheet } from "./render-sheet";
 import { applyGrammar, capDecisions, DECISION_CAP } from "./sheet";
 import { REFUTER_OUTPUT, SHAPER_OUTPUT, type Refutations, type ShaperOutput, type ShaperSheet } from "../shared/sheet-schema";
 import { SWEEP_OUTPUT, type Sweep } from "../shared/sweep-schema";
+import { trackerGh } from "../shared/tracker-gh";
 import { cappedComment, roundFor } from "./rounds";
 
 const SWEEP_MODEL = "claude-haiku-4-5-20251001";
@@ -188,7 +189,7 @@ export async function runChain(
   issueNumber: number,
   changeRequest: string,
 ): Promise<Outcome> {
-  const round = roundFor(deps.gh, issueNumber);
+  const round = roundFor(trackerGh(deps.gh), issueNumber);
 
   if (round.capped) {
     comment(deps.gh, issueNumber, cappedComment());

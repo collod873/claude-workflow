@@ -41,3 +41,12 @@ describe("issueComments", () => {
     expect(issueComments(gh, 167)).toEqual(["First.", "Second."]);
   });
 });
+
+import { test } from "vitest";
+import { fetchIssueId } from "./gh";
+
+test("#612.2: fetchIssueId reads the id from a Tracker lookup instead of building gh api argv", () => {
+  const tracker = { issueId: (number: number) => (number === 55 ? 9042 : -1) } as unknown as GhExec;
+
+  expect(fetchIssueId(tracker, 55)).toBe(9042);
+});

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
-import { issueBody } from "../../shared/issue-body";
 import { join } from "node:path";
-import type { GhExec } from "../../shared/gh";
+import type { Tracker } from "../../shared/tracker";
 import type { DecidedContext } from "../author-contract";
 
 interface DecisionEntry {
@@ -14,15 +13,8 @@ const DURABLE_RECORD_RE = /docs\/adr\/[\w.-]+\.md/;
 const ISSUE_NUMBER_RE = /(?:\/issues\/|#)(\d+)/;
 const DECISION_LINE_RE = /^-\s*\[([^\]]+)\]\(([^)]+)\):\s*(.*)$/;
 
-interface RawComment {
-  body?: string;
-}
-
-function resolutionComment(gh: GhExec, issueNumber: number): string {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "comments"]);
-  const parsed = JSON.parse(raw) as { comments?: RawComment[] };
-  const comments = parsed.comments ?? [];
-  return comments[0]?.body ?? "";
+function resolutionComment(tracker: Tracker, issueNumber: number): string {
+  return tracker.issueComments(issueNumber)[0] ?? "";
 }
 
 function extractSection(body: string, heading: string): string {
@@ -49,23 +41,23 @@ function parseDecisions(section: string): DecisionEntry[] {
   return entries;
 }
 
-function rulingFor(gh: GhExec, repoRoot: string, entry: DecisionEntry): string {
+function rulingFor(tracker: Tracker, repoRoot: string, entry: DecisionEntry): string {
   const durablePath = DURABLE_RECORD_RE.exec(entry.gist)?.[0];
   if (durablePath) {
     const record = readFileSync(join(repoRoot, durablePath), "utf8");
     return `${entry.title}, durable record (${durablePath}):\n${record}`;
   }
 
-  const comment = resolutionComment(gh, entry.issueNumber);
+  const comment = resolutionComment(tracker, entry.issueNumber);
   return `${entry.title}, resolution comment (its gist names no durable record):\n${comment}`;
 }
 
 export function collectMapContext(
-  gh: GhExec,
+  tracker: Tracker,
   issueNumber: number,
   repoRoot: string = process.cwd(),
 ): DecidedContext {
-  const body = issueBody(gh, issueNumber);
+  const body = tracker.issueBody(issueNumber);
 
   const entries = parseDecisions(extractSection(body, "Decisions so far"));
   if (entries.length === 0) {
@@ -73,7 +65,7 @@ export function collectMapContext(
   }
 
   const decisions = entries.map((entry) => `- ${entry.title}\n  ${entry.gist}`).join("\n");
-  const rulings = entries.map((entry) => rulingFor(gh, repoRoot, entry)).join("\n\n");
+  const rulings = entries.map((entry) => rulingFor(tracker, repoRoot, entry)).join("\n\n");
   const boundaries = extractSection(body, "Out of scope") || "None recorded.";
   const openGuesses = extractSection(body, "Not yet specified") || "None.";
 

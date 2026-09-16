@@ -18,9 +18,11 @@ interface StandingIssueFixture {
 function toWorkflowRun(run: SlicingRun, index: number): WorkflowRun {
   return {
     id: index + 1,
+    status: run.status ?? "completed",
     conclusion: run.conclusion === undefined ? "success" : (run.conclusion ?? ""),
     htmlUrl: `https://github.com/owner/repo/actions/runs/${index + 1}`,
     headBranch: "main",
+    headSha: "0000000",
     createdAt: run.created_at ?? "2026-08-21T00:00:00Z",
     event: "push",
   };
@@ -29,9 +31,11 @@ function toWorkflowRun(run: SlicingRun, index: number): WorkflowRun {
 function toApiRun(run: WorkflowRun): object {
   return {
     id: run.id,
+    status: run.status,
     conclusion: run.conclusion,
     html_url: run.htmlUrl,
     head_branch: run.headBranch,
+    head_sha: run.headSha,
     created_at: run.createdAt,
     event: run.event,
   };

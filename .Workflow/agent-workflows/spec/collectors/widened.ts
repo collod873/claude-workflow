@@ -1,10 +1,9 @@
-import { issueBody } from "../../shared/issue-body";
-import type { GhExec } from "../../shared/gh";
+import type { Tracker } from "../../shared/tracker";
 import type { DecidedContext } from "../author-contract";
 
-export function collectWidenedContext(gh: GhExec, issueNumber: number): DecidedContext {
+export function collectWidenedContext(tracker: Tracker, issueNumber: number): DecidedContext {
   return {
-    ownerWords: issueBody(gh, issueNumber),
+    ownerWords: tracker.issueBody(issueNumber),
     decisions: "",
     rulings: "",
     boundaries: "",

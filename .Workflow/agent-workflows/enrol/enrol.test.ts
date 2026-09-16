@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,17 +8,14 @@ import { catalogueLabels, labelPlan, type Label } from "../shared/label-sync.ts"
 import { ENROLMENT_TOPIC, exitCodeFor, runEnrol, type RepositoryOutcome } from "./enrol.ts";
 import { OUTWARD_CREDENTIAL, derivedSecretNames } from "./secrets.ts";
 import { SEEDED_DOC_NAMES, claudeMdPointerLine, pointerDoc, pointerDocPath } from "./seeded-docs.ts";
-import { WORKFLOWS_PATH, blobSha, planFor, readStubSet, type RemoteFile } from "./stub-set.ts";
+import { WORKFLOWS_PATH, blobSha, planFor, readStubSet } from "./stub-set.ts";
+import { test } from "vitest";
+import { trackerGh } from "../shared/tracker-gh.ts";
+import { trackerMemory, type TrackerMemory, type TrackerMemoryRepository } from "../shared/tracker-memory.ts";
+import { readLabels } from "../shared/label-sync.ts";
+import { enrolledRepositories } from "./enrol.ts";
 
 const MACHINE_REPOSITORY = "owner/machine";
-
-const SEEDED_DOC_PATHS = new Map(SEEDED_DOC_NAMES.map((name) => [pointerDocPath(name), name]));
-
-function nameFromDocPath(path: string): string {
-  const name = SEEDED_DOC_PATHS.get(path);
-  if (name === undefined) throw new Error(`not a seeded doc path: ${path}`);
-  return name;
-}
 
 function stubBody(lane: string): string {
   return `name: ${lane}\n\n"on":\n  workflow_dispatch:\n`;
@@ -32,191 +29,23 @@ function machineWorkflows(lanes: string[], secretRefs: string[] = []): string {
   return dir;
 }
 
-interface FakeRepo {
-  files: RemoteFile[];
-  labels?: Label[];
-  settingReadBack?: string;
-  refuses?: string;
-  refusesLabels?: string;
-  refusesSetting?: string;
-  refusesSecrets?: string;
-  empty?: boolean;
-  docFiles?: Record<string, string>;
-  refusesDocs?: string;
+function currentDocsFiles(machineRepository: string, overrides: Record<string, string> = {}): Record<string, string> {
+  const base = Object.fromEntries(
+    SEEDED_DOC_NAMES.map((name) => [pointerDocPath(name), pointerDoc(name, machineRepository)]),
+  );
+  return { ...base, ...overrides };
 }
 
-interface LabelWrite {
-  kind: "create" | "update";
-  name: string;
-  color: string;
-  description: string;
+function repositoryCurrent(overrides: Partial<TrackerMemoryRepository> = {}): TrackerMemoryRepository {
+  const { files, ...rest } = overrides;
+  return { headCommit: "headsha", ...rest, files: { ...currentDocsFiles(MACHINE_REPOSITORY), ...(files ?? {}) } };
 }
 
-interface Wire {
-  gh: GhExec;
-  calls: string[][];
-  trees: Map<string, Array<{ path: string; sha: string | null }>>;
-  messages: Map<string, string>;
-  labelWrites: Map<string, LabelWrite[]>;
-  settingPut: Set<string>;
-  secretsSet: Map<string, Record<string, string>>;
-}
-
-function methodOf(args: string[]): string | undefined {
-  const at = args.indexOf("--method");
-  return at === -1 ? undefined : args[at + 1];
-}
-
-function fieldsOf(args: string[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (let at = 0; at < args.length; at++) {
-    if ((args[at] === "-f" || args[at] === "-F") && args[at + 1] !== undefined) {
-      const pair = args[at + 1];
-      const eq = pair.indexOf("=");
-      out[pair.slice(0, eq)] = pair.slice(eq + 1);
-    }
-  }
-  return out;
-}
-
-function labelLines(labels: Label[]): string {
-  return labels.length === 0 ? "" : `${labels.map((label) => JSON.stringify(label)).join("\n")}\n`;
-}
-
-function createWire(repos: Record<string, FakeRepo>, ownLabels: Label[] = []): Wire {
-  const calls: string[][] = [];
-  const trees = new Map<string, Array<{ path: string; sha: string | null }>>();
-  const messages = new Map<string, string>();
-  const labelWrites = new Map<string, LabelWrite[]>();
-  const settingPut = new Set<string>();
-  const secretsSet = new Map<string, Record<string, string>>();
-
-  const repoOf = (path: string): string | undefined => {
-    const match = path.match(/^repos\/([^/]+\/[^/?]+)/);
-    return match?.[1];
-  };
-
-  const pathIn = (args: string[]): string => {
-    const rest = args.slice(1);
-    let at = 0;
-    while (at < rest.length) {
-      if (rest[at] === "--paginate") at += 1;
-      else if (rest[at] === "--method") at += 2;
-      else break;
-    }
-    return rest[at] ?? "";
-  };
-
-  const gh: GhExec = (args) => {
-    calls.push([...args]);
-
-    if (args[0] === "secret" && args[1] === "set") {
-      const name = args[2];
-      const repository = args[args.indexOf("-R") + 1];
-      const value = args[args.indexOf("--body") + 1];
-      const repo = repos[repository];
-      if (repo === undefined) throw new Error(`fake gh: no repository ${repository}`);
-      if (repo.refuses) throw new Error(repo.refuses);
-      if (repo.refusesSecrets) throw new Error(repo.refusesSecrets);
-      const set = secretsSet.get(repository) ?? {};
-      set[name] = value;
-      secretsSet.set(repository, set);
-      return "";
-    }
-
-    const path = pathIn(args);
-
-    if (path.startsWith("search/repositories")) {
-      expect(path).toContain(`topic:${ENROLMENT_TOPIC}`);
-      return `${Object.keys(repos).join("\n")}\n`;
-    }
-
-    if (path === `repos/${MACHINE_REPOSITORY}/labels`) {
-      return labelLines(ownLabels);
-    }
-
-    const name = repoOf(path);
-    const repo = name === undefined ? undefined : repos[name];
-    if (name === undefined || repo === undefined) {
-      throw new Error(`fake gh: no repository in ${JSON.stringify(args)}`);
-    }
-    if (repo.refuses) throw new Error(repo.refuses);
-
-    if (path === `repos/${name}`) return "main\n";
-
-    if (path.startsWith(`repos/${name}/contents/`)) {
-      const filePath = path.slice(`repos/${name}/contents/`.length).split("?")[0];
-      if (filePath === WORKFLOWS_PATH) return `${JSON.stringify(repo.files)}\n`;
-      if (repo.refusesDocs && (SEEDED_DOC_PATHS.has(filePath) || filePath === "CLAUDE.md")) {
-        throw new Error(repo.refusesDocs);
-      }
-      const overridden = repo.docFiles?.[filePath];
-      const defaulted = SEEDED_DOC_PATHS.has(filePath) ? pointerDoc(nameFromDocPath(filePath), MACHINE_REPOSITORY) : undefined;
-      const content = overridden ?? defaulted;
-      if (content === undefined) throw new Error("gh: Not Found (HTTP 404)");
-      return `${Buffer.from(content, "utf8").toString("base64")}\n`;
-    }
-
-    if (path === `repos/${name}/git/ref/heads/main`) {
-      if (repo.empty) throw new Error("gh: Not Found (HTTP 404)");
-      return "headsha\n";
-    }
-
-    if (path.startsWith(`repos/${name}/git/commits/`)) return "basetree\n";
-
-    if (path === `repos/${name}/git/blobs`) return "newblob\n";
-
-    if (path === `repos/${name}/git/trees`) {
-      const body = JSON.parse(readFileSync(args[args.indexOf("--input") + 1], "utf8")) as {
-        tree: Array<{ path: string; sha: string | null }>;
-      };
-      trees.set(name, body.tree);
-      return "newtree\n";
-    }
-
-    if (path === `repos/${name}/git/commits`) {
-      const body = JSON.parse(readFileSync(args[args.indexOf("--input") + 1], "utf8")) as { message: string };
-      messages.set(name, body.message);
-      return "newcommit\n";
-    }
-
-    if (path === `repos/${name}/git/refs/heads/main`) return "";
-
-    if (path === `repos/${name}/labels`) {
-      if (repo.refusesLabels) throw new Error(repo.refusesLabels);
-      if (methodOf(args) === "POST") {
-        const fields = fieldsOf(args);
-        const list = labelWrites.get(name) ?? [];
-        list.push({ kind: "create", name: fields.name, color: fields.color, description: fields.description });
-        labelWrites.set(name, list);
-        return "";
-      }
-      return labelLines(repo.labels ?? []);
-    }
-
-    if (path.startsWith(`repos/${name}/labels/`)) {
-      if (repo.refusesLabels) throw new Error(repo.refusesLabels);
-      const fields = fieldsOf(args);
-      const labelName = decodeURIComponent(path.slice(`repos/${name}/labels/`.length));
-      const list = labelWrites.get(name) ?? [];
-      list.push({ kind: "update", name: labelName, color: fields.color, description: fields.description });
-      labelWrites.set(name, list);
-      return "";
-    }
-
-    if (path === `repos/${name}/actions/permissions/workflow`) {
-      if (repo.refusesSetting) throw new Error(repo.refusesSetting);
-      if (methodOf(args) === "PUT") {
-        settingPut.add(name);
-        return "";
-      }
-      return `${repo.settingReadBack ?? "true"}\n`;
-    }
-
-    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
-  };
-
-  return { gh, calls, trees, messages, labelWrites, settingPut, secretsSet };
+function fixture(
+  repositories: Record<string, TrackerMemoryRepository>,
+  repositoriesByTopic: string[] = Object.keys(repositories),
+): TrackerMemory {
+  return trackerMemory({ repositoriesByTopic, repositories });
 }
 
 function outcomeFor(outcomes: RepositoryOutcome[], repository: string): RepositoryOutcome {
@@ -225,9 +54,9 @@ function outcomeFor(outcomes: RepositoryOutcome[], repository: string): Reposito
   return found;
 }
 
-function enrol(workflowsDir: string, wire: Wire, secretValues: Record<string, string> = {}): RepositoryOutcome[] {
+function enrol(workflowsDir: string, tracker: TrackerMemory, secretValues: Record<string, string> = {}): RepositoryOutcome[] {
   return runEnrol({
-    gh: wire.gh,
+    gh: tracker as unknown as GhExec,
     workflowsDir,
     topic: ENROLMENT_TOPIC,
     machineRepository: MACHINE_REPOSITORY,
@@ -235,6 +64,17 @@ function enrol(workflowsDir: string, wire: Wire, secretValues: Record<string, st
     secretValues,
     log: () => {},
   });
+}
+
+function stubCommitFor(tracker: TrackerMemory, repository: string) {
+  return tracker.commits.find((commit) => commit.repository === repository && commit.message.includes("Machine-Sha:"));
+}
+
+function expectNoRepositoryWrites(tracker: TrackerMemory): void {
+  expect(tracker.commits).toEqual([]);
+  expect(tracker.labelWrites).toEqual([]);
+  expect(tracker.workflowApprovalsSet).toEqual([]);
+  expect(Object.keys(tracker.secretsSet)).toEqual([]);
 }
 
 describe("the stub set is a glob, and a boundary", () => {
@@ -314,24 +154,23 @@ describe("a pass over a target that is already current", () => {
   it("writes no stub commit and no label, but still sets ADR-0093's setting and propagates secrets", () => {
     const dir = machineWorkflows(["verify", "audit"], ["FOO"]);
     const stubs = readStubSet(dir);
-    const wire = createWire({
-      "owner/current": {
-        files: stubs.map((stub) => ({ name: stub.name, sha: stub.sha })),
+    const tracker = fixture({
+      "owner/current": repositoryCurrent({
+        directories: { [WORKFLOWS_PATH]: stubs.map((stub) => ({ name: stub.name, sha: stub.sha })) },
         labels: catalogueLabels(),
-      },
+      }),
     });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value" });
     const outcome = outcomeFor(outcomes, "owner/current");
 
     expect(outcome.code).toBe("current");
     expect(outcome.labelsWritten).toEqual([]);
     expect(outcome.secretsWritten).toEqual(["FOO"]);
-    expect(wire.trees.has("owner/current")).toBe(false);
-    expect(wire.messages.has("owner/current")).toBe(false);
-    expect(wire.labelWrites.get("owner/current") ?? []).toEqual([]);
-    expect(wire.settingPut.has("owner/current")).toBe(true);
-    expect(wire.secretsSet.get("owner/current")).toEqual({ FOO: "foo-value" });
+    expect(tracker.commits).toEqual([]);
+    expect(tracker.labelWrites).toEqual([]);
+    expect(tracker.workflowApprovalsSet).toEqual(["owner/current"]);
+    expect(tracker.secretsSet).toEqual({ "owner/current": { FOO: "foo-value" } });
     expect(exitCodeFor(outcomes)).toBe(0);
   });
 });
@@ -340,31 +179,32 @@ describe("a pass over a target that has drifted", () => {
   it("carries stub writes and deletes in one commit, and touches nothing outside the glob", () => {
     const dir = machineWorkflows(["verify", "audit"]);
     const stubs = readStubSet(dir);
-    const wire = createWire({
-      "owner/drifted": {
-        files: [
-          { name: "verify-caller.yml", sha: stubs.find((s) => s.name === "verify-caller.yml")?.sha ?? "" },
-          { name: "audit-caller.yml", sha: "an-older-version" },
-          { name: "retired-caller.yml", sha: "left-behind" },
-          { name: "their-own-ci.yml", sha: "not-ours" },
-        ],
-      },
+    const tracker = fixture({
+      "owner/drifted": repositoryCurrent({
+        directories: {
+          [WORKFLOWS_PATH]: [
+            { name: "verify-caller.yml", sha: stubs.find((s) => s.name === "verify-caller.yml")?.sha ?? "" },
+            { name: "audit-caller.yml", sha: "an-older-version" },
+            { name: "retired-caller.yml", sha: "left-behind" },
+            { name: "their-own-ci.yml", sha: "not-ours" },
+          ],
+        },
+      }),
     });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/drifted");
 
     expect(outcome.code).toBe("written");
     expect(outcome.wrote).toEqual(["audit-caller.yml"]);
     expect(outcome.deleted).toEqual(["retired-caller.yml"]);
 
-    const tree = wire.trees.get("owner/drifted") ?? [];
-    expect(tree).toEqual([
-      { path: ".github/workflows/audit-caller.yml", mode: "100644", type: "blob", sha: "newblob" },
-      { path: ".github/workflows/retired-caller.yml", mode: "100644", type: "blob", sha: null },
+    const commit = stubCommitFor(tracker, "owner/drifted");
+    expect(commit?.changes).toEqual([
+      { path: `${WORKFLOWS_PATH}/audit-caller.yml`, content: stubs.find((s) => s.name === "audit-caller.yml")?.content },
+      { path: `${WORKFLOWS_PATH}/retired-caller.yml`, content: null },
     ]);
-    expect(wire.calls.filter((argv) => argv.includes("repos/owner/drifted/git/commits"))).toHaveLength(1);
-    expect(wire.messages.get("owner/drifted")).toContain("Machine-Sha: abc123");
+    expect(commit?.message).toContain("Machine-Sha: abc123");
   });
 });
 
@@ -374,46 +214,46 @@ describe("labels, the ADR-0093 setting, and secrets ride every pass, independent
     const own = catalogueLabels();
     const ticket = own.find((label) => label.name === "ticket") as Label;
     const needsHuman = own.find((label) => label.name === NEEDS_HUMAN_LABEL) as Label;
-    const wire = createWire({
-      "owner/target": {
-        files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })),
+    const tracker = fixture({
+      "owner/target": repositoryCurrent({
+        directories: { [WORKFLOWS_PATH]: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })) },
         labels: [
           ...own.filter((label) => label !== ticket && label !== needsHuman),
           { ...ticket, color: "999999" },
           { name: "theirs", color: "abcdef", description: "the target's own label" },
         ],
-      },
+      }),
     });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value", BAR: "bar-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value", BAR: "bar-value" });
     const outcome = outcomeFor(outcomes, "owner/target");
 
     expect(outcome.labelsFailure).toBeUndefined();
     expect(outcome.labelsWritten).toEqual(["needs-human", "ticket"]);
-    expect(wire.labelWrites.get("owner/target")).toEqual([
-      { kind: "create", ...needsHuman },
-      { kind: "update", ...ticket },
+    expect(tracker.labelWrites).toEqual([
+      { kind: "create", repository: "owner/target", label: needsHuman },
+      { kind: "update", repository: "owner/target", label: ticket },
     ]);
-    expect(wire.labelWrites.get("owner/target")?.some((write) => write.name === "theirs")).toBe(false);
+    expect(tracker.labelWrites.some((write) => write.label.name === "theirs")).toBe(false);
 
     expect(outcome.settingFailure).toBeUndefined();
-    expect(wire.settingPut.has("owner/target")).toBe(true);
+    expect(tracker.workflowApprovalsSet).toContain("owner/target");
 
     expect(outcome.secretsFailure).toBeUndefined();
     expect(outcome.secretsWritten).toEqual(["BAR", "FOO"]);
-    expect(wire.secretsSet.get("owner/target")).toEqual({ FOO: "foo-value", BAR: "bar-value" });
-    expect(wire.secretsSet.get("owner/target")?.[OUTWARD_CREDENTIAL]).toBeUndefined();
+    expect(tracker.secretsSet["owner/target"]).toEqual({ FOO: "foo-value", BAR: "bar-value" });
+    expect(tracker.secretsSet["owner/target"]?.[OUTWARD_CREDENTIAL]).toBeUndefined();
 
     expect(exitCodeFor(outcomes)).toBe(0);
   });
 
   it("reports a read-back that is not true as a failure for that repository, without touching labels or secrets", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({
-      "owner/half-set": { files: [], settingReadBack: "false" },
+    const tracker = fixture({
+      "owner/half-set": repositoryCurrent({ workflowApprovalReadBack: "false" }),
     });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/half-set");
 
     expect(outcome.settingFailure).toContain("false");
@@ -424,18 +264,18 @@ describe("labels, the ADR-0093 setting, and secrets ride every pass, independent
 
   it("keeps a label failure from withholding the ADR-0093 setting or the secrets for the same repository", () => {
     const dir = machineWorkflows(["verify"], ["FOO"]);
-    const wire = createWire({
-      "owner/labels-down": { files: [], refusesLabels: "gh: Internal Server Error (HTTP 500)" },
+    const tracker = fixture({
+      "owner/labels-down": repositoryCurrent({ refusesLabels: "gh: Internal Server Error (HTTP 500)" }),
     });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value" });
     const outcome = outcomeFor(outcomes, "owner/labels-down");
 
     expect(outcome.labelsFailure).toContain("500");
     expect(outcome.settingFailure).toBeUndefined();
-    expect(wire.settingPut.has("owner/labels-down")).toBe(true);
+    expect(tracker.workflowApprovalsSet).toContain("owner/labels-down");
     expect(outcome.secretsFailure).toBeUndefined();
-    expect(wire.secretsSet.get("owner/labels-down")).toEqual({ FOO: "foo-value" });
+    expect(tracker.secretsSet["owner/labels-down"]).toEqual({ FOO: "foo-value" });
     expect(exitCodeFor(outcomes)).toBe(1);
   });
 });
@@ -443,12 +283,12 @@ describe("labels, the ADR-0093 setting, and secrets ride every pass, independent
 describe("a repository the token cannot write at all", () => {
   it("fails every one of the four writes while the rest of the estate is still brought up to date", () => {
     const dir = machineWorkflows(["verify"], ["FOO"]);
-    const wire = createWire({
-      "owner/forbidden": { files: [], refuses: "gh: Resource not accessible by integration (HTTP 403)" },
-      "owner/reachable": { files: [] },
+    const tracker = fixture({
+      "owner/forbidden": { refuses: "gh: Resource not accessible by integration (HTTP 403)" },
+      "owner/reachable": repositoryCurrent(),
     });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value" });
 
     const forbidden = outcomeFor(outcomes, "owner/forbidden");
     expect(forbidden.code).toBe("failed");
@@ -468,16 +308,16 @@ describe("a repository the token cannot write at all", () => {
 
   it("distinguishes a repository with no commit yet, which one push fixes, from one it cannot reach, and still sets ADR-0093 and secrets on it", () => {
     const dir = machineWorkflows(["verify"], ["FOO"]);
-    const wire = createWire({ "owner/blank": { files: [], empty: true } });
+    const tracker = fixture({ "owner/blank": { files: currentDocsFiles(MACHINE_REPOSITORY) } });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value" });
     const outcome = outcomeFor(outcomes, "owner/blank");
 
     expect(outcome.code).toBe("skipped");
     expect(outcome.why).toContain("no commit");
-    expect(wire.trees.has("owner/blank")).toBe(false);
-    expect(wire.settingPut.has("owner/blank")).toBe(true);
-    expect(wire.secretsSet.get("owner/blank")).toEqual({ FOO: "foo-value" });
+    expect(tracker.commits.some((commit) => commit.repository === "owner/blank")).toBe(false);
+    expect(tracker.workflowApprovalsSet).toContain("owner/blank");
+    expect(tracker.secretsSet["owner/blank"]).toEqual({ FOO: "foo-value" });
     expect(exitCodeFor(outcomes)).toBe(0);
   });
 });
@@ -485,68 +325,69 @@ describe("a repository the token cannot write at all", () => {
 describe("the machine itself", () => {
   it("is skipped even when it carries the topic, rather than enrolled into itself", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({ "owner/machine": { files: [] } });
+    const tracker = fixture({}, ["owner/machine"]);
 
-    const outcome = outcomeFor(enrol(dir, wire), "owner/machine");
+    const outcome = outcomeFor(enrol(dir, tracker), "owner/machine");
 
     expect(outcome.code).toBe("skipped");
-    expect(wire.calls.filter((argv) => (argv[1] ?? "").startsWith("repos/"))).toEqual([]);
+    expectNoRepositoryWrites(tracker);
   });
 });
 
 describe("seeded docs are pointers, written in the same pass", () => {
   it("writes a pointer for a doc the target carries as a full copy", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({
-      "owner/full-copy": {
-        files: [],
-        docFiles: { [pointerDocPath("ticket-format.md")]: "# Ticket format\n\nThe whole seeded copy, byte for byte.\n" },
-      },
+    const tracker = fixture({
+      "owner/full-copy": repositoryCurrent({
+        files: { [pointerDocPath("ticket-format.md")]: "# Ticket format\n\nThe whole seeded copy, byte for byte.\n" },
+      }),
     });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/full-copy");
 
     expect(outcome.docsFailure).toBeUndefined();
     expect(outcome.docsWritten).toContain(pointerDocPath("ticket-format.md"));
 
-    const tree = wire.trees.get("owner/full-copy") ?? [];
-    expect(tree.map((entry) => entry.path)).toContain(pointerDocPath("ticket-format.md"));
+    const changes = tracker.commits.filter((each) => each.repository === "owner/full-copy").flatMap((each) => each.changes);
+    expect(changes.map((change) => change.path)).toContain(pointerDocPath("ticket-format.md"));
   });
 
   it("writes nothing when every seeded doc already carries the pointer text", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({
-      "owner/already-pointers": { files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })) },
+    const tracker = fixture({
+      "owner/already-pointers": repositoryCurrent({
+        directories: { [WORKFLOWS_PATH]: readStubSet(dir).map((stub) => ({ name: stub.name, sha: stub.sha })) },
+      }),
     });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/already-pointers");
 
     expect(outcome.docsWritten).toEqual([]);
-    expect(wire.trees.has("owner/already-pointers")).toBe(false);
+    expect(tracker.commits.some((commit) => commit.repository === "owner/already-pointers")).toBe(false);
   });
 
   it("adds the CLAUDE.md pointer line under a heading of its own, leaving the rest of the file alone", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({
-      "owner/needs-claude-md": { files: [], docFiles: { "CLAUDE.md": "# Some project\n\nSome prose.\n" } },
+    const tracker = fixture({
+      "owner/needs-claude-md": repositoryCurrent({ files: { "CLAUDE.md": "# Some project\n\nSome prose.\n" } }),
     });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/needs-claude-md");
 
     expect(outcome.docsWritten).toContain("CLAUDE.md");
-    const tree = wire.trees.get("owner/needs-claude-md") ?? [];
-    const claudeMdWrite = tree.find((entry) => entry.path === "CLAUDE.md");
+    const changes = tracker.commits.filter((each) => each.repository === "owner/needs-claude-md").flatMap((each) => each.changes);
+    const claudeMdWrite = changes.find((change) => change.path === "CLAUDE.md");
     expect(claudeMdWrite).toBeDefined();
   });
 
   it("never touches CLAUDE.md the target does not carry at all", () => {
     const dir = machineWorkflows(["verify"]);
-    const wire = createWire({ "owner/no-claude-md": { files: [] } });
+    const tracker = fixture({ "owner/no-claude-md": repositoryCurrent() });
 
-    const outcomes = enrol(dir, wire);
+    const outcomes = enrol(dir, tracker);
     const outcome = outcomeFor(outcomes, "owner/no-claude-md");
 
     expect(outcome.docsWritten ?? []).not.toContain("CLAUDE.md");
@@ -554,14 +395,15 @@ describe("seeded docs are pointers, written in the same pass", () => {
 
   it("a doc failure never withholds the stub, label, setting or secret writes for the same repository", () => {
     const dir = machineWorkflows(["verify"], ["FOO"]);
-    const wire = createWire({
+    const tracker = fixture({
       "owner/docs-down": {
-        files: readStubSet(dir).map((stub) => ({ name: stub.name, sha: `stale-${stub.sha}` })),
+        headCommit: "headsha",
+        directories: { [WORKFLOWS_PATH]: readStubSet(dir).map((stub) => ({ name: stub.name, sha: `stale-${stub.sha}` })) },
         refusesDocs: "gh: Internal Server Error (HTTP 500)",
       },
     });
 
-    const outcomes = enrol(dir, wire, { FOO: "foo-value" });
+    const outcomes = enrol(dir, tracker, { FOO: "foo-value" });
     const outcome = outcomeFor(outcomes, "owner/docs-down");
 
     expect(outcome.docsFailure).toContain("500");
@@ -580,9 +422,41 @@ describe("seeded docs are pointers, written in the same pass", () => {
 describe("an empty stub set", () => {
   it("refuses the pass rather than deleting every stub in every enrolled repository", () => {
     const dir = mkdtempSync(join(tmpdir(), "enrol-empty-"));
-    const wire = createWire({ "owner/target": { files: [] } });
+    const tracker = fixture({ "owner/target": repositoryCurrent() });
 
-    expect(() => enrol(dir, wire)).toThrow(/would.*delete every stub/s);
-    expect(wire.calls).toEqual([]);
+    expect(() => enrol(dir, tracker)).toThrow(/would.*delete every stub/s);
+    expectNoRepositoryWrites(tracker);
+  });
+});
+
+describe("#626: enrol.ts and label-sync.ts reach a repository through Tracker operations, not argv they build themselves", () => {
+  test("#626.1: enrol.ts reaches the enrolled repository list through a Tracker operation, not an api call it builds itself", () => {
+    const tracker = trackerGh(() => "owner/one\nowner/two\n");
+
+    expect(enrolledRepositories(tracker as unknown as GhExec, ENROLMENT_TOPIC)).toEqual(["owner/one", "owner/two"]);
+  });
+
+  test("#626.2: label-sync.ts reads a repository's labels through a Tracker operation, not an api call it builds itself", () => {
+    const tracker = trackerGh(() => '{"name":"alpha","color":"111111","description":"first"}\n');
+
+    expect(readLabels(tracker as unknown as GhExec, "owner/repo")).toEqual([
+      { name: "alpha", color: "111111", description: "first" },
+    ]);
+  });
+
+  test("#626.3: runEnrol drives its whole pass off a Tracker seeded by trackerMemory, not a GhExec that parses api argv", () => {
+    const tracker = trackerMemory();
+
+    const outcomes = runEnrol({
+      gh: tracker as unknown as GhExec,
+      workflowsDir: machineWorkflows(["verify"]),
+      topic: ENROLMENT_TOPIC,
+      machineRepository: MACHINE_REPOSITORY,
+      machineSha: "abc123",
+      secretValues: {},
+      log: () => {},
+    });
+
+    expect(outcomes).toEqual([]);
   });
 });

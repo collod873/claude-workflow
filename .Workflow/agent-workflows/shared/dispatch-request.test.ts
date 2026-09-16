@@ -2,8 +2,10 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { test, vi } from "vitest";
 import { DISPATCH_REQUESTS_PATH_ENV, requestDispatch } from "./dispatch-request";
 import { createRecordingGh } from "./gh.fake";
+import * as trackerGhModule from "./tracker-gh";
 
 function requestsFile(): string {
   return join(mkdtempSync(join(tmpdir(), "dispatch-request-")), "requests.jsonl");
@@ -83,4 +85,14 @@ describe("requestDispatch with a handoff path: the caller is inside a model job"
     expect(body).not.toContain("\n");
     expect(Object.keys(JSON.parse(body) as object).sort()).toEqual(["client_payload", "event_type"]);
   });
+});
+
+test("#627.1: requestDispatch sends a live dispatch through trackerGh rather than building the dispatch argv itself", () => {
+  const trackerGhSpy = vi.spyOn(trackerGhModule, "trackerGh");
+  const { gh } = createRecordingGh();
+
+  requestDispatch(gh, { event_type: "ticket-ready", client_payload: { issue: 42 } }, {});
+
+  expect(trackerGhSpy).toHaveBeenCalledWith(gh);
+  trackerGhSpy.mockRestore();
 });

@@ -1,9 +1,9 @@
 import { pathToFileURL } from "node:url";
-import { z } from "zod";
-import { execGh, type GhExec } from "../shared/gh";
+import { execGh } from "../shared/gh";
 import { FINDING_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
-import { SignalIssueSchema } from "../shared/signal-issue-schema";
+import { trackerGh } from "../shared/tracker-gh";
+import type { Tracker } from "../shared/tracker";
 
 export { FINDING_LABEL };
 
@@ -119,7 +119,7 @@ function carriersFor(existing: SignalIssue[], direction: "grow" | "delete"): Sig
 }
 
 function evaluateProposal(options: {
-  gh: GhExec;
+  tracker: Tracker;
   direction: "grow" | "delete";
   count: number;
   title: string;
@@ -128,7 +128,7 @@ function evaluateProposal(options: {
   existing: SignalIssue[];
   log: (line: string) => void;
 }): DirectionOutcome {
-  const { gh, direction, count, title, body, assignee, existing, log } = options;
+  const { tracker, direction, count, title, body, assignee, existing, log } = options;
   const carriers = carriersFor(existing, direction);
 
   const standing = carriers.find((issue) => issue.state.toUpperCase() === "OPEN");
@@ -155,44 +155,21 @@ function evaluateProposal(options: {
     return { code: "declined-and-not-grown", declinedAt: highestDeclined };
   }
 
-  const url = gh(["issue", "create", "--title", title, "--body", body, "--assignee", assignee]).trim();
-  const opened = Number(url.split("/").pop());
+  const opened = tracker.createIssue({ title, body, assignee });
   log(`${direction}: opened #${opened}`);
   return { code: "proposed", issue: opened };
 }
 
-const FindingIssueSchema = z.object({
-  number: z.number(),
-  state: z.string(),
-  stateReason: z.string().nullable().optional(),
-  createdAt: z.string(),
-});
-
-function readFindingIssues(gh: GhExec): FindingIssue[] {
-  const raw = gh([
-    "issue",
-    "list",
-    "--state",
-    "all",
-    "--label",
-    FINDING_LABEL,
-    "--limit",
-    "200",
-    "--json",
-    "number,state,stateReason,createdAt",
-  ]);
-  return FindingIssueSchema.array()
-    .parse(JSON.parse(raw))
-    .map((issue) => ({ ...issue, stateReason: issue.stateReason ?? undefined }));
+function readFindingIssues(tracker: Tracker): FindingIssue[] {
+  return tracker.findingIssues(FINDING_LABEL);
 }
 
-function readSignals(gh: GhExec): SignalIssue[] {
-  const raw = gh(["issue", "list", "--state", "all", "--limit", "200", "--json", "number,body,state,stateReason"]);
-  return SignalIssueSchema.array().parse(JSON.parse(raw));
+function readSignals(tracker: Tracker): SignalIssue[] {
+  return tracker.signals();
 }
 
 export interface CounterOptions {
-  gh: GhExec;
+  tracker: Tracker;
   tally: RefuterTally;
   assignee: string;
   now?: Date;
@@ -200,16 +177,16 @@ export interface CounterOptions {
 }
 
 export function runCounter(options: CounterOptions): CounterOutcome {
-  const { gh, tally, assignee } = options;
+  const { tracker, tally, assignee } = options;
   const now = options.now ?? new Date();
   const log = options.log ?? ((line: string) => console.log(line));
 
-  const alarmCount = falseAlarmCount(readFindingIssues(gh), now);
-  const signals = readSignals(gh);
+  const alarmCount = falseAlarmCount(readFindingIssues(tracker), now);
+  const signals = readSignals(tracker);
 
   const grow: DirectionOutcome = shouldProposeGrow(alarmCount)
     ? evaluateProposal({
-        gh,
+        tracker,
         direction: "grow",
         count: alarmCount,
         title: GROW_ISSUE_TITLE,
@@ -222,7 +199,7 @@ export function runCounter(options: CounterOptions): CounterOutcome {
 
   const del: DirectionOutcome = shouldProposeDelete(tally)
     ? evaluateProposal({
-        gh,
+        tracker,
         direction: "delete",
         count: tally.reached,
         title: DELETE_ISSUE_TITLE,
@@ -246,7 +223,7 @@ async function main(): Promise<void> {
     const reached = Number(process.env.REFUTER_TALLY_REACHED ?? "0");
     const refuted = Number(process.env.REFUTER_TALLY_REFUTED ?? "0");
 
-    const outcome = runCounter({ gh: execGh, assignee, tally: { reached, refuted } });
+    const outcome = runCounter({ tracker: trackerGh(execGh), assignee, tally: { reached, refuted } });
     console.log(
       `grow: ${outcome.grow.code} (${outcome.falseAlarmCount} false alarms); ` +
         `delete: ${outcome.delete.code} (${outcome.tally.reached} reached, ${outcome.tally.refuted} refused)`,
