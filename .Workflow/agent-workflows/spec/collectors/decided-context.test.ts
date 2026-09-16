@@ -8,6 +8,9 @@ import { collectMapContext } from "./map";
 import { mapTrackerGh } from "./map-gh.fixture";
 import { fakeSheetGh } from "./sheet-gh.fixture";
 import { collectSheetContext } from "./sheet";
+import { test } from "vitest";
+import { trackerGh } from "../../shared/tracker-gh";
+import { createIssueGh } from "../gh.fake";
 
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
 
@@ -48,4 +51,38 @@ describe("both collectors normalize into the same Decided-context shape", () => 
       expect(typeof context.openGuesses).toBe("string");
     }
   });
+});
+
+test.fails("#615.5: collectMapContext still produces the five-field Decided-context shape when read through a Tracker", () => {
+  const repoRoot = scratchDir("shape-parity-tracker");
+  mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
+  writeFileSync(join(repoRoot, "docs/adr/0100-slug.md"), "# A ruling\n\nThe durable text.");
+  const body = [
+    "## Destination",
+    "",
+    "Ship it.",
+    "",
+    "Budget: 5 tickets.",
+    "",
+    "## Decisions so far",
+    "",
+    "- [A ticket](https://github.com/o/r/issues/9): filed as [ADR-0100](docs/adr/0100-slug.md)",
+    "",
+    "## Not yet specified",
+    "",
+    "## Out of scope",
+    "",
+  ].join("\n");
+  const { gh } = createIssueGh((fields) =>
+    fields === "body"
+      ? JSON.stringify({ body })
+      : fields === "comments"
+        ? JSON.stringify({ comments: [{ body: "a resolution comment" }] })
+        : undefined,
+  );
+  const tracker = trackerGh(gh) as unknown as Parameters<typeof collectMapContext>[0];
+
+  const context = collectMapContext(tracker, 1, repoRoot);
+
+  expect(Object.keys(context).sort()).toEqual(DECIDED_CONTEXT_KEYS);
 });

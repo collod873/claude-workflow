@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import { scratchDir } from "../../shared/scratch.fixture";
 import { collectMapContext } from "./map";
 import { mapTrackerGh } from "./map-gh.fixture";
+import { test } from "vitest";
+import { trackerGh } from "../../shared/tracker-gh";
+import { createIssueGh } from "../gh.fake";
 
 function mapBody(over: { decisions?: string; outOfScope?: string; notYetSpecified?: string } = {}): string {
   return [
@@ -89,4 +92,30 @@ describe("collectMapContext", () => {
 
     expect(() => collectMapContext(gh, 1, "/nonexistent")).toThrow();
   });
+});
+
+test.fails("#615.3: collectMapContext resolves a durable ruling when read through a Tracker built over trackerGh", () => {
+  const repoRoot = scratchDir("map-collector-tracker");
+  mkdirSync(join(repoRoot, "docs/adr"), { recursive: true });
+  writeFileSync(
+    join(repoRoot, "docs/adr/0099-the-thing-is-decided.md"),
+    "# The thing is decided\n\nThe durable ruling, in full.",
+  );
+
+  const body = mapBody({
+    decisions:
+      "- [The thing ticket](https://github.com/o/r/issues/42): filed as [ADR-0099](docs/adr/0099-the-thing-is-decided.md)",
+  });
+  const { gh } = createIssueGh((fields) =>
+    fields === "body"
+      ? JSON.stringify({ body })
+      : fields === "comments"
+        ? JSON.stringify({ comments: [] })
+        : undefined,
+  );
+  const tracker = trackerGh(gh) as unknown as Parameters<typeof collectMapContext>[0];
+
+  const context = collectMapContext(tracker, 1, repoRoot);
+
+  expect(context.rulings).toContain("The durable ruling, in full.");
 });

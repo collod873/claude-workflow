@@ -4,6 +4,8 @@ import { readSourceMarker, sourceMarker, type SpecSource } from "../publish";
 import { planSpecRun } from "../spec";
 import { mapTrackerGh } from "./map-gh.fixture";
 import { collectWidenedContext } from "./widened";
+import { trackerGh } from "../../shared/tracker-gh";
+import { createIssueGh } from "../gh.fake";
 
 test(
   "#600.1: planSpecRun returns a widened author plan for an issue carrying the sent-to-spec marker and no decision sheet",
@@ -36,4 +38,14 @@ test("#600.3: readSourceMarker round-trips a widened source", () => {
   const widenedSource = { kind: "widened", issue: 538 } as unknown as SpecSource;
 
   expect(readSourceMarker(sourceMarker(widenedSource))).toEqual({ kind: "widened", issue: 538 });
+});
+
+test.fails("#615.4: the widened collector reads the issue body through a Tracker built over trackerGh, not a bare GhExec", () => {
+  const body = "Its `## Files claimed` names more paths than lane 04 can author against in one budget.";
+  const { gh } = createIssueGh((fields) => (fields === "body" ? JSON.stringify({ body }) : undefined));
+  const tracker = trackerGh(gh) as unknown as Parameters<typeof collectWidenedContext>[0];
+
+  const context = collectWidenedContext(tracker, 538);
+
+  expect(context.ownerWords).toBe(body);
 });
