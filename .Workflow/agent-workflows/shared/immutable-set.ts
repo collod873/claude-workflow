@@ -3,6 +3,8 @@ import { BY_HAND_LABEL } from "./labels";
 
 export { BY_HAND_LABEL };
 
+export const IMMUTABLE_SET_SOURCE = ".Workflow/agent-workflows/shared/immutable-set.json";
+
 export const IMMUTABLE_SET: readonly string[] = immutableSetJson;
 
 export const IMPLEMENTATION_PR_DISPATCH_ACTION = "implementation-opened";

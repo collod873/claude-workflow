@@ -1066,7 +1066,7 @@ test("#578.4: #538, the issue this was measured on, is rung to `to-spec` by the 
   expect(tracker.labelsAdded).toContainEqual({ issue: 538, name: TO_SPEC_LABEL });
 });
 
-test.fails("#585.3: the by-hand stand-down states the immutable-set rule from the set's own source, naming that file and the commit that changes it", () => {
+test("#585.3: the by-hand stand-down states the immutable-set rule from the set's own source, naming that file and the commit that changes it", () => {
   const BY_HAND_TICKET = 56;
   const tracker = trackerWith({
     open: [
