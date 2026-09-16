@@ -25,7 +25,7 @@ vi.mock("../shared/gh", () => ({
 const { buildAcceptDeps } = await import("./run-accept");
 const { execGh } = await import("../shared/gh");
 
-test.fails("#618.4: buildAcceptDeps builds its tracker via trackerGh(execGh) instead of handing out a raw GhExec", () => {
+test("#618.4: buildAcceptDeps builds its tracker via trackerGh(execGh) instead of handing out a raw GhExec", () => {
   trackerGhCalls.length = 0;
 
   buildAcceptDeps("/some/target/checkout");

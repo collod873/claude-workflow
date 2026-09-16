@@ -1,6 +1,8 @@
-import { issueComments, type GhExec } from "../shared/gh";
+import type { GhExec } from "../shared/gh";
 import { isAccepted, isRefusal, readSheetMarker } from "../shared/marker";
 import type { Sheet } from "../shared/sheet-schema";
+import type { Tracker } from "../shared/tracker";
+import { trackerGh } from "../shared/tracker-gh";
 import { CHANGE_REQUEST_CAP } from "./sheet";
 
 export interface Round {
@@ -11,8 +13,9 @@ export interface Round {
   accepted: boolean;
 }
 
-export function roundFor(gh: GhExec, issueNumber: number): Round {
-  const bodies = issueComments(gh, issueNumber);
+export function roundFor(source: GhExec | Tracker, issueNumber: number): Round {
+  const tracker = typeof source === "function" ? trackerGh(source) : source;
+  const bodies = tracker.issueComments(issueNumber);
 
   const sheets = bodies.map(readSheetMarker).filter((sheet): sheet is Sheet => sheet !== undefined);
   const spoken = sheets.length + bodies.filter(isRefusal).length;

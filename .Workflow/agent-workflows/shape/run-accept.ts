@@ -6,6 +6,7 @@ import { childEnv } from "../shared/child-env";
 import { execGh } from "../shared/gh";
 import { execGit } from "../shared/git";
 import { reason } from "../shared/reason";
+import { trackerGh } from "../shared/tracker-gh";
 import { accept, type AcceptDeps } from "./accept";
 import { acceptsShapedIdea, isVerb } from "./doors";
 
@@ -37,6 +38,7 @@ export function buildAcceptDeps(targetWorkspace: string): AcceptDeps {
 
   return {
     gh: execGh,
+    tracker: trackerGh(execGh),
     git: (args) => execGit(["-C", targetWorkspace, ...args]),
     newAdr: (title) => newAdr(title, targetWorkspace),
     landAdr: (draftPath) => landAdr(draftPath, targetWorkspace),

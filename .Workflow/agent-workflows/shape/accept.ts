@@ -7,12 +7,14 @@ import { acceptedMarker } from "../shared/marker";
 import { pushToTrunk } from "../shared/push-to-trunk";
 import { reason } from "../shared/reason";
 import type { Decision, Sheet, Term } from "../shared/sheet-schema";
+import type { Tracker } from "../shared/tracker";
 import { roundFor } from "./rounds";
 
 const SECTION_HEADING = (section: Term["section"]): string => `### ${section}`;
 
 export interface AcceptDeps {
   gh: GhExec;
+  tracker?: Tracker;
   git: GitExec;
   newAdr: (title: string) => string;
   landAdr: (draftPath: string) => string;
@@ -49,7 +51,7 @@ export async function accept(deps: AcceptDeps, issueNumber: number, verb: Verb):
 }
 
 async function approve(deps: AcceptDeps, issueNumber: number): Promise<AcceptOutcome> {
-  const round = roundFor(deps.gh, issueNumber);
+  const round = roundFor(deps.tracker ?? deps.gh, issueNumber);
 
   if (round.accepted) {
     return { kind: "already-accepted" };
@@ -57,13 +59,11 @@ async function approve(deps: AcceptDeps, issueNumber: number): Promise<AcceptOut
 
   const sheet = round.latestSheet;
   if (!sheet) {
-    deps.gh([
-      "issue",
-      "comment",
-      String(issueNumber),
-      "--body",
+    commentIfLive(
+      deps.gh,
+      issueNumber,
       "**Approved, but there is no sheet on this issue.** Nothing was filed and no route was recorded: an accept files the rulings a sheet decided, and this one has none to read.\n\nRemove and re-add `idea` to shape it first.",
-    ]);
+    );
     return { kind: "no-sheet", verb: "approved" };
   }
 
@@ -224,6 +224,11 @@ ${filed}${coined}
 ${acceptedMarker({ adrPaths: adrs, coinedTerms: terms.map((term) => term.term), route })}
 
 **Dispatched to lane 02.** This click filed what the sheet decided, so the spec cites the rulings rather than re-deciding them, and then started the spec author on them. The spec arrives as its own \`PRD:\` issue, carrying numbered open questions if it had to guess at anything, and nothing further from you if it did not.`;
+}
+
+function commentIfLive(gh: GhExec, issueNumber: number, body: string): void {
+  if (typeof gh !== "function") return;
+  gh(["issue", "comment", String(issueNumber), "--body", body]);
 }
 
 function dropIdea(gh: GhExec, issueNumber: number): void {
