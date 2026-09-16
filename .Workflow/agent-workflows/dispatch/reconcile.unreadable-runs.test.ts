@@ -21,7 +21,7 @@ test("#390.1: an unreadable runs list no longer degrades the reconcile pass", ()
 
 const IMMUTABLE_SET_SOURCE = ".Workflow/agent-workflows/shared/immutable-set.json";
 
-test.fails("#585.3: the by-hand stand-down comment states the rule from the set's own source rather than restating it, naming the same file and act", () => {
+test("#585.3: the by-hand stand-down comment states the rule from the set's own source rather than restating it, naming the same file and act", () => {
   const body = byHandStandDownBody();
 
   expect(body).toContain(IMMUTABLE_SET_SOURCE);

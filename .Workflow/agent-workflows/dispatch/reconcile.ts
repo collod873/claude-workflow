@@ -23,6 +23,7 @@ import {
   wearsLane,
   type StateLabel,
 } from "../shared/labels";
+import { IMMUTABLE_SET_SOURCE } from "../shared/immutable-set";
 import { escalateToOwner } from "../shared/needs-human";
 import { countRollup, readRollup, rollupLine, writeRollup } from "./rollup";
 import { dispatchSpecAuthor } from "../shared/spec-author-dispatch";
@@ -191,10 +192,11 @@ const BY_HAND_STAND_DOWN_MARKER = "<!-- by-hand-stand-down:v1 -->";
 
 export function byHandStandDownBody(): string {
   return [
-    "Its `## Files claimed` names a workstation or immutable-set path, which no pull request may",
-    `edit, so this ticket wears \`${BY_HAND_LABEL}\` and only a human can build it. Lane 06 will not`,
-    `start against it, and this stand-down is not a \`${NEEDS_HUMAN_LABEL}\` hold — nobody needs to act`,
-    "on it.",
+    "Its `## Files claimed` names a workstation path or a path in the closed set held in " +
+      `${IMMUTABLE_SET_SOURCE}, whose only exit is a commit editing that file — no pull request may`,
+    `otherwise touch what it names, so this ticket wears \`${BY_HAND_LABEL}\` and only a human can build it.`,
+    `Lane 06 will not start against it, and this stand-down is not a \`${NEEDS_HUMAN_LABEL}\` hold — nobody`,
+    "needs to act on it.",
     "",
     BY_HAND_STAND_DOWN_MARKER,
   ].join("\n");

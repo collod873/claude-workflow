@@ -18,15 +18,15 @@ function immutableClaimRefusal(): string {
   throw new Error("validateClaimsAreMutable accepted a claim on the immutable set");
 }
 
-test.fails("#585.1: the immutable-set refusal names the file that holds the set, not only its members", () => {
+test("#585.1: the immutable-set refusal names the file that holds the set, not only its members", () => {
   expect(immutableClaimRefusal()).toContain(IMMUTABLE_SET_SOURCE);
 });
 
-test.fails("#585.2: the immutable-set refusal names the act that changes the set: a commit editing that file", () => {
+test("#585.2: the immutable-set refusal names the act that changes the set: a commit editing that file", () => {
   expect(immutableClaimRefusal()).toMatch(/commit/i);
 });
 
-test.fails("#585.4: bin/gauntlet refuses an unknown venue by naming the file its venue list comes from", () => {
+test("#585.4: bin/gauntlet refuses an unknown venue by naming the file its venue list comes from", () => {
   const run = spawnSync(join(REPO_ROOT, "bin/gauntlet"), ["not-a-venue"], { encoding: "utf8" });
 
   expect(run.status).not.toBe(0);

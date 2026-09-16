@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { IMMUTABLE_SET, touchesImmutableSet } from "./immutable-set";
+import { IMMUTABLE_SET, IMMUTABLE_SET_SOURCE, touchesImmutableSet } from "./immutable-set";
 import type { Plan, Slice } from "./plan-schema";
 import { reason } from "./reason";
 import { CHECK_MARKER_ATTEMPT_RE, CRITERIA_HEADING, parseCheckMarker } from "./ticket-shape";
@@ -60,8 +60,10 @@ export function validateClaimsAreMutable(plan: Plan): void {
     if (claimed.length > 0) {
       problems.push(
         `slice ${index + 1} ("${slice.title}") claims ${claimed.map((path) => JSON.stringify(path)).join(", ")}, ` +
-          `which no pull request may touch (${IMMUTABLE_SET.join(", ")}), and lane 06 would refuse the ` +
-          "implementation, so this ticket could never pass. Re-slice it to reach its goal without that file.",
+          `which no pull request may touch: the closed set held in ${IMMUTABLE_SET_SOURCE} ` +
+          `(${IMMUTABLE_SET.join(", ")}), and lane 06 would refuse the implementation, so this ticket could ` +
+          "never pass. Re-slice it to reach its goal without that file; the set's only exit is a commit " +
+          `editing ${IMMUTABLE_SET_SOURCE} itself.`,
       );
     }
   });
