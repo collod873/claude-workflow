@@ -42,4 +42,8 @@ export interface Tracker {
   recordComments(number: number): TrackerRecordComment[];
   branchesUnder(prefix: string): string[];
   mergedCloser(number: number): number | undefined;
+  blockedByIds(number: number): number[];
+  issueId(number: number): number;
+  addSubIssue(parentNumber: number, childId: number): void;
+  addBlockedBy(number: number, blockerId: number): void;
 }

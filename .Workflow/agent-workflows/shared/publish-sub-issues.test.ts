@@ -72,7 +72,7 @@ const TWO_PUBLISHED_ISSUES = [
   { position: 2, title: "B", number: 502, id: 9002 },
 ];
 
-test.fails("#612.1: wireBlockedByEdges wires each dependency through a Tracker instead of building gh api argv", () => {
+test("#612.1: wireBlockedByEdges wires each dependency through a Tracker instead of building gh api argv", () => {
   const edges: Array<{ number: number; blockerId: number }> = [];
   const tracker = {
     addBlockedBy(number: number, blockerId: number) {

@@ -9,6 +9,8 @@ export interface TrackerMemorySeed {
   recordComments?: Record<number, TrackerRecordComment[]>;
   branches?: string[];
   mergedClosers?: Record<number, number>;
+  blockedByIds?: Record<number, number[]>;
+  issueIds?: Record<number, number>;
 }
 
 export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
@@ -20,6 +22,10 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
   const recordComments = new Map(Object.entries(seed.recordComments ?? {}).map(([id, list]) => [Number(id), list]));
   const branches = seed.branches ?? [];
   const mergedClosers = new Map(Object.entries(seed.mergedClosers ?? {}).map(([id, pr]) => [Number(id), pr]));
+  const blockedByIds = new Map(
+    Object.entries(seed.blockedByIds ?? {}).map(([number, ids]) => [Number(number), ids]),
+  );
+  const issueIds = new Map(Object.entries(seed.issueIds ?? {}).map(([number, id]) => [Number(number), id]));
 
   return {
     workflowRuns: (_workflow, perPage) => runs.slice(0, perPage),
@@ -30,5 +36,15 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): Tracker {
     recordComments: (number) => recordComments.get(number) ?? [],
     branchesUnder: (prefix) => branches.filter((branch) => branch.startsWith(prefix)),
     mergedCloser: (number) => mergedClosers.get(number),
+    blockedByIds: (number) => blockedByIds.get(number) ?? [],
+    issueId: (number) => {
+      const id = issueIds.get(number);
+      if (id === undefined) {
+        throw new Error(`no seeded issue id for #${number}`);
+      }
+      return id;
+    },
+    addSubIssue: () => undefined,
+    addBlockedBy: () => undefined,
   };
 }

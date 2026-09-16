@@ -34,7 +34,7 @@ describe("the blocked-by graph has one writer, lane 03 (ADR-0069, #601)", () => 
   });
 });
 
-test("#609: ticket-state.ts moved onto Tracker, so tracker-gh.ts and publish-sub-issues.ts are the only importers of blockedByPath", () => {
+test("#612.3: publish-sub-issues.ts no longer imports blockedByPath itself, having moved its blocked-by argv onto tracker-gh.ts", () => {
   const modules = laneSources().filter((file) => file.relative.endsWith(".ts") && !NOT_A_MODULE.test(file.relative));
   const importers = modules
     .filter((file) => importsBlockedByPath(file.source))
@@ -42,7 +42,6 @@ test("#609: ticket-state.ts moved onto Tracker, so tracker-gh.ts and publish-sub
     .sort();
 
   expect(importers).toEqual([
-    ".Workflow/agent-workflows/shared/publish-sub-issues.ts",
     ".Workflow/agent-workflows/shared/tracker-gh.ts",
   ]);
 });

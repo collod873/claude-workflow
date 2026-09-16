@@ -1,19 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { childEnv } from "./child-env.ts";
-import { issuePath, subIssuesPath } from "./gh-paths.ts";
+import { subIssuesPath } from "./gh-paths.ts";
+import type { Tracker } from "./tracker.ts";
 
 export type GhExec = (args: string[]) => string;
 
 export const execGh: GhExec = (args) =>
   execFileSync("gh", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, env: childEnv() });
 
-export function fetchIssueId(gh: GhExec, number: number): number {
-  const raw = gh(["api", issuePath(number), "--jq", ".id"]);
-  const id = Number(raw.trim());
-  if (!Number.isInteger(id)) {
-    throw new Error(`could not parse a numeric id for issue #${number} from: ${JSON.stringify(raw)}`);
+export function fetchIssueId(tracker: GhExec | Tracker, number: number): number {
+  if (typeof tracker === "function") {
+    throw new Error("fetchIssueId needs a Tracker, not a raw GhExec; wrap it with trackerGh first");
   }
-  return id;
+  return tracker.issueId(number);
 }
 
 export function fetchSubIssueCount(gh: GhExec, prdNumber: number): number {

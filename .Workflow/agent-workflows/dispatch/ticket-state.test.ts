@@ -5,6 +5,7 @@ import { issueCommentsPath, subIssuesPath } from "../shared/gh-paths";
 import { BY_HAND_LABEL, BUILDING_LABEL, NEEDS_HUMAN_LABEL, PRD_LABEL } from "../shared/labels";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
 import type { Tracker, TrackerBlocker } from "../shared/tracker";
+import { trackerMemory } from "../shared/tracker-memory";
 import { openIssuesAnswer, runListAnswer } from "../shared/gh-list-answers.fixture";
 import { ticketState, TO_BUILD_REFUSED_MARKER, type TicketState, type TicketStates } from "./ticket-state";
 import { TO_BUILD_LABEL } from "./reconcile";
@@ -109,8 +110,7 @@ function trackerFor(options: Options): { tracker: Tracker; commentCalls: number[
   const commentCalls: number[] = [];
 
   const tracker: Tracker = {
-    workflowRuns: () => [],
-    jobs: () => [],
+    ...trackerMemory(),
     blockedBy(number) {
       if (options.fail === "edges") throw new Error("gh: 403");
       return (open.get(number)?.blockedBy ?? []).map((blocker) => blockerRef(blocker, options));
@@ -122,7 +122,6 @@ function trackerFor(options: Options): { tracker: Tracker; commentCalls: number[
       commentCalls.push(number);
       return (open.get(number)?.comments ?? []).map((body, index) => ({ id: number * 1000 + index, body }));
     },
-    recordComments: () => [],
     branchesUnder(prefix) {
       if (options.fail === "refs") throw new Error("gh: 403");
       return branches.filter((branch) => branch.startsWith(prefix));

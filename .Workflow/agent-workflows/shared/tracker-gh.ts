@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { GhExec } from "./gh";
-import { blockedByPath, issueCommentsPath, matchingRefsPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, issueCommentsPath, issuePath, matchingRefsPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
 
 const ApiRun = z.object({
@@ -74,6 +74,24 @@ function prIsMerged(gh: GhExec, pr: number): boolean {
   }
 }
 
+const ID_FIELD_FLAG = "-F";
+
+function parsedId(raw: string, number: number): number {
+  const id = Number(raw.trim());
+  if (!Number.isInteger(id)) {
+    throw new Error(`could not parse a numeric id for issue #${number} from: ${JSON.stringify(raw)}`);
+  }
+  return id;
+}
+
+function parsedIds(raw: string, number: number): number[] {
+  const parsed: unknown = JSON.parse(raw.trim());
+  if (!Array.isArray(parsed) || !parsed.every((value) => Number.isInteger(value))) {
+    throw new Error(`could not parse blocked-by ids for issue #${number} from: ${JSON.stringify(raw)}`);
+  }
+  return parsed as number[];
+}
+
 export function trackerGh(gh: GhExec): Tracker {
   return {
     workflowRuns(workflow, perPage) {
@@ -132,6 +150,20 @@ export function trackerGh(gh: GhExec): Tracker {
         return undefined;
       }
       return closers.find((pr) => prIsMerged(gh, pr));
+    },
+    blockedByIds(number) {
+      const raw = gh(["api", blockedByPath(number), "--jq", "[.[].id]"]);
+      return parsedIds(raw, number);
+    },
+    issueId(number) {
+      const raw = gh(["api", issuePath(number), "--jq", ".id"]);
+      return parsedId(raw, number);
+    },
+    addSubIssue(parentNumber, childId) {
+      gh(["api", subIssuesPath(parentNumber), ID_FIELD_FLAG, `sub_issue_id=${childId}`]);
+    },
+    addBlockedBy(number, blockerId) {
+      gh(["api", blockedByPath(number), ID_FIELD_FLAG, `issue_id=${blockerId}`]);
     },
   };
 }
