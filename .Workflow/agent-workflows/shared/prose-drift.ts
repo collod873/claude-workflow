@@ -22,7 +22,7 @@ interface Adr {
 
 const ADR_PATH_RE = /^docs\/adr\/(\d{4})-[^/]+\.md$/;
 const ADR_CITATION_RE = /(?<![\w/])ADR-(\d{4})\b|(?<![\w-])adr\/(\d{4})-/g;
-const NEVER_LIVE_RE = /^docs\/(adr|research)\/|package-lock\.json$|\.evidence\.json$|\.test\.ts$|\.fixture\.ts$|(^|\/)test_[^/]*\.py$|(^|\/)conftest\.py$/;
+const NEVER_LIVE_RE = /^docs\/(adr|research)\/|package-lock\.json$|\.evidence\.json$|\.fixtures\/[^/]+\.json$|-payloads\.ts$|\.test\.ts$|\.fixture\.ts$|(^|\/)test_[^/]*\.py$|(^|\/)conftest\.py$/;
 const AGENT_WORKFLOWS_PREFIX = ".Workflow/agent-workflows/";
 const REVERSAL_PREFIX = "reversal:";
 
