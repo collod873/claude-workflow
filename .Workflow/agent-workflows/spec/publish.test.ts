@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import type { GhExec } from "../shared/gh";
+import { trackerMemory } from "../shared/tracker-memory";
 import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
 import { publishingGh } from "./issue-doors.fixture";
@@ -174,5 +176,15 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
 
     const comments = calls.filter((args) => args[0] === "issue" && args[1] === "comment");
     expect(comments).toHaveLength(0);
+  });
+});
+
+describe("publishSpec: filed through a Tracker", () => {
+  test.fails("#617.1: files the issue through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+    const tracker = trackerMemory({ firstIssueNumber: 902 });
+
+    const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], DRAFT, SHEET_SOURCE, NO_VALIDATION);
+
+    expect(created).toBe(CREATED);
   });
 });

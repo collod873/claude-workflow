@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { publishingGh } from "./issue-doors.fixture";
 import { publishSpec, specBody, type SpecSource } from "./publish";
 import type { SpecAuthorOutput } from "./spec";
 import { validateSpecBody } from "./validate-spec";
+import { trackerMemory } from "../shared/tracker-memory";
 
 const SOURCE: SpecSource = { kind: "sheet", issue: 42 };
 
@@ -71,5 +73,15 @@ describe("publishSpec's default validator is the real one", () => {
     expect(() => validateSpecBody(trailing)).toThrow(/doesn't parse/);
 
     expect(validateSpecBody(specBody(GOOD, SOURCE))).toEqual([]);
+  });
+});
+
+describe("publishSpec's default validator, driven through a Tracker", () => {
+  test.fails("#617.3: files a well-formed body through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+    const tracker = trackerMemory({ firstIssueNumber: 902 });
+
+    const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], draft(GOOD), SOURCE);
+
+    expect(created).toBe(903);
   });
 });
