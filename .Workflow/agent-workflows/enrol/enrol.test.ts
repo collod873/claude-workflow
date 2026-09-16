@@ -9,6 +9,11 @@ import { ENROLMENT_TOPIC, exitCodeFor, runEnrol, type RepositoryOutcome } from "
 import { OUTWARD_CREDENTIAL, derivedSecretNames } from "./secrets.ts";
 import { SEEDED_DOC_NAMES, claudeMdPointerLine, pointerDoc, pointerDocPath } from "./seeded-docs.ts";
 import { WORKFLOWS_PATH, blobSha, planFor, readStubSet, type RemoteFile } from "./stub-set.ts";
+import { test } from "vitest";
+import { trackerGh } from "../shared/tracker-gh.ts";
+import { trackerMemory } from "../shared/tracker-memory.ts";
+import { readLabels } from "../shared/label-sync.ts";
+import { enrolledRepositories } from "./enrol.ts";
 
 const MACHINE_REPOSITORY = "owner/machine";
 
@@ -584,5 +589,37 @@ describe("an empty stub set", () => {
 
     expect(() => enrol(dir, wire)).toThrow(/would.*delete every stub/s);
     expect(wire.calls).toEqual([]);
+  });
+});
+
+describe("#626: enrol.ts and label-sync.ts reach a repository through Tracker operations, not argv they build themselves", () => {
+  test.fails("#626.1: enrol.ts reaches the enrolled repository list through a Tracker operation, not an api call it builds itself", () => {
+    const tracker = trackerGh(() => "owner/one\nowner/two\n");
+
+    expect(enrolledRepositories(tracker as unknown as GhExec, ENROLMENT_TOPIC)).toEqual(["owner/one", "owner/two"]);
+  });
+
+  test.fails("#626.2: label-sync.ts reads a repository's labels through a Tracker operation, not an api call it builds itself", () => {
+    const tracker = trackerGh(() => '{"name":"alpha","color":"111111","description":"first"}\n');
+
+    expect(readLabels(tracker as unknown as GhExec, "owner/repo")).toEqual([
+      { name: "alpha", color: "111111", description: "first" },
+    ]);
+  });
+
+  test.fails("#626.3: runEnrol drives its whole pass off a Tracker seeded by trackerMemory, not a GhExec that parses api argv", () => {
+    const tracker = trackerMemory();
+
+    const outcomes = runEnrol({
+      gh: tracker as unknown as GhExec,
+      workflowsDir: machineWorkflows(["verify"]),
+      topic: ENROLMENT_TOPIC,
+      machineRepository: MACHINE_REPOSITORY,
+      machineSha: "abc123",
+      secretValues: {},
+      log: () => {},
+    });
+
+    expect(outcomes).toEqual([]);
   });
 });
