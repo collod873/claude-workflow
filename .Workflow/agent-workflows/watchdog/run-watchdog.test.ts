@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
+import { answerIssueQueue } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
 import { repoRunsPathMatcher, runJobsPathMatcher } from "../shared/gh-paths";
 import { runJobsPath } from "../shared/gh-paths";
 import { runWatchdog, WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { MAX_JOB_READS, MAX_SIGNALS, signalMarker } from "./dead-lanes";
-import { answerTracker } from "./signal-tracker.fixture";
 
 const NOW = new Date("2026-08-26T12:00:00Z");
 
@@ -51,10 +51,11 @@ function historyWith(options: {
     const jobs = (args[1] ?? "").match(runJobsPathMatcher);
     if (args[0] === "api" && jobs) {
       if (options.jobsRaw !== undefined) return options.jobsRaw;
-      return `${runs.find((run) => run.id === Number(jobs[1]))?.jobs ?? 1}\n`;
+      const count = runs.find((run) => run.id === Number(jobs[1]))?.jobs ?? 1;
+      return JSON.stringify({ jobs: Array.from({ length: count }, () => ({ steps: [] })) });
     }
 
-    const answered = answerTracker(args, options.issues ?? []);
+    const answered = answerIssueQueue(args, options.issues ?? []);
     if (answered !== undefined) return answered;
     if (args[0] === "issue" && args[1] === "view") {
       return JSON.stringify({ comments: (comments[Number(args[2])] ?? []).map((body) => ({ body })) });
@@ -309,10 +310,10 @@ describe("runWatchdog", () => {
     expect(fake.calls.some((argv) => runJobsPathMatcher.test(argv[1] ?? ""))).toBe(false);
   });
 
-  it("refuses a jobs read that returns no count, rather than reading it as zero", () => {
+  it("refuses a jobs read that returns no parseable body, rather than reading it as zero", () => {
     const fake = historyWith({ runs: [DEAD], jobsRaw: "" });
 
-    expect(() => sweep(fake)).toThrow(/returned no count/);
+    expect(() => sweep(fake)).toThrow();
   });
 });
 
@@ -344,7 +345,7 @@ describe("#621: runWatchdog reads a run's jobs through the tracker's shape", () 
     return { gh, calls };
   }
 
-  test.fails("#621.1: run-watchdog.ts builds no api argv itself - it counts a run's jobs by asking the tracker's jobs shape, not a raw --jq .total_count query", () => {
+  test("#621.1: run-watchdog.ts builds no api argv itself - it counts a run's jobs by asking the tracker's jobs shape, not a raw --jq .total_count query", () => {
     const fake = trackerShapedFake();
 
     const outcome = sweep(fake);

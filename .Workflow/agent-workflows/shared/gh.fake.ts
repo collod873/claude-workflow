@@ -149,3 +149,15 @@ export function createRecordingGh(): { gh: GhExec; calls: string[][] } {
   };
   return { gh, calls };
 }
+
+export function answerIssueQueue(args: string[], issues: readonly object[]): string | undefined {
+  if (args[0] === "issue" && args[1] === "list") return JSON.stringify(issues);
+  if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
+  return undefined;
+}
+
+export function answerIssueQueueOrThrow(args: string[], issues: readonly object[]): string {
+  const answered = answerIssueQueue(args, issues);
+  if (answered !== undefined) return answered;
+  throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
+}

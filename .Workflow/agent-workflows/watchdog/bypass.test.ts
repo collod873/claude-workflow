@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { answerIssueQueueOrThrow } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
 import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import {
@@ -195,9 +196,7 @@ function historyWith(options: {
       });
     }
 
-    if (args[0] === "issue" && args[1] === "list") return JSON.stringify(options.issues ?? []);
-    if (args[0] === "issue" && args[1] === "create") return "https://github.com/owner/repo/issues/42\n";
-    throw new Error(`unexpected gh call: ${args.join(" ")}`);
+    return answerIssueQueueOrThrow(args, options.issues ?? []);
   };
 
   return { gh, calls };

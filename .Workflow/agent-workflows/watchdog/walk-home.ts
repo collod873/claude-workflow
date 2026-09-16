@@ -1,11 +1,13 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
+import { repositoriesByTopic } from "../shared/gh-search";
 import { execGh, type GhExec } from "../shared/gh";
-import { repoRunsPathFor } from "../shared/gh-paths";
 import { execGit, type GitExec } from "../shared/git";
 import { touchesImmutableSet } from "../shared/immutable-set";
 import { BY_HAND_LABEL, TICKET_LABEL, TO_BUILD_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
+import { trackerGh } from "../shared/tracker-gh";
+import type { RepoRun } from "../shared/tracker";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
 const ENROLMENT_TOPIC = "claude-workflow-enrolled";
@@ -22,15 +24,7 @@ export const MAX_LOG_READS = 30;
 
 export const MAX_FILED = 5;
 
-const RunSummary = z.object({
-  id: z.number(),
-  path: z.string(),
-  status: z.string(),
-  conclusion: z.string().nullable(),
-  htmlUrl: z.string(),
-  createdAt: z.string(),
-});
-type RunSummary = z.infer<typeof RunSummary>;
+type RunSummary = RepoRun;
 
 const IssueBody = z.object({ body: z.string().nullable() });
 
@@ -61,34 +55,14 @@ export interface WalkHomeOutcome {
   failures: string[];
 }
 
-function enrolledRepositories(gh: GhExec): string[] {
-  const raw = gh([
-    "api",
-    "--paginate",
-    `search/repositories?q=topic:${ENROLMENT_TOPIC}&per_page=${SEARCH_PAGE_SIZE}`,
-    "--jq",
-    ".items[].full_name",
-  ]);
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-}
-
 function withinLookback(createdAt: string, now: Date): boolean {
   const age = now.getTime() - new Date(createdAt).getTime();
   return age >= 0 && age <= LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function failedRuns(gh: GhExec, repository: string, now: Date): RunSummary[] {
-  const raw = gh([
-    "api",
-    repoRunsPathFor(repository, RUN_PAGE_SIZE),
-    "--jq",
-    "[.workflow_runs[] | {id, path, status, conclusion, htmlUrl: .html_url, createdAt: .created_at}]",
-  ]);
-  return RunSummary.array()
-    .parse(JSON.parse(raw))
+  return trackerGh(gh)
+    .recentRuns(RUN_PAGE_SIZE, repository)
     .filter((run) => run.status === "completed" && run.conclusion === "failure")
     .filter((run) => withinLookback(run.createdAt, now));
 }
@@ -356,7 +330,9 @@ export function walkHome(options: WalkHomeOptions): WalkHomeOutcome {
   const now = options.now ?? new Date();
   const log = options.log ?? ((line: string) => console.log(line));
 
-  const repositories = enrolledRepositories(gh).filter((repository) => repository !== machineRepository);
+  const repositories = repositoriesByTopic(gh, ENROLMENT_TOPIC, SEARCH_PAGE_SIZE).filter(
+    (repository) => repository !== machineRepository,
+  );
   if (repositories.length === 0) {
     log(`no repository carries the topic ${ENROLMENT_TOPIC}; nothing to walk home`);
     return { action: "swept", code: "no-enrolled-repositories", repositoriesSwept: 0, filed: [], failures: [] };

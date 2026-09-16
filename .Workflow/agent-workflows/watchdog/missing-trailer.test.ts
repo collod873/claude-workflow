@@ -2,9 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { answerIssueQueue } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
 import { countMissingTrailers, readAdrCorpus, readResearchCorpus } from "./missing-trailer-counter";
-import { answerTrackerOrThrow } from "./signal-tracker.fixture";
 import {
   findMissingTrailers,
   FINDING_MARKER,
@@ -202,7 +202,9 @@ function standingIssueWith(options: {
     if (args[0] === "issue" && args[1] === "close") return "";
     if (args[0] === "issue" && args[1] === "view")
       return JSON.stringify({ body: options.said ?? "", comments: [] });
-    return answerTrackerOrThrow(args, options.issues ?? []);
+    const answered = answerIssueQueue(args, options.issues ?? []);
+    if (answered !== undefined) return answered;
+    throw new Error(`fake gh: unhandled argv: ${JSON.stringify(args)}`);
   };
   return { gh, calls };
 }

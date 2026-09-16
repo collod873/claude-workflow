@@ -68,11 +68,13 @@ function estateWith(options: {
       return JSON.stringify(
         list.map((run) => ({
           id: run.id,
+          name: run.path,
           path: run.path,
           status: run.status ?? "completed",
           conclusion: run.conclusion === undefined ? "failure" : run.conclusion,
-          htmlUrl: `https://github.com/${runsRepo}/actions/runs/${run.id}`,
-          createdAt: run.created_at ?? "2026-09-02T11:00:00Z",
+          html_url: `https://github.com/${runsRepo}/actions/runs/${run.id}`,
+          head_branch: "main",
+          created_at: run.created_at ?? "2026-09-02T11:00:00Z",
         })),
       );
     }
@@ -202,7 +204,7 @@ describe("walkHome", () => {
       "api",
       "repos/owner/caller/actions/runs?per_page=100",
       "--jq",
-      "[.workflow_runs[] | {id, path, status, conclusion, htmlUrl: .html_url, createdAt: .created_at}]",
+      "[.workflow_runs[] | {id, name, path, status, conclusion, html_url, head_branch, created_at}]",
     ]);
 
     const create = fake.calls.find((argv) => argv[0] === "issue" && argv[1] === "create" && !argv.includes("-R"))!;

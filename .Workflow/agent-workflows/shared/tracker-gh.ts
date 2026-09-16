@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { blockedByPath, issueCommentsPath, issuePath, matchingRefsPath, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
-import type { Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
+import { blockedByPath, issueCommentsPath, issuePath, matchingRefsPath, repoRunsPath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import type { RepoRun, Tracker, TrackerBlocker, TrackerComment, TrackerRecordComment, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
 
@@ -11,6 +11,17 @@ const ApiRun = z.object({
   head_branch: z.string().nullable(),
   created_at: z.string(),
   event: z.string(),
+});
+
+const ApiRepoRun = z.object({
+  id: z.number(),
+  name: z.string(),
+  path: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  html_url: z.string(),
+  head_branch: z.string().nullable(),
+  created_at: z.string(),
 });
 
 const JobsResponse = z.object({
@@ -93,6 +104,19 @@ function parsedIds(raw: string, number: number): number[] {
   return parsed as number[];
 }
 
+function toRepoRun(run: z.infer<typeof ApiRepoRun>): RepoRun {
+  return {
+    id: run.id,
+    name: run.name,
+    path: run.path,
+    status: run.status,
+    conclusion: run.conclusion ?? "",
+    htmlUrl: run.html_url,
+    headBranch: run.head_branch ?? "",
+    createdAt: run.created_at,
+  };
+}
+
 export function trackerGh(gh: GhExec): Tracker {
   return {
     workflowRuns(workflow, perPage) {
@@ -101,6 +125,14 @@ export function trackerGh(gh: GhExec): Tracker {
       return ApiRun.array()
         .parse(JSON.parse(raw))
         .map(toWorkflowRun);
+    },
+    recentRuns(perPage, repository) {
+      const path = repository ? repoRunsPathFor(repository, perPage) : repoRunsPath(perPage);
+      const projection = "[.workflow_runs[] | {id, name, path, status, conclusion, html_url, head_branch, created_at}]";
+      const raw = gh(["api", path, "--jq", projection]);
+      return ApiRepoRun.array()
+        .parse(JSON.parse(raw))
+        .map(toRepoRun);
     },
     jobs(runId) {
       const raw = gh(["api", runJobsPath(runId)]);

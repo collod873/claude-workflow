@@ -7,6 +7,17 @@ export interface WorkflowRun {
   event: string;
 }
 
+export interface RepoRun {
+  id: number;
+  name: string;
+  path: string;
+  status: string;
+  conclusion: string;
+  htmlUrl: string;
+  headBranch: string;
+  createdAt: string;
+}
+
 export interface TrackerJobStep {
   name: string;
   conclusion: string | null;
@@ -35,6 +46,7 @@ export interface TrackerRecordComment {
 
 export interface Tracker {
   workflowRuns(workflow: string, perPage: number): WorkflowRun[];
+  recentRuns(perPage: number, repository?: string): RepoRun[];
   jobs(runId: number): TrackerJob[];
   blockedBy(number: number): TrackerBlocker[];
   children(number: number): TrackerBlocker[];
