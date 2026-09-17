@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
@@ -11,12 +11,28 @@ import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { scratchDir } from "../shared/scratch.fixture";
 import { checkpointPath, type StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
-import { seamSweepResponse, seedCheckpoint, sliceResponse, unreachableGh } from "./checkpoint.fixture";
+import { trackerMemory } from "../shared/tracker-memory";
 import { sliceAndPublish } from "./slice-and-publish";
 import { runStageCli, stageCliFailure } from "./stage-cli.fixture";
 import { runNamedStage } from "./to-tickets";
 
 const DEFAULT_HANDOFF_PATH = ".Workflow/agent-workflows/handoff.txt";
+
+const unreachableGh = trackerMemory() as unknown as GhExec;
+
+function seedCheckpoint(stage: string, response: string): void {
+  const path = checkpointPath(stage);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify({ key: "test", response }), "utf8");
+}
+
+function seamSweepResponse(entries: string[]): string {
+  return JSON.stringify({ entries });
+}
+
+function sliceResponse(plan: Slice[]): string {
+  return JSON.stringify({ slices: plan });
+}
 
 async function loggedByAudit(answer: { notes: string; slices: Slice[] }): Promise<unknown[]> {
   const stage = createFakeStage(JSON.stringify(answer));
@@ -509,5 +525,11 @@ describe("what the slicer is handed instead of asked to guess (#586)", () => {
     for (const entry of (roots as () => ReadonlySet<string>)()) {
       expect(prompt).toContain(entry);
     }
+  });
+});
+
+describe("#614: checkpoint.fixture.ts is retired once its helpers are inlined", () => {
+  test("#614.1: checkpoint.fixture.ts no longer exists beside this suite", () => {
+    expect(existsSync(join(__dirname, "checkpoint.fixture.ts"))).toBe(false);
   });
 });
