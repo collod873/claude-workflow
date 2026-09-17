@@ -177,17 +177,73 @@ def exposure(payload: dict) -> tuple[bool | None, int]:
 
 LIVENESS_SECONDS = 300
 _LIVENESS_TAIL_BYTES = 256 * 1024
+SESSION_REGISTRY_DIR = Path(os.environ.get("CLAUDE_SESSION_REGISTRY_DIR")
+                            or (Path.home() / ".claude" / "sessions"))
+SESSION_END_EVENT = "SessionEnd"
+_PROC_STAT_STARTTIME_INDEX = 19
+
+
+def _pid_domain_is_local(domain: object) -> bool:
+    if not isinstance(domain, str) or not domain:
+        return True
+    try:
+        return domain.endswith(os.readlink("/proc/self/ns/pid"))
+    except OSError:
+        return False
+
+
+def _proc_starttime(pid: int) -> str | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    fields = stat[stat.rfind(")") + 1:].split()
+    if len(fields) <= _PROC_STAT_STARTTIME_INDEX:
+        return None
+    return fields[_PROC_STAT_STARTTIME_INDEX]
+
+
+def retired_session_ids(registry_dir: Path | str | None = None) -> set[str]:
+    base = Path(registry_dir) if registry_dir is not None else SESSION_REGISTRY_DIR
+    retired: set[str] = set()
+    try:
+        records = sorted(base.glob("*.json"))
+    except OSError:
+        return retired
+    for record_path in records:
+        try:
+            record = json.loads(record_path.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        sid = record.get("sessionId")
+        pid = record.get("pid")
+        if not isinstance(sid, str) or not sid or not isinstance(pid, int):
+            continue
+        if not _pid_domain_is_local(record.get("pidDomain")):
+            continue
+        started = _proc_starttime(pid)
+        if started is None:
+            retired.add(sid)
+            continue
+        registered = record.get("procStart")
+        if isinstance(registered, str) and registered and registered != started:
+            retired.add(sid)
+    return retired
 
 
 def active_sessions(project: str, exclude_session_id: str | None = None,
                     within_seconds: int = LIVENESS_SECONDS,
                     log_dir: Path | str | None = None,
-                    now: datetime | None = None) -> dict[str, str]:
+                    now: datetime | None = None,
+                    registry_dir: Path | str | None = None) -> dict[str, str]:
     base = Path(log_dir) if log_dir is not None else LOG_DIR
     now = now or datetime.now()
     cutoff = now - timedelta(seconds=within_seconds)
     days = {now.date(), (now - timedelta(seconds=within_seconds)).date()}
     seen: dict[str, str] = {}
+    ended: set[str] = set()
     for day in sorted(days):
         try:
             files = sorted(base.glob(f"*-{day:%Y-%m-%d}.jsonl"))
@@ -214,6 +270,9 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
                 sid = row.get("session_id")
                 if not isinstance(sid, str) or not sid or sid == exclude_session_id:
                     continue
+                if row.get("event") == SESSION_END_EVENT:
+                    ended.add(sid)
+                    continue
                 ts = row.get("ts")
                 try:
                     when = datetime.fromisoformat(ts) if isinstance(ts, str) else None
@@ -223,6 +282,11 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
                     continue
                 if sid not in seen or seen[sid] < ts:
                     seen[sid] = ts
+    for sid in ended:
+        seen.pop(sid, None)
+    if seen:
+        for sid in retired_session_ids(registry_dir):
+            seen.pop(sid, None)
     return dict(sorted(seen.items(), key=lambda kv: kv[1], reverse=True))
 
 

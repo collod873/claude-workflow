@@ -263,9 +263,11 @@ def check_active_sessions():
     ]) + "\n")
     (log_dir / f"stop-gate-{yesterday}.jsonl").write_text(
         row("other-c", "skills", 4 * 60) + "\n")
+    registry = Path(tempfile.mkdtemp(prefix="active-sessions-registry-"))
     try:
         got = _hook.active_sessions("skills", exclude_session_id="me",
-                                    within_seconds=300, log_dir=log_dir, now=now)
+                                    within_seconds=300, log_dir=log_dir, now=now,
+                                    registry_dir=registry)
         check("active_sessions: exactly the live foreign sessions for this project",
               set(got) == {"other-a", "other-c"}, got)
         check("active_sessions: a session's latest row is the one reported",
@@ -273,11 +275,81 @@ def check_active_sessions():
         check("active_sessions: newest first",
               list(got) == ["other-a", "other-c"], got)
         check("active_sessions: an empty or missing log dir reads as nobody",
-              _hook.active_sessions("skills", log_dir=log_dir / "nope", now=now) == {}, "")
+              _hook.active_sessions("skills", log_dir=log_dir / "nope", now=now,
+                                    registry_dir=registry) == {}, "")
         check("active_sessions: a project nobody touched reads as nobody",
-              _hook.active_sessions("pwpp", log_dir=log_dir, now=now) == {}, "")
+              _hook.active_sessions("pwpp", log_dir=log_dir, now=now,
+                                    registry_dir=registry) == {}, "")
     finally:
         shutil.rmtree(log_dir, ignore_errors=True)
+        shutil.rmtree(registry, ignore_errors=True)
+
+
+def spent_pid():
+    proc = subprocess.Popen([sys.executable, "-c", ""])
+    proc.wait()
+    return proc.pid
+
+
+def check_retired_sessions():
+    from datetime import datetime, timedelta
+    log_dir = Path(tempfile.mkdtemp(prefix="retired-sessions-"))
+    registry = Path(tempfile.mkdtemp(prefix="retired-registry-"))
+    bare_registry = Path(tempfile.mkdtemp(prefix="retired-registry-bare-"))
+    now = datetime(2026, 8, 29, 0, 2, 0)
+    own, gone = os.getpid(), spent_pid()
+
+    def ts(seconds_ago):
+        return (now - timedelta(seconds=seconds_ago)).isoformat(timespec="seconds")
+
+    def row(session_id, seconds_ago, **extra):
+        return json.dumps({"hook": "validate-bash", "session_id": session_id,
+                           "project": "skills", "verdict": "allow", "ts": ts(seconds_ago),
+                           **extra})
+
+    def record(name, **fields):
+        (registry / f"{name}.json").write_text(json.dumps(fields))
+
+    (log_dir / f"validate-bash-{now:%Y-%m-%d}.jsonl").write_text("\n".join([
+        row("running", 20),
+        row("killed", 20),
+        row("recycled", 20),
+        row("elsewhere", 20),
+        row("unregistered", 20),
+        row("cleared", 30),
+        row("cleared", 10, hook="session-end", event="SessionEnd"),
+    ]) + "\n")
+    record("running", pid=own, sessionId="running", procStart=_hook._proc_starttime(own))
+    record("killed", pid=gone, sessionId="killed")
+    record("recycled", pid=own, sessionId="recycled", procStart="1")
+    record("elsewhere", pid=gone, sessionId="elsewhere", pidDomain="linux:beef:pid:[1]")
+    (registry / "unparseable.json").write_text("{not json")
+    (registry / "wrong-shape.json").write_text(json.dumps([1, 2, 3]))
+    try:
+        got = _hook.active_sessions("skills", within_seconds=300, log_dir=log_dir,
+                                    now=now, registry_dir=registry)
+        check("a session whose registered pid is still running stays live",
+              "running" in got, got)
+        check("a session whose registered pid is gone is not live",
+              "killed" not in got, got)
+        check("a session whose pid now belongs to a later process is not live",
+              "recycled" not in got, got)
+        check("a session that logged SessionEnd is not live, registry or not",
+              "cleared" not in got, got)
+        check("a session registered in another pid namespace is left alone",
+              "elsewhere" in got, got)
+        check("a session the registry never mentions is left alone",
+              "unregistered" in got, got)
+        bare = _hook.active_sessions("skills", within_seconds=300, log_dir=log_dir,
+                                     now=now, registry_dir=bare_registry)
+        check("with no registry to read, recency alone decides and SessionEnd still retires",
+              set(bare) == {"running", "killed", "recycled", "elsewhere", "unregistered"}, bare)
+        check("retired_session_ids: an unreadable registry retires nobody",
+              _hook.retired_session_ids(registry / "nope") == set(), "")
+    finally:
+        shutil.rmtree(log_dir, ignore_errors=True)
+        shutil.rmtree(registry, ignore_errors=True)
+        shutil.rmtree(bare_registry, ignore_errors=True)
 
 
 def check_caller_stem_subprocess():
@@ -422,6 +494,7 @@ def main():
     check_deny_envelope()
     check_exposure_fixture()
     check_active_sessions()
+    check_retired_sessions()
     check_caller_stem_subprocess()
     check_quoted_spans()
     check_read_stdin_bytes()
