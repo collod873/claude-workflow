@@ -48,6 +48,17 @@ waves, **Many at once** queues and merges tickets side by side, and **Look-back*
 sessions and merged work. Every other layer uses One ticket; One ticket needs none of them.
 _Avoid_: tier, level
 
+**Worker**:
+A part of the machine whose worth is the work it does: a lane, a step, a script. The Charter
+removes one that does no useful work in 30 days.
+_Avoid_: job, component
+
+**Guard**:
+A part whose worth is the failure it stops, not work it does: a run time cap, a refusal, a hold.
+It stays while it links a real failure it stops and costs nothing when it does not fire, however
+rarely it fires.
+_Avoid_: rail, safety net, guardrail
+
 **Proposal**:
 A candidate addition (a skill, a hook, a connector, an era) scored against the Charter. One
 that fails a Charter rule is a different goal, not a smaller version of this one.

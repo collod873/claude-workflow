@@ -1,7 +1,7 @@
 # Charter
 
 The machine takes what the owner wants done and ships it very fast as very high-quality code.
-Signed by the owner on 2026-09-17; only the owner changes it.
+Signed by the owner on 2026-09-17, amended 2026-09-17; only the owner changes it.
 
 ## Layers
 
@@ -11,7 +11,8 @@ Signed by the owner on 2026-09-17; only the owner changes it.
 - **Many at once**: tickets queue, run side by side, and merge without colliding.
 - **Look-back**: readers of past sessions and merged work catch what nothing caught ahead of time.
 
-Each layer uses One ticket; One ticket works with no other layer present.
+Each layer uses One ticket; One ticket works with no other layer present. The machine works in every
+enrolled repo, and a part serving those repos is judged by their use of it.
 
 ## Lean on Claude for
 
@@ -32,16 +33,17 @@ enforcer that runs: a gate, a test, or a separate judge. A rule with no enforcer
 |---|---|---|
 | Every rule on this page names an enforcer that exists | A test over this page | NOT ENFORCED YET |
 | Done means the ticket's checks pass on main, run by something that did not build it | `bin/close-ticket`, re-run after every merge | Partly: nothing re-runs checks after a lane merge |
-| Checks test the behaviour meant, not a stand-in like a file or a text match | Filing refuses a ticket whose checks are all stand-ins | NOT ENFORCED YET |
-| Tests exist before the build starts, and nothing may weaken them | The `.fails` lock, plus a gate on any push that removes test cases | Partly: the builder only |
+| Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close | NOT ENFORCED YET |
+| Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites | Partly: the lock only, and it misses renames |
 | An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief | Partly: the cap only |
 | The owner is never the one who fixes a stuck run | A test that every stopping point names a fixer who is not the owner | NOT ENFORCED YET |
 | The whole machine fits on one generated screen; adding means fitting | A length test on the generated machine page | NOT ENFORCED YET |
-| A part with no useful work in 30 days is removed | A job over run history files a removal ticket through the ticket door; a gate counts when it refused something real | NOT ENFORCED YET |
+| A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate | A report on every merge | NOT ENFORCED YET |
+| A worker with no useful work in 30 days is removed; a guard stays while it links a real failure it stops and costs nothing unfired | A job over run history files a removal ticket through the ticket door | NOT ENFORCED YET |
 | A part is fired by a real event, never a timer | A test refusing timed triggers in workflows | NOT ENFORCED YET (true today) |
-| A part is added only for a failure that happened | A change adding a workflow, hook or `bin/` script is refused unless it links that failure | NOT ENFORCED YET |
-| An added part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part against this page; a fail blocks it | NOT ENFORCED YET |
-| Each rule lives in one place | The copy detector, widened from code to rules | Partly: code only |
+| A part is added, or kept at its layer ruling, only for a failure that happened | A change adding a workflow, hook or `bin/` script is refused unless it links that failure | NOT ENFORCED YET |
+| An added or kept part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part, and each kept part at its layer ruling, against this page; a fail blocks it | NOT ENFORCED YET |
+| Each rule lives in one place. A prompt may teach a rule a gate holds, as a cache, never one no gate holds | The copy detector, widened from code to rules and to taught rules with no gate | Partly: code only |
 | The owner hears plain words and is asked only about scope, priority and taste, a few questions at a time | The owner, present in every session that talks to them | Judgement |
 | A session changing the machine has read this page and the machine page | A hook that shows both when a session first edits machinery | NOT ENFORCED YET |
 
