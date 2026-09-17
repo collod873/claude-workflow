@@ -7,11 +7,11 @@ import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { coveredByCheck } from "./check-covers.ts";
 import { machinePage, signedRules, type SignedRule } from "./machine-page.ts";
+import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const SCREEN = { lines: 60, columns: 120 };
-const FAILURE_LINK = /^https:\/\/github\.com\/collod873\/[\w.-]+\/(issues\/\d+|pull\/\d+|actions\/runs\/\d+|commit\/[0-9a-f]{7,40})$/;
 const WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const MODULE = /\.(m|c)?[jt]s$/;
 const WIRING = [".claude/*.json", ".claude/hooks/*.json", ".github/workflows/*.y*ml", ".husky/*", "package.json"];
@@ -150,11 +150,13 @@ describe("the New core holds the charter's growth limits (ADR-0200)", () => {
     plant(copy, "core/hooks/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
     plant(copy, ".claude/hooks/roster.json", "{\"PostToolUse\": [\"../../core/hooks/wired.mjs\"]}\n");
     const check = { ...planted, name: "check", file: "core/check" };
-    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, check])).toEqual([
+    const cleanup = { ...planted, name: "cleanup", stops: "https://github.com/collod873/claude-workflow/commit/c7fa969" };
+    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, cleanup, check])).toEqual([
       "core/bin/unregistered can run but is not a registered part",
       "core/hooks/unwired.py can run but is not a registered part",
       "core/hooks/wired.mjs can run but is not a registered part",
       "planted links no failure: the owner said so",
+      "cleanup links no failure: https://github.com/collod873/claude-workflow/commit/c7fa969",
     ]);
   });
 

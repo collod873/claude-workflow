@@ -33,6 +33,7 @@ run lint eslint --config core/eslint.config.js core
 run unused knip --config core/knip.config.ts --no-config-hints
 run clones jscpd core --threshold 0 --min-tokens 50 --min-lines 5 --format typescript,javascript --silent
 run test vitest run --config core/vitest.config.ts
+run links node core/part-links.ts
 
 if [ -z "$names" ]; then
   printf 'core/check: passed\n'
