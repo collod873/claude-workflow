@@ -102,6 +102,13 @@ describe("deletedPathMentions", () => {
     expect(deletedPathMentions([{ path: "README.md", content: "generate-contract.ts.bak and old-generate-contract.ts\n" }], gone)).toEqual([]);
   });
 
+  it("does not match the same path moved under another folder, but still matches one led by ./", () => {
+    const moved = ["bin/land"];
+
+    expect(deletedPathMentions([{ path: "README.md", content: "run `core/bin/land`\n" }], moved)).toEqual([]);
+    expect(deletedPathMentions([{ path: "README.md", content: "run `./bin/land`\n" }], moved)).toHaveLength(1);
+  });
+
   it("finds nothing when the change deleted nothing", () => {
     expect(deletedPathMentions([{ path: "README.md", content: "generate-contract.ts\n" }], [])).toEqual([]);
   });

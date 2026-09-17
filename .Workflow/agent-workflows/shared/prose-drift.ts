@@ -142,7 +142,7 @@ export function deletedPathMentions(files: TextFile[], gonePaths: string[]): Dri
 
   const patterns = gonePaths.map((gone) => ({
     gone,
-    re: new RegExp(spellings(gone, uniqueBasenames).map((form) => `(?<![\\w-])${escaped(form)}(?![\\w-]|\\.\\w)`).join("|")),
+    re: new RegExp(spellings(gone, uniqueBasenames).map((form) => `(?<![\\w-]|[\\w-]/)${escaped(form)}(?![\\w-]|\\.\\w)`).join("|")),
   }));
 
   const findings: DriftFinding[] = [];
