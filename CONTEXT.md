@@ -38,7 +38,8 @@ _Avoid_: goal, vision, constraints, principles
 
 **Enforcer**:
 The gate, test or separate judge a Charter rule names as holding it. An instruction is never an
-enforcer. A rule with none is marked NOT ENFORCED YET until one ships, or it is deleted.
+enforcer. A rule with none shows as NOT ENFORCED YET on the generated machine page until one ships,
+or it is deleted; signed pages never carry the status.
 _Avoid_: rail, guardrail, reminder, policy
 
 **Layer**:
