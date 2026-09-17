@@ -5,7 +5,7 @@ import { test } from "vitest";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
 import { slice } from "../shared/plan.fixture";
-import { stubGhCli } from "./gh-cli.stub";
+import { stubGhCli } from "./gh-cli.fixture";
 
 const TO_TICKETS_PATH = ".Workflow/agent-workflows/to-tickets/to-tickets.ts";
 
@@ -79,6 +79,6 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
   });
 });
 
-test.fails("#629.7: gh-cli.stub.ts is deleted", async () => {
+test("#629.7: gh-cli.stub.ts is deleted", async () => {
   await expect(import("./gh-cli.stub")).rejects.toThrow();
 });

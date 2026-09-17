@@ -1,7 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 import { answerIssueQueueOrThrow } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
-import { runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
 import {
   BYPASS_STEP,
   BYPASS_THRESHOLD,
@@ -17,6 +16,7 @@ import {
   shouldPropose,
   type VerifyRun,
 } from "./bypass";
+import { isWorkflowRunsPath, parseRunJobsPath } from "../shared/gh-paths";
 import { MAX_JOB_READS, runBypassCounter } from "./bypass-counter";
 import evidence from "./verify-runs.evidence.json";
 
@@ -174,7 +174,7 @@ function historyWith(options: {
   const gh: GhExec = (args) => {
     calls.push(args);
 
-    if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
+    if (args[0] === "api" && isWorkflowRunsPath((args[1] ?? "").split("?")[0])) {
       return JSON.stringify(
         runs.map((each) => ({
           id: each.id,
@@ -189,9 +189,8 @@ function historyWith(options: {
       );
     }
 
-    const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
-    if (args[0] === "api" && jobsMatch) {
-      const runId = Number(jobsMatch[1]);
+    const runId = parseRunJobsPath(args[1] ?? "");
+    if (args[0] === "api" && runId !== undefined) {
       const stepName = runs.find((each) => each.id === runId)?.failedStep;
       return JSON.stringify({
         jobs: [
@@ -325,7 +324,7 @@ describe("runBypassCounter", () => {
 
     runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: "some-other-caller.yml" });
 
-    const runsRead = fake.calls.find((argv) => argv[0] === "api" && workflowRunsPathMatcher.test((argv[1] ?? "").split("?")[0]))!;
+    const runsRead = fake.calls.find((argv) => argv[0] === "api" && isWorkflowRunsPath((argv[1] ?? "").split("?")[0]))!;
     expect(runsRead[1]).toContain("some-other-caller.yml");
     expect(runsRead[1]).not.toContain("verify.yml");
   });
@@ -366,7 +365,7 @@ test("#460.2: readRuns projects event off the runs API and VerifyRun carries it"
 
   const outcome = runBypassCounter({ gh: fake.gh, assignee: "collod873", verifyWorkflow: VERIFY_WORKFLOW });
 
-  const runsRead = fake.calls.find((argv) => argv[0] === "api" && workflowRunsPathMatcher.test((argv[1] ?? "").split("?")[0]))!;
+  const runsRead = fake.calls.find((argv) => argv[0] === "api" && isWorkflowRunsPath((argv[1] ?? "").split("?")[0]))!;
   expect(runsRead[runsRead.indexOf("--jq") + 1]).toContain("event");
   expect(outcome).toMatchObject({ code: "below-threshold", count: 0 });
 });
