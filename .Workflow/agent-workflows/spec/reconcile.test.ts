@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractCriteria } from "../shared/ticket-shape";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
-import { createIssueGh } from "./gh.fake";
+import { createIssueGh } from "../shared/gh.fake";
 import { runSpecReconciler, SPEC_RECONCILE_MODEL } from "./reconcile";
 import { runSpecCritique, SPEC_AUTHOR_ALLOWED_TOOLS } from "./spec";
 
@@ -121,3 +121,16 @@ describe("the reconciler is the end of a clearing run", () => {
     expect(fake.calls[1]).toContain("--allowedTools");
   });
 });
+
+describe("#622: spec's tests move off gh.fake and shape's off tracker.fake", () => {
+  it("#622.1: gh.fake.ts is deleted", () => {
+    expect(existsSync(fileURLToPath(new URL("./gh.fake.ts", import.meta.url)))).toBe(false);
+  });
+
+  it("#622.3: tracker.fake.ts is deleted", () => {
+    expect(existsSync(fileURLToPath(new URL("../shape/tracker.fake.ts", import.meta.url)))).toBe(false);
+  });
+});
+
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";

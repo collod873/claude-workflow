@@ -4,7 +4,7 @@ import { planSpecRun } from "../spec";
 import { collectWidenedContext } from "./widened";
 import { trackerGh } from "../../shared/tracker-gh";
 import { trackerMemory } from "../../shared/tracker-memory";
-import { createIssueGh } from "../gh.fake";
+import { createIssueGh } from "../../shared/gh.fake";
 
 test(
   "#600.1: planSpecRun returns a widened author plan for an issue carrying the sent-to-spec marker and no decision sheet",
