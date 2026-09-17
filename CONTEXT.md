@@ -42,11 +42,21 @@ enforcer. A rule with none is marked NOT ENFORCED YET until one ships, or it is 
 _Avoid_: rail, guardrail, reminder, policy
 
 **Layer**:
-One of the four parts the machine is described in. **One ticket** is the core: a session files a
+One of the four parts the machine is described in. **One ticket** comes first: a session files a
 ticket and the machine builds it to merged with proof. **Big jobs** turns a spec into tickets in
 waves, **Many at once** queues and merges tickets side by side, and **Look-back** reads past
 sessions and merged work. Every other layer uses One ticket; One ticket needs none of them.
 _Avoid_: tier, level
+
+**New core**:
+The machine being rebuilt from nothing in its own folder of this repo, holding the Charter from its
+first commit and growing one Layer at a time. It never imports the Old machine.
+_Avoid_: v2, rewrite, the core (alone)
+
+**Old machine**:
+The lanes, hooks and scripts that ran before the New core. Its lanes are switched off; a part of it
+moves into the New core only for a failure the New core meets.
+_Avoid_: legacy, current machine
 
 **Worker**:
 A part of the machine whose worth is the work it does: a lane, a step, a script. The Charter
