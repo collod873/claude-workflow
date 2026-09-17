@@ -1,7 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
@@ -11,12 +9,8 @@ import { escalateToOwner } from "../shared/needs-human";
 import { GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { CLAIM_LIMIT, claimsCollide } from "../shared/ticket-shape";
 import { trackerGh } from "../shared/tracker-gh";
+import { adr0106Payloads } from "../shared/tracker-payloads";
 import { FINDING_MARKER, retirementBody } from "../shared/unreachable";
-import CLOSED_BY from "./closing-prs.fixtures/issue-237-closed-by.json";
-import PR_STATE from "./closing-prs.fixtures/pr-244-state.json";
-import BOT_CLOSED from "./closing-prs.fixtures/issue-493-comments.json";
-import OWNER_CLOSED from "./closing-prs.fixtures/issue-494-comments.json";
-import { scratchDir } from "../shared/scratch.fixture";
 import {
   RECONCILE_DISPATCH_ACTIONS,
   RUN_ENDED_ACTION,
@@ -38,9 +32,11 @@ import {
   type FakeRun,
   type Tracker,
   type TrackerOptions,
-} from "./tracker.fixture";
+} from "./dispatch-tracker.fixture";
 
 describe("the delivery question, against payloads GitHub actually served", () => {
+  const payloads = adr0106Payloads();
+
   function applyJq(expression: string, payload: unknown): string {
     const collect = /^\[\.([A-Za-z]+)\[\]\.([A-Za-z_]+)\]$/.exec(expression);
     if (collect) {
@@ -53,11 +49,11 @@ describe("the delivery question, against payloads GitHub actually served", () =>
 
   const replay: GhExec = (args) => {
     const expression = args[args.indexOf("--jq") + 1];
-    return applyJq(expression, args[0] === "issue" ? CLOSED_BY : PR_STATE);
+    return applyJq(expression, args[0] === "issue" ? payloads.closedByIssue : payloads.prState);
   };
 
   it("carries the closing pull request's number, and no state anywhere on it", () => {
-    const [node] = CLOSED_BY.closedByPullRequestsReferences;
+    const [node] = payloads.closedByIssue.closedByPullRequestsReferences;
     expect(node.number).toBe(244);
     expect(node).not.toHaveProperty("state");
   });
@@ -79,6 +75,9 @@ describe("the delivery question, against payloads GitHub actually served", () =>
 });
 
 describe("a closing record delivers what no linked pull request shows", () => {
+  const payloads = adr0106Payloads();
+  const BOT_CLOSED = payloads.botClosedComments;
+  const OWNER_CLOSED = payloads.ownerClosedComments;
   const recordOf = <T extends { body: string }>(pages: T[][]) => pages.flat().filter((comment) => comment.body.startsWith("## Closing record"));
 
   it("reads #493 as delivered: lane 08 merged its PR unlinked and the bot posted the record", () => {
@@ -1013,11 +1012,11 @@ test("#578.4: #538, the issue this was measured on, is rung to `to-spec` by the 
 });
 
 describe("#611: dispatch's tests move onto trackerMemory and adr0106Payloads", () => {
-  test.fails("#611.1: tracker.fixture.ts is deleted", () => {
+  test("#611.1: tracker.fixture.ts is deleted", () => {
     expect(existsSync(fileURLToPath(new URL("./tracker.fixture.ts", import.meta.url)))).toBe(false);
   });
 
-  test.fails("#611.2: the per-fixture JSON payloads are gone", () => {
+  test("#611.2: the per-fixture JSON payloads are gone", () => {
     const dir = fileURLToPath(new URL("./closing-prs.fixtures", import.meta.url));
     const files = existsSync(dir) ? readdirSync(dir) : [];
     expect(files).toHaveLength(0);

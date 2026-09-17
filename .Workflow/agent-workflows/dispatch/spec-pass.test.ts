@@ -12,7 +12,7 @@ import {
   type Tracker,
   type TrackerOptions,
   trackerWith,
-} from "./tracker.fixture";
+} from "./dispatch-tracker.fixture";
 
 const closeTicketProcessCalls: (readonly string[])[] = [];
 vi.mock("../shared/close-ticket", () => ({
