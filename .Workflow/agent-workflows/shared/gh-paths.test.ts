@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
+import * as ghPaths from "./gh-paths";
 import {
   blockedByPath,
   blockedByPathMatcher,
@@ -143,4 +145,14 @@ describe("the builders that no fake has to recognise", () => {
     expect(GIT_REFS_PATH.endsWith("/git/refs")).toBe(true);
     expect(GIT_REFS_PATH).not.toContain("${");
   });
+});
+
+test.fails("#629.1: no *PathMatcher export remains on gh-paths.ts", () => {
+  const matcherNames = Object.keys(ghPaths).filter((name) => /^[a-zA-Z]+PathMatcher$/.test(name));
+
+  expect(matcherNames).toEqual([]);
+});
+
+test.fails("#629.2: repoRunsPathForMatcher is no longer exported", () => {
+  expect("repoRunsPathForMatcher" in ghPaths).toBe(false);
 });

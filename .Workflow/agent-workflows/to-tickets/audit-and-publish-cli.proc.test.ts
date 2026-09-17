@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import { stubClaudeCli } from "../shared/claude-cli.stub";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
 import { slice } from "../shared/plan.fixture";
@@ -76,4 +77,8 @@ describe("to-tickets.ts --stage audit-and-publish (CLI)", () => {
     expect(threw).toBe(true);
     expect(readFileSync(handoffFile, "utf8")).toMatch(/^audit-and-publish: /);
   });
+});
+
+test.fails("#629.7: gh-cli.stub.ts is deleted", async () => {
+  await expect(import("./gh-cli.stub")).rejects.toThrow();
 });
