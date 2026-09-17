@@ -2,12 +2,14 @@ import { describe, expect, it, test } from "vitest";
 import type { GhExec } from "../shared/gh";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
+import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shared/marker";
 import type { Sheet } from "../shared/sheet-schema";
-import { acceptedSheetComments, acceptedSheetGh, coldDoorGh, sessionSpecGh } from "./issue-doors.fixture";
+import { sheet } from "../shared/sheet.fixture";
+import { createIssueGh } from "./gh.fake";
 import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
 import { BY_HAND_LABEL } from "../shared/labels";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
-import { PRD_LABEL, sourceMarker } from "./publish";
+import { PRD_LABEL, sourceMarker, type SpecSource } from "./publish";
 import { NO_VALIDATION } from "./validate-spec.fixture";
 import {
   invocationFromEnv,
@@ -18,6 +20,57 @@ import {
   SPEC_AUTHOR_ALLOWED_TOOLS,
   type DecidedContext,
 } from "./spec";
+
+const ACCEPTED: AcceptedPayload = { adrPaths: [], coinedTerms: [], route: "short" };
+
+function acceptedSheetComments(decisions: Sheet["decisions"] = []): string[] {
+  return [sheetMarker(sheet({ decisions })), acceptedMarker(ACCEPTED)];
+}
+
+function acceptedSheetGh(ownerWords: string, decisions: Sheet["decisions"]): { gh: GhExec; calls: string[][] } {
+  const bodies = acceptedSheetComments(decisions);
+  return createIssueGh((fields) =>
+    fields === "body"
+      ? JSON.stringify({ body: ownerWords })
+      : fields === "comments"
+        ? JSON.stringify({ comments: bodies.map((body) => ({ body })) })
+        : undefined,
+  );
+}
+
+function sessionSpecGh(spec: { title: string; body: string }, comments: string[] = []): { gh: GhExec; calls: string[][] } {
+  return createIssueGh((fields) =>
+    fields === "title,body"
+      ? JSON.stringify(spec)
+      : fields === "comments"
+        ? JSON.stringify({ comments: comments.map((body) => ({ body })) })
+        : fields === "labels"
+          ? JSON.stringify({ labels: [] })
+          : undefined,
+  );
+}
+
+function coldDoorGh(
+  options: { comments?: string[]; slicedSpecs?: Array<{ number: number; source: SpecSource }> } = {},
+): { gh: GhExec; calls: string[][] } {
+  const calls: string[][] = [];
+  const gh: GhExec = (args) => {
+    calls.push([...args]);
+    if (args[0] === "issue" && args[1] === "list") {
+      const specs = (options.slicedSpecs ?? []).map((spec) => ({
+        number: spec.number,
+        body: sourceMarker(spec.source),
+        labels: [{ name: "prd" }, { name: "sliceable" }],
+      }));
+      return JSON.stringify(specs);
+    }
+    if (args[0] === "issue" && args[1] === "view" && args[args.indexOf("--json") + 1] === "comments") {
+      return JSON.stringify({ comments: (options.comments ?? []).map((body) => ({ body })) });
+    }
+    return "";
+  };
+  return { gh, calls };
+}
 
 const CONTEXT: DecidedContext = {
   ownerWords: "the owner's words",

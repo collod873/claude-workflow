@@ -1,9 +1,16 @@
 import { z } from "zod";
 import type { GhExec } from "../shared/gh";
-import { parseIssueNumber } from "../shared/issue-url";
 import { PRD_LABEL } from "../shared/labels";
+import type { Tracker } from "../shared/tracker";
+import { trackerGh } from "../shared/tracker-gh";
 import type { SpecAuthorOutput } from "./author-contract";
 import { validateSpecBody, type SpecBodyValidator } from "./validate-spec";
+
+const NO_ASSIGNEE = "";
+
+function toTracker(gh: GhExec | Tracker): Tracker {
+  return typeof gh === "function" ? trackerGh(gh) : gh;
+}
 
 export { PRD_LABEL };
 
@@ -64,7 +71,7 @@ export function specBody(body: string, source: SpecSource | undefined): string {
 }
 
 export function publishSpec(
-  gh: GhExec,
+  gh: GhExec | Tracker,
   draft: SpecAuthorOutput,
   source: SpecSource | undefined,
   validate: SpecBodyValidator = validateSpecBody,
@@ -72,8 +79,7 @@ export function publishSpec(
   const title = specTitle(draft.title);
   const body = specBody(draft.body, source);
   warnAbout(validate(body));
-  const created = gh(["issue", "create", "--title", title, "--body", body, "--label", PRD_LABEL]);
-  return parseIssueNumber(created, title);
+  return toTracker(gh).createIssue({ title, body, label: PRD_LABEL, assignee: NO_ASSIGNEE });
 }
 
 function warnAbout(warnings: string[]): void {

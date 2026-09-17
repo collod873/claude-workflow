@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { publishingGh } from "./issue-doors.fixture";
+import { createIssueGh } from "./gh.fake";
 import { publishSpec, specBody, type SpecSource } from "./publish";
 import type { SpecAuthorOutput } from "./spec";
 import { validateSpecBody } from "./validate-spec";
@@ -61,7 +61,7 @@ describe("publishSpec's default validator is the real one", () => {
   });
 
   it("files a well-formed body, source marker and all", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     publishSpec(gh, draft(GOOD), SOURCE);
 
@@ -77,7 +77,7 @@ describe("publishSpec's default validator is the real one", () => {
 });
 
 describe("publishSpec's default validator, driven through a Tracker", () => {
-  test.fails("#617.3: files a well-formed body through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+  test("#617.3: files a well-formed body through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
     const tracker = trackerMemory({ firstIssueNumber: 902 });
 
     const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], draft(GOOD), SOURCE);

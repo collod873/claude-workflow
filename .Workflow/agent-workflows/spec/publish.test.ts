@@ -4,7 +4,7 @@ import type { GhExec } from "../shared/gh";
 import { trackerMemory } from "../shared/tracker-memory";
 import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
-import { publishingGh } from "./issue-doors.fixture";
+import { createIssueGh } from "./gh.fake";
 import { QUESTIONS_OPEN_LABEL, SLICEABLE_LABEL } from "../shared/labels";
 import { SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import {
@@ -71,7 +71,7 @@ describe("the spec-source marker", () => {
 
 describe("publishSpec", () => {
   it("files one prd-labelled issue and answers its number", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     expect(publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION)).toBe(CREATED);
 
@@ -82,7 +82,7 @@ describe("publishSpec", () => {
   });
 
   it("labels on the create itself, never as a follow-up edit", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION);
 
@@ -90,7 +90,7 @@ describe("publishSpec", () => {
   });
 
   it("records the source on the published body", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     publishSpec(gh, DRAFT, SHEET_SOURCE, NO_VALIDATION);
 
@@ -106,7 +106,7 @@ describe("publishSpec", () => {
 
 describe("updateSpec", () => {
   it("edits the existing issue rather than filing a second one", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     updateSpec(gh, 901, DRAFT, SHEET_SOURCE);
 
@@ -115,7 +115,7 @@ describe("updateSpec", () => {
   });
 
   it("re-appends the source, so a re-run never loses the spec's provenance", () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
 
     updateSpec(gh, 901, DRAFT, SHEET_SOURCE);
 
@@ -145,7 +145,7 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
     runSpecPublication(stage.exec, gh, SHEET_SOURCE, BARE_CONTEXT, NO_VALIDATION);
 
   it("publishes, then applies sliceable and dispatches, when nothing was left open", async () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
     const stage = chain([]);
 
     const result = await publishFromSheet(stage, gh);
@@ -162,7 +162,7 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
   });
 
   it("publishes and dispatches even when the author leaves a question unresolved (#263, no more held spec)", async () => {
-    const { gh, calls } = publishingGh();
+    const { gh, calls } = createIssueGh(() => "");
     const stage = chain(["What does done mean?"]);
 
     const result = await publishFromSheet(stage, gh);
@@ -180,7 +180,7 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
 });
 
 describe("publishSpec: filed through a Tracker", () => {
-  test.fails("#617.1: files the issue through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+  test("#617.1: files the issue through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
     const tracker = trackerMemory({ firstIssueNumber: 902 });
 
     const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], DRAFT, SHEET_SOURCE, NO_VALIDATION);
