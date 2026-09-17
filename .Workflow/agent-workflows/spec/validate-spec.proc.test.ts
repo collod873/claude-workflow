@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { createIssueGh } from "./gh.fake";
+import { createIssueGh } from "../shared/gh.fake";
 import { publishSpec, specBody, type SpecSource } from "./publish";
 import type { SpecAuthorOutput } from "./spec";
 import { validateSpecBody } from "./validate-spec";

@@ -6,7 +6,7 @@ import { collectMapContext } from "./map";
 import { test } from "vitest";
 import { trackerGh } from "../../shared/tracker-gh";
 import { trackerMemory } from "../../shared/tracker-memory";
-import { createIssueGh } from "../gh.fake";
+import { createIssueGh } from "../../shared/gh.fake";
 
 function mapBody(over: { decisions?: string; outOfScope?: string; notYetSpecified?: string } = {}): string {
   return [

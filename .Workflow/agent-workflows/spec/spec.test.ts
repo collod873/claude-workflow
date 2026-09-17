@@ -5,7 +5,7 @@ import { createFakeStage, createFakeStages } from "../shared/stage.fake";
 import { acceptedMarker, sheetMarker, type AcceptedPayload } from "../shared/marker";
 import type { Sheet } from "../shared/sheet-schema";
 import { sheet } from "../shared/sheet.fixture";
-import { createIssueGh } from "./gh.fake";
+import { createIssueGh } from "../shared/gh.fake";
 import { outcomeAfterLaneBudget } from "./lane-budget.fixture";
 import { BY_HAND_LABEL } from "../shared/labels";
 import { SLICEABLE_LABEL, SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";

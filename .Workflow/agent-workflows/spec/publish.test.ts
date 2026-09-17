@@ -4,7 +4,7 @@ import type { GhExec } from "../shared/gh";
 import { trackerMemory } from "../shared/tracker-memory";
 import type { StageExec } from "../shared/stage";
 import { createFakeStages } from "../shared/stage.fake";
-import { createIssueGh } from "./gh.fake";
+import { createIssueGh } from "../shared/gh.fake";
 import { QUESTIONS_OPEN_LABEL, SLICEABLE_LABEL } from "../shared/labels";
 import { SPEC_DISPATCH_EVENT_TYPE } from "./open-questions";
 import {

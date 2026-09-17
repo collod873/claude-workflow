@@ -9,7 +9,7 @@ import { collectSheetContext } from "./sheet";
 import { test } from "vitest";
 import { trackerGh } from "../../shared/tracker-gh";
 import { trackerMemory } from "../../shared/tracker-memory";
-import { createIssueGh } from "../gh.fake";
+import { createIssueGh } from "../../shared/gh.fake";
 
 const DECIDED_CONTEXT_KEYS = ["ownerWords", "decisions", "rulings", "boundaries", "openGuesses"].sort();
 
