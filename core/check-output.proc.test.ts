@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkRepo, git, inRepo, stubTool } from "./scenarios.ts";
@@ -64,5 +64,25 @@ describe("core/check says one line and keeps each failing tool's full output in 
     expect(here).not.toBe(there);
     expect(readFileSync(here, "utf8")).toContain(TYPE_ERROR);
     expect(readFileSync(there, "utf8")).toContain(TYPE_ERROR);
+  });
+});
+
+describe("core/check deletes its logs older than 7 days whenever it runs (#693)", () => {
+  it("deletes a log dated 8 days ago, keeps one dated today, and says nothing about either", () => {
+    const { repo, run } = checkRepo();
+    const logs = join(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"), "core-logs");
+    mkdirSync(logs, { recursive: true });
+    const stale = join(logs, "check-0000000-old.log");
+    const fresh = join(logs, "check-1111111-new.log");
+    writeFileSync(stale, "old failure");
+    writeFileSync(fresh, "new failure");
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    utimesSync(stale, eightDaysAgo, eightDaysAgo);
+
+    const result = run();
+
+    expect(result).toEqual({ status: 0, stdout: "core/check: passed\n", stderr: "" });
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ head=$(git rev-parse HEAD) || exit 1
 top=$(git rev-parse --show-toplevel)
 log="$(git rev-parse --path-format=absolute --git-common-dir)/core-logs/land-${head:0:7}-${top##*/}.log"
 mkdir -p "${log%/*}"
+find "${log%/*}" -maxdepth 1 -type f -name '*.log' -mmin +10080 -delete 2>/dev/null
 rm -f "$log"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
 err=$(mktemp)

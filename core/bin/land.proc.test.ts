@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -143,6 +143,24 @@ describe("core/bin/land turns a session's commits into a PR that merges itself",
     expect(result.stdout).toBe("");
     const log = /^land: git push failed; log (\S.*\.log)\n$/.exec(result.stderr)?.[1] ?? "";
     expect(readFileSync(isAbsolute(log) ? log : join(session, log), "utf8")).toContain("branch protection refused this push");
+  });
+
+  it("deletes its logs older than 7 days, keeps today's, and says nothing about either (#693)", () => {
+    const { session, run } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    const logs = join(session, ".git", "core-logs");
+    mkdirSync(logs);
+    const stale = join(logs, "land-0000000-old.log");
+    const fresh = join(logs, "land-1111111-new.log");
+    writeFileSync(stale, "old failure");
+    writeFileSync(fresh, "new failure");
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    utimesSync(stale, eightDaysAgo, eightDaysAgo);
+
+    const result = run();
+
+    expect(result).toMatchObject({ status: 0, stdout: "Nothing to land: HEAD is already on origin/main.\n", stderr: "" });
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(fresh)).toBe(true);
   });
 
   it("opens nothing when there is nothing past origin/main", () => {

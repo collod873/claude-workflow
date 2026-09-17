@@ -9,6 +9,7 @@ cd "$repo" || exit 1
 limit=200
 log="$(git rev-parse --path-format=absolute --git-common-dir)/core-logs/check-$(git rev-parse --short HEAD)-${repo##*/}.log"
 mkdir -p "${log%/*}"
+find "${log%/*}" -maxdepth 1 -type f -name '*.log' -mmin +10080 -delete 2>/dev/null
 rm -f "$log"
 [[ $log == "$repo/"* ]] && shown="${log#"$repo/"}" || shown="$log"
 
