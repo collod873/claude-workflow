@@ -1,13 +1,15 @@
-import { statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, matchesGlob, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parts } from "./parts.ts";
+import { parts, type Part } from "./parts.ts";
+import vitest from "./vitest.config.ts";
 import { checkRepo, execute, landSession, scratch, script, type Run } from "./scenarios.ts";
 
 const LIMIT = 200;
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
+const COLLECTS = vitest.test?.include ?? [];
 
 interface Scenario {
   label: string;
@@ -27,8 +29,10 @@ const scenarios: Record<string, Scenario[]> = {
   ],
 };
 
-function executableParts(): string[] {
-  return [...new Set(parts.map((part) => part.file))].filter((file) => (statSync(join(REPO, file)).mode & 0o111) !== 0);
+function speakers(registry: Part[], check: string, collects: string[]): string[] {
+  const fedToTools = new Set([...check.matchAll(/^run .*$/gm)].flatMap(([line]) => line.match(/core\/\S+/g) ?? []));
+  const collected = (file: string) => collects.some((glob) => matchesGlob(relative("core", file), glob));
+  return [...new Set(registry.map((part) => part.file))].filter((file) => !fedToTools.has(file) && !collected(file));
 }
 
 function overheard(part: string, runs: Scenario[] = []): string[] {
@@ -45,8 +49,16 @@ function overheard(part: string, runs: Scenario[] = []): string[] {
 }
 
 describe(`everything core/ prints fits in ${LIMIT} characters (#683)`, () => {
-  it.each(executableParts())("%s stays under the limit on a passing and a failing run", (part) => {
+  it.each(speakers(parts, readFileSync(join(REPO, "core", "check"), "utf8"), COLLECTS))("%s stays under the limit on a passing and a failing run", (part) => {
     expect(overheard(part, scenarios[part])).toEqual([]);
+  });
+
+  it("makes every registered part core/check does not already run prove its own runs, whatever it is written in", () => {
+    const planted = (file: string): Part => ({ name: file, file, stops: URL });
+    const registry = ["core/hooks/planted.mjs", "core/planted.proc.test.ts", "core/planted.config.ts", "core/check"].map(planted);
+    const check = "run lint eslint --config core/planted.config.ts core\n";
+
+    expect(speakers(registry, check, COLLECTS)).toEqual(["core/hooks/planted.mjs", "core/check"]);
   });
 
   it("names a planted part that says too much, or has no passing or failing run", () => {
