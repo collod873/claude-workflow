@@ -1,8 +1,26 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
-git fetch --quiet origin main
-head=$(git rev-parse HEAD)
+head=$(git rev-parse HEAD) || exit 1
+top=$(git rev-parse --show-toplevel)
+log="$(git rev-parse --path-format=absolute --git-common-dir)/core-logs/land-${head:0:7}-${top##*/}.log"
+mkdir -p "${log%/*}"
+rm -f "$log"
+[[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+call() {
+  local label=$1
+  shift
+  if ! said=$("$@" 2>"$err"); then
+    { printf -- '--- %s ---\n%s\n' "$*" "$said"; cat "$err"; } >>"$log"
+    printf 'land: %s failed; log %s\n' "$label" "$shown" >&2
+    exit 1
+  fi
+}
+
+call "git fetch" git fetch --quiet origin main
 
 if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   printf 'Nothing to land: HEAD is already on origin/main.\n'
@@ -10,16 +28,17 @@ if [[ -z $(git rev-list origin/main..HEAD) ]]; then
 fi
 
 branch="land/${head:0:12}"
-git push --quiet origin "HEAD:refs/heads/$branch"
+call "git push" git push --quiet origin "HEAD:refs/heads/$branch"
 
-url=$(gh pr create --base main --head "$branch" \
+call "gh pr create" gh pr create --base main --head "$branch" \
   --title "$(git log -1 --format=%s HEAD)" \
-  --body "$(git log --reverse --format='- %s' origin/main..HEAD)")
-gh pr merge "$branch" --auto --merge --match-head-commit "$head" 2>/dev/null \
-  || gh pr merge "$branch" --merge --match-head-commit "$head"
+  --body "$(git log --reverse --format='- %s' origin/main..HEAD)"
+url=$said
+gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 ||
+  call "gh pr merge" gh pr merge "$branch" --merge --match-head-commit "$head"
 
 for (( waited = 0; ; waited += 2 )); do
-  git fetch --quiet origin main
+  call "git fetch" git fetch --quiet origin main
   git merge-base --is-ancestor "$head" origin/main && break
   if (( waited >= ${LAND_WAIT_SECONDS:-20} )); then
     printf 'Merges when its checks pass: %s\n' "$url"
@@ -28,7 +47,7 @@ for (( waited = 0; ; waited += 2 )); do
   sleep 2
 done
 
-if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main; then
+if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then
   printf 'Landed %s\n' "$url"
 else
   printf 'Landed %s, but this checkout could not fast-forward; run git pull.\n' "$url"
