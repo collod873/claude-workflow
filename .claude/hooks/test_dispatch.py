@@ -104,6 +104,11 @@ SHOUTS_BOTH = (
     " 'permissionDecision': 'deny', 'permissionDecisionReason': 'HEAD ' + 'x' * 4000},"
     " 'systemMessage': 'SM-HEAD ' + 'y' * 900 + ' SM-TAIL'}))\n"
 )
+SHOUTS_SCREEN = (
+    "#!/usr/bin/env python3\n"
+    "import json\n"
+    "print(json.dumps({'systemMessage': 'SM-HEAD ' + 'z' * 3000 + ' SM-TAIL'}))\n"
+)
 SHOUTS = (
     "#!/usr/bin/env python3\n"
     "import json\n"
@@ -347,15 +352,23 @@ def check_says_little() -> None:
         check("a long refusal is still cut to the slot's 200 characters",
               len(reason.partition(" [+")[0]) <= 200, len(reason))
         screen = doc.get("systemMessage", "")
-        check("and the user's line is bounded too: screen space is a cost even though "
-              "systemMessage reaches no model request (json.systemMessage-visible-to-claude)",
-              len(screen.partition(" [+")[0]) <= 200, len(screen))
-        check("the user's line keeps its own head, not the refusal's",
-              screen.startswith("SM-HEAD") and "SM-TAIL" not in screen, screen[:60])
+        check("the user's line arrives whole at 916 characters: it reaches no model request "
+              "(json.systemMessage-visible-to-claude), so cutting it to Claude's 200 would "
+              "cost the human the tail and save nothing",
+              screen == "SM-HEAD " + "y" * 900 + " SM-TAIL", (len(screen), screen[:60]))
         check("the two budgets are separate, so a 4000-character refusal does not shrink the "
               "human's line and a chatty hook does not shrink Claude's",
               len(reason.partition(" [+")[0]) > 150 and len(screen.partition(" [+")[0]) > 150,
               (len(reason.partition(" [+")[0]), len(screen.partition(" [+")[0])))
+
+        _, doc, _ = fire({"PostToolUse": ["screen.py"]}, "PostToolUse",
+                         {"screen.py": SHOUTS_SCREEN}, env)
+        kept, _, pointer = doc.get("systemMessage", "").partition(" [+")
+        check("a 3008-character screen line is still cut, at the screen's own ceiling and not "
+              "at Claude's: the platform delivers 10,000 inline (json.output-cap-10000), so "
+              "the bound here is the human's attention, not a token cost",
+              len(kept) == 2000 and bool(pointer) and "SM-TAIL" not in kept,
+              (len(kept), pointer[:60]))
 
         stale = Path(logs) / f"dispatch-spill-{datetime.now() - timedelta(days=8):%Y-%m-%d}.jsonl"
         stale.write_text('{"text": "old overflow"}\n')

@@ -18,6 +18,7 @@ DECIDING = {"PreToolUse", "PermissionRequest"}
 RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
 
 SAY_LITTLE = _hook.SAY_LITTLE
+SCREEN_CEILING = 2000
 UNCAPPED_EVENTS = {"SessionStart", "SessionEnd"}
 SPILL_LOG = "dispatch-spill"
 SPILL_RETENTION_DAYS = 7
@@ -93,9 +94,9 @@ def spill(event: str, text: str) -> str:
 
 class Budget:
 
-    def __init__(self, event: str):
+    def __init__(self, event: str, ceiling: int = SAY_LITTLE):
         self.event = event
-        self.left = None if event in UNCAPPED_EVENTS else SAY_LITTLE
+        self.left = None if event in UNCAPPED_EVENTS else ceiling
 
     def spend(self, text: str) -> str:
         if not text or self.left is None:
@@ -161,7 +162,7 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
     if specific:
         specific["hookEventName"] = event
         out["hookSpecificOutput"] = specific
-    message = Budget(event).spend("\n".join(parts["messages"]))
+    message = Budget(event, SCREEN_CEILING).spend("\n".join(parts["messages"]))
     if message:
         out["systemMessage"] = message
 
