@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { blockedByPath, blockedByPathMatcher, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, issuePathMatcher, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, subIssuesPathMatcher, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, parseBlockedByPath, parseIssuePath, parseSubIssuesPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerDispatchRequest, TrackerFindingIssue, TrackerRecordComment, TrackerRunSummary, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
@@ -492,28 +492,27 @@ export function rawGhFromTracker(tracker: Tracker): GhExec {
     }
     const path = args[1] ?? "";
 
-    const subIssuesMatch = path.match(subIssuesPathMatcher);
-    if (subIssuesMatch) {
+    const subIssuesNumber = parseSubIssuesPath(path);
+    if (subIssuesNumber !== undefined) {
       const childId = Number((args[args.indexOf(ID_FIELD_FLAG) + 1] ?? "").replace("sub_issue_id=", ""));
-      tracker.addSubIssue(Number(subIssuesMatch[1]), childId);
+      tracker.addSubIssue(subIssuesNumber, childId);
       return "";
     }
 
-    const blockedByMatch = path.match(blockedByPathMatcher);
-    if (blockedByMatch) {
-      const number = Number(blockedByMatch[1]);
+    const blockedByNumber = parseBlockedByPath(path);
+    if (blockedByNumber !== undefined) {
       const fieldFlag = args.indexOf(ID_FIELD_FLAG);
       if (fieldFlag !== -1) {
         const blockerId = Number((args[fieldFlag + 1] ?? "").replace("issue_id=", ""));
-        tracker.addBlockedBy(number, blockerId);
+        tracker.addBlockedBy(blockedByNumber, blockerId);
         return "";
       }
-      return `${JSON.stringify(tracker.blockedByIds(number))}\n`;
+      return `${JSON.stringify(tracker.blockedByIds(blockedByNumber))}\n`;
     }
 
-    const issueMatch = path.match(issuePathMatcher);
-    if (issueMatch && args[args.indexOf("--jq") + 1] === ".id") {
-      return `${tracker.issueId(Number(issueMatch[1]))}\n`;
+    const issueNumber = parseIssuePath(path);
+    if (issueNumber !== undefined && args[args.indexOf("--jq") + 1] === ".id") {
+      return `${tracker.issueId(issueNumber)}\n`;
     }
 
     throw new Error(`rawGhFromTracker: unhandled argv: ${JSON.stringify(args)}`);

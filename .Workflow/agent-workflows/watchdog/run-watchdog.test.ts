@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { test } from "vitest";
 import { answerIssueQueue } from "../shared/gh.fake";
 import type { GhExec } from "../shared/gh";
-import { repoRunsPathMatcher, runJobsPathMatcher } from "../shared/gh-paths";
-import { runJobsPath } from "../shared/gh-paths";
+import { isRepoRunsPath, parseRunJobsPath, runJobsPath } from "../shared/gh-paths";
 import { runWatchdog, WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 import { MAX_JOB_READS, MAX_SIGNALS, signalMarker } from "./dead-lanes";
 
@@ -33,7 +32,7 @@ function historyWith(options: {
   const gh: GhExec = (args) => {
     calls.push(args);
 
-    if (args[0] === "api" && repoRunsPathMatcher.test(args[1] ?? "")) {
+    if (args[0] === "api" && isRepoRunsPath(args[1] ?? "")) {
       return JSON.stringify(
         runs.map((run) => ({
           id: run.id,
@@ -48,10 +47,10 @@ function historyWith(options: {
       );
     }
 
-    const jobs = (args[1] ?? "").match(runJobsPathMatcher);
-    if (args[0] === "api" && jobs) {
+    const runJobsId = parseRunJobsPath(args[1] ?? "");
+    if (args[0] === "api" && runJobsId !== undefined) {
       if (options.jobsRaw !== undefined) return options.jobsRaw;
-      const count = runs.find((run) => run.id === Number(jobs[1]))?.jobs ?? 1;
+      const count = runs.find((run) => run.id === runJobsId)?.jobs ?? 1;
       return JSON.stringify({ jobs: Array.from({ length: count }, (_unused, index) => ({ id: index + 1, name: "job", status: "completed", conclusion: "success", steps: [] })) });
     }
 
@@ -307,7 +306,7 @@ describe("runWatchdog", () => {
     const outcome = sweep(fake);
 
     expect(outcome.deadCount).toBe(0);
-    expect(fake.calls.some((argv) => runJobsPathMatcher.test(argv[1] ?? ""))).toBe(false);
+    expect(fake.calls.some((argv) => parseRunJobsPath(argv[1] ?? "") !== undefined)).toBe(false);
   });
 
   it("refuses a jobs read that returns no parseable body, rather than reading it as zero", () => {
@@ -333,7 +332,7 @@ describe("#621: runWatchdog reads a run's jobs through the tracker's shape", () 
     const calls: string[][] = [];
     const gh: GhExec = (args) => {
       calls.push(args);
-      if (args[0] === "api" && repoRunsPathMatcher.test(args[1] ?? "")) {
+      if (args[0] === "api" && isRepoRunsPath(args[1] ?? "")) {
         return JSON.stringify([RUN]);
       }
       if (args[0] === "api" && args[1] === runJobsPath(RUN.id) && !args.includes("--jq")) {

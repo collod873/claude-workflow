@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ENROLMENT_TOPIC } from "../enrol/enrol";
 import type { GhExec } from "../shared/gh";
-import { repoRunsPathForMatcher } from "../shared/gh-paths";
+import { parseRepoRunsPathFor } from "../shared/gh-paths";
 import { BY_HAND_LABEL } from "../shared/immutable-set";
 import { extractCriteria, parseCheckMarker } from "../shared/ticket-shape";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
@@ -61,9 +61,9 @@ function estateWith(options: {
       return repositories.join("\n");
     }
 
-    if (args[0] === "api" && args[1] && repoRunsPathForMatcher.test(args[1])) {
+    const runsRepo = args[0] === "api" && args[1] ? parseRepoRunsPathFor(args[1]) : undefined;
+    if (runsRepo !== undefined) {
       expect(args).not.toContain("-R");
-      const runsRepo = repoRunsPathForMatcher.exec(args[1])![1];
       const list = runs[runsRepo] ?? [];
       return JSON.stringify(
         list.map((run) => ({

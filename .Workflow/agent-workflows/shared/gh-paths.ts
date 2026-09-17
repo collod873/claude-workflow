@@ -1,34 +1,32 @@
 function pathTemplate(
   literal: TemplateStringsArray,
   ..._placeholder: unknown[]
-): { build: (n: number) => string; matcher: RegExp } {
+): { build: (n: number) => string; parse: (path: string) => number | undefined } {
   const [prefix, suffix] = literal.raw;
+  const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
   return {
     build: (n: number) => `${prefix}${n}${suffix}`,
-    matcher: new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`),
+    parse: (path: string) => {
+      const id = path.match(pattern)?.[1];
+      return id === undefined ? undefined : Number(id);
+    },
   };
 }
 
 function namedPathTemplate(
   literal: TemplateStringsArray,
   ..._placeholder: unknown[]
-): { build: (name: string) => string; matcher: RegExp } {
+): { build: (name: string) => string } {
   const [prefix, suffix] = literal.raw;
-  return {
-    build: (name: string) => `${prefix}${name}${suffix}`,
-    matcher: new RegExp(`^${escapeRegExp(prefix)}([\\w.-]+)${escapeRegExp(suffix)}$`),
-  };
+  return { build: (name: string) => `${prefix}${name}${suffix}` };
 }
 
 function refPrefixPathTemplate(
   literal: TemplateStringsArray,
   ..._placeholder: unknown[]
-): { build: (prefix: string) => string; matcher: RegExp } {
+): { build: (prefix: string) => string } {
   const [prefix, suffix] = literal.raw;
-  return {
-    build: (value: string) => `${prefix}${value}${suffix}`,
-    matcher: new RegExp(`^${escapeRegExp(prefix)}([\\w./-]+)${escapeRegExp(suffix)}$`),
-  };
+  return { build: (value: string) => `${prefix}${value}${suffix}` };
 }
 
 function escapeRegExp(segment: string): string {
@@ -41,12 +39,14 @@ const blockedBy = pathTemplate`repos/{owner}/{repo}/issues/${0}/dependencies/blo
 const workflowRuns = namedPathTemplate`repos/{owner}/{repo}/actions/workflows/${""}/runs`;
 const runJobs = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/jobs`;
 const jobLogs = pathTemplate`repos/{owner}/{repo}/actions/jobs/${0}/logs`;
-const runArtifacts = pathTemplate`repos/{owner}/{repo}/actions/runs/${0}/artifacts`;
 const repoRuns = pathTemplate`repos/{owner}/{repo}/actions/runs?per_page=${0}`;
 const matchingRefs = refPrefixPathTemplate`repos/{owner}/{repo}/git/matching-refs/heads/${""}`;
 const commitPulls = namedPathTemplate`repos/{owner}/{repo}/commits/${""}/pulls`;
 const issueComments = pathTemplate`repos/{owner}/{repo}/issues/${0}/comments`;
 const issueComment = pathTemplate`repos/{owner}/{repo}/issues/comments/${0}`;
+
+const WORKFLOW_RUNS_PATTERN = new RegExp(`^${escapeRegExp("repos/{owner}/{repo}/actions/workflows/")}[\\w.-]+${escapeRegExp("/runs")}$`);
+const REPO_RUNS_FOR_PATTERN = /^repos\/([^/?]+\/[^/?]+)\/actions\/runs\?per_page=\d+$/;
 
 export const GIT_REFS_PATH = "repos/{owner}/{repo}/git/refs";
 
@@ -63,12 +63,24 @@ export function issuePath(number: number): string {
   return issue.build(number);
 }
 
+export function parseIssuePath(path: string): number | undefined {
+  return issue.parse(path);
+}
+
 export function subIssuesPath(prdNumber: number): string {
   return subIssues.build(prdNumber);
 }
 
+export function parseSubIssuesPath(path: string): number | undefined {
+  return subIssues.parse(path);
+}
+
 export function blockedByPath(number: number): string {
   return blockedBy.build(number);
+}
+
+export function parseBlockedByPath(path: string): number | undefined {
+  return blockedBy.parse(path);
 }
 
 export function issueCommentsPath(number: number): string {
@@ -83,36 +95,45 @@ export function workflowRunsPath(workflowFile: string, perPage: number): string 
   return `${workflowRuns.build(workflowFile)}?per_page=${perPage}`;
 }
 
+export function isWorkflowRunsPath(path: string): boolean {
+  return WORKFLOW_RUNS_PATTERN.test(path);
+}
+
 export function runJobsPath(runId: number): string {
   return runJobs.build(runId);
+}
+
+export function parseRunJobsPath(path: string): number | undefined {
+  return runJobs.parse(path);
 }
 
 export function jobLogsPath(jobId: number): string {
   return jobLogs.build(jobId);
 }
 
-export function runArtifactsPath(runId: number): string {
-  return runArtifacts.build(runId);
+export function parseJobLogsPath(path: string): number | undefined {
+  return jobLogs.parse(path);
 }
 
 export function repoRunsPath(perPage: number): string {
   return repoRuns.build(perPage);
 }
 
+export function isRepoRunsPath(path: string): boolean {
+  return repoRuns.parse(path) !== undefined;
+}
+
 export function repoRunsPathFor(repository: string, perPage: number): string {
   return `repos/${repository}/actions/runs?per_page=${perPage}`;
+}
+
+export function parseRepoRunsPathFor(path: string): string | undefined {
+  return path.match(REPO_RUNS_FOR_PATTERN)?.[1];
 }
 
 export function repoRunsSincePath(repository: string, since: string): string {
   return `repos/${repository}/actions/runs?created=>=${since}&per_page=100`;
 }
-
-/**
- * @fixture No lane reads this; it exists so `watchdog/walk-home.test.ts`'s fake `gh` recognises
- * the path `repoRunsPathFor` sends, by the same segments, rather than restating the shape in a way
- * that could silently drift from what production actually calls.
- */
-export const repoRunsPathForMatcher: RegExp = /^repos\/([^/?]+\/[^/?]+)\/actions\/runs\?per_page=(\d+)$/;
 
 export function matchingRefsPath(prefix: string): string {
   return matchingRefs.build(prefix);
@@ -121,50 +142,3 @@ export function matchingRefsPath(prefix: string): string {
 export function commitPullsPath(head: string): string {
   return commitPulls.build(head);
 }
-
-export const issuePathMatcher: RegExp = issue.matcher;
-
-/**
- * @fixture No lane reads this; a `GhExec` stand-in answers the compare lookup by the same segments
- * `comparePath` sends, so a claim's commits-ahead read is faked where it is built.
- */
-export const comparePathMatcher: RegExp = new RegExp(
-  `^${escapeRegExp(comparePath("", "").replace(/\.\.\.$/, ""))}([^.]+)\\.\\.\\.(.+)$`,
-);
-
-/**
- * @fixture No lane reads this; the stand-in recognises a claim's release by the same ref path
- * `implementation-landing.ts` deletes through.
- */
-export const branchRefPathMatcher: RegExp = new RegExp(`^${escapeRegExp(GIT_REFS_PATH)}/heads/(.+)$`);
-
-export const subIssuesPathMatcher: RegExp = subIssues.matcher;
-
-export const blockedByPathMatcher: RegExp = blockedBy.matcher;
-
-/**
- * @fixture No lane reads this; a `GhExec` stand-in answers the comments-list lookup by the same
- * segments `issueCommentsPath` sends, rather than restating a path that could drift from it.
- */
-export const issueCommentsPathMatcher: RegExp = issueComments.matcher;
-
-/**
- * @fixture No lane reads this; same reason as `issueCommentsPathMatcher` above, for the rewrite
- * side of the same pair.
- */
-export const issueCommentPathMatcher: RegExp = issueComment.matcher;
-
-export const workflowRunsPathMatcher: RegExp = workflowRuns.matcher;
-
-export const runJobsPathMatcher: RegExp = runJobs.matcher;
-
-export const jobLogsPathMatcher: RegExp = jobLogs.matcher;
-
-export const repoRunsPathMatcher: RegExp = repoRuns.matcher;
-
-/**
- * @fixture No lane reads this; it exists so a `GhExec` stand-in answers the commit-to-pulls
- * lookup by the same segments `commitPullsPath` sends, rather than restating the path in a way
- * that could name a different endpoint from the one production actually calls.
- */
-export const commitPullsPathMatcher: RegExp = commitPulls.matcher;

@@ -1,5 +1,5 @@
 import { createFakeGh, type FakeDispatch } from "../shared/gh.fake";
-import { jobLogsPathMatcher, runJobsPathMatcher, workflowRunsPathMatcher } from "../shared/gh-paths";
+import { isWorkflowRunsPath, parseJobLogsPath, parseRunJobsPath } from "../shared/gh-paths";
 import { createFakeGit, type FakeGit } from "../shared/git.fake";
 import { trackerGh } from "../shared/tracker-gh";
 import {
@@ -163,8 +163,8 @@ export function integrateHarness({
 
   const answer = (args: string[]): string | undefined => {
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ headRefName: BRANCH, title, body });
-    const jobLogs = args[0] === "api" ? jobLogsPathMatcher.exec(args[1] ?? "") : null;
-    if (jobLogs) {
+    const jobId = args[0] === "api" ? parseJobLogsPath(args[1] ?? "") : undefined;
+    if (jobId !== undefined) {
       const allowsEscapes = args.includes(ALLOW_ESCAPE_SEQUENCES);
       if (jobLogRefusal === "escape-sequences" && !allowsEscapes) {
         throw new Error(
@@ -174,7 +174,6 @@ export function integrateHarness({
       if (jobLogRefusal === "unknown-flag" && allowsEscapes) {
         throw new Error(`gh: unknown flag: ${ALLOW_ESCAPE_SEQUENCES}`);
       }
-      const jobId = Number(jobLogs[1]);
       const run = currentRuns().find((each) => each.jobs.some((job) => job.id === jobId));
       const job = run?.jobs.find((each) => each.id === jobId);
       if (!run || !job) return "";
@@ -198,7 +197,7 @@ export function integrateHarness({
       open.find((pr) => pr.url === args[2])?.comments.push({ body: args[4] ?? "" });
       return "";
     }
-    if (args[0] === "api" && workflowRunsPathMatcher.test((args[1] ?? "").split("?")[0])) {
+    if (args[0] === "api" && isWorkflowRunsPath((args[1] ?? "").split("?")[0])) {
       return JSON.stringify(
         currentRuns().map(({ id, head_sha, event, status }) => ({
           id,
@@ -212,9 +211,9 @@ export function integrateHarness({
         })),
       );
     }
-    const jobsMatch = (args[1] ?? "").match(runJobsPathMatcher);
-    if (args[0] === "api" && jobsMatch) {
-      const jobs = (currentRuns().find((run) => run.id === Number(jobsMatch[1]))?.jobs ?? []).map((job) => ({
+    const runJobsId = parseRunJobsPath(args[1] ?? "");
+    if (args[0] === "api" && runJobsId !== undefined) {
+      const jobs = (currentRuns().find((run) => run.id === runJobsId)?.jobs ?? []).map((job) => ({
         ...job,
         steps: [],
       }));
