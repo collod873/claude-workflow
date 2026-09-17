@@ -140,11 +140,7 @@ def _release(counter_path: Path | None, stop_hook_active: bool) -> tuple[str, in
 
 def _block(headline: str, detail: str = "") -> dict:
     text = f"[{_hook.HOOK_NAME}] BLOCKED: {headline}"
-    return {
-        "decision": "block",
-        "reason": text + (f"\n{detail}" if detail else ""),
-        "systemMessage": text,
-    }
+    return _hook.block_envelope(text + (f"\n{detail}" if detail else ""), text)
 
 
 def _handback(headline: str) -> dict:

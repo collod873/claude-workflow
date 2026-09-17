@@ -355,7 +355,7 @@ def _row(payload: dict, repo: str, issue_number, verdict: str, reason: str,
 def deny(payload: dict, repo: str, issue_number, reason: str, gh_path: str,
          human_message: str, verdict: str = "deny") -> None:
     _row(payload, repo, issue_number, verdict, reason, gh_path)
-    _hook.deny(human_message)
+    _hook.deny("PreToolUse", human_message)
 
 
 def allow(payload: dict, repo: str, issue_number, reason: str, gh_path: str) -> None:

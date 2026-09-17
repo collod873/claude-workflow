@@ -173,23 +173,73 @@ def check_run_row():
               "tool_use_id" not in _hook.run_row(empty, "clean"), empty)
 
 
-def check_deny_envelope():
+def refuses(event: str, msg: str = "something went wrong") -> dict:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        _hook.deny("something went wrong")
-    out = json.loads(buf.getvalue())
+        _hook.deny(event, msg)
+    return json.loads(buf.getvalue())
+
+
+def check_deny_envelope():
+    out = refuses("PreToolUse")
     hso = out.get("hookSpecificOutput", {})
     expected_msg = f"[{_hook.HOOK_NAME}] something went wrong"
-    check("deny: hookEventName is PreToolUse",
+    check("deny: hookEventName is the event it was given, not an assumed one",
           hso.get("hookEventName") == "PreToolUse", hso)
     check("deny: permissionDecision is deny",
           hso.get("permissionDecision") == "deny", hso)
-    check("deny: permissionDecisionReason and systemMessage are identical",
+    check("deny: the reason reaches Claude, and the same text reaches the user as systemMessage, "
+          "which is a second audience and not a duplicate (PreToolUse.systemMessage-shown)",
           bool(hso.get("permissionDecisionReason"))
           and hso.get("permissionDecisionReason") == out.get("systemMessage"), out)
     check("deny: message is [HOOK_NAME]-prefixed",
           out.get("systemMessage") == expected_msg,
           f"got={out.get('systemMessage')!r} want={expected_msg!r}")
+
+    # PermissionRequest reads a different field. A hook that refuses in PreToolUse's field here is
+    # not refused, it is ignored, which is the failure the required argument exists to prevent.
+    out = refuses("PermissionRequest")
+    hso = out.get("hookSpecificOutput", {})
+    check("deny: PermissionRequest refuses through decision.behavior, not permissionDecision",
+          hso.get("decision", {}).get("behavior") == "deny"
+          and "permissionDecision" not in hso, hso)
+    check("deny: and its reason rides in decision.message, where that event reads it",
+          hso.get("decision", {}).get("message") == f"[{_hook.HOOK_NAME}] something went wrong", hso)
+
+    check("deny: the event is required, so a caller cannot inherit someone else's channel",
+          _raises_without_event(), "deny() accepted a single argument")
+
+    check("decision_envelope: deny() is built from it, so the dispatcher and a lone hook cannot "
+          "refuse through different shapes",
+          refuses("PreToolUse")["hookSpecificOutput"]
+          == _hook.decision_envelope("PreToolUse", "deny",
+                                     f"[{_hook.HOOK_NAME}] something went wrong"),
+          refuses("PreToolUse"))
+    check("decision_envelope: a non-deny decision carries no reason field",
+          _hook.decision_envelope("PreToolUse", "allow")
+          == {"hookEventName": "PreToolUse", "permissionDecision": "allow"},
+          _hook.decision_envelope("PreToolUse", "allow"))
+    check("decision_envelope: block is spoken as deny on the permission events, which are the "
+          "only decisions those events read",
+          _hook.decision_envelope("PreToolUse", "block")["permissionDecision"] == "deny"
+          and _hook.decision_envelope("PermissionRequest",
+                                      "block")["decision"]["behavior"] == "deny",
+          _hook.decision_envelope("PermissionRequest", "block"))
+
+    check("block_envelope: decision and reason, and systemMessage only when there is one to send",
+          _hook.block_envelope("why", "screen")
+          == {"decision": "block", "reason": "why", "systemMessage": "screen"}
+          and _hook.block_envelope() == {"decision": "block"},
+          _hook.block_envelope("why", "screen"))
+
+
+def _raises_without_event() -> bool:
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            _hook.deny("only one argument")
+    except TypeError:
+        return True
+    return False
 
 
 def check_exposure_fixture():

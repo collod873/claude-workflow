@@ -27,19 +27,33 @@ def _caller_stem() -> str:
 HOOK_NAME = _caller_stem()
 
 
-def deny(msg: str) -> None:
+def decision_envelope(event: str, decision: str, reason: str = "") -> dict:
+    if event == "PermissionRequest":
+        behavior = "deny" if decision == "block" else decision
+        inner = {"behavior": behavior}
+        if behavior == "deny" and reason:
+            inner["message"] = reason
+        return {"hookEventName": event, "decision": inner}
+    specific = {"hookEventName": event,
+                "permissionDecision": "deny" if decision == "block" else decision}
+    if reason:
+        specific["permissionDecisionReason"] = reason
+    return specific
+
+
+def block_envelope(reason: str = "", message: str = "") -> dict:
+    doc: dict = {"decision": "block"}
+    if reason:
+        doc["reason"] = reason
+    if message:
+        doc["systemMessage"] = message
+    return doc
+
+
+def deny(event: str, msg: str) -> None:
     message = f"[{HOOK_NAME}] {msg}"
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": message,
-        },
-        "systemMessage": message,
-    }
-    print(json.dumps(output))
-
-
+    print(json.dumps({"hookSpecificOutput": decision_envelope(event, "deny", message),
+                      "systemMessage": message}))
 
 
 def read_stdin_bytes() -> bytes:
@@ -59,13 +73,13 @@ def read_payload() -> tuple[dict, bool]:
     return payload, True
 
 
-
 LOG_DIR = Path(os.environ.get("STOP_GATE_LOG_DIR") or (Path.home() / ".claude" / "logs"))
 
 LOG_RETENTION_DAYS = 30
 
 
-def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
+def append_log(hook: str, row: dict, *, path: Path | str | None = None,
+               retain_days: int | None = None) -> None:
     row = dict(row)
     row.setdefault("ts", datetime.now().isoformat(timespec="seconds"))
     target = Path(path) if path is not None else LOG_DIR / f"{hook}-{datetime.now():%Y-%m-%d}.jsonl"
@@ -76,7 +90,7 @@ def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
     except OSError:
         return
     if path is None:
-        _prune_old_logs(hook)
+        _prune_old_logs(hook, retain_days)
 
 
 def run_row(payload: dict, verdict: str, **extra) -> dict:
@@ -96,8 +110,8 @@ def run_row(payload: dict, verdict: str, **extra) -> dict:
     return row
 
 
-def _prune_old_logs(hook: str) -> None:
-    cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+def _prune_old_logs(hook: str, retain_days: int | None = None) -> None:
+    cutoff = datetime.now() - timedelta(days=retain_days or LOG_RETENTION_DAYS)
     try:
         for f in LOG_DIR.glob(f"{hook}-*.jsonl"):
             try:
@@ -108,7 +122,6 @@ def _prune_old_logs(hook: str) -> None:
                 continue
     except OSError:
         pass
-
 
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
@@ -172,7 +185,6 @@ def exposure(payload: dict) -> tuple[bool | None, int]:
                     and block.get("name") in EDIT_TOOLS):
                 n += 1
     return n > 0, n
-
 
 
 LIVENESS_SECONDS = 300
@@ -288,8 +300,6 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
         for sid in retired_session_ids(registry_dir):
             seen.pop(sid, None)
     return dict(sorted(seen.items(), key=lambda kv: kv[1], reverse=True))
-
-
 
 
 ENROLLMENT_NEEDLE = "uses: collod873/claude-workflow/"
