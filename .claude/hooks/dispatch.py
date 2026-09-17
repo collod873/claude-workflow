@@ -1,8 +1,31 @@
 #!/usr/bin/env python3
+"""The one harness hook per event, routing to the roster.
+
+Every behavioural rule here is measured against the live product, never read from the hooks
+reference, which is wrong in fifteen places we have checked. Verdict ids are cited inline so a
+claim and its evidence cannot drift apart.
+
+  exit.json-read-on-every-exit-code / other.valid-json-decides
+      Valid JSON on stdout is read and obeyed whatever the child exited with. So a child's answer
+      is parsed before its exit code is judged, and a child that answered is never "broken".
+
+  PreToolUse.precedence / PermissionRequest.multiple-conflicting
+      deny > defer > ask > allow, regardless of order. Decisions are ranked, never absorbed
+      first-writer-wins, and every refusal's reason is kept.
+
+  PostToolUse.decision-block
+      A top-level decision:"block" delivers its reason to Claude as a system reminder on the tool
+      result. That is the channel the expensive hooks speak through, so it is what the cap bounds.
+
+A broken hook on a deciding event is an absent guard, so the slot refuses on its behalf and names
+it rather than going quiet.
+"""
 import json
 import os
 import subprocess
 import sys
+from datetime import datetime
+from hashlib import blake2b
 from pathlib import Path
 
 import _hook
@@ -10,7 +33,23 @@ import _hook
 HOOKS_DIR = Path(__file__).resolve().parent
 ROSTER_PATH = HOOKS_DIR / "roster.json"
 HOOK_TIMEOUT_SECONDS = 300
-TRACEBACK_MARKER = b"Traceback (most recent call last):"
+TRACEBACK_MARKER = "Traceback (most recent call last):"
+
+# Where a lost answer means an unguarded tool call. Elsewhere a broken hook is reported, not
+# escalated: a PostToolUse guard cannot un-run the call it watched, so refusing there is noise.
+DECIDING = {"PreToolUse", "PermissionRequest"}
+RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
+
+# One slot, 200 characters of hook-authored text; the rest goes to a log the slot names. Measured
+# cost of the unbounded version: 2,931,973 characters over 5,008 blocked edits (gauntlet-hook's own
+# logs). The bound is applied here rather than in _hook.py because the costly hook is node, and the
+# dispatcher is the only place that sees every child's stdout whatever it was written in.
+SAY_LITTLE = 200
+# Events that fire once per session, where the whole budget is one message. session-brief.py emits
+# 1,729 characters here by design; capping it would disarm a working hook. Everything else pays the
+# bound, including events no hook is registered on yet, so a new hook is capped by default.
+UNCAPPED_EVENTS = {"SessionStart", "SessionEnd"}
+SPILL_LOG = "dispatch-spill"
 
 
 def roster() -> dict:
@@ -23,66 +62,170 @@ def argv_for(hook_path: Path) -> list[str]:
     return [str(hook_path)]
 
 
-def run_one(name: str, stdin_bytes: bytes, env: dict) -> tuple[str, int, bytes, bytes]:
+def answer_of(stdout: bytes) -> dict | None:
+    """A child's JSON object, if it produced one. Read before the exit code, never after."""
+    text = stdout.strip()
+    if not text:
+        return None
+    try:
+        doc = json.loads(text)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def run_one(name: str, stdin_bytes: bytes, env: dict) -> dict:
+    row = {"hook": name, "answer": None, "code": None, "stdout": b"", "stderr": b"", "broken": False}
     path = HOOKS_DIR / name
     if not path.is_file():
-        return name, 1, b"", f"{name}: no such hook file\n".encode()
+        return {**row, "code": 1, "broken": True,
+                "stderr": f"{name}: no such hook file\n".encode()}
     try:
         proc = subprocess.run(argv_for(path), input=stdin_bytes, capture_output=True,
                               env=env, timeout=HOOK_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        return name, 1, b"", f"{name}: exceeded its {HOOK_TIMEOUT_SECONDS}s dispatcher timeout\n".encode()
+        return {**row, "code": 1, "broken": True,
+                "stderr": f"{name}: exceeded its {HOOK_TIMEOUT_SECONDS}s dispatcher timeout\n".encode()}
     except OSError as exc:
-        return name, 1, b"", f"{name}: could not run ({exc})\n".encode()
-    return name, proc.returncode, proc.stdout, proc.stderr
+        return {**row, "code": 1, "broken": True,
+                "stderr": f"{name}: could not run ({exc})\n".encode()}
+
+    stderr = proc.stderr.decode("utf-8", "replace")
+    row.update(answer=answer_of(proc.stdout), code=proc.returncode,
+               stdout=proc.stdout, stderr=proc.stderr)
+    # An answer stands on its own (exit.json-read-on-every-exit-code): a hook that decided and then
+    # logged a caught traceback still decided, and a context hook that exits 1 still answered.
+    if row["answer"] is None and (proc.returncode not in (0, 2) or TRACEBACK_MARKER in stderr):
+        row["broken"] = True
+    return row
 
 
-def merge_stdouts(parts: list[bytes]) -> bytes:
-    merged: dict = {}
-    text_parts: list[bytes] = []
-    any_json = False
+def decision_of(doc: dict) -> str | None:
+    specific = doc.get("hookSpecificOutput") or {}
+    found = specific.get("permissionDecision") or (specific.get("decision") or {}).get("behavior")
+    if found in RANK:
+        return found
+    return "block" if doc.get("decision") == "block" else None
 
-    def absorb(target: dict, key, value) -> None:
-        if key == "additionalContext" and isinstance(value, str):
-            if isinstance(target.get(key), str):
-                target[key] = target[key] + "\n" + value
-            else:
-                target[key] = value
-        elif key not in target:
-            target[key] = value
 
-    for raw in parts:
-        stripped = raw.strip()
-        if not stripped:
+def reason_of(doc: dict) -> str:
+    specific = doc.get("hookSpecificOutput") or {}
+    return (specific.get("permissionDecisionReason")
+            or (specific.get("decision") or {}).get("message")
+            or doc.get("reason") or "")
+
+
+def spill(event: str, text: str) -> str:
+    """Park the overflow where the one surviving line can point at it."""
+    marker = blake2b(text.encode("utf-8", "replace"), digest_size=4).hexdigest()
+    _hook.append_log(SPILL_LOG, {"event": event, "id": marker, "chars": len(text), "text": text})
+    path = _hook.LOG_DIR / f"{SPILL_LOG}-{datetime.now():%Y-%m-%d}.jsonl"
+    return f"[+{len(text)} chars: {path} id={marker}]"
+
+
+class Budget:
+    """The slot's 200 characters, spent in priority order: refusal, context, user message."""
+
+    def __init__(self, event: str):
+        self.event = event
+        self.left = None if event in UNCAPPED_EVENTS else SAY_LITTLE
+
+    def spend(self, text: str) -> str:
+        if not text or self.left is None:
+            return text
+        if len(text) <= self.left:
+            self.left -= len(text)
+            return text
+        pointer = spill(self.event, text)
+        kept = text[:self.left].rstrip()
+        self.left = 0
+        return f"{kept} {pointer}" if kept else pointer
+
+
+def collect(rows: list[dict]) -> dict:
+    """Everything the children said, ranked and joined. Never first-writer-wins."""
+    parts = {"decision": None, "reasons": [], "contexts": [], "messages": [],
+             "specific": {}, "top": {}}
+    decisions = []
+    for row in rows:
+        doc = row["answer"]
+        if not doc:
             continue
-        try:
-            doc = json.loads(stripped)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            doc = None
-        if not isinstance(doc, dict):
-            text_parts.append(raw.rstrip(b"\n"))
-            continue
-        any_json = True
+        found = decision_of(doc)
+        if found:
+            decisions.append(found)
+            if RANK[found] == RANK["deny"] and reason_of(doc):
+                parts["reasons"].append(reason_of(doc))
+        for key, value in (doc.get("hookSpecificOutput") or {}).items():
+            if key == "additionalContext" and isinstance(value, str):
+                parts["contexts"].append(value)
+            elif key not in ("hookEventName", "permissionDecision", "permissionDecisionReason",
+                             "decision"):
+                parts["specific"].setdefault(key, value)
+        if isinstance(doc.get("systemMessage"), str):
+            parts["messages"].append(doc["systemMessage"])
         for key, value in doc.items():
-            if key == "hookSpecificOutput" and isinstance(value, dict):
-                existing = merged.setdefault("hookSpecificOutput", {})
-                if not isinstance(existing, dict):
-                    continue
-                for k2, v2 in value.items():
-                    absorb(existing, k2, v2)
+            if key in ("hookSpecificOutput", "systemMessage", "decision", "reason"):
+                continue
+            # json.continue-precedence-over-decision: a single false ends the turn, so any hook
+            # asking to stop outranks every hook that did not.
+            if key == "continue" and value is False:
+                parts["top"][key] = False
             else:
-                absorb(merged, key, value)
-
-    if any_json:
-        out = json.dumps(merged).encode()
-        if text_parts:
-            out += b"\n" + b"\n".join(text_parts)
-        return out
-    return b"\n".join(text_parts)
+                parts["top"].setdefault(key, value)
+    if decisions:
+        parts["decision"] = max(decisions, key=lambda d: RANK[d])
+    return parts
 
 
-def is_broken(code: int, err: bytes) -> bool:
-    return code not in (0, 2) or TRACEBACK_MARKER in err
+def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
+    out: dict = dict(parts["top"])
+    specific: dict = dict(parts["specific"])
+    budget = Budget(event)
+    decision = parts["decision"]
+    reason = budget.spend("\n".join(parts["reasons"]))
+
+    if decision:
+        if event == "PermissionRequest":
+            behaviour = "deny" if decision == "block" else decision
+            specific["decision"] = {"behavior": behaviour}
+            if behaviour == "deny" and reason:
+                specific["decision"]["message"] = reason
+        elif event in DECIDING:
+            specific["permissionDecision"] = "deny" if decision == "block" else decision
+            if reason:
+                specific["permissionDecisionReason"] = reason
+        elif RANK[decision] == RANK["deny"]:
+            # PostToolUse.decision-block: outside the permission events, block is the only decision
+            # that carries, and allow/ask/defer mean nothing, so they are dropped rather than faked.
+            out["decision"] = "block"
+            if reason:
+                out["reason"] = reason
+
+    context = budget.spend("\n".join(parts["contexts"]))
+    if context:
+        specific["additionalContext"] = context
+    if specific:
+        specific["hookEventName"] = event
+        out["hookSpecificOutput"] = specific
+    message = budget.spend("\n".join(parts["messages"]))
+    if message:
+        out["systemMessage"] = message
+
+    plain = budget.spend("\n".join(t.decode("utf-8", "replace") for t in texts))
+    if not out:
+        return plain.encode()
+    merged = json.dumps(out).encode()
+    return merged + b"\n" + plain.encode() if plain else merged
+
+
+def refuse(event: str, why: str) -> dict:
+    text = f"[dispatch] {why}; the check could not run, so this is refused rather than allowed"
+    if event == "PermissionRequest":
+        return {"hookSpecificOutput": {"hookEventName": event,
+                                       "decision": {"behavior": "deny", "message": text}}}
+    return {"hookSpecificOutput": {"hookEventName": event, "permissionDecision": "deny",
+                                   "permissionDecisionReason": text}}
 
 
 def main(argv: list[str]) -> int:
@@ -95,21 +238,31 @@ def main(argv: list[str]) -> int:
     names = roster().get(event, [])
     env = dict(os.environ)
 
-    results = [run_one(name, stdin_bytes, env) for name in names]
+    rows = [run_one(name, stdin_bytes, env) for name in names]
 
-    exit2 = [r for r in results if r[1] == 2]
+    # exit2.json-allow-cannot-override: exit 2 blocks and its stderr is what Claude reads, so it
+    # short-circuits the merge rather than competing inside it.
+    exit2 = [r for r in rows if r["code"] == 2]
     if exit2:
-        sys.stderr.buffer.write(b"".join(r[3] for r in exit2))
+        joined = "".join(r["stderr"].decode("utf-8", "replace") for r in exit2)
+        sys.stderr.write(Budget(event).spend(joined))
         return 2
 
-    broken = [r for r in results if is_broken(r[1], r[3])]
-    clean_stdouts = [r[2] for r in results if r[1] == 0 and not is_broken(r[1], r[3])]
-    merged = merge_stdouts(clean_stdouts)
+    broken = [r for r in rows if r["broken"]]
+    parts = collect(rows)
+    if broken and event in DECIDING and parts["decision"] != "deny":
+        # A broken guard is an absent guard. Anything that already denied is stronger than this.
+        parts = collect(rows + [{"answer": refuse(
+            event, f"{', '.join(r['hook'] for r in broken)} could not run")}])
+
+    texts = [r["stdout"].rstrip(b"\n") for r in rows
+             if r["answer"] is None and not r["broken"] and r["stdout"].strip()]
+    merged = render(parts, event, texts)
     if merged:
         sys.stdout.buffer.write(merged)
 
     if broken:
-        sys.stderr.buffer.write(b"".join(r[3] for r in broken))
+        sys.stderr.buffer.write(b"".join(r["stderr"] for r in broken))
         return 1
 
     return 0

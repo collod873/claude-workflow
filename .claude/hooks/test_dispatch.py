@@ -68,7 +68,39 @@ ECHO_JSON_B = (
     "#!/usr/bin/env python3\n"
     "import json\n"
     "print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse',"
-    " 'additionalContext': 'from B'}}))\n"
+    " 'additionalContext': 'from B'}, 'systemMessage': 'from B'}))\n"
+)
+
+
+def decides(tag: str, behaviour: str) -> str:
+    return (
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        f"print(json.dumps({{'hookSpecificOutput': {{'hookEventName': 'PreToolUse',"
+        f" 'permissionDecision': {behaviour!r}, 'permissionDecisionReason': '{behaviour.upper()}-{tag}'}}}}))\n"
+    )
+
+
+CONTEXT_THEN_EXIT_ONE = (
+    "#!/usr/bin/env python3\n"
+    "import json, sys\n"
+    "print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse',"
+    " 'additionalContext': 'CTX-A'}}))\n"
+    "sys.exit(1)\n"
+)
+DENIES_THEN_LOGS_TRACEBACK = (
+    "#!/usr/bin/env python3\n"
+    "import json, sys\n"
+    "print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse',"
+    " 'permissionDecision': 'deny', 'permissionDecisionReason': 'DENY-A'}}))\n"
+    "print('Traceback (most recent call last):', file=sys.stderr)\n"
+    "print('  caught and handled', file=sys.stderr)\n"
+)
+SHOUTS = (
+    "#!/usr/bin/env python3\n"
+    "import json\n"
+    "print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse'},"
+    " 'decision': 'block', 'reason': 'HEAD ' + 'x' * 4000 + ' TAIL'}))\n"
 )
 SILENT_OK = "#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n"
 TEXT_ONLY = "#!/usr/bin/env python3\nprint('plain text notice')\n"
@@ -136,11 +168,13 @@ def check_merge_semantics() -> None:
         r = run_dispatch(hooks, "Ev", b"{}")
         check("two JSON-emitting hooks: exit 0", r.returncode == 0, r.stderr)
         doc = json.loads(r.stdout)
-        check("first writer of systemMessage wins", doc.get("systemMessage") == "from A", doc)
+        check("every systemMessage reaches the human; a second writer is not dropped",
+              doc.get("systemMessage") == "from A\nfrom B", doc)
         check("additionalContext joined by newline, in roster order",
               doc["hookSpecificOutput"]["additionalContext"] == "from A\nfrom B", doc)
-        check("hookEventName present once, first writer wins",
-              doc["hookSpecificOutput"]["hookEventName"] == "PreToolUse", doc)
+        check("hookEventName is the event the dispatcher was fired for, not whatever a child "
+              "claimed, so one mislabelled hook cannot relabel the slot",
+              doc["hookSpecificOutput"]["hookEventName"] == "Ev", doc)
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -231,6 +265,80 @@ def check_merge_semantics() -> None:
               r.returncode == 0 and r.stdout == b"" and r.stderr == b"", (r.stdout, r.stderr))
 
 
+def fire(roster_map: dict, event: str, scripts: dict, extra_env: dict | None = None):
+    tmp = Path(tempfile.mkdtemp(prefix="dispatch-case-"))
+    hooks = build_fixture(tmp, roster_map)
+    for name, body in scripts.items():
+        write_script(hooks / name, body)
+    r = run_dispatch(hooks, event, b'{"hook_event_name": "%s"}' % event.encode(), extra_env)
+    doc = json.loads(r.stdout.splitlines()[0]) if r.stdout.strip() else {}
+    return r, doc, tmp
+
+
+def check_precedence() -> None:
+    """deny > defer > ask > allow regardless of order (PreToolUse.precedence), and a hook that
+    answered is never treated as broken (exit.json-read-on-every-exit-code)."""
+    for order, names in (("allow first", ["a.py", "b.py"]), ("deny first", ["b.py", "a.py"])):
+        _, doc, _ = fire({"PreToolUse": names}, "PreToolUse",
+                         {"a.py": decides("A", "allow"), "b.py": decides("B", "deny")})
+        specific = doc.get("hookSpecificOutput", {})
+        check(f"deny beats allow with the {order}; order must not decide",
+              specific.get("permissionDecision") == "deny", doc)
+        check(f"the refusal's own reason survives ({order})",
+              "DENY-B" in specific.get("permissionDecisionReason", ""), doc)
+
+    _, doc, _ = fire({"PreToolUse": ["a.py", "b.py"]}, "PreToolUse",
+                     {"a.py": decides("A", "deny"), "b.py": decides("B", "deny")})
+    reason = doc.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+    check("two hooks refuse: both reasons reach the human, since a dropped refusal is one "
+          "nobody ever sees", "DENY-A" in reason and "DENY-B" in reason, doc)
+
+    r, doc, _ = fire({"PreToolUse": ["a.py"]}, "PreToolUse",
+                     {"a.py": DENIES_THEN_LOGS_TRACEBACK})
+    check("a hook that refuses correctly and logs a caught traceback still refuses",
+          doc.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", (doc, r.stderr))
+
+    r, doc, _ = fire({"PreToolUse": ["broken.py"]}, "PreToolUse", {"broken.py": EXITS_ONE})
+    specific = doc.get("hookSpecificOutput", {})
+    check("the only decider breaks: the slot refuses on its behalf rather than going quiet, "
+          "because a broken guard is an absent guard",
+          specific.get("permissionDecision") == "deny", (doc, r.stderr))
+    check("and the refusal names the hook that broke, or it is undebuggable",
+          "broken.py" in specific.get("permissionDecisionReason", ""), doc)
+
+    r, doc, _ = fire({"PreToolUse": ["ctx.py"]}, "PreToolUse", {"ctx.py": CONTEXT_THEN_EXIT_ONE})
+    specific = doc.get("hookSpecificOutput", {})
+    check("a context hook that exits 1 answered fine: its context survives and the slot does "
+          "not invent a refusal (exit.json-read-on-every-exit-code)",
+          specific.get("additionalContext") == "CTX-A" and "permissionDecision" not in specific,
+          (doc, r.stderr))
+
+
+def check_says_little() -> None:
+    """One slot, 200 characters of hook-authored text, the rest in a log it names."""
+    with tempfile.TemporaryDirectory() as logs:
+        env = {"STOP_GATE_LOG_DIR": logs}
+        _, doc, _ = fire({"PostToolUse": ["loud.py"]}, "PostToolUse", {"loud.py": SHOUTS}, env)
+        reason = doc.get("reason", "")
+        authored, _, pointer = reason.partition(" [+")
+        check("a 4000-character block reason is cut to the slot's 200 characters",
+              len(authored) <= 200, len(authored))
+        check("the head survives, so the useful summary is what is kept",
+              authored.startswith("HEAD "), authored[:80])
+        check("the tail does not reach Claude", "TAIL" not in reason, reason[-120:])
+        spilled = list(Path(logs).glob("dispatch-spill-*.jsonl"))
+        check("the surviving line names a log that exists",
+              bool(spilled) and str(spilled[0]) in pointer, (pointer, spilled))
+        rows = [json.loads(x) for x in spilled[0].read_text().splitlines() if x.strip()]
+        check("and the full text is in it, so nothing is lost, only moved",
+              any("TAIL" in row.get("text", "") for row in rows), rows and rows[0].keys())
+
+        _, doc, _ = fire({"SessionStart": ["loud.py"]}, "SessionStart", {"loud.py": SHOUTS}, env)
+        check("SessionStart is exempt: it fires once per session, and session-brief's 1729 "
+              "characters are the whole point of it",
+              "TAIL" in json.dumps(doc), str(doc)[:120])
+
+
 def check_real_hooks_per_event() -> None:
     enrolled_repo = Path(tempfile.mkdtemp(prefix="dispatch-real-"))
     subprocess.run(["git", "init", "-q", str(enrolled_repo)], check=True, capture_output=True)
@@ -287,11 +395,17 @@ def check_real_hooks_per_event() -> None:
           r.returncode == 0 and r.stdout == b"", (r.returncode, r.stdout, r.stderr))
 
 
+ALL = [check_roster_matches_tree, check_settings_registers_no_hooks, check_merge_semantics,
+       check_precedence, check_says_little, check_real_hooks_per_event]
+
+
 def main() -> None:
-    check_roster_matches_tree()
-    check_settings_registers_no_hooks()
-    check_merge_semantics()
-    check_real_hooks_per_event()
+    # Naming checks runs just those, which is how the mutation pass points a planted defect at the
+    # checks that should catch it without needing this repo's real roster on disk.
+    wanted = set(sys.argv[1:])
+    for fn in ALL:
+        if not wanted or fn.__name__ in wanted:
+            fn()
     finish("All dispatch checks passed.")
 
 
