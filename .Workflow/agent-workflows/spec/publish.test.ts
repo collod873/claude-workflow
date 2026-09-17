@@ -19,6 +19,7 @@ import {
 } from "./publish";
 import { runSpecPublication, type SpecAuthorOutput } from "./spec";
 import { NO_VALIDATION } from "./validate-spec.fixture";
+import { readPublishedSpec } from "./publish";
 
 const CREATED = 903;
 
@@ -186,5 +187,25 @@ describe("publishSpec: filed through a Tracker", () => {
     const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], DRAFT, SHEET_SOURCE, NO_VALIDATION);
 
     expect(created).toBe(CREATED);
+  });
+});
+
+describe("updateSpec: edited through a Tracker", () => {
+  test.fails("#617.1: edits the issue's body through a Tracker, not just a raw GhExec", () => {
+    const tracker = trackerMemory({ issues: { 901: { body: "before" } } });
+
+    updateSpec(tracker as unknown as GhExec, 901, DRAFT, SHEET_SOURCE);
+
+    expect(tracker.issueBody(901)).toContain(DRAFT.body);
+  });
+});
+
+describe("readPublishedSpec: read through a Tracker", () => {
+  test.fails("#617.1: reads the issue's body through a Tracker's issueBody, not just a raw GhExec", () => {
+    const tracker = trackerMemory({ issues: { 901: { body: "## Problem\nIt is unbuilt." } } });
+
+    const spec = readPublishedSpec(tracker as unknown as GhExec, 901);
+
+    expect(spec.body).toBe("## Problem\nIt is unbuilt.");
   });
 });
