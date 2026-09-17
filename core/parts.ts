@@ -74,4 +74,10 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/663",
     holds: ["The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs"],
   },
+  {
+    name: "core/em-dash.test.ts",
+    file: "core/em-dash.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/681",
+    holds: ["Nothing the machine writes, and no doc a session loads, carries an em dash"],
+  },
 ];
