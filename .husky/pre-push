@@ -8,4 +8,4 @@ done
 if [ "$only_notes" = 1 ]; then
   exit 0
 fi
-npm run check
+core/check && npm run check

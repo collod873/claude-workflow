@@ -28,7 +28,7 @@ const REPO_PATH_SELECTORS = [
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "dist/**", "build/**", ".claude/worktrees/**"],
+    ignores: ["node_modules/**", "dist/**", "build/**", ".claude/worktrees/**", "core/**"],
   },
   ...tseslint.configs.recommended,
   {
