@@ -121,3 +121,16 @@ describe("the reconciler is the end of a clearing run", () => {
     expect(fake.calls[1]).toContain("--allowedTools");
   });
 });
+
+describe("#622: spec's tests move off gh.fake and shape's off tracker.fake", () => {
+  it.fails("#622.1: gh.fake.ts is deleted", () => {
+    expect(existsSync(fileURLToPath(new URL("./gh.fake.ts", import.meta.url)))).toBe(false);
+  });
+
+  it.fails("#622.3: tracker.fake.ts is deleted", () => {
+    expect(existsSync(fileURLToPath(new URL("../shape/tracker.fake.ts", import.meta.url)))).toBe(false);
+  });
+});
+
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
