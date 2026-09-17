@@ -37,6 +37,8 @@ rule is enforced is worked out there from the parts the New core registers, neve
 | Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close |
 | Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites |
 | An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief |
+| Everything the machine says, to a session or the owner, fits in 200 characters; the rest goes to a log file it names | `core/says-little.proc.test.ts` |
+| The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs | `core/loaded-docs.proc.test.ts` |
 | The owner is never the one who fixes a stuck run | A test that every stopping point names a fixer who is not the owner |
 | The whole machine fits on one generated screen; adding means fitting | A length test on the generated machine page |
 | A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate | A report on every merge |
@@ -46,6 +48,7 @@ rule is enforced is worked out there from the parts the New core registers, neve
 | An added or kept part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part, and each kept part at its layer ruling, against this page; a fail blocks it |
 | Each rule lives in one place. A prompt may teach a rule a gate holds, as a cache, never one no gate holds | The copy detector, widened from code to rules and to taught rules with no gate |
 | The owner hears plain words and is asked only about scope, priority and taste, a few questions at a time | The owner, present in every session that talks to them |
+| Nothing the machine writes, and no doc a session loads, carries an em dash | `core/em-dash.test.ts`, and `core/bin/land` refusing a commit message that carries one |
 | A session changing the machine has read this page and the machine page | A hook that shows both when a session first edits machinery |
 
 ## Loading
