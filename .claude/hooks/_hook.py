@@ -26,6 +26,8 @@ def _caller_stem() -> str:
 
 HOOK_NAME = _caller_stem()
 
+SAY_LITTLE = 200
+
 
 def decision_envelope(event: str, decision: str, reason: str = "") -> dict:
     if event == "PermissionRequest":

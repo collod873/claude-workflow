@@ -17,7 +17,7 @@ TRACEBACK_MARKER = "Traceback (most recent call last):"
 DECIDING = {"PreToolUse", "PermissionRequest"}
 RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
 
-SAY_LITTLE = 200
+SAY_LITTLE = _hook.SAY_LITTLE
 UNCAPPED_EVENTS = {"SessionStart", "SessionEnd"}
 SPILL_LOG = "dispatch-spill"
 SPILL_RETENTION_DAYS = 7

@@ -1052,9 +1052,13 @@ def main() -> None:
         SESSION_IDS_USED.append(session)
         r = _run(_payload(root, session_id=session), _env())
         reason = _reason(r)
-        check("verdict line: the runner's own `gauntlet:` line rides above the fence",
-              "verdict: gauntlet: FAILED at typecheck test_related" in reason
-              and reason.index("verdict:") < reason.index("--- './gauntlet stop'"), reason[:300])
+        check("verdict line: the failed checks lead, inside the 200 the dispatcher keeps",
+              reason[:_hook.SAY_LITTLE].startswith(
+                  "[stop-gate] BLOCKED: gauntlet: FAILED at typecheck test_related;"),
+              reason[:300])
+        check("verdict line: the ceremony follows the verdict, the fence follows both",
+              reason.index("gauntlet: FAILED") < reason.index("fix the violation it names")
+              < reason.index("--- './gauntlet stop'"), reason[:300])
         check("verdict line: the tail is bounded at 1500 chars and marked",
               "last 1500 chars, truncated ---" in reason, reason[:300])
         fence = reason.split("---\n", 1)[1].rsplit("\n--- end ---", 1)[0]
@@ -1082,8 +1086,21 @@ def main() -> None:
         _init_repo(root)
         _write_contract(root, {"stop": {"cmd": "echo first; echo LAST WORD; false", "why": "x"}})
         r = _run(_payload(root), _env())
-        check("verdict line: a runner with no `name:` line contributes its last line",
-              "verdict: LAST WORD" in _reason(r), _reason(r))
+        check("verdict line: a runner with no `name:` line leads with its last line",
+              _reason(r).startswith("[stop-gate] BLOCKED: LAST WORD;"), _reason(r)[:200])
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        _init_repo(root)
+        flood = "python3 -c \"print('y'*4000)\"; false"
+        _write_contract(root, {"stop": {"cmd": flood, "why": "x"}})
+        r = _run(_payload(root), _env())
+        reason = _reason(r)
+        check("verdict line: an unlabelled 4000-char last line fills the wire's 200 exactly",
+              reason[:_hook.SAY_LITTLE] == "[stop-gate] BLOCKED: " + "y" * 179
+              and reason[_hook.SAY_LITTLE:_hook.SAY_LITTLE + 2] == "; ", reason[:220])
+        check("verdict line: a flooding runner still leaves the ceremony in the reason",
+              "fix the violation it names" in reason and len(reason) < 2000, len(reason))
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)

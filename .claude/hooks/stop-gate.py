@@ -18,6 +18,8 @@ COUNTER_DIR = Path("/tmp")
 CHECK_TIMEOUT = int(os.environ.get("STOP_GATE_TIMEOUT", "240"))
 GIT_TIMEOUT = 10
 TAIL_CHARS = 1500
+BLOCK_PREFIX = f"[{_hook.HOOK_NAME}] BLOCKED: "
+LEAD_CHARS = _hook.SAY_LITTLE - len(BLOCK_PREFIX)
 
 
 def _project_dir(payload: dict) -> Path:
@@ -139,7 +141,7 @@ def _release(counter_path: Path | None, stop_hook_active: bool) -> tuple[str, in
 
 
 def _block(headline: str, detail: str = "") -> dict:
-    text = f"[{_hook.HOOK_NAME}] BLOCKED: {headline}"
+    text = BLOCK_PREFIX + headline
     return _hook.block_envelope(text + (f"\n{detail}" if detail else ""), text)
 
 
@@ -369,11 +371,12 @@ def main() -> None:
                 f"checks still failing after one retry ({cmd!r}, {tree}); stopping for "
                 f"human review.")
         else:
-            summary = _verdict_line(cmd, raw)
+            summary = _verdict_line(cmd, raw)[:LEAD_CHARS].rstrip()
+            ceremony = (f"{cmd!r} failed ({tree}){beside}; fix the violation it names; "
+                        f"the check and the gate stay as they are.")
             doc = _block(
-                f"{cmd!r} failed ({tree}){beside}; fix the violation it names; the check "
-                f"and the gate stay as they are.",
-                (f"verdict: {summary}\n" if summary else "") + _fenced(cmd, tail, truncated),
+                f"{summary}; {ceremony}" if summary else ceremony,
+                _fenced(cmd, tail, truncated),
             )
 
     extra: dict = {"told": told} if told is not None else {}
