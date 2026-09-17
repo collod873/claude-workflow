@@ -212,12 +212,22 @@ those two from counting the same death twice.
 _Avoid_: attempt, failure record, retry count
 
 **Rung**:
-What runs next on a ticket, chosen by its strike count: the implementer, a second model with a
-clean context, the mechanic with the dead runs' logs and the whole tree in reach, then a decision
-for the owner. A rung is not a lane; the reconciler picks it and the lanes stay as they are. A
-ticket with no acceptance test yet climbs the same count, and every rung short of the decision is
-the author again: there the strike is the bound, not the routing.
-_Avoid_: retry, escalation level, fallback
+The placement tier of a rule, named by what a violation costs: impossible, repaired, refused,
+reported, taught. Paired with Venue, which names what the repair costs. It no longer names the
+Old machine's strike ladder, which the New core has no successor for.
+_Avoid_: strike ladder, escalation level, tier
+
+**Fixer**:
+The one fresh agent that clears a stuck ticket in the New core, reading why the ticket exists
+before the failure. It fixes the code or the ticket itself, or closes the ticket unbuilt; it never
+hands back, and the owner is never asked.
+_Avoid_: mechanic, fresh eyes, repair agent
+
+**Stable machine**:
+The tagged copy of the New core every ticket runs on and every pull request is judged by. `main`
+is the candidate; a change to the machine becomes stable only after a sample ticket builds clean on
+it.
+_Avoid_: prod, release, pinned version
 
 **Checkpoint**:
 A stage's validated output, written under a name of its own and kept after the run, carrying the key that says which run it is still good for. A stage whose checkpoint is present and whose key still matches is skipped rather than re-run.
