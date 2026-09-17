@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -130,6 +130,19 @@ describe("core/bin/land turns a session's commits into a PR that merges itself",
     expect(result.status, result.stderr).toBe(0);
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
     expect(result.stdout).toContain("Merges when its checks pass");
+  });
+
+  it("keeps a failing call's own output in a log and says one line naming it", () => {
+    const { remote, session, run } = sessionAheadOfMain(1, { githubMerges: "never" });
+    writeFileSync(join(remote, "hooks", "pre-receive"), "#!/bin/bash\ncat >/dev/null\necho 'branch protection refused this push' >&2\nexit 1\n");
+    chmodSync(join(remote, "hooks", "pre-receive"), 0o755);
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    const log = /^land: git push failed; log (\S.*\.log)\n$/.exec(result.stderr)?.[1] ?? "";
+    expect(readFileSync(isAbsolute(log) ? log : join(session, log), "utf8")).toContain("branch protection refused this push");
   });
 
   it("opens nothing when there is nothing past origin/main", () => {

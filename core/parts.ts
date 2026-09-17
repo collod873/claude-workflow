@@ -61,4 +61,10 @@ export const parts: Part[] = [
       "A part is fired by a real event, never a timer",
     ],
   },
+  {
+    name: "core/says-little.proc.test.ts",
+    file: "core/says-little.proc.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/680",
+    holds: ["Everything the machine says, to a session or the owner, fits in 200 characters; the rest goes to a log file it names"],
+  },
 ];
