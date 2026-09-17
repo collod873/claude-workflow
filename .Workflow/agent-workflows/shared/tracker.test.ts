@@ -87,3 +87,18 @@ test("#623: the memory adapter answers jobLog from its seeded Map, and the gh ad
 
   expect(memory.jobLog(JOB.id)).toBe(gh.jobLog(JOB.id));
 });
+
+test("#629: deleteBranch removes the branch from the memory adapter, and the gh adapter sends the same branch's ref DELETE", () => {
+  const memory = trackerMemory({ branches: ["accept/issue-1", "accept/issue-2"] });
+  const calls: string[][] = [];
+  const gh = trackerGh((args) => {
+    calls.push(args);
+    return "";
+  });
+
+  memory.deleteBranch("accept/issue-1");
+  gh.deleteBranch("accept/issue-1");
+
+  expect(memory.branchesUnder("accept/")).toEqual(["accept/issue-2"]);
+  expect(calls).toEqual([["api", "--method", "DELETE", "repos/{owner}/{repo}/git/refs/heads/accept/issue-1"]]);
+});

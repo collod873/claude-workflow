@@ -67,7 +67,9 @@ export function slicingHistoryWith(options: {
       return JSON.stringify({ ...prdData, labels: prdData.labels.map((name) => ({ name })) });
     }
     if (args[0] === "api" && (args[1] ?? "").includes("/sub_issues")) {
-      return `${options.subIssueCount ?? 0}\n`;
+      return JSON.stringify(
+        Array.from({ length: options.subIssueCount ?? 0 }, (_, index) => ({ number: 300 + index, state: "open", state_reason: null })),
+      );
     }
     if (args[0] === "api" && (args[1] ?? "").includes("/runs")) {
       return JSON.stringify(tracker.workflowRuns("", runs.length).map(toApiRun));

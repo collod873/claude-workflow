@@ -10,7 +10,7 @@ import { findJobByName } from "../shared/job-match";
 import { LANDING_LABEL, markLane } from "../shared/labels";
 import { escalateToOwner } from "../shared/needs-human";
 import { dispatchRatifierMerged, RATIFIER_PR_TITLE } from "../shared/ratification-dispatch";
-import { acceptanceBranch, announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION, retireBranch } from "../shared/ready-set";
+import { acceptanceBranch, announceGraphChanged, GRAPH_CHANGED_DISPATCH_ACTION } from "../shared/ready-set";
 import { reason } from "../shared/reason";
 import { runGauntlet } from "../shared/run-gauntlet";
 import type { Tracker, TrackerJob } from "../shared/tracker";
@@ -229,12 +229,12 @@ function blockOnConflict(
   gh(["pr", "comment", pr, "--body", body]);
 }
 
-function mergePr(gh: GhExec, pr: string, ticket: number | undefined): void {
+function mergePr(gh: GhExec, tracker: Tracker, pr: string, ticket: number | undefined): void {
   gh(["pr", "merge", pr, "--merge", "--delete-branch"]);
   if (ticket === undefined) return;
   const authored = acceptanceBranch(ticket);
   try {
-    retireBranch(gh, authored);
+    tracker.deleteBranch(authored);
   } catch (err) {
     console.error(`merged #${ticket} but could not retire \`${authored}\`: ${reason(err)}`);
   }
@@ -351,7 +351,7 @@ function judge(deps: IntegrateDeps, pullRequest: PullRequest): IntegrateOutcome 
     return { merged: false, reason: "unjudged" };
   }
 
-  mergePr(deps.gh, deps.pr, pullRequest.ticket);
+  mergePr(deps.gh, deps.tracker, deps.pr, pullRequest.ticket);
   ringTrunkCi(deps.gh, deps.repoDir);
   if (pullRequest.title === RATIFIER_PR_TITLE) dispatchRatifierMerged(deps.gh, deps.pr);
   const closing = closeMergedTicket(deps, pullRequest.ticket, range);

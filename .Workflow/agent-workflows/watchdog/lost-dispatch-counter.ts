@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { execGh, fetchSubIssueCount, type GhExec } from "../shared/gh";
+import { execGh, type GhExec } from "../shared/gh";
 import { SLICEABLE_LABEL } from "../shared/labels";
 import { reason } from "../shared/reason";
 import type { Tracker } from "../shared/tracker";
@@ -85,7 +85,7 @@ export function countLostDispatch(options: CounterOptions): CounterOutcome {
     number: prdNumber,
     title: prd.title,
     labels: prd.labels,
-    subIssueCount: fetchSubIssueCount(gh, prdNumber),
+    subIssueCount: tracker.children(prdNumber).length,
     hasSuccessfulSlicingRun: hasSuccessfulSlicingRun(tracker, prd.createdAt, slicingWorkflow),
   };
 

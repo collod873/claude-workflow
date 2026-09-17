@@ -1,6 +1,5 @@
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { repositoriesByTopic } from "../shared/gh-search";
 import { execGh, type GhExec } from "../shared/gh";
 import { execGit, type GitExec } from "../shared/git";
 import { touchesImmutableSet } from "../shared/immutable-set";
@@ -11,8 +10,6 @@ import type { RepoRun } from "../shared/tracker";
 import { WATCHDOG_DISPATCH_ACTION } from "./run-watchdog";
 
 const ENROLMENT_TOPIC = "claude-workflow-enrolled";
-
-const SEARCH_PAGE_SIZE = 100;
 
 const RUN_PAGE_SIZE = 100;
 
@@ -330,7 +327,7 @@ export function walkHome(options: WalkHomeOptions): WalkHomeOutcome {
   const now = options.now ?? new Date();
   const log = options.log ?? ((line: string) => console.log(line));
 
-  const repositories = repositoriesByTopic(gh, ENROLMENT_TOPIC, SEARCH_PAGE_SIZE).filter(
+  const repositories = trackerGh(gh).repositoriesByTopic(ENROLMENT_TOPIC).filter(
     (repository) => repository !== machineRepository,
   );
   if (repositories.length === 0) {

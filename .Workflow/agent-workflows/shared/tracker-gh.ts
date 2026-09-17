@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { blockedByPath, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, parseBlockedByPath, parseIssuePath, parseSubIssuesPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, commitPullsPath, GIT_REFS_PATH, issueCommentPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, parseBlockedByPath, parseIssuePath, parseSubIssuesPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
 import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerDispatchRequest, TrackerFindingIssue, TrackerRecordComment, TrackerRunSummary, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
@@ -274,6 +274,9 @@ export function trackerGh(gh: GhExec): Tracker {
     branchesUnder(prefix) {
       const raw = gh(["api", matchingRefsPath(prefix), "--jq", "[.[].ref]"]);
       return ApiRefs.parse(JSON.parse(raw)).map((ref) => ref.replace(/^refs\/heads\//, ""));
+    },
+    deleteBranch(branch) {
+      gh(["api", "--method", "DELETE", `${GIT_REFS_PATH}/heads/${branch}`]);
     },
     mergedCloser(number) {
       let closers: number[];

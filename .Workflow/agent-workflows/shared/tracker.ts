@@ -118,6 +118,7 @@ export interface Tracker {
   recordComments(number: number): TrackerRecordComment[];
   updateComment(id: number, body: string): void;
   branchesUnder(prefix: string): string[];
+  deleteBranch(branch: string): void;
   mergedCloser(number: number): number | undefined;
   blockedByIds(number: number): number[];
   issueId(number: number): number;

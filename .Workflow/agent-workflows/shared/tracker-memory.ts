@@ -74,7 +74,7 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
   const children = new Map(Object.entries(seed.children ?? {}).map(([id, list]) => [Number(id), list]));
   const comments = new Map(Object.entries(seed.comments ?? {}).map(([id, list]) => [Number(id), list]));
   const recordComments = new Map(Object.entries(seed.recordComments ?? {}).map(([id, list]) => [Number(id), list]));
-  const branches = seed.branches ?? [];
+  const branches = [...(seed.branches ?? [])];
   const mergedClosers = new Map(Object.entries(seed.mergedClosers ?? {}).map(([id, pr]) => [Number(id), pr]));
   const blockedByIds = new Map(
     Object.entries(seed.blockedByIds ?? {}).map(([number, ids]) => [Number(number), ids]),
@@ -111,6 +111,11 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
     recordComments: (number) => recordComments.get(number) ?? [],
     updateComment: () => undefined,
     branchesUnder: (prefix) => branches.filter((branch) => branch.startsWith(prefix)),
+    deleteBranch: (branch) => {
+      const at = branches.indexOf(branch);
+      if (at === -1) throw new Error(`no branch ${branch} to delete`);
+      branches.splice(at, 1);
+    },
     mergedCloser: (number) => mergedClosers.get(number),
     blockedByIds: (number) => blockedByIds.get(number) ?? [],
     issueId: (number) => {
