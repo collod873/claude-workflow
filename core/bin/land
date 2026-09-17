@@ -27,6 +27,22 @@ if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   exit 0
 fi
 
+core="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+for commit in $(git rev-list origin/main..HEAD); do
+  git log -1 --format=%B "$commit" | node "$core/em-dash.ts"
+  case $? in
+    0) ;;
+    1)
+      printf 'land: commit %s carries an em dash in its message, so nothing landed; reword it\n' "$(git rev-parse --short=7 "$commit")" >&2
+      exit 1
+      ;;
+    *)
+      printf 'land: the em dash check could not read commit %s\n' "$(git rev-parse --short=7 "$commit")" >&2
+      exit 1
+      ;;
+  esac
+done
+
 branch="land/${head:0:12}"
 call "git push" git push --quiet origin "HEAD:refs/heads/$branch"
 

@@ -303,7 +303,7 @@ _Avoid_: issue, sub-issue, card, item
 **Issue id**:
 The tracker's own integer for an issue, which is not the number it is filed under: #308 is id
 5313356161. Every dependency and sub-issue write takes the id as `issue_id` or `sub_issue_id` and
-404s on a number, and only `repos/{owner}/{repo}/issues/{number}` serves it — `gh issue list --json
+404s on a number, and only `repos/{owner}/{repo}/issues/{number}` serves it; `gh issue list --json
 id` returns the GraphQL node id, a third thing neither endpoint accepts. A lane holding numbers
 fetches the id before it wires an edge.
 _Avoid_: issue number, node id, gid

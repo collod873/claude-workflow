@@ -59,7 +59,7 @@ export function checkRepo(failing: Partial<Record<Tool, string>> = {}) {
   return { repo, run: (cwd = repo) => execute(join(cwd, "core", "check"), cwd) };
 }
 
-export function landSession({ gh, remoteRefuses }: { gh: string; remoteRefuses?: string }) {
+export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: string; remoteRefuses?: string; messages?: string[] }) {
   const root = scratch("land-");
   const remote = join(root, "remote.git");
   const session = join(root, "session");
@@ -69,10 +69,11 @@ export function landSession({ gh, remoteRefuses }: { gh: string; remoteRefuses?:
   git(session, "config", "user.name", "session");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "base");
   git(session, "push", "--quiet", "origin", "main");
-  git(session, "commit", "--quiet", "--allow-empty", "-m", "change");
+  for (const message of messages) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
   if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\ncat >&2 <<'REFUSAL'\n${remoteRefuses}\nREFUSAL\nexit 1\n`);
   script(join(root, "bin", "gh"), gh);
   return {
+    remote,
     session,
     run: () => execute(join(CORE, "bin", "land"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_WAIT_SECONDS: "0" }),
   };
