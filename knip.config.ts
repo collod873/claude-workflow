@@ -97,7 +97,7 @@ export default {
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
 
-  ignore: suiteOnly([".Workflow", "bin", ".claude"]),
+  ignore: suiteOnly([".Workflow", "bin", ".claude", "core"]),
 
   /**
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic
@@ -106,6 +106,6 @@ export default {
    */
   tags: ["-shell", "-fixture"],
 
-  ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude"]),
-  ignoreBinaries: spawnedNames([".Workflow", "bin", ".claude"]),
+  ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude", "core"]),
+  ignoreBinaries: spawnedNames([".Workflow", "bin", ".claude", "core"]),
 };
