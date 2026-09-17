@@ -1,7 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
-import { scratchDir } from "../shared/scratch.fixture";
 import {
   ACCEPTING_LABEL,
   BUILDING_LABEL,
@@ -26,7 +23,7 @@ import {
   type Tracker,
   trackerWith,
   type TrackerOptions,
-} from "./tracker.fixture";
+} from "./dispatch-tracker.fixture";
 
 const REFUSED_MARKER = "to-build-refused:v1";
 
