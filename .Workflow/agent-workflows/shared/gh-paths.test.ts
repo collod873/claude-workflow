@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { test } from "vitest";
 import * as ghPaths from "./gh-paths";
+import { laneSources } from "./repo-sources";
 import {
   blockedByPath,
   branchCreationPath,
@@ -147,4 +148,14 @@ test("#629.1: no *PathMatcher export remains on gh-paths.ts", () => {
 
 test("#629.2: repoRunsPathForMatcher is no longer exported", () => {
   expect("repoRunsPathForMatcher" in ghPaths).toBe(false);
+});
+
+test.fails("#629.6: no module outside the tracker-gh adapter and gh-paths itself passes an api argv", () => {
+  const offenders = laneSources()
+    .filter((file) => file.relative.endsWith(".ts"))
+    .filter((file) => !/fixture|fake|gh-paths|tracker-gh\.ts/.test(file.relative))
+    .filter((file) => file.source.includes('"api"'))
+    .map((file) => file.relative);
+
+  expect(offenders).toEqual([]);
 });
