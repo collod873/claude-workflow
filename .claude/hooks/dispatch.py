@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""The one harness hook per event, routing to the roster.
-
-Every behavioural rule here is measured against the live product, never read from the hooks
-reference, which is wrong in fifteen places we have checked. Verdict ids are cited inline so a
-claim and its evidence cannot drift apart.
-
-  exit.json-read-on-every-exit-code / other.valid-json-decides
-      Valid JSON on stdout is read and obeyed whatever the child exited with. So a child's answer
-      is parsed before its exit code is judged, and a child that answered is never "broken".
-
-  PreToolUse.precedence / PermissionRequest.multiple-conflicting
-      deny > defer > ask > allow, regardless of order. Decisions are ranked, never absorbed
-      first-writer-wins, and every refusal's reason is kept.
-
-  PostToolUse.decision-block
-      A top-level decision:"block" delivers its reason to Claude as a system reminder on the tool
-      result. That is the channel the expensive hooks speak through, so it is what the cap bounds.
-
-A broken hook on a deciding event is an absent guard, so the slot refuses on its behalf and names
-it rather than going quiet.
-"""
 import json
 import os
 import subprocess

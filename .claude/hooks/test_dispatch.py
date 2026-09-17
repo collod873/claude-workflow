@@ -288,7 +288,8 @@ def check_precedence() -> None:
         _, doc, _ = fire({"PreToolUse": names}, "PreToolUse",
                          {"a.py": decides("A", "allow"), "b.py": decides("B", "deny")})
         specific = doc.get("hookSpecificOutput", {})
-        check(f"deny beats allow with the {order}; order must not decide",
+        check(f"deny beats allow with the {order}; order must not decide "
+              f"(PreToolUse.precedence)",
               specific.get("permissionDecision") == "deny", doc)
         check(f"the refusal's own reason survives ({order})",
               "DENY-B" in specific.get("permissionDecisionReason", ""), doc)
@@ -297,11 +298,13 @@ def check_precedence() -> None:
                      {"a.py": decides("A", "deny"), "b.py": decides("B", "deny")})
     reason = doc.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
     check("two hooks refuse: both reasons reach the human, since a dropped refusal is one "
-          "nobody ever sees", "DENY-A" in reason and "DENY-B" in reason, doc)
+          "nobody ever sees (PermissionRequest.multiple-conflicting)",
+          "DENY-A" in reason and "DENY-B" in reason, doc)
 
     r, doc, _ = fire({"PreToolUse": ["a.py"]}, "PreToolUse",
                      {"a.py": DENIES_THEN_LOGS_TRACEBACK})
-    check("a hook that refuses correctly and logs a caught traceback still refuses",
+    check("a hook that refuses correctly and logs a caught traceback still refuses "
+          "(other.valid-json-decides)",
           doc.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", (doc, r.stderr))
 
     r, doc, _ = fire({"PreToolUse": ["broken.py"]}, "PreToolUse", {"broken.py": EXITS_ONE})
@@ -326,7 +329,8 @@ def check_says_little() -> None:
         _, doc, _ = fire({"PostToolUse": ["loud.py"]}, "PostToolUse", {"loud.py": SHOUTS}, env)
         reason = doc.get("reason", "")
         authored, _, pointer = reason.partition(" [+")
-        check("a 4000-character block reason is cut to the slot's 200 characters",
+        check("a 4000-character block reason is cut to the slot's 200 characters "
+              "(PostToolUse.decision-block)",
               len(authored) <= 200, len(authored))
         check("the head survives, so the useful summary is what is kept",
               authored.startswith("HEAD "), authored[:80])
@@ -344,7 +348,7 @@ def check_says_little() -> None:
               len(reason.partition(" [+")[0]) <= 200, len(reason))
         screen = doc.get("systemMessage", "")
         check("and the user's line is bounded too: screen space is a cost even though "
-              "systemMessage reaches no model request",
+              "systemMessage reaches no model request (json.systemMessage-visible-to-claude)",
               len(screen.partition(" [+")[0]) <= 200, len(screen))
         check("the user's line keeps its own head, not the refusal's",
               screen.startswith("SM-HEAD") and "SM-TAIL" not in screen, screen[:60])
