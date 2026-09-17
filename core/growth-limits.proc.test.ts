@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, normalize, resolve } from "node:path";
+import ts from "typescript";
 import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { coveredByCheck } from "./check-covers.ts";
 import { machinePage, signedRules, type SignedRule } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 
@@ -11,6 +13,8 @@ const REPO = resolve(import.meta.dirname, "..");
 const SCREEN = { lines: 60, columns: 120 };
 const FAILURE_LINK = /^https:\/\/github\.com\/collod873\/[\w.-]+\/(issues\/\d+|pull\/\d+|actions\/runs\/\d+|commit\/[0-9a-f]{7,40})$/;
 const WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+const MODULE = /\.(m|c)?[jt]s$/;
+const WIRING = [".claude/*.json", ".claude/hooks/*.json", ".github/workflows/*.y*ml", ".husky/*", "package.json"];
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
 
 function scratch(): string {
@@ -31,13 +35,37 @@ function offScreen(page: string): string[] {
   return lines.length > SCREEN.lines ? [`${lines.length} lines, over ${SCREEN.lines}`, ...tooWide] : tooWide;
 }
 
+function importedWithinCore(repo: string, files: string[]): Set<string> {
+  return new Set(
+    files
+      .filter((path) => MODULE.test(path))
+      .flatMap((path) => ts.preProcessFile(readFileSync(join(repo, path), "utf8"), true, true).importedFiles.map(({ fileName }) => ({ path, fileName })))
+      .filter(({ fileName }) => fileName.startsWith("."))
+      .map(({ path, fileName }) => normalize(join(dirname(path), fileName))),
+  );
+}
+
+function wiredIntoCore(repo: string): Set<string> {
+  return new Set(
+    globSync(WIRING, { cwd: repo })
+      .filter((path) => statSync(join(repo, path)).isFile())
+      .flatMap((path) => readFileSync(join(repo, path), "utf8").match(/core\/[\w.-]+(\/[\w.-]+)*/g) ?? []),
+  );
+}
+
 function unlinkedParts(repo: string, registry: Part[]): string[] {
   const registered = new Set(registry.map((part) => part.file));
-  const unregistered = readdirSync(join(repo, "core"), { recursive: true, encoding: "utf8" })
+  const files = readdirSync(join(repo, "core"), { recursive: true, encoding: "utf8" })
     .map((path) => join("core", path))
-    .filter((path) => !path.split("/").includes("node_modules") && statSync(join(repo, path)).isFile())
-    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 && !registered.has(path))
-    .map((path) => `${path} runs but is not a registered part`);
+    .filter((path) => !path.split("/").includes("node_modules") && statSync(join(repo, path)).isFile());
+  const covered = coveredByCheck(readFileSync(join(repo, "core", "check"), "utf8"));
+  const imported = importedWithinCore(repo, files);
+  const wired = wiredIntoCore(repo);
+  const unregistered = files
+    .filter((path) => !registered.has(path))
+    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || imported.has(path)))
+    .sort()
+    .map((path) => `${path} can run but is not a registered part`);
   const unlinked = registry.filter((part) => !FAILURE_LINK.test(part.stops)).map((part) => `${part.name} links no failure: ${part.stops}`);
   return [...unregistered, ...unlinked];
 }
@@ -107,14 +135,25 @@ describe("the New core holds the charter's growth limits (ADR-0200)", () => {
     expect(offScreen(machinePage([...parts, ...crowded], rules))).toEqual([expect.stringMatching(/lines, over 60$/)]);
   });
 
-  it("2. every registered part links the failure it stops, and every script under core/ is registered", () => {
+  it("2. every registered part links the failure it stops, and everything under core/ that can run is registered", () => {
     expect(unlinkedParts(REPO, parts)).toEqual([]);
 
     const copy = scratch();
     plant(copy, "core/bin/unregistered", "#!/bin/bash\n", 0o755);
     plant(copy, "core/planted.ts", "export {};\n");
-    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }])).toEqual([
-      "core/bin/unregistered runs but is not a registered part",
+    plant(copy, "core/check", "#!/bin/bash\nrun lint eslint --config core/planted.config.js core\n", 0o755);
+    plant(copy, "core/planted.config.js", "export default {};\n");
+    plant(copy, "core/helper.ts", "export const help = 1;\n");
+    plant(copy, "core/helper.test.ts", "import { help } from \"./helper.ts\";\n");
+    plant(copy, "core/hooks/unwired.py", "print(\"hi\")\n");
+    plant(copy, "core/hooks/wired.mjs", "export const decide = () => 0;\n");
+    plant(copy, "core/hooks/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
+    plant(copy, ".claude/hooks/roster.json", "{\"PostToolUse\": [\"../../core/hooks/wired.mjs\"]}\n");
+    const check = { ...planted, name: "check", file: "core/check" };
+    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, check])).toEqual([
+      "core/bin/unregistered can run but is not a registered part",
+      "core/hooks/unwired.py can run but is not a registered part",
+      "core/hooks/wired.mjs can run but is not a registered part",
       "planted links no failure: the owner said so",
     ]);
   });
