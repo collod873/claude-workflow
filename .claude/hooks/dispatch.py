@@ -35,28 +35,12 @@ ROSTER_PATH = HOOKS_DIR / "roster.json"
 HOOK_TIMEOUT_SECONDS = 300
 TRACEBACK_MARKER = "Traceback (most recent call last):"
 
-# Where a lost answer means an unguarded tool call. Elsewhere a broken hook is reported, not
-# escalated: a PostToolUse guard cannot un-run the call it watched, so refusing there is noise.
 DECIDING = {"PreToolUse", "PermissionRequest"}
 RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
 
-# One slot, 200 characters per audience, the rest in a log the slot names. Claude's budget covers
-# the refusal reason, additionalContext and plain stdout; the user's covers systemMessage, which is
-# the only user-visible half of a refusal (PreToolUse.deny-reason-not-shown-to-user - a denied call
-# renders as a bare "Ran N shell commands" without it). They are separate so a long refusal cannot
-# eat the human's line, and a chatty hook cannot fill the screen. Measured
-# cost of the unbounded version: 2,931,973 characters over 5,008 blocked edits (gauntlet-hook's own
-# logs). The bound is applied here rather than in _hook.py because the costly hook is node, and the
-# dispatcher is the only place that sees every child's stdout whatever it was written in.
 SAY_LITTLE = 200
-# Events that fire once per session, where the whole budget is one message. session-brief.py emits
-# 1,729 characters here by design; capping it would disarm a working hook. Everything else pays the
-# bound, including events no hook is registered on yet, so a new hook is capped by default.
 UNCAPPED_EVENTS = {"SessionStart", "SessionEnd"}
 SPILL_LOG = "dispatch-spill"
-# The overflow half of a 200-character line, which is what core-logs already is, so it keeps
-# core's number rather than a second one: core/check and core/bin/land delete theirs at
-# `-mmin +10080` (#693). Two implementations of one rule, and nothing yet holds them equal.
 SPILL_RETENTION_DAYS = 7
 
 
@@ -71,7 +55,6 @@ def argv_for(hook_path: Path) -> list[str]:
 
 
 def answer_of(stdout: bytes) -> dict | None:
-    """A child's JSON object, if it produced one. Read before the exit code, never after."""
     text = stdout.strip()
     if not text:
         return None
@@ -101,8 +84,6 @@ def run_one(name: str, stdin_bytes: bytes, env: dict) -> dict:
     stderr = proc.stderr.decode("utf-8", "replace")
     row.update(answer=answer_of(proc.stdout), code=proc.returncode,
                stdout=proc.stdout, stderr=proc.stderr)
-    # An answer stands on its own (exit.json-read-on-every-exit-code): a hook that decided and then
-    # logged a caught traceback still decided, and a context hook that exits 1 still answered.
     if row["answer"] is None and (proc.returncode not in (0, 2) or TRACEBACK_MARKER in stderr):
         row["broken"] = True
     return row
@@ -124,7 +105,6 @@ def reason_of(doc: dict) -> str:
 
 
 def spill(event: str, text: str) -> str:
-    """Park the overflow where the one surviving line can point at it."""
     marker = blake2b(text.encode("utf-8", "replace"), digest_size=4).hexdigest()
     _hook.append_log(SPILL_LOG, {"event": event, "id": marker, "chars": len(text), "text": text},
                      retain_days=SPILL_RETENTION_DAYS)
@@ -133,7 +113,6 @@ def spill(event: str, text: str) -> str:
 
 
 class Budget:
-    """The slot's 200 characters, spent in priority order: refusal, context, user message."""
 
     def __init__(self, event: str):
         self.event = event
@@ -152,7 +131,6 @@ class Budget:
 
 
 def collect(rows: list[dict]) -> dict:
-    """Everything the children said, ranked and joined. Never first-writer-wins."""
     parts = {"decision": None, "reasons": [], "contexts": [], "messages": [],
              "specific": {}, "top": {}}
     decisions = []
@@ -176,8 +154,6 @@ def collect(rows: list[dict]) -> dict:
         for key, value in doc.items():
             if key in ("hookSpecificOutput", "systemMessage", "decision", "reason"):
                 continue
-            # json.continue-precedence-over-decision: a single false ends the turn, so any hook
-            # asking to stop outranks every hook that did not.
             if key == "continue" and value is False:
                 parts["top"][key] = False
             else:
@@ -205,8 +181,6 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
             if reason:
                 specific["permissionDecisionReason"] = reason
         elif RANK[decision] == RANK["deny"]:
-            # PostToolUse.decision-block: outside the permission events, block is the only decision
-            # that carries, and allow/ask/defer mean nothing, so they are dropped rather than faked.
             out["decision"] = "block"
             if reason:
                 out["reason"] = reason
@@ -217,11 +191,6 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
     if specific:
         specific["hookEventName"] = event
         out["hookSpecificOutput"] = specific
-    # The user's channel gets its own 200, not a share of Claude's. Two audiences, two costs: this
-    # one is screen space, not tokens (json.systemMessage-visible-to-claude - it never enters a model
-    # request). Sharing one budget let a long refusal squeeze the human's line down to a bare
-    # pointer; no budget at all let a hook drop ten lines between Claude's output blocks. Separate
-    # budgets bound both without either stealing from the other.
     message = Budget(event).spend("\n".join(parts["messages"]))
     if message:
         out["systemMessage"] = message
@@ -254,8 +223,6 @@ def main(argv: list[str]) -> int:
 
     rows = [run_one(name, stdin_bytes, env) for name in names]
 
-    # exit2.json-allow-cannot-override: exit 2 blocks and its stderr is what Claude reads, so it
-    # short-circuits the merge rather than competing inside it.
     exit2 = [r for r in rows if r["code"] == 2]
     if exit2:
         joined = "".join(r["stderr"].decode("utf-8", "replace") for r in exit2)
@@ -265,7 +232,6 @@ def main(argv: list[str]) -> int:
     broken = [r for r in rows if r["broken"]]
     parts = collect(rows)
     if broken and event in DECIDING and parts["decision"] != "deny":
-        # A broken guard is an absent guard. Anything that already denied is stronger than this.
         parts = collect(rows + [{"answer": refuse(
             event, f"{', '.join(r['hook'] for r in broken)} could not run")}])
 

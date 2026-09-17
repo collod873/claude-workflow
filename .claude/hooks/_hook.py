@@ -28,19 +28,6 @@ HOOK_NAME = _caller_stem()
 
 
 def deny(event: str, msg: str) -> None:
-    """Refuse, in the channel the given event actually reads.
-
-    The event is required rather than assumed: PreToolUse and PermissionRequest refuse through
-    different fields, and a hook that names the wrong one is not refused, it is ignored. The
-    dispatcher stamps the slot's real event over hookEventName, so a wrong guess here is invisible
-    at runtime - which is exactly why it has to be stated rather than defaulted.
-
-    systemMessage is not a duplicate of the reason. The reason is delivered to Claude as the tool
-    result (resolve.deny-json-blocks-and-shows-claude-reason); systemMessage is rendered for the
-    user as `<Event>:<Tool> says: ...` and never enters a model request
-    (PreToolUse.systemMessage-shown, json.systemMessage-visible-to-claude). Dropping it would take
-    the refusal off the human's screen to save nothing.
-    """
     message = f"[{HOOK_NAME}] {msg}"
     if event == "PermissionRequest":
         specific = {"hookEventName": event,
@@ -50,8 +37,6 @@ def deny(event: str, msg: str) -> None:
                     "permissionDecision": "deny",
                     "permissionDecisionReason": message}
     print(json.dumps({"hookSpecificOutput": specific, "systemMessage": message}))
-
-
 
 
 def read_stdin_bytes() -> bytes:
@@ -69,7 +54,6 @@ def read_payload() -> tuple[dict, bool]:
     tool_input = payload.get("tool_input")
     payload["tool_input"] = tool_input if isinstance(tool_input, dict) else {}
     return payload, True
-
 
 
 LOG_DIR = Path(os.environ.get("STOP_GATE_LOG_DIR") or (Path.home() / ".claude" / "logs"))
@@ -121,7 +105,6 @@ def _prune_old_logs(hook: str, retain_days: int | None = None) -> None:
                 continue
     except OSError:
         pass
-
 
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
@@ -185,7 +168,6 @@ def exposure(payload: dict) -> tuple[bool | None, int]:
                     and block.get("name") in EDIT_TOOLS):
                 n += 1
     return n > 0, n
-
 
 
 LIVENESS_SECONDS = 300
@@ -301,8 +283,6 @@ def active_sessions(project: str, exclude_session_id: str | None = None,
         for sid in retired_session_ids(registry_dir):
             seen.pop(sid, None)
     return dict(sorted(seen.items(), key=lambda kv: kv[1], reverse=True))
-
-
 
 
 ENROLLMENT_NEEDLE = "uses: collod873/claude-workflow/"

@@ -284,8 +284,6 @@ def fire(roster_map: dict, event: str, scripts: dict, extra_env: dict | None = N
 
 
 def check_precedence() -> None:
-    """deny > defer > ask > allow regardless of order (PreToolUse.precedence), and a hook that
-    answered is never treated as broken (exit.json-read-on-every-exit-code)."""
     for order, names in (("allow first", ["a.py", "b.py"]), ("deny first", ["b.py", "a.py"])):
         _, doc, _ = fire({"PreToolUse": names}, "PreToolUse",
                          {"a.py": decides("A", "allow"), "b.py": decides("B", "deny")})
@@ -323,7 +321,6 @@ def check_precedence() -> None:
 
 
 def check_says_little() -> None:
-    """One slot, 200 characters of hook-authored text, the rest in a log it names."""
     with tempfile.TemporaryDirectory() as logs:
         env = {"STOP_GATE_LOG_DIR": logs}
         _, doc, _ = fire({"PostToolUse": ["loud.py"]}, "PostToolUse", {"loud.py": SHOUTS}, env)
@@ -341,9 +338,6 @@ def check_says_little() -> None:
         check("and the full text is in it, so nothing is lost, only moved",
               any("TAIL" in row.get("text", "") for row in rows), rows and rows[0].keys())
 
-        # The budget bounds what Claude is sent. systemMessage is rendered for the user and never
-        # enters a model request (json.systemMessage-visible-to-claude), so charging it would
-        # shrink the human's on-screen "why" to save no tokens at all.
         _, doc, _ = fire({"PreToolUse": ["loud.py"]}, "PreToolUse", {"loud.py": SHOUTS_BOTH}, env)
         reason = doc["hookSpecificOutput"].get("permissionDecisionReason", "")
         check("a long refusal is still cut to the slot's 200 characters",
@@ -359,8 +353,6 @@ def check_says_little() -> None:
               len(reason.partition(" [+")[0]) > 150 and len(screen.partition(" [+")[0]) > 150,
               (len(reason.partition(" [+")[0]), len(screen.partition(" [+")[0])))
 
-        # The spill is the overflow half of a 200-character line, which is what core-logs is, so it
-        # keeps core's 7 days (#693) rather than inventing a second retention.
         stale = Path(logs) / f"dispatch-spill-{datetime.now() - timedelta(days=8):%Y-%m-%d}.jsonl"
         stale.write_text('{"text": "old overflow"}\n')
         fire({"PostToolUse": ["loud.py"]}, "PostToolUse", {"loud.py": SHOUTS}, env)
@@ -438,8 +430,6 @@ ALL = [check_roster_matches_tree, check_settings_registers_no_hooks, check_merge
 
 
 def main() -> None:
-    # Naming checks runs just those, which is how the mutation pass points a planted defect at the
-    # checks that should catch it without needing this repo's real roster on disk.
     wanted = set(sys.argv[1:])
     for fn in ALL:
         if not wanted or fn.__name__ in wanted:
