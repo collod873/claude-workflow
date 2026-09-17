@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { blockedByPath, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, workflowRunsPath } from "./gh-paths";
+import { blockedByPath, blockedByPathMatcher, commitPullsPath, issueCommentPath, issueCommentsPath, issuePath, issuePathMatcher, jobLogsPath, matchingRefsPath, repoRunsPath, repoRunsSincePath, repoRunsPathFor, runJobsPath, subIssuesPath, subIssuesPathMatcher, workflowRunsPath } from "./gh-paths";
 import type { CommitPull, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerDispatchRequest, TrackerFindingIssue, TrackerRecordComment, TrackerRunSummary, WorkflowRun } from "./tracker";
 import { issueComments, type GhExec } from "./gh";
 import { issueBody } from "./issue-body";
@@ -477,5 +477,45 @@ export function trackerGh(gh: GhExec): Tracker {
     setSecret(repository, name, value) {
       gh(["secret", "set", name, "-R", repository, "--body", value]);
     },
+  };
+}
+
+/**
+ * @fixture Reached only from the suites, by design: the inverse of `trackerGh` above, for a stage
+ * that still needs a raw `gh` (for calls with no Tracker method, e.g. label edits) alongside a
+ * Tracker's writes and reads.
+ */
+export function rawGhFromTracker(tracker: Tracker): GhExec {
+  return (args) => {
+    if (args[0] !== "api") {
+      throw new Error(`rawGhFromTracker: unhandled argv: ${JSON.stringify(args)}`);
+    }
+    const path = args[1] ?? "";
+
+    const subIssuesMatch = path.match(subIssuesPathMatcher);
+    if (subIssuesMatch) {
+      const childId = Number((args[args.indexOf(ID_FIELD_FLAG) + 1] ?? "").replace("sub_issue_id=", ""));
+      tracker.addSubIssue(Number(subIssuesMatch[1]), childId);
+      return "";
+    }
+
+    const blockedByMatch = path.match(blockedByPathMatcher);
+    if (blockedByMatch) {
+      const number = Number(blockedByMatch[1]);
+      const fieldFlag = args.indexOf(ID_FIELD_FLAG);
+      if (fieldFlag !== -1) {
+        const blockerId = Number((args[fieldFlag + 1] ?? "").replace("issue_id=", ""));
+        tracker.addBlockedBy(number, blockerId);
+        return "";
+      }
+      return `${JSON.stringify(tracker.blockedByIds(number))}\n`;
+    }
+
+    const issueMatch = path.match(issuePathMatcher);
+    if (issueMatch && args[args.indexOf("--jq") + 1] === ".id") {
+      return `${tracker.issueId(Number(issueMatch[1]))}\n`;
+    }
+
+    throw new Error(`rawGhFromTracker: unhandled argv: ${JSON.stringify(args)}`);
   };
 }

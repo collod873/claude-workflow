@@ -11,6 +11,7 @@ import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { scratchDir } from "../shared/scratch.fixture";
 import { checkpointPath, type StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
+import { rawGhFromTracker } from "../shared/tracker-gh";
 import { trackerMemory } from "../shared/tracker-memory";
 import { sliceAndPublish } from "./slice-and-publish";
 import { runStageCli, stageCliFailure } from "./stage-cli.fixture";
@@ -34,11 +35,25 @@ function sliceResponse(plan: Slice[]): string {
   return JSON.stringify({ slices: plan });
 }
 
+function seededIssueIds(firstIssueNumber: number, count: number): Record<number, number> {
+  const ids: Record<number, number> = {};
+  for (let i = 1; i <= count; i++) {
+    const number = firstIssueNumber + i;
+    ids[number] = number * 1000 + 7;
+  }
+  return ids;
+}
+
+function ghPublishingThrough(fake: ReturnType<typeof createFakeGh>): GhExec {
+  const apiGh = rawGhFromTracker(trackerMemory({ issueIds: seededIssueIds(99, 20) }));
+  return (args) => (args[0] === "api" ? apiGh(args) : fake.gh(args));
+}
+
 async function loggedByAudit(answer: { notes: string; slices: Slice[] }): Promise<unknown[]> {
   const stage = createFakeStage(JSON.stringify(answer));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-  await runNamedStage("audit-and-publish", "13", stage.exec, createFakeGh().gh);
+  await runNamedStage("audit-and-publish", "13", stage.exec, ghPublishingThrough(createFakeGh()));
 
   return logSpy.mock.calls.map((call) => call[0]);
 }
@@ -111,7 +126,7 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
       "audit-and-publish",
       "13",
       stage.exec,
-      fake.gh,
+      ghPublishingThrough(fake),
     )) as PublishedIssue[];
 
     expect(published.map((p) => p.title)).toEqual(["Root, re-worded by audit"]);
@@ -131,12 +146,13 @@ describe("runNamedStage (audit-and-publish, against fake StageExec and fake GhEx
     seedSlicedPlan();
     const stage = createFakeStage(JSON.stringify({ notes: "", slices: [slice({ title: "Root" })] }));
     const fake = createFakeGh();
+    const publishing = ghPublishingThrough(fake);
     const gh: GhExec = (args) => {
       if (args[0] === "label" || (args[0] === "issue" && (args[1] === "edit" || args[1] === "view"))) {
         fake.calls.push(args);
         return "";
       }
-      return fake.gh(args);
+      return publishing(args);
     };
 
     await runNamedStage("audit-and-publish", "13", stage.exec, gh);

@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onTestFinished } from "vitest";
+import { trackerMemory } from "./tracker-memory";
 
 /**
  * @fixture Reached only from the suites, by design. `knip.config.ts` asks whether a lane reaches
@@ -39,8 +40,18 @@ export function stubGh(payload: IssuePayload | string): GhStub {
 
   const path = join(dir, "gh");
   const log = join(dir, "argv.jsonl");
+  const ISSUE_NUMBER = 1;
+  const tracker = trackerMemory({
+    issues: {
+      [ISSUE_NUMBER]: { body: issue.body, comments: (issue.comments ?? []).map((comment) => comment.body) },
+    },
+  });
+  const comments = tracker.issueComments(ISSUE_NUMBER).map((body, index) => ({
+    body,
+    createdAt: (issue.comments ?? [])[index]?.createdAt ?? "",
+  }));
   const answer = JSON.stringify(
-    JSON.stringify({ body: issue.body, comments: issue.comments ?? [] }),
+    JSON.stringify({ body: tracker.issueBody(ISSUE_NUMBER), comments }),
   );
   writeFileSync(
     path,
