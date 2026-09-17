@@ -71,7 +71,7 @@ jobs:
 
       - name: Install Claude Code
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.241
+          npm install -g @anthropic-ai/claude-code@latest
           echo "CLAUDE_STREAMS_DIR=$RUNNER_TEMP/claude-streams" >> "$GITHUB_ENV"
 
       - name: Re-fire acceptance for affected slices
@@ -138,7 +138,7 @@ jobs:
 
       - name: Install Claude Code
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.241
+          npm install -g @anthropic-ai/claude-code@latest
           echo "CLAUDE_STREAMS_DIR=$RUNNER_TEMP/claude-streams" >> "$GITHUB_ENV"
 
       - name: Author acceptance tests for the published slice
