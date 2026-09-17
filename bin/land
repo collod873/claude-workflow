@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+
+git fetch --quiet origin main
+head=$(git rev-parse HEAD)
+
+if [[ -z $(git rev-list origin/main..HEAD) ]]; then
+  printf 'Nothing to land: HEAD is already on origin/main.\n'
+  exit 0
+fi
+
+branch="land/${head:0:12}"
+git push --quiet origin "HEAD:refs/heads/$branch"
+
+url=$(gh pr create --base main --head "$branch" \
+  --title "$(git log -1 --format=%s HEAD)" \
+  --body "$(git log --reverse --format='- %s' origin/main..HEAD)")
+gh pr merge "$branch" --auto --merge --match-head-commit "$head"
+
+git fetch --quiet origin main
+if ! git merge-base --is-ancestor "$head" origin/main; then
+  printf 'Merges when its checks pass: %s\n' "$url"
+  exit 0
+fi
+
+if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main; then
+  printf 'Landed %s\n' "$url"
+else
+  printf 'Landed %s, but this checkout could not fast-forward; run git pull.\n' "$url"
+fi

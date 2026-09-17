@@ -7,6 +7,9 @@ A Claude Code + GitHub workflow system.
 - Before adding, changing or ruling on any part of the machine, read [`docs/agents/charter.md`](docs/agents/charter.md).
 
 - Commit messages explain **why**, not what.
+- `main` takes no direct push, the owner's included
+  ([One ticket ruling](docs/agents/layers/one-ticket.md)). Commit locally, then run `bin/land`: it
+  opens a PR from your commits and merges it, or leaves auto-merge on while checks run.
 - Keep local-only state out of git (see `.gitignore`).
 - Use the vocabulary in `CONTEXT.md`. If a term there is wrong, change it there; don't work
   around it.
