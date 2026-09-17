@@ -8,6 +8,6 @@ function trackerFakeMentions(relativePath: string): string {
   return run.stdout.trim();
 }
 
-test.fails("#619.1: shape.test.ts no longer imports tracker.fake", () => {
+test("#619.1: shape.test.ts no longer imports tracker.fake", () => {
   expect(trackerFakeMentions(".Workflow/agent-workflows/shape/shape.test.ts")).toBe("0");
 });

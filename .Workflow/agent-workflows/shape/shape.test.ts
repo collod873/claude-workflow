@@ -456,7 +456,7 @@ function stubGhForRound619(): ChainDeps["gh"] {
   };
 }
 
-test("#619.1: shape.ts hands roundFor the Tracker already sitting in ChainDeps rather than re-deriving one from deps.gh argv, so shape.test.ts can seed rounds through trackerMemory instead of tracker.fake", async () => {
+test("#619.1: shape.ts hands roundFor the Tracker already sitting in ChainDeps rather than re-deriving one from deps.gh argv, so shape.test.ts can seed rounds through trackerMemory", async () => {
   const model = healthyModel();
   const priorSheet = sheetMarker({
     restatement: "r",
