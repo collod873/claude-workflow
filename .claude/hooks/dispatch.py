@@ -40,7 +40,9 @@ TRACEBACK_MARKER = "Traceback (most recent call last):"
 DECIDING = {"PreToolUse", "PermissionRequest"}
 RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
 
-# One slot, 200 characters of hook-authored text; the rest goes to a log the slot names. Measured
+# One slot, 200 characters of hook-authored text *that Claude is sent*; the rest goes to a log the
+# slot names. The budget covers the refusal reason, additionalContext and plain stdout, and not
+# systemMessage, which the user reads and Claude never does. Measured
 # cost of the unbounded version: 2,931,973 characters over 5,008 blocked edits (gauntlet-hook's own
 # logs). The bound is applied here rather than in _hook.py because the costly hook is node, and the
 # dispatcher is the only place that sees every child's stdout whatever it was written in.
@@ -213,7 +215,11 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
     if specific:
         specific["hookEventName"] = event
         out["hookSpecificOutput"] = specific
-    message = budget.spend("\n".join(parts["messages"]))
+    # Not spent from the budget: json.systemMessage-visible-to-claude / PreToolUse.systemMessage-shown
+    # say this channel is rendered for the user and never enters a model request, so it costs no
+    # tokens. Charging it would only shrink the human's on-screen "why" to save nothing, and the
+    # platform already bounds it at 10,000 characters (json.output-cap-10000).
+    message = "\n".join(parts["messages"])
     if message:
         out["systemMessage"] = message
 

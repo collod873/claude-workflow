@@ -27,17 +27,29 @@ def _caller_stem() -> str:
 HOOK_NAME = _caller_stem()
 
 
-def deny(msg: str) -> None:
+def deny(event: str, msg: str) -> None:
+    """Refuse, in the channel the given event actually reads.
+
+    The event is required rather than assumed: PreToolUse and PermissionRequest refuse through
+    different fields, and a hook that names the wrong one is not refused, it is ignored. The
+    dispatcher stamps the slot's real event over hookEventName, so a wrong guess here is invisible
+    at runtime - which is exactly why it has to be stated rather than defaulted.
+
+    systemMessage is not a duplicate of the reason. The reason is delivered to Claude as the tool
+    result (resolve.deny-json-blocks-and-shows-claude-reason); systemMessage is rendered for the
+    user as `<Event>:<Tool> says: ...` and never enters a model request
+    (PreToolUse.systemMessage-shown, json.systemMessage-visible-to-claude). Dropping it would take
+    the refusal off the human's screen to save nothing.
+    """
     message = f"[{HOOK_NAME}] {msg}"
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": message,
-        },
-        "systemMessage": message,
-    }
-    print(json.dumps(output))
+    if event == "PermissionRequest":
+        specific = {"hookEventName": event,
+                    "decision": {"behavior": "deny", "message": message}}
+    else:
+        specific = {"hookEventName": event,
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": message}
+    print(json.dumps({"hookSpecificOutput": specific, "systemMessage": message}))
 
 
 

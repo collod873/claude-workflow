@@ -97,6 +97,13 @@ DENIES_THEN_LOGS_TRACEBACK = (
     "print('Traceback (most recent call last):', file=sys.stderr)\n"
     "print('  caught and handled', file=sys.stderr)\n"
 )
+SHOUTS_BOTH = (
+    "#!/usr/bin/env python3\n"
+    "import json\n"
+    "print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse',"
+    " 'permissionDecision': 'deny', 'permissionDecisionReason': 'HEAD ' + 'x' * 4000},"
+    " 'systemMessage': 'SM-HEAD ' + 'y' * 900 + ' SM-TAIL'}))\n"
+)
 SHOUTS = (
     "#!/usr/bin/env python3\n"
     "import json\n"
@@ -333,6 +340,17 @@ def check_says_little() -> None:
         rows = [json.loads(x) for x in spilled[0].read_text().splitlines() if x.strip()]
         check("and the full text is in it, so nothing is lost, only moved",
               any("TAIL" in row.get("text", "") for row in rows), rows and rows[0].keys())
+
+        # The budget bounds what Claude is sent. systemMessage is rendered for the user and never
+        # enters a model request (json.systemMessage-visible-to-claude), so charging it would
+        # shrink the human's on-screen "why" to save no tokens at all.
+        _, doc, _ = fire({"PreToolUse": ["loud.py"]}, "PreToolUse", {"loud.py": SHOUTS_BOTH}, env)
+        reason = doc["hookSpecificOutput"].get("permissionDecisionReason", "")
+        check("a long refusal is still cut to the slot's 200 characters",
+              len(reason.partition(" [+")[0]) <= 200, len(reason))
+        check("but the user's copy is untouched: systemMessage costs Claude nothing, so the cap "
+              "has no business shortening it",
+              doc.get("systemMessage", "").endswith("SM-TAIL"), doc.get("systemMessage", "")[-60:])
 
         # The spill is the overflow half of a 200-character line, which is what core-logs is, so it
         # keeps core's 7 days (#693) rather than inventing a second retention.

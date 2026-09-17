@@ -161,7 +161,7 @@ def main():
                      _hook.run_row(data, "deny" if guard else "allow", **extra))
 
     if guard:
-        _hook.deny(reason)
+        _hook.deny("PreToolUse", reason)
 
 
 if __name__ == "__main__":

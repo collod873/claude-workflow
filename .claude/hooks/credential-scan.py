@@ -72,7 +72,7 @@ def main():
     _hook.append_log(_hook.HOOK_NAME, _hook.run_row(data, verdict, **extra))
 
     if reason:
-        _hook.deny(reason)
+        _hook.deny("PreToolUse", reason)
 
 
 if __name__ == "__main__":

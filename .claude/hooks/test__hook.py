@@ -173,23 +173,50 @@ def check_run_row():
               "tool_use_id" not in _hook.run_row(empty, "clean"), empty)
 
 
-def check_deny_envelope():
+def refuses(event: str, msg: str = "something went wrong") -> dict:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        _hook.deny("something went wrong")
-    out = json.loads(buf.getvalue())
+        _hook.deny(event, msg)
+    return json.loads(buf.getvalue())
+
+
+def check_deny_envelope():
+    out = refuses("PreToolUse")
     hso = out.get("hookSpecificOutput", {})
     expected_msg = f"[{_hook.HOOK_NAME}] something went wrong"
-    check("deny: hookEventName is PreToolUse",
+    check("deny: hookEventName is the event it was given, not an assumed one",
           hso.get("hookEventName") == "PreToolUse", hso)
     check("deny: permissionDecision is deny",
           hso.get("permissionDecision") == "deny", hso)
-    check("deny: permissionDecisionReason and systemMessage are identical",
+    check("deny: the reason reaches Claude, and the same text reaches the user as systemMessage, "
+          "which is a second audience and not a duplicate (PreToolUse.systemMessage-shown)",
           bool(hso.get("permissionDecisionReason"))
           and hso.get("permissionDecisionReason") == out.get("systemMessage"), out)
     check("deny: message is [HOOK_NAME]-prefixed",
           out.get("systemMessage") == expected_msg,
           f"got={out.get('systemMessage')!r} want={expected_msg!r}")
+
+    # PermissionRequest reads a different field. A hook that refuses in PreToolUse's field here is
+    # not refused, it is ignored, which is the failure the required argument exists to prevent.
+    out = refuses("PermissionRequest")
+    hso = out.get("hookSpecificOutput", {})
+    check("deny: PermissionRequest refuses through decision.behavior, not permissionDecision",
+          hso.get("decision", {}).get("behavior") == "deny"
+          and "permissionDecision" not in hso, hso)
+    check("deny: and its reason rides in decision.message, where that event reads it",
+          hso.get("decision", {}).get("message") == f"[{_hook.HOOK_NAME}] something went wrong", hso)
+
+    check("deny: the event is required, so a caller cannot inherit someone else's channel",
+          _raises_without_event(), "deny() accepted a single argument")
+
+
+def _raises_without_event() -> bool:
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            _hook.deny("only one argument")
+    except TypeError:
+        return True
+    return False
 
 
 def check_exposure_fixture():
