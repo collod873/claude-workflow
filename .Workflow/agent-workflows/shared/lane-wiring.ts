@@ -57,7 +57,7 @@ export const DISPATCH_SEND = "gh api --method POST 'repos/{owner}/{repo}/dispatc
 
 export const WORKFLOWS_PATH = ".github/workflows";
 export const STUB_SUFFIX = "-caller.yml";
-export const CLAUDE_CODE_VERSION = "2.1.241";
+export const CLAUDE_CODE_VERSION = "latest";
 export const KNOWLEDGE_BASE_REPOSITORY = "collod873/Knowledge-Base";
 
 const GITHUB_TOKEN = "${{ github.token }}";
