@@ -13,10 +13,10 @@ transcript name (`~/.claude/projects/<dir>/<sid8>*.jsonl`).
 ## Summary
 
 - **Five asks run through every era with a transcript:** ship faster, cut the ceremony, keep the
-  owner out of the loop, talk to him in plain words, and never call work done without proof. Each
+  owner out of the loop, talk to the owner in plain words, and never call work done without proof. Each
   was tagged in 160 to 220 of the 1,051 sessions that touch the machinery, in all three periods. The
   seven constraints in `CONTEXT.md` (C1 to C7) cover speed, ceremony and the owner's place in the
-  loop. They touch plain talk only through C2 (never ask him what he can't answer) and say nothing
+  loop. They touch plain talk only through C2 (never ask the owner what they can't answer) and say nothing
   about proof of done.
 - **The quality ask is newer and quieter than the speed ask, but it is the owner's own end goal.** It
   shows up in 82 sessions: "spaghetti" in July, "I dont want it to be able to sprawl back out into
@@ -27,19 +27,19 @@ transcript name (`~/.claude/projects/<dir>/<sid8>*.jsonl`).
   being wrong.** 300 frustrations were logged. The biggest groups are dead or broken machinery
   (about 66), Claude not reading or not listening (44), ceremony and sprawl (32), work called done
   that wasn't (28), and not being able to see what is running (27).
-- **In September he often worked around his own pipeline.** 44 sessions from 09-03 to 09-17
+- **In September the owner often worked around their own pipeline.** 44 sessions from 09-03 to 09-17
   (about 1 in 12 of the Aug 21 to Sep 17 sessions) build a ticket by hand because "the whole
   pipeline isnt really ready still". This matches the 265 direct pushes counted in
   [run outcomes](run-outcomes-2026-09.md).
 - **Several one-off rulings still shape the machine:** no auto-memory (05-21), GitHub as the
-  tracker (08-21), hosted rather than on his PC (08-22), the repo made public for free compute
+  tracker (08-21), hosted rather than on the owner's PC (08-22), the repo made public for free compute
   (08-27), no branch protection (08-27), the close gate refusing inside the agent's own turn
   (08-28), no prose in code (09-03), and no timing gate (09-03). The branch-protection veto sits
   across GitHub's native auto-merge, which needs required checks
   ([GitHub-native overlap](github-native-overlap-2026-09.md)).
-- **He reversed himself fastest on mechanisms Claude proposed and built:** the timing ratchet (one
+- **The owner reversed course fastest on mechanisms Claude proposed and built:** the timing ratchet (one
   day), the standards chain after drains (one day), DESIGN.md (one day), scheduled upkeep (one
-  day), GOAL.md (built 08-21, deleted 09-16). His stances on where work runs, whether to reuse
+  day), GOAL.md (built 08-21, deleted 09-16). The owner's stances on where work runs, whether to reuse
   upstream, and how much to parallelise swung over months.
 
 ## How the corpus was read
@@ -89,8 +89,8 @@ Jul 27 to Aug 27 messages, confirmed by the owner 08-27).
 - **April and May prompts are cut at about 200 characters** by the old capture format. Long
   messages from that period are partial.
 - **Pasted text was cut at 2,500 characters per message.** In every period much of the "owner" text
-  is Claude output he carried from one session into another. Readers left relayed text out of the
-  quotes and counted only his own framing lines.
+  is Claude output the owner carried from one session into another. Readers left relayed text out of the
+  quotes and counted only the owner's own framing lines.
 - **One extraction miss is known.** In `2026-05-20-c4c62e81.md` a pasted Markdown heading cut the
   prompt list short, so 8 prompts were missing. The reader recovered them from the file. No other
   archive file has that shape.
@@ -108,7 +108,7 @@ map's other research notes as of 2026-09-17.
 |---|---|---|---|---|
 | 1 | Pick up where we left off, don't lose anything | 265 (157/9/98) | 2, 4, 6, 7, 8 | Partly |
 | 2 | Less ceremony, fewer moving parts | 220 (96/16/108) | 2, 4, 6, 7, 8 | No |
-| 3 | Talk plain, ask only what he can answer | 185 (69/14/102) | 2, 3, 4, 6, 7, 8 | Prose only |
+| 3 | Talk plain, ask only what the owner can answer | 185 (69/14/102) | 2, 3, 4, 6, 7, 8 | Prose only |
 | 4 | Trunk clean, in sync, green | 182 (53/18/111) | 2, 4, 6, 7, 8 | Partly |
 | 5 | Speed, wall clock | 179 (67/10/102) | 4, 6, 7, 8 | Partly |
 | 6 | Get the owner out of the loop | 173 (86/14/73) | 2, 4, 6, 7, 8 | Partly |
@@ -156,7 +156,7 @@ and eight lanes did no useful work ([lane census](lane-census-2026-09.md)). `doc
 ADRs and `.github/workflows/` 46 files. On the side of the ask: the small-ticket door (`to-build`)
 exists, and GOAL.md plus 14 lane walkthroughs (about 66k words) were deleted 09-16 (`ef5bdee`).
 
-### 3. Talk plain, ask only what he can answer
+### 3. Talk plain, ask only what the owner can answer
 
 - 2026-04-17 21407d07: "im kinda astonished at how many times now you will ask me 10 questions at once"
 - 2026-08-21 1966605f: "I dont even really know the answers anyway I cant determine what looks right im not a senior dev."
@@ -165,7 +165,7 @@ exists, and GOAL.md plus 14 lane walkthroughs (about 66k words) were deleted 09-
 
 **Prose only.** It sits in global `CLAUDE.md` ("Texting busy boss", "each with your rec") and in
 map #646's Notes. Nothing enforces it, and the complaint is voiced in every period through 09-17.
-The deleted GOAL.md's C2 covered only the "question he can't answer" half.
+The deleted GOAL.md's C2 covered only the "question the owner can't answer" half.
 
 ### 4. Trunk clean, in sync, green
 
@@ -196,10 +196,10 @@ Nothing gates on speed since timing stopped being a gate (09-03).
 - 2026-08-21 6db8c40b: "Do I even need to be in the loop at all or after it bounces through enough unbiased agents and checks things can just self resolve?"
 - 2026-09-11 22f17e89: "Why did GH 402 instantly go to needs-human?? I am trying so hard to get out of the loop."
 
-**Honoured partly.** Lanes run on GitHub without him. Still in his hands: the `to-build` label, the
-`needs-human` stops, and the children of #491 and #538, which he published by hand
-([run outcomes](run-outcomes-2026-09.md)). Four limits recur: he still gates starts ("file that as a
-ticket but don't fire off work on it", 09-13), he reviews after the fact on GitHub, he makes the
+**Honoured partly.** Lanes run on GitHub without the owner. Still in the owner's hands: the `to-build` label, the
+`needs-human` stops, and the children of #491 and #538, which the owner published by hand
+([run outcomes](run-outcomes-2026-09.md)). Four limits recur: the owner still gates starts ("file that as a
+ticket but don't fire off work on it", 09-13), they review after the fact on GitHub, they make the
 architecture calls, and "bounded human, never none" (deleted GOAL.md C7).
 
 ### 7. Prove it before calling it done
@@ -235,8 +235,8 @@ Rules question on #646.
 - 2026-09-12 2405a741: "Stop. We are not at a fully mutual understanding. We are 90% there."
 
 **Honoured.** Grilling, wayfinder sign-off and the Charter gate on #646 all hold it. Two counter
-signals: in grilling runs he mostly accepts the recommendation ("Your rec" across about 14 sessions
-on 07-29), and he is indifferent to who writes an ADR (08-26 8f1e917d). What he guards is
+signals: in grilling runs the owner mostly accepts the recommendation ("Your rec" across about 14 sessions
+on 07-29), and they are indifferent to who writes an ADR (08-26 8f1e917d). What they guard is
 destination and shape, not detail.
 
 ### 10. Thin context, low cost
@@ -266,7 +266,7 @@ complaint runs unchanged from April to 09-16.
 - 2026-08-30 d76b4c17: "I don't know what's fired what's waiting anything on GitHub mobile without digging through the actions page."
 - 2026-09-12 663a3a54: "propose some better GitHub labels that make it obvious to me from a glance at my phone what is happening?"
 
-Rises in P3, once work ran where he couldn't watch it. **Honoured partly:** pipeline-order labels and
+Rises in P3, once work ran where the owner couldn't watch it. **Honoured partly:** pipeline-order labels and
 a generated `docs/agents/lane-map.md`. But three lanes went dead with no one seeing it after
 `session-captured` stopped (#646 Lanes notes), and 09-16 bc4dc71f says acceptance keeps no logs
 while implement does.
@@ -329,7 +329,7 @@ The owner's own verdict on 09-17 is that the repo turned to spaghetti anyway.
 - 2026-04-14 3155923d: "cant you also kinda just pull those agents from the super power project or why are you building from scratch?"
 - 2026-05-20 c4c62e81: "Why would we build our own from scratch vs just use his?" (an upstream skills author)
 - 2026-08-20 fee4f5c8: "Why did we create those instead of using code review ?"
-- 2026-09-09 ae9aa1b8: (paraphrase) upstream updates rarely land and the local copies have drifted too far, so he would rather own the skills outright.
+- 2026-09-09 ae9aa1b8: (paraphrase) upstream updates rarely land and the local copies have drifted too far, so the owner would rather own the skills outright.
 
 **Changed:** see Changes of mind. GitHub's own auto-merge is available and off, with no required
 checks set up ([GitHub-native overlap](github-native-overlap-2026-09.md)).
@@ -367,7 +367,7 @@ checks set up ([GitHub-native overlap](github-native-overlap-2026-09.md)).
 | Cost in money | 04-13 89748d92: "I aint worried about credits. I just want results" | 04-15 557959e4: "absolutely eating through my weekly usage allowance faster than I imagined". Then back: 08-26 874e1478: "I think not worry about cost at all. If I start using the system and its burning costs i will notice." It swings on whether a usage limit is being hit. |
 | Scheduled upkeep | 05-01 5d40fadf: "We usually just schedule crons or something I feel like for this type of thing" | 05-02 1a40d0ae: "I dont wanna schedule anything I would like to just do it in sessions". Stable since: 08-21 6db8c40b "I dont want a time based cadence", 08-28 7e870138 "i dont like that shape with weekly cron". |
 | Auto-memory | 05-21 dd47ac94 (14:46): "Do other people turn memory off? It seems almost like a shot in the foot" | 05-21 b339ce46 (17:46): "We dont use memory. Dont do that." Stable. |
-| Where the machine runs | 05-21 b339ce46: (paraphrase) free GitHub and the existing subscription only, local orchestration, no CI with an API key. Era 5 then ran on Actions and was retired 07-02, and era 6 ran locally. | 08-22 502eaeba: "Github hosted for everything". In September he works by hand in the terminal because "i would consider the pipeline broken right now" (09-03 15485239). That is behaviour, not a new stance. |
+| Where the machine runs | 05-21 b339ce46: (paraphrase) free GitHub and the existing subscription only, local orchestration, no CI with an API key. Era 5 then ran on Actions and was retired 07-02, and era 6 ran locally. | 08-22 502eaeba: "Github hosted for everything". In September the owner works by hand in the terminal because "i would consider the pipeline broken right now" (09-03 15485239). That is behaviour, not a new stance. |
 | Upstream skills | 04-22 86c6af89: mostly adopt superpowers. 05-21 b339ce46: "download most of those as is without making any customization" | 09-09 ae9aa1b8: (paraphrase) stop tracking upstream and own the skills. |
 | Standards pass after drains | 08-20 2fcc72eb: "drain can merge to main then run the standard workflow" | 08-21 81a731fe: "just make the skill manual and not run at the end of drains" (agent-skills ADR-0029). |
 | DESIGN.md | 08-26 35ac7538: "Update design.md and file gh issue" | 08-27 eca4b9a8: "I really really want to delete the design.md at this point. Its stale and keeps miss steering us." Deleted `a2643a2`. |
