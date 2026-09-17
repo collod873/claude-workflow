@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { test } from "vitest";
 import { blockedByPath, GIT_REFS_PATH, issuePath, subIssuesPath } from "./gh-paths";
 import { createFakeGh, createRecordingGh, type FakeGhOptions } from "./gh.fake";
 import { parseIssueNumber } from "./issue-url";
@@ -129,6 +130,12 @@ describe("createFakeGh answers in the recorded shapes", () => {
     expect(() => fake.gh(["pr", "view", "7"])).toThrow(/unhandled argv/);
     expect(fake.calls).toEqual([["pr", "view", "7"]]);
   });
+});
+
+test.fails("#628.1: gh.fake.ts's gh throws unhandled argv on an api call, building no api argv itself", () => {
+  const fake = createFakeGh();
+
+  expect(() => fake.gh(["api", subIssuesPath(360), "-F", "sub_issue_id=1"])).toThrow(/unhandled argv/);
 });
 
 describe("createRecordingGh", () => {
