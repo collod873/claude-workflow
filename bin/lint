@@ -50,7 +50,7 @@ rule "duplicated-code/deny-envelope" \
 
 rule "duplicated-code/deny-envelope" \
   "$(grep -nE "decision['\"]?\s*:\s*['\"]block" .claude/hooks/*.py .claude/hooks/*.sh 2>/dev/null \
-     | grep -vE '^.claude/hooks/(stop-gate|test_stop_gate)\.py:')"
+     | grep -vE '^.claude/hooks/(_hook|test__hook|test_stop_gate|test_dispatch)\.py:')"
 
 rule "duplicated-code/edit-tool-roster" \
   "$(grep -l 'Edit|Write|MultiEdit|NotebookEdit' .claude/hooks/* 2>/dev/null | grep -v '^.claude/hooks/_hook.py$')"

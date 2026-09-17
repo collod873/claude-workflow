@@ -27,16 +27,33 @@ def _caller_stem() -> str:
 HOOK_NAME = _caller_stem()
 
 
+def decision_envelope(event: str, decision: str, reason: str = "") -> dict:
+    if event == "PermissionRequest":
+        behavior = "deny" if decision == "block" else decision
+        inner = {"behavior": behavior}
+        if behavior == "deny" and reason:
+            inner["message"] = reason
+        return {"hookEventName": event, "decision": inner}
+    specific = {"hookEventName": event,
+                "permissionDecision": "deny" if decision == "block" else decision}
+    if reason:
+        specific["permissionDecisionReason"] = reason
+    return specific
+
+
+def block_envelope(reason: str = "", message: str = "") -> dict:
+    doc: dict = {"decision": "block"}
+    if reason:
+        doc["reason"] = reason
+    if message:
+        doc["systemMessage"] = message
+    return doc
+
+
 def deny(event: str, msg: str) -> None:
     message = f"[{HOOK_NAME}] {msg}"
-    if event == "PermissionRequest":
-        specific = {"hookEventName": event,
-                    "decision": {"behavior": "deny", "message": message}}
-    else:
-        specific = {"hookEventName": event,
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": message}
-    print(json.dumps({"hookSpecificOutput": specific, "systemMessage": message}))
+    print(json.dumps({"hookSpecificOutput": decision_envelope(event, "deny", message),
+                      "systemMessage": message}))
 
 
 def read_stdin_bytes() -> bytes:

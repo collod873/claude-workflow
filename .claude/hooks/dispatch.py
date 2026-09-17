@@ -150,19 +150,10 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
     reason = budget.spend("\n".join(parts["reasons"]))
 
     if decision:
-        if event == "PermissionRequest":
-            behaviour = "deny" if decision == "block" else decision
-            specific["decision"] = {"behavior": behaviour}
-            if behaviour == "deny" and reason:
-                specific["decision"]["message"] = reason
-        elif event in DECIDING:
-            specific["permissionDecision"] = "deny" if decision == "block" else decision
-            if reason:
-                specific["permissionDecisionReason"] = reason
+        if event in DECIDING:
+            specific.update(_hook.decision_envelope(event, decision, reason))
         elif RANK[decision] == RANK["deny"]:
-            out["decision"] = "block"
-            if reason:
-                out["reason"] = reason
+            out.update(_hook.block_envelope(reason))
 
     context = budget.spend("\n".join(parts["contexts"]))
     if context:
@@ -183,11 +174,7 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
 
 def refuse(event: str, why: str) -> dict:
     text = f"[dispatch] {why}; the check could not run, so this is refused rather than allowed"
-    if event == "PermissionRequest":
-        return {"hookSpecificOutput": {"hookEventName": event,
-                                       "decision": {"behavior": "deny", "message": text}}}
-    return {"hookSpecificOutput": {"hookEventName": event, "permissionDecision": "deny",
-                                   "permissionDecisionReason": text}}
+    return {"hookSpecificOutput": _hook.decision_envelope(event, "deny", text)}
 
 
 def main(argv: list[str]) -> int:

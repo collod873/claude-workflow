@@ -209,6 +209,29 @@ def check_deny_envelope():
     check("deny: the event is required, so a caller cannot inherit someone else's channel",
           _raises_without_event(), "deny() accepted a single argument")
 
+    check("decision_envelope: deny() is built from it, so the dispatcher and a lone hook cannot "
+          "refuse through different shapes",
+          refuses("PreToolUse")["hookSpecificOutput"]
+          == _hook.decision_envelope("PreToolUse", "deny",
+                                     f"[{_hook.HOOK_NAME}] something went wrong"),
+          refuses("PreToolUse"))
+    check("decision_envelope: a non-deny decision carries no reason field",
+          _hook.decision_envelope("PreToolUse", "allow")
+          == {"hookEventName": "PreToolUse", "permissionDecision": "allow"},
+          _hook.decision_envelope("PreToolUse", "allow"))
+    check("decision_envelope: block is spoken as deny on the permission events, which are the "
+          "only decisions those events read",
+          _hook.decision_envelope("PreToolUse", "block")["permissionDecision"] == "deny"
+          and _hook.decision_envelope("PermissionRequest",
+                                      "block")["decision"]["behavior"] == "deny",
+          _hook.decision_envelope("PermissionRequest", "block"))
+
+    check("block_envelope: decision and reason, and systemMessage only when there is one to send",
+          _hook.block_envelope("why", "screen")
+          == {"decision": "block", "reason": "why", "systemMessage": "screen"}
+          and _hook.block_envelope() == {"decision": "block"},
+          _hook.block_envelope("why", "screen"))
+
 
 def _raises_without_event() -> bool:
     try:
