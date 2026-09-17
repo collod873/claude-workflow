@@ -321,16 +321,6 @@ feature does the lane's job as documented; "partly" names what it lacks.
 | 06 Verify, Shape-accept, Back-stamp, Enrol, Decline on revert, Record ratifications, Ratify on PRD close | none | No | These run no model; no Claude Code feature is a CI gate or a git writer | n/a |
 | Audit (session capture) | **SessionEnd hook** | Already used | The lane is fed by a SessionEnd hook ([hooks](https://code.claude.com/docs/en/hooks)) | n/a |
 | Model spend in every model lane | **`total_cost_usd`** in headless output | Already used | "the response payload includes `total_cost_usd` ... Both figures are client-side estimates" ([headless](https://code.claude.com/docs/en/headless)) | n/a |
-p='/tmp/claude-1000/-home-collin-Claude-Projects-Workflow/995b24a0-5472-410d-80e8-e89edcddaf01/scratchpad/census/assembled.md'
-s=open(p).read()
-a="Each of the five callers ran 214 times on `issues`; "
-assert a in s
-s=s.replace(a,"Shape, Shape-accept, Spec and Lost-dispatch counter each ran 214 times on `issues`; ")
-b="and its last dozens of entries are `skipped publish-out-of-scope`"
-assert b in s
-s=s.replace(b,"and on its last two days a `skipped publish-out-of-scope` line follows most captures")
-s=s.rstrip()+'\n'+open('/dev/stdin').read()
-open(p,'w').write(s)
 
 ## Candidates by measured volume
 
@@ -368,3 +358,24 @@ stops the window shows behind each. "Breaks" repeats the row it came from.
   tried; plan limits, bot-actor handling and costs are as the docs state on 2026-09-16.
 - **The `claude-code-action` usage page** is on github.com, not code.claude.com; it is Anthropic's own
   repository.
+
+## Corrections, 2026-09-17
+
+Found while reviewing this census for map #646. Both change a candidate above.
+
+- **Review's reviewer did produce findings; the lane threw them away.** The `reached: 0` tally
+  counts findings *after* the structural refusal (`review/review.ts:40`, `:120`), not what the
+  model returned. Across the 23 review runs whose stream artifacts were still retained on
+  2026-09-17, the model's `structured_output` held findings in **15 runs, 26 findings in all**;
+  none was published. Run 35175002431 is one: a specific finding citing
+  `.Workflow/agent-workflows/to-tickets/gh-cli.stub.d.ts:1`. The drop is the `path:line`-in-raw-diff
+  test the rule census flags (M20, summary item 4). So "Review's $111.70 bought zero findings"
+  reads as "a filter discarded every finding", and the "Replace or delete Review" candidate rests
+  on the wrong cause.
+- **Verify's PR verdicts judged trunk, not the PR.** On `implementation-opened`, the `Checkout
+  target` step in `.github/workflows/verify.yml` passes no `ref`, so it checks out the dispatch
+  event's SHA, which is the default branch. Run 35174765972, judging PR #651 on
+  `implement/issue-629`, checked out `397f64e` (trunk). The 113 PR verdicts Integrate read were
+  verdicts on trunk. Merges were still gated, because Integrate re-runs the gauntlet on the rebased
+  branch before merging (`integrate/integrate.ts:336-338`); the fixer ring on a red PR verdict was
+  not.

@@ -773,3 +773,12 @@ Each item is a candidate move, with a rough cost. None is a ruling.
   which may judge the default-branch tip rather than the PR head. This needs a runtime check.
 - **Spec stage `allowedTools`.** Whether they are a real restriction in the CLI
   (`aw/shared/stage.ts:257-260`) was taken on trust.
+
+## Corrections, 2026-09-17
+
+- **Review drop rate (summary item 4, M20): confirmed.** In 15 of the 23 review runs with retained
+  stream artifacts the model returned findings (26 in all), and none was published. Run
+  35175002431 is one example.
+- **Verify on a repository_dispatch (Not verified): confirmed broken.** Run 35174765972 judged PR
+  #651 with the target checked out at trunk (`397f64e`), not the PR head. Integrate's own gauntlet
+  after rebasing is the only gate that judged the PR's code.
