@@ -17,11 +17,17 @@ while read -r _ pushed ref; do
 done
 `;
 
+const githubMergesLandBranchesAfterAMoment = `#!/bin/bash
+set -euo pipefail
+read -r _ pushed ref
+( sleep 1; git update-ref refs/heads/main "$(git commit-tree "$pushed^{tree}" -p "$(git rev-parse main)" -p "$pushed" -m merged)" ) >/dev/null 2>&1 &
+`;
+
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: boolean }) {
+function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: "at once" | "after a moment" | "never" }) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const remote = join(root, "remote.git");
@@ -37,8 +43,9 @@ function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: b
   for (let n = 1; n <= commits; n++) {
     git(session, "commit", "--quiet", "--allow-empty", "-m", `change ${n}`);
   }
-  if (githubMerges) {
-    writeFileSync(join(remote, "hooks", "post-receive"), githubMergesLandBranches);
+  if (githubMerges !== "never") {
+    const hook = githubMerges === "after a moment" ? githubMergesLandBranchesAfterAMoment : githubMergesLandBranches;
+    writeFileSync(join(remote, "hooks", "post-receive"), hook);
     chmodSync(join(remote, "hooks", "post-receive"), 0o755);
   }
   const gh = stubGh("");
@@ -46,14 +53,14 @@ function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: b
     spawnSync(land, [], {
       cwd: session,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${dirname(gh.path)}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${dirname(gh.path)}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
     });
   return { remote, session, run, calls: gh.calls };
 }
 
 describe("bin/land turns a session's commits into a PR that merges itself", () => {
   it("opens a merge-commit PR from a land branch and brings local main up to the merged main", () => {
-    const { remote, session, run, calls } = sessionAheadOfMain(2, { githubMerges: true });
+    const { remote, session, run, calls } = sessionAheadOfMain(2, { githubMerges: "at once" });
     const head = git(session, "rev-parse", "HEAD");
     const branch = `land/${head.slice(0, 12)}`;
 
@@ -67,8 +74,18 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(result.stdout).toContain("Landed");
   });
 
+  it("waits for a merge GitHub finishes a moment after auto-merge is switched on", () => {
+    const { remote, session, run } = sessionAheadOfMain(1, { githubMerges: "after a moment" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Landed");
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
   it("leaves local main alone and says so while the PR's checks are still running", () => {
-    const { session, run } = sessionAheadOfMain(1, { githubMerges: false });
+    const { session, run } = sessionAheadOfMain(1, { githubMerges: "never" });
     const head = git(session, "rev-parse", "HEAD");
 
     const result = run();
@@ -79,7 +96,7 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
   });
 
   it("opens nothing when there is nothing past origin/main", () => {
-    const { run, calls } = sessionAheadOfMain(0, { githubMerges: true });
+    const { run, calls } = sessionAheadOfMain(0, { githubMerges: "at once" });
 
     const result = run();
 
