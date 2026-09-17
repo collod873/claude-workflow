@@ -17,11 +17,20 @@ while read -r _ pushed ref; do
 done
 `;
 
+const githubMergesLandBranchesAfterAMoment = `#!/bin/bash
+set -euo pipefail
+read -r _ pushed ref
+( sleep 1; git update-ref refs/heads/main "$(git commit-tree "$pushed^{tree}" -p "$(git rev-parse main)" -p "$pushed" -m merged)" ) >/dev/null 2>&1 &
+`;
+
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: boolean }) {
+function sessionAheadOfMain(
+  commits: number,
+  { githubMerges, prIsAlreadyClean = false }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean },
+) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const remote = join(root, "remote.git");
@@ -37,25 +46,33 @@ function sessionAheadOfMain(commits: number, { githubMerges }: { githubMerges: b
   for (let n = 1; n <= commits; n++) {
     git(session, "commit", "--quiet", "--allow-empty", "-m", `change ${n}`);
   }
-  if (githubMerges) {
-    writeFileSync(join(remote, "hooks", "post-receive"), githubMergesLandBranches);
+  if (githubMerges !== "never") {
+    const hook = githubMerges === "after a moment" ? githubMergesLandBranchesAfterAMoment : githubMergesLandBranches;
+    writeFileSync(join(remote, "hooks", "post-receive"), hook);
     chmodSync(join(remote, "hooks", "post-receive"), 0o755);
   }
   const gh = stubGh("");
+  const githubRefusingAutoMerge = join(root, "refuses-auto-merge");
+  execFileSync("mkdir", [githubRefusingAutoMerge]);
+  writeFileSync(
+    join(githubRefusingAutoMerge, "gh"),
+    `#!/bin/bash\n[[ " $* " == *" --auto "* ]] && { printf 'Pull request is in clean status\\n' >&2; ${JSON.stringify(gh.path)} "$@"; exit 1; }\nexec ${JSON.stringify(gh.path)} "$@"\n`,
+  );
+  chmodSync(join(githubRefusingAutoMerge, "gh"), 0o755);
+  const ghDir = prIsAlreadyClean ? githubRefusingAutoMerge : dirname(gh.path);
   const run = () =>
     spawnSync(land, [], {
       cwd: session,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${dirname(gh.path)}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
     });
-  return { remote, session, run, calls: gh.calls };
+  const head = git(session, "rev-parse", "HEAD");
+  return { remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
 }
 
 describe("bin/land turns a session's commits into a PR that merges itself", () => {
   it("opens a merge-commit PR from a land branch and brings local main up to the merged main", () => {
-    const { remote, session, run, calls } = sessionAheadOfMain(2, { githubMerges: true });
-    const head = git(session, "rev-parse", "HEAD");
-    const branch = `land/${head.slice(0, 12)}`;
+    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(2, { githubMerges: "at once" });
 
     const result = run();
 
@@ -67,9 +84,28 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(result.stdout).toContain("Landed");
   });
 
+  it("merges straight away when GitHub refuses auto-merge because the PR has nothing left to wait for", () => {
+    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once", prIsAlreadyClean: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContainEqual(["pr", "merge", branch, "--merge", "--match-head-commit", head]);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
+  it("waits for a merge GitHub finishes a moment after auto-merge is switched on", () => {
+    const { remote, session, run } = sessionAheadOfMain(1, { githubMerges: "after a moment" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Landed");
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
   it("leaves local main alone and says so while the PR's checks are still running", () => {
-    const { session, run } = sessionAheadOfMain(1, { githubMerges: false });
-    const head = git(session, "rev-parse", "HEAD");
+    const { session, head, run } = sessionAheadOfMain(1, { githubMerges: "never" });
 
     const result = run();
 
@@ -79,7 +115,7 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
   });
 
   it("opens nothing when there is nothing past origin/main", () => {
-    const { run, calls } = sessionAheadOfMain(0, { githubMerges: true });
+    const { run, calls } = sessionAheadOfMain(0, { githubMerges: "at once" });
 
     const result = run();
 

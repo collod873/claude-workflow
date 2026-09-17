@@ -15,13 +15,18 @@ git push --quiet origin "HEAD:refs/heads/$branch"
 url=$(gh pr create --base main --head "$branch" \
   --title "$(git log -1 --format=%s HEAD)" \
   --body "$(git log --reverse --format='- %s' origin/main..HEAD)")
-gh pr merge "$branch" --auto --merge --match-head-commit "$head"
+gh pr merge "$branch" --auto --merge --match-head-commit "$head" 2>/dev/null \
+  || gh pr merge "$branch" --merge --match-head-commit "$head"
 
-git fetch --quiet origin main
-if ! git merge-base --is-ancestor "$head" origin/main; then
-  printf 'Merges when its checks pass: %s\n' "$url"
-  exit 0
-fi
+for (( waited = 0; ; waited += 2 )); do
+  git fetch --quiet origin main
+  git merge-base --is-ancestor "$head" origin/main && break
+  if (( waited >= ${LAND_WAIT_SECONDS:-20} )); then
+    printf 'Merges when its checks pass: %s\n' "$url"
+    exit 0
+  fi
+  sleep 2
+done
 
 if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main; then
   printf 'Landed %s\n' "$url"
