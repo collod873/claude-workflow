@@ -20,7 +20,8 @@
   },
   "include": [
     ".Workflow/**/*.ts",
-    ".claude/**/*.ts"
+    ".claude/**/*.ts",
+    "core/**/*.ts"
   ],
   "exclude": [
     ".claude/worktrees/**"

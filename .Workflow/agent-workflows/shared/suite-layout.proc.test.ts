@@ -10,7 +10,7 @@ describe("this checkout's own suite, read through its own vitest", () => {
   it("names the trees this repository's config collects, and no other tree it holds", () => {
     const { roots } = suiteLayout(REPO_ROOT);
 
-    expect(roots).toEqual([".Workflow", ".claude"]);
+    expect(roots).toEqual([".Workflow", ".claude", "core"]);
     expect(roots).not.toContain("bin");
     expect(roots).not.toContain("docs");
   });
