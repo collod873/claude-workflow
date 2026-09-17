@@ -65,7 +65,8 @@ LOG_DIR = Path(os.environ.get("STOP_GATE_LOG_DIR") or (Path.home() / ".claude" /
 LOG_RETENTION_DAYS = 30
 
 
-def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
+def append_log(hook: str, row: dict, *, path: Path | str | None = None,
+               retain_days: int | None = None) -> None:
     row = dict(row)
     row.setdefault("ts", datetime.now().isoformat(timespec="seconds"))
     target = Path(path) if path is not None else LOG_DIR / f"{hook}-{datetime.now():%Y-%m-%d}.jsonl"
@@ -76,7 +77,7 @@ def append_log(hook: str, row: dict, *, path: Path | str | None = None) -> None:
     except OSError:
         return
     if path is None:
-        _prune_old_logs(hook)
+        _prune_old_logs(hook, retain_days)
 
 
 def run_row(payload: dict, verdict: str, **extra) -> dict:
@@ -96,8 +97,8 @@ def run_row(payload: dict, verdict: str, **extra) -> dict:
     return row
 
 
-def _prune_old_logs(hook: str) -> None:
-    cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+def _prune_old_logs(hook: str, retain_days: int | None = None) -> None:
+    cutoff = datetime.now() - timedelta(days=retain_days or LOG_RETENTION_DAYS)
     try:
         for f in LOG_DIR.glob(f"{hook}-*.jsonl"):
             try:

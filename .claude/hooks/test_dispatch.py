@@ -5,6 +5,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import _harness
@@ -332,6 +333,18 @@ def check_says_little() -> None:
         rows = [json.loads(x) for x in spilled[0].read_text().splitlines() if x.strip()]
         check("and the full text is in it, so nothing is lost, only moved",
               any("TAIL" in row.get("text", "") for row in rows), rows and rows[0].keys())
+
+        # The spill is the overflow half of a 200-character line, which is what core-logs is, so it
+        # keeps core's 7 days (#693) rather than inventing a second retention.
+        stale = Path(logs) / f"dispatch-spill-{datetime.now() - timedelta(days=8):%Y-%m-%d}.jsonl"
+        stale.write_text('{"text": "old overflow"}\n')
+        fire({"PostToolUse": ["loud.py"]}, "PostToolUse", {"loud.py": SHOUTS}, env)
+        check("a spill dated 8 days ago is deleted on the next spill, matching core/check's "
+              "-mmin +10080 rather than _hook.py's 30-day default (#693)",
+              not stale.exists(), sorted(p.name for p in Path(logs).iterdir()))
+        check("and today's is kept, or the pointer on this slot's own line is already dead",
+              bool(list(Path(logs).glob(f"dispatch-spill-{datetime.now():%Y-%m-%d}.jsonl"))),
+              sorted(p.name for p in Path(logs).iterdir()))
 
         _, doc, _ = fire({"SessionStart": ["loud.py"]}, "SessionStart", {"loud.py": SHOUTS}, env)
         check("SessionStart is exempt: it fires once per session, and session-brief's 1729 "

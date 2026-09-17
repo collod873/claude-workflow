@@ -50,6 +50,10 @@ SAY_LITTLE = 200
 # bound, including events no hook is registered on yet, so a new hook is capped by default.
 UNCAPPED_EVENTS = {"SessionStart", "SessionEnd"}
 SPILL_LOG = "dispatch-spill"
+# The overflow half of a 200-character line, which is what core-logs already is, so it keeps
+# core's number rather than a second one: core/check and core/bin/land delete theirs at
+# `-mmin +10080` (#693). Two implementations of one rule, and nothing yet holds them equal.
+SPILL_RETENTION_DAYS = 7
 
 
 def roster() -> dict:
@@ -118,7 +122,8 @@ def reason_of(doc: dict) -> str:
 def spill(event: str, text: str) -> str:
     """Park the overflow where the one surviving line can point at it."""
     marker = blake2b(text.encode("utf-8", "replace"), digest_size=4).hexdigest()
-    _hook.append_log(SPILL_LOG, {"event": event, "id": marker, "chars": len(text), "text": text})
+    _hook.append_log(SPILL_LOG, {"event": event, "id": marker, "chars": len(text), "text": text},
+                     retain_days=SPILL_RETENTION_DAYS)
     path = _hook.LOG_DIR / f"{SPILL_LOG}-{datetime.now():%Y-%m-%d}.jsonl"
     return f"[+{len(text)} chars: {path} id={marker}]"
 
