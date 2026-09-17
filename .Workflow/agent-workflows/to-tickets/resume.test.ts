@@ -6,6 +6,8 @@ import { slice } from "../shared/plan.fixture";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import type { StageExec } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
+import { rawGhFromTracker } from "../shared/tracker-gh";
+import { trackerMemory } from "../shared/tracker-memory";
 import { runNamedStage } from "./to-tickets";
 
 describe("a retry after audit-and-publish alone failed", () => {
@@ -40,13 +42,15 @@ describe("a retry after audit-and-publish alone failed", () => {
 
     const auditedPlan = [{ ...plan[0], title: "Root, re-worded by audit" }];
     const succeedingAudit = createFakeStage(JSON.stringify({ notes: "", slices: auditedPlan }));
-    const tracker = createFakeGh();
+    const fake = createFakeGh();
+    const apiGh = rawGhFromTracker(trackerMemory({ issueIds: { 100: 100007 } }));
+    const gh: GhExec = (args) => (args[0] === "api" ? apiGh(args) : fake.gh(args));
 
     const published = (await runNamedStage(
       "audit-and-publish",
       "13",
       succeedingAudit.exec,
-      tracker.gh,
+      gh,
     )) as PublishedIssue[];
 
     expect(succeedingAudit.calls).toHaveLength(1);

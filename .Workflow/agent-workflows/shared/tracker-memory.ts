@@ -121,7 +121,11 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
       return id;
     },
     addSubIssue: () => undefined,
-    addBlockedBy: () => undefined,
+    addBlockedBy: (number, blockerId) => {
+      const list = blockedByIds.get(number) ?? [];
+      list.push(blockerId);
+      blockedByIds.set(number, list);
+    },
     issueBody: (number) => issues.get(number)?.body ?? "",
     issueTitleAndBody: (number) => ({
       title: issues.get(number)?.title ?? "",

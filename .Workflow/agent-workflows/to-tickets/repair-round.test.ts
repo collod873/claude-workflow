@@ -9,6 +9,7 @@ import type { Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { checkpointPath, type StageExec, type StageReply } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
+import { rawGhFromTracker } from "../shared/tracker-gh";
 import { trackerMemory } from "../shared/tracker-memory";
 import { runNamedStage } from "./to-tickets";
 
@@ -79,7 +80,12 @@ describe("a refused answer goes back to the session that wrote it", () => {
       if (argv.includes("--resume")) createsWhenResumed.push(issueCreates(fake.calls).length);
       return answers.exec(argv, stdin, signal);
     };
-    const gh: GhExec = (args) => (args[0] === "issue" && args[1] === "edit" ? "" : fake.gh(args));
+    const apiGh = rawGhFromTracker(trackerMemory({ issueIds: { 100: 100007 } }));
+    const gh: GhExec = (args) => {
+      if (args[0] === "issue" && args[1] === "edit") return "";
+      if (args[0] === "api") return apiGh(args);
+      return fake.gh(args);
+    };
 
     const published = (await runNamedStage("audit-and-publish", "13", exec, gh)) as PublishedIssue[];
 

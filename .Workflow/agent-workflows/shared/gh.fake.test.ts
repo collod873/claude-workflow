@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { blockedByPath, GIT_REFS_PATH, issuePath, subIssuesPath } from "./gh-paths";
-import { createFakeGh, createRecordingGh, type FakeGhOptions } from "./gh.fake";
+import { test } from "vitest";
+import { subIssuesPath } from "./gh-paths";
+import { createFakeGh, createRecordingGh } from "./gh.fake";
 import { parseIssueNumber } from "./issue-url";
 
 const RECORDED = {
@@ -19,16 +20,6 @@ function parseBlockedByIds(raw: string): number[] {
     throw new Error(`not an array of integer ids: ${JSON.stringify(raw)}`);
   }
   return parsed as number[];
-}
-
-function fakeWithIssues(count: number, options: Omit<FakeGhOptions, "firstIssueNumber"> = {}) {
-  const fake = createFakeGh({ firstIssueNumber: 500, ...options });
-  const created = Array.from({ length: count }, (_, i) => {
-    const number = parseIssueNumber(fake.gh(["issue", "create", "--title", `slice ${i + 1}`, "--body", "…"]));
-    const id = parseId(fake.gh(["api", issuePath(number), "--jq", ".id"]));
-    return { number, id };
-  });
-  return { ...fake, created };
 }
 
 describe("the recorded shapes parse the way production parses them", () => {
@@ -58,38 +49,6 @@ describe("createFakeGh answers in the recorded shapes", () => {
     expect(parseIssueNumber(second)).toBe(501);
   });
 
-  it("--jq .id prints a bare integer that is not the issue number", () => {
-    const { created } = fakeWithIssues(1);
-
-    expect(Number.isInteger(created[0].id)).toBe(true);
-    expect(created[0].id).not.toBe(created[0].number);
-  });
-
-  it("--jq .id refuses an issue nothing created, rather than inventing an id", () => {
-    const fake = createFakeGh();
-
-    expect(() => fake.gh(["api", issuePath(999), "--jq", ".id"])).toThrow(/no issue #999/);
-  });
-
-  it("GET blocked_by prints the ids the wiring writes recorded, in the shape [.[].id] projects", () => {
-    const { gh, created } = fakeWithIssues(3);
-    const [root, other, blocked] = created;
-    gh(["api", blockedByPath(blocked.number), "-F", `issue_id=${root.id}`]);
-    gh(["api", blockedByPath(blocked.number), "-F", `issue_id=${other.id}`]);
-
-    expect(parseBlockedByIds(gh(["api", blockedByPath(blocked.number), "--jq", "[.[].id]"]))).toEqual([root.id, other.id]);
-    expect(parseBlockedByIds(gh(["api", blockedByPath(root.number), "--jq", "[.[].id]"]))).toEqual([]);
-  });
-
-  it("dropEdges accepts a wiring write but leaves it out of the read-back, the failure a verification exists to catch", () => {
-    const { gh, calls, created } = fakeWithIssues(2, { dropEdges: [{ blockedNumber: 501, blockerNumber: 500 }] });
-    const [root, blocked] = created;
-
-    expect(gh(["api", blockedByPath(blocked.number), "-F", `issue_id=${root.id}`])).toBe("");
-    expect(parseBlockedByIds(gh(["api", blockedByPath(blocked.number), "--jq", "[.[].id]"]))).toEqual([]);
-    expect(calls.filter((call) => call.includes("-F"))).toHaveLength(1);
-  });
-
   it("POST dispatches prints nothing, as a 204 does, and records the event and payload", () => {
     const fake = createFakeGh();
 
@@ -106,29 +65,18 @@ describe("createFakeGh answers in the recorded shapes", () => {
     expect(fake.dispatches).toEqual([{ eventType: "ticket-ready", payload: { issue: "42" } }]);
   });
 
-  it("sub_issues attaches the -F sub_issue_id under the parent, by REST id", () => {
-    const { gh, created, subIssuesByParent } = fakeWithIssues(2);
-
-    for (const { id } of created) gh(["api", subIssuesPath(360), "-F", `sub_issue_id=${id}`]);
-
-    expect(subIssuesByParent.get(360)).toEqual(created.map(({ id }) => id));
-  });
-
-  it.each([
-    ["sub_issues", subIssuesPath(360), "sub_issue_id=1"],
-    ["blocked_by", blockedByPath(360), "issue_id=1"],
-  ])("refuses -f on %s, naming the flag the real API wants", (_endpoint, path, field) => {
-    const fake = createFakeGh();
-
-    expect(() => fake.gh(["api", path, "-f", field])).toThrow(/must be -F/);
-  });
-
   it("refuses an argv it does not model out loud, and records every call it was asked", () => {
     const fake = createFakeGh();
 
     expect(() => fake.gh(["pr", "view", "7"])).toThrow(/unhandled argv/);
     expect(fake.calls).toEqual([["pr", "view", "7"]]);
   });
+});
+
+test("#628.1: gh.fake.ts's gh throws unhandled argv on an api call, building no api argv itself", () => {
+  const fake = createFakeGh();
+
+  expect(() => fake.gh(["api", subIssuesPath(360), "-F", "sub_issue_id=1"])).toThrow(/unhandled argv/);
 });
 
 describe("createRecordingGh", () => {
@@ -146,4 +94,3 @@ describe("createRecordingGh", () => {
     ]);
   });
 });
-

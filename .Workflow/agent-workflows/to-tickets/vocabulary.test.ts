@@ -1,11 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
 import { withHandoffDir } from "../shared/handoff-dir.fixture";
 import { slice } from "../shared/plan.fixture";
 import { checkpointPath } from "../shared/stage";
 import { createFakeStage } from "../shared/stage.fake";
+import { rawGhFromTracker } from "../shared/tracker-gh";
+import { trackerMemory } from "../shared/tracker-memory";
 import { runNamedStage, STAGES, vocabulary, type StageName } from "./to-tickets";
 
 const VALID_ANSWER: Record<StageName, string> = {
@@ -25,8 +28,11 @@ async function promptHandedTo(stage: StageName): Promise<string> {
   writeCheckpointFor("seam-sweep");
   writeCheckpointFor("slice");
   const fake = createFakeStage(VALID_ANSWER[stage]);
+  const gh = createFakeGh();
+  const apiGh = rawGhFromTracker(trackerMemory({ issueIds: { 100: 100007 } }));
+  const ghDrivenByTracker: GhExec = (args) => (args[0] === "api" ? apiGh(args) : gh.gh(args));
 
-  await runNamedStage(stage, "13", fake.exec, createFakeGh().gh);
+  await runNamedStage(stage, "13", fake.exec, ghDrivenByTracker);
 
   return fake.calls[0][1];
 }

@@ -1,53 +1,85 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
-import { blockedByPath } from "../shared/gh-paths";
-import { createFakeGh } from "../shared/gh.fake";
 import { slice } from "../shared/plan.fixture";
 import type { Slice } from "../shared/plan-schema";
-import type { CreateIssueInput } from "../shared/tracker";
+import type { CreateIssueInput, Tracker, TrackerDispatchRequest } from "../shared/tracker";
 import { trackerMemory } from "../shared/tracker-memory";
 import { sliceAndPublish } from "./slice-and-publish";
 
 const PRD_NUMBER = 42;
 
-function blockedByWrites(calls: string[][]): string[][] {
-  return calls.filter(
-    (args) =>
-      args[0] === "api" &&
-      typeof args[1] === "string" &&
-      args[1].endsWith("/dependencies/blocked_by") &&
-      args.includes("-F"),
-  );
+interface WiredTracker {
+  tracker: Tracker;
+  createdIssues: CreateIssueInput[];
+  subIssuesByParent: Map<number, number[]>;
+  blockedByWrites: Array<{ blockedNumber: number; blockerId: number }>;
+  dispatches: TrackerDispatchRequest[];
+}
+
+function wireTracker(
+  options: { firstIssueNumber?: number; dropEdges?: Array<{ blockedNumber: number; blockerNumber: number }> } = {},
+): WiredTracker {
+  const firstIssueNumber = options.firstIssueNumber ?? 99;
+  const dropEdges = options.dropEdges ?? [];
+  const issueIds: Record<number, number> = {};
+  const numberById = new Map<number, number>();
+  for (let i = 1; i <= 20; i++) {
+    const number = firstIssueNumber + i;
+    const id = number * 1000 + 7;
+    issueIds[number] = id;
+    numberById.set(id, number);
+  }
+
+  const createdIssues: CreateIssueInput[] = [];
+  const subIssuesByParent = new Map<number, number[]>();
+  const blockedByWrites: Array<{ blockedNumber: number; blockerId: number }> = [];
+  const dispatches: TrackerDispatchRequest[] = [];
+
+  const base = trackerMemory({ firstIssueNumber, issueIds, createdIssues });
+
+  const tracker: Tracker = {
+    ...base,
+    addSubIssue(parentNumber, childId) {
+      const list = subIssuesByParent.get(parentNumber) ?? [];
+      list.push(childId);
+      subIssuesByParent.set(parentNumber, list);
+    },
+    addBlockedBy(number, blockerId) {
+      blockedByWrites.push({ blockedNumber: number, blockerId });
+      const blockerNumber = numberById.get(blockerId);
+      const dropped = dropEdges.some((edge) => edge.blockedNumber === number && edge.blockerNumber === blockerNumber);
+      if (!dropped) base.addBlockedBy(number, blockerId);
+    },
+    dispatch(request) {
+      dispatches.push(request);
+    },
+  };
+
+  return { tracker, createdIssues, subIssuesByParent, blockedByWrites, dispatches };
 }
 
 function publishedBody(plan: Slice[]): string {
-  const fake = createFakeGh();
+  const { tracker, createdIssues } = wireTracker();
 
-  sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+  sliceAndPublish(plan, PRD_NUMBER, tracker);
 
-  const createCall = fake.calls.find((args) => args[0] === "issue" && args[1] === "create");
-  return createCall![createCall!.indexOf("--body") + 1];
+  return createdIssues[0].body;
 }
 
 describe("sliceAndPublish", () => {
   it("creates an issue for every slice and attaches each under the PRD", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
-    const fake = createFakeGh();
+    const { tracker, createdIssues, subIssuesByParent } = wireTracker();
 
-    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+    const published = sliceAndPublish(plan, PRD_NUMBER, tracker);
 
     expect(published.map((p) => p.title)).toEqual(["Root", "Depends on root"]);
 
-    const createCalls = fake.calls.filter((args) => args[0] === "issue" && args[1] === "create");
-    expect(createCalls).toHaveLength(2);
-    expect(createCalls[0]).toEqual(
-      expect.arrayContaining(["--title", "Root"]),
-    );
-    expect(createCalls[1]).toEqual(
-      expect.arrayContaining(["--title", "Depends on root"]),
-    );
+    expect(createdIssues).toHaveLength(2);
+    expect(createdIssues[0].title).toBe("Root");
+    expect(createdIssues[1].title).toBe("Depends on root");
 
-    const attached = fake.subIssuesByParent.get(PRD_NUMBER) ?? [];
+    const attached = subIssuesByParent.get(PRD_NUMBER) ?? [];
     expect(attached).toHaveLength(2);
     expect(attached).toEqual(published.map((p) => p.id));
   });
@@ -58,105 +90,82 @@ describe("sliceAndPublish", () => {
       slice({ title: "Depends on root", dependsOn: [1] }),
       slice({ title: "Depends on both", dependsOn: [1, 2] }),
     ];
-    const fake = createFakeGh();
+    const { tracker, blockedByWrites } = wireTracker();
 
-    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+    const published = sliceAndPublish(plan, PRD_NUMBER, tracker);
     const [root, dependsOnRoot, dependsOnBoth] = published;
 
-    const wireCalls = blockedByWrites(fake.calls);
-    expect(wireCalls).toHaveLength(3);
-
-    expect(wireCalls).toContainEqual([
-      "api",
-      "repos/{owner}/{repo}/issues/101/dependencies/blocked_by",
-      "-F",
-      "issue_id=100007",
-    ]);
-    expect(wireCalls).toContainEqual([
-      "api",
-      blockedByPath(dependsOnBoth.number),
-      "-F",
-      `issue_id=${root.id}`,
-    ]);
-    expect(wireCalls).toContainEqual([
-      "api",
-      blockedByPath(dependsOnBoth.number),
-      "-F",
-      `issue_id=${dependsOnRoot.id}`,
-    ]);
+    expect(blockedByWrites).toHaveLength(3);
+    expect(blockedByWrites).toContainEqual({ blockedNumber: dependsOnRoot.number, blockerId: root.id });
+    expect(blockedByWrites).toContainEqual({ blockedNumber: dependsOnBoth.number, blockerId: root.id });
+    expect(blockedByWrites).toContainEqual({ blockedNumber: dependsOnBoth.number, blockerId: dependsOnRoot.id });
   });
 
   it("wires no blocked-by edge for a slice with no dependsOn", () => {
     const plan = [slice({ title: "Root" })];
-    const fake = createFakeGh();
+    const { tracker, blockedByWrites } = wireTracker();
 
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, tracker);
 
-    const wireCalls = fake.calls.filter(
-      (args) =>
-        args[0] === "api" && typeof args[1] === "string" && args[1].endsWith("/dependencies/blocked_by"),
-    );
-    expect(wireCalls).toHaveLength(0);
+    expect(blockedByWrites).toHaveLength(0);
   });
 
   it("passes read-back verification and returns normally when the published graph matches", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
-    const fake = createFakeGh();
+    const { tracker } = wireTracker();
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).not.toThrow();
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).not.toThrow();
   });
 
   it("fails read-back verification, naming the exact missing edge, when a wired edge never lands", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on root", dependsOn: [1] })];
-    const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
+    const { tracker, blockedByWrites } = wireTracker({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow(
       /slice 2 \("Depends on root"\).*blocked by slice 1 \("Root"\)/,
     );
 
-    expect(blockedByWrites(fake.calls)).toHaveLength(1);
+    expect(blockedByWrites).toHaveLength(1);
   });
 
-  it("refuses an out-of-range dependsOn, naming the offending slice, with zero argv recorded", () => {
+  it("refuses an out-of-range dependsOn, naming the offending slice, with zero issues created", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Points past the end", dependsOn: [7] })];
-    const fake = createFakeGh();
+    const { tracker, createdIssues } = wireTracker();
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow(
       /slice 2 \("Points past the end"\).*out-of-range/,
     );
-    expect(fake.calls).toHaveLength(0);
+    expect(createdIssues).toHaveLength(0);
   });
 
-  it("refuses a self-reference, naming the offending slice, with zero argv recorded", () => {
+  it("refuses a self-reference, naming the offending slice, with zero issues created", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Depends on itself", dependsOn: [2] })];
-    const fake = createFakeGh();
+    const { tracker, createdIssues } = wireTracker();
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow(
       /slice 2 \("Depends on itself"\).*depends on itself/,
     );
-    expect(fake.calls).toHaveLength(0);
+    expect(createdIssues).toHaveLength(0);
   });
 
-  it("refuses a cycle, naming the offending slices, with zero argv recorded", () => {
+  it("refuses a cycle, naming the offending slices, with zero issues created", () => {
     const plan = [
       slice({ title: "Root" }),
       slice({ title: "Cycle A", dependsOn: [3] }),
       slice({ title: "Cycle B", dependsOn: [2] }),
     ];
-    const fake = createFakeGh();
+    const { tracker, createdIssues } = wireTracker();
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(
-      /dependency cycle detected/,
-    );
-    expect(fake.calls).toHaveLength(0);
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow(/dependency cycle detected/);
+    expect(createdIssues).toHaveLength(0);
   });
 
-  it("refuses a graph with no unblocked root, with zero argv recorded", () => {
+  it("refuses a graph with no unblocked root, with zero issues created", () => {
     const plan = [slice({ title: "First", dependsOn: [2] }), slice({ title: "Second", dependsOn: [1] })];
-    const fake = createFakeGh();
+    const { tracker, createdIssues } = wireTracker();
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow(/no unblocked root/);
-    expect(fake.calls).toHaveLength(0);
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow(/no unblocked root/);
+    expect(createdIssues).toHaveLength(0);
   });
 
   it("renders a body with all four headings in order, criteria as checkboxes, and no Closes directive", () => {
@@ -211,7 +220,6 @@ describe("sliceAndPublish", () => {
   });
 });
 
-
 describe("sliceAndPublish rings no lane, leaving the recompute to notice the published slices", () => {
   it("publishes every slice and dispatches nothing", () => {
     const plan = [
@@ -219,19 +227,19 @@ describe("sliceAndPublish rings no lane, leaving the recompute to notice the pub
       slice({ title: "Also depends on root", dependsOn: [1] }),
       slice({ title: "Depends on root", dependsOn: [1] }),
     ];
-    const fake = createFakeGh();
+    const { tracker, dispatches } = wireTracker();
 
-    const published = sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+    const published = sliceAndPublish(plan, PRD_NUMBER, tracker);
 
     expect(published).toHaveLength(plan.length);
-    expect(fake.dispatches).toEqual([]);
+    expect(dispatches).toEqual([]);
   });
 
   it("throws when the graph fails its read-back", () => {
     const plan = [slice({ title: "Root" }), slice({ title: "Blocked", dependsOn: [1] })];
-    const fake = createFakeGh({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
+    const { tracker } = wireTracker({ dropEdges: [{ blockedNumber: 101, blockerNumber: 100 }] });
 
-    expect(() => sliceAndPublish(plan, PRD_NUMBER, fake.gh)).toThrow();
+    expect(() => sliceAndPublish(plan, PRD_NUMBER, tracker)).toThrow();
   });
 });
 
@@ -255,11 +263,11 @@ describe("a repair the publisher makes is a repair it reports", () => {
   });
 
   test("#584.5: sliceAndPublish prints one line per rooted claim, naming the path as written and as rooted, before it creates anything", () => {
-    const fake = createFakeGh();
+    const { tracker } = wireTracker();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const plan = [slice({ title: "Rooted for me", filesClaimed: ["agent-workflows/shared/render-body.ts"] })];
 
-    sliceAndPublish(plan, PRD_NUMBER, fake.gh);
+    sliceAndPublish(plan, PRD_NUMBER, tracker);
 
     const printed = logSpy.mock.calls.map((call) => String(call[0]));
     expect(
