@@ -181,7 +181,7 @@ describe("runSpecPublication: ADR-0062's publish-then-gate order", () => {
 });
 
 describe("publishSpec: filed through a Tracker", () => {
-  test("#617.1: files the issue through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+  test("#617.1: files the issue through a Tracker's createIssue and answers the number it assigns, needing no door-opening fixture import", () => {
     const tracker = trackerMemory({ firstIssueNumber: 902 });
 
     const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], DRAFT, SHEET_SOURCE, NO_VALIDATION);
@@ -191,7 +191,7 @@ describe("publishSpec: filed through a Tracker", () => {
 });
 
 describe("updateSpec: edited through a Tracker", () => {
-  test.fails("#617.1: edits the issue's body through a Tracker, not just a raw GhExec", () => {
+  test("#617.1: edits the issue's body through a Tracker, not just a raw GhExec", () => {
     const tracker = trackerMemory({ issues: { 901: { body: "before" } } });
 
     updateSpec(tracker as unknown as GhExec, 901, DRAFT, SHEET_SOURCE);
@@ -201,7 +201,7 @@ describe("updateSpec: edited through a Tracker", () => {
 });
 
 describe("readPublishedSpec: read through a Tracker", () => {
-  test.fails("#617.1: reads the issue's body through a Tracker's issueBody, not just a raw GhExec", () => {
+  test("#617.1: reads the issue's body through a Tracker's issueBody, not just a raw GhExec", () => {
     const tracker = trackerMemory({ issues: { 901: { body: "## Problem\nIt is unbuilt." } } });
 
     const spec = readPublishedSpec(tracker as unknown as GhExec, 901);

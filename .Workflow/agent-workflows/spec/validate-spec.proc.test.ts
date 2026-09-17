@@ -77,7 +77,7 @@ describe("publishSpec's default validator is the real one", () => {
 });
 
 describe("publishSpec's default validator, driven through a Tracker", () => {
-  test("#617.3: files a well-formed body through a Tracker's createIssue and answers the number it assigns, so the suite needs no issue-doors.fixture import", () => {
+  test("#617.3: files a well-formed body through a Tracker's createIssue and answers the number it assigns, needing no door-opening fixture import", () => {
     const tracker = trackerMemory({ firstIssueNumber: 902 });
 
     const created = publishSpec(tracker as unknown as Parameters<typeof publishSpec>[0], draft(GOOD), SOURCE);

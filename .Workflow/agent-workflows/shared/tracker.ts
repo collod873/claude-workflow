@@ -76,6 +76,11 @@ export interface CreateIssueInput {
   label?: string;
 }
 
+export interface IssueTitleAndBody {
+  title: string;
+  body: string;
+}
+
 export interface RepositoryFile {
   name: string;
   sha: string;
@@ -119,6 +124,7 @@ export interface Tracker {
   addSubIssue(parentNumber: number, childId: number): void;
   addBlockedBy(number: number, blockerId: number): void;
   issueBody(number: number): string;
+  issueTitleAndBody(number: number): IssueTitleAndBody;
   issueComments(number: number): string[];
   commitPulls(sha: string): CommitPull[];
   findingIssues(label: string): TrackerFindingIssue[];
