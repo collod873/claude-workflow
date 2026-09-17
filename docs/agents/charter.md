@@ -37,7 +37,7 @@ rule is enforced is worked out there from the parts the New core registers, neve
 | Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close |
 | Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites |
 | An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief |
-| Everything the machine says, to a session or the owner, fits in 200 characters; the rest goes to a log file it names | `core/says-little.proc.test.ts` |
+| A message is one line of 200 characters, the rest in a log it names; a part that is not a hook may be registered for up to 5 such lines. Documents (tickets, specs, briefs, judgements) meet their own kind's limit | `core/says-little.proc.test.ts` |
 | The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs | `core/loaded-docs.proc.test.ts` |
 | The owner is never the one who fixes a stuck run | A test that every stopping point names a fixer who is not the owner |
 | The whole machine fits on one generated screen; adding means fitting | A length test on the generated machine page |

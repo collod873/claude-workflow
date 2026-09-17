@@ -3,6 +3,7 @@ export interface Part {
   file: string;
   stops: string;
   holds?: string[];
+  lines?: number;
 }
 
 export const parts: Part[] = [
@@ -65,6 +66,6 @@ export const parts: Part[] = [
     name: "core/says-little.proc.test.ts",
     file: "core/says-little.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/680",
-    holds: ["Everything the machine says, to a session or the owner, fits in 200 characters; the rest goes to a log file it names"],
+    holds: ["A message is one line of 200 characters, the rest in a log it names; a part that is not a hook may be registered for up to 5 such lines. Documents (tickets, specs, briefs, judgements) meet their own kind's limit"],
   },
 ];
