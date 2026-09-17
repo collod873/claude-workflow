@@ -21,7 +21,7 @@ const scenarios: Record<string, Scenario[]> = {
   "core/check": [
     { label: "passing", run: () => checkRepo().run() },
     { label: "with a failing test", run: () => checkRepo({ vitest: NOISE }).run() },
-    { label: "with every tool failing", run: () => checkRepo({ tsc: NOISE, eslint: NOISE, knip: NOISE, jscpd: NOISE, vitest: NOISE }).run() },
+    { label: "with every tool failing", run: () => checkRepo({ tsc: NOISE, eslint: NOISE, knip: NOISE, jscpd: NOISE, vitest: NOISE, node: NOISE }).run() },
   ],
   "core/bin/land": [
     { label: "waiting on checks while gh chatters", run: () => landSession({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\n[[ $2 == create ]] && echo ${URL}\nexit 0\n` }).run() },

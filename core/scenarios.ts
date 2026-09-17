@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { onTestFinished } from "vitest";
 
-const TOOLS = ["tsc", "eslint", "knip", "jscpd", "vitest"] as const;
+const TOOLS = ["tsc", "eslint", "knip", "jscpd", "vitest", "node"] as const;
 type Tool = (typeof TOOLS)[number];
 
 export interface Run {

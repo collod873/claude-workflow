@@ -38,14 +38,19 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/actions/runs/33346638810",
   },
   {
+    name: "core/check links",
+    file: "core/part-links.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/682",
+  },
+  {
     name: "core/old-machine-boundary.test.ts",
     file: "core/old-machine-boundary.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/654",
+    stops: "https://github.com/collod873/claude-workflow/pull/634",
   },
   {
     name: "core/prose.test.ts",
     file: "core/prose.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/commit/c7fa969",
+    stops: "https://github.com/collod873/claude-workflow/issues/335",
   },
   {
     name: "core/bin/land",
@@ -55,7 +60,7 @@ export const parts: Part[] = [
   {
     name: "core/growth-limits.proc.test.ts",
     file: "core/growth-limits.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/654",
+    stops: "https://github.com/collod873/claude-workflow/issues/399",
     holds: [
       "Every rule on this page names an enforcer that exists",
       "The whole machine fits on one generated screen; adding means fitting",
