@@ -30,25 +30,31 @@ _Avoid_: failure mode, category, risk
 
 ### The charter
 
-**Constraint**:
-One of the seven testable properties (C1–C7) that any design either satisfies or does not. Derived
-from what the owner does repeatedly, not from what a system was designed to do.
-C1 ship speed beats correctness ceremony: stages and owner minutes added to the smallest unit of work.
-C2 machine judgement with a reviewable checkpoint, never a human quiz.
-C3 event-driven, never a clock: a real event fires it, and it is silent when there is nothing to say.
-C4 zero grooming: if it needs maintenance to stay true, it does not get built.
-C5 complete coverage: nothing falls through silently.
-C6 short, disposable sessions.
-C7 the owner stays the decider, batched: bounded interruptions, never none.
-_Avoid_: requirement, principle, rule, guideline
+**Charter**:
+The one-screen page, `docs/agents/charter.md`, that every part of the machine earns its place
+against. Signed by the owner and changed only by the owner. Its rules are a table, each naming its
+Enforcer; it replaced the seven constraints C1–C7, which older ADRs still cite.
+_Avoid_: goal, vision, constraints, principles
+
+**Enforcer**:
+The gate, test or separate judge a Charter rule names as holding it. An instruction is never an
+enforcer. A rule with none is marked NOT ENFORCED YET until one ships, or it is deleted.
+_Avoid_: rail, guardrail, reminder, policy
+
+**Layer**:
+One of the four parts the machine is described in. **One ticket** is the core: a session files a
+ticket and the machine builds it to merged with proof. **Big jobs** turns a spec into tickets in
+waves, **Many at once** queues and merges tickets side by side, and **Look-back** reads past
+sessions and merged work. Every other layer uses One ticket; One ticket needs none of them.
+_Avoid_: tier, level
 
 **Proposal**:
-A candidate addition (a skill, a hook, a connector, an era) scored against the constraints. One
-that fails a constraint is a different goal, not a smaller version of this one.
+A candidate addition (a skill, a hook, a connector, an era) scored against the Charter. One
+that fails a Charter rule is a different goal, not a smaller version of this one.
 _Avoid_: idea, feature, request
 
 **Grooming**:
-Ongoing effort a mechanism needs to keep being true after it is built. The thing C4 bans: anything
+Ongoing effort a mechanism needs to keep being true after it is built. The Charter refuses it in an added part: anything
 requiring an active ritual dies by roughly month three regardless of quality.
 _Avoid_: upkeep, maintenance, hygiene
 
@@ -98,7 +104,7 @@ A place a gate can fire, defined by its latency budget and by what it can see fr
 agent's turn, at turn end, on push, in Actions, overnight. Named separately from Gate because the
 same logic is a different mechanism in a different venue: what a venue costs is not the check but
 the repair it makes possible, and the earliest venue is always the cheapest repair.
-_Avoid_: layer, stage, tier, level, hook point
+_Avoid_: stage, tier, level, hook point
 
 **Gate bypass**:
 A commit that reached `main` carrying a tree the gauntlet refuses. Defined by where the red *landed*,
@@ -147,7 +153,7 @@ The query that would say a decision was wrong. It produces nothing and reaches n
 mechanism: it lives as a line in the ADR that made the decision it sizes, and never as a counter
 row, where a row is read as coverage of an evidence class. Named apart from Counter
 because four of these were admitted as counters on the strength of being countable, and a table of
-numbers nobody will query is C5 asserted rather than scored. See
+numbers nobody will query is coverage asserted rather than scored. See
 [ADR-0064](docs/adr/0064-a-counter-names-an-event-a-count-an-issue-and-an-action-and.md).
 _Avoid_: number to watch, metric, KPI, health check
 

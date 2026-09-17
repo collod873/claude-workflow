@@ -4,6 +4,8 @@ A Claude Code + GitHub workflow system.
 
 ## Conventions
 
+- Before adding, changing or ruling on any part of the machine, read [`docs/agents/charter.md`](docs/agents/charter.md).
+
 - Commit messages explain **why**, not what.
 - Keep local-only state out of git (see `.gitignore`).
 - Use the vocabulary in `CONTEXT.md`. If a term there is wrong, change it there; don't work
