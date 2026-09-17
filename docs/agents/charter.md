@@ -26,26 +26,27 @@ enrolled repo, and a part serving those repos is judged by their use of it.
 
 Claude grades its own work kindly, calls done early, edits tests to pass, builds more than asked,
 follows written instructions only most of the time, and gets lost exploring. So every rule names an
-enforcer that runs: a gate, a test, or a separate judge. A rule with no enforcer is marked
-**NOT ENFORCED YET** until one ships, or it is deleted.
+enforcer that runs: a gate, a test, or a separate judge. A rule whose enforcer has not shipped shows
+as **NOT ENFORCED YET** on the generated machine page until one ships, or it is deleted. Whether a
+rule is enforced is worked out there from the parts the New core registers, never kept on this page.
 
-| Rule | Enforcer | Status |
-|---|---|---|
-| Every rule on this page names an enforcer that exists | A test over this page | NOT ENFORCED YET |
-| Done means the ticket's checks pass on main, run by something that did not build it | `bin/close-ticket`, re-run after every merge | Partly: nothing re-runs checks after a lane merge |
-| Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close | NOT ENFORCED YET |
-| Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites | Partly: the lock only, and it misses renames |
-| An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief | Partly: the cap only |
-| The owner is never the one who fixes a stuck run | A test that every stopping point names a fixer who is not the owner | NOT ENFORCED YET |
-| The whole machine fits on one generated screen; adding means fitting | A length test on the generated machine page | NOT ENFORCED YET |
-| A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate | A report on every merge | NOT ENFORCED YET |
-| A worker with no useful work in 30 days is removed; a guard stays while it links a real failure it stops and costs nothing unfired | A job over run history files a removal ticket through the ticket door | NOT ENFORCED YET |
-| A part is fired by a real event, never a timer | A test refusing timed triggers in workflows | NOT ENFORCED YET (true today) |
-| A part is added, or kept at its layer ruling, only for a failure that happened | A change adding a workflow, hook or `bin/` script is refused unless it links that failure | NOT ENFORCED YET |
-| An added or kept part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part, and each kept part at its layer ruling, against this page; a fail blocks it | NOT ENFORCED YET |
-| Each rule lives in one place. A prompt may teach a rule a gate holds, as a cache, never one no gate holds | The copy detector, widened from code to rules and to taught rules with no gate | Partly: code only |
-| The owner hears plain words and is asked only about scope, priority and taste, a few questions at a time | The owner, present in every session that talks to them | Judgement |
-| A session changing the machine has read this page and the machine page | A hook that shows both when a session first edits machinery | NOT ENFORCED YET |
+| Rule | Enforcer |
+|---|---|
+| Every rule on this page names an enforcer that exists | A test over this page and the New core's registered parts |
+| Done means the ticket's checks pass on main, run by something that did not build it | `bin/close-ticket`, re-run after every merge |
+| Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close |
+| Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites |
+| An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief |
+| The owner is never the one who fixes a stuck run | A test that every stopping point names a fixer who is not the owner |
+| The whole machine fits on one generated screen; adding means fitting | A length test on the generated machine page |
+| A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate | A report on every merge |
+| A worker with no useful work in 30 days is removed; a guard stays while it links a real failure it stops and costs nothing unfired | A job over run history files a removal ticket through the ticket door |
+| A part is fired by a real event, never a timer | A test refusing timed triggers in workflows |
+| A part is added, or kept at its layer ruling, only for a failure that happened | A change adding a workflow, hook or `bin/` script is refused unless it links that failure |
+| An added or kept part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part, and each kept part at its layer ruling, against this page; a fail blocks it |
+| Each rule lives in one place. A prompt may teach a rule a gate holds, as a cache, never one no gate holds | The copy detector, widened from code to rules and to taught rules with no gate |
+| The owner hears plain words and is asked only about scope, priority and taste, a few questions at a time | The owner, present in every session that talks to them |
+| A session changing the machine has read this page and the machine page | A hook that shows both when a session first edits machinery |
 
 ## Loading
 

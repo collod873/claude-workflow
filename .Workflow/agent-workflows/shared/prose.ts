@@ -104,7 +104,7 @@ export function proseIn(file: RepoFile): Prose[] {
 }
 
 export function gatedSources(): RepoFile[] {
-  const roots = everySourceUnder(".Workflow/agent-workflows", "bin", ".claude", ".github", ".husky", "core");
+  const roots = everySourceUnder(".Workflow/agent-workflows", "bin", ".claude", ".github", ".husky");
   const loose = readdirSync(REPO_ROOT)
     .map((entry) => join(REPO_ROOT, entry))
     .filter((path) => statSync(path).isFile())

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 // that manufactured Lumaria's `booking-embed-panel` and `eslint-boundaries` failures out of
 export default defineConfig({
   test: {
-    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts", "core/**/*.test.ts"],
+    include: [".Workflow/**/*.test.ts", ".claude/**/*.test.ts"],
     exclude: ["**/node_modules/**", ".claude/worktrees/**"],
     setupFiles: [
       ".Workflow/agent-workflows/shared/scrub-git-env.setup.ts",

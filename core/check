@@ -1,0 +1,29 @@
+#!/bin/bash
+set -uo pipefail
+
+core="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+repo="$(cd "$core/.." && pwd)"
+PATH="$repo/node_modules/.bin:$PATH"
+cd "$repo" || exit 1
+
+failed=""
+run() {
+  local name=$1
+  shift
+  if ! output=$("$@" 2>&1); then
+    failed="$failed $name"
+    printf -- '--- %s ---\n%s\n' "$name" "$output"
+  fi
+}
+
+run typecheck tsc --noEmit -p core/tsconfig.json
+run lint eslint --config core/eslint.config.js core
+run unused knip --config core/knip.config.ts --no-config-hints
+run clones jscpd core --threshold 0 --min-tokens 50 --min-lines 5 --format typescript,javascript --silent
+run test vitest run --config core/vitest.config.ts
+
+if [ -n "$failed" ]; then
+  printf 'core/check: FAILED at%s\n' "$failed"
+  exit 1
+fi
+printf 'core/check: passed\n'

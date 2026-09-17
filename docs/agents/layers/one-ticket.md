@@ -5,8 +5,8 @@ ticket, and the machine builds it to merged with proof it does what was meant. S
 in session on 2026-09-17 ([ruling ticket](https://github.com/collod873/claude-workflow/issues/665)),
 judged against the [charter](../charter.md). Only the owner changes it.
 
-Nothing here is built yet, so every rule below is NOT ENFORCED YET: each names the enforcer the New
-core ships for it. The New core is built by hand until it merges one ticket itself
+Each rule below names the enforcer the New core ships for it. Which of them run is not kept here: the
+generated machine page shows it, worked out from the parts the New core registers. The New core is built by hand until it merges one ticket itself
 ([ADR-0200](../../adr/0200-the-machine-is-rebuilt-as-a-small-new-core-in-its-own-folder.md)).
 
 **Where it runs.** This repo. Lumaria enrols later, by a stub, when the owner asks. app-starter is
@@ -70,29 +70,29 @@ It does one of three things:
 
 ## Rules
 
-| Rule | Lives in | Enforcer | Status |
-|---|---|---|---|
-| Filing a ticket starts its build. A note never builds | The stub's `issues: opened` trigger | A test over the stub's trigger, and the sample build that files and builds a ticket | NOT ENFORCED YET |
-| A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner | The ticket shape module, one copy called by `file-issue` and the start step | `file-issue` refuses with no `--ack`; the start step re-runs the same module and refuses before any model | NOT ENFORCED YET |
-| A test check passes only if it ran at least one test | The check runner shared by the start step and close | The runner reads the test count and fails on zero (`vitest -t` with no match exits 0 today) | NOT ENFORCED YET |
-| A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question | The ticket shape module; the close step | The filing refusal above; a separate judge at close for document tickets | NOT ENFORCED YET |
-| A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there | The start step | Start refusals that run before any model | NOT ENFORCED YET |
-| Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count | Test author stage; builder tool list; required check | The builder's tool list denies edits to the author's test files; the required check refuses a PR whose test count is below its base, or whose test edits by the fixer carry no reason line | NOT ENFORCED YET |
-| The checks that judge a PR come from the stable machine, never from the PR | The required-check stub, `pull_request_target` running `@stable` | The ruleset requires that check; the check records the SHA it judged and fails if it is not the PR head (Verify judged trunk: run 35174765972) | NOT ENFORCED YET |
-| A stub has one fixed shape: a trigger and a `uses:` at `@stable` | The required check | A stub-shape test inside the stable check, so a PR cannot loosen the stub that routes it | NOT ENFORCED YET |
-| Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch | A ruleset on main: PR required, strict required checks, no force push, no deletion, no bypass actor | GitHub; the probe (below) proves the owner's own push is refused | NOT ENFORCED YET |
-| Only the App moves the `stable` tag, and only after a clean sample build | A tag ruleset on `stable` with the App as its sole bypass actor | GitHub; the after-merge step is the only code that moves it | NOT ENFORCED YET |
-| The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed | The token step in each stub | The token step fails red when the key is absent; probe fact 5 | NOT ENFORCED YET |
-| Work is never thrown away: the branch is pushed before anything can refuse it | The save step | A test that the save step pushes before the gate, the review and any branch update (13 finished builds were lost to a pre-push rebase) | NOT ENFORCED YET |
-| Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | `close-ticket` runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base | NOT ENFORCED YET |
-| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the New core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) | NOT ENFORCED YET |
-| The fixer gets one turn per ticket and never edits the owner's quoted words | The fixer stage | The fixer stage refuses to start when the ticket already carries a fixer marker; its ticket write refuses a body whose `## Why` quote is not byte-identical | NOT ENFORCED YET |
-| Every green build is read against `## Why` before it merges | The reviewer stage, a required check | The ruleset requires the reviewer's check; a drift verdict fails it and hands its gaps to the fixer, with no filter between them | NOT ENFORCED YET |
-| A machine change takes over only after a sample ticket builds clean on it | The after-merge step | The `stable` tag ruleset; the sample build | NOT ENFORCED YET |
-| A port ships in the same ticket as its first caller | The ticket shape; knip's no-unused-exports stays strict | knip in the required check refuses a lone export | NOT ENFORCED YET |
-| Signed text is the owner's own words, or a page the owner signed in session (the charter, a layer ruling). Text a model wrote and the owner only accepted is not signed. No machine part edits signed text | `## Why` quotes; `docs/agents/charter.md`; `docs/agents/layers/` | The fixer's byte-identical quote check; the required check refuses an App-authored PR touching the charter or `docs/agents/layers/` | NOT ENFORCED YET |
-| Filing to merged is reported on every merge, with its longest wait named; never a gate | The after-merge step | The speed report posted with the closing record | NOT ENFORCED YET |
-| Each agent stage has a time cap (a guard) | The stub's `timeout-minutes` per job | GitHub | NOT ENFORCED YET |
+| Rule | Lives in | Enforcer |
+|---|---|---|
+| Filing a ticket starts its build. A note never builds | The stub's `issues: opened` trigger | A test over the stub's trigger, and the sample build that files and builds a ticket |
+| A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner | The ticket shape module, one copy called by `file-issue` and the start step | `file-issue` refuses with no `--ack`; the start step re-runs the same module and refuses before any model |
+| A test check passes only if it ran at least one test | The check runner shared by the start step and close | The runner reads the test count and fails on zero (`vitest -t` with no match exits 0 today) |
+| A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question | The ticket shape module; the close step | The filing refusal above; a separate judge at close for document tickets |
+| A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there | The start step | Start refusals that run before any model |
+| Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count | Test author stage; builder tool list; required check | The builder's tool list denies edits to the author's test files; the required check refuses a PR whose test count is below its base, or whose test edits by the fixer carry no reason line |
+| The checks that judge a PR come from the stable machine, never from the PR | The required-check stub, `pull_request_target` running `@stable` | The ruleset requires that check; the check records the SHA it judged and fails if it is not the PR head (Verify judged trunk: run 35174765972) |
+| A stub has one fixed shape: a trigger and a `uses:` at `@stable` | The required check | A stub-shape test inside the stable check, so a PR cannot loosen the stub that routes it |
+| Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch | A ruleset on main: PR required, strict required checks, no force push, no deletion, no bypass actor | GitHub; the probe (below) proves the owner's own push is refused |
+| Only the App moves the `stable` tag, and only after a clean sample build | A tag ruleset on `stable` with the App as its sole bypass actor | GitHub; the after-merge step is the only code that moves it |
+| The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed | The token step in each stub | The token step fails red when the key is absent; probe fact 5 |
+| Work is never thrown away: the branch is pushed before anything can refuse it | The save step | A test that the save step pushes before the gate, the review and any branch update (13 finished builds were lost to a pre-push rebase) |
+| Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | `close-ticket` runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base |
+| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the New core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
+| The fixer gets one turn per ticket and never edits the owner's quoted words | The fixer stage | The fixer stage refuses to start when the ticket already carries a fixer marker; its ticket write refuses a body whose `## Why` quote is not byte-identical |
+| Every green build is read against `## Why` before it merges | The reviewer stage, a required check | The ruleset requires the reviewer's check; a drift verdict fails it and hands its gaps to the fixer, with no filter between them |
+| A machine change takes over only after a sample ticket builds clean on it | The after-merge step | The `stable` tag ruleset; the sample build |
+| A port ships in the same ticket as its first caller | The ticket shape; knip's no-unused-exports stays strict | knip in the required check refuses a lone export |
+| Signed text is the owner's own words, or a page the owner signed in session (the charter, a layer ruling). Text a model wrote and the owner only accepted is not signed. No machine part edits signed text | `## Why` quotes; `docs/agents/charter.md`; `docs/agents/layers/` | The fixer's byte-identical quote check; the required check refuses an App-authored PR touching the charter or `docs/agents/layers/` |
+| Filing to merged is reported on every merge, with its longest wait named; never a gate | The after-merge step | The speed report posted with the closing record |
+| Each agent stage has a time cap (a guard) | The stub's `timeout-minutes` per job | GitHub |
 
 **Rung** now means only the placement tier ADR-0193 names (settled in `CONTEXT.md`). The strike ladder was Old machine and
 has no successor here: the fixer replaces the second model, the mechanic and the owner decision.
@@ -192,7 +192,8 @@ What keeps this ruling true with no hand audit:
   links a real failure, no timers, no drop in test count, and every charter rule naming an enforcer
   that exists.
 - **The enforcer test**, pointed at this page as well as the charter: every Rules row names an
-  enforcer that exists in the New core, or says NOT ENFORCED YET.
+  enforcer registered in the New core or shows as NOT ENFORCED YET on the machine page, and every
+  registered enforcer names a row that exists.
 - **The stops test**: every stop the code can reach is a Runs row with a clearer who is not the
   owner, bar the App key.
 - **The generated machine page**, length-tested, from which the stops test reads the New core's

@@ -1,12 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { stubGh } from "./agent-workflows/shared/stub-gh.fixture";
 
-const land = fileURLToPath(new URL("../bin/land", import.meta.url));
+const land = fileURLToPath(new URL("./land", import.meta.url));
+
+const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
 const githubMergesLandBranches = `#!/bin/bash
 set -euo pipefail
@@ -24,7 +25,24 @@ read -r _ pushed ref
 `;
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function recordingGh(root: string) {
+  const dir = join(root, "gh");
+  mkdirSync(dir);
+  const path = join(dir, "gh");
+  const log = join(dir, "argv.jsonl");
+  writeFileSync(path, `#!/bin/bash\npython3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}\n`);
+  chmodSync(path, 0o755);
+  const calls = (): string[][] => {
+    try {
+      return readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]);
+    } catch {
+      return [];
+    }
+  };
+  return { path, calls };
 }
 
 function sessionAheadOfMain(
@@ -51,7 +69,7 @@ function sessionAheadOfMain(
     writeFileSync(join(remote, "hooks", "post-receive"), hook);
     chmodSync(join(remote, "hooks", "post-receive"), 0o755);
   }
-  const gh = stubGh("");
+  const gh = recordingGh(root);
   const githubRefusingAutoMerge = join(root, "refuses-auto-merge");
   execFileSync("mkdir", [githubRefusingAutoMerge]);
   writeFileSync(
@@ -64,13 +82,13 @@ function sessionAheadOfMain(
     spawnSync(land, [], {
       cwd: session,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
+      env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
     });
   const head = git(session, "rev-parse", "HEAD");
   return { remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
 }
 
-describe("bin/land turns a session's commits into a PR that merges itself", () => {
+describe("core/bin/land turns a session's commits into a PR that merges itself", () => {
   it("opens a merge-commit PR from a land branch and brings local main up to the merged main", () => {
     const { remote, session, head, branch, run, calls } = sessionAheadOfMain(2, { githubMerges: "at once" });
 

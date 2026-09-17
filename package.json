@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi",
-    "test": "vitest run .Workflow .claude core",
+    "test": "vitest run .Workflow .claude",
     "clones": "jscpd",
     "adrs": "tsx .Workflow/agent-workflows/shared/adr-index.cli.ts .",
     "drift": "tsx .Workflow/agent-workflows/shared/prose-drift.cli.ts .",
@@ -45,7 +45,8 @@
     "gitignore": true,
     "ignore": [
       "**/node_modules/**",
-      ".claude/worktrees/**"
+      ".claude/worktrees/**",
+      "core/**"
     ],
     "reporters": [
       "consoleFull"
