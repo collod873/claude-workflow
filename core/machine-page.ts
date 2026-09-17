@@ -40,7 +40,7 @@ export function machinePage(registry: Part[], rules: SignedRule[]): string {
     `The New core: ${registry.length} parts, ${enforced.length} of ${rules.length} signed rules enforced`,
     "",
     "Parts, and the failure each stops",
-    ...registry.map((part) => `  ${part.name.padEnd(nameWidth)}  ${part.stops.replace("https://github.com/collod873/", "")}`),
+    ...registry.map((part) => `  ${part.name.padEnd(nameWidth)}  ${part.stops.replace("https://github.com/collod873/", "")}${part.lines ? `  (${part.lines} lines)` : ""}`),
     "",
     "Enforced",
     ...enforced.map((rule) => `  ${headline(rule)}  ← ${enforcers(rule).join(", ")}`),
