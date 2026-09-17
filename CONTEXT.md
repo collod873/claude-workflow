@@ -312,9 +312,9 @@ _Avoid_: issue number, node id, gid
 The one green or blue label an open issue wears, saying which lane holds it now or what machine
 step it waits for: `1-shaping` … `8-landing`, `ratifying`, or `3-sliced`, `waiting`, `queued`,
 `sliceable`. Exclusive within green and blue, so stamping one removes the others; a red label is a
-hold the owner lifts and stands beside it. The number is the lane's number, so the label filter
-reads in pipeline order, and a green label with no run behind it is where a chain died. Every
-label's name, colour and family lives in one catalogue, `shared/labels.ts`. See
+hold the owner lifts and stands beside it. The number is the lane's, so the label filter reads in
+pipeline order; a green label with no run behind it is where a chain died. Every label's name,
+colour and family lives in `.Workflow/agent-workflows/shared/labels.ts`. See
 [ADR-0182](docs/adr/0182-every-open-issue-wears-one-lane-label-coloured-by-who-holds.md).
 _Avoid_: status label, state label, running, in-progress
 

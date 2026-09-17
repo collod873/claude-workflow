@@ -68,4 +68,10 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/680",
     holds: ["A message is one line of 200 characters, the rest in a log it names; a part that is not a hook may be registered for up to 5 such lines. Documents (tickets, specs, briefs, judgements) meet their own kind's limit"],
   },
+  {
+    name: "core/loaded-docs.proc.test.ts",
+    file: "core/loaded-docs.proc.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+    holds: ["The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs"],
+  },
 ];
