@@ -40,9 +40,11 @@ TRACEBACK_MARKER = "Traceback (most recent call last):"
 DECIDING = {"PreToolUse", "PermissionRequest"}
 RANK = {"deny": 4, "block": 4, "defer": 3, "ask": 2, "allow": 1}
 
-# One slot, 200 characters of hook-authored text *that Claude is sent*; the rest goes to a log the
-# slot names. The budget covers the refusal reason, additionalContext and plain stdout, and not
-# systemMessage, which the user reads and Claude never does. Measured
+# One slot, 200 characters per audience, the rest in a log the slot names. Claude's budget covers
+# the refusal reason, additionalContext and plain stdout; the user's covers systemMessage, which is
+# the only user-visible half of a refusal (PreToolUse.deny-reason-not-shown-to-user - a denied call
+# renders as a bare "Ran N shell commands" without it). They are separate so a long refusal cannot
+# eat the human's line, and a chatty hook cannot fill the screen. Measured
 # cost of the unbounded version: 2,931,973 characters over 5,008 blocked edits (gauntlet-hook's own
 # logs). The bound is applied here rather than in _hook.py because the costly hook is node, and the
 # dispatcher is the only place that sees every child's stdout whatever it was written in.
@@ -215,11 +217,12 @@ def render(parts: dict, event: str, texts: list[bytes]) -> bytes:
     if specific:
         specific["hookEventName"] = event
         out["hookSpecificOutput"] = specific
-    # Not spent from the budget: json.systemMessage-visible-to-claude / PreToolUse.systemMessage-shown
-    # say this channel is rendered for the user and never enters a model request, so it costs no
-    # tokens. Charging it would only shrink the human's on-screen "why" to save nothing, and the
-    # platform already bounds it at 10,000 characters (json.output-cap-10000).
-    message = "\n".join(parts["messages"])
+    # The user's channel gets its own 200, not a share of Claude's. Two audiences, two costs: this
+    # one is screen space, not tokens (json.systemMessage-visible-to-claude - it never enters a model
+    # request). Sharing one budget let a long refusal squeeze the human's line down to a bare
+    # pointer; no budget at all let a hook drop ten lines between Claude's output blocks. Separate
+    # budgets bound both without either stealing from the other.
+    message = Budget(event).spend("\n".join(parts["messages"]))
     if message:
         out["systemMessage"] = message
 

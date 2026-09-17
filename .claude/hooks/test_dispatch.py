@@ -348,9 +348,16 @@ def check_says_little() -> None:
         reason = doc["hookSpecificOutput"].get("permissionDecisionReason", "")
         check("a long refusal is still cut to the slot's 200 characters",
               len(reason.partition(" [+")[0]) <= 200, len(reason))
-        check("but the user's copy is untouched: systemMessage costs Claude nothing, so the cap "
-              "has no business shortening it",
-              doc.get("systemMessage", "").endswith("SM-TAIL"), doc.get("systemMessage", "")[-60:])
+        screen = doc.get("systemMessage", "")
+        check("and the user's line is bounded too: screen space is a cost even though "
+              "systemMessage reaches no model request",
+              len(screen.partition(" [+")[0]) <= 200, len(screen))
+        check("the user's line keeps its own head, not the refusal's",
+              screen.startswith("SM-HEAD") and "SM-TAIL" not in screen, screen[:60])
+        check("the two budgets are separate, so a 4000-character refusal does not shrink the "
+              "human's line and a chatty hook does not shrink Claude's",
+              len(reason.partition(" [+")[0]) > 150 and len(screen.partition(" [+")[0]) > 150,
+              (len(reason.partition(" [+")[0]), len(screen.partition(" [+")[0])))
 
         # The spill is the overflow half of a 200-character line, which is what core-logs is, so it
         # keeps core's 7 days (#693) rather than inventing a second retention.
