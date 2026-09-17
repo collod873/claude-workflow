@@ -9,6 +9,7 @@
   "PostToolUse": [
     "checklist-reminder.py",
     "post-edit-validate.py",
+    "hook-gate.py",
     "md-html-refresh.py",
     "circuit-breaker.py",
     "gauntlet.sh"
