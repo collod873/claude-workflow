@@ -86,16 +86,23 @@ function warnAbout(warnings: string[]): void {
   for (const warning of warnings) console.error(`spec body warning: ${warning}`);
 }
 
-export function updateSpec(gh: GhExec, issueNumber: number, draft: PublishedSpec, source: SpecSource | undefined): void {
-  gh([
-    "issue",
-    "edit",
-    String(issueNumber),
-    "--title",
-    specTitle(draft.title),
-    "--body",
-    specBody(draft.body, source),
-  ]);
+interface IssueBodyWriter {
+  setIssueBody(number: number, title: string, body: string): void;
+}
+
+export function updateSpec(
+  gh: GhExec | IssueBodyWriter,
+  issueNumber: number,
+  draft: PublishedSpec,
+  source: SpecSource | undefined,
+): void {
+  const title = specTitle(draft.title);
+  const body = specBody(draft.body, source);
+  if (typeof gh === "function") {
+    gh(["issue", "edit", String(issueNumber), "--title", title, "--body", body]);
+    return;
+  }
+  gh.setIssueBody(issueNumber, title, body);
 }
 
 export interface PublishedSpec {
@@ -103,8 +110,6 @@ export interface PublishedSpec {
   body: string;
 }
 
-export function readPublishedSpec(gh: GhExec, issueNumber: number): PublishedSpec {
-  const raw = gh(["issue", "view", String(issueNumber), "--json", "title,body"]);
-  const parsed = JSON.parse(raw) as { title?: string; body?: string };
-  return { title: parsed.title ?? "", body: parsed.body ?? "" };
+export function readPublishedSpec(gh: GhExec | Tracker, issueNumber: number): PublishedSpec {
+  return toTracker(gh).issueTitleAndBody(issueNumber);
 }

@@ -312,6 +312,11 @@ export function trackerGh(gh: GhExec): Tracker {
     issueBody(number) {
       return issueBody(gh, number);
     },
+    issueTitleAndBody(number) {
+      const raw = gh(["issue", "view", String(number), "--json", "title,body"]);
+      const parsed = JSON.parse(raw) as { title?: string; body?: string };
+      return { title: parsed.title ?? "", body: parsed.body ?? "" };
+    },
     issueComments(number) {
       return issueComments(gh, number);
     },

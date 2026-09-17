@@ -1,6 +1,7 @@
 import type { CommitPull, CreateIssueInput, FileChange, Label, RepoRun, RepositoryFile, Tracker, TrackerBlocker, TrackerComment, TrackerFindingIssue, TrackerJob, TrackerRecordComment, TrackerSignal, WorkflowRun } from "./tracker";
 
 export interface TrackerMemoryIssue {
+  title?: string;
   body?: string;
   comments?: string[];
 }
@@ -57,6 +58,7 @@ export interface TrackerMemoryLabelWrite {
 }
 
 export interface TrackerMemory extends Tracker {
+  setIssueBody(number: number, title: string, body: string): void;
   commits: TrackerMemoryCommit[];
   labelWrites: TrackerMemoryLabelWrite[];
   workflowApprovalsSet: string[];
@@ -121,6 +123,13 @@ export function trackerMemory(seed: TrackerMemorySeed = {}): TrackerMemory {
     addSubIssue: () => undefined,
     addBlockedBy: () => undefined,
     issueBody: (number) => issues.get(number)?.body ?? "",
+    issueTitleAndBody: (number) => ({
+      title: issues.get(number)?.title ?? "",
+      body: issues.get(number)?.body ?? "",
+    }),
+    setIssueBody: (number, title, body) => {
+      issues.set(number, { ...issues.get(number), title, body });
+    },
     issueComments: (number) => issues.get(number)?.comments ?? [],
     commitPulls: (sha) => pulls[sha] ?? [],
     findingIssues: (label) => findingIssues[label] ?? [],

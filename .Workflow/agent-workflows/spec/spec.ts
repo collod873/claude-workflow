@@ -59,17 +59,18 @@ function isDecidedContext(input: DecidedContext | SpecTrigger): input is Decided
 }
 
 function collect(trigger: SpecTrigger): { context: DecidedContext; decisions: MarkedDecision[] } {
+  const tracker = trackerGh(trigger.gh);
   switch (trigger.kind) {
     case "sheet":
-      return collectSheetContext(trackerGh(trigger.gh), trigger.issueNumber);
+      return collectSheetContext(tracker, trigger.issueNumber);
     case "map":
       return {
-        context: collectMapContext(trackerGh(trigger.gh), trigger.issueNumber, trigger.repoRoot),
+        context: collectMapContext(tracker, trigger.issueNumber, trigger.repoRoot),
         decisions: [],
       };
     case "widened":
       return {
-        context: collectWidenedContext(trackerGh(trigger.gh), trigger.issueNumber),
+        context: collectWidenedContext(tracker, trigger.issueNumber),
         decisions: [],
       };
   }
