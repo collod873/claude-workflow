@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { GhExec } from "../shared/gh";
 import { createFakeGh } from "../shared/gh.fake";
@@ -8,10 +9,16 @@ import type { Slice } from "../shared/plan-schema";
 import type { PublishedIssue } from "../shared/publish-sub-issues";
 import { checkpointPath, type StageExec, type StageReply } from "../shared/stage";
 import { createFakeStage, createFakeStages } from "../shared/stage.fake";
-import { seamSweepResponse, seedCheckpoint, sliceResponse, unreachableGh } from "./checkpoint.fixture";
+import { trackerMemory } from "../shared/tracker-memory";
 import { runNamedStage } from "./to-tickets";
 
 const SESSION = "session-that-wrote-the-plan";
+
+const unreachableGh = trackerMemory() as unknown as GhExec;
+
+function sliceResponse(plan: Slice[]): string {
+  return JSON.stringify({ slices: plan });
+}
 
 const selfDependent = [slice({ title: "Leans on itself", dependsOn: [1] })];
 const outOfRange = [slice({ title: "Leans on nothing", dependsOn: [9] })];
@@ -27,12 +34,16 @@ function auditResponse(plan: Slice[]): string {
 
 function seededForSlice(): void {
   withHandoffDir();
-  seedCheckpoint("seam-sweep", seamSweepResponse(["a seam"]));
+  const seamSweepCheckpoint = checkpointPath("seam-sweep");
+  mkdirSync(dirname(seamSweepCheckpoint), { recursive: true });
+  writeFileSync(seamSweepCheckpoint, JSON.stringify({ key: "test", response: JSON.stringify({ entries: ["a seam"] }) }), "utf8");
 }
 
 function seededForAudit(): void {
   withHandoffDir();
-  seedCheckpoint("slice", sliceResponse(repaired));
+  const sliceCheckpoint = checkpointPath("slice");
+  mkdirSync(dirname(sliceCheckpoint), { recursive: true });
+  writeFileSync(sliceCheckpoint, JSON.stringify({ key: "test", response: sliceResponse(repaired) }), "utf8");
 }
 
 function issueCreates(calls: string[][]): string[][] {

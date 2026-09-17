@@ -1,9 +1,28 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createFakeGh } from "../shared/gh.fake";
+import { withHandoffDir } from "../shared/handoff-dir.fixture";
+import { slice } from "../shared/plan.fixture";
 import { CLAIM_LIMIT } from "../shared/ticket-shape";
-import { promptHandedTo } from "./checkpoint.fixture";
-import { ticketFormat } from "./to-tickets";
+import { checkpointPath } from "../shared/stage";
+import { createFakeStage } from "../shared/stage.fake";
+import { runNamedStage, ticketFormat } from "./to-tickets";
+
+async function promptHandedToSlice(): Promise<string> {
+  withHandoffDir();
+  mkdirSync(dirname(checkpointPath("seam-sweep")), { recursive: true });
+  writeFileSync(
+    checkpointPath("seam-sweep"),
+    JSON.stringify({ key: "test", response: JSON.stringify({ entries: ["a seam"] }) }),
+    "utf8",
+  );
+  const fake = createFakeStage(JSON.stringify({ slices: [slice({ title: "One slice" })] }));
+
+  await runNamedStage("slice", "13", fake.exec, createFakeGh().gh);
+
+  return fake.calls[0][1];
+}
 
 describe("the slicer takes the ticket contract by injection", () => {
   it("ticketFormat() reads docs/agents/ticket-format.md's spec-sub-issue variant", () => {
@@ -21,7 +40,7 @@ describe("the slicer takes the ticket contract by injection", () => {
   });
 
   it("hands the slicer the contract itself, with no placeholder left unrendered", async () => {
-    const prompt = await promptHandedTo("slice");
+    const prompt = await promptHandedToSlice();
 
     expect(prompt).toContain(ticketFormat());
     expect(prompt).not.toContain("{{");
