@@ -188,7 +188,14 @@ describe("the New core holds the charter's growth limits (ADR-0200)", () => {
     expect(testCountDrop(copy)).toEqual([expect.stringMatching(/^core\/ holds 1 tests, below 2 at the merge base [0-9a-f]{12}$/)]);
   });
 
-  it("5. every registered enforcer names a rule a signed page carries, in a file that exists", () => {
+  it("5. the check runner is the enforcer the page credits with the zero-test rule", () => {
+    const rule = "A test check passes only if it ran at least one test";
+
+    expect(parts.filter((part) => part.holds?.includes(rule)).map((part) => part.name)).toEqual(["core/check-runner.ts"]);
+    expect(machinePage(parts, signedRules(REPO))).toContain(`${rule}  ← core/check-runner.ts`);
+  });
+
+  it("6. every registered enforcer names a rule a signed page carries, in a file that exists", () => {
     const rules = signedRules(REPO);
     expect(unknownEnforcements(REPO, parts, rules)).toEqual([]);
 

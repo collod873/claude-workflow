@@ -121,6 +121,22 @@ export function filing({ gh, body, title = "A ticket the machine can build", npx
   };
 }
 
+export function checking(npx: string) {
+  const dir = scratch("check-runner-");
+  script(join(dir, "bin", "npx"), npx);
+  return {
+    run: (): Run => {
+      const { status, stdout, stderr } = spawnSync("node", [join(CORE, "check-runner.ts")], {
+        cwd: dir,
+        input: wellFormedTicket,
+        encoding: "utf8",
+        env: { ...env, PATH: `${join(dir, "bin")}:${process.env.PATH ?? ""}` },
+      });
+      return { status, stdout, stderr };
+    },
+  };
+}
+
 export const MINTED = "ghs_theAppsInstallationToken";
 
 const ANSWERS = [
