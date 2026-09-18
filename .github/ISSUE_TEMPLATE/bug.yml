@@ -7,6 +7,6 @@ body:
     id: bug
     attributes:
       label: What broke?
-      description: Your words, stored as written. Lane 01 restates them; nothing edits them.
+      description: Your words, stored as written. Nothing edits them.
     validations:
       required: true
