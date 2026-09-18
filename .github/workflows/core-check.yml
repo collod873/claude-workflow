@@ -39,4 +39,8 @@ jobs:
           CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
         run: core/bin/app-token
 
-      - run: core/check
+      - id: check
+        run: core/check
+
+      - if: failure() && steps.check.conclusion == 'failure'
+        run: tail -n 60 "$(git rev-parse --git-common-dir)"/core-logs/check-*.log
