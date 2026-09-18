@@ -1,0 +1,80 @@
+{
+  "subject": "603",
+  "floor": "live",
+  "model": "opus[1m]",
+  "effort": "high",
+  "asked": "the follow-up on the blocked-by edges that the owner approved at the end of this session, which also replaces #407",
+  "context": {
+    "sessions": [
+      {
+        "id": "ca7a2c5c-ae56-44e4-8fcc-87d7ab02e039",
+        "rawBytes": 895342,
+        "entries": 467,
+        "keptThrough": 370,
+        "trimmedBytes": 127626
+      }
+    ],
+    "rawBytes": 895342,
+    "trimmedBytes": 127647,
+    "strippedBytes": 50861,
+    "againstStripped": 2.51
+  },
+  "historical": {
+    "bytes": 5031,
+    "refusals": [
+      "the body carries no '## Why', so nothing says what the owner asked for",
+      "'## Acceptance criteria' carries 7 '- [ ]' items, not 1 to 3",
+      "criterion 3 carries 2 check: markers, not one: A `dependsOn` naming a position outside the plan, a cycle, and a criterion with…"
+    ]
+  },
+  "promptBytes": 128734,
+  "run": {
+    "wallMs": 470906,
+    "status": 0,
+    "toolCalls": 33,
+    "toolNames": [
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Glob",
+      "Glob",
+      "Read",
+      "Read",
+      "Grep",
+      "Bash",
+      "Read",
+      "Bash",
+      "Read",
+      "Read",
+      "Write",
+      "Bash"
+    ],
+    "filingAttempts": 2,
+    "durationMs": null,
+    "costUsd": null,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "numTurns": null,
+    "isError": null
+  },
+  "filed": null,
+  "body": null
+}
