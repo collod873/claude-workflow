@@ -32,8 +32,8 @@ export function script(path: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
-export function execute(file: string, cwd: string, extra: Record<string, string> = {}): Run {
-  const { status, stdout, stderr } = spawnSync(file, [], { cwd, env: { ...env, ...extra }, encoding: "utf8" });
+export function execute(file: string, cwd: string, extra: Record<string, string> = {}, args: string[] = []): Run {
+  const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { ...env, ...extra }, encoding: "utf8" });
   return { status, stdout, stderr };
 }
 
@@ -57,6 +57,53 @@ export function checkRepo(failing: Partial<Record<Tool, string>> = {}) {
   git(repo, "add", ".");
   git(repo, "commit", "--quiet", "-m", "base");
   return { repo, run: (cwd = repo) => execute(join(cwd, "core", "check"), cwd) };
+}
+
+export const wellFormedTicket = [
+  "## Why",
+  "",
+  'The owner, in session: "a ticket is the only way in, so its shape is where intent survives".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The filing command refuses a misshapen body - check: `npx vitest run --config core/vitest.config.ts ticket-shape`",
+  "",
+  "## Files claimed",
+  "",
+  "- core/ticket-shape.ts",
+  "",
+].join("\n");
+
+export const misshapenTicket = [
+  "## Why",
+  "",
+  "The session decided this was worth building.",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] one",
+  "- [ ] two",
+  "- [ ] three",
+  "- [ ] four",
+  "",
+  "## Files claimed",
+  "",
+  "- core/**",
+  "",
+].join("\n");
+
+export function filing({ gh, body, title = "A ticket the machine can build" }: { gh: string; body: string; title?: string }) {
+  const root = scratch("file-issue-");
+  const repo = join(root, "repo");
+  mkdirSync(repo, { recursive: true });
+  git(repo, "init", "--quiet", "--initial-branch=main");
+  writeFileSync(join(repo, "body.md"), body);
+  script(join(root, "bin", "gh"), gh);
+  return {
+    repo,
+    run: (args = ["ticket", "--title", title, "--body-file", "body.md"]) =>
+      execute(join(CORE, "bin", "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
+  };
 }
 
 export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: string; remoteRefuses?: string; messages?: string[] }) {
