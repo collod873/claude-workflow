@@ -91,6 +91,18 @@ export const parts: Part[] = [
     holds: ["The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs"],
   },
   {
+    name: "core/stub-shape.test.ts",
+    file: "core/stub-shape.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/652",
+    holds: ["A stub has one fixed shape: a trigger and a `uses:` at `@stable`"],
+  },
+  {
+    name: "core/judged-sha.proc.test.ts",
+    file: "core/judged-sha.proc.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/652",
+    holds: ["The checks that judge a PR come from the stable machine, never from the PR"],
+  },
+  {
     name: "core/em-dash.test.ts",
     file: "core/em-dash.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/681",
