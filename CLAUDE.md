@@ -2,7 +2,8 @@
 
 ## Conventions
 
-- Before adding, changing or ruling on any part of the machine, read [`docs/agents/charter.md`](docs/agents/charter.md).
+- Before adding, changing or ruling on any part of the machine, read
+  [`docs/agents/charter.md`](docs/agents/charter.md); the layer rulings sit beside it.
 
 - Commit messages explain **why**, not what, and carry no em dash (`core/bin/land` refuses one).
 - `main` takes no direct push, the owner's included
@@ -20,11 +21,7 @@
   ([ADR-0086](docs/adr/0086-a-test-importing-a-thing-is-not-evidence-anything-runs-it-so.md)). Wire it
   to a caller or delete it; if it is genuinely unreachable by design, tag the export `@shell` or
   `@fixture` with a sentence saying why.
-- `core/check` is the New core's whole gate, run by `.husky/pre-push`. The Old machine's checks never
-  read `core/` ([`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)).
-
-## Where to look
-
-The charter, the layer rulings and what separates the two machines → `docs/agents/`.
-The New core's checks → `core/check`. The Old machine's → `npm test`, `npm run lint`,
-`npm run typecheck`.
+- `core/check` is the New core's whole gate, run by `.husky/pre-push` and on every PR. `.claude/`
+  and `bin/` are the Old machine's, judged by `npm test`, `npm run lint` and `npm run typecheck`,
+  which nothing fires: run them by hand
+  ([`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)).

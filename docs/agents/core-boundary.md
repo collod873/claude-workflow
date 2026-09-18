@@ -36,8 +36,8 @@ Nothing under `core/`. Four exclusions, one per config:
 |---|---|
 | `eslint.config.js` | `ignores: [... "core/**"]` |
 | `knip.config.ts` | `ignore: [... "core/**"]` |
-| `tsconfig.json` | `include` is `.Workflow/**/*.ts` and `.claude/**/*.ts` |
-| `package.json` | `test` is `vitest run .Workflow .claude` |
+| `tsconfig.json` | `include` is `.claude/**/*.ts` and `bin/**/*.ts` |
+| `package.json` | `test` is `vitest run .claude bin` |
 
 All four are deliberate, and reversing one is the wrong repair. [#672](https://github.com/collod873/claude-workflow/issues/672)
 did the opposite, pointing the Old typecheck, tests, knip and prose gate at `core/`, and
@@ -45,22 +45,24 @@ did the opposite, pointing the Old typecheck, tests, knip and prose gate at `cor
 deletes the old folders after 30 days, so a core judged by Old gates loses every check it has along
 with them. A guard over core code is wired into `core/check`. Porting an Old gate is not the way to
 give core one, and Wave 3 of the [wave map](https://github.com/collod873/claude-workflow/issues/674)
-says it plainly: the stable check runs `core/check`, never `bin/gauntlet`.
+says it plainly: the stable check runs `core/check`, and nothing else.
+
+What the two scopes cover has narrowed with the folders. The lane deletion took `.Workflow/` out of
+both configs, so the Old machine's checks are now the workstation's own: the hooks under `.claude/`
+and the scripts under `bin/`.
 
 ## What fires `core/check`
 
-`.husky/pre-push`, and nothing else. Nothing runs it during a session, and nothing on GitHub runs it
-on a pull request until Wave 3's stable check exists.
+`.husky/pre-push`, and `core-check.yml` on every pull request through `core-check-caller.yml`, which
+checks out the PR head and refuses to judge any other SHA. Nothing runs it during a session.
 
-The gap is not that the turn-end gate skips core. It is that the gate answers anyway. The `turn` and
-`stop` venues collect a changed file by suffix, so a `core/*.ts` edit is collected, handed to
-`typecheck`, `lint_one` and `test_related`, and passed by all three: eslint exits 0 on an ignored
-path, `vitest related` finds no test files and exits 0, and the root `tsc --noEmit` never held the
-file in its program. A planted `core/` file assigning a string to a `number` returns `bin/gauntlet
-turn` exit 0 and no output, while `core/check` fails it three ways. `gauntlet-hook` then logs the
-verdict `clean`, so the session's telemetry records a core edit as checked and passing.
+The turn-end gate that used to answer for core, wrongly, is gone with the lanes: it collected a
+changed file by suffix, handed a `core/*.ts` edit to `typecheck`, `lint_one` and `test_related`, and
+passed it in all three, because eslint exits 0 on an ignored path, `vitest related` finds no test
+files and exits 0, and the root `tsc --noEmit` never held the file in its program. Nothing in a
+session answers for core now, which is the honest version of the same state.
 
-Read a green turn-end gate as saying nothing about core, and run `core/check` before believing core
+So a core edit is judged when it is pushed, and not before. Run `core/check` before believing core
 is sound.
 
 ## What the Old machine's hooks see
