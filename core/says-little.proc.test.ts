@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./check-covers.ts";
-import { checkRepo, execute, landSession, scratch, script, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
+import { checkRepo, execute, filing, landSession, misshapenTicket, scratch, script, wellFormedTicket, type Run } from "./scenarios.ts";
 
-const LIMIT = 200;
-const MOST_LINES = 5;
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
+const FILED = `printf '%s\\n' ${URL}\n`;
 
 interface Scenario {
   label: string;
@@ -29,6 +29,12 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with the push refused", run: () => landSession({ gh: "exit 0\n", remoteRefuses: NOISE }).run() },
     { label: "refusing an em dash in a commit message", run: () => landSession({ gh: "exit 0\n", messages: ["change \u2014 dashed"] }).run() },
   ],
+  "core/bin/file-issue": [
+    { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
+    { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
+    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
+    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["note", "--title", "A note"]) },
+  ],
 };
 
 function speakers(registry: Part[], check: string): string[] {
@@ -37,7 +43,7 @@ function speakers(registry: Part[], check: string): string[] {
 }
 
 function linesAllowed(registry: Part[], file: string): number {
-  return Math.max(1, ...registry.filter((part) => part.file === file).map((part) => part.lines ?? 1));
+  return Math.max(1, ...registry.filter((part) => part.file === file).map(allowedFor));
 }
 
 function overAllowed(registry: Part[]): string[] {
@@ -55,15 +61,11 @@ function overheard(part: string, runs: Scenario[] = [], lines = 1): string[] {
   });
   const passing = heard.some(({ status }) => status === 0) ? [] : [`${part} has no passing run`];
   const failing = heard.some(({ status }) => status !== 0) ? [] : [`${part} has no failing run`];
-  const loud = heard.flatMap(({ label, said }) => {
-    const spoken = said.replace(/\n$/, "").split("\n");
-    const long = spoken.filter((line) => line.length > LIMIT).map((line) => `${part} ${label} said a line of ${line.length} characters, over ${LIMIT}`);
-    return spoken.length > lines ? [...long, `${part} ${label} said ${spoken.length} lines, over ${lines}`] : long;
-  });
+  const loud = heard.flatMap(({ label, said }) => overLimit(said, lines).map((problem) => `${part} ${label} ${problem}`));
   return [...passing, ...failing, ...loud];
 }
 
-describe(`everything core/ prints is one line of ${LIMIT} characters, or up to ${MOST_LINES} for a part registered for them (#683)`, () => {
+describe(`everything core/ prints is one line of ${LINE_LIMIT} characters, or up to ${MOST_LINES} for a part registered for them (#683)`, () => {
   it.each(speakers(parts, readFileSync(join(REPO, "core", "check"), "utf8")))("%s stays under the limit on a passing and a failing run", (part) => {
     expect(overheard(part, scenarios[part], linesAllowed(parts, part))).toEqual([]);
   });
@@ -79,7 +81,7 @@ describe(`everything core/ prints is one line of ${LIMIT} characters, or up to $
     ]);
     expect(linesAllowed(registry, "core/bin/lister")).toBe(MOST_LINES);
     expect(linesAllowed(registry, "core/check")).toBe(1);
-    expect(machinePage(registry, [])).toMatch(new RegExp(`core/bin/lister +claude-workflow/pull/1  \\(${MOST_LINES} lines\\)`));
+    expect(machinePage(registry, [])).toMatch(new RegExp(`core/bin/lister +PR 1 \\(${MOST_LINES} lines\\)`));
   });
 
   it("makes every registered part core/check does not already run prove its own runs, whatever it is written in", () => {
@@ -99,9 +101,9 @@ describe(`everything core/ prints is one line of ${LIMIT} characters, or up to $
     };
 
     expect(overheard("planted", [
-      { label: "passing", run: said("x".repeat(LIMIT), 0) },
-      { label: "failing", run: said("x".repeat(LIMIT + 1), 1) },
-    ])).toEqual([`planted failing said a line of ${LIMIT + 1} characters, over ${LIMIT}`]);
+      { label: "passing", run: said("x".repeat(LINE_LIMIT), 0) },
+      { label: "failing", run: said("x".repeat(LINE_LIMIT + 1), 1) },
+    ])).toEqual([`planted failing said a line of ${LINE_LIMIT + 1} characters, over ${LINE_LIMIT}`]);
     const twoLines = { label: "passing", run: said("x\ny", 0) };
     const failing = { label: "failing", run: said("x", 1) };
     expect(overheard("planted", [twoLines, failing])).toEqual(["planted passing said 2 lines, over 1"]);
