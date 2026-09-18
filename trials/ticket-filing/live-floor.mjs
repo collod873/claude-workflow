@@ -196,8 +196,11 @@ for (const line of (spent.stdout || "").split("\n")) {
   if (!line.trim()) continue;
   let parsed;
   try { parsed = JSON.parse(line); } catch { continue; }
-  if (parsed.type === "assistant") for (const block of parsed.message?.content ?? []) if (block.type === "tool_use") tools.push({ name: block.name, input: block.input });
-  else if (parsed.type === "result") result = parsed;
+  if (parsed.type === "assistant") {
+    for (const block of parsed.message?.content ?? []) if (block.type === "tool_use") tools.push({ name: block.name, input: block.input });
+  } else if (parsed.type === "result") {
+    result = parsed;
+  }
 }
 
 const filings = tools.filter(({ name, input }) => name === "Bash" && /file-issue/.test(input?.command ?? ""));
