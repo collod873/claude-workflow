@@ -5,7 +5,7 @@ import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./check-covers.ts";
 import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
-import { checkRepo, execute, filing, landSession, misshapenTicket, scratch, script, wellFormedTicket, type Run } from "./scenarios.ts";
+import { checkRepo, execute, filing, landSession, minting, misshapenTicket, scratch, script, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -29,6 +29,10 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with gh pr create failing", run: () => landSession({ gh: `[[ $2 == create ]] || exit 0\ncat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run() },
     { label: "with the push refused", run: () => landSession({ gh: "exit 0\n", remoteRefuses: NOISE }).run() },
     { label: "refusing an em dash in a commit message", run: () => landSession({ gh: "exit 0\n", messages: ["change \u2014 dashed"] }).run() },
+  ],
+  "core/bin/app-token": [
+    { label: "minting the App's token", run: () => minting().run() },
+    { label: "with no key set", run: () => minting({ key: "" }).run() },
   ],
   "core/bin/machine-page": [
     { label: "rendering the page", run: () => execute(join(REPO, "core", "bin", "machine-page"), REPO) },

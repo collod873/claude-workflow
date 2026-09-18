@@ -52,6 +52,12 @@ export function workflowNames(dir = WORKFLOWS_DIR): string[] {
   return readdirSync(dir).filter(isWorkflowFile);
 }
 
+export function newCoreSecretNames(dir = WORKFLOWS_DIR): string[] {
+  const owned = readdirSync(dir).filter((name) => OWNED_BY_NEW_CORE.test(name));
+  const named = owned.flatMap((name) => [...readFileSync(join(dir, name), "utf8").matchAll(/secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)]);
+  return [...new Set(named.map((match) => match[1]))];
+}
+
 export function readWorkflow<T = unknown>(name: string, dir = WORKFLOWS_DIR): ParsedWorkflow<T> {
   const path = join(dir, name);
   const source = readFileSync(path, "utf8");

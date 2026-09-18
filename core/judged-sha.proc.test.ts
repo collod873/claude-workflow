@@ -1,24 +1,13 @@
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { parse } from "yaml";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execute, git, scratch, script } from "./scenarios.ts";
+import { execute, git, scratch, script, workflowSteps } from "./scenarios.ts";
 
-const REPO = resolve(import.meta.dirname, "..");
 const CHECK = ".github/workflows/core-check.yml";
 const JUDGED = "judged-sha";
 const ELSEWHERE = "0".repeat(40);
 
-interface Step {
-  id?: string;
-  uses?: string;
-  with?: Record<string, unknown>;
-  run?: string;
-}
-
-function steps(): Step[] {
-  const workflow = parse(readFileSync(join(REPO, CHECK), "utf8")) as { jobs: Record<string, { steps?: Step[] }> };
-  return Object.values(workflow.jobs).flatMap((job) => job.steps ?? []);
+function steps() {
+  return workflowSteps(CHECK);
 }
 
 function judging(headOf: (judged: string) => string): { judged: string; said: string; status: number | null } {

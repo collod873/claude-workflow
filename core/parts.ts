@@ -64,6 +64,12 @@ export const parts: Part[] = [
     lines: 5,
   },
   {
+    name: "core/bin/app-token",
+    file: "core/bin/app-token",
+    stops: "https://github.com/collod873/claude-workflow/issues/652",
+    holds: ["The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed"],
+  },
+  {
     name: "core/bin/machine-page",
     file: "core/bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",
