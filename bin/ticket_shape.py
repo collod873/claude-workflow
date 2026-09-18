@@ -9,9 +9,7 @@ from pathlib import Path
 
 KINDS = ("note", "question", "ticket", "spec")
 
-SHARED_DIR = (
-    Path(__file__).resolve().parent.parent / ".Workflow" / "agent-workflows" / "shared"
-)
+SHARED_DIR = Path(__file__).resolve().parent / "lib"
 
 IMMUTABLE_SET_PATH = SHARED_DIR / "immutable-set.json"
 IMMUTABLE_SET: tuple[str, ...] = tuple(json.loads(IMMUTABLE_SET_PATH.read_text()))

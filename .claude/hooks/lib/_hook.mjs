@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/**
+ * @shell _hook.sh runs this by path, so no static import reaches it.
+ */
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";

@@ -3,8 +3,8 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { describe, expect, it, test } from "vitest";
-import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture";
-import { makeBareRepo } from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
+import { scratchDir } from "./scratch.fixture";
+import { makeBareRepo } from "./temp-repo.fixture";
 import {
   captureFiles,
   expectCaptured,
@@ -206,8 +206,8 @@ describe("session-capture.sh: failing open", () => {
   });
 });
 
-describe("session-capture.sh: publishing the session record and dispatching the audit", () => {
-  it("publishes a session record and dispatches the audit when the session ran in this repo", () => {
+describe("session-capture.sh: publishing the session record", () => {
+  it("publishes a session record when the session ran in this repo", () => {
     const { bareDir, head, tracker, result } = inScopeSession("session-in-scope");
 
     const capture = expectCaptured(result);
@@ -220,15 +220,10 @@ describe("session-capture.sh: publishing the session record and dispatching the 
     expect(note.corpusPath).toBe(join("raw", "sessions", basename(capture.path)));
     expect(note).not.toHaveProperty("spine");
     expect(capture.content).toContain("ship the range derivation");
-
-    const [dispatch] = tracker.calls();
-    expect(dispatch).toContain("api");
-    expect(dispatch.some((arg) => arg.endsWith("/dispatches"))).toBe(true);
-    expect(dispatch).toContain("event_type=session-captured");
-    expect(dispatch).toContain(`client_payload[head]=${head}`);
+    expect(tracker.calls()).toEqual([]);
   });
 
-  it("captures but does not publish or dispatch when the session ran in a different repo", () => {
+  it("captures but does not publish when the session ran in a different repo", () => {
     const { repoDir } = makeRepoUnderCapture();
     const otherRepo = sessionWorktree(makeBareRepo("session-capture-other-bare"));
     const tracker = trackerOnPath();
@@ -276,18 +271,10 @@ describe("session-capture.sh: publishing the session record and dispatching the 
     expect(waitForLogToContain(result.logPath, "skipped publish-push-failed")).not.toContain("published");
     expect(tracker.calls()).toEqual([]);
   });
-
-  it("still writes the capture file and exits 0 when the dispatch fails after a successful push", () => {
-    const { bareDir, head, result } = inScopeSession("session-dispatch-fails", {}, trackerOnPath({ fail: true }));
-
-    expectCaptured(result);
-    expect(waitForLogToContain(result.logPath, "skipped publish-dispatch-failed")).not.toContain("published");
-    expect(readSessionNote(bareDir, head).sessionId).toBe("session-dispatch-fails");
-  });
 });
 
 describe("session-capture.sh: flushing the Knowledge-Base checkout", () => {
-  it("flushes before the dispatch fires, for a session that ran in this repo", () => {
+  it("flushes before the record is published, for a session that ran in this repo", () => {
     const { kbBareDir, kbCloneDir, kbOutputDir } = makeKbCheckout();
     const { head, result } = inScopeSession("session-flush", {
       SESSION_CAPTURE_KB_DIR: kbCloneDir,

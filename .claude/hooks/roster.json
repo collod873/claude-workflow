@@ -11,15 +11,13 @@
     "post-edit-validate.py",
     "hook-gate.py",
     "md-html-refresh.py",
-    "circuit-breaker.py",
-    "gauntlet.sh"
+    "circuit-breaker.py"
   ],
   "PostToolUseFailure": [
     "circuit-breaker.py"
   ],
   "SessionStart": [
     "clone-refresh.py",
-    "session-brief.py",
     "circuit-breaker.py"
   ],
   "Stop": [

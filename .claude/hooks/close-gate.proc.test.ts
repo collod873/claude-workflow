@@ -2,8 +2,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, test } from "vitest";
-import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture";
-import { stubGh } from "../../.Workflow/agent-workflows/shared/stub-gh.fixture";
+import { scratchDir } from "./scratch.fixture";
+import { stubGh } from "./stub-gh.fixture";
 import roster from "./roster.json";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
@@ -106,7 +106,7 @@ interface GateReading {
 
 const HOOKS = dirname(fileURLToPath(import.meta.url));
 
-const RULES = resolve(HOOKS, "..", "..", ".Workflow", "agent-workflows", "shared", "closing-record.rules.json");
+const RULES = resolve(HOOKS, "..", "..", "bin", "lib", "closing-record.rules.json");
 
 const RANGE_CASES = [
   "`3fc1769..7f9d443`",

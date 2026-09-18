@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { REPO_ROOT } from "../../../.Workflow/agent-workflows/shared/repo-sources";
+
 import { runRowThroughSeededLib } from "./_hook.fixture";
+
+const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
 test("#374.1: .claude/hooks/lib/_hook.mjs and _hook.sh exist", () => {
   for (const relative of [".claude/hooks/lib/_hook.mjs", ".claude/hooks/lib/_hook.sh"]) {

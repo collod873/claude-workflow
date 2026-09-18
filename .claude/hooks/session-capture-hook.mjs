@@ -7,15 +7,14 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCaptureMarkdown, parseTranscript } from "../../.Workflow/agent-workflows/shared/spine.ts";
-import { reason } from "../../.Workflow/agent-workflows/shared/reason.ts";
-import { execGit } from "../../.Workflow/agent-workflows/shared/git.ts";
-import { execGh } from "../../.Workflow/agent-workflows/shared/gh.ts";
-import { deriveRange } from "../../.Workflow/agent-workflows/capture/range.ts";
-import { ownerAndRepoFromOrigin, sessionIsInThisRepo } from "../../.Workflow/agent-workflows/capture/repo-scope.ts";
-import { toRepoRelative, worktreeRoot } from "../../.Workflow/agent-workflows/capture/touched-paths.ts";
-import { writeSessionRecord } from "../../.Workflow/agent-workflows/observations/session-notes.ts";
-import { syncNotesRef } from "../../.Workflow/agent-workflows/shared/notes-sync.ts";
+import { buildCaptureMarkdown, parseTranscript } from "./capture/spine.ts";
+import { reason } from "./capture/reason.ts";
+import { execGit } from "./capture/git.ts";
+import { deriveRange } from "./capture/range.ts";
+import { sessionIsInThisRepo } from "./capture/repo-scope.ts";
+import { toRepoRelative, worktreeRoot } from "./capture/touched-paths.ts";
+import { writeSessionRecord } from "./capture/session-notes.ts";
+import { syncNotesRef } from "./capture/notes-sync.ts";
 
 const OUTPUT_DIR = process.env.SESSION_CAPTURE_OUTPUT_DIR || join(homedir(), "Claude Projects", "Knowledge-Base", "raw", "sessions");
 const CORPUS_SUBDIR = join("raw", "sessions");
@@ -25,7 +24,6 @@ const KB_DIR = process.env.SESSION_CAPTURE_KB_DIR || join(homedir(), "Claude Pro
 const KB_STAMP_PATH = process.env.SESSION_CAPTURE_KB_STAMP_PATH || join(homedir(), ".claude", "kb-flush-stamp");
 const KB_FLUSH_THROTTLE_MS = 24 * 60 * 60 * 1000;
 const KB_FLUSH_REMOTE_REF = "refs/heads/main";
-const DISPATCH_EVENT_TYPE = "session-captured";
 
 const LOCK_STALE_MS = 30_000;
 const LOCK_TIMEOUT_MS = 10_000;
@@ -153,20 +151,6 @@ function flushKnowledgeBase(git, immediate) {
   }
 }
 
-function dispatchAudit(repoDir, head) {
-  const origin = execGit(["-C", repoDir, "remote", "get-url", "origin"]).trim();
-  const ownerRepo = ownerAndRepoFromOrigin(origin);
-  if (!ownerRepo) throw new Error(`cannot parse owner/repo from origin: ${origin}`);
-  execGh([
-    "api",
-    `repos/${ownerRepo.owner}/${ownerRepo.repo}/dispatches`,
-    "-f",
-    `event_type=${DISPATCH_EVENT_TYPE}`,
-    "-f",
-    `client_payload[head]=${head}`,
-  ]);
-}
-
 function publishSessionRecord({ sessionId, sessionCwd, jsonl, corpusPath, parsed }) {
   if (!sessionIsInThisRepo({ git: execGit, sessionCwd, repoDir: REPO_DIR })) {
     log("skipped publish-out-of-scope");
@@ -204,13 +188,6 @@ function publishSessionRecord({ sessionId, sessionCwd, jsonl, corpusPath, parsed
     });
   } catch (err) {
     log(`skipped publish-push-failed: ${reason(err)}`);
-    return;
-  }
-
-  try {
-    dispatchAudit(REPO_DIR, range.head);
-  } catch (err) {
-    log(`skipped publish-dispatch-failed: ${reason(err)}`);
     return;
   }
 

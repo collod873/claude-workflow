@@ -1,5 +1,0 @@
-[
-  { "venue": "turn", "slots": ["typecheck", "lint_one", "test_related"] },
-  { "venue": "stop", "slots": ["typecheck", "lint_one", "test_related"] },
-  { "venue": "push", "slots": ["typecheck", "lint", "rules", "test", "clones", "adrs", "drift"] }
-]

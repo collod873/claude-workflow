@@ -19,8 +19,8 @@
     "allowJs": true
   },
   "include": [
-    ".Workflow/**/*.ts",
-    ".claude/**/*.ts"
+    ".claude/**/*.ts",
+    "bin/**/*.ts"
   ],
   "exclude": [
     ".claude/worktrees/**"

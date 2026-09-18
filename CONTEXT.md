@@ -188,15 +188,6 @@ the thing that judges becomes reachable from the thing being judged. It carries 
 [ADR-0054](docs/adr/0054-an-implementation-pr-s-checks-fire-by-repository-dispatch-so.md).
 _Avoid_: protected paths, frozen files, locked directory, path filter
 
-**Check contract**:
-`.claude/contract.json`: the command slots naming what green means in one repo, executed by
-`bin/gauntlet` at every venue. Called a
-contract rather than a config because it is the input a runner runs, not prose describing one. Its
-`why` names a declaration site, never a measurement: a
-measurement in it is a second, unwatched copy of a fact the runner already holds. See
-[ADR-0056](docs/adr/0056-bin-gauntlet-runs-the-check-contract-instead-of-three-hardco.md).
-_Avoid_: the contract (bare), manifest, config, gate definition
-
 **Stub**:
 The six lines a second repo carries in place of a lane: a trigger and a `uses:` pointing at the
 reusable workflow here. Defined by what it lacks: a stub has no content, which is the whole reason
@@ -307,16 +298,6 @@ The tracker's own integer for an issue, which is not the number it is filed unde
 id` returns the GraphQL node id, a third thing neither endpoint accepts. A lane holding numbers
 fetches the id before it wires an edge.
 _Avoid_: issue number, node id, gid
-
-**Lane label**:
-The one green or blue label an open issue wears, saying which lane holds it now or what machine
-step it waits for: `1-shaping` … `8-landing`, `ratifying`, or `3-sliced`, `waiting`, `queued`,
-`sliceable`. Exclusive within green and blue, so stamping one removes the others; a red label is a
-hold the owner lifts and stands beside it. The number is the lane's, so the label filter reads in
-pipeline order; a green label with no run behind it is where a chain died. Every label's name,
-colour and family lives in `.Workflow/agent-workflows/shared/labels.ts`. See
-[ADR-0182](docs/adr/0182-every-open-issue-wears-one-lane-label-coloured-by-who-holds.md).
-_Avoid_: status label, state label, running, in-progress
 
 **Seam manifest**:
 The list of shared shapes a batch needs, one line each, naming what it is, where it lives or should
