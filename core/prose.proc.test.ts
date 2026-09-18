@@ -1,10 +1,11 @@
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { onDisk } from "./loaded-docs.ts";
-import { machineryFiles } from "./machinery.ts";
+import { git } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
+const ARCHIVE = "docs/research/";
 const MACHINE_READ =
   /shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|@type\b|@shell\b|@fixture\b|noqa|pylint:|mypy:|pyright:|ruff:|type:\s*ignore|pragma:\s*no cover/;
 const KNIP_TAG = /@shell\b|@fixture\b/;
@@ -137,18 +138,26 @@ function proseIn(path: string, source: string): Prose[] {
   return [];
 }
 
-describe("code in the machinery carries no prose (ADR-0151)", () => {
-  const tree = onDisk(REPO);
-  const sources = machineryFiles(tree).map((path) => ({ path, source: tree.read(path) ?? "" }));
+function trackedCode(repo: string): string[] {
+  return git(repo, "ls-files", "-z")
+    .split("\0")
+    .filter((file) => file !== "" && !file.startsWith(ARCHIVE) && existsSync(join(repo, file)));
+}
 
-  it("reads the code, scripts and configs of every home the machinery has, so an empty scan can never pass by accident", () => {
+describe("code this repo tracks carries no prose (ADR-0151)", () => {
+  const sources = trackedCode(REPO).map((path) => ({ path, source: readFileSync(join(REPO, path), "utf8") }));
+
+  it("reads every tracked file but the archive, so an empty scan can never pass by accident", () => {
     const covered = sources.map((file) => file.path);
 
-    expect(covered).toContain("core/prose.test.ts");
+    expect(covered).toContain("core/prose.proc.test.ts");
     expect(covered).toContain("core/check");
     expect(covered).toContain("core/eslint.config.js");
     expect(covered).toContain(".claude/hooks/close-gate.py");
     expect(covered).toContain("bin/close-ticket");
+    expect(covered).toContain(".github/workflows/core-check.yml");
+    expect(covered).toContain("vitest.config.ts");
+    expect(covered).not.toContain("docs/research/harness/hooks-per-event/drive.py");
   });
 
   it("finds a planted sentence in each language it claims to read", () => {
@@ -187,7 +196,7 @@ describe("code in the machinery carries no prose (ADR-0151)", () => {
     expect(proseIn("data.py", 'TEMPLATE = """\nnot a docstring\n"""\n\nBODY = "# not a comment"\n')).toHaveLength(0);
   });
 
-  it("holds at none across the machinery", () => {
+  it("holds at none across everything tracked", () => {
     const found = sources.flatMap((file) => proseIn(file.path, file.source));
     const report = found.map(({ path, line, text }) => `${path}:${line}  ${text}`).join("\n");
 

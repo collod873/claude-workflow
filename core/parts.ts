@@ -54,8 +54,8 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/pull/634",
   },
   {
-    name: "core/prose.test.ts",
-    file: "core/prose.test.ts",
+    name: "core/prose.proc.test.ts",
+    file: "core/prose.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/335",
   },
   {
