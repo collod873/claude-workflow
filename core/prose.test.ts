@@ -1,15 +1,20 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { onDisk } from "./loaded-docs.ts";
+import { machineryFiles } from "./machinery.ts";
 
-const CORE = import.meta.dirname;
-const MACHINE_READ = /shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|@type\b|@shell\b|@fixture\b/;
+const REPO = resolve(import.meta.dirname, "..");
+const MACHINE_READ =
+  /shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|@type\b|@shell\b|@fixture\b|noqa|pylint:|mypy:|pyright:|ruff:|type:\s*ignore|pragma:\s*no cover/;
 const KNIP_TAG = /@shell\b|@fixture\b/;
 const KNIP_TAG_CAP = 5;
 const BRACE = /\.(m|c)?(t|j)s$/;
 const HASH = /\.(sh|ya?ml)$/;
 const SHEBANG = /^#!.*\b(bash|sh)\b/;
+const PY = /\.py$/;
+const PY_SHEBANG = /^#!.*\bpython/;
+const PY_STRING = /^[rbufRBUF]{0,2}("""|'''|"|')/;
 
 interface Prose {
   path: string;
@@ -68,30 +73,82 @@ function hashProse(path: string, source: string): Prose[] {
   return found;
 }
 
+function closesAt(source: string, from: number, quote: string): number {
+  let index = from;
+  while (index < source.length) {
+    if (source[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (source.startsWith(quote, index)) return index + quote.length;
+    index += 1;
+  }
+  return source.length;
+}
+
+function pyProse(path: string, source: string): Prose[] {
+  const found: Prose[] = [];
+  const helpText = source.includes("__doc__");
+  let index = 0;
+  let startsLine = true;
+  let atModuleDocstring = true;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "\n") {
+      startsLine = true;
+      index += 1;
+      continue;
+    }
+    if (char === " " || char === "\t" || char === "\r") {
+      index += 1;
+      continue;
+    }
+    if (char === "#") {
+      const ends = source.indexOf("\n", index);
+      const stop = ends === -1 ? source.length : ends;
+      const text = source.slice(index, stop);
+      const line = lineOf(source, index);
+      if (!(line === 1 && text.startsWith("#!")) && !MACHINE_READ.test(text)) found.push({ path, line, text });
+      index = stop;
+      continue;
+    }
+    const opener = PY_STRING.exec(source.slice(index, index + 5));
+    if (opener !== null) {
+      const quote = opener[1];
+      const ends = closesAt(source, index + opener[0].length, quote);
+      const readByArgparse = atModuleDocstring && helpText;
+      if (startsLine && quote.length === 3 && !readByArgparse) found.push({ path, line: lineOf(source, index), text: source.slice(index, ends).split("\n")[0] });
+      index = ends;
+      startsLine = false;
+      atModuleDocstring = false;
+      continue;
+    }
+    startsLine = false;
+    atModuleDocstring = false;
+    index += 1;
+  }
+  return found;
+}
+
 function proseIn(path: string, source: string): Prose[] {
   if (BRACE.test(path)) return braceProse(path, source);
+  if (PY.test(path) || PY_SHEBANG.test(source)) return pyProse(path, source);
   if (HASH.test(path) || SHEBANG.test(source)) return hashProse(path, source);
   return [];
 }
 
-function filesUnder(dir: string): string[] {
-  return readdirSync(dir)
-    .filter((name) => name !== "node_modules")
-    .flatMap((name) => {
-      const path = join(dir, name);
-      return statSync(path).isDirectory() ? filesUnder(path) : [path];
-    });
-}
+describe("code in the machinery carries no prose (ADR-0151)", () => {
+  const tree = onDisk(REPO);
+  const sources = machineryFiles(tree).map((path) => ({ path, source: tree.read(path) ?? "" }));
 
-describe("code in the New core carries no prose (ADR-0151)", () => {
-  const sources = filesUnder(CORE).map((path) => ({ path: relative(CORE, path), source: readFileSync(path, "utf8") }));
-
-  it("reads the core's code, scripts and configs, so an empty scan can never pass by accident", () => {
+  it("reads the code, scripts and configs of every home the machinery has, so an empty scan can never pass by accident", () => {
     const covered = sources.map((file) => file.path);
 
-    expect(covered).toContain("prose.test.ts");
-    expect(covered).toContain("check");
-    expect(covered).toContain("eslint.config.js");
+    expect(covered).toContain("core/prose.test.ts");
+    expect(covered).toContain("core/check");
+    expect(covered).toContain("core/eslint.config.js");
+    expect(covered).toContain(".claude/hooks/close-gate.py");
+    expect(covered).toContain("bin/close-ticket");
   });
 
   it("finds a planted sentence in each language it claims to read", () => {
@@ -99,12 +156,23 @@ describe("code in the New core carries no prose (ADR-0151)", () => {
     expect(proseIn("planted.js", "/* a sentence */\nexport default {};\n")).toHaveLength(1);
     expect(proseIn("planted", "#!/bin/bash\n# a sentence\nrun\n")).toHaveLength(1);
     expect(proseIn("planted.yml", "jobs:\n  # a sentence\n  build: {}\n")).toHaveLength(1);
+    expect(proseIn("planted.py", "x = 1  # a sentence\n")).toHaveLength(1);
+    expect(proseIn("planted.py", '"""A sentence."""\n\n\ndef run():\n    """Another."""\n')).toHaveLength(2);
+    expect(proseIn("planted", "#!/usr/bin/env python3\n# a sentence\nrun()\n")).toHaveLength(1);
   });
 
-  it("leaves what a machine reads: knip tags, shellcheck directives, eslint pragmas", () => {
+  it("leaves what a machine reads: knip tags, shellcheck directives, eslint pragmas, python pragmas", () => {
     expect(proseIn("kept.ts", "// eslint-disable-next-line no-eval\nconst x = 1;\n")).toHaveLength(0);
     expect(proseIn("kept.sh", "#!/bin/bash\n# shellcheck source=x.sh\nrun\n")).toHaveLength(0);
     expect(proseIn("kept.ts", "/**\n * @fixture Reached only from the suite.\n */\nexport const x = 1;\n")).toHaveLength(0);
+    expect(proseIn("kept.py", "x = 1  # noqa: E501\ny = 2  # type: ignore[arg-type]\n")).toHaveLength(0);
+  });
+
+  it("leaves a module docstring the script hands to argparse, and still reads the docstrings under it", () => {
+    const script = '"""usage: run [--days N]\n\nWhat it does.\n"""\n\n\ndef run():\n    """Another."""\n\n\nparser(description=__doc__)\n';
+
+    expect(proseIn("helpful.py", script)).toEqual([{ path: "helpful.py", line: 8, text: '"""Another."""' }]);
+    expect(proseIn("silent.py", script.replace("description=__doc__", "description='run'"))).toHaveLength(2);
   });
 
   it("refuses an essay hiding behind a knip tag", () => {
@@ -115,9 +183,13 @@ describe("code in the New core carries no prose (ADR-0151)", () => {
     expect(proseIn("here.sh", "#!/bin/bash\ncat <<EOF\n# not a comment\nEOF\n")).toHaveLength(0);
   });
 
-  it("holds at none across the core", () => {
+  it("reads a python string held as data rather than as the docstring it resembles", () => {
+    expect(proseIn("data.py", 'TEMPLATE = """\nnot a docstring\n"""\n\nBODY = "# not a comment"\n')).toHaveLength(0);
+  });
+
+  it("holds at none across the machinery", () => {
     const found = sources.flatMap((file) => proseIn(file.path, file.source));
-    const report = found.map(({ path, line, text }) => `core/${path}:${line}  ${text}`).join("\n");
+    const report = found.map(({ path, line, text }) => `${path}:${line}  ${text}`).join("\n");
 
     expect(found, `prose belongs in docs/adr/ or CONTEXT.md, never beside the code:\n${report}`).toHaveLength(0);
   });

@@ -35,8 +35,8 @@ unenforced, because a gate guessing at it would be refusing on a coin flip.
 
 Rationale about how the code works goes in the commit message, where `git log` and
 `git blame` keep it reachable and no later agent pays to read it. `CONTEXT.md` takes
-it only where the thing to settle is a word. Evidence — measurements, worked
-examples, the corpus you read — goes in `docs/research/`, which the ADR links.
+it only where the thing to settle is a word. Evidence (measurements, worked
+examples, the corpus you read) goes in `docs/research/`, which the ADR links.
 `docs/adr/` carries the ruling alone.
 
 `reversal:` is a required frontmatter field: one sentence on what undoing this
