@@ -33,10 +33,10 @@ run a median of 29 KB, p90 70 KB, max 180 KB across 129 sessions. The original p
 cheap read" came from one outlier and is optimistic by 2x at the median and 5x at p90. Still cheap
 in absolute terms, but arm C's cost case rests on this number.
 
-**Measured, dry run, one data point.** The shipped author made 8 tool calls before its first write,
-on a 3 KB brief for a ticket claiming 2 files. 60 seconds, $0.26. The brief-as-payload is not
-stopping exploration even at that size. One run on a ticket that was later disqualified, so treat it
-as an indication, not a result.
+**Measured, dry run, one data point, superseded by the clean pass below.** The shipped author made 8
+tool calls before its first write, on a 3 KB brief for a ticket claiming 2 files. 60 seconds, $0.26.
+The brief-as-payload is not stopping exploration even at that size. One run on a ticket that was
+later disqualified, so treat it as an indication, not a result.
 
 **Diagnosed and fixed, 2026-09-18.** `session-capture.sh` spawned its child with `>/dev/null 2>&1 &`
 and the child died on import for eight days while the run log reported `dispatched` every time. The
@@ -77,6 +77,63 @@ These forced the revision below. All verified by running, not by reading.
    `--output-format stream-json` on the spawn, so the control becomes shipped logic, instrumented.
 5. **Each cell needs its own worktree and a symlinked `node_modules`**, because `core/bin/test-author`
    creates and commits `ticket/<n>`.
+
+## What the clean dry run found, 2026-09-18
+
+Session `f6dcb2a6-b13b-4aa4-8f14-ef6baeeda368` filed the two unfiled findings through the normal door
+as [#735](https://github.com/collod873/claude-workflow/issues/735) and
+[#736](https://github.com/collod873/claude-workflow/issues/736), then ran all five cells end to end
+on the `core/` half, #735's subject. Three fresh contexts wrote the arm bodies, each given the
+73dbaaee transcript and its arm's instructions and nothing else; this session executed and measured
+and wrote no arm. The owner ruled that C is filed by a trial-only path rather than by prototyping the
+`intake` door, so C was posted by the harness with `gh`, outside `file-issue`. Cells A0 737, A1 739,
+B 738, B+ 740, C 741. Run order randomised per round.
+
+6. **The harness withheld the transcript from the rewrite pass, and that alone decided arm C.**
+   `author.mjs` handed the transcript to the authoring pass and not to the rewrite, though the arms
+   table gives B+ and C an author that reads "ticket and transcript" and the rewrite is that author's
+   second half. C's first run came back shaped in every respect but one: `## Why` quoted no owner
+   words, so `ticketRefusals` refused it and nothing posted. The only place the owner's words existed
+   had been taken away before the section that needs them was written. Fixed, and C files on the
+   re-run.
+7. **A `trim()` blinded the rewrite to its own tests whenever the author edited an existing file.**
+   `git status --porcelain` prefixes a modified path with a space, `.stdout.trim()` ate it, `slice(3)`
+   then ate the first letter of the path, the read failed into an empty string and the rewrite prompt
+   carried an empty code fence. A0, A1, B and B+ all wrote new files, whose `??` prefix survives a
+   trim, so only C was hit, and it was hit in both of its first two runs. Fixed. It is the third
+   appearance in this trial of the shape #736 is filed for: a part that discards what it could not
+   read reports success.
+8. **Metric 2 measures nothing once the author has run, and it was flattering C.** Brief bytes at
+   author time: C 655, A 19,124, B 21,179. Brief bytes at build time, the only moment a brief is
+   handed to a builder: C 35,466, A0 35,362, A1 35,891, B 36,407, B+ 36,310. A 29x spread collapses
+   to 3 percent. What the author-time number measured was a ticket with no `## Files claimed` for
+   `brief.ts` to widen from, which is the tilt the review called out and the trial has now paid for.
+9. **Metric 1 is green everywhere, as finding 3 predicted, and holds as a gate.** In all five cells a
+   cold builder handed only the brief turned every criterion green, edited no test file, and touched
+   only files the ticket claimed. 24 to 48 seconds, $0.16 to $0.22. Zero discrimination, and the gate
+   does its job.
+10. **`## Files claimed` is the one metric that discriminated.** A0 and A1 both omit the test file
+    their own author had just written. B, B+ and C all name every file touched, exactly. A1 had the
+    rewrite pass, with a prompt telling it in terms that it had just written the tests and so knew
+    what they touch, and it still omitted the file. So the rewrite alone does not fix the claim, and
+    both to-spec's discipline and the transcript do. That is A0 against A1 answered, in the negative.
+11. **The two clocks part the way the protocol expected, and further.** The owner's clock: C 38s and
+    $0.54 over 6 tool calls, A 239s and $1.86 over 30, B 359s and $2.12 over 25. Unattended, it
+    reverses: C is dearest (108s authoring plus 34s rewriting, 15 tool calls) and B+ cheapest (37s
+    plus 23s, 6 tool calls). C moves 5 to 9x of the owner's time off his clock and pays about half as
+    much again unattended. Totals, owner plus machine: C $1.24 and 213s, A0 $2.32 and 343s, B $2.53
+    and 446s, B+ $2.63 and 452s.
+12. **Exploration runs against C.** Tool calls before the first edit: A1 3, A0 4, B 4, B+ 4, C 12.
+    The thin ticket plus a transcript made the author explore three times as much as a thorough ticket
+    did. B+ read a 56 KB transcript on top of a thorough ticket and made the fewest tool calls of any
+    cell, so a transcript is not what causes the exploring; having to reconstruct the ticket is.
+
+**Bias control, broken and named.** This session fixed the harness in the middle of the dry run, so
+it is now an interested party in the harness exactly as 73dbaaee is. Both fixes are commits, so both
+are readable as diffs. Neither touches an arm, and both were needed to make the harness match the
+arms table that was already frozen: findings 6 and 7 are the harness contradicting this file, not
+this file changing. The five-ticket run in step 2 should be executed by a session that has not
+touched `author.mjs` or `builder.mjs`.
 
 ## The arms
 
@@ -140,9 +197,11 @@ stripped. He reads it, then he is told which column was which.
 
 ## Sequencing
 
-1. Dry run, local, one real ticket, all cells. Partly done 2026-09-18; it disqualified its own
-   subject and produced the five findings above. Needs one clean end-to-end pass on a `core/` ticket.
-2. Run the remaining tickets at the ends of real sessions, local, against this frozen file.
+1. Dry run, local, one real ticket, all cells. Done 2026-09-18 on #735's subject, all five cells
+   through author, rewrite and a cold builder. It produced findings 6 to 12 and the results are
+   above. The harness is shaken out.
+2. Run the remaining tickets at the ends of real sessions, local, against this frozen file, by a
+   session that did not build or repair the harness.
 
 Actions was ruled out: the transcripts are in a private repo and this one is public, and the
 cross-repo grant is real cost for a five-ticket trial. Local, with this file frozen in git, keeps
@@ -150,17 +209,31 @@ every bias control except "the workflow file cannot drift".
 
 ## Open questions for the owner
 
-1. Whether to prototype the `intake` door so arm C is testable at all. Without it the trial runs four
-   cells and C stays a hypothesis. With it, a small real thing gets built to test whether it is
-   wanted, which is backwards from how this repo normally works.
-2. Which tickets, chosen as they arise from real sessions, all outside `.claude/`.
+1. **Ruled 2026-09-18.** The dry run files C by a trial-only path, not by prototyping the `intake`
+   door. Production C still needs a door, and nothing in the dry run tells you whether it earns its
+   place; that decision waits on the result.
+2. Which tickets, chosen as they arise from real sessions, all outside `.claude/` until
+   [#735](https://github.com/collod873/claude-workflow/issues/735) lands.
+3. Whether metric 2 is dropped or re-stated as brief bytes at build time, given finding 8. Measured
+   at author time it pays an arm for filing an empty ticket.
+4. Whether the blinded read is taken on the five diffs the dry run produced, since they are the only
+   five cells that exist and they are all of one finding.
 
 ## The harness
 
 `trials/ticket-filing/author.mjs`. Takes `--ticket`, `--cell`, `--out`, and optional `--transcript`
 and `--rewrite`. Replicates `core/test-author.ts`'s brief and prompt construction, adds the
 transcript and the rewrite pass, and records the metrics above from the stream. Validates a rewritten
-body with `ticketRefusals` before posting it.
+body with `ticketRefusals` before posting it. The transcript reaches both passes, and a cell whose
+author has no `## Why` to reproduce is told to write one from the owner's own words in the session
+rather than to paraphrase them.
+
+`trials/ticket-filing/builder.mjs`. Takes the same flags, commits the authored tests on `trial/<cell>`,
+builds the brief through `core/bin/brief`, hands a cold context that brief and nothing else, and then
+runs each criterion's check itself. It records brief bytes at build time, tool calls before the first
+edit, the clock, and whether any committed test file changed hash while the builder ran. It stands in
+for [#725](https://github.com/collod873/claude-workflow/issues/725), which is unbuilt, and is meant to
+be deleted with the rest of `trials/`.
 
 ## Not part of this trial, raised and parked
 

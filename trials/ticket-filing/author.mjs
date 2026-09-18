@@ -109,8 +109,8 @@ if (commands.length > 0) {
 const authored = runClaude(parts.join("\n\n") + "\n", commands, "author");
 const authorMetrics = metrics(authored.stdout);
 
-const written = spawnSync("git", ["status", "--porcelain", "-uall", "--", "*.test.ts"], { encoding: "utf8" }).stdout.trim();
-const testFiles = written.split("\n").filter(Boolean).map((l) => l.slice(3));
+const written = spawnSync("git", ["status", "--porcelain", "-uall", "--", "*.test.ts"], { encoding: "utf8" }).stdout;
+const testFiles = written.split("\n").filter((l) => l.length > 3).map((l) => l.slice(3));
 
 const record = {
   cell: CELL,
@@ -135,11 +135,20 @@ if (REWRITE && testFiles.length > 0) {
     "You are rewriting a GitHub ticket body now that its failing tests exist.",
     "## The ticket as it stands",
     body,
+    ...(transcriptText
+      ? [
+          "## The session this ticket came from",
+          "The dialogue that produced this ticket, tool noise stripped. The owner often answers only \"yes\" or \"I agree\", so his intent is in what he agreed to, not only in his own sentences.",
+          transcriptText,
+        ]
+      : []),
     "## The failing tests you just wrote",
     tests,
     "## The rules",
     "Output the complete new ticket body and nothing else. No preamble, no code fence around the whole thing.",
-    "You may not change the `## Why` section. Reproduce it byte for byte. It is the owner's own words.",
+    whyMatch
+      ? "You may not change the `## Why` section. Reproduce it byte for byte. It is the owner's own words."
+      : "This ticket carries no `## Why`, so write one, and quote the owner's own words from the session above rather than paraphrasing them. Nothing else in the body may put words in his mouth.",
     "Sharpen, never remove. You may resolve a sentence into a clearer, more specific version of itself. You may never delete a criterion, and you may never narrow the scope of the work to make an ambiguity disappear. A pass that leaves the ticket claiming less than it did before is a failed pass.",
     "`## Files claimed` must list every file the work touches, one per line as `- path`, no globs. You just wrote the tests, so you know what they import and what they exercise.",
     "`## Acceptance criteria` carries 1 to 3 `- [ ]` items, each ending with a trailing marker of the form - check: `<command>`, and at least one command must run tests.",
