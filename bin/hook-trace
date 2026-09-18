@@ -83,7 +83,7 @@ The two records that carry the outcome, both written by the harness for the agen
   is a tool that ran and failed; `toolDenialKind` is the deny. Two values measured on
   this machine: `permission-rule`, a hook's own refusal, and `user-rejected`, a person
   declining in the UI, whose `content` is the harness's own boilerplate ("The user
-  doesn't want to proceed…") and names no hook at all (#209) — only the first builds a
+  doesn't want to proceed…") and names no hook at all (#209), so only the first builds
   fire from the `tool_result` alone.
 
   a `user` record whose `message.content` is the string `Stop hook feedback:\\n<reason>`

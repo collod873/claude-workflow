@@ -25,7 +25,7 @@ cited in 21 files and named as the identity of two lint rules was hard to revers
 whatever it had been when written. So the bar is judged at today's cost, `--blast`
 computes it, and demoting an ADR becomes a sort rather than an argument: it prints
 the corpus partitioned into cited nowhere, cited only from issues, and cited from
-code, which is the sort. Report only — it moves, renames and edits nothing.
+code, which is the sort. Report only: it moves, renames and edits nothing.
 
 **What this never does is move a file.** 107 permalinks of the form
 `.../blob/main/docs/adr/NNNN-<slug>.md` sit in GitHub issue bodies, and 32 issues
@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         label = max(len(name) for name in TIERS)
         for name in TIERS:
             head = f"    {name:<{label}} ({len(buckets[name]):>3}): "
-            nums = ", ".join(f"{n:04d}" for n in buckets[name]) or "—"
+            nums = ", ".join(f"{n:04d}" for n in buckets[name]) or "none"
             print(textwrap.fill(nums, width=96, initial_indent=head,
                                 subsequent_indent=" " * len(head)))
 

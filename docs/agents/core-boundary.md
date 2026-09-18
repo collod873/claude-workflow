@@ -5,6 +5,24 @@
 import specifiers, and nothing else: a hook that fires during a core session, or a check that reads
 a core file, is a separate question from the one that test answers. This page answers that one.
 
+## What the New core's checks see
+
+`core/`, and the machinery that outlives the Old lanes: `.claude/hooks/`, `.claude/skills/` and
+`bin/`. `core/machinery.ts` names those four homes, and `core/prose.test.ts` and
+`core/em-dash.test.ts` read all of them.
+
+This is not the reversal [#676](https://github.com/collod873/claude-workflow/pull/676) undid. That
+one pointed *Old* gates at `core/`, so a core judged by gates ADR-0200 deletes would lose them at
+the deletion. These gates outlive the deletion, and what they now read is what ADR-0200 keeps:
+session hooks run unchanged, and the skills stay. Research, ADRs and the rest of `docs/` are out of
+scope on purpose. The em-dash rule covers what the machine writes and what a session loads, and a
+post-mortem is neither; sweeping `docs/` in would light up 689 lines the charter never pointed at.
+
+The prose gate reads Python, which is what makes it mean anything in `.claude/hooks/`, where 21 of
+the 23 hooks are Python and the gate read 2 of them before. It leaves a module docstring the script
+hands to `argparse` as `description=__doc__`, on the same ground it leaves `shellcheck` directives:
+a machine reads it.
+
 ## What the Old machine's checks see
 
 Nothing under `core/`. Four exclusions, one per config:

@@ -196,8 +196,6 @@ def check_deny_envelope():
           out.get("systemMessage") == expected_msg,
           f"got={out.get('systemMessage')!r} want={expected_msg!r}")
 
-    # PermissionRequest reads a different field. A hook that refuses in PreToolUse's field here is
-    # not refused, it is ignored, which is the failure the required argument exists to prevent.
     out = refuses("PermissionRequest")
     hso = out.get("hookSpecificOutput", {})
     check("deny: PermissionRequest refuses through decision.behavior, not permissionDecision",
