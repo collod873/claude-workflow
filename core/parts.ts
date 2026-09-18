@@ -43,6 +43,12 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/682",
   },
   {
+    name: "core/check-runner.ts",
+    file: "core/check-runner.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/657",
+    holds: ["A test check passes only if it ran at least one test"],
+  },
+  {
     name: "core/old-machine-boundary.test.ts",
     file: "core/old-machine-boundary.test.ts",
     stops: "https://github.com/collod873/claude-workflow/pull/634",
