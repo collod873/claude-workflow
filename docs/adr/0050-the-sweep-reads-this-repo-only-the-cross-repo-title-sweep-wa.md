@@ -6,7 +6,7 @@ reversal: The record says so itself: the moment anything in the estate holds a c
 
 # The sweep reads this repo only; the cross-repo title sweep waits on a credential
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

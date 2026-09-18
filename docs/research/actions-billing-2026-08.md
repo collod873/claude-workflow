@@ -1,16 +1,16 @@
-# GitHub Actions billing — what the estate actually spends
+# GitHub Actions billing - what the estate actually spends
 
 **Read:** 2026-08-21 · **Amended:** 2026-08-26 ·
 **Resolves:** [claude-workflow#2](https://github.com/collod873/claude-workflow/issues/2)
 
-**Status:** **Per-calendar-month** minutes, charges and run counts are **measured** — pulled from
+**Status:** **Per-calendar-month** minutes, charges and run counts are **measured** - pulled from
 GitHub's billing usage API and the Actions runs API on 2026-08-21. Wall-clock minutes are measured
 but are **not** billable minutes; the timing endpoint is unusable on this plan, so no per-workflow
 billable split can be measured at all (see [Method](#method)).
 
 **The rolling-30-day arithmetic was struck on 2026-08-26 and is not in this document.** It was
 labelled measured, could not be reproduced against any API call, and was cited as a design anchor
-before it was struck — see [What was struck, and why](#what-was-struck-and-why) at the foot. Nothing
+before it was struck - see [What was struck, and why](#what-was-struck-and-why) at the foot. Nothing
 below carries a rolling-window figure, a per-repo minute split, or a dollar projection. If you came
 here for a spend or concurrency anchor, there isn't one, and
 [ADR-0024](../adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md) rules that
@@ -40,7 +40,7 @@ most of its allowance in one commit.
 ### Public repos are free and do not count
 
 `claude-ds` and `nihongo` are public; GitHub-hosted minutes on public repos are unlimited and free.
-This matters because it makes the raw monthly totals misleading — **June's headline 2,152 minutes
+This matters because it makes the raw monthly totals misleading - **June's headline 2,152 minutes
 was 2,005 minutes of public `claude-ds`**, leaving only 147 chargeable minutes. Every figure in
 this document excludes both public repos.
 
@@ -71,22 +71,22 @@ window is also the analysis push that produced `GOAL.md` and the fleet-architect
 dated 08-21, which is exactly the shape of a burst.
 
 *A month-end projection and its dollar cost were derived from the 292 min/day figure here. Both
-were struck 2026-08-26 — see [What was struck, and why](#what-was-struck-and-why).*
+were struck 2026-08-26 - see [What was struck, and why](#what-was-struck-and-why).*
 
 ---
 
-## What ran — last 30 days
+## What ran - last 30 days
 
 **Window: 2026-07-23 → 2026-08-21.** Private repos only.
 
 *A per-repo minute split for this window, and the rolling-30-day total it summed to, were struck
-2026-08-26 — see [What was struck, and why](#what-was-struck-and-why). What survives below is run
+2026-08-26 - see [What was struck, and why](#what-was-struck-and-why). What survives below is run
 counts, which come from a different API and were never in doubt.*
 
 ### Per workflow
 
 Run counts and conclusions are **measured**. Wall-minutes are measured but are **not** billable
-minutes — see the app-starter caveat below. Nothing here apportions billable minutes, because
+minutes - see the app-starter caveat below. Nothing here apportions billable minutes, because
 nothing can (see [Method](#method)).
 
 | Repo | Workflow | Runs | Failed | Skipped | Wall-min |
@@ -102,7 +102,7 @@ nothing can (see [Method](#method)).
 | app-starter | Sandcastle-era workflows (12) | 48 | 0 | **48** | ~2.4 |
 
 What the run counts alone support, with no minute figures attached: **Lumaria's CI is the heavy
-workload** — it runs six jobs per run against everything else's one, so its 83 runs are ~498
+workload** - it runs six jobs per run against everything else's one, so its 83 runs are ~498
 job-runs where triage's 139 runs are 102 billable job-runs after 37 skips. Job-runs are a proxy for
 cost, not a measure of it.
 
@@ -111,16 +111,16 @@ cost, not a measure of it.
 
 ### Two caveats that matter
 
-**Wall-clock is not billable time.** app-starter's `CI` shows 4,351 wall-minutes across 9 runs —
-**483 minutes per run** for an ordinary CI job — and `License Gate` 4,323 across 6, at 720 minutes
+**Wall-clock is not billable time.** app-starter's `CI` shows 4,351 wall-minutes across 9 runs - 
+**483 minutes per run** for an ordinary CI job - and `License Gate` 4,323 across 6, at 720 minutes
 per run. Those runs sat queued or waiting, and `updated_at - run_started_at` counts the idling. The
 repo's actual billed total for the window was smaller by more than an order of magnitude. This is
 the document's most reusable finding: **`updated_at - run_started_at` is not a cost signal**, and
 any future attempt to measure spend from the runs API rather than the billing API will be wrong in
 this direction.
 
-**app-starter is still running era-5 machinery.** Twelve Sandcastle-era workflows —
-`Implement: PR #n`, `Review: PR #n`, `Update branch: PR #n`, `Auto-merge: arm PR #n` — fired 48
+**app-starter is still running era-5 machinery.** Twelve Sandcastle-era workflows - 
+`Implement: PR #n`, `Review: PR #n`, `Update branch: PR #n`, `Auto-merge: arm PR #n` - fired 48
 times in the window and were **skipped every time**. They cost essentially nothing, but Sandcastle
 was retired 2026-07-02 and its label state machine is still installed and still triggering. Noted
 here because it is evidence for
@@ -129,14 +129,14 @@ cost problem.
 
 ## The cheapest available lever is not a vendor
 
-**Lumaria's CI was 49% red in August — 22 failures against 23 successes** (plus one cancelled). In
+**Lumaria's CI was 49% red in August - 22 failures against 23 successes** (plus one cancelled). In
 the last three days, 11 failures against 21 successes. Over the full 30-day window the rate is
 lower but still bad: **24 failures in 83 runs, 29%**. August is materially worse than the month
 before it.
 
 Between a third and a half of the runs on the estate's heaviest workflow are failures, and a failed
-run bills the same as a passing one. A sampled failing run had four of its six jobs red — `build`,
-`unit`, `lint` and `typecheck` — while `changes` and `integration` passed.
+run bills the same as a passing one. A sampled failing run had four of its six jobs red - `build`,
+`unit`, `lint` and `typecheck` - while `changes` and `integration` passed.
 
 Two things follow:
 
@@ -145,7 +145,7 @@ Two things follow:
 2. **It corroborates `GOAL.md` §4 blocker 5.** The pre-merge gate is gone, and 12 broken commits
    reached `main` in five days. A 49% red CI is what that looks like from the billing side.
 
-This document does not rule on whether the failures are real breakage or infra flake — the sampled
+This document does not rule on whether the failures are real breakage or infra flake - the sampled
 run is genuine `build`/`unit`/`lint`/`typecheck` breakage, not runner error, but one sample is not
 a rate. That distinction belongs to whoever acts on it.
 
@@ -154,14 +154,14 @@ a rate. That distinction belongs to whoever acts on it.
 ## What the options cost
 
 **This document no longer prices the options.** The costing table was derived entirely from the
-struck month-end projection, so it went with it — and the ruling that followed makes the question
+struck month-end projection, so it went with it - and the ruling that followed makes the question
 moot rather than merely unanswered.
 
 Ruled by the owner, 2026-08-26:
 
 > *"We are actively using GitHub minutes. That over-2000 number was obviously broken and you can't
 > seem to find it so stop trying and stop referencing a number that was sourced incorrectly. I am
-> not worried about the minutes right now — if we ever hit the minutes limit then I will rethink
+> not worried about the minutes right now - if we ever hit the minutes limit then I will rethink
 > things, not before."*
 
 [ADR-0024](../adr/0024-there-is-no-daily-spend-ceiling-and-the-governor-stops-on-qu.md) carries this
@@ -197,7 +197,7 @@ stop. What was removed:
 
 **Do not re-derive them.** The owner's position above is standing, not provisional. If a future
 session needs a real number, the reproducible path is the per-calendar-month billing API call in
-[Method](#method) — which is what the surviving monthly table came from — and the answer it gives
+[Method](#method) - which is what the surviving monthly table came from - and the answer it gives
 today is `$0.00`.
 
 **What survives, and was never in doubt:** nothing has ever been charged; the per-calendar-month
@@ -220,6 +220,6 @@ CI's 49% August red rate.
   `GET /repos/{owner}/{repo}/actions/runs/{id}/timing` returns `billable.UBUNTU.total_ms: 0` for
   every run sampled, including runs the billing API bills for. **There is therefore no way to
   measure a per-workflow billable split on this account**, and this document no longer attempts one
-  — the derived splits it used to carry were struck with the per-repo total they apportioned.
+  - the derived splits it used to carry were struck with the per-repo total they apportioned.
 - **Not captured:** Actions storage (billed in GigabyteHours, also $0.00 net) is excluded
   throughout; it is immaterial at this scale.

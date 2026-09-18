@@ -6,7 +6,7 @@ reversal: Undoing it means editing the file `new-adr` copies into each new draft
 
 # The ruling, stated as a sentence
 
-Re-admitted 2026-08-31 as a **note**: this records a process preference — how work is chosen to be done, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a process preference - how work is chosen to be done, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

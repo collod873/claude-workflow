@@ -6,7 +6,7 @@ reversal: Undoing it returns lane 01 to refusing a re-run on the same evidence: 
 
 # A comment clears a stage-1 refusal, because the change-request verb already exists
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

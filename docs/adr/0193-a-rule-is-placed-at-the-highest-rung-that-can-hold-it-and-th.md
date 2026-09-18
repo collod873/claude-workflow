@@ -7,12 +7,12 @@ reversal: Reverting returns placement to venue alone, as ADR-0010 had it: the ru
 
 # A rule is placed at the highest rung that can hold it and the earliest venue that can see enough, and the change that places it deletes every restatement
 
-A rule sits at one intersection. The **rung** names what a violation costs —
+A rule sits at one intersection. The **rung** names what a violation costs - 
 impossible, repaired, refused, reported, taught. The **venue** names what the
-repair costs — terminal, turn, stop, push, lane, CI.
+repair costs - terminal, turn, stop, push, lane, CI.
 
 The rung is singular: what a machine can repair cannot coherently also refuse.
-Venues are not, and need not be — `turn` and `stop` run the same slots off one
+Venues are not, and need not be - `turn` and `stop` run the same slots off one
 source. A second enforcer *reading* the source is one rule with two enforcers
 ([ADR-0184](0184-one-rules-source-spells-the-ticket-shape-both-validators-enf.md)).
 A copy that *restates* the source in its own words is a second rule wearing the

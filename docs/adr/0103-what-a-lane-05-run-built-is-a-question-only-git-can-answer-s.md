@@ -6,7 +6,7 @@ reversal: Reverting the no-op check to the filesystem comparison and dropping th
 
 # What a lane 05 run built is a question only git can answer, so the no-op check asks git and the run keeps a copy of its implementer's answer
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 It changes ADR-0042, which is where the change belonged.

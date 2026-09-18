@@ -7,7 +7,7 @@ reversal: Two model rounds stop being cheaper than one owner interruption once t
 # A second model gets a clean context and a looser fence before a red gate reaches the owner
 
 A resumed repair session inherits the first model's own read of the ticket. When that read is what
-is wrong — the test asserts something false, or the fix lives outside the claim — resuming it only
+is wrong - the test asserts something false, or the fix lives outside the claim - resuming it only
 re-plays the same blind spot against the gate's output. So once that repair round is still red, or
 never had a session to resume, a fresh session on `claude-opus-5` gets the brief again with no prior
 turns: the ticket as written, not as the first model came to understand it.

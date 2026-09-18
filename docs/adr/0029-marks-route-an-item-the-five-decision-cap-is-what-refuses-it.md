@@ -6,7 +6,7 @@ reversal: The two thresholds live in the shaper's routing rule and its refusal c
 
 # Marks route an item; the five-decision cap is what refuses it
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 It changes ADR-0007, which is where the change belonged.

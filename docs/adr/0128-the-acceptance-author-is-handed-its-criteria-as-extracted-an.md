@@ -8,13 +8,13 @@ reversal: Reversing means dropping the rendered criteria from lane 04's prompt a
 
 # The acceptance author is handed its criteria as extracted, and quotes each into a comment
 
-Lane 04's author is given its ticket's criteria as `extractCriteria` returns them — numbered,
-fenced, one block each — and must copy each verbatim into a comment above the test that proves it.
+Lane 04's author is given its ticket's criteria as `extractCriteria` returns them - numbered,
+fenced, one block each - and must copy each verbatim into a comment above the test that proves it.
 
 A criterion string is an identifier, not prose. `implement.ts` sends the same `extractCriteria`
 output on the verify dispatch, and `verify.yml` selects the slice's tests by `String.includes` over
 test source. A copy differing by one character selects nothing, and the run fails on the
-implementer's pull request — a defect in the test, charged to somebody who did not write it
+implementer's pull request - a defect in the test, charged to somebody who did not write it
 (ADR-0034). Re-deriving that string by eye was reimplementing `extractCriteria`, down to the
 trailing `check:` marker staying in it.
 

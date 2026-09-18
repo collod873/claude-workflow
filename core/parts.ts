@@ -156,9 +156,9 @@ export const parts: Part[] = [
     holds: ["The checks that judge a PR come from the stable machine, never from the PR"],
   },
   {
-    name: "core/em-dash.test.ts",
-    file: "core/em-dash.test.ts",
+    name: "core/em-dash.proc.test.ts",
+    file: "core/em-dash.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/681",
-    holds: ["Nothing the machine writes, and no doc a session loads, carries an em dash"],
+    holds: ["Nothing the machine writes, and nothing this repo tracks, carries an em dash"],
   },
 ];

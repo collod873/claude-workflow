@@ -1,6 +1,6 @@
 #!/bin/bash
 # claude-workflow#11 probe: does a cloud session read the ~/.claude/ that its own
-# setup script wrote? Throwaway — this environment exists only for that experiment.
+# setup script wrote? Throwaway - this environment exists only for that experiment.
 set -u
 exec > >(tee -a /tmp/probe-setup.log) 2>&1
 echo "### probe-setup begin"

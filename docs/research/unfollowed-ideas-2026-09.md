@@ -184,7 +184,7 @@ removes an owner stop. It is a reader's estimate, not a measurement.
   and Walk home dead unseen. The map holds the evidence; this trigger move is one candidate fix.
 
 **6. A per-ticket clock.**
-- **Raised by:** Claude (e7c7648e, eras narrative, 2026-08-21): "Two timestamps — first agent
+- **Raised by:** Claude (e7c7648e, eras narrative, 2026-08-21): "Two timestamps - first agent
   action, merged … It's a few lines."
 - **Response:** none.
 - **Fate:** no trace. Filing-to-merged has been measured once, by hand, in #649.

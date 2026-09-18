@@ -12,8 +12,8 @@ gauntlet and its checks are on every runner already. What was missing is that `b
 one root where it needs two: where its checks live (the machine) and what they check (the target).
 
 The target owes only its `.claude/contract.json`, and the contract slots run against it. Of the
-push venue's eight machine checks, those reading files the target may carry run when it does —
-`docs/adr` for the corpus, trailers and ADR check; workflow lint always — and the four that diff a
+push venue's eight machine checks, those reading files the target may carry run when it does - 
+`docs/adr` for the corpus, trailers and ADR check; workflow lint always - and the four that diff a
 baseline (`contract`, `clones`, `wiring`, `boundaries`) run only where that baseline exists, the
 shape the clone check already has.
 

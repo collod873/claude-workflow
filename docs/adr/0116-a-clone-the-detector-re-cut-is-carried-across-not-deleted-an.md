@@ -6,7 +6,7 @@ reversal: Dropping the carry-across means reverting `bin/clone-gate`'s substitut
 
 # A clone the detector re-cut is carried across, not deleted and refused
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

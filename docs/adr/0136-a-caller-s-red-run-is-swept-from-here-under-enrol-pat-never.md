@@ -9,7 +9,7 @@ reversal: Every enrolled repository would hold a credential that writes to this 
 ADR-0135 routes a red run by its failing path but never says who files the ticket. A caller's
 `GITHUB_TOKEN` cannot write here, and neither secret enrolment ships outward reaches this tracker.
 
-The obvious answer — enrolment writes a third secret, a PAT carrying `issues: write` here — hands
+The obvious answer - enrolment writes a third secret, a PAT carrying `issues: write` here - hands
 every enrolled repository a key to the machine every other one runs, and rotating it becomes a pass
 over the whole estate.
 

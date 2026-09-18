@@ -6,7 +6,7 @@ reversal: Going back to exactly one unblocked root means flipping the condition 
 
 # Wave 0 may hold more than one slice, so validatePlan requires at least one unblocked root rather than exactly one
 
-Re-admitted 2026-08-31 as a **note**: this records a change record — what was added, moved or retired, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a change record - what was added, moved or retired, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

@@ -9,13 +9,13 @@
 ## The split
 
 Measured against the corpus as it stood at `Knowledge-Base@5a4df95`, the last commit before the
-backfill — the pre-backfill state is what the question is about, and git still holds it.
+backfill - the pre-backfill state is what the question is about, and git still holds it.
 
 | | Sessions |
 |---|---|
 | Real transcripts under `~/.claude/projects/` (excluding `-tmp-` scratch) | 635 |
 | Captured before the backfill, by the live hook | 41 |
-| Ended **before** the recorder went live — nothing could have captured them | 589 |
+| Ended **before** the recorder went live - nothing could have captured them | 589 |
 | Ended **after**, and captured | 41 of 46 |
 | Ended after, uncaptured, **still running at the time of measurement** | 4 |
 | Ended after, uncaptured, genuinely ended | **1** |
@@ -34,7 +34,7 @@ user (<command-name>/clear</command-name>) | system | cost-state
 ```
 
 It is the stub session `/clear` opens behind the session it closes. The clear it records is the same
-event that captured `7a36ccaa` one second earlier — `~/.claude/session-capture.log` carries
+event that captured `7a36ccaa` one second earlier - `~/.claude/session-capture.log` carries
 `2026-08-26T00:16:40Z captured 7a36ccaa-...` and nothing for `d24ee4e7`. The stub was then abandoned
 at the prompt and ended by a reason the matcher does not list.
 
@@ -44,7 +44,7 @@ corpus contains no conversation at all. Capturing it would have produced a file 
 `## Exchange`.
 
 **What this does not establish.** One session is not a rate. The measurement covers the six days the
-recorder has existed, in which no session ended by `logout` either — 34 of the 41 live captures were
+recorder has existed, in which no session ended by `logout` either - 34 of the 41 live captures were
 `clear`, 7 `other`, 0 `logout`. If a later count shows abandoned-at-the-prompt sessions carrying real
 conversation, this is the note that gets amended.
 
@@ -63,7 +63,7 @@ done | sort | uniq -c | sort -rn
 #    2 source: wrap-up
 ```
 
-The split itself — every real transcript's last `timestamp`, bucketed against the recorder's start:
+The split itself - every real transcript's last `timestamp`, bucketed against the recorder's start:
 
 ```sh
 python3 - <<'EOF'
@@ -100,5 +100,5 @@ EOF
 ```
 
 The four "still running" rows are identified by transcript mtime falling inside the minute the
-measurement ran — re-running this note's script later will show them captured, and the count of
+measurement ran - re-running this note's script later will show them captured, and the count of
 genuinely-ended-and-uncaptured sessions unchanged at one.

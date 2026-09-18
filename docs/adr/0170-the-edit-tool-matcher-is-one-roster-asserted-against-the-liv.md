@@ -12,8 +12,8 @@ A settings matcher built only from `A-Za-z0-9_- ,|` is an exact pipe OR-list, no
 
 The roster is defined once, in `_hook.EDIT_TOOLS`, and every hook selects its own occurrences by
 membership in it. Since #558 no matcher string is derived at all: `dispatch.py` matches `*`, so
-there is no registration left to drift from. A test asserts every other spelling of the roster —
-today the turn gate's — against `_hook.EDIT_TOOLS`.
+there is no registration left to drift from. A test asserts every other spelling of the roster - 
+today the turn gate's - against `_hook.EDIT_TOOLS`.
 
 **Rejected: each hook naming its own tools.** That arrangement produced the gap, and nothing
 observable changed while it was wrong.

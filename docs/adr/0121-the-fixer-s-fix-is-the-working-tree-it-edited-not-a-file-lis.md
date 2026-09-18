@@ -6,7 +6,7 @@ reversal: Restoring the file-carrying answer means putting `files` back in the f
 
 # The fixer's fix is the working tree it edited, not a file list in its answer
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

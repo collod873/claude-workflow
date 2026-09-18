@@ -6,7 +6,7 @@ reversal: Putting `bin/clone-gate` back into the test slot and pointing `.husky/
 
 # The clone gate runs beside the gauntlet, not inside it, so the turn-end venue never pays for it
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

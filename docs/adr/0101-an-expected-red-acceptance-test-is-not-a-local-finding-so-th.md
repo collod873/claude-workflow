@@ -1,7 +1,7 @@
 ---
 status: note
 date: 2026-08-29
-reversal: Restoring `vitest run` with no argument to the `test` script re-includes `tests/acceptance/` at every gauntlet venue without changing any gate's authority — the set of things that judge acceptance tests is unchanged either way; what returns is the owner locked out of his own repository whenever a slice's test lands ahead of its implementation.
+reversal: Restoring `vitest run` with no argument to the `test` script re-includes `tests/acceptance/` at every gauntlet venue without changing any gate's authority - the set of things that judge acceptance tests is unchanged either way; what returns is the owner locked out of his own repository whenever a slice's test lands ahead of its implementation.
 ---
 
 # An expected-red acceptance test is not a local finding, so the gauntlet's test slot stops at the code suite
