@@ -11,6 +11,7 @@ const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
+const GREEN = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
 
 interface Scenario {
   label: string;
@@ -34,6 +35,7 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
     { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
     { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["note", "--title", "A note"]) },
+    { label: "refusing a ticket whose check already passes", run: () => filing({ gh: FILED, body: wellFormedTicket, npx: GREEN }).run() },
   ],
 };
 

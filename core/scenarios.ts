@@ -92,13 +92,14 @@ export const misshapenTicket = [
   "",
 ].join("\n");
 
-export function filing({ gh, body, title = "A ticket the machine can build" }: { gh: string; body: string; title?: string }) {
+export function filing({ gh, body, title = "A ticket the machine can build", npx = "exit 1\n" }: { gh: string; body: string; title?: string; npx?: string }) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");
   mkdirSync(repo, { recursive: true });
   git(repo, "init", "--quiet", "--initial-branch=main");
   writeFileSync(join(repo, "body.md"), body);
   script(join(root, "bin", "gh"), gh);
+  script(join(root, "bin", "npx"), npx);
   return {
     repo,
     run: (args = ["ticket", "--title", title, "--body-file", "body.md"]) =>
