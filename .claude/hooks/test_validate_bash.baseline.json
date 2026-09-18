@@ -554,7 +554,7 @@
   ],
   [
     "allow:file-issue-helper",
-    "~/bin/file-issue ticket --title x",
+    "core/bin/file-issue ticket --title x --body-file b.md",
     "ALLOW",
     "ALLOW",
     true

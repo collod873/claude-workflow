@@ -106,11 +106,9 @@ def check(command: str) -> tuple[str, str]:
 
     if _hook.unquoted_matches(GH_ISSUE_CREATE, command, spans):
         return "gh-issue-create", (
-            "gh issue create is blocked; file issues through ~/bin/file-issue instead, "
-            "which always writes the ticket shape drain expects. Filing a ticket you just "
-            "wrote a failing acceptance test for? file-issue ticket --test <path> hands "
-            "the test over instead of leaving it for lane 04 to author cold -- list the "
-            "stub subject file too."
+            "gh issue create is blocked; file through `core/bin/file-issue ticket "
+            "--title <title> --body-file <path>`, which runs the ticket's checks first "
+            "and refuses a misshapen ticket or one whose checks already pass."
         )
 
     if _hook.unquoted_matches(GH_ISSUE_CLOSE, command, spans) and _hook.unquoted_matches(
