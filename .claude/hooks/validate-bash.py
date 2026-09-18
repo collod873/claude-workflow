@@ -37,6 +37,10 @@ GH_ISSUE_CREATE = re.compile(r"\bgh\s+issue\s+create\b")
 GH_ISSUE_CLOSE = re.compile(r"\bgh\s+issue\s+close\b")
 COMPOUND_OPERATOR = re.compile(r"&&|\|\||;|\|")
 
+PUSH_TO_MAIN = re.compile(
+    r"\bgit\s+push\b[^;&|\n]*(?<![\w./-])(?:refs/heads/)?main(?![\w./-])"
+)
+
 GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 
 GH_PR_WRITE = re.compile(r"\bgh\s+pr\s+(?:create|edit)\b")
@@ -116,6 +120,12 @@ def check(command: str) -> tuple[str, str]:
             "gh issue close appeared alongside another command (&&, ;, ||, or |), so "
             "nothing in this command ran. Re-run the close alone, so the close gate "
             "only ever sees a lone close."
+        )
+
+    if _hook.unquoted_matches(PUSH_TO_MAIN, command, spans):
+        return "push-to-main", (
+            "main takes no direct push. Commit locally, then run `core/bin/land`: it "
+            "opens a PR from your commits and merges it, or leaves auto-merge on."
         )
 
     for anchor, patterns, guard, where, trigger in CLOSING_WRITES:
