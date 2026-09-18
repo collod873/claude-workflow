@@ -85,6 +85,12 @@ export const parts: Part[] = [
     ],
   },
   {
+    name: "core/bin/brief",
+    file: "core/bin/brief",
+    stops: "https://github.com/collod873/claude-workflow/issues/539",
+    holds: ["An agent is handed what it needs, so it does not explore"],
+  },
+  {
     name: "core/bin/app-token",
     file: "core/bin/app-token",
     stops: "https://github.com/collod873/claude-workflow/issues/652",

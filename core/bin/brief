@@ -1,0 +1,30 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="brief: usage: brief <ticket number>"
+
+ticket=${1:-}
+if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+core="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
+written="$(git rev-parse --path-format=absolute --git-common-dir)/core-logs/brief-$ticket.md"
+mkdir -p "${written%/*}"
+[[ $written == "$top/"* ]] && shown="${written#"$top/"}" || shown="$written"
+
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+if node "$core/brief.ts" "$ticket" >"$written" 2>"$err"; then
+  printf 'brief: #%s is %s bytes at %s\n' "$ticket" "$(wc -c <"$written")" "$shown"
+  exit 0
+fi
+
+count=$(grep -c '' "$err")
+{ printf '%s refusals\n' "$count"; cat "$err"; } >"$written"
+printf 'brief: #%s refused, %s; log %s\n' "$ticket" "$(head -1 "$err")" "$shown" >&2
+exit 1
