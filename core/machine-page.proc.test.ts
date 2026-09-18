@@ -1,0 +1,35 @@
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import { machinePage, signedRules } from "./machine-page.ts";
+import { parts } from "./parts.ts";
+import { execute, git, scratch } from "./scenarios.ts";
+
+const REPO = resolve(import.meta.dirname, "..");
+const CALLER = join(REPO, "core", "bin", "machine-page");
+
+function pageIn(repo: string): { path: string; shown: string } {
+  const path = join(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"), "core-logs", "machine-page.txt");
+  return { path, shown: path.startsWith(`${repo}/`) ? path.slice(repo.length + 1) : path };
+}
+
+describe("the machine page renders from a part that runs (#710)", () => {
+  it("renders the page and says one line naming it", () => {
+    expect(parts.map((part) => part.file)).toContain("core/bin/machine-page");
+
+    const { path, shown } = pageIn(REPO);
+    const { status, stdout, stderr } = execute(CALLER, REPO);
+
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    expect(stdout.trimEnd().split("\n")).toEqual([expect.stringContaining(shown)]);
+    expect(readFileSync(path, "utf8").trimEnd()).toBe(machinePage(parts, signedRules(REPO)));
+  });
+
+  it("says one line and fails where there is no repo to read", () => {
+    const { status, stdout, stderr } = execute(CALLER, scratch("machine-page-"));
+
+    expect(status).not.toBe(0);
+    expect((stdout + stderr).trimEnd().split("\n")).toHaveLength(1);
+  });
+});

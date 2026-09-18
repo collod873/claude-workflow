@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FAILURE_LINK } from "./part-links.ts";
-import type { Part } from "./parts.ts";
+import { parts, type Part } from "./parts.ts";
 
 const SIGNED_PAGES: Record<string, string> = {
   "docs/agents/charter.md": "charter",
@@ -70,4 +70,8 @@ export function machinePage(registry: Part[], rules: SignedRule[]): string {
     "NOT ENFORCED YET",
     ...rules.filter((rule) => enforcers(rule).length === 0).map((rule) => `  ${headline(rule)}`),
   ].join("\n");
+}
+
+if (import.meta.main) {
+  console.log(machinePage(parts, signedRules(join(import.meta.dirname, ".."))));
 }

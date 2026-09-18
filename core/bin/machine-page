@@ -1,0 +1,25 @@
+#!/bin/bash
+set -uo pipefail
+
+core="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+if ! top=$(git rev-parse --show-toplevel 2>/dev/null); then
+  printf 'machine-page: no repository here to read the machine from\n' >&2
+  exit 1
+fi
+page="$(git rev-parse --path-format=absolute --git-common-dir)/core-logs/machine-page.txt"
+mkdir -p "${page%/*}"
+[[ $page == "$top/"* ]] && shown="${page#"$top/"}" || shown="$page"
+
+rendered=$(mktemp)
+refusals=$(mktemp)
+trap 'rm -f "$rendered" "$refusals"' EXIT
+
+if node "$core/machine-page.ts" >"$rendered" 2>"$refusals"; then
+  cp "$rendered" "$page"
+  printf 'machine-page: %s; page %s\n' "$(head -1 "$page")" "$shown"
+  exit 0
+fi
+
+cp "$refusals" "$page"
+printf 'machine-page: nothing rendered; log %s\n' "$shown" >&2
+exit 1
