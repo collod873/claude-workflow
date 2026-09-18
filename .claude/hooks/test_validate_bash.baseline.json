@@ -588,6 +588,132 @@
     true
   ],
   [
+    "block:push-to-main-named",
+    "git push origin main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-head-ref",
+    "git push origin HEAD:main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-force",
+    "git push -f origin main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-plus-ref",
+    "git push origin +main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-refs-heads",
+    "git push origin refs/heads/main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-colon-pair",
+    "git push origin main:main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-upstream",
+    "git push --set-upstream origin main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-delete",
+    "git push origin :main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:push-to-main-other-remote",
+    "git push upstream main",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:push-branch",
+    "git push origin feat",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-mainline",
+    "git push origin mainline",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-domain",
+    "git push origin domain",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-branch-named-main",
+    "git push origin feature/main-fix",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-head",
+    "git push origin HEAD",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-bare",
+    "git push",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-main-past-operator",
+    "git push origin feat && echo main",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:push-main-quoted",
+    "gh issue comment 5 --body \"then run git push origin main\"",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
+    "allow:git-log-main",
+    "git log --oneline main",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
     "block:commit-closes-dquote",
     "git commit -m \"Resolves #176\"",
     "BLOCK",
@@ -736,9 +862,9 @@
   ],
   [
     "row:count",
-    "105 fires",
-    "105",
-    "105",
+    "123 fires",
+    "123",
+    "123",
     true
   ],
   [
@@ -751,8 +877,8 @@
   [
     "row:deny-count",
     "every BLOCK logged a deny",
-    "41",
-    "41",
+    "50",
+    "50",
     true
   ],
   [
@@ -935,6 +1061,69 @@
     "git push && gh issue close 5",
     "compound-close",
     "['compound-close']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-named",
+    "git push origin main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-head-ref",
+    "git push origin HEAD:main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-force",
+    "git push -f origin main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-plus-ref",
+    "git push origin +main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-refs-heads",
+    "git push origin refs/heads/main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-colon-pair",
+    "git push origin main:main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-upstream",
+    "git push --set-upstream origin main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-delete",
+    "git push origin :main",
+    "push-to-main",
+    "['push-to-main']",
+    true
+  ],
+  [
+    "guard:block:push-to-main-other-remote",
+    "git push upstream main",
+    "push-to-main",
+    "['push-to-main']",
     true
   ],
   [
