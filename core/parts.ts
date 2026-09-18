@@ -64,6 +64,11 @@ export const parts: Part[] = [
     lines: 5,
   },
   {
+    name: "core/bin/machine-page",
+    file: "core/bin/machine-page",
+    stops: "https://github.com/collod873/claude-workflow/issues/710",
+  },
+  {
     name: "core/growth-limits.proc.test.ts",
     file: "core/growth-limits.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/399",

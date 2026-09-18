@@ -30,6 +30,10 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with the push refused", run: () => landSession({ gh: "exit 0\n", remoteRefuses: NOISE }).run() },
     { label: "refusing an em dash in a commit message", run: () => landSession({ gh: "exit 0\n", messages: ["change \u2014 dashed"] }).run() },
   ],
+  "core/bin/machine-page": [
+    { label: "rendering the page", run: () => execute(join(REPO, "core", "bin", "machine-page"), REPO) },
+    { label: "outside a repo to read", run: () => execute(join(REPO, "core", "bin", "machine-page"), scratch("machine-page-")) },
+  ],
   "core/bin/file-issue": [
     { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
     { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
