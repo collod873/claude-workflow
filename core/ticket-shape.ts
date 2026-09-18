@@ -31,7 +31,7 @@ function criteria(body: string): string[] {
   return items;
 }
 
-function claims(body: string): string[] {
+export function claims(body: string): string[] {
   return section(body, CLAIMED)
     .split("\n")
     .map((line) => line.trim())

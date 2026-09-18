@@ -208,6 +208,40 @@ function ghAnswers(body: string, checkRuns: string): string {
   ].join("\n");
 }
 
+function plant(root: string, path: string, content: string): void {
+  mkdirSync(dirname(join(root, path)), { recursive: true });
+  writeFileSync(join(root, path), content);
+}
+
+export function briefing({
+  body = wellFormedTicket,
+  claimed = { "core/ticket-shape.ts": "export const shaped = 1;\n" } as Record<string, string>,
+  tests = {} as Record<string, string>,
+  reads = true,
+} = {}) {
+  const root = scratch("brief-");
+  const session = join(root, "session");
+  mkdirSync(session, { recursive: true });
+  git(session, "init", "--quiet", "--initial-branch=main");
+  git(session, "config", "user.email", "brief@test");
+  git(session, "config", "user.name", "brief");
+  for (const [path, content] of Object.entries(claimed)) plant(session, path, content);
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "what the claim stands on");
+  git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
+  if (Object.keys(tests).length > 0) {
+    git(session, "checkout", "--quiet", "-b", "ticket/722");
+    for (const [path, content] of Object.entries(tests)) plant(session, path, content);
+    git(session, "add", ".");
+    git(session, "commit", "--quiet", "-m", "the author's failing test");
+  }
+  script(join(root, "bin", "gh"), reads ? ghAnswers(body, MAIN_GREEN) : "exit 22\n");
+  return {
+    written: () => readFileSync(join(session, ".git", "core-logs", "brief-722.md"), "utf8"),
+    run: (ticket = "722") => execute(join(CORE, "bin", "brief"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+  };
+}
+
 export function starting({ body = wellFormedTicket, checkRuns = MAIN_GREEN, npx = CHECK_RED, tree = "fresh" as Tree } = {}) {
   const root = scratch("start-");
   const remote = join(root, "remote.git");
