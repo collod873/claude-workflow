@@ -129,7 +129,7 @@ CASES = [
      "gh issue create --title x --body y",
      "BLOCK"),
     ("allow:file-issue-helper",
-     "~/bin/file-issue ticket --title x",
+     "core/bin/file-issue ticket --title x --body-file b.md",
      "ALLOW"),
     ("allow:gh-issue-create-quoted",
      "gh issue comment 5 --body 'run gh issue create later'",

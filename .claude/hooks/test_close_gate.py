@@ -237,8 +237,6 @@ def run_cases(tmp):
 
     home6b = tmp / "home6b"
     (home6b / ".claude").mkdir(parents=True)
-    (home6b / "bin").mkdir(parents=True)
-    (home6b / "bin" / "file-issue").write_text("#!/bin/sh\n")
     a_record = record("aaa1111..bbb2222", ["c1 - MET: `f.py:1`"])
     env = stub_env(body="Part of #29.\n\nJust a note, no criteria heading.\n",
                     comments=[{"body": a_record, "createdAt": "t"}])
@@ -248,8 +246,8 @@ def run_cases(tmp):
           logged(home6b, "deny", "missing-acceptance-criteria"), gate_rows(home6b))
     out6b = parse_stdout_json(r.stdout)
     reason6b = out6b["hookSpecificOutput"]["permissionDecisionReason"]
-    check("no acceptance-criteria heading: names file-issue ticketify",
-          "file-issue ticketify" in reason6b, reason6b)
+    check("no acceptance-criteria heading: says what to write instead",
+          "## Acceptance criteria` heading to the issue body" in reason6b, reason6b)
     check("no acceptance-criteria heading: names close-ticket as the next step",
           "close-ticket" in reason6b, reason6b)
     check("no acceptance-criteria heading: names the No diff. remedy",
@@ -257,8 +255,6 @@ def run_cases(tmp):
 
     home6b2 = tmp / "home6b2"
     (home6b2 / ".claude").mkdir(parents=True)
-    (home6b2 / "bin").mkdir(parents=True)
-    (home6b2 / "bin" / "file-issue").write_text("#!/bin/sh\n")
     b2_record = record("aaa1111..bbb2222", ["c1 - MET: `f.py:1`"])
     env = stub_env(body="Part of #29.\n\n## Acceptance criteria\n- not a checkbox item\n",
                     comments=[{"body": b2_record, "createdAt": "t"}])
@@ -268,8 +264,8 @@ def run_cases(tmp):
           logged(home6b2, "deny", "missing-acceptance-criteria"), gate_rows(home6b2))
     out6b2 = parse_stdout_json(r6b2.stdout)
     reason6b2 = out6b2["hookSpecificOutput"]["permissionDecisionReason"]
-    check("zero-items heading: names file-issue ticketify",
-          "file-issue ticketify" in reason6b2, reason6b2)
+    check("zero-items heading: says what to write instead",
+          "## Acceptance criteria` heading to the issue body" in reason6b2, reason6b2)
     check("zero-items heading: states plain bullets don't count",
           "don't count" in reason6b2, reason6b2)
     check("zero-items heading: names close-ticket as the next step",

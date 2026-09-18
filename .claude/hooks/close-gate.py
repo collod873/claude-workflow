@@ -16,17 +16,12 @@ GIT_REMOTE_TIMEOUT_SECONDS = 2
 
 REPO_GATE_PATH = ".claude/hooks/close-gate.py"
 
-TICKETIFY_PATH = Path.home() / "bin" / "file-issue"
 LOCAL_CLOSE_TICKET = _hook.BIN / "close-ticket"
 
-
-def write_criteria_hint() -> str:
-    if TICKETIFY_PATH.is_file():
-        return "run `~/bin/file-issue ticketify <n>` to write them"
-    return (
-        "add an `## Acceptance criteria` heading to the issue body, one `- [ ]` per "
-        "checkable claim"
-    )
+WRITE_CRITERIA_HINT = (
+    "add an `## Acceptance criteria` heading to the issue body, one `- [ ]` per "
+    "checkable claim"
+)
 
 
 
@@ -188,7 +183,7 @@ def _bullet_count_denial(record_text: str, criteria_count: int,
             "the issue body's `## Acceptance criteria` heading has no `- [ ]` items. Plain "
             "`- ` bullets don't count; only `- [ ]` checkbox items do. Neither `No diff.` "
             "nor `Superseded by #<n>` stands in for criteria that were never written: "
-            f"{write_criteria_hint()}, then run "
+            f"{WRITE_CRITERIA_HINT}, then run "
             f"`{close_ticket_stub_text}` to close it.",
         ), []
     bullets = [b.strip() for b in CLOSING_BULLET_RE.findall(record_text) if b.strip()]
@@ -230,7 +225,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
                 "the issue body's `## Acceptance criteria` heading has no `- [ ]` items. "
                 "Plain `- ` bullets don't count; only `- [ ]` checkbox items do. Neither "
                 "`No diff.` nor `Superseded by #<n>` stands in for criteria that were never "
-                f"written: {write_criteria_hint()}.",
+                f"written: {WRITE_CRITERIA_HINT}.",
             )
         return (
             "deny",
@@ -256,7 +251,7 @@ def evaluate_record(record_text: str, criteria_count: int | None,
             "missing-acceptance-criteria",
             "the issue body has no `## Acceptance criteria` heading. If this ticket truly "
             "carries no commit, post a `## Closing record` comment declaring `No diff.`; "
-            f"otherwise {write_criteria_hint()}, then run "
+            f"otherwise {WRITE_CRITERIA_HINT}, then run "
             f"`{close_ticket_stub_text}` to close it.",
         )
 
