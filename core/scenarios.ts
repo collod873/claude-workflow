@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
+import { parse } from "yaml";
 import { onTestFinished } from "vitest";
 
 const TOOLS = ["tsc", "eslint", "knip", "jscpd", "vitest", "node"] as const;
@@ -15,6 +16,19 @@ export interface Run {
 
 const CORE = import.meta.dirname;
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
+
+export interface Step {
+  id?: string;
+  uses?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, string>;
+  run?: string;
+}
+
+export function workflowSteps(file: string): Step[] {
+  const workflow = parse(readFileSync(join(CORE, "..", file), "utf8")) as { jobs: Record<string, { steps?: Step[] }> };
+  return Object.values(workflow.jobs).flatMap((job) => job.steps ?? []);
+}
 
 export function scratch(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -104,6 +118,36 @@ export function filing({ gh, body, title = "A ticket the machine can build", npx
     repo,
     run: (args = ["ticket", "--title", title, "--body-file", "body.md"]) =>
       execute(join(CORE, "bin", "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
+  };
+}
+
+export const MINTED = "ghs_theAppsInstallationToken";
+
+const ANSWERS = [
+  "case \"$*\" in",
+  `  *access_tokens*) printf '{"token":"${MINTED}","expires_at":"2026-09-18T00:00:00Z"}\\n' ;;`,
+  "  *installation*) printf '{\"id\":4242}\\n' ;;",
+  "  *) exit 22 ;;",
+  "esac",
+  "",
+].join("\n");
+
+export function minting({ curl = ANSWERS, key = "an App key the stubbed openssl never reads", id = "Iv23lib7IIhXBUGhytcc" } = {}) {
+  const dir = scratch("app-token-");
+  const handedOn = join(dir, "github-env");
+  writeFileSync(handedOn, "");
+  script(join(dir, "bin", "curl"), curl);
+  script(join(dir, "bin", "openssl"), "cat >/dev/null\nprintf signature\n");
+  return {
+    handedOn: () => readFileSync(handedOn, "utf8"),
+    run: () =>
+      execute(join(CORE, "bin", "app-token"), dir, {
+        PATH: `${join(dir, "bin")}:${process.env.PATH ?? ""}`,
+        GITHUB_ENV: handedOn,
+        GITHUB_REPOSITORY: "collod873/claude-workflow",
+        CORE_APP_CLIENT_ID: id,
+        CORE_APP_PRIVATE_KEY: key,
+      }),
   };
 }
 

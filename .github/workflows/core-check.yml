@@ -33,4 +33,10 @@ jobs:
 
       - run: npm ci
 
+      - id: app-token
+        env:
+          CORE_APP_CLIENT_ID: ${{ vars.CORE_APP_CLIENT_ID }}
+          CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+        run: core/bin/app-token
+
       - run: core/check
