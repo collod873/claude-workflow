@@ -44,7 +44,9 @@ export interface WorkflowJob {
   secrets?: string;
 }
 
-const isWorkflowFile = (name: string) => name.endsWith(".yml") || name.endsWith(".yaml");
+const OWNED_BY_NEW_CORE = /^core-/;
+
+const isWorkflowFile = (name: string) => (name.endsWith(".yml") || name.endsWith(".yaml")) && !OWNED_BY_NEW_CORE.test(name);
 
 export function workflowNames(dir = WORKFLOWS_DIR): string[] {
   return readdirSync(dir).filter(isWorkflowFile);

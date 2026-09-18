@@ -1,0 +1,36 @@
+name: Core check (reusable)
+
+"on":
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  core-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - id: judged-sha
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          judged=$(git rev-parse HEAD)
+          if [ "$judged" != "$HEAD_SHA" ]; then
+            printf 'core-check: judged %s, not the PR head %s\n' "$judged" "$HEAD_SHA"
+            exit 1
+          fi
+          printf 'core-check: judging %s\n' "$judged"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - run: core/check
