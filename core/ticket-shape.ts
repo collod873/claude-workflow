@@ -40,8 +40,15 @@ function claims(body: string): string[] {
     .filter((entry) => entry !== "");
 }
 
-function quoted(text: string): string {
+export function quoted(text: string): string {
   return text.length > QUOTE ? `${text.slice(0, QUOTE - 1)}…` : text;
+}
+
+export function checks(body: string): { at: string; command: string }[] {
+  return criteria(body.replaceAll(/\r\n?/g, "\n")).flatMap((item, index) => {
+    const command = MARKER.exec(item)?.[1];
+    return command === undefined ? [] : [{ at: `criterion ${index + 1}`, command }];
+  });
 }
 
 function checkRefusals(items: string[]): string[] {
