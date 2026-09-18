@@ -14,9 +14,10 @@ rule. Tracked is the line because ignored paths are not the owner's to clean: se
 `.Workflow/` leftovers and trial streams carry em dashes nobody wrote by hand, and a gate that read
 them would refuse a push forever over local state.
 
-`core/prose.test.ts` reads code that runs: `core/`, `.claude/hooks/`, `.claude/skills/` and `bin/`,
-the four homes `core/machinery.ts` names. It stops there on purpose. Stripping the comments out of
-an archived probe script under `docs/research/` destroys the evidence the research is for.
+`core/prose.proc.test.ts` reads the same tracked list, minus `docs/research/`. It reads code only,
+by extension and shebang, so the markdown beside it is not its business. The archive is the one
+carve-out: stripping the comments out of an archived probe script destroys the evidence the research
+exists to hold, and those 69 comments are the only thing the widening would have cost.
 
 Neither is the reversal [#676](https://github.com/collod873/claude-workflow/pull/676) undid. That
 one pointed *Old* gates at `core/`, so a core judged by gates ADR-0200 deletes would lose them at

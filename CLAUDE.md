@@ -17,7 +17,7 @@ A Claude Code + GitHub workflow system.
   tests included ([ADR-0151](docs/adr/0151-code-carries-no-prose-the-why-lives-in-docs-adr-and-context.md)).
   The why goes in the commit message, or `CONTEXT.md` where it is the vocabulary; name things so
   the code says the rest.
-  `core/prose.test.ts` holds it at zero and keeps only what a machine reads: knip's
+  `core/prose.proc.test.ts` holds it at zero and keeps only what a machine reads: knip's
   `@shell`/`@fixture` tags (five lines max), `shellcheck` directives, eslint pragmas.
 - `core/check` is the New core's whole gate, run by `.husky/pre-push`. It never reads a check
   contract, and the Old machine's checks never read `core/`
