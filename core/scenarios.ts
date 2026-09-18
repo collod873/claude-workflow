@@ -242,6 +242,36 @@ export function briefing({
   };
 }
 
+const WROTE_A_TEST = 'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >core/ticket-shape.test.ts\n';
+
+export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx = CHECK_RED, reads = true } = {}) {
+  const root = scratch("test-author-");
+  const session = join(root, "session");
+  const argv = join(root, "claude-argv");
+  mkdirSync(session, { recursive: true });
+  git(session, "init", "--quiet", "--initial-branch=main");
+  git(session, "config", "user.email", "author@test");
+  git(session, "config", "user.name", "author");
+  plant(session, "core/ticket-shape.ts", "export const shaped = 1;\n");
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "what the claim stands on");
+  script(join(root, "bin", "gh"), reads ? ghAnswers(body, MAIN_GREEN) : "exit 22\n");
+  script(join(root, "bin", "npx"), npx);
+  script(join(root, "bin", "claude"), `printf '%s\\n' "$@" >"${argv}"\ncat >/dev/null\n${claude}`);
+  return {
+    session,
+    handedOn: () => (existsSync(argv) ? readFileSync(argv, "utf8") : ""),
+    committed: (branch = "ticket/723") => {
+      try {
+        return git(session, "show", "--name-only", "--format=", branch).split("\n").filter((path) => path !== "");
+      } catch {
+        return [];
+      }
+    },
+    run: (ticket = "723") => execute(join(CORE, "bin", "test-author"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+  };
+}
+
 export function starting({ body = wellFormedTicket, checkRuns = MAIN_GREEN, npx = CHECK_RED, tree = "fresh" as Tree } = {}) {
   const root = scratch("start-");
   const remote = join(root, "remote.git");

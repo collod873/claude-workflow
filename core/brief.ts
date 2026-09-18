@@ -6,6 +6,8 @@ import { claims } from "./ticket-shape.ts";
 
 export const CAP = 64 * 1024;
 
+export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
+
 const AUTHORED = /\.test\.(m|c)?[jt]s$/;
 
 type Read = (path: string) => string | undefined;
@@ -97,7 +99,7 @@ if (import.meta.main) {
           ticket,
           body: asked.stdout,
           tests: authoredTests(),
-          read: (path) => (existsSync(path) ? readFileSync(path, "utf8") : undefined),
+          read: onDisk,
         })
       : { text: "", refusals: [`ticket ${ticket} could not be read, so nothing was briefed`] };
   for (const refusal of refusals) console.error(refusal);

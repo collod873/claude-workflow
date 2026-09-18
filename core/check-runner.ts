@@ -10,6 +10,8 @@ interface Outcome {
   output: string;
 }
 
+export const RAN_NO_TESTS = "ran no tests";
+
 const RUNS_VITEST = /(?<![A-Za-z])vitest(?![A-Za-z])/;
 const SUMMARY = /^[ \t]*Tests[ \t]+(.+)$/m;
 const COUNTED = /(\d+)[ \t]+(?:passed|failed)/g;
@@ -24,7 +26,7 @@ function testsRan(output: string): number {
 export function runCheck(command: string, cwd: string, run: Shell = bash): Outcome {
   const { status, stdout, stderr } = run(command, cwd);
   const output = `${stdout}${stderr}`;
-  if (RUNS_VITEST.test(command) && testsRan(output) === 0) return { passed: false, why: "ran no tests", output };
+  if (RUNS_VITEST.test(command) && testsRan(output) === 0) return { passed: false, why: RAN_NO_TESTS, output };
   return status === 0 ? { passed: true, why: "", output } : { passed: false, why: `exited ${status}`, output };
 }
 

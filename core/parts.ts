@@ -91,6 +91,20 @@ export const parts: Part[] = [
     holds: ["An agent is handed what it needs, so it does not explore"],
   },
   {
+    name: "core/bin/test-author",
+    file: "core/bin/test-author",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+    holds: [
+      "Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count",
+      "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
+    ],
+  },
+  {
+    name: "core/deny-list.test.ts",
+    file: "core/deny-list.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+  },
+  {
     name: "core/bin/app-token",
     file: "core/bin/app-token",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
