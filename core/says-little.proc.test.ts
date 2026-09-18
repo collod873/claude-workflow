@@ -5,7 +5,7 @@ import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./check-covers.ts";
 import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
-import { checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, scratch, script, wellFormedTicket, type Run } from "./scenarios.ts";
+import { MAIN_RED, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, scratch, script, starting, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -48,6 +48,12 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
     { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["note", "--title", "A note"]) },
     { label: "refusing a ticket whose check already passes", run: () => filing({ gh: FILED, body: wellFormedTicket, npx: GREEN }).run() },
+  ],
+  "core/bin/start": [
+    { label: "starting a build", run: () => starting().run() },
+    { label: "refusing a body defective more ways than it shows", run: () => starting({ body: misshapenTicket }).run() },
+    { label: "refusing while main is red", run: () => starting({ checkRuns: MAIN_RED }).run() },
+    { label: "refusing a ticket whose checks already pass", run: () => starting({ npx: GREEN }).run() },
   ],
 };
 

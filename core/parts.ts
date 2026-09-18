@@ -68,6 +68,21 @@ export const parts: Part[] = [
     file: "core/bin/file-issue",
     stops: "https://github.com/collod873/claude-workflow/issues/662",
     lines: 5,
+    holds: [
+      "A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner",
+      "A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question",
+    ],
+  },
+  {
+    name: "core/bin/start",
+    file: "core/bin/start",
+    stops: "https://github.com/collod873/claude-workflow/issues/662",
+    lines: 5,
+    holds: [
+      "A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner",
+      "A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question",
+      "A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there",
+    ],
   },
   {
     name: "core/bin/app-token",

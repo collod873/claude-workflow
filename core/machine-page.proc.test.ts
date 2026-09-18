@@ -33,6 +33,15 @@ describe("the machine page renders from a part that runs (#710)", () => {
     expect(page.split("NOT ENFORCED YET")[1]).not.toContain("Nobody pushes to main");
   });
 
+  it("names filing and the start step together on the ticket shape rules they share", () => {
+    const page = machinePage(parts, signedRules(REPO));
+
+    expect(page).toContain("A ticket has 1 to 3 criteria (a trial), each with one `check:`  ← core/bin/file-issue, core/bin/start");
+    expect(page).toContain("A grep or file check may sit beside a test check, never alone  ← core/bin/file-issue, core/bin/start");
+    expect(page).toContain("A build starts only from fresh main, only when main is green, and not w…  ← core/bin/start");
+    expect(page.split("NOT ENFORCED YET")[1]).not.toContain("A ticket has 1 to 3 criteria");
+  });
+
   it("says one line and fails where there is no repo to read", () => {
     const { status, stdout, stderr } = execute(CALLER, scratch("machine-page-"));
 

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { parse } from "yaml";
@@ -184,5 +184,51 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
     remote,
     session,
     run: () => execute(join(CORE, "bin", "land"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_WAIT_SECONDS: "0" }),
+  };
+}
+
+const MAIN_GREEN = '{"check_runs":[{"name":"Core check","conclusion":"success"}]}';
+const CHECK_RED = "printf '      Tests  1 failed (1)\\n'\nexit 1\n";
+export const MAIN_RED = '{"check_runs":[{"name":"Core check","conclusion":"failure"}]}';
+
+type Tree = "fresh" | "behind" | "dirty" | "branch";
+
+function ghAnswers(body: string, checkRuns: string): string {
+  return [
+    'case "$*" in',
+    '  *"issue view"*)',
+    "    cat <<'TICKET'",
+    body,
+    "TICKET",
+    "    ;;",
+    `  *check-runs*) printf '%s\\n' '${checkRuns}' ;;`,
+    "  *) exit 22 ;;",
+    "esac",
+    "",
+  ].join("\n");
+}
+
+export function starting({ body = wellFormedTicket, checkRuns = MAIN_GREEN, npx = CHECK_RED, tree = "fresh" as Tree } = {}) {
+  const root = scratch("start-");
+  const remote = join(root, "remote.git");
+  const session = join(root, "session");
+  const spent = join(root, "claude-argv");
+  git(root, "init", "--quiet", "--bare", "--initial-branch=main", remote);
+  git(root, "clone", "--quiet", remote, session);
+  git(session, "config", "user.email", "session@test");
+  git(session, "config", "user.name", "session");
+  git(session, "commit", "--quiet", "--allow-empty", "-m", "base");
+  git(session, "commit", "--quiet", "--allow-empty", "-m", "the commit a stale tree has not got");
+  git(session, "push", "--quiet", "origin", "main");
+  if (tree === "behind") git(session, "reset", "--quiet", "--hard", "HEAD~1");
+  if (tree === "branch") git(session, "checkout", "--quiet", "-b", "ticket/721");
+  if (tree === "dirty") writeFileSync(join(session, "left-behind.txt"), "work nobody committed\n");
+  script(join(root, "bin", "gh"), ghAnswers(body, checkRuns));
+  script(join(root, "bin", "npx"), npx);
+  script(join(root, "bin", "claude"), `touch "${spent}"\n`);
+  return {
+    session,
+    spentModel: () => existsSync(spent),
+    run: (ticket = "721") => execute(join(CORE, "bin", "start"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
