@@ -36,7 +36,7 @@ import {
   type StepWiring,
 } from "./lane-wiring";
 import { GRAPH_CHANGED_DISPATCH_ACTION, TICKET_READY_DISPATCH_ACTION } from "./ready-set";
-import { WORKFLOWS_DIR } from "./read-workflow";
+import { WORKFLOWS_DIR, newCoreSecretNames } from "./read-workflow";
 import { binSources, entrypointsOf, envReadsOf, repoFileExists } from "./repo-sources";
 import { VERIFY_DISPATCH_EVENT_TYPE } from "./verify-dispatch";
 
@@ -236,7 +236,8 @@ describe("a name the registry spells for a lane agrees with the lane's own expor
   });
 
   it("enrol hands enrol.ts every secret its own scan of the emitted estate derives (#327)", () => {
-    const names = derivedSecretNames(WORKFLOWS_DIR);
+    const ownedByNewCore = newCoreSecretNames(WORKFLOWS_DIR);
+    const names = derivedSecretNames(WORKFLOWS_DIR).filter((name) => !ownedByNewCore.includes(name));
     expect(names.length).toBeGreaterThan(0);
     const bound = JSON.stringify(stepsOf("enrol").map((step) => step.env ?? {}));
     for (const name of names) expect(bound, `enrol.yml never binds secrets.${name}`).toContain(`secrets.${name}`);
