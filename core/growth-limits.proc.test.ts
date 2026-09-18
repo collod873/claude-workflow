@@ -88,6 +88,7 @@ function git(cwd: string, ...args: string[]): string {
 function testsIn(root: string): number {
   if (!existsSync(join(root, "core", "vitest.config.ts"))) return 0;
   if (!existsSync(join(root, "node_modules"))) symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+  if (!existsSync(join(root, ".git"))) git(root, "init", "--quiet");
   const listed = execFileSync(join(REPO, "node_modules", ".bin", "vitest"), ["list", "--config", "core/vitest.config.ts", "--json"], {
     cwd: root,
     env,
