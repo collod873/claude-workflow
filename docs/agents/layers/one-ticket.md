@@ -94,9 +94,6 @@ It does one of three things:
 | Filing to merged is reported on every merge, with its longest wait named; never a gate | The after-merge step | The speed report posted with the closing record |
 | Each agent stage has a time cap (a guard) | The stub's `timeout-minutes` per job | GitHub |
 
-**Rung** now means only the placement tier ADR-0193 names (settled in `CONTEXT.md`). The strike ladder was Old machine and
-has no successor here: the fixer replaces the second model, the mechanic and the owner decision.
-
 ## Parts
 
 **Built-ins that replace Old machine parts.**
