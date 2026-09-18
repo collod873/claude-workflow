@@ -26,6 +26,13 @@ describe("the machine page renders from a part that runs (#710)", () => {
     expect(readFileSync(path, "utf8").trimEnd()).toBe(machinePage(parts, signedRules(REPO)));
   });
 
+  it("credits a rule GitHub holds to the part that reads the live ruleset", () => {
+    const page = machinePage(parts, signedRules(REPO));
+
+    expect(page).toContain("Nobody pushes to main, the owner included  ← core/rulesets.proc.test.ts");
+    expect(page.split("NOT ENFORCED YET")[1]).not.toContain("Nobody pushes to main");
+  });
+
   it("says one line and fails where there is no repo to read", () => {
     const { status, stdout, stderr } = execute(CALLER, scratch("machine-page-"));
 

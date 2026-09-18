@@ -103,6 +103,12 @@ export const parts: Part[] = [
     holds: ["The docs every session loads never grow in total; adding a line means cutting one, except in a page the owner signs"],
   },
   {
+    name: "core/rulesets.proc.test.ts",
+    file: "core/rulesets.proc.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/652",
+    holds: ["Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch"],
+  },
+  {
     name: "core/stub-shape.test.ts",
     file: "core/stub-shape.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
