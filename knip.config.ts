@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const REPO_ROOT = import.meta.dirname;
 
-const INVOCATION = /\.Workflow\/[A-Za-z0-9/._-]+\.ts/g;
+const INVOCATION = /bin\/lib\/[A-Za-z0-9/._-]+\.ts/g;
 
 function filesIn(dir: string): string[] {
   let names: string[];
@@ -17,7 +17,7 @@ function filesIn(dir: string): string[] {
     .filter((path) => statSync(join(REPO_ROOT, path)).isFile());
 }
 
-const venueFiles = [...filesIn(".github/workflows"), ...filesIn("bin"), ...filesIn(".claude/hooks")];
+const venueFiles = ["package.json", ...filesIn(".github/workflows"), ...filesIn("bin"), ...filesIn(".claude/hooks")];
 
 const invoked = new Set<string>();
 for (const file of venueFiles) {
@@ -88,16 +88,18 @@ const production = (paths: string[]) => paths.map((path) => `${path}!`);
 export default {
   entry: production([
     ...shellLaunched(".claude/hooks"),
+    ...shellLaunched(".claude/hooks/lib"),
     ...shellLaunched("bin"),
     ...[...invoked].sort(),
   ]),
   project: ["**/*.{js,mjs,ts}!"],
   ignoreWorkspaces: ["lib/md-html"],
+  ignoreDependencies: ["yaml"],
 
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
 
-  ignore: [...suiteOnly([".Workflow", "bin", ".claude"]), "core/**", "trials/**"],
+  ignore: [...suiteOnly(["bin", ".claude"]), "core/**", "trials/**"],
 
   /**
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic
@@ -106,6 +108,6 @@ export default {
    */
   tags: ["-shell", "-fixture"],
 
-  ignoreUnresolved: spawnedNames([".Workflow", "bin", ".claude"]),
-  ignoreBinaries: spawnedNames([".Workflow", "bin", ".claude"]),
+  ignoreUnresolved: spawnedNames(["bin", ".claude"]),
+  ignoreBinaries: spawnedNames(["bin", ".claude"]),
 };

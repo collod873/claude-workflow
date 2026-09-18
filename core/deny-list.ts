@@ -8,7 +8,6 @@ export const DENIED = [
   "Bash(npx vitest run --config core/vitest.config.ts)",
   "Bash(core/check:*)",
   "Bash(./core/check:*)",
-  "Bash(bin/gauntlet:*)",
   "Bash(git stash:*)",
   "Bash(git checkout:*)",
   "Bash(git switch:*)",

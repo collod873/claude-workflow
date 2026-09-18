@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expect, onTestFinished } from "vitest";
-import { scratchDir } from "../../.Workflow/agent-workflows/shared/scratch.fixture";
-import { stubGh } from "../../.Workflow/agent-workflows/shared/stub-gh.fixture";
+import { scratchDir } from "./scratch.fixture";
+import { stubGh } from "./stub-gh.fixture";
 import {
   cloneRepo,
   makeBareRepo,
   noteOnRemote,
   type TempRepo,
-} from "../../.Workflow/agent-workflows/shared/temp-repo.fixture";
+} from "./temp-repo.fixture";
 
 /**
  * @fixture Reached only from the suite, by design.

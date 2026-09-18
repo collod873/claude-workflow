@@ -65,7 +65,7 @@ COMMENT_SQUOTE_RE = re.compile(r"--comment\s+'((?:[^'\\])*)'", re.DOTALL)
 
 
 CLOSING_RECORD_RULES_PATH = (
-    _hook.BIN.parent / ".Workflow" / "agent-workflows" / "shared" / "closing-record.rules.json"
+    _hook.BIN / "lib" / "closing-record.rules.json"
 )
 CLOSING_RECORD_RULES = json.loads(CLOSING_RECORD_RULES_PATH.read_text(encoding="utf-8"))
 

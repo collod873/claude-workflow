@@ -4,26 +4,17 @@
   "type": "module",
   "scripts": {
     "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi",
-    "test": "vitest run .Workflow .claude",
+    "test": "vitest run .claude bin",
     "clones": "jscpd",
-    "adrs": "tsx .Workflow/agent-workflows/shared/adr-index.cli.ts .",
-    "drift": "tsx .Workflow/agent-workflows/shared/prose-drift.cli.ts .",
-    "gauntlet": "bin/gauntlet",
-    "check": "bin/gauntlet push",
+    "adrs": "tsx bin/lib/adr-index.cli.ts .",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && knip && depcruise --config .dependency-cruiser.cjs .Workflow/agent-workflows",
-    "lane-map": "tsx .Workflow/agent-workflows/shared/lane-map.cli.ts",
-    "lane-wiring": "tsx .Workflow/agent-workflows/shared/lane-wiring.cli.ts",
-    "labels-doc": "tsx .Workflow/agent-workflows/shared/labels-doc.cli.ts",
-    "venues-doc": "tsx .Workflow/agent-workflows/shared/venues-doc.cli.ts"
+    "lint": "eslint . && knip"
   },
   "dependencies": {
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.25.2"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "dependency-cruiser": "^18.2.0",
     "eslint": "^10.9.0",
     "eslint-plugin-sonarjs": "^4.2.0",
     "husky": "^9.1.7",

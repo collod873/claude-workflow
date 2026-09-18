@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
-import { REPO_ROOT } from "../../../.Workflow/agent-workflows/shared/repo-sources";
-import { scratchDir } from "../../../.Workflow/agent-workflows/shared/scratch.fixture";
+import { scratchDir } from "../scratch.fixture";
+
+const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
 /**
  * @fixture Reached only from the suite, by design.
