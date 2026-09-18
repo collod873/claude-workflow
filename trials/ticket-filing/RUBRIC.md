@@ -27,8 +27,8 @@ machine's `file-issue` and author are a different code system and are not reprod
 
 Per subject, two binaries against the body:
 
-1. Does it ask for the **dropped item** — the thing the owner agreed to that the real ticket lost?
-2. Does it still ask for the **surviving item** — the thing the real ticket kept?
+1. Does it ask for the **dropped item** - the thing the owner agreed to that the real ticket lost?
+2. Does it still ask for the **surviving item** - the thing the real ticket kept?
 
 The second exists so a body cannot win by being vague about everything. A body that drops the
 surviving item to win the first binary has not filed better, it has filed differently.
@@ -38,7 +38,7 @@ Both items come from `docs/research/intent-fidelity-2026-09.md`, which supplies 
 filing session, so a grader never has to infer what was meant.
 
 **One standard applies to both binaries: asked for as work.** A body asks for something when a
-reader has to do it — it is a criterion, a claimed file, or a sentence in the build section naming it
+reader has to do it - it is a criterion, a claimed file, or a sentence in the build section naming it
 as part of the work. Describing it, reasoning about it, or raising it as an open question is not
 asking for it. Both historical bodies fail a binary precisely here, so a grader who softens this
 standard will grade both floors the same and measure nothing.
@@ -63,9 +63,9 @@ Point 1, verbatim:
 
 Yes requires all three of the owner's three, asked for as work:
 
-- the **same command** — `bin/publish-issue-graph` invoked the way it is invoked today;
-- the **same JSON** — the input the by-hand route already writes, not a new input shape;
-- the **same table** — the output printed back unchanged.
+- the **same command** - `bin/publish-issue-graph` invoked the way it is invoked today;
+- the **same JSON** - the input the by-hand route already writes, not a new input shape;
+- the **same table** - the output printed back unchanged.
 
 Plus one thing the audit named separately: something has to exercise the forwarding command. The
 audit's finding was "Nothing tests that the forwarding command runs." A body that promises sameness
@@ -104,7 +104,7 @@ batch. Its ruling on #586, verbatim:
 >
 > A resolution is something a machine already turned from ambiguous to determinate (a token to a full
 > path, a checkpoint's structured output, a config to a value). A judgment is something a reader has
-> to form. Carrying a judgment doesn't remove a decision downstream — it substitutes upstream's, and
+> to form. Carrying a judgment doesn't remove a decision downstream - it substitutes upstream's, and
 > that destroys the independence the pipeline is built on.
 >
 > Boundary test: **if downstream gets it wrong, does something notice?** Caught by a later gate → let
@@ -119,7 +119,7 @@ and, in the same ruling:
 
 **Binary 1, the dropped item: does the body ask for the rule to be written down?**
 
-Yes requires the decided rule to be asked for as work — a criterion, a claimed file, or a named
+Yes requires the decided rule to be asked for as work - a criterion, a claimed file, or a named
 deliverable putting "carry resolutions, rediscover judgments" somewhere a later stage reads it, such
 as an ADR or the charter.
 

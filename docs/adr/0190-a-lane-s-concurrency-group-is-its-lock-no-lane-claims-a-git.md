@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-14
 supersedes: ADR-0084
-reversal: a hand-rolled lease comes back — creation timestamps, a 90-minute timeout, takeover and release — to duplicate what `concurrency` already enforces, and the branch goes back to meaning two things at once
+reversal: a hand-rolled lease comes back - creation timestamps, a 90-minute timeout, takeover and release - to duplicate what `concurrency` already enforces, and the branch goes back to meaning two things at once
 ---
 
 # A lane's concurrency group is its lock; no lane claims a git ref
@@ -15,7 +15,7 @@ built nothing.
 
 Every lane already carries `concurrency: <lane>-<issue>, cancel-in-progress: false`. That lock is
 owned by the platform, releases when the run ends, and queues a duplicate instead of racing it.
-`claim.ts` hand-rolled a worse one out of a ref, which has no owner and no expiry — hence the
+`claim.ts` hand-rolled a worse one out of a ref, which has no owner and no expiry - hence the
 timestamps, the timeout, the takeover, the release. It is deleted, and knip keeps it deleted. No
 lane may delete a branch it did not finish: that branch carries the acceptance test.
 

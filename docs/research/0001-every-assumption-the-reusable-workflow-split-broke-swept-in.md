@@ -41,7 +41,7 @@ works.
 | `.Workflow/` | absent |
 | `eslint.config.js` | absent (biome) |
 
-## Class 1 — lane identity: file names and job names
+## Class 1 - lane identity: file names and job names
 
 ### Broken now
 
@@ -86,7 +86,7 @@ No `gh workflow run` / `gh run list --workflow` anywhere; all lane-to-lane dispa
 globs `-caller.yml` and is correct. `recover.ts:68,89` is run-id addressed and correct.
 `bypass-counter.ts:98,117` is the pattern to copy.
 
-## Class 2 — location: machine vs target
+## Class 2 - location: machine vs target
 
 ### The rule, per ADR-0055/0132/0135 and `docs/agents/enrolment.md`
 
@@ -180,7 +180,7 @@ path in `shared/gh-paths.ts` is `repos/{owner}/{repo}/...` and `GH_REPO` is set 
 of the reusable files. `verify.yml:381-389` (Signal the fixer) now carries `GH_REPO`.
 `affected-tests.ts:20`, `ratifier.ts:26` and both hooks anchor on `import.meta.url`.
 
-## Class 3 — trunk churn and the immutable set
+## Class 3 - trunk churn and the immutable set
 
 ### Push sites
 

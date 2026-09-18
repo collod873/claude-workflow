@@ -11,7 +11,7 @@ reversal: Reversing it means deleting the re-exec and the follower from `bin/can
 # A sweep runs in its own session and the terminal only follows it, because a sweep outlives the terminal that starts it
 
 A sweep fans twenty-two lanes out and then waits twenty minutes on hosted runners. Once the fires
-are away the local process holds no state a lane needs — but it held the verdicts, so an agent
+are away the local process holds no state a lane needs - but it held the verdicts, so an agent
 harness reaping the caller mid-fan-out lost every one while the runs carried on invisibly. Three
 sweeps died that way, each reported as memory pressure with twenty gigabytes free.
 

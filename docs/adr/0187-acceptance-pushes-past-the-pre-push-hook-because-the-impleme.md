@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-14
-reversal: Reversing means handing the acceptance author's push back to husky: 150 seconds per run, more than half the wall clock between `to-build` and the implementer starting, spent re-running 196 test files to vet the one or two the run just wrote — and with it the failure mode where a red gate reaches the ticket as "pushing failed" with the gate's output discarded and no repair round.
+reversal: Reversing means handing the acceptance author's push back to husky: 150 seconds per run, more than half the wall clock between `to-build` and the implementer starting, spent re-running 196 test files to vet the one or two the run just wrote - and with it the failure mode where a red gate reaches the ticket as "pushing failed" with the gate's output discarded and no repair round.
 ---
 
 # Acceptance pushes past the pre-push hook, because the implementer re-gates that same branch

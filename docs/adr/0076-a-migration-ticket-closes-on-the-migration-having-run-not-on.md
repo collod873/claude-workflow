@@ -6,7 +6,7 @@ reversal: Undoing it removes a warning branch in `bin/ticket_shape.py` and a par
 
 # A migration ticket closes on the migration having run, not on the script existing
 
-Re-admitted 2026-08-31 as a **note**: this records a process preference — how work is chosen to be done, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a process preference - how work is chosen to be done, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

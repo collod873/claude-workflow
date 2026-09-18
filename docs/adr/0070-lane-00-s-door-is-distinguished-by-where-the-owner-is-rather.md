@@ -6,7 +6,7 @@ reversal: It changes one sentence in `DESIGN.md` §00's door table and builds no
 
 # Lane 00's door is distinguished by where the owner is rather than by how much context he holds, so lane 01's empty input is the bootstrap and fires on move 7
 
-Re-admitted 2026-08-31 as a **note**: this records a change record — what was added, moved or retired, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a change record - what was added, moved or retired, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

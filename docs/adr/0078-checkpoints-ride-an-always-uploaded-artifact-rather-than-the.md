@@ -6,7 +6,7 @@ reversal: Switching to actions/cache means rewriting the shared restore/upload c
 
 # Checkpoints ride an always-uploaded artifact rather than the Actions cache, because the store has to stay readable by the owner
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

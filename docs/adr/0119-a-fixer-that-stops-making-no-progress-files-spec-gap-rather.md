@@ -7,7 +7,7 @@ reversal: Sending a `no-progress` stop back to `needs-human` alone means changin
 
 # A fixer that stops making no progress files spec/gap rather than only calling the owner
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

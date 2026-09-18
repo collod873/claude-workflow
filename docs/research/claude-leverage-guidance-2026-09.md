@@ -322,7 +322,7 @@ agents, fresh sessions, claims).
 
 - **Guidance:**
   - HDLR, Why naive implementations fall short: "When asked to evaluate work they've produced,
-    agents tend to respond by confidently praising the work—even when, to a human observer, the
+    agents tend to respond by confidently praising the work - even when, to a human observer, the
     quality is obviously mediocre." And: "tuning a standalone evaluator to be skeptical turns out
     to be far more tractable than making a generator critical of its own work".
   - HDLR, Running the harness: "Out of the box, Claude is a poor QA agent. In early runs, I watched
@@ -558,7 +558,7 @@ agents, fresh sessions, claims).
     (https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1)
   - PBP, Overeagerness (Opus 4.5/4.6): "The right amount of complexity is the minimum needed for the
     current task."
-  - EHLR: "the agent tended to try to do too much at once—essentially to attempt to one-shot the
+  - EHLR: "the agent tended to try to do too much at once - essentially to attempt to one-shot the
     app." And: "This incremental approach turned out to be critical to addressing the agent’s
     tendency to do too much at once."
   - CCOMP, Multiple agent roles: "LLM-written code frequently re-implements existing functionality,
@@ -694,7 +694,7 @@ agents, fresh sessions, claims).
 
 - **Guidance:**
   - CCOMP, Enabling long-running Claudes: "the model may solve part of it, but eventually it will stop
-    and wait for continued input—a question, a status update, or a request for clarification."
+    and wait for continued input - a question, a status update, or a request for clarification."
   - F5P, Rare cases of early stopping (Fable 5): "Claude Fable 5 can occasionally end a turn with a
     text-only statement of intent ("I'll now run X") without issuing the corresponding tool call".
   - BEA: "it’s also common to include stopping conditions (such as a maximum number of iterations) to

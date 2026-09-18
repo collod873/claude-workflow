@@ -17,5 +17,5 @@ its condition is a job guard in the reusable workflow, so the plan follows `uses
 file and reads the guards there too.
 
 **Rejected: a per-lane table of what to seed.** The same knowledge written twice, drifting the
-first time a guard changed, and drifting silently — as a red that looks like a machine fault.
+first time a guard changed, and drifting silently - as a red that looks like a machine fault.
 The guard is the specification; the fire reads it.

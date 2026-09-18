@@ -6,8 +6,8 @@ reversal: Reversing it pulls ADR authorship out of `shape/accept.ts`, `sheet-sch
 
 # Accepting a shaped idea is what files its ADRs
 
-Lane 01 hands the owner a decision sheet: the idea restated as work, each decision with a recommended answer and the alternatives rejected. That is already an ADR's shape, so nobody authors ADRs — decisions on an accepted sheet that pass README's three-part bar are written as ADRs **at accept, before the spec**, and the spec cites them.
+Lane 01 hands the owner a decision sheet: the idea restated as work, each decision with a recommended answer and the alternatives rejected. That is already an ADR's shape, so nobody authors ADRs - decisions on an accepted sheet that pass README's three-part bar are written as ADRs **at accept, before the spec**, and the spec cites them.
 
-**Rejected:** agents writing ADRs directly when confident — the drafting is expensive, the signature cheap. The owner writing them — what `GOAL.md` claimed, and it has never once happened. Retrospective ADRs, today's habit — better informed, but the ruling arrives too late for the spec to cite, so follow-up work re-decides it.
+**Rejected:** agents writing ADRs directly when confident - the drafting is expensive, the signature cheap. The owner writing them - what `GOAL.md` claimed, and it has never once happened. Retrospective ADRs, today's habit - better informed, but the ruling arrives too late for the spec to cite, so follow-up work re-decides it.
 
 **Accepted cost.** Rulings precede the work, so more will be contradicted by reality. At work-merge the implementer is asked whether anything contradicted its ruling; only a yes drafts an amendment, so the rate means reality pushed back.

@@ -11,7 +11,7 @@ reversal: Reversing it means letting `prove` pick a candidate again and acceptin
 
 `prove` fired a lane, then took the oldest run newer than a repo-wide watermark. That is a guess.
 Three acceptance runs on the canary share a creation second, and a queued stub can start after the
-watermark without being ours, so the guess picks a stranger's run — and reads a verdict off it. A
+watermark without being ours, so the guess picks a stranger's run - and reads a verdict off it. A
 canary can survive a false red; a false green is the one failure it cannot afford, because it is
 the whole reason the canary exists.
 

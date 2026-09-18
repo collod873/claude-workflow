@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-02
 supersedes: ADR-0135
-reversal: Every ticket the sweep filed under the old default would have to be re-triaged by hand to find the caller-side ones among them, and the machine's own tracker would again be the destination a sweep reaches when it understands nothing — which is the state that put five of Lumaria's test failures on `to-build` and started ten implementer runs against them.
+reversal: Every ticket the sweep filed under the old default would have to be re-triaged by hand to find the caller-side ones among them, and the machine's own tracker would again be the destination a sweep reaches when it understands nothing - which is the state that put five of Lumaria's test failures on `to-build` and started ten implementer runs against them.
 ---
 
 # An unrecognised failing path routes to the caller, and the machine checkout is matched positively against its own tree
@@ -18,4 +18,4 @@ checkout tracks it. The sweep runs inside that checkout, so the tree is the list
 The asymmetry settles it: a wrong caller ticket costs one issue its owner can close, a wrong
 machine ticket a model run and a pull request here.
 
-Runs of workflows the caller owns are skipped — only a `*-caller.yml` stub checks the machine out.
+Runs of workflows the caller owns are skipped - only a `*-caller.yml` stub checks the machine out.

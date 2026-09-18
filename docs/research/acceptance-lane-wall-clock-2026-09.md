@@ -31,8 +31,8 @@ per authored path) followed by `commitAuthoredBatch`. Reading alone could not se
 reproducing #568's batch on a 32-core workstation, one `bin/gauntlet stop` was 2.6s, and two of
 those cannot be 3m07s.
 
-So the segments were re-run on a hosted runner, in the acceptance job's own shape — machine
-checkout, `target/` checkout, both dependency installs — by a throwaway `push`-triggered workflow
+So the segments were re-run on a hosted runner, in the acceptance job's own shape - machine
+checkout, `target/` checkout, both dependency installs - by a throwaway `push`-triggered workflow
 on a branch, no model and no ticket. Runs
 [34861283016](https://github.com/collod873/claude-workflow/actions/runs/34861283016),
 [34861514916](https://github.com/collod873/claude-workflow/actions/runs/34861514916),
@@ -52,8 +52,8 @@ check per path, because the `stop` venue recomputes its own file list from `git 
 the path it is handed (`bin/gauntlet:37-42`); worth deduplicating, worth nothing in wall clock.
 
 **The push venue is the segment**, and nothing in the lane asks for it. `npm ci` runs `prepare`,
-which installs husky and sets `core.hooksPath` in the CI checkout — confirmed on the runner as
-`…/target/.git/../.husky/_` — so `commitAuthoredBatch`'s `git push` fires `.husky/pre-push`, which
+which installs husky and sets `core.hooksPath` in the CI checkout - confirmed on the runner as
+`…/target/.git/../.husky/_` - so `commitAuthoredBatch`'s `git push` fires `.husky/pre-push`, which
 runs `npm run check`. Its output is discarded; a red one surfaces only as "pushing failed".
 
 ## What the push venue spends it on
@@ -86,9 +86,9 @@ same cause: husky running the gate again on push.
 ## Left on the table
 
 - **`vitest.config.ts` halves worker count**: 16 on a 32-core workstation, 2 on a 4-core runner,
-  which is why the suite is 95s there. The halving is deliberate — the orphaned comment above the
+  which is why the suite is 95s there. The halving is deliberate - the orphaned comment above the
   config blames oversubscription for manufacturing Lumaria's `booking-embed-panel` and
-  `eslint-boundaries` failures — and
+  `eslint-boundaries` failures - and
   [verification-boundaries-2026-08](verification-boundaries-2026-08.md) records why a flaky gate is
   worse than a slow one. Unmeasured on CI.
 - **48s from label to dispatch**, including three cancelled reconcile runs: `dispatch-reconcile`

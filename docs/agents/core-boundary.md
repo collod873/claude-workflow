@@ -7,16 +7,20 @@ a core file, is a separate question from the one that test answers. This page an
 
 ## What the New core's checks see
 
-`core/`, and the machinery that outlives the Old lanes: `.claude/hooks/`, `.claude/skills/` and
-`bin/`. `core/machinery.ts` names those four homes, and `core/prose.test.ts` and
-`core/em-dash.test.ts` read all of them.
+Two scopes, because the two gates answer different questions.
 
-This is not the reversal [#676](https://github.com/collod873/claude-workflow/pull/676) undid. That
+`core/em-dash.proc.test.ts` reads **every file the repo tracks**, `git ls-files` being the whole
+rule. Tracked is the line because ignored paths are not the owner's to clean: session captures,
+`.Workflow/` leftovers and trial streams carry em dashes nobody wrote by hand, and a gate that read
+them would refuse a push forever over local state.
+
+`core/prose.test.ts` reads code that runs: `core/`, `.claude/hooks/`, `.claude/skills/` and `bin/`,
+the four homes `core/machinery.ts` names. It stops there on purpose. Stripping the comments out of
+an archived probe script under `docs/research/` destroys the evidence the research is for.
+
+Neither is the reversal [#676](https://github.com/collod873/claude-workflow/pull/676) undid. That
 one pointed *Old* gates at `core/`, so a core judged by gates ADR-0200 deletes would lose them at
-the deletion. These gates outlive the deletion, and what they now read is what ADR-0200 keeps:
-session hooks run unchanged, and the skills stay. Research, ADRs and the rest of `docs/` are out of
-scope on purpose. The em-dash rule covers what the machine writes and what a session loads, and a
-post-mortem is neither; sweeping `docs/` in would light up 689 lines the charter never pointed at.
+the deletion. These gates outlive the deletion, and what they read is what ADR-0200 keeps.
 
 The prose gate reads Python, which is what makes it mean anything in `.claude/hooks/`, where 21 of
 the 23 hooks are Python and the gate read 2 of them before. It leaves a module docstring the script

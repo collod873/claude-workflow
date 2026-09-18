@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-08-31
-reversal: Dropping the trial deletes the detached-worktree harness and the fallback-entry requirement from the `mechanise` verdict schema, and collapses the per-finding spawn-and-commit structure a demotion depends on — after which lint rules enter `eslint.config.js` unproven, with every site they justified already refactored, and are caught only sweeps later by ADR-0003's standing question.
+reversal: Dropping the trial deletes the detached-worktree harness and the fallback-entry requirement from the `mechanise` verdict schema, and collapses the per-finding spawn-and-commit structure a demotion depends on - after which lint rules enter `eslint.config.js` unproven, with every site they justified already refactored, and are caught only sweeps later by ADR-0003's standing question.
 ---
 
 # A lint rule is ratified only by reproducing its own evidence

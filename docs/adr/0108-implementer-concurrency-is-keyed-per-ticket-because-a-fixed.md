@@ -6,7 +6,7 @@ reversal: Restoring a fixed `implement` group means changing the concurrency key
 
 # Implementer concurrency is keyed per ticket, because a fixed group cancels queued waves
 
-Re-admitted 2026-08-31 as a **note**: this records a change record — what was added, moved or retired, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a change record - what was added, moved or retired, not a constraint
 that binds later work.
 
 It changes ADR-0039, which is where the change belonged.

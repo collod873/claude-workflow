@@ -9,7 +9,7 @@ reversal: Re-establishing the owner as the reader of a non-zero open-question co
 Re-admitted 2026-08-31 as a **note**: this records an amendment that should have been an edit to the ADR it changes, not a constraint
 that binds later work.
 
-It changes ADR-0061 and ADR-0100, which is where the change belonged. The expired assumption — that a non-zero count waits on the owner — is
+It changes ADR-0061 and ADR-0100, which is where the change belonged. The expired assumption - that a non-zero count waits on the owner - is
 ADR-0062's own, but ADR-0062 is not the target: it is already superseded twice over, so a reader
 landing there is redirected before reaching anything current.
 

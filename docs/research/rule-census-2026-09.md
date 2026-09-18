@@ -218,10 +218,10 @@ mechanism, a single row cites every line.
 
 | Mechanism | Rung | Venue | Rule it holds | Source |
 |---|---|---|---|---|
-| ticket-shape.rules.json | (source) | — | `claimLimit` (8), grammar fragments and refusal texts | `aw/shared/ticket-shape.rules.json:2-33` |
-| closing-record.rules.json | (source) | — | Heading, `No diff.`, range/bullet/superseded grammars | `aw/shared/closing-record.rules.json:1-9` |
-| immutable-set.json | (source) | — | `["vitest.config.ts", ".github/"]` | `aw/shared/immutable-set.json:1` |
-| labels.json | (source) | — | Label names, colours, descriptions and families | `aw/shared/labels.json` |
+| ticket-shape.rules.json | (source) | - | `claimLimit` (8), grammar fragments and refusal texts | `aw/shared/ticket-shape.rules.json:2-33` |
+| closing-record.rules.json | (source) | - | Heading, `No diff.`, range/bullet/superseded grammars | `aw/shared/closing-record.rules.json:1-9` |
+| immutable-set.json | (source) | - | `["vitest.config.ts", ".github/"]` | `aw/shared/immutable-set.json:1` |
+| labels.json | (source) | - | Label names, colours, descriptions and families | `aw/shared/labels.json` |
 | file-issue kinds | refused | terminal | Kind is note, question, ticket or spec; a question needs `## Question` | `bin/ticket_shape.py:312-325` |
 | ticket shape | refused | terminal | A ticket needs `## Acceptance criteria` with `- [ ]` items and `## Files claimed` | `bin/ticket_shape.py:328-333` |
 | claim entries | refused | terminal | No glob; at most `claimLimit` entries | `bin/ticket_shape.py:335-341` |

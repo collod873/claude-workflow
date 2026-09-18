@@ -6,7 +6,7 @@ reversal: Dropping `types:` from the eight dispatch workflows only widens what e
 
 # A repository_dispatch trigger names its own event types, so an unrelated lane's dispatch cannot fill this lane's history with skipped runs
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

@@ -6,7 +6,7 @@ reversal: Both thresholds are queries over issue closes that ADR-0031 already li
 
 # The refuter fleet is sized by what the owner does with surviving findings, not by its own kill rate
 
-Re-admitted 2026-08-31 as a **note**: this records an implementation note — how a tool or lane behaves, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records an implementation note - how a tool or lane behaves, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

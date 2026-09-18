@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-09-14
 supersedes: ADR-0186
-reversal: acceptance and implement share one ref again, so every reader is back to decoding who wrote which commit — and implement goes back to checking out trunk, where the test it must make pass does not exist
+reversal: acceptance and implement share one ref again, so every reader is back to decoding who wrote which commit - and implement goes back to checking out trunk, where the test it must make pass does not exist
 ---
 
 # Every ref has one writer: acceptance lands on `accept/issue-N` and implement branches from it

@@ -1,7 +1,7 @@
 ---
 status: note
 date: 2026-08-25
-reversal: Re-adding COMPOSITION and SEAM is a paragraph in a prompt re-run against stored captures, as the entry itself says; the durable half — the two-site bar — was already `/standards-pass`'s rule before this, and is carried operatively by ADR-0031 and `shape/probation.ts` rather than here.
+reversal: Re-adding COMPOSITION and SEAM is a paragraph in a prompt re-run against stored captures, as the entry itself says; the durable half - the two-site bar - was already `/standards-pass`'s rule before this, and is carried operatively by ADR-0031 and `shape/probation.ts` rather than here.
 ---
 
 # VIOLATION and PROPOSED survive, PROPOSED is gated by the two-site rule, and COMPOSITION and SEAM are dropped

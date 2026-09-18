@@ -55,8 +55,8 @@ Any arm that needs an old baseline is disqualified.
 
 **Amended by the owner, 2026-09-18.** That ruling bars an old *baseline*: no arm is scored against a
 rate, a grade or a diff the Old machine produced. It does not bar an old *subject*. A ticket the
-#661 audit already graded supplies something this trial otherwise lacks — a recorded intent and a
-recorded miss — so the question "did the filing carry what was meant" has an answer no owner has to
+#661 audit already graded supplies something this trial otherwise lacks - a recorded intent and a
+recorded miss - so the question "did the filing carry what was meant" has an answer no owner has to
 supply. Arms are compared to each other and to the live floor below, never to what the Old machine
 built.
 

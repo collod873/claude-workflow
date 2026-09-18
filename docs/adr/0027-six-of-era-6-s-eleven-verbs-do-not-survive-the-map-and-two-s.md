@@ -6,7 +6,7 @@ reversal: Nothing downstream reads this eleven-row table; restoring a deleted ve
 
 # Six of era 6's eleven verbs do not survive the map, and two survive only as local human verbs
 
-Re-admitted 2026-08-31 as a **note**: this records a change record — what was added, moved or retired, not a constraint
+Re-admitted 2026-08-31 as a **note**: this records a change record - what was added, moved or retired, not a constraint
 that binds later work.
 
 The number and filename are kept unchanged because they are cited from issues and

@@ -48,7 +48,7 @@ rule is enforced is worked out there from the parts the New core registers, neve
 | An added or kept part is small, needs no upkeep to stay true, and a built-in Claude Code or GitHub feature was not enough | A separate model grades each added part, and each kept part at its layer ruling, against this page; a fail blocks it |
 | Each rule lives in one place. A prompt may teach a rule a gate holds, as a cache, never one no gate holds | The copy detector, widened from code to rules and to taught rules with no gate |
 | The owner hears plain words and is asked only about scope, priority and taste, a few questions at a time | The owner, present in every session that talks to them |
-| Nothing the machine writes, and no doc a session loads, carries an em dash | `core/em-dash.test.ts`, and `core/bin/land` refusing a commit message that carries one |
+| Nothing the machine writes, and nothing this repo tracks, carries an em dash | `core/em-dash.proc.test.ts`, and `core/bin/land` refusing a commit message that carries one |
 | A session changing the machine has read this page and the machine page | A hook that shows both when a session first edits machinery |
 
 ## Loading

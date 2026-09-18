@@ -61,7 +61,7 @@ File one with `new-adr "the ruling as a sentence"`, then `new-adr --land <draft>
 | 0123 | [The owner signs by not reverting, and a revert writes declined memory](0123-the-owner-signs-by-not-reverting-and-a-revert-writes-decline.md) |
 | 0124 | [A lint rule is ratified only by reproducing its own evidence](0124-a-lint-rule-is-ratified-only-by-reproducing-its-own-evidence.md) |
 | 0129 | [Module-boundary imports are enforced by dependency-cruiser, not an ESLint import-boundary plugin](0129-module-boundary-imports-are-enforced-by-dependency-cruiser-n.md) |
-| 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing — a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) |
+| 0130 | [A spec's one criterion is run at filing time, in the caller's tree with a 30s budget, and a green exit refuses filing - a criterion that cannot run at all only warns](0130-a-spec-s-one-criterion-is-run-at-filing-time-in-the-caller-s.md) |
 | 0131 | [The owner's batched digest does not ship: the tracker is what reaches him](0131-the-owner-s-batched-digest-does-not-ship-the-tracker-is-what.md) |
 | 0132 | [A caller checks out the machine with no credential at all, because the repository is public](0132-a-caller-checks-out-the-machine-with-no-credential-at-all-be.md) |
 | 0134 | [The clone gate's baseline may also grow for a reusable-workflow lane's machine-and-target checkout pair](0134-the-clone-gate-s-baseline-may-also-grow-for-a-reusable-workf.md) |

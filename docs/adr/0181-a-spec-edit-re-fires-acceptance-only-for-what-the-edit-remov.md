@@ -9,8 +9,8 @@ supersedes: ADR-0079
 
 ADR-0033's grep asked whether the spec still carries a slice's criterion verbatim. That
 assumed the slicer copies the spec's wording; it writes its own, so the answer was no for
-every slice carrying a test, whatever changed. One owner edit to PRD #491 — a
-one-character fix to a check command — would have re-authored ten slices' tests, nine of
+every slice carrying a test, whatever changed. One owner edit to PRD #491 - a
+one-character fix to a check command - would have re-authored ten slices' tests, nine of
 them already merged (#518). The comparison is now between the body before the edit and the
 body after, both of which GitHub sends on `issues: edited`: a criterion the edit itself took
 out re-fires its slice, and nothing else does. Closed slices are never re-authored; their

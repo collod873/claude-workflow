@@ -14,7 +14,7 @@ naming a source commit and a sha256; `_hook.test.ts` exercises them as ordinary 
 
 ADR-0151's prose gate reads both files exactly as it reads any other: no exemption, no skipped
 path. A comment landing in either is a finding like a comment anywhere else, and the fix is the
-same one every other file gets — put the why in the commit message, never in the code.
+same one every other file gets - put the why in the commit message, never in the code.
 
 **Rejected: keeping the digest-pin machinery in case the files diverge again.** A pin with
 nothing upstream to diverge from is dead weight the gate would still have to carry.

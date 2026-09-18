@@ -13,8 +13,8 @@ pushes its test to `implement/issue-N` and the ticket reads as somebody's work f
 recompute as the only sender, that stalls every ticket at acceptance. The strike ladder does not
 catch it, because the run succeeded.
 
-A live run is the claim. Position is read from what a lane must produce to have succeeded — a
-branch carrying commits, an open pull request — never from a label, a ring, or a run's own report.
+A live run is the claim. Position is read from what a lane must produce to have succeeded - a
+branch carrying commits, an open pull request - never from a label, a ring, or a run's own report.
 Each later door is a row, not new logic.
 
 **Rejected: restoring acceptance's direct ring to implement.** It re-creates the shortcut ADR-0188

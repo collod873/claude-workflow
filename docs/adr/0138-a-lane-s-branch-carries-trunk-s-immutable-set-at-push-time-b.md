@@ -1,7 +1,7 @@
 ---
 status: constraint
 date: 2026-09-02
-reversal: Reversing it means deleting `alignImmutableSetWithTrunk`, its call in `run-ratify.ts` and its fixture test, and accepting that any `.github/` commit landing on trunk mid-run refuses the batch's push and burns the whole run — plus finding another answer for every lane that later pushes a branch the same way.
+reversal: Reversing it means deleting `alignImmutableSetWithTrunk`, its call in `run-ratify.ts` and its fixture test, and accepting that any `.github/` commit landing on trunk mid-run refuses the batch's push and burns the whole run - plus finding another answer for every lane that later pushes a branch the same way.
 ---
 
 # A lane's branch carries trunk's immutable set at push time, because a GITHUB_TOKEN push is refused when it does not
@@ -19,4 +19,4 @@ So the pushed tip carries trunk's copy of that set, fetched fresh. It cannot con
 may edit the set, so nothing of the branch's is lost.
 
 Rebasing onto trunk was the alternative, rejected because this lane keeps the index as scratch
-and never moves `HEAD` (`commitWorkingTree`) — the one state `git rebase` refuses to run in.
+and never moves `HEAD` (`commitWorkingTree`) - the one state `git rebase` refuses to run in.

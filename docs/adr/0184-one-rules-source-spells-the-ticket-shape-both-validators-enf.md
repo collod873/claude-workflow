@@ -6,8 +6,8 @@ reversal: Restoring a TypeScript warnings half means re-implementing branches th
 
 # One rules source spells the ticket shape both validators enforce, and the TypeScript warnings half is gone
 
-`validateTicket` had no production caller — every door reads `assertTicketShape` or
-`overWideClaim` — and its branches were a drifted subset of the Python's. It is deleted; `bin/ticket_shape.py`
+`validateTicket` had no production caller - every door reads `assertTicketShape` or
+`overWideClaim` - and its branches were a drifted subset of the Python's. It is deleted; `bin/ticket_shape.py`
 alone renders ticket warnings. Both runtimes stay; only one holds an opinion.
 
 The shape rules have callers on both sides, so they tabulate into
