@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
-const CORE = process.env.TRIAL_CORE;
+const HERE = import.meta.dirname;
+const REPO = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: HERE, encoding: "utf8" }).stdout.trim();
+const CORE = join(REPO, "core");
 const { ticketRefusals } = await import(join(CORE, "ticket-shape.ts"));
 const { DENIED, stageRefusals } = await import(join(CORE, "deny-list.ts"));
 
@@ -12,13 +14,13 @@ const STRIPPED = "/home/collin/Claude Projects/Knowledge-Base/raw/sessions";
 
 const SUBJECTS = {
   603: {
-    asked: "the follow-up on the blocked-by edges that the owner approved at the end of this session, which also replaces #407",
+    asked: "the ticket the owner approved at the end of this session",
     sessions: [{ id: "ca7a2c5c-ae56-44e4-8fcc-87d7ab02e039", until: "Do that yes" }],
     stripped: ["2026-09-16-ca7a2c5c.md"],
     filedAt: "2026-09-16T15:29:10Z",
   },
   586: {
-    asked: "issue #586, carry or rediscover, which the owner approved ticketifying at the end of this session",
+    asked: "the ticket for #586, which the owner approved ticketifying at the end of this session",
     sessions: [
       { id: "0c62c7f3-452a-4b6a-a8ed-7246a8582ef7", until: null },
       { id: "4af6f9ae-0624-450d-9969-494415c0b36c", until: "Yes but you" },
@@ -30,22 +32,25 @@ const SUBJECTS = {
 
 const MODEL = "opus[1m]";
 const EFFORT = "high";
-const READS = ["Read", "Glob", "Grep"];
-const WRITES = ["Write", "Edit"];
 
-const FENCED = [
-  "//home/collin/Claude Projects/Workflow/**",
-  "//home/collin/Claude Projects/Knowledge-Base/**",
-  "//home/collin/.claude/**",
+const DOOR = ["bin/file-issue", "check-runner.ts", "post.ts", "ticket-shape.ts", "em-dash.ts", "parts.ts"];
+
+const OFF = [
+  "Agent", "CronCreate", "CronDelete", "CronList", "DesignSync", "EnterWorktree", "ExitWorktree",
+  "ListAgents", "Monitor", "NotebookEdit", "PushNotification", "RemoteTrigger", "ReportFindings",
+  "SendMessage", "Skill", "TaskCreate", "TaskGet", "TaskList", "TaskStop", "TaskUpdate", "ToolSearch",
+  "Workflow",
 ];
-const SHELL_READERS = ["cat", "head", "tail", "sed", "awk", "less", "more", "grep", "rg", "find", "ls", "cp", "mv", "node", "python3", "python", "bash", "sh", "xargs", "git", "cd"];
 
-function fenceFlags() {
-  return [
-    ...FENCED.flatMap((path) => [`Read(${path})`, `Edit(${path})`]),
-    ...SHELL_READERS.map((command) => `Bash(${command}:*)`),
-  ];
-}
+const ABSENT = [
+  "/home/collin/Claude Projects",
+  "/home/collin/.claude/projects",
+  "/home/collin/.claude/CLAUDE.md",
+  "/home/collin/Claude Projects/Knowledge-Base",
+];
+
+const NODE = "/home/collin/.local/node";
+const CLAUDE = spawnSync("readlink", ["-f", "/home/collin/.local/bin/claude"], { encoding: "utf8" }).stdout.trim();
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => {
@@ -56,9 +61,10 @@ const args = Object.fromEntries(
 
 const TICKET = args.subject;
 const OUT = args.out;
-const DRY = args.dry === "1";
+const CHECK = args.check === "1";
 const subject = SUBJECTS[TICKET];
 if (subject === undefined) throw new Error(`no subject ${TICKET}: ${Object.keys(SUBJECTS).join(", ")}`);
+if (OUT === undefined) throw new Error("no --out");
 
 mkdirSync(OUT, { recursive: true });
 
@@ -84,11 +90,10 @@ function spoken(entry) {
 
 function endsAt(entries, until) {
   if (until === null) return entries.length;
-  const at = entries.findIndex(
-    (entry) => entry.type === "user" && !entry.isMeta && !entry.isSidechain && spoken(entry).trim().startsWith(until),
-  );
-  if (at === -1) throw new Error(`no owner message starting ${JSON.stringify(until)}`);
-  return at + 1;
+  const at = entries.filter((entry) => entry.type === "user" && !entry.isMeta && !entry.isSidechain && spoken(entry).trim().startsWith(until));
+  if (at.length === 0) throw new Error(`no owner message starting ${JSON.stringify(until)}`);
+  if (at.length > 1) throw new Error(`${at.length} owner messages start ${JSON.stringify(until)}, so the cut is ambiguous`);
+  return entries.indexOf(at[0]) + 1;
 }
 
 function blocks(content) {
@@ -146,19 +151,17 @@ const strippedBytes = subject.stripped.reduce((sum, name) => sum + readFileSync(
 
 const prompt = [
   "You are the session that just had the conversation below, and you are ending it now.",
-  `Before you go, file the ticket for ${subject.asked}.`,
+  `Before you go, file ${subject.asked}.`,
   "",
   "## How filing works here",
   "",
-  "Write the body to a file, then run `core/bin/file-issue ticket --title <title> --body-file <path>`.",
-  "Run it as one bare command from the working directory. No `cd`, no `&&`, no `;`, or it will be refused before it starts.",
+  "Write the body to a file, then run `/opt/door/bin/file-issue ticket --title <title> --body-file <path>`.",
+  "That path is the filing door, not anything under `bin/` in the working directory.",
   "It validates the body and refuses with reasons rather than posting a bad one. If it refuses, fix what it names and run it again.",
-  "`docs/agents/ticket-format.md` and `CONTEXT.md` say what a body has to carry, and you may read anything in this working directory.",
-  "Your shell runs nothing but that one command. Read, Glob and Grep are how you look around.",
   "",
   "## The conversation",
   "",
-  "This is the session, tool noise stripped. The owner often answers only \"yes\" or \"I agree\", so what he asked for is in what he agreed to, not only in his own sentences.",
+  "This is the session, tool noise stripped.",
   "",
   context,
   "",
@@ -167,29 +170,121 @@ const prompt = [
 
 writeFileSync(join(OUT, "prompt.txt"), prompt);
 
-const repo = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim();
-const pin = spawnSync("git", ["rev-list", "-1", "--first-parent", `--before=${subject.filedAt}`, "main"], { encoding: "utf8" }).stdout.trim();
+const pin = spawnSync("git", ["rev-list", "-1", "--first-parent", `--before=${subject.filedAt}`, "main"], { cwd: REPO, encoding: "utf8" }).stdout.trim();
 if (pin === "") throw new Error(`no commit before ${subject.filedAt}`);
-const tree = join(mkdtempSync(join(tmpdir(), "live-floor-")), `tree-${TICKET}`);
 
-function pinnedTree() {
-  spawnSync("git", ["worktree", "remove", "--force", tree], { encoding: "utf8" });
-  const added = spawnSync("git", ["worktree", "add", "--detach", tree, pin], { encoding: "utf8" });
-  if (added.status !== 0) throw new Error(`worktree ${pin} failed: ${added.stderr.trim()}`);
-  spawnSync("ln", ["-s", join(repo, "node_modules"), join(tree, "node_modules")], { encoding: "utf8" });
-  const copied = spawnSync("cp", ["-r", join(repo, "core"), join(tree, "core")], { encoding: "utf8" });
-  if (copied.status !== 0) throw new Error(`core would not copy in: ${copied.stderr.trim()}`);
-  return { pin, at: spawnSync("git", ["log", "-1", "--format=%cI %s", pin], { encoding: "utf8" }).stdout.trim() };
+const cell = mkdtempSync(join(tmpdir(), "live-floor-"));
+const home = join(cell, "home");
+const tree = join(home, "work", "tree");
+const door = join(cell, "door");
+const capture = join(cell, "capture");
+
+function shallowTree() {
+  mkdirSync(tree, { recursive: true });
+  const init = spawnSync("git", ["init", "-q", tree], { encoding: "utf8" });
+  if (init.status !== 0) throw new Error(`git init failed: ${init.stderr.trim()}`);
+  const fetched = spawnSync("git", ["-c", "protocol.file.allow=always", "fetch", "-q", "--depth=1", `file://${REPO}`, pin], { cwd: tree, encoding: "utf8" });
+  if (fetched.status !== 0) throw new Error(`fetch ${pin} failed: ${fetched.stderr.trim()}`);
+  const out = spawnSync("git", ["checkout", "-q", "FETCH_HEAD"], { cwd: tree, encoding: "utf8" });
+  if (out.status !== 0) throw new Error(`checkout ${pin} failed: ${out.stderr.trim()}`);
+  const future = spawnSync("git", ["rev-list", "--all", "--count"], { cwd: tree, encoding: "utf8" }).stdout.trim();
+  if (future !== "1") throw new Error(`the clone carries ${future} commits, not only the pin`);
+  return spawnSync("git", ["log", "-1", "--format=%cI %s", "FETCH_HEAD"], { cwd: tree, encoding: "utf8" }).stdout.trim();
+}
+
+function doorway() {
+  for (const name of DOOR) {
+    mkdirSync(dirname(join(door, name)), { recursive: true });
+    cpSync(join(CORE, name), join(door, name));
+  }
+  const stub = join(door, "bin", "gh");
+  writeFileSync(stub, [
+    "#!/bin/bash",
+    'if [[ ${1:-} != issue || ${2:-} != create ]]; then printf "gh: %s\\n" "unsupported here" >&2; exit 1; fi',
+    "shift 2",
+    'title=""; body=""',
+    "while (( $# > 0 )); do",
+    "  case $1 in",
+    "    --title) title=${2:-}; shift 2 ;;",
+    "    --body) body=${2:-}; shift 2 ;;",
+    "    *) shift ;;",
+    "  esac",
+    "done",
+    'printf "%s" "$title" > /var/capture/title.txt',
+    'printf "%s" "$body" > /var/capture/body.md',
+    'printf "https://github.com/collod873/claude-workflow/issues/999\\n"',
+  ].join("\n"));
+  chmodSync(stub, 0o755);
+  return readdirSync(door, { recursive: true }).filter((name) => !name.includes("/")).length;
+}
+
+function sandbox(argv) {
+  return [
+    "--ro-bind", "/usr", "/usr",
+    "--ro-bind", "/etc", "/etc",
+    "--ro-bind", "/mnt/wsl", "/mnt/wsl",
+    "--symlink", "usr/bin", "/bin",
+    "--symlink", "usr/lib", "/lib",
+    "--symlink", "usr/lib64", "/lib64",
+    "--symlink", "usr/sbin", "/sbin",
+    "--bind", home, "/home/collin",
+    "--ro-bind", NODE, NODE,
+    "--ro-bind", CLAUDE, "/opt/claude",
+    "--ro-bind", door, "/opt/door",
+    "--overlay-src", join(REPO, "node_modules"), "--tmp-overlay", "/home/collin/work/tree/node_modules",
+    "--bind", capture, "/var/capture",
+    "--proc", "/proc",
+    "--dev", "/dev",
+    "--tmpfs", "/tmp",
+    "--tmpfs", "/run",
+    "--setenv", "HOME", "/home/collin",
+    "--setenv", "PATH", `/opt/door/bin:${NODE}/bin:/usr/local/bin:/usr/bin:/bin`,
+    "--chdir", "/home/collin/work/tree",
+    ...argv,
+  ];
+}
+
+function fakeHome() {
+  mkdirSync(join(home, ".claude"), { recursive: true });
+  mkdirSync(capture, { recursive: true });
+  cpSync("/home/collin/.claude/.credentials.json", join(home, ".claude", ".credentials.json"));
+  const real = JSON.parse(readFileSync("/home/collin/.claude.json", "utf8"));
+  const kept = { projects: {} };
+  for (const key of ["installMethod", "userID", "oauthAccount", "hasCompletedOnboarding", "firstStartTime", "numStartups", "subscriptionNoticeCount", "hasAvailableSubscription"]) {
+    if (key in real) kept[key] = real[key];
+  }
+  writeFileSync(join(home, ".claude.json"), JSON.stringify(kept));
+}
+
+function contained() {
+  const probe = [
+    ...ABSENT.map((path) => `[[ -e "${path}" ]] && printf 'REACHABLE %s\\n' "${path}"`),
+    "git -C /home/collin/work/tree rev-list --all --count",
+    "command -v file-issue",
+    "command -v gh",
+    "node -v",
+    "ls /home/collin/work/tree/node_modules/.bin/vitest",
+    "touch /home/collin/work/tree/node_modules/.write-probe && echo 'node_modules writable'",
+  ].join("\n");
+  const run = spawnSync("bwrap", sandbox(["bash", "-c", probe]), { encoding: "utf8" });
+  const said = `${run.stdout}${run.stderr}`;
+  const reachable = said.split("\n").filter((line) => line.startsWith("REACHABLE"));
+  if (reachable.length > 0) throw new Error(`the cell can reach what it must not: ${reachable.join("; ")}`);
+  if (!said.includes("/opt/door/bin/file-issue")) throw new Error(`the filing door is not on the cell's PATH: ${said.trim()}`);
+  if (!said.includes("/opt/door/bin/gh")) throw new Error(`the capture stub is not ahead of gh: ${said.trim()}`);
+  return said.trim().split("\n");
 }
 
 const argv = [
   "--print", "--output-format", "stream-json", "--verbose",
-  "--model", MODEL, "--effort", EFFORT, "--setting-sources", "",
-  "--allowedTools", [...READS, ...WRITES, "Bash(core/bin/file-issue:*)"].join(","),
-  "--disallowedTools", [...DENIED, ...fenceFlags()].join(","),
+  "--model", MODEL, "--effort", EFFORT,
+  "--setting-sources", "",
+  "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+  "--allowedTools", ["Bash", "Read", "Glob", "Grep", "Write", "Edit"].join(","),
+  "--disallowedTools", [...DENIED, ...OFF].join(","),
 ];
-const fenced = stageRefusals("live floor", argv);
-if (fenced.length > 0) throw new Error(fenced.join("; "));
+const refused = stageRefusals("live floor", argv);
+if (refused.length > 0) throw new Error(refused.join("; "));
 
 const record = {
   subject: TICKET,
@@ -205,19 +300,23 @@ const record = {
     againstStripped: Number((context.length / strippedBytes).toFixed(2)),
   },
   historical: { bytes: historical.length, refusals: ticketRefusals(historical) },
-  tree: { pin, filedAt: subject.filedAt, fenced: FENCED, shellReadersDenied: SHELL_READERS.length },
   promptBytes: prompt.length,
 };
 
-if (DRY) {
+fakeHome();
+record.tree = { pin, filedAt: subject.filedAt, at: shallowTree() };
+record.door = { files: DOOR, entries: doorway(), posts: false };
+record.contained = contained();
+
+if (CHECK) {
   writeFileSync(join(OUT, "record.json"), JSON.stringify(record, null, 2));
   console.log(JSON.stringify(record, null, 2));
+  rmSync(cell, { recursive: true, force: true });
   process.exit(0);
 }
 
-record.tree.built = pinnedTree();
 const started = Date.now();
-const spent = spawnSync("claude", argv, { input: prompt, encoding: "utf8", cwd: tree, maxBuffer: 512 * 1024 * 1024 });
+const spent = spawnSync("bwrap", sandbox(["/opt/claude", ...argv]), { input: prompt, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
 const wall = Date.now() - started;
 writeFileSync(join(OUT, "stream.jsonl"), spent.stdout || "");
 
@@ -234,11 +333,15 @@ for (const line of (spent.stdout || "").split("\n")) {
   }
 }
 
-const filings = tools.filter(({ name, input }) => name === "Bash" && /file-issue/.test(input?.command ?? ""));
-const posted = (result?.result ?? "").match(/https:\/\/github\.com\/[\w-]+\/[\w-]+\/issues\/(\d+)/);
-const filed = posted === null ? null : Number(posted[1]);
-const body = filed === null ? "" : gh(["issue", "view", String(filed), "--json", "body", "--jq", ".body"]);
-if (filed !== null) writeFileSync(join(OUT, "filed-body.md"), body);
+const filings = tools.filter(({ name, input }) => name === "Bash" && /file-issue[ \t]+ticket\b/.test(input?.command ?? ""));
+const throughDoor = filings.filter(({ input }) => input.command.includes("/opt/door/bin/file-issue"));
+const captured = readdirSync(capture).includes("body.md");
+const body = captured ? readFileSync(join(capture, "body.md"), "utf8") : "";
+const title = captured ? readFileSync(join(capture, "title.txt"), "utf8") : "";
+if (captured) {
+  writeFileSync(join(OUT, "filed-body.md"), body);
+  writeFileSync(join(OUT, "filed-title.txt"), title);
+}
 
 record.run = {
   wallMs: wall,
@@ -246,6 +349,8 @@ record.run = {
   toolCalls: tools.length,
   toolNames: tools.map(({ name }) => name),
   filingAttempts: filings.length,
+  throughDoor: throughDoor.length,
+  throughOldDoor: filings.length - throughDoor.length,
   durationMs: result?.duration_ms ?? null,
   costUsd: result?.total_cost_usd ?? null,
   inputTokens: (result?.usage?.input_tokens ?? 0) + (result?.usage?.cache_creation_input_tokens ?? 0) + (result?.usage?.cache_read_input_tokens ?? 0),
@@ -253,8 +358,9 @@ record.run = {
   numTurns: result?.num_turns ?? null,
   isError: result?.is_error ?? null,
 };
-record.filed = filed;
-record.body = filed === null ? null : { bytes: body.length, refusals: ticketRefusals(body) };
+record.filed = null;
+record.captured = captured ? { title, bytes: body.length, refusals: ticketRefusals(body) } : null;
 
 writeFileSync(join(OUT, "record.json"), JSON.stringify(record, null, 2));
 console.log(JSON.stringify(record, null, 2));
+rmSync(cell, { recursive: true, force: true });

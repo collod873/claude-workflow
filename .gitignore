@@ -59,8 +59,8 @@ venv/
 
 # A trial run's raw input and output. The graded record.json beside them is the evidence the
 # protocol cites; these two are a whole agent transcript, and this repository is public.
-trials/*/runs/*/prompt.txt
-trials/*/runs/*/stream.jsonl
+trials/**/prompt.txt
+trials/**/stream.jsonl
 
 # ~/bin/md-html's rendered page for the doc beside it, rebuilt from that .md on every edit
 # (the md-html-refresh hook). A build of a tracked file, never the source of one.

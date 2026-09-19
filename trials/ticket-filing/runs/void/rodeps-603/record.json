@@ -50,13 +50,12 @@
     "/opt/door/bin/file-issue",
     "/opt/door/bin/gh",
     "v24.18.0",
-    "/home/collin/work/tree/node_modules/.bin/vitest",
-    "node_modules writable"
+    "/home/collin/work/tree/node_modules/.bin/vitest"
   ],
   "run": {
-    "wallMs": 120440,
+    "wallMs": 214678,
     "status": 0,
-    "toolCalls": 17,
+    "toolCalls": 27,
     "toolNames": [
       "Bash",
       "Bash",
@@ -64,8 +63,14 @@
       "Bash",
       "Bash",
       "Bash",
-      "Read",
-      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
       "Bash",
       "Bash",
       "Bash",
@@ -74,22 +79,26 @@
       "Bash",
       "Write",
       "Write",
-      "Bash"
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Write"
     ],
-    "filingAttempts": 1,
-    "throughDoor": 1,
-    "throughOldDoor": 0,
-    "durationMs": 119767,
-    "costUsd": 0.90435,
-    "inputTokens": 850674,
-    "outputTokens": 10591,
-    "numTurns": 18,
+    "filingAttempts": 4,
+    "throughDoor": 3,
+    "throughOldDoor": 1,
+    "durationMs": 214029,
+    "costUsd": 2.2629775,
+    "inputTokens": 1907641,
+    "outputTokens": 18299,
+    "numTurns": 28,
     "isError": false
   },
   "filed": null,
   "captured": {
-    "title": "Fold the two blocked-by edge writers into one, and land #407's graph rules there",
-    "bytes": 3968,
+    "title": "The blocked-by graph gets one writer: bin/publish-issue-graph becomes a shim over the lane 03 publisher, closing #407",
+    "bytes": 4391,
     "refusals": []
   }
 }
