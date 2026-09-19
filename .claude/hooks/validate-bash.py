@@ -113,7 +113,9 @@ def check(command: str) -> tuple[str, str]:
         return "gh-issue-create", (
             "gh issue create is blocked; file through `core/bin/file-issue ticket "
             "--title <title> --body-file <path>`, which runs the ticket's checks first "
-            "and refuses a misshapen ticket or one whose checks already pass."
+            "and refuses a misshapen ticket or one whose checks already pass. Something "
+            "to be kept rather than built goes through `core/bin/file-issue note` with "
+            "the same flags, which asks only for a title and a `## Why` and starts no build."
         )
 
     if closes_an_issue(command, spans):

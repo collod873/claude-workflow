@@ -110,7 +110,7 @@ _Avoid_: PRD document, requirements doc, brief
 
 **Ticket**:
 The unit the machine builds: an issue carrying `## Why`, acceptance criteria and file claims.
-Filing one starts its build, so a note is not a ticket.
+Filing one starts its build; a note never starts one.
 _Avoid_: issue, sub-issue, card, item
 
 **Stage**:

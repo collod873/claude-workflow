@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="file-issue: usage: file-issue ticket --title <title> --body-file <path>"
+usage="file-issue: usage: file-issue ticket|note --title <title> --body-file <path>"
 shown_refusals=4
 most_shown=5
 
@@ -17,7 +17,7 @@ while (( $# > 0 )); do
   esac
 done
 
-if [[ $kind != ticket || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
+if [[ ($kind != ticket && $kind != note) || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
@@ -32,11 +32,14 @@ out=$(mktemp)
 err=$(mktemp)
 trap 'rm -f "$out" "$err"' EXIT
 
-node "$core/check-runner.ts" <"$body" >"$out" 2>"$err"
-status=$?
+status=0
+if [[ $kind == ticket ]]; then
+  node "$core/check-runner.ts" <"$body" >"$out" 2>"$err"
+  status=$?
+fi
 
 if (( status == 0 )); then
-  node "$core/post.ts" core/bin/file-issue ticket "$title" <"$body" >"$out" 2>"$err"
+  node "$core/post.ts" core/bin/file-issue "$kind" "$title" <"$body" >"$out" 2>"$err"
   status=$?
 fi
 

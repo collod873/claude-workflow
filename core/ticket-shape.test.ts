@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ticketRefusals } from "./ticket-shape.ts";
+import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const LINE = 200;
@@ -101,5 +101,25 @@ describe("core/ticket-shape refuses a ticket body that hides what was meant (#66
       "the body carries no '## Acceptance criteria'",
       "the body carries no '## Files claimed'",
     ]);
+  });
+});
+
+describe("a note asks for a why and nothing else, so a session at its end can file what it found", () => {
+  it("accepts a why the owner never spoke, and a body no ticket would carry", () => {
+    expect(noteRefusals("## Why\n\nThree passes over 1,009 sessions left four proposals the owner has to weigh.\n")).toEqual([]);
+    expect(noteRefusals(`## Why\n\nA finding.\n\n## Anything\n\n${"a line of dumped context\n".repeat(400)}`)).toEqual([]);
+  });
+
+  it("refuses a body that says nothing about why it was kept", () => {
+    expect(noteRefusals("Four proposals, with no heading over them.")).toEqual([
+      "the body carries no '## Why', so nothing says why this was worth keeping",
+    ]);
+    expect(noteRefusals("## Why\n\n\n## Findings\n\nFour proposals.\n")).toEqual([
+      "'## Why' says nothing, so nothing says why this was worth keeping",
+    ]);
+  });
+
+  it("refuses an em dash, which no filing may carry whatever its kind", () => {
+    expect(noteRefusals(`## Why\n\nA finding ${DASH} worth keeping.\n`)).toEqual(["line 3 carries an em dash"]);
   });
 });

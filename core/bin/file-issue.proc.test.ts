@@ -1,11 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filing, misshapenTicket, wellFormedTicket } from "../scenarios.ts";
+import { filing, misshapenTicket, wellFormedNote, wellFormedTicket } from "../scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = "printf 'nothing filed\\n' >&2\nexit 1\n";
+const RAN_A_CHECK = "printf 'a note never pays for a check run\\n' >&2\nexit 1\n";
+const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
 function ghSaw(repo: string): string[][] {
   if (!existsSync(join(repo, "gh-argv"))) return [];
@@ -61,11 +63,26 @@ describe("core/bin/file-issue files a ticket, or refuses it and files nothing (#
   it("refuses a kind it does not file and a call with no title, without reaching gh", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedTicket });
 
-    expect(run(["note", "--title", "A note", "--body-file", "body.md"])).toMatchObject({
+    expect(run(["judgement", "--title", "A judgement", "--body-file", "body.md"])).toMatchObject({
       status: 2,
-      stderr: "file-issue: usage: file-issue ticket --title <title> --body-file <path>\n",
+      stderr: "file-issue: usage: file-issue ticket|note --title <title> --body-file <path>\n",
     });
     expect(run(["ticket", "--body-file", "body.md"]).status).toBe(2);
+    expect(ghSaw(repo)).toEqual([]);
+  });
+
+  it("files a note the same body could not file as a ticket, and labels it so nothing has to read it to know", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote, npx: RAN_A_CHECK });
+
+    expect(run(NOTE_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
+    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", wellFormedNote]]);
+    expect(run().stderr).toContain("the body carries no '## Acceptance criteria'");
+  });
+
+  it("asks a note for a why and nothing else, so filing one at the end of a session costs no judgement", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: "Four proposals, with no heading over them.\n" });
+
+    expect(run(NOTE_CALL)).toMatchObject({ status: 1, stderr: "the body carries no '## Why', so nothing says why this was worth keeping\n" });
     expect(ghSaw(repo)).toEqual([]);
   });
 });
