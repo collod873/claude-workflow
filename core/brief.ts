@@ -8,6 +8,16 @@ export const CAP = 64 * 1024;
 
 export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
+export function capped(text: string, limit: number): string {
+  if (Buffer.byteLength(text) <= limit) return text;
+  let kept = "";
+  for (const char of text) {
+    if (Buffer.byteLength(kept) + Buffer.byteLength(char) > limit) break;
+    kept += char;
+  }
+  return kept;
+}
+
 const AUTHORED = /\.test\.(m|c)?[jt]s$/;
 
 type Read = (path: string) => string | undefined;

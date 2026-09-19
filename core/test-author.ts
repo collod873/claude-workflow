@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { brief, onDisk } from "./brief.ts";
+import { brief, capped, onDisk } from "./brief.ts";
 import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
 import { denyFlags, stageRefusals } from "./deny-list.ts";
 import { checks, quoted } from "./ticket-shape.ts";
@@ -7,6 +7,7 @@ import { checks, quoted } from "./ticket-shape.ts";
 const STAGE = "test author";
 const MODEL = "sonnet";
 const WRITES = ["Read", "Edit", "Write"];
+const COMMANDS_CAP = 200;
 
 export function uncovered(body: string, cwd: string, run?: Shell): string[] {
   return checks(body).flatMap(({ at, command }) => {
@@ -29,11 +30,11 @@ function stageArgv(commands: string[]): string[] {
   ];
 }
 
-function handedOn(briefed: string, commands: string[]): string {
+export function handedOn(briefed: string, commands: string[]): string {
   return [
     briefed,
     "## What to write",
-    `Write one failing test for each criterion above, and write nothing else. Your check commands are ${commands.map((command) => `\`${command}\``).join(", ")}.`,
+    `Write one failing test for each criterion above, and write nothing else. Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`,
     "Each ends red naming the behaviour its criterion asks for. A criterion with no failing test ends this stage red.",
     "",
   ].join("\n\n");
