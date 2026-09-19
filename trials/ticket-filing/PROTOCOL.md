@@ -49,15 +49,15 @@ install is fixed and 291 sessions are backfilled. The shape is unfiled: a part t
 child's output cannot report that it stopped.
 
 **Ruled out by the owner, do not rebuild.** Historical evidence cannot be used. The `## Files
-claimed` error rate of 5 in 12, and the ten builds of #661 that lost what was meant, are Old machine
-artifacts from a different `file-issue`, a different author and a code system outside the New core.
+claimed` error rate of 5 in 12, and the ten builds of #661 that lost what was meant, are deleted lane
+artifacts from a different `file-issue`, a different author and a code system outside the Core.
 Any arm that needs an old baseline is disqualified.
 
 **Amended by the owner, 2026-09-18.** That ruling bars an old *baseline*: no arm is scored against a
-rate, a grade or a diff the Old machine produced. It does not bar an old *subject*. A ticket the
+rate, a grade or a diff the deleted lanes produced. It does not bar an old *subject*. A ticket the
 #661 audit already graded supplies something this trial otherwise lacks - a recorded intent and a
 recorded miss - so the question "did the filing carry what was meant" has an answer no owner has to
-supply. Arms are compared to each other and to the live floor below, never to what the Old machine
+supply. Arms are compared to each other and to the live floor below, never to what the deleted lanes
 built.
 
 **Unsupported, and still unsupported.** That the five-stage relay's handoffs cost enough to justify

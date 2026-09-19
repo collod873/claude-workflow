@@ -1,13 +1,13 @@
 # One ticket
 
-The New core's first layer: the owner and a session agree what is wanted, the session files a
+The Core's first layer: the owner and a session agree what is wanted, the session files a
 ticket, and the machine builds it to merged with proof it does what was meant. Signed by the owner
 in session on 2026-09-17 ([ruling ticket](https://github.com/collod873/claude-workflow/issues/665)),
 judged against the [charter](../charter.md). Only the owner changes it.
 
-Each rule below names the enforcer the New core ships for it. Which of them run is not kept here: the
-generated machine page shows it, worked out from the parts the New core registers. The New core is built by hand until it merges one ticket itself
-([ADR-0200](../../adr/0200-the-machine-is-rebuilt-as-a-small-new-core-in-its-own-folder.md)).
+Each rule below names the enforcer the Core ships for it. Which of them run is not kept here: the
+generated machine page shows it, worked out from the parts the Core registers. The Core is built by hand until it merges one ticket itself
+([ADR-0200](../../adr/0200-the-machine-is-rebuilt-as-a-small-core-in-its-own-folder.md)).
 
 **Where it runs.** This repo. Lumaria enrols later, by a stub, when the owner asks. app-starter is
 not enrolled.
@@ -16,7 +16,7 @@ not enrolled.
 and wave order go to Big jobs; a spec's children take this path unchanged. Counting over history
 (tickets closed unbuilt, the fixer's test rewrites, the reviewer's drift rate, tickets closed with
 no closing record) goes to Look-back. The session close gate's pass-through (rule census M5) is Old
-machine session code, frozen with it; the New core never relies on it, because only its own
+Workstation session code, frozen with it; the Core never relies on it, because only its own
 after-merge step closes a built ticket.
 
 ## The path
@@ -33,7 +33,7 @@ after-merge step closes a built ticket.
 8. **Merge.** GitHub merges when the required checks pass on an up-to-date branch.
 9. **Close.** The merge fires the after-merge run on the stable machine. It runs the ticket's checks
    on the merge commit, posts the closing record and the speed report, and closes the ticket.
-10. **Promote.** If the merge changed the New core, the after-merge run builds a sample ticket on
+10. **Promote.** If the merge changed the Core, the after-merge run builds a sample ticket on
     the new copy. Clean moves the `stable` tag; red reverts the merge through a PR and files a
     ticket carrying the sample's log.
 
@@ -85,7 +85,7 @@ It does one of three things:
 | The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed | The token step in each stub | The token step fails red when the key is absent; probe fact 5 |
 | Work is never thrown away: the branch is pushed before anything can refuse it | The save step | A test that the save step pushes before the gate, the review and any branch update (13 finished builds were lost to a pre-push rebase) |
 | Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | Not yet shipped. The closer runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base. Until it lands, `validate-bash` blocks every close an agent types, so a ticket stays open |
-| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the New core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
+| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the Core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
 | The fixer gets one turn per ticket and never edits the owner's quoted words | The fixer stage | The fixer stage refuses to start when the ticket already carries a fixer marker; its ticket write refuses a body whose `## Why` quote is not byte-identical |
 | Every green build is read against `## Why` before it merges | The reviewer stage, a required check | The ruleset requires the reviewer's check; a drift verdict fails it and hands its gaps to the fixer, with no filter between them |
 | A machine change takes over only after a sample ticket builds clean on it | The after-merge step | The `stable` tag ruleset; the sample build |
@@ -96,7 +96,7 @@ It does one of three things:
 
 ## Parts
 
-**Built-ins that replace Old machine parts.**
+**Built-ins that replace deleted lane parts.**
 
 | Built-in | Replaces | Failure it stops |
 |---|---|---|
@@ -110,10 +110,10 @@ It does one of three things:
 | Claude Code CLI flags: `--model`, `--tools`, `--setting-sources ""`, `--json-schema`, `--resume` | `stage.ts`'s wrappers and full tool surface (V20) | About 31k tokens paid before the prompt says anything |
 
 The App is not a PAT: its key has no expiry and nothing needs renewing. A PAT's expiry, which stops the
-pipeline on a day nobody chose, is what the Old machine refused them for. `anthropics/claude-code-action` is not used; it wraps the same CLI and stops no
+pipeline on a day nobody chose, is what the deleted lanes refused them for. `anthropics/claude-code-action` is not used; it wraps the same CLI and stops no
 failure the flags above leave.
 
-**Old parts that port in**, each rewritten into the New core as its audit verdict says:
+**Lane parts that port in**, each rewritten into the Core as its audit verdict says:
 
 - **Ticket shape and `file-issue` (T1).** Adds the 3-criteria cap, the stand-in refusal, `## Why`,
   and red-at-filing with no `--ack`. The claim-line cap goes; claims stay as brief input.
@@ -135,11 +135,11 @@ failure the flags above leave.
 - **The caller and reusable split (V2)**, as stubs, because Lumaria needs it.
 - **Style rules as a cache of their gates (V12).**
 
-**Old parts that do not port:** the mechanic (V6), the decision rung (V7), fresh eyes as its own
+**Lane parts that do not port:** the mechanic (V6), the decision rung (V7), fresh eyes as its own
 step (V10), `CODING_STANDARDS.md` in the brief until a judge enforces it (V13), the out-of-brief
 tracker issues (V15), the sessions note (V16), the red-gate re-run (V18), the checkpoint cache
 (V21), the files round trip (V23), the immutable-set refusal at landing (V25, replaced by judging
-from `@stable` and the stub shape), strike counting (V5), and Verify's dispatch (T5). Two Old
+from `@stable` and the stub shape), strike counting (V5), and Verify's dispatch (T5). Two lane
 defects are evidence of what not to rebuild, not fixes to carry:
 
 - Verify's PR check checked out trunk (run 35174765972). The stable check records and asserts the
@@ -187,15 +187,15 @@ Build stages do not load the charter or this page. Each stage is handed what it 
 
 What keeps this ruling true with no hand audit:
 
-- **ADR-0200's growth-limit tests**, from the New core's first commit: one-screen length, a part
+- **ADR-0200's growth-limit tests**, from the Core's first commit: one-screen length, a part
   links a real failure, no timers, no drop in test count, and every charter rule naming an enforcer
   that exists.
 - **The enforcer test**, pointed at this page as well as the charter: every Rules row names an
-  enforcer registered in the New core or shows as NOT ENFORCED YET on the machine page, and every
+  enforcer registered in the Core or shows as NOT ENFORCED YET on the machine page, and every
   registered enforcer names a row that exists.
 - **The stops test**: every stop the code can reach is a Runs row with a clearer who is not the
   owner, bar the App key.
-- **The generated machine page**, length-tested, from which the stops test reads the New core's
+- **The generated machine page**, length-tested, from which the stops test reads the Core's
   stops.
 - **The probe**, run before the first build and again inside the sample build whenever a merge
   touches a stub, a ruleset or the token step. It proves five facts, and any failure reopens this

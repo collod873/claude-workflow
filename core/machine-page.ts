@@ -59,7 +59,7 @@ export function machinePage(registry: Part[], rules: SignedRule[]): string {
   const enforcers = (rule: SignedRule) => registry.filter((part) => part.holds?.includes(rule.text)).map((part) => part.name);
   const enforced = rules.filter((rule) => enforcers(rule).length > 0);
   return [
-    `The New core: ${registry.length} parts, ${enforced.length} of ${rules.length} signed rules enforced`,
+    `The Core: ${registry.length} parts, ${enforced.length} of ${rules.length} signed rules enforced`,
     "",
     "Parts, and the failure each stops",
     ...inColumns(registry),

@@ -11,9 +11,9 @@
   runs knip with no baseline; a test importing a thing is not evidence anything runs it (ADR-0086).
   Wire it to a caller or delete it; unreachable by design takes an `@shell` or `@fixture` tag saying
   why, five lines at most.
-- `core/check` is the New core's gate, run by `.husky/pre-push` and every PR. `.claude/` and `bin/`
-  are judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires: run them by
-  hand ([boundary](docs/agents/core-boundary.md)).
-- `core/` imports none of the Old machine and is ruled by it anyway: the hooks under `.claude/` fire
-  in every session, core ones included, from `~/.agents/workflow`, a read only clone of `main`
-  pulled at SessionStart. A hook edited here binds once it lands and a new session starts.
+- `core/check` is the Core's gate, run by `.husky/pre-push` and every PR. The Workstation is judged
+  by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires: run them by hand
+  ([boundary](docs/agents/core-boundary.md)).
+- The machine is all of `core/` and nothing outside it, ruled by session hooks anyway: those under
+  `.claude/` fire in every session, core ones included, from `~/.agents/workflow`, a read only clone
+  of `main` pulled at SessionStart. A hook edited here binds once it lands and a session starts.
