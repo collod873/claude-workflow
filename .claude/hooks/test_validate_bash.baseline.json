@@ -497,29 +497,29 @@
     true
   ],
   [
-    "allow:close-comment-quotes-dotenv-read",
-    "gh issue close 91 --comment 'Closing record: verified via `cat .env` - MET'",
+    "allow:comment-quotes-dotenv-read",
+    "gh issue comment 91 --body 'Closing record: verified via `cat .env` - MET'",
     "ALLOW",
     "ALLOW",
     true
   ],
   [
-    "allow:close-comment-quotes-dir-grep",
-    "gh issue close 92 --comment 'Closing record: verified via `grep foo dist/` - MET'",
+    "allow:comment-quotes-dir-grep",
+    "gh issue comment 92 --body 'Closing record: verified via `grep foo dist/` - MET'",
     "ALLOW",
     "ALLOW",
     true
   ],
   [
-    "allow:close-heredoc-quotes-dotenv-read",
-    "gh issue close 93 --comment \"$(cat <<'EOF'\nClosing record: verified via `cat .env` - MET\nEOF\n)\"",
+    "allow:comment-heredoc-quotes-dotenv-read",
+    "gh issue comment 93 --body \"$(cat <<'EOF'\nClosing record: verified via `cat .env` - MET\nEOF\n)\"",
     "ALLOW",
     "ALLOW",
     true
   ],
   [
-    "allow:close-heredoc-quotes-dir-grep",
-    "gh issue close 94 --comment \"$(cat <<'EOF'\nClosing record: verified via `grep foo dist/` - MET\nEOF\n)\"",
+    "allow:comment-heredoc-quotes-dir-grep",
+    "gh issue comment 94 --body \"$(cat <<'EOF'\nClosing record: verified via `grep foo dist/` - MET\nEOF\n)\"",
     "ALLOW",
     "ALLOW",
     true
@@ -567,6 +567,13 @@
     true
   ],
   [
+    "block:gh-issue-close-alone",
+    "gh issue close 5",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
     "block:gh-issue-close-compound",
     "git push && gh issue close 5",
     "BLOCK",
@@ -574,15 +581,29 @@
     true
   ],
   [
-    "allow:gh-issue-close-comment-quoted-operator",
+    "block:gh-issue-close-with-comment",
     "gh issue close 5 --comment \"a && b\"",
-    "ALLOW",
-    "ALLOW",
+    "BLOCK",
+    "BLOCK",
     true
   ],
   [
-    "allow:gh-issue-close-alone",
-    "gh issue close 5",
+    "block:gh-issue-close-api-state",
+    "gh api repos/o/r/issues/5 -f state=closed",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "block:gh-issue-close-api-graphql",
+    "gh api graphql -f query='mutation { closeIssue(input: {issueId: \"x\"}) { clientMutationId } }'",
+    "BLOCK",
+    "BLOCK",
+    true
+  ],
+  [
+    "allow:gh-issue-close-quoted",
+    "gh issue comment 5 --body 'run gh issue close later'",
     "ALLOW",
     "ALLOW",
     true
@@ -862,9 +883,9 @@
   ],
   [
     "row:count",
-    "123 fires",
-    "123",
-    "123",
+    "126 fires",
+    "126",
+    "126",
     true
   ],
   [
@@ -877,8 +898,8 @@
   [
     "row:deny-count",
     "every BLOCK logged a deny",
-    "50",
-    "50",
+    "54",
+    "54",
     true
   ],
   [
@@ -1057,10 +1078,38 @@
     true
   ],
   [
+    "guard:block:gh-issue-close-alone",
+    "gh issue close 5",
+    "gh-issue-close",
+    "['gh-issue-close']",
+    true
+  ],
+  [
     "guard:block:gh-issue-close-compound",
     "git push && gh issue close 5",
-    "compound-close",
-    "['compound-close']",
+    "gh-issue-close",
+    "['gh-issue-close']",
+    true
+  ],
+  [
+    "guard:block:gh-issue-close-with-comment",
+    "gh issue close 5 --comment \"a && b\"",
+    "gh-issue-close",
+    "['gh-issue-close']",
+    true
+  ],
+  [
+    "guard:block:gh-issue-close-api-state",
+    "gh api repos/o/r/issues/5 -f state=closed",
+    "gh-issue-close",
+    "['gh-issue-close']",
+    true
+  ],
+  [
+    "guard:block:gh-issue-close-api-graphql",
+    "gh api graphql -f query='mutation { closeIssue(input: {issueId: \"x\"}) { clientMutationId } }'",
+    "gh-issue-close",
+    "['gh-issue-close']",
     true
   ],
   [

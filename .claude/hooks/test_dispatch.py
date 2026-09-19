@@ -399,10 +399,10 @@ def check_real_hooks_per_event() -> None:
     r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(
         hook_event_name="PreToolUse", tool_name="Bash",
         tool_input={"command": 'gh issue close 999 --comment "done"'}))
-    check("PreToolUse/real roster: a bare close is denied via close-gate, reaching the dispatcher",
+    check("PreToolUse/real roster: a bare close is denied via validate-bash, reaching the dispatcher",
           r.returncode == 0, (r.returncode, r.stderr))
     doc = json.loads(r.stdout) if r.stdout.strip() else {}
-    check("PreToolUse/real roster: the merged JSON carries close-gate's deny",
+    check("PreToolUse/real roster: the merged JSON carries validate-bash's deny",
           doc.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", doc)
 
     r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(

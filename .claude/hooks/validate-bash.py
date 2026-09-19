@@ -3,8 +3,6 @@ import re
 
 import _hook
 
-LOCAL_CLOSE_TICKET = _hook.BIN / "close-ticket"
-
 READ_CMDS = r"(?:cat|head|tail|less|more|bat)"
 
 SEARCH_READ_CMDS = r"(?:cat|head|tail|less|more|bat|grep|rg|ag|tree)"
@@ -35,7 +33,11 @@ EXCLUDE_FLAG = re.compile(r"--exclude(?:-dir)?[=\s]")
 
 GH_ISSUE_CREATE = re.compile(r"\bgh\s+issue\s+create\b")
 GH_ISSUE_CLOSE = re.compile(r"\bgh\s+issue\s+close\b")
-COMPOUND_OPERATOR = re.compile(r"&&|\|\||;|\|")
+GH_API = re.compile(r"\bgh\s+api\b")
+API_STATE_CLOSED = re.compile(
+    r"(?:-f|--field)\s+['\"]?state\s*=\s*['\"]?closed\b", re.IGNORECASE
+)
+API_CLOSE_ISSUE_MUTATION = re.compile(r"\bgraphql\b[^\n]*\bcloseIssue\b")
 
 PUSH_TO_MAIN = re.compile(
     r"\bgit\s+push\b[^;&|\n]*(?<![\w./-])(?:refs/heads/)?main(?![\w./-])"
@@ -68,11 +70,6 @@ CLOSING_KEYWORD = re.compile(
 )
 
 
-def close_ticket_command(issue: str) -> str:
-    tool = "bin/close-ticket" if LOCAL_CLOSE_TICKET.is_file() else "~/bin/close-ticket"
-    return f"{tool} {issue} <base>..<head> <checkout>"
-
-
 def flag_values(command: str, anchor: re.Pattern, patterns: tuple[re.Pattern, ...]) -> list[str]:
     first = anchor.search(command)
     if not first:
@@ -90,6 +87,14 @@ CLOSING_WRITES = (
     (GIT_COMMIT, COMMIT_MESSAGE, "commit-closes-ticket", "commit message", "pushing it"),
     (GH_PR_WRITE, PR_BODY, "pr-closes-ticket", "pull request body", "merging it"),
 )
+
+
+def closes_an_issue(command: str, spans) -> bool:
+    if _hook.unquoted_matches(GH_ISSUE_CLOSE, command, spans):
+        return True
+    if not _hook.unquoted_matches(GH_API, command, spans):
+        return False
+    return bool(API_STATE_CLOSED.search(command) or API_CLOSE_ISSUE_MUTATION.search(command))
 
 
 def check(command: str) -> tuple[str, str]:
@@ -111,13 +116,11 @@ def check(command: str) -> tuple[str, str]:
             "and refuses a misshapen ticket or one whose checks already pass."
         )
 
-    if _hook.unquoted_matches(GH_ISSUE_CLOSE, command, spans) and _hook.unquoted_matches(
-        COMPOUND_OPERATOR, command, spans
-    ):
-        return "compound-close", (
-            "gh issue close appeared alongside another command (&&, ;, ||, or |), so "
-            "nothing in this command ran. Re-run the close alone, so the close gate "
-            "only ever sees a lone close."
+    if closes_an_issue(command, spans):
+        return "gh-issue-close", (
+            "closing a ticket by hand is blocked; a ticket is closed by the closer, "
+            "which runs its checks on the merge commit and posts the `## Closing "
+            "record`. No closer has shipped yet, so leave the ticket open and say so."
         )
 
     if _hook.unquoted_matches(PUSH_TO_MAIN, command, spans):
@@ -136,11 +139,10 @@ def check(command: str) -> tuple[str, str]:
                 return guard, (
                     f"this {where} closes #{issue} with a GitHub keyword "
                     f"({m.group(0).strip()!r}); {trigger} lets GitHub close the ticket "
-                    "on its own, with no `## Closing record` and none of close-ticket's "
-                    "checks run -- the exact bypass the close gate exists to prevent. "
-                    f"Drop the keyword (a bare '#{issue}' or 'Ticket: #{issue}' still links "
-                    "the issue without closing it), then close the ticket by running "
-                    f"`{close_ticket_command(issue)}` once the work lands."
+                    "on its own, with no `## Closing record` and none of the ticket's "
+                    "checks run. Drop the keyword (a bare "
+                    f"'#{issue}' or 'Ticket: #{issue}' still links the issue without "
+                    "closing it); the closer closes the ticket once the work lands."
                 )
 
     if _hook.unquoted_matches(SAFE_PATTERNS, command, spans):

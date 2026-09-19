@@ -84,7 +84,7 @@ It does one of three things:
 | Only the App moves the `stable` tag, and only after a clean sample build | A tag ruleset on `stable` with the App as its sole bypass actor | GitHub; the after-merge step is the only code that moves it |
 | The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed | The token step in each stub | The token step fails red when the key is absent; probe fact 5 |
 | Work is never thrown away: the branch is pushed before anything can refuse it | The save step | A test that the save step pushes before the gate, the review and any branch update (13 finished builds were lost to a pre-push rebase) |
-| Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | `close-ticket` runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base |
+| Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | Not yet shipped. The closer runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base. Until it lands, `validate-bash` blocks every close an agent types, so a ticket stays open |
 | The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the New core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
 | The fixer gets one turn per ticket and never edits the owner's quoted words | The fixer stage | The fixer stage refuses to start when the ticket already carries a fixer marker; its ticket write refuses a body whose `## Why` quote is not byte-identical |
 | Every green build is read against `## Why` before it merges | The reviewer stage, a required check | The ruleset requires the reviewer's check; a drift verdict fails it and hands its gaps to the fixer, with no filter between them |
@@ -129,7 +129,9 @@ failure the flags above leave.
 - **The `.fails` lock (V26).** Becomes the test-count check plus the builder's deny on the author's
   test files.
 - **The timeout abort (V22)**, without its strike comment.
-- **`close-ticket` (T8).** Runs on the merge SHA, with zero-test checks failing.
+- **The closer (T8).** Runs on the merge SHA, with zero-test checks failing. The Old `close-ticket`
+  and its close gate are deleted rather than ported: both re-derived what the closer already
+  guarantees, the way filing trusts `file-issue` with no matching file gate.
 - **The caller and reusable split (V2)**, as stubs, because Lumaria needs it.
 - **Style rules as a cache of their gates (V12).**
 

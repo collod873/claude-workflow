@@ -79,6 +79,6 @@ No hook in `.claude/hooks/roster.json` mentions `core/`. They divide in two:
   `checklist-reminder` on `.md`, `.markdown` and `.txt`, `hook-gate` inside a hooks directory or a
   settings file, `md-html-refresh` on markdown, `post-edit-validate` on `.py`, `.js`, `.json` and
   `.html`. A `core/*.ts` edit reaches none of them, which also means no syntax check.
-- **Tracker scoped, so they apply on purpose**: `validate-bash`, `close-gate` and `stop-gate` hold
-  filing and closing discipline over the one tracker both machines share. Their refusals name Old
-  paths (`~/bin/file-issue`), so a refusal goes stale the day the core ships its own door.
+- **Tracker scoped, so they apply on purpose**: `validate-bash` and `stop-gate` hold filing and
+  closing discipline over the one tracker both machines share. `validate-bash` now names the core's
+  own door for filing; its close refusal names no tool, because no closer has shipped.

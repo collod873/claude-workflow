@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CORE = process.env.TRIAL_CORE;
 const { ticketRefusals } = await import(join(CORE, "ticket-shape.ts"));
-const { denyFlags, stageRefusals } = await import(join(CORE, "deny-list.ts"));
+const { DENIED, stageRefusals } = await import(join(CORE, "deny-list.ts"));
 
 const PROJECTS = "/home/collin/.claude/projects/-home-collin-Claude-Projects-Workflow";
 const STRIPPED = "/home/collin/Claude Projects/Knowledge-Base/raw/sessions";
@@ -14,6 +15,7 @@ const SUBJECTS = {
     asked: "the follow-up on the blocked-by edges that the owner approved at the end of this session, which also replaces #407",
     sessions: [{ id: "ca7a2c5c-ae56-44e4-8fcc-87d7ab02e039", until: "Do that yes" }],
     stripped: ["2026-09-16-ca7a2c5c.md"],
+    filedAt: "2026-09-16T15:29:10Z",
   },
   586: {
     asked: "issue #586, carry or rediscover, which the owner approved ticketifying at the end of this session",
@@ -22,6 +24,7 @@ const SUBJECTS = {
       { id: "4af6f9ae-0624-450d-9969-494415c0b36c", until: "Yes but you" },
     ],
     stripped: ["2026-09-15-0c62c7f3.md", "2026-09-16-4af6f9ae.md"],
+    filedAt: "2026-09-16T01:01:27Z",
   },
 };
 
@@ -29,6 +32,20 @@ const MODEL = "opus[1m]";
 const EFFORT = "high";
 const READS = ["Read", "Glob", "Grep"];
 const WRITES = ["Write", "Edit"];
+
+const FENCED = [
+  "//home/collin/Claude Projects/Workflow/**",
+  "//home/collin/Claude Projects/Knowledge-Base/**",
+  "//home/collin/.claude/**",
+];
+const SHELL_READERS = ["cat", "head", "tail", "sed", "awk", "less", "more", "grep", "rg", "find", "ls", "cp", "mv", "node", "python3", "python", "bash", "sh", "xargs", "git", "cd"];
+
+function fenceFlags() {
+  return [
+    ...FENCED.flatMap((path) => [`Read(${path})`, `Edit(${path})`]),
+    ...SHELL_READERS.map((command) => `Bash(${command}:*)`),
+  ];
+}
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, arr) => {
@@ -133,14 +150,11 @@ const prompt = [
   "",
   "## How filing works here",
   "",
-  "Write the body to a file, then run `core/bin/file-issue ticket --title <title> --body-file <path>` from the repository root.",
+  "Write the body to a file, then run `core/bin/file-issue ticket --title <title> --body-file <path>`.",
+  "Run it as one bare command from the working directory. No `cd`, no `&&`, no `;`, or it will be refused before it starts.",
   "It validates the body and refuses with reasons rather than posting a bad one. If it refuses, fix what it names and run it again.",
-  "`docs/agents/ticket-format.md` and `CONTEXT.md` are on disk and you may read them, along with anything else in the repository.",
-  "You may not run `gh` yourself. `core/bin/file-issue` is the only door.",
-  "",
-  "## What the ticket is for",
-  "",
-  "A cold builder who was not in this conversation is handed this body and nothing else. Everything that has to survive is in what you write.",
+  "`docs/agents/ticket-format.md` and `CONTEXT.md` say what a body has to carry, and you may read anything in this working directory.",
+  "Your shell runs nothing but that one command. Read, Glob and Grep are how you look around.",
   "",
   "## The conversation",
   "",
@@ -153,11 +167,26 @@ const prompt = [
 
 writeFileSync(join(OUT, "prompt.txt"), prompt);
 
+const repo = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim();
+const pin = spawnSync("git", ["rev-list", "-1", "--first-parent", `--before=${subject.filedAt}`, "main"], { encoding: "utf8" }).stdout.trim();
+if (pin === "") throw new Error(`no commit before ${subject.filedAt}`);
+const tree = join(mkdtempSync(join(tmpdir(), "live-floor-")), `tree-${TICKET}`);
+
+function pinnedTree() {
+  spawnSync("git", ["worktree", "remove", "--force", tree], { encoding: "utf8" });
+  const added = spawnSync("git", ["worktree", "add", "--detach", tree, pin], { encoding: "utf8" });
+  if (added.status !== 0) throw new Error(`worktree ${pin} failed: ${added.stderr.trim()}`);
+  spawnSync("ln", ["-s", join(repo, "node_modules"), join(tree, "node_modules")], { encoding: "utf8" });
+  const copied = spawnSync("cp", ["-r", join(repo, "core"), join(tree, "core")], { encoding: "utf8" });
+  if (copied.status !== 0) throw new Error(`core would not copy in: ${copied.stderr.trim()}`);
+  return { pin, at: spawnSync("git", ["log", "-1", "--format=%cI %s", pin], { encoding: "utf8" }).stdout.trim() };
+}
+
 const argv = [
   "--print", "--output-format", "stream-json", "--verbose",
   "--model", MODEL, "--effort", EFFORT, "--setting-sources", "",
   "--allowedTools", [...READS, ...WRITES, "Bash(core/bin/file-issue:*)"].join(","),
-  ...denyFlags(),
+  "--disallowedTools", [...DENIED, ...fenceFlags()].join(","),
 ];
 const fenced = stageRefusals("live floor", argv);
 if (fenced.length > 0) throw new Error(fenced.join("; "));
@@ -176,6 +205,7 @@ const record = {
     againstStripped: Number((context.length / strippedBytes).toFixed(2)),
   },
   historical: { bytes: historical.length, refusals: ticketRefusals(historical) },
+  tree: { pin, filedAt: subject.filedAt, fenced: FENCED, shellReadersDenied: SHELL_READERS.length },
   promptBytes: prompt.length,
 };
 
@@ -185,8 +215,9 @@ if (DRY) {
   process.exit(0);
 }
 
+record.tree.built = pinnedTree();
 const started = Date.now();
-const spent = spawnSync("claude", argv, { input: prompt, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
+const spent = spawnSync("claude", argv, { input: prompt, encoding: "utf8", cwd: tree, maxBuffer: 512 * 1024 * 1024 });
 const wall = Date.now() - started;
 writeFileSync(join(OUT, "stream.jsonl"), spent.stdout || "");
 
