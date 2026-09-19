@@ -106,6 +106,8 @@ export const misshapenTicket = [
   "",
 ].join("\n");
 
+export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
+
 export function filing({ gh, body, title = "A ticket the machine can build", npx = "exit 1\n" }: { gh: string; body: string; title?: string; npx?: string }) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");

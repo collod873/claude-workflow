@@ -5,13 +5,14 @@ import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./check-covers.ts";
 import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
-import { MAIN_RED, authoring, briefing, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, scratch, script, starting, wellFormedTicket, type Run } from "./scenarios.ts";
+import { MAIN_RED, authoring, briefing, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
 const GREEN = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
+const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
 interface Scenario {
   label: string;
@@ -46,8 +47,10 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
     { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
     { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
-    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["note", "--title", "A note"]) },
+    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["judgement", "--title", "A judgement"]) },
     { label: "refusing a ticket whose check already passes", run: () => filing({ gh: FILED, body: wellFormedTicket, npx: GREEN }).run() },
+    { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
+    { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
   ],
   "core/bin/brief": [
     { label: "writing a brief", run: () => briefing().run() },

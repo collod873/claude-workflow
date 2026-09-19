@@ -560,6 +560,13 @@
     true
   ],
   [
+    "allow:file-issue-note",
+    "core/bin/file-issue note --title x --body-file b.md",
+    "ALLOW",
+    "ALLOW",
+    true
+  ],
+  [
     "allow:gh-issue-create-quoted",
     "gh issue comment 5 --body 'run gh issue create later'",
     "ALLOW",
@@ -883,9 +890,9 @@
   ],
   [
     "row:count",
-    "126 fires",
-    "126",
-    "126",
+    "127 fires",
+    "127",
+    "127",
     true
   ],
   [

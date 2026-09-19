@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { parts, type Part } from "./parts.ts";
-import { ticketRefusals } from "./ticket-shape.ts";
+import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export const LINE_LIMIT = 200;
 export const MOST_LINES = 5;
@@ -41,6 +41,10 @@ const KINDS: Record<string, Kind> = {
   ticket: {
     refuses: (posting) => (posting.target === undefined ? ["a ticket carries no title"] : ticketRefusals(posting.text)),
     args: (posting) => ["issue", "create", "--title", posting.target ?? "", "--body", posting.text],
+  },
+  note: {
+    refuses: (posting) => (posting.target === undefined ? ["a note carries no title"] : noteRefusals(posting.text)),
+    args: (posting) => ["issue", "create", "--title", posting.target ?? "", "--label", "note", "--body", posting.text],
   },
 };
 

@@ -18,6 +18,8 @@ const TICKET = [
   "",
 ].join("\n");
 
+const NOTE = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
+
 const registry: Part[] = [
   { name: "core/bin/file-issue", file: "core/bin/file-issue", stops: URL, lines: 5 },
   { name: "core/bin/quiet", file: "core/bin/quiet", stops: URL },
@@ -71,8 +73,32 @@ describe("core/post.ts is the one way core/ writes text to GitHub (#662)", () =>
     const { gh, calls } = github();
 
     expect(post(posting({ part: "core/bin/stranger" }), gh, registry).refusals).toEqual(["core/bin/stranger is not a registered part, so it posts nothing"]);
-    expect(post(posting({ kind: "judgement" }), gh, registry).refusals).toEqual(["judgement is not a kind core/post.ts writes: message, ticket"]);
+    expect(post(posting({ kind: "judgement" }), gh, registry).refusals).toEqual(["judgement is not a kind core/post.ts writes: message, ticket, note"]);
     expect(calls).toEqual([]);
+  });
+
+  it("labels a note, so the stub that starts a build from issues: opened can tell it from a ticket", () => {
+    const { gh, calls } = github();
+    const note = (fields: Partial<Posting>) => post(posting({ kind: "note", text: NOTE, target: "What the audit found", ...fields }), gh, registry);
+
+    expect(note({})).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", NOTE]]);
+    expect(note({ target: undefined }).refusals).toEqual(["a note carries no title"]);
+    expect(note({ text: "Four proposals, with no heading over them." }).refusals).toEqual([
+      "the body carries no '## Why', so nothing says why this was worth keeping",
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("asks a note for none of what it asks a ticket, so filing one costs no judgement", () => {
+    const { gh } = github();
+
+    expect(post(posting({ kind: "note", text: NOTE, target: "What the audit found" }), gh, registry).refusals).toEqual([]);
+    expect(post(posting({ text: NOTE }), gh, registry).refusals).toEqual([
+      "'## Why' quotes no owner words: it carries no \"...\" quote and no > quoted line",
+      "the body carries no '## Acceptance criteria'",
+      "the body carries no '## Files claimed'",
+    ]);
   });
 
   it("hands back what gh said when the write itself fails", () => {

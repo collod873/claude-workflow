@@ -69,6 +69,14 @@ function checkRefusals(items: string[]): string[] {
   return refusals;
 }
 
+export function noteRefusals(body: string): string[] {
+  const text = body.replaceAll(/\r\n?/g, "\n");
+  const refusals: string[] = [];
+  if (!WHY.test(text)) refusals.push("the body carries no '## Why', so nothing says why this was worth keeping");
+  else if (section(text, WHY).trim() === "") refusals.push("'## Why' says nothing, so nothing says why this was worth keeping");
+  return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
+}
+
 export function ticketRefusals(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
   const refusals: string[] = [];
