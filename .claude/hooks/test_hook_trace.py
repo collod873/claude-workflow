@@ -215,7 +215,7 @@ def rows() -> list[dict]:
         row("mystery-hook", "PreToolUse", "noted", at(150), tool_use_id="toolu_unknown"),
         row("validate-bash", "PreToolUse", "allow", at(161),
             tool_use_id="toolu_nearby_allow"),
-        row("close-gate", "PreToolUse", "deny", at(110), tool_use_id="toolu_missing"),
+        row("validate-bash", "PreToolUse", "deny", at(110), tool_use_id="toolu_missing"),
         dict(row("validate-bash", "PreToolUse", "deny", at(0),
                  tool_use_id="toolu_clean"), session_id=CLEAN),
     ]

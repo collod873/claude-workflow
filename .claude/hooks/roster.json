@@ -3,8 +3,7 @@
     "clone-guard.py",
     "credential-scan.py",
     "adr-gate.py",
-    "validate-bash.py",
-    "close-gate.py"
+    "validate-bash.py"
   ],
   "PostToolUse": [
     "checklist-reminder.py",

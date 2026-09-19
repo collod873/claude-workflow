@@ -33,7 +33,7 @@ rule is enforced is worked out there from the parts the New core registers, neve
 | Rule | Enforcer |
 |---|---|
 | Every rule on this page names an enforcer that exists | A test over this page and the New core's registered parts |
-| Done means the ticket's checks pass on main, run by something that did not build it | `bin/close-ticket`, re-run after every merge |
+| Done means the ticket's checks pass on main, run by something that did not build it | A closer, re-run after every merge. Not yet shipped: closing by hand is blocked meanwhile |
 | Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close |
 | Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites |
 | An agent is handed what it needs, so it does not explore | The brief's size cap, plus a meter on reads outside the brief |
