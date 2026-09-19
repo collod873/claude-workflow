@@ -43,6 +43,11 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/682",
   },
   {
+    name: "core/check prompts",
+    file: "core/prompt-bytes.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+  },
+  {
     name: "core/check-runner.ts",
     file: "core/check-runner.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/657",
