@@ -5,7 +5,7 @@ Signed by the owner on 2026-09-17, amended 2026-09-17; only the owner changes it
 
 ## Layers
 
-- **One ticket** (the core): the owner and a session agree what is wanted, the session files a
+- **One ticket** (the centre): the owner and a session agree what is wanted, the session files a
   ticket, and the machine builds it to merged with proof it does what was meant.
 - **Big jobs**: a spec becomes tickets, planned in waves.
 - **Many at once**: tickets queue, run side by side, and merge without colliding.
@@ -28,11 +28,11 @@ Claude grades its own work kindly, calls done early, edits tests to pass, builds
 follows written instructions only most of the time, and gets lost exploring. So every rule names an
 enforcer that runs: a gate, a test, or a separate judge. A rule whose enforcer has not shipped shows
 as **NOT ENFORCED YET** on the generated machine page until one ships, or it is deleted. Whether a
-rule is enforced is worked out there from the parts the New core registers, never kept on this page.
+rule is enforced is worked out there from the parts the Core registers, never kept on this page.
 
 | Rule | Enforcer |
 |---|---|
-| Every rule on this page names an enforcer that exists | A test over this page and the New core's registered parts |
+| Every rule on this page names an enforcer that exists | A test over this page and the Core's registered parts |
 | Done means the ticket's checks pass on main, run by something that did not build it | A closer, re-run after every merge. Not yet shipped: closing by hand is blocked meanwhile |
 | Checks test the behaviour meant, not a stand-in like a file or a text match; a document is graded against its question | Filing refuses a ticket whose checks are all stand-ins; a separate judge grades a document ticket at close |
 | Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count | The `.fails` lock on the builder, a gate on any push that removes test cases, and Look-back counting fresh eyes' rewrites |

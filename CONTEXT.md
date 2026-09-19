@@ -36,15 +36,15 @@ One of the four parts the machine is described in: **One ticket**, **Big jobs**,
 **Look-back**. Which of them is built, and what each covers, is the Charter's to say.
 _Avoid_: tier, level
 
-**New core**:
-The machine being rebuilt from nothing in its own folder of this repo, holding the Charter from its
-first commit and growing one Layer at a time. It never imports the Old machine.
-_Avoid_: v2, rewrite, the core (alone)
+**Core**:
+The machine, `core/`. There is one machine and this is it. It holds the Charter from its first
+commit, grows one Layer at a time, and is whole: nothing in it reaches outside.
+_Avoid_: new core, v2
 
-**Old machine**:
-The lanes, hooks and scripts that ran before the New core. Its lanes are deleted; a part of it moves
-into the New core only for a failure the New core meets.
-_Avoid_: legacy, current machine
+**Workstation**:
+The owner's computer and the session tooling on it: `.claude/` hooks and `bin/` scripts. Where
+sessions happen, not a thing that builds: judged by `npm test`; work runs on runners.
+_Avoid_: old machine, legacy, second machine
 
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
@@ -79,13 +79,13 @@ reason it cannot drift and the reason installing is a call rather than a copy.
 _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
-The one fresh agent that clears a stuck ticket in the New core, reading why the ticket exists
+The one fresh agent that clears a stuck ticket in the Core, reading why the ticket exists
 before the failure. It fixes the code or the ticket itself, or closes the ticket unbuilt; it never
 hands back, and the owner is never asked.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:
-The tagged copy of the New core every ticket runs on and every pull request is judged by. `main`
+The tagged copy of the Core every ticket runs on and every pull request is judged by. `main`
 is the candidate; a change to the machine becomes stable only after a sample ticket builds clean on
 it.
 _Avoid_: prod, release, pinned version
