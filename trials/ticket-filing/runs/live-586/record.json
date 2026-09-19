@@ -1,0 +1,127 @@
+{
+  "subject": "586",
+  "floor": "live",
+  "model": "opus[1m]",
+  "effort": "high",
+  "asked": "the ticket for #586, which the owner approved ticketifying at the end of this session",
+  "context": {
+    "sessions": [
+      {
+        "id": "0c62c7f3-452a-4b6a-a8ed-7246a8582ef7",
+        "rawBytes": 1630533,
+        "entries": 669,
+        "keptThrough": 669,
+        "trimmedBytes": 202432
+      },
+      {
+        "id": "4af6f9ae-0624-450d-9969-494415c0b36c",
+        "rawBytes": 1580569,
+        "entries": 756,
+        "keptThrough": 239,
+        "trimmedBytes": 120742
+      }
+    ],
+    "rawBytes": 3211102,
+    "trimmedBytes": 323218,
+    "strippedBytes": 109691,
+    "againstStripped": 2.95
+  },
+  "historical": {
+    "bytes": 2819,
+    "refusals": [
+      "the body carries no '## Why', so nothing says what the owner asked for",
+      "line 12 carries an em dash"
+    ]
+  },
+  "promptBytes": 323832,
+  "tree": {
+    "pin": "ad50fd649f69cc9af9e391311613f7723d7a10d8",
+    "filedAt": "2026-09-16T01:01:27Z",
+    "at": "2026-09-15T20:58:12-04:00 Test for #585 authored while filing, not by lane 04's acceptance author minutes later with no context: green under test.fails until it lands, so the implementer runs against it instead of waiting."
+  },
+  "door": {
+    "files": [
+      "bin/file-issue",
+      "check-runner.ts",
+      "post.ts",
+      "ticket-shape.ts",
+      "em-dash.ts",
+      "parts.ts"
+    ],
+    "entries": 6,
+    "posts": false
+  },
+  "contained": [
+    "1",
+    "/opt/door/bin/file-issue",
+    "/opt/door/bin/gh",
+    "v24.18.0",
+    "/home/collin/work/tree/node_modules/.bin/vitest",
+    "node_modules writable"
+  ],
+  "run": {
+    "wallMs": 542425,
+    "status": 0,
+    "toolCalls": 43,
+    "toolNames": [
+      "Bash",
+      "Bash",
+      "Bash",
+      "Grep",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Bash",
+      "Bash",
+      "Edit",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Write"
+    ],
+    "filingAttempts": 1,
+    "throughDoor": 1,
+    "throughOldDoor": 0,
+    "durationMs": 541806,
+    "costUsd": 5.733421499999998,
+    "inputTokens": 5718357,
+    "outputTokens": 36457,
+    "numTurns": 44,
+    "isError": false
+  },
+  "filed": null,
+  "captured": {
+    "title": "The slicer is taught what rooted means, though the publisher already holds the roots it judges by",
+    "bytes": 3807,
+    "refusals": []
+  }
+}

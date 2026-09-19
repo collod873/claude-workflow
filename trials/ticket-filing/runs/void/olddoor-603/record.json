@@ -27,7 +27,7 @@
       "criterion 3 carries 2 check: markers, not one: A `dependsOn` naming a position outside the plan, a cycle, and a criterion with…"
     ]
   },
-  "promptBytes": 128232,
+  "promptBytes": 128136,
   "tree": {
     "pin": "139513bdfd3ecaf1dc492b64d501ada51ef70273",
     "filedAt": "2026-09-16T15:29:10Z",
@@ -50,13 +50,12 @@
     "/opt/door/bin/file-issue",
     "/opt/door/bin/gh",
     "v24.18.0",
-    "/home/collin/work/tree/node_modules/.bin/vitest",
-    "node_modules writable"
+    "/home/collin/work/tree/node_modules/.bin/vitest"
   ],
   "run": {
-    "wallMs": 120440,
+    "wallMs": 230476,
     "status": 0,
-    "toolCalls": 17,
+    "toolCalls": 38,
     "toolNames": [
       "Bash",
       "Bash",
@@ -64,6 +63,9 @@
       "Bash",
       "Bash",
       "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
       "Read",
       "Read",
       "Bash",
@@ -72,24 +74,48 @@
       "Bash",
       "Bash",
       "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
+      "Read",
+      "Bash",
+      "Bash",
       "Write",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Bash",
+      "Read",
+      "Bash",
       "Write",
-      "Bash"
+      "Bash",
+      "Bash",
+      "Bash",
+      "Write",
+      "Write"
     ],
-    "filingAttempts": 1,
-    "throughDoor": 1,
-    "throughOldDoor": 0,
-    "durationMs": 119767,
-    "costUsd": 0.90435,
-    "inputTokens": 850674,
-    "outputTokens": 10591,
-    "numTurns": 18,
+    "filingAttempts": 3,
+    "durationMs": 229781,
+    "costUsd": 2.514891,
+    "inputTokens": 2294672,
+    "outputTokens": 19134,
+    "numTurns": 39,
     "isError": false
   },
   "filed": null,
   "captured": {
-    "title": "Fold the two blocked-by edge writers into one, and land #407's graph rules there",
-    "bytes": 3968,
-    "refusals": []
+    "title": "Fold the two issue-graph writers into one, and close #407's three rules there",
+    "bytes": 6057,
+    "refusals": [
+      "the body carries no '## Why', so nothing says what the owner asked for",
+      "'## Acceptance criteria' carries 10 '- [ ]' items, not 1 to 3",
+      "criterion 5 carries no check: `<command>` marker: Two slices with no edge between them whose `## Files claimed` overlap earn a wa…",
+      "line 3 carries an em dash",
+      "line 4 carries an em dash",
+      "line 19 carries an em dash",
+      "line 20 carries an em dash"
+    ]
   }
 }
