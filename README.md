@@ -1,32 +1,48 @@
 # claude-workflow
 
-A workflow system connecting Claude Code and GitHub.
+The machine that takes what the owner wants done and ships it as merged code, plus the workstation
+the sessions run on. The domain here is the machinery itself, not any project it ships.
 
 ## Start here
 
-**[The tracker](https://github.com/collod873/claude-workflow/issues)**: the target. What the
-machine *is* lives where it is being built: the open design questions are the
-[wayfinder map](https://github.com/collod873/claude-workflow/issues/76), the roadmap is
-[the `build-order` label](https://github.com/collod873/claude-workflow/issues?q=is%3Aissue+label%3Abuild-order),
-and a lane that has shipped is described by its own code and the ADRs that rule it.
+**[`docs/agents/charter.md`](docs/agents/charter.md)**: what the machine is for, and the enforcer
+holding every rule. Signed by the owner, changed only by the owner. Read it before changing
+machinery, then run `core/bin/machine-page` for what has actually shipped.
 
-**[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)**:
-the prior art. Why each of the seven systems that came before this one ended, and what survived
-the switch.
+**[`CONTEXT.md`](CONTEXT.md)**: the glossary. What each term means here and which near-synonyms to
+avoid, so an argument is about the substance rather than about the word.
 
-**[`CONTEXT.md`](CONTEXT.md)**: the glossary. What each term means here and which near-synonyms
-to avoid, so an argument is about the substance rather than about the word.
+**[`docs/agents/layers/`](docs/agents/layers/one-ticket.md)**: the layer rulings. One ticket is the
+centre and the only one signed so far.
 
-**[`docs/adr/`](docs/adr/README.md)**: the decision records. Why things are the way they are.
+**[`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)**: which gate reads which file.
+The Core and the Workstation are judged by different checks and the answer is not obvious.
 
-## The gauntlet
+**[`docs/adr/`](docs/adr/README.md)**: the decision records. Why things are the way they are. Most
+of the corpus rules on eras that have since been replaced; the index carries them all, newest last.
 
-`bin/gauntlet <venue>` runs the slots `.Workflow/agent-workflows/shared/venue-slots.json` names for that venue, and every venue
-calls it: a Claude Code hook, `.husky/pre-push`, and CI. A rule sits at the highest rung that can
-hold it and the earliest venue that can see enough
-([ADR-0193](docs/adr/0193-a-rule-is-placed-at-the-highest-rung-that-can-hold-it-and-th.md)).
+**[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)**: the
+prior art. Why each of the seven systems before this one ended, and what survived the switch.
 
-It installs itself: `npm ci` runs `prepare`, which installs the git hooks. Nothing to remember.
+## The Core
+
+`core/` is the machine. It is whole: no file in it reaches outside it. `core/check` is its gate,
+run by `.husky/pre-push` and by `core-check.yml` on every pull request. Nothing runs it during a
+session, so run it by hand before believing core is sound.
+
+## The Workstation
+
+`.claude/hooks/` and `bin/` are the room the sessions happen in, not a second machine. They are
+judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
+
+Hooks reach every session through `~/.claude/settings.json`, which dispatches into
+`~/.agents/workflow`, a read only clone of `main` refreshed at SessionStart. A hook edited here
+binds once it lands. `bin/link-workstation` wires that up.
+
+## Landing
+
+`main` takes no direct push, the owner's included. Commit locally, then `core/bin/land` opens a
+pull request and merges it.
 
 ## Layout
 
@@ -34,9 +50,11 @@ It installs itself: `npm ci` runs `prepare`, which installs the git hooks. Nothi
 .
 ├── CLAUDE.md         # project instructions for Claude Code
 ├── CONTEXT.md        # the glossary: what the words mean here
-├── bin/gauntlet      # the checks, one runner, called by every venue
-├── .claude/hooks/    # the in-turn and turn-end venues
-├── .Workflow/        # the agent workflows themselves
+├── core/             # the machine, and core/check, its gate
+├── bin/              # workstation scripts, linked into ~/bin
+├── .claude/hooks/    # the session hooks, dispatched globally
+├── .claude/skills/   # the session skills, linked into ~/.claude/skills
+├── docs/agents/      # the charter, the layer rulings, the boundary
 ├── docs/adr/         # decision records
-└── README.md
+└── docs/research/    # the evidence behind them, archived as written
 ```
