@@ -13,7 +13,6 @@ const SETTINGS = `${JSON.stringify({ hooks: {}, model: "sonnet", env: { EDITOR: 
 function makeHome(): string {
   const home = mkdtempSync(join(tmpdir(), "link-workstation-"));
   mkdirSync(join(home, "bin"), { recursive: true });
-  mkdirSync(join(home, ".claude", "skills"), { recursive: true });
   mkdirSync(join(home, ".claude", "hooks"), { recursive: true });
   writeFileSync(join(home, ".claude", "settings.json"), SETTINGS);
   return home;
@@ -42,7 +41,6 @@ test(
       }
 
       expect(existsSync(join(home, "bin", "hook-report"))).toBe(false);
-      expect(existsSync(join(home, ".claude", "skills", "tdd"))).toBe(false);
       expect(readFileSync(join(home, ".claude", "settings.json"), "utf8")).toBe(SETTINGS);
       expect(existsSync(join(home, ".claude", "settings.json.pre-dispatch"))).toBe(false);
     } finally {
