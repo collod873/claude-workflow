@@ -55,7 +55,7 @@ def main() -> None:
         check("apply: bin tool points at this repo's copy",
               tool_link.resolve() == (REPO / "bin" / "hook-report").resolve(), "")
 
-        module_link = home / "bin" / "gh_support.py"
+        module_link = home / "bin" / "run_log.py"
         check("apply: a .py module in bin/ is never linked as a tool",
               not module_link.exists(), "")
 
