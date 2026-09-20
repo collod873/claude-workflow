@@ -158,10 +158,10 @@ So: **an agent that will write needs its own working tree, and a path it was han
 
 ```
 git worktree add "<scratchpad>/wt-<ticket>" -b "research/<name>" "$(git rev-parse HEAD)"
-~/bin/link-deps "<scratchpad>/wt-<ticket>" "<repo>"
+ln -s "<repo>/node_modules" "<scratchpad>/wt-<ticket>/node_modules"
 ```
 
-Name the base tip explicitly as above: the harness's own worktree isolation forks from the repo's default branch, which is rarely the tip a map is working from. Then hand the tree's path in the dispatch and say in the same breath that the main checkout is **read-only** to that agent: a source to read context from, never a target for a write, an install, a commit, or a `git` command that moves `HEAD`. What `link-deps` provisions and why, which gitignored files do not follow into a worktree, and what a read-only path is still good for are documented where `~/bin/link-deps --help` prints them.
+Name the base tip explicitly as above: the harness's own worktree isolation forks from the repo's default branch, which is rarely the tip a map is working from. Then hand the tree's path in the dispatch and say in the same breath that the main checkout is **read-only** to that agent: a source to read context from, never a target for a write, an install, a commit, or a `git` command that moves `HEAD`. The plain symlink is safe here because npm does not rewrite anything inside `node_modules`; it was pnpm's deps-status check stamping its own paths into a shared manifest that made a symlinked tree unsafe under the old package manager (#140).
 
 **The tree outlives the subagent.** The closer will need a checkout at that branch's head to verify against, so remove the tree at step 4, not when the findings land.
 
