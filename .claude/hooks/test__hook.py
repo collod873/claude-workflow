@@ -482,7 +482,8 @@ def check_edit_matcher_registration():
               True, f"{type(exc).__name__}: {exc}")
         return
 
-    watchers = {"credential-scan.py": "PreToolUse", "post-edit-validate.py": "PostToolUse"}
+    watchers = {"hook-gate.py": "PostToolUse", "md-html-refresh.py": "PostToolUse",
+                "checklist-reminder.py": "PostToolUse"}
     missing = [name for name, event in watchers.items() if name not in registered.get(event, [])]
     check("every edit-watching hook is registered under its event in roster.json",
           not missing, f"unregistered: {missing}")

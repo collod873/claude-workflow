@@ -396,20 +396,10 @@ def check_real_hooks_per_event() -> None:
         base.update(fields)
         return json.dumps(base).encode()
 
-    secret = "AKIA" + "QRSTUVWX7Y8Z9012"
-    r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(
-        hook_event_name="PreToolUse", tool_name="Write",
-        tool_input={"file_path": str(enrolled_repo / "deploy.sh"),
-                    "content": f"aws_access_key_id={secret}\n"}))
-    check("PreToolUse/real roster: a written secret is denied via credential-scan, reaching the "
-          "dispatcher", r.returncode == 0, (r.returncode, r.stderr))
-    doc = json.loads(r.stdout) if r.stdout.strip() else {}
-    check("PreToolUse/real roster: the merged JSON carries credential-scan's deny",
-          doc.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", doc)
-
     r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(
         hook_event_name="PreToolUse", tool_name="Bash", tool_input={"command": "git status"}))
-    check("PreToolUse/real roster: an ordinary command passes through silently",
+    check("PreToolUse/real roster: this roster claims no PreToolUse slot, so the dispatcher is "
+          "silent and the global hooks in agent-hooks own that event alone",
           r.returncode == 0 and r.stdout == b"", (r.returncode, r.stdout))
 
     checklist = enrolled_repo / "todo.md"
@@ -424,8 +414,8 @@ def check_real_hooks_per_event() -> None:
           "2 unchecked" in doc.get("hookSpecificOutput", {}).get("additionalContext", ""), doc)
 
     r = run_dispatch(HOOKS_DIR, "SessionStart", payload(hook_event_name="SessionStart"))
-    check("SessionStart/real roster: clone-refresh stands down (not the dedicated clone), "
-          "circuit-breaker resets quietly: exit 0, silent",
+    check("SessionStart/real roster: nothing here claims SessionStart since the clone went, so "
+          "the dispatcher is silent",
           r.returncode == 0 and r.stdout == b"", (r.returncode, r.stdout, r.stderr))
 
     subprocess.run(["git", "-C", str(enrolled_repo), "config", "user.email", "t@example.com"],

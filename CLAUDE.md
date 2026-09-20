@@ -15,5 +15,5 @@
   by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires: run them by hand
   ([boundary](docs/agents/core-boundary.md)).
 - The machine is all of `core/` and nothing outside it, ruled by session hooks anyway: those under
-  `.claude/` fire in every session, core ones included, from `~/.agents/workflow`, a read only clone
-  of `main` pulled at SessionStart. A hook edited here binds once it lands and a session starts.
+  `.claude/` fire in every session, core ones included, straight from this checkout, so a hook
+  edited here is live next session. Hooks that fire everywhere live in `collod873/agent-hooks`.

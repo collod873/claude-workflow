@@ -35,9 +35,11 @@ session, so run it by hand before believing core is sound.
 `.claude/hooks/` and `bin/` are the room the sessions happen in, not a second machine. They are
 judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
 
-Hooks reach every session through `~/.claude/settings.json`, which dispatches into
-`~/.agents/workflow`, a read only clone of `main` refreshed at SessionStart. A hook edited here
-binds once it lands. `bin/link-workstation` wires that up.
+Hooks reach every session through `~/.claude/settings.json`, which names this checkout's
+dispatcher for the events `.claude/hooks/roster.json` claims, so a hook edited here is live in the
+next session. The hooks that fire in every repo on the workstation, rather than only where the
+machine is wired in, live in `collod873/agent-hooks`. `bin/link-workstation` links `bin/` into
+`~/bin`.
 
 ## Landing
 

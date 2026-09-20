@@ -58,19 +58,19 @@ sound.
 
 ## What the Workstation's hooks see
 
-Hooks fire in every session, core sessions included. `~/.claude/settings.json` dispatches through
-`~/.agents/workflow`, a clone of `main` that `clone-refresh.py` pulls at SessionStart and
-`clone-guard.py` keeps read only. `clone-refresh` then runs `bin/link-workstation --apply`, which is
-what keeps the dispatch entries and the bin links matching the roster. Changing a hook therefore
-means editing `.claude/hooks/` in this checkout and landing it; there is no separate global copy,
-and no reason for `core/` to carry machinery that routes around one.
+Hooks fire in every session, core sessions included. `~/.claude/settings.json` names two
+dispatchers: this checkout's, for the events this roster claims, and `collod873/agent-hooks` at
+`~/.agents/hooks`, which owns the global hooks that fire in every repo on the workstation. Each
+reads its own `roster.json` and neither knows the other. A hook edited here is live in the next
+session; there is no clone between the checkout and the runtime.
+
+`bin/link-workstation --apply` links this repo's `bin/` tools into `~/bin` and does nothing else.
 
 No hook in `.claude/hooks/roster.json` mentions `core/`, and none is scoped to this repo's tracker.
 They divide in two:
 
 - **Path scoped, so they miss core entirely**: `checklist-reminder` fires on `.md`, `.markdown` and
-  `.txt`, `hook-gate` inside a hooks directory or a settings file, `md-html-refresh` on markdown,
-  `post-edit-validate` on `.py`, `.js`, `.json` and `.html`, `credential-scan` on written content. A
+  `.txt`, `hook-gate` inside a hooks directory or a settings file, `md-html-refresh` on markdown. A
   `core/*.ts` edit reaches none of them, which also means no syntax check.
 - **Contract scoped, so they apply where a repo asks**: `stop-gate` runs the `stop` slot of a repo's
   own `.claude/contract.json` and stands down where there is no contract. This repo has none.
