@@ -52,7 +52,7 @@ def main() -> None:
                   str(expected_clone) in r.stderr, r.stderr)
             check(f"{mode_args}: names the fix", "run" in r.stderr.lower(), r.stderr)
 
-        check("refused: nothing was linked", not (home / "bin" / "link-deps").exists(), "")
+        check("refused: nothing was linked", not (home / "bin" / "hook-report").exists(), "")
         check("refused: settings.json is untouched",
               settings_path.read_text() == original_settings, settings_path.read_text())
         check("refused: no settings backup appears",
@@ -64,11 +64,11 @@ def main() -> None:
         r = run(home, "--dry-run")
         check("dry-run: exit 0", r.returncode == 0, r.stderr)
         check("dry-run: proposes linking a real bin tool",
-              "link " in r.stdout and "link-deps" in r.stdout, r.stdout)
+              "link " in r.stdout and "hook-report" in r.stdout, r.stdout)
         check("dry-run: proposes linking a real skill",
               str(home / ".claude" / "skills" / "tdd") in r.stdout, r.stdout)
         check("dry-run: nothing was actually created",
-              not (home / "bin" / "link-deps").exists(), "")
+              not (home / "bin" / "hook-report").exists(), "")
 
     print("\n## --apply links bin tools and skills, and is idempotent")
     with tempfile.TemporaryDirectory() as td:
@@ -76,10 +76,10 @@ def main() -> None:
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
 
-        tool_link = home / "bin" / "link-deps"
+        tool_link = home / "bin" / "hook-report"
         check("apply: bin tool symlinked", tool_link.is_symlink(), "")
         check("apply: bin tool points at this repo's copy",
-              tool_link.resolve() == (REPO / "bin" / "link-deps").resolve(), "")
+              tool_link.resolve() == (REPO / "bin" / "hook-report").resolve(), "")
 
         module_link = home / "bin" / "gh_support.py"
         check("apply: a .py module in bin/ is never linked as a tool",
@@ -117,28 +117,28 @@ def main() -> None:
     print("\n## A name this repo ships is repointed even off an old agent-skills copy")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
-        old_agent_skills_bin = home / ".agents" / "skills" / "bin" / "link-deps"
+        old_agent_skills_bin = home / ".agents" / "skills" / "bin" / "hook-report"
         old_agent_skills_bin.parent.mkdir(parents=True)
         old_agent_skills_bin.write_text("#!/bin/sh\necho the agent-skills copy\n")
-        (home / "bin" / "link-deps").symlink_to(old_agent_skills_bin)
+        (home / "bin" / "hook-report").symlink_to(old_agent_skills_bin)
 
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
         check("apply: the migration-era link is reported as replaced",
-              "replace " in r.stdout and "link-deps" in r.stdout, r.stdout)
-        link = home / "bin" / "link-deps"
+              "replace " in r.stdout and "hook-report" in r.stdout, r.stdout)
+        link = home / "bin" / "hook-report"
         check("apply: a name this repo ships always ends up pointing at this repo's copy",
-              link.resolve() == (REPO / "bin" / "link-deps").resolve(), "")
+              link.resolve() == (REPO / "bin" / "hook-report").resolve(), "")
 
     print("\n## A non-symlink file at the destination is left alone")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
-        real_file = home / "bin" / "link-deps"
+        real_file = home / "bin" / "hook-report"
         real_file.write_text("#!/bin/sh\necho a real file, not a symlink\n")
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
         check("apply: the existing real file is reported as skipped",
-              "skip " in r.stdout and "link-deps" in r.stdout, r.stdout)
+              "skip " in r.stdout and "hook-report" in r.stdout, r.stdout)
         check("apply: the existing real file is left untouched",
               not real_file.is_symlink()
               and real_file.read_text() == "#!/bin/sh\necho a real file, not a symlink\n", "")

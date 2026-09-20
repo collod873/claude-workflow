@@ -110,9 +110,11 @@ nothing to find, so silence proved nothing.
 
 ## Worked example
 
-Copy `validate-bash.py` and `test_validate_bash.py`, the pair that carries the shape a guard needs:
-it gates on `tool_input.command`, routes every pattern through `_hook.unquoted_matches` so the
-guarded word inside a comment, a heredoc or a string literal stays data rather than a trigger, and
-its 100 cases run through `_harness.run_hook` with the malformed quartet appended. Drive a guard
-through the harness, never by piping a payload in by hand: a hook that scans Bash commands scans its
-own test payload and self-triggers.
+Copy `credential-scan.py` and `test_credential_scan.py`, the pair that carries the shape a guard
+needs: it gates on `_hook.new_content`, so one reader covers Write, Edit and MultiEdit rather than
+each tool growing its own branch; it names its own file and its test in `EXEMPT_NAMES`, because a
+guard that reads content reads the content of the tests that exercise it; and its cases run through
+`_harness.run_hook` against a checked-in baseline, so a verdict changing is a diff rather than a
+judgement call. Drive a guard through the harness, never by piping a payload in by hand: a hook that
+scans what you are writing scans the test payload you are writing, and self-triggers. Build a
+fixture secret by concatenation (`"AKIA" + "..."`) in any file the guard is not exempt from.

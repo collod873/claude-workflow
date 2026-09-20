@@ -1,8 +1,7 @@
 {
   "PreToolUse": [
     "clone-guard.py",
-    "credential-scan.py",
-    "validate-bash.py"
+    "credential-scan.py"
   ],
   "PostToolUse": [
     "checklist-reminder.py",

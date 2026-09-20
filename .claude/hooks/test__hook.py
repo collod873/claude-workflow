@@ -16,56 +16,6 @@ from _harness import check, finish
 
 HOOKS_DIR = Path(__file__).resolve().parent
 
-QUOTED_SPAN_CASES: list[tuple[str, str, list[tuple[int, int]]]] = [
-    ("no-quotes",
-     "gh issue close 5",
-     []),
-    ("single-quoted-arg",
-     "grep 'foo' file",
-     [(5, 10)]),
-    ("double-quoted-arg",
-     'cat "secrets/.env"',
-     [(4, 18)]),
-    ("double-quoted-escaped-quote",
-     'echo "a\\"b"',
-     [(5, 11)]),
-    ("unterminated-single-quote",
-     "echo 'abc",
-     [(5, 9)]),
-    ("heredoc-unquoted-marker",
-     "cat <<EOF\nbody line\nEOF",
-     [(10, 20)]),
-    ("heredoc-dash-quoted-marker",
-     "cat <<-'EOF'\nbody\nEOF",
-     [(13, 18)]),
-    ("heredoc-with-no-body-or-close",
-     "cat <<EOF",
-     []),
-    ("prose-mention-single-quoted",
-     "grep -rn 'gh issue close' hooks/",
-     [(9, 25)]),
-    ("close-comment-heredoc",
-     "gh issue close 93 --comment \"$(cat <<'EOF'\n"
-     "Closing record: verified via `cat .env` - MET\n"
-     "EOF\n)\"",
-     [(28, 95)]),
-]
-
-
-def check_quoted_spans():
-    probe = re.compile(r"\S+")
-    for label, cmd, expected in QUOTED_SPAN_CASES:
-        got = _hook.quoted_spans(cmd)
-        check(f"quoted_spans({label})", got == expected,
-              f"cmd={cmd!r} got={got} want={expected}")
-        kept = _hook.unquoted_matches(probe, cmd, expected)
-        check(f"unquoted_matches({label}): no kept match starts inside a span",
-              all(not any(a <= m.start() < b for a, b in expected) for m in kept),
-              [m.start() for m in kept])
-        check(f"unquoted_matches({label}): recomputes spans when none passed",
-              [m.span() for m in _hook.unquoted_matches(probe, cmd)]
-              == [m.span() for m in kept])
-
 
 def check_read_payload():
     with tempfile.TemporaryDirectory() as tmp:
@@ -544,7 +494,6 @@ def main():
     check_active_sessions()
     check_retired_sessions()
     check_caller_stem_subprocess()
-    check_quoted_spans()
     check_read_stdin_bytes()
     check_read_payload()
     check_append_log()

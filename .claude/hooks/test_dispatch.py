@@ -396,13 +396,15 @@ def check_real_hooks_per_event() -> None:
         base.update(fields)
         return json.dumps(base).encode()
 
+    secret = "AKIA" + "QRSTUVWX7Y8Z9012"
     r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(
-        hook_event_name="PreToolUse", tool_name="Bash",
-        tool_input={"command": 'gh issue close 999 --comment "done"'}))
-    check("PreToolUse/real roster: a bare close is denied via validate-bash, reaching the dispatcher",
-          r.returncode == 0, (r.returncode, r.stderr))
+        hook_event_name="PreToolUse", tool_name="Write",
+        tool_input={"file_path": str(enrolled_repo / "deploy.sh"),
+                    "content": f"aws_access_key_id={secret}\n"}))
+    check("PreToolUse/real roster: a written secret is denied via credential-scan, reaching the "
+          "dispatcher", r.returncode == 0, (r.returncode, r.stderr))
     doc = json.loads(r.stdout) if r.stdout.strip() else {}
-    check("PreToolUse/real roster: the merged JSON carries validate-bash's deny",
+    check("PreToolUse/real roster: the merged JSON carries credential-scan's deny",
           doc.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", doc)
 
     r = run_dispatch(HOOKS_DIR, "PreToolUse", payload(
