@@ -9,7 +9,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BIN_DIR = REPO_ROOT / "bin"
-SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
 ROSTER_PATH = HOOKS_DIR / "roster.json"
 
@@ -32,12 +31,6 @@ def linkable_bin_tools() -> list[str]:
         p.name for p in BIN_DIR.iterdir()
         if p.is_file() and p.suffix != ".py" and os.access(p, os.X_OK)
     )
-
-
-def skill_dirs() -> list[str]:
-    if not SKILLS_DIR.is_dir():
-        return []
-    return sorted(p.name for p in SKILLS_DIR.iterdir() if p.is_dir())
 
 
 def hook_names() -> list[str]:
@@ -68,12 +61,6 @@ def link_bin(apply: bool) -> None:
     dest_dir = Path.home() / "bin"
     for name in linkable_bin_tools():
         ensure_symlink(dest_dir / name, BIN_DIR / name, apply)
-
-
-def link_skills(apply: bool) -> None:
-    dest_dir = Path.home() / ".claude" / "skills"
-    for name in skill_dirs():
-        ensure_symlink(dest_dir / name, SKILLS_DIR / name, apply)
 
 
 def prune_superseded_hook_symlinks(apply: bool) -> None:
@@ -187,7 +174,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     link_bin(apply)
-    link_skills(apply)
     prune_superseded_hook_symlinks(apply)
 
     if args.settings:

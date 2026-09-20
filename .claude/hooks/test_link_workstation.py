@@ -25,7 +25,6 @@ def run(home: Path, *args: str):
 def make_home(tmp: Path, workstation: Path | None = REPO) -> Path:
     home = tmp / "home"
     (home / "bin").mkdir(parents=True)
-    (home / ".claude" / "skills").mkdir(parents=True)
     (home / ".claude" / "hooks").mkdir(parents=True)
     if workstation is not None:
         agents_dir = home / ".agents"
@@ -65,12 +64,10 @@ def main() -> None:
         check("dry-run: exit 0", r.returncode == 0, r.stderr)
         check("dry-run: proposes linking a real bin tool",
               "link " in r.stdout and "hook-report" in r.stdout, r.stdout)
-        check("dry-run: proposes linking a real skill",
-              str(home / ".claude" / "skills" / "tdd") in r.stdout, r.stdout)
         check("dry-run: nothing was actually created",
               not (home / "bin" / "hook-report").exists(), "")
 
-    print("\n## --apply links bin tools and skills, and is idempotent")
+    print("\n## --apply links bin tools, and is idempotent")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
         r = run(home, "--apply")
@@ -85,11 +82,6 @@ def main() -> None:
         check("apply: a .py module in bin/ is never linked as a tool",
               not module_link.exists(), "")
 
-        skill_link = home / ".claude" / "skills" / "tdd"
-        check("apply: skill directory symlinked",
-              skill_link.is_symlink()
-              and skill_link.resolve() == (REPO / ".claude" / "skills" / "tdd").resolve(), "")
-
         r2 = run(home, "--apply")
         check("apply again: exit 0", r2.returncode == 0, r2.stderr)
         check("apply again: nothing to relink, so nothing is reported",
@@ -102,8 +94,6 @@ def main() -> None:
         personal_target.parent.mkdir(parents=True)
         personal_target.write_text("#!/bin/sh\necho personal\n")
         (home / "bin" / "gwsa").symlink_to(personal_target)
-        (home / ".claude" / "skills" / "audit-always-on").symlink_to(
-            Path(td) / "agents-skills-skill-target")
 
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
@@ -111,8 +101,6 @@ def main() -> None:
               "gwsa" not in r.stdout, r.stdout)
         check("a personal-kit bin symlink still points exactly where it did",
               (home / "bin" / "gwsa").resolve() == personal_target.resolve(), "")
-        check("a personal-kit skill symlink is never named in the output",
-              "audit-always-on" not in r.stdout, r.stdout)
 
     print("\n## A name this repo ships is repointed even off an old agent-skills copy")
     with tempfile.TemporaryDirectory() as td:

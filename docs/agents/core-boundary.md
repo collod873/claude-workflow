@@ -61,7 +61,7 @@ sound.
 Hooks fire in every session, core sessions included. `~/.claude/settings.json` dispatches through
 `~/.agents/workflow`, a clone of `main` that `clone-refresh.py` pulls at SessionStart and
 `clone-guard.py` keeps read only. `clone-refresh` then runs `bin/link-workstation --apply`, which is
-what keeps the dispatch entries and the skill links matching the roster. Changing a hook therefore
+what keeps the dispatch entries and the bin links matching the roster. Changing a hook therefore
 means editing `.claude/hooks/` in this checkout and landing it; there is no separate global copy,
 and no reason for `core/` to carry machinery that routes around one.
 
