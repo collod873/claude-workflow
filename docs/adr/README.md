@@ -5,27 +5,20 @@ often than it is written, and every entry that is not a constraint is a future r
 spent on history they cannot act on.
 
 **[`INDEX.md`](INDEX.md) is the corpus**: every ruling as one line, newest last. The title is the
-ruling, so the index answers *what was decided* on its own. Open a body only for *why*.
+ruling, so the index answers *what was decided* on its own. Open a body only for *why*. It is
+maintained by hand: a new entry adds its own line, and nothing regenerates it.
 
 ## Writing one
 
-```
-bin/new-adr "the ruling as a sentence"          # → docs/adr/draft-<slug>.md
-bin/new-adr --land docs/adr/draft-<slug>.md     # → docs/adr/NNNN-<slug>.md
-```
-
-A draft claims **no number**, so it is invisible to everything that reads the corpus by filename
-shape: it sits in a working tree without staling the fixture or tripping the gauntlet. Landing
-claims the number, against a freshly fetched `origin/main`, and regenerates the corpus fixture in
-the same breath. Both halves matter: `docs/adr/` has two authors, you and the accept lane on a
-runner, and neither sees the other's uncommitted work
-([ADR-0080](0080-an-adr-number-is-claimed-when-the-adr-lands-not-when-it-is-d.md)).
+Write `NNNN-<slug>.md`, where `NNNN` is one past the highest number in the corpus and the slug is
+the title lowercased and hyphenated, in [the shape below](#the-shape). Add its line to `INDEX.md`
+in the same commit. Take the number from a freshly fetched `origin/main`, not from your tree alone.
 
 ## The bar
 
 **Write `reversal:` first.** It says, in a sentence, what undoing this would cost. That sentence is
 the admission test: if the answer is one edit, this is an implementation note; it belongs in the
-code that does it, or in `docs/research/` if it carries evidence. Landing refuses an empty one.
+code that does it, or in `docs/research/` if it carries evidence.
 
 A constraint also earns its place by being **surprising** (a future reader would otherwise
 re-decide it) and by having had a **real alternative** that was weighed and rejected.
@@ -37,14 +30,14 @@ re-decide it) and by having had a **real alternative** that was weighed and reje
 status: constraint          # or `note`, or `superseded`
 date: 2026-08-31
 supersedes: ADR-0056        # optional; only when this ruling reverses that one whole
-superseded_by: ADR-0087     # derived by the back-stamp, never hand-written
+superseded_by: ADR-0087     # set on the predecessor when a successor supersedes it
 reversal: what undoing this would cost, in a sentence
 ---
 ```
 
 The **title is the ruling**, as a sentence: *"Event-driven triggers only, never a clock"*, never
-*"Trigger strategy"*. The **body is why it binds**, in 150 words; landing refuses more. Evidence,
-measurement tables and worked examples live in `docs/research/`, and the ADR links them.
+*"Trigger strategy"*. The **body is why it binds**, in 150 words or fewer. Evidence, measurement
+tables and worked examples live in `docs/research/`, and the ADR links them.
 
 An ADR stands alone: a reader who cannot reach the linked issue still understands the constraint.
 The issue is provenance, never content.
@@ -52,17 +45,15 @@ The issue is provenance, never content.
 ## Living with them
 
 **Correct a landed ADR in place.** A change to part of a ruling is an edit to that ADR. File a new
-one only when the ruling reverses whole, and set `supersedes:` on the successor; `back-stamp.ts`
-derives the predecessor's `superseded_by:` from it. There is no `amends:`: an edge that meant
-"changes part of" retired whole rulings, because the only thing that reads an edge retires.
+one only when the ruling reverses whole, and set `supersedes:` on the successor and
+`superseded_by:` on the predecessor. There is no `amends:`: an edge that meant "changes part of"
+retired whole rulings, because the only thing that reads an edge retires.
 
-**A retirement lands with its citers.** `npm run drift` refuses the push while any live document
-cites a retired ADR or names a file the change deleted, and lists each line. Rewrite or delete the
-sentence; a restated rule repointed to the new number is still the old rule.
+**A retirement lands with its citers.** Find them with `grep -rn ADR-NNNN` and rewrite or delete
+each sentence; a restated rule repointed to the new number is still the old rule.
 
 **Never rename or delete one.** Numbers and filenames are quoted in issue bodies and permalinks
 that cannot be edited from here. Retire an entry by setting `status: note`, which keeps its
 citations resolving and tells a reader not to propagate it.
 
-`~/bin/adr-check` validates the corpus, regenerates `INDEX.md`, and reports dead citations; the
-push venue runs it, along with a guard that refuses the retired prose grammar.
+Cite another repo's record as `<repo>/ADR-NNNN`, so it never resolves against this corpus.

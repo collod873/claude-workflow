@@ -154,7 +154,7 @@ describe("code this repo tracks carries no prose (ADR-0151)", () => {
     expect(covered).toContain("core/check");
     expect(covered).toContain("core/eslint.config.js");
     expect(covered).toContain(".claude/hooks/validate-bash.py");
-    expect(covered).toContain("bin/adr-check");
+    expect(covered).toContain("bin/new-research");
     expect(covered).toContain(".github/workflows/core-check.yml");
     expect(covered).toContain("vitest.config.ts");
     expect(covered).not.toContain("docs/research/harness/hooks-per-event/drive.py");

@@ -35,7 +35,6 @@ It installs itself: `npm ci` runs `prepare`, which installs the git hooks. Nothi
 ├── CLAUDE.md         # project instructions for Claude Code
 ├── CONTEXT.md        # the glossary: what the words mean here
 ├── bin/gauntlet      # the checks, one runner, called by every venue
-├── bin/new-adr       # creates the next decision record from a title
 ├── .claude/hooks/    # the in-turn and turn-end venues
 ├── .Workflow/        # the agent workflows themselves
 ├── docs/adr/         # decision records

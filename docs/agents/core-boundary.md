@@ -84,8 +84,8 @@ machinery that routes around one.
 
 No hook in `.claude/hooks/roster.json` mentions `core/`. They divide in two:
 
-- **Path scoped, so they miss core entirely**: `adr-gate` fires under `docs/adr/`,
-  `checklist-reminder` on `.md`, `.markdown` and `.txt`, `hook-gate` inside a hooks directory or a
+- **Path scoped, so they miss core entirely**:
+  `checklist-reminder` fires on `.md`, `.markdown` and `.txt`, `hook-gate` inside a hooks directory or a
   settings file, `md-html-refresh` on markdown, `post-edit-validate` on `.py`, `.js`, `.json` and
   `.html`. A `core/*.ts` edit reaches none of them, which also means no syntax check.
 - **Tracker scoped, so they apply on purpose**: `validate-bash` and `stop-gate` hold filing and

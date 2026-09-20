@@ -52,7 +52,7 @@ def main() -> None:
                   str(expected_clone) in r.stderr, r.stderr)
             check(f"{mode_args}: names the fix", "run" in r.stderr.lower(), r.stderr)
 
-        check("refused: nothing was linked", not (home / "bin" / "adr-check").exists(), "")
+        check("refused: nothing was linked", not (home / "bin" / "new-research").exists(), "")
         check("refused: settings.json is untouched",
               settings_path.read_text() == original_settings, settings_path.read_text())
         check("refused: no settings backup appears",
@@ -64,11 +64,11 @@ def main() -> None:
         r = run(home, "--dry-run")
         check("dry-run: exit 0", r.returncode == 0, r.stderr)
         check("dry-run: proposes linking a real bin tool",
-              "link " in r.stdout and "adr-check" in r.stdout, r.stdout)
+              "link " in r.stdout and "new-research" in r.stdout, r.stdout)
         check("dry-run: proposes linking a real skill",
               str(home / ".claude" / "skills" / "tdd") in r.stdout, r.stdout)
         check("dry-run: nothing was actually created",
-              not (home / "bin" / "adr-check").exists(), "")
+              not (home / "bin" / "new-research").exists(), "")
 
     print("\n## --apply links bin tools and skills, and is idempotent")
     with tempfile.TemporaryDirectory() as td:
@@ -76,10 +76,10 @@ def main() -> None:
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
 
-        tool_link = home / "bin" / "adr-check"
+        tool_link = home / "bin" / "new-research"
         check("apply: bin tool symlinked", tool_link.is_symlink(), "")
         check("apply: bin tool points at this repo's copy",
-              tool_link.resolve() == (REPO / "bin" / "adr-check").resolve(), "")
+              tool_link.resolve() == (REPO / "bin" / "new-research").resolve(), "")
 
         module_link = home / "bin" / "gh_support.py"
         check("apply: a .py module in bin/ is never linked as a tool",
@@ -117,28 +117,28 @@ def main() -> None:
     print("\n## A name this repo ships is repointed even off an old agent-skills copy")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
-        old_agent_skills_bin = home / ".agents" / "skills" / "bin" / "adr-check"
+        old_agent_skills_bin = home / ".agents" / "skills" / "bin" / "new-research"
         old_agent_skills_bin.parent.mkdir(parents=True)
         old_agent_skills_bin.write_text("#!/bin/sh\necho the agent-skills copy\n")
-        (home / "bin" / "adr-check").symlink_to(old_agent_skills_bin)
+        (home / "bin" / "new-research").symlink_to(old_agent_skills_bin)
 
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
         check("apply: the migration-era link is reported as replaced",
-              "replace " in r.stdout and "adr-check" in r.stdout, r.stdout)
-        link = home / "bin" / "adr-check"
+              "replace " in r.stdout and "new-research" in r.stdout, r.stdout)
+        link = home / "bin" / "new-research"
         check("apply: a name this repo ships always ends up pointing at this repo's copy",
-              link.resolve() == (REPO / "bin" / "adr-check").resolve(), "")
+              link.resolve() == (REPO / "bin" / "new-research").resolve(), "")
 
     print("\n## A non-symlink file at the destination is left alone")
     with tempfile.TemporaryDirectory() as td:
         home = make_home(Path(td))
-        real_file = home / "bin" / "adr-check"
+        real_file = home / "bin" / "new-research"
         real_file.write_text("#!/bin/sh\necho a real file, not a symlink\n")
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
         check("apply: the existing real file is reported as skipped",
-              "skip " in r.stdout and "adr-check" in r.stdout, r.stdout)
+              "skip " in r.stdout and "new-research" in r.stdout, r.stdout)
         check("apply: the existing real file is left untouched",
               not real_file.is_symlink()
               and real_file.read_text() == "#!/bin/sh\necho a real file, not a symlink\n", "")
@@ -148,9 +148,9 @@ def main() -> None:
         home = make_home(Path(td))
         agent_skills_hooks = home / ".agents" / "skills" / "hooks"
         agent_skills_hooks.mkdir(parents=True)
-        old_hook = agent_skills_hooks / "adr-gate.py"
+        old_hook = agent_skills_hooks / "clone-guard.py"
         old_hook.write_text("# an old copy\n")
-        (home / ".claude" / "hooks" / "adr-gate.py").symlink_to(old_hook)
+        (home / ".claude" / "hooks" / "clone-guard.py").symlink_to(old_hook)
 
         elsewhere_target = Path(td) / "elsewhere.py"
         elsewhere_target.write_text("# unrelated\n")
@@ -159,7 +159,7 @@ def main() -> None:
         r = run(home, "--apply")
         check("apply: exit 0", r.returncode == 0, r.stderr)
         check("the agent-skills-pointed hook link is gone",
-              not (home / ".claude" / "hooks" / "adr-gate.py").exists(), "")
+              not (home / ".claude" / "hooks" / "clone-guard.py").exists(), "")
         check("a hook link pointing elsewhere is left exactly as it was",
               (home / ".claude" / "hooks" / "stop-gate.py").resolve() == elsewhere_target.resolve(), "")
 
@@ -170,7 +170,7 @@ def main() -> None:
         original = {
             "hooks": {
                 "PreToolUse": [{"matcher": "Bash", "hooks": [
-                    {"type": "command", "command": "python3 ~/.claude/hooks/old-adr-gate.py"}]}],
+                    {"type": "command", "command": "python3 ~/.claude/hooks/old-clone-guard.py"}]}],
                 "Notification": [{"hooks": [
                     {"type": "command", "command": "$HOME/bin/notify \"$1\" \"$2\""}]}],
             },

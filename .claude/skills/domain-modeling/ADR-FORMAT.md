@@ -6,13 +6,13 @@ future agent's context spent on history it cannot act on.
 
 ## Filing one
 
-```
-new-adr "The ruling, stated as a sentence"    # writes docs/adr/draft-<slug>.md
-new-adr --land docs/adr/draft-<slug>.md       # claims the number, updates the index
-```
+Write `docs/adr/NNNN-<slug>.md` in the shape below, where `NNNN` is one past the
+highest number already in the corpus and the slug is the title lowercased and
+hyphenated. Add its line to `docs/adr/INDEX.md` in the same commit.
 
-The number is claimed at the land, never typed: two authors write `docs/adr/` from
-separate trees and neither sees the other's uncommitted files.
+Take the number from a freshly fetched `origin/main`, not from your tree alone: two
+authors write `docs/adr/` from separate trees and neither sees the other's
+uncommitted files.
 
 ## The bar
 
@@ -28,10 +28,10 @@ A reader applies that test by looking, so apply it before filing: name the next
 piece of work the ruling binds. An entry with no answer to that is narrating the
 change you just made, which is what `git log` already holds.
 
-One part of that test is structural, so the land checks it: the body carries a
+One part of that test is structural: the body carries a
 `**Rejected: <the alternative>.** <what it would have cost.>` line naming the other
-thing you could have built, and `new-adr --land` refuses a body with none. The rest of the bar is judgement and stays
-unenforced, because a gate guessing at it would be refusing on a coin flip.
+thing you could have built. The rest of the bar is judgement, and nothing enforces
+any of it, so the author holds the line.
 
 Rationale about how the code works goes in the commit message, where `git log` and
 `git blame` keep it reachable and no later agent pays to read it. `CONTEXT.md` takes
@@ -40,9 +40,8 @@ examples, the corpus you read) goes in `docs/research/`, which the ADR links.
 `docs/adr/` carries the ruling alone.
 
 `reversal:` is a required frontmatter field: one sentence on what undoing this
-would cost, which tells a later reader what they would be dismantling. Landing
-refuses an empty one. Admission is the test above; an author grading their own
-reversal cost passes every time.
+would cost, which tells a later reader what they would be dismantling. Admission is
+the test above; an author grading their own reversal cost passes every time.
 
 ## The shape
 
@@ -50,8 +49,8 @@ The **title is the ruling**, as a sentence: *"Triage labels are positions, not
 verdicts."* `docs/adr/INDEX.md` publishes titles, and that index is what most
 readers ever see, so the title carries the decision on its own.
 
-The **body is why it binds**, in 150 words. Landing refuses more. Evidence,
-measurements and worked examples live in `docs/research/`, and the ADR links them.
+The **body is why it binds**, in 150 words or fewer. Evidence, measurements and
+worked examples live in `docs/research/`, and the ADR links them.
 
 An ADR stands alone: a reader who cannot reach the linked issue still understands
 the constraint. The issue is provenance, never content.
@@ -68,6 +67,5 @@ note`, which keeps its citations resolving and tells a reader not to propagate i
 
 Cite another repo's ADR as `<repo>/ADR-NNNN`, so it never resolves against this one.
 
-`adr-check` validates the corpus, regenerates the index, and reports dead citations;
-`adr-check --blast` measures how far each ADR has spread, which is the honest reading
-of how hard it now is to reverse.
+Nothing validates the corpus. Before retiring a ruling, `grep -rn ADR-NNNN` for its
+citers: how widely it spread is the honest reading of how hard it now is to reverse.
