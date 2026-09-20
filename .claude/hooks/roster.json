@@ -2,7 +2,6 @@
   "PreToolUse": [
     "clone-guard.py",
     "credential-scan.py",
-    "adr-gate.py",
     "validate-bash.py"
   ],
   "PostToolUse": [

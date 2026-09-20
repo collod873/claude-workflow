@@ -66,6 +66,6 @@ When a term is resolved, update `CONTEXT.md` right there. Don't batch these up: 
 ### Offer ADRs sparingly
 
 An ADR records a **constraint**: a ruling later work is bound by, which reading the
-code would leave unanswered. File one with `new-adr`; the bar, the 150-word
+code would leave unanswered. File one by hand; the bar, the 150-word
 cap and the rest are in [ADR-FORMAT.md](./ADR-FORMAT.md), which is
 the single home for them. Read it before offering one.
