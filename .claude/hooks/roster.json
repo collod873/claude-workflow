@@ -9,7 +9,6 @@
   "stop-gate.py"
  ],
  "SessionEnd": [
-  "session-capture.sh",
-  "session-end.py"
+  "session-capture.sh"
  ]
 }
