@@ -41,7 +41,7 @@ test(
         expect(output.includes(workstationClone) || output.includes("~/.agents/workflow")).toBe(true);
       }
 
-      expect(existsSync(join(home, "bin", "new-research"))).toBe(false);
+      expect(existsSync(join(home, "bin", "link-deps"))).toBe(false);
       expect(existsSync(join(home, ".claude", "skills", "tdd"))).toBe(false);
       expect(readFileSync(join(home, ".claude", "settings.json"), "utf8")).toBe(SETTINGS);
       expect(existsSync(join(home, ".claude", "settings.json.pre-dispatch"))).toBe(false);

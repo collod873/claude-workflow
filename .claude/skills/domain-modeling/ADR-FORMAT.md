@@ -45,6 +45,16 @@ the test above; an author grading their own reversal cost passes every time.
 
 ## The shape
 
+```yaml
+---
+status: constraint          # or `note`, or `superseded`
+date: 2026-08-31
+supersedes: ADR-0056        # optional; only when this ruling reverses that one whole
+superseded_by: ADR-0087     # set on the predecessor when a successor supersedes it
+reversal: what undoing this would cost, in a sentence
+---
+```
+
 The **title is the ruling**, as a sentence: *"Triage labels are positions, not
 verdicts."* `docs/adr/INDEX.md` publishes titles, and that index is what most
 readers ever see, so the title carries the decision on its own.
@@ -58,8 +68,10 @@ the constraint. The issue is provenance, never content.
 ## Living with them
 
 **Correct a landed ADR in place.** A change to part of a ruling is an edit to that ADR.
-File a new one only when the ruling reverses whole; set `supersedes:` on the successor,
-then rewrite or delete every live line that cited the old one.
+File a new one only when the ruling reverses whole; set `supersedes:` on the successor
+and `superseded_by:` on the predecessor, then rewrite or delete every live line that
+cited the old one. There is no `amends:`: an edge meaning "changes part of" retired
+whole rulings, because the only thing that reads an edge retires.
 
 **Never rename or delete one.** Numbers and filenames are quoted in issue bodies and
 permalinks that cannot be edited from here. Retire an entry by setting `status:
