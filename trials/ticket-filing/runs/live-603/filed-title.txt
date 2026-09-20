@@ -1,1 +1,0 @@
-Fold the two blocked-by edge writers into one, and land #407's graph rules there

@@ -99,7 +99,7 @@ export default {
   includeEntryExports: true,
   ignoreExportsUsedInFile: true,
 
-  ignore: [...suiteOnly(["bin", ".claude"]), "core/**", "trials/**"],
+  ignore: [...suiteOnly(["bin", ".claude"]), "core/**"],
 
   /**
    * to find. `@shell` is a real production caller knip cannot see (a subprocess, a dynamic
