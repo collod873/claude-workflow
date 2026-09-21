@@ -60,9 +60,7 @@ sound.
 
 Hooks fire in every session, core sessions included. `~/.claude/settings.json` names
 `collod873/agent-hooks` at `~/.agents/hooks`, which owns every hook that fires in every repo on the
-workstation, and one hook from this checkout: `.claude/hooks/session-capture.sh` on SessionEnd,
-which writes a record of the session and reads nothing under `core/`. A hook edited here is live in
-the next session; there is no clone between the checkout and the runtime.
+workstation, session capture included. This checkout registers none.
 
 `bin/link-workstation --apply` links this repo's `bin/` tools into `~/bin` and does nothing else.
 
