@@ -32,12 +32,11 @@ session, so run it by hand before believing core is sound.
 
 ## The Workstation
 
-`.claude/hooks/` and `bin/` are the room the sessions happen in, not a second machine. They are
+`bin/` is the room the sessions happen in, not a second machine. It is
 judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
 
-One hook is wired here: `~/.claude/settings.json` names `.claude/hooks/session-capture.sh` on
-SessionEnd, so a hook edited here is live in the next session. Every other hook on the workstation
-lives in `collod873/agent-hooks`. `bin/link-workstation` links `bin/` into `~/bin`.
+No hook is wired here. Every hook on the workstation, session capture included, lives in
+`collod873/agent-hooks`. `bin/link-workstation` links `bin/` into `~/bin`.
 
 ## Landing
 
@@ -52,7 +51,6 @@ pull request and merges it.
 ├── CONTEXT.md        # the glossary: what the words mean here
 ├── core/             # the machine, and core/check, its gate
 ├── bin/              # workstation scripts, linked into ~/bin
-├── .claude/hooks/    # the session hooks, dispatched globally
 ├── .claude/skills/   # the session skills, linked into ~/.claude/skills
 ├── docs/agents/      # the charter, the layer rulings, the boundary
 ├── docs/adr/         # decision records

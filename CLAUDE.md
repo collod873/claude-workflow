@@ -14,6 +14,5 @@
 - `core/check` is the Core's gate, run by `.husky/pre-push` and every PR. The Workstation is judged
   by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires: run them by hand
   ([boundary](docs/agents/core-boundary.md)).
-- The machine is all of `core/` and nothing outside it, ruled by session hooks anyway: those under
-  `.claude/` fire in every session, core ones included, straight from this checkout, so a hook
-  edited here is live next session. Hooks that fire everywhere live in `collod873/agent-hooks`.
+- The machine is all of `core/` and nothing outside it. This repo holds no session hooks: every
+  hook that fires in a session lives in `collod873/agent-hooks`.
