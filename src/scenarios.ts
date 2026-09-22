@@ -216,7 +216,7 @@ export const MAIN_RED = '{"check_runs":[{"name":"Core check","conclusion":"failu
 
 type Tree = "fresh" | "behind" | "dirty" | "branch";
 
-function ghAnswers(body: string, checkRuns: string): string {
+function ghAnswers(body: string, checkRuns: string, edited?: string): string {
   return [
     'case "$*" in',
     '  *"issue view"*)',
@@ -225,6 +225,7 @@ function ghAnswers(body: string, checkRuns: string): string {
     "TICKET",
     "    ;;",
     `  *check-runs*) printf '%s\\n' '${checkRuns}' ;;`,
+    ...(edited === undefined ? [] : [`  *"issue edit"*) printf '%s\\n' "$*" >>"${edited}" ;;`]),
     "  *) exit 22 ;;",
     "esac",
     "",
@@ -340,19 +341,87 @@ export function building({
   };
 }
 
-export function starting({ body = wellFormedTicket, checkRuns = MAIN_GREEN, npx = CHECK_RED, tree = "fresh" as Tree } = {}) {
+export function renamedAndDeletedHistory(session: string): void {
+  plant(session, "vitest.config.ts", "export default {};\n");
+  plant(session, "src/old-name.ts", "export const shaped = 1;\n");
+  plant(session, "src/soon-deleted.ts", "export const goingAway = 1;\n");
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "plant the paths a stale ticket will still claim");
+  git(session, "mv", "src/old-name.ts", "src/new-name.ts");
+  git(session, "rm", "--quiet", "src/soon-deleted.ts");
+  git(session, "commit", "--quiet", "-m", "rename one claimed path and delete another");
+  git(session, "push", "--quiet", "origin", "main");
+}
+
+const OWNER_ON_PATHS = 'The owner, in session: "the flattening a build in flight caught, so paths get checked before a session starts".';
+
+export const RENAMED_CLAIM_TICKET = [
+  "## Why",
+  "",
+  OWNER_ON_PATHS,
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The renamed path still gets built against - check: `npx vitest run --config vitest.config.ts old-name`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/old-name.ts",
+  "",
+].join("\n");
+
+export const DELETED_CLAIM_TICKET = [
+  "## Why",
+  "",
+  OWNER_ON_PATHS,
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The deleted path is caught before a model runs - check: `npx vitest run --config vitest.config.ts soon-deleted`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/soon-deleted.ts",
+  "",
+].join("\n");
+
+export const MISSING_CONFIG_TICKET = [
+  "## Why",
+  "",
+  OWNER_ON_PATHS,
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The missing config is caught before a model runs - check: `npx vitest run --config missing.config.ts new-name`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/new-name.ts",
+  "",
+].join("\n");
+
+export function starting({
+  body = wellFormedTicket,
+  checkRuns = MAIN_GREEN,
+  npx = CHECK_RED,
+  tree = "fresh" as Tree,
+  history = (_session: string) => {},
+} = {}) {
   const root = scratch("start-");
   const { session } = cloned(root, "base", "the commit a stale tree has not got");
   const spent = join(root, "claude-argv");
+  const edited = join(root, "gh-edit");
+  history(session);
   if (tree === "behind") git(session, "reset", "--quiet", "--hard", "HEAD~1");
   if (tree === "branch") git(session, "checkout", "--quiet", "-b", "ticket/721");
   if (tree === "dirty") writeFileSync(join(session, "left-behind.txt"), "work nobody committed\n");
-  script(join(root, "bin", "gh"), ghAnswers(body, checkRuns));
+  script(join(root, "bin", "gh"), ghAnswers(body, checkRuns, edited));
   script(join(root, "bin", "npx"), npx);
   script(join(root, "bin", "claude"), `touch "${spent}"\n`);
   return {
     session,
     spentModel: () => existsSync(spent),
+    edited: () => (existsSync(edited) ? readFileSync(edited, "utf8") : ""),
     run: (ticket = "721") => execute(join(BIN, "start"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
