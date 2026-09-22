@@ -1,7 +1,9 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
 import { DENIED } from "./deny-list.ts";
-import { authoring, heard, wellFormedTicket } from "./scenarios.ts";
+import { authoring, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
 import { uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
@@ -9,11 +11,63 @@ const RED = ran("      Tests  1 failed (1)\n", 1);
 const GREEN = ran("      Tests  1 passed (1)\n", 0);
 const NO_TESTS = ran("No test files found, exiting with code 1\n", 1);
 
+const claimingBuilder = wellFormedTicket.replace("- src/ticket-shape.ts", "- src/builder.ts");
+const unimported = (cwd: string, module: string): Shell =>
+  ran(
+    [
+      " FAIL  src/builder.proc.test.ts [ src/builder.proc.test.ts ]",
+      `Error: Cannot find module './${module}' imported from ${join(cwd, "src", "builder.proc.test.ts")}`,
+      "",
+      " Test Files  1 failed (1)",
+      "      Tests  no tests",
+      "",
+    ].join("\n"),
+    1,
+  );
+
+const PROTOTYPED = [
+  'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
+  "printf 'export const built = 1;\\n' >src/prototype.ts",
+  "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts",
+  "",
+].join("\n");
+const GREEN_WITH_PROTOTYPE = [
+  "if [ -e src/prototype.ts ]; then printf '      Tests  1 passed (1)\\n'; exit 0; fi",
+  "printf '      Tests  1 failed (1)\\n'",
+  "exit 1",
+  "",
+].join("\n");
+
 describe("the test author writes one failing test per criterion, or ends red (#663)", () => {
   it("counts a criterion covered only when its check ends red on a test that ran", () => {
     expect(uncovered(wellFormedTicket, ".", RED)).toEqual([]);
     expect(uncovered(wellFormedTicket, ".", GREEN)).toEqual([expect.stringContaining("criterion 1 has no failing test")]);
     expect(uncovered(wellFormedTicket, ".", NO_TESTS)).toEqual([expect.stringContaining("ran no tests")]);
+  });
+
+  it("counts a check red when its test imports a claimed file not written yet", () => {
+    const cwd = scratch("unwritten-");
+    const written = scratch("written-");
+    plant(written, "src/builder.ts", "export const built = 1;\n");
+
+    expect(uncovered(claimingBuilder, cwd, unimported(cwd, "builder.ts"))).toEqual([]);
+    expect(uncovered(claimingBuilder, cwd, unimported(cwd, "unclaimed.ts"))).toEqual([expect.stringContaining("ran no tests")]);
+    expect(uncovered(claimingBuilder, written, unimported(written, "builder.ts"))).toEqual([expect.stringContaining("ran no tests")]);
+  });
+
+  it("sets aside what the model wrote outside test files before any check runs, and commits only its tests", () => {
+    const { session, run, committed } = authoring({ claude: PROTOTYPED, npx: GREEN_WITH_PROTOTYPE });
+    plant(session, "notes.txt", "the owner's own work in progress\n");
+    const setAside = join(session, ".git", "machine-logs", "test-author-723-set-aside");
+
+    const result = run();
+
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 2 files it wrote outside test files")] });
+    expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
+    expect(existsSync(join(session, "src", "prototype.ts"))).toBe(false);
+    expect(readFileSync(join(session, "src", "ticket-shape.ts"), "utf8")).toBe("export const shaped = 1;\n");
+    expect(readFileSync(join(session, "notes.txt"), "utf8")).toBe("the owner's own work in progress\n");
+    expect(readdirSync(join(setAside, "src")).sort()).toEqual(["prototype.ts", "ticket-shape.ts"]);
   });
 
   it("commits one failing test per criterion on the ticket branch, under the shared deny list", () => {
