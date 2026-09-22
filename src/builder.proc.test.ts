@@ -13,6 +13,21 @@ const GREEN_ONCE_BUILT = [
 
 const allowed = (argv: string) => argv.split("\n")[argv.split("\n").indexOf("--allowedTools") + 1].split(",");
 
+const WRITES_UNCLAIMED_FILE = [
+  "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts",
+  "printf 'export const helper = 1;\\n' >src/unclaimed-helper.ts",
+  "",
+].join("\n");
+
+const WRITES_ONLY_UNCLAIMED_FILE = "printf 'export const helper = 1;\\n' >src/unclaimed-helper.ts\n";
+
+const GREEN_WHILE_FILE_PRESENT = [
+  "if [ -f src/unclaimed-helper.ts ]; then printf '      Tests  1 passed (1)\\n'; exit 0; fi",
+  "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'",
+  "exit 1",
+  "",
+].join("\n");
+
 describe("the builder builds against the brief, with one resumed repair round (#725)", () => {
   it("resumes its own session for exactly one repair round, handed the check's output tail capped at 8 KB", () => {
     const head = "HEAD-OF-CHECK-OUTPUT";
@@ -108,5 +123,24 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("uncommitted");
     expect(calls()).toBe(0);
+  });
+
+  it("sets aside a file the ticket does not claim", () => {
+    const { run, committed } = building({ claude: WRITES_UNCLAIMED_FILE, npx: GREEN_ONCE_BUILT });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("src/unclaimed-helper.ts");
+    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
+  });
+
+  it("needed a file the ticket does not claim", () => {
+    const { run } = building({ claude: WRITES_ONLY_UNCLAIMED_FILE, npx: GREEN_WHILE_FILE_PRESENT });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("src/unclaimed-helper.ts");
   });
 });
