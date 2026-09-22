@@ -71,7 +71,7 @@ export function checkRepo(failing: Partial<Record<Tool, string>> = {}) {
   git(repo, "config", "user.name", "check");
   git(repo, "add", ".");
   git(repo, "commit", "--quiet", "-m", "base");
-  return { repo, run: (cwd = repo) => execute(join(cwd, "bin", "check"), cwd) };
+  return { repo, run: (cwd = repo, args: string[] = []) => execute(join(cwd, "bin", "check"), cwd, {}, args) };
 }
 
 export const wellFormedTicket = [
