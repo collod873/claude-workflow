@@ -88,6 +88,14 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(handedOn()).toContain(DENIED.join(","));
   });
 
+  it("hands the test author a permission mode that lets it write a path under .claude/, so a ticket claiming one is authored instead of refused", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    expect(handedOn()).toContain("--permission-mode\nbypassPermissions");
+  });
+
   it("ends red naming the criterion whose check still passes, and writes nothing", () => {
     const { run, committed } = authoring({ npx: "printf '      Tests  1 passed (1)\\n'\nexit 0\n" });
 
@@ -116,6 +124,17 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("wrote no test");
+    expect(committed()).toEqual([]);
+  });
+
+  it("ends red saying the author wrote nothing, not naming a criterion whose check ran no tests", () => {
+    const { run, committed } = authoring({ claude: "true\n", npx: "printf 'No test files found, exiting with code 1\\n'\nexit 1\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the author wrote nothing");
+    expect(result.stderr).not.toContain("ran no tests");
     expect(committed()).toEqual([]);
   });
 
