@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { parse } from "yaml";
@@ -236,6 +236,22 @@ export function plant(root: string, path: string, content: string): void {
   writeFileSync(join(root, path), content);
 }
 
+function claimedSession(session: string, who: string, claimed: Record<string, string>, tests: Record<string, string>, branch: string): void {
+  mkdirSync(session, { recursive: true });
+  git(session, "init", "--quiet", "--initial-branch=main");
+  git(session, "config", "user.email", `${who}@test`);
+  git(session, "config", "user.name", who);
+  for (const [path, content] of Object.entries(claimed)) plant(session, path, content);
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "what the claim stands on");
+  git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
+  if (Object.keys(tests).length === 0) return;
+  git(session, "checkout", "--quiet", "-b", branch);
+  for (const [path, content] of Object.entries(tests)) plant(session, path, content);
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "the author's failing test");
+}
+
 export function briefing({
   body = wellFormedTicket,
   claimed = { "src/ticket-shape.ts": "export const shaped = 1;\n" } as Record<string, string>,
@@ -244,20 +260,7 @@ export function briefing({
 } = {}) {
   const root = scratch("brief-");
   const session = join(root, "session");
-  mkdirSync(session, { recursive: true });
-  git(session, "init", "--quiet", "--initial-branch=main");
-  git(session, "config", "user.email", "brief@test");
-  git(session, "config", "user.name", "brief");
-  for (const [path, content] of Object.entries(claimed)) plant(session, path, content);
-  git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "what the claim stands on");
-  git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
-  if (Object.keys(tests).length > 0) {
-    git(session, "checkout", "--quiet", "-b", "ticket/722");
-    for (const [path, content] of Object.entries(tests)) plant(session, path, content);
-    git(session, "add", ".");
-    git(session, "commit", "--quiet", "-m", "the author's failing test");
-  }
+  claimedSession(session, "brief", claimed, tests, "ticket/722");
   script(join(root, "bin", "gh"), reads ? ghAnswers(body, MAIN_GREEN) : "exit 22\n");
   return {
     written: () => readFileSync(join(session, ".git", "machine-logs", "brief-722.md"), "utf8"),
@@ -292,6 +295,44 @@ export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx 
       }
     },
     run: (ticket = "723") => execute(join(BIN, "test-author"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+  };
+}
+
+const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
+
+export function building({
+  body = wellFormedTicket,
+  claimed = { "src/ticket-shape.ts": "export const shaped = 1;\n" } as Record<string, string>,
+  tests = { "src/ticket-shape.test.ts": AUTHORED_TEST } as Record<string, string>,
+  npx = CHECK_RED,
+  sessionId = "sess-42",
+} = {}) {
+  const root = scratch("builder-");
+  const session = join(root, "session");
+  const argvDir = join(root, "claude-argv");
+  const stdinDir = join(root, "claude-stdin");
+  mkdirSync(argvDir, { recursive: true });
+  mkdirSync(stdinDir, { recursive: true });
+  claimedSession(session, "builder", claimed, tests, "ticket/724");
+  script(join(root, "bin", "gh"), ghAnswers(body, MAIN_GREEN));
+  script(join(root, "bin", "npx"), npx);
+  script(
+    join(root, "bin", "claude"),
+    [
+      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
+      `printf '%s\\n' "$@" >"${argvDir}/$n"`,
+      `cat >"${stdinDir}/$n"`,
+      `printf '{"session_id":"${sessionId}"}\\n'`,
+      "",
+    ].join("\n"),
+  );
+  return {
+    session,
+    sessionId,
+    calls: () => readdirSync(argvDir).length,
+    argv: (call: number) => readFileSync(join(argvDir, String(call)), "utf8"),
+    stdin: (call: number) => (existsSync(join(stdinDir, String(call))) ? readFileSync(join(stdinDir, String(call)), "utf8") : ""),
+    run: (ticket = "724") => execute(join(BIN, "build"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
 

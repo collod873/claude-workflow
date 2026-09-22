@@ -100,6 +100,11 @@ export const parts: Part[] = [
     ],
   },
   {
+    name: "bin/build",
+    file: "bin/build",
+    stops: "https://github.com/collod873/claude-workflow/issues/652",
+  },
+  {
     name: "src/deny-list.test.ts",
     file: "src/deny-list.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/663",

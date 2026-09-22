@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { brief, CAP } from "./brief.ts";
+import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 860 };
+export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 860, "builder": 388, "repair": 84 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -34,6 +35,20 @@ export const PROMPTS: Prompt[] = [
     cap: CAP + HANDED_ON,
     slots: ["ticket", "body", "tests", "commands"],
     build: (filled) => handedOn(briefText(filled), filled.commands === undefined ? [] : [filled.commands]),
+  },
+  {
+    name: "builder",
+    file: "src/builder.ts",
+    cap: CAP + HANDED_ON,
+    slots: ["ticket", "body", "tests", "commands"],
+    build: (filled) => builderHandedOn(briefText(filled), filled.commands === undefined ? [] : [filled.commands]),
+  },
+  {
+    name: "repair",
+    file: "src/builder.ts",
+    cap: TAIL_CAP + HANDED_ON,
+    slots: ["output"],
+    build: (filled) => repaired(filled.output ?? ""),
   },
 ];
 
